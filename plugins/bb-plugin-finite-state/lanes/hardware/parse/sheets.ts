@@ -366,7 +366,17 @@ function sheetCursorOffset(cursor: string | null): number {
 
 export function listHardwareSheets(db: Database.Database, rawInput: unknown) {
   const input = sheetsListInputSchema.parse(rawInput);
-  const rows = db.prepare<[string, string, string], SheetRow>(
+  const scope: [string, string, string] = [
+    input.projectId,
+    toStorageProjectVersionId(input.projectVersionId),
+    input.projectKey,
+  ];
+  const total = db.prepare<[string, string, string], { count: number }>(
+    `SELECT COUNT(*) AS count FROM hw_sheet
+      WHERE project_id = ? AND project_version_id = ? AND project_key = ?`,
+  ).get(...scope)?.count ?? 0;
+  const offset = sheetCursorOffset(input.cursor);
+  const rows = db.prepare<[string, string, string, number, number], SheetRow>(
     `SELECT sheet.sheet_path, sheet.name, sheet.parent_sheet_path, sheet.page_order,
             sheet.width_mm, sheet.height_mm, COUNT(symbol.reference) AS symbol_count
        FROM hw_sheet AS sheet
@@ -377,12 +387,17 @@ export function listHardwareSheets(db: Database.Database, rawInput: unknown) {
         AND symbol.sheet_path = sheet.sheet_path
       WHERE sheet.project_id = ? AND sheet.project_version_id = ? AND sheet.project_key = ?
       GROUP BY sheet.project_id, sheet.project_version_id, sheet.project_key, sheet.sheet_path
-      ORDER BY sheet.page_order, sheet.sheet_path`,
-  ).all(input.projectId, toStorageProjectVersionId(input.projectVersionId), input.projectKey);
-  const byPath = new Map(rows.map((row) => [row.sheet_path, row]));
-  const offset = sheetCursorOffset(input.cursor);
-  const page = rows.slice(offset, offset + input.pageSize);
-  const items = page.map((row) => {
+      ORDER BY sheet.page_order, sheet.sheet_path
+      LIMIT ? OFFSET ?`,
+  ).all(...scope, input.pageSize, offset);
+  const findSheet = db.prepare<[string, string, string, string], SheetRow>(
+    `SELECT sheet_path, name, parent_sheet_path, page_order, width_mm, height_mm,
+            0 AS symbol_count
+       FROM hw_sheet
+      WHERE project_id = ? AND project_version_id = ? AND project_key = ?
+        AND sheet_path = ?`,
+  );
+  const items = rows.map((row) => {
     const breadcrumbs: Array<{ sheetPath: string; name: string }> = [];
     const visited = new Set<string>();
     let current: SheetRow | undefined = row;
@@ -391,7 +406,9 @@ export function listHardwareSheets(db: Database.Database, rawInput: unknown) {
       visited.add(current.sheet_path);
       breadcrumbs.unshift({ sheetPath: current.sheet_path, name: current.name });
       if (breadcrumbs.length > 100) throw new Error("HW_SHEET_BREADCRUMBS_TOO_DEEP");
-      current = current.parent_sheet_path ? byPath.get(current.parent_sheet_path) : undefined;
+      current = current.parent_sheet_path
+        ? findSheet.get(...scope, current.parent_sheet_path)
+        : undefined;
     }
     return {
       projectId: input.projectId,
@@ -409,8 +426,8 @@ export function listHardwareSheets(db: Database.Database, rawInput: unknown) {
   const nextOffset = offset + items.length;
   return {
     items,
-    total: rows.length,
-    cursor: nextOffset < rows.length
+    total,
+    cursor: nextOffset < total
       ? Buffer.from(`sheets:${nextOffset}`).toString("base64url")
       : null,
   };

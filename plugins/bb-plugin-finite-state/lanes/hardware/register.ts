@@ -23,6 +23,10 @@ import { detectKicadCli, type HwArtifactKind, type KicadCapability } from "./ext
 import { listArtifactStatus } from "./extract/provenance.js";
 import { HardwareSourceWatcher } from "./extract/watch.js";
 import { hardwareViolationsNotImplemented } from "./fab/violations.js";
+import {
+  hardwareConnectivityGapsRpcContract,
+  listConnectivityGaps,
+} from "./parse/ingest.js";
 import { listHardwareSheets } from "./parse/sheets.js";
 import { getHardwarePart, listHardwareNets, listHardwareSymbols } from "./search.js";
 
@@ -521,6 +525,10 @@ export function registerHardware(bb: BbPluginApi, ctx: PluginContext): void {
   bb.rpc.register(hardwareDiscoveryRpcContract, {
     hardwareDiscoveryRefresh(input) { return discovery.enqueue(input); },
     hardwareDiscoveryStatus(input) { return discovery.status(input); },
+  });
+
+  bb.rpc.register(hardwareConnectivityGapsRpcContract, {
+    hardwareConnectivityGapsList(input) { return listConnectivityGaps(db, input); },
   });
 
   bb.rpc.register(hardwareRpcContract, {

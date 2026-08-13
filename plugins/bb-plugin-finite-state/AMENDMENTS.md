@@ -242,6 +242,32 @@ UPDATE hw_project
 - Broadcast and merge commits: pending
 - Evidence: WP-72 acceptance criterion “KiCad 5 project recorded with `supported: false`”; independent PR #83 review finding M-6; current `discovery.ts` `readKicadVersion(...)` compatibility computation; frozen strict `hardwareProjectSchema` and `hw_project` storage lack the field before this amendment
 
+### AMD-0018 — Retain bounded hardware semantic ingest history and sheet metadata
+
+- Status: approved
+- Artifacts:
+  - `plugins/bb-plugin-finite-state/shared/contract.ts`
+  - `plugins/bb-plugin-finite-state/lib/store/schema.ts`
+  - `plugins/bb-plugin-finite-state/lib/sync/registry.ts`
+- Contract version: 6
+- Prior artifact hashes:
+  - `shared/contract.ts`: `10469129c503d785d69de1c2bd86eda5e506ae7e32adfb90a1acb366fc7ea8e9`
+  - `lib/store/schema.ts`: `9b5172c16dc882dcb50f170a4eb13c6c15c3540e6e1d82cf6753b78cfedb5ff7`
+  - `lib/sync/registry.ts`: `2059a09c3d6d090505195b69ca56bef6585c8e6c5d25dbbed3735582516b3e86`
+- New artifact hashes: recorded by the frozen accept flow for the approved implementation
+- Reason: WP-73 cannot persist the ordered sheet tree behind the frozen `hardwareSheetSchema`, hash-gate semantic ingest, compare symbol sets between retained source hashes, or expose unresolved connectivity honestly using the existing `hw_symbol` and strict `hw_net` shapes. Gaps are diagnostics and must never be fabricated as nets. Adding generation columns to or rekeying the existing semantic tables is unnecessary: their current rows remain the queryable generation, transactional replacement preserves the prior generation on failure, and a separate bounded ledger retains the hashes and snapshots needed for drift.
+- Additive storage: append `hw_sheet` with primary key `(project_id, project_version_id, project_key, sheet_path)`, required `name` and non-negative `page_order`, nullable `parent_sheet_path`, nullable positive `width_mm`/`height_mm`, and the same scoped `hw_project` foreign key as sibling hardware caches. `symbolCount` remains derived from `hw_symbol`. Append `hw_ingest` with primary key `(project_id, project_version_id, project_key, source_hash)`, required `ingested_at`, `symbol_refs` JSON-array snapshot, `connectivity_gaps` JSON array, and the same scoped foreign key. Register both as additive CACHED entities `hardwareSheet` and `hardwareIngest`; no existing `hw_symbol` or `hw_net` column, key, or entity changes.
+- Gap contract: connectivity gaps use strict `{ sheetPath, kind, detail, at }`, where `kind` is `unresolved_label | unresolved_hierarchical_pin | unsupported_bus | missing_pin_geometry` and `at` is `{ x, y } | null`. Add the lane-local read RPC `hardwareConnectivityGapsList` with strict scope-triple input plus optional `sourceHash`; omitted hash selects deterministically by `ingested_at DESC, source_hash DESC`, and no ingest returns `{ sourceHash: null, gaps: [] }`. A requested unretained hash fails truthfully with typed code `HW_INGEST_HASH_NOT_RETAINED`. Gaps never enter `hw_net` or the frozen `hardwareNetsList` output.
+- Transaction and retention: an unchanged newest `source_hash` is a no-op. A changed hash runs delete-current-sheets/symbols/nets, replacement inserts, ledger upsert, and retention pruning in one SQLite transaction, so any failure preserves the prior queryable generation and its ledger. Retain exactly the newest **N=20** `hw_ingest` rows per scope triple, ordered by `ingested_at DESC, source_hash DESC`, and prune older rows inside that same transaction. `diffSymbolSets(fromHash,toHash)` compares two retained `symbol_refs` snapshots and reports added/removed only; a hash absent from the bounded ledger throws `HW_INGEST_HASH_NOT_RETAINED`, never an empty diff.
+- Retention rationale: hash-gating needs only the newest row and a drift comparison needs only two rows. Unbounded snapshots on actively edited boards impose recurring storage growth, while widening the literal N=20 bound later is a trivial additive amendment.
+- Migration: append the two table-creation statements, add both cache inventories/registry entries, increment `CONTRACT_VERSION` from 5 to 6 at merge serialization, update exact schema/registry/contract tests, and run the frozen accept flow. Implement transactional ingest, oldest-first retention proof, pruned-hash typed-error proof, sheet reads, gap reads, and symbol-set diffs in WP-73.
+- Affected WPs and gates: WP-09, WP-71, WP-73, WP-74, WP-75, WP-78, WP-79, WP-81; shared schema and registry inventories, hardware semantic ingest/read surfaces, frozen baseline, Node 22.19 typecheck/test/lint/build gates
+- Contract owner: Matt Wyckhouse; approved with the literal N=20 retention condition at 12:33 ET on 2026-08-13, relayed by coordinator `thr_hg37weivk7` and recorded on FS-108
+- Approval provenance: owner ruling relayed verbatim by coordinator `thr_hg37weivk7`; approved proposal was the FS-108 AMD-0018 draft with the N=20 retention condition added here
+- Affected-lane reviewer: pending independent exact-head audit
+- Broadcast and merge commits: pending
+- Evidence: FS-108 blocker audit established that the frozen caches had no source-hash history, no sheet table, and no honest strict-net gap representation; owner ruling approved the additive ledger/sheet/RPC design and required bounded retention with a truthful pruned-hash error
+
 ## Approved amendments — SPEC 07 / SPEC 08 intake
 
 *Drafted 2026-08-12 as AMD-0001…0006. Approved 2026-08-13 by the product

@@ -9,7 +9,7 @@
 import { defineRpcContract } from "@bb/plugin-sdk";
 import { z } from "zod";
 
-export const CONTRACT_VERSION = 5 as const;
+export const CONTRACT_VERSION = 6 as const;
 
 export type JsonValue =
   | null

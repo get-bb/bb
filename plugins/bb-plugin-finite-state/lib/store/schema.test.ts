@@ -215,6 +215,14 @@ const ROW_COLUMNS = {
   hw_net: [
     "project_id", "project_version_id", "project_key", "net_name", "nodes",
   ],
+  hw_sheet: [
+    "project_id", "project_version_id", "project_key", "sheet_path", "name",
+    "parent_sheet_path", "page_order", "width_mm", "height_mm",
+  ],
+  hw_ingest: [
+    "project_id", "project_version_id", "project_key", "source_hash", "ingested_at",
+    "symbol_refs", "connectivity_gaps",
+  ],
   hw_violation: [
     "project_id", "project_version_id", "id", "project_key", "kind", "severity",
     "rule", "description", "refs", "at_x", "at_y", "run_at",
@@ -259,6 +267,7 @@ function createDb(): Database.Database {
 const PRE_AMENDMENT_MIGRATION_COUNT = 78;
 const AMD_0010_REBUILD_STATEMENT_COUNT = 22;
 const AMD_0017_BACKFILL_STATEMENT_COUNT = 2;
+const AMD_0018_HARDWARE_SEMANTIC_STATEMENT_COUNT = 2;
 
 function insertGeneration(
   db: Database.Database,
@@ -351,7 +360,7 @@ describe("shared-store-freeze", () => {
     expect(names("table")).toEqual([...SCHEMA_TABLES].sort());
     expect(names("index")).toEqual([...SCHEMA_INDEXES].sort());
     expect(names("view")).toEqual([...SCHEMA_VIEWS].sort());
-    expect(SCHEMA_TABLES).toHaveLength(39);
+    expect(SCHEMA_TABLES).toHaveLength(41);
     expect(SCHEMA_INDEXES).toHaveLength(51);
 
     const registryCacheNames = Object.values(ENTITIES).flatMap((entry) =>
@@ -434,7 +443,7 @@ describe("shared-store-freeze", () => {
       results: snapshot("verification_results", "result_id"),
       artifacts: snapshot("verification_artifacts", "artifact_id"),
       attestations: snapshot("attestations", "attestation_id"),
-    };
+};
 
     host.bb.storage.migrate(db, MIGRATIONS);
 
@@ -479,7 +488,9 @@ describe("shared-store-freeze", () => {
     const db = host.bb.storage.database();
     host.bb.storage.migrate(
       db,
-      MIGRATIONS.slice(0, -AMD_0017_BACKFILL_STATEMENT_COUNT),
+      MIGRATIONS.slice(0, -(
+        AMD_0017_BACKFILL_STATEMENT_COUNT + AMD_0018_HARDWARE_SEMANTIC_STATEMENT_COUNT
+      )),
     );
 
     const insert = db.prepare(

@@ -89,6 +89,13 @@ Search runs over parsed semantics, never SVG glyph text — stroke fonts plot as
     export function diffSymbolSets(db: Database, scope: HardwareSemanticScope,
       fromHash: string, toHash: string): { added: string[]; removed: string[] };
 
+AMD-0018 retains exactly the newest 20 `hw_ingest` snapshots per scope triple,
+pruning older rows inside the replacement transaction. `diffSymbolSets` throws
+`HardwareIngestHashNotRetainedError` with code `HW_INGEST_HASH_NOT_RETAINED`
+when either requested hash is absent from that bounded ledger; it never returns
+an empty diff for an unretained hash. Connectivity gaps are available through
+the lane-local `hardwareConnectivityGapsList` read RPC and never appear as nets.
+
 ## Acceptance criteria
 
 - [ ] The fixture project parses to `hw_symbol` rows with correct references, positions, and units — with no KiCad installed and no `.fs-hw` artifacts present.
