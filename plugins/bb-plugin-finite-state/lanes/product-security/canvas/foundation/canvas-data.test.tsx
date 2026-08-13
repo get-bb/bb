@@ -157,7 +157,7 @@ describe("WP-31 product-security RPC composition", () => {
     await harness.lifecycle.dispose();
   });
 
-  it("returns an explicit empty cache instead of reaching an upstream service", async () => {
+  it("returns an explicit empty cache after only a local project lookup", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "finite-state" });
     registerProductSecurity(bb, createPluginContext(bb));
     const page = await harness.behavior.callRpc("taraList", {
@@ -173,7 +173,9 @@ describe("WP-31 product-security RPC composition", () => {
       total: 0,
       cache: { state: "empty", acceptedGenerationId: null },
     });
-    expect(harness.inspection.sdk.calls).toHaveLength(0);
+    expect(harness.inspection.sdk.callsTo("projects.get")).toHaveLength(1);
+    expect(harness.inspection.sdk.callsTo("files.list")).toHaveLength(0);
+    expect(harness.inspection.sdk.calls).toHaveLength(1);
     await harness.lifecycle.dispose();
   });
 });
