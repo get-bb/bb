@@ -5,6 +5,7 @@ import type {
   AssuranceStudioClient,
   Json,
 } from "../../../../lib/remote/types.js";
+import { ASSURANCE_STUDIO_MAX_PAGE_SIZE } from "../../../../lib/remote/assurance-studio/client.js";
 import { ENTITIES } from "../../../../lib/sync/registry.js";
 import {
   type EntityAdapter,
@@ -622,12 +623,15 @@ function createAdapter(
       let pageNumber = 0;
       for await (const page of client.listEntities(kind, {
         projectId: scope.projectId,
-        page: { pageSize: 1_000 },
+        page: { pageSize: ASSURANCE_STUDIO_MAX_PAGE_SIZE },
       })) {
         pageNumber += 1;
         onProgress({
           page: pageNumber,
-          of: page.total === null ? null : Math.ceil(page.total / 1_000),
+          of:
+            page.total === null
+              ? null
+              : Math.ceil(page.total / ASSURANCE_STUDIO_MAX_PAGE_SIZE),
         });
         yield page.items.map((remote) =>
           projectRemoteEntity(kind, remote, scope, resolver),

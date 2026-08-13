@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import type Database from "better-sqlite3";
 
 import { toStorageProjectVersionId } from "../../../lib/store/index.js";
+import { RemoteError } from "../../../lib/remote/types.js";
 import type { EntityKind } from "../../../lib/sync/registry.js";
 import { canonicalJson } from "../serialize/canonical.js";
 import { BaseSnapshotStore, type BaseRow } from "../store/base-snapshot.js";
@@ -142,6 +143,7 @@ function partialWorkingRead(error: unknown): {
 }
 
 function errorMessage(error: unknown): string {
+  if (error instanceof RemoteError) return `${error.code}: ${error.message}`;
   return error instanceof Error ? error.message : String(error);
 }
 

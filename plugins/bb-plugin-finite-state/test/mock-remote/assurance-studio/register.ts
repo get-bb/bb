@@ -21,7 +21,7 @@ import {
 } from "./verification.js";
 
 const LIST_KINDS = [
-  "threat", "risk", "mitigation", "zone", "dataflow", "component", "requirement", "attack-path",
+  "threat", "risk", "mitigation", "asset", "zone", "dataflow", "component", "requirement", "attack-path",
 ] as const satisfies readonly AsEntityKind[];
 const ITEM_GET_KINDS = [
   "threat", "risk", "mitigation", "asset", "zone", "dataflow", "component", "requirement", "attack-path",

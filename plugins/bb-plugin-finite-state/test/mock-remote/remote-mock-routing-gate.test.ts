@@ -163,11 +163,19 @@ describe("remote-mock-routing-gate", () => {
         }),
       ]),
     );
+    expect(harness.assuranceStudio.routes).toContainEqual(
+      expect.objectContaining({
+        method: "GET",
+        pathTemplate: "/api/projects/{projectId}/assets",
+        source: "client-contract",
+        evidence: expect.stringContaining("FS-153"),
+      }),
+    );
     expect(
       harness.assuranceStudio.routes.some(
         (route) =>
           route.pathTemplate === "/api/projects/{projectId}/assets" &&
-          (route.method === "GET" || route.method === "POST"),
+          route.method === "POST",
       ),
     ).toBe(false);
     expect(() =>

@@ -397,6 +397,18 @@ export const ASSURANCE_STUDIO_REFERENCE_ROUTES = [
     "source": "openapi"
   },
   {
+    "routeId": "assurance-studio:GET:/api/projects/{projectId}/assets",
+    "service": "assurance-studio",
+    "method": "GET",
+    "pathTemplate": "/api/projects/{projectId}/assets",
+    "operationId": null,
+    "auth": "X-API-Key",
+    "requestMediaTypes": [],
+    "responseStatuses": [],
+    "source": "client-contract",
+    "evidence": "FS-153 production AssuranceStudioClient.listEntities contract"
+  },
+  {
     "routeId": "assurance-studio:DELETE:/api/projects/{projectId}/assets/{assetId}",
     "service": "assurance-studio",
     "method": "DELETE",
@@ -2268,6 +2280,7 @@ export const ASSURANCE_STUDIO_REFERENCE_ROUTES = [
 
 export const ASSURANCE_STUDIO_CALLABLE_ROUTE_IDS = [
   "assurance-studio:GET:/api/projects/{id}/sbom",
+  "assurance-studio:GET:/api/projects/{projectId}/assets",
   "assurance-studio:DELETE:/api/projects/{projectId}/assets/{assetId}",
   "assurance-studio:GET:/api/projects/{projectId}/assets/{assetId}",
   "assurance-studio:PATCH:/api/projects/{projectId}/assets/{assetId}",
