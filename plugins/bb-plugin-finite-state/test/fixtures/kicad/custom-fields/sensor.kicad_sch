@@ -1,0 +1,226 @@
+(kicad_sch
+	(version 20250114)
+	(generator "eeschema")
+	(generator_version "9.0")
+	(uuid "15000000-0000-4000-8000-000000000002")
+	(paper "A4" portrait)
+	(lib_symbols
+		(symbol "Fixture:R"
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 0)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(property "Reference" "R"
+				(at 0 2.54 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "R"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 -2.54 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Description" ""
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(symbol "R_0_1"
+				(rectangle
+					(start -2.5 -1)
+					(end 2.5 1)
+					(stroke
+						(width 0.25)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "R_1_1"
+				(pin passive line
+					(at -5 0 0)
+					(length 2.5)
+					(name "~"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 5 0 180)
+					(length 2.5)
+					(name "~"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+	)
+	(wire
+		(pts
+			(xy 45 40) (xy 55 40)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "5c4dd014-7974-4259-baa7-411756926cd9")
+	)
+	(wire
+		(pts
+			(xy 30 40) (xy 35 40)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "7d60adc5-fbec-42a3-ac60-79dcd4a514be")
+	)
+	(label "SENSOR_RETURN"
+		(at 55 40 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+		(uuid "b5a30015-bf98-4d5c-b670-390a3f785f4e")
+	)
+	(hierarchical_label "SENSE"
+		(shape input)
+		(at 30 40 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+		(uuid "4dee9901-bf9a-4b6d-bf1d-32e41f6f2b3b")
+	)
+	(symbol
+		(lib_id "Fixture:R")
+		(at 40 40 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "15000000-0000-4000-8000-000000000301")
+		(property "Reference" "R3"
+			(at 40 43 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "1k"
+			(at 40 40 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Fixture:R_0603"
+			(at 40 37 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 40 40 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" ""
+			(at 40 40 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "04e9b1d5-cf4e-4ac8-9d89-51b09e5b4680")
+		)
+		(pin "2"
+			(uuid "e8b1e20e-e04b-42b6-a0a5-230f67570d82")
+		)
+		(instances
+			(project "custom_fields"
+				(path "/15000000-0000-4000-8000-000000000001/15000000-0000-4000-8000-000000000201"
+					(reference "R3")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(sheet_instances
+		(path "/"
+			(page "2")
+		)
+	)
+	(embedded_fonts no)
+)

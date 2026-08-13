@@ -24,13 +24,14 @@ async function addProject(root: string, directory: string, name: string, version
 }
 
 describe("KiCad project discovery", () => {
-  it("discovers the unchanged KiCad 9 custom-fields fixture", async () => {
+  it("discovers the originally-authored KiCad 9 custom-fields fixture", async () => {
     const fixtureRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../test/fixtures/kicad/custom-fields");
     await expect(discoverProjects(fixtureRoot)).resolves.toMatchObject([
       {
         projectKey: "custom_fields.kicad_pro",
         schPath: "custom_fields.kicad_sch",
         pcbPath: "custom_fields.kicad_pcb",
+        kicadVersion: "9.0",
         supported: true,
       },
     ]);

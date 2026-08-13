@@ -120,7 +120,7 @@ describe("hardware semantic ingest", () => {
     expect(db.prepare("SELECT net_name FROM hw_net ORDER BY net_name").pluck().all()).toContain("OP_OUT");
   }, 30_000);
 
-  it("ingests the KiCad-authored custom-fields project with strict plain gap points", async () => {
+  it("ingests the originally-authored custom-fields project with strict plain gap points", async () => {
     db.prepare("DELETE FROM hw_project").run();
     const customScope = { ...scope, projectKey: "custom_fields.kicad_pro" };
     db.prepare(`INSERT INTO hw_project (
@@ -128,14 +128,27 @@ describe("hardware semantic ingest", () => {
       sch_hash, pcb_hash, kicad_version, supported, discovered_at
     ) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, ?, 1, ?)`).run(
       customScope.projectId, "@project", customScope.projectKey, "custom_fields",
-      "custom_fields.kicad_sch", hash(2), "20210123", "2026-08-13T00:00:00.000Z",
+      "custom_fields.kicad_sch", hash(2), "9.0", "2026-08-13T00:00:00.000Z",
     );
     const realParsed = await parseProject(customFieldsRoot, customScope.projectKey);
     expect(() => ingestProject(db, customScope, hash(2), realParsed)).not.toThrow();
-    expect(db.prepare("SELECT reference FROM hw_symbol ORDER BY reference").pluck().all()).toEqual(["J1", "R1"]);
+    expect(db.prepare("SELECT reference, unit FROM hw_symbol ORDER BY reference, unit").all()).toEqual([
+      { reference: "J1", unit: 1 },
+      { reference: "R1", unit: 1 },
+      { reference: "R2", unit: 1 },
+      { reference: "R3", unit: 1 },
+      { reference: "U1", unit: 1 },
+      { reference: "U1", unit: 2 },
+    ]);
+    expect(db.prepare("SELECT net_name FROM hw_net ORDER BY net_name").pluck().all()).toEqual([
+      "AUX_INPUT", "AUX_OUTPUT", "COMMAND", "CONTROL", "INPUT_SIGNAL", "SENSOR_RETURN",
+    ]);
+    expect(db.prepare("SELECT sheet_path FROM hw_sheet ORDER BY page_order").pluck().all()).toEqual([
+      "custom_fields.kicad_sch", "sensor.kicad_sch",
+    ]);
     expect(db.prepare("SELECT COUNT(*) FROM hw_ingest").pluck().get()).toBe(1);
     const gaps = listConnectivityGaps(db, customScope).gaps;
-    expect(gaps).toHaveLength(2);
+    expect(gaps).toHaveLength(3);
     for (const gap of gaps) {
       if (gap.at) expect(Object.keys(gap.at).sort()).toEqual(["x", "y"]);
     }

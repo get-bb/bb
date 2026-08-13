@@ -180,13 +180,15 @@ describe("hardware artifact cache", () => {
     await expect(validateHardwareSourceRoot(plain)).rejects.toMatchObject({ code: "HW_SOURCE_NOT_GIT_REPOSITORY" });
   });
 
-  it.skipIf(!liveCapability.supported)("live-exports the unchanged fixture when kicad-cli is available", async () => {
+  it.skipIf(!liveCapability.supported)("live-exports the originally-authored fixture when kicad-cli is available", async () => {
     const root = await mkdtemp(join(tmpdir(), "fs-hw-live-"));
     execFileSync("git", ["init", "--quiet", root]);
     await writeFile(join(root, ".gitignore"), ".fs-hw/\n");
     const fixtureRoot = join(dirname(fileURLToPath(import.meta.url)), "../../../test/fixtures/kicad/custom-fields");
-    for (const extension of ["pro", "sch", "pcb"]) {
-      await cp(join(fixtureRoot, `custom_fields.kicad_${extension}`), join(root, `custom_fields.kicad_${extension}`));
+    for (const file of [
+      "custom_fields.kicad_pro", "custom_fields.kicad_sch", "custom_fields.kicad_pcb", "sensor.kicad_sch",
+    ]) {
+      await cp(join(fixtureRoot, file), join(root, file));
     }
     const host = createFakePluginHost({ pluginId: `hw-live-${Math.random()}` });
     hosts.push(host);
