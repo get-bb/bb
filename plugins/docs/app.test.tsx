@@ -138,8 +138,8 @@ describe("Docs nav panel", () => {
     const toolbar = await slot.findByRole("toolbar", {
       name: "Notes sidebar actions",
     });
-    expect(slot.getByRole("navigation", { name: "Notes" })).toBeTruthy();
-    expect(toolbar.closest(".w-full")).not.toBeNull();
+    const navigation = slot.getByRole("navigation", { name: "Notes" });
+    expect(navigation.parentElement?.classList.contains("w-full")).toBe(true);
     expect(slot.container.querySelector("aside")).toBeNull();
     expect(slot.queryByRole("separator")).toBeNull();
     expect(

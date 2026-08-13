@@ -1482,7 +1482,7 @@ function Tree({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-sidebar">
+    <div className="flex h-full min-h-0 w-full flex-col bg-sidebar">
       <div className="relative flex items-center gap-1 border-b border-border p-2">
         <NotesSidebarNavigation
           query={query}
@@ -1890,7 +1890,7 @@ function NotesWorkspace({
   };
 
   return (
-    <div className="flex min-h-0 w-full flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1">
         {navigationOnly ? (
           <Tree
