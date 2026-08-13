@@ -5,6 +5,7 @@ import {
   deletePluginStateSnapshot,
   listExpiredPluginStateSnapshots,
   listGarbageCollectablePluginArtifacts,
+  listPluginArtifactsUnderPath,
   type DbConnection,
   type PluginArtifactRow,
 } from "@bb/db";
@@ -66,6 +67,12 @@ export async function garbageCollectPluginArtifacts(args: {
       );
       continue;
     }
+    // A checkout that a repository and commit share can hold the plugin root
+    // of another plugin. Deleting it would take that plugin's files with it,
+    // so this artifact waits for the pass that runs after its last tenant is
+    // collected.
+    const tenants = listPluginArtifactsUnderPath(args.db, storageRoot, sep);
+    if (tenants.some((tenant) => tenant.id !== artifact.id)) continue;
     try {
       await rm(storageRoot, { recursive: true, force: true });
       deletePluginArtifact(args.db, artifact.id);

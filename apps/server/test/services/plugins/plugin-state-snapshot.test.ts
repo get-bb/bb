@@ -235,6 +235,75 @@ describe("plugin activation snapshots and garbage collection", () => {
     });
   });
 
+  it("keeps a shared checkout while a nested plugin still lives in it", async () => {
+    const commit = "a".repeat(40);
+    const checkout = join(
+      dataDir,
+      "plugins",
+      "cache",
+      "git",
+      "host",
+      "repo",
+      commit,
+    );
+    const nestedPath = join(checkout, "plugins", "nested");
+    await mkdir(nestedPath, { recursive: true });
+    await writeFile(join(nestedPath, "sentinel"), "keep");
+    const makeArtifact = (id: string, pluginId: string, path: string) =>
+      createPluginArtifact(db, {
+        id,
+        pluginId,
+        sourceKind: "git",
+        npmResolvedVersion: null,
+        gitResolvedCommit: commit,
+        path,
+        integrity: null,
+        contentHash: "hash",
+        validationResult: "valid",
+        validatedAt: 1,
+      });
+    // The root plugin is collectable; the nested plugin of the same checkout
+    // is not, and its files are inside the root's storage directory.
+    makeArtifact("root", "gc-root", checkout);
+    makeArtifact("nested", "gc-nested", nestedPath);
+    upsertInstalledPlugin(db, {
+      id: "gc-nested",
+      source: `git:https://example.test/repo.git@main`,
+      provenance: { kind: "direct" },
+      sourceIntent: {
+        kind: "git",
+        url: "https://example.test/repo.git",
+        subdirectory: "plugins/nested",
+        requestedRef: "main",
+        refKind: "branch",
+      },
+      exactResolution: { kind: "git", commit },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: "nested",
+      rootDir: nestedPath,
+      version: "1.0.0",
+      enabled: true,
+    });
+
+    const warnings: string[] = [];
+    await garbageCollectPluginArtifacts({
+      db,
+      dataDir,
+      now: Date.now() + 1_000,
+      retentionMs: 0,
+      warn: (message) => warnings.push(message),
+    });
+
+    await stat(join(nestedPath, "sentinel"));
+    expect(listPluginArtifacts(db, "gc-root")).toHaveLength(1);
+    expect(warnings).toEqual([]);
+  });
+
   it("never removes active, snapshot-retained, or unmanaged artifact roots", async () => {
     const cacheRoot = join(dataDir, "plugins", "cache", "git", "source");
     const activePath = join(cacheRoot, "active");
