@@ -122,7 +122,11 @@ owner (Matt), relayed via supervisor thread `thr_rxxqm3px8s`, under two
 binding conditions: (1) the batch was renumbered to AMD-0010…0015 because
 the identifiers AMD-0002 and AMD-0003 were already claimed by in-flight
 amendments (duplicate-finding-ID dedup on PR #42; FS-65 firmware issuer-RPC
-proposal); (2) the schema amendment AMD-0010 carries an explicit acceptance
+proposal); supervisor guidance of 2026-08-13 subsequently confirmed AMD-0004
+and AMD-0005 are also claimed (WP-53's proposal PR #57 — AS
+verification-result write; Forge process lifecycle seam), so the whole
+AMD-0001…0005 range is off limits and AMD-0010…0015 is the confirmed range;
+(2) the schema amendment AMD-0010 carries an explicit acceptance
 criterion that the `verification_results` create-copy-swap rebuild migration
 is tested against a populated database. WP-71 is the single implementation
 task for AMD-0010 through AMD-0013 and AMD-0015; AMD-0014 is a
