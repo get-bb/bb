@@ -58,13 +58,16 @@ describe("Forge artifact hashing", () => {
     await writeFile(join(root, "a", "empty"), Buffer.alloc(0));
     await writeFile(join(root, "a", "β.bin"), Buffer.from([0, 255, 16]));
     await writeFile(join(root, "middle"), "middle\n");
+    await mkdir(join(root, "etc"));
+    await writeFile(join(root, "etc", "hosts"), "127.0.0.1 localhost\n");
+    await writeFile(join(root, "etc-backup"), "legacy configuration\n");
     await symlink("../middle", join(root, "a", "link-to-middle"));
     await symlink("a", join(root, "linked-dir"), "dir");
 
     const result = await computeForgeArtifactHash(root);
 
     expect(result.artifactHash).toBe(pinnedForgeArtifactHash(root));
-    expect(result.fileCount).toBe(5);
+    expect(result.fileCount).toBe(7);
     expect(result.regularFileHashes["/a/empty"]).toBe(
       "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     );

@@ -60,14 +60,21 @@ function isContained(root: string, candidate: string): boolean {
 }
 
 function pythonPathCompare(left: string, right: string): number {
-  const leftPoints = Array.from(left, (character) => character.codePointAt(0)!);
-  const rightPoints = Array.from(right, (character) => character.codePointAt(0)!);
-  const length = Math.min(leftPoints.length, rightPoints.length);
-  for (let index = 0; index < length; index += 1) {
-    const difference = leftPoints[index]! - rightPoints[index]!;
-    if (difference !== 0) return difference;
+  const leftParts = left.split("/");
+  const rightParts = right.split("/");
+  const partCount = Math.min(leftParts.length, rightParts.length);
+  for (let partIndex = 0; partIndex < partCount; partIndex += 1) {
+    const leftPoints = Array.from(leftParts[partIndex]!, (character) => character.codePointAt(0)!);
+    const rightPoints = Array.from(rightParts[partIndex]!, (character) => character.codePointAt(0)!);
+    const pointCount = Math.min(leftPoints.length, rightPoints.length);
+    for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
+      const difference = leftPoints[pointIndex]! - rightPoints[pointIndex]!;
+      if (difference !== 0) return difference;
+    }
+    const componentLengthDifference = leftPoints.length - rightPoints.length;
+    if (componentLengthDifference !== 0) return componentLengthDifference;
   }
-  return leftPoints.length - rightPoints.length;
+  return leftParts.length - rightParts.length;
 }
 
 function sameEvidence(left: FileEvidence, right: FileEvidence): boolean {
@@ -108,6 +115,8 @@ async function collectArtifactTree(root: string, signal: AbortSignal): Promise<A
         continue;
       }
       if (!stat.isSymbolicLink()) {
+        // Forge skips special nodes. Bench preparation deliberately refuses
+        // them because the sidecar schema cannot represent or verify them.
         throw new FirmwareArtifactHashError(
           "UNSUPPORTED_FIRMWARE_NODE",
           `Firmware root contains an unsupported special filesystem node: /${relativePath}`,
