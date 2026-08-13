@@ -158,6 +158,33 @@ describe("SdkSession", () => {
     session.stop();
   });
 
+  it("preserves structured content and prompt identity", async () => {
+    keepSdkStreamOpen();
+    const session = new SdkSession(defaultOptions, vi.fn(), vi.fn());
+    const promptId = "00000000-0000-0000-0000-000000000002";
+    const content: SDKUserMessage["message"]["content"] = [
+      { type: "text", text: "Describe this" },
+      {
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: "image/png",
+          data: "iVBORw0KGgo=",
+        },
+      },
+    ];
+
+    session.start();
+    const consumed = session.pushInput(content, promptId);
+    const result = await getLatestPrompt()[Symbol.asyncIterator]().next();
+
+    expect(result.done).toBe(false);
+    expect(result.value?.message.content).toEqual(content);
+    expect(result.value?.uuid).toBe(promptId);
+    await consumed;
+    session.stop();
+  });
+
   it("rejects queued input when the SDK input stream closes before consumption", async () => {
     const session = new SdkSession(defaultOptions, vi.fn(), vi.fn());
     const consumed = session.pushInput("hello");

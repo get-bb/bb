@@ -31,7 +31,6 @@ import {
   type PermissionResult,
   type SDKMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import { z } from "zod";
 import { extractEnvOverrides } from "../../shared/adapter-utils.js";
 import {
   decodeBridgeJsonRpcResponse,
@@ -49,8 +48,16 @@ import {
 } from "../../shared/bridge-session-registry.js";
 import { withoutBridgeRuntimeEnv } from "../../shared/bridge-runtime-env.js";
 import { shouldAutoDenyInteractiveRequest } from "../../shared/permission-policy.js";
-import { SdkSession, type SdkSessionOptions } from "./sdk-session.js";
 import { listClaudeCodeBridgeModels } from "./model-list.js";
+import {
+  buildClaudePromptContents,
+  CLAUDE_BASE64_IMAGE_SESSION_BUDGET_BYTES,
+} from "./prompt-input-content.js";
+import {
+  SdkSession,
+  type ClaudePromptContent,
+  type SdkSessionOptions,
+} from "./sdk-session.js";
 import {
   decodeClaudeCodeJsonRpcRequest,
   type ClaudeCodeJsonRpcRequest,
@@ -99,28 +106,6 @@ import {
   toPendingInteractionPermissionProfile,
 } from "../interactive-contract.js";
 export { buildSessionOptions } from "./session-options.js";
-
-const promptInputItemSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("text"),
-    text: z.string(),
-  }),
-  z.object({
-    type: z.literal("image"),
-    url: z.string(),
-  }),
-  z.object({
-    type: z.literal("localImage"),
-    path: z.string(),
-  }),
-  z.object({
-    type: z.literal("localFile"),
-    path: z.string(),
-    name: z.string().optional(),
-    sizeBytes: z.number().optional(),
-    mimeType: z.string().optional(),
-  }),
-]);
 
 const CLAUDE_PROVIDER_SUBAGENT_TOOL_NAMES = new Set(["Agent", "Task"]);
 const CLAUDE_WORKFLOW_TOOL_NAME = "Workflow";
@@ -190,11 +175,23 @@ interface ClaudeSessionPermissionGrantCoverageArgs {
   toolName: string;
 }
 
+interface TurnSessionBinding {
+  sessionSerial: number;
+  streamEndedAtRequestStart: boolean;
+}
+
+interface ActiveTurnSession {
+  binding: TurnSessionBinding;
+  threadSession: ThreadSession;
+}
+
 interface ThreadSession {
   session: SdkSession;
   sessionConstructionConfig: SessionConstructionConfig;
   sessionOptions: SdkSessionOptions;
   sessionSerial: number;
+  /** Null means resumed history whose retained native-image size is unknown. */
+  retainedBase64ImageBytes: number | null;
   closing: boolean;
   streamEnded: boolean;
   mockCliTrafficProxy: ClaudeCodeMockCliTrafficProxy | null;
@@ -234,6 +231,7 @@ interface CreateThreadSessionArgs {
   liveSettings: ClaudeLiveSessionSettings;
   approvedPlanPermissionMode: ClaudePermissionMode;
   providerThreadId?: string;
+  retainedBase64ImageBytes: number | null;
   sessionConstructionConfig: SessionConstructionConfig;
   sessionOptions: SdkSessionOptions;
   sessionPermissionGrants?: ClaudeSessionPermissionGrant[];
@@ -333,6 +331,7 @@ interface ForwardUserQuestionRequestArgs extends BuildUserQuestionRequestParamsA
 
 let sessionSerialCounter = 0;
 let toolCallRequestIdCounter = 0;
+const threadTurnRequestTails = new Map<string, Promise<void>>();
 
 // Runtime waits on thread/stop until the SDK stream drains or this timeout
 // forces the session closed. Stop remains a best-effort success boundary.
@@ -469,9 +468,32 @@ function ignoreInputConsumption(promise: Promise<void>): void {
   void promise.catch(() => {});
 }
 
+// Bridge requests run detached. Serialize turns per thread so asynchronous
+// attachment reads cannot reorder them; lifecycle requests stay concurrent so
+// stop and replacement can interrupt a pending turn.
+function runInThreadTurnLane(
+  threadId: string,
+  work: () => Promise<void>,
+): Promise<void> {
+  const previousTail =
+    threadTurnRequestTails.get(threadId) ?? Promise.resolve();
+  const next = previousTail.catch(() => undefined).then(work);
+  const done = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  threadTurnRequestTails.set(threadId, done);
+  void done.then(() => {
+    if (threadTurnRequestTails.get(threadId) === done) {
+      threadTurnRequestTails.delete(threadId);
+    }
+  });
+  return next;
+}
+
 function pushPromptInput(
   threadSession: ThreadSession,
-  input: string,
+  input: ClaudePromptContent,
   permissionEscalation: PermissionEscalation | null,
 ): Promise<void> {
   const promptId = randomUUID();
@@ -487,7 +509,7 @@ function pushPromptInput(
 
 function queuePromptInputs(
   threadSession: ThreadSession,
-  inputs: readonly string[],
+  inputs: readonly ClaudePromptContent[],
   permissionEscalation: PermissionEscalation | null,
 ): boolean {
   if (!threadSession.session.canPushInput()) {
@@ -640,6 +662,7 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     sessionConstructionConfig: args.sessionConstructionConfig,
     sessionOptions: args.sessionOptions,
     sessionSerial,
+    retainedBase64ImageBytes: args.retainedBase64ImageBytes,
     closing: false,
     streamEnded: false,
     mockCliTrafficProxy: args.mockCliTrafficProxy,
@@ -959,6 +982,7 @@ function replaceEndedThreadSession(
     permissionMode: args.threadSession.permissionMode,
     approvedPlanPermissionMode: args.threadSession.approvedPlanPermissionMode,
     providerThreadId,
+    retainedBase64ImageBytes: args.threadSession.retainedBase64ImageBytes,
     sessionConstructionConfig: args.threadSession.sessionConstructionConfig,
     sessionOptions: args.threadSession.sessionOptions,
     sessionPermissionGrants: args.threadSession.sessionPermissionGrants,
@@ -975,15 +999,52 @@ function replaceEndedThreadSession(
   return replacementSession;
 }
 
-function getWritableThreadSession(threadId: string): ThreadSession | undefined {
+function captureTurnSessionBinding(
+  threadId: string,
+): TurnSessionBinding | undefined {
   const threadSession = sessions.get(threadId);
-  if (!threadSession || threadSession.closing) {
+  if (!threadSession || threadSession.closing) return undefined;
+  return {
+    sessionSerial: threadSession.sessionSerial,
+    streamEndedAtRequestStart: threadSession.streamEnded,
+  };
+}
+
+function getBoundTurnSession(
+  threadId: string,
+  binding: TurnSessionBinding,
+): ThreadSession | undefined {
+  const threadSession = sessions.get(threadId);
+  if (
+    !threadSession ||
+    threadSession.closing ||
+    threadSession.streamEnded !== binding.streamEndedAtRequestStart ||
+    threadSession.sessionSerial !== binding.sessionSerial
+  ) {
     return undefined;
   }
-  if (!threadSession.streamEnded) {
-    return threadSession;
+  return threadSession;
+}
+
+function activateTurnSession(
+  threadId: string,
+  binding: TurnSessionBinding,
+): ActiveTurnSession | undefined {
+  const threadSession = getBoundTurnSession(threadId, binding);
+  if (!threadSession) return undefined;
+  if (!binding.streamEndedAtRequestStart) {
+    return { binding, threadSession };
   }
-  return replaceEndedThreadSession({ threadId, threadSession });
+
+  const replacement = replaceEndedThreadSession({ threadId, threadSession });
+  if (!replacement) return undefined;
+  return {
+    binding: {
+      sessionSerial: replacement.sessionSerial,
+      streamEndedAtRequestStart: false,
+    },
+    threadSession: replacement,
+  };
 }
 
 function getCurrentThreadSession(
@@ -1611,12 +1672,20 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
     case "thread/fork":
       await handleThreadFork(request.id, request.params);
       break;
-    case "turn/start":
-      await handleTurnStart(request.id, request.params);
+    case "turn/start": {
+      const binding = captureTurnSessionBinding(request.params.threadId);
+      await runInThreadTurnLane(request.params.threadId, () =>
+        handleTurnStart(request.id, request.params, binding),
+      );
       break;
-    case "turn/steer":
-      await handleTurnSteer(request.id, request.params);
+    }
+    case "turn/steer": {
+      const binding = captureTurnSessionBinding(request.params.threadId);
+      await runInThreadTurnLane(request.params.threadId, () =>
+        handleTurnSteer(request.id, request.params, binding),
+      );
       break;
+    }
     case "thread/stop":
       sendResult(request.id, await handleThreadStop(request.params));
       break;
@@ -1663,6 +1732,7 @@ async function handleThreadStart(
     permissionMode: params.permissionMode,
     approvedPlanPermissionMode: params.approvedPlanPermissionMode,
     providerThreadId,
+    retainedBase64ImageBytes: 0,
     sessionConstructionConfig: toSessionConstructionConfig(params),
     sessionOptions,
     sessionPermissionGrants: [],
@@ -1684,6 +1754,11 @@ async function handleThreadResume(
   const sessionConstructionConfig = toSessionConstructionConfig(params);
 
   const existing = sessions.get(threadId);
+  const retainedBase64ImageBytes = requestedProviderThreadId
+    ? existing?.providerThreadId === requestedProviderThreadId
+      ? existing.retainedBase64ImageBytes
+      : null
+    : 0;
   if (
     existing &&
     requestedProviderThreadId &&
@@ -1740,6 +1815,7 @@ async function handleThreadResume(
     ...(requestedProviderThreadId
       ? { providerThreadId: requestedProviderThreadId }
       : {}),
+    retainedBase64ImageBytes,
     sessionConstructionConfig,
     sessionOptions,
     sessionPermissionGrants: [],
@@ -1807,6 +1883,7 @@ async function handleThreadFork(
     permissionMode: params.permissionMode,
     approvedPlanPermissionMode: params.approvedPlanPermissionMode,
     providerThreadId: forkedProviderThreadId,
+    retainedBase64ImageBytes: null,
     sessionConstructionConfig: toSessionConstructionConfig(params),
     sessionOptions,
     sessionPermissionGrants: [],
@@ -1819,37 +1896,61 @@ async function handleThreadFork(
   sendThreadIdentity(threadId, forkedProviderThreadId);
 }
 
-function buildPromptTexts(
+async function buildPromptContents(
   input: unknown,
   inputGroups: unknown[][] | undefined,
-): string[] | undefined {
+  base64ImageBudgetBytes: number,
+): ReturnType<typeof buildClaudePromptContents> {
   const groups = inputGroups ?? [input];
-  const texts: string[] = [];
-  for (const group of groups) {
-    const text = buildPromptText(group);
-    if (text === undefined) {
-      return undefined;
-    }
-    texts.push(text);
-  }
-  return texts;
+  return buildClaudePromptContents(groups, base64ImageBudgetBytes);
+}
+
+function remainingBase64ImageBudget(threadSession: ThreadSession): number {
+  return threadSession.retainedBase64ImageBytes === null
+    ? 0
+    : Math.max(
+        0,
+        CLAUDE_BASE64_IMAGE_SESSION_BUDGET_BYTES -
+          threadSession.retainedBase64ImageBytes,
+      );
+}
+
+function retainBase64ImageBytes(
+  threadSession: ThreadSession,
+  bytes: number,
+): void {
+  if (threadSession.retainedBase64ImageBytes === null) return;
+  threadSession.retainedBase64ImageBytes += bytes;
 }
 
 async function handleTurnStart(
   id: string | number,
   params: TurnStartParams,
+  binding: TurnSessionBinding | undefined,
 ): Promise<void> {
-  const inputs = buildPromptTexts(params.input, params.inputGroups);
-  if (!inputs) {
+  const boundSession = binding
+    ? getBoundTurnSession(params.threadId, binding)
+    : undefined;
+  const prompt = await buildPromptContents(
+    params.input,
+    params.inputGroups,
+    boundSession ? remainingBase64ImageBudget(boundSession) : 0,
+  );
+  if (!prompt) {
     sendError(id, -32602, "Missing input text");
     return;
   }
 
-  const threadSession = getWritableThreadSession(params.threadId);
-  if (!threadSession) {
+  if (!binding) {
     sendError(id, -32000, "No active session");
     return;
   }
+  const activeSession = activateTurnSession(params.threadId, binding);
+  if (!activeSession) {
+    sendError(id, -32000, "Thread session changed while preparing input");
+    return;
+  }
+  const { binding: activeBinding, threadSession } = activeSession;
 
   if (!threadSession.session.canPushInput()) {
     sendError(id, -32000, "Claude SDK input stream is closed");
@@ -1866,10 +1967,22 @@ async function handleTurnStart(
     return;
   }
 
-  if (!queuePromptInputs(threadSession, inputs, params.permissionEscalation)) {
+  if (!getBoundTurnSession(params.threadId, activeBinding)) {
+    sendError(id, -32000, "Thread session changed while preparing input");
+    return;
+  }
+
+  if (
+    !queuePromptInputs(
+      threadSession,
+      prompt.contents,
+      params.permissionEscalation,
+    )
+  ) {
     sendError(id, -32000, "Claude SDK input stream is closed");
     return;
   }
+  retainBase64ImageBytes(threadSession, prompt.base64ImageBytes);
   threadSession.permissionEscalation = params.permissionEscalation;
   sendResult(id, { threadId: params.threadId });
 }
@@ -1877,18 +1990,31 @@ async function handleTurnStart(
 async function handleTurnSteer(
   id: string | number,
   params: TurnSteerParams,
+  binding: TurnSessionBinding | undefined,
 ): Promise<void> {
-  const inputs = buildPromptTexts(params.input, params.inputGroups);
-  if (!inputs) {
+  const boundSession = binding
+    ? getBoundTurnSession(params.threadId, binding)
+    : undefined;
+  const prompt = await buildPromptContents(
+    params.input,
+    params.inputGroups,
+    boundSession ? remainingBase64ImageBudget(boundSession) : 0,
+  );
+  if (!prompt) {
     sendError(id, -32602, "Missing input text");
     return;
   }
 
-  const threadSession = getWritableThreadSession(params.threadId);
-  if (!threadSession) {
+  if (!binding) {
     sendError(id, -32000, "No active session");
     return;
   }
+  const activeSession = activateTurnSession(params.threadId, binding);
+  if (!activeSession) {
+    sendError(id, -32000, "Thread session changed while preparing input");
+    return;
+  }
+  const { binding: activeBinding, threadSession } = activeSession;
 
   if (!threadSession.session.canPushInput()) {
     sendError(id, -32000, "Claude SDK input stream is closed");
@@ -1905,24 +2031,40 @@ async function handleTurnSteer(
     return;
   }
 
-  if (inputs.length > 1) {
+  if (!getBoundTurnSession(params.threadId, activeBinding)) {
+    sendError(id, -32000, "Thread session changed while preparing input");
+    return;
+  }
+
+  if (prompt.contents.length > 1) {
     if (
-      !queuePromptInputs(threadSession, inputs, params.permissionEscalation)
+      !queuePromptInputs(
+        threadSession,
+        prompt.contents,
+        params.permissionEscalation,
+      )
     ) {
       sendError(id, -32000, "Claude SDK input stream is closed");
       return;
     }
+    retainBase64ImageBytes(threadSession, prompt.base64ImageBytes);
     threadSession.permissionEscalation = params.permissionEscalation;
     sendResult(id, { threadId: params.threadId });
     return;
   }
 
   try {
-    await pushPromptInput(
+    if (!threadSession.session.canPushInput()) {
+      sendError(id, -32000, "Claude SDK input stream is closed");
+      return;
+    }
+    const consumed = pushPromptInput(
       threadSession,
-      inputs[0] ?? "",
+      prompt.contents[0] ?? "",
       params.permissionEscalation,
     );
+    retainBase64ImageBytes(threadSession, prompt.base64ImageBytes);
+    await consumed;
     // A failed steer must not change the running turn's escalation.
     threadSession.permissionEscalation = params.permissionEscalation;
     sendResult(id, { threadId: params.threadId });
@@ -1941,59 +2083,6 @@ async function handleThreadStop(
     threadId: params.threadId,
   });
   return { ok: true };
-}
-
-function localAttachmentMarker(args: {
-  kind: "image" | "file";
-  path: string;
-  name?: string | undefined;
-  mimeType?: string | undefined;
-  sizeBytes?: number | undefined;
-}): string {
-  const namePart = args.name && args.name.length > 0 ? ` "${args.name}"` : "";
-  const details: string[] = [];
-  if (args.mimeType) details.push(args.mimeType);
-  if (args.sizeBytes !== undefined) details.push(`${args.sizeBytes} bytes`);
-  const suffix = details.length > 0 ? ` (${details.join(", ")})` : "";
-  return `[Attached ${args.kind}${namePart}${suffix}. It is on disk at ${args.path} — use the Read tool to view it.]`;
-}
-
-function buildPromptText(input: unknown): string | undefined {
-  if (typeof input === "string") {
-    return input.length > 0 ? input : undefined;
-  }
-  if (!Array.isArray(input)) return undefined;
-
-  const chunks: string[] = [];
-  for (const item of input) {
-    const parsed = promptInputItemSchema.safeParse(item);
-    if (!parsed.success) continue;
-    const entry = parsed.data;
-    switch (entry.type) {
-      case "text":
-        if (entry.text.length > 0) chunks.push(entry.text);
-        break;
-      case "image":
-        chunks.push(`[Attached image: ${entry.url}]`);
-        break;
-      case "localImage":
-        chunks.push(localAttachmentMarker({ kind: "image", path: entry.path }));
-        break;
-      case "localFile":
-        chunks.push(
-          localAttachmentMarker({
-            kind: "file",
-            path: entry.path,
-            name: entry.name,
-            mimeType: entry.mimeType,
-            sizeBytes: entry.sizeBytes,
-          }),
-        );
-        break;
-    }
-  }
-
-  return chunks.length > 0 ? chunks.join("\n") : undefined;
 }
 
 function handleParsedMessage(parsed: unknown): void {

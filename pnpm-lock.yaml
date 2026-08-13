@@ -705,6 +705,9 @@ importers:
       semver:
         specifier: ^7.7.4
         version: 7.7.4
+      sharp:
+        specifier: ^0.34.5
+        version: 0.34.5
       smol-toml:
         specifier: ^1.7.1
         version: 1.7.1
@@ -1209,6 +1212,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@4.3.6)
+      sharp:
+        specifier: ^0.34.5
+        version: 0.34.5
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -1273,6 +1279,9 @@ importers:
       pino-roll:
         specifier: ^4.0.0
         version: 4.0.0
+      sharp:
+        specifier: ^0.34.5
+        version: 0.34.5
       zod:
         specifier: 4.3.6
         version: 4.3.6

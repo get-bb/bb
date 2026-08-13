@@ -64,6 +64,8 @@ interface QueuedSdkInputMessage {
   resolveConsumed: () => void;
 }
 
+export type ClaudePromptContent = SDKUserMessage["message"]["content"];
+
 interface SdkPermissionOptions {
   allowDangerouslySkipPermissions?: true;
   permissionMode: ClaudePermissionMode;
@@ -285,12 +287,12 @@ export class SdkSession {
   }
 
   pushInput(
-    text: string,
+    content: ClaudePromptContent,
     promptId?: NonNullable<SDKUserMessage["uuid"]>,
   ): Promise<void> {
     const message: SDKUserMessage = {
       type: "user",
-      message: { role: "user", content: text },
+      message: { role: "user", content },
       parent_tool_use_id: null,
       session_id: this.sessionId ?? "",
       ...(promptId !== undefined ? { uuid: promptId } : {}),

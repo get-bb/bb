@@ -20,6 +20,7 @@ export const NATIVE_EXTERNAL_PACKAGES = [
   "pino",
   "pino-pretty",
   "pino-roll",
+  "sharp",
   "thread-stream",
   "utf-8-validate",
   // jiti loads plugin server entries as TypeScript at runtime and lazily

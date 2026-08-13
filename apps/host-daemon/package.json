@@ -55,6 +55,7 @@
     "pino-roll": "^4.0.0",
     "proper-lockfile": "^4.1.2",
     "semver": "^7.7.4",
+    "sharp": "^0.34.5",
     "smol-toml": "^1.7.1",
     "ws": "^8.19.0",
     "yaml": "^2.9.0",

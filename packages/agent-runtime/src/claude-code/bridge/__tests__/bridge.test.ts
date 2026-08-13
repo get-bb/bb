@@ -19,10 +19,14 @@ import {
   type PermissionEscalation,
 } from "@bb/domain";
 
-const { forkSessionMock, queryMock } = vi.hoisted(() => ({
-  forkSessionMock: vi.fn(),
-  queryMock: vi.fn(),
-}));
+const { forkSessionMock, openActualMock, openMock, queryMock } = vi.hoisted(
+  () => ({
+    forkSessionMock: vi.fn(),
+    openActualMock: vi.fn<typeof import("node:fs/promises").open>(),
+    openMock: vi.fn<typeof import("node:fs/promises").open>(),
+    queryMock: vi.fn(),
+  }),
+);
 
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: queryMock,
@@ -30,6 +34,13 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   createSdkMcpServer: vi.fn(() => ({})),
   tool: vi.fn((_name, _desc, _schema, handler) => handler),
 }));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  openActualMock.mockImplementation(actual.open);
+  openMock.mockImplementation(actual.open);
+  return { ...actual, open: openMock };
+});
 
 import { buildSessionOptions, handleLine } from "../bridge.js";
 import {
@@ -112,6 +123,30 @@ interface ControlledClaudeQuery {
   [Symbol.asyncIterator](): AsyncIterator<SDKMessage>;
 }
 
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolvePromise: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return { promise, resolve: resolvePromise };
+}
+
+function delayNextImageRead(
+  readStarted: Deferred<void>,
+  releaseRead: Deferred<void>,
+): void {
+  openMock.mockImplementationOnce(async (...args) => {
+    readStarted.resolve(undefined);
+    await releaseRead.promise;
+    return openActualMock(...args);
+  });
+}
+
 interface ClaudeQueryCallOptions {
   canUseTool?: CanUseTool;
   env?: Record<string, string | undefined>;
@@ -158,6 +193,7 @@ const tempDirs: string[] = [];
 
 interface StartBridgeThreadArgs {
   bridge: BridgeJsonRpcTestHarness;
+  requestId?: number;
   threadId: string;
 }
 
@@ -172,6 +208,7 @@ interface ResumeBridgeThreadArgs {
 interface StopBridgeThreadArgs {
   bridge: BridgeJsonRpcTestHarness;
   queries: ControlledClaudeQuery[];
+  requestId?: number;
   threadId: string;
 }
 
@@ -513,7 +550,8 @@ function createBridgeUserQuestionInput(): ClaudeUserQuestionInput {
 }
 
 async function startBridgeThread(args: StartBridgeThreadArgs): Promise<void> {
-  args.bridge.sendRequest(1, "thread/start", {
+  const requestId = args.requestId ?? 1;
+  args.bridge.sendRequest(requestId, "thread/start", {
     workflowsEnabled: false,
     claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
     baseInstructions: "test",
@@ -525,7 +563,7 @@ async function startBridgeThread(args: StartBridgeThreadArgs): Promise<void> {
     permissionScope: "workspace",
     threadId: args.threadId,
   });
-  await args.bridge.waitForResponse(1);
+  await args.bridge.waitForResponse(requestId);
 }
 
 function sendResumeThread(args: ResumeBridgeThreadArgs): void {
@@ -545,12 +583,13 @@ function sendResumeThread(args: ResumeBridgeThreadArgs): void {
 }
 
 async function stopBridgeThread(args: StopBridgeThreadArgs): Promise<void> {
-  args.bridge.sendRequest(2, "thread/stop", {
+  const requestId = args.requestId ?? 2;
+  args.bridge.sendRequest(requestId, "thread/stop", {
     threadId: args.threadId,
   });
   await args.bridge.flushWork();
-  args.queries[0]?.finish();
-  await args.bridge.waitForResponse(2);
+  args.queries.at(-1)?.finish();
+  await args.bridge.waitForResponse(requestId);
 }
 
 async function forwardAskUserQuestion({
@@ -3868,13 +3907,18 @@ describe("bridge", () => {
     },
   );
 
-  describe("prompt attachment text markers", () => {
+  describe("prompt attachments", () => {
+    const VALID_PNG_BYTES = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
+      "base64",
+    );
+
     async function sendTurnAndReadPrompt(
       bridge: BridgeJsonRpcTestHarness,
       queries: ControlledClaudeQuery[],
       threadId: string,
       input: JsonValue[],
-    ): Promise<string> {
+    ): Promise<SDKUserMessage["message"]["content"]> {
       await startBridgeThread({ bridge, threadId });
       bridge.sendRequest(2, "turn/start", {
         permissionEscalation: "ask",
@@ -3883,9 +3927,23 @@ describe("bridge", () => {
         threadId,
       });
       await bridge.waitForResponse(2);
-      const text = await readNextPromptText(getLatestQueryCall());
+      const content = (await readNextPrompt(getLatestQueryCall())).message
+        .content;
       await stopBridgeThread({ bridge, queries, threadId });
-      return text;
+      return content;
+    }
+
+    function createLocalPng(
+      name: string,
+      rawSize = VALID_PNG_BYTES.length,
+    ): { bytes: Buffer; path: string } {
+      const directory = mkdtempSync(join(tmpdir(), "bb-claude-image-"));
+      tempDirs.push(directory);
+      const path = join(directory, name);
+      const bytes = Buffer.alloc(rawSize);
+      VALID_PNG_BYTES.copy(bytes);
+      writeFileSync(path, bytes);
+      return { bytes, path };
     }
 
     function withBridgeHarness(): {
@@ -3935,25 +3993,641 @@ describe("bridge", () => {
       }
     });
 
-    it("emits a path-bearing marker for a localImage attachment", async () => {
+    it("sends a local image as native content in the same user message", async () => {
       const { bridge, queries } = withBridgeHarness();
+      const image = createLocalPng("screenshot.png");
       try {
-        const text = await sendTurnAndReadPrompt(
+        const content = await sendTurnAndReadPrompt(
           bridge,
           queries,
-          "thread-marker-local-image",
+          "thread-native-local-image",
           [
             { type: "text", text: "Describe this" },
             {
               type: "localImage",
-              path: "/staged/runtime-attachments/req-1/000-screenshot.png",
+              path: image.path,
             },
           ],
         );
-        expect(text).toBe(
-          "Describe this\n[Attached image. It is on disk at /staged/runtime-attachments/req-1/000-screenshot.png — use the Read tool to view it.]",
-        );
+        expect(content).toEqual([
+          { type: "text", text: "Describe this" },
+          {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: "image/png",
+              data: image.bytes.toString("base64"),
+            },
+          },
+        ]);
       } finally {
+        bridge.restore();
+      }
+    });
+
+    it("shares one native-image budget across grouped SDK messages", async () => {
+      const { bridge, queries } = withBridgeHarness();
+      const image = createLocalPng("grouped-budget.png", 6 * 1024 * 1024);
+      try {
+        const threadId = "thread-grouped-image-budget";
+        await startBridgeThread({ bridge, threadId });
+        const group = [{ type: "localImage", path: image.path }];
+        bridge.sendRequest(2, "turn/start", {
+          permissionEscalation: "ask",
+          input: [...group, ...group, ...group],
+          inputGroups: [group, group, group],
+          providerThreadId: null,
+          threadId,
+        });
+        await bridge.waitForResponse(2);
+
+        const prompt = getLatestQueryCall().prompt[Symbol.asyncIterator]();
+        const contents = [
+          await prompt.next(),
+          await prompt.next(),
+          await prompt.next(),
+        ];
+        expect(
+          contents.map((result) => {
+            const content = result.value?.message.content;
+            return Array.isArray(content) ? content[0]?.type : "text";
+          }),
+        ).toEqual(["image", "image", "text"]);
+        expect(contents[2]?.value?.message.content).toContain(
+          "use the Read tool to view it",
+        );
+
+        await stopBridgeThread({ bridge, queries, threadId });
+      } finally {
+        queries.forEach((query) => query.finish());
+        bridge.restore();
+      }
+    });
+
+    it("keeps the native-image budget across turns in one session", async () => {
+      const { bridge, queries } = withBridgeHarness();
+      const image = createLocalPng("retained-budget.png", 6 * 1024 * 1024);
+      try {
+        const threadId = "thread-retained-image-budget";
+        await startBridgeThread({ bridge, threadId });
+        bridge.sendRequest(2, "turn/start", {
+          permissionEscalation: "ask",
+          input: [
+            { type: "localImage", path: image.path },
+            { type: "localImage", path: image.path },
+          ],
+          providerThreadId: null,
+          threadId,
+        });
+        await bridge.waitForResponse(2);
+        const first = await readNextPrompt(getLatestQueryCall());
+        expect(
+          Array.isArray(first.message.content)
+            ? first.message.content.map((block) => block.type)
+            : [],
+        ).toEqual(["image", "image"]);
+
+        bridge.sendRequest(3, "turn/start", {
+          permissionEscalation: "ask",
+          input: [{ type: "localImage", path: image.path }],
+          providerThreadId: null,
+          threadId,
+        });
+        await bridge.waitForResponse(3);
+        await expect(
+          readNextPromptText(getLatestQueryCall()),
+        ).resolves.toContain("use the Read tool to view it");
+
+        await stopBridgeThread({
+          bridge,
+          queries,
+          requestId: 4,
+          threadId,
+        });
+      } finally {
+        queries.forEach((query) => query.finish());
+        bridge.restore();
+      }
+    });
+
+    it("carries the native-image budget into stream recovery", async () => {
+      const { bridge, queries } = withBridgeHarness();
+      const image = createLocalPng("recovery-budget.png", 6 * 1024 * 1024);
+      try {
+        const threadId = "thread-recovery-image-budget";
+        await startBridgeThread({ bridge, threadId });
+        bridge.sendRequest(2, "turn/start", {
+          permissionEscalation: "ask",
+          input: [
+            { type: "localImage", path: image.path },
+            { type: "localImage", path: image.path },
+          ],
+          providerThreadId: null,
+          threadId,
+        });
+        await bridge.waitForResponse(2);
+        await readNextPrompt(getLatestQueryCall());
+
+        queries[0]?.finish();
+        await bridge.flushWork();
+        bridge.sendRequest(3, "turn/start", {
+          permissionEscalation: "ask",
+          input: [{ type: "localImage", path: image.path }],
+          providerThreadId: null,
+          threadId,
+        });
+        await bridge.waitForResponse(3);
+
+        expect(queries).toHaveLength(2);
+        await expect(
+          readNextPromptText(getLatestQueryCall()),
+        ).resolves.toContain("use the Read tool to view it");
+
+        await stopBridgeThread({
+          bridge,
+          queries,
+          requestId: 4,
+          threadId,
+        });
+      } finally {
+        queries.forEach((query) => query.finish());
+        bridge.restore();
+      }
+    });
+
+    it("uses Read-tool markers when resumed history size is unknown", async () => {
+      const { bridge, queries } = withBridgeHarness();
+      const image = createLocalPng("resumed.png");
+      try {
+        const threadId = "thread-resumed-image-budget";
+        sendResumeThread({
+          bridge,
+          providerThreadId: "external-provider-session",
+          requestId: 1,
+          threadId,
+        });
+        await bridge.waitForResponse(1);
+        bridge.sendRequest(2, "turn/start", {
+          permissionEscalation: "ask",
+          input: [{ type: "localImage", path: image.path }],
+          providerThreadId: "external-provider-session",
+          threadId,
+        });
+        await bridge.waitForResponse(2);
+
+        await expect(
+          readNextPromptText(getLatestQueryCall()),
+        ).resolves.toContain("use the Read tool to view it");
+        await stopBridgeThread({ bridge, queries, threadId });
+      } finally {
+        queries.forEach((query) => query.finish());
+        bridge.restore();
+      }
+    });
+
+    it("uses Read-tool markers when forked history size is unknown", async () => {
+      const { bridge, queries } = withBridgeHarness();
+      const image = createLocalPng("forked.png");
+      try {
+        const threadId = "thread-forked-image-budget";
+        bridge.sendRequest(1, "thread/fork", {
+          approvedPlanPermissionMode: "default",
+          workflowsEnabled: false,
+          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+          baseInstructions: "test",
+          cwd: "/tmp/worktree",
+          instructionMode: "append",
+          permissionEscalation: "ask",
+          permissionMode: "default",
+          permissionScope: "workspace",
+          sourceProviderCheckpointId: "assistant-message-42",
+          sourceProviderThreadId: "source-session-1",
+          threadId,
+        });
+        await bridge.waitForResponse(1);
+        bridge.sendRequest(2, "turn/start", {
+          permissionEscalation: "ask",
+          input: [{ type: "localImage", path: image.path }],
+          providerThreadId: "forked-session-1",
+          threadId,
+        });
+        await bridge.waitForResponse(2);
+
+        await expect(
+          readNextPromptText(getLatestQueryCall()),
+        ).resolves.toContain("use the Read tool to view it");
+        await stopBridgeThread({ bridge, queries, threadId });
+      } finally {
+        queries.forEach((query) => query.finish());
+        bridge.restore();
+      }
+    });
+
+    it("preserves same-thread start then steer order while an image read is pending", async () => {
+      const { bridge, queries } = withBridgeHarness();
+      const image = createLocalPng("delayed.png");
+      const readStarted = createDeferred<void>();
+      const releaseRead = createDeferred<void>();
+      delayNextImageRead(readStarted, releaseRead);
+
+      try {
+        await startBridgeThread({
+          bridge,
+          threadId: "thread-native-image-order",
+        });
+        bridge.sendRequest(10, "turn/start", {
+          permissionEscalation: "ask",
+          input: [
+            { type: "text", text: "First" },
+            { type: "localImage", path: image.path },
+          ],
+          providerThreadId: null,
+          threadId: "thread-native-image-order",
+        });
+        await readStarted.promise;
+
+        bridge.sendRequest(11, "turn/steer", {
+          permissionEscalation: "ask",
+          expectedTurnId: "turn-1",
+          input: [{ type: "text", text: "Second" }],
+          providerThreadId: null,
+          threadId: "thread-native-image-order",
+        });
+        await bridge.flushWork();
+        expect(bridge.hasResponse(11)).toBe(false);
+
+        releaseRead.resolve(undefined);
+        await bridge.waitForResponse(10);
+        const prompt = getLatestQueryCall().prompt[Symbol.asyncIterator]();
+        const first = await prompt.next();
+        const second = await prompt.next();
+        await bridge.waitForResponse(11);
+        expect(first.value?.message.content).toEqual([
+          { type: "text", text: "First" },
+          {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: "image/png",
+              data: image.bytes.toString("base64"),
+            },
+          },
+        ]);
+        expect(second.value?.message.content).toBe("Second");
+
+        bridge.sendRequest(12, "thread/stop", {
+          threadId: "thread-native-image-order",
+        });
+        await bridge.flushWork();
+        queries[0]?.finish();
+        await bridge.waitForResponse(12);
+      } finally {
+        releaseRead.resolve(undefined);
+        queries[0]?.finish();
+        bridge.restore();
+      }
+    });
+
+    it("preserves same-thread steer then start order while an image read is pending", async () => {
+      const { bridge, queries } = withBridgeHarness();
+      const image = createLocalPng("delayed-steer.png");
+      const readStarted = createDeferred<void>();
+      const releaseRead = createDeferred<void>();
+      delayNextImageRead(readStarted, releaseRead);
+
+      try {
+        const threadId = "thread-native-image-steer-order";
+        await startBridgeThread({ bridge, threadId });
+        bridge.sendRequest(10, "turn/steer", {
+          permissionEscalation: "ask",
+          expectedTurnId: "turn-1",
+          input: [{ type: "localImage", path: image.path }],
+          providerThreadId: null,
+          threadId,
+        });
+        await readStarted.promise;
+
+        bridge.sendRequest(11, "turn/start", {
+          permissionEscalation: "ask",
+          input: [{ type: "text", text: "Second" }],
+          providerThreadId: null,
+          threadId,
+        });
+        await bridge.flushWork();
+        expect(bridge.hasResponse(11)).toBe(false);
+
+        releaseRead.resolve(undefined);
+        const prompt = getLatestQueryCall().prompt[Symbol.asyncIterator]();
+        const first = await prompt.next();
+        await bridge.waitForResponse(10);
+        await bridge.waitForResponse(11);
+        const second = await prompt.next();
+        expect(first.value?.message.content).toEqual([
+          {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: "image/png",
+              data: image.bytes.toString("base64"),
+            },
+          },
+        ]);
+        expect(second.value?.message.content).toBe("Second");
+
+        bridge.sendRequest(12, "thread/stop", { threadId });
+        await bridge.flushWork();
+        queries[0]?.finish();
+        await bridge.waitForResponse(12);
+      } finally {
+        releaseRead.resolve(undefined);
+        queries[0]?.finish();
+        bridge.restore();
+      }
+    });
+
+    it("continues the same-thread lane after an invalid turn", async () => {
+      const { bridge, queries } = withBridgeHarness();
+      try {
+        const threadId = "thread-turn-lane-recovery";
+        await startBridgeThread({ bridge, threadId });
+        bridge.sendRequest(10, "turn/start", {
+          permissionEscalation: "ask",
+          input: [{ type: "text", text: "" }],
+          providerThreadId: null,
+          threadId,
+        });
+        bridge.sendRequest(11, "turn/start", {
+          permissionEscalation: "ask",
+          input: [{ type: "text", text: "Valid follow-up" }],
+          providerThreadId: null,
+          threadId,
+        });
+
+        await expect(bridge.waitForResponse(10)).resolves.toMatchObject({
+          error: { code: -32602, message: "Missing input text" },
+        });
+        await expect(bridge.waitForResponse(11)).resolves.toMatchObject({
+          result: { threadId },
+        });
+        await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+          "Valid follow-up",
+        );
+
+        await stopBridgeThread({ bridge, queries, threadId });
+      } finally {
+        queries[0]?.finish();
+        bridge.restore();
+      }
+    });
+
+    it("rejects delayed and queued turns instead of sending them to a replacement session", async () => {
+      const { bridge, queries } = withBridgeHarness();
+      const image = createLocalPng("replacement.png");
+      const readStarted = createDeferred<void>();
+      const releaseRead = createDeferred<void>();
+      delayNextImageRead(readStarted, releaseRead);
+
+      try {
+        const threadId = "thread-image-session-replacement";
+        await startBridgeThread({ bridge, requestId: 1, threadId });
+        bridge.sendRequest(10, "turn/start", {
+          permissionEscalation: "ask",
+          input: [{ type: "localImage", path: image.path }],
+          providerThreadId: null,
+          threadId,
+        });
+        await readStarted.promise;
+
+        bridge.sendRequest(11, "turn/steer", {
+          permissionEscalation: "ask",
+          expectedTurnId: "turn-1",
+          input: [{ type: "text", text: "Queued on the old session" }],
+          providerThreadId: null,
+          threadId,
+        });
+        await bridge.flushWork();
+        expect(bridge.hasResponse(11)).toBe(false);
+
+        await startBridgeThread({ bridge, requestId: 2, threadId });
+        expect(queries).toHaveLength(2);
+        releaseRead.resolve(undefined);
+        await expect(bridge.waitForResponse(10)).resolves.toMatchObject({
+          error: {
+            code: -32000,
+            message: "Thread session changed while preparing input",
+          },
+        });
+        await expect(bridge.waitForResponse(11)).resolves.toMatchObject({
+          error: {
+            code: -32000,
+            message: "Thread session changed while preparing input",
+          },
+        });
+
+        bridge.sendRequest(12, "turn/start", {
+          permissionEscalation: "ask",
+          input: [{ type: "text", text: "Replacement session only" }],
+          providerThreadId: null,
+          threadId,
+        });
+        await bridge.waitForResponse(12);
+        await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+          "Replacement session only",
+        );
+
+        bridge.sendRequest(13, "thread/stop", { threadId });
+        await bridge.flushWork();
+        queries[1]?.finish();
+        await bridge.waitForResponse(13);
+      } finally {
+        releaseRead.resolve(undefined);
+        queries.forEach((query) => query.finish());
+        bridge.restore();
+      }
+    });
+
+    it("lets thread stop reject delayed and queued turns", async () => {
+      const { bridge, queries } = withBridgeHarness();
+      const image = createLocalPng("stopped.png");
+      const readStarted = createDeferred<void>();
+      const releaseRead = createDeferred<void>();
+      delayNextImageRead(readStarted, releaseRead);
+
+      try {
+        const threadId = "thread-image-stop";
+        await startBridgeThread({ bridge, threadId });
+        bridge.sendRequest(10, "turn/start", {
+          permissionEscalation: "ask",
+          input: [{ type: "localImage", path: image.path }],
+          providerThreadId: null,
+          threadId,
+        });
+        await readStarted.promise;
+
+        bridge.sendRequest(11, "turn/start", {
+          permissionEscalation: "ask",
+          input: [{ type: "text", text: "Queued before stop" }],
+          providerThreadId: null,
+          threadId,
+        });
+        await bridge.flushWork();
+        expect(bridge.hasResponse(11)).toBe(false);
+
+        bridge.sendRequest(12, "thread/stop", { threadId });
+        await bridge.flushWork();
+        queries[0]?.finish();
+        await bridge.waitForResponse(12);
+        expect(bridge.hasResponse(10)).toBe(false);
+        expect(bridge.hasResponse(11)).toBe(false);
+
+        releaseRead.resolve(undefined);
+        await expect(bridge.waitForResponse(10)).resolves.toMatchObject({
+          error: {
+            code: -32000,
+            message: "Thread session changed while preparing input",
+          },
+        });
+        await expect(bridge.waitForResponse(11)).resolves.toMatchObject({
+          error: {
+            code: -32000,
+            message: "Thread session changed while preparing input",
+          },
+        });
+      } finally {
+        releaseRead.resolve(undefined);
+        queries[0]?.finish();
+        bridge.restore();
+      }
+    });
+
+    it("rejects old-generation turns when the SDK stream ends during an image read", async () => {
+      const { bridge, queries } = withBridgeHarness();
+      const image = createLocalPng("stream-ended.png", 6 * 1024 * 1024);
+      const readStarted = createDeferred<void>();
+      const releaseRead = createDeferred<void>();
+      delayNextImageRead(readStarted, releaseRead);
+
+      try {
+        const threadId = "thread-image-stream-ended";
+        await startBridgeThread({ bridge, threadId });
+        bridge.sendRequest(10, "turn/start", {
+          permissionEscalation: "ask",
+          input: [
+            { type: "localImage", path: image.path },
+            { type: "localImage", path: image.path },
+          ],
+          providerThreadId: null,
+          threadId,
+        });
+        await readStarted.promise;
+
+        bridge.sendRequest(11, "turn/steer", {
+          permissionEscalation: "ask",
+          expectedTurnId: "turn-1",
+          input: [{ type: "text", text: "Queued before stream end" }],
+          providerThreadId: null,
+          threadId,
+        });
+        await bridge.flushWork();
+        queries[0]?.finish();
+        await bridge.flushWork();
+
+        bridge.sendRequest(12, "turn/start", {
+          permissionEscalation: "ask",
+          input: [{ type: "localImage", path: image.path }],
+          providerThreadId: null,
+          threadId,
+        });
+        await bridge.flushWork();
+        expect(queries).toHaveLength(1);
+        expect(bridge.hasResponse(12)).toBe(false);
+
+        releaseRead.resolve(undefined);
+        for (const requestId of [10, 11]) {
+          await expect(
+            bridge.waitForResponse(requestId),
+          ).resolves.toMatchObject({
+            error: {
+              code: -32000,
+              message: "Thread session changed while preparing input",
+            },
+          });
+        }
+        await expect(bridge.waitForResponse(12)).resolves.toMatchObject({
+          result: { threadId },
+        });
+        expect(queries).toHaveLength(2);
+        const replacementPrompt = await readNextPrompt(getLatestQueryCall());
+        expect(
+          Array.isArray(replacementPrompt.message.content)
+            ? replacementPrompt.message.content[0]?.type
+            : "text",
+        ).toBe("image");
+
+        bridge.sendRequest(13, "thread/stop", { threadId });
+        await bridge.flushWork();
+        queries[1]?.finish();
+        await bridge.waitForResponse(13);
+      } finally {
+        releaseRead.resolve(undefined);
+        queries.forEach((query) => query.finish());
+        bridge.restore();
+      }
+    });
+
+    it("does not block turns on another thread while reading an image", async () => {
+      const { bridge, queries } = withBridgeHarness();
+      const image = createLocalPng("delayed.png");
+      const readStarted = createDeferred<void>();
+      const releaseRead = createDeferred<void>();
+      delayNextImageRead(readStarted, releaseRead);
+
+      try {
+        await startBridgeThread({
+          bridge,
+          requestId: 1,
+          threadId: "thread-delayed-image",
+        });
+        await startBridgeThread({
+          bridge,
+          requestId: 2,
+          threadId: "thread-concurrent-text",
+        });
+        bridge.sendRequest(10, "turn/start", {
+          permissionEscalation: "ask",
+          input: [{ type: "localImage", path: image.path }],
+          providerThreadId: null,
+          threadId: "thread-delayed-image",
+        });
+        await readStarted.promise;
+
+        bridge.sendRequest(11, "turn/start", {
+          permissionEscalation: "ask",
+          input: [{ type: "text", text: "Not blocked" }],
+          providerThreadId: null,
+          threadId: "thread-concurrent-text",
+        });
+        await bridge.waitForResponse(11);
+        expect(bridge.hasResponse(10)).toBe(false);
+
+        releaseRead.resolve(undefined);
+        await bridge.waitForResponse(10);
+
+        bridge.sendRequest(12, "thread/stop", {
+          threadId: "thread-delayed-image",
+        });
+        bridge.sendRequest(13, "thread/stop", {
+          threadId: "thread-concurrent-text",
+        });
+        await bridge.flushWork();
+        queries.forEach((query) => query.finish());
+        await Promise.all([
+          bridge.waitForResponse(12),
+          bridge.waitForResponse(13),
+        ]);
+      } finally {
+        releaseRead.resolve(undefined);
+        queries.forEach((query) => query.finish());
         bridge.restore();
       }
     });
@@ -4006,21 +4680,25 @@ describe("bridge", () => {
       }
     });
 
-    it("emits a URL marker for a remote image attachment", async () => {
+    it("sends a remote image as native URL content", async () => {
       const { bridge, queries } = withBridgeHarness();
       try {
-        const text = await sendTurnAndReadPrompt(
+        const content = await sendTurnAndReadPrompt(
           bridge,
           queries,
-          "thread-marker-image-url",
+          "thread-native-image-url",
           [
             { type: "text", text: "Compare to:" },
             { type: "image", url: "https://example.com/cat.png" },
           ],
         );
-        expect(text).toBe(
-          "Compare to:\n[Attached image: https://example.com/cat.png]",
-        );
+        expect(content).toEqual([
+          { type: "text", text: "Compare to:" },
+          {
+            type: "image",
+            source: { type: "url", url: "https://example.com/cat.png" },
+          },
+        ]);
       } finally {
         bridge.restore();
       }
@@ -4028,21 +4706,29 @@ describe("bridge", () => {
 
     it("accepts an attachment-only turn (no text fragments)", async () => {
       const { bridge, queries } = withBridgeHarness();
+      const image = createLocalPng("only.png");
       try {
-        const text = await sendTurnAndReadPrompt(
+        const content = await sendTurnAndReadPrompt(
           bridge,
           queries,
-          "thread-marker-attachment-only",
+          "thread-native-attachment-only",
           [
             {
               type: "localImage",
-              path: "/staged/runtime-attachments/req-4/000-only.png",
+              path: image.path,
             },
           ],
         );
-        expect(text).toBe(
-          "[Attached image. It is on disk at /staged/runtime-attachments/req-4/000-only.png — use the Read tool to view it.]",
-        );
+        expect(content).toEqual([
+          {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: "image/png",
+              data: image.bytes.toString("base64"),
+            },
+          },
+        ]);
       } finally {
         bridge.restore();
       }
