@@ -9,7 +9,7 @@
 import { defineRpcContract } from "@bb/plugin-sdk";
 import { z } from "zod";
 
-export const CONTRACT_VERSION = 3 as const;
+export const CONTRACT_VERSION = 4 as const;
 
 export type JsonValue =
   | null
@@ -737,11 +737,32 @@ const localWriteResultSchema = z
     ...projectScopeFields,
     stableKey: identifierSchema,
     beforeSha256: sha256Schema.nullable(),
-    afterSha256: sha256Schema,
+    afterSha256: sha256Schema.nullable(),
     changedFields: z.array(identifierSchema),
     diffSummary: z.string().max(4000),
   })
-  .strict();
+  .strict()
+  .refine(
+    (result) =>
+      result.beforeSha256 !== null || result.afterSha256 !== null,
+    {
+      message: "beforeSha256 and afterSha256 cannot both be null",
+      path: ["afterSha256"],
+    },
+  );
+const nonDeletingLocalWriteResultSchema = localWriteResultSchema.transform(
+  (result, context) => {
+    if (result.afterSha256 === null) {
+      context.addIssue({
+        code: "custom",
+        message: "This local-write surface does not support deletion",
+        path: ["afterSha256"],
+      });
+      return z.NEVER;
+    }
+    return { ...result, afterSha256: result.afterSha256 };
+  },
+);
 const localBatchResultSchema = z
   .object({
     ...projectScopeFields,
@@ -1491,7 +1512,7 @@ export const rpcContract = defineRpcContract({
   },
   triageDecisionWrite: {
     input: triageDecisionSchema,
-    output: localWriteResultSchema,
+    output: nonDeletingLocalWriteResultSchema,
   },
   triageDecisionBulkWrite: {
     input: z
@@ -1515,7 +1536,7 @@ export const rpcContract = defineRpcContract({
         prior: fieldsSchema,
       })
       .strict(),
-    output: localWriteResultSchema,
+    output: nonDeletingLocalWriteResultSchema,
   },
   triagePolicyPreview: {
     input: pagedScopedInput(),
@@ -1594,7 +1615,7 @@ export const rpcContract = defineRpcContract({
         expectedContentSha256: sha256Schema.nullable(),
       })
       .strict(),
-    output: localWriteResultSchema,
+    output: nonDeletingLocalWriteResultSchema,
   },
   earsConversionStart: {
     input: z
