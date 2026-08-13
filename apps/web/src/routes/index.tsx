@@ -1784,7 +1784,7 @@ function LandingPage() {
         aria-labelledby="company-proof-title"
       >
         <div className="company-proof-heading">
-          <h2 id="company-proof-title">Used by people at</h2>
+          <h2 id="company-proof-title">Used by builders at</h2>
           <button
             type="button"
             className="company-proof-toggle"
