@@ -1226,9 +1226,7 @@ describe("acp adapter event translation", () => {
     const firstId =
       firstEvents[0]?.type === "item/completed" ? firstEvents[0].item.id : "";
     const secondId =
-      secondEvents[0]?.type === "item/completed"
-        ? secondEvents[0].item.id
-        : "";
+      secondEvents[0]?.type === "item/completed" ? secondEvents[0].item.id : "";
     expect(firstId).toBe("acp-fs-write-turn_first_1-1");
     expect(secondId).toBe("acp-fs-write-turn_second_1-1");
     expect(firstId).not.toBe(secondId);
@@ -1505,6 +1503,217 @@ describe("acp adapter interactive requests", () => {
       reason: null,
       availableDecisions: ["allow_once", "allow_for_session", "deny"],
     });
+  });
+
+  it("decodes Grok single-select questions as user_question interactions", () => {
+    const adapter = createAdapter();
+    const decoded = adapter.decodeInteractiveRequest?.({
+      id: 11,
+      method: "request_user_question",
+      params: {
+        threadId: "thread-1",
+        providerThreadId: "sess-1",
+        turnId: null,
+        itemId: "ask-tool-1",
+        questions: [
+          {
+            question: "Which option should I pick?",
+            options: [
+              { label: "Alpha", description: "The first choice." },
+              { label: "Beta", description: "The second choice." },
+            ],
+            multiSelect: null,
+          },
+        ],
+      },
+    });
+    expect(decoded).toEqual({
+      requestId: 11,
+      method: "request_user_question",
+      threadId: "thread-1",
+      providerThreadId: "sess-1",
+      turnId: null,
+      payload: {
+        kind: "user_question",
+        questions: [
+          {
+            id: "ask-tool-1:question-1",
+            prompt: "Which option should I pick?",
+            multiSelect: false,
+            options: [
+              {
+                value: "ask-tool-1:question-1:option-1",
+                label: "Alpha",
+                description: "The first choice.",
+              },
+              {
+                value: "ask-tool-1:question-1:option-2",
+                label: "Beta",
+                description: "The second choice.",
+              },
+            ],
+            allowFreeText: true,
+          },
+        ],
+      },
+    });
+  });
+
+  it("encodes successful user answers in Grok's accepted response shape", () => {
+    const adapter = createAdapter();
+    const decoded = adapter.decodeInteractiveRequest?.({
+      id: 12,
+      method: "request_user_question",
+      params: {
+        threadId: "thread-1",
+        providerThreadId: "sess-1",
+        turnId: "turn-1",
+        itemId: "ask-tool-1",
+        questions: [
+          {
+            question: "Which option should I pick?",
+            options: [
+              { label: "Alpha", description: "The first choice." },
+              { label: "Beta", description: "The second choice." },
+            ],
+            multiSelect: false,
+          },
+        ],
+      },
+    });
+    if (!decoded) {
+      throw new Error("expected decoded user-question request");
+    }
+    expect(
+      adapter.buildInteractiveResponse?.({
+        request: decoded,
+        resolution: {
+          kind: "user_answer",
+          answers: {
+            "ask-tool-1:question-1": {
+              selected: ["ask-tool-1:question-1:option-1"],
+            },
+          },
+        },
+      }),
+    ).toEqual({
+      outcome: "accepted",
+      answers: {
+        "Which option should I pick?": ["Alpha"],
+      },
+    });
+  });
+
+  it("encodes free-text-only answers as Grok Other plus notes", () => {
+    const adapter = createAdapter();
+    const decoded = adapter.decodeInteractiveRequest?.({
+      id: 13,
+      method: "request_user_question",
+      params: {
+        threadId: "thread-1",
+        providerThreadId: "sess-1",
+        turnId: "turn-1",
+        itemId: "ask-tool-1",
+        questions: [
+          {
+            question: "Which option should I pick?",
+            options: [
+              { label: "Alpha", description: "The first choice." },
+              { label: "Beta", description: "The second choice." },
+            ],
+            multiSelect: false,
+          },
+        ],
+      },
+    });
+    if (!decoded) {
+      throw new Error("expected decoded user-question request");
+    }
+    expect(
+      adapter.buildInteractiveResponse?.({
+        request: decoded,
+        resolution: {
+          kind: "user_answer",
+          answers: {
+            "ask-tool-1:question-1": {
+              selected: [],
+              freeText: "Neither; use Gamma.",
+            },
+          },
+        },
+      }),
+    ).toEqual({
+      outcome: "accepted",
+      answers: {
+        "Which option should I pick?": ["Other"],
+      },
+      annotations: {
+        "Which option should I pick?": { notes: "Neither; use Gamma." },
+      },
+    });
+  });
+
+  it("rejects user-question requests with duplicate prompts", () => {
+    const adapter = createAdapter();
+    expect(
+      adapter.decodeInteractiveRequest?.({
+        id: 14,
+        method: "request_user_question",
+        params: {
+          threadId: "thread-1",
+          providerThreadId: "sess-1",
+          turnId: "turn-1",
+          itemId: "ask-tool-1",
+          questions: [
+            {
+              question: "Which option should I pick?",
+              options: [{ label: "Alpha", description: "First." }],
+              multiSelect: false,
+            },
+            {
+              question: "Which option should I pick?",
+              options: [{ label: "Beta", description: "Second." }],
+              multiSelect: false,
+            },
+          ],
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects user-question responses whose resolution kind does not match", () => {
+    const adapter = createAdapter();
+    const decoded = adapter.decodeInteractiveRequest?.({
+      id: 15,
+      method: "request_user_question",
+      params: {
+        threadId: "thread-1",
+        providerThreadId: "sess-1",
+        turnId: "turn-1",
+        itemId: "ask-tool-1",
+        questions: [
+          {
+            question: "Which option should I pick?",
+            options: [
+              { label: "Alpha", description: "The first choice." },
+              { label: "Beta", description: "The second choice." },
+            ],
+            multiSelect: false,
+          },
+        ],
+      },
+    });
+    if (!decoded) {
+      throw new Error("expected decoded user-question request");
+    }
+    expect(() =>
+      adapter.buildInteractiveResponse?.({
+        request: decoded,
+        resolution: { decision: "deny" },
+      }),
+    ).toThrow(
+      "ACP interactive response kind does not match the request payload",
+    );
   });
 
   it("encodes resolutions as bare decisions for the bridge", () => {

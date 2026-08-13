@@ -45,13 +45,17 @@ import {
   ACP_COMPACTION_STARTED_METHOD,
   ACP_DEFAULT_MODEL_ID,
   ACP_FS_WRITE_METHOD,
+  ACP_GROK_ASK_USER_QUESTION_METHOD,
   ACP_PERMISSION_REQUEST_METHOD,
   ACP_TURN_COMPLETED_METHOD,
   ACP_TURN_STARTED_METHOD,
   ACP_UPDATE_METHOD,
+  ACP_USER_QUESTION_REQUEST_METHOD,
   ACP_WARNING_METHOD,
   acpBridgeCommandSchema,
   acpPermissionResponseSchema,
+  acpUserQuestionResponseSchema,
+  grokAskUserQuestionExtRequestSchema,
   type AcpBridgeAgentCommand,
   type AcpBridgeCommand,
   type AcpBridgeNativeReasoning,
@@ -118,6 +122,10 @@ interface PendingAcpPermission {
   options: AcpPermissionOption[];
 }
 
+interface PendingAcpUserQuestion {
+  responder: AcpAgentRequestResponder;
+}
+
 interface AcpThreadSession {
   bbThreadId: string;
   providerThreadId: string;
@@ -136,6 +144,7 @@ interface AcpThreadSession {
   /** Resolves when the in-flight turn or maintenance prompt fully settles. */
   turnSettled: Promise<void> | undefined;
   pendingPermissions: Set<PendingAcpPermission>;
+  pendingUserQuestions: Set<PendingAcpUserQuestion>;
 }
 
 const sessionsByBbThreadId = new Map<string, AcpThreadSession>();
@@ -390,10 +399,7 @@ const AUTH_REQUIRED_MODEL_LIST_ERROR_MESSAGE =
 function reasoningSupportFromCli(
   reasoningCli: AcpBridgeReasoningCli | undefined,
 ):
-  | Pick<
-      AvailableModel,
-      "supportedReasoningEfforts" | "defaultReasoningEffort"
-    >
+  | Pick<AvailableModel, "supportedReasoningEfforts" | "defaultReasoningEffort">
   | undefined {
   if (reasoningCli === undefined) {
     return undefined;
@@ -415,10 +421,7 @@ function reasoningSupportFromCli(
 function reasoningSupportFromNativeHint(
   nativeReasoning: AcpBridgeNativeReasoning | undefined,
 ):
-  | Pick<
-      AvailableModel,
-      "supportedReasoningEfforts" | "defaultReasoningEffort"
-    >
+  | Pick<AvailableModel, "supportedReasoningEfforts" | "defaultReasoningEffort">
   | undefined {
   if (nativeReasoning === undefined) {
     return undefined;
@@ -511,8 +514,7 @@ function nativeReasoningLevelToValue(args: {
   nativeReasoning: AcpBridgeNativeReasoning;
   reasoningLevel: ReasoningLevel;
 }): string | undefined {
-  const override =
-    args.nativeReasoning.levelValues?.[args.reasoningLevel];
+  const override = args.nativeReasoning.levelValues?.[args.reasoningLevel];
   if (override !== undefined) {
     return override;
   }
@@ -577,7 +579,10 @@ function applyPermissionCliArgs(
   permissionCli: AcpBridgePermissionCli | undefined,
   permissionMode: AcpSessionPolicy["permissionMode"],
 ): string[] {
-  const permissionArgs = permissionCliArgsForMode(permissionCli, permissionMode);
+  const permissionArgs = permissionCliArgsForMode(
+    permissionCli,
+    permissionMode,
+  );
   if (permissionArgs.length === 0) {
     return [...agentArgs];
   }
@@ -1249,6 +1254,18 @@ function cancelPendingPermissions(session: AcpThreadSession): void {
   session.pendingPermissions.clear();
 }
 
+function cancelPendingUserQuestions(session: AcpThreadSession): void {
+  for (const pending of session.pendingUserQuestions) {
+    pending.responder.result({ outcome: "cancelled" });
+  }
+  session.pendingUserQuestions.clear();
+}
+
+function cancelPendingInteractiveRequests(session: AcpThreadSession): void {
+  cancelPendingPermissions(session);
+  cancelPendingUserQuestions(session);
+}
+
 const acpRawInputCommandSchema = z
   .object({ command: z.string() })
   .passthrough();
@@ -1319,6 +1336,52 @@ function handlePermissionRequest(
         return;
       }
       respondPermission(pending, null);
+    });
+}
+
+function handleUserQuestionRequest(
+  session: AcpThreadSession,
+  params: unknown,
+  responder: AcpAgentRequestResponder,
+): void {
+  const parsed = grokAskUserQuestionExtRequestSchema.safeParse(params);
+  if (!parsed.success) {
+    responder.error(
+      -32602,
+      `Invalid ${ACP_GROK_ASK_USER_QUESTION_METHOD} params`,
+    );
+    return;
+  }
+
+  if (session.stopping || session.activePromptKind !== "turn") {
+    responder.result({ outcome: "cancelled" });
+    return;
+  }
+
+  const pending: PendingAcpUserQuestion = { responder };
+  session.pendingUserQuestions.add(pending);
+
+  void sendRuntimeRequest(ACP_USER_QUESTION_REQUEST_METHOD, {
+    threadId: session.bbThreadId,
+    providerThreadId: session.providerThreadId,
+    turnId: null,
+    itemId: parsed.data.toolCallId,
+    questions: parsed.data.questions,
+  })
+    .then((result) => {
+      if (!session.pendingUserQuestions.delete(pending)) {
+        return;
+      }
+      const response = acpUserQuestionResponseSchema.safeParse(result);
+      responder.result(
+        response.success ? response.data : { outcome: "cancelled" },
+      );
+    })
+    .catch(() => {
+      if (!session.pendingUserQuestions.delete(pending)) {
+        return;
+      }
+      responder.result({ outcome: "cancelled" });
     });
 }
 
@@ -1485,7 +1548,7 @@ async function startAgentSession(
       handleAgentRequest(session, method, requestParams, responder),
     onExit: (info) => {
       const wasCurrent = sessionsByBbThreadId.get(bbThreadId) === session;
-      cancelPendingPermissions(session);
+      cancelPendingInteractiveRequests(session);
       removeSession(session);
       if (!wasCurrent || session.stopping) {
         return;
@@ -1520,6 +1583,7 @@ async function startAgentSession(
     stopping: false,
     turnSettled: undefined,
     pendingPermissions: new Set(),
+    pendingUserQuestions: new Set(),
   };
 
   try {
@@ -1641,7 +1705,7 @@ async function stopSession(session: AcpThreadSession): Promise<void> {
   }
   session.stopping = true;
   session.queuedInputs = [];
-  cancelPendingPermissions(session);
+  cancelPendingInteractiveRequests(session);
 
   if (session.activePromptKind !== null && !session.connection.exited) {
     session.connection.notify("session/cancel", {
@@ -1778,6 +1842,9 @@ function handleAgentRequest(
   switch (method) {
     case "session/request_permission":
       handlePermissionRequest(session, params, responder);
+      return;
+    case ACP_GROK_ASK_USER_QUESTION_METHOD:
+      handleUserQuestionRequest(session, params, responder);
       return;
     case "fs/read_text_file":
       void handleFsReadTextFile(params, responder);

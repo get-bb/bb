@@ -306,3 +306,94 @@ export const acpPermissionResponseSchema = z.object({
   decision: z.enum(["allow_once", "allow_for_session", "deny"]),
 });
 export type AcpPermissionResponse = z.infer<typeof acpPermissionResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// Grok Build ACP `_x.ai/ask_user_question` → runtime user questions
+// ---------------------------------------------------------------------------
+
+/**
+ * Grok Build 1.x calls this ACP client ext_method. The agent-client
+ * protocol crate stores the name as `x.ai/ask_user_question` and prefixes `_`
+ * on the wire.
+ */
+export const ACP_GROK_ASK_USER_QUESTION_METHOD = "_x.ai/ask_user_question";
+
+/**
+ * Generic runtime method reused by the ACP adapter. The runtime routes this
+ * through the existing `kind: user_question` pending-interaction path.
+ */
+export const ACP_USER_QUESTION_REQUEST_METHOD = "request_user_question";
+
+const grokAskUserQuestionOptionSchema = z.object({
+  label: z.string().min(1),
+  description: z.string(),
+  preview: z.string().optional(),
+  id: z.string().min(1).optional(),
+});
+
+const grokAskUserQuestionQuestionSchema = z.object({
+  question: z.string().min(1),
+  options: z.array(grokAskUserQuestionOptionSchema),
+  multiSelect: z.boolean().nullish(),
+  id: z.string().min(1).optional(),
+});
+
+/**
+ * Wire params Grok sends on `_x.ai/ask_user_question`.
+ * `AskUserQuestionExtRequest` is camelCase: sessionId, toolCallId, questions, mode.
+ */
+export const grokAskUserQuestionExtRequestSchema = z.object({
+  sessionId: z.string().min(1),
+  toolCallId: z.string().min(1),
+  questions: z.array(grokAskUserQuestionQuestionSchema).min(1),
+  mode: z.enum(["default", "plan"]),
+});
+
+export const acpUserQuestionRequestParamsSchema = z.object({
+  threadId: z.string().min(1),
+  providerThreadId: z.string().min(1),
+  turnId: z.union([z.string().min(1), z.null()]),
+  itemId: z.string().min(1),
+  questions: z.array(grokAskUserQuestionQuestionSchema).min(1),
+});
+export type AcpUserQuestionRequestParams = z.infer<
+  typeof acpUserQuestionRequestParamsSchema
+>;
+
+const grokAskUserQuestionAnswerValueSchema = z.union([
+  z.string().min(1),
+  z.array(z.string().min(1)).min(1),
+]);
+
+const grokAskUserQuestionAnnotationSchema = z.object({
+  preview: z.string().min(1).optional(),
+  notes: z.string().min(1).optional(),
+});
+
+/**
+ * Grok's `AskUserQuestionExtResponse`, internally tagged on `outcome`.
+ * Successful BB answers use `accepted`; turnless/stop/error use `cancelled`.
+ */
+export const acpUserQuestionResponseSchema = z.discriminatedUnion("outcome", [
+  z.object({
+    outcome: z.literal("accepted"),
+    answers: z.record(z.string().min(1), grokAskUserQuestionAnswerValueSchema),
+    annotations: z
+      .record(z.string().min(1), grokAskUserQuestionAnnotationSchema)
+      .optional(),
+  }),
+  z.object({
+    outcome: z.literal("chat_about_this"),
+    partial_answers: z.record(z.string().min(1), z.string().min(1)).optional(),
+  }),
+  z.object({
+    outcome: z.literal("skip_interview"),
+    partial_answers: z.record(z.string().min(1), z.string().min(1)).optional(),
+  }),
+  z.object({
+    outcome: z.literal("cancelled"),
+  }),
+]);
+export type AcpUserQuestionResponse = z.infer<
+  typeof acpUserQuestionResponseSchema
+>;

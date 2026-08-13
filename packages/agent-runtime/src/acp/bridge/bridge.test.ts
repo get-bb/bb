@@ -1104,9 +1104,8 @@ describe("acp bridge", () => {
       configText.slice(configPrefix.length),
     ) as { env: { name: string; value: string }[] }[];
     expect(
-      mcpServerConfig?.env.find(
-        ({ name }) => name === "ELECTRON_RUN_AS_NODE",
-      )?.value,
+      mcpServerConfig?.env.find(({ name }) => name === "ELECTRON_RUN_AS_NODE")
+        ?.value,
     ).toBe("1");
 
     sendRequest("turn/start", {
@@ -1541,6 +1540,123 @@ describe("acp bridge", () => {
     );
     await waitForTurnCompleted();
     expect(agentMessageTexts()).toContain("permission:always");
+  });
+
+  it("forwards Grok ask_user_question requests to the runtime", async () => {
+    const { bbThreadId, providerThreadId } = await startThread({
+      permissionMode: "accept-edits",
+      permissionEscalation: "ask",
+    });
+    const turnId = sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "ask-user-question", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+
+    const forwarded = await waitFor(
+      () =>
+        output.messages.find(
+          (message) =>
+            message.method === "request_user_question" &&
+            message.id !== undefined,
+        ),
+      "forwarded user question request",
+    );
+    expect(forwarded.params).toMatchObject({
+      threadId: bbThreadId,
+      providerThreadId,
+      turnId: null,
+      itemId: "ask-tool-1",
+      questions: [
+        {
+          question: "Which option should I pick?",
+          options: [
+            { label: "Alpha", description: "The first choice." },
+            { label: "Beta", description: "The second choice." },
+          ],
+          multiSelect: null,
+        },
+      ],
+    });
+
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: forwarded.id,
+        result: {
+          outcome: "accepted",
+          answers: { "Which option should I pick?": ["Alpha"] },
+        },
+      }),
+    );
+
+    await waitForTurnCompleted();
+    expect(agentMessageTexts()).toContain(
+      'question:{"outcome":"accepted","answers":{"Which option should I pick?":["Alpha"]}}',
+    );
+  });
+
+  it("returns cancelled when Grok ask_user_question arrives without a turn", async () => {
+    await startThread({
+      envVars: { FAKE_ACP_ASK_USER_QUESTION_ON_NEW: "1" },
+    });
+    await waitFor(
+      () =>
+        agentMessageTexts().includes('question:{"outcome":"cancelled"}')
+          ? true
+          : undefined,
+      "cancelled user question without a turn",
+    );
+    expect(notifications("request_user_question")).toHaveLength(0);
+  });
+
+  it("rejects malformed Grok ask_user_question params without hanging", async () => {
+    const { providerThreadId } = await startThread();
+    const turnId = sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [
+        { type: "text", text: "ask-user-question-malformed", mentions: [] },
+      ],
+    });
+    await waitForResponse(turnId);
+    await waitForTurnCompleted();
+
+    expect(notifications("request_user_question")).toHaveLength(0);
+    expect(
+      agentMessageTexts().some((text) =>
+        text.includes("question:error:Invalid _x.ai/ask_user_question params"),
+      ),
+    ).toBe(true);
+  });
+
+  it("cancels Grok ask_user_question when the runtime request fails", async () => {
+    const { providerThreadId } = await startThread({
+      permissionMode: "accept-edits",
+      permissionEscalation: "ask",
+    });
+    const turnId = sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "ask-user-question", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    const forwarded = await waitFor(
+      () =>
+        output.messages.find(
+          (message) =>
+            message.method === "request_user_question" &&
+            message.id !== undefined,
+        ),
+      "forwarded user question request",
+    );
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: forwarded.id,
+        error: { code: -32603, message: "runtime failed" },
+      }),
+    );
+    await waitForTurnCompleted();
+    expect(agentMessageTexts()).toContain('question:{"outcome":"cancelled"}');
   });
 
   it("performs client fs writes inside the workspace and reports them", async () => {

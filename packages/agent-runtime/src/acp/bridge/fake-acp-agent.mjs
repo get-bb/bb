@@ -28,6 +28,8 @@
  *                              (exercises large-catalog reasoning discovery)
  * - FAKE_ACP_AUTH_METHODS    → comma-separated auth method ids to advertise;
  *                              session creation requires authenticate first
+ * - FAKE_ACP_ASK_USER_QUESTION_ON_NEW=1
+ *                            → send `_x.ai/ask_user_question` after session/new
  * - FAKE_ACP_WRITE_PATH      → target path for the "write-file" prompt
  * - FAKE_ACP_LAUNCH_LOG      → append one line per process launch (used to
  *                              count model-discovery spawns in cache/TTL tests)
@@ -53,6 +55,8 @@ const acceptNativeReasoning =
   process.env.FAKE_ACP_ACCEPT_NATIVE_REASONING === "1";
 const setConfigModelError = process.env.FAKE_ACP_SET_CONFIG_MODEL_ERROR === "1";
 const hangInitialize = process.env.FAKE_ACP_HANG_INITIALIZE === "1";
+const askUserQuestionOnNew =
+  process.env.FAKE_ACP_ASK_USER_QUESTION_ON_NEW === "1";
 const authMethods = (process.env.FAKE_ACP_AUTH_METHODS ?? "")
   .split(",")
   .map((method) => method.trim())
@@ -200,6 +204,37 @@ function requireAuthenticated(message) {
   return false;
 }
 
+function grokAskUserQuestionParams() {
+  return {
+    sessionId: activeSessionId,
+    toolCallId: "ask-tool-1",
+    questions: [
+      {
+        question: "Which option should I pick?",
+        options: [
+          { label: "Alpha", description: "The first choice." },
+          { label: "Beta", description: "The second choice." },
+        ],
+        multiSelect: null,
+      },
+    ],
+    mode: "default",
+  };
+}
+
+async function requestGrokUserQuestion(params = grokAskUserQuestionParams()) {
+  try {
+    const result = await requestClient("_x.ai/ask_user_question", params);
+    notifyUpdate(messageChunk(`question:${JSON.stringify(result)}`));
+  } catch (error) {
+    notifyUpdate(
+      messageChunk(
+        `question:error:${error instanceof Error ? error.message : String(error)}`,
+      ),
+    );
+  }
+}
+
 function requestClient(method, params) {
   nextAgentRequestId += 1;
   const id = nextAgentRequestId;
@@ -281,6 +316,10 @@ async function handlePrompt(message) {
       outcome = "error";
     }
     notifyUpdate(messageChunk(`permission:${outcome}`));
+  } else if (text.includes("ask-user-question-malformed")) {
+    await requestGrokUserQuestion({ questions: "not-an-array" });
+  } else if (text.includes("ask-user-question")) {
+    await requestGrokUserQuestion();
   } else if (text.includes("write-file")) {
     try {
       await requestClient("fs/write_text_file", {
@@ -400,6 +439,9 @@ async function handleMessage(message) {
           ...configState(),
         },
       });
+      if (askUserQuestionOnNew) {
+        void requestGrokUserQuestion();
+      }
       return;
     case "session/load":
       if (!requireAuthenticated(message)) {

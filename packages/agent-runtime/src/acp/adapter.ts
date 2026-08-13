@@ -25,8 +25,16 @@ import {
   isApprovalPendingInteractionPayload,
   isApprovalPendingInteractionResolution,
   isStandaloneBuiltinCompactCommand,
+  isUserQuestionPendingInteractionPayload,
+  isUserQuestionPendingInteractionResolution,
   threadScope,
   turnScope,
+  userQuestionPendingInteractionPayloadSchema,
+} from "@bb/domain";
+import type {
+  PendingInteractionUserQuestionQuestion,
+  UserQuestionPendingInteractionPayload,
+  UserQuestionPendingInteractionResolution,
 } from "@bb/domain";
 import { z } from "zod";
 import type {
@@ -92,6 +100,7 @@ import {
   ACP_TURN_COMPLETED_METHOD,
   ACP_TURN_STARTED_METHOD,
   ACP_UPDATE_METHOD,
+  ACP_USER_QUESTION_REQUEST_METHOD,
   ACP_WARNING_METHOD,
   acpCompactionCompletedNotificationParamsSchema,
   acpFsWriteNotificationParamsSchema,
@@ -99,10 +108,13 @@ import {
   acpTurnCompletedNotificationParamsSchema,
   acpTurnStartedNotificationParamsSchema,
   acpUpdateNotificationParamsSchema,
+  acpUserQuestionRequestParamsSchema,
   acpWarningNotificationParamsSchema,
   ACP_DEFAULT_MODEL_ID,
   type AcpPermissionRequestParams,
   type AcpPermissionResponse,
+  type AcpUserQuestionRequestParams,
+  type AcpUserQuestionResponse,
 } from "./bridge-protocol.js";
 import type { AcpAgentProfile } from "./profiles.js";
 import { acpVisibilityMetadata } from "./visibility.js";
@@ -474,6 +486,110 @@ function buildOpaqueAcpPermissionCommand(toolCall: {
     toolCall.kind ??
     "ACP permission request"
   );
+}
+
+function buildAcpUserQuestionId(itemId: string, questionIndex: number): string {
+  return `${itemId}:question-${questionIndex + 1}`;
+}
+
+function buildAcpUserQuestionOptionValue(
+  questionId: string,
+  optionIndex: number,
+): string {
+  return `${questionId}:option-${optionIndex + 1}`;
+}
+
+function buildAcpUserQuestionPayload(
+  args: AcpUserQuestionRequestParams,
+): UserQuestionPendingInteractionPayload | null {
+  const prompts = new Set<string>();
+  const questions: PendingInteractionUserQuestionQuestion[] =
+    args.questions.map((question, questionIndex) => {
+      const questionId = buildAcpUserQuestionId(args.itemId, questionIndex);
+      return {
+        id: questionId,
+        prompt: question.question,
+        multiSelect: question.multiSelect === true,
+        options: question.options.map((option, optionIndex) => {
+          const description = option.description?.trim();
+          return {
+            value: buildAcpUserQuestionOptionValue(questionId, optionIndex),
+            label: option.label,
+            ...(description ? { description } : {}),
+          };
+        }),
+        allowFreeText: true,
+      };
+    });
+  for (const question of questions) {
+    if (prompts.has(question.prompt)) {
+      return null;
+    }
+    prompts.add(question.prompt);
+  }
+  const parsed = userQuestionPendingInteractionPayloadSchema.safeParse({
+    kind: "user_question",
+    questions,
+  });
+  return parsed.success ? parsed.data : null;
+}
+
+function buildAcpUserQuestionAnswerLabels(
+  question: PendingInteractionUserQuestionQuestion,
+  resolution: UserQuestionPendingInteractionResolution,
+): string[] {
+  const answer = resolution.answers[question.id];
+  if (!answer) {
+    throw new ProviderResponseEncodeError(
+      `Missing answer for user question '${question.id}'`,
+    );
+  }
+  const options = question.options ?? [];
+  const selectedLabels = answer.selected.map((selectedValue) => {
+    const option = options.find(
+      (candidate) => candidate.value === selectedValue,
+    );
+    if (!option) {
+      throw new ProviderResponseEncodeError(
+        `Unknown selected option '${selectedValue}' for user question '${question.id}'`,
+      );
+    }
+    return option.label;
+  });
+  if (selectedLabels.length > 0) {
+    return selectedLabels;
+  }
+  if (answer.freeText) {
+    return ["Other"];
+  }
+  throw new ProviderResponseEncodeError(
+    `Answer for user question '${question.id}' is empty`,
+  );
+}
+
+function buildAcpUserQuestionResponse(
+  payload: UserQuestionPendingInteractionPayload,
+  resolution: UserQuestionPendingInteractionResolution,
+): AcpUserQuestionResponse {
+  const answers: Record<string, string[]> = {};
+  const annotations: NonNullable<
+    Extract<AcpUserQuestionResponse, { outcome: "accepted" }>["annotations"]
+  > = {};
+  for (const question of payload.questions) {
+    answers[question.prompt] = buildAcpUserQuestionAnswerLabels(
+      question,
+      resolution,
+    );
+    const answer = resolution.answers[question.id];
+    if (answer?.freeText) {
+      annotations[question.prompt] = { notes: answer.freeText };
+    }
+  }
+  return {
+    outcome: "accepted",
+    answers,
+    ...(Object.keys(annotations).length > 0 ? { annotations } : {}),
+  };
 }
 
 function requireAcpSkillRoot(
@@ -1635,40 +1751,75 @@ export function createAcpProviderAdapter(
       if (typeof request.id !== "string" && typeof request.id !== "number") {
         return null;
       }
-      if (request.method !== ACP_PERMISSION_REQUEST_METHOD) {
-        return null;
+      switch (request.method) {
+        case ACP_PERMISSION_REQUEST_METHOD: {
+          const parsed = acpPermissionRequestParamsSchema.safeParse(
+            request.params,
+          );
+          if (!parsed.success) {
+            return null;
+          }
+          const toolCall = parsed.data.toolCall;
+          const command = toolCall
+            ? buildOpaqueAcpPermissionCommand(toolCall)
+            : "ACP permission request";
+          return {
+            requestId: request.id,
+            method: request.method,
+            threadId: parsed.data.threadId,
+            providerThreadId: parsed.data.providerThreadId,
+            turnId: parsed.data.turnId,
+            payload: {
+              kind: "approval",
+              subject: {
+                kind: "command",
+                itemId: toolCall?.toolCallId ?? "acp-permission",
+                command,
+                cwd: null,
+                actions: [{ type: "unknown", command }],
+                sessionGrant: null,
+              },
+              reason: null,
+              availableDecisions: buildAcpApprovalDecisions(parsed.data),
+            },
+          };
+        }
+        case ACP_USER_QUESTION_REQUEST_METHOD: {
+          const parsed = acpUserQuestionRequestParamsSchema.safeParse(
+            request.params,
+          );
+          if (!parsed.success) {
+            return null;
+          }
+          const payload = buildAcpUserQuestionPayload(parsed.data);
+          if (payload === null) {
+            return null;
+          }
+          return {
+            requestId: request.id,
+            method: request.method,
+            threadId: parsed.data.threadId,
+            providerThreadId: parsed.data.providerThreadId,
+            turnId: parsed.data.turnId,
+            payload,
+          };
+        }
+        default:
+          return null;
       }
-      const parsed = acpPermissionRequestParamsSchema.safeParse(request.params);
-      if (!parsed.success) {
-        return null;
-      }
-      const toolCall = parsed.data.toolCall;
-      const command = toolCall
-        ? buildOpaqueAcpPermissionCommand(toolCall)
-        : "ACP permission request";
-      return {
-        requestId: request.id,
-        method: request.method,
-        threadId: parsed.data.threadId,
-        providerThreadId: parsed.data.providerThreadId,
-        turnId: parsed.data.turnId,
-        payload: {
-          kind: "approval",
-          subject: {
-            kind: "command",
-            itemId: toolCall?.toolCallId ?? "acp-permission",
-            command,
-            cwd: null,
-            actions: [{ type: "unknown", command }],
-            sessionGrant: null,
-          },
-          reason: null,
-          availableDecisions: buildAcpApprovalDecisions(parsed.data),
-        },
-      };
     },
 
     buildInteractiveResponse(args) {
+      if (
+        isUserQuestionPendingInteractionPayload(args.request.payload) &&
+        isUserQuestionPendingInteractionResolution(args.resolution)
+      ) {
+        return buildAcpUserQuestionResponse(
+          args.request.payload,
+          args.resolution,
+        );
+      }
+
       if (
         !isApprovalPendingInteractionPayload(args.request.payload) ||
         !isApprovalPendingInteractionResolution(args.resolution)
