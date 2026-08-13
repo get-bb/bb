@@ -39,6 +39,7 @@ import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { UsageLimitsSettingsSection } from "@/components/settings/UsageLimitsSettingsSection";
 import { SidebarThreadListSetting } from "@/components/settings/SidebarThreadListSetting";
 import { useSettingsNavState } from "@/components/settings/settings-nav";
+import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
 import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
@@ -1036,14 +1037,16 @@ export function SettingsView() {
   const updateGeneralSettingsMutation = useUpdateGeneralSettings();
   const appearance = systemConfigQuery.data?.appearance ?? defaultAppTheme;
   const updateAppearanceMutation = useUpdateAppearance();
-  const { activeProviderId, activeSection, hasUnknownSection } =
+  const { activePluginId, activeProviderId, activeSection, hasUnknownSection } =
     useSettingsNavState();
   if (hasUnknownSection) {
     return <Navigate to={SETTINGS_ROUTE_PATH} replace />;
   }
 
   let content: ReactNode = null;
-  if (activeProviderId !== null) {
+  if (activePluginId !== null) {
+    content = <PluginSettingsPage pluginId={activePluginId} />;
+  } else if (activeProviderId !== null) {
     const isCodex = activeProviderId === "codex";
     content = (
       <ProviderSettingsSection

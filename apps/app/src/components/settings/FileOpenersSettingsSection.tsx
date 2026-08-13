@@ -95,7 +95,9 @@ function ExtensionOpenerControl({
   selected: PluginFileOpenerSlot | null;
 }) {
   const selectedLabel =
-    selected === null ? BUILTIN_LABEL : `${selected.title} (${selected.pluginId})`;
+    selected === null
+      ? BUILTIN_LABEL
+      : `${selected.title} (${selected.pluginId})`;
   return (
     <SettingsWithControl label={`.${extension} files`}>
       <DropdownMenu>

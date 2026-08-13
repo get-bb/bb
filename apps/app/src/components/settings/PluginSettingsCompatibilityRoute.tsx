@@ -1,13 +1,12 @@
 import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { getToolsOwnedCollectionRoutePath } from "@/components/tools/tools-navigation";
-import {
-  SETTINGS_PLUGINS_ROUTE_PATH,
-} from "@/lib/route-paths";
+import { SETTINGS_PLUGINS_ROUTE_PATH } from "@/lib/route-paths";
 
 /**
- * The Extensions collection replaces legacy plugin management.
- * Plugin-registered settings keep their own Settings routes.
+ * The Extensions collection replaces legacy plugin MANAGEMENT, so the bare
+ * /settings/plugins list redirects there. Per-plugin settings pages
+ * (/settings/plugins/:pluginId) are real Settings pages and render through.
  */
 export function PluginSettingsCompatibilityRoute({
   children,

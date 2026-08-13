@@ -17,9 +17,7 @@ describe("HashNavigationScroll", () => {
     const focus = vi.spyOn(HTMLElement.prototype, "focus");
 
     render(
-      <MemoryRouter
-        initialEntries={["/extensions/plugins/workflows#configuration"]}
-      >
+      <MemoryRouter initialEntries={["/extensions/plugins/workflows#configuration"]}>
         <HashNavigationScroll />
         <div id="configuration" />
       </MemoryRouter>,

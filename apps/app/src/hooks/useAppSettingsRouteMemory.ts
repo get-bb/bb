@@ -4,7 +4,6 @@ import {
   getRootComposeRoutePath,
   getPluginsRoutePath,
   isToolsRoutePath,
-  SETTINGS_PLUGIN_ROUTE_PATH,
   SETTINGS_PLUGINS_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
 } from "@/lib/route-paths";
@@ -29,10 +28,11 @@ function isGlobalSettingsRoute(pathname: string): boolean {
 }
 
 function isPluginSettingsCompatibilityRoute(pathname: string): boolean {
-  return (
-    matchPath(SETTINGS_PLUGINS_ROUTE_PATH, pathname) !== null ||
-    matchPath(SETTINGS_PLUGIN_ROUTE_PATH, pathname) !== null
-  );
+  // Only the bare /settings/plugins list is legacy — it redirects to the
+  // Extensions collection. /settings/plugins/:pluginId is a real Settings
+  // page now that Settings hosts plugin configuration, so it participates in
+  // settings route memory like any other section.
+  return matchPath(SETTINGS_PLUGINS_ROUTE_PATH, pathname) !== null;
 }
 
 /**

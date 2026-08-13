@@ -5,11 +5,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { PluginSettingsCompatibilityRoute } from "./PluginSettingsCompatibilityRoute";
 
-function ExtensionsPluginsLocation() {
+function ToolsPluginsLocation() {
   const location = useLocation();
   return (
     <div>
-      Extensions plugins
+      Tools plugins
       <output data-testid="tools-plugins-location">
         {location.pathname}
         {location.search}
@@ -39,13 +39,10 @@ function renderRoute(path: string) {
             </PluginSettingsCompatibilityRoute>
           }
         />
-        <Route
-          path="/extensions/plugins"
-          element={<ExtensionsPluginsLocation />}
-        />
+        <Route path="/extensions/plugins" element={<ToolsPluginsLocation />} />
         <Route
           path="/extensions/plugins/:pluginId"
-          element={<ExtensionsPluginsLocation />}
+          element={<ToolsPluginsLocation />}
         />
       </Routes>
     </MemoryRouter>,
@@ -55,11 +52,11 @@ function renderRoute(path: string) {
 describe("PluginSettingsCompatibilityRoute", () => {
   afterEach(cleanup);
 
-  it("keeps plugin configuration on its Settings detail route", () => {
+  it("renders per-plugin settings pages in place — Settings owns them now", () => {
     renderRoute("/settings/plugins/example");
 
     expect(screen.getByText("Settings plugin detail")).toBeTruthy();
-    expect(screen.queryByText("Extensions plugins")).toBeNull();
+    expect(screen.queryByText("Tools plugins")).toBeNull();
   });
 
   it.each(["/settings/plugins", "/settings/plugins/"])(
@@ -67,7 +64,7 @@ describe("PluginSettingsCompatibilityRoute", () => {
     (path) => {
       renderRoute(path);
 
-      expect(screen.getByText("Extensions plugins")).toBeTruthy();
+      expect(screen.getByText("Tools plugins")).toBeTruthy();
       expect(screen.getByTestId("tools-plugins-location").textContent).toBe(
         "/extensions/plugins?view=installed",
       );

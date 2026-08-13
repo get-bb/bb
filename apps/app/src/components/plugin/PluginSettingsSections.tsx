@@ -3,7 +3,7 @@ import {
   type PluginSettingsSectionSlot,
 } from "@/lib/plugin-slots";
 import { PluginSlotMount } from "./PluginSlotMount";
-import { ResourceDetailPanel } from "@bb/shared-ui/resource-list";
+import { ResourceDetailPanel } from "@bb/shared-ui/resource-detail";
 
 /**
  * Plugin `settingsSection` slot mounts, rendered on that plugin's canonical

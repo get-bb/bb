@@ -2,8 +2,10 @@ import { matchPath, useLocation } from "react-router-dom";
 import type { IconName } from "@bb/shared-ui/icon";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import {
   SETTINGS_MACHINE_ROUTE_PATH,
+  SETTINGS_PLUGIN_ROUTE_PATH,
   SETTINGS_PROVIDER_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
 } from "@/lib/route-paths";
@@ -58,6 +60,10 @@ export interface SettingsNavState {
   activeSection: SettingsSectionId | null;
   /** True when the :section URL segment is unknown (the view redirects). */
   hasUnknownSection: boolean;
+  /** The plugin whose settings page is open, when on /settings/plugins/:id. */
+  activePluginId: string | null;
+  /** Enabled plugins with configuration, for the sidebar's Plugins group. */
+  pluginEntries: readonly { id: string; label: string; icon: string | null }[];
   providerEntries: typeof SETTINGS_PROVIDER_ENTRIES;
   /** Buckets visible on this host. */
   sections: readonly SettingsNavSection[];
@@ -71,7 +77,8 @@ export interface SettingsNavState {
 export function useSettingsNavState(): SettingsNavState {
   const location = useLocation();
   const { hasDaemon } = useHostDaemon();
-  const { fileOpeners } = usePluginSlots();
+  const { fileOpeners, settingsSections } = usePluginSlots();
+  const pluginListQuery = usePluginList({ enabled: true });
 
   const providerMatch = matchPath(
     SETTINGS_PROVIDER_ROUTE_PATH,
@@ -81,6 +88,8 @@ export function useSettingsNavState(): SettingsNavState {
     SETTINGS_SECTION_ROUTE_PATH,
     location.pathname,
   );
+  const pluginMatch = matchPath(SETTINGS_PLUGIN_ROUTE_PATH, location.pathname);
+  const activePluginId = pluginMatch?.params.pluginId ?? null;
   // A machine page keeps the Machines bucket selected in the sidebar.
   const machineMatch = matchPath(
     SETTINGS_MACHINE_ROUTE_PATH,
@@ -100,7 +109,7 @@ export function useSettingsNavState(): SettingsNavState {
   const activeSection: SettingsSectionId | null =
     activeMachineId !== null
       ? "machines"
-      : providerMatch !== null
+      : providerMatch !== null || activePluginId !== null
         ? null
         : sectionParam !== undefined && isSettingsSectionId(sectionParam)
           ? sectionParam
@@ -112,11 +121,29 @@ export function useSettingsNavState(): SettingsNavState {
     }
     return true;
   });
+  // A plugin earns a Settings row by actually having configuration: a
+  // declarative settings form or a mounted settingsSection slot.
+  const pluginEntries = (pluginListQuery.data?.plugins ?? [])
+    .filter(
+      (plugin) =>
+        plugin.enabled &&
+        (plugin.hasSettings ||
+          settingsSections.some((section) => section.pluginId === plugin.id)),
+    )
+    .map((plugin) => ({
+      id: plugin.id,
+      label: plugin.name ?? plugin.id,
+      icon: plugin.icon,
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label));
+
   return {
     activeMachineId,
+    activePluginId,
     activeProviderId,
     activeSection,
     hasUnknownSection,
+    pluginEntries,
     providerEntries: SETTINGS_PROVIDER_ENTRIES,
     sections,
   };

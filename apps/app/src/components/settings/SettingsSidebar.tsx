@@ -1,4 +1,5 @@
 import type { MouseEvent as ReactMouseEvent } from "react";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {
   SectionSidebar,
   SectionSidebarIcon,
@@ -8,6 +9,7 @@ import {
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   SETTINGS_ROUTE_PATH,
+  getPluginConfigurationRoutePath,
   getSettingsProviderRoutePath,
   getSettingsRoutePath,
 } from "@/lib/route-paths";
@@ -28,8 +30,14 @@ export function SettingsSidebar({
   showTopReserve,
   appRoutePath,
 }: SettingsSidebarProps) {
-  const { activeProviderId, activeSection, providerEntries, sections } =
-    useSettingsNavState();
+  const {
+    activePluginId,
+    activeProviderId,
+    activeSection,
+    pluginEntries,
+    providerEntries,
+    sections,
+  } = useSettingsNavState();
 
   return (
     <SectionSidebar
@@ -81,6 +89,29 @@ export function SettingsSidebar({
           );
         })}
       </div>
+      {pluginEntries.length > 0 ? (
+        <>
+          <div className="mt-4">
+            <SectionSidebarLabel>Plugins</SectionSidebarLabel>
+          </div>
+          <div className="mt-1 space-y-0.5">
+            {pluginEntries.map((entry) => (
+              <SectionSidebarRow
+                key={entry.id}
+                active={activePluginId === entry.id}
+                label={entry.label}
+                to={getPluginConfigurationRoutePath({ pluginId: entry.id })}
+              >
+                <PluginIcon
+                  pluginId={entry.id}
+                  icon={entry.icon}
+                  className="size-4 shrink-0"
+                />
+              </SectionSidebarRow>
+            ))}
+          </div>
+        </>
+      ) : null}
       {sections.some((section) => section.id === "archived") ? (
         <>
           <div className="mt-4">
