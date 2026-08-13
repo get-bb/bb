@@ -56,6 +56,7 @@ import type {
 } from "@bb/db";
 import { ApiError } from "../../errors.js";
 import { roundDurationMs } from "../lib/duration.js";
+import { runEventLoopWorkSync } from "../system/event-loop-work.js";
 import { parseStoredEvent } from "./thread-data.js";
 import {
   paginateTimelineRows,
@@ -1787,11 +1788,15 @@ export function buildThreadTimeline(
   thread: Thread,
   options: BuildThreadTimelineOptions,
 ): ThreadTimelineResponse {
-  return buildThreadTimelineInternal(db, thread, {
-    ...options,
-    includeProfile: false,
-    measureResponseBytes: false,
-  }).response;
+  return runEventLoopWorkSync(
+    `timeline-build ${thread.id}`,
+    () =>
+      buildThreadTimelineInternal(db, thread, {
+        ...options,
+        includeProfile: false,
+        measureResponseBytes: false,
+      }).response,
+  );
 }
 
 /**
@@ -1804,15 +1809,17 @@ export function buildThreadTimelineWithProfile(
   thread: Thread,
   options: BuildThreadTimelineOptions,
 ): { profile: ThreadTimelineBuildProfile; response: ThreadTimelineResponse } {
-  const result = buildThreadTimelineInternal(db, thread, {
-    ...options,
-    includeProfile: true,
-    measureResponseBytes: false,
+  return runEventLoopWorkSync(`timeline-build ${thread.id}`, () => {
+    const result = buildThreadTimelineInternal(db, thread, {
+      ...options,
+      includeProfile: true,
+      measureResponseBytes: false,
+    });
+    if (result.profile === null) {
+      throw new Error("Profiled timeline build returned no profile");
+    }
+    return { profile: result.profile, response: result.response };
   });
-  if (result.profile === null) {
-    throw new Error("Profiled timeline build returned no profile");
-  }
-  return { profile: result.profile, response: result.response };
 }
 
 export interface BuildThreadConversationOutlineOptions {
@@ -1860,57 +1867,59 @@ export function buildThreadConversationOutline(
   thread: Thread,
   options: BuildThreadConversationOutlineOptions,
 ): ThreadConversationOutlineResponse {
-  const rawEventRows = listStoredConversationOutlineEventRows(db, {
-    threadId: thread.id,
-  });
-  const decodedRawEvents = rawEventRows.map((row) =>
-    toThreadEventWithMeta(row),
-  );
-  const decodedEvents = compactThreadTimelineSummaryEvents(decodedRawEvents);
-  const clientRequestContextRows = selectClientRequestContextRows(db, {
-    rows: rawEventRows,
-    threadId: thread.id,
-  });
-  const acceptedClientRequestContext: AcceptedClientRequestContext = {
-    acceptedClientRequestEvents: clientRequestContextRows.acceptedRows.map(
-      (row) => toThreadEventWithMeta(row),
-    ),
-    rejectedClientRequestEvents: clientRequestContextRows.rejectedRows.map(
-      (row) => toThreadEventWithMeta(row),
-    ),
-  };
-  const timeline = buildThreadTimelineFromEvents({
-    acceptedClientRequestContext,
-    contextWindowEvents: [],
-    events: decodedEvents,
-    options: {
-      includeDebugRawEvents: false,
-      includeNestedRows: false,
-      includeProviderUnhandledOperations: false,
-      isLatestPage: true,
-      providerDisplayName: options.providerDisplayName,
-      providerId: thread.providerId,
-      threadName: thread.title ?? thread.titleFallback ?? "",
-      threadStatus: thread.status,
-      turnMessageDetail: "summary",
-      workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
-    },
-  });
-  const items: ThreadConversationOutlineItem[] = [];
-  for (const row of timeline.rows) {
-    if (row.kind !== "conversation") {
-      continue;
-    }
-    items.push({
-      id: row.id,
-      role: row.role,
-      preview: toConversationOutlinePreview(row.text),
-      attachmentSummary: toConversationOutlineAttachmentSummary(
-        row.attachments,
-      ),
+  return runEventLoopWorkSync(`conversation-outline ${thread.id}`, () => {
+    const rawEventRows = listStoredConversationOutlineEventRows(db, {
+      threadId: thread.id,
     });
-  }
-  return { items, maxSeq: options.maxSeq };
+    const decodedRawEvents = rawEventRows.map((row) =>
+      toThreadEventWithMeta(row),
+    );
+    const decodedEvents = compactThreadTimelineSummaryEvents(decodedRawEvents);
+    const clientRequestContextRows = selectClientRequestContextRows(db, {
+      rows: rawEventRows,
+      threadId: thread.id,
+    });
+    const acceptedClientRequestContext: AcceptedClientRequestContext = {
+      acceptedClientRequestEvents: clientRequestContextRows.acceptedRows.map(
+        (row) => toThreadEventWithMeta(row),
+      ),
+      rejectedClientRequestEvents: clientRequestContextRows.rejectedRows.map(
+        (row) => toThreadEventWithMeta(row),
+      ),
+    };
+    const timeline = buildThreadTimelineFromEvents({
+      acceptedClientRequestContext,
+      contextWindowEvents: [],
+      events: decodedEvents,
+      options: {
+        includeDebugRawEvents: false,
+        includeNestedRows: false,
+        includeProviderUnhandledOperations: false,
+        isLatestPage: true,
+        providerDisplayName: options.providerDisplayName,
+        providerId: thread.providerId,
+        threadName: thread.title ?? thread.titleFallback ?? "",
+        threadStatus: thread.status,
+        turnMessageDetail: "summary",
+        workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
+      },
+    });
+    const items: ThreadConversationOutlineItem[] = [];
+    for (const row of timeline.rows) {
+      if (row.kind !== "conversation") {
+        continue;
+      }
+      items.push({
+        id: row.id,
+        role: row.role,
+        preview: toConversationOutlinePreview(row.text),
+        attachmentSummary: toConversationOutlineAttachmentSummary(
+          row.attachments,
+        ),
+      });
+    }
+    return { items, maxSeq: options.maxSeq };
+  });
 }
 
 export function buildTimelineTurnSummaryDetails(

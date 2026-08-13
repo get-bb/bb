@@ -44,6 +44,7 @@ import {
   captureTrustedRemoteAddress,
   resolveRequestAppSurface,
 } from "./request-context.js";
+import { runEventLoopWork } from "./services/system/event-loop-work.js";
 import { runWithTelemetryAppSurface } from "./services/system/telemetry.js";
 import {
   onClientSocketClose,
@@ -282,6 +283,13 @@ export function createApp(
       deps.config.appSurface,
     );
     return runWithTelemetryAppSurface(appSurface, next);
+  });
+  app.use("*", async (context, next) => {
+    const path = context.req.path;
+    if (!path.startsWith("/api/v1/") && !path.startsWith("/internal/")) {
+      return next();
+    }
+    return runEventLoopWork(`${context.req.method} ${path}`, next);
   });
   app.use(
     "*",

@@ -17,7 +17,7 @@ function setup() {
   const db = createConnection(":memory:", {
     slowQueryThresholdMs: 0,
     slowQueryLogger: {
-      debug(fields) {
+      info(fields) {
         queries.push(fields);
       },
     },

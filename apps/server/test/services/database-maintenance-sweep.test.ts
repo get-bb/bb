@@ -51,7 +51,7 @@ interface TempDatabasePath {
 class CapturingSlowQueryLogger implements SlowDbQueryLogger {
   debugLogs: SlowDbQueryLogFields[] = [];
 
-  debug(fields: SlowDbQueryLogFields): void {
+  info(fields: SlowDbQueryLogFields): void {
     this.debugLogs.push(fields);
   }
 

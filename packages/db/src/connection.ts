@@ -12,7 +12,7 @@ export interface SlowDbQueryLogFields {
 }
 
 export interface SlowDbQueryLogger {
-  debug(fields: SlowDbQueryLogFields, message: string): void;
+  info(fields: SlowDbQueryLogFields, message: string): void;
 }
 
 export interface CreateConnectionOptions {
@@ -74,7 +74,9 @@ function runTimedStatementOperation<TValue>(
   } finally {
     const durationMs = performance.now() - startedAt;
     if (durationMs >= args.config.thresholdMs) {
-      args.config.logger.debug(
+      // `info`, not `debug`: the packaged app runs at `info`, so a debug
+      // line never appears next to the stall reports it is meant to explain.
+      args.config.logger.info(
         {
           bindingArgumentCount: args.bindingArgumentCount,
           durationMs: roundDurationMs(durationMs),

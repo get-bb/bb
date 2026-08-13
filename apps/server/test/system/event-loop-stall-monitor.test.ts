@@ -25,11 +25,21 @@ const perfHooksMock = vi.hoisted(() => {
   };
 });
 
-vi.mock("node:perf_hooks", () => ({
-  monitorEventLoopDelay: perfHooksMock.monitorEventLoopDelay,
-}));
+vi.mock("node:perf_hooks", async () => {
+  const actual =
+    await vi.importActual<typeof import("node:perf_hooks")>("node:perf_hooks");
+  return {
+    ...actual,
+    monitorEventLoopDelay: perfHooksMock.monitorEventLoopDelay,
+  };
+});
 
 import { startEventLoopStallMonitor } from "../../src/services/system/event-loop-stall-monitor.js";
+import {
+  resetEventLoopWorkForTests,
+  runEventLoopWork,
+  runEventLoopWorkSync,
+} from "../../src/services/system/event-loop-work.js";
 
 const EVENT_LOOP_STALL_MONITOR_INTERVAL_MS = 5_000;
 const NANOSECONDS_PER_MILLISECOND = 1_000_000;
@@ -59,11 +69,18 @@ function installHistogram(
   return histogram;
 }
 
+const EMPTY_WORK_SNAPSHOT = {
+  currentWork: null,
+  lastWork: null,
+  lastWorkMs: null,
+};
+
 describe("event loop stall monitor", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     perfHooksMock.monitorEventLoopDelay.mockClear();
     perfHooksMock.state.histogram = null;
+    resetEventLoopWorkForTests();
   });
 
   afterEach(() => {
@@ -96,6 +113,7 @@ describe("event loop stall monitor", () => {
         p99DelayMs: 450,
         resolutionMs: 20,
         thresholdMs: 500,
+        ...EMPTY_WORK_SNAPSHOT,
       },
       "Event loop stalled",
     );
@@ -135,5 +153,101 @@ describe("event loop stall monitor", () => {
     expect(histogram.disable).toHaveBeenCalledTimes(1);
     expect(histogram.reset).not.toHaveBeenCalled();
     expect(logger.info).not.toHaveBeenCalled();
+  });
+
+  it("includes the in-flight unit of work on the stall report", async () => {
+    installHistogram({
+      maxDelayMs: 500,
+      meanDelayMs: 25,
+      p99DelayMs: 450,
+    });
+    const logger = { info: vi.fn() };
+    const monitor = startEventLoopStallMonitor({ logger });
+    let release!: () => void;
+    const held = runEventLoopWork(
+      "GET /api/v1/threads/thr_example/timeline",
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentWork: "GET /api/v1/threads/thr_example/timeline",
+        lastWork: null,
+        lastWorkMs: null,
+      }),
+      "Event loop stalled",
+    );
+
+    release();
+    await held;
+    monitor.stop();
+  });
+
+  it("includes the last finished unit of work on the stall report", () => {
+    installHistogram({
+      maxDelayMs: 500,
+      meanDelayMs: 25,
+      p99DelayMs: 450,
+    });
+    const logger = { info: vi.fn() };
+    const monitor = startEventLoopStallMonitor({ logger });
+
+    runEventLoopWorkSync("sweep:database-maintenance", () => undefined);
+    vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentWork: null,
+        lastWork: "sweep:database-maintenance",
+      }),
+      "Event loop stalled",
+    );
+    const fields = logger.info.mock.calls[0]?.[0] as {
+      lastWorkMs: number | null;
+    };
+    expect(fields.lastWorkMs).toEqual(expect.any(Number));
+
+    monitor.stop();
+  });
+
+  it("nests the current work label when units overlap", async () => {
+    installHistogram({
+      maxDelayMs: 500,
+      meanDelayMs: 25,
+      p99DelayMs: 450,
+    });
+    const logger = { info: vi.fn() };
+    const monitor = startEventLoopStallMonitor({ logger });
+    let release!: () => void;
+    const held = runEventLoopWork(
+      "GET /api/v1/threads/thr_example/timeline",
+      () =>
+        runEventLoopWork(
+          "timeline-build thr_example",
+          () =>
+            new Promise<void>((resolve) => {
+              release = resolve;
+            }),
+        ),
+    );
+
+    vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentWork:
+          "GET /api/v1/threads/thr_example/timeline > timeline-build thr_example",
+      }),
+      "Event loop stalled",
+    );
+
+    release();
+    await held;
+    monitor.stop();
   });
 });

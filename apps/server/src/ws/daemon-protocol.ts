@@ -17,6 +17,7 @@ import {
   notifyDaemonEnvironmentChange,
   recordDaemonEnvironmentMetadataChange,
 } from "../internal/environment-changes.js";
+import { runEventLoopWorkSync } from "../services/system/event-loop-work.js";
 import { decodeSocketPayload } from "./decode-payload.js";
 
 interface DaemonSocket {
@@ -120,69 +121,77 @@ export function onDaemonSocketMessage(
   }
 
   try {
-    const session = requireAuthorizedOpenSession(deps.db, {
-      hostId: args.hostId,
-      sessionId: args.sessionId,
-    });
-    heartbeatSession(
-      deps.db,
-      session.id,
-      Math.max(Date.now() + session.leaseTimeoutMs, session.leaseExpiresAt + 1),
-    );
-    if (result.data.type === "environment-change") {
-      notifyDaemonEnvironmentChange(deps, {
+    runEventLoopWorkSync(`ws:daemon ${result.data.type}`, () => {
+      const session = requireAuthorizedOpenSession(deps.db, {
         hostId: args.hostId,
-        environmentId: result.data.environmentId,
-        change: result.data.change,
-      });
-      return;
-    }
-    if (result.data.type === "environment-metadata-change") {
-      recordDaemonEnvironmentMetadataChange(deps, {
-        hostId: args.hostId,
-        environmentId: result.data.environmentId,
-        workspace: result.data.workspace,
-      });
-      return;
-    }
-    if (result.data.type === "host-rpc.response") {
-      const disposition = deps.hub.recordHostOnlineRpcResponse({
-        message: result.data,
         sessionId: args.sessionId,
       });
-      if (!disposition.handled && disposition.reason === "session_mismatch") {
-        deps.logger.warn(
-          {
-            commandType: result.data.commandType,
-            expectedSessionId: disposition.expectedSessionId,
-            requestId: result.data.requestId,
-            sessionId: args.sessionId,
-          },
-          "Ignoring host RPC response from mismatched daemon session",
-        );
-      } else if (!disposition.handled) {
-        deps.logger.debug(
-          {
-            commandType: result.data.commandType,
-            requestId: result.data.requestId,
-            sessionId: args.sessionId,
-          },
-          "Ignoring stale host RPC response",
-        );
+      heartbeatSession(
+        deps.db,
+        session.id,
+        Math.max(
+          Date.now() + session.leaseTimeoutMs,
+          session.leaseExpiresAt + 1,
+        ),
+      );
+      if (result.data.type === "environment-change") {
+        notifyDaemonEnvironmentChange(deps, {
+          hostId: args.hostId,
+          environmentId: result.data.environmentId,
+          change: result.data.change,
+        });
+        return;
       }
-      return;
-    }
-    if (result.data.type === "connect-tunnel.identity") {
-      deps.sharedPorts.recordTunnelIdentity(args.hostId, result.data.identity);
-      return;
-    }
-    if (result.data.type !== "heartbeat") {
-      deps.terminalSessions.handleDaemonTerminalMessage({
-        hostId: args.hostId,
-        message: result.data,
-        sessionId: args.sessionId,
-      });
-    }
+      if (result.data.type === "environment-metadata-change") {
+        recordDaemonEnvironmentMetadataChange(deps, {
+          hostId: args.hostId,
+          environmentId: result.data.environmentId,
+          workspace: result.data.workspace,
+        });
+        return;
+      }
+      if (result.data.type === "host-rpc.response") {
+        const disposition = deps.hub.recordHostOnlineRpcResponse({
+          message: result.data,
+          sessionId: args.sessionId,
+        });
+        if (!disposition.handled && disposition.reason === "session_mismatch") {
+          deps.logger.warn(
+            {
+              commandType: result.data.commandType,
+              expectedSessionId: disposition.expectedSessionId,
+              requestId: result.data.requestId,
+              sessionId: args.sessionId,
+            },
+            "Ignoring host RPC response from mismatched daemon session",
+          );
+        } else if (!disposition.handled) {
+          deps.logger.debug(
+            {
+              commandType: result.data.commandType,
+              requestId: result.data.requestId,
+              sessionId: args.sessionId,
+            },
+            "Ignoring stale host RPC response",
+          );
+        }
+        return;
+      }
+      if (result.data.type === "connect-tunnel.identity") {
+        deps.sharedPorts.recordTunnelIdentity(
+          args.hostId,
+          result.data.identity,
+        );
+        return;
+      }
+      if (result.data.type !== "heartbeat") {
+        deps.terminalSessions.handleDaemonTerminalMessage({
+          hostId: args.hostId,
+          message: result.data,
+          sessionId: args.sessionId,
+        });
+      }
+    });
   } catch (error) {
     if (error instanceof ApiError && error.body.code === "inactive_session") {
       deps.logger.info(

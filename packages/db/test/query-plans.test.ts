@@ -93,7 +93,7 @@ interface AssertEmittedQueryPlanUsesIndexArgs {
 class CapturingSlowQueryLogger implements SlowDbQueryLogger {
   readonly debugLogs: LoggedDebug[] = [];
 
-  debug: SlowDbQueryLogger["debug"] = (fields, message) => {
+  info: SlowDbQueryLogger["info"] = (fields, message) => {
     this.debugLogs.push({ fields, message });
   };
 

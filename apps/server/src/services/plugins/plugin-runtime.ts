@@ -44,6 +44,7 @@ import type {
   PluginWireLookup,
   ServiceRuntime,
 } from "./plugin-service-internal.js";
+import { runEventLoopWork } from "../system/event-loop-work.js";
 
 /**
  * Plugin server bundles keep `@bb/plugin-sdk` external (see @bb/plugin-build),
@@ -587,7 +588,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     }
     pending.add(marker);
     try {
-      return { ok: true, value: await run() };
+      return {
+        ok: true,
+        value: await runEventLoopWork(`plugin:${id} ${label}`, run),
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       stats.errorCount += 1;
