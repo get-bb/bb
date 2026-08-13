@@ -475,7 +475,8 @@ export const diffPatchEntrySchema = z.object({
 export type DiffPatchEntry = z.infer<typeof diffPatchEntrySchema>;
 
 // `too_many_files` is specific to the diff table of contents: the server
-// declines to enumerate a diff whose TOC exceeds the server's `DIFF_FILES_MAX_COUNT`
+// declines to enumerate a diff whose TOC exceeds the server's
+// `WORKSPACE_DIFF_MAX_FILES`
 // entry cap. `/status` and `/diff` never produce it, so it stays off the shared
 // `environmentWorkspaceNotApplicableReasonSchema`.
 const diffFilesNotApplicableOutcomeSchema = z

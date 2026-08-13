@@ -34,7 +34,9 @@ import {
   parsePatchId,
   revParse,
   runGit,
+  runGitWithNullRecordLimit,
   type GitCommandResult,
+  type GitNullRecordLimitResult,
   type RunGitOptions,
   runShellPipeline,
   summarizeNumstat,
@@ -227,6 +229,13 @@ type ReadTrackedPatchByPathArgs = {
   maxBytesPerFile: number;
 };
 
+type ResolvedTrackedDiffRange = {
+  baseArgs: string[];
+  rangeArgs: string[];
+  usesUncommittedHead: boolean;
+  mergeBaseRef: string | null;
+};
+
 type WorkspaceMutationTargets = Workspace[];
 type WorkspaceMutationWork<T> = () => Promise<T>;
 
@@ -236,6 +245,9 @@ interface ListWorkspaceFilesRecursivelyArgs {
 }
 
 const WORKSPACE_STATUS_GIT_TIMEOUT_MS = 15_000;
+const TEMPORARY_UNTRACKED_INDEX_ADD_ATTEMPTS = 3;
+const DIFF_NUMSTAT_BASE_BUFFER_BYTES = 64 * 1024;
+const DIFF_NUMSTAT_PER_FILE_BUFFER_BYTES = 16 * 1024;
 
 function parseWorktreeList(porcelainOutput: string): WorktreeEntry[] {
   const entries: WorktreeEntry[] = [];
@@ -844,7 +856,10 @@ export class Workspace {
     await ensureGitRepo(this.path);
     assertPositiveInteger(args.maxFiles, "maxFiles");
 
-    const stats = await this.readDiffStatArtifacts(args.target);
+    const stats = await this.readBoundedDiffStatArtifacts(
+      args.target,
+      args.maxFiles,
+    );
     const numstatByPath = new Map(
       parseNumstatEntriesZ(stats.numstat).map(
         (entry) => [entry.path, entry] as const,
@@ -1545,6 +1560,155 @@ export class Workspace {
   }
 
   /**
+   * Reads at most `maxFiles + 1` tracked/untracked paths before deciding
+   * whether the diff table of contents can be built. Only an in-cap snapshot
+   * proceeds to numstat work, whose output buffer is sized from the admitted
+   * record count. The shortstat is then derived from that bounded numstat.
+   */
+  private async readBoundedDiffStatArtifacts(
+    target: WorkspaceDiffTarget,
+    maxFiles: number,
+  ): Promise<DiffStatArtifacts> {
+    const range = await this.resolveTrackedDiffRange(target);
+    if (range === null) {
+      return {
+        nameStatus: "",
+        numstat: "",
+        shortstat: "",
+        mergeBaseRef: null,
+        untrackedPaths: [],
+      };
+    }
+
+    const overflowCount = maxFiles + 1;
+    const nameStatus = await this.runTrackedNameStatusWithLimit(
+      range,
+      overflowCount,
+    );
+    const trackedEntries = parseNameStatusSourceEntries(nameStatus.stdout);
+    if (trackedEntries.length >= overflowCount) {
+      return {
+        nameStatus: nameStatus.stdout,
+        numstat: "",
+        shortstat: "",
+        mergeBaseRef: range.mergeBaseRef,
+        untrackedPaths: [],
+      };
+    }
+
+    const remainingFileSlots = maxFiles - trackedEntries.length;
+    const untrackedPaths = this.targetIncludesUntracked(target)
+      ? await this.listUntrackedPathsLimited(remainingFileSlots + 1)
+      : [];
+    if (trackedEntries.length + untrackedPaths.length > maxFiles) {
+      return {
+        nameStatus: nameStatus.stdout,
+        numstat: "",
+        shortstat: "",
+        mergeBaseRef: range.mergeBaseRef,
+        untrackedPaths,
+      };
+    }
+
+    if (trackedEntries.length === 0) {
+      return {
+        nameStatus: "",
+        numstat: "",
+        shortstat: "",
+        mergeBaseRef: range.mergeBaseRef,
+        untrackedPaths,
+      };
+    }
+
+    const runUncommittedDiff = createUncommittedDiffRunner(this.path);
+    const runRangeGit = (
+      buildArgs: (rangeArgs: string[]) => string[],
+      options: RunGitOptions,
+    ): Promise<GitCommandResult> =>
+      range.usesUncommittedHead
+        ? runUncommittedDiff((baseRef) => buildArgs([baseRef]), options)
+        : runGit(buildArgs(range.rangeArgs), options);
+    const numstat = await runRangeGit(
+      (rangeArgs) => [
+        ...range.baseArgs,
+        "--numstat",
+        "-M",
+        "-z",
+        ...rangeArgs,
+      ],
+      {
+        cwd: this.path,
+        maxBufferBytes:
+          DIFF_NUMSTAT_BASE_BUFFER_BYTES +
+          trackedEntries.length * DIFF_NUMSTAT_PER_FILE_BUFFER_BYTES,
+        allowTruncatedStdout: true,
+      },
+    );
+    const numstatSummary = parseNumstatEntriesZ(numstat.stdout).reduce(
+      (summary, entry) => ({
+        changedFiles: summary.changedFiles + 1,
+        insertions: summary.insertions + (entry.insertions ?? 0),
+        deletions: summary.deletions + (entry.deletions ?? 0),
+      }),
+      { changedFiles: 0, insertions: 0, deletions: 0 },
+    );
+    return {
+      nameStatus: nameStatus.stdout,
+      numstat: numstat.stdout,
+      shortstat: formatShortstat(numstatSummary),
+      mergeBaseRef: range.mergeBaseRef,
+      untrackedPaths,
+    };
+  }
+
+  private async runTrackedNameStatusWithLimit(
+    range: ResolvedTrackedDiffRange,
+    maxRecords: number,
+  ): Promise<GitNullRecordLimitResult> {
+    const buildArgs = (rangeArgs: string[]): string[] => [
+      ...range.baseArgs,
+      "--name-status",
+      "-M",
+      "-z",
+      ...rangeArgs,
+    ];
+    if (!range.usesUncommittedHead) {
+      return runGitWithNullRecordLimit(
+        buildArgs(range.rangeArgs),
+        { cwd: this.path },
+        "name-status",
+        maxRecords,
+      );
+    }
+
+    const headArgs = buildArgs(["HEAD"]);
+    const headResult = await runGitWithNullRecordLimit(
+      headArgs,
+      { cwd: this.path, allowFailure: true },
+      "name-status",
+      maxRecords,
+    );
+    if (headResult.exitCode === 0) {
+      return headResult;
+    }
+    if (!isMissingHeadRevisionError(headResult.stderr)) {
+      const detail = headResult.stderr.trim();
+      throw new WorkspaceError(
+        "git_command_failed",
+        `git ${headArgs.join(" ")} failed${detail ? `: ${detail}` : ""}`,
+      );
+    }
+
+    const emptyTreeSha = await readEmptyTreeSha(this.path);
+    return runGitWithNullRecordLimit(
+      buildArgs([emptyTreeSha]),
+      { cwd: this.path },
+      "name-status",
+      maxRecords,
+    );
+  }
+
+  /**
    * Runs `--name-status -M`, `--numstat -M`, and `--shortstat` for a target
    * (no patch text), returning the raw outputs plus the resolved merge-base and
    * any untracked working-tree paths the TOC must surface. Mirrors
@@ -1729,47 +1893,55 @@ export class Workspace {
     if (args.paths.length === 0) {
       return new Map();
     }
-    return this.withTemporaryUntrackedIndex(args.paths, async (env) => {
-      const [nameStatus, patch] = await Promise.all([
-        runGit(["diff", "--no-ext-diff", "--name-status", "-z"], {
-          cwd: this.path,
-          env,
-        }),
-        runGit(["diff", "--no-ext-diff", "--binary"], {
-          ...buildDiffOutputGitOptions(
-            this.path,
-            combinedPageBufferBudget(args.paths.length, args.maxBytesPerFile),
-          ),
-          env,
-        }),
-      ]);
-      const entries = parseNameStatusSourceEntries(nameStatus.stdout);
-      const sections = splitPatchIntoSections(patch.stdout);
-      if (entries.length === sections.length) {
-        return new Map(
-          entries.map((entry, index) => [entry.path, sections[index]] as const),
-        );
-      }
-
-      const patchByPath = new Map<string, string>();
-      for (const relativePath of args.paths) {
-        const result = await runGit(
-          [
-            "diff",
-            "--no-ext-diff",
-            "--binary",
-            "--",
-            `:(literal)${relativePath}`,
-          ],
-          {
-            ...buildDiffOutputGitOptions(this.path, args.maxBytesPerFile),
+    return this.withTemporaryUntrackedIndex(
+      args.paths,
+      async (env, indexedPaths) => {
+        const [nameStatus, patch] = await Promise.all([
+          runGit(["diff", "--no-ext-diff", "--name-status", "-z"], {
+            cwd: this.path,
             env,
-          },
-        );
-        patchByPath.set(relativePath, result.stdout);
-      }
-      return patchByPath;
-    });
+          }),
+          runGit(["diff", "--no-ext-diff", "--binary"], {
+            ...buildDiffOutputGitOptions(
+              this.path,
+              combinedPageBufferBudget(
+                indexedPaths.length,
+                args.maxBytesPerFile,
+              ),
+            ),
+            env,
+          }),
+        ]);
+        const entries = parseNameStatusSourceEntries(nameStatus.stdout);
+        const sections = splitPatchIntoSections(patch.stdout);
+        if (entries.length === sections.length) {
+          return new Map(
+            entries.map(
+              (entry, index) => [entry.path, sections[index]] as const,
+            ),
+          );
+        }
+
+        const patchByPath = new Map<string, string>();
+        for (const relativePath of indexedPaths) {
+          const result = await runGit(
+            [
+              "diff",
+              "--no-ext-diff",
+              "--binary",
+              "--",
+              `:(literal)${relativePath}`,
+            ],
+            {
+              ...buildDiffOutputGitOptions(this.path, args.maxBytesPerFile),
+              env,
+            },
+          );
+          patchByPath.set(relativePath, result.stdout);
+        }
+        return patchByPath;
+      },
+    );
   }
 
   /**
@@ -1933,11 +2105,7 @@ export class Workspace {
    */
   private async resolveTrackedDiffRange(
     target: WorkspaceDiffTarget,
-  ): Promise<{
-    baseArgs: string[];
-    rangeArgs: string[];
-    usesUncommittedHead: boolean;
-  } | null> {
+  ): Promise<ResolvedTrackedDiffRange | null> {
     const diffBase = ["diff", "--no-ext-diff"];
     switch (target.type) {
       case "uncommitted":
@@ -1945,6 +2113,7 @@ export class Workspace {
           baseArgs: diffBase,
           rangeArgs: ["HEAD"],
           usesUncommittedHead: true,
+          mergeBaseRef: null,
         };
       case "branch_committed":
       case "all": {
@@ -1959,13 +2128,19 @@ export class Workspace {
           target.type === "branch_committed"
             ? [`${mergeBaseRef}..HEAD`]
             : [mergeBaseRef];
-        return { baseArgs: diffBase, rangeArgs, usesUncommittedHead: false };
+        return {
+          baseArgs: diffBase,
+          rangeArgs,
+          usesUncommittedHead: false,
+          mergeBaseRef,
+        };
       }
       case "commit":
         return {
           baseArgs: ["show", "--format=", "--no-ext-diff"],
           rangeArgs: [target.sha],
           usesUncommittedHead: false,
+          mergeBaseRef: null,
         };
       default: {
         const _exhaustive: never = target;
@@ -2151,7 +2326,10 @@ export class Workspace {
   private async appendUntrackedDiffArtifacts(
     args: AppendUntrackedDiffArtifactsArgs,
   ): Promise<DiffArtifactsWithTruncation> {
-    const untrackedPaths = await this.listUntrackedPaths();
+    const untrackedPaths =
+      args.paths === undefined && args.maxUntrackedFiles !== undefined
+        ? await this.listUntrackedPathsLimited(args.maxUntrackedFiles + 1)
+        : await this.listUntrackedPaths();
     const requestedUntrackedPaths =
       args.paths === undefined
         ? untrackedPaths
@@ -2282,37 +2460,104 @@ export class Workspace {
    */
   private async withTemporaryUntrackedIndex<T>(
     relativePaths: readonly string[],
-    work: (env: NodeJS.ProcessEnv) => Promise<T>,
+    work: (
+      env: NodeJS.ProcessEnv,
+      indexedPaths: readonly string[],
+    ) => Promise<T>,
   ): Promise<T> {
     const tempDir = await createTempDir("bb-untracked-index-");
     const indexPath = path.join(tempDir, "index");
     const pathspecPath = path.join(tempDir, "pathspec");
     const env = { GIT_INDEX_FILE: indexPath };
     try {
-      await fs.writeFile(
-        pathspecPath,
-        relativePaths.map((value) => `:(literal)${value}\0`).join(""),
-      );
+      let candidates = [...relativePaths];
+      for (
+        let attempt = 0;
+        attempt < TEMPORARY_UNTRACKED_INDEX_ADD_ATTEMPTS;
+        attempt += 1
+      ) {
+        candidates = await this.filterExistingUntrackedPaths(candidates);
+        await runGit(["read-tree", "--empty"], { cwd: this.path, env });
+        if (candidates.length === 0) {
+          return await work(env, []);
+        }
+        await fs.writeFile(
+          pathspecPath,
+          candidates.map((value) => `:(literal)${value}\0`).join(""),
+        );
+        const add = await runGit(
+          [
+            "add",
+            "--sparse",
+            "--intent-to-add",
+            `--pathspec-from-file=${pathspecPath}`,
+            "--pathspec-file-nul",
+          ],
+          { cwd: this.path, env, allowFailure: true },
+        );
+        if (add.exitCode === 0) {
+          return await work(env, candidates);
+        }
+        const refreshedCandidates = await this.filterExistingUntrackedPaths(
+          candidates,
+        );
+        if (refreshedCandidates.length === candidates.length) {
+          const detail = add.stderr.trim();
+          throw new WorkspaceError(
+            "git_command_failed",
+            `git add --intent-to-add failed${detail ? `: ${detail}` : ""}`,
+          );
+        }
+        candidates = refreshedCandidates;
+      }
+
+      // A path kept disappearing during every bounded retry. Reset any partial
+      // alternate-index state and let callers return placeholders/empty patches
+      // for this stale snapshot instead of rejecting the whole batch.
       await runGit(["read-tree", "--empty"], { cwd: this.path, env });
-      await runGit(
-        [
-          "add",
-          "--intent-to-add",
-          `--pathspec-from-file=${pathspecPath}`,
-          "--pathspec-file-nul",
-        ],
-        { cwd: this.path, env },
-      );
-      return await work(env);
+      return await work(env, []);
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
+  }
+
+  private async filterExistingUntrackedPaths(
+    relativePaths: readonly string[],
+  ): Promise<string[]> {
+    const existing = await Promise.all(
+      relativePaths.map(async (relativePath) => {
+        try {
+          const stats = await fs.lstat(path.join(this.path, relativePath));
+          return stats.isFile() || stats.isSymbolicLink() ? relativePath : null;
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            "code" in error &&
+            error.code === "ENOENT"
+          ) {
+            return null;
+          }
+          throw error;
+        }
+      }),
+    );
+    return existing.filter((value): value is string => value !== null);
   }
 
   private async listUntrackedPaths(): Promise<string[]> {
     const untrackedFilesOutput = await runGit(
       ["ls-files", "--others", "--exclude-standard", "-z"],
       { cwd: this.path },
+    );
+    return parseNullSeparatedLines(untrackedFilesOutput.stdout);
+  }
+
+  private async listUntrackedPathsLimited(maxPaths: number): Promise<string[]> {
+    const untrackedFilesOutput = await runGitWithNullRecordLimit(
+      ["ls-files", "--others", "--exclude-standard", "-z"],
+      { cwd: this.path },
+      "single",
+      maxPaths,
     );
     return parseNullSeparatedLines(untrackedFilesOutput.stdout);
   }

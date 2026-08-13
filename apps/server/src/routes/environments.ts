@@ -19,10 +19,9 @@ import type { AppDeps } from "../types.js";
 import {
   COMMAND_TIMEOUT_MS,
   DIFF_FILE_PATCH_MAX_BYTES,
-  DIFF_FILES_MAX_COUNT,
+  WORKSPACE_DIFF_MAX_FILES,
   WORKSPACE_DIFF_MAX_DIFF_BYTES,
   WORKSPACE_DIFF_MAX_FILE_LIST_BYTES,
-  WORKSPACE_DIFF_MAX_UNTRACKED_FILES,
 } from "../constants.js";
 import { ApiError } from "../errors.js";
 import {
@@ -406,7 +405,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
         target: toWorkspaceDiffTarget(query),
         maxDiffBytes: WORKSPACE_DIFF_MAX_DIFF_BYTES,
         maxFileListBytes: WORKSPACE_DIFF_MAX_FILE_LIST_BYTES,
-        maxUntrackedFiles: WORKSPACE_DIFF_MAX_UNTRACKED_FILES,
+        maxUntrackedFiles: WORKSPACE_DIFF_MAX_FILES,
       },
     });
     if (result.outcome === "unavailable") {
@@ -437,7 +436,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
         environmentId: target.environmentId,
         workspaceContext: target.workspaceContext,
         target: toWorkspaceDiffTarget(query),
-        maxFiles: DIFF_FILES_MAX_COUNT,
+        maxFiles: WORKSPACE_DIFF_MAX_FILES,
       },
     });
     if (result.outcome === "unavailable") {
@@ -446,11 +445,11 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
         failure: result.failure,
       });
     }
-    if (result.files.length > DIFF_FILES_MAX_COUNT) {
+    if (result.files.length > WORKSPACE_DIFF_MAX_FILES) {
       return context.json({
         outcome: "not_applicable",
         reason: "too_many_files",
-        message: `This diff changes more than ${DIFF_FILES_MAX_COUNT} files; it is too large to display.`,
+        message: `This diff changes more than ${WORKSPACE_DIFF_MAX_FILES} files; it is too large to display.`,
       });
     }
     const files = result.files.map(rawDiffFileStatToEntry);
@@ -640,7 +639,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
               target: { type: "uncommitted" },
               maxDiffBytes: AI_MAX_DIFF_BYTES,
               maxFileListBytes: AI_MAX_FILE_LIST_BYTES,
-              maxUntrackedFiles: WORKSPACE_DIFF_MAX_UNTRACKED_FILES,
+              maxUntrackedFiles: WORKSPACE_DIFF_MAX_FILES,
             },
           }),
         ]);
@@ -745,7 +744,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
             },
             maxDiffBytes: AI_MAX_DIFF_BYTES,
             maxFileListBytes: AI_MAX_FILE_LIST_BYTES,
-            maxUntrackedFiles: WORKSPACE_DIFF_MAX_UNTRACKED_FILES,
+            maxUntrackedFiles: WORKSPACE_DIFF_MAX_FILES,
           },
         });
         const workspaceDiff = requireAvailableWorkspaceDiff(diffResult);
