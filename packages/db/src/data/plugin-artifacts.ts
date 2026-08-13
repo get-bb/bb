@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, or, sql } from "drizzle-orm";
 import type { DbConnection } from "../connection.js";
 import { installedPlugins, pluginArtifacts } from "../schema.js";
 
@@ -109,6 +109,29 @@ export function listPluginArtifactsUnderPath(
     .select()
     .from(pluginArtifacts)
     .where(sql`${pluginArtifacts.path} LIKE ${pattern} ESCAPE '\\'`)
+    .orderBy(asc(pluginArtifacts.path), asc(pluginArtifacts.id))
+    .all();
+}
+
+/** Artifacts stored at `directory` or in one of its descendants. */
+export function listPluginArtifactsAtOrUnderPath(
+  db: DbConnection,
+  directory: string,
+  separator: string,
+): PluginArtifactRow[] {
+  const prefix = directory.endsWith(separator)
+    ? directory
+    : `${directory}${separator}`;
+  const pattern = `${prefix.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
+  return db
+    .select()
+    .from(pluginArtifacts)
+    .where(
+      or(
+        eq(pluginArtifacts.path, directory),
+        sql`${pluginArtifacts.path} LIKE ${pattern} ESCAPE '\\'`,
+      ),
+    )
     .orderBy(asc(pluginArtifacts.path), asc(pluginArtifacts.id))
     .all();
 }

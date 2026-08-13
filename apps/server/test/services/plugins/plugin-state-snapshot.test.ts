@@ -304,6 +304,47 @@ describe("plugin activation snapshots and garbage collection", () => {
     expect(warnings).toEqual([]);
   });
 
+  it("collects the shared checkout after its last nested plugin", async () => {
+    const commit = "b".repeat(40);
+    const checkout = join(
+      dataDir,
+      "plugins",
+      "cache",
+      "git",
+      "host",
+      "repo",
+      commit,
+    );
+    const nestedPath = join(checkout, "plugins", "nested");
+    await mkdir(nestedPath, { recursive: true });
+    await writeFile(join(checkout, "repository-file"), "remove");
+    createPluginArtifact(db, {
+      id: "last-nested",
+      pluginId: "gc-last-nested",
+      sourceKind: "git",
+      npmResolvedVersion: null,
+      gitResolvedCommit: commit,
+      path: nestedPath,
+      integrity: null,
+      contentHash: "hash",
+      validationResult: "valid",
+      validatedAt: 1,
+    });
+
+    const warnings: string[] = [];
+    await garbageCollectPluginArtifacts({
+      db,
+      dataDir,
+      now: Date.now() + 1_000,
+      retentionMs: 0,
+      warn: (message) => warnings.push(message),
+    });
+
+    await expect(stat(checkout)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(listPluginArtifacts(db, "gc-last-nested")).toHaveLength(0);
+    expect(warnings).toEqual([]);
+  });
+
   it("never removes active, snapshot-retained, or unmanaged artifact roots", async () => {
     const cacheRoot = join(dataDir, "plugins", "cache", "git", "source");
     const activePath = join(cacheRoot, "active");

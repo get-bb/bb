@@ -5,6 +5,7 @@ import {
   deletePluginStateSnapshot,
   listExpiredPluginStateSnapshots,
   listGarbageCollectablePluginArtifacts,
+  listPluginArtifactsAtOrUnderPath,
   listPluginArtifactsUnderPath,
   type DbConnection,
   type PluginArtifactRow,
@@ -18,14 +19,20 @@ export function pluginArtifactStorageRoot(
     const index = artifact.path.lastIndexOf(marker);
     return index === -1 ? null : artifact.path.slice(0, index);
   }
-  if (artifact.gitResolvedCommit === null) return null;
+  const checkoutRoot = pluginArtifactGitCheckoutRoot(artifact);
+  if (checkoutRoot === null) return null;
+  return artifact.path === checkoutRoot ? checkoutRoot : artifact.path;
+}
+
+function pluginArtifactGitCheckoutRoot(
+  artifact: PluginArtifactRow,
+): string | null {
+  if (artifact.sourceKind !== "git" || artifact.gitResolvedCommit === null) {
+    return null;
+  }
   const parts = artifact.path.split(sep);
   const commitIndex = parts.lastIndexOf(artifact.gitResolvedCommit);
   if (commitIndex === -1) return null;
-  // A nested plugin shares its checkout with every sibling plugin of the same
-  // repository and commit, so collecting it removes its own directory only.
-  // The checkout itself is left for the siblings that still build into it.
-  if (commitIndex < parts.length - 1) return artifact.path;
   return parts.slice(0, commitIndex + 1).join(sep) || sep;
 }
 
@@ -73,8 +80,21 @@ export async function garbageCollectPluginArtifacts(args: {
     // collected.
     const tenants = listPluginArtifactsUnderPath(args.db, storageRoot, sep);
     if (tenants.some((tenant) => tenant.id !== artifact.id)) continue;
+    const checkoutRoot = pluginArtifactGitCheckoutRoot(artifact);
+    const checkoutHasAnotherTenant =
+      checkoutRoot !== null &&
+      listPluginArtifactsAtOrUnderPath(args.db, checkoutRoot, sep).some(
+        (tenant) => tenant.id !== artifact.id,
+      );
     try {
       await rm(storageRoot, { recursive: true, force: true });
+      if (
+        checkoutRoot !== null &&
+        checkoutRoot !== storageRoot &&
+        !checkoutHasAnotherTenant
+      ) {
+        await rm(checkoutRoot, { recursive: true, force: true });
+      }
       deletePluginArtifact(args.db, artifact.id);
       // Remove an empty npm package/version parent opportunistically. force
       // is false by default, so a sibling artifact keeps it intact.
