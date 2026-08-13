@@ -34,6 +34,69 @@ describe("local API server", () => {
     server = null;
   });
 
+  // The in-app browser can now reach any loopback port bb does not reserve, and
+  // a second bb daemon on this machine sits on one. CORS only hides a response:
+  // a `no-cors` POST with a simple content type skips the preflight and still
+  // runs `/open-in-target`. The origin must be rejected, not just unanswered.
+  it("rejects a foreign browser origin instead of only withholding CORS", async () => {
+    const openInTarget = vi.fn(async () => undefined);
+    server = await startLocalApiServer({
+      hostId: "host-1",
+      localApiConfig: createLocalApiConfig(),
+      serverUrl: "http://server.test",
+      serverPort: 3334,
+      devAppPort: 5173,
+      getConnected: () => true,
+      openInTarget,
+    });
+    const baseUrl = `http://localhost:${server.port}`;
+
+    async function postOpenInTarget(
+      headers: Record<string, string>,
+    ): Promise<number> {
+      const response = await fetch(`${baseUrl}/open-in-target`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          context: { kind: "local" },
+          columnNumber: null,
+          lineNumber: null,
+          path: tmpdir(),
+          targetId: "vscode",
+        }),
+      });
+      return response.status;
+    }
+
+    // A blind cross-origin POST: simple content type, so no preflight guards it.
+    expect(
+      await postOpenInTarget({
+        "content-type": "text/plain",
+        origin: "http://127.0.0.1:3009",
+      }),
+    ).toBe(403);
+    // A DNS-rebound page presents its own public origin.
+    expect(
+      await postOpenInTarget({
+        "content-type": "text/plain",
+        origin: "http://rebind.example",
+      }),
+    ).toBe(403);
+    expect(openInTarget).not.toHaveBeenCalled();
+
+    // The bb app's own origin still works, as does a caller sending none.
+    expect(
+      await postOpenInTarget({
+        "content-type": "application/json",
+        origin: "http://localhost:3334",
+      }),
+    ).toBe(200);
+    expect(await postOpenInTarget({ "content-type": "application/json" })).toBe(
+      200,
+    );
+    expect(openInTarget).toHaveBeenCalledTimes(2);
+  });
+
   it("serves host identity and status over localhost", async () => {
     server = await startLocalApiServer({
       hostId: "host-1",

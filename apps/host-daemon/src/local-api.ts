@@ -208,26 +208,45 @@ export async function startLocalApiServer(
     value: options.devAppPort,
   });
   const allowedCorsOrigins = new Set<string>(buildLocalAppOrigins(originArgs));
+  const isAllowedAppOrigin = async (
+    origin: string,
+    requestUrl: string,
+  ): Promise<boolean> =>
+    origin === new URL(requestUrl).origin ||
+    allowedCorsOrigins.has(origin) ||
+    (await isConfiguredClientOrigin(origin, clientConfigLoader));
+
   app.use(
     "*",
     cors({
-      origin: async (origin, context) => {
-        const requestOrigin = new URL(context.req.url).origin;
-        if (
-          origin === requestOrigin ||
-          allowedCorsOrigins.has(origin) ||
-          (await isConfiguredClientOrigin(origin, clientConfigLoader))
-        ) {
-          return origin;
-        }
-        return null;
-      },
+      origin: async (origin, context) =>
+        (await isAllowedAppOrigin(origin, context.req.url)) ? origin : null,
     }),
   );
 
   app.get(options.localApiConfig.healthPath, (c) =>
     c.text(healthResponseSchema.parse(options.localApiConfig.healthValue)),
   );
+  // CORS hides a response; it does not stop the request being acted on. A
+  // `no-cors` POST with a simple content type skips the preflight, reaches
+  // `/open-in-target`, and runs it, while the page never reads the reply. The
+  // in-app browser can now reach any loopback port it is not told to avoid, and
+  // a second bb daemon on this machine sits on a port the desktop cannot name,
+  // so reject a foreign browser origin outright instead of only withholding the
+  // response header. Non-browser callers send no `Origin` and are unaffected.
+  app.use("*", async (c, next) => {
+    const origin = c.req.header("origin");
+    if (
+      origin !== undefined &&
+      !(await isAllowedAppOrigin(origin, c.req.url))
+    ) {
+      return c.json(
+        { error: `origin "${origin}" is not a local BB app origin` },
+        403,
+      );
+    }
+    await next();
+  });
   app.use("*", async (c, next) => {
     if (options.localApiConfig.mode === "health-only") {
       return c.notFound();
