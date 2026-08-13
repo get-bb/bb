@@ -7,6 +7,21 @@ import { createBenchTestStore, evidenceBundle } from "./store/test-helpers.js";
 
 const hosts: Array<ReturnType<typeof createFakePluginHost>> = [];
 
+function requiredNestedString(value: unknown, path: readonly (string | number)[]): string {
+  let current = value;
+  for (const part of path) {
+    if (typeof part === "number") {
+      if (!Array.isArray(current)) throw new Error(`Expected array at ${String(part)}`);
+      current = current[part];
+    } else {
+      if (typeof current !== "object" || current === null) throw new Error(`Expected object at ${part}`);
+      current = Reflect.get(current, part);
+    }
+  }
+  if (typeof current !== "string") throw new Error(`Expected string at ${path.join(".")}`);
+  return current;
+}
+
 afterEach(async () => {
   await Promise.all(hosts.splice(0).map((host) => host.harness.lifecycle.dispose()));
 });
@@ -103,8 +118,65 @@ describe("bench registration", () => {
       firmwareSha256: "a".repeat(64),
       status: "running",
     });
-    const response = await host.harness.behavior.fetchHttp("GET", "/bench/runs/artifact");
-    expect(response.status).toBe(501);
+    const startedPage = await host.harness.behavior.callRpc("benchRunsList", {
+      projectId: "project-a",
+      projectVersionId: "version-a",
+      pageSize: 20,
+      continuation: null,
+    });
+    expect(startedPage).toMatchObject({
+      items: [
+        {
+          fields: {
+            kind: "bench",
+            threadId: "thread-bench-a",
+            hostId: "host-a",
+            config: null,
+            durationMs: null,
+            logAvailable: false,
+            logCursor: null,
+          },
+        },
+      ],
+    });
+    const runId = requiredNestedString(startedPage, ["items", 0, "key"]);
+    context.db().prepare(
+      `UPDATE verification_runs
+       SET raw = ?, log_cursor = 'forge-cursor-a'
+       WHERE run_id = ?`,
+    ).run(JSON.stringify({ jobs: [{ logTail: ["one", "two", "three"] }] }), runId);
+    const firstLogPage = await host.harness.behavior.callRpc("benchLogsList", {
+      projectId: "project-a",
+      projectVersionId: "version-a",
+      runId,
+      pageSize: 2,
+      continuation: null,
+    });
+    expect(firstLogPage).toMatchObject({
+      items: [
+        { sequence: 0, level: "stdout", text: "one" },
+        { sequence: 1, level: "stdout", text: "two" },
+      ],
+      total: 3,
+      next: expect.any(String),
+    });
+    const secondLogPage = await host.harness.behavior.callRpc("benchLogsList", {
+      projectId: "project-a",
+      projectVersionId: "version-a",
+      runId,
+      pageSize: 2,
+      continuation: requiredNestedString(firstLogPage, ["next"]),
+    });
+    expect(secondLogPage).toMatchObject({
+      items: [{ sequence: 2, text: "three" }],
+      total: 3,
+      next: null,
+    });
+    expect(host.harness.registrations.httpRoutes).toEqual([
+      expect.objectContaining({ method: "GET", path: "/bench/runs/:runId/log", auth: "local" }),
+      expect.objectContaining({ method: "GET", path: "/bench/runs/:runId/artifacts/:artifactName", auth: "local" }),
+      expect.objectContaining({ method: "GET", path: "/bench/runs/:runId/attestation", auth: "local" }),
+    ]);
     expect(host.harness.registrations.cli).toBeNull();
 
     const service = host.harness.behavior.runService("bench-jobs");
