@@ -17,6 +17,7 @@ import type {
   ProviderTurnStateRegistry,
 } from "../shared/turn-state.js";
 import { createScopedItemIdFactory } from "../shared/scoped-item-ids.js";
+import { resolveProviderTerminalTurn } from "../shared/provider-terminal-turn.js";
 import { UNSTAMPED_THREAD_ID } from "../shared/unstamped-thread-id.js";
 import type { ProviderTranslationContext } from "../provider-adapter.js";
 import {
@@ -908,26 +909,12 @@ export function translateClaudeSdkMessage(
         });
       }
       const message = parsedMessage.data;
-      // A run can report a result without ever starting a turn: a CLI-local
-      // slash command like /clear resolves before any model call, so nothing
-      // emits `turn/started` and there is no `currentTurnId` to complete.
-      // Settle it the way the synthetic no-response message above does — a
-      // pending accepted message means a prompt was dispatched and no turn has
-      // claimed it, so open the turn here and close it below. Without this the
-      // thread stays `active` indefinitely, because `run.succeeded` never fires
-      // and `active` has no other exit; a trailing result whose turn already
-      // closed (a stop finishes the open turn before the CLI's result lands)
-      // still drains to nothing, because starting the turn drained the pending
-      // message with it.
-      const turnId =
-        state.currentTurnId ??
-        (state.pendingAcceptedUserMessages.length > 0
-          ? args.ensureTurnStarted({
-              events,
-              state,
-              threadId,
-            })
-          : undefined);
+      const turnId = resolveProviderTerminalTurn({
+        events,
+        registry: args.turnState,
+        state,
+        threadId,
+      });
       if (turnId) {
         const contextWindowUsage = extractClaudeContextWindowUsage({
           fallbackModelContextWindow: state.selectedModelContextWindow,

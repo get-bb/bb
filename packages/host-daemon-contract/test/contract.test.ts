@@ -1056,13 +1056,16 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
+  // Version 115 settles zero-work provider prompts with a complete synthetic
+  // turn lifecycle. Older daemons can leave locally handled prompts active
+  // indefinitely, so enrolled machines must update for reliable completion.
   // Version 114 lets the daemon report `none` in Pi model reasoning efforts.
   // A version 113 server accepts that value on the wire but rejects it later
   // against its Pi provider ladder, so enrolled machines must not run that
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
-  it("uses protocol version 114 for Pi thinking-off model capabilities", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(114);
+  it("uses protocol version 115 for zero-work provider turn completion", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(115);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

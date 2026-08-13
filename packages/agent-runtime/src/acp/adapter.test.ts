@@ -774,6 +774,40 @@ describe("acp adapter event translation", () => {
     ]);
   });
 
+  it("settles accepted input when completion arrives before an update", () => {
+    const adapter = createAdapter();
+    adapter.translateAcceptedCommand({
+      command: {
+        type: "turn/start",
+        clientRequestId: "creq_222222228e",
+        input: [promptTextInput({ text: "/agent-local-command" })],
+        options: fullProviderExecutionContext,
+        providerThreadId: "sess-1",
+        threadId: "thread-1",
+      },
+    });
+
+    const events = adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "acp/turn/completed",
+        params: { threadId: "thread-1", stopReason: "end_turn" },
+      },
+      THREAD_CONTEXT,
+    );
+
+    expect(events.map((event) => event.type)).toEqual([
+      "turn/started",
+      "turn/input/accepted",
+      "turn/completed",
+    ]);
+    expect(events.at(-1)).toMatchObject({
+      type: "turn/completed",
+      scope: turnScope("turn-1"),
+      status: "completed",
+    });
+  });
+
   it("translates ACP usage updates into exact context-window usage", () => {
     const adapter = createAdapter();
     startTurn(adapter);

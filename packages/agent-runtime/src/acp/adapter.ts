@@ -63,6 +63,7 @@ import { createStandardAdapterMembers } from "../shared/standard-adapter-members
 import { completeStartedToolItem } from "../shared/tool-item-translation.js";
 import { buildUnhandledProviderEvents } from "../shared/provider-unhandled-event.js";
 import { createScopedItemIdFactory } from "../shared/scoped-item-ids.js";
+import { resolveProviderTerminalTurn } from "../shared/provider-terminal-turn.js";
 import {
   createProviderTurnStateRegistry,
   finishOpenProviderTurn,
@@ -987,11 +988,16 @@ export function createAcpProviderAdapter(
     state: AcpTurnState,
     context?: ProviderTranslationContext,
   ): ThreadEvent[] {
-    const currentTurnId = state.currentTurnId;
-    if (!currentTurnId) {
+    const events: ThreadEvent[] = [];
+    const currentTurnId = resolveProviderTerminalTurn({
+      events,
+      registry: turnState,
+      state,
+      threadId: UNSTAMPED_THREAD_ID,
+    });
+    if (currentTurnId === undefined) {
       return [];
     }
-    const events: ThreadEvent[] = [];
     const openToolCallStatus: ThreadEventItemStatus =
       stopReason === "end_turn"
         ? "completed"

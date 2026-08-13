@@ -53,6 +53,7 @@ import {
   finishOpenProviderTurn,
 } from "../shared/turn-state.js";
 import { createScopedItemIdFactory } from "../shared/scoped-item-ids.js";
+import { resolveProviderTerminalTurn } from "../shared/provider-terminal-turn.js";
 import {
   buildUnhandledProviderEvents,
   createUnhandledProviderEvent,
@@ -202,6 +203,16 @@ const piEventTypeSchema = z
     ]),
   })
   .passthrough();
+
+const piPromptSettledEnvelopeSchema = z.object({
+  jsonrpc: z.literal("2.0"),
+  method: z.literal("pi/prompt/settled"),
+  params: z.object({
+    threadId: z.string().min(1),
+    status: z.enum(["completed", "failed"]),
+    error: z.string().optional(),
+  }),
+});
 
 // Pi events we deliberately drop rather than translate. Without this the
 // fallback treats them as unknown and emits a `provider/unhandled` event, which
@@ -661,6 +672,36 @@ export function createPiProviderAdapter(
           });
     }
 
+    const promptSettledEnvelope =
+      piPromptSettledEnvelopeSchema.safeParse(event);
+    if (promptSettledEnvelope.success) {
+      const stateThreadId =
+        context?.threadId ?? promptSettledEnvelope.data.params.threadId;
+      const state = turnState.getOrCreate({ threadId: stateThreadId });
+      const events: ThreadEvent[] = [];
+      const turnId = resolveProviderTerminalTurn({
+        events,
+        registry: turnState,
+        state,
+        threadId: UNSTAMPED_THREAD_ID,
+      });
+      if (turnId === undefined) {
+        return events;
+      }
+      events.push({
+        type: "turn/completed",
+        threadId: UNSTAMPED_THREAD_ID,
+        providerThreadId: "",
+        scope: turnScope(turnId),
+        status: promptSettledEnvelope.data.params.status,
+        ...(promptSettledEnvelope.data.params.error !== undefined
+          ? { error: { message: promptSettledEnvelope.data.params.error } }
+          : {}),
+      });
+      turnState.finishTurn({ state, threadId: stateThreadId });
+      return events;
+    }
+
     const identityEnvelope = threadIdentityEnvelopeSchema.safeParse(event);
     if (identityEnvelope.success) {
       const { threadId = UNSTAMPED_THREAD_ID, providerThreadId } =
@@ -829,32 +870,39 @@ export function createPiProviderAdapter(
         if (!piEvent.success) {
           return buildUnexpectedEvent(event);
         }
-        const currentTurnId = state.currentTurnId;
-        if (!currentTurnId) {
-          break;
+        const currentTurnId = resolveProviderTerminalTurn({
+          events,
+          registry: turnState,
+          state,
+          threadId,
+        });
+        if (currentTurnId === undefined) {
+          return events;
         }
         const lastAssistant = findLastAssistantMessage(piEvent.data.messages);
         if (piEvent.data.willRetry) {
-          return lastAssistant && isPiAssistantError(lastAssistant)
-            ? [
-                {
-                  type: "provider/error",
-                  threadId,
-                  providerThreadId: "",
-                  scope: turnScope(currentTurnId),
-                  message: "Provider error",
-                  detail: lastAssistant.errorMessage,
-                  willRetry: true,
-                },
-              ]
-            : [];
+          if (lastAssistant && isPiAssistantError(lastAssistant)) {
+            events.push({
+              type: "provider/error",
+              threadId,
+              providerThreadId: "",
+              scope: turnScope(currentTurnId),
+              message: "Provider error",
+              detail: lastAssistant.errorMessage,
+              willRetry: true,
+            });
+          }
+          return events;
         }
         if (lastAssistant && isPiAssistantError(lastAssistant)) {
           resetPiCommandOutputSnapshots(state);
-          return turnState.buildErrorEvents({
-            contextThreadId: context?.threadId,
-            detail: lastAssistant.errorMessage,
-          });
+          return [
+            ...events,
+            ...turnState.buildErrorEvents({
+              contextThreadId: context?.threadId,
+              detail: lastAssistant.errorMessage,
+            }),
+          ];
         }
         if (lastAssistant) {
           const text = extractAssistantText(lastAssistant);

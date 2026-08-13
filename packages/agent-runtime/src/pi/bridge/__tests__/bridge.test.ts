@@ -888,6 +888,38 @@ describe("pi bridge", () => {
     }
   });
 
+  it("reports when a turn/start prompt settles without SDK turn events", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const piSession = createControlledPiAgentSession();
+    mockCreateAgentSession.mockResolvedValue({ session: piSession });
+
+    try {
+      bridge.sendRequest(50, "thread/start", {
+        cwd: "/tmp/worktree",
+        threadId: "thread-zero-work",
+      });
+      await bridge.waitForResponse(50);
+
+      bridge.sendRequest(51, "turn/start", {
+        threadId: "thread-zero-work",
+        input: [{ type: "text", text: "/local-extension-command" }],
+      });
+      await bridge.waitForResponse(51);
+      await bridge.flushWork();
+
+      expect(bridge.messages).toContainEqual({
+        jsonrpc: "2.0",
+        method: "pi/prompt/settled",
+        params: {
+          threadId: "thread-zero-work",
+          status: "completed",
+        },
+      });
+    } finally {
+      bridge.restore();
+    }
+  });
+
   it("emits an error when a queued steer is not consumed before agent end", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const piSession = createControlledPiAgentSession();

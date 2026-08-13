@@ -2256,10 +2256,18 @@ describe("claude-code provider adapter", () => {
       },
       { threadId: "bb-thread-1" },
     );
-    adapter.translateEvent(
-      { type: "result", subtype: "success", session_id: "claude-session-1" },
-      { threadId: "bb-thread-1" },
-    );
+    expect(
+      adapter.buildCommandPlan({
+        type: "thread/stop",
+        threadId: "bb-thread-1",
+        providerThreadId: "claude-session-1",
+        activeTurnId: "turn-1",
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "thread/stop",
+      params: { threadId: "bb-thread-1" },
+    });
 
     // A stop finishes the open turn before the CLI's result lands, so a result
     // with no open turn is routine. It must not open a second, empty turn.

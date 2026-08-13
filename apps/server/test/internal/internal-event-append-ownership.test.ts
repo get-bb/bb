@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { events, getThread } from "@bb/db";
+import { events, getThread, listQueuedThreadMessages } from "@bb/db";
 import { threadScope, turnScope } from "@bb/domain";
 import {
   groupHostDaemonEvents,
@@ -18,6 +18,7 @@ import {
   seedEvent,
   seedHostSession,
   seedProjectWithSource,
+  seedQueuedMessage,
   seedThread,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
@@ -400,6 +401,75 @@ describe("internal event append ownership", () => {
           .map((row) => row.sequence)
           .sort((left, right) => left - right),
       ).toEqual([1, 2]);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("auto-sends a queued message after a zero-work turn completes", async () => {
+    const { environment, harness, session, thread } = await setupEventRoute();
+    try {
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        inputText: "/clear",
+        providerThreadId: "provider-zero-work",
+        threadId: thread.id,
+      });
+      seedQueuedMessage(harness.deps, {
+        content: [
+          {
+            type: "text",
+            text: "queued behind zero-work turn",
+            mentions: [],
+          },
+        ],
+        threadId: thread.id,
+      });
+
+      const response = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/started",
+              threadId: thread.id,
+              providerThreadId: "provider-zero-work",
+              scope: turnScope("turn-zero-work"),
+            },
+          },
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/completed",
+              threadId: thread.id,
+              providerThreadId: "provider-zero-work",
+              scope: turnScope("turn-zero-work"),
+              status: "completed",
+            },
+          },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+      const queuedTurn = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "turn.submit" && command.threadId === thread.id,
+      );
+      expect(queuedTurn.command).toMatchObject({
+        type: "turn.submit",
+        input: [
+          {
+            type: "text",
+            text: "queued behind zero-work turn",
+            mentions: [],
+          },
+        ],
+      });
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+      expect(getThread(harness.db, thread.id)?.status).toBe("active");
     } finally {
       await harness.cleanup();
     }

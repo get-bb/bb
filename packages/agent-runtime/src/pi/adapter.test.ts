@@ -733,6 +733,40 @@ describe("pi provider adapter", () => {
     );
   });
 
+  it("settles accepted input when the prompt resolves before agent_start", () => {
+    const adapter = createPiProviderAdapter();
+    adapter.translateAcceptedCommand({
+      command: {
+        type: "turn/start",
+        clientRequestId: "creq_222222228e",
+        input: [promptTextInput({ text: "/local-extension-command" })],
+        options: fullProviderExecutionContext,
+        providerThreadId: "pi-session-1",
+        threadId: "bb-t1",
+      },
+    });
+
+    const events = adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "pi/prompt/settled",
+        params: { threadId: "bb-t1", status: "completed" },
+      },
+      { threadId: "bb-t1" },
+    );
+
+    expect(events.map((event) => event.type)).toEqual([
+      "turn/started",
+      "turn/input/accepted",
+      "turn/completed",
+    ]);
+    expect(events.at(-1)).toMatchObject({
+      type: "turn/completed",
+      scope: turnScope("turn-1"),
+      status: "completed",
+    });
+  });
+
   it("translateEvent keeps turn_start as internal noise while agent_start owns the bb turn", () => {
     const adapter = createPiProviderAdapter();
     adapter.translateEvent(loadFixture("agent-start.json"));
