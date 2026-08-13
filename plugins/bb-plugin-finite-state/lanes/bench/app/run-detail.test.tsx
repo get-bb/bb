@@ -43,7 +43,7 @@ describe("RunDetail", () => {
     expect(slot.getByText("Artifacts")).toBeTruthy();
     expect(slot.getByText("Attestation")).toBeTruthy();
     expect(slot.getByRole("link", { name: "Download envelope" }).getAttribute("href")).toBe(
-      "/api/v1/plugins/finite-state/http/bench/runs/attestation?runId=run-1",
+      "/api/v1/plugins/finite-state/http/bench/runs/attestation?projectId=p1&runId=run-1",
     );
     expect(slot.getByText("OTA verdict")).toBeTruthy();
     expect(slot.inspection.rpcCalls).toContainEqual(expect.objectContaining({

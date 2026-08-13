@@ -13,6 +13,7 @@ export interface BenchArtifactLink {
 }
 
 interface ArtifactListProps {
+  projectId: string;
   runId: string;
   artifacts: Array<{
     name: string;
@@ -33,7 +34,7 @@ function bytes(value: number | null): string {
   return `${(value / 1_048_576).toFixed(1)} MiB`;
 }
 
-export function ArtifactList({ runId, artifacts }: ArtifactListProps): React.JSX.Element {
+export function ArtifactList({ projectId, runId, artifacts }: ArtifactListProps): React.JSX.Element {
   if (artifacts.length === 0) return <p className="text-sm text-muted-foreground">No artifact metadata has been recorded for this run.</p>;
   return (
     <div className="space-y-2">
@@ -43,7 +44,7 @@ export function ArtifactList({ runId, artifacts }: ArtifactListProps): React.JSX
         if (!safeName) {
           return <Alert key={`unsafe-${index}`}><Icon name="AlertTriangle" /><AlertDescription>An artifact has an unsafe or expired logical name. Refresh run evidence to recover it.</AlertDescription></Alert>;
         }
-        const href = `/api/v1/plugins/finite-state/http/bench/runs/artifact?runId=${encodeURIComponent(runId)}&artifactName=${encodeURIComponent(artifact.name)}`;
+        const href = `/api/v1/plugins/finite-state/http/bench/runs/artifact?projectId=${encodeURIComponent(projectId)}&runId=${encodeURIComponent(runId)}&artifactName=${encodeURIComponent(artifact.name)}`;
         return (
           <div className="flex items-center gap-3 rounded-md border border-border bg-background p-3" key={`${artifact.name}-${index}`}>
             <Icon className="text-muted-foreground" name="Download" />

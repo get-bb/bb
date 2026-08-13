@@ -171,6 +171,43 @@ describe("bench registration", () => {
        SET raw = ?, log_cursor = 'forge-cursor-a'
        WHERE run_id = ?`,
     ).run(JSON.stringify({ jobs: [{ logTail: ["one", "two", "three"] }] }), runId);
+    context.db().prepare(
+      `INSERT INTO attestations
+         (project_id, project_version_id, generation_id, attestation_id, run_id,
+          format, subject_digest, payload, signature_verified,
+          subject_matches_run, verified, created_at, pulled_at)
+       VALUES ('project-a', 'version-a', 'generation-a', 'attestation-a', ?,
+               'in-toto', ?, ?, 1, 1, 1,
+               '2026-08-12T20:00:01.000Z', '2026-08-12T20:00:01.000Z')`,
+    ).run(runId, `sha256:${"a".repeat(64)}`, JSON.stringify({ project: "project-a" }));
+    context.db().exec(
+      `INSERT INTO pull_generation
+         (project_id, project_version_id, generation_id, status,
+          requested_kinds_json, started_at, completed_at, accepted_at)
+       VALUES ('project-b', 'version-b', 'generation-b', 'accepted',
+               '["verificationRun"]', '2026-08-12T20:00:00.000Z',
+               '2026-08-12T20:00:00.000Z', '2026-08-12T20:00:00.000Z');
+       INSERT INTO sync_state
+         (project_id, project_version_id, entity_kind, accepted_generation_id,
+          base_revision, last_pull)
+       VALUES ('project-b', 'version-b', 'verificationRun', 'generation-b', 1,
+               '2026-08-12T20:00:00.000Z');
+       INSERT INTO verification_runs
+         (project_id, project_version_id, generation_id, run_id, tier,
+          matrix_col, kind, status, raw, synced_at)
+       VALUES ('project-b', 'version-b', 'generation-b', 'run-foreign', 'tier0',
+               'static', 'bench', 'completed',
+               '{"jobs":[{"logTail":["foreign secret"]}]}',
+               '2026-08-12T20:00:01.000Z');
+       INSERT INTO attestations
+         (project_id, project_version_id, generation_id, attestation_id, run_id,
+          format, subject_digest, payload, signature_verified,
+          subject_matches_run, verified, created_at, pulled_at)
+       VALUES ('project-b', 'version-b', 'generation-b', 'attestation-b',
+               'run-foreign', 'in-toto', 'sha256:${"b".repeat(64)}',
+               '{"project":"project-b"}', 1, 1, 1,
+               '2026-08-12T20:00:01.000Z', '2026-08-12T20:00:01.000Z');`,
+    );
     const firstLogPage = await host.harness.behavior.callRpc("benchLogsList", {
       projectId: "project-a",
       projectVersionId: "version-a",
@@ -227,30 +264,49 @@ describe("bench registration", () => {
     });
     const downloadedLog = await host.harness.behavior.fetchHttp(
       "GET",
-      `/bench/runs/log?runId=${encodeURIComponent(runId)}`,
+      `/bench/runs/log?projectId=project-a&runId=${encodeURIComponent(runId)}`,
     );
     expect(downloadedLog.status).toBe(206);
     expect(downloadedLog.headers.get("X-BB-Log-Completeness")).toBe("cached-tail");
     await expect(downloadedLog.text()).resolves.toBe("one\ntwo\nthree\n");
     const artifactRecovery = await host.harness.behavior.fetchHttp(
       "GET",
-      `/bench/runs/artifact?runId=${encodeURIComponent(runId)}&artifactName=report.json`,
+      `/bench/runs/artifact?projectId=project-a&runId=${encodeURIComponent(runId)}&artifactName=report.json`,
     );
     expect(artifactRecovery.status).toBe(404);
     await expect(artifactRecovery.json()).resolves.toMatchObject({
       error: { code: "BENCH_STREAM_UNAVAILABLE" },
     });
-    const attestationRecovery = await host.harness.behavior.fetchHttp(
+    const downloadedAttestation = await host.harness.behavior.fetchHttp(
       "GET",
-      `/bench/runs/attestation?runId=${encodeURIComponent(runId)}`,
+      `/bench/runs/attestation?projectId=project-a&runId=${encodeURIComponent(runId)}`,
     );
-    expect(attestationRecovery.status).toBe(404);
-    await expect(attestationRecovery.json()).resolves.toMatchObject({
-      error: { code: "BENCH_STREAM_UNAVAILABLE" },
-    });
+    expect(downloadedAttestation.status).toBe(200);
+    await expect(downloadedAttestation.json()).resolves.toEqual({ project: "project-a" });
+    for (const path of [
+      "/bench/runs/log?projectId=project-a&runId=run-foreign",
+      "/bench/runs/attestation?projectId=project-a&runId=run-foreign",
+      "/bench/runs/log?projectId=project-a&runId=run-missing",
+      "/bench/runs/attestation?projectId=project-a&runId=run-missing",
+    ]) {
+      const unavailable = await host.harness.behavior.fetchHttp("GET", path);
+      expect(unavailable.status).toBe(404);
+    }
+    const foreignOwnerLog = await host.harness.behavior.fetchHttp(
+      "GET",
+      "/bench/runs/log?projectId=project-b&runId=run-foreign",
+    );
+    expect(foreignOwnerLog.status).toBe(206);
+    await expect(foreignOwnerLog.text()).resolves.toBe("foreign secret\n");
+    const foreignOwnerAttestation = await host.harness.behavior.fetchHttp(
+      "GET",
+      "/bench/runs/attestation?projectId=project-b&runId=run-foreign",
+    );
+    expect(foreignOwnerAttestation.status).toBe(200);
+    await expect(foreignOwnerAttestation.json()).resolves.toEqual({ project: "project-b" });
     const traversalRejected = await host.harness.behavior.fetchHttp(
       "GET",
-      "/bench/runs/artifact?runId=..%2Frun&artifactName=..%2Fsecret",
+      "/bench/runs/artifact?projectId=project-a&runId=..%2Frun&artifactName=..%2Fsecret",
     );
     expect(traversalRejected.status).toBe(400);
     expect(host.harness.registrations.httpRoutes).toEqual([

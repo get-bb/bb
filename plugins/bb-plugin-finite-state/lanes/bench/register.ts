@@ -248,10 +248,14 @@ function encodeLogCursor(runId: string, after: number): string {
   return Buffer.from(JSON.stringify({ runId, after }), "utf8").toString("base64url");
 }
 
-function uniqueRunRowById(db: Database.Database, runId: string): RunSurfaceRow | null {
-  if (!SAFE_ID.test(runId)) return null;
+function uniqueRunRowById(
+  db: Database.Database,
+  projectId: string,
+  runId: string,
+): RunSurfaceRow | null {
+  if (!SAFE_ID.test(projectId) || !SAFE_ID.test(runId)) return null;
   const rows = db
-    .prepare<[string], RunSurfaceRow>(
+    .prepare<[string, string], RunSurfaceRow>(
       `SELECT r.run_id, r.project_id, r.project_version_id, r.kind, r.trigger,
               r.host_id, r.thread_id, r.config, r.duration_ms, r.log_locator,
               r.log_cursor, r.raw, r.started_at, r.finished_at, r.synced_at
@@ -261,10 +265,10 @@ function uniqueRunRowById(db: Database.Database, runId: string): RunSurfaceRow |
         AND s.project_version_id = r.project_version_id
         AND s.entity_kind = 'verificationRun'
         AND s.accepted_generation_id = r.generation_id
-       WHERE r.run_id = ?
+       WHERE r.project_id = ? AND r.run_id = ?
        LIMIT 2`,
     )
-    .all(runId);
+    .all(projectId, runId);
   return rows.length === 1 ? rows[0]! : null;
 }
 
@@ -574,9 +578,12 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
   });
 
   bb.http.route("GET", "/bench/runs/log", async (http) => {
+    const projectId = queryRunId(http.req.query("projectId"));
     const runId = queryRunId(http.req.query("runId"));
-    if (runId === null) return streamUnavailable("A valid runId query parameter is required.", 400);
-    const row = uniqueRunRowById(db, runId);
+    if (projectId === null || runId === null) {
+      return streamUnavailable("Valid projectId and runId query parameters are required.", 400);
+    }
+    const row = uniqueRunRowById(db, projectId, runId);
     if (!row) return streamUnavailable("Run log is unknown or ambiguous.", 404);
     if (row.log_locator !== null) {
       const persisted = await readPersistedBenchLog(bb.storage.kv, row.log_locator);
@@ -600,12 +607,13 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
     return new Response(body, { status: 206, headers });
   }, { auth: "local" });
   bb.http.route("GET", "/bench/runs/artifact", async (http) => {
+    const projectId = queryRunId(http.req.query("projectId"));
     const runId = queryRunId(http.req.query("runId"));
     const artifactName = queryArtifactName(http.req.query("artifactName"));
-    if (runId === null || artifactName === null) {
-      return streamUnavailable("Valid runId and artifactName query parameters are required.", 400);
+    if (projectId === null || runId === null || artifactName === null) {
+      return streamUnavailable("Valid projectId, runId and artifactName query parameters are required.", 400);
     }
-    const row = uniqueRunRowById(db, runId);
+    const row = uniqueRunRowById(db, projectId, runId);
     if (!row) {
       return streamUnavailable("Artifact is unknown or has an unsafe logical name.", 404);
     }
@@ -629,9 +637,12 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
     );
   }, { auth: "local" });
   bb.http.route("GET", "/bench/runs/attestation", async (http) => {
+    const projectId = queryRunId(http.req.query("projectId"));
     const runId = queryRunId(http.req.query("runId"));
-    if (runId === null) return streamUnavailable("A valid runId query parameter is required.", 400);
-    const row = uniqueRunRowById(db, runId);
+    if (projectId === null || runId === null) {
+      return streamUnavailable("Valid projectId and runId query parameters are required.", 400);
+    }
+    const row = uniqueRunRowById(db, projectId, runId);
     if (!row) return streamUnavailable("Attestation is unknown or ambiguous.", 404);
     const attestation = db
       .prepare<[string, string, string], AttestationStreamRow>(

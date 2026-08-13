@@ -152,7 +152,7 @@ export function LogTail({ projectId, projectVersionId, runId }: LogTailProps): R
     estimateSize: () => 24,
     overscan: 12,
   });
-  const logDownload = `/api/v1/plugins/finite-state/http/bench/runs/log?runId=${encodeURIComponent(runId)}`;
+  const logDownload = `/api/v1/plugins/finite-state/http/bench/runs/log?projectId=${encodeURIComponent(projectId)}&runId=${encodeURIComponent(runId)}`;
 
   return (
     <section aria-labelledby={`log-tail-${runId}`} className="overflow-hidden rounded-lg border border-border bg-card">
