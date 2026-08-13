@@ -4,6 +4,7 @@ import { basename, join, relative, resolve, sep } from "node:path";
 
 import type { Json, PlatformClient } from "../../../lib/remote/types.js";
 import { ENTITIES } from "../../../lib/sync/registry.js";
+import { stripVexProvenance } from "../../findings/bulk/readback.js";
 import { createSerializer } from "../serialize/serializer.js";
 import { SerializeError } from "../serialize/yaml.js";
 import type {
@@ -77,7 +78,7 @@ function vexPayload(row: Readonly<Record<string, Json>>): Record<string, unknown
     status: optionalString(row, "vexStatus"),
     justification: optionalString(row, "vexJustification"),
     response: optionalString(row, "vexResponse"),
-    reason: optionalString(row, "vexReason"),
+    reason: stripVexProvenance(optionalString(row, "vexReason")),
   };
   return Object.values(tuple).every((value) => value === null) ? null : tuple;
 }
