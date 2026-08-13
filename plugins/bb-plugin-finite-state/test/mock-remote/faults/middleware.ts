@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import type { MockHandler, MockHandlerContext, MockHandlerRegistry } from "../types.js";
 import type { FaultControllerRuntime, FaultSelection } from "./controller.js";
 import {
@@ -8,6 +11,17 @@ import {
 
 const TRANSPORT_RESET_STATUS = 599;
 export const MOCK_TRANSPORT_RESET_HEADER = "X-FS-Mock-Transport-Reset";
+
+function frozenFaultResponse(
+  context: MockHandlerContext,
+  fileName: string,
+  status: number,
+): Response {
+  return new Response(readFileSync(resolve(context.fixtureRoot, "faults", fileName)), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
 
 function requestWithJson(request: Request, value: unknown): Request {
   const headers = new Headers(request.headers);
@@ -103,21 +117,11 @@ async function invoke(
   }
   if (spec.name === "as-stale-tara-state") {
     controller.record(selected, "stale-before-mutation");
-    return Response.json({
-      code: "stale_tara_state",
-      entityId: "as-component-01",
-      service: "assurance-studio",
-      status: 409,
-    }, { status: 409 });
+    return frozenFaultResponse(context, "assurance-studio-stale-tara.json", 409);
   }
   if (spec.name === "platform-firmware-bytes-forbidden") {
     controller.record(selected, "bytes-forbidden");
-    return Response.json({
-      code: "FIRMWARE_BYTES_FORBIDDEN",
-      retryable: false,
-      service: "platform",
-      status: 403,
-    }, { status: 403 });
+    return frozenFaultResponse(context, "platform-firmware-forbidden.json", 403);
   }
   if (spec.name === "platform-vex-partial-failure") {
     const response = await partialVex(handler, context, selected);

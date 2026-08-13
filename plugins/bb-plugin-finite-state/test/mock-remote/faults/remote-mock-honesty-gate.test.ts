@@ -115,9 +115,9 @@ describe("remote-mock-honesty-gate", () => {
         body: JSON.stringify({ name: "must not persist", review_version: "9007199254740993" }),
       },
     );
-    const frozen = readFileSync(new URL("../fixtures/faults/assurance-studio-stale-tara.json", import.meta.url), "utf8").trim();
+    const frozen = readFileSync(new URL("../fixtures/faults/assurance-studio-stale-tara.json", import.meta.url), "utf8");
     expect(response.status).toBe(409);
-    expect(await response.text()).toBe(JSON.stringify(JSON.parse(frozen)));
+    expect(await response.text()).toBe(frozen);
     expect(result.assuranceStudioState.snapshot()).toEqual(before);
     expect(result.controller.log()).toEqual([expect.objectContaining({
       service: "assurance-studio", requestId: "stale-1", effect: "stale-before-mutation",
@@ -145,6 +145,17 @@ describe("remote-mock-honesty-gate", () => {
     expect(tree.status).toBe(200);
     expect(metadata.status).toBe(200);
 
+    const asFetch = authenticatedFetch(result.harness, "assurance-studio");
+    const asResponse = await asFetch(
+      "/api/projects/project-4a752600a07a/components?page=1&limit=1",
+      { headers: { "X-FS-Mock-Scenario": "platform-firmware-bytes-forbidden" } },
+    );
+    const asNormal = await asFetch(
+      "/api/projects/project-4a752600a07a/components?page=1&limit=1",
+    );
+    expect(asResponse.status).toBe(200);
+    expect(await asResponse.text()).toBe(await asNormal.text());
+
     const full = await fetch(`/public/v0/projects/versions/pv-a481df87dadf/filesystem/file?hash=${hash}`, {
       headers: commonHeaders,
     });
@@ -152,13 +163,13 @@ describe("remote-mock-honesty-gate", () => {
       `/public/v0/projects/versions/pv-a481df87dadf/filesystem/content?hash=${hash}&offset=0&maxBytes=16`,
       { headers: commonHeaders },
     );
-    const frozen = JSON.parse(readFileSync(
+    const frozen = readFileSync(
       new URL("../fixtures/faults/platform-firmware-forbidden.json", import.meta.url), "utf8",
-    ));
+    );
     expect(full.status).toBe(403);
-    expect(await full.json()).toEqual(frozen);
+    expect(await full.text()).toBe(frozen);
     expect(range.status).toBe(403);
-    expect(await range.json()).toEqual(frozen);
+    expect(await range.text()).toBe(frozen);
   });
 
   it("retries deterministic service-scoped 429s with an injected scheduler and exhausts independently", async () => {
@@ -224,7 +235,10 @@ describe("remote-mock-honesty-gate", () => {
     expect(malformed).toBeInstanceOf(RemoteError);
     expect(malformed).toMatchObject({ code: "REMOTE_RATE_LIMITED", retryAfterMs: null });
     expect(negative).toBeInstanceOf(RemoteError);
-    expect(negative).toMatchObject({ code: "REMOTE_RATE_LIMITED", retryAfterMs: expect.any(Number) });
+    // Tripwire for mem_8fm66mk2pzm: V8 Date.parse currently turns "-1" into
+    // a future date and production code sleeps this unbounded value. The
+    // production owner must update this exact assertion with the parser fix.
+    expect(negative).toMatchObject({ code: "REMOTE_RATE_LIMITED", retryAfterMs: 978_325_190_000 });
   });
 
   it("applies only successful VEX items and reports exact mixed counts", async () => {
@@ -289,7 +303,7 @@ describe("remote-mock-honesty-gate", () => {
     client.close();
   });
 
-  it("preserves first N mid-push writes and an identical retry converges", async () => {
+  it("preserves first N writes, converges one retry, and resets each distinct push id", async () => {
     const base = createMockPlatformState(fixtureRoot);
     const findings = [...base.findings.values()].slice(10, 14);
     const result = setup([{
@@ -323,6 +337,23 @@ describe("remote-mock-honesty-gate", () => {
     expect(result.controller.log().map((entry) => entry.effect)).toEqual([
       "transport-reset-after-2", "retry-converged",
     ]);
+
+    const independentPush = new PlatformClient({
+      baseUrl: "http://platform.mock",
+      token: platformToken,
+      fetch: transportResetFetch(scenarioFetch(
+        result.harness.platform.fetch,
+        "mid-push-reset",
+        "push-2",
+      )),
+    });
+    await expect(independentPush.batchSetVexStatus(input)).rejects.toMatchObject({
+      code: "REMOTE_WRITE_INDETERMINATE",
+    });
+    expect(result.controller.log().map((entry) => entry.effect)).toEqual([
+      "transport-reset-after-2", "retry-converged", "transport-reset-after-2",
+    ]);
+    independentPush.close();
     client.close();
   });
 

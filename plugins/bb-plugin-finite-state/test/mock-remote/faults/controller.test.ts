@@ -17,12 +17,22 @@ describe("fault controller contract", () => {
       { name: "mid-push-reset", service: "platform", routeIds: [PLATFORM_FIRMWARE_BYTES_ROUTE] },
       { name: "mid-push-reset", service: "platform", routeIds: [PLATFORM_BULK_VEX_ROUTE], typo: 1 },
       { name: "as-stale-tara-state", service: "assurance-studio", routeIds: [AS_COMPONENT_UPDATE_ROUTE], times: 1 },
+      {
+        name: "as-stale-tara-state",
+        service: "assurance-studio",
+        routeIds: ["assurance-studio:GET:/api/projects/{projectId}/components"],
+      },
       { name: "platform-vex-partial-failure", service: "platform", routeIds: [PLATFORM_BULK_VEX_ROUTE] },
       { name: "as-key-strip", service: "assurance-studio", routeIds: [AS_COMPONENT_UPDATE_ROUTE] },
     ];
     for (const spec of invalid) {
       expect(() => controller.install(spec as never)).toThrow(/Invalid mock fault scenario/u);
     }
+    expect(() => controller.install({
+      name: "as-stale-tara-state",
+      service: "assurance-studio",
+      routeIds: ["assurance-studio:GET:/api/projects/{projectId}/components"],
+    })).toThrow(/status 409 is not declared by route/u);
   });
 
   it("keeps instance and service counters isolated and returns immutable log values", () => {

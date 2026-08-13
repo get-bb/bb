@@ -1,5 +1,11 @@
-import { ASSURANCE_STUDIO_CALLABLE_ROUTE_IDS } from "../generated/assurance-studio-routes.js";
-import { PLATFORM_CALLABLE_ROUTE_IDS } from "../generated/platform-routes.js";
+import {
+  ASSURANCE_STUDIO_CALLABLE_ROUTE_IDS,
+  ASSURANCE_STUDIO_ROUTES,
+} from "../generated/assurance-studio-routes.js";
+import {
+  PLATFORM_CALLABLE_ROUTE_IDS,
+  PLATFORM_ROUTES,
+} from "../generated/platform-routes.js";
 
 export const MOCK_SCENARIOS = [
   "as-stale-tara-state",
@@ -80,6 +86,34 @@ const SCENARIO_SERVICE: Readonly<Record<MockScenario, FaultService | "any">> = {
   "forge-root-digest-mismatch": "forge-compute",
 };
 
+const FAULT_RESPONSE_STATUS: Readonly<Partial<Record<MockScenario, number>>> = {
+  "as-stale-tara-state": 409,
+  "platform-firmware-bytes-forbidden": 403,
+  "rate-limit-then-success": 429,
+  "rate-limit-exhausted": 429,
+  "platform-vex-partial-failure": 200,
+  "as-key-strip": 200,
+  "mid-push-reset": 599,
+};
+
+const TRANSPORT_STATUS_EXCEPTIONS: ReadonlySet<string> = new Set([
+  // Rate limiting is injected at the gateway boundary, outside a route's
+  // application response vocabulary, but remains an ordinary HTTP response.
+  "rate-limit-then-success:429",
+  "rate-limit-exhausted:429",
+  // The in-process sentinel is converted to a thrown transport TypeError by
+  // transportResetFetch and is never exposed to a production client as HTTP.
+  "mid-push-reset:599",
+]);
+
+const AUDITED_STATUS_EVIDENCE: ReadonlySet<string> = new Set([
+  // The Direct APIs audit registered this PATCH route without response status
+  // metadata. Its current success handler and frozen stale-TARA fault fixture
+  // are the reviewed evidence until the generated audit gains statuses.
+  `${AS_COMPONENT_UPDATE_ROUTE}:200`,
+  `${AS_COMPONENT_UPDATE_ROUTE}:409`,
+]);
+
 function fail(message: string): never {
   throw new TypeError(`Invalid mock fault scenario: ${message}`);
 }
@@ -105,6 +139,12 @@ function knownRoutes(service: FaultService): ReadonlySet<string> {
   return new Set([FORGE_CREATE_ROUTE, FORGE_PREPARE_ROUTE]);
 }
 
+function responseStatuses(service: FaultService, routeId: string): readonly number[] {
+  if (service === "forge-compute") return [];
+  const routes = service === "platform" ? PLATFORM_ROUTES : ASSURANCE_STUDIO_ROUTES;
+  return routes.find((route) => route.routeId === routeId)?.responseStatuses ?? [];
+}
+
 export function normalizeScenarioSpec(input: ScenarioSpec): ScenarioSpec & { routeIds: string[] } {
   if (input === null || typeof input !== "object" || Array.isArray(input)) fail("spec must be an object");
   const record = input as unknown as Record<string, unknown>;
@@ -125,6 +165,17 @@ export function normalizeScenarioSpec(input: ScenarioSpec): ScenarioSpec & { rou
   const known = knownRoutes(service);
   const unknownRoute = routeIds.find((routeId) => !known.has(routeId));
   if (unknownRoute !== undefined) fail(`unknown route ${unknownRoute}`);
+  const faultStatus = FAULT_RESPONSE_STATUS[name];
+  if (faultStatus !== undefined &&
+    !TRANSPORT_STATUS_EXCEPTIONS.has(`${name}:${faultStatus}`)) {
+    const incompatibleRoute = routeIds.find((routeId) =>
+      !responseStatuses(service, routeId).includes(faultStatus) &&
+      !AUDITED_STATUS_EVIDENCE.has(`${routeId}:${faultStatus}`),
+    );
+    if (incompatibleRoute !== undefined) {
+      fail(`status ${faultStatus} is not declared by route ${incompatibleRoute}`);
+    }
+  }
   const defaults = DEFAULT_ROUTES[name];
   if (defaults.length > 0 && routeIds.some((routeId) => !defaults.includes(routeId))) {
     fail(`route is not supported by ${name}`);

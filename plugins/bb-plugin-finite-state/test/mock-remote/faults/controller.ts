@@ -76,10 +76,18 @@ export function createFaultController(): FaultControllerRuntime {
       const name = requested ?? defaults.get(service);
       if (name === undefined) return null;
       const spec = installed.get(`${service}:${name as MockScenario}`);
-      if (requested !== null && (spec === undefined || spec.service !== service)) return "unknown";
+      if (requested !== null && spec === undefined) {
+        const belongsToOtherService = [...installed.values()].some(
+          (candidate) => candidate.name === requested && candidate.service !== service,
+        );
+        return belongsToOtherService ? null : "unknown";
+      }
       if (spec === undefined || spec.service !== service || !spec.routeIds.includes(routeId)) return null;
       const requestId = request.headers.get(MOCK_REQUEST_ID_HEADER) ?? `mock-request-${nextRequestId++}`;
-      const key = `${service}:${spec.name}:${routeId}`;
+      // Mid-push reset is one-shot per logical push. A retry reuses requestId
+      // and converges; a distinct push id receives its own deterministic reset.
+      const sequence = spec.name === "mid-push-reset" ? requestId : "service-sequence";
+      const key = `${service}:${spec.name}:${routeId}:${sequence}`;
       const attempt = (attempts.get(key) ?? 0) + 1;
       attempts.set(key, attempt);
       return { spec, requestId, routeId, attempt };
