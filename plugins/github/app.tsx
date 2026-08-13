@@ -9,7 +9,14 @@
 // (#/issues/<owner>/<repo>/<n>, #/pulls/<owner>/<repo>/<n>) since navPanel
 // owns /plugins/github/github/* via subPath routing. A threadPanelAction opens the same PR view in a
 // thread's right panel, auto-resolved to that thread's PR.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   definePluginApp,
   useBbNavigate,
@@ -1597,17 +1604,40 @@ function readHostCodeTheme(): { dark: string; light: string } {
   };
 }
 
-function useHostCodeTheme(): { dark: string; light: string } {
-  const [theme, setTheme] = useState(readHostCodeTheme);
-  useEffect(() => {
-    const observer = new MutationObserver(() => setTheme(readHostCodeTheme()));
-    observer.observe(document.documentElement, {
+let hostCodeTheme = readHostCodeTheme();
+const hostCodeThemeListeners = new Set<() => void>();
+let hostCodeThemeObserver: MutationObserver | null = null;
+
+function subscribeHostCodeTheme(onStoreChange: () => void): () => void {
+  hostCodeThemeListeners.add(onStoreChange);
+  if (hostCodeThemeObserver === null) {
+    hostCodeThemeObserver = new MutationObserver(() => {
+      const next = readHostCodeTheme();
+      if (
+        next.dark === hostCodeTheme.dark &&
+        next.light === hostCodeTheme.light
+      ) {
+        return;
+      }
+      hostCodeTheme = next;
+      for (const listener of hostCodeThemeListeners) listener();
+    });
+    hostCodeThemeObserver.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["data-bb-code-theme-dark", "data-bb-code-theme-light"],
     });
-    return () => observer.disconnect();
-  }, []);
-  return theme;
+  }
+  return () => {
+    hostCodeThemeListeners.delete(onStoreChange);
+  };
+}
+
+function useHostCodeTheme(): { dark: string; light: string } {
+  return useSyncExternalStore(
+    subscribeHostCodeTheme,
+    () => hostCodeTheme,
+    () => hostCodeTheme,
+  );
 }
 
 /** The host toggles dark mode via a `dark` class on <html>; pierre's diff

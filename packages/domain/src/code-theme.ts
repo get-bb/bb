@@ -98,10 +98,29 @@ export function formatRegisteredCodeThemeName(
   return `bb:${sourceId}:${side}`;
 }
 
+const VSCODE_THEME_JSON_MAX_DEPTH = 32;
+
+function jsonDepthExceeds(value: unknown, maxDepth: number): boolean {
+  const visit = (node: unknown, depth: number): boolean => {
+    if (depth > maxDepth) return true;
+    if (node === null || typeof node !== "object") return false;
+    if (Array.isArray(node)) {
+      return node.some((entry) => visit(entry, depth + 1));
+    }
+    return Object.values(node).some((entry) => visit(entry, depth + 1));
+  };
+  return visit(value, 0);
+}
+
 export function parseVscodeThemeJson(value: unknown): VscodeThemeJson | null {
-  const parsed = vscodeThemeJsonSchema.safeParse(value);
-  if (!parsed.success) return null;
-  return parsed.data as VscodeThemeJson;
+  try {
+    if (jsonDepthExceeds(value, VSCODE_THEME_JSON_MAX_DEPTH)) return null;
+    const parsed = vscodeThemeJsonSchema.safeParse(value);
+    if (!parsed.success) return null;
+    return parsed.data as VscodeThemeJson;
+  } catch {
+    return null;
+  }
 }
 
 export function paletteCodeThemeFallback(paletteId: string): CodeThemePair {

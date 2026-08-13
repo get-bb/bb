@@ -97,4 +97,12 @@ describe("code theme resolution", () => {
       type: "dark",
     });
   });
+
+  it("rejects deeply nested theme JSON instead of throwing", () => {
+    let nested: unknown = { name: "Deep" };
+    for (let depth = 0; depth < 64; depth += 1) {
+      nested = { child: nested };
+    }
+    expect(parseVscodeThemeJson(nested)).toBeNull();
+  });
 });
