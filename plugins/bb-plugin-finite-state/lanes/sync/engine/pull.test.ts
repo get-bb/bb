@@ -407,7 +407,7 @@ decisions:
     ]);
   });
 
-  it("deletes a stranded staging base when a differently scoped generation supersedes it", async () => {
+  it("deletes a stranded staging base without touching local build evidence", async () => {
     const requirementKey = ENTITIES.requirement.key({ reqId: "REQ-STRANDED" });
     const threatKey = ENTITIES.threat.key({ slug: "THREAT-STRANDED" });
     let resetAfterPage = true;
@@ -462,6 +462,18 @@ decisions:
       createGenerationId: () => `generation-stranded-${++generation}`,
     });
     const selectedScope = { projectId: "project-stranded", projectVersionId: "version-stranded" };
+    deps.db.prepare(
+      `INSERT INTO build_run
+         (project_id, project_version_id, run_id, kind, target, toolchain,
+          status, artifact, digest, log_path, started_at)
+       VALUES (?, ?, 'build-local-evidence', 'build', 'firmware', 'cmake',
+               'completed', '/artifacts/firmware.bin', ?, '/logs/build.log', ?)`,
+    ).run(
+      selectedScope.projectId,
+      selectedScope.projectVersionId,
+      "a".repeat(64),
+      "2026-08-12T19:00:00.000Z",
+    );
     await expect(pull(deps, selectedScope, ["requirement"]))
       .rejects.toBeInstanceOf(PullFailedError);
     expect(deps.db.prepare(
@@ -480,6 +492,19 @@ decisions:
     expect(deps.db.prepare(
       "SELECT status FROM pull_generation WHERE generation_id = 'generation-stranded-1'",
     ).pluck().get()).toBe("superseded");
+    await expect(pull(deps, selectedScope, ["buildRun"]))
+      .rejects.toThrow("No puller is registered for buildRun");
+    // FS-144: CACHED is not a reset allowlist; local run evidence survives generation cleanup.
+    expect(deps.db.prepare(
+      `SELECT run_id, status, artifact, digest, log_path
+         FROM build_run WHERE project_id = ? AND project_version_id = ?`,
+    ).get(selectedScope.projectId, selectedScope.projectVersionId)).toEqual({
+      run_id: "build-local-evidence",
+      status: "completed",
+      artifact: "/artifacts/firmware.bin",
+      digest: "a".repeat(64),
+      log_path: "/logs/build.log",
+    });
   });
 
   it("keeps same keys and remote ids isolated across project, version, and project-level scopes", async () => {
