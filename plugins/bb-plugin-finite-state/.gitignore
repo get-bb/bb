@@ -1,6 +1,7 @@
 node_modules/
 .fs-sync/
 .fs-firmware/
+.fs-bench/
 
 # Runtime nudge-dedup state written by ready-queue-watchdog.mjs
 docs/Implementation/scheduling/fs-ready-queue-watchdog-state.json
