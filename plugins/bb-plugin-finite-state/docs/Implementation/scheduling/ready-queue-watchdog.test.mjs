@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { computeReady } from "./ready-queue-watchdog.mjs";
+import { computeReady, detectStall } from "./ready-queue-watchdog.mjs";
 
 const wp = (over) => ({
   wp: "WP99",
@@ -198,4 +198,76 @@ test("a fully terminal cluster yields nothing (no Infinity path)", () => {
 test("unknown task keys are not ready", () => {
   const m = manifest([wp({ wp: "WP50", task: "FS-404", clusterId: "C-A" })]);
   assert.deepEqual(readyWps(m, statuses({})), []);
+});
+
+// --- detectStall (frozen-board escalation, 2026-08-13 outage lesson) ---
+
+const MIN = 60 * 1000;
+
+test("a frozen board with in-flight tasks stalls after the threshold", () => {
+  const board = statuses({ "FS-1": "in_progress", "FS-2": "backlog" });
+  const t0 = 1_000_000;
+  const first = detectStall(board, {}, t0, { stallMs: 90 * MIN });
+  assert.equal(first.stalled, false);
+  assert.equal(first.since, t0);
+  const later = detectStall(
+    board,
+    { fingerprint: first.fingerprint, fingerprintSince: first.since },
+    t0 + 90 * MIN,
+    { stallMs: 90 * MIN },
+  );
+  assert.equal(later.stalled, true);
+  assert.equal(later.inFlight, 1);
+});
+
+test("any board transition resets the stall clock", () => {
+  const t0 = 1_000_000;
+  const before = detectStall(
+    statuses({ "FS-1": "in_progress" }),
+    {},
+    t0,
+    { stallMs: 90 * MIN },
+  );
+  const after = detectStall(
+    statuses({ "FS-1": "in_review" }),
+    { fingerprint: before.fingerprint, fingerprintSince: before.since },
+    t0 + 89 * MIN,
+    { stallMs: 90 * MIN },
+  );
+  assert.equal(after.since, t0 + 89 * MIN);
+  assert.equal(after.stalled, false);
+});
+
+test("a frozen board with nothing in flight never stalls", () => {
+  const board = statuses({ "FS-1": "backlog", "FS-2": "done" });
+  const t0 = 1_000_000;
+  const first = detectStall(board, {}, t0, { stallMs: 90 * MIN });
+  const later = detectStall(
+    board,
+    { fingerprint: first.fingerprint, fingerprintSince: first.since },
+    t0 + 500 * MIN,
+    { stallMs: 90 * MIN },
+  );
+  assert.equal(later.stalled, false);
+  assert.equal(later.inFlight, 0);
+});
+
+test("in_review counts as in flight for stall purposes", () => {
+  const board = statuses({ "FS-9": "in_review" });
+  const t0 = 1_000_000;
+  const first = detectStall(board, {}, t0, { stallMs: 90 * MIN });
+  const later = detectStall(
+    board,
+    { fingerprint: first.fingerprint, fingerprintSince: first.since },
+    t0 + 91 * MIN,
+    { stallMs: 90 * MIN },
+  );
+  assert.equal(later.stalled, true);
+});
+
+test("missing prior state starts the clock now rather than stalling instantly", () => {
+  const board = statuses({ "FS-1": "in_progress" });
+  const result = detectStall(board, {}, 5_000_000, { stallMs: 90 * MIN });
+  assert.equal(result.stalled, false);
+  assert.equal(result.since, 5_000_000);
 });
