@@ -234,6 +234,42 @@ describe("fetchPluginCliContributions retries", () => {
     expect(slept).toEqual([150]);
   });
 
+  it("retries when the response body transport fails", async () => {
+    const bodyFailedResponse = new Response("{}");
+    vi.spyOn(bodyFailedResponse, "json").mockRejectedValue(
+      connectError("UND_ERR_SOCKET"),
+    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(bodyFailedResponse)
+      .mockResolvedValueOnce(okResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    const { slept, sleep } = recordingSleep();
+
+    await expect(
+      fetchPluginCliContributions("http://localhost", 2000, { sleep }),
+    ).resolves.toEqual({ outcome: "ok", contributions: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(slept).toEqual([150]);
+  });
+
+  it("does not retry malformed response JSON", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("not json", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { slept, sleep } = recordingSleep();
+
+    await expect(
+      fetchPluginCliContributions("http://localhost", 2000, { sleep }),
+    ).resolves.toEqual({ outcome: "invalid" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(slept).toEqual([]);
+  });
+
   it("widens the probe window on each retry before giving up", async () => {
     const fetchMock = vi.fn().mockRejectedValue(timeoutError());
     vi.stubGlobal("fetch", fetchMock);
@@ -270,7 +306,7 @@ describe("fetchPluginCliContributions retries", () => {
     for (const code of ["EPERM", "EACCES"]) {
       const fetchMock = vi.fn().mockRejectedValue(connectError(code));
       vi.stubGlobal("fetch", fetchMock);
-      const { sleep } = recordingSleep();
+      const { slept, sleep } = recordingSleep();
 
       const result = await fetchPluginCliContributions(
         "http://localhost",
@@ -279,6 +315,7 @@ describe("fetchPluginCliContributions retries", () => {
       );
       expect(result).toMatchObject({ outcome: "unreachable", attempts: 1 });
       expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(slept).toEqual([]);
     }
   });
 
@@ -363,10 +400,11 @@ describe("describeUnreachableServer", () => {
     });
     const message = describeUnreachableServer(url, timeout, 2000);
     expect(message).toContain(`bb did not respond at ${url} within 2000ms`);
-    expect(message).toContain("bb is running but too busy to answer");
+    expect(message).toContain("it may be busy or temporarily unreachable");
     // The reader is usually an agent: a timeout must never read as "bb is
     // down", and must say the work is still pending so it is not dropped.
     expect(message).not.toContain("not running at");
+    expect(message).not.toContain("bb is running");
     expect(message).toContain("re-run it");
   });
 

@@ -19,8 +19,8 @@ export interface PluginCliContributionEntry {
 const CONTRIBUTIONS_TIMEOUT_MS = 2000;
 
 /**
- * The probe is retried on causes that mean "the server exists but did not
- * answer in time" — a busy event loop, a dropped keep-alive socket. The
+ * The probe is retried on transient causes that may mean the server exists but
+ * did not answer in time — a busy event loop, a dropped keep-alive socket. The
  * server's contributions latency is sharply bimodal (single-digit ms at rest,
  * hundreds of ms to seconds while it is under load), so a single 2s attempt
  * turns an ordinary stall into a hard failure and the user's command never
@@ -180,18 +180,19 @@ export function describeUnreachableServer(
   if (refused) {
     return `bb is not running at ${baseUrl} — open the bb app, then re-run this command.`;
   }
-  // A probe that connected but did not answer proves a listener exists, so bb
-  // is up and overloaded — never "not running". Say the command did not run
-  // and that retrying is the fix, because the reader is usually an agent that
-  // will otherwise record the write as impossible and silently drop it.
+  // A retryable transport failure does not prove bb is down, but it also does
+  // not prove bb is running: the timeout covers DNS lookup and connection
+  // setup as well as waiting for a response. Say the command did not run and
+  // that retrying is the fix, because the reader is usually an agent that will
+  // otherwise record the write as impossible and silently drop it.
   if (timedOut || retryable) {
     const tried =
       attempts > 1
         ? ` after ${attempts} attempts (last window ${timeoutMs}ms)`
         : ` within ${timeoutMs}ms`;
     return (
-      `bb did not respond at ${baseUrl}${tried} — bb is running but too busy to answer. ` +
-      `Nothing was rejected and your command did not run; re-run it.`
+      `bb did not respond at ${baseUrl}${tried} — it may be busy or temporarily unreachable. ` +
+      `No server response was received and your command did not run; re-run it.`
     );
   }
   return `Cannot reach bb at ${baseUrl}: ${
@@ -208,7 +209,7 @@ const defaultSleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Fetch plugin CLI contributions, retrying a server that is up but stalled.
+ * Fetch plugin CLI contributions, retrying transient transport failures.
  *
  * This probe gates every plugin-contributed command (`bb memory add`,
  * `bb tasks ...`), so a false negative here does not merely misreport — it
@@ -222,8 +223,6 @@ export async function fetchPluginCliContributions(
   options: FetchPluginCliContributionsOptions = {},
 ): Promise<PluginCliContributionsResult> {
   const sleep = options.sleep ?? defaultSleep;
-  let response: Response | undefined;
-
   for (
     let attempt = 0;
     attempt < CONTRIBUTIONS_TIMEOUT_MULTIPLIERS.length;
@@ -231,10 +230,39 @@ export async function fetchPluginCliContributions(
   ) {
     const window = timeoutMs * CONTRIBUTIONS_TIMEOUT_MULTIPLIERS[attempt]!;
     try {
-      response = await cliFetch(`${baseUrl}/api/v1/plugins/contributions`, {
-        signal: AbortSignal.timeout(window),
-      });
-      break;
+      const response = await cliFetch(
+        `${baseUrl}/api/v1/plugins/contributions`,
+        {
+          signal: AbortSignal.timeout(window),
+        },
+      );
+      if (!response.ok) return { outcome: "invalid" };
+      let parsed: { cliCommands?: unknown } | null;
+      try {
+        parsed = (await response.json()) as {
+          cliCommands?: unknown;
+        } | null;
+      } catch (error) {
+        // JSON syntax is an invalid old/malformed route response. Transport
+        // failures while consuming a valid response are still probe failures
+        // and follow the same retry policy as failures before the headers.
+        if (!diagnoseUnreachableServer(error).retryable) {
+          return { outcome: "invalid" };
+        }
+        throw error;
+      }
+      const cliCommands = parsed?.cliCommands;
+      if (!Array.isArray(cliCommands)) return { outcome: "invalid" };
+      return {
+        outcome: "ok",
+        contributions: cliCommands.filter(
+          (entry): entry is PluginCliContributionEntry =>
+            typeof entry === "object" &&
+            entry !== null &&
+            typeof (entry as { pluginId?: unknown }).pluginId === "string" &&
+            typeof (entry as { name?: unknown }).name === "string",
+        ),
+      };
     } catch (error) {
       const isLastAttempt =
         attempt === CONTRIBUTIONS_TIMEOUT_MULTIPLIERS.length - 1;
@@ -249,28 +277,7 @@ export async function fetchPluginCliContributions(
       await sleep(CONTRIBUTIONS_RETRY_DELAYS_MS[attempt]!);
     }
   }
-  if (response === undefined) return { outcome: "invalid" };
-
-  try {
-    if (!response.ok) return { outcome: "invalid" };
-    const parsed = (await response.json()) as {
-      cliCommands?: unknown;
-    } | null;
-    const cliCommands = parsed?.cliCommands;
-    if (!Array.isArray(cliCommands)) return { outcome: "invalid" };
-    return {
-      outcome: "ok",
-      contributions: cliCommands.filter(
-        (entry): entry is PluginCliContributionEntry =>
-          typeof entry === "object" &&
-          entry !== null &&
-          typeof (entry as { pluginId?: unknown }).pluginId === "string" &&
-          typeof (entry as { name?: unknown }).name === "string",
-      ),
-    };
-  } catch {
-    return { outcome: "invalid" };
-  }
+  return { outcome: "invalid" };
 }
 
 /**
