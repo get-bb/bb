@@ -28,7 +28,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
@@ -1718,9 +1718,22 @@ function SpawnSidebar() {
 
 function LandingPage() {
   const [companyProofPaused, setCompanyProofPaused] = useState(false);
+  const [companyProofInView, setCompanyProofInView] = useState(false);
+  const companyProofRef = useRef<HTMLElement>(null);
   useScrollReveal();
   useConstructMock();
   useFitMock();
+
+  useEffect(() => {
+    const companyProof = companyProofRef.current;
+    if (!companyProof) return;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      setCompanyProofInView(entry?.isIntersecting ?? false);
+    });
+    observer.observe(companyProof);
+    return () => observer.disconnect();
+  }, []);
   return (
     <div className="wrap">
       <nav className="nav">
@@ -1766,7 +1779,8 @@ function LandingPage() {
       <HeroAppMock />
 
       <section
-        className={`company-proof${companyProofPaused ? " is-paused" : ""}`}
+        ref={companyProofRef}
+        className={`company-proof${companyProofPaused ? " is-paused" : ""}${companyProofInView ? "" : " is-offscreen"}`}
         aria-labelledby="company-proof-title"
       >
         <div className="company-proof-heading">

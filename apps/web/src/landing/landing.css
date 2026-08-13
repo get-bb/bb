@@ -671,6 +671,11 @@ code,
   animation-play-state: paused;
 }
 
+.company-proof.is-offscreen .company-proof-track {
+  animation-play-state: paused;
+  will-change: auto;
+}
+
 .company-proof-logos {
   display: flex;
   align-items: center;
