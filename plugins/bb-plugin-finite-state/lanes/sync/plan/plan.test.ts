@@ -11,9 +11,10 @@ import { ENTITIES } from "../../../lib/sync/registry.js";
 import { registerAttributionProvider } from "../conflicts/attribution.js";
 import type { EntityAdapter, ServerEntity, WorkingEntity } from "../engine/adapter.js";
 import { pull, type EngineDeps } from "../engine/pull.js";
+import { intendedPayload } from "../push/read-back.js";
 import { canonicalJson } from "../serialize/canonical.js";
 import { createSerializer } from "../serialize/serializer.js";
-import { emitYaml } from "../serialize/yaml.js";
+import { BaseSnapshotStore } from "../store/base-snapshot.js";
 import { blastRadius } from "./blast-radius.js";
 import { classifyThreeWay } from "./diff.js";
 import {
@@ -74,26 +75,8 @@ async function fixture(
       progress({ page: 1, of: 1 });
       yield remote();
     },
-    async readWorking(worktreeRoot) {
-      return await Promise.all(authored().map(async (row) => {
-        try {
-          return {
-            ...row,
-            payload: this.serializer.fromYaml(
-              await readFile(join(worktreeRoot, row.file), "utf8"),
-              row.file,
-            ),
-          };
-        } catch (error: unknown) {
-          if (
-            error !== null
-            && typeof error === "object"
-            && "code" in error
-            && error.code === "ENOENT"
-          ) return row;
-          throw error;
-        }
-      }));
+    async readWorking() {
+      return authored();
     },
   };
   const deps: EngineDeps = {
@@ -213,7 +196,7 @@ describe("three-way plan", () => {
     });
   });
 
-  it("materializes a disjoint semantic merge and returns an applicable update", async () => {
+  it("carries a disjoint merge as planned ours without mutating YAML on CLI or deadlocking RPC", async () => {
     const base = requirement("REQ-DISJOINT", "base title", {
       metadata: { owner: "base-owner", stable: true },
     });
@@ -228,24 +211,53 @@ describe("three-way plan", () => {
     authored = [working(base, "local title")];
     const authoredFile = join(setup.root, authored[0]?.file ?? "missing");
     await mkdir(dirname(authoredFile), { recursive: true });
-    await writeFile(authoredFile, emitYaml(authored[0]?.payload ?? {}), "utf8");
+    const authoredYaml = "reqId: REQ-DISJOINT\ntitle: local title\nmetadata:\n  owner: base-owner\n  stable: true\n";
+    await writeFile(authoredFile, authoredYaml, "utf8");
+    const databaseBefore = databaseSnapshot(setup.deps);
+    const remoteBefore = canonicalJson(remote);
 
-    const plan = await computePlan(
+    const cliPlan = await computePlan(
       { ...setup.deps, worktreeRoot: setup.root },
       scope,
       ["requirement"],
     );
-    const item = plan.items.find((candidate) => candidate.key === base.key);
+    const item = cliPlan.items.find((candidate) => candidate.key === base.key);
     expect(item).toMatchObject({ operation: "update", conflicts: [] });
     expect(item?.fields.map((field) => field.field)).toEqual(["metadata", "title"]);
-    expect(plan.summary).toMatchObject({ updates: 1, conflicts: 0 });
-    expect(createSerializer("requirement").fromYaml(await readFile(authoredFile, "utf8"), authoredFile))
-      .toEqual({
-        reqId: "REQ-DISJOINT",
-        title: "local title",
-        metadata: { owner: "remote-owner", stable: true },
-      });
-    expect(loadPlan(setup.root, plan.planId)).toEqual(plan);
+    expect(item?.fields.find((field) => field.field === "metadata")?.ours).toEqual({
+      present: true,
+      value: { owner: "remote-owner", stable: true },
+    });
+    expect(item?.fields.find((field) => field.field === "title")?.ours).toEqual({
+      present: true,
+      value: "local title",
+    });
+    expect(cliPlan.summary).toMatchObject({ updates: 1, conflicts: 0 });
+    const baseRow = new BaseSnapshotStore(setup.deps.db).getAccepted(
+      scope.projectId,
+      scope.projectVersionId,
+      "requirement",
+      base.key,
+    );
+    expect(item === undefined ? null : intendedPayload(item, baseRow)).toEqual({
+      reqId: "REQ-DISJOINT",
+      title: "local title",
+      metadata: { owner: "remote-owner", stable: true },
+    });
+    expect(await readFile(authoredFile, "utf8")).toBe(authoredYaml);
+    expect(databaseSnapshot(setup.deps)).toBe(databaseBefore);
+    expect(loadPlan(setup.root, cliPlan.planId)).toEqual(cliPlan);
+
+    const rpcPlan = await computePagedPlan(setup.deps, {
+      ...scope,
+      kinds: ["requirement"],
+    });
+    const rpcItem = rpcPlan.items.find((candidate) => candidate.key === base.key);
+    expect(rpcItem).toMatchObject({ operation: "update", conflicts: [] });
+    expect(rpcItem?.operation).toBe(item?.operation);
+    expect(rpcPlan.summary).toMatchObject({ updates: 1, conflicts: 0 });
+    expect(await readFile(authoredFile, "utf8")).toBe(authoredYaml);
+    expect(canonicalJson(remote)).toBe(remoteBefore);
   });
 
   it("computes the SPEC summary and blocks its referenced delete", async () => {
@@ -357,8 +369,8 @@ describe("three-way plan", () => {
         state: "stale",
         message: "Working tree unavailable; plan includes upstream changes only",
       },
-      summary: { conflicts: 1, noops: 0 },
-      items: [{ label: "REQ-RPC-DRIFT", operation: "conflict" }],
+      summary: { updates: 1, conflicts: 0, noops: 0 },
+      items: [{ label: "REQ-RPC-DRIFT", operation: "update", conflicts: [] }],
     });
     expect(loadPlanForDeps(setup.deps, computed.planId)).not.toBeNull();
   });
@@ -376,8 +388,8 @@ describe("three-way plan", () => {
       pageSize: 2,
     });
     expect(first.items.map((item) => `${item.operation}:${item.label}`)).toEqual([
-      "conflict:REQ-H0",
-      "conflict:REQ-H1",
+      "update:REQ-H0",
+      "update:REQ-H1",
     ]);
     expect(first.next).toBe(`fsp1:${first.planId}:2`);
 
@@ -391,24 +403,24 @@ describe("three-way plan", () => {
       continuation: first.next,
     });
     expect(second.items.map((item) => `${item.operation}:${item.label}`)).toEqual([
-      "conflict:REQ-H2",
-      "conflict:REQ-H3",
+      "update:REQ-H2",
+      "update:REQ-H3",
     ]);
     expect(second).toMatchObject({
       planId: first.planId,
       planSha256: first.planSha256,
       total: 4,
       next: null,
-      summary: { conflicts: 4 },
+      summary: { updates: 4, conflicts: 0 },
     });
     expect(loadPlanForDeps(setup.deps, first.planId)).toMatchObject({
       planId: first.planId,
       planSha256: first.planSha256,
       items: [
-        { label: "REQ-H0", operation: "conflict" },
-        { label: "REQ-H1", operation: "conflict" },
-        { label: "REQ-H2", operation: "conflict" },
-        { label: "REQ-H3", operation: "conflict" },
+        { label: "REQ-H0", operation: "update", conflicts: [] },
+        { label: "REQ-H1", operation: "update", conflicts: [] },
+        { label: "REQ-H2", operation: "update", conflicts: [] },
+        { label: "REQ-H3", operation: "update", conflicts: [] },
       ],
     });
     const sidecarDirectory = join(dirname(setup.deps.db.name), ".fs-sync");

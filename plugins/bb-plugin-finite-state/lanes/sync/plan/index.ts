@@ -19,14 +19,6 @@ import {
 import type { EngineDeps } from "../engine/pull.js";
 import { syncMetadata } from "../engine/status.js";
 import { refinePlanCandidate } from "../conflicts/attribution.js";
-import {
-  confinedWorkingFile,
-  materializeExistingWorking,
-  sha256Text,
-  WorkingMaterializationError,
-  type WorkingMaterialization,
-  type WorkingMaterializationInput,
-} from "../conflicts/merge.js";
 import { canonicalJson, contentHash } from "../serialize/canonical.js";
 import { BaseSnapshotStore, type BaseRow } from "../store/base-snapshot.js";
 import { IdMapStore } from "../store/id-map.js";
@@ -152,15 +144,6 @@ interface AdapterState {
   working: Map<string, Record<string, unknown>>;
   workingAvailable: boolean;
   issues: WorkingIssue[];
-}
-
-interface AutoMergeInstruction extends WorkingMaterializationInput {
-  initialFileSha256: string;
-}
-
-interface PlannedEntity {
-  item: PlanItem;
-  autoMerge: AutoMergeInstruction | null;
 }
 
 interface WorkingIssue {
@@ -449,8 +432,7 @@ async function itemFromEntity(
   remote: ReadonlyMap<string, Record<string, unknown>>,
   key: string,
   orphan: boolean,
-  worktreeRoot: string | null,
-): Promise<PlannedEntity> {
+): Promise<PlanItem> {
   const base = state.base.get(key);
   const working = state.working.get(key);
   const theirs = remote.get(key);
@@ -458,13 +440,12 @@ async function itemFromEntity(
   let operation: PlanOp = orphan
     ? "orphan" as const
     : !state.workingAvailable && !sameEntity(base, theirs)
-      // Without authored state, upstream drift is a conservative unresolved
-      // conflict: it must stay visible, but must never be mistaken for a write.
+      // Without authored state, start conservatively; semantic refinement
+      // below can still prove a zero-conflict payload for the planned apply.
       ? "conflict" as const
       : classifyThreeWay(base, working, theirs, state.adapter.klass !== "OVERLAY");
   let fields = operation === "noop" ? [] : semanticFields;
   let conflicts: Conflict[] = [];
-  let autoMerge: AutoMergeInstruction | null = null;
   if (operation === "conflict") {
     const refinement = await refinePlanCandidate({
       kind: state.adapter.kind,
@@ -476,52 +457,27 @@ async function itemFromEntity(
     conflicts = refinement.conflicts;
     if (
       conflicts.length === 0
-      && state.workingAvailable
-      && worktreeRoot !== null
-      && working !== undefined
       && isRecord(refinement.merged)
     ) {
-      const workingRow = state.workingRows.find((row) => row.key === key);
-      if (workingRow === undefined) {
-        throw new WorkingMaterializationError(
-          "WORKING_LOCATION_MISSING",
-          `Registered adapter did not locate ${state.adapter.kind}/${key}`,
-        );
-      }
-      const file = confinedWorkingFile(worktreeRoot, workingRow.file);
-      const initialFileSha256 = sha256Text(await readFile(file, "utf8"));
       const merged = structuredClone(refinement.merged);
       state.working.set(key, merged);
       operation = "update";
       fields = threeWayDiff(base, merged, theirs);
-      autoMerge = {
-        adapter: state.adapter,
-        worktreeRoot,
-        key,
-        file: workingRow.file,
-        expectedFileSha256: initialFileSha256,
-        initialFileSha256,
-        currentPayload: working,
-        nextPayload: merged,
-      };
     }
   }
   const baseRow = state.baseRows.find((row) => row.entityKey === key);
   const payload = state.working.get(key) ?? base ?? theirs;
   return {
-    item: {
-      ...scope,
-      kind: state.adapter.kind,
-      key,
-      label: labelFor(key, payload),
-      operation,
-      expectedBaseContentHash: baseRow?.contentHash ?? null,
-      fields,
-      conflicts,
-      referrers: [],
-      error: null,
-    },
-    autoMerge,
+    ...scope,
+    kind: state.adapter.kind,
+    key,
+    label: labelFor(key, payload),
+    operation,
+    expectedBaseContentHash: baseRow?.contentHash ?? null,
+    fields,
+    conflicts,
+    referrers: [],
+    error: null,
   };
 }
 
@@ -694,95 +650,6 @@ async function persistPlan(worktreeRoot: string, planValue: Plan): Promise<void>
   }
 }
 
-async function rollbackMaterializations(
-  materializations: readonly WorkingMaterialization[],
-  cause: unknown,
-): Promise<never> {
-  const failures: unknown[] = [];
-  for (const materialization of [...materializations].reverse()) {
-    try {
-      await materialization.rollback();
-    } catch (error: unknown) {
-      failures.push(error);
-    }
-  }
-  if (failures.length > 0) {
-    throw new AggregateError([cause, ...failures], "Auto-merge materialization and rollback failed");
-  }
-  throw cause;
-}
-
-async function materializeAutoMerges(
-  instructions: readonly AutoMergeInstruction[],
-): Promise<WorkingMaterialization[]> {
-  const initialByFile = new Map<string, string>();
-  for (const instruction of instructions) {
-    if (instruction.file === null) {
-      throw new WorkingMaterializationError(
-        "WORKING_LOCATION_MISSING",
-        `Auto-merge ${instruction.adapter.kind}/${instruction.key} has no adapter-owned file`,
-      );
-    }
-    const file = confinedWorkingFile(instruction.worktreeRoot, instruction.file);
-    const prior = initialByFile.get(file);
-    if (prior !== undefined && prior !== instruction.initialFileSha256) {
-      throw new WorkingMaterializationError("FILE_STALE", `Working YAML snapshot disagrees for ${instruction.file}`);
-    }
-    initialByFile.set(file, instruction.initialFileSha256);
-  }
-  for (const [file, expected] of initialByFile) {
-    if (sha256Text(await readFile(file, "utf8")) !== expected) {
-      throw new WorkingMaterializationError("FILE_STALE", "Working YAML changed during semantic planning");
-    }
-  }
-
-  const currentByFile = new Map(initialByFile);
-  const materializations: WorkingMaterialization[] = [];
-  try {
-    for (const instruction of instructions) {
-      if (instruction.file === null) continue;
-      const file = confinedWorkingFile(instruction.worktreeRoot, instruction.file);
-      const expectedFileSha256 = currentByFile.get(file);
-      if (expectedFileSha256 === undefined) {
-        throw new WorkingMaterializationError("FILE_STALE", "Working YAML lost its materialization fence");
-      }
-      materializations.push(await materializeExistingWorking({
-        ...instruction,
-        expectedFileSha256,
-      }));
-      currentByFile.set(file, sha256Text(await readFile(file, "utf8")));
-    }
-
-    const byAdapter = new Map<EntityAdapter, AutoMergeInstruction[]>();
-    for (const instruction of instructions) {
-      const group = byAdapter.get(instruction.adapter) ?? [];
-      group.push(instruction);
-      byAdapter.set(instruction.adapter, group);
-    }
-    for (const [adapter, group] of byAdapter) {
-      const root = group[0]?.worktreeRoot;
-      if (root === undefined) continue;
-      const rows = await adapter.readWorking(root);
-      for (const instruction of group) {
-        const actual = rows.find((row) => row.key === instruction.key)?.payload;
-        if (
-          actual === undefined
-          || instruction.nextPayload === undefined
-          || canonicalJson(actual) !== canonicalJson(instruction.nextPayload)
-        ) {
-          throw new WorkingMaterializationError(
-            "WORKING_VERIFY_FAILED",
-            `Auto-merged ${adapter.kind}/${instruction.key} failed read-back`,
-          );
-        }
-      }
-    }
-    return materializations;
-  } catch (error: unknown) {
-    return rollbackMaterializations(materializations, error);
-  }
-}
-
 function persistenceRoot(deps: EngineDeps): string | null {
   if (deps.worktreeRoot !== undefined && deps.worktreeRoot !== null) {
     return deps.worktreeRoot;
@@ -847,7 +714,7 @@ function parsePersistedPlan(value: unknown): Plan | null {
   return parsed.data as Plan;
 }
 
-/** Computes, validates, orders, fences, materializes safe conflict merges, and persists one semantic plan. */
+/** Computes, validates, orders, fences, and persists one read-only semantic plan. */
 export async function computePlan(
   deps: EngineDeps,
   scope: SyncScope,
@@ -886,23 +753,19 @@ export async function computePlan(
   }
 
   const items: PlanItem[] = [];
-  const autoMerges: AutoMergeInstruction[] = [];
   const payloads = new Map<string, Readonly<Record<string, unknown>>>();
   const sources = new Map<string, SourceLocation>();
   for (const state of states) {
     const remoteRows = remote.get(state.adapter.kind) ?? new Map();
     for (const key of candidateKeys(state, remoteRows)) {
-      const planned = await itemFromEntity(
+      const item = await itemFromEntity(
         scope,
         state,
         remoteRows,
         key,
         orphans.get(`${state.adapter.kind}\0${key}`) === true,
-        deps.worktreeRoot ?? null,
       );
-      const { item } = planned;
       items.push(item);
-      if (planned.autoMerge !== null) autoMerges.push(planned.autoMerge);
       const payload = effectivePayload(item, state, remoteRows);
       if (payload !== undefined) payloads.set(planItemId(item), payload);
       const working = state.workingRows.find((row) => row.key === key);
@@ -956,12 +819,7 @@ export async function computePlan(
   const computed: Plan = { ...unsignedPlan, planSha256: contentHash(withoutPlanSha(unsignedPlan)) };
   planSchema.parse(computed);
   const root = persistenceRoot(deps);
-  const materializations = await materializeAutoMerges(autoMerges);
-  try {
-    if (root !== null) await persistPlan(root, computed);
-  } catch (error: unknown) {
-    return rollbackMaterializations(materializations, error);
-  }
+  if (root !== null) await persistPlan(root, computed);
   return computed;
 }
 
