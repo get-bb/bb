@@ -22,6 +22,56 @@ describe("ThreadEnvironmentSummary", () => {
     ).toBe("Worktree");
   });
 
+  it("updates the active workspace directory and full-path tooltip", () => {
+    const { container, rerender } = render(
+      <ThreadEnvironmentSummary
+        projectName="project-a"
+        projectRootPath="/path/to/project-a"
+        environmentPath="/path/to/project-b"
+        environmentLabel="Working locally"
+      />,
+    );
+
+    const projectLabel = container.querySelector(
+      '[data-option-display][title="/path/to/project-b"]',
+    );
+    expect(
+      projectLabel?.querySelector("[data-promptbox-full-label]")?.textContent,
+    ).toBe("project-a / project-b");
+
+    rerender(
+      <ThreadEnvironmentSummary
+        projectName="project-a"
+        projectRootPath="/path/to/project-a"
+        environmentPath="/other/project-c"
+        environmentLabel="Working locally"
+      />,
+    );
+
+    const updatedProjectLabel = container.querySelector(
+      '[data-option-display][title="/other/project-c"]',
+    );
+    expect(
+      updatedProjectLabel?.querySelector("[data-promptbox-full-label]")
+        ?.textContent,
+    ).toBe("project-a / project-c");
+  });
+
+  it("keeps only the project name at the project root", () => {
+    const { container } = render(
+      <ThreadEnvironmentSummary
+        projectName="project-a"
+        projectRootPath="/path/to/project-a/"
+        environmentPath="/path/to/project-a"
+        environmentLabel="Working locally"
+      />,
+    );
+
+    expect(
+      container.querySelector("[data-promptbox-full-label]")?.textContent,
+    ).toBe("project-a");
+  });
+
   it("explains the create-thread action in a tooltip", async () => {
     render(
       <TooltipProvider delayDuration={0}>

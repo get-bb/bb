@@ -1,6 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback } from "react";
-import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
+import {
+  findLocalPathProjectSourceForHost,
+  PERSONAL_PROJECT_ID,
+  type ThreadListEntry,
+} from "@bb/domain";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import { listSidebarNavigationThreads } from "@/hooks/cache-owners/query-cache";
 import { apiClient } from "@/lib/api-server";
@@ -56,15 +60,16 @@ export function useSidebarNavigation(options?: QueryOptions) {
 }
 
 /**
- * Read the active project's display name from the shared sidebar-navigation
- * cache. The sidebar owns the realtime subscriptions and initial load; this only
- * reads the cached projects (no extra subscriptions) so surfaces like the
- * follow-up composer footer can label the current project. Returns undefined
- * until the cache is populated or when the project is unknown.
+ * Read the active project's name and host-specific root from the shared
+ * sidebar-navigation cache. The sidebar owns the realtime subscriptions and
+ * initial load. This hook only reads the cache so the follow-up composer can
+ * identify the active workspace. Returns undefined until the cache is populated
+ * or when the project is unknown.
  */
-export function useProjectDisplayName(
+export function useProjectWorkspaceDisplay(
   projectId: string | undefined,
-): string | undefined {
+  hostId: string | undefined,
+): { name: string; rootPath: string | undefined } | undefined {
   const { data } = useQuery<SidebarBootstrapResponse>({
     queryKey: sidebarNavigationQueryKey(),
     queryFn: ({ signal }) => fetchSidebarNavigation(signal),
@@ -76,10 +81,19 @@ export function useProjectDisplayName(
   if (!data || !projectId) {
     return undefined;
   }
-  if (projectId === PERSONAL_PROJECT_ID) {
-    return data.personalProject.name;
+  const project =
+    projectId === PERSONAL_PROJECT_ID
+      ? data.personalProject
+      : data.projects.find((candidate) => candidate.id === projectId);
+  if (!project) {
+    return undefined;
   }
-  return data.projects.find((project) => project.id === projectId)?.name;
+  return {
+    name: project.name,
+    rootPath: hostId
+      ? findLocalPathProjectSourceForHost(project.sources, hostId)?.path
+      : undefined,
+  };
 }
 
 interface SidebarNavigationThreadSelection<T> {
