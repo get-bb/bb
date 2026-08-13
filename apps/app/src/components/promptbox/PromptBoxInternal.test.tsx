@@ -2278,28 +2278,158 @@ describe("PromptBoxInternal compact layout", () => {
     expect(submitGroup?.contains(voice)).toBe(false);
   });
 
-  it("keeps collapsed composer controls from covering voice controls", () => {
+  it("keeps the existing prompt content when voice recording activates", () => {
+    const onChange = vi.fn();
+    const voice = {
+      state: "idle" as const,
+      isSupported: true,
+      stream: null,
+      start: vi.fn(),
+      stop: vi.fn(),
+      cancel: vi.fn(),
+    };
+    const view = render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          value: "Keep this prompt visible while I dictate",
+          onChange,
+          voice,
+        })}
+      />,
+    );
+
+    const editor = getPromptEditorElement();
+    expect(editor.textContent).toBe("Keep this prompt visible while I dictate");
+
+    view.rerender(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          value: "Keep this prompt visible while I dictate",
+          onChange,
+          voice: { ...voice, state: "recording" },
+        })}
+      />,
+    );
+
+    expect(getPromptEditorElement()).toBe(editor);
+    expect(editor.textContent).toBe("Keep this prompt visible while I dictate");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("keeps the prompt editor visible while the waveform occupies the action row", () => {
+    const stop = vi.fn();
+    const cancel = vi.fn();
     render(
       <PromptBoxInternal
         {...createPromptBoxProps({
+          value: "Keep this prompt visible while I dictate",
           voice: {
             state: "recording",
             isSupported: true,
             stream: null,
             start: vi.fn(),
-            stop: vi.fn(),
-            cancel: vi.fn(),
+            stop,
+            cancel,
           },
         })}
       />,
     );
 
     const main = document.querySelector("[data-promptbox-main]");
+    const layout = document.querySelector<HTMLElement>(
+      "[data-promptbox-layout]",
+    );
+    const actionRow = document.querySelector("[data-promptbox-action-row]");
+    const waveform = document.querySelector("canvas[aria-hidden]");
+
+    expect(main?.classList.contains("opacity-0")).toBe(false);
     expect(main?.classList.contains("pointer-events-none")).toBe(true);
-    expect(
-      screen.getByRole("button", { name: "Stop and transcribe recording" }),
-    ).toBeTruthy();
+    expect(layout?.style.gridTemplateRows).toBe("1fr");
+    expect(getPromptEditorElement().textContent).toBe(
+      "Keep this prompt visible while I dictate",
+    );
+    expect(waveform).toBeTruthy();
+    expect(actionRow?.contains(waveform)).toBe(true);
+    const confirm = screen.getByRole("button", {
+      name: "Stop and transcribe recording",
+    });
+    const cancelButton = screen.getByRole("button", {
+      name: "Cancel recording",
+    });
+    const voiceControls = document.querySelector(
+      "[data-promptbox-voice-controls]",
+    );
+    expect(voiceControls?.classList.contains("pointer-events-auto")).toBe(true);
+    expect(voiceControls?.contains(confirm)).toBe(true);
+    expect(voiceControls?.contains(cancelButton)).toBe(true);
+    fireEvent.click(confirm);
+    fireEvent.click(cancelButton);
+    expect(stop).toHaveBeenCalledOnce();
+    expect(cancel).toHaveBeenCalledOnce();
   });
+
+  it.each(["recording", "transcribing"] as const)(
+    "keeps zen sizing coherent while voice is %s",
+    async (state) => {
+      const storageKey = `bb.test.promptbox.voice-zen-${state}`;
+      window.localStorage.removeItem(storageKey);
+      const voice = {
+        state: "idle" as const,
+        isSupported: true,
+        stream: null,
+        start: vi.fn(),
+        stop: vi.fn(),
+        cancel: vi.fn(),
+      };
+      const view = render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "Keep this zen prompt visible",
+            voice,
+            zenMode: { storageKey },
+          })}
+        />,
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Make prompt box larger" }),
+      );
+      await waitFor(() =>
+        expect(
+          document
+            .querySelector("[data-promptbox]")
+            ?.hasAttribute("data-promptbox-zen"),
+        ).toBe(true),
+      );
+
+      view.rerender(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "Keep this zen prompt visible",
+            voice: { ...voice, state },
+            zenMode: { storageKey },
+          })}
+        />,
+      );
+
+      const form = document.querySelector("[data-promptbox]");
+      const editorScroll = document.querySelector<HTMLElement>(
+        "[data-promptbox-editor-scroll]",
+      );
+      const actionRow = document.querySelector("[data-promptbox-action-row]");
+      const waveform = document.querySelector("canvas[aria-hidden]");
+      expect(form?.hasAttribute("data-promptbox-zen")).toBe(true);
+      expect(form?.classList.contains("h-[50dvh]")).toBe(true);
+      expect(editorScroll?.style.height).toBe("100%");
+      expect(editorScroll?.style.maxHeight).toBe("none");
+      expect(getPromptEditorElement().textContent).toBe(
+        "Keep this zen prompt visible",
+      );
+      expect(actionRow?.contains(waveform)).toBe(true);
+
+      window.localStorage.removeItem(storageKey);
+    },
+  );
 
   it("does not expose zen controls in the full mobile layout", () => {
     render(

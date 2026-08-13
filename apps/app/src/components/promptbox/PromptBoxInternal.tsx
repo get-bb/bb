@@ -1251,9 +1251,7 @@ export function PromptBoxInternal({
   const isVoiceProcessing = voice?.state === "transcribing";
   const showVoiceActionGroup = isVoiceRecording || isVoiceProcessing;
   const isVoiceBusy = showVoiceActionGroup;
-  // Zen styling is suppressed while the voice bar shows, since the box
-  // collapses to the pill instead.
-  const showZenLayout = isZenMode && !showVoiceActionGroup;
+  const showZenLayout = isZenMode;
   const showCompactLayout =
     compact?.isCompact === true && !showVoiceActionGroup && !isZenMode;
   const effectivePlaceholder = showCompactLayout
@@ -2925,8 +2923,6 @@ export function PromptBoxInternal({
       }}
       className={cn(
         "group/promptbox relative w-full rounded-xl border border-border bg-background shadow-lift",
-        "transition-[border-radius] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
-        showVoiceActionGroup && "rounded-3xl",
         showCompactLayout && "overflow-hidden",
         // Zen toggles only the *height* of the box; the inset padding stays
         // identical so the placeholder/text doesn't jump when toggling.
@@ -2946,7 +2942,7 @@ export function PromptBoxInternal({
       <div
         data-promptbox-layout=""
         className={cn(COLLAPSING_GRID_CLASS, showZenLayout && "min-h-0 flex-1")}
-        style={{ gridTemplateRows: showVoiceActionGroup ? "0fr" : "1fr" }}
+        style={{ gridTemplateRows: "1fr" }}
       >
         <div
           data-promptbox-main=""
@@ -2954,7 +2950,7 @@ export function PromptBoxInternal({
             "min-h-0 overflow-hidden transition-opacity duration-[180ms] motion-reduce:transition-none",
             isZenMode && "flex flex-col",
             showCompactLayout && "relative h-12",
-            showVoiceActionGroup && "pointer-events-none opacity-0",
+            showVoiceActionGroup && "pointer-events-none",
           )}
         >
           {header && !showCompactLayout ? (
@@ -3164,14 +3160,30 @@ export function PromptBoxInternal({
             <div
               data-promptbox-action-row=""
               className={cn(
-                "flex shrink-0 flex-row items-center gap-3 pb-2 pl-3.5 pr-2 pt-1.5",
+                "relative flex shrink-0 flex-row items-center gap-3 pb-2 pl-3.5 pr-2 pt-1.5",
                 showCompactLayout && "absolute inset-y-0 right-2 gap-0 p-0",
               )}
             >
+              {voice && showVoiceActionGroup ? (
+                <div
+                  data-promptbox-voice-controls=""
+                  className="pointer-events-auto absolute inset-0 z-10 min-w-0"
+                >
+                  <VoiceRecordingBar
+                    state={isVoiceRecording ? "recording" : "transcribing"}
+                    stream={voice.stream}
+                    onConfirm={voice.stop}
+                    onCancel={voice.cancel}
+                  />
+                </div>
+              ) : null}
               {!showCompactLayout ? (
                 <div
                   data-promptbox-expanded-only=""
-                  className="flex min-w-0 flex-1 flex-row items-center gap-1"
+                  className={cn(
+                    "flex min-w-0 flex-1 flex-row items-center gap-1",
+                    showVoiceActionGroup && "pointer-events-none invisible",
+                  )}
                   aria-live="polite"
                 >
                   <PromptBoxActionsMenu
@@ -3192,7 +3204,12 @@ export function PromptBoxInternal({
                   {footerStart}
                 </div>
               ) : null}
-              <div className="flex shrink-0 flex-row items-center gap-1">
+              <div
+                className={cn(
+                  "flex shrink-0 flex-row items-center gap-1",
+                  showVoiceActionGroup && "pointer-events-none invisible",
+                )}
+              >
                 {!showCompactLayout ? (
                   <>
                     {!suppressPluginComposerCustomizations ? (
@@ -3298,21 +3315,6 @@ export function PromptBoxInternal({
               </div>
             </div>
           </PluginComposerViewProvider>
-        </div>
-      </div>
-      <div
-        className={COLLAPSING_GRID_CLASS}
-        style={{ gridTemplateRows: showVoiceActionGroup ? "1fr" : "0fr" }}
-      >
-        <div className="min-h-0 overflow-hidden">
-          {voice && showVoiceActionGroup ? (
-            <VoiceRecordingBar
-              state={isVoiceRecording ? "recording" : "transcribing"}
-              stream={voice.stream}
-              onConfirm={voice.stop}
-              onCancel={voice.cancel}
-            />
-          ) : null}
         </div>
       </div>
     </form>
