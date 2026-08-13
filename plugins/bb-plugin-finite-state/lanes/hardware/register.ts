@@ -73,6 +73,7 @@ interface HardwareProjectDbRow {
   sch_hash: string;
   pcb_hash: string | null;
   kicad_version: string | null;
+  supported: number;
   discovered_at: string;
 }
 
@@ -112,12 +113,13 @@ function upsertProjects(
   const statement = db.prepare(
     `INSERT INTO hw_project (
        project_id, project_version_id, project_key, name, sch_path, pcb_path,
-       sch_hash, pcb_hash, kicad_version, discovered_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       sch_hash, pcb_hash, kicad_version, supported, discovered_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(project_id, project_version_id, project_key) DO UPDATE SET
        name = excluded.name, sch_path = excluded.sch_path, pcb_path = excluded.pcb_path,
        sch_hash = excluded.sch_hash, pcb_hash = excluded.pcb_hash,
-       kicad_version = excluded.kicad_version, discovered_at = excluded.discovered_at`,
+       kicad_version = excluded.kicad_version, supported = excluded.supported,
+       discovered_at = excluded.discovered_at`,
   );
   db.transaction(() => {
     const discoveredKeys = new Set(projects.map((project) => project.projectKey));
@@ -134,7 +136,8 @@ function upsertProjects(
     }
     for (const project of projects) statement.run(
       projectId, pv, project.projectKey, project.name, project.schPath, project.pcbPath,
-      project.schSha256, project.pcbSha256, project.kicadVersion, project.discoveredAt,
+      project.schSha256, project.pcbSha256, project.kicadVersion,
+      project.supported ? 1 : 0, project.discoveredAt,
     );
   })();
 }
@@ -150,6 +153,7 @@ function projectOutput(row: HardwareProjectDbRow) {
     schSha256: row.sch_hash,
     pcbSha256: row.pcb_hash,
     kicadVersion: row.kicad_version,
+    supported: row.supported === 1,
     discoveredAt: row.discovered_at,
   };
 }

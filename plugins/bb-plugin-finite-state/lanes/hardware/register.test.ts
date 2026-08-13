@@ -96,12 +96,19 @@ describe("hardware registration", () => {
     const first = await host.harness.behavior.callRpc("hardwareProjectsList", {
       projectId: "project", projectVersionId: null, pageSize: 1, cursor: null,
     });
-    expect(first).toMatchObject({ total: 2, items: [{ projectKey: "a/a.kicad_pro" }] });
+    expect(first).toMatchObject({
+      total: 2,
+      items: [{ projectKey: "a/a.kicad_pro", supported: false }],
+    });
     const firstCursor = Reflect.get(Object(first), "cursor");
     const second = await host.harness.behavior.callRpc("hardwareProjectsList", {
       projectId: "project", projectVersionId: null, pageSize: 1, cursor: firstCursor,
     });
-    expect(second).toMatchObject({ total: 2, cursor: null, items: [{ projectKey: "b/b.kicad_pro" }] });
+    expect(second).toMatchObject({
+      total: 2,
+      cursor: null,
+      items: [{ projectKey: "b/b.kicad_pro", supported: true }],
+    });
     expect(host.harness.inspection.sdk.callsTo("files.listPaths")).toHaveLength(2);
 
     const before = ctx.db().prepare("SELECT discovered_at FROM hw_project WHERE project_key = 'b/b.kicad_pro'").pluck().get();

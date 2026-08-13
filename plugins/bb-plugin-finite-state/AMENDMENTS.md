@@ -204,6 +204,44 @@ documentation only and are never approval evidence.
 - Broadcast and merge commits: pending
 - Evidence: FS-49 at integration head `037831bf2` confirmed `taraCommandSchema` includes `operation: "delete"`, while `taraCommandApply.output` is `localWriteResultSchema` and the schema requires non-null `afterSha256`. The task's published `EditResult` contract requires nullable before/after digests, and the coordinator explicitly rejected old-file and empty-file synthetic hashes in task comment `01KZX45244TNG1KN12NQFST3DD`.
 
+### AMD-0017 — Publish discovered KiCad project compatibility
+
+- Status: approved
+- Artifacts:
+  - `plugins/bb-plugin-finite-state/shared/contract.ts`
+  - `plugins/bb-plugin-finite-state/lib/store/schema.ts`
+- Contract version: 5
+- Prior artifact hashes:
+  - `shared/contract.ts`: `6ca3b51571514cbe63ba8ad358476d317130d06e05bbe8755e9acc7b1c9e6ea9`
+  - `lib/store/schema.ts`: `2e83339eaf9fd86efb0e9ab08162eb24dba5645022e6a0fe86fe779656e6c569`
+- New artifact hashes: recorded by the frozen accept flow for the approved implementation
+- Reason: WP-72 computes KiCad project-format compatibility during discovery, but the frozen strict `hardwareProjectSchema` and `hw_project` table cannot carry that result. Consequently the WP-72 acceptance criterion that a KiCad 5 fixture records `supported: false` is unsatisfiable through the registered product RPC even though lane-local discovery computes it. The required field makes the product response truthful and prevents compatibility from being hidden behind omission or a default.
+- Owner decision — Option A: add `supported: boolean` as a required `hardwareProjectSchema` field. Every discovered project explicitly states `true` or `false`; the field means KiCad project-format compatibility as computed at discovery time by `lanes/hardware/discovery.ts` `readKicadVersion(...)`: recognized generator versions follow the existing major-version threshold, legacy numeric file-format versions follow the existing year threshold, and an unrecognized version is unsupported. This is project-source compatibility, not the separately detected `kicad-cli` installation/capability state.
+- Migration: increment `CONTRACT_VERSION` from 4 to 5 at merge serialization; append the two positional statements below to add `hw_project.supported INTEGER NOT NULL` with a migration-only default and immediately backfill by discriminating version shape before comparison; make every discovery upsert bind an explicit `0` or `1`; map storage back to the required boolean in `hardware.projects.list`; and update the pinned contract-version test. The WP-72 product-path registration test refreshes a KiCad 5 project and asserts `supported: false` through the registered `hardwareProjectsList` RPC. A separate populated pre-migration database test seeds an eight-digit KiCad 5-era version and proves the migration itself backfills `supported = 0` without discovery refresh. No RPC method name, input, classification, agent-tool allowlist, or other entity contract changes.
+- Approved migration SQL: the contents of these two SQL statements are byte-identical to the appended `schema.ts` migration strings:
+
+```sql
+ALTER TABLE hw_project ADD COLUMN supported INTEGER NOT NULL DEFAULT 0 CHECK (supported IN (0,1))
+```
+
+```sql
+UPDATE hw_project
+    SET supported = CASE
+      WHEN kicad_version IS NULL THEN 0
+      WHEN length(kicad_version) = 8 AND kicad_version NOT LIKE '%.%'
+        THEN CASE WHEN CAST(substr(kicad_version, 1, 4) AS INTEGER) >= 2021 THEN 1 ELSE 0 END
+      WHEN CAST(kicad_version AS INTEGER) >= 6 THEN 1
+      ELSE 0
+    END
+```
+
+- Affected WPs and gates: WP-09, WP-72, WP-73, WP-74, WP-76, WP-77; shared hardware project response, hardware discovery storage, registered RPC product path, frozen baseline, Node 22.19 typecheck/test/lint/build gates
+- Contract owner: Matt Wyckhouse; Option A approved around 10:03 ET via supervisor and recorded on FS-107 by coordinator `thr_hg37weivk7` in task comment `01KZXQ105XDHR3H30AFANM6KMQ` on 2026-08-13
+- Approval provenance: owner ruling above; exact entry and diff posted on FS-107 in comment `01KZXRAD369CW7ZN9E27QP4Q7G`; conditional signature with the required shape-first backfill correction relayed by supervisor and recorded by the coordinator on 2026-08-13; corrected SQL recorded in task comment `01KZXRSGRHQ2E3VC1DS5SYWVVM`
+- Affected-lane reviewer: pending independent exact-head repair audit
+- Broadcast and merge commits: pending
+- Evidence: WP-72 acceptance criterion “KiCad 5 project recorded with `supported: false`”; independent PR #83 review finding M-6; current `discovery.ts` `readKicadVersion(...)` compatibility computation; frozen strict `hardwareProjectSchema` and `hw_project` storage lack the field before this amendment
+
 ## Approved amendments — SPEC 07 / SPEC 08 intake
 
 *Drafted 2026-08-12 as AMD-0001…0006. Approved 2026-08-13 by the product

@@ -202,7 +202,7 @@ const ROW_COLUMNS = {
   ]),
   hw_project: [
     "project_id", "project_version_id", "project_key", "name", "sch_path",
-    "pcb_path", "sch_hash", "pcb_hash", "kicad_version", "discovered_at",
+    "pcb_path", "sch_hash", "pcb_hash", "kicad_version", "discovered_at", "supported",
   ],
   hw_artifact: [
     "project_id", "project_version_id", "project_key", "kind", "sheet_path",
@@ -258,6 +258,7 @@ function createDb(): Database.Database {
 
 const PRE_AMENDMENT_MIGRATION_COUNT = 78;
 const AMD_0010_REBUILD_STATEMENT_COUNT = 22;
+const AMD_0017_BACKFILL_STATEMENT_COUNT = 2;
 
 function insertGeneration(
   db: Database.Database,
@@ -302,7 +303,7 @@ describe("shared-store-freeze", () => {
     expect(SCHEMA_VERSION).toBe(2);
     expect(MIGRATIONS).toHaveLength(
       SCHEMA_TABLES.length + SCHEMA_INDEXES.length + SCHEMA_VIEWS.length
-        + AMD_0010_REBUILD_STATEMENT_COUNT,
+        + AMD_0010_REBUILD_STATEMENT_COUNT + AMD_0017_BACKFILL_STATEMENT_COUNT,
     );
     expect(
       MIGRATIONS.filter((statement) => /^CREATE TABLE\b/u.test(statement)).every(
@@ -470,6 +471,50 @@ describe("shared-store-freeze", () => {
     const appliedCount = db.prepare("SELECT count(*) FROM _bb_migrations").pluck().get();
     host.bb.storage.migrate(db, MIGRATIONS);
     expect(db.prepare("SELECT count(*) FROM _bb_migrations").pluck().get()).toBe(appliedCount);
+    await host.harness.lifecycle.dispose();
+  });
+
+  it("backfills pre-AMD-0017 KiCad compatibility by version shape without discovery", async () => {
+    const host = createFakePluginHost({ pluginId: "finite-state-schema-amd-0017" });
+    const db = host.bb.storage.database();
+    host.bb.storage.migrate(
+      db,
+      MIGRATIONS.slice(0, -AMD_0017_BACKFILL_STATEMENT_COUNT),
+    );
+
+    const insert = db.prepare(
+      `INSERT INTO hw_project
+         (project_id, project_version_id, project_key, name, sch_path, pcb_path,
+          sch_hash, pcb_hash, kicad_version, discovered_at)
+       VALUES ('project-a', '@project', ?, ?, ?, NULL, ?, NULL, ?, '2026-08-13T00:00:00Z')`,
+    );
+    for (const [projectKey, version] of [
+      ["legacy-five.kicad_pro", "20171130"],
+      ["modern-date.kicad_pro", "20231120"],
+      ["dotted-five.kicad_pro", "5.1.12.3"],
+      ["modern-generator.kicad_pro", "8.0.4"],
+      ["unknown.kicad_pro", null],
+    ] as const) {
+      insert.run(
+        projectKey,
+        projectKey,
+        projectKey.replace(".kicad_pro", ".kicad_sch"),
+        "0".repeat(64),
+        version,
+      );
+    }
+
+    host.bb.storage.migrate(db, MIGRATIONS);
+
+    expect(
+      db.prepare("SELECT project_key, supported FROM hw_project ORDER BY project_key").all(),
+    ).toEqual([
+      { project_key: "dotted-five.kicad_pro", supported: 0 },
+      { project_key: "legacy-five.kicad_pro", supported: 0 },
+      { project_key: "modern-date.kicad_pro", supported: 1 },
+      { project_key: "modern-generator.kicad_pro", supported: 1 },
+      { project_key: "unknown.kicad_pro", supported: 0 },
+    ]);
     await host.harness.lifecycle.dispose();
   });
 

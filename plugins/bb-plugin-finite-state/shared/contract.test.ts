@@ -178,8 +178,8 @@ function objectField(
 }
 
 describe("rpc-contract-freeze", () => {
-  it("exports version four and all 86 bijective logical-to-wire names", () => {
-    expect(CONTRACT_VERSION).toBe(4);
+  it("exports version five and all 86 bijective logical-to-wire names", () => {
+    expect(CONTRACT_VERSION).toBe(5);
     expect(Object.keys(RPC_WIRE_METHODS).sort()).toEqual(
       [...EXPECTED_LOGICAL_METHODS].sort(),
     );
