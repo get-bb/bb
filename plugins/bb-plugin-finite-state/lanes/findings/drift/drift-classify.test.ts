@@ -1,5 +1,5 @@
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -10,7 +10,7 @@ import { rebuildOverlayIndex } from "../overlay/indexer.js";
 import { readOverlayFiles, serializeOverlay } from "../overlay/reader.js";
 import { decisionFromInput, stableKeyFor, type DecisionInput, type VexTuple } from "../overlay/schema.js";
 import { setDecision } from "../overlay/writer.js";
-import { classifyDrift, readDriftReport } from "./classify.js";
+import { classifyDrift, DriftProjectionError, readDriftReport } from "./classify.js";
 import { driftTotals, type DriftItem, type DriftState } from "./report.js";
 
 const PROJECT = "project-drift";
@@ -262,6 +262,21 @@ describe("re-scan drift classification", () => {
     expectOnly(report.items[0]!, "needs_completion", report.totals);
   });
 
+  it("types a deleted authored overlay as requiring an index rebuild", async () => {
+    const value = await fixture();
+    const identity = { cve: "CVE-DELETED", purl: null, name: "deleted", group: "acme", version: "1" };
+    await addDecision(value, identity);
+    await rebuildOverlayIndex(value.db, value.root);
+    const parsed = (await readOverlayFiles(value.root)).files[0]!;
+    await unlink(parsed.absoluteFile);
+    expect(() => classifyDrift({ db: value.db, root: value.root, projectId: PROJECT }, PV))
+      .toThrowError(expect.objectContaining({
+        name: "DriftProjectionError",
+        code: "DRIFT_OVERLAY_DELETED_REINDEX_REQUIRED",
+        file: parsed.file,
+      }) as DriftProjectionError);
+  });
+
   it("refreshes once and serves every large-report page without writes or repeated totals", async () => {
     const value = await fixture();
     const component = { purl: null, name: "paged", group: "acme", version: "1" };
@@ -269,7 +284,7 @@ describe("re-scan drift classification", () => {
     addFinding(value, "page-0", firstIdentity);
     await addDecision(value, firstIdentity);
     const parsed = (await readOverlayFiles(value.root)).files[0]!;
-    for (let index = 1; index < 205; index += 1) {
+    for (let index = 1; index < 2_000; index += 1) {
       const cve = `CVE-PAGE-${index.toString().padStart(4, "0")}`;
       const identity = { ...component, cve };
       addFinding(value, `page-${index}`, identity);
@@ -293,21 +308,79 @@ describe("re-scan drift classification", () => {
     await writeFile(parsed.absoluteFile, serializeOverlay(parsed.overlay));
     await rebuildOverlayIndex(value.db, value.root);
     const first = classifyDrift({ db: value.db, root: value.root, projectId: PROJECT, limit: 20 }, PV);
-    expect(first.totals.reapply).toBe(205);
+    expect(first).toMatchObject({
+      runId: expect.stringMatching(/^drift-/u),
+      createdAt: expect.stringMatching(/^202/u),
+      unclassifiedCount: 0,
+      totals: { reapply: 2_000 },
+    });
     expect(value.db.prepare("SELECT COUNT(*) AS count FROM triage_runs WHERE source = 'drift'").get()).toEqual({ count: 1 });
-    const before = value.db.prepare("SELECT total_changes() AS count").get() as { count: number };
-    const keys: string[] = [];
-    let cursor: string | null = null;
-    do {
-      const page = readDriftReport({ db: value.db, root: value.root, projectId: PROJECT, cursor, limit: 20 }, PV);
-      expect(page.totals.reapply).toBe(205);
-      keys.push(...page.items.map((item) => item.stableKey));
-      cursor = page.nextCursor;
-    } while (cursor !== null);
-    const after = value.db.prepare("SELECT total_changes() AS count").get() as { count: number };
-    expect(keys).toHaveLength(205);
-    expect(new Set(keys)).toHaveLength(205);
-    expect(after.count).toBe(before.count);
+    const walk = (): { keys: string[]; pageMilliseconds: number; writes: number } => {
+      const before = value.db.prepare("SELECT total_changes() AS count").get() as { count: number };
+      const keys: string[] = [];
+      let cursor: string | null = null;
+      const started = performance.now();
+      let pages = 0;
+      do {
+        const page = readDriftReport({ db: value.db, projectId: PROJECT, cursor, limit: 100 }, PV);
+        expect(page).toMatchObject({ runId: first.runId, createdAt: first.createdAt, unclassifiedCount: 0 });
+        expect(page.totals.reapply).toBe(2_000);
+        keys.push(...page.items.map((item) => item.stableKey));
+        cursor = page.nextCursor;
+        pages += 1;
+      } while (cursor !== null);
+      const after = value.db.prepare("SELECT total_changes() AS count").get() as { count: number };
+      return { keys, pageMilliseconds: (performance.now() - started) / pages, writes: after.count - before.count };
+    };
+    const singleFile = walk();
+    expect(singleFile.keys).toHaveLength(2_000);
+    expect(new Set(singleFile.keys)).toHaveLength(2_000);
+    expect(singleFile.pageMilliseconds).toBeLessThan(50);
+    expect(singleFile.writes).toBe(0);
+
+    // Re-shape the same production projection across 100 component files.
+    // Report cost must remain bounded because pages use only persisted drift data.
+    const rows = value.db.prepare(
+      "SELECT stable_key FROM overlay_index WHERE entity_kind = 'vexDecision' ORDER BY stable_key",
+    ).all() as Array<{ stable_key: string }>;
+    const reshape = value.db.prepare(
+      "UPDATE overlay_index SET file_path = ? WHERE entity_kind = 'vexDecision' AND stable_key = ?",
+    );
+    value.db.transaction(() => {
+      rows.forEach((row, index) => reshape.run(`.fs/triage/${PROJECT}/paged-${index % 100}.yaml`, row.stable_key));
+    })();
+    const manyFiles = walk();
+    expect(manyFiles.keys).toEqual(singleFile.keys);
+    expect(manyFiles.pageMilliseconds).toBeLessThan(50);
+    expect(manyFiles.writes).toBe(0);
     expect(value.db.prepare("SELECT COUNT(*) AS count FROM triage_runs WHERE source = 'drift'").get()).toEqual({ count: 1 });
+
+    // The page is a pure index read: it remains readable even if the authored
+    // overlay is deleted after the refresh snapshot was persisted.
+    await unlink(parsed.absoluteFile);
+    expect(readDriftReport({ db: value.db, projectId: PROJECT, limit: 100 }, PV).items).toHaveLength(100);
+  }, 15_000);
+
+  it("signals decisions indexed after the last refresh as unclassified", async () => {
+    const value = await fixture();
+    const component = { purl: null, name: "freshness", group: "acme", version: "1" };
+    const firstIdentity = { ...component, cve: "CVE-FRESH-1" };
+    addFinding(value, "fresh-1", firstIdentity);
+    await addDecision(value, firstIdentity);
+    await rebuildOverlayIndex(value.db, value.root);
+    const refreshed = classifyDrift({ db: value.db, root: value.root, projectId: PROJECT }, PV);
+
+    const secondIdentity = { ...component, cve: "CVE-FRESH-2" };
+    addFinding(value, "fresh-2", secondIdentity);
+    await addDecision(value, secondIdentity);
+    await rebuildOverlayIndex(value.db, value.root);
+    const staleReport = readDriftReport({ db: value.db, projectId: PROJECT }, PV);
+    expect(staleReport).toMatchObject({
+      runId: refreshed.runId,
+      createdAt: refreshed.createdAt,
+      unclassifiedCount: 1,
+      totals: refreshed.totals,
+    });
+    expect(staleReport.items).toHaveLength(1);
   });
 });

@@ -17,6 +17,9 @@ export interface DriftItem {
 
 export interface DriftReport {
   pvId: string;
+  runId: string;
+  createdAt: string;
+  unclassifiedCount: number;
   totals: Record<DriftState, number>;
   items: DriftItem[];
   nextCursor: string | null;

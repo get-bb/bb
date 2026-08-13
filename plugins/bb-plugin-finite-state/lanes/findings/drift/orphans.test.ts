@@ -9,7 +9,7 @@ import { rebuildOverlayIndex } from "../overlay/indexer.js";
 import { readOverlayFiles } from "../overlay/reader.js";
 import { stableKeyFor } from "../overlay/schema.js";
 import { setDecision } from "../overlay/writer.js";
-import { classifyDrift } from "./classify.js";
+import { classifyDrift, readDriftReport } from "./classify.js";
 import { orphanBaseState, pruneOrphans } from "./orphans.js";
 
 const PROJECT = "project-orphans";
@@ -64,7 +64,8 @@ describe("orphan pruning", () => {
       sha = result.afterSha256;
     }
     await rebuildOverlayIndex(db, root);
-    expect(classifyDrift({ db, root, projectId: PROJECT }, PV).totals.orphaned).toBe(2);
+    const beforePrune = classifyDrift({ db, root, projectId: PROJECT }, PV);
+    expect(beforePrune.totals.orphaned).toBe(2);
     const state = orphanBaseState(db, PROJECT, PV);
     const deps = { db, root, projectId: PROJECT, pvId: PV };
     const dryRun = await pruneOrphans(deps, {
@@ -89,5 +90,9 @@ describe("orphan pruning", () => {
     })).resolves.toMatchObject({ selected: 1, pruned: 1 });
     expect(Object.keys((await readOverlayFiles(root)).files[0]?.overlay.decisions ?? {})).toEqual(["CVE-ORPHAN-2"]);
     expect(orphanBaseState(db, PROJECT, PV).rows.map((row) => row.stable_key)).toEqual([keys[1]]);
+    const afterPrune = readDriftReport({ db, projectId: PROJECT }, PV);
+    expect(afterPrune).toMatchObject({ totals: { orphaned: 1 }, unclassifiedCount: 0 });
+    expect(afterPrune.runId).not.toBe(beforePrune.runId);
+    expect(afterPrune.items.map((item) => item.stableKey)).toEqual([keys[1]]);
   });
 });

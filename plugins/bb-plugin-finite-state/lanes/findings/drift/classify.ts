@@ -37,19 +37,20 @@ interface DriftRow {
 }
 
 interface PersistedDriftRow {
-  project_id: string;
   stable_key: string;
-  file_path: string;
   drift_state: DriftState;
   match_tier: "purl" | "nvg" | "ng" | null;
 }
 
 interface DriftRunRow {
+  run_id: string;
   report_json: string;
+  created_at: string;
 }
 
 interface PersistedDriftSummary {
   totals: Record<DriftState, number>;
+  versions: Record<string, { previous?: string; current?: string }>;
 }
 
 export interface DriftDeps {
@@ -59,8 +60,20 @@ export interface DriftDeps {
   limit?: number;
 }
 
-export interface DriftReportDeps extends DriftDeps {
+export interface DriftReportDeps {
+  db: Database.Database;
+  projectId: string;
   cursor?: string | null;
+  limit?: number;
+}
+
+export class DriftProjectionError extends Error {
+  readonly code = "DRIFT_OVERLAY_DELETED_REINDEX_REQUIRED" as const;
+
+  constructor(readonly file: string, options?: ErrorOptions) {
+    super(`Authored overlay ${file} was deleted after indexing; rebuild the overlay index before refreshing drift`, options);
+    this.name = "DriftProjectionError";
+  }
 }
 
 function enumOrNull<T extends string>(value: string | null, values: readonly T[], field: string): T | null {
@@ -141,10 +154,28 @@ function authoredComponents(
   const components = new Map<string, TriageOverlayV1["component"]>();
   for (const file of selected) {
     const absolute = resolve(root, file);
-    if (!absolute.startsWith(`${root}${sep}`) || realpathSync(absolute) !== absolute) {
+    let canonical: string;
+    try {
+      canonical = realpathSync(absolute);
+    } catch (error) {
+      if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
+        throw new DriftProjectionError(file, { cause: error });
+      }
+      throw error;
+    }
+    if (!absolute.startsWith(`${root}${sep}`) || canonical !== absolute) {
       throw new Error(`Overlay index path escapes the drift root: ${file}`);
     }
-    const overlay = parseOverlayText(readFileSync(absolute, "utf8"), file);
+    let text: string;
+    try {
+      text = readFileSync(absolute, "utf8");
+    } catch (error) {
+      if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
+        throw new DriftProjectionError(file, { cause: error });
+      }
+      throw error;
+    }
+    const overlay = parseOverlayText(text, file);
     if (overlay.project !== projectId) throw new Error(`Overlay project differs from drift scope: ${file}`);
     components.set(file, overlay.component);
   }
@@ -241,31 +272,42 @@ function parseSummary(serialized: string): PersistedDriftSummary {
     if (!Number.isInteger(count) || (count as number) < 0) throw new Error(`Persisted drift total ${state} is invalid`);
     totals[state] = count as number;
   }
-  return { totals };
+  const versionsValue = (value as Record<string, unknown>)["versions"];
+  if (versionsValue === null || typeof versionsValue !== "object" || Array.isArray(versionsValue)) {
+    throw new Error("Persisted drift versions are invalid");
+  }
+  const versions: PersistedDriftSummary["versions"] = {};
+  for (const [stableKey, entryValue] of Object.entries(versionsValue)) {
+    if (entryValue === null || typeof entryValue !== "object" || Array.isArray(entryValue)) {
+      throw new Error(`Persisted drift version entry ${stableKey} is invalid`);
+    }
+    const entry = entryValue as Record<string, unknown>;
+    if (entry["previous"] !== undefined && typeof entry["previous"] !== "string") {
+      throw new Error(`Persisted previous version for ${stableKey} is invalid`);
+    }
+    if (entry["current"] !== undefined && typeof entry["current"] !== "string") {
+      throw new Error(`Persisted current version for ${stableKey} is invalid`);
+    }
+    versions[stableKey] = {
+      ...(typeof entry["previous"] === "string" ? { previous: entry["previous"] } : {}),
+      ...(typeof entry["current"] === "string" ? { current: entry["current"] } : {}),
+    };
+  }
+  return { totals, versions };
 }
 
 function persistedItem(
-  db: Database.Database,
   row: PersistedDriftRow,
-  pvId: string,
-  components: ReadonlyMap<string, TriageOverlayV1["component"]>,
+  version: PersistedDriftSummary["versions"][string] | undefined,
 ): DriftItem {
   const tier = row.match_tier === "purl" ? 1 : row.match_tier === "nvg" ? 2 : row.match_tier === "ng" ? 3 : undefined;
-  const componentIdentity = identity(row, components);
-  const previousVersion = componentIdentity.version ?? undefined;
   if (row.drift_state === "stale") {
-    const resolution = resolveFinding(db, {
-      schema: "fs-finding-key/v1",
-      project: row.project_id,
-      ...componentIdentity,
-    }, pvId, "exact_version");
-    const currentVersion = versionOf(resolution);
     return {
       stableKey: row.stable_key,
       state: row.drift_state,
-      reason: staleReason(previousVersion, currentVersion),
-      previousVersion,
-      currentVersion,
+      reason: staleReason(version?.previous, version?.current),
+      ...(version?.previous === undefined ? {} : { previousVersion: version.previous }),
+      ...(version?.current === undefined ? {} : { currentVersion: version.current }),
     };
   }
   const reason: Record<Exclude<DriftState, "stale">, string> = {
@@ -280,7 +322,9 @@ function persistedItem(
     state: row.drift_state,
     ...(tier === undefined ? {} : { tier }),
     reason: reason[row.drift_state],
-    ...(row.drift_state === "orphaned" ? { previousVersion } : {}),
+    ...(row.drift_state === "orphaned" && version?.previous !== undefined
+      ? { previousVersion: version.previous }
+      : {}),
   };
 }
 
@@ -288,15 +332,22 @@ function persistedItem(
 export function readDriftReport(deps: DriftReportDeps, pvId: string): DriftReport {
   const limit = boundedDriftLimit(deps.limit);
   const run = deps.db.prepare(
-    `SELECT report_json
+    `SELECT run_id, report_json, created_at
        FROM triage_runs
       WHERE project_id = ? AND project_version_id = ? AND source = 'drift' AND status = 'completed'
-      ORDER BY created_at DESC, run_id DESC
+      ORDER BY created_at DESC, rowid DESC
       LIMIT 1`,
   ).get(deps.projectId, pvId) as DriftRunRow | undefined;
   if (run === undefined) throw new Error("DRIFT_REFRESH_REQUIRED");
+  const summary = parseSummary(run.report_json);
+  const unclassified = deps.db.prepare(
+    `SELECT COUNT(*) AS count
+       FROM overlay_index
+      WHERE project_id = ? AND project_version_id = ? AND entity_kind = 'vexDecision'
+        AND drift_state IS NULL`,
+  ).get(deps.projectId, pvId) as { count: number };
   const rows = deps.db.prepare(
-    `SELECT project_id, stable_key, file_path, drift_state, match_tier
+    `SELECT stable_key, drift_state, match_tier
        FROM overlay_index
       WHERE project_id = ? AND project_version_id = ? AND entity_kind = 'vexDecision'
         AND drift_state IS NOT NULL AND (? IS NULL OR stable_key > ?)
@@ -304,18 +355,13 @@ export function readDriftReport(deps: DriftReportDeps, pvId: string): DriftRepor
       LIMIT ?`,
   ).all(deps.projectId, pvId, deps.cursor ?? null, deps.cursor ?? null, limit + 1) as PersistedDriftRow[];
   const page = rows.slice(0, limit);
-  const root = rootPath(deps.root);
-  const components = authoredComponents(
-    deps.db,
-    root,
-    deps.projectId,
-    pvId,
-    [...new Set(page.map((row) => row.file_path))],
-  );
   return {
     pvId,
-    totals: parseSummary(run.report_json).totals,
-    items: page.map((row) => persistedItem(deps.db, row, pvId, components)),
+    runId: run.run_id,
+    createdAt: run.created_at,
+    unclassifiedCount: unclassified.count,
+    totals: summary.totals,
+    items: page.map((row) => persistedItem(row, summary.versions[row.stable_key])),
     nextCursor: rows.length > limit ? page.at(-1)?.stable_key ?? null : null,
   };
 }
@@ -323,6 +369,7 @@ export function readDriftReport(deps: DriftReportDeps, pvId: string): DriftRepor
 /** Explicitly refreshes and persists every drift classification exactly once. */
 export function classifyDrift(deps: DriftDeps, pvId: string): DriftReport {
   const totals = driftTotals();
+  const versions: PersistedDriftSummary["versions"] = {};
   const root = rootPath(deps.root);
   const components = authoredComponents(deps.db, root, deps.projectId, pvId);
   const update = deps.db.prepare(
@@ -349,6 +396,15 @@ export function classifyDrift(deps: DriftDeps, pvId: string): DriftReport {
       for (const row of rows) {
         const item = classifyRow(deps.db, row, pvId, components);
         totals[item.state] += 1;
+        if (
+          (item.state === "stale" || item.state === "orphaned")
+          && (item.previousVersion !== undefined || item.currentVersion !== undefined)
+        ) {
+          versions[item.stableKey] = {
+            ...(item.previousVersion === undefined ? {} : { previous: item.previousVersion }),
+            ...(item.currentVersion === undefined ? {} : { current: item.currentVersion }),
+          };
+        }
         const matchTier = item.tier === 1 ? "purl" : item.tier === 2 ? "nvg" : item.tier === 3 ? "ng" : null;
         update.run(item.state, matchTier, deps.projectId, pvId, item.stableKey);
       }
@@ -365,11 +421,13 @@ export function classifyDrift(deps: DriftDeps, pvId: string): DriftReport {
       deps.projectId,
       pvId,
       `drift-${randomUUID()}`,
+      // For drift runs, conflicts records semantic three-way tuple conflicts;
+      // policy runs use the same generic column for writer CAS conflicts.
       totals.conflict,
-      JSON.stringify({ totals }),
+      JSON.stringify({ totals, versions }),
       now,
       now,
     );
   })();
-  return readDriftReport(deps, pvId);
+  return readDriftReport({ db: deps.db, projectId: deps.projectId, limit: deps.limit }, pvId);
 }

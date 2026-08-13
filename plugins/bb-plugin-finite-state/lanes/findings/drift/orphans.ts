@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 
 import { canonicalJson } from "../../sync/serialize/canonical.js";
+import { classifyDrift } from "./classify.js";
 import { readOverlayFiles } from "../overlay/reader.js";
 import { rebuildOverlayIndex } from "../overlay/indexer.js";
 import { stableKeyFor } from "../overlay/schema.js";
@@ -118,6 +119,7 @@ export async function pruneOrphans(deps: OrphanDeps, options: OrphanPruneOptions
     files.add(result.file);
   }
   await rebuildOverlayIndex(deps.db, deps.root);
+  classifyDrift({ db: deps.db, root: deps.root, projectId: deps.projectId }, deps.pvId);
   return {
     baseStateSha256: state.sha256,
     selected: proven.length,
