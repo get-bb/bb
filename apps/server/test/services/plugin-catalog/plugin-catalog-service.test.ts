@@ -206,11 +206,11 @@ describe("bundled plugin catalog service", () => {
       {
         entryId: "improve-prompt",
         pluginId: "prompt-shaper",
-        displayName: "Improve Prompt",
+        displayName: "Prompt Improver",
         icon: "AiContentGenerator01",
         category: "Agent interaction",
         source:
-          "git:https://github.com/brsbl/bb-plugins.git@b08c2d2a636300a0af3e4e06895b4c2ef50947ca",
+          "git:https://github.com/brsbl/bb-plugins.git@1c6bb2e8ad3551466981e7eb027cc4b1f3428cac",
         installed: false,
       },
     ]);
@@ -225,7 +225,7 @@ describe("bundled plugin catalog service", () => {
     upsertInstalledPlugin(db, {
       id: "prompt-shaper",
       source:
-        "git:https://github.com/brsbl/bb-plugins.git@b08c2d2a636300a0af3e4e06895b4c2ef50947ca",
+        "git:https://github.com/brsbl/bb-plugins.git@1c6bb2e8ad3551466981e7eb027cc4b1f3428cac",
       provenance: { kind: "catalog", entryId: "improve-prompt" },
       sourceIntent: {
         kind: "git",
@@ -261,8 +261,8 @@ describe("bundled plugin catalog service", () => {
           pluginId: "prompt-shaper",
           category: "Agent interaction",
           gitSource:
-            "git:https://github.com/brsbl/bb-plugins.git@b08c2d2a636300a0af3e4e06895b4c2ef50947ca",
-          displayName: "Improve Prompt",
+            "git:https://github.com/brsbl/bb-plugins.git@1c6bb2e8ad3551466981e7eb027cc4b1f3428cac",
+          displayName: "Prompt Improver",
           description: "Rewrites composer drafts.",
           icon: "AiContentGenerator01",
           bbEngineRange: ">=0.0.34",
@@ -280,7 +280,7 @@ describe("bundled plugin catalog service", () => {
         entryId: "improve-prompt",
         pluginId: "prompt-shaper",
         source:
-          "git:https://github.com/brsbl/bb-plugins.git@b08c2d2a636300a0af3e4e06895b4c2ef50947ca",
+          "git:https://github.com/brsbl/bb-plugins.git@1c6bb2e8ad3551466981e7eb027cc4b1f3428cac",
       },
     ]);
     expect(installedNames).toEqual([]);

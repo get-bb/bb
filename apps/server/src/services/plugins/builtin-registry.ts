@@ -191,27 +191,13 @@ export const GIT_OFFICIAL_PLUGINS: readonly GitOfficialPluginDefinition[] = [
     bbPluginSdkRange: "^0.5.0",
   },
   {
-    name: "timeline-comments",
-    pluginId: "timeline-comments",
-    category: "Interface",
-    gitSource:
-      // Pinned to a reviewed commit of bb-plugins plugin/timeline-comments.
-      "git:https://github.com/brsbl/bb-plugins.git@608348586c64ee0ee2eb0a85df10ab544be19e31",
-    displayName: "Timeline Comments",
-    description:
-      "Attach durable comment threads to selected text in bb timelines.",
-    icon: "MessageCirclePlus",
-    bbEngineRange: ">=0.0.34",
-    bbPluginSdkRange: "^0.5.0",
-  },
-  {
     name: "improve-prompt",
     pluginId: "prompt-shaper",
     category: "Agent interaction",
     gitSource:
       // Pinned to a reviewed commit of bb-plugins plugin/improve-prompt.
-      "git:https://github.com/brsbl/bb-plugins.git@b08c2d2a636300a0af3e4e06895b4c2ef50947ca",
-    displayName: "Improve Prompt",
+      "git:https://github.com/brsbl/bb-plugins.git@1c6bb2e8ad3551466981e7eb027cc4b1f3428cac",
+    displayName: "Prompt Improver",
     description:
       "Adds an Improve prompt action to the composer that sends your rough draft to a hidden helper agent, which applies the prompt-shaper skill to rewrite it into a clear, complete prompt and returns it in place for review before you send.",
     icon: "AiContentGenerator01",

@@ -22,7 +22,7 @@ const GIT_PLUGIN = {
   status: "running",
   statusDetail: null,
   description: "Enhance a rough composer draft before sending it.",
-  name: "Improve Prompt",
+  name: "Prompt Improver",
   icon: "AiContentGenerator01",
   compactIconUrl: null,
   logoUrl: null,
