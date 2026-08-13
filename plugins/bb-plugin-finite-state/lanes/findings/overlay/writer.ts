@@ -13,7 +13,7 @@ import {
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 import { SerializeError } from "../../sync/serialize/yaml.js";
-import { parseOverlayText, serializeOverlay } from "./reader.js";
+import { parseOverlayText, readOverlayFiles, serializeOverlay } from "./reader.js";
 import {
   decisionFromInput,
   parseOverlay,
@@ -59,6 +59,13 @@ export class OverlayLockHeldError extends Error {
   }
 }
 
+interface ComponentCacheEntry {
+  directoryMtimeMs: number | null;
+  files: Map<string, string>;
+}
+
+const componentCache = new Map<string, ComponentCacheEntry>();
+
 function sha256(content: string): string {
   return createHash("sha256").update(content).digest("hex");
 }
@@ -82,6 +89,68 @@ function safeComponent(value: string): string {
     .replace(/^[._-]+|[._-]+$/gu, "")
     .slice(0, 80);
   return slug.length > 0 && slug !== "." && slug !== ".." ? slug : "component";
+}
+
+function componentIdentity(component: TriageOverlayV1["component"]): string {
+  return JSON.stringify([component.purl, component.name, component.group, component.version]);
+}
+
+function componentCacheKey(root: string, project: string): string {
+  return `${root}\0${project}`;
+}
+
+async function directoryMtime(directory: string): Promise<number | null> {
+  try {
+    const metadata = await lstat(directory);
+    return metadata.isDirectory() ? metadata.mtimeMs : null;
+  } catch (error) {
+    if (missing(error)) return null;
+    throw error;
+  }
+}
+
+async function cachedComponentFile(
+  root: string,
+  project: string,
+  component: TriageOverlayV1["component"],
+): Promise<string | null> {
+  const directory = resolve(root, ".fs", "triage", project);
+  const mtime = await directoryMtime(directory);
+  const cacheKey = componentCacheKey(root, project);
+  let cached = componentCache.get(cacheKey);
+  if (cached === undefined || cached.directoryMtimeMs !== mtime) {
+    const parsed = await readOverlayFiles(root);
+    cached = {
+      directoryMtimeMs: mtime,
+      files: new Map(parsed.files
+        .filter((entry) => entry.overlay.project === project)
+        .map((entry) => [componentIdentity(entry.overlay.component), entry.absoluteFile])),
+    };
+    componentCache.set(cacheKey, cached);
+  }
+  const file = cached.files.get(componentIdentity(component));
+  if (file === undefined) return null;
+  const current = await readCurrent(root, file);
+  if (current !== null && current.overlay.project === project && sameComponent(current.overlay.component, component)) {
+    return file;
+  }
+  componentCache.delete(cacheKey);
+  return cachedComponentFile(root, project, component);
+}
+
+async function rememberComponentFile(
+  root: string,
+  project: string,
+  component: TriageOverlayV1["component"],
+  file: string | null,
+): Promise<void> {
+  const cacheKey = componentCacheKey(root, project);
+  const cached = componentCache.get(cacheKey) ?? { directoryMtimeMs: null, files: new Map<string, string>() };
+  const identity = componentIdentity(component);
+  if (file === null) cached.files.delete(identity);
+  else cached.files.set(identity, file);
+  cached.directoryMtimeMs = await directoryMtime(resolve(root, ".fs", "triage", project));
+  componentCache.set(cacheKey, cached);
 }
 
 function normalizeFile(root: string, file: string): string {
@@ -139,7 +208,7 @@ async function componentFile(root: string, project: string, component: TriageOve
   const directory = resolve(root, ".fs", "triage", project);
   const base = safeComponent(component.name);
   const plain = resolve(directory, `${base}.yaml`);
-  const identity = JSON.stringify([component.purl, component.name, component.group, component.version]);
+  const identity = componentIdentity(component);
   const collision = resolve(directory, `${base}-${sha256(identity).slice(0, 10)}.yaml`);
   const plainCurrent = await readCurrent(root, plain);
   if (plainCurrent?.overlay.project === project && sameComponent(plainCurrent.overlay.component, component)) return plain;
@@ -147,6 +216,8 @@ async function componentFile(root: string, project: string, component: TriageOve
   if (collisionCurrent?.overlay.project === project && sameComponent(collisionCurrent.overlay.component, component)) {
     return collision;
   }
+  const existing = await cachedComponentFile(root, project, component);
+  if (existing !== null) return existing;
   if (plainCurrent === null) return plain;
   if (collisionCurrent === null) return collision;
   throw new SerializeError(normalizeFile(root, collision), 1, "Overlay filename collision belongs to a different component identity");
@@ -252,7 +323,7 @@ export async function setDecision(root: string, input: DecisionInput, expectedSh
   const initial = candidateOverlay(input);
   const file = await componentFile(projectRoot, initial.project, initial.component);
   await ensureDirectory(projectRoot, dirname(file));
-  return withLock(projectRoot, file, async () => {
+  const result = await withLock<OverlayWriteResult>(projectRoot, file, async () => {
     const current = await readCurrent(projectRoot, file);
     if (expectedSha256 !== undefined && current?.digest !== expectedSha256) {
       throw new OverlayCasConflictError(normalizeFile(projectRoot, file), expectedSha256, current?.digest);
@@ -278,6 +349,8 @@ export async function setDecision(root: string, input: DecisionInput, expectedSh
       state: decisionState(decision),
     };
   });
+  await rememberComponentFile(projectRoot, initial.project, initial.component, file);
+  return result;
 }
 
 export async function removeDecision(root: string, input: RemoveDecisionInput, expectedSha256?: string): Promise<OverlayWriteResult> {
@@ -286,7 +359,7 @@ export async function removeDecision(root: string, input: RemoveDecisionInput, e
   if (stableKey !== input.stableKey) throw new Error("stableKey does not match the frozen finding identity codec");
   const file = await componentFile(projectRoot, input.project, input.component);
   await ensureDirectory(projectRoot, dirname(file));
-  return withLock(projectRoot, file, async () => {
+  const result = await withLock<OverlayWriteResult>(projectRoot, file, async () => {
     const current = await readCurrent(projectRoot, file);
     if (current === null) throw new SerializeError(normalizeFile(projectRoot, file), null, "Overlay decision does not exist");
     if (expectedSha256 !== undefined && current.digest !== expectedSha256) {
@@ -322,4 +395,7 @@ export async function removeDecision(root: string, input: RemoveDecisionInput, e
       state: "dirty",
     };
   });
+  const remaining = await readCurrent(projectRoot, file);
+  await rememberComponentFile(projectRoot, input.project, input.component, remaining === null ? null : file);
+  return result;
 }

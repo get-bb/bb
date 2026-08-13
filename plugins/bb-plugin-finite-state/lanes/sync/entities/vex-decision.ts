@@ -10,6 +10,7 @@ import type {
   EntityAdapter,
   KeyResolver,
   ServerEntity,
+  SyncScope,
   WorkingEntity,
 } from "../engine/adapter.js";
 import type { BaseRow } from "../store/base-snapshot.js";
@@ -152,7 +153,7 @@ function normalizedFile(root: string, file: string): string {
   return relative(root, file).split(sep).join("/");
 }
 
-async function yamlFiles(directory: string): Promise<string[]> {
+async function yamlFiles(directory: string, projectId?: string): Promise<string[]> {
   let entries;
   try {
     entries = await readdir(directory, { withFileTypes: true });
@@ -162,6 +163,7 @@ async function yamlFiles(directory: string): Promise<string[]> {
   }
   const files: string[] = [];
   for (const entry of entries) {
+    if (projectId !== undefined && entry.name !== projectId) continue;
     const path = join(directory, entry.name);
     if (entry.isDirectory()) files.push(...await yamlFiles(path));
     if (
@@ -257,19 +259,24 @@ export class VexWorkingReadError extends SerializeError {
 }
 
 /** Reads all `.fs/triage` decision YAML beneath a worktree. */
-export async function readVexWorking(worktreeRoot: string): Promise<WorkingEntity[]> {
+export async function readVexWorking(
+  worktreeRoot: string,
+  scope?: SyncScope,
+): Promise<WorkingEntity[]> {
   const root = resolve(worktreeRoot);
   const serializer = createSerializer("vexDecision");
   const result: WorkingEntity[] = [];
   const keys = new Map<string, string>();
   const issues: SerializeError[] = [];
-  for (const absoluteFile of await yamlFiles(join(root, ".fs", "triage"))) {
+  for (const absoluteFile of await yamlFiles(join(root, ".fs", "triage"), scope?.projectId)) {
     const file = normalizedFile(root, absoluteFile);
     try {
       const document = serializer.fromYaml(await readFile(absoluteFile, "utf8"), file);
       const aggregate = aggregateDecisions(document, file);
       const decisions = aggregate.length > 0 ? aggregate : singleDecision(document, file);
-      const project = typeof document["project"] === "string" ? document["project"] : "";
+      if (scope !== undefined && document["project"] !== scope.projectId) {
+        throw new SerializeError(file, 1, `overlay project must match sync scope ${scope.projectId}`);
+      }
       if (decisions.length === 0) {
         throw new SerializeError(file, 1, `${basename(file)} is not an fs-triage decision document`);
       }
@@ -277,16 +284,15 @@ export async function readVexWorking(worktreeRoot: string): Promise<WorkingEntit
       const fileKeys = new Set<string>();
       for (const decision of decisions) {
         const key = ENTITIES.vexDecision.key({ cve: decision.cve, ...decision.identity });
-        const scopedKey = `${project}\0${key}`;
-        const prior = keys.get(scopedKey);
-        if (prior !== undefined || fileKeys.has(scopedKey)) {
+        const prior = keys.get(key);
+        if (prior !== undefined || fileKeys.has(key)) {
           throw new SerializeError(file, 1, `decision key is already authored in ${prior ?? file}`);
         }
-        fileKeys.add(scopedKey);
+        fileKeys.add(key);
         fileRows.push({ key, payload: decision.payload, file });
       }
       for (const row of fileRows) {
-        keys.set(`${project}\0${row.key}`, file);
+        keys.set(row.key, file);
         result.push(row);
       }
     } catch (error: unknown) {

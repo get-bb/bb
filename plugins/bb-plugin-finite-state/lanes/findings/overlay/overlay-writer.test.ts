@@ -1,4 +1,4 @@
-import { lstat, mkdtemp, readFile, realpath, rm, utimes, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, readFile, readdir, realpath, rename, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -188,6 +188,20 @@ describe("triage overlay writer", () => {
       file: created.file,
     });
     await expect(lstat(lock)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("finds a component by YAML identity after an editor renames its file", async () => {
+    const projectRoot = await root();
+    const created = await setDecision(projectRoot, input());
+    const renamed = join(projectRoot, ".fs", "triage", "project-1", "editor-renamed.yaml");
+    await rename(join(projectRoot, created.file), renamed);
+
+    const updated = await setDecision(projectRoot, input("CVE-2026-702"));
+    expect(updated.file).toBe(".fs/triage/project-1/editor-renamed.yaml");
+    expect(await readdir(join(projectRoot, ".fs", "triage", "project-1"))).toEqual(["editor-renamed.yaml"]);
+    const bytes = await readFile(renamed, "utf8");
+    expect(bytes).toContain("CVE-2026-100:");
+    expect(bytes).toContain("CVE-2026-702:");
   });
 
   it("keeps 200 sequential distinct-component writes bounded", async () => {
