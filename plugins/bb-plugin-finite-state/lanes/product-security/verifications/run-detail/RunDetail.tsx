@@ -1,0 +1,26 @@
+import { Alert, AlertDescription } from "@bb/shared-ui/alert";
+import { Badge } from "@bb/shared-ui/badge";
+import { Icon } from "@bb/shared-ui/icon";
+import type { AttestationView } from "./attestation.js";
+import { ArtifactList, type RunArtifact } from "./ArtifactList.js";
+import { AttestationCard } from "./AttestationCard.js";
+import { LogViewer } from "./LogViewer.js";
+import { ResultHistory, type ResultHistoryItem } from "./ResultHistory.js";
+import { RunActions } from "./RunActions.js";
+
+export interface CheckContract { id: string; code: string; name: string; type: string; category: string | null; description: string | null; passCriteria: string | null; failCriteria: string | null; inputDescription: string | null; required: boolean; coverageLevel: string | null; suppressed: boolean }
+export interface DetailRun { id: string; status: string; firmwareDigest: string | null; jobId: string | null; startedAt: string | null; finishedAt: string | null; target: string | null; logAvailable: boolean }
+export interface RunDetailModel { requirementId: string; tier: string; run: DetailRun | null; checks: CheckContract[]; history: ResultHistoryItem[]; historyTotal: number; historyNext: string | null; artifacts: RunArtifact[]; attestations: AttestationView[]; manualMessage: string; taraConcurrency: string }
+
+export function RunDetail({ model, projectId, error, loadingHistory, jobState, running, onLoadMore, onRetry, onRun }: { model: RunDetailModel; projectId: string; error: string | null; loadingHistory: boolean; jobState: string | null; running: boolean; onLoadMore(): void; onRetry(): void; onRun(checkId: string): void }): React.JSX.Element {
+  return <article className="h-full overflow-auto bg-background p-4 text-foreground"><div className="mx-auto max-w-5xl space-y-4">
+    {error ? <Alert variant="destructive"><Icon name="AlertCircle" /><AlertDescription><span>{error} Cached evidence remains visible.</span><button className="ml-2 underline" onClick={onRetry} type="button">Retry</button></AlertDescription></Alert> : null}
+    <header className="rounded-lg border border-border bg-card p-4"><div className="flex flex-wrap items-center gap-2"><h2 className="text-lg font-semibold">{model.requirementId}</h2><Badge variant="outline">{model.tier}</Badge>{model.run ? <Badge>{model.run.status}</Badge> : <Badge variant="secondary">No runs</Badge>}</div><p className="mt-2 text-xs text-muted-foreground">{model.taraConcurrency}</p>{model.run?.firmwareDigest ? <p className="mt-2 break-all font-mono text-xs">firmware sha256 {model.run.firmwareDigest}</p> : null}</header>
+    <section className="rounded-lg border border-border bg-card p-4"><h3 className="text-sm font-semibold">Actions</h3><div className="mt-3"><RunActions checkId={model.checks.find((check) => !check.suppressed)?.id ?? null} jobState={jobState} manualMessage={model.manualMessage} onRun={onRun} running={running} /></div></section>
+    <section className="rounded-lg border border-border bg-card p-4"><h3 className="text-sm font-semibold">Check contract and mappings</h3>{model.checks.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">No check is mapped to this requirement.</p> : <div className="mt-3 space-y-2">{model.checks.map((check) => <article className="rounded-md border border-border bg-background p-3" key={check.id}><div className="flex items-center gap-2"><span className="font-mono text-xs">{check.code}</span><span className="text-sm font-medium">{check.name}</span>{check.required ? <Badge>Required</Badge> : <Badge variant="outline">Optional</Badge>}{check.suppressed ? <Badge variant="destructive">Suppressed</Badge> : null}</div><p className="mt-2 text-sm text-muted-foreground">{check.description ?? "No description"}</p><dl className="mt-2 grid gap-2 text-xs sm:grid-cols-2"><div><dt className="text-muted-foreground">Pass criteria</dt><dd>{check.passCriteria ?? "unknown"}</dd></div><div><dt className="text-muted-foreground">Fail criteria</dt><dd>{check.failCriteria ?? "unknown"}</dd></div></dl></article>)}</div>}</section>
+    <section className="rounded-lg border border-border bg-card p-4"><h3 className="text-sm font-semibold">Result history</h3><div className="mt-3"><ResultHistory hasMore={model.historyNext !== null} items={model.history} loading={loadingHistory} onLoadMore={onLoadMore} total={model.historyTotal} /></div></section>
+    <section className="rounded-lg border border-border bg-card p-4"><h3 className="text-sm font-semibold">Logs</h3><div className="mt-3"><LogViewer available={model.run?.logAvailable ?? false} projectId={projectId} runId={model.run?.id ?? null} /></div></section>
+    <section className="rounded-lg border border-border bg-card p-4"><h3 className="text-sm font-semibold">Artifacts</h3><div className="mt-3"><ArtifactList artifacts={model.artifacts} projectId={projectId} runId={model.run?.id ?? null} /></div></section>
+    <section className="rounded-lg border border-border bg-card p-4"><h3 className="text-sm font-semibold">Signed attestations</h3><div className="mt-3 space-y-2">{model.attestations.length ? model.attestations.map((attestation) => <AttestationCard attestation={attestation} key={attestation.id} />) : <Alert><Icon name="Info" /><AlertDescription>No signed evidence is cached for this run.</AlertDescription></Alert>}</div></section>
+  </div></article>;
+}
