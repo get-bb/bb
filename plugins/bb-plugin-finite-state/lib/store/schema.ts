@@ -1083,4 +1083,15 @@ export const MIGRATIONS: string[] = [
   `CREATE INDEX IF NOT EXISTS ix_verification_results_check ON verification_results (project_id, project_version_id, generation_id, check_id, is_latest, executed_at DESC, result_id)`,
   `CREATE INDEX IF NOT EXISTS ix_verification_results_run ON verification_results (project_id, project_version_id, generation_id, run_id, result_id)`,
   `PRAGMA defer_foreign_keys = OFF`,
+
+  // AMD-0017: discovered KiCad project compatibility
+  `ALTER TABLE hw_project ADD COLUMN supported INTEGER NOT NULL DEFAULT 0 CHECK (supported IN (0,1))`,
+  `UPDATE hw_project
+    SET supported = CASE
+      WHEN kicad_version IS NULL THEN 0
+      WHEN length(kicad_version) = 8 AND kicad_version NOT LIKE '%.%'
+        THEN CASE WHEN CAST(substr(kicad_version, 1, 4) AS INTEGER) >= 2021 THEN 1 ELSE 0 END
+      WHEN CAST(kicad_version AS INTEGER) >= 6 THEN 1
+      ELSE 0
+    END`,
 ];

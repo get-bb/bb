@@ -9,7 +9,7 @@
 import { defineRpcContract } from "@bb/plugin-sdk";
 import { z } from "zod";
 
-export const CONTRACT_VERSION = 4 as const;
+export const CONTRACT_VERSION = 5 as const;
 
 export type JsonValue =
   | null
@@ -1061,6 +1061,7 @@ const hardwareProjectSchema = z
     schSha256: sha256Schema,
     pcbSha256: sha256Schema.nullable(),
     kicadVersion: z.string().max(100).nullable(),
+    supported: z.boolean(),
     discoveredAt: timestampSchema,
   })
   .strict();
