@@ -99,6 +99,13 @@ beforeAll(async () => {
       stderr: "",
     }),
   }));
+  context.service("bench.cli", () => ({
+    run: async (argv: string[]) => ({
+      exitCode: 0,
+      stdout: `${JSON.stringify({ namespace: "bench", argv })}\n`,
+      stderr: "",
+    }),
+  }));
   registerSync(host.bb, context);
   registerAdapter(foreignAdapter);
   root = await mkdtemp(join(tmpdir(), "fs-wp17-register-"));
@@ -332,6 +339,22 @@ decisions:
       stdout: `${JSON.stringify({
         namespace: "firmware",
         argv: ["status", "pv-1", "--json"],
+      })}\n`,
+      stderr: "",
+    });
+  });
+
+  it("delegates the additive bench verdict namespace without changing sync verbs", async () => {
+    const result = await host.harness.behavior.runCli(
+      ["finite-state", "bench", "verdict", "pv-1", "--digest", "a".repeat(64), "--json"],
+      { threadId: "thread-sync-cli", projectId: "bb-project-sync" },
+    );
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: `${JSON.stringify({
+        namespace: "bench",
+        argv: ["verdict", "pv-1", "--digest", "a".repeat(64), "--json"],
       })}\n`,
       stderr: "",
     });

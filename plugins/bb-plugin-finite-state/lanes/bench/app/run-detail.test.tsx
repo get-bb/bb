@@ -21,6 +21,15 @@ function detail(state: "fresh" | "stale" = "fresh") {
   };
 }
 
+function verdict() {
+  return {
+    pvId: "v1", firmwareDigest: "a".repeat(64), currentMountedDigest: "a".repeat(64),
+    verdict: "INCONCLUSIVE", stale: false, required: 0, proven: 0, failed: 0, gaps: 0,
+    evidence: [], issues: [{ code: "MODEL_UNAVAILABLE", message: "The accepted requirement model is missing or invalid." }],
+    computedAt: "2026-08-13T12:00:00.000Z",
+  };
+}
+
 describe("RunDetail", () => {
   it("renders all evidence sections and self-fetches BenchRunCard by id", async () => {
     const { BenchRunCard } = await import("./bench-run-card.js");
@@ -34,6 +43,7 @@ describe("RunDetail", () => {
           return detail();
         },
         benchLogsList: () => ({ items: [], total: 0, next: null, cache }),
+        benchOtaVerdictGet: verdict,
       },
     });
     expect(await slot.findByText("run-1")).toBeTruthy();
@@ -46,6 +56,7 @@ describe("RunDetail", () => {
       "/api/v1/plugins/finite-state/http/bench/runs/attestation?projectId=p1&runId=run-1",
     );
     expect(slot.getByText("OTA verdict")).toBeTruthy();
+    expect(await slot.findByText("Inconclusive")).toBeTruthy();
     // The log-tail fetch fires after the run detail renders; poll rather than
     // asserting synchronously, which raced under CI load.
     await waitFor(() => {
@@ -61,7 +72,7 @@ describe("RunDetail", () => {
     const unknown = renderSlot({ component: () => <RunDetail projectId="p1" projectVersionId="v1" runId="missing" /> }, {}, { rpc: { benchRunGet: () => Promise.reject(new Error("BENCH_RUN_NOT_FOUND")) } });
     expect(await unknown.findByText("Unknown bench run")).toBeTruthy();
     unknown.lifecycle.unmount();
-    const stale = renderSlot({ component: () => <RunDetail projectId="p1" projectVersionId="v1" runId="run-1" /> }, {}, { rpc: { benchRunGet: () => detail("stale"), benchLogsList: () => ({ items: [], total: 0, next: null, cache }) } });
+    const stale = renderSlot({ component: () => <RunDetail projectId="p1" projectVersionId="v1" runId="run-1" /> }, {}, { rpc: { benchRunGet: () => detail("stale"), benchLogsList: () => ({ items: [], total: 0, next: null, cache }), benchOtaVerdictGet: verdict } });
     expect(await stale.findByText("cached")).toBeTruthy();
     expect(stale.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
@@ -94,6 +105,7 @@ describe("RunDetail", () => {
             return detail();
           },
           benchLogsList: () => ({ items: [], total: 0, next: null, cache }),
+          benchOtaVerdictGet: verdict,
         },
       },
     );

@@ -186,6 +186,7 @@ export function registerSyncCli(
       { name: "status", summary: "Compare working, base, and upstream state", usage: "status [surface] [--project ID] [--version ID] [--json]" },
       { name: "plan", summary: "Validate and render an ordered sync plan", usage: "plan [surface] [--project ID] [--version ID] [--json]" },
       { name: "firmware", summary: "Materialize and inspect firmware", usage: "firmware <pull|status|hydrate|diff> ..." },
+      { name: "bench", summary: "Evaluate cached bench evidence", usage: "bench verdict <pv-id> [--digest <sha256>] [--json]" },
     ],
     run: (argv, context) => run(
       deps,
