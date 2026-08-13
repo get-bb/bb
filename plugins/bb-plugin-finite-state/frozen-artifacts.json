@@ -43,7 +43,8 @@
     "plugins/bb-plugin-finite-state/test/mock-remote/fixtures/**": {
       "treeSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "amendment": null,
-      "active": false
+      "active": false,
+      "retired": "Owner ruling 2026-08-13 (18:07 ET): WP-08 fixture freeze retired; governed by the AGENTS.md fixture-fidelity rule instead. Entry retained because check-frozen-artifacts.mjs pins the artifact key set; removing it entirely requires the guard-script change tracked in the FS-160 docs/guard cleanup."
     }
   },
   "dependencyBaseline": {

@@ -60,9 +60,10 @@ You implement `lanes/<yours>/register.ts`. You do not touch the root. **CI fails
 | `lib/store/schema.ts` | WP-04 |
 | `lib/sync/registry.ts` | WP-05 |
 | `lib/remote/types.ts` | WP-06 |
-| `test/mock-remote/fixtures/**` | WP-08 |
 
 Need one changed? **Stop. Write to `AMENDMENTS.md`:** the interface, the change, why the current shape can't work, which lanes are affected. Then work on something else in your WP. Do not edit locally and do not work around it with a cast.
+
+`test/mock-remote/fixtures/**` is **not** frozen (owner ruling, 2026-08-13 — the WP-08 freeze was retired). Fixture changes need no amendment, but they carry their own acceptance bar: see the fixture-fidelity rule under "The review kill list" below.
 
 ### 3. Stay in your directory
 
@@ -254,7 +255,9 @@ Every property you claim — gate, guard, validation, behavior — needs at leas
 
 ### 2. Real-fixture proof
 
-Any parser or remote-client change must pass against at least one real-world artifact — a real KiCad file, a captured (sanitized) real API response — and mock fixtures must mirror the vendored reference shape, not a convenient simplification. FS-108 computed wrong connectivity on the repo's own real KiCad fixture; FS-164's real API nests the component object where every mock was flat. Fixture changes under `test/mock-remote/fixtures/**` still flow through the WP-08 freeze process (§2 above) while that freeze stands.
+Any parser or remote-client change must pass against at least one real-world artifact — a real KiCad file, a captured (sanitized) real API response — and mock fixtures must mirror the vendored reference shape, not a convenient simplification. FS-108 computed wrong connectivity on the repo's own real KiCad fixture; FS-164's real API nests the component object where every mock was flat.
+
+**Fixture-fidelity rule** (owner ruling, 2026-08-13, replacing the retired WP-08 freeze): the purpose of the mock is that test data is **the exact same shape** as real API data — fixtures that simplify away real-world structure are defects, not conveniences. Fixture changes need no amendment, but every fixture change MUST (i) cite the vendored API reference or a captured real API response the new shape aligns with, and (ii) prove identity/stable-key compatibility so previously-accepted caches do not drift.
 
 ### 3. Adversarial self-test
 
