@@ -14,7 +14,7 @@ import {
   listHbomReview,
   resolveHbomReview,
 } from "./hbom/review.js";
-import { handleSbomExport } from "./sbom/export-http.js";
+import { createSbomHttpHandler } from "./sbom/export-http.js";
 import { pullSbom } from "./sbom/pull.js";
 import { querySbomForProject } from "./sbom/query.js";
 import type {
@@ -211,7 +211,13 @@ export function registerBom(bb: BbPluginApi, ctx: PluginContext): void {
     },
   });
 
-  bb.http.route("GET", "/sbom/export", handleSbomExport);
+  bb.http.route("GET", "/sbom/export", createSbomHttpHandler({
+    get platform() {
+      return ctx.service<RemoteServices>("remote-services", () => {
+        throw new Error("REMOTE_SERVICES_NOT_REGISTERED");
+      }).platform;
+    },
+  }));
   bb.http.route("GET", "/hbom/export.xlsx", handleHbomXlsxExport);
   bb.http.route("GET", "/hbom/export.cdx.json", handleHbomCycloneDxExport);
 }
