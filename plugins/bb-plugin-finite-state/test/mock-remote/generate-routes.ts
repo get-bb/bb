@@ -71,9 +71,13 @@ const WP06_PLATFORM_ROUTES_BY_OPERATION = {
   getFindingDetail: ["GET /public/v0/findings"],
   getFindingActivity: ["GET /public/v0/projects/{projectId}/findings/activity"],
   listFindingComments: ["GET /public/v0/findings"],
-  // Vendored OpenAPI + endpoint audit verify VersionDetailsV0 as the single
-  // selected response containing findingsSummary.
-  getFindingsSummary: ["GET /public/v0/versions/{projectVersionId}"],
+  getFindingsSummary: [
+    "GET /public/v0/versions/{projectVersionId}",
+    "GET /public/v0/project/version/{projectVersionId}/findings/exploit/counts",
+    "GET /public/v0/project/version/{projectVersionId}/findings/status/counts",
+    "GET /public/v0/project/version/{projectVersionId}/findings/category/counts",
+    "GET /public/v0/project/version/{projectVersionId}/findings/severities/counts",
+  ],
   setVexStatus: ["PUT /public/v0/findings/{projectVersionId}/{findingId}/status"],
   batchSetVexStatus: ["PUT /public/v0/findings/{projectVersionId}/status/set/bulk"],
   clearVexStatus: ["PUT /public/v0/findings/{projectVersionId}/status/clear/bulk"],
