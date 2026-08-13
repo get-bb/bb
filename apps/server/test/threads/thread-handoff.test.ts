@@ -4,7 +4,9 @@ import {
   createPromptHistoryEntry,
   getThread,
   getThreadHandoffByReplacementThreadId,
+  getThreadHandoffBySourceAndIdempotencyKey,
   listEvents,
+  listThreads,
   markThreadDeleted,
   updateHost,
 } from "@bb/db";
@@ -15,6 +17,7 @@ import {
 } from "@bb/host-daemon-contract";
 import { createThreadHandoff } from "../../src/services/threads/thread-handoff.js";
 import {
+  listQueuedCommands,
   listQueuedThreadCommands,
   reportQueuedCommandError,
   waitForQueuedCommand,
@@ -182,13 +185,51 @@ describe("thread handoff service", () => {
         environmentId: environment.id,
         projectId: project.id,
       });
+      const threadIdsBefore = listThreads(harness.db, {
+        projectId: project.id,
+      }).map((thread) => thread.id);
+
+      expect(
+        getThreadHandoffBySourceAndIdempotencyKey(harness.db, {
+          sourceThreadId: source.id,
+          idempotencyKey: request(source.id).idempotencyKey,
+        }),
+      ).toBeNull();
+      expect(listQueuedCommands(harness, "thread.start")).toHaveLength(0);
 
       await expect(
         createThreadHandoff(harness.deps, request(source.id)),
       ).rejects.toMatchObject({ body: { code: "invalid_execution_options" } });
+
       expect(
-        getThreadHandoffByReplacementThreadId(harness.db, "missing"),
+        listThreads(harness.db, { projectId: project.id }).map(
+          (thread) => thread.id,
+        ),
+      ).toEqual(threadIdsBefore);
+      expect(
+        getThreadHandoffBySourceAndIdempotencyKey(harness.db, {
+          sourceThreadId: source.id,
+          idempotencyKey: request(source.id).idempotencyKey,
+        }),
       ).toBeNull();
+      expect(listQueuedCommands(harness, "thread.start")).toHaveLength(0);
+    });
+  });
+
+  it("rejects a nonexistent source before provisioning", async () => {
+    await withTestHarness(async (harness) => {
+      const sourceThreadId = "thr_nonexistent_source";
+
+      await expect(
+        createThreadHandoff(harness.deps, request(sourceThreadId)),
+      ).rejects.toMatchObject({ body: { code: "thread_not_found" } });
+      expect(
+        getThreadHandoffBySourceAndIdempotencyKey(harness.db, {
+          sourceThreadId,
+          idempotencyKey: request(sourceThreadId).idempotencyKey,
+        }),
+      ).toBeNull();
+      expect(listQueuedCommands(harness, "thread.start")).toHaveLength(0);
     });
   });
 
