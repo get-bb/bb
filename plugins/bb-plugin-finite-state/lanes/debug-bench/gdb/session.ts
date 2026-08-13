@@ -1,6 +1,8 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
-import type { ClaimResult as DeviceClaim } from "../registry/claims.js";
+import type Database from "better-sqlite3";
+import { verifyDeviceClaim, type DeviceClaim } from "../registry/claims.js";
 import type { BenchDeviceRecord } from "../registry/families.js";
+import { getDevice, type RegistryScope } from "../registry/store.js";
 import { readRtosState, type RtosTask, type RtosTaskOptions } from "./rtos.js";
 import {
   DebugBenchConfigurationError,
@@ -51,10 +53,11 @@ export interface DebugGdbSession extends GdbSession {
 type SpawnProcess = (command: string, args: readonly string[], options: SpawnOptions) => ChildProcess;
 
 export interface DebugBenchDeps {
+  db: Database.Database;
+  registryScope: RegistryScope;
   gdbExecutablePath: string;
   gdbRemediation?: string;
   serverConfig(device: BenchDeviceRecord): Omit<GdbServerConfig, "connection">;
-  verifyClaim(deviceId: string, holder: string): void | Promise<void>;
   releaseClaim(deviceId: string, holder: string): void | Promise<void>;
   serverDeps?: GdbServerDeps;
   startServer?: typeof startGdbServer;
@@ -199,15 +202,16 @@ class MiTransport {
   close(): void { this.#failAll(new GdbSessionError("GDB_SESSION_CLOSED", "The GDB session was disposed.")); }
 }
 
-function requireClaim(deviceId: string, claim: DeviceClaim): { device: BenchDeviceRecord; holder: string } {
-  const device = claim.device;
-  if (claim.outcome !== "claimed" || device.deviceId !== deviceId || device.claimedBy === null) {
+function requireClaim(deps: DebugBenchDeps, deviceId: string, claim: DeviceClaim): BenchDeviceRecord {
+  verifyDeviceClaim(deps.db, claim, deviceId);
+  const device = getDevice(deps.db, deps.registryScope, deviceId);
+  if (!device || device.claimedBy !== claim.holder) {
     throw new GdbSessionError("DEVICE_CLAIM_REQUIRED", `A live claim for device ${deviceId} is required.`);
   }
   if (device.kind !== "probe" || device.stale) {
     throw new GdbSessionError("DEVICE_UNAVAILABLE", `Device ${deviceId} is not a live debug probe.`);
   }
-  return { device, holder: device.claimedBy };
+  return device;
 }
 
 function frameFrom(value: MiValue): StackFrame | null {
@@ -233,8 +237,8 @@ export async function openGdbSession(
   signal: AbortSignal,
 ): Promise<DebugGdbSession> {
   signal.throwIfAborted();
-  const { device, holder } = requireClaim(deviceId, claim);
-  await deps.verifyClaim(deviceId, holder);
+  const device = requireClaim(deps, deviceId, claim);
+  const holder = claim.holder;
   signal.throwIfAborted();
   let released = false;
   const release = async () => {

@@ -1,13 +1,20 @@
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import Database from "better-sqlite3";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ClaimResult } from "../registry/claims.js";
+import { MIGRATIONS } from "../../../lib/store/schema.js";
+import { claimDevice, DEFAULT_CLAIM_TTL_MS, type DeviceClaim } from "../registry/claims.js";
 import type { BenchDeviceRecord } from "../registry/families.js";
-import { GdbSessionError, openGdbSession, type DebugBenchDeps } from "./session.js";
+import { recordFamilyStatus } from "../registry/store.js";
+import { openGdbSession, type DebugBenchDeps } from "./session.js";
 
 const cleanup: string[] = [];
-afterEach(async () => Promise.all(cleanup.splice(0).map((path) => rm(path, { recursive: true, force: true }))));
+const databases: Database.Database[] = [];
+afterEach(async () => {
+  for (const db of databases.splice(0)) db.close();
+  await Promise.all(cleanup.splice(0).map((path) => rm(path, { recursive: true, force: true })));
+});
 
 async function fakeGdb(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "fs-fake-gdb-"));
@@ -42,20 +49,52 @@ const device: BenchDeviceRecord = {
   claimScope: "machine", lastSeen: new Date().toISOString(), stale: false,
 };
 
-function claim(overrides: Partial<BenchDeviceRecord> = {}): ClaimResult {
-  return { outcome: "claimed", device: { ...device, ...overrides }, expiredHolders: [] };
+function claimedDatabase(): { db: Database.Database; claim: DeviceClaim } {
+  const db = new Database(":memory:");
+  databases.push(db);
+  db.transaction(() => { for (const migration of MIGRATIONS) db.exec(migration); })();
+  db.prepare(
+    `INSERT INTO bench_device (
+       project_id, project_version_id, device_id, kind, make, model, connection,
+       transport, claimed_by, claimed_at, claim_scope, last_seen
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+  ).run(
+    device.projectId, device.projectVersionId, device.deviceId, device.kind, device.make,
+    device.model, device.connection, device.transport, device.claimScope, device.lastSeen,
+  );
+  const claimedAt = new Date();
+  claimDevice(db, device.deviceId, "thread-1", {
+    scope: { projectId: device.projectId, projectVersionId: device.projectVersionId },
+    now: claimedAt,
+  });
+  return {
+    db,
+    claim: {
+      deviceId: device.deviceId,
+      holder: "thread-1",
+      scope: "machine",
+      expiresAt: new Date(claimedAt.getTime() + DEFAULT_CLAIM_TTL_MS).toISOString(),
+    },
+  };
 }
 
-async function deps(): Promise<DebugBenchDeps & { releaseClaim: ReturnType<typeof vi.fn>; startServer: ReturnType<typeof vi.fn> }> {
+async function deps(): Promise<DebugBenchDeps & {
+  claim: DeviceClaim;
+  releaseClaim: ReturnType<typeof vi.fn>;
+  startServer: ReturnType<typeof vi.fn>;
+}> {
+  const { db, claim } = claimedDatabase();
   const releaseClaim = vi.fn(async () => undefined);
   const startServer = vi.fn(async () => ({
     kind: "jlink" as const, host: "127.0.0.1" as const, port: 2331, argv: [],
     diagnostics: () => ({ stdout: "", stderr: "" }), dispose: async () => undefined,
   }));
   return {
+    db,
+    registryScope: { projectId: device.projectId, projectVersionId: device.projectVersionId },
+    claim,
     gdbExecutablePath: await fakeGdb(),
     serverConfig: () => ({ kind: "jlink", executablePath: "/unused", targetConfig: "STM32F407VG", gdbPort: 2331 }),
-    verifyClaim: vi.fn(async () => undefined),
     releaseClaim,
     startServer,
   };
@@ -64,7 +103,7 @@ async function deps(): Promise<DebugBenchDeps & { releaseClaim: ReturnType<typeo
 describe("GDB session", () => {
   it("connects and exposes typed bounded operations", async () => {
     const dependencies = await deps();
-    const session = await openGdbSession(dependencies, device.deviceId, claim(), new AbortController().signal);
+    const session = await openGdbSession(dependencies, device.deviceId, dependencies.claim, new AbortController().signal);
     const breakpoint = await session.setBreakpoint("main");
     expect(breakpoint).toMatchObject({ id: "1", location: "main" });
     await breakpoint.delete();
@@ -91,7 +130,7 @@ describe("GDB session", () => {
       rtos: "freertos",
       walkSymbols: async () => [{ id: "tcb-1", name: "worker", state: "ready", priority: 2, stackPointer: "0x2000" }],
     };
-    const session = await openGdbSession(dependencies, device.deviceId, claim(), new AbortController().signal);
+    const session = await openGdbSession(dependencies, device.deviceId, dependencies.claim, new AbortController().signal);
     expect(await session.rtosTasks()).toMatchObject({ method: "symbols", tasks: [{ id: "tcb-1" }] });
     await session.dispose();
   });
@@ -99,7 +138,7 @@ describe("GDB session", () => {
   it("reaps the session and releases its claim exactly once on abort", async () => {
     const dependencies = await deps();
     const controller = new AbortController();
-    const session = await openGdbSession(dependencies, device.deviceId, claim(), controller.signal);
+    const session = await openGdbSession(dependencies, device.deviceId, dependencies.claim, controller.signal);
     controller.abort(new Error("test abort"));
     await session.dispose();
     expect(dependencies.releaseClaim).toHaveBeenCalledOnce();
@@ -108,7 +147,7 @@ describe("GDB session", () => {
   it("releases a verified claim when GDB configuration prevents opening", async () => {
     const dependencies = await deps();
     dependencies.gdbExecutablePath = "/definitely/missing/gdb";
-    await expect(openGdbSession(dependencies, device.deviceId, claim(), new AbortController().signal))
+    await expect(openGdbSession(dependencies, device.deviceId, dependencies.claim, new AbortController().signal))
       .rejects.toMatchObject({ name: "NeedsConfigurationError", tool: "gdb" });
     expect(dependencies.startServer).not.toHaveBeenCalled();
     expect(dependencies.releaseClaim).toHaveBeenCalledOnce();
@@ -119,19 +158,29 @@ describe("GDB session", () => {
     await expect(openGdbSession(
       dependencies,
       device.deviceId,
-      claim({ claimedBy: null }),
+      { ...dependencies.claim, expiresAt: "2000-01-01T00:00:00.000Z" },
       new AbortController().signal,
-    )).rejects.toBeInstanceOf(GdbSessionError);
-    await expect(openGdbSession(
-      dependencies,
-      "other-device",
-      claim(),
-      new AbortController().signal,
-    )).rejects.toMatchObject({ code: "DEVICE_CLAIM_REQUIRED" });
+    )).rejects.toMatchObject({ code: "CLAIM_EXPIRED" });
     await expect(openGdbSession(
       dependencies,
       device.deviceId,
-      claim({ stale: true }),
+      { ...dependencies.claim, holder: "thread-2" },
+      new AbortController().signal,
+    )).rejects.toMatchObject({ code: "DEVICE_NOT_HELD", holder: "thread-1" });
+    recordFamilyStatus(dependencies.db, dependencies.registryScope, {
+      familyId: "probe-rs",
+      kind: "probe",
+      label: "Debug probes",
+      availability: "unavailable",
+      reason: "fixture unavailable",
+      helper: { id: "probe-rs-tools", displayName: "probe-rs", source: "fixture", why: "fixture" },
+      needsConfiguration: true,
+      checkedAt: new Date(Date.now() + 1_000).toISOString(),
+    });
+    await expect(openGdbSession(
+      dependencies,
+      device.deviceId,
+      dependencies.claim,
       new AbortController().signal,
     )).rejects.toMatchObject({ code: "DEVICE_UNAVAILABLE" });
     expect(dependencies.startServer).not.toHaveBeenCalled();

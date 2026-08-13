@@ -5,7 +5,7 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MIGRATIONS } from "../../../lib/store/schema.js";
-import type { ClaimResult } from "../registry/claims.js";
+import { claimDevice, DEFAULT_CLAIM_TTL_MS, type DeviceClaim } from "../registry/claims.js";
 import type { BenchDeviceRecord } from "../registry/families.js";
 import type { DebugGdbSession } from "../gdb/session.js";
 import { isDestructiveGdbCommand, runProbe, type ProbeRuntimeDeps } from "./runtime.js";
@@ -63,13 +63,36 @@ const device: BenchDeviceRecord = {
   transport: "local-usb", claimedBy: "thread-1", claimedAt: new Date().toISOString(),
   claimScope: "machine", lastSeen: new Date().toISOString(), stale: false,
 };
-const claim: ClaimResult = { outcome: "claimed", device, expiredHolders: [] };
+function seedClaim(db: Database.Database): DeviceClaim {
+  db.prepare(
+    `INSERT INTO bench_device (
+       project_id, project_version_id, device_id, kind, make, model, connection,
+       transport, claimed_by, claimed_at, claim_scope, last_seen
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+  ).run(
+    device.projectId, device.projectVersionId, device.deviceId, device.kind, device.make,
+    device.model, device.connection, device.transport, device.claimScope, device.lastSeen,
+  );
+  const claimedAt = new Date();
+  claimDevice(db, device.deviceId, "thread-1", {
+    scope: { projectId: device.projectId, projectVersionId: device.projectVersionId },
+    now: claimedAt,
+  });
+  return {
+    deviceId: device.deviceId,
+    holder: "thread-1",
+    scope: "machine",
+    expiresAt: new Date(claimedAt.getTime() + DEFAULT_CLAIM_TTL_MS).toISOString(),
+  };
+}
 
 async function runtime(
   pythonExecutablePath: string,
   root: string,
   overrides: Partial<ProbeRuntimeDeps> = {},
 ) {
+  const db = database();
+  const claim = seedClaim(db);
   const releaseClaim = vi.fn(async (_deviceId: string, _holder: string) => undefined);
   const executeCommand = vi.fn(async () => ({ kind: "result" as const, token: 1, class: "done", results: { value: "ok" } }));
   const session: DebugGdbSession = {
@@ -78,13 +101,13 @@ async function runtime(
     halt: vi.fn(), continue: vi.fn(), dispose: async () => { await releaseClaim(device.deviceId, "thread-1"); },
   };
   const deps: ProbeRuntimeDeps = {
-    db: database(), projectId: "project-1", projectVersionId: "pv-1", worktreeRoot: root,
-    pythonExecutablePath, verifyClaim: vi.fn(async () => undefined), releaseClaim,
+    db, projectId: "project-1", projectVersionId: "pv-1", worktreeRoot: root,
+    pythonExecutablePath, releaseClaim,
     openSession: vi.fn(async () => session), createRunId: () => "probe-run-1",
     now: (() => { let second = 0; return () => new Date(1_700_000_000_000 + second++); })(),
     ...overrides,
   };
-  return { deps, releaseClaim, executeCommand };
+  return { deps, claim, releaseClaim, executeCommand };
 }
 
 const request = {
@@ -104,7 +127,7 @@ const artifact = await request({ type: "artifact", id: 2, path: "captures/result
 if (!artifact.ok) throw new Error(artifact.error);
 console.log(JSON.stringify({ type: "result", outcome: "confirmed" }));
 `);
-    const { deps, executeCommand, releaseClaim } = await runtime(python, root);
+    const { deps, claim, executeCommand, releaseClaim } = await runtime(python, root);
     const result = await runProbe(deps, request, [claim], new AbortController().signal);
     expect(result).toMatchObject({ outcome: "confirmed", artifacts: [".fs-bench/probe-run-1/captures/result.csv"] });
     expect(executeCommand).toHaveBeenCalledWith("-data-evaluate-expression", ["counter"]);
@@ -119,7 +142,7 @@ console.log(JSON.stringify({ type: "result", outcome: "confirmed" }));
 const response = await request({ type: "gdb", id: 1, deviceId: "probe-rs:serial-hash", command: "-interpreter-exec", args: ["console", "monitor reset halt"] });
 console.log(JSON.stringify({ type: "error", message: response.error }));
 `);
-    const { deps, executeCommand } = await runtime(python, root);
+    const { deps, claim, executeCommand } = await runtime(python, root);
     const result = await runProbe(deps, request, [claim], new AbortController().signal);
     expect(result.outcome).toBe("inconclusive");
     expect(executeCommand).not.toHaveBeenCalled();
@@ -133,7 +156,7 @@ console.log(JSON.stringify({ type: "error", message: response.error }));
 const response = await request({ type: "gdb", id: 1, deviceId: "probe-rs:other", command: "-thread-info", args: [] });
 console.log(JSON.stringify({ type: "error", message: response.error }));
 `);
-    const { deps, executeCommand } = await runtime(python, root);
+    const { deps, claim, executeCommand } = await runtime(python, root);
     const result = await runProbe(deps, request, [claim], new AbortController().signal);
     expect(result.outcome).toBe("inconclusive");
     expect(executeCommand).not.toHaveBeenCalled();
@@ -141,10 +164,26 @@ console.log(JSON.stringify({ type: "error", message: response.error }));
       .toContain("DEVICE_SCOPE_VIOLATION");
   });
 
+  it("refuses a non-live canonical claim before opening a device session", async () => {
+    const root = await worktree();
+    const python = await fixtureBridge('console.log(JSON.stringify({ type: "result", outcome: "confirmed" }));');
+    const { deps, claim } = await runtime(python, root);
+    const result = await runProbe(
+      deps,
+      request,
+      [{ ...claim, expiresAt: "2000-01-01T00:00:00.000Z" }],
+      new AbortController().signal,
+    );
+    expect(result.outcome).toBe("inconclusive");
+    expect(deps.openSession).not.toHaveBeenCalled();
+    expect(await readFile(join(root, ".fs-bench/probe-run-1/runtime-error.txt"), "utf8"))
+      .toContain("CLAIM_EXPIRED");
+  });
+
   it("kills a timed-out subprocess and persists inconclusive with an error artifact", async () => {
     const root = await worktree();
     const python = await fixtureBridge("setInterval(() => {}, 1000);");
-    const { deps } = await runtime(python, root);
+    const { deps, claim } = await runtime(python, root);
     const result = await runProbe(deps, { ...request, timeoutMs: 100 }, [claim], new AbortController().signal);
     expect(result.outcome).toBe("inconclusive");
     expect(await readFile(join(root, ".fs-bench/probe-run-1/runtime-error.txt"), "utf8")).toContain("PROBE_TIMEOUT");
@@ -153,7 +192,7 @@ console.log(JSON.stringify({ type: "error", message: response.error }));
   it("records a script exception as inconclusive with captured diagnostics", async () => {
     const root = await worktree();
     const python = await fixtureBridge('console.log(JSON.stringify({ type: "error", message: "fixture exploded", traceback: "line 7" }));');
-    const { deps } = await runtime(python, root);
+    const { deps, claim } = await runtime(python, root);
     const result = await runProbe(deps, request, [claim], new AbortController().signal);
     expect(result.outcome).toBe("inconclusive");
     expect(await readFile(join(root, ".fs-bench/probe-run-1/runtime-error.txt"), "utf8")).toContain("fixture exploded");
@@ -161,7 +200,7 @@ console.log(JSON.stringify({ type: "error", message: response.error }));
 
   it("reports missing Python as needsConfiguration before device I/O and still closes the run", async () => {
     const root = await worktree();
-    const { deps, releaseClaim } = await runtime("/definitely/missing/python3", root);
+    const { deps, claim, releaseClaim } = await runtime("/definitely/missing/python3", root);
     await expect(runProbe(deps, request, [claim], new AbortController().signal)).rejects.toMatchObject({
       name: "NeedsConfigurationError",
       tool: "python3",

@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
-import type { ClaimResult as DeviceClaim } from "../registry/claims.js";
+import { verifyDeviceClaim, type DeviceClaim } from "../registry/claims.js";
 import type { DebugGdbSession, HardwareIoThrottle } from "../gdb/session.js";
 import { DebugBenchConfigurationError, resolveExecutable } from "../gdb/server.js";
 import {
@@ -33,7 +33,6 @@ export interface ProbeRuntimeDeps extends ProbeRunScope {
   worktreeRoot: string;
   pythonExecutablePath: string;
   store?: ProbeStore;
-  verifyClaim(deviceId: string, holder: string): void | Promise<void>;
   releaseClaim(deviceId: string, holder: string): void | Promise<void>;
   openSession(deviceId: string, claim: DeviceClaim, signal: AbortSignal): Promise<DebugGdbSession>;
   spawnProcess?: SpawnProcess;
@@ -126,14 +125,10 @@ function validateRequest(request: ProbeRunRequest): ProbeRunRequest {
 function claimedDevices(request: ProbeRunRequest, claims: readonly DeviceClaim[]): Map<string, DeviceClaim> {
   const map = new Map<string, DeviceClaim>();
   for (const claim of claims) {
-    const holder = claim.device.claimedBy;
-    if (claim.outcome !== "claimed" || holder === null || claim.device.stale || claim.device.kind !== "probe") {
-      throw new ProbeRuntimeError("DEVICE_CLAIM_REQUIRED", `Device ${claim.device.deviceId} lacks a live probe claim.`);
-    }
-    if (!request.deviceIds.includes(claim.device.deviceId) || map.has(claim.device.deviceId)) {
+    if (!request.deviceIds.includes(claim.deviceId) || map.has(claim.deviceId)) {
       throw new ProbeRuntimeError("DEVICE_SCOPE_VIOLATION", "Claims must match the requested device set exactly.");
     }
-    map.set(claim.device.deviceId, claim);
+    map.set(claim.deviceId, claim);
   }
   if (map.size !== request.deviceIds.length) {
     throw new ProbeRuntimeError("DEVICE_CLAIM_REQUIRED", "Every requested device requires a live caller-held claim.");
@@ -331,8 +326,7 @@ export async function runProbe(
     );
     for (const deviceId of request.deviceIds) {
       const claim = claimMap.get(deviceId)!;
-      const holder = claim.device.claimedBy!;
-      await deps.verifyClaim(deviceId, holder);
+      verifyDeviceClaim(deps.db, claim, deviceId);
       controller.signal.throwIfAborted();
       delegatedClaims.add(deviceId);
       const session = await deps.openSession(deviceId, claim, controller.signal);
@@ -361,7 +355,7 @@ export async function runProbe(
     }
     for (const [deviceId, claim] of claimMap) {
       if (delegatedClaims.has(deviceId)) continue;
-      await Promise.resolve(deps.releaseClaim(deviceId, claim.device.claimedBy!)).catch(() => undefined);
+      await Promise.resolve(deps.releaseClaim(deviceId, claim.holder)).catch(() => undefined);
     }
   }
   if (runtimeError !== null) {
