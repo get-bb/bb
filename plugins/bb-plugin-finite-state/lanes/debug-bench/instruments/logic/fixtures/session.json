@@ -1,0 +1,51 @@
+{
+  "schema": "finite-state-logic-v1",
+  "vendor": "replay",
+  "rawCapture": "recorded-session.sal",
+  "decoderExports": {},
+  "frames": {
+    "spi": [
+      {
+        "startTimeSeconds": 0.001,
+        "endTimeSeconds": 0.001008,
+        "type": "transfer",
+        "data": "0x9F 0xEF 0x40 0x18",
+        "fields": { "mosi": "0x9F", "miso": "0xEF4018", "chipSelect": 0 }
+      },
+      {
+        "startTimeSeconds": 0.002,
+        "endTimeSeconds": 0.002004,
+        "type": "transfer",
+        "data": "0x05 0x00",
+        "fields": { "mosi": "0x05", "miso": "0x00", "chipSelect": 0 }
+      }
+    ],
+    "i2c": [
+      {
+        "startTimeSeconds": 0.01,
+        "endTimeSeconds": 0.0101,
+        "type": "write",
+        "data": "0x50: 0x00 0x2A",
+        "fields": { "address": "0x50", "ack": true, "direction": "write" }
+      }
+    ],
+    "uart": [
+      {
+        "startTimeSeconds": 0.02,
+        "endTimeSeconds": 0.020087,
+        "type": "data",
+        "data": "OK\\r\\n",
+        "fields": { "baud": 115200, "parity": "none", "framingError": false }
+      }
+    ],
+    "can": [
+      {
+        "startTimeSeconds": 0.03,
+        "endTimeSeconds": 0.030128,
+        "type": "data",
+        "data": "18DAF110#0210030000000000",
+        "fields": { "id": "0x18DAF110", "extended": true, "dlc": 8 }
+      }
+    ]
+  }
+}

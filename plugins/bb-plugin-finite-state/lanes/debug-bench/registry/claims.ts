@@ -12,6 +12,8 @@ export type DeviceClaimErrorCode =
   | "DEVICE_NOT_FOUND"
   | "DEVICE_CLAIMED"
   | "DEVICE_NOT_HELD"
+  | "CLAIM_EXPIRED"
+  | "CLAIM_DEVICE_MISMATCH"
   | "CLAIM_SCOPE_NOT_IMPLEMENTED";
 
 export class DeviceClaimError extends Error {
@@ -30,6 +32,20 @@ export interface ClaimOptions {
   ttlMs?: number;
   scope?: RegistryScope;
   claimScope?: ClaimScope;
+}
+
+/**
+ * A caller-held reference to a machine-scoped registry claim.
+ *
+ * This is an identity reference, not an authorization token. Consumers must
+ * call {@link verifyDeviceClaim} immediately before device I/O; WP-90 owns any
+ * future unforgeable grant scheme.
+ */
+export interface DeviceClaim {
+  readonly deviceId: string;
+  readonly holder: string;
+  readonly scope: ClaimScope;
+  readonly expiresAt: string;
 }
 
 export interface ClaimResult {
@@ -54,6 +70,13 @@ interface EventRow {
   occurred_at: string;
 }
 
+interface VerificationRow {
+  claimed_by: string | null;
+  claimed_at: string | null;
+  claim_scope: ClaimScope;
+  active: 0 | 1;
+}
+
 function nowIso(options: ClaimOptions): string {
   return (options.now ?? new Date()).toISOString();
 }
@@ -62,6 +85,87 @@ function expirationCutoff(options: ClaimOptions): string {
   const now = options.now ?? new Date();
   const ttlMs = options.ttlMs ?? DEFAULT_CLAIM_TTL_MS;
   return new Date(now.getTime() - ttlMs).toISOString();
+}
+
+/**
+ * Verifies current claim state without refreshing, expiring, or otherwise
+ * mutating registry rows. Expiry remains an arbitration/sweeper write concern;
+ * this read path computes liveness in SQLite.
+ */
+export function verifyDeviceClaim(
+  db: Database.Database,
+  claim: DeviceClaim,
+  expectedDeviceId: string,
+  options: Pick<ClaimOptions, "now" | "ttlMs"> = {},
+): void {
+  if (claim.deviceId !== expectedDeviceId) {
+    throw new DeviceClaimError(
+      "CLAIM_DEVICE_MISMATCH",
+      `Claim for ${claim.deviceId} cannot open ${expectedDeviceId}.`,
+      claim.holder,
+    );
+  }
+  if (claim.scope !== "machine") {
+    throw new DeviceClaimError(
+      "CLAIM_SCOPE_NOT_IMPLEMENTED",
+      "Only machine-scoped device claims are implemented in v1.",
+      claim.holder,
+    );
+  }
+  const now = options.now ?? new Date();
+  const ttlMs = options.ttlMs ?? DEFAULT_CLAIM_TTL_MS;
+  const rows = db.prepare<[number, string, string], VerificationRow>(
+    `SELECT claimed_by, claimed_at, claim_scope,
+            CASE
+              WHEN claimed_at IS NOT NULL
+               AND julianday(claimed_at) + (? / 86400000.0) > julianday(?)
+              THEN 1 ELSE 0
+            END AS active
+       FROM bench_device
+      WHERE device_id = ?
+      ORDER BY project_id, project_version_id`,
+  ).all(ttlMs, now.toISOString(), expectedDeviceId);
+  if (rows.length === 0) {
+    throw new DeviceClaimError(
+      "DEVICE_NOT_FOUND",
+      `Device ${expectedDeviceId} was not found.`,
+    );
+  }
+  if (rows.some((row) => row.claim_scope !== "machine")) {
+    throw new DeviceClaimError(
+      "CLAIM_SCOPE_NOT_IMPLEMENTED",
+      "Only machine-scoped device claims are implemented in v1.",
+      claim.holder,
+    );
+  }
+  const held = rows.find((row) => row.claimed_by === claim.holder);
+  if (!held) {
+    const activeHolder = rows.find((row) => row.claimed_by !== null)?.claimed_by ?? null;
+    throw new DeviceClaimError(
+      "DEVICE_NOT_HELD",
+      activeHolder === null
+        ? `Device ${expectedDeviceId} is not currently held.`
+        : `Device ${expectedDeviceId} is held by ${activeHolder}, not ${claim.holder}.`,
+      activeHolder,
+    );
+  }
+  if (held.claimed_at === null || held.active !== 1) {
+    throw new DeviceClaimError(
+      "CLAIM_EXPIRED",
+      `Claim for ${expectedDeviceId} held by ${claim.holder} has expired.`,
+      claim.holder,
+    );
+  }
+  const actualExpiresAt = new Date(
+    new Date(held.claimed_at).getTime() + ttlMs,
+  ).toISOString();
+  if (claim.expiresAt !== actualExpiresAt) {
+    throw new DeviceClaimError(
+      "CLAIM_EXPIRED",
+      `Claim expiry for ${expectedDeviceId} does not match current registry state.`,
+      claim.holder,
+    );
+  }
 }
 
 function matchingRows(
