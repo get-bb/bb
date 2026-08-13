@@ -2,7 +2,7 @@
 
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { HeightTransition } from "./height-transition";
+import { AutoHeightContainer, HeightTransition } from "./height-transition";
 
 class ResizeObserverStub implements ResizeObserver {
   observe: ResizeObserver["observe"] = vi.fn();
@@ -52,8 +52,8 @@ describe("HeightTransition", () => {
         <span data-testid="restored-child">Restored content</span>
       </HeightTransition>,
     );
-    const wrapper = view.getByTestId("restored-child").parentElement
-      ?.parentElement;
+    const wrapper =
+      view.getByTestId("restored-child").parentElement?.parentElement;
 
     expect(wrapper?.style.height).toBe("40px");
     offsetHeight.mockReturnValue(80);
@@ -64,5 +64,38 @@ describe("HeightTransition", () => {
 
     expect(wrapper?.style.height).toBe("80px");
     expect(wrapper?.style.transitionDuration).toBe("0s");
+  });
+});
+
+describe("AutoHeightContainer", () => {
+  it("snap-syncs an authoritative layout revision", () => {
+    class ResizeObserverMock {
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    }
+    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+
+    const view = render(
+      <AutoHeightContainer snapRevision="active">
+        <span>Streaming response</span>
+      </AutoHeightContainer>,
+    );
+    const inner = view.getByText("Streaming response").parentElement;
+    const wrapper = inner?.parentElement;
+    expect(inner).not.toBeNull();
+    expect(wrapper?.style.height).toBe("0px");
+
+    Object.defineProperty(inner, "offsetHeight", {
+      configurable: true,
+      value: 480,
+    });
+    view.rerender(
+      <AutoHeightContainer snapRevision="completed-turn:1:2000">
+        <span>Completed response</span>
+      </AutoHeightContainer>,
+    );
+
+    expect(wrapper?.style.height).toBe("480px");
   });
 });

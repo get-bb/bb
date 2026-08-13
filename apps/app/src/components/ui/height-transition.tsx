@@ -183,7 +183,8 @@ export function HeightTransition({
       // scrollHeight, which the bottom-anchor sentinel then chases.
       const layoutAnimationActive =
         store.get(layoutAnimationInFlightCountAtom) > 0;
-      const snap = widthChanged || pendingVisibilitySnap || layoutAnimationActive;
+      const snap =
+        widthChanged || pendingVisibilitySnap || layoutAnimationActive;
       pendingVisibilitySnap = false;
       lastWidth = width;
       const nextHeight = visible ? `${height}px` : "0px";
@@ -250,6 +251,11 @@ export interface AutoHeightContainerProps {
   children: ReactNode;
   className?: string;
   durationMs?: number;
+  /**
+   * A revision for authoritative layout replacements that should not animate
+   * through their intermediate height. Normal child growth still animates.
+   */
+  snapRevision?: string;
 }
 
 /**
@@ -280,10 +286,14 @@ export function AutoHeightContainer({
   children,
   className,
   durationMs = HEIGHT_TRANSITION_DURATION_MS,
+  snapRevision,
 }: AutoHeightContainerProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const store = useStore();
+  // A revision change reinstalls the observer and writes the replacement's
+  // intrinsic height before paint. This is intentionally rare (turn completion)
+  // and leaves ordinary streaming ResizeObserver updates animated.
   useLayoutEffect(() => {
     const wrapper = wrapperRef.current;
     const inner = innerRef.current;
@@ -363,7 +373,7 @@ export function AutoHeightContainer({
       cancelIntrinsicHeightRestore(resizeState);
       cleanupSnapState(wrapper, snapState);
     };
-  }, [store]);
+  }, [snapRevision, store]);
   return (
     <div
       ref={wrapperRef}

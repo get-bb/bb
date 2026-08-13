@@ -112,12 +112,17 @@ interface CollectCachedThreadIdsForEnvironmentArgs {
   queryClient: QueryClient;
 }
 
-interface InvalidateQueryKeysWithoutCancelingActiveFetchesArgs {
+interface TimelineInvalidationQueryKeysArgs {
   queryClient: QueryClient;
   queryKeys: readonly QueryKey[];
 }
 
 interface ScheduleTrailingActiveRefetchArgs {
+  queryClient: QueryClient;
+  queryKey: QueryKey;
+}
+
+interface CancelTrailingActiveRefetchArgs {
   queryClient: QueryClient;
   queryKey: QueryKey;
 }
@@ -210,10 +215,26 @@ function scheduleTrailingActiveRefetch({
   unsubscribers.set(scheduleKey, unsubscribe);
 }
 
+function cancelTrailingActiveRefetch({
+  queryClient,
+  queryKey,
+}: CancelTrailingActiveRefetchArgs): void {
+  const unsubscribers = trailingActiveRefetchUnsubscribers.get(queryClient);
+  if (!unsubscribers) {
+    return;
+  }
+  const scheduleKey = timelineInvalidationKey(queryKey);
+  unsubscribers.get(scheduleKey)?.();
+  unsubscribers.delete(scheduleKey);
+  if (unsubscribers.size === 0) {
+    trailingActiveRefetchUnsubscribers.delete(queryClient);
+  }
+}
+
 function invalidateQueryKeysWithoutCancelingActiveFetches({
   queryClient,
   queryKeys,
-}: InvalidateQueryKeysWithoutCancelingActiveFetchesArgs): void {
+}: TimelineInvalidationQueryKeysArgs): void {
   for (const queryKey of queryKeys) {
     const hadActiveFetch = hasActiveFetchingQueries(queryClient, queryKey);
     // Avoid aborting the active timeline request on every event batch, but keep
@@ -222,6 +243,22 @@ function invalidateQueryKeysWithoutCancelingActiveFetches({
     if (hadActiveFetch) {
       scheduleTrailingActiveRefetch({ queryClient, queryKey });
     }
+  }
+}
+
+function invalidateTerminalTimelineQueryKeys({
+  queryClient,
+  queryKeys,
+}: TimelineInvalidationQueryKeysArgs): void {
+  for (const queryKey of queryKeys) {
+    // A terminal event changes the latest window from an in-turn projection to
+    // the canonical completed-turn projection. Letting an older read land after
+    // that boundary briefly restores the streaming shape before the paced
+    // trailing refetch corrects it. Completion is rare and authoritative, so
+    // cancel the stale read and fetch the terminal shape immediately.
+    cancelTrailingActiveRefetch({ queryClient, queryKey });
+    void queryClient.cancelQueries({ queryKey });
+    queryClient.invalidateQueries({ queryKey }, { cancelRefetch: false });
   }
 }
 
@@ -680,15 +717,18 @@ function dirtyThreadSearchQueries(): QueryKey[] {
 }
 
 function dirtyThreadTimelineQueries({
+  eventTypes,
   queryClient,
   threadId,
 }: ThreadRealtimeDirtyContext): void {
   // Window only: completed turn-summary-details are immutable, so realtime
   // event batches must not refetch open detail panels (see helper docs).
-  invalidateQueryKeysWithoutCancelingActiveFetches({
-    queryClient,
-    queryKeys: getThreadTimelineWindowInvalidationQueryKeys({ threadId }),
-  });
+  const queryKeys = getThreadTimelineWindowInvalidationQueryKeys({ threadId });
+  if (eventTypes?.includes("turn/completed")) {
+    invalidateTerminalTimelineQueryKeys({ queryClient, queryKeys });
+    return;
+  }
+  invalidateQueryKeysWithoutCancelingActiveFetches({ queryClient, queryKeys });
 }
 
 function dirtyThreadTimelineRewriteQueries({

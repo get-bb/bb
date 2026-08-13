@@ -631,6 +631,20 @@ function timelineRowsOwnerKey({
   return ownerThreadId;
 }
 
+function timelineHeightSnapRevision(rows: readonly TimelineRow[]): string {
+  // Active turns render their work rows directly. Completion replaces those
+  // rows with one or more turn summaries plus the terminal message. Key the
+  // height container by the newest completed summary so that authoritative
+  // topology replacement snaps instead of looking like a second stream.
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index];
+    if (row?.kind === "turn") {
+      return `${row.id}:${row.sourceSeqStart}:${row.sourceSeqEnd}`;
+    }
+  }
+  return "active";
+}
+
 function useTimelineViewRowsCache(): GetTimelineViewRows {
   // Each `rawRows` reference is consumed under exactly one scope: the
   // top-level prop ("open" — pending work may still arrive) or a lazily
@@ -1931,6 +1945,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     () => getViewRows(props.timelineRows),
     [getViewRows, props.timelineRows],
   );
+  const heightSnapRevision = timelineHeightSnapRevision(props.timelineRows);
   const latestActionableAssistantMessageId = useMemo(
     () => findLastActionableAssistantMessageId(rows),
     [rows],
@@ -2165,7 +2180,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
               value={latestActionableUserMessageId}
             >
               <TimelineTurnStateContext.Provider value={turnStateContextValue}>
-                <AutoHeightContainer>
+                <AutoHeightContainer snapRevision={heightSnapRevision}>
                   <TimelineRowsList
                     hasOlderTimelineRows={props.hasOlderTimelineRows}
                     isLoadingOlderTimelineRows={
