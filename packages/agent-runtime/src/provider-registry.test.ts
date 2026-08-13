@@ -52,11 +52,18 @@ describe("provider registry", () => {
       additionalWorkspaceWriteRoots: [],
       bridgeBundleDir: "/tmp",
     });
+    const primeAgentProvider = createProviderForId("prime-agent", {
+      additionalWorkspaceWriteRoots: [],
+      bridgeBundleDir: "/tmp",
+    });
 
     expect(claudeProvider.process.args[0]).toBe(
       "/tmp/bb-claude-code-bridge.mjs",
     );
     expect(piProvider.process.args[0]).toBe("/tmp/bb-pi-bridge.mjs");
+    expect(primeAgentProvider.process.args[0]).toBe(
+      "/tmp/bb-prime-agent-bridge.mjs",
+    );
   });
 
   it("passes the configured bridge node runtime to bundled providers", () => {
@@ -67,6 +74,11 @@ describe("provider registry", () => {
       bridgeNodeExecutablePath: "/Applications/bb.app/Contents/MacOS/bb",
     });
     const piProvider = createProviderForId("pi", {
+      additionalWorkspaceWriteRoots: [],
+      bridgeNodeEnv,
+      bridgeNodeExecutablePath: "/Applications/bb.app/Contents/MacOS/bb",
+    });
+    const primeAgentProvider = createProviderForId("prime-agent", {
       additionalWorkspaceWriteRoots: [],
       bridgeNodeEnv,
       bridgeNodeExecutablePath: "/Applications/bb.app/Contents/MacOS/bb",
@@ -85,6 +97,10 @@ describe("provider registry", () => {
       "/Applications/bb.app/Contents/MacOS/bb",
     );
     expect(piProvider.process.env).toEqual(bridgeNodeEnv);
+    expect(primeAgentProvider.process.command).toBe(
+      "/Applications/bb.app/Contents/MacOS/bb",
+    );
+    expect(primeAgentProvider.process.env).toEqual(bridgeNodeEnv);
     expect(acpProvider.process.command).toBe(
       "/Applications/bb.app/Contents/MacOS/bb",
     );
@@ -150,6 +166,24 @@ describe("provider registry", () => {
         type: "model/list",
         cwd: "/tmp/project",
       }),
+    ).toEqual({
+      kind: "request",
+      method: "model/list",
+      params: { cwd: "/tmp/project" },
+    });
+  });
+
+  it("creates Prime Agent with its native RPC bridge", () => {
+    const provider = createProviderForId("prime-agent");
+    expect(provider.id).toBe("prime-agent");
+    expect(provider.displayName).toBe("Prime Agent");
+    expect(provider.process.command).toBe("node");
+    expect(provider.process.args.at(-1)).toMatch(
+      /agent-runtime\/src\/prime-agent\/bridge\/bridge\.ts$/,
+    );
+    expect(existsSync(provider.process.args.at(-1) ?? "")).toBe(true);
+    expect(
+      provider.buildCommandPlan({ type: "model/list", cwd: "/tmp/project" }),
     ).toEqual({
       kind: "request",
       method: "model/list",

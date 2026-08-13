@@ -20,6 +20,7 @@ import type {
   AgentRuntimeClaudeCodeSkillRoot,
   AgentRuntimeCodexSkillRoot,
   AgentRuntimePiSkillRoot,
+  AgentRuntimePrimeAgentSkillRoot,
   AgentRuntimeSkillRoot,
 } from "@bb/agent-runtime";
 import type {
@@ -79,6 +80,12 @@ function isPiSkillRoot(
   root: AgentRuntimeSkillRoot,
 ): root is AgentRuntimePiSkillRoot {
   return root.providerId === "pi";
+}
+
+function isPrimeAgentSkillRoot(
+  root: AgentRuntimeSkillRoot,
+): root is AgentRuntimePrimeAgentSkillRoot {
+  return root.providerId === "prime-agent";
 }
 
 function isAcpSkillRoot(
@@ -438,6 +445,7 @@ describe("injected skill staging", () => {
     const codexRoot = staged.skillRoots.find(isCodexSkillRoot);
     const claudeRoot = staged.skillRoots.find(isClaudeCodeSkillRoot);
     const piRoot = staged.skillRoots.find(isPiSkillRoot);
+    const primeAgentRoot = staged.skillRoots.find(isPrimeAgentSkillRoot);
     const acpRoot = staged.skillRoots.find(isAcpSkillRoot);
     expect(codexRoot).toEqual({
       id: `global-skills:${staged.catalogHash}:codex`,
@@ -463,6 +471,17 @@ describe("injected skill staging", () => {
     expect(piRoot).toEqual({
       id: `global-skills:${staged.catalogHash}:pi`,
       providerId: "pi",
+      skillDirectoryRootPath: path.join(
+        dataDir,
+        "runtime",
+        "global-skills",
+        staged.catalogHash,
+        "skills",
+      ),
+    });
+    expect(primeAgentRoot).toEqual({
+      id: `global-skills:${staged.catalogHash}:prime-agent`,
+      providerId: "prime-agent",
       skillDirectoryRootPath: path.join(
         dataDir,
         "runtime",
@@ -603,6 +622,7 @@ describe("injected skill staging", () => {
       "codex",
       "claude-code",
       "pi",
+      "prime-agent",
       "acp",
     ]);
     const piRoot = staged.skillRoots.find(isPiSkillRoot);

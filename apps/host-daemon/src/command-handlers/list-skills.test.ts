@@ -56,7 +56,7 @@ async function makeWorkspaceFixture(): Promise<WorkspaceFixture> {
 
 async function listSkills(
   fixture: WorkspaceFixture,
-  providerId: "claude-code" | "codex",
+  providerId: "claude-code" | "codex" | "prime-agent",
   cwd: string | null,
 ): Promise<DiscoveredSkill[]> {
   return discoverSkills({
@@ -284,6 +284,54 @@ describe("resolveSkillScanRoots + discoverSkills (codex)", () => {
 
     expect(byName(skills, "linked-directory")?.linked).toBe(true);
     expect(byName(skills, "linked-file")?.linked).toBe(true);
+  });
+});
+
+describe("resolveSkillScanRoots + discoverSkills (prime-agent)", () => {
+  it("discovers Prime Agent user and nested project skills", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const nestedCwd = path.join(fixture.cwd, "packages", "app");
+    await mkdir(path.join(fixture.cwd, ".git"), { recursive: true });
+    await mkdir(nestedCwd, { recursive: true });
+    await writeSkill(
+      path.join(
+        fixture.homeDir,
+        ".prime",
+        "agent",
+        "skills",
+        "prime-user",
+        "SKILL.md",
+      ),
+      "prime-user",
+    );
+    await writeSkill(
+      path.join(
+        fixture.cwd,
+        ".prime",
+        "agent",
+        "skills",
+        "prime-project",
+        "SKILL.md",
+      ),
+      "prime-project",
+    );
+    await writeSkill(
+      path.join(
+        nestedCwd,
+        ".prime",
+        "agent",
+        "skills",
+        "prime-nested",
+        "SKILL.md",
+      ),
+      "prime-nested",
+    );
+
+    const skills = await listSkills(fixture, "prime-agent", nestedCwd);
+
+    expect(byName(skills, "prime-user")?.rootKind).toBe("provider-user");
+    expect(byName(skills, "prime-project")?.rootKind).toBe("provider-project");
+    expect(byName(skills, "prime-nested")?.rootKind).toBe("provider-project");
   });
 });
 

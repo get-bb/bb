@@ -25,6 +25,11 @@ describe("runtime skill roots", () => {
           skillDirectoryRootPath: "/tmp/pi-skills",
         },
         {
+          id: "prime-root",
+          providerId: "prime-agent",
+          skillDirectoryRootPath: "/tmp/prime-skills",
+        },
+        {
           id: "acp-root",
           providerId: "acp",
           skillDirectoryRootPath: "/tmp/acp-skills",
@@ -55,6 +60,11 @@ describe("runtime skill roots", () => {
         skillDirectoryRootPath: "/tmp/pi-skills",
       },
       {
+        id: "prime-root",
+        providerId: "prime-agent",
+        skillDirectoryRootPath: "/tmp/prime-skills",
+      },
+      {
         id: "acp-root",
         providerId: "acp",
         skillDirectoryRootPath: "/tmp/acp-skills",
@@ -81,6 +91,11 @@ describe("runtime skill roots", () => {
           providerId: "pi",
           skillDirectoryRootPath: "/tmp/pi-skills",
         },
+        {
+          id: "prime-root",
+          providerId: "prime-agent",
+          skillDirectoryRootPath: "/tmp/prime-skills",
+        },
       ],
     });
 
@@ -99,6 +114,18 @@ describe("runtime skill roots", () => {
         skillRoots: roots,
       }),
     ).toEqual([]);
+    expect(
+      filterSkillRootsForProvider({
+        providerId: "prime-agent",
+        skillRoots: roots,
+      }),
+    ).toEqual([
+      {
+        id: "prime-root",
+        providerId: "prime-agent",
+        skillDirectoryRootPath: "/tmp/prime-skills",
+      },
+    ]);
   });
 
   it("filters generic ACP roots to any ACP provider id", () => {

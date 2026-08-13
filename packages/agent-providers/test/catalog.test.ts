@@ -16,6 +16,7 @@ describe("agent provider catalog", () => {
     expect(isAcpAgentProviderId("codex")).toBe(false);
     expect(isAcpAgentProviderId("claude-code")).toBe(false);
     expect(isAcpAgentProviderId("pi")).toBe(false);
+    expect(isAcpAgentProviderId("prime-agent")).toBe(false);
 
     expect(isAcpProviderId("acp-cursor")).toBe(true);
     expect(isAcpProviderId("acp-my-agent")).toBe(true);
@@ -26,9 +27,34 @@ describe("agent provider catalog", () => {
     expect(supportsManualCompaction("codex")).toBe(true);
     expect(supportsManualCompaction("claude-code")).toBe(true);
     expect(supportsManualCompaction("pi")).toBe(true);
+    expect(supportsManualCompaction("prime-agent")).toBe(true);
     expect(supportsManualCompaction("acp-cursor")).toBe(false);
     expect(supportsManualCompaction("acp-custom")).toBe(false);
     expect(supportsManualCompaction("acp-opencode")).toBe(true);
+  });
+
+  it("declares Prime Agent as a native full-permission provider", () => {
+    expect(getBuiltInAgentProviderInfo("prime-agent")).toEqual({
+      available: true,
+      capabilities: {
+        supportsArchive: false,
+        supportsRename: true,
+        supportsServiceTier: false,
+        supportsUserQuestion: false,
+        supportsFork: false,
+        supportedPermissionModes: ["full"],
+      },
+      composerActions: [{ kind: "skills", trigger: "/" }],
+      displayName: "Prime Agent",
+      id: "prime-agent",
+      logoUrl: null,
+    });
+    expect(getBuiltInAgentProviderServerCapabilities("prime-agent")).toEqual({
+      supportsWorkflows: false,
+      supportsExecutionOverride: false,
+      backsHostDaemonAiServices: false,
+      reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
+    });
   });
 
   it("synthesizes dynamic ACP provider metadata with shared ACP policy", () => {

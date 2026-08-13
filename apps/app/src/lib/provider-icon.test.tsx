@@ -6,6 +6,16 @@ import { describe, expect, it } from "vitest";
 import { getProviderIconInfo } from "./provider-icon";
 
 describe("getProviderIconInfo", () => {
+  it("renders the built-in Prime Agent provider", () => {
+    const iconInfo = getProviderIconInfo("prime-agent");
+    expect(iconInfo?.ariaLabel).toBe("Prime Agent");
+    if (iconInfo === undefined) {
+      throw new Error("Expected Prime Agent icon info");
+    }
+    const view = render(createElement(iconInfo.icon));
+    expect(view.container.querySelector("svg")).not.toBeNull();
+  });
+
   it("prefers a configured provider logo over the generic ACP icon", () => {
     const iconInfo = getProviderIconInfo(
       "acp-do-computer",
