@@ -18,13 +18,13 @@ import {
 } from "../engine/adapter.js";
 import type { EngineDeps } from "../engine/pull.js";
 import { syncMetadata } from "../engine/status.js";
+import { refinePlanConflicts } from "../conflicts/attribution.js";
 import { canonicalJson, contentHash } from "../serialize/canonical.js";
 import { BaseSnapshotStore, type BaseRow } from "../store/base-snapshot.js";
 import { IdMapStore } from "../store/id-map.js";
 import { blastRadius } from "./blast-radius.js";
 import {
   classifyThreeWay,
-  conflictingFields,
   sameEntity,
   threeWayDiff,
 } from "./diff.js";
@@ -426,13 +426,13 @@ async function resolveOrphans(
   return result;
 }
 
-function itemFromEntity(
+async function itemFromEntity(
   scope: SyncScope,
   state: AdapterState,
   remote: ReadonlyMap<string, Record<string, unknown>>,
   key: string,
   orphan: boolean,
-): PlanItem {
+): Promise<PlanItem> {
   const base = state.base.get(key);
   const working = state.working.get(key);
   const theirs = remote.get(key);
@@ -445,7 +445,15 @@ function itemFromEntity(
       ? "conflict" as const
       : classifyThreeWay(base, working, theirs, state.adapter.klass !== "OVERLAY");
   const fields = operation === "noop" ? [] : semanticFields;
-  const conflictFields = operation === "conflict" ? conflictingFields(semanticFields) : [];
+  const conflicts = operation === "conflict"
+    ? await refinePlanConflicts({
+      kind: state.adapter.kind,
+      key,
+      base,
+      ours: working,
+      theirs,
+    })
+    : [];
   const baseRow = state.baseRows.find((row) => row.entityKey === key);
   const payload = working ?? base ?? theirs;
   return {
@@ -456,12 +464,7 @@ function itemFromEntity(
     operation,
     expectedBaseContentHash: baseRow?.contentHash ?? null,
     fields,
-    conflicts: conflictFields.map((field) => ({
-      ...field,
-      attribution: null,
-      suggestion: null,
-      resolution: null,
-    })),
+    conflicts,
     referrers: [],
     error: null,
   };
@@ -744,7 +747,7 @@ export async function computePlan(
   for (const state of states) {
     const remoteRows = remote.get(state.adapter.kind) ?? new Map();
     for (const key of candidateKeys(state, remoteRows)) {
-      const item = itemFromEntity(
+      const item = await itemFromEntity(
         scope,
         state,
         remoteRows,

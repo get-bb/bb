@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createPluginContext } from "../../../lib/context.js";
 import { RemoteError } from "../../../lib/remote/types.js";
 import { ENTITIES } from "../../../lib/sync/registry.js";
+import { registerAttributionProvider } from "../conflicts/attribution.js";
 import type { EntityAdapter, ServerEntity, WorkingEntity } from "../engine/adapter.js";
 import { pull, type EngineDeps } from "../engine/pull.js";
 import { canonicalJson } from "../serialize/canonical.js";
@@ -131,6 +132,66 @@ describe("three-way plan", () => {
       orphans: 0,
     });
     expect(plan.items.find((item) => item.label === "REQ-NOOP")?.fields).toEqual([]);
+  });
+
+  it("delegates live plan conflicts to pointer refinement and audit attribution", async () => {
+    const base = requirement("REQ-FIELD-CONFLICT", "same", {
+      metadata: { owner: "base", stable: true },
+    });
+    let remote = [base];
+    let authored = [working(base)];
+    const setup = await fixture(() => remote, () => authored);
+    await pull(setup.deps, scope, ["requirement"]);
+
+    remote = [requirement("REQ-FIELD-CONFLICT", "same", {
+      metadata: { owner: "theirs", stable: true },
+    })];
+    const ours = working(base);
+    authored = [{
+      ...ours,
+      payload: {
+        ...ours.payload,
+        metadata: { owner: "ours", stable: true },
+      },
+    }];
+    let attributionCalls = 0;
+    registerAttributionProvider("requirement", async (_kind, key, paths) => {
+      if (key !== base.key) {
+        return { actor: null, at: null, source: null, available: false };
+      }
+      attributionCalls += 1;
+      expect(paths).toEqual(["/metadata/owner"]);
+      return {
+        actor: "reviewer@example.com",
+        at: "2026-08-13T01:00:00.000Z",
+        source: "human",
+        available: true,
+      };
+    });
+
+    const plan = await computePlan(
+      { ...setup.deps, worktreeRoot: setup.root },
+      scope,
+      ["requirement"],
+    );
+
+    expect(attributionCalls).toBe(1);
+    expect(plan.items.find((item) => item.key === base.key)).toMatchObject({
+      operation: "conflict",
+      conflicts: [{
+        field: "/metadata/owner",
+        base: { present: true, value: "base" },
+        ours: { present: true, value: "ours" },
+        theirs: { present: true, value: "theirs" },
+        attribution: {
+          actor: "reviewer@example.com",
+          at: "2026-08-13T01:00:00.000Z",
+          source: "human",
+        },
+        suggestion: null,
+        resolution: null,
+      }],
+    });
   });
 
   it("computes the SPEC summary and blocks its referenced delete", async () => {
