@@ -13,6 +13,7 @@ import {
   useRealtimeConnectionState,
   useRpc,
   type PluginNavPanelProps,
+  type PluginPendingInteractionProps,
 } from "@bb/plugin-sdk/app";
 import { Alert, AlertDescription } from "@bb/shared-ui/alert";
 import { Badge } from "@bb/shared-ui/badge";
@@ -57,11 +58,52 @@ type PanelState =
   | RegistryReadyState;
 
 interface DevicePanelProps extends PluginNavPanelProps {
+  compact?: boolean;
   consoleSlot?: ReactNode | ((props: {
     projectId: string;
     projectVersionId: string | null;
     devices: readonly BenchDeviceRecord[];
   }) => ReactNode);
+  helperInstallThreadId?: string;
+}
+
+export function DestructiveConfirmationInteraction({
+  interaction,
+  submit,
+  cancel,
+}: PluginPendingInteractionProps): React.JSX.Element {
+  const payload = typeof interaction.payload === "object" && interaction.payload !== null &&
+    !Array.isArray(interaction.payload) ? interaction.payload : null;
+  const detail = payload && "detail" in payload && typeof payload.detail === "string"
+    ? payload.detail
+    : "Review this destructive operation before continuing.";
+  const command = payload && "command" in payload && typeof payload.command === "string"
+    ? payload.command
+    : null;
+  return (
+    <section className="space-y-3 rounded-lg border border-destructive/40 bg-card p-4">
+      <div>
+        <h2 className="text-sm font-semibold text-foreground">{interaction.title}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
+      </div>
+      {command ? (
+        <code className="block overflow-x-auto rounded bg-muted px-2 py-1.5 text-xs text-foreground">
+          {command}
+        </code>
+      ) : null}
+      <p className="text-xs text-muted-foreground">
+        Confirmation is single-use and expires with this interaction.
+      </p>
+      <div className="flex gap-2">
+        <Button onClick={() => { void submit({ confirmed: true }); }} size="sm">
+          Confirm operation
+        </Button>
+        <Button onClick={() => { void cancel(); }} size="sm" variant="outline">
+          Cancel
+        </Button>
+      </div>
+    </section>
+  );
 }
 
 interface ProjectPickerProps {
@@ -73,10 +115,10 @@ interface ProjectPickerProps {
 
 function ProjectPicker({ disabled, projectId, projects, select }: ProjectPickerProps) {
   return (
-    <div className="flex items-center gap-2">
-      <label className="text-xs font-medium text-muted-foreground" htmlFor="firmware-bench-project">Project</label>
+    <div className="flex min-w-0 items-center gap-2">
+      <label className="shrink-0 text-xs font-medium text-muted-foreground" htmlFor="firmware-bench-project">Project</label>
       <select
-        className="h-8 max-w-52 rounded-md border border-input bg-background px-2 text-xs"
+        className="h-8 min-w-0 max-w-52 rounded-md border border-input bg-background px-2 text-xs"
         disabled={disabled}
         id="firmware-bench-project"
         onChange={(event) => select(event.target.value || null)}
@@ -190,18 +232,22 @@ function DeviceRow({
   device,
   holder,
   busy,
+  compact,
   claim,
   release,
 }: {
   device: BenchDeviceRecord;
   holder: string;
   busy: boolean;
+  compact: boolean;
   claim(): void;
   release(): void;
 }): React.JSX.Element {
   const heldHere = device.claimedBy === holder;
   return (
-    <article className="grid gap-3 border-t border-border px-4 py-3 first:border-t-0 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+    <article className={compact
+      ? "grid gap-3 border-t border-border px-3 py-3 first:border-t-0"
+      : "grid gap-3 border-t border-border px-4 py-3 first:border-t-0 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"}>
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <p className="truncate text-sm font-medium text-foreground">
@@ -217,7 +263,7 @@ function DeviceRow({
           Last seen {formatLastSeen(device.lastSeen)} · scope {device.claimScope}
         </p>
       </div>
-      <div className="flex items-center gap-2 md:justify-end">
+      <div className={compact ? "flex flex-wrap items-center gap-2" : "flex items-center gap-2 md:justify-end"}>
         {device.claimedBy ? (
           <Badge variant={heldHere ? "secondary" : "outline"}>
             <Icon name="Lock" />
@@ -244,8 +290,10 @@ function FamilyUnavailableRow({
   family,
   proposal,
   busy,
+  compact,
   propose,
   confirm,
+  helperInstallAvailable,
 }: {
   family: FamilyStatus;
   proposal: {
@@ -255,12 +303,16 @@ function FamilyUnavailableRow({
     why: string;
   } | null;
   busy: boolean;
+  compact: boolean;
   propose(): void;
   confirm(): void;
+  helperInstallAvailable: boolean;
 }): React.JSX.Element {
   return (
     <div className="border-t border-border bg-muted/20 px-4 py-3 first:border-t-0">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+      <div className={compact
+        ? "flex flex-col gap-3"
+        : "flex flex-col gap-3 md:flex-row md:items-start md:justify-between"}>
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <Icon className="size-4 text-muted-foreground" name="AlertCircle" />
@@ -268,10 +320,15 @@ function FamilyUnavailableRow({
           </div>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">{family.reason}</p>
         </div>
-        {family.needsConfiguration && proposal === null ? (
-          <Button disabled={busy} onClick={propose} size="sm" variant="outline">
+        {family.needsConfiguration && proposal === null && helperInstallAvailable ? (
+          <Button className={compact ? "w-full whitespace-normal" : undefined} disabled={busy} onClick={propose} size="sm" variant="outline">
             Review helper install
           </Button>
+        ) : null}
+        {family.needsConfiguration && !helperInstallAvailable ? (
+          <p className="max-w-sm text-xs leading-5 text-muted-foreground">
+            Open Firmware Bench from this thread&apos;s Actions menu to review helper installation.
+          </p>
         ) : null}
       </div>
       {proposal ? (
@@ -279,8 +336,8 @@ function FamilyUnavailableRow({
           <p className="text-xs font-medium text-foreground">Explicit confirmation required</p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">{proposal.why}</p>
           <code className="mt-2 block overflow-x-auto rounded bg-muted px-2 py-1.5 text-xs text-foreground">{proposal.command}</code>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button disabled={busy} onClick={confirm} size="sm">
+          <div className={compact ? "mt-3 grid gap-2" : "mt-3 flex flex-wrap items-center gap-2"}>
+            <Button className={compact ? "w-full whitespace-normal" : undefined} disabled={busy} onClick={confirm} size="sm">
               Confirm and install
             </Button>
             <a className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground" href={proposal.source} rel="noreferrer" target="_blank">
@@ -293,10 +350,14 @@ function FamilyUnavailableRow({
   );
 }
 
-export function DevicePanel({ consoleSlot }: DevicePanelProps): React.JSX.Element {
+export function DevicePanel({
+  compact = false,
+  consoleSlot,
+  helperInstallThreadId,
+}: DevicePanelProps): React.JSX.Element {
   const rpc = useRpc<typeof rpcContract>();
   const registryRpc = useRpc<typeof debugBenchRpcContract>();
-  const { projectId: routeProjectId, threadId } = useBbContext();
+  const { projectId: routeProjectId, threadId: routeThreadId } = useBbContext();
   const sidebar = experimental_useSidebarThreads();
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const projectId = routeProjectId ?? selectedProjectId;
@@ -316,8 +377,8 @@ export function DevicePanel({ consoleSlot }: DevicePanelProps): React.JSX.Elemen
     [projectId],
   );
   const holder = useMemo(
-    () => panelHolder(projectId, threadId),
-    [projectId, threadId],
+    () => panelHolder(projectId, helperInstallThreadId ?? routeThreadId),
+    [helperInstallThreadId, projectId, routeThreadId],
   );
 
   const load = useCallback(async (rescan: boolean) => {
@@ -404,16 +465,22 @@ export function DevicePanel({ consoleSlot }: DevicePanelProps): React.JSX.Elemen
   const stale = state.devices.filter((device) => device.stale).length;
 
   return (
-    <div className="h-full overflow-y-auto bg-background text-foreground" data-state="ready">
-      <div className="mx-auto w-full max-w-6xl space-y-4 p-4 md:p-5">
+    <div
+      className="h-full overflow-x-hidden overflow-y-auto bg-background text-foreground"
+      data-layout={compact ? "compact" : "wide"}
+      data-state="ready"
+    >
+      <div className={compact ? "w-full space-y-3 p-3" : "mx-auto w-full max-w-6xl space-y-4 p-4 md:p-5"}>
         <section className="overflow-hidden rounded-lg border border-border bg-card">
-          <div className="flex flex-col gap-4 border-b border-border bg-muted/20 px-4 py-3 md:flex-row md:items-center">
+          <div className={compact
+            ? "flex flex-col gap-3 border-b border-border bg-muted/20 px-3 py-3"
+            : "flex flex-col gap-4 border-b border-border bg-muted/20 px-4 py-3 md:flex-row md:items-center"}>
             <div>
               <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">Machine arbitration · diagnostic only</p>
               <p className="mt-1 text-sm text-foreground">Live registry for local instruments and serial endpoints.</p>
             </div>
-            <div className="md:ml-auto"><ProjectPicker {...projectPicker} /></div>
-            <Button disabled={busyKey === "rescan"} onClick={() => void perform("rescan", async () => {
+            <div className={compact ? "min-w-0" : "md:ml-auto"}><ProjectPicker {...projectPicker} /></div>
+            <Button className={compact ? "w-full" : undefined} disabled={busyKey === "rescan"} onClick={() => void perform("rescan", async () => {
               if (!scope) return;
               await registryRpc.call("benchDevRegistryRescan", scope);
             })} size="sm" variant="outline">
@@ -421,7 +488,7 @@ export function DevicePanel({ consoleSlot }: DevicePanelProps): React.JSX.Elemen
               Rescan
             </Button>
           </div>
-          <div className="grid grid-cols-2 gap-px bg-border md:grid-cols-4">
+          <div className={compact ? "grid grid-cols-2 gap-px bg-border" : "grid grid-cols-2 gap-px bg-border md:grid-cols-4"}>
             {[
               ["Visible", state.devices.length - stale],
               ["Claimed", claimed],
@@ -449,7 +516,7 @@ export function DevicePanel({ consoleSlot }: DevicePanelProps): React.JSX.Elemen
             await registryRpc.call("benchDevRegistryRescan", scope);
           })} />
         ) : (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className={compact ? "grid min-w-0 gap-3" : "grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]"}>
             <div className="space-y-3">
               {groups.map((group) => (
                 <section className="overflow-hidden rounded-lg border border-border bg-card" key={group.kind}>
@@ -463,6 +530,7 @@ export function DevicePanel({ consoleSlot }: DevicePanelProps): React.JSX.Elemen
                   {group.devices.map((device) => (
                     <DeviceRow
                       busy={busyKey === device.deviceId}
+                      compact={compact}
                       claim={() => void perform(device.deviceId, async () => {
                         if (!scope) return;
                         await rpc.call("benchDevDeviceClaim", {
@@ -488,15 +556,15 @@ export function DevicePanel({ consoleSlot }: DevicePanelProps): React.JSX.Elemen
                   {group.families.map((family) => (
                     <FamilyUnavailableRow
                       busy={busyKey === family.familyId}
+                      compact={compact}
                       confirm={() => void perform(family.familyId, async () => {
-                        if (!scope) return;
+                        if (!scope || !helperInstallThreadId) return;
                         const proposal = proposals[family.familyId];
                         if (!proposal) return;
                         await registryRpc.call("benchDevHelperInstall", {
                           ...scope,
                           proposalToken: proposal.proposalToken,
-                          confirmed: true,
-                          confirmedBy: holder,
+                          threadId: helperInstallThreadId,
                         });
                         setProposals((current) => {
                           const next = { ...current };
@@ -504,6 +572,7 @@ export function DevicePanel({ consoleSlot }: DevicePanelProps): React.JSX.Elemen
                           return next;
                         });
                       })}
+                      helperInstallAvailable={helperInstallThreadId !== undefined}
                       family={family}
                       key={family.familyId}
                       proposal={proposals[family.familyId] ?? null}

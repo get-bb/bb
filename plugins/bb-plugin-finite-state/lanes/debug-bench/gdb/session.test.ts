@@ -107,6 +107,24 @@ async function deps(gdbExecutablePath?: string): Promise<DebugBenchDeps & {
 }
 
 describe("GDB session", () => {
+  it("acquires the hardware throttle exactly once per issued command", async () => {
+    const dependencies = await deps();
+    const acquire = vi.fn(async () => undefined);
+    dependencies.throttle = { acquire };
+    const session = await openGdbSession(
+      dependencies,
+      device.deviceId,
+      dependencies.claim,
+      new AbortController().signal,
+    );
+    acquire.mockClear();
+
+    await session.executeCommand("-thread-info");
+
+    expect(acquire).toHaveBeenCalledOnce();
+    await session.dispose();
+  });
+
   it("connects and exposes typed bounded operations", async () => {
     const dependencies = await deps();
     const session = await openGdbSession(dependencies, device.deviceId, dependencies.claim, new AbortController().signal);

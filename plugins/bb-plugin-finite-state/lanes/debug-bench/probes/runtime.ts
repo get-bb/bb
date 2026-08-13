@@ -2,7 +2,7 @@ import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { verifyDeviceClaim, type DeviceClaim } from "../registry/claims.js";
-import type { DebugGdbSession, HardwareIoThrottle } from "../gdb/session.js";
+import type { DebugGdbSession } from "../gdb/session.js";
 import { DebugBenchConfigurationError, resolveExecutable } from "../gdb/server.js";
 import {
   finishProbeRun,
@@ -38,7 +38,6 @@ export interface ProbeRuntimeDeps extends ProbeRunScope {
   releaseClaim(deviceId: string, holder: string): void | Promise<void>;
   openSession(deviceId: string, claim: DeviceClaim, signal: AbortSignal): Promise<DebugGdbSession>;
   spawnProcess?: SpawnProcess;
-  throttle?: HardwareIoThrottle;
   now?: () => Date;
   createRunId?: () => string;
   writeArtifact?: typeof writeBenchArtifact;
@@ -341,7 +340,6 @@ async function protocolLoop(
           continue;
         }
         try {
-          await deps.throttle?.acquire(signal);
           const result = await session.executeCommand(message.command, message.args);
           sendResponse(child, message.id, { ok: true, result });
         } catch (error) {

@@ -1,7 +1,12 @@
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createPluginContext } from "../../../lib/context.js";
+import {
+  helperInstallGateAudit,
+  proposeHelperInstall,
+} from "../gating/helper-install.js";
 import { registerDebugBench } from "../register.js";
+import type { FamilyDescriptor } from "./families.js";
 import { upsertCandidate } from "./store.js";
 
 const disposals: Array<() => Promise<void>> = [];
@@ -11,6 +16,51 @@ afterEach(async () => {
 });
 
 describe("debug-bench registration", () => {
+  it("routes helper installation through server-issued interaction and stays absent from agent tools", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "finite-state-helper-rpc" });
+    disposals.push(() => harness.lifecycle.dispose());
+    const ctx = createPluginContext(bb);
+    registerDebugBench(bb, ctx);
+    const family: FamilyDescriptor = {
+      id: "fixture-helper-family",
+      kind: "probe",
+      label: "Fixture helper",
+      detectionStrategy: "fixture",
+      helper: {
+        id: "fixture-helper",
+        displayName: "Fixture helper",
+        source: "https://example.test/helper",
+        why: "Exercise the production confirmation path.",
+        check: ["/usr/bin/true"],
+        install: ["/usr/bin/true"],
+      },
+      transports: ["local-usb"],
+    };
+    const proposal = proposeHelperInstall(ctx.db(), family);
+    const installation = harness.behavior.callRpc("benchDevHelperInstall", {
+      projectId: "project-1",
+      projectVersionId: null,
+      proposalToken: proposal.proposalToken,
+      threadId: "thread-1",
+    });
+    await vi.waitFor(() => expect(harness.pendingInteractions).toHaveLength(1));
+    expect(harness.inspection.registrations.agentTools.map((tool) => tool.name))
+      .not.toContain("benchDevHelperInstall");
+    harness.submitInteraction(harness.pendingInteractions[0]!.id, { confirmed: true });
+
+    await expect(installation).resolves.toMatchObject({
+      state: "installed",
+      confirmedBy: expect.stringMatching(/^request-input-response:thread-1:/),
+    });
+    expect(helperInstallGateAudit({
+      db: ctx.db(),
+      sessionId: "thread-1",
+    }, proposal.proposalToken)).toMatchObject({
+      callerOrigin: "bb.ui.requestInput",
+      outcome: "installed",
+    });
+  });
+
   it("round-trips frozen device fields and publishes committed claim hints", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "finite-state" });
     disposals.push(() => harness.lifecycle.dispose());

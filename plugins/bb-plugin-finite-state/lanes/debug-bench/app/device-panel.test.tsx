@@ -57,6 +57,15 @@ async function firmwareBenchSlot() {
   return slot;
 }
 
+async function firmwareBenchThreadSlot() {
+  const app = await loadPluginApp(() => import("../../../app.js"));
+  const slot = app.threadPanelActions.find(
+    (panel) => panel.id === "firmware-bench-thread",
+  );
+  if (!slot) throw new Error("thread-scoped firmware bench panel not registered");
+  return slot;
+}
+
 function registryResult(families: FamilyStatus[] = [availableFamily], deviceCount = 0) {
   return { families, deviceCount, truncated: false, scannedAt: "2026-08-13T10:00:00.000Z" };
 }
@@ -69,6 +78,38 @@ function stringField(input: unknown, key: string): string {
 }
 
 describe("firmware device panel", () => {
+  it("renders and submits the server-issued destructive confirmation interaction", async () => {
+    const app = await loadPluginApp(() => import("../../../app.js"));
+    const interaction = app.pendingInteractions.find(
+      (registration) => registration.id === "finite-state-destructive-confirmation",
+    );
+    if (!interaction) throw new Error("destructive confirmation renderer not registered");
+    const submit = vi.fn(async () => undefined);
+    const slot = renderSlot(interaction, {
+      interaction: {
+        id: "interaction-1",
+        threadId: "thread-1",
+        title: "Install fixture helper",
+        payload: {
+          operation: "benchDevHelperInstall",
+          deviceId: "helper:fixture",
+          detail: "Install the reviewed helper.",
+          command: "python3 -m pip install fixture",
+        },
+        createdAt: 0,
+        expiresAt: 60_000,
+      },
+      submit,
+      cancel: async () => undefined,
+    });
+
+    expect(slot.getByText("Install the reviewed helper.")).toBeTruthy();
+    expect(slot.getByText("python3 -m pip install fixture")).toBeTruthy();
+    fireEvent.click(slot.getByRole("button", { name: "Confirm operation" }));
+    await waitFor(() => expect(submit).toHaveBeenCalledWith({ confirmed: true }));
+    slot.lifecycle.unmount();
+  });
+
   it("selects a project when plugin navigation has no project context", async () => {
     const panel = await firmwareBenchSlot();
     let resolveScan: ((value: ReturnType<typeof registryResult>) => void) | undefined;
@@ -122,18 +163,18 @@ describe("firmware device panel", () => {
   });
 
   it("groups devices, renders stale/setup states, confirms installs, and claims/releases", async () => {
-    const panel = await firmwareBenchSlot();
+    const panel = await firmwareBenchThreadSlot();
     const mutableDevice = { ...device };
-    const install = vi.fn((input: unknown) => ({
+    const install = vi.fn(() => ({
       proposalToken: "proposal-1",
       familyId: "saleae-logic",
       helperId: "logic2-automation",
       state: "installed" as const,
-      confirmedBy: stringField(input, "confirmedBy"),
+      confirmedBy: "request-input-response:thread-1:fixture",
       message: "installed",
       completedAt: "2026-08-13T10:01:00.000Z",
     }));
-    const slot = renderSlot(panel, { subPath: "" }, {
+    const slot = renderSlot(panel, { threadId: "thread-1", params: null }, {
       context: { projectId: "project-1", threadId: "thread-1" },
       rpc: {
         benchDevRegistryRescan: () => registryResult([availableFamily, unavailableFamily], 1),
@@ -163,6 +204,7 @@ describe("firmware device panel", () => {
       },
     });
     expect(await slot.findByText("Debug probes")).toBeTruthy();
+    expect(slot.container.querySelector('[data-layout="compact"]')).toBeTruthy();
     expect(slot.getAllByText("Stale").length).toBeGreaterThan(0);
     expect(slot.getByText("Logic analyzers unavailable")).toBeTruthy();
     expect(slot.getByRole("button", { name: "Claim" }).hasAttribute("disabled")).toBe(true);
@@ -170,9 +212,29 @@ describe("firmware device panel", () => {
 
     fireEvent.click(slot.getByRole("button", { name: "Review helper install" }));
     expect(await slot.findByText("Explicit confirmation required")).toBeTruthy();
+    expect(slot.getByRole("button", { name: "Confirm and install" }).className).toContain("w-full");
     expect(install).not.toHaveBeenCalled();
     fireEvent.click(slot.getByRole("button", { name: "Confirm and install" }));
-    await waitFor(() => expect(install).toHaveBeenCalledWith(expect.objectContaining({ confirmed: true })));
+    await waitFor(() => expect(install).toHaveBeenCalledWith(expect.objectContaining({
+      threadId: "thread-1",
+    })));
+    slot.lifecycle.unmount();
+  });
+
+  it("keeps helper installation off the nav-only route and points to the thread action", async () => {
+    const panel = await firmwareBenchSlot();
+    const slot = renderSlot(panel, { subPath: "" }, {
+      context: { projectId: "project-1", threadId: null },
+      rpc: {
+        benchDevRegistryRescan: () => registryResult([unavailableFamily]),
+        benchDevDevicesList: () => ({ items: [], total: 0, cursor: null }),
+      },
+    });
+
+    expect(await slot.findByText(/Open Firmware Bench from this thread's Actions menu/))
+      .toBeTruthy();
+    expect(slot.queryByRole("button", { name: "Review helper install" })).toBeNull();
+    expect(slot.queryByRole("button", { name: "Confirm and install" })).toBeNull();
     slot.lifecycle.unmount();
   });
 

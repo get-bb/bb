@@ -21,7 +21,7 @@ import {
   proposeHelperInstall,
   type HelperInstallOutcome,
   type HelperInstallProposal,
-} from "./registry/helpers.js";
+} from "./gating/helper-install.js";
 import {
   BENCH_CHANGED_CHANNEL,
   initializeRegistryStore,
@@ -101,8 +101,7 @@ export const debugBenchRpcContract = defineRpcContract({
     input: z.object({
       ...projectScopeFields,
       proposalToken: z.string().min(1).max(512),
-      confirmed: z.literal(true),
-      confirmedBy: z.string().min(1).max(512),
+      threadId: z.string().min(1).max(512),
     }).strict(),
     output: installOutcomeSchema,
   },
@@ -138,7 +137,7 @@ export interface DebugBenchCommandHandlers {
   proposeHelper(familyId: string): HelperInstallProposal;
   installHelper(
     proposalToken: string,
-    confirmedBy: string,
+    threadId: string,
   ): Promise<HelperInstallOutcome>;
   cliContextHolder(context: PluginCliContext): string;
 }
@@ -280,10 +279,16 @@ export function createDebugBenchCommandHandlers(
       if (!family) throw new Error(`UNKNOWN_DEVICE_FAMILY:${familyId}`);
       return proposeHelperInstall(ctx.db(), family);
     },
-    async installHelper(proposalToken, confirmedBy) {
-      return confirmHelperInstall(ctx.db(), proposalToken, {
-        confirmed: true,
-        confirmedBy,
+    async installHelper(proposalToken, threadId) {
+      return confirmHelperInstall({
+        bb,
+        deps: {
+          db: ctx.db(),
+          sessionId: threadId,
+          publish: (channel, payload) => bb.realtime.publish(channel, payload),
+        },
+        threadId,
+        proposalToken,
       });
     },
     cliContextHolder(context) {
@@ -383,9 +388,7 @@ export function registerDebugBench(bb: BbPluginApi, ctx: PluginContext): void {
       return commands.proposeHelper(input.familyId);
     },
     async benchDevHelperInstall(input) {
-      // Owner ruling pending: this two-step confirmation cannot join the frozen
-      // HUMAN_ONLY_RPC_METHODS gate without an approved contract amendment.
-      const outcome = await commands.installHelper(input.proposalToken, input.confirmedBy);
+      const outcome = await commands.installHelper(input.proposalToken, input.threadId);
       await commands.rescan(input);
       return outcome;
     },

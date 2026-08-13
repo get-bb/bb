@@ -410,6 +410,20 @@ specs: `docs/Product Specs/SPEC 07` and `SPEC 08`.*
 - Reason: SPEC 06 §5.3 requires a recorded human decision to extend the
   ACTION class; SPEC 07 adds one tool and SPEC 08 adds four, which materially
   changes the safety posture and must not happen tool-by-tool.
+- Current-SDK unsatisfiability note (owner ruling, Matt, 2026-08-13 16:53 ET,
+  relayed on FS-125 by supervisor thread `thr_hg37weivk7`): the clause
+  requiring an explicit human instruction in the current turn cannot be
+  satisfied by an ordinary plugin at the current SDK head. The executable
+  WP-90 feasibility assertions establish both missing predicates:
+  `PluginAgentToolContext` has no turn or triggering-message identity, and
+  `sdk.threads.interactions.respond` lets an SDK caller resolve
+  `bb.ui.requestInput`, so its response does not attest a human actor.
+  Consequently `fs_flash` and every destructive-grade operation must return
+  typed authorization-unavailable until bb exposes actor-attested interaction
+  responses or current-turn origin evidence. The helper-install interaction
+  remains approved at its lower, UI-convention confirmation tier and is not
+  evidence for destructive-grade authorization. The tracked upstream unblock
+  path is `https://github.com/get-bb/bb/issues/1564`.
 - Affected WPs and gates: WP-71 (implementation); WP-60 (allowlist guard)
   must consume the amended union; consumers WP-81, WP-86…WP-96.
 
