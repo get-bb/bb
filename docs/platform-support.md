@@ -28,8 +28,9 @@ tested lines, which npm surfaces as a warning rather than an install failure.
 Native Windows from this checkout:
 
 - `npx bb-app`, the `bb` CLI (`apps/cli/bin/bb.cmd` in a source checkout), and
-  a source-built desktop unpack (`pnpm --filter @bb/desktop run package:win`)
-  run in PowerShell or CMD
+  a source-built Windows installer (`pnpm --filter @bb/desktop run dist:win`)
+  run in PowerShell or CMD. `package:win` only emits the unpacked
+  `win-unpacked/bb.exe` used for local smoke.
 - Node.js, Git, and provider CLIs are native Windows installs (`.exe` / `PATHEXT`)
 - local project paths accept drive-letter and UNC paths
 - worktree setup hooks still use the POSIX `.bb-env-setup.sh` contract and run
@@ -42,9 +43,9 @@ Windows via WSL2 remains supported as the Linux stack inside Ubuntu:
   installed inside WSL2
 - local project paths use Linux-style absolute paths from inside WSL2
 
-Published desktop download assets remain macOS Apple Silicon. A Windows
-`.exe` is produced from this checkout; it is not uploaded to `desktop-latest`
-and has no Authenticode signature or `latest.yml` feed.
+Published desktop download assets remain macOS Apple Silicon. `dist:win`
+writes an NSIS installer (`bb-<version>-x64.exe`). That file is not uploaded
+to `desktop-latest` and has no Authenticode signature or `latest.yml` feed.
 
 ## Support Boundaries
 

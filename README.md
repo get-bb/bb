@@ -41,7 +41,8 @@ with `npx` instead. On Windows, run bb inside
 install WSL2 first, then run the same `npx` command below from your WSL2 (Linux)
 shell. Native Windows PowerShell and CMD are not a published support path.
 A source checkout can build a local Windows installer with
-`pnpm --filter @bb/desktop run dist:win`.
+`pnpm --filter @bb/desktop run dist:win` (unsigned NSIS). `package:win` only
+emits the unpacked `win-unpacked/bb.exe` used for local smoke.
 
 Early adopters can install
 **[bb Nightly](https://github.com/get-bb/bb/releases/tag/desktop-nightly)**

@@ -62,10 +62,19 @@
     "signAndEditExecutable": false,
     "target": [
       {
-        "target": "portable",
+        "target": "nsis",
         "arch": ["x64"]
       }
     ]
+  },
+  "nsis": {
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "deleteAppDataOnUninstall": false,
+    "oneClick": false,
+    "perMachine": false,
+    "shortcutName": "bb"
   },
   "npmRebuild": false
 }

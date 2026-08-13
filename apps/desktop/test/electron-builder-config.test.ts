@@ -105,6 +105,19 @@ const electronBuilderConfigSchema = z
     linux: linuxConfigSchema,
     mac: macConfigSchema,
     npmRebuild: z.literal(false),
+    win: z
+      .object({
+        icon: z.string().min(1),
+      })
+      .passthrough()
+      .optional(),
+    nsis: z
+      .object({
+        oneClick: z.boolean(),
+        allowToChangeInstallationDirectory: z.boolean(),
+      })
+      .passthrough()
+      .optional(),
     appId: z.string().min(1),
     artifactName: z.string().min(1),
     productName: z.string().min(1),
@@ -299,6 +312,84 @@ describe("electron-builder signing config", () => {
 
     expect(config.asarUnpack).toContain("dist/bb-app-bridge.mjs");
     expect(config.asarUnpack).not.toContain("dist/bb-app-bridge.js");
+  });
+
+  it("declares a Windows icon that exists on disk", async () => {
+    const configText = await readFile(
+      resolve(desktopPackageRoot, "electron-builder.config.json"),
+      "utf8",
+    );
+    const config = electronBuilderConfigSchema.parse(JSON.parse(configText));
+
+    expect(config.win?.icon).toBe("assets/icon.ico");
+    await expect(
+      access(resolve(desktopPackageRoot, "assets/icon.ico")),
+    ).resolves.toBeUndefined();
+    expect(config.win).toEqual(
+      expect.objectContaining({
+        target: [{ arch: ["x64"], target: "nsis" }],
+      }),
+    );
+    expect(config.nsis).toEqual(
+      expect.objectContaining({
+        allowToChangeInstallationDirectory: true,
+        oneClick: false,
+        perMachine: false,
+      }),
+    );
+  });
+
+  it("fetches better-sqlite3 Electron prebuilds for win32", async () => {
+    const { createRequire } = await import("node:module");
+    const requireFromDesktop = createRequire(
+      resolve(desktopPackageRoot, "package.json"),
+    );
+    const nativePrep = requireFromDesktop(
+      "./scripts/prepare-native-modules.cjs",
+    ) as {
+      resolveBetterSqlite3PrebuildArguments: (args: {
+        arch: string;
+        electronVersion: string;
+        platform: string;
+      }) => string[];
+    };
+
+    expect(
+      nativePrep.resolveBetterSqlite3PrebuildArguments({
+        arch: "x64",
+        electronVersion: "41.7.0",
+        platform: "win32",
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        "--runtime=electron",
+        "--target=41.7.0",
+        "--arch=x64",
+        "--platform=win32",
+      ]),
+    );
+  });
+
+  it("refuses an unknown native-prep platform instead of defaulting to darwin", async () => {
+    const { createRequire } = await import("node:module");
+    const requireFromDesktop = createRequire(
+      resolve(desktopPackageRoot, "package.json"),
+    );
+    const nativePrep = requireFromDesktop(
+      "./scripts/prepare-native-modules.cjs",
+    ) as {
+      resolveArchName: (context: { arch?: number | string }) => string;
+      resolveNativeModulePlatform: (platform: string) => string;
+    };
+
+    expect(nativePrep.resolveNativeModulePlatform("win32")).toBe("win32");
+    expect(() => nativePrep.resolveNativeModulePlatform("win")).toThrow(
+      /Unsupported native-module platform/,
+    );
+    expect(nativePrep.resolveArchName({ arch: 1 })).toBe("x64");
+    expect(() => nativePrep.resolveArchName({})).toThrow(
+      /Unable to resolve packaged native arch/,
+    );
   });
 
   it("runs a native module preparation hook after packaging", async () => {
