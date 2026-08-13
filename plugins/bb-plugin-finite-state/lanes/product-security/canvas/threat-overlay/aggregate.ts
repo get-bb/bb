@@ -55,7 +55,10 @@ const DEFAULT_LABELS: Record<StrideSegment, string> = {
 };
 
 function normalizedVocabularyValue(value: string): string {
-  return value.trim().toLocaleLowerCase().replaceAll(/[\s-]+/gu, "_");
+  return value
+    .trim()
+    .toLocaleLowerCase()
+    .replaceAll(/[\s-]+/gu, "_");
 }
 
 export function strideSegment(value: string): StrideSegment | null {
@@ -130,7 +133,9 @@ function collectVocabularyAliases(
   for (const [key, child] of Object.entries(record)) {
     const keyCategory = strideSegment(key);
     const category = keyCategory ?? activeCategory;
-    if (category) aliases.set(normalizedVocabularyValue(key), category);
+    if (keyCategory) {
+      aliases.set(normalizedVocabularyValue(key), keyCategory);
+    }
     collectVocabularyAliases(child, aliases, labels, category, depth + 1);
   }
 }

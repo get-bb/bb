@@ -6,8 +6,19 @@ import {
   renderSlot,
 } from "@bb/plugin-sdk/testing/app";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { ReactFlowProvider } from "@xyflow/react";
+import { useState, type ReactNode } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createPluginContext } from "../../../../lib/context.js";
+import type { ThreatOverlayAppRuntime } from "./index.js";
+import type {
+  ArchitectureNodeData,
+  CanvasArchitectureGraph,
+} from "../nodes/adapters.js";
+import {
+  ArchitectureSelectionContext,
+  type ArchitectureSelectionContextValue,
+} from "../nodes/selection.js";
 import {
   aggregateThreats,
   categoryFromVocabulary,
@@ -22,15 +33,10 @@ import {
   registerThreatOverlayBackend,
   threatOverlayRpcContract,
 } from "./backend.js";
-import {
-  parseAttackPathSteps,
-  resolveAttackPath,
-} from "./path.js";
+import { parseAttackPathSteps, resolveAttackPath } from "./path.js";
 import {
   EMPTY_THREAT_SELECTION,
-  isProgrammaticSelectionSnapshot,
   reduceThreatSelection,
-  threatSelectionKey,
   threatFocusSubPath,
   threatSlugFromPathname,
 } from "./selection.js";
@@ -49,6 +55,65 @@ const LABELS: Record<StrideSegment, string> = {
   denial_of_service: "Denial of service",
   elevation_of_privilege: "Elevation of privilege",
 };
+const COMPONENT_API: ArchitectureNodeData = {
+  slug: "component-api",
+  kind: "component",
+  name: "API",
+  sourceFile: "product-security/architecture/components/component-api.yaml",
+};
+const COMPONENT_OTHER: ArchitectureNodeData = {
+  slug: "component-other",
+  kind: "component",
+  name: "Other",
+  sourceFile: "product-security/architecture/components/component-other.yaml",
+};
+const EMPTY_GRAPH: CanvasArchitectureGraph = {
+  nodes: [],
+  edges: [],
+  unresolved: [],
+};
+const MOUNTED_SNAPSHOT =
+  threatOverlayRpcContract.threatOverlaySnapshot.output.parse({
+    revision: "revision-mounted",
+    threats: [
+      {
+        slug: "THREAT-single",
+        title: "Single target threat",
+        rawCategory: "tampering",
+        category: "tampering",
+        severity: "high",
+        targetSlugs: ["component-api"],
+        attackPathCount: 1,
+      },
+      {
+        slug: "THREAT-other",
+        title: "Other component threat",
+        rawCategory: "spoofing",
+        category: "spoofing",
+        severity: "medium",
+        targetSlugs: ["component-other"],
+        attackPathCount: 0,
+      },
+    ],
+    aggregates: [],
+    methodology: { configured: true, labels: LABELS },
+    total: 2,
+    truncated: false,
+    partialError: null,
+    cache: { state: "fresh", asOf: PULLED_AT, message: null },
+  });
+const MOUNTED_PATHS = threatOverlayRpcContract.threatOverlayPaths.output.parse({
+  items: [
+    {
+      routeSignature: "route-single",
+      label: "Single route",
+      totalSteps: 1,
+    },
+  ],
+  total: 1,
+  next: null,
+  cache: { state: "fresh", asOf: PULLED_AT, message: null },
+});
 const observedThreatElements = new WeakSet<Element>();
 
 class ThreatResizeObserver implements ResizeObserver {
@@ -91,6 +156,92 @@ function threat(
     severity: "high",
     targetSlugs,
     attackPathCount: 0,
+  };
+}
+
+function ArchitectureHarness({
+  children,
+  focusId = null,
+  selectedIds = [],
+  setSelectedIds,
+}: {
+  children: ReactNode;
+  focusId?: string | null;
+  selectedIds?: readonly string[];
+  setSelectedIds: ArchitectureSelectionContextValue["setSelectedIds"];
+}): React.JSX.Element {
+  const nodesBySlug = new Map([
+    [COMPONENT_API.slug, COMPONENT_API],
+    [COMPONENT_OTHER.slug, COMPONENT_OTHER],
+  ]);
+  const value: ArchitectureSelectionContextValue = {
+    graph: EMPTY_GRAPH,
+    nodesBySlug,
+    edgesBySlug: new Map(),
+    adjacency: new Map(),
+    unresolved: [],
+    selectedIds,
+    focusId,
+    menu: null,
+    setSelectedIds,
+    setFitSelection: () => undefined,
+    fitSelection: () => undefined,
+    openMenu: () => undefined,
+    closeMenu: () => undefined,
+    onFocusRoute: () => undefined,
+    onRepairSourceFile: () => undefined,
+  };
+  return (
+    <ReactFlowProvider>
+      <ArchitectureSelectionContext.Provider value={value}>
+        {children}
+      </ArchitectureSelectionContext.Provider>
+    </ReactFlowProvider>
+  );
+}
+
+function installedAppRuntime(): ThreatOverlayAppRuntime {
+  const host = Reflect.get(globalThis, "__bbPluginRuntime");
+  if (typeof host !== "object" || host === null) {
+    throw new Error("BB test plugin runtime was not installed");
+  }
+  const runtime = Reflect.get(host, "pluginSdkApp");
+  if (
+    typeof runtime !== "object" ||
+    runtime === null ||
+    typeof Reflect.get(runtime, "useBbNavigate") !== "function" ||
+    typeof Reflect.get(runtime, "useRealtime") !== "function" ||
+    typeof Reflect.get(runtime, "useRpc") !== "function"
+  ) {
+    throw new Error("BB test plugin runtime is missing overlay hooks");
+  }
+  return runtime as ThreatOverlayAppRuntime;
+}
+
+function mountedRpcHandlers() {
+  return {
+    threatOverlaySnapshot: () => MOUNTED_SNAPSHOT,
+    threatOverlayPaths: () => MOUNTED_PATHS,
+    threatOverlayPath: () => ({
+      path: {
+        routeSignature: "route-single",
+        threatSlug: "THREAT-single",
+        steps: [
+          {
+            order: 1,
+            label: "Reach API",
+            nodeSlug: "component-api",
+            edgeSlug: null,
+            sourceSlug: null,
+            targetSlug: null,
+          },
+        ],
+        exploitability: { score: 0.5 },
+        viability: "unknown" as const,
+      },
+      error: null,
+      cache: { state: "fresh" as const, asOf: PULLED_AT, message: null },
+    }),
   };
 }
 
@@ -252,6 +403,7 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  window.history.replaceState(null, "", "/");
 });
 
 describe("WP-33 STRIDE aggregation", () => {
@@ -296,6 +448,20 @@ describe("WP-33 STRIDE aggregation", () => {
     ]);
   });
 
+  it("does not turn generic methodology record keys into category aliases", () => {
+    const vocabulary = methodologyVocabulary({
+      categories: [
+        { category: "spoofing", name: "Impersonation", aliases: ["S"] },
+        { category: "tampering", name: "Modification", aliases: ["T"] },
+      ],
+    });
+
+    expect(categoryFromVocabulary("name", vocabulary)).toBe("other");
+    expect(categoryFromVocabulary("label", vocabulary)).toBe("other");
+    expect(categoryFromVocabulary("S", vocabulary)).toBe("spoofing");
+    expect(categoryFromVocabulary("T", vocabulary)).toBe("tampering");
+  });
+
   it("renders six textual segments, an explicit Other count, and stays quiet at zero", () => {
     const counts = emptyStrideCounts();
     counts.spoofing = 2;
@@ -307,7 +473,9 @@ describe("WP-33 STRIDE aggregation", () => {
       />,
     );
     for (const category of Object.values(LABELS)) {
-      expect(view.getByLabelText(`${category}: ${category === "Spoofing" ? 2 : 0}`)).toBeTruthy();
+      expect(
+        view.getByLabelText(`${category}: ${category === "Spoofing" ? 2 : 0}`),
+      ).toBeTruthy();
     }
     expect(view.getByLabelText("Other methodology categories: 1")).toBeTruthy();
 
@@ -371,7 +539,9 @@ describe("WP-33 bidirectional selection and deep links", () => {
     expect(path).toBe("tara/threats/THREAT%2Fdevice%2047");
     expect(threatSlugFromPathname(`/plugins/finite-state/${path}`)).toBe(slug);
 
-    const selectedThreat = threat("THREAT-device", "spoofing", ["component-device"]);
+    const selectedThreat = threat("THREAT-device", "spoofing", [
+      "component-device",
+    ]);
     const selected = reduceThreatSelection(
       reduceThreatSelection(EMPTY_THREAT_SELECTION, {
         type: "threat",
@@ -392,29 +562,7 @@ describe("WP-33 bidirectional selection and deep links", () => {
     ).toEqual(selected);
   });
 
-  it("ignores intermediate React Flow selection snapshots from one multi-target update", () => {
-    const expectedKey = threatSelectionKey([
-      "component-device",
-      "component-api",
-      "flow-auth",
-    ]);
-    expect(
-      isProgrammaticSelectionSnapshot(expectedKey, [
-        "component-device",
-        "component-api",
-      ]),
-    ).toBe(true);
-    expect(
-      isProgrammaticSelectionSnapshot(expectedKey, [
-        "component-api",
-        "component-device",
-        "flow-auth",
-      ]),
-    ).toBe(true);
-    expect(
-      isProgrammaticSelectionSnapshot(expectedKey, ["component-unrelated"]),
-    ).toBe(false);
-
+  it("keeps repeated graph selections referentially stable", () => {
     const graphSelection = reduceThreatSelection(EMPTY_THREAT_SELECTION, {
       type: "graph",
       targetSlug: "component-api",
@@ -425,6 +573,121 @@ describe("WP-33 bidirectional selection and deep links", () => {
         targetSlug: "component-api",
       }),
     ).toBe(graphSelection);
+  });
+
+  it("mounts the overlay and keeps a single-target threat on its threat route", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/plugins/finite-state/product-security/tara",
+    );
+    const { ProductSecurityThreatOverlay } = await import("./index.js");
+    const appRuntime = installedAppRuntime();
+    const setSelectedIds = vi.fn();
+    const slot = renderSlot<{}, typeof threatOverlayRpcContract>(
+      {
+        component: () => (
+          <ArchitectureHarness setSelectedIds={setSelectedIds}>
+            <ProductSecurityThreatOverlay
+              appRuntime={appRuntime}
+              projectId={PROJECT_ID}
+            />
+          </ArchitectureHarness>
+        ),
+      },
+      {},
+      { rpc: mountedRpcHandlers() },
+    );
+
+    fireEvent.click(await slot.findByText("Single target threat"));
+    expect(
+      await slot.findByText("Attack paths · Single target threat"),
+    ).toBeTruthy();
+    expect(setSelectedIds).toHaveBeenCalledOnce();
+    expect(setSelectedIds).toHaveBeenCalledWith([]);
+    expect(slot.inspection.navigateCalls).toEqual([
+      {
+        method: "toPluginPanel",
+        path: "product-security",
+        options: { subPath: "tara/threats/THREAT-single" },
+      },
+    ]);
+    slot.lifecycle.unmount();
+  });
+
+  it("mounts a direct threat link and restores the attack-path view", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/plugins/finite-state/product-security/tara/threats/THREAT-single",
+    );
+    const { ProductSecurityThreatOverlay } = await import("./index.js");
+    const appRuntime = installedAppRuntime();
+    const slot = renderSlot<{}, typeof threatOverlayRpcContract>(
+      {
+        component: () => (
+          <ArchitectureHarness setSelectedIds={() => undefined}>
+            <ProductSecurityThreatOverlay
+              appRuntime={appRuntime}
+              projectId={PROJECT_ID}
+            />
+          </ArchitectureHarness>
+        ),
+      },
+      {},
+      { rpc: mountedRpcHandlers() },
+    );
+
+    expect(
+      await slot.findByText("Attack paths · Single target threat"),
+    ).toBeTruthy();
+    expect(slot.inspection.navigateCalls).toEqual([]);
+    slot.lifecycle.unmount();
+  });
+
+  it("applies a highlight input once and then accepts canvas selection", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/plugins/finite-state/product-security/tara",
+    );
+    const { ProductSecurityThreatOverlay } = await import("./index.js");
+    const appRuntime = installedAppRuntime();
+    function HighlightHarness(): React.JSX.Element {
+      const [focusId, setFocusId] = useState<string | null>(null);
+      return (
+        <>
+          <button onClick={() => setFocusId("component-other")} type="button">
+            Select other canvas node
+          </button>
+          <ArchitectureHarness
+            focusId={focusId}
+            setSelectedIds={() => undefined}
+          >
+            <ProductSecurityThreatOverlay
+              appRuntime={appRuntime}
+              highlight="THREAT-single"
+              projectId={PROJECT_ID}
+            />
+          </ArchitectureHarness>
+        </>
+      );
+    }
+    const slot = renderSlot<{}, typeof threatOverlayRpcContract>(
+      { component: HighlightHarness },
+      {},
+      { rpc: mountedRpcHandlers() },
+    );
+
+    expect(
+      await slot.findByText("Attack paths · Single target threat"),
+    ).toBeTruthy();
+    fireEvent.click(
+      slot.getByRole("button", { name: "Select other canvas node" }),
+    );
+    expect(await slot.findByText(/Filtered to component-other/u)).toBeTruthy();
+    expect(slot.inspection.navigateCalls).toHaveLength(1);
+    slot.lifecycle.unmount();
   });
 });
 
@@ -451,8 +714,16 @@ describe("WP-33 selected attack path", () => {
       "unknown",
       new Set(["component-device", "component-api"]),
       [
-        { slug: "flow-auth-a", sourceSlug: "component-device", targetSlug: "component-api" },
-        { slug: "flow-auth-b", sourceSlug: "component-device", targetSlug: "component-api" },
+        {
+          slug: "flow-auth-a",
+          sourceSlug: "component-device",
+          targetSlug: "component-api",
+        },
+        {
+          slug: "flow-auth-b",
+          sourceSlug: "component-device",
+          targetSlug: "component-api",
+        },
       ],
     );
     const view = render(
@@ -464,8 +735,16 @@ describe("WP-33 selected attack path", () => {
         onLoadMore={() => undefined}
         onSelectPath={() => undefined}
         paths={[
-          { routeSignature: "route-selected", label: "Selected route", totalSteps: 3 },
-          { routeSignature: "route-not-selected", label: "Unselected route", totalSteps: 8 },
+          {
+            routeSignature: "route-selected",
+            label: "Selected route",
+            totalSteps: 3,
+          },
+          {
+            routeSignature: "route-not-selected",
+            label: "Unselected route",
+            totalSteps: 8,
+          },
         ]}
         selectedPath={selectedPath}
         selectedRouteSignature="route-selected"
@@ -476,13 +755,13 @@ describe("WP-33 selected attack path", () => {
 
     const steps = view.container.querySelectorAll("[data-path-step]");
     expect(steps).toHaveLength(3);
-    expect([...steps].map((step) => step.getAttribute("data-path-step"))).toEqual([
-      "1",
-      "2",
-      "3",
-    ]);
+    expect(
+      [...steps].map((step) => step.getAttribute("data-path-step")),
+    ).toEqual(["1", "2", "3"]);
     expect(view.getByText(/Gap — no current node or dataflow/u)).toBeTruthy();
-    expect(view.getByText(/highlighting all 2 parallel dataflows/u)).toBeTruthy();
+    expect(
+      view.getByText(/highlighting all 2 parallel dataflows/u),
+    ).toBeTruthy();
     expect(selectedPath.highlightedSlugs).toEqual([
       "component-device",
       "flow-auth-a",
@@ -511,7 +790,9 @@ describe("WP-33 selected attack path", () => {
         total={0}
       />,
     );
-    expect(view.getByRole("status").textContent).toContain("Loading selected path");
+    expect(view.getByRole("status").textContent).toContain(
+      "Loading selected path",
+    );
     view.rerender(
       <AttackPathOverlay
         error={null}
@@ -527,7 +808,9 @@ describe("WP-33 selected attack path", () => {
         total={0}
       />,
     );
-    expect(view.getByText("No cached attack paths map to this threat.")).toBeTruthy();
+    expect(
+      view.getByText("No cached attack paths map to this threat."),
+    ).toBeTruthy();
     view.rerender(
       <AttackPathOverlay
         error="Cached attack-path steps are malformed JSON. Threats and architecture remain usable."
@@ -543,14 +826,18 @@ describe("WP-33 selected attack path", () => {
         total={0}
       />,
     );
-    expect(view.getByRole("alert").textContent).toContain("architecture remain usable");
+    expect(view.getByRole("alert").textContent).toContain(
+      "architecture remain usable",
+    );
     expect(view.container.querySelectorAll("[data-path-step]")).toHaveLength(0);
   });
 });
 
 describe("WP-33 bounded cache and DOM", () => {
   it("memoizes the revision aggregate, pages 5,000 paths, and scopes malformed path errors", async () => {
-    const { bb, harness } = createFakePluginHost({ pluginId: "finite-state-wp33" });
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "finite-state-wp33",
+    });
     const ctx = createPluginContext(bb);
     registerThreatOverlayBackend(bb, ctx);
     seedThreatOverlay(ctx.db(), 5_000);
@@ -567,7 +854,8 @@ describe("WP-33 bounded cache and DOM", () => {
       cache,
     );
     expect(second).toBe(first);
-    ctx.db()
+    ctx
+      .db()
       .prepare(
         `UPDATE sync_state
             SET error = 'refresh failed after acceptance'
@@ -628,19 +916,22 @@ describe("WP-33 bounded cache and DOM", () => {
     expect(malformed.path).toBeNull();
     expect(malformed.error).toMatch(/malformed JSON.*remain usable/u);
 
-    const stillUsable = threatOverlayRpcContract.threatOverlaySnapshot.output.parse(
-      await harness.behavior.callRpc("threatOverlaySnapshot", {
-        projectId: PROJECT_ID,
-        projectVersionId: null,
-      }),
-    );
+    const stillUsable =
+      threatOverlayRpcContract.threatOverlaySnapshot.output.parse(
+        await harness.behavior.callRpc("threatOverlaySnapshot", {
+          projectId: PROJECT_ID,
+          projectVersionId: null,
+        }),
+      );
     expect(stillUsable.threats).toHaveLength(2);
     await harness.lifecycle.dispose();
   });
 
   it("virtualizes 2,000 threat rows and exposes no-threat and unconfigured states", async () => {
     const threats = Array.from({ length: 2_000 }, (_, index) =>
-      threat(`THREAT-${String(index).padStart(4, "0")}`, "spoofing", ["component-device"]),
+      threat(`THREAT-${String(index).padStart(4, "0")}`, "spoofing", [
+        "component-device",
+      ]),
     );
     const view = render(
       <ThreatTable
@@ -653,9 +944,13 @@ describe("WP-33 bounded cache and DOM", () => {
       />,
     );
     await waitFor(() => {
-      expect(view.container.querySelectorAll("[data-threat-row]").length).toBeGreaterThan(0);
+      expect(
+        view.container.querySelectorAll("[data-threat-row]").length,
+      ).toBeGreaterThan(0);
     });
-    expect(view.container.querySelectorAll("[data-threat-row]").length).toBeLessThan(30);
+    expect(
+      view.container.querySelectorAll("[data-threat-row]").length,
+    ).toBeLessThan(30);
     expect(view.getByRole("grid").getAttribute("aria-rowcount")).toBe("2000");
 
     view.rerender(
@@ -668,7 +963,9 @@ describe("WP-33 bounded cache and DOM", () => {
         threats={[]}
       />,
     );
-    expect(view.getByText("No open threats are present in the accepted model.")).toBeTruthy();
+    expect(
+      view.getByText("No open threats are present in the accepted model."),
+    ).toBeTruthy();
 
     const { ProductSecurityThreatOverlay } = await import("./index.js");
     const slot = renderSlot(

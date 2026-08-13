@@ -1,6 +1,4 @@
 import {
-  Suspense,
-  use,
   useCallback,
   useEffect,
   useMemo,
@@ -32,13 +30,9 @@ import {
 import { StrideMicroBar } from "./StrideMicroBar.js";
 import { ThreatLegend } from "./ThreatLegend.js";
 import { ThreatTable } from "./ThreatTable.js";
-import {
-  resolveAttackPath,
-  type ResolvedAttackPath,
-} from "./path.js";
+import { resolveAttackPath, type ResolvedAttackPath } from "./path.js";
 import {
   EMPTY_THREAT_SELECTION,
-  isProgrammaticSelectionSnapshot,
   reduceThreatSelection,
   threatSelectionKey,
   threatFocusSubPath,
@@ -49,6 +43,10 @@ const PROJECT_SCOPE_STORAGE_KEY =
   "finite-state:product-security:project-scope:v1";
 
 type AppRuntime = typeof import("@bb/plugin-sdk/app");
+export type ThreatOverlayAppRuntime = Pick<
+  AppRuntime,
+  "useBbNavigate" | "useRealtime" | "useRpc"
+>;
 let appRuntimePromise: Promise<AppRuntime> | null = null;
 
 function loadAppRuntime(): Promise<AppRuntime> {
@@ -72,6 +70,7 @@ interface ProductSecurityThreatOverlayProps {
   projectId?: string | null;
   focus?: string | null;
   highlight?: string | null;
+  appRuntime?: ThreatOverlayAppRuntime;
 }
 
 interface SnapshotState {
@@ -129,7 +128,7 @@ function payloadProjectId(payload: unknown): string | null {
 
 function useThreatSnapshot(
   projectId: string | null,
-  appRuntime: AppRuntime,
+  appRuntime: ThreatOverlayAppRuntime,
 ): {
   state: SnapshotState;
   retry(): void;
@@ -185,8 +184,8 @@ function useThreatSnapshot(
   }, [projectId, requestRevision, rpc]);
   const pending = Boolean(
     projectId &&
-      (state.projectId !== projectId ||
-        state.completedRequestRevision !== requestRevision),
+    (state.projectId !== projectId ||
+      state.completedRequestRevision !== requestRevision),
   );
   return {
     state: projectId
@@ -194,8 +193,7 @@ function useThreatSnapshot(
           projectId,
           data: state.projectId === projectId ? state.data : null,
           loading: pending,
-          error:
-            pending || state.projectId !== projectId ? null : state.error,
+          error: pending || state.projectId !== projectId ? null : state.error,
         }
       : { projectId: null, data: null, loading: false, error: null },
     retry,
@@ -204,53 +202,102 @@ function useThreatSnapshot(
 
 function DataflowThreatBadge({
   aggregate,
+  highlightLabel,
+  flowSlug,
   sourceSlug,
   targetSlug,
 }: {
-  aggregate: ThreatAggregate;
+  aggregate: ThreatAggregate | null;
+  highlightLabel: string | null;
+  flowSlug: string;
   sourceSlug: string;
   targetSlug: string;
 }): React.JSX.Element | null {
   const source = useInternalNode(sourceSlug);
   const target = useInternalNode(targetSlug);
-  if (!source || !target || aggregate.total === 0) return null;
+  if (
+    !source ||
+    !target ||
+    ((aggregate?.total ?? 0) === 0 && highlightLabel === null)
+  ) {
+    return null;
+  }
   const sourceWidth = source.measured.width ?? source.width ?? 0;
   const sourceHeight = source.measured.height ?? source.height ?? 0;
   const targetWidth = target.measured.width ?? target.width ?? 0;
   const targetHeight = target.measured.height ?? target.height ?? 0;
   const left =
-    (source.internals.positionAbsolute.x + sourceWidth / 2 +
+    (source.internals.positionAbsolute.x +
+      sourceWidth / 2 +
       target.internals.positionAbsolute.x +
       targetWidth / 2) /
     2;
   const top =
-    (source.internals.positionAbsolute.y + sourceHeight / 2 +
+    (source.internals.positionAbsolute.y +
+      sourceHeight / 2 +
       target.internals.positionAbsolute.y +
       targetHeight / 2) /
     2;
   return (
     <EdgeLabelRenderer>
       <div
-        aria-label={`${aggregate.total} open threats target dataflow ${aggregate.targetSlug}`}
-        className="pointer-events-none absolute flex -translate-x-1/2 -translate-y-7 items-center gap-1 rounded-full border border-border bg-card/95 px-2 py-1 text-xs font-medium text-card-foreground shadow-sm"
-        data-threat-edge={aggregate.targetSlug}
+        aria-label={`${aggregate?.total ?? 0} open threats target dataflow ${flowSlug}.${
+          highlightLabel ? ` ${highlightLabel}.` : ""
+        }`}
+        className={`pointer-events-none absolute flex -translate-x-1/2 -translate-y-7 items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium shadow-sm ${
+          highlightLabel
+            ? "border-primary bg-primary/15 text-primary ring-2 ring-primary/30"
+            : "border-border bg-card/95 text-card-foreground"
+        }`}
+        data-threat-edge={flowSlug}
+        data-threat-highlight={highlightLabel ? flowSlug : undefined}
         style={{ left, top }}
       >
         <Icon aria-hidden="true" className="size-3.5" name="Target" />
-        {aggregate.total}
+        {aggregate?.total ?? 0}
+        {highlightLabel ? <span>{highlightLabel}</span> : null}
       </div>
     </EdgeLabelRenderer>
   );
 }
 
+function NodeThreatHighlight({
+  label,
+  nodeSlug,
+}: {
+  label: string;
+  nodeSlug: string;
+}): React.JSX.Element {
+  return (
+    <NodeToolbar isVisible nodeId={nodeSlug} offset={8} position={Position.Top}>
+      <div
+        aria-label={`${label} on node ${nodeSlug}`}
+        className="pointer-events-none flex items-center gap-1 rounded-full border border-primary bg-primary/15 px-2 py-1 text-xs font-medium text-primary shadow-sm ring-2 ring-primary/30"
+        data-threat-highlight={nodeSlug}
+        role="img"
+      >
+        <Icon aria-hidden="true" className="size-3.5" name="Target" />
+        {label}
+      </div>
+    </NodeToolbar>
+  );
+}
+
 function ThreatCanvasMarkers({
   aggregates,
+  highlightLabels,
   labels,
 }: {
   aggregates: readonly ThreatAggregate[];
+  highlightLabels: ReadonlyMap<string, string>;
   labels: Record<StrideSegment, string>;
 }): React.JSX.Element {
   const architecture = useArchitectureSelection();
+  const aggregatesBySlug = useMemo(
+    () =>
+      new Map(aggregates.map((aggregate) => [aggregate.targetSlug, aggregate])),
+    [aggregates],
+  );
   return (
     <>
       {aggregates.map((aggregate) => {
@@ -272,11 +319,36 @@ function ThreatCanvasMarkers({
         return edge ? (
           <DataflowThreatBadge
             aggregate={aggregate}
+            flowSlug={edge.slug}
+            highlightLabel={highlightLabels.get(edge.slug) ?? null}
             key={aggregate.targetSlug}
             sourceSlug={edge.sourceSlug}
             targetSlug={edge.targetSlug}
           />
         ) : null;
+      })}
+      {[...highlightLabels].map(([slug, label]) => {
+        if (architecture.nodesBySlug.has(slug)) {
+          return (
+            <NodeThreatHighlight
+              key={`highlight:${slug}`}
+              label={label}
+              nodeSlug={slug}
+            />
+          );
+        }
+        const edge = architecture.edgesBySlug.get(slug);
+        if (!edge || aggregatesBySlug.has(slug)) return null;
+        return (
+          <DataflowThreatBadge
+            aggregate={null}
+            flowSlug={edge.slug}
+            highlightLabel={label}
+            key={`highlight:${slug}`}
+            sourceSlug={edge.sourceSlug}
+            targetSlug={edge.targetSlug}
+          />
+        );
       })}
     </>
   );
@@ -295,7 +367,9 @@ function loadingPanel(): React.JSX.Element {
           <div className="h-12 animate-pulse rounded-md bg-muted" key={row} />
         ))}
       </div>
-      <span className="sr-only">Loading accepted threats and STRIDE counts</span>
+      <span className="sr-only">
+        Loading accepted threats and STRIDE counts
+      </span>
     </div>
   );
 }
@@ -304,6 +378,7 @@ export function ProductSecurityThreatOverlay({
   projectId: explicitProjectId,
   focus = null,
   highlight = null,
+  appRuntime,
 }: ProductSecurityThreatOverlayProps = {}): React.JSX.Element {
   const [persistedProjectId] = useState(readPersistedProjectId);
   const projectId = explicitProjectId ?? persistedProjectId;
@@ -317,14 +392,22 @@ export function ProductSecurityThreatOverlay({
       </div>
     );
   }
-  return (
-    <Suspense fallback={loadingPanel()}>
-      <RuntimeThreatOverlay
+  if (appRuntime) {
+    return (
+      <ConfiguredThreatOverlay
+        appRuntime={appRuntime}
         focus={focus}
         highlight={highlight}
         projectId={projectId}
       />
-    </Suspense>
+    );
+  }
+  return (
+    <RuntimeThreatOverlay
+      focus={focus}
+      highlight={highlight}
+      projectId={projectId}
+    />
   );
 }
 
@@ -337,7 +420,38 @@ function RuntimeThreatOverlay({
   focus: string | null;
   highlight: string | null;
 }): React.JSX.Element {
-  const appRuntime = use(loadAppRuntime());
+  const [appRuntime, setAppRuntime] = useState<AppRuntime | null>(null);
+  const [runtimeUnavailable, setRuntimeUnavailable] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void loadAppRuntime().then(
+      (runtime) => {
+        if (active) setAppRuntime(runtime);
+      },
+      () => {
+        if (active) setRuntimeUnavailable(true);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, []);
+  if (runtimeUnavailable) {
+    return (
+      <div
+        className="absolute bottom-3 left-3 right-3 z-20 flex items-center gap-2 rounded-lg border border-destructive/40 bg-card/95 p-4 text-sm text-card-foreground shadow-lg"
+        role="alert"
+      >
+        <Icon
+          aria-hidden="true"
+          className="size-5 text-destructive"
+          name="AlertTriangle"
+        />
+        Threat overlay runtime is unavailable.
+      </div>
+    );
+  }
+  if (!appRuntime) return loadingPanel();
   return (
     <ConfiguredThreatOverlay
       appRuntime={appRuntime}
@@ -354,7 +468,7 @@ function ConfiguredThreatOverlay({
   focus,
   highlight,
 }: {
-  appRuntime: AppRuntime;
+  appRuntime: ThreatOverlayAppRuntime;
   projectId: string;
   focus: string | null;
   highlight: string | null;
@@ -362,10 +476,11 @@ function ConfiguredThreatOverlay({
   const navigate = appRuntime.useBbNavigate();
   const architecture = useArchitectureSelection();
   const architectureEdgesBySlug = architecture.edgesBySlug;
+  const architectureFocusId = architecture.focusId;
   const architectureNodesBySlug = architecture.nodesBySlug;
   const architectureSelectedIds = architecture.selectedIds;
   const setArchitectureSelectedIds = architecture.setSelectedIds;
-  const { fitView, setEdges, setNodes } = useReactFlow();
+  const { fitView } = useReactFlow();
   const rpc = appRuntime.useRpc<typeof threatOverlayRpcContract>();
   const snapshot = useThreatSnapshot(projectId, appRuntime);
   const [selectionState, dispatchSelection] = useReducer(
@@ -387,16 +502,36 @@ function ConfiguredThreatOverlay({
   });
   const pathListRequestRef = useRef(0);
   const pathDetailRequestRef = useRef(0);
-  const programmaticSelectionRef = useRef<string | null>(null);
-  const programmaticSelectionTimerRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null);
-  const appliedDeepLinkRef = useRef<string | null>(null);
+  const appliedFocusRef = useRef<string | null>(null);
+  const appliedHighlightRef = useRef<string | null>(null);
+  const appliedRouteRef = useRef<string | null>(null);
   const routeThreatSlug =
-    highlight ??
-    (typeof window === "undefined"
+    typeof window === "undefined"
       ? null
-      : threatSlugFromPathname(window.location.pathname));
+      : threatSlugFromPathname(window.location.pathname);
+  const architectureSelectedId =
+    architectureSelectedIds.length === 1
+      ? (architectureSelectedIds[0] ?? null)
+      : architectureSelectedIds.length === 0
+        ? architectureFocusId
+        : null;
+  const architectureSelectionKey =
+    architectureSelectedIds.length > 1
+      ? threatSelectionKey(architectureSelectedIds)
+      : (architectureSelectedId ?? "");
+  const observedArchitectureSelectionRef = useRef<string | null>(
+    highlight !== null || routeThreatSlug !== null || focus !== null
+      ? architectureSelectionKey
+      : null,
+  );
+  const activateThreat = useCallback(
+    (threat: ThreatSummary) => {
+      observedArchitectureSelectionRef.current = "";
+      setArchitectureSelectedIds([]);
+      dispatchSelection({ type: "threat", threat });
+    },
+    [setArchitectureSelectedIds],
+  );
   const threats = snapshot.state.data?.threats ?? EMPTY_THREATS;
   const aggregates = snapshot.state.data?.aggregates ?? EMPTY_AGGREGATES;
   const labels = snapshot.state.data?.methodology.labels;
@@ -408,9 +543,7 @@ function ConfiguredThreatOverlay({
     [selectionState.selection.threatSlug, threats],
   );
   const resolvedPath = useMemo<ResolvedAttackPath | null>(() => {
-    if (
-      pathDetail.routeSignature !== selectionState.selection.routeSignature
-    ) {
+    if (pathDetail.routeSignature !== selectionState.selection.routeSignature) {
       return null;
     }
     const path = pathDetail.result?.path;
@@ -441,39 +574,48 @@ function ConfiguredThreatOverlay({
     dispatchSelection({
       type: "reconcile",
       threats: snapshot.state.data.threats,
-      routeSignatures: new Set(pathList.items.map((path) => path.routeSignature)),
+      routeSignatures: new Set(
+        pathList.items.map((path) => path.routeSignature),
+      ),
     });
   }, [pathList.items, snapshot.state.data]);
 
   useEffect(() => {
     if (!snapshot.state.data) return;
-    const initialThreatSlug = routeThreatSlug;
-    if (initialThreatSlug) {
-      const marker = `${snapshot.state.data.revision}:${initialThreatSlug}`;
-      if (
-        appliedDeepLinkRef.current === marker &&
-        selectionState.selection.threatSlug === initialThreatSlug
-      ) {
-        return;
-      }
+    if (highlight) {
+      if (appliedHighlightRef.current === highlight) return;
+      appliedHighlightRef.current = highlight;
       const threat = snapshot.state.data.threats.find(
-        (candidate) => candidate.slug === initialThreatSlug,
+        (candidate) => candidate.slug === highlight,
       );
       if (threat) {
-        appliedDeepLinkRef.current = marker;
-        programmaticSelectionRef.current = threatSelectionKey(
-          threat.targetSlugs,
-        );
-        dispatchSelection({ type: "threat", threat });
+        activateThreat(threat);
+        navigate.toPluginPanel("product-security", {
+          subPath: threatFocusSubPath(threat.slug),
+        });
       }
       return;
     }
-    if (focus && appliedDeepLinkRef.current !== focus) {
-      appliedDeepLinkRef.current = focus;
+    if (routeThreatSlug) {
+      const marker = `${snapshot.state.data.revision}:${routeThreatSlug}`;
+      if (appliedRouteRef.current === marker) return;
+      appliedRouteRef.current = marker;
+      if (selectionState.selection.threatSlug === routeThreatSlug) return;
+      const threat = snapshot.state.data.threats.find(
+        (candidate) => candidate.slug === routeThreatSlug,
+      );
+      if (threat) activateThreat(threat);
+      return;
+    }
+    if (focus && appliedFocusRef.current !== focus) {
+      appliedFocusRef.current = focus;
       dispatchSelection({ type: "graph", targetSlug: focus });
     }
   }, [
+    activateThreat,
     focus,
+    highlight,
+    navigate,
     routeThreatSlug,
     selectionState.selection.threatSlug,
     snapshot.state.data,
@@ -589,9 +731,6 @@ function ConfiguredThreatOverlay({
 
   const selectPath = useCallback(
     (routeSignature: string) => {
-      programmaticSelectionRef.current = threatSelectionKey(
-        selectedThreat?.targetSlugs ?? [],
-      );
       dispatchSelection({
         type: "path",
         routeSignature,
@@ -603,9 +742,6 @@ function ConfiguredThreatOverlay({
 
   useEffect(() => {
     if (!resolvedPath || !pathDetail.routeSignature) return;
-    programmaticSelectionRef.current = threatSelectionKey(
-      resolvedPath.highlightedSlugs,
-    );
     dispatchSelection({
       type: "path",
       routeSignature: pathDetail.routeSignature,
@@ -613,77 +749,47 @@ function ConfiguredThreatOverlay({
     });
   }, [pathDetail.routeSignature, resolvedPath]);
 
-  const architectureSelectionKey = threatSelectionKey(
-    architectureSelectedIds,
+  const architectureTargetSelected = Boolean(
+    architectureSelectedId &&
+    (architectureNodesBySlug.has(architectureSelectedId) ||
+      architectureEdgesBySlug.has(architectureSelectedId)),
   );
   useEffect(() => {
-    const expectedKey = programmaticSelectionRef.current;
-    if (expectedKey !== null) {
-      const isProgrammaticSnapshot = isProgrammaticSelectionSnapshot(
-        expectedKey,
-        architectureSelectedIds,
-      );
-      if (isProgrammaticSnapshot) {
-        return;
-      }
-      programmaticSelectionRef.current = null;
-    }
-    const selectedId =
-      architectureSelectedIds.length === 1
-        ? architectureSelectedIds[0] ?? null
-        : null;
-    const isArchitectureTarget = Boolean(
-      selectedId &&
-        (architectureNodesBySlug.has(selectedId) ||
-          architectureEdgesBySlug.has(selectedId)),
-    );
-    if (
-      architectureSelectedIds.length === 0 &&
-      (routeThreatSlug !== null || focus !== null)
-    ) {
+    if (observedArchitectureSelectionRef.current === architectureSelectionKey) {
       return;
     }
+    observedArchitectureSelectionRef.current = architectureSelectionKey;
     dispatchSelection({
       type: "graph",
-      targetSlug: isArchitectureTarget ? selectedId : null,
+      targetSlug: architectureTargetSelected ? architectureSelectedId : null,
     });
   }, [
-    architectureEdgesBySlug,
-    architectureNodesBySlug,
-    architectureSelectedIds,
+    architectureSelectedId,
     architectureSelectionKey,
-    focus,
-    routeThreatSlug,
+    architectureTargetSelected,
   ]);
 
   const highlightedKey = threatSelectionKey(
     selectionState.highlightedTargetSlugs,
   );
-  useEffect(() => {
-    const highlightedIds = new Set(selectionState.highlightedTargetSlugs);
-    programmaticSelectionRef.current = highlightedKey;
-    if (programmaticSelectionTimerRef.current !== null) {
-      clearTimeout(programmaticSelectionTimerRef.current);
-    }
-    programmaticSelectionTimerRef.current = setTimeout(() => {
-      if (programmaticSelectionRef.current === highlightedKey) {
-        programmaticSelectionRef.current = null;
+  const highlightLabels = useMemo(() => {
+    const next = new Map(
+      selectionState.highlightedTargetSlugs.map((slug) => [
+        slug,
+        "Threat target",
+      ]),
+    );
+    for (const step of resolvedPath?.steps ?? []) {
+      if (!step.resolved) continue;
+      const label = `Step ${step.order}`;
+      if (step.nodeSlug) next.set(step.nodeSlug, label);
+      for (const edgeSlug of step.candidateEdgeSlugs) {
+        next.set(edgeSlug, label);
       }
-      programmaticSelectionTimerRef.current = null;
-    }, 250);
-    setArchitectureSelectedIds(selectionState.highlightedTargetSlugs);
-    setNodes((nodes) =>
-      nodes.map((node) => ({
-        ...node,
-        selected: highlightedIds.has(node.id),
-      })),
-    );
-    setEdges((edges) =>
-      edges.map((edge) => ({
-        ...edge,
-        selected: highlightedIds.has(edge.id),
-      })),
-    );
+    }
+    return next;
+  }, [resolvedPath, selectionState.highlightedTargetSlugs]);
+  useEffect(() => {
     const fitNodeIds = selectionState.highlightedTargetSlugs.flatMap((slug) => {
       if (architectureNodesBySlug.has(slug)) return [slug];
       const edge = architectureEdgesBySlug.get(slug);
@@ -696,50 +802,22 @@ function ConfiguredThreatOverlay({
         padding: 0.4,
       });
     }
-    const selectedThreatSlug = selectionState.selection.threatSlug;
-    if (
-      selectedThreatSlug &&
-      (typeof window === "undefined" ||
-        threatSlugFromPathname(window.location.pathname) !==
-          selectedThreatSlug)
-    ) {
-      navigate.toPluginPanel("product-security", {
-        subPath: threatFocusSubPath(selectedThreatSlug),
-      });
-    }
   }, [
     architectureEdgesBySlug,
     architectureNodesBySlug,
     fitView,
     highlightedKey,
-    navigate,
-    selectionState.selection.threatSlug,
     selectionState.highlightedTargetSlugs,
-    setArchitectureSelectedIds,
-    setEdges,
-    setNodes,
   ]);
-
-  useEffect(
-    () => () => {
-      if (programmaticSelectionTimerRef.current !== null) {
-        clearTimeout(programmaticSelectionTimerRef.current);
-      }
-    },
-    [],
-  );
 
   const selectThreat = useCallback(
     (threat: ThreatSummary) => {
-      programmaticSelectionRef.current = threatSelectionKey(
-        threat.targetSlugs,
-      );
-      dispatchSelection({ type: "threat", threat });
+      activateThreat(threat);
       navigate.toPluginPanel("product-security", {
         subPath: threatFocusSubPath(threat.slug),
       });
     },
-    [navigate],
+    [activateThreat, navigate],
   );
   const clearThreat = useCallback(() => {
     dispatchSelection({ type: "graph", targetSlug: null });
@@ -766,10 +844,16 @@ function ConfiguredThreatOverlay({
         className="absolute bottom-3 left-3 right-3 z-20 flex items-center gap-3 rounded-lg border border-destructive/40 bg-card/95 p-4 text-card-foreground shadow-lg"
         role="alert"
       >
-        <Icon aria-hidden="true" className="size-5 text-destructive" name="AlertTriangle" />
+        <Icon
+          aria-hidden="true"
+          className="size-5 text-destructive"
+          name="AlertTriangle"
+        />
         <div>
           <p className="text-sm font-medium">Threat overlay unavailable</p>
-          <p className="text-xs text-muted-foreground">{snapshot.state.error}</p>
+          <p className="text-xs text-muted-foreground">
+            {snapshot.state.error}
+          </p>
         </div>
         <button
           className="ml-auto rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -785,14 +869,18 @@ function ConfiguredThreatOverlay({
   return (
     <>
       {labels ? (
-        <ThreatCanvasMarkers aggregates={validAggregates} labels={labels} />
+        <ThreatCanvasMarkers
+          aggregates={validAggregates}
+          highlightLabels={highlightLabels}
+          labels={labels}
+        />
       ) : null}
       <div className="absolute bottom-3 left-3 right-3 z-20 flex h-64 min-h-0 overflow-hidden rounded-lg border border-border bg-card/95 text-card-foreground shadow-lg backdrop-blur-sm">
         {selectedThreat ? (
           <AttackPathOverlay
             error={
               selectionState.selection.routeSignature
-                ? pathDetail.result?.error ?? pathList.error
+                ? (pathDetail.result?.error ?? pathList.error)
                 : pathList.error
             }
             loading={
@@ -815,7 +903,10 @@ function ConfiguredThreatOverlay({
             total={pathList.total}
           />
         ) : (
-          <section className="flex min-w-0 flex-1 flex-col" aria-label="Threat overlay">
+          <section
+            className="flex min-w-0 flex-1 flex-col"
+            aria-label="Threat overlay"
+          >
             <div className="flex min-h-11 items-center gap-3 border-b border-border px-3 py-2">
               {labels ? (
                 <ThreatLegend
@@ -834,12 +925,16 @@ function ConfiguredThreatOverlay({
                 className="flex items-center gap-2 border-b border-border bg-muted px-3 py-1.5 text-xs text-foreground"
                 role="status"
               >
-                <Icon aria-hidden="true" className="size-3.5 text-destructive" name="AlertTriangle" />
+                <Icon
+                  aria-hidden="true"
+                  className="size-3.5 text-destructive"
+                  name="AlertTriangle"
+                />
                 <span className="truncate">
                   {snapshot.state.error
                     ? "Refresh failed; accepted threats remain usable."
-                    : snapshot.state.data.partialError ??
-                      "Threat overlay is stale; accepted cache remains usable."}
+                    : (snapshot.state.data.partialError ??
+                      "Threat overlay is stale; accepted cache remains usable.")}
                 </span>
               </div>
             ) : null}

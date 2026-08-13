@@ -14,7 +14,11 @@ export interface ThreatSelectionState {
 export type ThreatSelectionAction =
   | { type: "graph"; targetSlug: string | null }
   | { type: "threat"; threat: ThreatSummary }
-  | { type: "path"; routeSignature: string; highlightedSlugs: readonly string[] }
+  | {
+      type: "path";
+      routeSignature: string;
+      highlightedSlugs: readonly string[];
+    }
   | {
       type: "reconcile";
       threats: readonly ThreatSummary[];
@@ -33,16 +37,6 @@ export const EMPTY_THREAT_SELECTION: ThreatSelectionState = {
 
 export function threatSelectionKey(slugs: readonly string[]): string {
   return [...slugs].sort().join("|");
-}
-
-export function isProgrammaticSelectionSnapshot(
-  expectedKey: string,
-  selectedSlugs: readonly string[],
-): boolean {
-  const expectedSlugs = new Set(
-    expectedKey.length > 0 ? expectedKey.split("|") : [],
-  );
-  return selectedSlugs.every((slug) => expectedSlugs.has(slug));
 }
 
 export function reduceThreatSelection(
