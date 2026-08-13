@@ -42,6 +42,12 @@ describe("debug-bench registration", () => {
     await expect(harness.behavior.callRpc("benchDevDeviceClaim", {
       ...scope,
       deviceId: device.deviceId,
+      holder: "thread-fleet",
+      claimScope: "fleet",
+    })).rejects.toThrow("CLAIM_SCOPE_NOT_IMPLEMENTED");
+    await expect(harness.behavior.callRpc("benchDevDeviceClaim", {
+      ...scope,
+      deviceId: device.deviceId,
       holder: "thread-1",
       claimScope: "machine",
     })).resolves.toMatchObject({

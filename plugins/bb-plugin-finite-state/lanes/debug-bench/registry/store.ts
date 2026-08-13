@@ -59,6 +59,7 @@ const REGISTRY_MIGRATIONS = [
 ] as const;
 
 export function initializeRegistryStore(db: Database.Database): void {
+  db.pragma("busy_timeout = 5000");
   db.transaction(() => {
     for (const statement of REGISTRY_MIGRATIONS) db.exec(statement);
   })();
@@ -99,6 +100,7 @@ export interface DevicePageQuery extends RegistryScope {
   cursor?: string | null;
   kinds?: readonly DeviceKind[];
   includeStale?: boolean;
+  activeClaimCutoff?: string;
 }
 
 export interface DevicePage {
@@ -147,8 +149,10 @@ export function normalizedConnectionIdentity(connection: string): string {
   return connection.trim().replace(/\s+/gu, " ").toLocaleLowerCase("en-US");
 }
 
-function rowToRecord(row: BenchDeviceRow): BenchDeviceRecord {
+function rowToRecord(row: BenchDeviceRow, activeClaimCutoff?: string): BenchDeviceRecord {
   if (row.connection === null) throw new Error(`DEVICE_CONNECTION_MISSING:${row.device_id}`);
+  const claimIsActive = activeClaimCutoff === undefined ||
+    (row.claimed_at !== null && row.claimed_at > activeClaimCutoff);
   return {
     projectId: row.project_id,
     projectVersionId: fromStorageProjectVersionId(row.project_version_id),
@@ -158,8 +162,8 @@ function rowToRecord(row: BenchDeviceRow): BenchDeviceRecord {
     model: row.model,
     connection: row.connection,
     transport: row.transport,
-    claimedBy: row.claimed_by,
-    claimedAt: row.claimed_at,
+    claimedBy: claimIsActive ? row.claimed_by : null,
+    claimedAt: claimIsActive ? row.claimed_at : null,
     claimScope: row.claim_scope,
     lastSeen: row.last_seen,
     stale: row.stale === 1,
@@ -267,7 +271,6 @@ export function listFamilyStatuses(
   db: Database.Database,
   scope: RegistryScope,
 ): FamilyStatus[] {
-  initializeRegistryStore(db);
   return db.prepare<[string, string], FamilyStatusRow>(
     `SELECT family_id, kind, label, availability, reason, helper_id,
             helper_name, helper_source, helper_why, needs_configuration, checked_at
@@ -296,12 +299,10 @@ const STALE_SQL = `EXISTS (
    WHERE f.project_id = d.project_id
      AND f.project_version_id = d.project_version_id
      AND f.family_id = substr(d.device_id, 1, instr(d.device_id, ':') - 1)
-     AND f.availability = 'available'
-     AND f.checked_at > d.last_seen
+     AND (f.availability != 'available' OR f.checked_at > d.last_seen)
 )`;
 
 export function listDevices(db: Database.Database, query: DevicePageQuery): DevicePage {
-  initializeRegistryStore(db);
   const limit = clampPageSize(query.pageSize);
   const cursor = decodeCursor(query.cursor);
   const kinds = [...(query.kinds ?? [])];
@@ -333,7 +334,7 @@ export function listDevices(db: Database.Database, query: DevicePageQuery): Devi
   const pageRows = hasMore ? rows.slice(0, limit) : rows;
   const last = pageRows.at(-1);
   return {
-    items: pageRows.map(rowToRecord),
+    items: pageRows.map((row) => rowToRecord(row, query.activeClaimCutoff)),
     total: count,
     cursor: hasMore && last
       ? encodeCursor({ kind: last.kind, deviceId: last.device_id })
@@ -346,7 +347,6 @@ export function getDevice(
   scope: RegistryScope,
   deviceId: string,
 ): BenchDeviceRecord | null {
-  initializeRegistryStore(db);
   const row = db.prepare<[string, string, string], BenchDeviceRow>(
     `SELECT d.*, CASE WHEN ${STALE_SQL} THEN 1 ELSE 0 END AS stale
        FROM bench_device d

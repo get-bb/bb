@@ -1,10 +1,15 @@
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 import { MIGRATIONS } from "../../../lib/store/schema.js";
-import { enumerateDevices } from "./enumerate.js";
+import { detectProbeRs, detectSerialPorts, enumerateDevices } from "./enumerate.js";
 import type { FamilyAdapter, FamilyDescriptor } from "./families.js";
 
 const databases: Database.Database[] = [];
+const directories: string[] = [];
+const originalPath = process.env.PATH;
 
 function createConnection(path = ":memory:"): Database.Database {
   const db = new Database(path);
@@ -20,7 +25,15 @@ function migrate(db: Database.Database): void {
 
 afterEach(() => {
   for (const db of databases.splice(0)) db.close();
+  for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
+  process.env.PATH = originalPath;
 });
+
+function fixtureBinary(directory: string, name: string, output: string): void {
+  const path = join(directory, name);
+  writeFileSync(path, `#!/bin/sh\nprintf '%b\\n' ${JSON.stringify(output)}\n`, "utf8");
+  chmodSync(path, 0o755);
+}
 
 function descriptor(id: string, kind: FamilyDescriptor["kind"]): FamilyDescriptor {
   return {
@@ -41,6 +54,49 @@ function descriptor(id: string, kind: FamilyDescriptor["kind"]): FamilyDescripto
 }
 
 describe("per-family enumeration", () => {
+  it("parses live probe-rs and pyserial command output without phantom devices", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "fs123-detectors-"));
+    directories.push(directory);
+    fixtureBinary(directory, "probe-rs", [
+      "The following debug probes were found:",
+      "[7]: Debug Probe _CMSIS_DAP_ -- 2e8a:000c:E663AC91D351832E (CMSIS-DAP)",
+      "this malformed line must not discard valid probes",
+      "[2]: J-Link (J-Link) (VID: 1366, PID: 0101, Serial: 000099999999, JLink)",
+    ].join("\n"));
+    fixtureBinary(directory, "python3", JSON.stringify([
+      { device: "/dev/ttyACM0", serialNumber: "SERIAL-A", manufacturer: "Acme", product: "UART" },
+      { malformed: true },
+      { device: "/dev/ttyUSB0", serialNumber: null, manufacturer: null, product: "Bridge" },
+    ]));
+    process.env.PATH = `${directory}:${originalPath ?? ""}`;
+
+    const probes = await detectProbeRs();
+    expect(probes).toEqual([
+      expect.objectContaining({
+        stableIdentity: "E663AC91D351832E",
+        connection: "usb:2e8a:000c:E663AC91D351832E",
+        model: "Debug Probe _CMSIS_DAP_",
+      }),
+      expect.objectContaining({
+        stableIdentity: "000099999999",
+        connection: "usb:1366:0101:000099999999",
+        model: "J-Link (J-Link)",
+      }),
+    ]);
+    fixtureBinary(
+      directory,
+      "probe-rs",
+      "The following debug probes were found:\n[0]: J-Link (J-Link) (VID: 1366, PID: 0101, Serial: 000099999999, JLink)",
+    );
+    await expect(detectProbeRs()).resolves.toEqual([
+      expect.objectContaining({ stableIdentity: probes[1]?.stableIdentity }),
+    ]);
+    await expect(detectSerialPorts()).resolves.toEqual([
+      expect.objectContaining({ stableIdentity: "SERIAL-A", connection: "tty:/dev/ttyACM0" }),
+      expect.objectContaining({ stableIdentity: "/dev/ttyUSB0", connection: "tty:/dev/ttyUSB0" }),
+    ]);
+  });
+
   it("isolates missing tooling and thrown adapters from a working family", async () => {
     const db = createConnection(":memory:");
     migrate(db);
@@ -53,6 +109,12 @@ describe("per-family enumeration", () => {
             make: "Acme",
             model: "UART",
             connection: "tty:/dev/test",
+            transport: "local-usb",
+          }, {
+            stableIdentity: "",
+            make: null,
+            model: "Malformed",
+            connection: "not-a-connection",
             transport: "local-usb",
           }];
         },
@@ -77,6 +139,7 @@ describe("per-family enumeration", () => {
       now: () => new Date("2026-08-13T10:00:00.000Z"),
     });
     expect(result.devices).toHaveLength(1);
+    expect(result).toMatchObject({ totalDevices: 1, truncated: false });
     expect(result.families).toEqual(expect.arrayContaining([
       expect.objectContaining({ familyId: "working", availability: "available" }),
       expect.objectContaining({ familyId: "missing", availability: "unavailable", needsConfiguration: true, reason: "helper missing" }),
@@ -118,5 +181,31 @@ describe("per-family enumeration", () => {
     const recovered = await enumerateDevices(ctx);
     expect(absent.devices[0]).toMatchObject({ deviceId: first.devices[0]?.deviceId, stale: true });
     expect(recovered.devices[0]).toMatchObject({ deviceId: first.devices[0]?.deviceId, stale: false });
+  });
+
+  it("discloses when the bounded enumeration return is truncated", async () => {
+    const db = createConnection(":memory:");
+    migrate(db);
+    const adapter: FamilyAdapter = {
+      descriptor: descriptor("serial", "serial"),
+      async enumerate() {
+        return Array.from({ length: 201 }, (_, index) => ({
+          stableIdentity: `serial-${index}`,
+          make: null,
+          model: "UART",
+          connection: `tty:/dev/test-${index}`,
+          transport: "local-usb" as const,
+        }));
+      },
+    };
+    const result = await enumerateDevices({
+      db,
+      projectId: "project-1",
+      projectVersionId: null,
+      families: [adapter],
+      helperProbe: async () => ({ available: true, reason: null }),
+    });
+    expect(result).toMatchObject({ totalDevices: 201, truncated: true });
+    expect(result.devices).toHaveLength(200);
   });
 });

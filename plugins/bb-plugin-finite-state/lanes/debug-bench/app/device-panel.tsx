@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  experimental_useSidebarThreads,
   useBbContext,
   useRealtime,
   useRealtimeConnectionState,
@@ -57,6 +58,50 @@ type PanelState =
 
 interface DevicePanelProps extends PluginNavPanelProps {
   consoleSlot?: ReactNode;
+}
+
+interface ProjectPickerProps {
+  disabled: boolean;
+  projectId: string | null;
+  projects: readonly { id: string; name: string }[];
+  select(projectId: string | null): void;
+}
+
+function ProjectPicker({ disabled, projectId, projects, select }: ProjectPickerProps) {
+  return (
+    <div className="flex items-center gap-2">
+      <label className="text-xs font-medium text-muted-foreground" htmlFor="firmware-bench-project">Project</label>
+      <select
+        className="h-8 max-w-52 rounded-md border border-input bg-background px-2 text-xs"
+        disabled={disabled}
+        id="firmware-bench-project"
+        onChange={(event) => select(event.target.value || null)}
+        value={projectId ?? ""}
+      >
+        <option value="">Select project</option>
+        {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function ChooseProjectState(props: ProjectPickerProps): React.JSX.Element {
+  return (
+    <section className="flex h-full min-h-0 flex-col bg-background text-foreground" data-state="choose-project">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-card px-3">
+        <Icon className="text-muted-foreground" name="Zap" />
+        <h1 className="text-sm font-semibold">Firmware Bench</h1>
+        <div className="ml-auto"><ProjectPicker {...props} /></div>
+      </header>
+      <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+        <div className="max-w-md rounded-lg border border-border bg-card p-6 text-center">
+          <Icon className="mx-auto size-6 text-muted-foreground" name="Zap" />
+          <h2 className="mt-3 text-lg font-semibold">Choose a project</h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">Device observations are stored in a project scope while claims remain machine-wide. Choose a project to scan this machine.</p>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function panelHolder(projectId: string | null, threadId: string | null): string {
@@ -247,7 +292,10 @@ function FamilyUnavailableRow({
 export function DevicePanel({ consoleSlot }: DevicePanelProps): React.JSX.Element {
   const rpc = useRpc<typeof rpcContract>();
   const registryRpc = useRpc<typeof debugBenchRpcContract>();
-  const { projectId, threadId } = useBbContext();
+  const { projectId: routeProjectId, threadId } = useBbContext();
+  const sidebar = experimental_useSidebarThreads();
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const projectId = routeProjectId ?? selectedProjectId;
   const realtimeState = useRealtimeConnectionState();
   const reconnected = useRef(false);
   const [state, setState] = useState<PanelState>({ kind: "loading" });
@@ -269,10 +317,7 @@ export function DevicePanel({ consoleSlot }: DevicePanelProps): React.JSX.Elemen
   );
 
   const load = useCallback(async (rescan: boolean) => {
-    if (!scope) {
-      setState({ kind: "error", message: "Select a project before opening the firmware bench." });
-      return;
-    }
+    if (!scope) return;
     try {
       const registry = await registryRpc.call(
         rescan ? "benchDevRegistryRescan" : "benchDevRegistryStatus",
@@ -297,7 +342,11 @@ export function DevicePanel({ consoleSlot }: DevicePanelProps): React.JSX.Elemen
     }
   }, [registryRpc, rpc, scope]);
 
-  useEffect(() => { void load(true); }, [load]);
+  useEffect(() => {
+    if (!scope) return;
+    setState({ kind: "loading" });
+    void load(true);
+  }, [load, scope]);
   useRealtime(BENCH_CHANGED_CHANNEL, () => { void load(false); });
   useEffect(() => {
     if (realtimeState !== "connected") {
@@ -325,6 +374,18 @@ export function DevicePanel({ consoleSlot }: DevicePanelProps): React.JSX.Elemen
     }
   }, [load]);
 
+  const projectPicker = {
+    disabled: Boolean(routeProjectId) || sidebar.status === "loading",
+    projectId,
+    projects: sidebar.projects,
+    select(nextProjectId: string | null) {
+      setState({ kind: "loading" });
+      setSelectedProjectId(nextProjectId);
+    },
+  };
+
+  if (!projectId) return <ChooseProjectState {...projectPicker} />;
+
   if (state.kind === "loading") return <LoadingState />;
   if (state.kind === "error") {
     return <ErrorState message={state.message} retry={() => { setState({ kind: "loading" }); void load(true); }} />;
@@ -342,11 +403,12 @@ export function DevicePanel({ consoleSlot }: DevicePanelProps): React.JSX.Elemen
     <div className="h-full overflow-y-auto bg-background text-foreground" data-state="ready">
       <div className="mx-auto w-full max-w-6xl space-y-4 p-4 md:p-5">
         <section className="overflow-hidden rounded-lg border border-border bg-card">
-          <div className="flex flex-col gap-4 border-b border-border bg-muted/20 px-4 py-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-4 border-b border-border bg-muted/20 px-4 py-3 md:flex-row md:items-center">
             <div>
               <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">Machine arbitration · diagnostic only</p>
               <p className="mt-1 text-sm text-foreground">Live registry for local instruments and serial endpoints.</p>
             </div>
+            <div className="md:ml-auto"><ProjectPicker {...projectPicker} /></div>
             <Button disabled={busyKey === "rescan"} onClick={() => void perform("rescan", async () => {
               if (!scope) return;
               await registryRpc.call("benchDevRegistryRescan", scope);

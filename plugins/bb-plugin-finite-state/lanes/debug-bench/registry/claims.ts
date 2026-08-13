@@ -20,7 +20,7 @@ export class DeviceClaimError extends Error {
     message: string,
     readonly holder: string | null = null,
   ) {
-    super(message);
+    super(message.startsWith(`${code}:`) ? message : `${code}: ${message}`);
     this.name = "DeviceClaimError";
   }
 }
@@ -154,10 +154,10 @@ export function claimDevice(
       throw new DeviceClaimError("DEVICE_NOT_FOUND", `Device ${deviceId} was not found.`);
     }
     const claimScope = options.claimScope ?? scopedRows[0]!.claim_scope;
-    if (claimScope !== "machine") {
+    if (claimScope !== "machine" || scopedRows.some((row) => row.claim_scope !== "machine")) {
       throw new DeviceClaimError(
         "CLAIM_SCOPE_NOT_IMPLEMENTED",
-        "Fleet-wide arbitration is represented but is not implemented in v1.",
+        "CLAIM_SCOPE_NOT_IMPLEMENTED: fleet-wide arbitration is represented but is not implemented in v1.",
       );
     }
     const expiredHolders = expireClaimInTransaction(db, deviceId, options);

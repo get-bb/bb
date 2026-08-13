@@ -25,6 +25,39 @@ afterEach(() => {
 });
 
 describe("fs_hw_status", () => {
+  it("projects expired claims as free without writing claim state or history", async () => {
+    const db = createConnection(":memory:");
+    migrate(db);
+    const scope = { projectId: "project-1", projectVersionId: null };
+    const device = upsertCandidate(db, scope, "serial", "serial", {
+      stableIdentity: "serial-expired",
+      make: null,
+      model: "UART",
+      connection: "tty:/dev/test-expired",
+      transport: "local-usb",
+    }, "2026-08-13T10:00:00.000Z");
+    claimDevice(db, device.deviceId, "thread-expired", {
+      scope,
+      now: new Date("2026-08-13T10:00:00.000Z"),
+    });
+    const changesBefore = db.prepare<[], { changes: number }>("SELECT total_changes() AS changes").get()!.changes;
+    const page = await getHwStatus(
+      { ...scope, db, now: new Date("2026-08-13T10:16:00.000Z") },
+      { ...scope, pageSize: 20 },
+    );
+    const changesAfter = db.prepare<[], { changes: number }>("SELECT total_changes() AS changes").get()!.changes;
+    expect(page.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        entryType: "device",
+        device: expect.objectContaining({ claimedBy: null, claimedAt: null }),
+      }),
+    ]));
+    expect(changesAfter).toBe(changesBefore);
+    expect(db.prepare("SELECT claimed_by FROM bench_device WHERE device_id = ?").get(device.deviceId))
+      .toEqual({ claimed_by: "thread-expired" });
+    expect(db.prepare("SELECT count(*) AS count FROM bench_claim_event").get()).toEqual({ count: 0 });
+  });
+
   it("clamps budget, pages a 200-device registry, and includes holders and family reasons", async () => {
     const db = createConnection(":memory:");
     migrate(db);

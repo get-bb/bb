@@ -107,4 +107,22 @@ describe("debug-bench device store", () => {
     expect(new Set([...first.items, ...second.items].map((item) => item.deviceId)).size).toBe(3);
     expect(stableDeviceId("scope-lan", "scope-0")).toBe(stableDeviceId("scope-lan", " SCOPE-0 "));
   });
+
+  it("marks retained devices stale when their family cannot verify presence", () => {
+    const db = createConnection(":memory:");
+    migrate(db);
+    const device = upsertCandidate(db, scope, "probe-rs", "probe", {
+      stableIdentity: "probe-a",
+      make: null,
+      model: "Probe",
+      connection: "usb:probe-a",
+      transport: "local-usb",
+    }, "2026-08-13T10:00:00.000Z");
+    recordFamilyStatus(db, scope, {
+      ...family("2026-08-13T11:00:00.000Z"),
+      availability: "unavailable",
+      reason: "probe-rs failed",
+    });
+    expect(getDevice(db, scope, device.deviceId)).toMatchObject({ stale: true });
+  });
 });

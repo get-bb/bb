@@ -5,6 +5,7 @@ import { rpcContract } from "../../shared/contract.js";
 import { getHwStatus, type PageQuery } from "./hw-status.js";
 import {
   claimDevice,
+  expireClaims,
   refreshClaim,
   releaseDevice,
   type ClaimResult,
@@ -53,6 +54,7 @@ const familyStatusSchema = z.object({
 const registryStatusSchema = z.object({
   families: z.array(familyStatusSchema).max(20),
   deviceCount: z.number().int().nonnegative(),
+  truncated: z.boolean(),
   scannedAt: z.iso.datetime().nullable(),
 }).strict();
 const proposalSchema = z.object({
@@ -107,37 +109,25 @@ const frozenDebugBenchRpcContract = {
   benchDevSerialSessionGet: rpcContract.benchDevSerialSessionGet,
 } as const;
 
-const DEVICE_KINDS = new Set<string>(["probe", "logic", "power", "scope", "serial"]);
-
-function frozenKinds(input: object): DeviceKind[] | undefined {
-  const value: unknown = Reflect.get(input, "kinds");
-  if (!Array.isArray(value)) return undefined;
-  const kinds: DeviceKind[] = [];
-  for (const item of value) {
-    if (typeof item === "string" && DEVICE_KINDS.has(item)) {
-      if (item === "probe" || item === "logic" || item === "power" || item === "scope" || item === "serial") {
-        kinds.push(item);
-      }
-    }
-  }
-  return kinds;
-}
-
-function frozenIncludeStale(input: object): boolean {
-  const value: unknown = Reflect.get(input, "includeStale");
-  return typeof value === "boolean" ? value : true;
-}
-
 export interface FsHwStatusService {
   status(query: PageQuery): ReturnType<typeof getHwStatus>;
 }
 
 export interface DebugBenchCommandHandlers {
   devices(query: PageQuery): ReturnType<typeof getHwStatus>;
-  claim(scope: RegistryScope, deviceId: string, holder: string): ClaimResult;
+  claim(
+    scope: RegistryScope,
+    deviceId: string,
+    holder: string,
+    claimScope: "machine" | "fleet",
+  ): ClaimResult;
   release(scope: RegistryScope, deviceId: string, holder: string): ClaimResult;
   refresh(scope: RegistryScope, deviceId: string, holder: string): void;
-  rescan(scope: RegistryScope): Promise<{ families: FamilyStatus[]; deviceCount: number }>;
+  rescan(scope: RegistryScope): Promise<{
+    families: FamilyStatus[];
+    deviceCount: number;
+    truncated: boolean;
+  }>;
   proposeHelper(familyId: string): HelperInstallProposal;
   installHelper(
     proposalToken: string,
@@ -147,7 +137,7 @@ export interface DebugBenchCommandHandlers {
 }
 
 class RegistryCoordinator {
-  private readonly scopes = new Map<string, RegistryScope>();
+  private activeScope: RegistryScope | null = null;
 
   constructor(
     private readonly bb: BbPluginApi,
@@ -157,7 +147,7 @@ class RegistryCoordinator {
   }
 
   remember(scope: RegistryScope): void {
-    this.scopes.set(`${scope.projectId}\0${scope.projectVersionId ?? ""}`, scope);
+    this.activeScope = scope;
   }
 
   benchContext(scope: RegistryScope): BenchContext {
@@ -165,17 +155,26 @@ class RegistryCoordinator {
     return { ...scope, db: this.ctx.db(), log: this.ctx.log };
   }
 
-  async rescan(scope: RegistryScope): Promise<{ families: FamilyStatus[]; deviceCount: number }> {
+  async rescan(scope: RegistryScope): Promise<{
+    families: FamilyStatus[];
+    deviceCount: number;
+    truncated: boolean;
+  }> {
     const result = await enumerateDevices(this.benchContext(scope));
     for (const device of result.devices) {
       this.bb.realtime.publish(BENCH_CHANGED_CHANNEL, { deviceId: device.deviceId });
     }
-    return { families: result.families, deviceCount: result.devices.length };
+    return {
+      families: result.families,
+      deviceCount: result.totalDevices,
+      truncated: result.truncated,
+    };
   }
 
   status(scope: RegistryScope): {
     families: FamilyStatus[];
     deviceCount: number;
+    truncated: boolean;
     scannedAt: string | null;
   } {
     this.remember(scope);
@@ -183,23 +182,37 @@ class RegistryCoordinator {
     return {
       families,
       deviceCount: listDevices(this.ctx.db(), { ...scope, pageSize: 1 }).total,
+      truncated: false,
       scannedAt: families.map((family) => family.checkedAt).sort().at(-1) ?? null,
     };
+  }
+
+  private sweepExpiredClaims(): void {
+    for (const deviceId of expireClaims(this.ctx.db())) {
+      this.bb.realtime.publish(BENCH_CHANGED_CHANNEL, { deviceId });
+    }
   }
 
   async start(signal: AbortSignal): Promise<void> {
     while (!signal.aborted) {
       await new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, 5 * 60_000);
-        signal.addEventListener("abort", () => {
+        const onAbort = () => {
           clearTimeout(timer);
+          signal.removeEventListener("abort", onAbort);
           resolve();
-        }, { once: true });
+        };
+        const timer = setTimeout(() => {
+          signal.removeEventListener("abort", onAbort);
+          resolve();
+        }, 5 * 60_000);
+        signal.addEventListener("abort", onAbort, { once: true });
+        if (signal.aborted) onAbort();
       });
       if (signal.aborted) return;
-      for (const scope of this.scopes.values()) {
+      this.sweepExpiredClaims();
+      if (this.activeScope) {
         try {
-          await this.rescan(scope);
+          await this.rescan(this.activeScope);
         } catch (error) {
           const message = error instanceof Error ? error.message : "unknown error";
           this.ctx.log.warn(`Debug-bench background rescan failed: ${message}`);
@@ -221,18 +234,7 @@ export function createFsHwStatusService(
   return {
     status(query) {
       coordinator.remember(query);
-      return getHwStatus(
-        {
-          ...query,
-          db: ctx.db(),
-          onExpired(deviceIds) {
-            for (const deviceId of deviceIds) {
-              bb.realtime.publish(BENCH_CHANGED_CHANNEL, { deviceId });
-            }
-          },
-        },
-        query,
-      );
+      return getHwStatus({ ...query, db: ctx.db() }, query);
     },
   };
 }
@@ -245,9 +247,9 @@ export function createDebugBenchCommandHandlers(
   const hwStatus = createFsHwStatusService(bb, ctx);
   return {
     devices: (query) => hwStatus.status(query),
-    claim(scope, deviceId, holder) {
+    claim(scope, deviceId, holder, claimScope) {
       coordinator.remember(scope);
-      const result = claimDevice(ctx.db(), deviceId, holder, { scope, claimScope: "machine" });
+      const result = claimDevice(ctx.db(), deviceId, holder, { scope, claimScope });
       bb.realtime.publish(BENCH_CHANGED_CHANNEL, { deviceId });
       return result;
     },
@@ -264,7 +266,7 @@ export function createDebugBenchCommandHandlers(
     },
     async rescan(scope) {
       const result = await coordinator.rescan(scope);
-      return { families: result.families, deviceCount: result.deviceCount };
+      return result;
     },
     proposeHelper(familyId) {
       const family = familyDescriptor(familyId);
@@ -304,16 +306,22 @@ export function registerDebugBench(bb: BbPluginApi, ctx: PluginContext): void {
   bb.rpc.register(frozenDebugBenchRpcContract, {
     benchDevDevicesList(input) {
       coordinator.remember(input);
+      // The frozen cursor helper erases additive-field inference, but the RPC
+      // host has already parsed this value with its exact Zod schema.
+      const parsed = input as typeof input & {
+        kinds?: readonly DeviceKind[];
+        includeStale: boolean;
+      };
       return listDevices(ctx.db(), {
         ...input,
         pageSize: input.pageSize,
         cursor: input.cursor,
-        kinds: frozenKinds(input),
-        includeStale: frozenIncludeStale(input),
+        kinds: parsed.kinds,
+        includeStale: parsed.includeStale,
       });
     },
     benchDevDeviceClaim(input) {
-      const result = commands.claim(input, input.deviceId, input.holder);
+      const result = commands.claim(input, input.deviceId, input.holder, input.claimScope);
       return {
         projectId: input.projectId,
         projectVersionId: input.projectVersionId,
@@ -352,6 +360,8 @@ export function registerDebugBench(bb: BbPluginApi, ctx: PluginContext): void {
       return commands.proposeHelper(input.familyId);
     },
     async benchDevHelperInstall(input) {
+      // Owner ruling pending: this two-step confirmation cannot join the frozen
+      // HUMAN_ONLY_RPC_METHODS gate without an approved contract amendment.
       const outcome = await commands.installHelper(input.proposalToken, input.confirmedBy);
       await commands.rescan(input);
       return outcome;

@@ -34,6 +34,8 @@ export interface BenchContext extends RegistryScope {
 export interface EnumerationResult {
   families: FamilyStatus[];
   devices: BenchDeviceRecord[];
+  totalDevices: number;
+  truncated: boolean;
 }
 
 function messageFrom(error: unknown): string {
@@ -59,23 +61,17 @@ function validateCandidates(
   candidates: readonly DeviceCandidate[],
 ): readonly DeviceCandidate[] {
   const identities = new Set<string>();
+  const valid: DeviceCandidate[] = [];
   for (const candidate of candidates) {
-    if (candidate.stableIdentity.trim().length === 0) {
-      throw new Error("Detector returned an empty stable identity.");
-    }
-    if (!family.transports.includes(candidate.transport)) {
-      throw new Error(`Detector returned unsupported transport ${candidate.transport}.`);
-    }
-    if (!connectionMatchesTransport(candidate.connection, candidate.transport)) {
-      throw new Error(`Detector returned invalid connection ${candidate.connection}.`);
-    }
+    if (candidate.stableIdentity.trim().length === 0) continue;
+    if (!family.transports.includes(candidate.transport)) continue;
+    if (!connectionMatchesTransport(candidate.connection, candidate.transport)) continue;
     const normalized = candidate.stableIdentity.trim().toLocaleLowerCase("en-US");
-    if (identities.has(normalized)) {
-      throw new Error(`Detector returned duplicate identity ${candidate.stableIdentity}.`);
-    }
+    if (identities.has(normalized)) continue;
     identities.add(normalized);
+    valid.push(candidate);
   }
-  return candidates;
+  return valid;
 }
 
 function helperSummary(descriptor: FamilyDescriptor): FamilyStatus["helper"] {
@@ -87,21 +83,55 @@ function helperSummary(descriptor: FamilyDescriptor): FamilyStatus["helper"] {
   };
 }
 
-async function detectProbeRs(): Promise<readonly DeviceCandidate[]> {
+interface ProbeRsLine {
+  description: string;
+  vid: string;
+  pid: string;
+  serialNumber: string;
+  probeType: string;
+}
+
+function probeRsLine(line: string): ProbeRsLine | null {
+  const legacy = /^\[\d+\]:\s*(.+?)\s+--\s+([0-9a-f]{4}):([0-9a-f]{4}):([^\s]*)\s+\(([^)]+)\)$/iu.exec(line);
+  if (legacy) {
+    return {
+      description: legacy[1]!,
+      vid: legacy[2]!.toLocaleLowerCase("en-US"),
+      pid: legacy[3]!.toLocaleLowerCase("en-US"),
+      serialNumber: legacy[4]!,
+      probeType: legacy[5]!,
+    };
+  }
+  const current = /^\[\d+\]:\s*(.+?)\s+\(VID:\s*([0-9a-f]{4}),\s*PID:\s*([0-9a-f]{4}),\s*Serial:\s*(.*?),\s*([^)]+)\)$/iu.exec(line);
+  if (!current) return null;
+  return {
+    description: current[1]!,
+    vid: current[2]!.toLocaleLowerCase("en-US"),
+    pid: current[3]!.toLocaleLowerCase("en-US"),
+    serialNumber: current[4]!,
+    probeType: current[5]!,
+  };
+}
+
+export async function detectProbeRs(): Promise<readonly DeviceCandidate[]> {
   const result = await execFileAsync("probe-rs", ["list"], {
     timeout: 10_000,
     maxBuffer: 256 * 1024,
   });
   return result.stdout.split(/\r?\n/u)
     .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !/^no probes found/iu.test(line))
-    .map((line) => ({
-      stableIdentity: line,
-      make: null,
-      model: line,
-      connection: `usb:${line.replace(/\s+/gu, "-").toLocaleLowerCase("en-US")}`,
-      transport: "local-usb" as const,
-    }));
+    .map(probeRsLine)
+    .filter((probe): probe is ProbeRsLine => probe !== null)
+    .map((probe) => {
+      const connection = `usb:${probe.vid}:${probe.pid}:${probe.serialNumber.trim()}`;
+      return {
+        stableIdentity: probe.serialNumber.trim() || connection,
+        make: probe.probeType,
+        model: probe.description,
+        connection,
+        transport: "local-usb" as const,
+      };
+    });
 }
 
 interface SerialPortJson {
@@ -124,7 +154,7 @@ function serialPort(value: unknown): SerialPortJson | null {
   return { device, serialNumber, manufacturer, product };
 }
 
-async function detectSerialPorts(): Promise<readonly DeviceCandidate[]> {
+export async function detectSerialPorts(): Promise<readonly DeviceCandidate[]> {
   const script = [
     "import json, serial.tools.list_ports",
     "print(json.dumps([{'device': p.device, 'serialNumber': p.serial_number, 'manufacturer': p.manufacturer, 'product': p.product} for p in serial.tools.list_ports.comports()]))",
@@ -268,12 +298,15 @@ export async function enumerateDevices(ctx: BenchContext): Promise<EnumerationRe
     }
   }).immediate();
 
+  const devicePage = listDevices(ctx.db, {
+    ...ctx,
+    pageSize: 200,
+    includeStale: true,
+  });
   return {
     families: listFamilyStatuses(ctx.db, ctx),
-    devices: listDevices(ctx.db, {
-      ...ctx,
-      pageSize: 200,
-      includeStale: true,
-    }).items,
+    devices: devicePage.items,
+    totalDevices: devicePage.total,
+    truncated: devicePage.total > devicePage.items.length,
   };
 }

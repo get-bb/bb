@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import type Database from "better-sqlite3";
 import type { BenchDeviceRecord, FamilyStatus } from "./registry/families.js";
-import { expireClaims } from "./registry/claims.js";
+import { DEFAULT_CLAIM_TTL_MS } from "./registry/claims.js";
 import {
   listDevices,
   listFamilyStatuses,
@@ -31,7 +31,6 @@ export interface Page<Item> {
 export interface HwStatusContext extends RegistryScope {
   db: Database.Database;
   now?: Date;
-  onExpired?: (deviceIds: readonly string[]) => void;
 }
 
 interface HwStatusCursor {
@@ -68,8 +67,8 @@ export async function getHwStatus(
   ctx: HwStatusContext,
   q: PageQuery,
 ): Promise<Page<HwStatusEntry>> {
-  const expired = expireClaims(ctx.db, { now: ctx.now });
-  if (expired.length > 0) ctx.onExpired?.(expired);
+  const now = ctx.now ?? new Date();
+  const activeClaimCutoff = new Date(now.getTime() - DEFAULT_CLAIM_TTL_MS).toISOString();
   const requestedPageSize = Math.max(1, Math.trunc(q.pageSize ?? 50));
   const appliedPageSize = Math.min(HW_STATUS_MAX_PAGE_SIZE, requestedPageSize);
   const families = listFamilyStatuses(ctx.db, q);
@@ -83,6 +82,7 @@ export async function getHwStatus(
     pageSize: Math.max(1, remaining),
     cursor: current.deviceCursor,
     includeStale: true,
+    activeClaimCutoff,
   });
   const deviceItems = (remaining > 0 ? devicePage.items : []).map<HwStatusEntry>((device) => ({
     entryType: "device",

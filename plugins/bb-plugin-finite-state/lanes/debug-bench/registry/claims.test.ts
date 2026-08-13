@@ -1,24 +1,24 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { once } from "node:events";
+import { Worker } from "node:worker_threads";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 import { MIGRATIONS } from "../../../lib/store/schema.js";
 import {
   claimDevice,
-  DeviceClaimError,
   listClaimEvents,
   refreshClaim,
   releaseDevice,
 } from "./claims.js";
-import { getDevice, upsertCandidate } from "./store.js";
+import { getDevice, initializeRegistryStore, upsertCandidate } from "./store.js";
 
 const databases: Database.Database[] = [];
 const directories: string[] = [];
 
 function createConnection(path = ":memory:"): Database.Database {
   const db = new Database(path);
-  db.pragma("busy_timeout = 1000");
   databases.push(db);
   return db;
 }
@@ -55,21 +55,53 @@ describe("device claim arbitration", () => {
     migrate(writerA);
     const deviceId = seed(writerA);
     const writerB = createConnection(path);
+    initializeRegistryStore(writerB);
+    expect(writerB.pragma("busy_timeout", { simple: true })).toBe(5000);
 
-    const attempts = await Promise.allSettled([
-      Promise.resolve().then(() => claimDevice(writerA, deviceId, "thread-a", { scope })),
-      Promise.resolve().then(() => claimDevice(writerB, deviceId, "thread-b", { scope })),
-    ]);
-    const winners = attempts.filter((attempt) => attempt.status === "fulfilled");
-    const losers = attempts.filter((attempt) => attempt.status === "rejected");
-    expect(winners).toHaveLength(1);
-    expect(losers).toHaveLength(1);
-    const holder = getDevice(writerA, scope, deviceId)?.claimedBy;
-    expect(holder === "thread-a" || holder === "thread-b").toBe(true);
-    const loserReason = losers[0]?.status === "rejected" ? losers[0].reason : null;
-    expect(loserReason).toBeInstanceOf(DeviceClaimError);
-    expect(loserReason).toMatchObject({ code: "DEVICE_CLAIMED", holder });
-    expect(loserReason).toHaveProperty("message", expect.stringContaining(holder ?? "missing-holder"));
+    const contender = new Worker(`
+      const { parentPort, workerData } = require("node:worker_threads");
+      const Database = require("better-sqlite3");
+      const db = new Database(workerData.path);
+      db.exec("BEGIN IMMEDIATE");
+      db.prepare("UPDATE bench_device SET claimed_by = ?, claimed_at = ? WHERE device_id = ? AND claim_scope = 'machine' AND claimed_by IS NULL")
+        .run("thread-a", "2026-08-13T10:00:00.000Z", workerData.deviceId);
+      parentPort.postMessage("locked");
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+      db.exec("COMMIT");
+      db.close();
+    `, { eval: true, workerData: { path, deviceId } });
+    const exited = once(contender, "exit");
+    await once(contender, "message");
+    let contentionError: unknown;
+    try {
+      claimDevice(writerB, deviceId, "thread-b", {
+        scope,
+        now: new Date("2026-08-13T10:01:00.000Z"),
+      });
+    } catch (error) {
+      contentionError = error;
+    }
+    expect(contentionError).toMatchObject({ code: "DEVICE_CLAIMED", holder: "thread-a" });
+    expect(contentionError).toHaveProperty(
+      "message",
+      expect.stringMatching(/DEVICE_CLAIMED:.*thread-a/u),
+    );
+    await exited;
+    expect(getDevice(writerA, scope, deviceId)?.claimedBy).toBe("thread-a");
+  });
+
+  it("rejects fleet claim scope at the parsed boundary", () => {
+    const db = createConnection(":memory:");
+    migrate(db);
+    const deviceId = seed(db);
+    expect(() => claimDevice(db, deviceId, "thread-a", {
+      scope,
+      claimScope: "fleet",
+    })).toThrow(expect.objectContaining({ code: "CLAIM_SCOPE_NOT_IMPLEMENTED" }));
+    expect(getDevice(db, scope, deviceId)).toMatchObject({
+      claimScope: "machine",
+      claimedBy: null,
+    });
   });
 
   it("rejects non-holder release, releases idempotently, and records expiry", () => {

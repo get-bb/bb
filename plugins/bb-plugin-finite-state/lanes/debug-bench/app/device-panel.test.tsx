@@ -58,7 +58,7 @@ async function firmwareBenchSlot() {
 }
 
 function registryResult(families: FamilyStatus[] = [availableFamily], deviceCount = 0) {
-  return { families, deviceCount, scannedAt: "2026-08-13T10:00:00.000Z" };
+  return { families, deviceCount, truncated: false, scannedAt: "2026-08-13T10:00:00.000Z" };
 }
 
 function stringField(input: unknown, key: string): string {
@@ -69,6 +69,32 @@ function stringField(input: unknown, key: string): string {
 }
 
 describe("firmware device panel", () => {
+  it("selects a project when plugin navigation has no project context", async () => {
+    const panel = await firmwareBenchSlot();
+    let resolveScan: ((value: ReturnType<typeof registryResult>) => void) | undefined;
+    const slot = renderSlot(panel, { subPath: "" }, {
+      context: { projectId: null, threadId: null },
+      sidebarThreads: {
+        status: "ready",
+        projects: [{ id: "project-1", name: "Firmware Project", isPersonal: false }],
+      },
+      rpc: {
+        benchDevRegistryRescan: () => new Promise((resolve) => { resolveScan = resolve; }),
+        benchDevDevicesList: () => ({ items: [], total: 0, cursor: null }),
+      },
+    });
+    expect(slot.getByText("Choose a project")).toBeTruthy();
+    expect(slot.inspection.rpcCalls).toHaveLength(0);
+    fireEvent.change(slot.getByLabelText("Project"), { target: { value: "project-1" } });
+    expect(slot.getByRole("status", { name: "Scanning hardware registry" })).toBeTruthy();
+    resolveScan?.(registryResult());
+    expect(await slot.findByText("No instruments detected")).toBeTruthy();
+    expect(slot.inspection.rpcCalls).toEqual(expect.arrayContaining([
+      expect.objectContaining({ method: "benchDevRegistryRescan", input: scope }),
+    ]));
+    slot.lifecycle.unmount();
+  });
+
   it("renders explicit loading, error, and empty states", async () => {
     const panel = await firmwareBenchSlot();
     let resolveScan: ((value: ReturnType<typeof registryResult>) => void) | undefined;
