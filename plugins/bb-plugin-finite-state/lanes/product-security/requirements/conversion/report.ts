@@ -1,5 +1,11 @@
+import { createHash } from "node:crypto";
 import type { ConversionDeps } from "./bundle.js";
-import { buildConversionBundle, getStoredConversionBundle } from "./bundle.js";
+import {
+  buildConversionBundle,
+  conversionSnapshotDigest,
+  getStoredConversionBundle,
+  type StoredConversionBundle,
+} from "./bundle.js";
 import { spawnConversionThread } from "./spawn.js";
 import { validateConversion, type ConversionGateResult, type ValidationError } from "./validate.js";
 
@@ -28,6 +34,24 @@ export interface ConversionReport {
 }
 
 const reports = new Map<string, ConversionReport>();
+
+async function currentReviewDigest(bundle: StoredConversionBundle): Promise<string> {
+  const currentSnapshot = await bundle.deps.loadPullSnapshot();
+  const selectedIds = new Set(bundle.meta.requirementIds);
+  const selectedSources = (currentSnapshot?.requirements ?? [])
+    .filter((source) => selectedIds.has(source.requirementId));
+  const proposals = await Promise.all(bundle.sources.map(async (source) => ({
+    path: source.targetPath,
+    content: await bundle.deps.readLocalFile(source.targetPath),
+  })));
+  return createHash("sha256").update(JSON.stringify({
+    bundleId: bundle.meta.bundleId,
+    currentSnapshotDigest: conversionSnapshotDigest(selectedSources),
+    missingRequirementIds: bundle.meta.requirementIds.filter((id) =>
+      !selectedSources.some((source) => source.requirementId === id)),
+    proposals,
+  })).digest("hex");
+}
 
 export async function startConversion(
   deps: ConversionDeps,
@@ -99,7 +123,10 @@ export async function refreshConversion(id: string): Promise<ConversionReport> {
   const report = getConversionReport(id);
   if (report.state === "reviewed" || report.state === "discarded") return report;
   const bundle = getStoredConversionBundle(id);
-  const gates = await validateConversion(bundle.sources.map((source) => source.targetPath));
+  const gates = await validateConversion(
+    bundle.sources.map((source) => source.targetPath),
+    bundle.meta.bundleId,
+  );
   const pathByRequirement = new Map(bundle.sources.map((source) => [source.requirementId, source.targetPath]));
   const errors = gates.flatMap((gate): ValidationError[] => [
     ...gate.schema.errors,
@@ -121,6 +148,7 @@ export async function refreshConversion(id: string): Promise<ConversionReport> {
   const ready = gates.length > 0 && gates.every((gate) => gate.schema.ok && gate.roundTrip.ok);
   const next: ConversionReport = {
     ...report,
+    snapshotSha256: await currentReviewDigest(bundle),
     state: ready ? "awaiting_human" : "failed",
     errors,
     gates,

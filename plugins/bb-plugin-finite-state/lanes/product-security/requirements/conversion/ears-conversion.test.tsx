@@ -27,6 +27,11 @@ import {
 } from "./report.js";
 import { buildConversionPrompt } from "./spawn.js";
 import { validateConversion } from "./validate.js";
+import {
+  conversionDiffIsComplete,
+  exactRequirementDiffItems,
+  requirementEditSubPath,
+} from "./index.js";
 
 const PULLED_AT = "2026-08-12T12:00:00.000Z";
 
@@ -162,6 +167,11 @@ describe("EARS conversion flow", () => {
     for (const pattern of ["ubiquitous", "event_driven", "state_driven", "unwanted_behavior", "optional_feature", "complex"]) expect(prompt).toContain(pattern);
     expect(prompt).toContain("Do not push");
     expect(prompt).toContain("Copy every mapped check's pass_criteria and fail_criteria verbatim");
+    await startConversion(test.deps, ["REQ-1"]);
+    const spawnInput = vi.mocked(test.deps.spawnOriginPluginThread).mock.calls.at(-1)?.[0];
+    expect(spawnInput?.bundlePages).toHaveLength(1);
+    expect(spawnInput?.bundlePages[0]?.content).toContain("SECRET SOURCE BODY MUST NOT BE IN PROMPT");
+    expect(spawnInput?.prompt).toContain(spawnInput?.bundlePages[0]?.filename);
   });
 
   it("three valid requirements pass gates 1–2 and await human", async () => {
@@ -184,7 +194,7 @@ describe("EARS conversion flow", () => {
     expect(running).toMatchObject({ state: "running", threadId: "thread-1" });
     const awaitingHuman = await refreshConversion(running.id);
     expect(awaitingHuman).toMatchObject({ state: "awaiting_human", gates: [{ humanReview: "pending" }] });
-    const reviewed = recordHumanReview(running.id, "reviewed", running.snapshotSha256);
+    const reviewed = recordHumanReview(running.id, "reviewed", awaitingHuman.snapshotSha256);
     expect(reviewed).toMatchObject({ state: "reviewed", gates: [{ humanReview: "reviewed" }] });
   });
 
@@ -198,7 +208,16 @@ describe("EARS conversion flow", () => {
     const host = createFakePluginHost({
       pluginId: "finite-state",
       sdk: {
-        projects: { get: async () => ({ sources: [{ hostId: "host-1", path: "/workspace", isDefault: true }] }) },
+        projects: {
+          get: async () => ({ sources: [{ hostId: "host-1", path: "/workspace", isDefault: true }] }),
+          attachments: { upload: async (input) => ({
+            type: "localFile" as const,
+            path: `uploaded/${input.filename ?? "bundle.json"}`,
+            name: input.filename ?? "bundle.json",
+            mimeType: "application/json",
+            sizeBytes: 1,
+          }) },
+        },
         files: { read: async () => ({ content: proposal, contentEncoding: "utf8" as const, sha256: "a".repeat(64) }) },
         threads: { spawn: async () => ({ id: "thread-conversion" }) },
       },
@@ -270,10 +289,11 @@ describe("EARS conversion flow", () => {
     })).rejects.toThrow("authorization-unavailable");
     await expect(host.harness.callRpc("earsConversionReview", {
       projectId: "project-1", projectVersionId: "version-1", id: started.id,
-      decision: "discarded", expectedSnapshotSha256: started.snapshotSha256,
+      decision: "discarded", expectedSnapshotSha256: validated.snapshotSha256,
     })).resolves.toMatchObject({ state: "discarded" });
     expect(host.harness.sdk.callsTo("threads.spawn")[0]?.[0]).toEqual(expect.objectContaining({
       environment: { type: "project-default" },
+      input: expect.arrayContaining([expect.objectContaining({ type: "localFile" })]),
       origin: "plugin",
       originPluginId: "finite-state",
     }));
@@ -313,10 +333,67 @@ describe("EARS conversion flow", () => {
     expect(gates.find((gate) => gate.requirementId === "REQ-2")?.roundTrip.staleSource).toBe(true);
   });
 
+  it("keeps gate 2 bound to the report bundle when a newer bundle owns the same path", async () => {
+    const item = source("REQ-1");
+    const test = fixture(snapshot([item]));
+    test.files.set(item.targetPath, serializeRequirement(requirement(item)));
+    const running = await startConversion(test.deps, [item.requirementId]);
+    test.setSnapshot(snapshot([{ ...item, priority: "P0" }]));
+    await expect(refreshConversion(running.id)).resolves.toMatchObject({
+      state: "failed",
+      gates: [{ roundTrip: { staleSource: true } }],
+    });
+    await buildConversionBundle(test.deps, [item.requirementId]);
+    await expect(refreshConversion(running.id)).resolves.toMatchObject({
+      state: "failed",
+      gates: [{ roundTrip: { staleSource: true } }],
+    });
+  });
+
+  it("recomputes the review fence from current proposal and upstream bytes", async () => {
+    const item = source("REQ-1");
+    const test = fixture(snapshot([item]));
+    test.files.set(item.targetPath, serializeRequirement(requirement(item)));
+    const running = await startConversion(test.deps, [item.requirementId]);
+    const firstRefresh = await refreshConversion(running.id);
+    const edited = requirement(item);
+    edited.ears = {
+      pattern: "ubiquitous",
+      parts: { system: "the updater", response: "reject unsigned updates" },
+      text: "The updater shall reject unsigned updates.",
+    };
+    test.files.set(item.targetPath, serializeRequirement(edited));
+    const proposalRefresh = await refreshConversion(running.id);
+    expect(proposalRefresh.snapshotSha256).not.toBe(firstRefresh.snapshotSha256);
+    expect(() => recordHumanReview(
+      running.id,
+      "reviewed",
+      firstRefresh.snapshotSha256,
+    )).toThrow("changed after this diff was opened");
+    test.setSnapshot(snapshot([{ ...item, priority: "P0" }]));
+    const upstreamRefresh = await refreshConversion(running.id);
+    expect(upstreamRefresh.snapshotSha256).not.toBe(proposalRefresh.snapshotSha256);
+  });
+
+  it("scopes review diffs by exact id, rejects partial pages, and uses the WP-37 detail route", () => {
+    const diff = ["REQ-1", "REQ-10", "REQ-100", "REQ-12"].map((label) => ({
+      key: label,
+      label,
+      operation: "update" as const,
+      fields: [],
+    }));
+    expect(exactRequirementDiffItems(diff, ["REQ-1"]).map((item) => item.label)).toEqual(["REQ-1"]);
+    expect(conversionDiffIsComplete([diff[0]!], ["REQ-1"], "next-page")).toBe(false);
+    expect(conversionDiffIsComplete([diff[0]!], ["REQ-1", "REQ-2"], null)).toBe(false);
+    expect(conversionDiffIsComplete([diff[0]!], ["REQ-1"], null)).toBe(true);
+    expect(requirementEditSubPath("REQ-1")).toBe("requirements/trace/REQ-1");
+  });
+
   it("discard navigation never claims review and leaves source unchanged", () => {
     const discard = vi.fn();
-    render(<ConversionDialog model={{ id: "bundle", projectVersionId: "version-1", state: "failed", requirementIds: ["REQ-1"], snapshotSha256: "a".repeat(64), errors: [] }} onClose={vi.fn()} onDiscard={discard} onEdit={vi.fn()} onRefresh={vi.fn()} onReview={vi.fn()} />);
+    render(<ConversionDialog model={{ id: "bundle", projectVersionId: "version-1", state: "failed", requirementIds: ["REQ-1"], snapshotSha256: "a".repeat(64), errors: [] }} onClose={vi.fn()} onDiscard={discard} onEdit={vi.fn()} onRefresh={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Approve local proposal" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText(/pending an owner ruling/u)).toBeTruthy();
     screen.getByRole("button", { name: "Discard" }).click();
     expect(discard).toHaveBeenCalledOnce();
     expect(screen.getByText(/Nothing here pushes or applies server state/u)).toBeTruthy();

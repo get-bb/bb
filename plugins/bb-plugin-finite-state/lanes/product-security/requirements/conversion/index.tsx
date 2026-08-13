@@ -8,6 +8,30 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : "The scoped conversion request failed.";
 }
 
+const MAX_SYNC_PLAN_PAGES = 50;
+
+export function exactRequirementDiffItems(
+  items: NonNullable<ConversionDialogModel["diff"]>,
+  requirementIds: readonly string[],
+): NonNullable<ConversionDialogModel["diff"]> {
+  const selected = new Set(requirementIds);
+  return items.filter((item) => selected.has(item.label));
+}
+
+export function requirementEditSubPath(requirementId: string): string {
+  return `requirements/trace/${requirementId}`;
+}
+
+export function conversionDiffIsComplete(
+  items: NonNullable<ConversionDialogModel["diff"]>,
+  requirementIds: readonly string[],
+  continuation: string | null,
+): boolean {
+  if (continuation !== null) return false;
+  const shownIds = new Set(items.map((item) => item.label));
+  return requirementIds.every((id) => shownIds.has(id));
+}
+
 export function RequirementsConversionLayer({
   projectId: selectedProjectId,
 }: {
@@ -26,7 +50,8 @@ export function RequirementsConversionLayer({
     if (conversion.state !== "awaiting_human" || !projectId) return conversion;
     const items: NonNullable<ConversionDialogModel["diff"]> = [];
     let continuation: string | null = null;
-    for (let pageIndex = 0; pageIndex < 3; pageIndex += 1) {
+    let pageIndex = 0;
+    do {
       const plan: { items: NonNullable<ConversionDialogModel["diff"]>; next: string | null } = await rpc.call("syncPlan", {
         projectId,
         projectVersionId: conversion.projectVersionId,
@@ -34,13 +59,12 @@ export function RequirementsConversionLayer({
         continuation,
         kinds: ["requirement"],
       });
-      items.push(...plan.items.filter((item) =>
-        conversion.requirementIds.some((id) => item.label === id || item.label.includes(id)),
-      ));
+      items.push(...exactRequirementDiffItems(plan.items, conversion.requirementIds));
       continuation = plan.next;
-      if (continuation === null) break;
-    }
-    return { ...conversion, diff: items };
+      pageIndex += 1;
+    } while (continuation !== null && pageIndex < MAX_SYNC_PLAN_PAGES);
+    const diffComplete = conversionDiffIsComplete(items, conversion.requirementIds, continuation);
+    return { ...conversion, diff: items, diffComplete };
   }
 
   useEffect(() => {
@@ -84,7 +108,7 @@ export function RequirementsConversionLayer({
     }
   }
 
-  async function review(decision: "reviewed" | "discarded"): Promise<void> {
+  async function discard(): Promise<void> {
     if (!model || !projectId) return;
     setBusy(true);
     try {
@@ -92,7 +116,7 @@ export function RequirementsConversionLayer({
         projectId,
         projectVersionId,
         id: model.id,
-        decision,
+        decision: "discarded",
         expectedSnapshotSha256: model.snapshotSha256,
       }));
     } catch (nextError) {
@@ -123,13 +147,12 @@ export function RequirementsConversionLayer({
         <ConversionDialog
           model={model}
           onClose={() => setModel(null)}
-          onDiscard={() => void review("discarded")}
+          onDiscard={() => void discard()}
           onEdit={() => {
             const first = model.requirementIds[0];
-            if (first) navigate.toPluginPanel("product-security", { subPath: `requirements/${first}` });
+            if (first) navigate.toPluginPanel("product-security", { subPath: requirementEditSubPath(first) });
           }}
           onRefresh={() => void refresh()}
-          onReview={() => void review("reviewed")}
         />
       ) : null}
     </>

@@ -73,6 +73,7 @@ export interface ConversionDeps {
     projectId: string;
     title: string;
     prompt: string;
+    bundlePages: Array<{ filename: string; content: string }>;
   }): Promise<{ threadId: string }>;
   now?(): Date;
   randomId?(): string;

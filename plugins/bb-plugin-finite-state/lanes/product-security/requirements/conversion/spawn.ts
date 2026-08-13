@@ -1,4 +1,8 @@
-import { getStoredConversionBundle, type EarsConversionBundleMeta } from "./bundle.js";
+import {
+  getConversionBundlePage,
+  getStoredConversionBundle,
+  type EarsConversionBundleMeta,
+} from "./bundle.js";
 
 export interface ConversionSpawnResult {
   bundle: EarsConversionBundleMeta;
@@ -6,14 +10,20 @@ export interface ConversionSpawnResult {
   prompt: string;
 }
 
-export function buildConversionPrompt(meta: EarsConversionBundleMeta, paths: readonly string[]): string {
+export function buildConversionPrompt(
+  meta: EarsConversionBundleMeta,
+  paths: readonly string[],
+  pageFilenames: readonly string[] = [],
+): string {
   const ids = meta.requirementIds.join(", ");
   const targets = paths.map((path) => `- ${path}`).join("\n");
   return `Convert the selected pulled requirements to authored EARS YAML proposals.
 
 Selection: ${ids}
 Bounded source bundle: ${meta.bundleId}
-Read it only through the paged conversion-bundle service. Never request or paste an unbounded bundle.
+Read every attached conversion-bundle page before authoring. Each attachment is one bounded page from getConversionBundlePage; never request or paste an unbounded bundle.
+Attached pages:
+${pageFilenames.map((filename) => `- ${filename}`).join("\n")}
 Bundle snapshot: ${meta.snapshotDigest} (pulled ${meta.pulledAt})
 
 Use semantic reasoning across all six supported patterns:
@@ -42,11 +52,33 @@ After writing, report the paths for validation. Completion means a valid local p
 export async function spawnConversionThread(bundleId: string): Promise<ConversionSpawnResult> {
   const bundle = getStoredConversionBundle(bundleId);
   const paths = bundle.sources.map((source) => source.targetPath);
-  const prompt = buildConversionPrompt(bundle.meta, paths);
+  const bundlePages: Array<{ filename: string; content: string }> = [];
+  let cursor: string | undefined;
+  let pageNumber = 1;
+  do {
+    const page = await getConversionBundlePage(bundleId, cursor);
+    bundlePages.push({
+      filename: `${bundleId}-page-${pageNumber}.json`,
+      content: JSON.stringify({
+        bundleId,
+        cursor: cursor ?? null,
+        items: page.items,
+        nextCursor: page.nextCursor,
+      }, null, 2),
+    });
+    cursor = page.nextCursor ?? undefined;
+    pageNumber += 1;
+  } while (cursor !== undefined);
+  const prompt = buildConversionPrompt(
+    bundle.meta,
+    paths,
+    bundlePages.map((page) => page.filename),
+  );
   const spawned = await bundle.deps.spawnOriginPluginThread({
     projectId: bundle.meta.projectId,
     title: `EARS conversion · ${bundle.meta.requirementIds.length} requirements`,
     prompt,
+    bundlePages,
   });
   return { bundle: bundle.meta, threadId: spawned.threadId, prompt };
 }

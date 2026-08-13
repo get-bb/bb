@@ -366,11 +366,21 @@ function createConversionDeps(
       }
     },
     async spawnOriginPluginThread(input) {
+      const attachments = await Promise.all(input.bundlePages.map((page) =>
+        bb.sdk.projects.attachments.upload({
+          projectId: input.projectId,
+          clientFile: new TextEncoder().encode(page.content),
+          filename: page.filename,
+          mimeType: "application/json",
+        })));
       const thread = await bb.sdk.threads.spawn({
         projectId: input.projectId,
         environment: { type: "project-default" },
         title: input.title,
-        prompt: input.prompt,
+        input: [
+          { type: "text", text: input.prompt, mentions: [] },
+          ...attachments,
+        ],
       });
       return { threadId: thread.id };
     },

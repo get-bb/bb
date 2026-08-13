@@ -5,6 +5,7 @@ import { validateRequirementYaml } from "../cards/validator.js";
 import {
   conversionSourceDigest,
   findBundleForPaths,
+  getStoredConversionBundle,
   type ConversionSource,
 } from "./bundle.js";
 
@@ -161,9 +162,18 @@ function unresolvedReferences(
   return [...new Set(unresolved)].slice(0, MAX_ERRORS_PER_REQUIREMENT);
 }
 
-export async function validateConversion(paths: string[]): Promise<ConversionGateResult[]> {
+export async function validateConversion(
+  paths: string[],
+  bundleId?: string,
+): Promise<ConversionGateResult[]> {
   const uniquePaths = [...new Set(paths)];
-  const bundle = findBundleForPaths(uniquePaths);
+  const bundle = bundleId === undefined
+    ? findBundleForPaths(uniquePaths)
+    : getStoredConversionBundle(bundleId);
+  const ownedPaths = new Set(bundle.sources.map((source) => source.targetPath));
+  if (uniquePaths.some((path) => !ownedPaths.has(path))) {
+    throw new Error("The exact conversion bundle does not own every requested requirement path.");
+  }
   const currentSnapshot = await bundle.deps.loadPullSnapshot();
   const currentById = new Map(
     (currentSnapshot?.requirements ?? []).map((source) => [source.requirementId, source]),

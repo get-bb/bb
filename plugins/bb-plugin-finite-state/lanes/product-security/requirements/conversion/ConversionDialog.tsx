@@ -9,6 +9,7 @@ export interface ConversionDialogModel {
   requirementIds: string[];
   snapshotSha256: string;
   errors: Array<{ code: string; message: string; artifactId: string | null; line: number | null }>;
+  diffComplete?: boolean;
   diff?: Array<{
     key: string;
     label: string;
@@ -27,18 +28,15 @@ export function ConversionDialog({
   model,
   onClose,
   onRefresh,
-  onReview,
   onEdit,
   onDiscard,
 }: {
   model: ConversionDialogModel;
   onClose(): void;
   onRefresh(): void;
-  onReview(): void;
   onEdit(): void;
   onDiscard(): void;
 }): React.JSX.Element {
-  const reviewable = model.state === "awaiting_human" && (model.diff?.length ?? 0) > 0;
   return (
     <div aria-modal="true" className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-6 backdrop-blur-sm" role="dialog" aria-labelledby="conversion-title">
       <div className="flex max-h-[min(760px,90vh)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-xl">
@@ -68,6 +66,9 @@ export function ConversionDialog({
               <div className="flex items-start gap-3"><Icon aria-hidden="true" className="mt-0.5 size-5" name="FileDiff" /><div><p className="font-medium">Review the ordinary git/sync diff</p><p className="mt-1 text-sm text-muted-foreground">Approval acknowledges a valid local proposal only. It does not push or apply it.</p></div></div>
               {model.diff === undefined ? <p className="mt-3 text-sm text-muted-foreground">Loading selected requirement changes…</p> : null}
               {model.diff?.length === 0 ? <p className="mt-3 text-sm text-destructive">No selected requirement diff is available. Refresh gates before approval.</p> : null}
+              {model.diff !== undefined && model.diffComplete === false ? (
+                <p className="mt-3 text-sm text-destructive">The selected requirement diff is incomplete. Approval stays unavailable until every scoped requirement is shown.</p>
+              ) : null}
               {model.diff?.map((item) => (
                 <div className="mt-3 rounded-md border border-border bg-background p-3" key={item.key}>
                   <p className="text-sm font-medium">{item.label} · {item.operation}</p>
@@ -87,7 +88,10 @@ export function ConversionDialog({
           <button className="h-9 rounded-md border border-input px-3 text-sm font-medium hover:bg-muted" onClick={onRefresh} type="button">Refresh gates</button>
           <button className="h-9 rounded-md border border-input px-3 text-sm font-medium hover:bg-muted" onClick={onEdit} type="button">Edit files</button>
           <button className="h-9 rounded-md border border-destructive/40 px-3 text-sm font-medium text-destructive hover:bg-destructive/10" onClick={onDiscard} type="button">Discard</button>
-          <button className="h-9 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50" disabled={!reviewable} onClick={onReview} type="button">Approve local proposal</button>
+          <div className="flex flex-col items-end gap-1">
+            <button aria-describedby="conversion-approval-pending" className="h-9 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50" disabled type="button">Approve local proposal</button>
+            <p className="max-w-sm text-right text-xs text-muted-foreground" id="conversion-approval-pending">Human approval is pending an owner ruling on the trusted local-review transition.</p>
+          </div>
         </footer>
       </div>
     </div>
