@@ -35,6 +35,9 @@ export function pushDisabledReason({
   inFlight,
   authorizationAvailable,
 }: PushSafetyState): string | null {
+  if (!authorizationAvailable) {
+    return "Human push approval is unavailable in the web panel in v1";
+  }
   if (loading) return "Plan refresh in progress";
   if (inFlight) return "Push request in progress";
   if (plan.staleness.degraded || plan.cache.state !== "fresh") {
@@ -63,9 +66,6 @@ export function pushDisabledReason({
     return "Confirm the reviewed blast radius before pushing";
   }
   if (plan.blastRadius.remoteCalls === 0) return "This plan has no remote writes";
-  if (!authorizationAvailable) {
-    return "Human push approval is unavailable in the web panel in v1";
-  }
   return null;
 }
 

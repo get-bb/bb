@@ -110,4 +110,17 @@ describe("push safety matrix", () => {
       }),
     ).toBe("Fix every validation error before pushing");
   });
+
+  it("keeps the fail-closed v1 caption truthful for a degraded browser plan", () => {
+    expect(
+      reason({
+        authorizationAvailable: false,
+        plan: {
+          ...basePlan,
+          staleness: { ...basePlan.staleness, degraded: true },
+          cache: { ...basePlan.cache, state: "stale" },
+        },
+      }),
+    ).toBe("Human push approval is unavailable in the web panel in v1");
+  });
 });

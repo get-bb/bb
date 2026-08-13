@@ -291,6 +291,31 @@ describe("Sync review panel", () => {
     expect(slot.inspection.rpcCalls).toEqual([]);
   });
 
+  it.each([
+    "scope/platform-project/%40project",
+    "scope/platform-project/%40project/surface/triage",
+    "scope/platform-project/%40project/surface/vexDecision",
+  ])(
+    "renders truthful project-version guidance without RPCs for %s",
+    async (subPath) => {
+      const slot = renderSlot(await syncPanel(), { subPath }, { rpc: {} });
+
+      expect(slot.getByText("Choose a project version")).toBeTruthy();
+      expect(
+        slot.getByText(
+          "VEX decisions require a Platform project version. Enter a version ID above and apply the scope to review this surface.",
+        ),
+      ).toBeTruthy();
+      expect(
+        slot.getByText(
+          "No status or plan request was sent for this project-level route.",
+        ),
+      ).toBeTruthy();
+      expect(slot.queryByRole("button", { name: "Retry current scope" })).toBeNull();
+      expect(slot.inspection.rpcCalls).toEqual([]);
+    },
+  );
+
   it("loads all pages, preserves group order, and windows a 5k-item group", async () => {
     const allItems = Array.from({ length: 5_000 }, (_, index) => item(index));
     const syncPlan = vi.fn((input: unknown) => {
@@ -404,7 +429,7 @@ describe("Sync review panel", () => {
     expect(await stale.findByText("View-only degraded plan")).toBeTruthy();
     expect(stale.getByText("Offline view")).toBeTruthy();
     expect(
-      stale.getByText("Refresh the degraded or stale plan before pushing"),
+      stale.getByText("Human push approval is unavailable in the web panel in v1"),
     ).toBeTruthy();
   });
 

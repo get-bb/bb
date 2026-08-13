@@ -465,6 +465,31 @@ function MissingScopeState(): React.JSX.Element {
   );
 }
 
+function ProjectScopeGuidanceState({
+  surface,
+}: {
+  surface: SyncSurfaceFilter;
+}): React.JSX.Element {
+  const includesVexDecisions =
+    surface === "all" || surface === "triage" || surface === "vexDecision";
+  return (
+    <div className="flex min-h-80 items-center justify-center p-6">
+      <section className="w-full max-w-lg rounded-lg border border-border bg-card p-6 shadow-sm">
+        <Icon className="size-6 text-muted-foreground" name="Info" />
+        <h2 className="mt-4 text-lg font-semibold">Choose a project version</h2>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          {includesVexDecisions
+            ? "VEX decisions require a Platform project version. Enter a version ID above and apply the scope to review this surface."
+            : "This review surface is not available at project level in the current web panel. Enter a Platform version ID above and apply the scope."}
+        </p>
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">
+          No status or plan request was sent for this project-level route.
+        </p>
+      </section>
+    </div>
+  );
+}
+
 function ErrorState({ onRetry }: { onRetry(): void }): React.JSX.Element {
   return (
     <div className="flex min-h-80 items-center justify-center p-6">
@@ -603,7 +628,7 @@ export function SyncReviewPanel({
 
   const refresh = useCallback(
     async (keepVisible = false) => {
-      if (!activeScope || !route) return;
+      if (!activeScope || activeScope.projectVersionId === null || !route) return;
       const generation = requestGeneration.current + 1;
       requestGeneration.current = generation;
       if (keepVisible) setRefreshing(true);
@@ -656,7 +681,13 @@ export function SyncReviewPanel({
   );
 
   useEffect(() => {
-    if (!parsedRoute.valid || !activeScope) return;
+    if (
+      !parsedRoute.valid ||
+      !activeScope ||
+      activeScope.projectVersionId === null
+    ) {
+      return;
+    }
     void refresh(false);
   }, [activeScope, parsedRoute.valid, refresh]);
 
@@ -864,6 +895,10 @@ export function SyncReviewPanel({
       {!activeScope ? (
         <div className="min-h-0 flex-1 overflow-auto">
           <MissingScopeState />
+        </div>
+      ) : activeScope.projectVersionId === null ? (
+        <div className="min-h-0 flex-1 overflow-auto">
+          <ProjectScopeGuidanceState surface={surface} />
         </div>
       ) : state.kind === "loading" ? (
         <div className="min-h-0 flex-1 overflow-auto">
