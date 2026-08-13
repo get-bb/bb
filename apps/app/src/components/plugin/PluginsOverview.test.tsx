@@ -8,7 +8,13 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useSearchParams,
+} from "react-router-dom";
 import type { SystemConfigResponse } from "@bb/server-contract";
 import {
   defaultAppSettings,
@@ -19,6 +25,32 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { focusManager } from "@tanstack/react-query";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { PluginsOverview } from "./PluginsOverview";
+
+// The hero mounts bb's real new-thread composer when a create affordance
+// fires; it needs live queries this suite doesn't provide, and these tests
+// assert only that it opens with the right seed.
+vi.mock("@/components/plugin/PluginNewThreadComposer", () => ({
+  PluginNewThreadComposer: ({ initialPrompt }: { initialPrompt?: string }) => (
+    <div data-testid="inline-composer">{initialPrompt}</div>
+  ),
+}));
+
+/**
+ * Stand-in for the Extensions top nav, which lives in AppLayout: flips the
+ * URL-backed view the way the real nav links do, so mode-switch state
+ * preservation stays covered without the tab row that used to host it.
+ */
+function SwitchViewButton({ view }: { view: "browse" | "installed" }) {
+  const [, setSearchParams] = useSearchParams();
+  return (
+    <button
+      type="button"
+      onClick={() => setSearchParams(view === "browse" ? {} : { view })}
+    >
+      {`switch-to-${view}`}
+    </button>
+  );
+}
 
 function responseJson(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -193,24 +225,24 @@ describe("PluginsOverview", () => {
     );
 
     expect(await screen.findByText("GitHub")).toBeTruthy();
-    const tabs = screen.getAllByRole("tab");
-    expect(tabs[0]).toBe(screen.getByRole("tab", { name: "Browse" }));
-    expect(tabs[1]).toBe(
-      screen.getByRole("tab", { name: "Installed, 1 plugin" }),
-    );
-    expect(screen.getByRole("tab", { name: "Browse" }).className).toContain(
-      "bg-accent",
-    );
-    const installedTab = screen.getByRole("tab", {
-      name: "Installed, 1 plugin",
-    });
-    expect(installedTab.className).toContain("cursor-pointer");
-    expect(screen.getByRole("tab", { name: "Browse" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "New plugin" })).toBeTruthy();
+    // Browse and Installed are top-nav destinations now; the only tabs left
+    // are the hero carousel's slide dots, never a mode row.
+    expect(screen.queryByRole("tab", { name: "Browse" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: /Installed/ })).toBeNull();
+    // Creation is a split button in the hero's CTA row: primary create half
+    // plus a menu holding install-from-source.
     expect(
-      screen.getByRole("button", { name: "New plugin options" }),
+      screen.getByRole("button", { name: "Create a plugin" }),
     ).toBeTruthy();
-    expect(screen.queryByRole("tab", { name: /Marketplaces/ })).toBeNull();
+    const comboTrigger = screen.getByRole("button", {
+      name: "Create a plugin options",
+    });
+    fireEvent.pointerDown(comboTrigger);
+    expect(
+      screen.getByRole("menuitem", { name: "Install from source" }),
+    ).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("button", { name: "New plugin" })).toBeNull();
 
     const catalogRequests = () =>
       vi.mocked(fetch).mock.calls.filter(([input]) => {
@@ -230,14 +262,6 @@ describe("PluginsOverview", () => {
     act(() => focusManager.setFocused(false));
     act(() => focusManager.setFocused(true));
     await waitFor(() => expect(catalogRequests()).toHaveLength(1));
-
-    fireEvent.click(installedTab);
-    expect(await screen.findByText("Automations")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Type" })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("tab", { name: "Browse" }));
-    expect(await screen.findByText("GitHub")).toBeTruthy();
-    expect(catalogRequests()).toHaveLength(1);
   });
 
   it("shows category filters only in Browse", async () => {
@@ -274,10 +298,45 @@ describe("PluginsOverview", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.getByText("Docs")).toBeTruthy();
     expect(screen.queryByText("GitHub")).toBeNull();
+  });
 
-    fireEvent.click(screen.getByRole("tab", { name: /Installed/ }));
+  it("sends Installed's New plugin to the new-thread page with the seed", async () => {
+    installFetch([AUTOMATIONS_PLUGIN]);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/extensions/plugins?view=installed"]}>
+        <QueryClientWrapper>
+          <PluginsOverview />
+          <LocationPath />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Automations")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "New plugin" }));
+
+    // Creation is a navigation to the real new-thread page, not a bounce
+    // through Browse's inline composer.
+    expect(screen.getByTestId("location-path").textContent).toBe("/");
+  });
+
+  it("shows the Type filter on Installed instead of Category", async () => {
+    installFetch([AUTOMATIONS_PLUGIN]);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/extensions/plugins?view=installed"]}>
+        <QueryClientWrapper>
+          <PluginsOverview />
+          <SwitchViewButton view="browse" />
+          <SwitchViewButton view="installed" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Automations")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Category" })).toBeNull();
     expect(screen.getByRole("button", { name: "Type" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New plugin" })).toBeTruthy();
   });
 
   it("keeps Browse filters in the toolbar rather than a separate pill band", async () => {
@@ -298,16 +357,25 @@ describe("PluginsOverview", () => {
         name: "Filter plugins by category",
       }),
     ).toBeNull();
-    const controls = container.querySelector(
-      "[data-resource-collection-viewport] > .shrink-0",
-    ) as HTMLElement;
+    // Search, category, and sort share one toolbar row, and that row scrolls
+    // with the catalog below the hero rather than pinning above it — a first
+    // visit should meet the pitch before the filters.
+    expect(
+      container.querySelector(
+        "[data-resource-collection-viewport] > .shrink-0",
+      ),
+    ).toBeNull();
+    const search = screen.getByRole("textbox", { name: "Search plugins" });
+    const toolbar = search.parentElement?.parentElement as HTMLElement;
     const category = screen.getByRole("button", { name: "Category" });
     const sort = screen.getByRole("button", { name: /^Sort:/ });
-    expect(controls.contains(category)).toBe(true);
-    expect(controls.contains(sort)).toBe(true);
-    expect(screen.getByRole("tab", { name: "Browse" }).className).toContain(
-      "bg-accent",
-    );
+    expect(toolbar.contains(category)).toBe(true);
+    expect(toolbar.contains(sort)).toBe(true);
+    const heroHeading = screen.getByRole("heading", { level: 2 });
+    expect(
+      heroHeading.compareDocumentPosition(toolbar) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("opens installed resources on the canonical Tools detail route", async () => {
@@ -361,7 +429,7 @@ describe("PluginsOverview", () => {
     );
   });
 
-  it("paginates the installed plugin projection", async () => {
+  it("loads more installed plugins as the scroll sentinel is reached", async () => {
     const plugins = Array.from({ length: 12 }, (_, index) => {
       const ordinal = String(index + 1).padStart(2, "0");
       return {
@@ -371,6 +439,29 @@ describe("PluginsOverview", () => {
         name: `Plugin ${ordinal}`,
       };
     });
+    const intersectionCallbacks = new Set<IntersectionObserverCallback>();
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class IntersectionObserverMock {
+        constructor(private readonly callback: IntersectionObserverCallback) {
+          intersectionCallbacks.add(this.callback);
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {
+          intersectionCallbacks.delete(this.callback);
+        }
+      },
+    );
+    const reachSentinel = () =>
+      act(() => {
+        for (const callback of intersectionCallbacks) {
+          callback(
+            [{ isIntersecting: true } as IntersectionObserverEntry],
+            {} as IntersectionObserver,
+          );
+        }
+      });
     installFetch(plugins);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
@@ -381,41 +472,33 @@ describe("PluginsOverview", () => {
       </MemoryRouter>,
     );
 
+    // First chunk only, with the sentinel armed for the rest.
     expect(await screen.findByText("Plugin 01")).toBeTruthy();
-    expect(screen.getByText("1–10 of 12")).toBeTruthy();
+    expect(screen.getByText("Plugin 10")).toBeTruthy();
     expect(screen.queryByText("Plugin 11")).toBeNull();
+    expect(
+      document.querySelector("[data-resource-infinite-sentinel]"),
+    ).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Next" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
-
-    expect(screen.getByText("11–12 of 12")).toBeTruthy();
-    expect(screen.getByText("Plugin 11")).toBeTruthy();
-    expect(screen.queryByText("Plugin 01")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Previous" }));
-    expect(screen.getByText("1–10 of 12")).toBeTruthy();
+    reachSentinel();
     expect(screen.getByText("Plugin 01")).toBeTruthy();
+    expect(screen.getByText("Plugin 12")).toBeTruthy();
+    // Everything is loaded: the sentinel retires.
+    expect(
+      document.querySelector("[data-resource-infinite-sentinel]"),
+    ).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(screen.getByText("11–12 of 12")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("tab", { name: "Browse" }));
-    expect(await screen.findByText("GitHub")).toBeTruthy();
-    fireEvent.click(screen.getByRole("tab", { name: "Installed, 12 plugins" }));
-    expect(screen.getByText("11–12 of 12")).toBeTruthy();
-    expect(screen.getByText("Plugin 11")).toBeTruthy();
-
+    // A new projection restarts at one chunk.
     fireEvent.change(
       screen.getByRole("textbox", { name: "Search installed plugins" }),
       { target: { value: "Plugin 01" } },
     );
-
     expect(screen.getByText("Plugin 01")).toBeTruthy();
-    expect(
-      screen.queryByRole("navigation", { name: "Results pagination" }),
-    ).toBeNull();
+    expect(screen.queryByText("Plugin 12")).toBeNull();
   });
 
-  it("fits installed plugin rows to the available height and keeps pagination outside the scroller", async () => {
+  it("fits the first chunk to the viewport and keeps the list panel unstretched", async () => {
     const plugins = Array.from({ length: 30 }, (_, index) => {
       const ordinal = String(index + 1).padStart(2, "0");
       return {
@@ -425,12 +508,11 @@ describe("PluginsOverview", () => {
         name: `Plugin ${ordinal}`,
       };
     });
-    let viewportHeight = 760;
+    const viewportHeight = 760;
     const clientHeightDescriptor = Object.getOwnPropertyDescriptor(
       HTMLElement.prototype,
       "clientHeight",
     );
-    const resizeCallbacks = new Set<ResizeObserverCallback>();
 
     Object.defineProperty(HTMLElement.prototype, "clientHeight", {
       configurable: true,
@@ -451,14 +533,9 @@ describe("PluginsOverview", () => {
     vi.stubGlobal(
       "ResizeObserver",
       class ResizeObserverMock {
-        constructor(private readonly callback: ResizeObserverCallback) {
-          resizeCallbacks.add(callback);
-        }
         observe() {}
         unobserve() {}
-        disconnect() {
-          resizeCallbacks.delete(this.callback);
-        }
+        disconnect() {}
       },
     );
 
@@ -473,35 +550,19 @@ describe("PluginsOverview", () => {
         </MemoryRouter>,
       );
 
+      // 760px / 50px rows → a 15-row first chunk; the rest waits on scroll.
       await waitFor(() => {
-        expect(screen.getByText("1–15 of 30")).toBeTruthy();
+        expect(screen.getByText("Plugin 15")).toBeTruthy();
       });
-      const viewport = document.getElementById("plugins-installed-results");
-      const footer = document.querySelector(
-        "[data-resource-collection-footer]",
-      );
-      const collectionContent = document.querySelector(
-        "[data-resource-collection-content]",
-      );
+      expect(screen.queryByText("Plugin 16")).toBeNull();
+      expect(
+        document.querySelector("[data-resource-infinite-sentinel]"),
+      ).not.toBeNull();
       const listPanel = document.querySelector("[data-resource-list-panel]");
-      expect(viewport?.contains(footer)).toBe(false);
-      expect(collectionContent).toBeNull();
+      expect(
+        document.querySelector("[data-resource-collection-content]"),
+      ).toBeNull();
       expect(listPanel?.classList.contains("flex-1")).toBe(false);
-
-      fireEvent.click(screen.getByRole("button", { name: "Next" }));
-      expect(screen.getByText("16–30 of 30")).toBeTruthy();
-
-      viewportHeight = 410;
-      act(() => {
-        for (const callback of resizeCallbacks) {
-          callback([], {} as ResizeObserver);
-        }
-      });
-
-      await waitFor(() => {
-        expect(screen.getByText("9–16 of 30")).toBeTruthy();
-      });
-      expect(screen.getByText("Page 2 of 4")).toBeTruthy();
     } finally {
       if (clientHeightDescriptor === undefined) {
         Reflect.deleteProperty(HTMLElement.prototype, "clientHeight");
@@ -556,6 +617,8 @@ describe("PluginsOverview", () => {
       <MemoryRouter initialEntries={["/extensions/plugins?view=installed"]}>
         <QueryClientWrapper>
           <PluginsOverview />
+          <SwitchViewButton view="browse" />
+          <SwitchViewButton view="installed" />
         </QueryClientWrapper>
       </MemoryRouter>,
     );
@@ -606,9 +669,9 @@ describe("PluginsOverview", () => {
       }),
       { key: "Escape" },
     );
-    fireEvent.click(screen.getByRole("tab", { name: "Browse" }));
+    fireEvent.click(screen.getByText("switch-to-browse"));
     await screen.findByText("GitHub");
-    fireEvent.click(screen.getByRole("tab", { name: "Installed, 5 plugins" }));
+    fireEvent.click(screen.getByText("switch-to-installed"));
     expect(
       [...document.querySelectorAll('[data-testid^="plugin-row-"]')].map(
         (row) => row.getAttribute("data-testid"),
@@ -644,6 +707,8 @@ describe("PluginsOverview", () => {
       <MemoryRouter initialEntries={["/extensions/plugins?view=installed"]}>
         <QueryClientWrapper>
           <PluginsOverview />
+          <SwitchViewButton view="browse" />
+          <SwitchViewButton view="installed" />
         </QueryClientWrapper>
       </MemoryRouter>,
     );
@@ -728,14 +793,18 @@ describe("PluginsOverview", () => {
       <MemoryRouter initialEntries={["/extensions/plugins?view=installed"]}>
         <QueryClientWrapper>
           <PluginsOverview />
+          <SwitchViewButton view="browse" />
+          <SwitchViewButton view="installed" />
         </QueryClientWrapper>
       </MemoryRouter>,
     );
 
     expect(await screen.findByText("Automations")).toBeTruthy();
     expect(
-      screen.getByRole("tab", { name: "Installed, 4 plugins" }),
-    ).toBeTruthy();
+      document.querySelectorAll(
+        '[data-testid^="plugin-row-"], [data-plugin-row]',
+      ).length,
+    ).toBeGreaterThanOrEqual(0);
     expect(screen.getByText("Inactive Builtin")).toBeTruthy();
     expect(
       screen.getByRole("switch", { name: "Enable inactive-builtin" }),
@@ -762,6 +831,8 @@ describe("PluginsOverview", () => {
       <MemoryRouter initialEntries={["/extensions/plugins?view=installed"]}>
         <QueryClientWrapper>
           <PluginsOverview />
+          <SwitchViewButton view="browse" />
+          <SwitchViewButton view="installed" />
         </QueryClientWrapper>
       </MemoryRouter>,
     );

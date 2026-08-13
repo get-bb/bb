@@ -15,6 +15,8 @@ import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
 } from "@/components/dialogs/ConfirmDeleteDialog";
+import { CreateWithTemplatesButton } from "@/components/create-via-prompt-examples";
+import { BrowseHeroCarousel } from "@/components/plugin/browse-hero/BrowseHeroCarousel";
 import { appToast } from "@/components/ui/app-toast";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
 import {
@@ -34,10 +36,14 @@ export function BrowsePluginsTab({
   onInstall,
   onOpenPlugin,
 }: {
-  onInstall: (initial: AddPluginInitial) => void;
+  onInstall: (initial: AddPluginInitial | null) => void;
   onOpenPlugin: (pluginId: string) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [heroOpenRequest, setHeroOpenRequest] = useState<{
+    nonce: number;
+    seed?: string;
+  } | null>(null);
   // Empty means unfiltered, matching the Type filters on Installed and Skills.
   const [categories, setCategories] = useState<string[]>([]);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
@@ -71,11 +77,37 @@ export function BrowsePluginsTab({
       return left.entryId.localeCompare(right.entryId);
     });
 
+  const openHeroComposer = (seed?: string) => {
+    setHeroOpenRequest((current) => ({
+      nonce: (current?.nonce ?? 0) + 1,
+      ...(seed === undefined ? {} : { seed }),
+    }));
+  };
+
   return (
     <ResourceCollectionViewport
       scrollId="plugins-browse-results"
-      contentClassName="space-y-4"
-      toolbar={
+      contentClassName="space-y-6"
+    >
+      <div className="space-y-4">
+        <BrowseHeroCarousel openRequest={heroOpenRequest} />
+        <div className="flex justify-center">
+          <CreateWithTemplatesButton
+            kind="plugin"
+            label="Create a plugin"
+            menuActions={[
+              {
+                label: "Install from source",
+                icon: "Download",
+                onSelect: () => onInstall(null),
+              },
+            ]}
+            onCreate={openHeroComposer}
+          />
+        </div>
+      </div>
+
+      <div>
         <ResourceToolbar
           searchValue={query}
           searchPlaceholder="Search plugins"
@@ -106,8 +138,8 @@ export function BrowsePluginsTab({
             </>
           }
         />
-      }
-    >
+      </div>
+
       {searchQuery.isError && entries.length > 0 ? (
         <p className="text-xs text-warning-text" role="status">
           Showing cached catalog results because the latest search failed.

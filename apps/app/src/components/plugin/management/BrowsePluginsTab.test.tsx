@@ -2,9 +2,19 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { BrowsePluginsTab } from "./BrowsePluginsTab";
+
+// The hero mounts bb's real new-thread composer on demand; it needs live
+// project/host/provider queries this suite doesn't provide, and the tab's own
+// contract is only that create affordances open it.
+vi.mock("@/components/plugin/PluginNewThreadComposer", () => ({
+  PluginNewThreadComposer: ({ initialPrompt }: { initialPrompt?: string }) => (
+    <div data-testid="inline-composer">{initialPrompt}</div>
+  ),
+}));
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -108,9 +118,17 @@ describe("BrowsePluginsTab", () => {
     );
 
     const { wrapper } = createQueryClientTestHarness();
-    render(<BrowsePluginsTab onInstall={() => {}} onOpenPlugin={() => {}} />, {
-      wrapper,
-    });
+    render(
+      <MemoryRouter>
+        <BrowsePluginsTab
+          onInstall={() => {}}
+          onOpenPlugin={() => {}}
+        />
+      </MemoryRouter>,
+      {
+        wrapper,
+      },
+    );
 
     expect(await screen.findByText("Alpha")).toBeTruthy();
     const cardOrder = () =>
@@ -167,7 +185,12 @@ describe("BrowsePluginsTab", () => {
 
     const { wrapper } = createQueryClientTestHarness();
     const { container } = render(
-      <BrowsePluginsTab onInstall={() => {}} onOpenPlugin={() => {}} />,
+      <MemoryRouter>
+        <BrowsePluginsTab
+          onInstall={() => {}}
+          onOpenPlugin={() => {}}
+        />
+      </MemoryRouter>,
       { wrapper },
     );
 
@@ -235,7 +258,12 @@ describe("BrowsePluginsTab", () => {
     const onOpenPlugin = vi.fn();
     const { wrapper } = createQueryClientTestHarness();
     render(
-      <BrowsePluginsTab onInstall={onInstall} onOpenPlugin={onOpenPlugin} />,
+      <MemoryRouter>
+        <BrowsePluginsTab
+          onInstall={onInstall}
+          onOpenPlugin={onOpenPlugin}
+        />
+      </MemoryRouter>,
       { wrapper },
     );
 
@@ -271,7 +299,14 @@ describe("BrowsePluginsTab", () => {
     }
     expect(githubDescription.className).toContain("min-h-[2lh]");
     expect(screen.getByRole("button", { name: "Category" })).toBeTruthy();
-    expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
+    // The catalog grid stays flat — no per-source section heading above it.
+    // The discovery hero's own heading sits above the results and is expected.
+    expect(
+      screen.queryByRole("heading", { name: /BB Official plugins/i }),
+    ).toBeNull();
+    expect(screen.getByRole("heading", { level: 2 }).textContent).toContain(
+      "Turn bb into",
+    );
     expect(screen.getByRole("button", { name: "Install Memory" })).toBeTruthy();
     expect(screen.queryByText("BB Official plugins")).toBeNull();
 
@@ -327,9 +362,17 @@ describe("BrowsePluginsTab", () => {
     );
 
     const { wrapper } = createQueryClientTestHarness();
-    render(<BrowsePluginsTab onInstall={() => {}} onOpenPlugin={() => {}} />, {
-      wrapper,
-    });
+    render(
+      <MemoryRouter>
+        <BrowsePluginsTab
+          onInstall={() => {}}
+          onOpenPlugin={() => {}}
+        />
+      </MemoryRouter>,
+      {
+        wrapper,
+      },
+    );
 
     expect((await screen.findByRole("alert")).textContent).toContain(
       "BB's official plugins are unavailable.",
@@ -365,7 +408,12 @@ describe("BrowsePluginsTab", () => {
     const { wrapper } = createQueryClientTestHarness();
     const onOpenPlugin = vi.fn();
     render(
-      <BrowsePluginsTab onInstall={() => {}} onOpenPlugin={onOpenPlugin} />,
+      <MemoryRouter>
+        <BrowsePluginsTab
+          onInstall={() => {}}
+          onOpenPlugin={onOpenPlugin}
+        />
+      </MemoryRouter>,
       { wrapper },
     );
 
@@ -459,7 +507,12 @@ describe("BrowsePluginsTab", () => {
     const { wrapper } = createQueryClientTestHarness();
     const onOpenPlugin = vi.fn();
     render(
-      <BrowsePluginsTab onInstall={() => {}} onOpenPlugin={onOpenPlugin} />,
+      <MemoryRouter>
+        <BrowsePluginsTab
+          onInstall={() => {}}
+          onOpenPlugin={onOpenPlugin}
+        />
+      </MemoryRouter>,
       { wrapper },
     );
 
@@ -470,4 +523,5 @@ describe("BrowsePluginsTab", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open Docs details" }));
     expect(onOpenPlugin).toHaveBeenCalledWith("simple-notes");
   });
+
 });
