@@ -1070,6 +1070,31 @@ describe("plugin install flows", () => {
           service.install(`path:${repoDir}`, { kind: "entry", name: "escape" }),
         ).rejects.toThrowError(/resolves outside its root/);
       });
+
+      it("refuses a collection entry symlinked to the repository root", async () => {
+        const repoDir = join(workDir, "repo-collection-root-link");
+        await writePluginFixture(repoDir, {
+          name: "bb-plugin-collection-root-link",
+        });
+        await mkdir(join(repoDir, "plugins"), { recursive: true });
+        await mkdir(join(repoDir, ".bb"), { recursive: true });
+        await writeFile(
+          join(repoDir, ".bb", "plugins.json"),
+          JSON.stringify({
+            schemaVersion: 1,
+            name: "collection",
+            plugins: [{ name: "root-link", source: "./plugins/root-link" }],
+          }),
+        );
+        await symlink("..", join(repoDir, "plugins", "root-link"));
+
+        await expect(
+          service.install(`path:${repoDir}`, {
+            kind: "entry",
+            name: "root-link",
+          }),
+        ).rejects.toThrowError(/resolves to its root/);
+      });
     },
   );
 

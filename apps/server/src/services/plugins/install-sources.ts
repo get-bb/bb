@@ -258,12 +258,16 @@ export async function realPathInside(
   root: string,
   target: string,
   label: string,
+  allowRoot = false,
 ): Promise<string> {
   const [realRoot, realTarget] = await Promise.all([
     realpath(root),
     realpath(target),
   ]);
   const fromRoot = relative(realRoot, realTarget);
+  if (fromRoot === "" && !allowRoot) {
+    throw new Error(`${label} resolves to its root`);
+  }
   if (fromRoot === ".." || fromRoot.startsWith(`..${sep}`)) {
     throw new Error(`${label} resolves outside its root`);
   }
@@ -451,6 +455,7 @@ export async function promoteGitPluginArtifact(args: {
     args.stagingDir,
     pluginRootDir(args.stagingDir, args.subdirectory),
     "git plugin subdirectory",
+    args.subdirectory === null,
   );
   const targetRoot = pluginRootDir(args.targetDir, args.subdirectory);
   let preservedCount = 0;

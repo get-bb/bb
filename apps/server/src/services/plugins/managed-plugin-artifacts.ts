@@ -527,6 +527,7 @@ export function createManagedPluginArtifacts(
               targetDir,
               targetRoot,
               "git plugin subdirectory",
+              cachedSubdirectory === null,
             ).catch(() => null);
       const cachedManifest =
         cachedRealRoot === null
@@ -604,6 +605,7 @@ export function createManagedPluginArtifacts(
           stagingDir,
           pluginRootDir(stagingDir, stagedSubdirectory),
           "git plugin subdirectory",
+          stagedSubdirectory === null,
         );
         const stagedManifest = await readPluginManifest(stagedRealRoot);
         assertExpectedPluginId(context, stagedManifest.id, source);
@@ -971,6 +973,7 @@ export function createManagedPluginArtifacts(
         targetDir,
         targetRoot,
         "git plugin subdirectory",
+        args.row.sourceGitSubdirectory === null,
       );
       const manifest = await readPluginManifest(targetRealRoot);
       const compatibility = evaluateCompatibility({
@@ -1051,6 +1054,7 @@ export function createManagedPluginArtifacts(
           stagingDir,
           pluginRoot,
           "git plugin subdirectory",
+          args.row.sourceGitSubdirectory === null,
         );
       } catch (error) {
         return {
