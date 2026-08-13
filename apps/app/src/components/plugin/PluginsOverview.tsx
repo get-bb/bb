@@ -80,12 +80,22 @@ export function PluginsOverview() {
   const [installedQuery, setInstalledQuery] = useState("");
   const [installedViewport, setInstalledViewport] =
     useState<HTMLDivElement | null>(null);
-  const installedPageSize = useResourceViewportPageSize(installedViewport);
   const [installedSortDirection, setInstalledSortDirection] = useState<
     "asc" | "desc"
   >("asc");
   // Empty means unfiltered: the menu has no explicit "All" row.
   const [typeFilters, setTypeFilters] = useState<PluginTypeFilter[]>([]);
+  const normalizedInstalledQuery = installedQuery.trim().toLowerCase();
+  // One projection identity for both the page selection and the row heights
+  // the page size is measured from.
+  const installedResetKey = [
+    normalizedInstalledQuery,
+    installedSortDirection,
+    [...typeFilters].sort().join(","),
+  ].join("\u0000");
+  const installedPageSize = useResourceViewportPageSize(installedViewport, {
+    resetKey: installedResetKey,
+  });
   const [addDialog, setAddDialog] = useState<{
     open: boolean;
     initial: AddPluginInitial | null;
@@ -102,7 +112,6 @@ export function PluginsOverview() {
       }`,
     },
   ];
-  const normalizedInstalledQuery = installedQuery.trim().toLowerCase();
   const visiblePlugins = useMemo(
     () =>
       plugins
@@ -147,11 +156,7 @@ export function PluginsOverview() {
   );
   const installedPagination = useResourcePagination(visiblePlugins, {
     pageSize: installedPageSize,
-    resetKey: [
-      normalizedInstalledQuery,
-      installedSortDirection,
-      [...typeFilters].sort().join(","),
-    ].join("\u0000"),
+    resetKey: installedResetKey,
   });
   const hasInstalledPagination =
     !listQuery.isError &&

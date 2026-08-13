@@ -28,6 +28,13 @@ interface ResourcePaginationResult<Item> {
 
 interface ResourceViewportPageSizeOptions {
   fallbackPageSize?: number;
+  /**
+   * Changes when search, filters, or sorting define a new projection — the
+   * same key {@link useResourcePagination} resets the selected page on. A new
+   * projection measures row heights from scratch, because the rows that set
+   * the current height may not be in it.
+   */
+  resetKey?: string;
 }
 
 function cssPixelValue(value: string): number {
@@ -90,10 +97,12 @@ function measureResourceViewportPageSize(
 /**
  * Fits complete resource rows into a measured collection scroll viewport.
  *
- * The page size only ever shrinks while one viewport stays mounted, because a
- * measurement that could grow it again is the loop described in
- * {@link measureResourceViewportPageSize}. A new collection — a different
- * viewport element — measures from scratch.
+ * Row heights are remembered, so the page size only shrinks while the same
+ * rows can be on the page: growing it back is the loop described in
+ * {@link measureResourceViewportPageSize}. Anything that is not the page
+ * itself — a new projection through `resetKey`, a width change that re-wraps
+ * text, a different viewport element — starts the measurement over, and none
+ * of those can be caused by the page size.
  */
 export function useResourceViewportPageSize(
   viewport: HTMLElement | null,
@@ -103,6 +112,7 @@ export function useResourceViewportPageSize(
     1,
     Math.floor(options.fallbackPageSize ?? RESOURCE_LIST_PAGE_SIZE),
   );
+  const resetKey = options.resetKey ?? "";
   const [pageSize, setPageSize] = useState(fallbackPageSize);
 
   useEffect(() => {
@@ -112,6 +122,7 @@ export function useResourceViewportPageSize(
     let observedPanel: HTMLElement | null = null;
     let resizeObserver: ResizeObserver | null = null;
     let tallestRowHeight = 0;
+    let measuredWidth = viewportElement.clientWidth;
     let scheduledFrame: number | null = null;
 
     function observeCurrentPanel() {
@@ -126,6 +137,16 @@ export function useResourceViewportPageSize(
 
     function measure() {
       observeCurrentPanel();
+      // A row is as tall as its text needs at this width, so a resize makes
+      // every remembered height wrong — a wider window unwraps a description
+      // and the rows that forced a small page size are short again. Nothing
+      // the page size does changes this width (the viewport hides its native
+      // scrollbar), so starting over here cannot restart the loop.
+      const width = viewportElement.clientWidth;
+      if (width !== measuredWidth) {
+        measuredWidth = width;
+        tallestRowHeight = 0;
+      }
       const measurement = measureResourceViewportPageSize(
         viewportElement,
         fallbackPageSize,
@@ -176,7 +197,9 @@ export function useResourceViewportPageSize(
         cancelAnimationFrame(scheduledFrame);
       }
     };
-  }, [fallbackPageSize, viewport]);
+    // A new projection re-runs this effect, which drops the remembered row
+    // height with it. Paging never changes the key, so the loop stays closed.
+  }, [fallbackPageSize, resetKey, viewport]);
 
   return viewport === null ? fallbackPageSize : pageSize;
 }
