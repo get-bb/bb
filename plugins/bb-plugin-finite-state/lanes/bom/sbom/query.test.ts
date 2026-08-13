@@ -44,8 +44,14 @@ function insert(
     source?: string;
   },
 ): string {
-  const purl = input.purl === undefined ? `pkg:generic/${input.id}@1` : input.purl;
-  const key = componentKeyFromIdentity({ purl, name: input.name, group: "group", version: "1" });
+  const purl =
+    input.purl === undefined ? `pkg:generic/${input.id}@1` : input.purl;
+  const key = componentKeyFromIdentity({
+    purl,
+    name: input.name,
+    group: "group",
+    version: "1",
+  });
   db.prepare(
     `INSERT INTO sbom_components
        (project_id, project_version_id, generation_id, component_id, component_key,
@@ -84,17 +90,43 @@ function insert(
 
 const hosts: Array<ReturnType<typeof createFakePluginHost>> = [];
 afterEach(async () => {
-  await Promise.all(hosts.splice(0).map((host) => host.harness.lifecycle.dispose()));
+  await Promise.all(
+    hosts.splice(0).map((host) => host.harness.lifecycle.dispose()),
+  );
 });
 
 describe("cached SBOM query", () => {
   it("filters every supported predicate and returns stable cursor pages", () => {
     const db = createDb();
-    insert(db, { id: "a", name: "Equal", license: "MIT", severity: "critical", kev: 1, reachability: "reachable" });
-    const second = insert(db, { id: "b", name: "Equal", license: "Apache-2.0", severity: "medium", reachability: "unreachable" });
-    const noPurl = insert(db, { id: "c", name: "No Purl", purl: null, license: "MIT", severity: "low", reachability: "unknown" });
+    insert(db, {
+      id: "a",
+      name: "Equal",
+      license: "MIT",
+      severity: "critical",
+      kev: 1,
+      reachability: "reachable",
+    });
+    const second = insert(db, {
+      id: "b",
+      name: "Equal",
+      license: "Apache-2.0",
+      severity: "medium",
+      reachability: "unreachable",
+    });
+    const noPurl = insert(db, {
+      id: "c",
+      name: "No Purl",
+      purl: null,
+      license: "MIT",
+      severity: "low",
+      reachability: "unknown",
+    });
 
-    const firstPage = querySbom(db, { projectVersionId: "v", limit: 1, search: "equal" });
+    const firstPage = querySbom(db, {
+      projectVersionId: "v",
+      limit: 1,
+      search: "equal",
+    });
     expect(firstPage.items).toHaveLength(1);
     expect(firstPage.cursor).not.toBeNull();
     const nextPage = querySbom(db, {
@@ -104,13 +136,37 @@ describe("cached SBOM query", () => {
       cursor: firstPage.cursor ?? undefined,
     });
     expect(nextPage.items).toHaveLength(1);
-    expect(nextPage.items[0]!.componentKey).not.toBe(firstPage.items[0]!.componentKey);
-    expect(querySbom(db, { projectVersionId: "v", purl: "generic/b", limit: 20 }).items[0]!.componentKey).toBe(second);
-    expect(querySbom(db, { projectVersionId: "v", license: "MIT", limit: 20 }).total).toBe(2);
-    expect(querySbom(db, { projectVersionId: "v", minimumSeverity: "high", limit: 20 }).total).toBe(1);
-    expect(querySbom(db, { projectVersionId: "v", kev: true, limit: 20 }).total).toBe(1);
-    expect(querySbom(db, { projectVersionId: "v", reachability: "unreachable", limit: 20 }).total).toBe(1);
-    expect(querySbom(db, { projectVersionId: "v", componentKey: noPurl, limit: 20 }).items[0]).toMatchObject({
+    expect(nextPage.items[0]!.componentKey).not.toBe(
+      firstPage.items[0]!.componentKey,
+    );
+    expect(
+      querySbom(db, { projectVersionId: "v", purl: "generic/b", limit: 20 })
+        .items[0]!.componentKey,
+    ).toBe(second);
+    expect(
+      querySbom(db, { projectVersionId: "v", license: "MIT", limit: 20 }).total,
+    ).toBe(2);
+    expect(
+      querySbom(db, {
+        projectVersionId: "v",
+        minimumSeverity: "high",
+        limit: 20,
+      }).total,
+    ).toBe(1);
+    expect(
+      querySbom(db, { projectVersionId: "v", kev: true, limit: 20 }).total,
+    ).toBe(1);
+    expect(
+      querySbom(db, {
+        projectVersionId: "v",
+        reachability: "unreachable",
+        limit: 20,
+      }).total,
+    ).toBe(1);
+    expect(
+      querySbom(db, { projectVersionId: "v", componentKey: noPurl, limit: 20 })
+        .items[0],
+    ).toMatchObject({
       componentKey: noPurl,
       purl: null,
       files: ["/c"],
@@ -120,10 +176,12 @@ describe("cached SBOM query", () => {
 
   it("enforces the 200 row maximum and rejects malformed cursors with BAD_CURSOR", () => {
     const db = createDb();
-    expect(() => querySbom(db, { projectVersionId: "v", limit: 201 })).toThrow(/between 1 and 200/u);
-    expect(() => querySbom(db, { projectVersionId: "v", cursor: "not-a-cursor" })).toThrowError(
-      expect.objectContaining({ code: "BAD_CURSOR" }),
+    expect(() => querySbom(db, { projectVersionId: "v", limit: 201 })).toThrow(
+      /between 1 and 200/u,
     );
+    expect(() =>
+      querySbom(db, { projectVersionId: "v", cursor: "not-a-cursor" }),
+    ).toThrowError(expect.objectContaining({ code: "BAD_CURSOR" }));
     db.close();
   });
 
@@ -137,7 +195,12 @@ describe("cached SBOM query", () => {
       kev: 2,
       source: "sca",
     });
-    insert(db, { id: "plain", name: "Plain", license: "MIT", source: "manual" });
+    insert(db, {
+      id: "plain",
+      name: "Plain",
+      license: "MIT",
+      source: "manual",
+    });
     db.exec(`
       INSERT INTO sync_state
         (project_id, project_version_id, entity_kind, accepted_generation_id,
@@ -156,12 +219,18 @@ describe("cached SBOM query", () => {
         '.fs/triage/finding.yaml', 'hash', 'dirty',
         '2026-08-12T20:00:00.000Z');
     `);
-    expect(querySbom(db, { projectVersionId: "v", source: "sca" }).items).toHaveLength(1);
-    expect(querySbom(db, { projectVersionId: "v", linked: true }).items[0]).toMatchObject({
+    expect(
+      querySbom(db, { projectVersionId: "v", source: "sca" }).items,
+    ).toHaveLength(1);
+    expect(
+      querySbom(db, { projectVersionId: "v", linked: true }).items[0],
+    ).toMatchObject({
       componentKey: linked,
       linked: true,
     });
-    expect(querySbom(db, { projectVersionId: "v", localChange: true }).items[0]).toMatchObject({
+    expect(
+      querySbom(db, { projectVersionId: "v", localChange: true }).items[0],
+    ).toMatchObject({
       componentKey: linked,
       localChange: true,
     });
@@ -181,7 +250,9 @@ describe("cached SBOM query", () => {
         cursor: first.cursor ?? undefined,
       });
       expect(second.items).toHaveLength(1);
-      expect(second.items[0]!.componentKey).not.toBe(first.items[0]!.componentKey);
+      expect(second.items[0]!.componentKey).not.toBe(
+        first.items[0]!.componentKey,
+      );
     }
     db.close();
   });
@@ -233,31 +304,79 @@ describe("cached SBOM query", () => {
     db.close();
   });
 
-  it("serves first and filtered pages for 10,000 cached components within the cache budget", () => {
+  it("serves finding-bearing 10,000-component pages without embedding quadratic detail", () => {
     const db = createDb();
+    db.exec(`
+      INSERT INTO sync_state
+        (project_id, project_version_id, entity_kind, accepted_generation_id,
+         base_revision, last_pull)
+      VALUES ('p', 'v', 'finding', 'g', 1, '2026-08-12T20:00:00.000Z');
+    `);
+    const findingInsert = db.prepare(
+      `INSERT INTO findings
+        (project_id, project_version_id, generation_id, finding_id, stable_key,
+         cve, component_name, component_group, component_version, component_purl,
+         severity, raw, pulled_at)
+       VALUES ('p', 'v', 'g', ?, ?, ?, ?, 'group', '1', ?, 'high', '{}',
+               '2026-08-12T20:00:00.000Z')`,
+    );
     const write = db.transaction(() => {
       for (let index = 0; index < 10_000; index += 1) {
+        const id = `component-${index.toString().padStart(5, "0")}`;
         insert(db, {
-          id: `component-${index.toString().padStart(5, "0")}`,
+          id,
           name: index % 200 === 0 ? `needle-${index}` : `component-${index}`,
           license: index % 2 ? "MIT" : "Apache-2.0",
         });
+        for (let findingIndex = 0; findingIndex < 4; findingIndex += 1) {
+          const findingId = `finding-${index}-${findingIndex}`;
+          findingInsert.run(
+            findingId,
+            `stable-${findingId}`,
+            `CVE-2026-${index * 4 + findingIndex}`,
+            index % 200 === 0 ? `needle-${index}` : `component-${index}`,
+            `pkg:generic/${id}@1`,
+          );
+        }
       }
     });
     write();
     const started = performance.now();
-    expect(querySbom(db, { projectVersionId: "v", limit: 50 }).items).toHaveLength(50);
+    const firstPage = querySbom(db, { projectVersionId: "v", limit: 50 });
+    expect(firstPage.items).toHaveLength(50);
+    expect("findings" in firstPage.items[0]!).toBe(false);
     const firstMs = performance.now() - started;
     const filteredStarted = performance.now();
-    expect(querySbom(db, { projectVersionId: "v", search: "needle", limit: 50 }).total).toBe(50);
+    expect(
+      querySbom(db, { projectVersionId: "v", search: "needle", limit: 50 })
+        .total,
+    ).toBe(50);
     const filteredMs = performance.now() - filteredStarted;
-    expect(firstMs).toBeLessThan(1_000);
-    expect(filteredMs).toBeLessThan(1_000);
+    const detailStarted = performance.now();
+    expect(
+      queryComponentFindings(
+        db,
+        "p",
+        "v",
+        componentKeyFromIdentity({
+          purl: "pkg:generic/component-00000@1",
+          name: "needle-0",
+          group: "group",
+          version: "1",
+        }),
+      ),
+    ).toHaveLength(4);
+    const detailMs = performance.now() - detailStarted;
+    expect(firstMs).toBeLessThan(500);
+    expect(filteredMs).toBeLessThan(500);
+    expect(detailMs).toBeLessThan(1_000);
     db.close();
   });
 
   it("registers every frozen BOM RPC and binary seam reload-safely", async () => {
-    const host = createFakePluginHost({ pluginId: "finite-state-bom-registration" });
+    const host = createFakePluginHost({
+      pluginId: "finite-state-bom-registration",
+    });
     hosts.push(host);
     registerBom(host.bb, createPluginContext(host.bb));
     const page = await host.harness.behavior.callRpc("bomSoftwareList", {
@@ -266,33 +385,52 @@ describe("cached SBOM query", () => {
       pageSize: 20,
       continuation: null,
     });
-    expect(page).toMatchObject({ items: [], total: 0, next: null, cache: { state: "empty" } });
-    await expect(host.harness.behavior.callRpc("bomSoftwareList", {
-      projectId: "p",
-      projectVersionId: "v",
-      pageSize: 20,
-      continuation: null,
-      filters: { unsupported: true },
-    })).rejects.toThrow(/unsupported filters: unsupported/u);
-    await expect(host.harness.behavior.callRpc("hbomReviewList", {
-      projectId: "p",
-      projectVersionId: null,
-      pageSize: 20,
-      continuation: null,
-    })).rejects.toThrow(/NOT_IMPLEMENTED/u);
-    expect((await host.harness.behavior.fetchHttp("GET", "/sbom/export")).status).toBe(501);
-    expect((await host.harness.behavior.fetchHttp("GET", "/hbom/export.xlsx")).status).toBe(501);
-    expect((await host.harness.behavior.fetchHttp("GET", "/hbom/export.cdx.json")).status).toBe(501);
+    expect(page).toMatchObject({
+      items: [],
+      total: 0,
+      next: null,
+      cache: { state: "empty" },
+    });
+    await expect(
+      host.harness.behavior.callRpc("bomSoftwareList", {
+        projectId: "p",
+        projectVersionId: "v",
+        pageSize: 20,
+        continuation: null,
+        filters: { unsupported: true },
+      }),
+    ).rejects.toThrow(/unsupported filters: unsupported/u);
+    await expect(
+      host.harness.behavior.callRpc("hbomReviewList", {
+        projectId: "p",
+        projectVersionId: null,
+        pageSize: 20,
+        continuation: null,
+      }),
+    ).rejects.toThrow(/NOT_IMPLEMENTED/u);
+    expect(
+      (await host.harness.behavior.fetchHttp("GET", "/sbom/export")).status,
+    ).toBe(501);
+    expect(
+      (await host.harness.behavior.fetchHttp("GET", "/hbom/export.xlsx"))
+        .status,
+    ).toBe(501);
+    expect(
+      (await host.harness.behavior.fetchHttp("GET", "/hbom/export.cdx.json"))
+        .status,
+    ).toBe(501);
 
     const replacement = await host.harness.lifecycle.reload((bb) => {
       registerBom(bb, createPluginContext(bb));
     });
     hosts.push(replacement);
-    expect(await replacement.harness.behavior.callRpc("bomSoftwareList", {
-      projectId: "p",
-      projectVersionId: "v",
-      pageSize: 20,
-      continuation: null,
-    })).toMatchObject({ items: [], total: 0 });
+    expect(
+      await replacement.harness.behavior.callRpc("bomSoftwareList", {
+        projectId: "p",
+        projectVersionId: "v",
+        pageSize: 20,
+        continuation: null,
+      }),
+    ).toMatchObject({ items: [], total: 0 });
   });
 });

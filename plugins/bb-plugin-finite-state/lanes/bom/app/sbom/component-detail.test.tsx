@@ -6,6 +6,7 @@ import {
   installTestPluginRuntime,
   renderSlot,
 } from "@bb/plugin-sdk/testing/app";
+import { focusSubPath } from "../../../product-security/canvas/nodes/selection.js";
 
 const freshCache = {
   state: "fresh" as const,
@@ -47,10 +48,34 @@ function componentResult(stale = false) {
       findings: [],
     },
     links: [
-      { projectId: "project-1", projectVersionId: "version-1", kind: "component", key: "gateway-node", label: "Gateway node" },
-      { projectId: "project-1", projectVersionId: "version-1", kind: "threat", key: "THREAT-1", label: "Remote access" },
-      { projectId: "project-1", projectVersionId: "version-1", kind: "requirement", key: "REQ-1", label: "Secure boot" },
-      { projectId: "project-1", projectVersionId: "version-1", kind: "hbomPart", key: "PART-1", label: "Gateway module" },
+      {
+        projectId: "project-1",
+        projectVersionId: "version-1",
+        kind: "component",
+        key: "gateway-node",
+        label: "Gateway node",
+      },
+      {
+        projectId: "project-1",
+        projectVersionId: "version-1",
+        kind: "threat",
+        key: "THREAT-1",
+        label: "Remote access",
+      },
+      {
+        projectId: "project-1",
+        projectVersionId: "version-1",
+        kind: "requirement",
+        key: "REQ-1",
+        label: "Secure boot",
+      },
+      {
+        projectId: "project-1",
+        projectVersionId: "version-1",
+        kind: "hbomPart",
+        key: "PART-1",
+        label: "Gateway module",
+      },
     ],
     cache: stale
       ? { ...freshCache, state: "stale" as const, message: "Refresh failed." }
@@ -60,58 +85,114 @@ function componentResult(stale = false) {
 
 describe("ComponentDetail", () => {
   it("navigates every projected cross-link to its owning panel", async () => {
-    const slot = renderSlot(await detailRegistration(), {}, {
-      rpc: {
-        bomComponentGet: () => componentResult(),
-        firmwareMountsList: () => ({ items: [], total: 0, next: null, cache: freshCache }),
+    const slot = renderSlot(
+      await detailRegistration(),
+      {},
+      {
+        rpc: {
+          bomComponentGet: () => componentResult(),
+          firmwareMountsList: () => ({
+            items: [],
+            total: 0,
+            next: null,
+            cache: freshCache,
+          }),
+        },
       },
-    });
+    );
     for (const name of [
       "component · Gateway node",
       "threat · Remote access",
       "requirement · Secure boot",
       "Gateway module",
-    ]) fireEvent.click(await slot.findByRole("button", { name }));
-    expect(slot.inspection.navigateCalls).toEqual(expect.arrayContaining([
-      expect.objectContaining({ method: "toPluginPanel", path: "product-security", options: { subPath: "tara/component/gateway-node" } }),
-      expect.objectContaining({ method: "toPluginPanel", path: "product-security", options: { subPath: "tara/threat/THREAT-1" } }),
-      expect.objectContaining({ method: "toPluginPanel", path: "product-security", options: { subPath: "requirements/REQ-1" } }),
-      expect.objectContaining({ method: "toPluginPanel", path: "bom", options: { subPath: "hardware/PART-1" } }),
-    ]));
+    ])
+      fireEvent.click(await slot.findByRole("button", { name }));
+    expect(slot.inspection.navigateCalls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: "toPluginPanel",
+          path: "product-security",
+          options: { subPath: focusSubPath("node", "gateway-node") },
+        }),
+        expect.objectContaining({
+          method: "toPluginPanel",
+          path: "product-security",
+          options: { subPath: focusSubPath("node", "THREAT-1") },
+        }),
+        expect.objectContaining({
+          method: "toPluginPanel",
+          path: "product-security",
+          options: { subPath: "requirements" },
+        }),
+        expect.objectContaining({
+          method: "toPluginPanel",
+          path: "bom",
+          options: { subPath: "hardware/PART-1" },
+        }),
+      ]),
+    );
   });
 
   it("preserves an evidence path and offers materialization when no mount exists", async () => {
-    const slot = renderSlot(await detailRegistration(), {}, {
-      rpc: {
-        bomComponentGet: () => componentResult(),
-        firmwareMountsList: () => ({ items: [], total: 0, next: null, cache: freshCache }),
-        firmwareMaterializeStart: () => ({
-          projectId: "project-1",
-          projectVersionId: "version-1",
-          jobId: "job-1",
-          state: "queued",
-          acceptedAt: "2026-08-12T20:00:00.000Z",
-        }),
+    const slot = renderSlot(
+      await detailRegistration(),
+      {},
+      {
+        rpc: {
+          bomComponentGet: () => componentResult(),
+          firmwareMountsList: () => ({
+            items: [],
+            total: 0,
+            next: null,
+            cache: freshCache,
+          }),
+          firmwareMaterializeStart: () => ({
+            projectId: "project-1",
+            projectVersionId: "version-1",
+            jobId: "job-1",
+            state: "queued",
+            acceptedAt: "2026-08-12T20:00:00.000Z",
+          }),
+        },
       },
-    });
+    );
     expect(await slot.findByText("usr/bin/gateway")).toBeTruthy();
-    fireEvent.click(await slot.findByRole("button", { name: "Materialize firmware" }));
-    await waitFor(() => expect(slot.inspection.rpcCalls).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        method: "firmwareMaterializeStart",
-        input: expect.objectContaining({ firmwarePaths: ["usr/bin/gateway"] }),
-      }),
-    ])));
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Materialize firmware" }),
+    );
+    await waitFor(() =>
+      expect(slot.inspection.rpcCalls).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            method: "firmwareMaterializeStart",
+            input: expect.objectContaining({
+              firmwarePaths: ["usr/bin/gateway"],
+            }),
+          }),
+        ]),
+      ),
+    );
   });
 
   it("renders empty CVE evidence and a stale cache banner", async () => {
-    const slot = renderSlot(await detailRegistration(), {}, {
-      rpc: {
-        bomComponentGet: () => componentResult(true),
-        firmwareMountsList: () => ({ items: [], total: 0, next: null, cache: freshCache }),
+    const slot = renderSlot(
+      await detailRegistration(),
+      {},
+      {
+        rpc: {
+          bomComponentGet: () => componentResult(true),
+          firmwareMountsList: () => ({
+            items: [],
+            total: 0,
+            next: null,
+            cache: freshCache,
+          }),
+        },
       },
-    });
-    expect(await slot.findByText("No joined CVEs in the accepted findings cache.")).toBeTruthy();
+    );
+    expect(
+      await slot.findByText("No joined CVEs in the accepted findings cache."),
+    ).toBeTruthy();
     expect(slot.getByText(/Stale cache/u)).toBeTruthy();
   });
 });
