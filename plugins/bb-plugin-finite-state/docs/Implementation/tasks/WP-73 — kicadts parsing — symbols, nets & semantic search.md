@@ -34,7 +34,7 @@ Search runs over parsed semantics, never SVG glyph text — stroke fonts plot as
 2. Symbol extraction per sheet: `(at X Y angle)`, `Reference`, `Value`, `Footprint`, `unit`, MPN and Manufacturer from custom fields (case-insensitive field-name match on `MPN`/`Manufacturer`), remaining custom fields as a JSON bag. Skip power symbols and unreferenced graphics; keep DNP parts, flagged in `fields`.
 3. Net extraction from the parsed schematic (labels, hierarchical pins, wires → connectivity), producing `hw_net` rows with `nodes` as `[{reference, pin}]` JSON. Where `kicadts` connectivity falls short, record the gap explicitly rather than guessing (open question 2).
 4. Version gating: read the sheet's format version; files older than the S-expression format fail with `KICAD_VERSION_UNSUPPORTED` naming the file and version, per SPEC 07 §9. The project row stays discoverable so the panel can explain the rejection.
-5. Transactional ingest into `hw_symbol`/`hw_net` keyed by `project_key`, stamped with the source hash from WP-72; a failed parse leaves the previous generation intact. Re-ingest only when the source hash changes.
+5. Transactional ingest into `hw_symbol`/`hw_net` keyed by `project_key`, stamped with a deterministic hash of every recursively parsed sheet (project-relative path plus source, sorted by path); a failed parse leaves the previous generation intact. Re-ingest only when that complete semantic source hash changes. WP-72's `hw_project.sch_hash` remains the root-sheet discovery hash and does not gate hierarchical semantic ingest.
 6. Search: implement `hardware.symbols.list` filters — substring on reference/value/footprint/MPN, exact net membership, per-sheet scope — paged `{items, total, cursor}`, ordered by reference natural sort (R2 before R10). This is the backend of ⌘F (WP-75) and of `fs_hw_query` (WP-81).
 7. Symbol-set drift: expose a comparison of reference sets between two source hashes of the same project (added/removed/renumbered candidates), the primitive WP-79 uses to report link drift mirroring SPEC 02's re-scan handling.
 
@@ -44,6 +44,9 @@ Search runs over parsed semantics, never SVG glyph text — stroke fonts plot as
       sheetPath: string;            // project-relative
       name: string;
       parent: string | null;
+      pageOrder: number;
+      widthMm: number | null;
+      heightMm: number | null;
       symbols: ParsedSymbol[];
     }
 
@@ -63,12 +66,54 @@ Search runs over parsed semantics, never SVG glyph text — stroke fonts plot as
       nodes: { reference: string; pin: string }[];
     }
 
+    export interface ConnectivityGap {
+      sheetPath: string;
+      kind: "unresolved_label" | "unresolved_hierarchical_pin" |
+        "unsupported_bus" | "missing_pin_geometry";
+      detail: string;
+      at: { x: number; y: number } | null;
+    }
+
+    export interface HardwareSemanticScope {
+      projectId: string;
+      projectVersionId: string | null;
+      projectKey: string;
+    }
+
     export function parseProject(worktreeRoot: string, projectKey: string):
-      Promise<{ sheets: ParsedSheet[]; nets: ParsedNet[] }>;   // throws KICAD_VERSION_UNSUPPORTED
-    export function ingestProject(db: Database, projectKey: string,
-      sourceHash: string, parsed: { sheets: ParsedSheet[]; nets: ParsedNet[] }): void;
-    export function diffSymbolSets(db: Database, projectKey: string,
+      Promise<{ sheets: ParsedSheet[]; nets: ParsedNet[];
+        connectivityGaps: ConnectivityGap[] }>;                // throws KICAD_VERSION_UNSUPPORTED
+    export function parseProjectGeneration(worktreeRoot: string, projectKey: string):
+      Promise<{ parsed: { sheets: ParsedSheet[]; nets: ParsedNet[];
+        connectivityGaps: ConnectivityGap[] }; sourceHash: string }>;
+    export function ingestProject(db: Database, scope: HardwareSemanticScope,
+      sourceHash: string, parsed: { sheets: ParsedSheet[]; nets: ParsedNet[];
+        connectivityGaps: ConnectivityGap[] }): void;
+    export function diffSymbolSets(db: Database, scope: HardwareSemanticScope,
       fromHash: string, toHash: string): { added: string[]; removed: string[] };
+
+AMD-0018 retains exactly the newest 20 `hw_ingest` snapshots per scope triple,
+pruning older rows inside the replacement transaction. `diffSymbolSets` throws
+`HardwareIngestHashNotRetainedError` with code `HW_INGEST_HASH_NOT_RETAINED`
+when either requested hash is absent from that bounded ledger; it never returns
+an empty diff for an unretained hash. Connectivity gaps are available through
+the lane-local `hardwareConnectivityGapsList` read RPC and never appear as nets.
+
+The AMD-0018 `hw_sheet` key represents one project-relative sheet file and
+cannot represent repeated instances of the same hierarchical sheet file.
+`parseProject` therefore rejects that supported KiCad authoring pattern with
+the typed `KicadSheetReusedError` code `KICAD_SHEET_REUSED`; cycles remain the
+distinct `KICAD_SHEET_CYCLE` error. Supporting repeated-channel instances
+requires a future additive instance-path persistence amendment rather than
+silently collapsing two instances into one cached sheet.
+
+Connectivity is intentionally source-label-only in the no-CLI path. Wires,
+junctions, explicit labels, hierarchical pins, and symbol pins are resolved
+from `.kicad_sch`; unlabeled connected components are not assigned KiCad's
+generated net names. Each such component produces one `unresolved_label` gap,
+so ordinary schematics can have many gap rows while `hw_net` contains only
+honest explicitly named nets. Bus connectivity remains an `unsupported_bus`
+gap under `kicadts@0.0.53`; parser output is never mixed with netlist exports.
 
 ## Acceptance criteria
 
@@ -99,5 +144,5 @@ Search runs over parsed semantics, never SVG glyph text — stroke fonts plot as
 ## Open questions
 
 1. Reference renumbering between revisions is the hardware analogue of SPEC 02's stable-key problem (SPEC 07 §12.6). The diff primitive here reports added/removed; whether a rename heuristic (same value+footprint+position) is worth shipping belongs to WP-79's drift report — do not solve it here.
-2. Verify during implementation how much connectivity `kicadts` derives from a `.kicad_sch` alone (wires/junctions vs. labels). If real connectivity requires the netlist export, `hw_net` gains a documented degraded mode when `kicad-cli` is absent — decide and record, don't silently mix sources.
+2. Resolved for `kicadts@0.0.53`: `.kicad_sch` supplies wire/junction/label/hierarchical-pin connectivity, but not KiCad-generated names for unlabeled components or supported bus connectivity. The documented source-label-only degraded mode above records explicit gaps and never mixes parser results with exports.
 3. KiCad 9 format drift: `kicadts` tracks upstream loosely. Pin the tested KiCad file-format versions in fixture notes so a future parse failure is diagnosable as format drift rather than regression.

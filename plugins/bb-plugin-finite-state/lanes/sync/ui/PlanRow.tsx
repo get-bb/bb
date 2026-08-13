@@ -104,6 +104,8 @@ const ENTITY_LABELS: Readonly<Record<EntityKind, string>> = {
   hardwareArtifact: "Hardware artifact",
   hardwareSymbol: "Hardware symbol",
   hardwareNet: "Hardware net",
+  hardwareSheet: "Hardware sheet",
+  hardwareIngest: "Hardware ingest",
   hardwareViolation: "Hardware violation",
   groundingSource: "Grounding source",
   groundingChunk: "Grounding chunk",

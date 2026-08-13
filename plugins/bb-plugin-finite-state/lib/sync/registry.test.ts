@@ -71,6 +71,8 @@ describe("entity registry", () => {
       hardwareArtifact: "CACHED:hw_artifact",
       hardwareSymbol: "CACHED:hw_symbol",
       hardwareNet: "CACHED:hw_net",
+      hardwareSheet: "CACHED:hw_sheet",
+      hardwareIngest: "CACHED:hw_ingest",
       hardwareViolation: "CACHED:hw_violation",
       groundingSource: "CACHED:ground_source",
       groundingChunk: "CACHED:ground_chunk",

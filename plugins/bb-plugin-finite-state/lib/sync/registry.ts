@@ -334,6 +334,8 @@ export const ENTITIES = {
   hardwareArtifact: { class: "CACHED", table: "hw_artifact" },
   hardwareSymbol: { class: "CACHED", table: "hw_symbol" },
   hardwareNet: { class: "CACHED", table: "hw_net" },
+  hardwareSheet: { class: "CACHED", table: "hw_sheet" },
+  hardwareIngest: { class: "CACHED", table: "hw_ingest" },
   hardwareViolation: { class: "CACHED", table: "hw_violation" },
   groundingSource: { class: "CACHED", table: "ground_source" },
   groundingChunk: { class: "CACHED", table: "ground_chunk" },

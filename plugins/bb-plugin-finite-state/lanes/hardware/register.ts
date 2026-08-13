@@ -23,8 +23,14 @@ import { detectKicadCli, type HwArtifactKind, type KicadCapability } from "./ext
 import { listArtifactStatus } from "./extract/provenance.js";
 import { HardwareSourceWatcher } from "./extract/watch.js";
 import { hardwareViolationsNotImplemented } from "./fab/violations.js";
-import { hardwareSheetsNotImplemented } from "./parse/sheets.js";
-import { hardwareSearchNotImplemented } from "./search.js";
+import {
+  hardwareConnectivityGapsRpcContract,
+  ingestProject,
+  listConnectivityGaps,
+  semanticIngestRequired,
+} from "./parse/ingest.js";
+import { listHardwareSheets, parseProjectGeneration } from "./parse/sheets.js";
+import { getHardwarePart, listHardwareNets, listHardwareSymbols } from "./search.js";
 
 const hardwareRpcContract = {
   hardwareProjectsList: rpcContract.hardwareProjectsList,
@@ -286,14 +292,38 @@ class HardwareDiscoveryCoordinator {
       const source = await resolveHardwareProjectSource(this.#ctx.bb, scope.projectId);
       const scan = await scanProjectsFromSource(this.#ctx.bb, source);
       upsertProjects(this.#ctx.db(), scope.projectId, scope.projectVersionId, scan.projects, !scan.truncated);
+      const semanticFailures: string[] = [];
+      for (const project of scan.projects) {
+        if (!project.supported) continue;
+        try {
+          const semanticScope = {
+            projectId: scope.projectId,
+            projectVersionId: scope.projectVersionId,
+            projectKey: project.projectKey,
+          };
+          const generation = await parseProjectGeneration(source.path, project.projectKey);
+          if (!semanticIngestRequired(this.#ctx.db(), semanticScope, generation.sourceHash)) continue;
+          ingestProject(this.#ctx.db(), semanticScope, generation.sourceHash, generation.parsed);
+        } catch (error) {
+          const detail = `${project.projectKey}: ${errorDetail(error)}`;
+          semanticFailures.push(detail);
+          this.#ctx.bb.log.warn(`hardware semantic ingest degraded: ${detail}`);
+        }
+      }
       const hint = await worktreeIncludeHint(source.path, scan.projects);
       this.#replaceWatchers(scope, source, scan.projects);
+      const semanticMessage = semanticFailures.length > 0
+        ? safeHardwareDetail(
+          `HW_SEMANTIC_INGEST_FAILED: ${semanticFailures[0]}` +
+          (semanticFailures.length > 1 ? ` (${semanticFailures.length - 1} more project failures)` : ""),
+        )
+        : null;
       this.#statuses.set(key, {
         ...scope,
-        state: scan.truncated ? "degraded" : "ready",
+        state: scan.truncated || semanticMessage !== null ? "degraded" : "ready",
         message: scan.truncated
           ? "HW_DISCOVERY_PARTIAL: the workspace path limit was reached; cached projects are a truthful partial result"
-          : null,
+          : semanticMessage,
         worktreeincludeHint: hint,
         truncated: scan.truncated,
       });
@@ -523,6 +553,10 @@ export function registerHardware(bb: BbPluginApi, ctx: PluginContext): void {
     hardwareDiscoveryStatus(input) { return discovery.status(input); },
   });
 
+  bb.rpc.register(hardwareConnectivityGapsRpcContract, {
+    hardwareConnectivityGapsList(input) { return listConnectivityGaps(db, input); },
+  });
+
   bb.rpc.register(hardwareRpcContract, {
     hardwareProjectsList(input) {
       const pv = storageVersion(input.projectVersionId);
@@ -544,11 +578,11 @@ export function registerHardware(bb: BbPluginApi, ctx: PluginContext): void {
       const nextOffset = offset + rows.length;
       return { items: rows.map(projectOutput), total, cursor: nextOffset < total ? Buffer.from(String(nextOffset)).toString("base64url") : null };
     },
-    hardwareSymbolsList() { return hardwareSearchNotImplemented(); },
-    hardwareNetsList() { return hardwareSearchNotImplemented(); },
+    hardwareSymbolsList(input) { return listHardwareSymbols(db, input); },
+    hardwareNetsList(input) { return listHardwareNets(db, input); },
     hardwareViolationsList() { return hardwareViolationsNotImplemented(); },
-    hardwareSheetsList() { return hardwareSheetsNotImplemented(); },
-    hardwarePartGet() { return hardwareSearchNotImplemented(); },
+    hardwareSheetsList(input) { return listHardwareSheets(db, input); },
+    hardwarePartGet(input) { return getHardwarePart(db, input); },
     async hardwareArtifactsStatus(input) {
       const projectKey = assertRelativeProjectPath(input.projectKey);
       const project = db.prepare<[string, string, string], HardwareProjectDbRow>(

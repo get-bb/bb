@@ -39,6 +39,8 @@ export const SCHEMA_TABLES = [
   "hw_artifact",
   "hw_symbol",
   "hw_net",
+  "hw_sheet",
+  "hw_ingest",
   "hw_violation",
   "ground_source",
   "ground_chunk",
@@ -117,6 +119,8 @@ export const CACHE_STORAGE_NAMES = [
   "hw_artifact",
   "hw_symbol",
   "hw_net",
+  "hw_sheet",
+  "hw_ingest",
   "hw_violation",
   "ground_source",
   "ground_chunk",
@@ -1094,4 +1098,32 @@ export const MIGRATIONS: string[] = [
       WHEN CAST(kicad_version AS INTEGER) >= 6 THEN 1
       ELSE 0
     END`,
+
+  // AMD-0018: bounded hardware semantic sheet cache and ingest ledger
+  `CREATE TABLE hw_sheet (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     project_key        TEXT NOT NULL,
+     sheet_path         TEXT NOT NULL,
+     name               TEXT NOT NULL,
+     parent_sheet_path  TEXT,
+     page_order         INTEGER NOT NULL CHECK (page_order >= 0),
+     width_mm           REAL CHECK (width_mm IS NULL OR width_mm > 0),
+     height_mm          REAL CHECK (height_mm IS NULL OR height_mm > 0),
+     PRIMARY KEY (project_id, project_version_id, project_key, sheet_path),
+     FOREIGN KEY (project_id, project_version_id, project_key)
+       REFERENCES hw_project(project_id, project_version_id, project_key) ON DELETE CASCADE
+   )`,
+  `CREATE TABLE hw_ingest (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     project_key        TEXT NOT NULL,
+     source_hash        TEXT NOT NULL CHECK (length(source_hash) = 64 AND source_hash NOT GLOB '*[^0-9a-f]*'),
+     ingested_at        TEXT NOT NULL,
+     symbol_refs        TEXT NOT NULL CHECK (json_valid(symbol_refs) AND json_type(symbol_refs) = 'array'),
+     connectivity_gaps  TEXT NOT NULL CHECK (json_valid(connectivity_gaps) AND json_type(connectivity_gaps) = 'array'),
+     PRIMARY KEY (project_id, project_version_id, project_key, source_hash),
+     FOREIGN KEY (project_id, project_version_id, project_key)
+       REFERENCES hw_project(project_id, project_version_id, project_key) ON DELETE CASCADE
+   )`,
 ];
