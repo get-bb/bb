@@ -1,4 +1,3 @@
-import { performance } from "node:perf_hooks";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";

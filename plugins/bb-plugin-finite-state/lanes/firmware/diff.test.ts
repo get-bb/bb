@@ -2,7 +2,6 @@ import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { performance } from "node:perf_hooks";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { createPluginContext } from "../../lib/context.js";

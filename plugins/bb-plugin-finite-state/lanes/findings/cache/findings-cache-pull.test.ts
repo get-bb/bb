@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import { performance } from "node:perf_hooks";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createPluginContext } from "../../../lib/context.js";
