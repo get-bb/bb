@@ -44,6 +44,13 @@ describe("authoring registration", () => {
             unlocks: "build",
             parse: () => null,
           },
+          {
+            id: "fixture-missing-west",
+            binary: "fixture-missing-west",
+            versionArgs: ["--version"],
+            unlocks: "zephyr-workspace",
+            parse: () => null,
+          },
         ],
         probeTimeoutMs: 50,
       },
@@ -89,7 +96,9 @@ describe("authoring registration", () => {
     expect(await response.text()).toBe("prior");
 
     expect(host.harness.inspection.needsConfigurationMessages).toEqual([
-      expect.stringContaining("build missing fixture-missing-compiler"),
+      expect.stringContaining(
+        "build missing fixture-missing-compiler; zephyr-workspace missing fixture-missing-west",
+      ),
     ]);
     service.controller.abort();
     await service.done;

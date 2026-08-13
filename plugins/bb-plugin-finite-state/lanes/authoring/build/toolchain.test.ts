@@ -5,7 +5,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   detectToolchains,
   redetectToolchains,
+  DEFAULT_TOOLCHAIN_PROBES,
   type ToolchainContext,
+  type ToolchainCapability,
   type ToolchainProbe,
 } from "./toolchain.js";
 
@@ -24,7 +26,7 @@ async function fixtureBinary(name: string, body: string): Promise<string> {
   return directory;
 }
 
-function probe(id: string, unlocks: "build" | "flash"): ToolchainProbe {
+function probe(id: string, unlocks: ToolchainCapability): ToolchainProbe {
   return {
     id,
     binary: id,
@@ -136,5 +138,48 @@ describe("toolchain detection", () => {
     const pending = detectToolchains(ctx);
     setTimeout(() => controller.abort(), 20);
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it.each([
+    {
+      name: "plain bare-metal build host",
+      installed: ["arm-none-eabi-gcc", "cmake", "ninja"],
+      configured: true,
+      missing: ["west/zephyr-workspace", "openocd/flash"],
+    },
+    {
+      name: "Zephyr build host",
+      installed: ["arm-none-eabi-gcc", "cmake", "ninja", "west"],
+      configured: true,
+      missing: ["openocd/flash"],
+    },
+    {
+      name: "flash-only host",
+      installed: ["openocd"],
+      configured: true,
+      missing: [
+        "arm-none-eabi-gcc/build",
+        "cmake/build",
+        "ninja/build",
+        "west/zephyr-workspace",
+      ],
+    },
+    {
+      name: "fully provisioned host",
+      installed: ["arm-none-eabi-gcc", "cmake", "ninja", "west", "openocd"],
+      configured: true,
+      missing: [],
+    },
+  ])("classifies the default probe table on a $name", async ({ installed, configured, missing }) => {
+    const directory = await mkdtemp(join(tmpdir(), "fs-toolchain-capabilities-"));
+    cleanup.push(directory);
+    for (const id of installed) {
+      const path = join(directory, id);
+      await writeFile(path, "#!/bin/sh\nprintf '1.2.3\\n'\n", "utf8");
+      await chmod(path, 0o700);
+    }
+    const report = await detectToolchains(context(directory, DEFAULT_TOOLCHAIN_PROBES));
+    expect(report.configured).toBe(configured);
+    expect(report.missing.map((entry) => `${entry.id}/${entry.unlocks}`)).toEqual(missing);
   });
 });

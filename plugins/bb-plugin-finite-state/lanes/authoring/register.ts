@@ -66,7 +66,7 @@ export function reportToolchainConfiguration(
   report: ToolchainReport,
 ): ToolchainReport {
   if (!report.configured) {
-    const missing = (["build", "flash"] as const)
+    const missing = (["build", "flash", "zephyr-workspace"] as const)
       .map((capability) => ({
         capability,
         tools: report.missing

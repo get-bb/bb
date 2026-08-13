@@ -5,15 +5,17 @@ import { constants } from "node:fs";
 
 export interface ToolchainReport {
   found: Array<{ id: string; version: string; path: string }>;
-  missing: Array<{ id: string; unlocks: "build" | "flash" }>;
+  missing: Array<{ id: string; unlocks: ToolchainCapability }>;
   configured: boolean;
 }
+
+export type ToolchainCapability = "build" | "flash" | "zephyr-workspace";
 
 export interface ToolchainProbe {
   id: string;
   binary: string;
   versionArgs: readonly string[];
-  unlocks: "build" | "flash";
+  unlocks: ToolchainCapability;
   parse(output: string): string | null;
 }
 
@@ -52,7 +54,7 @@ export const DEFAULT_TOOLCHAIN_PROBES: readonly ToolchainProbe[] = [
     id: "west",
     binary: "west",
     versionArgs: ["--version"],
-    unlocks: "build",
+    unlocks: "zephyr-workspace",
     parse: firstVersionLine,
   },
   {
@@ -66,7 +68,7 @@ export const DEFAULT_TOOLCHAIN_PROBES: readonly ToolchainProbe[] = [
 
 const cache = new WeakMap<object, Map<string, Promise<ToolchainReport>>>();
 const MAX_VERSION_BYTES = 64 * 1024;
-const CAPABILITIES = ["build", "flash"] as const;
+const CAPABILITIES = ["build", "flash", "zephyr-workspace"] as const;
 
 function firstVersionLine(output: string): string | null {
   const line = output.split(/\r?\n/u).map((value) => value.trim()).find(Boolean);
