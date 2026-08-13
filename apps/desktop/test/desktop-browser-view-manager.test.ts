@@ -1,4 +1,4 @@
-import type { WebContentsView } from "electron";
+import type { RenderProcessGoneDetails, WebContentsView } from "electron";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BbDesktopBrowserViewBounds } from "@bb/desktop-contract";
 import {
@@ -104,10 +104,10 @@ type FakeBeforeInputListener = (
   input: FakeInput,
 ) => void;
 
-interface FakeRenderProcessGoneDetails {
-  exitCode: number;
-  reason: "memory-eviction";
-}
+type FakeRenderProcessGoneDetails = Pick<
+  RenderProcessGoneDetails,
+  "exitCode" | "reason"
+>;
 
 type FakeRenderProcessGoneListener = (
   event: FakeWebContentsEvent,
@@ -121,6 +121,7 @@ interface FakeWebContentsEventMap {
   "will-redirect": FakeWillRedirectListener;
   "did-start-loading": FakeVoidWebContentsListener;
   "did-stop-loading": FakeVoidWebContentsListener;
+  "did-finish-load": FakeVoidWebContentsListener;
   "did-navigate": FakeDidNavigateListener;
   "did-navigate-in-page": FakeDidNavigateInPageListener;
   "did-start-navigation": FakeVoidWebContentsListener;
@@ -280,6 +281,7 @@ const electronMock = vi.hoisted(() => {
       "will-redirect": [],
       "did-start-loading": [],
       "did-stop-loading": [],
+      "did-finish-load": [],
       "did-navigate": [],
       "did-navigate-in-page": [],
       "did-start-navigation": [],
@@ -378,6 +380,12 @@ const electronMock = vi.hoisted(() => {
     emitRenderProcessGone(details: FakeRenderProcessGoneDetails): void {
       for (const listener of this.listeners["render-process-gone"]) {
         listener(fakeWebContentsEvent, details);
+      }
+    }
+
+    emitDidFinishLoad(): void {
+      for (const listener of this.listeners["did-finish-load"]) {
+        listener();
       }
     }
 
@@ -590,6 +598,7 @@ class FakeHostWindow implements DesktopBrowserHostWindow {
 }
 
 beforeEach(() => {
+  vi.useRealTimers();
   electronMock.fakeSessions.length = 0;
   electronMock.fakeViews.length = 0;
 });
@@ -655,6 +664,23 @@ function requireFakeView(
     throw new Error("Expected the browser view to be created.");
   }
   return view;
+}
+
+function createRendererRecoveryFixture(webContentsId: number) {
+  const manager = createDesktopBrowserViewManager({
+    partition: "persist:test",
+  });
+  const hostWindow = new FakeHostWindow({
+    contentBounds: { width: 700, height: 450 },
+    webContentsId,
+  });
+  attachBrowserTab({
+    manager,
+    hostWindow,
+    tabId: "browser:a",
+    url: "https://example.com/original",
+  });
+  return { manager, hostWindow, view: requireFakeView(0) };
 }
 
 function requireOnBeforeRequestListener(): FakeOnBeforeRequestListener {
@@ -1813,22 +1839,9 @@ describe("DesktopBrowserViewManager", () => {
     expect(view.webContents.focusCalls).toBe(1);
   });
 
-  it("recovers a hidden page after its renderer process exits", () => {
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 75,
-    });
-
-    attachBrowserTab({
-      manager,
-      hostWindow,
-      tabId: "browser:a",
-      url: "https://example.com/original",
-    });
-    const view = requireFakeView(0);
+  it("defers hidden memory-eviction recovery until the panel shows the current page", () => {
+    vi.useFakeTimers();
+    const { hostWindow, manager, view } = createRendererRecoveryFixture(75);
     view.webContents.emitDidNavigate("https://example.com/current");
     manager.setVisible({
       hostWindow,
@@ -1840,10 +1853,87 @@ describe("DesktopBrowserViewManager", () => {
       reason: "memory-eviction",
     });
 
+    expect(view.webContents.reloadCalls).toBe(0);
+    expect(view.visible).toBe(false);
+
+    manager.setVisible({
+      hostWindow,
+      request: { tabId: "browser:a", visible: true },
+    });
+    expect(view.visible).toBe(false);
+    vi.runOnlyPendingTimers();
+
     expect(view.webContents.reloadCalls).toBe(1);
     expect(view.webContents.getURL()).toBe("https://example.com/current");
     expect(electronMock.fakeViews).toHaveLength(1);
+    expect(view.visible).toBe(true);
+  });
+
+  it("stops automatic recovery after two repeated renderer crashes", () => {
+    vi.useFakeTimers();
+    const { hostWindow, view } = createRendererRecoveryFixture(76);
+
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      view.webContents.emitRenderProcessGone({
+        exitCode: 1,
+        reason: "crashed",
+      });
+      expect(view.visible).toBe(false);
+      vi.runOnlyPendingTimers();
+      expect(view.webContents.reloadCalls).toBe(attempt);
+      expect(view.visible).toBe(true);
+    }
+
+    view.webContents.emitRenderProcessGone({
+      exitCode: 1,
+      reason: "crashed",
+    });
+    vi.runOnlyPendingTimers();
+
+    expect(view.webContents.reloadCalls).toBe(2);
     expect(view.visible).toBe(false);
+    expect(hostWindow.webContents.sentPayloads.at(-1)).toMatchObject({
+      tabId: "browser:a",
+      errorText: "The page renderer stopped repeatedly",
+    });
+  });
+
+  it.each(["launch-failed", "integrity-failure"] as const)(
+    "does not automatically retry a %s renderer failure",
+    (reason) => {
+      vi.useFakeTimers();
+      const { hostWindow, view } = createRendererRecoveryFixture(77);
+
+      view.webContents.emitRenderProcessGone({ exitCode: 1, reason });
+      vi.runOnlyPendingTimers();
+
+      expect(view.webContents.reloadCalls).toBe(0);
+      expect(view.visible).toBe(false);
+      expect(hostWindow.webContents.sentPayloads.at(-1)).toMatchObject({
+        tabId: "browser:a",
+        errorText: "The page renderer could not start",
+      });
+    },
+  );
+
+  it("resets the renderer recovery limit after a page finishes loading", () => {
+    vi.useFakeTimers();
+    const { view } = createRendererRecoveryFixture(78);
+
+    view.webContents.emitRenderProcessGone({
+      exitCode: 1,
+      reason: "crashed",
+    });
+    vi.runOnlyPendingTimers();
+    view.webContents.emitDidFinishLoad();
+    view.webContents.emitRenderProcessGone({
+      exitCode: 1,
+      reason: "crashed",
+    });
+    vi.runOnlyPendingTimers();
+
+    expect(view.webContents.reloadCalls).toBe(2);
+    expect(view.visible).toBe(true);
   });
 
   it("does not focus a freshly-attached inactive tab", () => {
