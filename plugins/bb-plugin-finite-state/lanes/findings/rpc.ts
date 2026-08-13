@@ -4,6 +4,11 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { JsonValue } from "../../shared/contract.js";
 import { rpcContract } from "../../shared/contract.js";
+import {
+  VEX_JUSTIFICATIONS,
+  VEX_RESPONSES,
+  VEX_STATUSES,
+} from "../../lib/remote/types.js";
 import { listFindingActivity } from "./cache/activity.js";
 import {
   commentMutationAuthorizationUnavailable,
@@ -12,6 +17,17 @@ import {
 import { getCachedFinding, queryFindings } from "./cache/query.js";
 import { findingsCacheState } from "./cache/query.js";
 import type { CachedFinding, FindingsFilter } from "./cache/types.js";
+import {
+  decisionFromInput,
+  OverlayCasConflictError,
+  readOverlayFiles,
+  removeDecision,
+  setDecision,
+  stableKeyFor,
+  TRIAGE_OVERLAY_SCHEMA,
+  type ParsedOverlayFile,
+  type TriageDecisionV1,
+} from "./overlay/index.js";
 import {
   parseEncodedFindingKey,
   resolveEncodedFinding,
@@ -62,6 +78,91 @@ const findingsUiListInputSchema = z.object({
   pageSize: z.number().int().min(1).max(200),
   continuation: z.string().min(1).max(4096).nullable(),
   filters: savedFilterSchema,
+}).strict();
+
+const triageComponentSchema = z.object({
+  purl: z.string().nullable(),
+  name: z.string().min(1),
+  group: z.string().nullable(),
+  version: z.string().nullable(),
+}).strict();
+const triageTupleSchema = z.object({
+  status: z.enum(VEX_STATUSES).nullable(),
+  justification: z.enum(VEX_JUSTIFICATIONS).nullable(),
+  response: z.enum(VEX_RESPONSES).nullable(),
+  reason: z.string().nullable(),
+}).strict();
+const triageStoredDecisionSchema = z.object({
+  status: z.enum(VEX_STATUSES),
+  justification: z.enum(VEX_JUSTIFICATIONS).nullable(),
+  response: z.enum(VEX_RESPONSES).nullable(),
+  reason: z.string(),
+  pin: z.enum(["exact_version", "any_version"]),
+  provenance: z.object({ by: z.string(), at: z.string(), evidence: z.string() }).strict(),
+  sync: z.object({ base: triageTupleSchema.nullable(), pushed_at: z.string().nullable() }).strict(),
+}).strict();
+const triageUndoTokenSchema = z.object({
+  file: z.string().min(1),
+  beforeSha256: z.string().length(64),
+  afterSha256: z.string().length(64),
+  prior: triageStoredDecisionSchema.nullable(),
+}).strict();
+const triageTargetSchema = z.object({
+  findingId: z.string().min(1),
+  stableKey: z.string().min(1),
+  cve: z.string().min(1),
+  label: z.string().min(1),
+  component: triageComponentSchema,
+  evidence: z.string(),
+  reasonSeed: z.string(),
+  expectedSha256: z.string().length(64).nullable(),
+  file: z.string().nullable(),
+}).strict();
+const triageSelectionSchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("exact"),
+    findingIds: z.array(z.string().min(1).max(512)).min(1).max(25),
+  }).strict(),
+  z.object({
+    mode: z.literal("predicate"),
+    filters: savedFilterSchema,
+    excludedStableKeys: z.array(z.string().min(1).max(512)).max(2_000),
+    total: z.number().int().nonnegative(),
+  }).strict(),
+]);
+const triageWriteItemSchema = z.object({
+  findingId: z.string().min(1).max(512),
+  stableKey: z.string().min(1).max(512),
+  status: z.enum(VEX_STATUSES),
+  justification: z.enum(VEX_JUSTIFICATIONS).nullable(),
+  response: z.enum(VEX_RESPONSES).nullable(),
+  reason: z.string().trim().min(12).max(10_000),
+  evidence: z.string().trim().min(1).max(20_000),
+  pin: z.enum(["exact_version", "any_version"]),
+  expectedSha256: z.string().length(64).nullable(),
+}).strict().superRefine((item, context) => {
+  if (item.status === "NOT_AFFECTED" && item.justification === null) {
+    context.addIssue({ code: "custom", path: ["justification"], message: "NOT_AFFECTED requires a frozen VEX justification" });
+  }
+  if (item.justification === "CODE_NOT_REACHABLE" && item.pin !== "exact_version") {
+    context.addIssue({ code: "custom", path: ["pin"], message: "CODE_NOT_REACHABLE requires exact_version" });
+  }
+});
+const triageWriteSuccessSchema = z.object({
+  success: z.literal(true),
+  findingId: z.string(),
+  stableKey: z.string(),
+  file: z.string(),
+  afterSha256: z.string().length(64),
+  undo: triageUndoTokenSchema,
+}).strict();
+const triageWriteFailureSchema = z.object({
+  success: z.literal(false),
+  findingId: z.string(),
+  stableKey: z.string(),
+  code: z.string(),
+  message: z.string(),
+  retryable: z.boolean(),
 }).strict();
 
 export const findingsUiRpcContract = defineRpcContract({
@@ -115,6 +216,42 @@ export const findingsUiRpcContract = defineRpcContract({
     }).strict(),
     output: z.object({ hydrated: z.number().int().nonnegative() }).strict(),
   },
+  triageTargetsRead: {
+    input: z.object({
+      workspaceProjectId: z.string().min(1).max(512),
+      platformProjectId: z.string().min(1).max(512),
+      projectVersionId: z.string().min(1).max(512),
+      selection: triageSelectionSchema,
+      continuation: z.string().min(1).max(4096).nullable(),
+    }).strict(),
+    output: z.object({
+      items: z.array(triageTargetSchema).max(25),
+      total: z.number().int().nonnegative(),
+      next: z.string().nullable(),
+    }).strict(),
+  },
+  triageDecisionsWrite: {
+    input: z.object({
+      workspaceProjectId: z.string().min(1).max(512),
+      platformProjectId: z.string().min(1).max(512),
+      projectVersionId: z.string().min(1).max(512),
+      decisions: z.array(triageWriteItemSchema).min(1).max(20),
+    }).strict(),
+    output: z.object({
+      results: z.array(z.discriminatedUnion("success", [triageWriteSuccessSchema, triageWriteFailureSchema])).max(20),
+    }).strict(),
+  },
+  triageDecisionUndo: {
+    input: z.object({
+      workspaceProjectId: z.string().min(1).max(512),
+      platformProjectId: z.string().min(1).max(512),
+      projectVersionId: z.string().min(1).max(512),
+      findingId: z.string().min(1).max(512),
+      stableKey: z.string().min(1).max(512),
+      token: triageUndoTokenSchema,
+    }).strict(),
+    output: z.object({ file: z.string(), afterSha256: z.string().length(64) }).strict(),
+  },
 });
 
 const SAVED_VIEWS_PATH = "product-security/findings/views.json";
@@ -124,6 +261,176 @@ async function projectSource(bb: BbPluginApi, projectId: string) {
   const source = project.sources.find(candidate => candidate.isDefault) ?? project.sources[0];
   if (!source) throw new Error("FINDINGS_PROJECT_SOURCE_REQUIRED");
   return source;
+}
+
+const EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+function triageIdentity(finding: CachedFinding) {
+  if (!finding.cve || !finding.componentName) throw new Error("TRIAGE_IDENTITY_INCOMPLETE");
+  const component = {
+    purl: finding.componentPurl,
+    name: finding.componentName,
+    group: finding.componentGroup,
+    version: finding.componentVersion,
+  };
+  if (stableKeyFor(finding.projectId, component, finding.cve) !== finding.stableKey) {
+    throw new Error("TRIAGE_STABLE_KEY_MISMATCH");
+  }
+  return { cve: finding.cve, component };
+}
+
+function exactFinding(
+  db: Database.Database,
+  platformProjectId: string,
+  projectVersionId: string,
+  findingId: string,
+): CachedFinding {
+  const cached = getCachedFinding(db, platformProjectId, projectVersionId, findingId);
+  if (!cached.finding) throw new Error(`TRIAGE_FINDING_NOT_FOUND: ${findingId}`);
+  return cached.finding;
+}
+
+function reachabilityEvidence(finding: CachedFinding): string {
+  const factors = finding.reachabilityFactors;
+  if (!Array.isArray(factors)) return "";
+  return factors.flatMap((factor) => {
+    if (typeof factor !== "object" || factor === null || Array.isArray(factor)) return [];
+    const label = typeof factor["label"] === "string" ? factor["label"].trim() : "";
+    const value = typeof factor["value"] === "string" ? factor["value"].trim() : "";
+    const source = typeof factor["source"] === "string" ? factor["source"].trim() : "";
+    if (!label || !value) return [];
+    return [`${label}: ${value}${source ? ` (source: ${source})` : ""}`];
+  }).join("\n");
+}
+
+interface TriageSnapshot {
+  file: string | null;
+  sha256: string | null;
+  prior: TriageDecisionV1 | null;
+}
+
+type TriageCorpus = Awaited<ReturnType<typeof readOverlayFiles>>;
+
+function sameTriageComponent(
+  left: ParsedOverlayFile["overlay"]["component"],
+  right: ParsedOverlayFile["overlay"]["component"],
+): boolean {
+  return left.purl === right.purl
+    && left.name === right.name
+    && left.group === right.group
+    && left.version === right.version;
+}
+
+function triageSnapshot(corpus: TriageCorpus, finding: CachedFinding): TriageSnapshot {
+  const identity = triageIdentity(finding);
+  if (finding.localFile) {
+    const scopedError = corpus.errors.find(error => error.file === finding.localFile);
+    if (scopedError) throw new Error(`TRIAGE_OVERLAY_INVALID: ${scopedError.file}: ${scopedError.message}`);
+  }
+  const match = corpus.files.find(candidate => candidate.overlay.project === finding.projectId
+    && sameTriageComponent(candidate.overlay.component, identity.component));
+  if (!match) return { file: null, sha256: null, prior: null };
+  return {
+    file: match.file,
+    sha256: match.sha256,
+    prior: match.overlay.decisions[identity.cve] ?? null,
+  };
+}
+
+function triageTarget(corpus: TriageCorpus, finding: CachedFinding) {
+  const identity = triageIdentity(finding);
+  const snapshot = triageSnapshot(corpus, finding);
+  const evidence = reachabilityEvidence(finding);
+  return {
+    findingId: finding.findingId,
+    stableKey: finding.stableKey,
+    cve: identity.cve,
+    label: `${identity.cve} · ${identity.component.name}${identity.component.version ? ` ${identity.component.version}` : ""}`,
+    component: identity.component,
+    evidence,
+    reasonSeed: evidence,
+    expectedSha256: snapshot.sha256,
+    file: snapshot.file,
+  };
+}
+
+function triageError(error: unknown): { code: string; message: string; retryable: boolean } {
+  const code = typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
+    ? error.code
+    : "TRIAGE_WRITE_FAILED";
+  const message = error instanceof Error ? error.message.slice(0, 500) : "The local triage write failed.";
+  return { code, message, retryable: code === "OVERLAY_LOCK_HELD" };
+}
+
+async function lockBackoff<T>(action: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try { return await action(); }
+    catch (error) {
+      const code = typeof error === "object" && error !== null && "code" in error ? error.code : null;
+      if (code !== "OVERLAY_LOCK_HELD" || attempt >= 2) throw error;
+      await new Promise(resolve => setTimeout(resolve, 20 * (2 ** attempt)));
+    }
+  }
+}
+
+async function writeTriageDecision(
+  root: string,
+  corpus: TriageCorpus,
+  finding: CachedFinding,
+  item: z.output<typeof triageWriteItemSchema>,
+  chainedExpected: string | null | undefined,
+) {
+  if (finding.stableKey !== item.stableKey) throw new Error("TRIAGE_EXACT_ROW_MISMATCH");
+  const identity = triageIdentity(finding);
+  const snapshot = triageSnapshot(corpus, finding);
+  const expected = chainedExpected === undefined ? item.expectedSha256 : chainedExpected;
+  if (snapshot.sha256 !== expected) {
+    throw new OverlayCasConflictError(snapshot.file ?? `.fs/triage/${finding.projectId}`, expected ?? undefined, snapshot.sha256 ?? undefined);
+  }
+  const decisionInput = {
+    project: finding.projectId,
+    component: identity.component,
+    cve: identity.cve,
+    stableKey: finding.stableKey,
+    status: item.status,
+    justification: item.justification,
+    response: item.response,
+    reason: item.reason,
+    pin: item.pin,
+    provenance: { by: "bb-user", at: new Date().toISOString(), evidence: item.evidence },
+    ...(snapshot.prior ? { sync: snapshot.prior.sync } : {}),
+  };
+  const result = await lockBackoff(() => setDecision(root, decisionInput, snapshot.sha256 ?? undefined));
+  const current = corpus.files.find(candidate => candidate.file === result.file);
+  if (current) {
+    current.sha256 = result.afterSha256;
+    current.overlay.decisions[identity.cve] = decisionFromInput(decisionInput);
+  } else {
+    corpus.files.push({
+      file: result.file,
+      absoluteFile: join(root, result.file),
+      sha256: result.afterSha256,
+      overlay: {
+        schema: TRIAGE_OVERLAY_SCHEMA,
+        project: finding.projectId,
+        component: identity.component,
+        decisions: { [identity.cve]: decisionFromInput(decisionInput) },
+      },
+    });
+  }
+  return {
+    success: true as const,
+    findingId: finding.findingId,
+    stableKey: finding.stableKey,
+    file: result.file,
+    afterSha256: result.afterSha256,
+    undo: {
+      file: result.file,
+      beforeSha256: result.beforeSha256 ?? EMPTY_SHA256,
+      afterSha256: result.afterSha256,
+      prior: snapshot.prior,
+    },
+  };
 }
 
 function missingFile(error: unknown): boolean {
@@ -561,6 +868,96 @@ export function registerFindingsRpc(
     async findingActivityRefresh(input) {
       if (!deps.hydrateActivity) throw new Error("FINDING_ACTIVITY_REFRESH_UNAVAILABLE");
       return { hydrated: await deps.hydrateActivity(input) };
+    },
+    async triageTargetsRead(input) {
+      const source = await projectSource(bb, input.workspaceProjectId);
+      const corpus = await readOverlayFiles(source.path);
+      if (input.selection.mode === "exact") {
+        const findings = input.selection.findingIds.map(findingId => exactFinding(
+          db,
+          input.platformProjectId,
+          input.projectVersionId,
+          findingId,
+        ));
+        return {
+          items: findings.map(finding => triageTarget(corpus, finding)),
+          total: findings.length,
+          next: null,
+        };
+      }
+      const page = queryFindings(db, findingFilter({
+        projectId: input.platformProjectId,
+        projectVersionId: input.projectVersionId,
+        pageSize: 25,
+        continuation: input.continuation,
+        filters: input.selection.filters,
+      }));
+      const excluded = new Set(input.selection.excludedStableKeys);
+      const findings = page.items.filter(finding => !excluded.has(finding.stableKey));
+      return {
+        items: findings.map(finding => triageTarget(corpus, finding)),
+        total: Math.max(0, input.selection.total - input.selection.excludedStableKeys.length),
+        next: page.nextCursor,
+      };
+    },
+    async triageDecisionsWrite(input) {
+      const source = await projectSource(bb, input.workspaceProjectId);
+      const corpus = await readOverlayFiles(source.path);
+      const chainedSha = new Map<string, string>();
+      const results: Array<z.output<typeof triageWriteSuccessSchema> | z.output<typeof triageWriteFailureSchema>> = [];
+      for (const item of input.decisions) {
+        let finding: CachedFinding | null = null;
+        try {
+          finding = exactFinding(db, input.platformProjectId, input.projectVersionId, item.findingId);
+          const identity = triageIdentity(finding);
+          const chainKey = JSON.stringify(identity.component);
+          const result = await writeTriageDecision(source.path, corpus, finding, item, chainedSha.get(chainKey));
+          chainedSha.set(chainKey, result.afterSha256);
+          results.push(result);
+        } catch (error) {
+          const failure = triageError(error);
+          results.push({
+            success: false,
+            findingId: item.findingId,
+            stableKey: finding?.stableKey ?? item.stableKey,
+            ...failure,
+          });
+        }
+      }
+      return { results };
+    },
+    async triageDecisionUndo(input) {
+      const source = await projectSource(bb, input.workspaceProjectId);
+      const finding = exactFinding(db, input.platformProjectId, input.projectVersionId, input.findingId);
+      if (finding.stableKey !== input.stableKey) throw new Error("TRIAGE_EXACT_ROW_MISMATCH");
+      const identity = triageIdentity(finding);
+      const corpus = await readOverlayFiles(source.path);
+      const snapshot = triageSnapshot(corpus, finding);
+      if (snapshot.sha256 !== input.token.afterSha256 || snapshot.file !== input.token.file) {
+        throw new OverlayCasConflictError(input.token.file, input.token.afterSha256, snapshot.sha256 ?? undefined);
+      }
+      const prior = input.token.prior;
+      const result = prior === null
+        ? await lockBackoff(() => removeDecision(source.path, {
+            project: finding.projectId,
+            component: identity.component,
+            cve: identity.cve,
+            stableKey: finding.stableKey,
+          }, input.token.afterSha256))
+        : await lockBackoff(() => setDecision(source.path, {
+            project: finding.projectId,
+            component: identity.component,
+            cve: identity.cve,
+            stableKey: finding.stableKey,
+            status: prior.status,
+            justification: prior.justification,
+            response: prior.response,
+            reason: prior.reason,
+            pin: prior.pin,
+            provenance: prior.provenance,
+            sync: prior.sync,
+          }, input.token.afterSha256));
+      return { file: result.file, afterSha256: result.afterSha256 };
     },
   });
 }
