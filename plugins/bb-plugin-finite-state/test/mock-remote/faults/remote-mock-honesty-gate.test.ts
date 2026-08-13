@@ -226,7 +226,7 @@ describe("remote-mock-honesty-gate", () => {
     limiter.close();
   });
 
-  it("normalizes malformed and negative Retry-After values to typed rate-limit errors", async () => {
+  it("parses Retry-After values without treating negative numerics as dates", async () => {
     const now = 10_000;
     const malformed = await responseError("platform", new Response(null, {
       status: 429, headers: { "Retry-After": "not-a-delay" },
@@ -234,16 +234,20 @@ describe("remote-mock-honesty-gate", () => {
     const negative = await responseError("assurance-studio", new Response(null, {
       status: 429, headers: { "Retry-After": "-1" },
     }), now);
+    const deltaSeconds = await responseError("platform", new Response(null, {
+      status: 429, headers: { "Retry-After": "7" },
+    }), now);
+    const httpDate = await responseError("assurance-studio", new Response(null, {
+      status: 429, headers: { "Retry-After": new Date(now + 30_000).toUTCString() },
+    }), now);
     expect(malformed).toBeInstanceOf(RemoteError);
     expect(malformed).toMatchObject({ code: "REMOTE_RATE_LIMITED", retryAfterMs: null });
     expect(negative).toBeInstanceOf(RemoteError);
-    // Portable tripwire for mem_8fm66mk2pzm: production currently falls
-    // through to Date.parse for a negative number. This remains timezone-safe
-    // while failing as soon as FS-103 stops taking that defective branch.
-    expect(negative).toMatchObject({
-      code: "REMOTE_RATE_LIMITED",
-      retryAfterMs: Math.max(0, Date.parse("-1") - now),
-    });
+    // Tripwire for mem_8fm66mk2pzm: guards parseRetryAfter semantics so a
+    // negative numeric value stays on the jittered-backoff path.
+    expect(negative).toMatchObject({ code: "REMOTE_RATE_LIMITED", retryAfterMs: null });
+    expect(deltaSeconds).toMatchObject({ code: "REMOTE_RATE_LIMITED", retryAfterMs: 7_000 });
+    expect(httpDate).toMatchObject({ code: "REMOTE_RATE_LIMITED", retryAfterMs: 30_000 });
   });
 
   it("applies only successful VEX items and reports exact mixed counts", async () => {
