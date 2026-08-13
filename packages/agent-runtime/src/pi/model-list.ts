@@ -53,8 +53,11 @@ function buildPiAvailableModel(model: PiCatalogModel): AvailableModel {
     supportedReasoningEfforts.find(
       ({ reasoningEffort }) => reasoningEffort === "medium",
     )?.reasoningEffort ??
+    supportedReasoningEfforts.find(
+      ({ reasoningEffort }) => reasoningEffort !== "none",
+    )?.reasoningEffort ??
     supportedReasoningEfforts[0]?.reasoningEffort ??
-    "low";
+    "none";
   return {
     id: canonicalId,
     model: canonicalId,

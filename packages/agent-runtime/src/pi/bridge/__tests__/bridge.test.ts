@@ -396,29 +396,32 @@ describe("pi bridge", () => {
     }
   });
 
-  it("passes thread/start max reasoningLevel through to Pi thinkingLevel", async () => {
-    const bridge = createBridgeJsonRpcTestHarness(handleLine);
-    mockCreateAgentSession.mockImplementation(async () => ({
-      session: createControlledPiAgentSession(),
-    }));
+  it.each(["off", "max"] as const)(
+    "passes thread/start %s reasoningLevel through to Pi thinkingLevel",
+    async (reasoningLevel) => {
+      const bridge = createBridgeJsonRpcTestHarness(handleLine);
+      mockCreateAgentSession.mockImplementation(async () => ({
+        session: createControlledPiAgentSession(),
+      }));
 
-    try {
-      bridge.sendRequest(3, "thread/start", {
-        cwd: "/tmp/worktree",
-        threadId: "thread-reasoning",
-        reasoningLevel: "max",
-      });
-      await bridge.waitForResponse(3);
+      try {
+        bridge.sendRequest(3, "thread/start", {
+          cwd: "/tmp/worktree",
+          threadId: `thread-reasoning-${reasoningLevel}`,
+          reasoningLevel,
+        });
+        await bridge.waitForResponse(3);
 
-      expect(mockCreateAgentSession).toHaveBeenCalledWith(
-        expect.objectContaining({
-          thinkingLevel: "max",
-        }),
-      );
-    } finally {
-      bridge.restore();
-    }
-  });
+        expect(mockCreateAgentSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            thinkingLevel: reasoningLevel,
+          }),
+        );
+      } finally {
+        bridge.restore();
+      }
+    },
+  );
 
   it("uses the configured bridge session directory for default Pi sessions", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);

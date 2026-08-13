@@ -31,6 +31,12 @@ describe("agent provider catalog", () => {
     expect(supportsManualCompaction("acp-opencode")).toBe(true);
   });
 
+  it("allows Pi thinking-off selections through server-side validation", () => {
+    expect(
+      getBuiltInAgentProviderServerCapabilities("pi").reasoningLevels,
+    ).toEqual(["none", "low", "medium", "high", "xhigh", "max"]);
+  });
+
   it("synthesizes dynamic ACP provider metadata with shared ACP policy", () => {
     expect(
       buildAcpProviderInfo({

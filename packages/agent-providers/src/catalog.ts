@@ -184,9 +184,11 @@ const PI_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   backsHostDaemonAiServices: false,
   // "none" is the thinking-off level: some Pi models (e.g. Ollama Cloud models
   // whose `thinkingLevelMap` advertises `off`, and non-reasoning models) expose
-  // it per-model via `supportedReasoningEfforts`. The picker only offers it for
-  // those models, but this coarse ladder must include it so the plan-path
-  // validation accepts a `none` selection the picker legitimately offered.
+  // it per-model via `supportedReasoningEfforts`. Daemon-backed models only
+  // offer it when their precise catalog entry does; server-defined custom
+  // models inherit this coarse fallback ladder. The ladder must include it so
+  // plan-path validation accepts a `none` selection the daemon legitimately
+  // offered.
   reasoningLevels: ["none", "low", "medium", "high", "xhigh", "max"],
 };
 

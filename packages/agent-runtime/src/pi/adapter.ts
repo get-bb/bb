@@ -458,23 +458,23 @@ function buildPiAdditionalSkillPathsParams(
 // Levels Pi does not support ("ultracode", "ultra") are dropped so the bridge
 // schema never receives a value it would reject; reconciliation picks the
 // closest supported level before this point, so this is a defensive floor.
-const PI_THINKING_LEVELS = new Set<PiReasoningLevel>([
-  "off",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-]);
-
 function toPiThinkingLevel(
   reasoningLevel: ProviderExecutionContext["reasoningLevel"],
 ): PiReasoningLevel | undefined {
-  if (reasoningLevel === undefined) return undefined;
-  const piLevel = reasoningLevel === "none" ? "off" : reasoningLevel;
-  return PI_THINKING_LEVELS.has(piLevel as PiReasoningLevel)
-    ? (piLevel as PiReasoningLevel)
-    : undefined;
+  switch (reasoningLevel) {
+    case "none":
+      return "off";
+    case "low":
+    case "medium":
+    case "high":
+    case "xhigh":
+    case "max":
+      return reasoningLevel;
+    case "ultracode":
+    case "ultra":
+    case undefined:
+      return undefined;
+  }
 }
 
 function buildPiConfig(
@@ -1172,7 +1172,11 @@ export function createPiProviderAdapter(
                   ? { model: command.options.model }
                   : {}),
                 ...(command.options?.reasoningLevel
-                  ? { reasoningLevel: toPiThinkingLevel(command.options.reasoningLevel) }
+                  ? {
+                      reasoningLevel: toPiThinkingLevel(
+                        command.options.reasoningLevel,
+                      ),
+                    }
                   : {}),
                 ...(dynamicTools && dynamicTools.length > 0
                   ? { dynamicTools }
@@ -1212,7 +1216,11 @@ export function createPiProviderAdapter(
                   ? { model: command.options.model }
                   : {}),
                 ...(command.options?.reasoningLevel
-                  ? { reasoningLevel: toPiThinkingLevel(command.options.reasoningLevel) }
+                  ? {
+                      reasoningLevel: toPiThinkingLevel(
+                        command.options.reasoningLevel,
+                      ),
+                    }
                   : {}),
                 ...(dynamicTools && dynamicTools.length > 0
                   ? { dynamicTools }
@@ -1300,7 +1308,11 @@ export function createPiProviderAdapter(
                   ? { model: command.options.model }
                   : {}),
                 ...(command.options?.reasoningLevel
-                  ? { reasoningLevel: toPiThinkingLevel(command.options.reasoningLevel) }
+                  ? {
+                      reasoningLevel: toPiThinkingLevel(
+                        command.options.reasoningLevel,
+                      ),
+                    }
                   : {}),
                 ...(dynamicTools && dynamicTools.length > 0
                   ? { dynamicTools }
