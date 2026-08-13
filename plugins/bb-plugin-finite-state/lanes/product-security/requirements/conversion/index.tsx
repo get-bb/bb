@@ -1,81 +1,15 @@
 import { useEffect, useState } from "react";
 import { Icon } from "@bb/shared-ui/icon";
 import { useBbContext, useBbNavigate, useRpc } from "@bb/plugin-sdk/app";
-import type { RpcContract } from "../../../../shared/contract.js";
+import type { ConversionRpcContract } from "./backend.js";
 import { ConversionDialog, type ConversionDialogModel } from "./ConversionDialog.js";
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : "The scoped conversion request failed.";
 }
 
-const MAX_SYNC_PLAN_PAGES = 50;
-
-type SyncPlanCall = (input: {
-  projectId: string;
-  projectVersionId: string | null;
-  pageSize: number;
-  continuation: string | null;
-  kinds: ["requirement"];
-}) => Promise<{ items: NonNullable<ConversionDialogModel["diff"]>; next: string | null }>;
-
-export function exactRequirementDiffItems(
-  items: NonNullable<ConversionDialogModel["diff"]>,
-  requirementIds: readonly string[],
-): NonNullable<ConversionDialogModel["diff"]> {
-  const selected = new Set(requirementIds);
-  return items.filter((item) => selected.has(item.label) && item.operation !== "noop");
-}
-
 export function requirementEditSubPath(requirementId: string): string {
   return `requirements/trace/${requirementId}`;
-}
-
-export function conversionDiffIsComplete(
-  items: NonNullable<ConversionDialogModel["diff"]>,
-  requirementIds: readonly string[],
-  continuation: string | null,
-): boolean {
-  if (continuation !== null) return false;
-  const shownIds = new Set(items.map((item) => item.label));
-  return requirementIds.every((id) => shownIds.has(id));
-}
-
-export async function loadConversionDiff(
-  conversion: ConversionDialogModel,
-  projectId: string,
-  callSyncPlan: SyncPlanCall,
-): Promise<ConversionDialogModel> {
-  if (conversion.state !== "awaiting_human") return conversion;
-  try {
-    const items: NonNullable<ConversionDialogModel["diff"]> = [];
-    let continuation: string | null = null;
-    let pageIndex = 0;
-    do {
-      const plan = await callSyncPlan({
-        projectId,
-        projectVersionId: conversion.projectVersionId,
-        pageSize: 200,
-        continuation,
-        kinds: ["requirement"],
-      });
-      items.push(...exactRequirementDiffItems(plan.items, conversion.requirementIds));
-      continuation = plan.next;
-      pageIndex += 1;
-    } while (continuation !== null && pageIndex < MAX_SYNC_PLAN_PAGES);
-    return {
-      ...conversion,
-      diff: items,
-      diffComplete: conversionDiffIsComplete(items, conversion.requirementIds, continuation),
-      diffError: undefined,
-    };
-  } catch (error: unknown) {
-    return {
-      ...conversion,
-      diff: undefined,
-      diffComplete: false,
-      diffError: message(error),
-    };
-  }
 }
 
 export function RequirementsConversionLayer({
@@ -85,17 +19,12 @@ export function RequirementsConversionLayer({
 } = {}): React.JSX.Element | null {
   const { projectId: routeProjectId } = useBbContext();
   const projectId = selectedProjectId ?? routeProjectId;
-  const rpc = useRpc<RpcContract>();
+  const rpc = useRpc<ConversionRpcContract>();
   const navigate = useBbNavigate();
   const [projectVersionId, setProjectVersionId] = useState<string | null>(null);
   const [model, setModel] = useState<ConversionDialogModel | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  async function withDiff(conversion: ConversionDialogModel): Promise<ConversionDialogModel> {
-    if (conversion.state !== "awaiting_human" || !projectId) return conversion;
-    return loadConversionDiff(conversion, projectId, (input) => rpc.call("syncPlan", input));
-  }
 
   useEffect(() => {
     setProjectVersionId(null);
@@ -114,7 +43,6 @@ export function RequirementsConversionLayer({
       });
       setProjectVersionId(conversion.projectVersionId);
       setModel(conversion);
-      setModel(await withDiff(conversion));
     } catch (nextError) {
       setError(message(nextError));
     } finally {
@@ -132,7 +60,6 @@ export function RequirementsConversionLayer({
         id: model.id,
       });
       setModel(conversion);
-      setModel(await withDiff(conversion));
     } catch (nextError) {
       setError(message(nextError));
     } finally {

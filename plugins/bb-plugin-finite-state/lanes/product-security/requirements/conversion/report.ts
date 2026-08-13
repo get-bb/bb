@@ -1,4 +1,7 @@
 import { createHash } from "node:crypto";
+import { jsonValueSchema, type JsonValue } from "../../../../shared/contract.js";
+import { canonicalRequirement } from "../cards/adapter.js";
+import { validateRequirementYaml } from "../cards/validator.js";
 import type { ConversionDeps } from "./bundle.js";
 import {
   buildConversionBundle,
@@ -10,6 +13,23 @@ import { spawnConversionThread } from "./spawn.js";
 import { validateConversion, type ConversionGateResult, type ValidationError } from "./validate.js";
 
 const MAX_REPORT_ERRORS = 100;
+
+interface ConversionDiffValue {
+  present: boolean;
+  value: JsonValue;
+}
+
+export interface ConversionDiffItem {
+  key: string;
+  label: string;
+  operation: "update";
+  fields: Array<{
+    field: string;
+    base: ConversionDiffValue;
+    ours: ConversionDiffValue;
+    theirs: ConversionDiffValue;
+  }>;
+}
 
 export type ConversionState =
   | "preparing"
@@ -31,9 +51,85 @@ export interface ConversionReport {
   errors: ValidationError[];
   pulledAt: string;
   gates: ConversionGateResult[];
+  diff: ConversionDiffItem[];
+  diffComplete: boolean;
 }
 
 const reports = new Map<string, ConversionReport>();
+
+function sourceFields(source: StoredConversionBundle["sources"][number]): Record<string, JsonValue> {
+  return {
+    schema: "fs-requirement/v1",
+    id: source.requirementId,
+    req_type: source.reqType,
+    priority: source.priority,
+    status: source.status,
+    source_description: source.sourceDescription,
+    ...(source.rationale === null ? {} : { rationale: source.rationale }),
+    mitigations: source.traces.mitigations,
+    controls: source.traces.controls,
+    standards: source.traces.standards,
+    verification: source.checks.map((check) => ({
+      check: check.slug,
+      method: check.method,
+      tier: check.tier,
+      required: check.required,
+      ...(check.coverage === null ? {} : { coverage: check.coverage }),
+      suppressed: check.suppressed,
+      pass_criteria: check.passCriteria,
+      ...(check.failCriteria === null ? {} : { fail_criteria: check.failCriteria }),
+    })),
+  };
+}
+
+function fieldValue(fields: Readonly<Record<string, JsonValue>>, field: string): ConversionDiffValue {
+  return Object.hasOwn(fields, field)
+    ? { present: true, value: fields[field] ?? null }
+    : { present: false, value: null };
+}
+
+function jsonRecord(value: unknown): Record<string, JsonValue> {
+  const parsed = jsonValueSchema.parse(value);
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Requirement diff payload must be a JSON object.");
+  }
+  return parsed;
+}
+
+async function currentProposalDiff(bundle: StoredConversionBundle): Promise<{
+  items: ConversionDiffItem[];
+  complete: boolean;
+}> {
+  const items: ConversionDiffItem[] = [];
+  for (const source of bundle.sources) {
+    const yaml = await bundle.deps.readLocalFile(source.targetPath);
+    if (yaml === null) return { items, complete: false };
+    const validated = validateRequirementYaml(yaml, source.targetPath);
+    if (!validated.success) return { items, complete: false };
+    const base = sourceFields(source);
+    const ours = jsonRecord(canonicalRequirement(validated.data));
+    const fields = [...new Set([...Object.keys(base), ...Object.keys(ours)])]
+      .sort((left, right) => left.localeCompare(right))
+      .flatMap((field) => {
+        const baseValue = fieldValue(base, field);
+        const oursValue = fieldValue(ours, field);
+        return JSON.stringify(baseValue) === JSON.stringify(oursValue) ? [] : [{
+          field,
+          base: baseValue,
+          ours: oursValue,
+          theirs: baseValue,
+        }];
+      });
+    if (fields.length === 0) return { items, complete: false };
+    items.push({
+      key: source.targetPath,
+      label: source.requirementId,
+      operation: "update",
+      fields,
+    });
+  }
+  return { items, complete: items.length === bundle.sources.length };
+}
 
 async function currentReviewDigest(bundle: StoredConversionBundle): Promise<string> {
   const currentSnapshot = await bundle.deps.loadPullSnapshot();
@@ -74,6 +170,8 @@ export async function startConversion(
       roundTrip: { ok: false, unresolved: [], staleSource: false },
       humanReview: "pending",
     })),
+    diff: [],
+    diffComplete: false,
   };
   reports.set(meta.bundleId, initial);
   if (meta.requirementIds.length === 0) {
@@ -146,12 +244,15 @@ export async function refreshConversion(id: string): Promise<ConversionReport> {
     }] : []),
   ]).slice(0, MAX_REPORT_ERRORS);
   const ready = gates.length > 0 && gates.every((gate) => gate.schema.ok && gate.roundTrip.ok);
+  const diff = ready ? await currentProposalDiff(bundle) : { items: [], complete: false };
   const next: ConversionReport = {
     ...report,
     snapshotSha256: await currentReviewDigest(bundle),
     state: ready ? "awaiting_human" : "failed",
     errors,
     gates,
+    diff: diff.items,
+    diffComplete: diff.complete,
   };
   reports.set(id, next);
   return next;

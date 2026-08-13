@@ -10,7 +10,6 @@ export interface ConversionDialogModel {
   snapshotSha256: string;
   errors: Array<{ code: string; message: string; artifactId: string | null; line: number | null }>;
   diffComplete?: boolean;
-  diffError?: string;
   diff?: Array<{
     key: string;
     label: string;
@@ -48,7 +47,7 @@ export function ConversionDialog({
           </div>
           <button aria-label="Close conversion" className="rounded-md p-2 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={onClose} type="button"><Icon aria-hidden="true" className="size-4" name="X" /></button>
         </header>
-        <div className="min-h-0 flex-1 space-y-5 overflow-auto p-5">
+        <div aria-label="Conversion proposal details" className="min-h-0 flex-1 space-y-5 overflow-auto p-5" tabIndex={0}>
           <ConversionStatus state={model.state} />
           <div>
             <p className="text-sm font-medium">Scoped requirements</p>
@@ -65,15 +64,9 @@ export function ConversionDialog({
           {model.state === "awaiting_human" ? (
             <div className="rounded-lg border border-border bg-muted/40 p-4">
               <div className="flex items-start gap-3"><Icon aria-hidden="true" className="mt-0.5 size-5" name="FileDiff" /><div><p className="font-medium">Review the ordinary git/sync diff</p><p className="mt-1 text-sm text-muted-foreground">Approval acknowledges a valid local proposal only. It does not push or apply it.</p></div></div>
-              {model.diffError ? (
-                <div className="mt-3 rounded-md border border-destructive/40 bg-background p-3" role="alert">
-                  <p className="text-sm font-medium text-destructive">Requirement diff unavailable</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{model.diffError} Gate results remain current; approval stays unavailable.</p>
-                </div>
-              ) : null}
-              {model.diff === undefined && !model.diffError ? <p className="mt-3 text-sm text-muted-foreground">Loading selected requirement changes…</p> : null}
+              {model.diff === undefined ? <p className="mt-3 text-sm text-muted-foreground">Loading selected requirement changes…</p> : null}
               {model.diff?.length === 0 ? <p className="mt-3 text-sm text-destructive">No selected requirement diff is available. Refresh gates before approval.</p> : null}
-              {model.diff !== undefined && model.diffComplete === false && !model.diffError ? (
+              {model.diff !== undefined && model.diffComplete === false ? (
                 <p className="mt-3 text-sm text-destructive">The selected requirement diff is incomplete. Approval stays unavailable until every scoped requirement is shown.</p>
               ) : null}
               {model.diff?.map((item) => (
