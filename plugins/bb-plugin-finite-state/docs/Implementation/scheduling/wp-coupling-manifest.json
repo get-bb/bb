@@ -765,7 +765,8 @@
       "riskTier": "standard",
       "preset": "fs-standard",
       "dependencies": [
-        "WP36"
+        "WP36",
+        "WP71"
       ],
       "reason": "The matrix establishes requirement-to-tier evidence mapping."
     },
