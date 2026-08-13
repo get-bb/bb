@@ -127,6 +127,8 @@ const AMD_0011_CURSOR_PAGED_METHODS = new Set([
 ]);
 
 const PROJECT_KEY_DOMAIN_METHODS = new Set([
+  // Owner-ratified AMD-0011 exception: this is the project-relative KiCad
+  // artifact key, not an alias for projectId/projectVersionId scope.
   "hardwareSymbolsList",
   "hardwareNetsList",
   "hardwareViolationsList",

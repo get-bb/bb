@@ -248,7 +248,17 @@ specs: `docs/Product Specs/SPEC 07` and `SPEC 08`.*
   - `shared/contract.ts`: `84bee6cab373316b2c4e47707c1c80b7a54a007d9ae2bf46862faad9cba8e905`
 - New artifact hashes:
   - `shared/contract.ts`: `4a6f17e3b6ba12074f975a7fa4a51161cb3f704b3b0d93519120a0a705db511d`
-- Note: renumbered to 3 because AMD-0003 reserved contract version 2 before WP-71 acceptance, as authorized by this entry
+- Contract-version sequencing: the owner ratifies version 3. Versions 2 and 3
+  were minted out of order across two approved amendments; AMD-0011 keeps 3,
+  and AMD-0003 takes the next contract version when it is implemented.
+- `projectKey` exemption: the owner keeps `projectKey` as the KiCad
+  project-relative hardware-domain key, not a project-scope alias, for exactly
+  `hardwareSymbolsList`, `hardwareNetsList`, `hardwareViolationsList`,
+  `hardwareSheetsList`, `hardwarePartGet`, `hardwareArtifactsStatus`,
+  `hardwareExtractStart`, and `groundingSourcesList`. The rejected-alias guard
+  exempts only those eight methods. A `hardwareProjectKey` rename is deferred
+  and may ride the future AMD-0003 implementation amendment if this ambiguity
+  proves costly.
 - Change: add namespaced method groups — `hardware.*` (projects, sheets,
   symbols, nets, violations, artifact status, extract job control),
   `grounding.*` (sources, federated query with plane labels, catalog
