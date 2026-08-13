@@ -26,7 +26,6 @@ import {
   formatAppShortcut,
   formatAppShortcutAria,
   isEditableKeyboardTarget,
-  isNativeEditableKeyEvent,
   matchesAppCommandContext,
   type AppShortcutPresentation,
 } from "@/lib/app-keybindings";
@@ -286,11 +285,6 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       if (event.defaultPrevented || event.isComposing || event.repeat) {
         return false;
       }
-      // Editable controls own semantic navigation and deletion keys. Their
-      // modifiers express native character/word/line/document behavior, so an
-      // app command customized onto the same chord must not preempt them. Other
-      // chords still dispatch before widget keymaps (the #1162 guarantee).
-      if (isNativeEditableKeyEvent(event)) return false;
       // A widget that dispatched first leaves the event alone when every
       // handler declines, so the same event still reaches the window listener.
       // Without this, those handlers would run a second time.

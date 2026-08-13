@@ -11,7 +11,6 @@ import {
   formatAppShortcut,
   formatAppShortcutAria,
   isEditableKeyboardTarget,
-  isNativeEditableKeyEvent,
   matchesAppCommandContext,
 } from "./app-keybindings";
 
@@ -180,56 +179,6 @@ describe("app keybindings", () => {
     expect(isEditableKeyboardTarget(document.createElement("button"))).toBe(
       false,
     );
-  });
-
-  it("recognizes native navigation and deletion keys in editable controls", () => {
-    const editor = document.createElement("div");
-    editor.setAttribute("contenteditable", "true");
-    document.body.append(editor);
-
-    for (const key of [
-      "ArrowDown",
-      "ArrowLeft",
-      "ArrowRight",
-      "ArrowUp",
-      "Backspace",
-      "Delete",
-      "End",
-      "Home",
-      "PageDown",
-      "PageUp",
-    ]) {
-      const event = new KeyboardEvent("keydown", {
-        altKey: true,
-        bubbles: true,
-        ctrlKey: true,
-        key,
-        metaKey: true,
-        shiftKey: true,
-      });
-      editor.dispatchEvent(event);
-      expect(isNativeEditableKeyEvent(event), key).toBe(true);
-    }
-
-    const formattingEvent = new KeyboardEvent("keydown", {
-      bubbles: true,
-      key: "B",
-      metaKey: true,
-      shiftKey: true,
-    });
-    editor.dispatchEvent(formattingEvent);
-    expect(isNativeEditableKeyEvent(formattingEvent)).toBe(false);
-
-    const outsideEvent = new KeyboardEvent("keydown", {
-      bubbles: true,
-      key: "ArrowUp",
-      metaKey: true,
-      shiftKey: true,
-    });
-    document.body.dispatchEvent(outsideEvent);
-    expect(isNativeEditableKeyEvent(outsideEvent)).toBe(false);
-
-    editor.remove();
   });
 
   it("formats platform-specific shortcut labels", () => {

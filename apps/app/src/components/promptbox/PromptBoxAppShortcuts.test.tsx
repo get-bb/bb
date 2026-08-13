@@ -107,14 +107,14 @@ function ShortcutHintState() {
   );
 }
 
-function renderComposer(extra: React.ReactNode = null, value = "") {
+function renderComposer(extra: React.ReactNode = null) {
   render(
     <MemoryRouter>
       <AppCommandProvider>
         <SidebarToggleHandler />
         {extra}
         <PromptBoxInternal
-          value={value}
+          value=""
           mentionRanges={[]}
           onChange={vi.fn()}
           onSubmit={vi.fn()}
@@ -153,15 +153,6 @@ function pressInEditor(
   return event;
 }
 
-function placeCaretAtBoundary(editor: HTMLElement, boundary: "start" | "end") {
-  const range = document.createRange();
-  range.selectNodeContents(editor);
-  range.collapse(boundary === "start");
-  const selection = document.getSelection();
-  selection?.removeAllRanges();
-  selection?.addRange(range);
-}
-
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -180,29 +171,22 @@ afterEach(() => {
 
 describe("prompt editor app shortcuts", () => {
   it.each([
-    ["ArrowUp", "start", "end" as const],
-    ["ArrowDown", "end", "start" as const],
-  ])(
-    "leaves Meta+Shift+%s to extend selection toward the input %s",
-    (key, _targetBoundary, initialBoundary) => {
-      vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
-      const editor = renderComposer(
-        <ThreadNavigationHandlers />,
-        "alpha\nbeta\ngamma",
-      );
-      placeCaretAtBoundary(editor, initialBoundary);
+    ["ArrowUp", "thread.previous"],
+    ["ArrowDown", "thread.next"],
+  ])("runs the configured Meta+Shift+%s app shortcut", (key, command) => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    const editor = renderComposer(<ThreadNavigationHandlers />);
 
-      const event = pressInEditor(editor, {
-        key,
-        metaKey: true,
-        shiftKey: true,
-      });
+    const event = pressInEditor(editor, {
+      key,
+      metaKey: true,
+      shiftKey: true,
+    });
 
-      expect(event.defaultPrevented).toBe(false);
-      expect(testState.calls).toEqual([]);
-      expect(document.activeElement).toBe(editor);
-    },
-  );
+    expect(event.defaultPrevented).toBe(true);
+    expect(testState.calls).toEqual([command]);
+    expect(document.activeElement).toBe(editor);
+  });
 
   it("runs the sidebar shortcut while the composer has focus", () => {
     const editor = renderComposer();
