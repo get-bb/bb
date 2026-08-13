@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -5,6 +6,39 @@ import { afterEach, describe, expect, it } from "vitest";
 import { computeForgeArtifactHash } from "./artifact-hash.js";
 
 const roots: string[] = [];
+
+// Copied from _firmware_artifact_hash in the authoritative upstream source:
+// https://github.com/FiniteStateInc/finite-state-forge/blob/5083a9d745e6d0e22166d2850e7e43fc3987c350/src/finite_state_forge/tools/qemu_dynamic.py#L476-L505
+// Git blob: 99cf948f731547cd07eae05256b3386550ec7220. The executable hash
+// statements are transcribed unchanged; the test wrapper supplies imports,
+// argv, and result printing.
+const PINNED_FORGE_HASH_SOURCE = String.raw`
+import hashlib
+import sys
+from pathlib import Path
+
+def _firmware_artifact_hash(firmware_root: Path) -> str:
+    if not firmware_root.is_dir():
+        return ""
+    h = hashlib.sha256()
+    for f in sorted(firmware_root.rglob("*")):
+        if f.is_file():
+            h.update(str(f.relative_to(firmware_root)).encode())
+            h.update(b"\0")
+            try:
+                h.update(hashlib.sha256(f.read_bytes()).digest())
+            except OSError:
+                h.update(b"<unreadable>\0")
+    return h.hexdigest()
+
+print(_firmware_artifact_hash(Path(sys.argv[1])))
+`;
+
+function pinnedForgeArtifactHash(root: string): string {
+  return execFileSync("python3", ["-c", PINNED_FORGE_HASH_SOURCE, root], {
+    encoding: "utf8",
+  }).trim();
+}
 
 async function rootfs(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "fs-forge-hash-"));
@@ -17,7 +51,7 @@ afterEach(async () => {
 });
 
 describe("Forge artifact hashing", () => {
-  it("matches the Forge 5083a9d7 golden tree byte-for-byte", async () => {
+  it("matches the pinned upstream Forge source excerpt byte-for-byte", async () => {
     const root = await rootfs();
     await mkdir(join(root, "a"));
     await writeFile(join(root, "z-last"), "omega");
@@ -29,9 +63,7 @@ describe("Forge artifact hashing", () => {
 
     const result = await computeForgeArtifactHash(root);
 
-    // Produced by qemu_dynamic.py::_firmware_artifact_hash at pinned Forge
-    // commit 5083a9d745e6d0e22166d2850e7e43fc3987c350.
-    expect(result.artifactHash).toBe("8029af87eb0267644825b89f5ebffee1d2e400c6f58c4febd56584e35afad597");
+    expect(result.artifactHash).toBe(pinnedForgeArtifactHash(root));
     expect(result.fileCount).toBe(5);
     expect(result.regularFileHashes["/a/empty"]).toBe(
       "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -79,5 +111,14 @@ describe("Forge artifact hashing", () => {
     } finally {
       await chmod(unreadable, 0o600);
     }
+  });
+
+  it("fails closed when the tree contains a special filesystem node", async () => {
+    const root = await rootfs();
+    execFileSync("mkfifo", [join(root, "device-stream")]);
+
+    await expect(computeForgeArtifactHash(root)).rejects.toMatchObject({
+      code: "UNSUPPORTED_FIRMWARE_NODE",
+    });
   });
 });

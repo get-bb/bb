@@ -100,6 +100,12 @@ export async function loadFirmwareReadiness(
     if (readiness !== "fully_materialized") {
       throw new FirmwareCacheError("MOUNT_INCOMPLETE", incompleteMessage(meta, nodes));
     }
+    if (nodes.length === 0) {
+      throw new FirmwareCacheError(
+        "MOUNT_INCOMPLETE",
+        "An empty firmware manifest cannot be dispatched as a prepared rootfs.",
+      );
+    }
     if (meta.pvId !== safePvId) {
       throw new FirmwareCacheError("MOUNT_INVALID", "The firmware sidecar belongs to a different project version.");
     }

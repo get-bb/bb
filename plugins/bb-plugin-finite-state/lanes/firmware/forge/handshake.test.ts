@@ -104,6 +104,8 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
+// The owned-file list does not include readiness.test.ts, so the complete
+// readiness matrix is exercised here through the public preparation seam.
 describe("firmware bench readiness", () => {
   it("rejects missing, metadata-only, partial, stale, invalid, and unpack-gap mounts", async () => {
     const missing = await fixture();
@@ -158,6 +160,17 @@ describe("firmware bench readiness", () => {
     await expect(
       prepareFirmwareForBench({ worktreeRoot: unpackGap }, "pv-1", new AbortController().signal),
     ).rejects.toMatchObject({ code: "MOUNT_INCOMPLETE", message: expect.stringContaining("missing squashfs bytes") });
+
+    const empty = await fixture();
+    await writeMount(
+      empty,
+      [],
+      meta({ nodeCount: 0, hydratedCount: 0 }),
+      {},
+    );
+    await expect(
+      prepareFirmwareForBench({ worktreeRoot: empty }, "pv-1", new AbortController().signal),
+    ).rejects.toMatchObject({ code: "MOUNT_INCOMPLETE" });
   });
 });
 
@@ -177,11 +190,15 @@ describe("firmware bench handshake", () => {
     expect(prepared.preparedAt).toBe("1970-01-01T00:00:01.000Z");
     expect(Object.isFrozen(prepared)).toBe(true);
     expect(Object.isFrozen(prepared.environment)).toBe(true);
+    expect(Object.keys(prepared)).toContain("artifactHash");
+    expect(Object.keys(prepared)).not.toContain("rootfsPath");
+    expect(Object.keys(prepared)).not.toContain("environment");
     expect(JSON.stringify(prepared)).not.toContain(canonicalRootfs);
     expect(JSON.stringify(prepared)).not.toContain(key);
 
     const start = vi.fn(async (_launch: BenchProcessLaunch, _signal: AbortSignal) => undefined);
     await startForgeWithPreparedFirmware(
+      { worktreeRoot: root },
       { kind: "plugin_owned_stdio", hostId: "host-1", command: ["forge", "serve"], start },
       prepared,
       new AbortController().signal,
@@ -204,6 +221,7 @@ describe("firmware bench handshake", () => {
     );
     await expect(
       startForgeWithPreparedFirmware(
+        { worktreeRoot: root },
         { kind: "persistent", hostId: "host-1", command: ["forge"] },
         prepared,
         new AbortController().signal,
@@ -211,6 +229,7 @@ describe("firmware bench handshake", () => {
     ).rejects.toMatchObject({ code: "FIRMWARE_REGISTRATION_UNAVAILABLE" });
     await expect(
       startForgeWithPreparedFirmware(
+        { worktreeRoot: root },
         { kind: "remote" },
         prepared,
         new AbortController().signal,
@@ -233,7 +252,11 @@ describe("firmware bench handshake", () => {
       manifest.close();
     }
     await expect(
-      assertPreparationCurrent({ worktreeRoot: generationRoot }, generationPrepared),
+      assertPreparationCurrent(
+        { worktreeRoot: generationRoot },
+        generationPrepared,
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({ code: "FIRMWARE_CHANGED_DURING_PREPARE" });
 
     const digestRoot = await fixture();
@@ -244,8 +267,15 @@ describe("firmware bench handshake", () => {
       new AbortController().signal,
     );
     await writeFile(rootfsPath(digestRoot, "pv-1") + "/bin/app", "corrupt after prepare");
+    const start = vi.fn(async (_launch: BenchProcessLaunch, _signal: AbortSignal) => undefined);
     await expect(
-      assertPreparationCurrent({ worktreeRoot: digestRoot }, digestPrepared),
+      startForgeWithPreparedFirmware(
+        { worktreeRoot: digestRoot },
+        { kind: "plugin_owned_stdio", hostId: "host-1", command: ["forge"], start },
+        digestPrepared,
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({ code: "FIRMWARE_CHANGED_DURING_PREPARE" });
+    expect(start).not.toHaveBeenCalled();
   });
 });

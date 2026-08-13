@@ -107,7 +107,12 @@ async function collectArtifactTree(root: string, signal: AbortSignal): Promise<A
         });
         continue;
       }
-      if (!stat.isSymbolicLink()) continue;
+      if (!stat.isSymbolicLink()) {
+        throw new FirmwareArtifactHashError(
+          "UNSUPPORTED_FIRMWARE_NODE",
+          `Firmware root contains an unsupported special filesystem node: /${relativePath}`,
+        );
+      }
 
       let target: string;
       let resolvedTarget: string;
@@ -258,11 +263,7 @@ function sameTree(left: ArtifactTree, right: ArtifactTree): boolean {
   );
 }
 
-/**
- * Exact TypeScript port of Forge qemu_dynamic.py::_firmware_artifact_hash at
- * commit 5083a9d745e6d0e22166d2850e7e43fc3987c350, with fail-closed reads and
- * containment checks added for bench preparation.
- */
+/** Hash a prepared tree using the source-grounded Forge record format. */
 export async function computeForgeArtifactHash(
   rootfsPath: string,
   signal: AbortSignal = new AbortController().signal,

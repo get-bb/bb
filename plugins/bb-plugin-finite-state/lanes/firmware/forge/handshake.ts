@@ -6,6 +6,14 @@ import {
 } from "./readiness.js";
 import { FirmwareCacheError, validatePvId } from "../cache/layout.js";
 
+/**
+ * Host-side preparation. `rootfsPath` and `environment` are deliberately
+ * non-enumerable so JSON, object spread, and Object.entries cannot copy host
+ * secrets into RPC/log payloads. Do not clone this record with spread syntax;
+ * pass the original sealed object to `startForgeWithPreparedFirmware`.
+ * `artifactHash` remains enumerable so WP-53 can persist this exact digest on
+ * the verification run and reuse it for results and attestations.
+ */
 export interface PreparedFirmware {
   pvId: string;
   rootfsPath: string;
@@ -134,7 +142,9 @@ export async function prepareFirmwareForBench(
 export async function assertPreparationCurrent(
   deps: FirmwareHandshakeDeps,
   prepared: PreparedFirmware,
+  signal: AbortSignal,
 ): Promise<void> {
+  signal.throwIfAborted();
   let snapshot: FirmwareReadinessSnapshot;
   try {
     snapshot = await loadFirmwareReadiness(deps, prepared.pvId);
@@ -150,7 +160,7 @@ export async function assertPreparationCurrent(
 
   let artifact: ForgeArtifactHash;
   try {
-    artifact = await computeForgeArtifactHash(snapshot.rootfsPath);
+    artifact = await computeForgeArtifactHash(snapshot.rootfsPath, signal);
     verifyManifestFiles(snapshot, artifact, true);
   } catch (error) {
     if (error instanceof FirmwareCacheError && error.code === "FIRMWARE_CHANGED_DURING_PREPARE") throw error;
@@ -174,6 +184,7 @@ function benchLaunch(
 }
 
 export async function startForgeWithPreparedFirmware(
+  deps: FirmwareHandshakeDeps,
   adapter: ForgeProcessAdapter,
   prepared: PreparedFirmware,
   signal: AbortSignal,
@@ -185,16 +196,19 @@ export async function startForgeWithPreparedFirmware(
       adapter.reason ?? "Remote Forge has no secure firmware transfer or root-registration method.",
     );
   }
-  const launch = benchLaunch(adapter.hostId, adapter.command, prepared);
   if (adapter.kind === "plugin_owned_stdio") {
+    await assertPreparationCurrent(deps, prepared, signal);
+    const launch = benchLaunch(adapter.hostId, adapter.command, prepared);
     await adapter.start(launch, signal);
     return;
   }
-  if (!adapter.restart) {
+  const restart = adapter.restart;
+  if (!restart) {
     throw new FirmwareCacheError(
       "FIRMWARE_REGISTRATION_UNAVAILABLE",
       "Persistent Forge must expose a verified restart/reconnect seam before firmware can be registered.",
     );
   }
-  await adapter.restart(launch, signal);
+  await assertPreparationCurrent(deps, prepared, signal);
+  await restart(benchLaunch(adapter.hostId, adapter.command, prepared), signal);
 }
