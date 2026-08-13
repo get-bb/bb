@@ -22,10 +22,11 @@
  * it would replace is gone. Wrappers only change the case that would throw.
  *
  * Plugin content scripts are a second, tighter layer. While one of those
- * scripts (or a MutationObserver it created) runs, the guard also refuses to
- * move a React-owned node to a new parent. That stops the wrap-then-remove
- * crash at the source: the plugin can still insert its own sibling controls,
- * but it cannot steal a host button or link out of React's tree.
+ * scripts runs, the guard also refuses to move a React-owned node to a new
+ * parent. Continuations the script schedules — MutationObserver callbacks,
+ * timers, microtasks, `await`, and event listeners — keep the same rule.
+ * The plugin can still insert its own sibling controls, but it cannot steal
+ * a host button or link out of React's tree.
  *
  * This is the workaround React's own maintainers publish for translated pages
  * (facebook/react#11538), plus a host-side fence for trusted plugin scripts
@@ -140,33 +141,88 @@ function recordRefusedMove(node: Node, attemptedParent: Node): void {
 
 /**
  * True when a plugin script is trying to adopt a React-owned node into a
- * different parent. Fresh nodes and same-parent reorders stay allowed.
+ * different parent. Same-parent reorders stay allowed. A detached React node
+ * may still attach to another React host (a plugin-triggered commit). It may
+ * not attach to a foreign parent after `remove` / `replaceWith`.
  */
 function refusePluginReparent(node: Node, newParent: Node): boolean {
   if (isolationDepth === 0) return false;
-  if (node.parentNode === null || node.parentNode === newParent) return false;
+  if (node.parentNode === newParent) return false;
   if (!isReactHostNode(node)) return false;
+  if (node.parentNode === null && isReactHostNode(newParent)) return false;
   recordRefusedMove(node, newParent);
   return true;
 }
 
-/**
- * Run `fn` as plugin content-script DOM. React-owned nodes cannot be moved to
- * a new parent for the duration of the synchronous call. MutationObservers
- * created here keep the same rule when they later fire. Do not hold this
- * across an `await`: a React commit that lands in the gap must still be able
- * to reorder its own nodes.
- */
-export function runWithPluginDomIsolation<T>(fn: () => T, label?: string): T {
+function wrapCallback<Args extends unknown[], Result>(
+  callback: (...args: Args) => Result,
+  label: string | null,
+): (...args: Args) => Result {
+  return (...args: Args) =>
+    runWithPluginDomIsolation(() => callback(...args), label ?? undefined);
+}
+
+function enterIsolation(label?: string): string | null {
   const previousLabel = isolationLabel;
   isolationDepth += 1;
   if (label !== undefined) isolationLabel = label;
+  return previousLabel;
+}
+
+function leaveIsolation(previousLabel: string | null): void {
+  isolationDepth -= 1;
+  isolationLabel = previousLabel;
+}
+
+/**
+ * Run `fn` as plugin content-script DOM. React-owned nodes cannot be moved to
+ * a new parent for the duration of the synchronous call. Work the script
+ * schedules from here — observers, timers, and listeners — keeps the same
+ * rule.
+ */
+export function runWithPluginDomIsolation<T>(fn: () => T, label?: string): T {
+  const previousLabel = enterIsolation(label);
   try {
     return fn();
   } finally {
-    isolationDepth -= 1;
-    isolationLabel = previousLabel;
+    leaveIsolation(previousLabel);
   }
+}
+
+function whenAborted(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    signal.addEventListener("abort", () => resolve(), { once: true });
+  });
+}
+
+/**
+ * Same rule as {@link runWithPluginDomIsolation}, held across the returned
+ * promise so an `async` mount or disposer cannot steal a node after `await`.
+ * Abort `signal` to drop the fence if the host gives up on a stuck mount.
+ * The original work still runs; it is just no longer isolated.
+ */
+export async function runWithPluginDomIsolationAsync<T>(
+  fn: () => T | Promise<T>,
+  label?: string,
+  signal?: AbortSignal,
+): Promise<T> {
+  const previousLabel = enterIsolation(label);
+  const work = Promise.resolve().then(fn);
+  try {
+    if (signal === undefined) return await work;
+    const winner = await Promise.race([
+      work.then((value) => ({ ok: true as const, value })),
+      whenAborted(signal).then(() => ({ ok: false as const })),
+    ]);
+    if (winner.ok) return winner.value;
+  } finally {
+    leaveIsolation(previousLabel);
+  }
+  return await work;
 }
 
 function filterAppendNodes(
@@ -204,8 +260,31 @@ export function installForeignDomMutationGuard(): void {
   const nativeDocumentPrepend = Document.prototype.prepend;
   const nativeFragmentAppend = DocumentFragment.prototype.append;
   const nativeFragmentPrepend = DocumentFragment.prototype.prepend;
+  const nativeElementReplaceChildren = Element.prototype.replaceChildren;
+  const nativeDocumentReplaceChildren = Document.prototype.replaceChildren;
+  const nativeFragmentReplaceChildren =
+    DocumentFragment.prototype.replaceChildren;
+  const nativeInsertAdjacentElement = Element.prototype.insertAdjacentElement;
+  const nativeRangeInsertNode =
+    typeof Range === "function" ? Range.prototype.insertNode : null;
+  const nativeAddEventListener = EventTarget.prototype.addEventListener;
+  const nativeRemoveEventListener = EventTarget.prototype.removeEventListener;
+  const originalSetTimeout = window.setTimeout;
+  const nativeSetTimeout = originalSetTimeout.bind(window);
+  const originalSetInterval = window.setInterval;
+  const nativeSetInterval = originalSetInterval.bind(window);
+  const originalQueueMicrotask =
+    typeof queueMicrotask === "function" ? queueMicrotask : null;
+  const nativeQueueMicrotask =
+    originalQueueMicrotask === null
+      ? null
+      : originalQueueMicrotask.bind(window);
   const NativeMutationObserver =
     typeof MutationObserver === "function" ? MutationObserver : null;
+  const listenerWraps = new WeakMap<
+    EventListenerOrEventListenerObject,
+    EventListenerOrEventListenerObject
+  >();
 
   // Wrappers return their own argument rather than the native return value:
   // the DOM spec defines each of these as returning the node it was handed,
@@ -338,27 +417,149 @@ export function installForeignDomMutationGuard(): void {
     nativeFragmentPrepend,
   );
 
-  if (NativeMutationObserver !== null) {
-    // Construct a real native observer. A subclass can break jsdom and leave
-    // React's `act()` waiting for a callback that never runs.
-    const IsolatedMutationObserver = function IsolatedMutationObserver(
-      callback: MutationCallback,
-    ): MutationObserver {
-      const label = isolationLabel;
-      const wrapped: MutationCallback =
-        isolationDepth > 0
-          ? (records, observer) => {
-              runWithPluginDomIsolation(
-                () => callback(records, observer),
-                label ?? undefined,
-              );
-            }
-          : callback;
-      return new NativeMutationObserver(wrapped);
+  const guardedReplaceChildren = (native: AppendLike): AppendLike =>
+    function replaceChildren(
+      this: ParentNode,
+      ...nodes: Array<Node | string>
+    ): void {
+      native.apply(this, filterAppendNodes(this, nodes));
     };
-    IsolatedMutationObserver.prototype = NativeMutationObserver.prototype;
-    window.MutationObserver =
-      IsolatedMutationObserver as unknown as typeof MutationObserver;
+  Element.prototype.replaceChildren = guardedReplaceChildren(
+    nativeElementReplaceChildren,
+  );
+  Document.prototype.replaceChildren = guardedReplaceChildren(
+    nativeDocumentReplaceChildren,
+  );
+  DocumentFragment.prototype.replaceChildren = guardedReplaceChildren(
+    nativeFragmentReplaceChildren,
+  );
+
+  Element.prototype.insertAdjacentElement = function insertAdjacentElement(
+    position: InsertPosition,
+    element: Element,
+  ): Element | null {
+    const parent =
+      position === "beforebegin" || position === "afterend"
+        ? this.parentNode
+        : this;
+    if (parent !== null && refusePluginReparent(element, parent)) return null;
+    return nativeInsertAdjacentElement.call(this, position, element);
+  };
+
+  if (nativeRangeInsertNode !== null) {
+    Range.prototype.insertNode = function insertNode(node: Node): void {
+      const container = this.commonAncestorContainer;
+      const parent =
+        container.nodeType === Node.TEXT_NODE
+          ? container.parentNode
+          : container;
+      if (parent !== null && refusePluginReparent(node, parent)) return;
+      nativeRangeInsertNode.call(this, node);
+    };
+  }
+
+  function wrapListener(
+    listener: EventListenerOrEventListenerObject,
+    label: string | null,
+  ): EventListenerOrEventListenerObject {
+    const existing = listenerWraps.get(listener);
+    if (existing !== undefined) return existing;
+    const wrapped: EventListenerOrEventListenerObject =
+      typeof listener === "function"
+        ? wrapCallback(listener, label)
+        : {
+            handleEvent: (event: Event) =>
+              runWithPluginDomIsolation(
+                () => listener.handleEvent(event),
+                label ?? undefined,
+              ),
+          };
+    listenerWraps.set(listener, wrapped);
+    return wrapped;
+  }
+
+  EventTarget.prototype.addEventListener = function addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject | null,
+    options?: boolean | AddEventListenerOptions,
+  ): void {
+    const scheduled =
+      isolationDepth > 0 && listener !== null
+        ? wrapListener(listener, isolationLabel)
+        : listener;
+    nativeAddEventListener.call(this, type, scheduled, options);
+  };
+  EventTarget.prototype.removeEventListener = function removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject | null,
+    options?: boolean | EventListenerOptions,
+  ): void {
+    const wrapped = listener === null ? undefined : listenerWraps.get(listener);
+    nativeRemoveEventListener.call(this, type, listener, options);
+    if (wrapped !== undefined && wrapped !== listener) {
+      nativeRemoveEventListener.call(this, type, wrapped, options);
+    }
+  };
+
+  function wrapTimerHandler(
+    handler: TimerHandler,
+    label: string | null,
+  ): TimerHandler {
+    if (typeof handler !== "function") return handler;
+    return function isolatedTimer(this: unknown, ...cbArgs: unknown[]) {
+      return runWithPluginDomIsolation(
+        () => Reflect.apply(handler, this, cbArgs),
+        label ?? undefined,
+      );
+    };
+  }
+
+  window.setTimeout = ((
+    handler: TimerHandler,
+    timeout?: number,
+    ...args: unknown[]
+  ) => {
+    const scheduled =
+      isolationDepth > 0 ? wrapTimerHandler(handler, isolationLabel) : handler;
+    return nativeSetTimeout(scheduled, timeout, ...args);
+  }) as typeof setTimeout;
+
+  window.setInterval = ((
+    handler: TimerHandler,
+    timeout?: number,
+    ...args: unknown[]
+  ) => {
+    const scheduled =
+      isolationDepth > 0 ? wrapTimerHandler(handler, isolationLabel) : handler;
+    return nativeSetInterval(scheduled, timeout, ...args);
+  }) as typeof setInterval;
+
+  if (nativeQueueMicrotask !== null) {
+    window.queueMicrotask = (callback: VoidFunction) => {
+      nativeQueueMicrotask(
+        isolationDepth > 0 ? wrapCallback(callback, isolationLabel) : callback,
+      );
+    };
+  }
+
+  if (NativeMutationObserver !== null) {
+    window.MutationObserver = class IsolatedMutationObserver extends (
+      NativeMutationObserver
+    ) {
+      constructor(callback: MutationCallback) {
+        const label = isolationLabel;
+        super(
+          isolationDepth > 0
+            ? (records, observer) => {
+                runWithPluginDomIsolation(
+                  () => callback(records, observer),
+                  label ?? undefined,
+                );
+              }
+            : callback,
+        );
+      }
+    };
   }
 
   installed = {
@@ -376,6 +577,21 @@ export function installForeignDomMutationGuard(): void {
       Document.prototype.prepend = nativeDocumentPrepend;
       DocumentFragment.prototype.append = nativeFragmentAppend;
       DocumentFragment.prototype.prepend = nativeFragmentPrepend;
+      Element.prototype.replaceChildren = nativeElementReplaceChildren;
+      Document.prototype.replaceChildren = nativeDocumentReplaceChildren;
+      DocumentFragment.prototype.replaceChildren =
+        nativeFragmentReplaceChildren;
+      Element.prototype.insertAdjacentElement = nativeInsertAdjacentElement;
+      if (nativeRangeInsertNode !== null) {
+        Range.prototype.insertNode = nativeRangeInsertNode;
+      }
+      EventTarget.prototype.addEventListener = nativeAddEventListener;
+      EventTarget.prototype.removeEventListener = nativeRemoveEventListener;
+      window.setTimeout = originalSetTimeout;
+      window.setInterval = originalSetInterval;
+      if (originalQueueMicrotask !== null) {
+        window.queueMicrotask = originalQueueMicrotask;
+      }
       if (NativeMutationObserver !== null) {
         window.MutationObserver = NativeMutationObserver;
       }
@@ -385,9 +601,10 @@ export function installForeignDomMutationGuard(): void {
 
 /** Restore the native methods and the counters. Test-only. */
 export function uninstallForeignDomMutationGuardForTest(): void {
-  if (installed === null) return;
-  installed.restore();
-  installed = null;
+  if (installed !== null) {
+    installed.restore();
+    installed = null;
+  }
   suppressedCount = 0;
   loggedCount = 0;
   refusedMoveCount = 0;

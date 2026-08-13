@@ -7,6 +7,7 @@ import {
   installForeignDomMutationGuard,
   pluginHostNodeMoveRefusalCount,
   runWithPluginDomIsolation,
+  runWithPluginDomIsolationAsync,
   uninstallForeignDomMutationGuardForTest,
 } from "./foreign-dom-mutation-guard";
 
@@ -284,5 +285,84 @@ describe("foreign DOM mutation guard", () => {
 
     act(() => root.unmount());
     container.remove();
+  });
+
+  it("stops replaceChildren from adopting a React-owned node", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    installForeignDomMutationGuard();
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => {
+      root.render(
+        <a href="?path=src/app.ts" data-testid="replace-link">
+          src/app.ts
+        </a>,
+      );
+    });
+    const link = container.querySelector("[data-testid='replace-link']");
+    expect(link).toBeInstanceOf(HTMLAnchorElement);
+    const reactParent = link!.parentNode;
+
+    runWithPluginDomIsolation(() => {
+      const group = document.createElement("span");
+      reactParent!.insertBefore(group, link);
+      group.replaceChildren(link!);
+    }, "file-reveal");
+
+    expect(link!.parentNode).toBe(reactParent);
+    expect(pluginHostNodeMoveRefusalCount()).toBeGreaterThan(0);
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("keeps isolation across await and event listeners", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    installForeignDomMutationGuard();
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => {
+      root.render(
+        <a href="?path=src/app.ts" data-testid="await-link">
+          src/app.ts
+        </a>,
+      );
+    });
+    const link = container.querySelector("[data-testid='await-link']");
+    expect(link).toBeInstanceOf(HTMLAnchorElement);
+    const reactParent = link!.parentNode;
+    const trigger = document.createElement("button");
+    container.append(trigger);
+
+    await runWithPluginDomIsolationAsync(async () => {
+      await Promise.resolve();
+      wrapLikeFileReveal(link as HTMLElement);
+    }, "file-reveal");
+    expect(link!.parentNode).toBe(reactParent);
+
+    runWithPluginDomIsolation(() => {
+      trigger.addEventListener("click", () => {
+        wrapLikeFileReveal(link as HTMLElement);
+      });
+    }, "file-reveal");
+    trigger.click();
+    expect(link!.parentNode).toBe(reactParent);
+    expect(pluginHostNodeMoveRefusalCount()).toBeGreaterThan(0);
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("preserves MutationObserver subclass identity", () => {
+    installForeignDomMutationGuard();
+    class ExtraObserver extends MutationObserver {}
+    const observer = new ExtraObserver(() => undefined);
+    expect(observer).toBeInstanceOf(ExtraObserver);
+    expect(observer).toBeInstanceOf(MutationObserver);
+    observer.disconnect();
   });
 });

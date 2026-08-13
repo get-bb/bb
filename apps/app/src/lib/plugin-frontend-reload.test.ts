@@ -70,6 +70,7 @@ function contentScriptModule(
 
 afterEach(() => {
   resetPluginThreadRowStatusesForTest();
+  uninstallForeignDomMutationGuardForTest();
 });
 
 function makeDeps(initial: PluginFrontendCandidate[] = []) {
@@ -745,7 +746,59 @@ describe("reconcilePluginFrontends", () => {
 
     act(() => root.unmount());
     container.remove();
-    uninstallForeignDomMutationGuardForTest();
+  });
+
+  it("does not let an async content-script mount steal a React-owned node", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    installForeignDomMutationGuard();
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => {
+      root.render(
+        createElement(
+          "a",
+          { href: "?path=src/app.ts", "data-testid": "async-file-link" },
+          "src/app.ts",
+        ),
+      );
+    });
+    const link = container.querySelector("[data-testid='async-file-link']");
+    expect(link).toBeInstanceOf(HTMLAnchorElement);
+    const reactParent = link!.parentNode;
+
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("file-reveal", "v1")]);
+    deps.importModule.mockResolvedValue(
+      contentScriptModule((app) => {
+        app.contentScripts.register({
+          id: "file-reveal-buttons",
+          async mount() {
+            await Promise.resolve();
+            const control = document.querySelector(
+              "[data-testid='async-file-link']",
+            );
+            if (
+              !(control instanceof HTMLElement) ||
+              control.parentNode === null
+            ) {
+              return;
+            }
+            const group = document.createElement("span");
+            const button = document.createElement("button");
+            control.parentNode.insertBefore(group, control);
+            group.append(control, button);
+          },
+        });
+      }),
+    );
+
+    await reconcilePluginFrontends(state, deps);
+    expect(link!.parentNode).toBe(reactParent);
+
+    act(() => root.unmount());
+    container.remove();
   });
 });
 

@@ -31,7 +31,7 @@ import type {
 } from "@bb/plugin-sdk";
 import { normalizePluginThreadRowStatus } from "@bb/plugin-sdk/internal/composer-customization-validation";
 import { resetCrashedPluginSlots } from "@/components/plugin/PluginSlotMount";
-import { runWithPluginDomIsolation } from "./foreign-dom-mutation-guard";
+import { runWithPluginDomIsolationAsync } from "./foreign-dom-mutation-guard";
 import {
   collectPluginAppRegistrations,
   isPluginAppDefinition,
@@ -443,7 +443,7 @@ async function callDisposer(
   deps: PluginFrontendReconcileDeps,
 ): Promise<PluginFrontendFailure | null> {
   try {
-    await runWithPluginDomIsolation(() => disposer(), pluginId);
+    await runWithPluginDomIsolationAsync(() => disposer(), pluginId);
     return null;
   } catch (error) {
     const message = errorMessage(error);
@@ -507,7 +507,7 @@ async function mountWithTimeout(
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   let timedOut = false;
   const mountPromise = Promise.resolve().then(() =>
-    runWithPluginDomIsolation(
+    runWithPluginDomIsolationAsync(
       () =>
         registration.mount({
           pluginId,
@@ -545,6 +545,7 @@ async function mountWithTimeout(
           },
         }),
       pluginId,
+      controller.signal,
     ),
   );
   const timeoutMs =
