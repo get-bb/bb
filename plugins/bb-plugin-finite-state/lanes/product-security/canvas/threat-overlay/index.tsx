@@ -1,4 +1,6 @@
 import {
+  Suspense,
+  use,
   useCallback,
   useEffect,
   useMemo,
@@ -14,12 +16,6 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import { Icon } from "@bb/shared-ui/icon";
-import {
-  useBbContext,
-  useBbNavigate,
-  useRealtime,
-  useRpc,
-} from "@bb/plugin-sdk/app";
 import type { z } from "zod";
 import { useArchitectureSelection } from "../nodes/selection.js";
 import type { threatOverlayRpcContract } from "./backend.js";
@@ -51,6 +47,14 @@ import {
 
 const PROJECT_SCOPE_STORAGE_KEY =
   "finite-state:product-security:project-scope:v1";
+
+type AppRuntime = typeof import("@bb/plugin-sdk/app");
+let appRuntimePromise: Promise<AppRuntime> | null = null;
+
+function loadAppRuntime(): Promise<AppRuntime> {
+  appRuntimePromise ??= import("@bb/plugin-sdk/app");
+  return appRuntimePromise;
+}
 
 type Snapshot = z.output<
   (typeof threatOverlayRpcContract)["threatOverlaySnapshot"]["output"]
@@ -123,11 +127,14 @@ function payloadProjectId(payload: unknown): string | null {
   return typeof projectId === "string" ? projectId : null;
 }
 
-function useThreatSnapshot(projectId: string | null): {
+function useThreatSnapshot(
+  projectId: string | null,
+  appRuntime: AppRuntime,
+): {
   state: SnapshotState;
   retry(): void;
 } {
-  const rpc = useRpc<typeof threatOverlayRpcContract>();
+  const rpc = appRuntime.useRpc<typeof threatOverlayRpcContract>();
   const [requestRevision, setRequestRevision] = useState(0);
   const [state, setState] = useState<StoredSnapshotState>({
     projectId: null,
@@ -140,7 +147,7 @@ function useThreatSnapshot(projectId: string | null): {
     () => setRequestRevision((current) => current + 1),
     [],
   );
-  useRealtime("tara:changed", (payload) => {
+  appRuntime.useRealtime("tara:changed", (payload) => {
     if (projectId && payloadProjectId(payload) === projectId) retry();
   });
 
@@ -298,10 +305,8 @@ export function ProductSecurityThreatOverlay({
   focus = null,
   highlight = null,
 }: ProductSecurityThreatOverlayProps = {}): React.JSX.Element {
-  const { projectId: routeProjectId } = useBbContext();
   const [persistedProjectId] = useState(readPersistedProjectId);
-  const projectId = explicitProjectId ?? routeProjectId ?? persistedProjectId;
-
+  const projectId = explicitProjectId ?? persistedProjectId;
   if (!projectId) {
     return (
       <div className="absolute bottom-3 left-3 right-3 z-20 rounded-lg border border-border bg-card/95 p-4 text-card-foreground shadow-lg">
@@ -312,17 +317,18 @@ export function ProductSecurityThreatOverlay({
       </div>
     );
   }
-
   return (
-    <ConfiguredThreatOverlay
-      focus={focus}
-      highlight={highlight}
-      projectId={projectId}
-    />
+    <Suspense fallback={loadingPanel()}>
+      <RuntimeThreatOverlay
+        focus={focus}
+        highlight={highlight}
+        projectId={projectId}
+      />
+    </Suspense>
   );
 }
 
-function ConfiguredThreatOverlay({
+function RuntimeThreatOverlay({
   projectId,
   focus,
   highlight,
@@ -331,15 +337,37 @@ function ConfiguredThreatOverlay({
   focus: string | null;
   highlight: string | null;
 }): React.JSX.Element {
-  const navigate = useBbNavigate();
+  const appRuntime = use(loadAppRuntime());
+  return (
+    <ConfiguredThreatOverlay
+      appRuntime={appRuntime}
+      focus={focus}
+      highlight={highlight}
+      projectId={projectId}
+    />
+  );
+}
+
+function ConfiguredThreatOverlay({
+  appRuntime,
+  projectId,
+  focus,
+  highlight,
+}: {
+  appRuntime: AppRuntime;
+  projectId: string;
+  focus: string | null;
+  highlight: string | null;
+}): React.JSX.Element {
+  const navigate = appRuntime.useBbNavigate();
   const architecture = useArchitectureSelection();
   const architectureEdgesBySlug = architecture.edgesBySlug;
   const architectureNodesBySlug = architecture.nodesBySlug;
   const architectureSelectedIds = architecture.selectedIds;
   const setArchitectureSelectedIds = architecture.setSelectedIds;
   const { fitView, setEdges, setNodes } = useReactFlow();
-  const rpc = useRpc<typeof threatOverlayRpcContract>();
-  const snapshot = useThreatSnapshot(projectId);
+  const rpc = appRuntime.useRpc<typeof threatOverlayRpcContract>();
+  const snapshot = useThreatSnapshot(projectId, appRuntime);
   const [selectionState, dispatchSelection] = useReducer(
     reduceThreatSelection,
     EMPTY_THREAT_SELECTION,
