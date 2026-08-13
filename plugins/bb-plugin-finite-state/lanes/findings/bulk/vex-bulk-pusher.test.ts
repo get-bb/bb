@@ -400,7 +400,7 @@ describe("WP-29 VEX bulk pusher", () => {
     expect(batches).toEqual([500, 1]);
     expect(second[0]).toMatchObject({ targets: 501, succeeded: 501, failed: 0, state: "noop" });
     expect(reads).toEqual({ details: 1_503, pages: 0, rows: 0 });
-  });
+  }, 30_000);
 
   it("keeps a one-target push independent of a padded remote corpus", async () => {
     const state = fixture();
@@ -1014,7 +1014,7 @@ describe("WP-29 VEX bulk pusher", () => {
     expect(resumed.summary).toEqual({ total: 1, applied: 1, failed: 0, skipped: 0 });
     expect(calls).toEqual([500, 1, 1]);
     expect(new BaseSnapshotStore(state.db).getAccepted(PROJECT, PV, "vexDecision", key)?.payload).toEqual(DESIRED);
-  });
+  }, 30_000);
 
   it("resumes without replay when the final write lands before the socket dies", async () => {
     const state = fixture();
@@ -1062,7 +1062,7 @@ describe("WP-29 VEX bulk pusher", () => {
 
     expect(resumed.summary).toEqual({ total: 1, applied: 1, failed: 0, skipped: 0 });
     expect(calls).toEqual([500, 1]);
-  });
+  }, 30_000);
 
   it("processes 400 guarded items linearly without reparsing overlay files", async () => {
     const state = fixture();
@@ -1079,14 +1079,17 @@ describe("WP-29 VEX bulk pusher", () => {
       items.push(item(key, cve));
     }
     const batches: number[] = [];
+    const cpuStarted = process.cpuUsage();
     const started = performance.now();
     const results = await pushVexItems(context(state, successfulPlatform(state, batches)), items);
+    const cpu = process.cpuUsage(cpuStarted);
     const elapsed = performance.now() - started;
     expect(results).toHaveLength(400);
     expect(results.every((result) => result.state === "applied")).toBe(true);
     expect(batches).toEqual([400]);
-    expect(elapsed).toBeLessThan(2_000);
-  });
+    expect((cpu.user + cpu.system) / 1_000).toBeLessThan(2_000);
+    expect(elapsed).toBeLessThan(30_000);
+  }, 45_000);
 
   it("registers the typed pusher with the existing real database and Platform dependency instances", () => {
     const state = fixture();

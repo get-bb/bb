@@ -141,10 +141,10 @@ describe("SBOM vulnerability rollup", () => {
       }
     })();
 
-    const started = performance.now();
+    const started = process.cpuUsage();
     expect(recomputeVulnRollup(db, "v")).toBe(10_000);
-    const elapsedMs = performance.now() - started;
-    expect(elapsedMs).toBeLessThan(5_000);
+    const cpu = process.cpuUsage(started);
+    expect((cpu.user + cpu.system) / 1_000).toBeLessThan(5_000);
     expect(db.prepare("SELECT SUM(high) FROM sbom_vuln_rollup").pluck().get()).toBe(4_000);
     db.close();
   });

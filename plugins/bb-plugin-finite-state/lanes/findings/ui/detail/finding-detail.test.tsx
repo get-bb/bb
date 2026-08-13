@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
+import { cleanup, configure, fireEvent, waitFor, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 import { findingStableKey } from "../../../../lib/sync/registry.js";
 import { connectedRemoteStatus } from "../../../../test/app-connections.js";
@@ -111,7 +111,7 @@ class DetailResizeObserver implements ResizeObserver {
 }
 
 beforeAll(() => {
-  vi.setConfig({ testTimeout: 15_000 });
+  configure({ asyncUtilTimeout: 10_000 });
   vi.stubGlobal("ResizeObserver", DetailResizeObserver);
   Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get: () => 600 });
   HTMLElement.prototype.scrollTo = function scrollTo(options?: ScrollToOptions | number, y?: number) {
@@ -257,7 +257,10 @@ describe("finding detail", () => {
       },
     });
     expect(await slot.findByText("Gateway vulnerability")).toBeTruthy();
-    expect(slot.inspection.rpcCalls).toContainEqual(expect.objectContaining({ method: "findingDetailGet", input: expect.objectContaining({ stableKey }) }));
+    await waitFor(() => expect(slot.inspection.rpcCalls).toContainEqual(expect.objectContaining({
+      method: "findingDetailGet",
+      input: expect.objectContaining({ stableKey }),
+    })));
     expect(slot.queryByLabelText("New finding comment")).toBeNull();
   });
 

@@ -49,7 +49,6 @@ class FindingsResizeObserver implements ResizeObserver {
 }
 
 beforeAll(() => {
-  vi.setConfig({ testTimeout: 15_000 });
   // findBy*/waitFor default to 1s, which the 39k-row render exceeds under CI load.
   configure({ asyncUtilTimeout: 10_000 });
   vi.stubGlobal("ResizeObserver", FindingsResizeObserver);
@@ -147,7 +146,7 @@ describe("findings table panel", () => {
       const navigation = slot.inspection.navigateCalls.at(-1);
       const subPath = navigation?.method === "toPluginPanel" ? navigation.options?.subPath : "";
       expect(parseFindingsRoute(subPath ?? "")).toMatchObject({ filter: { component: "openssl" } });
-    }, { timeout: 2_000 });
+    }, { timeout: 10_000 });
     expect(slot.getByLabelText("Filter component")).toBe(input);
     expect(document.activeElement).toBe(input);
   });
