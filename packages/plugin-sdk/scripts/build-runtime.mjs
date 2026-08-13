@@ -22,6 +22,11 @@ const entries = [
     external: [],
   },
   {
+    source: "src/internal/host-policy.ts",
+    output: "dist/internal/host-policy.js",
+    external: ["zod", "zod/*"],
+  },
+  {
     source: "src/testing/index.ts",
     output: "dist/testing/index.js",
     external: [

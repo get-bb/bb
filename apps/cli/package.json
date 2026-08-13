@@ -28,6 +28,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@bb/plugin-sdk": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@tailwindcss/node": "^4.3.0",
     "@tailwindcss/oxide": "^4.3.0",

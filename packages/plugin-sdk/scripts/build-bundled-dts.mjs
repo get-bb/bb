@@ -36,6 +36,10 @@ const outputs = {
     pkgRoot,
     "src/internal/composer-view.ts",
   ),
+  "bb-plugin-sdk-internal-host-policy.d.ts": path.join(
+    pkgRoot,
+    "src/internal/host-policy.ts",
+  ),
   "bb-plugin-sdk-testing.d.ts": path.join(pkgRoot, "src/testing/index.ts"),
   "bb-plugin-sdk-testing-app.d.ts": path.join(pkgRoot, "src/testing/app.tsx"),
 };

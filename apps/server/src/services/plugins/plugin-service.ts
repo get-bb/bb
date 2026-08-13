@@ -13,15 +13,20 @@ import {
   type ToolCallResponse,
 } from "@bb/domain";
 import {
-  PLUGIN_CLI_OUTPUT_MAX_BYTES,
   type PluginCliExecutionResult,
-  type PluginCliOutputLimitError,
   type PluginRpcError,
   type PluginRpcValidationIssue,
   type StandardSchemaV1,
   type StandardSchemaV1Issue,
   type StandardSchemaV1Result,
 } from "@bb/plugin-sdk";
+import {
+  enforcePluginCliOutputLimit,
+  PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
+  PLUGIN_AGENT_SELECTION_MAX_IDS,
+  PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES,
+  RESERVED_AGENT_TOOL_NAMES,
+} from "@bb/plugin-sdk/internal/host-policy";
 // The build engine's natives (esbuild, Tailwind oxide) are dynamically
 // imported inside buildPluginApp — importing this loads nothing heavy.
 import { buildPluginApp, createPluginDevLoop } from "@bb/plugin-build";
@@ -56,7 +61,6 @@ import {
 } from "./manifest.js";
 import { listBundledPluginRegistrations } from "./builtin-registry.js";
 import {
-  RESERVED_AGENT_TOOL_NAMES,
   type BbPluginApi,
   type PluginAgentConfigurationContext,
   type PluginAgentToolContext,
@@ -371,35 +375,6 @@ const DEFAULT_STABILIZATION_WINDOW_MS = 30_000;
 const DEFAULT_ARTIFACT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const SCHEDULE_SWEEP_BATCH_SIZE = 100;
 
-function enforcePluginCliOutputLimit(
-  result: Omit<PluginCliExecutionResult, "error">,
-  jsonOutput: boolean,
-): PluginCliExecutionResult {
-  const stdoutBytes = Buffer.byteLength(result.stdout, "utf8");
-  const stderrBytes = Buffer.byteLength(result.stderr, "utf8");
-  const totalBytes = stdoutBytes + stderrBytes;
-  if (totalBytes <= PLUGIN_CLI_OUTPUT_MAX_BYTES) return result;
-
-  const error: PluginCliOutputLimitError = {
-    code: "plugin_cli_output_too_large",
-    message:
-      `Plugin CLI output is ${totalBytes} bytes (${stdoutBytes} stdout + ${stderrBytes} stderr), ` +
-      `exceeding the ${PLUGIN_CLI_OUTPUT_MAX_BYTES}-byte limit. Narrow the query, request a smaller page, or use a file/streaming command.`,
-    maxBytes: PLUGIN_CLI_OUTPUT_MAX_BYTES,
-    stdoutBytes,
-    stderrBytes,
-    totalBytes,
-  };
-  return jsonOutput
-    ? {
-        exitCode: 1,
-        stdout: JSON.stringify({ error }),
-        stderr: "",
-        error,
-      }
-    : { exitCode: 1, stdout: "", stderr: error.message, error };
-}
-
 /** Next cron occurrence strictly after `now` (server-local time). */
 function nextCronRunAt(cron: string, now: number): number {
   return CronExpressionParser.parse(cron, { currentDate: new Date(now) })
@@ -672,10 +647,6 @@ function normalizeMentionSearchItems(
     };
   });
 }
-
-const PLUGIN_AGENT_SELECTION_MAX_IDS = 256;
-const PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS = 4096;
-const PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES = 128 * 1024;
 
 interface NormalizedPluginAgentConfiguration {
   toolIds: string[];

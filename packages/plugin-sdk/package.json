@@ -32,6 +32,12 @@
       "import": "./dist/internal/composer-view.js",
       "default": "./dist/internal/composer-view.js"
     },
+    "./internal/host-policy": {
+      "source": "./src/internal/host-policy.ts",
+      "types": "./bundled-types/bb-plugin-sdk-internal-host-policy.d.ts",
+      "import": "./dist/internal/host-policy.js",
+      "default": "./dist/internal/host-policy.js"
+    },
     "./testing": {
       "source": "./src/testing/index.ts",
       "types": "./bundled-types/bb-plugin-sdk-testing.d.ts",
