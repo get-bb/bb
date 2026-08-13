@@ -29,7 +29,7 @@ import {
   listConnectivityGaps,
   semanticIngestRequired,
 } from "./parse/ingest.js";
-import { listHardwareSheets, parseProject } from "./parse/sheets.js";
+import { listHardwareSheets, parseProjectGeneration } from "./parse/sheets.js";
 import { getHardwarePart, listHardwareNets, listHardwareSymbols } from "./search.js";
 
 const hardwareRpcContract = {
@@ -301,9 +301,9 @@ class HardwareDiscoveryCoordinator {
             projectVersionId: scope.projectVersionId,
             projectKey: project.projectKey,
           };
-          if (!semanticIngestRequired(this.#ctx.db(), semanticScope, project.schSha256)) continue;
-          const parsed = await parseProject(source.path, project.projectKey);
-          ingestProject(this.#ctx.db(), semanticScope, project.schSha256, parsed);
+          const generation = await parseProjectGeneration(source.path, project.projectKey);
+          if (!semanticIngestRequired(this.#ctx.db(), semanticScope, generation.sourceHash)) continue;
+          ingestProject(this.#ctx.db(), semanticScope, generation.sourceHash, generation.parsed);
         } catch (error) {
           const detail = `${project.projectKey}: ${errorDetail(error)}`;
           semanticFailures.push(detail);

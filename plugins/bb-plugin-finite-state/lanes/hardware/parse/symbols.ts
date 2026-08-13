@@ -117,20 +117,20 @@ function transformPin(
   if (!instance.at || !pin.at) return null;
   const angle = instance.at.angle ?? 0;
   const matrix = angle === 0 ? { x1: 1, x2: 0, y1: 0, y2: -1 }
-    : angle === 90 ? { x1: 0, x2: -1, y1: 1, y2: 0 }
+    : angle === 90 ? { x1: 0, x2: -1, y1: -1, y2: 0 }
     : angle === 180 ? { x1: -1, x2: 0, y1: 0, y2: 1 }
-    : angle === 270 ? { x1: 0, x2: 1, y1: -1, y2: 0 }
+    : angle === 270 ? { x1: 0, x2: 1, y1: 1, y2: 0 }
     : null;
   if (!matrix) throw new Error(`KICAD_SYMBOL_ANGLE_INVALID: ${String(angle)}`);
   // KiCad composes a symbol mirror in library coordinates after applying the
   // schematic rotation. Library Y is up while schematic Y is down, hence the
   // default y2 = -1 transform above.
   if (instance.mirror === "x") {
-    matrix.x2 = -matrix.x2;
+    matrix.y1 = -matrix.y1;
     matrix.y2 = -matrix.y2;
   } else if (instance.mirror === "y") {
     matrix.x1 = -matrix.x1;
-    matrix.y1 = -matrix.y1;
+    matrix.x2 = -matrix.x2;
   } else if (instance.mirror !== undefined) {
     throw new Error(`KICAD_SYMBOL_MIRROR_INVALID: ${instance.mirror}`);
   }

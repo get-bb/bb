@@ -34,7 +34,7 @@ Search runs over parsed semantics, never SVG glyph text — stroke fonts plot as
 2. Symbol extraction per sheet: `(at X Y angle)`, `Reference`, `Value`, `Footprint`, `unit`, MPN and Manufacturer from custom fields (case-insensitive field-name match on `MPN`/`Manufacturer`), remaining custom fields as a JSON bag. Skip power symbols and unreferenced graphics; keep DNP parts, flagged in `fields`.
 3. Net extraction from the parsed schematic (labels, hierarchical pins, wires → connectivity), producing `hw_net` rows with `nodes` as `[{reference, pin}]` JSON. Where `kicadts` connectivity falls short, record the gap explicitly rather than guessing (open question 2).
 4. Version gating: read the sheet's format version; files older than the S-expression format fail with `KICAD_VERSION_UNSUPPORTED` naming the file and version, per SPEC 07 §9. The project row stays discoverable so the panel can explain the rejection.
-5. Transactional ingest into `hw_symbol`/`hw_net` keyed by `project_key`, stamped with the source hash from WP-72; a failed parse leaves the previous generation intact. Re-ingest only when the source hash changes.
+5. Transactional ingest into `hw_symbol`/`hw_net` keyed by `project_key`, stamped with a deterministic hash of every recursively parsed sheet (project-relative path plus source, sorted by path); a failed parse leaves the previous generation intact. Re-ingest only when that complete semantic source hash changes. WP-72's `hw_project.sch_hash` remains the root-sheet discovery hash and does not gate hierarchical semantic ingest.
 6. Search: implement `hardware.symbols.list` filters — substring on reference/value/footprint/MPN, exact net membership, per-sheet scope — paged `{items, total, cursor}`, ordered by reference natural sort (R2 before R10). This is the backend of ⌘F (WP-75) and of `fs_hw_query` (WP-81).
 7. Symbol-set drift: expose a comparison of reference sets between two source hashes of the same project (added/removed/renumbered candidates), the primitive WP-79 uses to report link drift mirroring SPEC 02's re-scan handling.
 
@@ -83,6 +83,9 @@ Search runs over parsed semantics, never SVG glyph text — stroke fonts plot as
     export function parseProject(worktreeRoot: string, projectKey: string):
       Promise<{ sheets: ParsedSheet[]; nets: ParsedNet[];
         connectivityGaps: ConnectivityGap[] }>;                // throws KICAD_VERSION_UNSUPPORTED
+    export function parseProjectGeneration(worktreeRoot: string, projectKey: string):
+      Promise<{ parsed: { sheets: ParsedSheet[]; nets: ParsedNet[];
+        connectivityGaps: ConnectivityGap[] }; sourceHash: string }>;
     export function ingestProject(db: Database, scope: HardwareSemanticScope,
       sourceHash: string, parsed: { sheets: ParsedSheet[]; nets: ParsedNet[];
         connectivityGaps: ConnectivityGap[] }): void;

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile, realpath, stat } from "node:fs/promises";
 import {
   basename,
@@ -37,6 +38,11 @@ export interface ParsedProject {
   sheets: ParsedSheet[];
   nets: ParsedNet[];
   connectivityGaps: ConnectivityGap[];
+}
+
+export interface ParsedProjectGeneration {
+  parsed: ParsedProject;
+  sourceHash: string;
 }
 
 interface ExtractedExpression {
@@ -250,7 +256,10 @@ async function readConfinedFile(root: string, sheetPath: string): Promise<string
   return readFile(canonical, "utf8");
 }
 
-export async function parseProject(worktreeRoot: string, projectKey: string): Promise<ParsedProject> {
+export async function parseProjectGeneration(
+  worktreeRoot: string,
+  projectKey: string,
+): Promise<ParsedProjectGeneration> {
   const root = await realpath(worktreeRoot);
   const safeProjectKey = assertRelativeProjectPath(projectKey);
   if (!safeProjectKey.endsWith(".kicad_pro")) {
@@ -258,6 +267,7 @@ export async function parseProject(worktreeRoot: string, projectKey: string): Pr
   }
   const rootSheetPath = `${safeProjectKey.slice(0, -".kicad_pro".length)}.kicad_sch`;
   const documents: ParsedDocument[] = [];
+  const sources = new Map<string, string>();
   const active: string[] = [];
   const parentByPath = new Map<string, string | null>();
 
@@ -275,6 +285,7 @@ export async function parseProject(worktreeRoot: string, projectKey: string): Pr
     parentByPath.set(normalizedPath, parent);
     active.push(normalizedPath);
     const source = await readConfinedFile(root, normalizedPath);
+    sources.set(normalizedPath, source);
     const parsed = parseSchematic(source, normalizedPath);
     const symbolExtraction = extractSymbols(parsed.schematic);
     const dimensions = paperDimensions(parsed.schematic);
@@ -339,11 +350,22 @@ export async function parseProject(worktreeRoot: string, projectKey: string): Pr
     return sheetConnectivity;
   });
   const merged = mergeProjectConnectivity(connectivity);
-  return {
+  const parsed = {
     sheets: documents.map((document) => document.parsedSheet),
     nets: merged.nets,
     connectivityGaps: merged.gaps,
   };
+  const hash = createHash("sha256");
+  for (const [sheetPath, source] of [...sources].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)) {
+    const pathBytes = Buffer.byteLength(sheetPath);
+    const sourceBytes = Buffer.byteLength(source);
+    hash.update(`${pathBytes}:`).update(sheetPath).update(`${sourceBytes}:`).update(source);
+  }
+  return { parsed, sourceHash: hash.digest("hex") };
+}
+
+export async function parseProject(worktreeRoot: string, projectKey: string): Promise<ParsedProject> {
+  return (await parseProjectGeneration(worktreeRoot, projectKey)).parsed;
 }
 
 interface SheetRow {
