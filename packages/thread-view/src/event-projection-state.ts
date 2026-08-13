@@ -16,14 +16,12 @@ import {
 import {
   flushActiveToolCell,
   flushPendingToolActivityOutput,
-  flushPendingToolActivityOutputForTurn,
   interruptPendingToolActivity,
 } from "./tool-activity-projection.js";
 import { createToolActivityState } from "./tool-activity-projection.js";
 import {
   createOperationProjectionState,
   flushPendingFileEditOutput,
-  flushPendingFileEditOutputForTurn,
   type CompactionTurnFinalizationStatus,
   type OperationProjectionState,
 } from "./operation-projection.js";
@@ -163,13 +161,16 @@ export function flushProjectionBufferedOutputs(state: ProjectionState): void {
   flushPendingFileEditOutput(state);
 }
 
-export function flushProjectionBufferedOutputsForTurn(
+export function flushProjectionBufferedOutputsAfterTurnCompleted(
   state: ProjectionState,
   turnId: string,
 ): void {
   flushBufferedAssistantMessagesForTurn(state, turnId);
-  flushPendingToolActivityOutputForTurn(state, turnId);
-  flushPendingFileEditOutputForTurn(state, turnId);
+  // Tool and file-edit buffers predate turn-scoped assistant buffering. Their
+  // call identity is not uniformly scope-qualified, so retain the established
+  // global flush behavior until that state is redesigned end to end.
+  flushPendingToolActivityOutput(state);
+  flushPendingFileEditOutput(state);
 }
 
 function finalizePendingMessages(args: FinalizeProjectionMessagesArgs): void {

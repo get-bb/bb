@@ -365,24 +365,6 @@ function isTerminalFileEditStatus(
 export function flushPendingFileEditOutput(
   state: OperationProjectionState,
 ): void {
-  flushPendingFileEditOutputWhere(state, () => true);
-}
-
-export function flushPendingFileEditOutputForTurn(
-  state: OperationProjectionState,
-  turnId: string,
-): void {
-  flushPendingFileEditOutputWhere(
-    state,
-    (fileEdit) =>
-      fileEdit.scope.kind === "turn" && fileEdit.scope.turnId === turnId,
-  );
-}
-
-function flushPendingFileEditOutputWhere(
-  state: OperationProjectionState,
-  shouldFlush: (fileEdit: EventProjectionFileEditMessage) => boolean,
-): void {
   // Rows for one call id can sit in different scopes, and each scope owns its
   // own output buffer, so resolve the buffer from the row's own scope. Each
   // buffer flushes once, and every row of that scope then takes its text.
@@ -392,9 +374,6 @@ function flushPendingFileEditOutputWhere(
   >();
   for (const [callId, fileEdits] of state.fileEditsByCallId.entries()) {
     for (const fileEdit of fileEdits) {
-      if (!shouldFlush(fileEdit)) {
-        continue;
-      }
       const scopedCallKey = scopedFileEditCallKey(callId, fileEdit);
       let flushedBuffer = flushedBufferByScopedCallKey.get(scopedCallKey);
       if (flushedBuffer === undefined) {

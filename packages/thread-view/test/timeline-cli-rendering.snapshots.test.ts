@@ -1389,6 +1389,39 @@ describe("timeline CLI rendering snapshots", () => {
     ]);
   });
 
+  it("keeps root reasoning active when a nested turn completes first", () => {
+    const event = createTimelineEventFactory({
+      providerThreadId: "root-provider",
+      threadId: "thread-1",
+      turnId: "root-turn",
+    });
+    const timeline = renderActiveTimeline([
+      event.turnStarted(),
+      event.toolCallStarted({
+        itemId: "delegation-1",
+        tool: "spawnAgent",
+        arguments: {
+          prompt: "Research the issue",
+          receiverThreadIds: ["child-provider"],
+        },
+      }),
+      event.turnStarted({
+        parentToolCallId: "delegation-1",
+        turnId: "child-turn",
+      }),
+      event.reasoningDelta({
+        delta: "Root is still thinking.\n",
+        itemId: "root-reasoning",
+      }),
+      event.turnCompleted({ turnId: "child-turn" }),
+    ]);
+
+    expect(timeline.projection.state.activeThinking).toMatchObject({
+      id: "root-reasoning",
+      text: "Root is still thinking.\n",
+    });
+  });
+
   it("does not attach later root turns to Claude receiver-thread delegations", () => {
     const event = createTimelineEventFactory({
       providerThreadId: "root-provider",

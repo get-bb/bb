@@ -84,7 +84,7 @@ import {
   createProjectionState,
   finalizeProjectionState,
   flushProjectionBufferedOutputs,
-  flushProjectionBufferedOutputsForTurn,
+  flushProjectionBufferedOutputsAfterTurnCompleted,
   onThreadInterrupted,
   onTurnCompleted,
   onTurnStarted,
@@ -625,7 +625,10 @@ function buildFlatProjectionData(
           turnId: completedTurnId,
           status: decoded.status,
         });
-        flushProjectionBufferedOutputsForTurn(state, completedTurnId);
+        flushProjectionBufferedOutputsAfterTurnCompleted(
+          state,
+          completedTurnId,
+        );
       } else {
         onThreadInterrupted({
           completedAt: meta.createdAt,

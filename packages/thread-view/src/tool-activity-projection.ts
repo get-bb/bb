@@ -812,27 +812,7 @@ export function flushToolActivityBeforeNonToolMessage(
 export function flushPendingToolActivityOutput(
   state: ToolActivityProjectionState,
 ): void {
-  flushPendingToolActivityOutputWhere(state, () => true);
-}
-
-export function flushPendingToolActivityOutputForTurn(
-  state: ToolActivityProjectionState,
-  turnId: string,
-): void {
-  flushPendingToolActivityOutputWhere(
-    state,
-    (call) => call.scope.kind === "turn" && call.scope.turnId === turnId,
-  );
-}
-
-function flushPendingToolActivityOutputWhere(
-  state: ToolActivityProjectionState,
-  shouldFlush: (call: RunningExecCall) => boolean,
-): void {
   for (const call of state.toolActivity.runningCallsById.values()) {
-    if (!shouldFlush(call)) {
-      continue;
-    }
     if (!flushVisibleTextBuffer(call.outputBuffer)) {
       continue;
     }
