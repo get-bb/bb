@@ -631,6 +631,8 @@ export const threadHandoffs = sqliteTable(
         (
           ${table.status} = 'failed'
           AND ${table.settledAt} IS NOT NULL
+          AND ${table.failureCode} IS NOT NULL
+          AND ${table.failureMessage} IS NOT NULL
           AND length(${table.failureCode}) > 0
           AND length(${table.failureMessage}) > 0
         )

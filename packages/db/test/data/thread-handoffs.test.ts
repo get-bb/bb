@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { createConnection } from "../../src/connection.js";
 import { createEnvironment } from "../../src/data/environments.js";
 import {
@@ -15,6 +16,7 @@ import { createProject } from "../../src/data/projects.js";
 import { createThread } from "../../src/data/threads.js";
 import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
+import { threadHandoffs } from "../../src/schema.js";
 
 function setup() {
   const db = createConnection(":memory:");
@@ -189,6 +191,31 @@ describe("thread handoffs", () => {
       updatedAt: 250,
       settledAt: 250,
     });
+  });
+
+  it.each([
+    { failureCode: null, failureMessage: "message", label: "null code" },
+    { failureCode: "code", failureMessage: null, label: "null message" },
+    { failureCode: "", failureMessage: "message", label: "empty code" },
+    { failureCode: "code", failureMessage: "", label: "empty message" },
+  ])("rejects a failed row with $label", ({ failureCode, failureMessage }) => {
+    const fixture = setup();
+    const input = handoffInput(fixture);
+    const handoff = createThreadHandoff(fixture.db, input).handoff;
+
+    expect(() =>
+      fixture.db
+        .update(threadHandoffs)
+        .set({
+          status: "failed",
+          failureCode,
+          failureMessage,
+          settledAt: 200,
+          updatedAt: 200,
+        })
+        .where(eq(threadHandoffs.id, handoff.id))
+        .run(),
+    ).toThrow(/thread_handoffs_settlement_shape_check/u);
   });
 
   it("does not overwrite either kind of settled handoff", () => {

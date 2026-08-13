@@ -666,6 +666,13 @@
       "when": 1786623202535,
       "tag": "0094_great_red_hulk",
       "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "6",
+      "when": 1786623863912,
+      "tag": "0095_red_taskmaster",
+      "breakpoints": true
     }
   ]
 }
