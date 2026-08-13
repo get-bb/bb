@@ -38,6 +38,10 @@ describe("Forge artifact hashing", () => {
     );
     expect(result.regularFileHashes).not.toHaveProperty("/a/link-to-middle");
     expect(result.regularFileHashes).not.toHaveProperty("/linked-dir");
+    expect(result.symlinkTargets).toEqual({
+      "/a/link-to-middle": "../middle",
+      "/linked-dir": "a",
+    });
   });
 
   it("changes for file mutation and preserves path ordering", async () => {

@@ -16,6 +16,7 @@ import {
   firmwareEnvKey,
   prepareFirmwareForBench,
   startForgeWithPreparedFirmware,
+  type BenchProcessLaunch,
 } from "./handshake.js";
 
 const roots: string[] = [];
@@ -179,7 +180,7 @@ describe("firmware bench handshake", () => {
     expect(JSON.stringify(prepared)).not.toContain(canonicalRootfs);
     expect(JSON.stringify(prepared)).not.toContain(key);
 
-    const start = vi.fn(async () => undefined);
+    const start = vi.fn(async (_launch: BenchProcessLaunch, _signal: AbortSignal) => undefined);
     await startForgeWithPreparedFirmware(
       { kind: "plugin_owned_stdio", hostId: "host-1", command: ["forge", "serve"], start },
       prepared,

@@ -88,14 +88,14 @@ export async function loadFirmwareReadiness(
       });
     }
 
-    if (readiness === "missing" || meta === null) {
-      throw new FirmwareCacheError("MOUNT_MISSING", "No firmware sidecar is available for this project version.");
+    if (readiness === "invalid") {
+      throw new FirmwareCacheError("MOUNT_INVALID", "The firmware sidecar or rootfs integrity evidence is invalid.");
     }
     if (readiness === "stale") {
       throw new FirmwareCacheError("MOUNT_STALE", "The firmware sidecar is stale and must be refreshed.");
     }
-    if (readiness === "invalid") {
-      throw new FirmwareCacheError("MOUNT_INVALID", "The firmware sidecar or rootfs integrity evidence is invalid.");
+    if (readiness === "missing" || meta === null) {
+      throw new FirmwareCacheError("MOUNT_MISSING", "No firmware sidecar is available for this project version.");
     }
     if (readiness !== "fully_materialized") {
       throw new FirmwareCacheError("MOUNT_INCOMPLETE", incompleteMessage(meta, nodes));

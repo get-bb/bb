@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import type { BigIntStats } from "node:fs";
 import { lstat, open, readdir, realpath, readlink } from "node:fs/promises";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export class FirmwareArtifactHashError extends Error {
   constructor(
@@ -36,6 +36,12 @@ export interface ForgeArtifactHash {
   artifactHash: string;
   fileCount: number;
   regularFileHashes: Readonly<Record<string, string>>;
+  symlinkTargets: Readonly<Record<string, string>>;
+}
+
+interface ArtifactTree {
+  files: ArtifactFile[];
+  symlinkTargets: Record<string, string>;
 }
 
 function evidence(stat: BigIntStats): FileEvidence {
@@ -74,8 +80,9 @@ function sameEvidence(left: FileEvidence, right: FileEvidence): boolean {
   );
 }
 
-async function collectArtifactFiles(root: string, signal: AbortSignal): Promise<ArtifactFile[]> {
+async function collectArtifactTree(root: string, signal: AbortSignal): Promise<ArtifactTree> {
   const files: ArtifactFile[] = [];
+  const symlinkTargets: Record<string, string> = {};
 
   const visit = async (directory: string, prefix: string): Promise<void> => {
     signal.throwIfAborted();
@@ -105,12 +112,29 @@ async function collectArtifactFiles(root: string, signal: AbortSignal): Promise<
       let target: string;
       let resolvedTarget: string;
       try {
-        [target, resolvedTarget] = await Promise.all([readlink(logicalPath), realpath(logicalPath)]);
+        target = await readlink(logicalPath);
+      } catch (error) {
+        throw new FirmwareArtifactHashError(
+          "FIRMWARE_FILE_UNREADABLE",
+          `Firmware symlink could not be inspected: /${relativePath}`,
+          { cause: error },
+        );
+      }
+      symlinkTargets[`/${relativePath}`] = target;
+      const lexicalTarget = isAbsolute(target) ? resolve(target) : resolve(dirname(logicalPath), target);
+      if (!isContained(root, lexicalTarget)) {
+        throw new FirmwareArtifactHashError(
+          "UNSAFE_FIRMWARE_SYMLINK",
+          `Firmware symlink escapes the prepared root: /${relativePath}`,
+        );
+      }
+      try {
+        resolvedTarget = await realpath(logicalPath);
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
         throw new FirmwareArtifactHashError(
           "FIRMWARE_FILE_UNREADABLE",
-          `Firmware symlink could not be inspected: /${relativePath}`,
+          `Firmware symlink target could not be inspected: /${relativePath}`,
           { cause: error },
         );
       }
@@ -134,7 +158,8 @@ async function collectArtifactFiles(root: string, signal: AbortSignal): Promise<
   };
 
   await visit(root, "");
-  return files.sort((left, right) => pythonPathCompare(left.relativePath, right.relativePath));
+  files.sort((left, right) => pythonPathCompare(left.relativePath, right.relativePath));
+  return { files, symlinkTargets };
 }
 
 async function hashFile(
@@ -209,11 +234,17 @@ async function hashFile(
   }
 }
 
-function sameTree(left: readonly ArtifactFile[], right: readonly ArtifactFile[]): boolean {
+function sameTree(left: ArtifactTree, right: ArtifactTree): boolean {
+  const leftSymlinks = Object.entries(left.symlinkTargets).sort(([leftPath], [rightPath]) =>
+    pythonPathCompare(leftPath, rightPath),
+  );
+  const rightSymlinks = Object.entries(right.symlinkTargets).sort(([leftPath], [rightPath]) =>
+    pythonPathCompare(leftPath, rightPath),
+  );
   return (
-    left.length === right.length &&
-    left.every((file, index) => {
-      const other = right[index];
+    left.files.length === right.files.length &&
+    left.files.every((file, index) => {
+      const other = right.files[index];
       return (
         other !== undefined &&
         file.relativePath === other.relativePath &&
@@ -222,7 +253,8 @@ function sameTree(left: readonly ArtifactFile[], right: readonly ArtifactFile[])
         file.symlinkTarget === other.symlinkTarget &&
         sameEvidence(file.evidence, other.evidence)
       );
-    })
+    }) &&
+    JSON.stringify(leftSymlinks) === JSON.stringify(rightSymlinks)
   );
 }
 
@@ -247,10 +279,10 @@ export async function computeForgeArtifactHash(
     );
   }
 
-  const before = await collectArtifactFiles(root, signal);
+  const before = await collectArtifactTree(root, signal);
   const outer = createHash("sha256");
   const regularFileHashes: Record<string, string> = {};
-  for (const file of before) {
+  for (const file of before.files) {
     const fileHash = await hashFile(root, file, signal);
     outer.update(Buffer.from(file.relativePath, "utf8"));
     outer.update(Buffer.from([0]));
@@ -258,7 +290,7 @@ export async function computeForgeArtifactHash(
     if (file.kind === "regular") regularFileHashes[`/${file.relativePath}`] = fileHash;
   }
 
-  const after = await collectArtifactFiles(root, signal);
+  const after = await collectArtifactTree(root, signal);
   if (!sameTree(before, after)) {
     throw new FirmwareArtifactHashError(
       "FIRMWARE_CHANGED_DURING_HASH",
@@ -268,7 +300,8 @@ export async function computeForgeArtifactHash(
 
   return Object.freeze({
     artifactHash: outer.digest("hex"),
-    fileCount: before.length,
+    fileCount: before.files.length,
     regularFileHashes: Object.freeze(regularFileHashes),
+    symlinkTargets: Object.freeze(before.symlinkTargets),
   });
 }

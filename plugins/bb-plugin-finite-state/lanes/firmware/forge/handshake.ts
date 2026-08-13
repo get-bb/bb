@@ -72,6 +72,17 @@ function verifyManifestFiles(
   for (const [path] of actual) {
     if (!expected.has(path)) mismatches.push(path);
   }
+  const expectedSymlinks = new Map(
+    snapshot.nodes
+      .filter((node) => node.kind === "symlink")
+      .map((node) => [node.path, node.symlinkTarget]),
+  );
+  for (const [path, target] of expectedSymlinks) {
+    if (target === null || artifact.symlinkTargets[path] !== target) mismatches.push(path);
+  }
+  for (const path of Object.keys(artifact.symlinkTargets)) {
+    if (!expectedSymlinks.has(path)) mismatches.push(path);
+  }
   if (mismatches.length === 0) return;
   const examples = [...new Set(mismatches)].slice(0, 5).join(", ");
   if (changedCode) {
