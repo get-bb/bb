@@ -1,13 +1,34 @@
-import { lazy, Suspense, useMemo, type ComponentType } from "react";
-import type { NodeTypes } from "@xyflow/react";
 import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ComponentType,
+} from "react";
+import type { NodeTypes } from "@xyflow/react";
+import { Icon } from "@bb/shared-ui/icon";
+import {
+  experimental_useSidebarThreads,
   useBbContext,
   useBbNavigate,
   type PluginNavPanelProps,
 } from "@bb/plugin-sdk/app";
 import type { CanvasFoundationFeatures } from "../canvas/foundation/CanvasShell.js";
-import { useCanvasData } from "../canvas/foundation/useCanvasData.js";
 import type { CanvasModel } from "../canvas/foundation/types.js";
+import { useArchitectureData } from "../canvas/nodes/useNodeData.js";
+import { toFoundationCanvasModel } from "../canvas/nodes/index.js";
+import type {
+  ArchitectureAdjacency,
+  ArchitectureModel,
+  CanvasArchitectureGraph,
+} from "../canvas/nodes/adapters.js";
+import {
+  focusIdFromRoute,
+  focusSubPath,
+  type ArchitectureSelectionKind,
+} from "../canvas/nodes/selection.js";
 import {
   parseProductSecurityRoute,
   PRODUCT_SECURITY_TABS,
@@ -22,57 +43,126 @@ import {
   CanvasUnconfiguredState,
 } from "./states.js";
 
+const PROJECT_SCOPE_STORAGE_KEY =
+  "finite-state:product-security:project-scope:v1";
+
+interface ProjectScopedLaneProps {
+  projectId: string;
+}
+
 export interface ProductSecurityFeatures extends Omit<
   CanvasFoundationFeatures,
   "nodeTypes"
 > {
   loadNodeTypes(): Promise<NodeTypes>;
-  RequirementsCards: ComponentType;
-  RequirementsTraceabilityLayer: ComponentType;
-  RequirementsConversionLayer: ComponentType;
-  VerificationMatrix: ComponentType;
-  VerificationRunDetailLayer: ComponentType;
+  RequirementsCards: ComponentType<ProjectScopedLaneProps>;
+  RequirementsTraceabilityLayer: ComponentType<ProjectScopedLaneProps>;
+  RequirementsConversionLayer: ComponentType<ProjectScopedLaneProps>;
+  VerificationMatrix: ComponentType<ProjectScopedLaneProps>;
+  VerificationRunDetailLayer: ComponentType<ProjectScopedLaneProps>;
 }
 
 interface ProductSecurityPanelProps extends PluginNavPanelProps {
   features: ProductSecurityFeatures;
 }
 
+function readPersistedProjectId(): string | null {
+  try {
+    const value = localStorage.getItem(PROJECT_SCOPE_STORAGE_KEY);
+    return value && value.length > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistProjectId(projectId: string): void {
+  try {
+    localStorage.setItem(PROJECT_SCOPE_STORAGE_KEY, projectId);
+  } catch {
+    // Project scope still works for this mount when storage is unavailable.
+  }
+}
+
+interface LoadedArchitectureCanvasProps {
+  model: ArchitectureModel;
+  graph: CanvasArchitectureGraph;
+  adjacency: ReadonlyMap<string, ArchitectureAdjacency>;
+  foundationModel: CanvasModel;
+  projectId: string;
+  focusId: string | null;
+  onFocusRoute(kind: ArchitectureSelectionKind, slug: string): void;
+}
+
 function TaraPanel({
   features,
+  projectId,
+  detail,
 }: {
   features: ProductSecurityFeatures;
+  projectId: string | null;
+  detail: readonly string[];
 }): React.JSX.Element {
-  const { projectId } = useBbContext();
-  const data = useCanvasData(projectId);
-  const LazyCanvasShell = useMemo(
+  const navigate = useBbNavigate();
+  const data = useArchitectureData(projectId);
+  const focusId = focusIdFromRoute(detail);
+  const foundationModel = useMemo(
+    () =>
+      data.model && data.graph
+        ? toFoundationCanvasModel(data.model, data.graph)
+        : null,
+    [data.graph, data.model],
+  );
+  const onFocusRoute = useCallback(
+    (kind: ArchitectureSelectionKind, slug: string) => {
+      navigate.toPluginPanel("product-security", {
+        subPath: focusSubPath(kind, slug),
+      });
+    },
+    [navigate],
+  );
+  const LazyArchitectureCanvas = useMemo(
     () =>
       lazy(async () => {
-        const [module, nodeTypes] = await Promise.all([
+        const [foundationModule, nodeModule, nodeTypes] = await Promise.all([
           import("../canvas/foundation/CanvasShell.js"),
+          import("../canvas/nodes/index.js"),
           features.loadNodeTypes(),
         ]);
-        const LoadedCanvasShell = module.default;
+        const LoadedCanvasShell = foundationModule.default;
         return {
           default({
             model,
+            graph,
+            adjacency,
+            foundationModel,
             projectId: canvasProjectId,
-          }: {
-            model: CanvasModel;
-            projectId: string;
-          }): React.JSX.Element {
+            focusId: canvasFocusId,
+            onFocusRoute: focusRoute,
+          }: LoadedArchitectureCanvasProps): React.JSX.Element {
             return (
-              <LoadedCanvasShell
-                features={{
-                  nodeTypes,
-                  edgeTypes: features.edgeTypes,
-                  ThreatOverlay: features.ThreatOverlay,
-                  LinksLayer: features.LinksLayer,
-                  EditingLayer: features.EditingLayer,
-                }}
+              <nodeModule.ProductSecurityCanvasWorkspace
+                adjacency={adjacency}
+                focusId={canvasFocusId}
+                graph={graph}
+                key={canvasFocusId ?? "architecture-canvas"}
                 model={model}
-                projectId={canvasProjectId}
-              />
+                onFocusRoute={focusRoute}
+              >
+                <LoadedCanvasShell
+                  features={{
+                    nodeTypes,
+                    edgeTypes: {
+                      ...features.edgeTypes,
+                      ...nodeModule.productSecurityNodeEdgeTypes,
+                    },
+                    ThreatOverlay: features.ThreatOverlay,
+                    LinksLayer: features.LinksLayer,
+                    EditingLayer: features.EditingLayer,
+                  }}
+                  model={foundationModel}
+                  projectId={canvasProjectId}
+                />
+              </nodeModule.ProductSecurityCanvasWorkspace>
             );
           },
         };
@@ -84,16 +174,23 @@ function TaraPanel({
     return <CanvasUnconfiguredState />;
   }
   if (data.status === "loading") return <CanvasLoadingState />;
-  if (data.status === "error" || !data.model) {
+  if (
+    data.status === "error" ||
+    !data.model ||
+    !data.graph ||
+    !data.adjacency ||
+    !foundationModel
+  ) {
     return <CanvasErrorState onRetry={data.retry} />;
   }
   if (data.model.nodes.length === 0) {
     return <CanvasEmptyState onRetry={data.retry} />;
   }
 
-  const model: CanvasModel = data.error
+  const model: ArchitectureModel = data.error
     ? { ...data.model, cache: { ...data.model.cache, stale: true } }
     : data.model;
+  const graph = data.graph;
   return (
     <div className="flex h-full min-h-0 flex-col">
       <CanvasCacheBanner
@@ -101,9 +198,32 @@ function TaraPanel({
         pulledAt={model.cache.pulledAt}
         stale={model.cache.stale}
       />
+      {graph.unresolved.length > 0 ? (
+        <div
+          className="flex items-center gap-2 border-b border-destructive/40 bg-muted px-4 py-2 text-sm text-foreground"
+          role="status"
+        >
+          <Icon
+            aria-hidden="true"
+            className="size-4 text-destructive"
+            name="CircleX"
+          />
+          Partial architecture: {graph.unresolved.length} unresolved slug{" "}
+          {graph.unresolved.length === 1 ? "reference" : "references"}. Valid
+          entities remain inspectable.
+        </div>
+      ) : null}
       <div className="min-h-0 flex-1">
         <Suspense fallback={<CanvasLoadingState />}>
-          <LazyCanvasShell model={model} projectId={projectId} />
+          <LazyArchitectureCanvas
+            adjacency={data.adjacency}
+            focusId={focusId}
+            foundationModel={foundationModel}
+            graph={graph}
+            model={model}
+            onFocusRoute={onFocusRoute}
+            projectId={projectId}
+          />
         </Suspense>
       </div>
     </div>
@@ -121,7 +241,24 @@ export function ProductSecurityPanel({
   features,
 }: ProductSecurityPanelProps): React.JSX.Element {
   const navigate = useBbNavigate();
+  const { projectId: routeProjectId } = useBbContext();
+  const sidebar = experimental_useSidebarThreads();
+  const [selectedProjectId, setSelectedProjectId] = useState(
+    readPersistedProjectId,
+  );
   const route = parseProductSecurityRoute(subPath);
+  useEffect(() => {
+    if (!routeProjectId) return;
+    persistProjectId(routeProjectId);
+  }, [routeProjectId]);
+  const selectedProjectExists = sidebar.projects.some(
+    (project) => project.id === selectedProjectId,
+  );
+  const fallbackProjectId =
+    selectedProjectId && (sidebar.status !== "ready" || selectedProjectExists)
+      ? selectedProjectId
+      : null;
+  const projectId = routeProjectId ?? fallbackProjectId;
   const RequirementsCards = features.RequirementsCards;
   const RequirementsTraceabilityLayer = features.RequirementsTraceabilityLayer;
   const RequirementsConversionLayer = features.RequirementsConversionLayer;
@@ -155,21 +292,57 @@ export function ProductSecurityPanel({
             {TAB_LABELS[tab]}
           </button>
         ))}
+        <div className="ml-auto flex items-center gap-2">
+          <label
+            className="text-xs font-medium text-muted-foreground"
+            htmlFor="product-security-project"
+          >
+            Project
+          </label>
+          <select
+            aria-label="Product Security project"
+            className="h-9 max-w-64 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+            disabled={Boolean(routeProjectId) || sidebar.status === "loading"}
+            id="product-security-project"
+            onChange={(event) => {
+              const nextProjectId = event.target.value;
+              setSelectedProjectId(nextProjectId || null);
+              if (nextProjectId) persistProjectId(nextProjectId);
+            }}
+            value={projectId ?? ""}
+          >
+            <option value="">Select a project</option>
+            {sidebar.projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
+        </div>
       </nav>
       <div className="min-h-0 flex-1">
-        {route.tab === "tara" ? <TaraPanel features={features} /> : null}
-        {route.tab === "requirements" ? (
+        {route.tab === "tara" ? (
+          <TaraPanel
+            detail={route.detail}
+            features={features}
+            projectId={projectId}
+          />
+        ) : null}
+        {route.tab === "requirements" && projectId ? (
           <>
-            <RequirementsCards />
-            <RequirementsTraceabilityLayer />
-            <RequirementsConversionLayer />
+            <RequirementsCards projectId={projectId} />
+            <RequirementsTraceabilityLayer projectId={projectId} />
+            <RequirementsConversionLayer projectId={projectId} />
           </>
         ) : null}
-        {route.tab === "verifications" ? (
+        {route.tab === "verifications" && projectId ? (
           <>
-            <VerificationMatrix />
-            <VerificationRunDetailLayer />
+            <VerificationMatrix projectId={projectId} />
+            <VerificationRunDetailLayer projectId={projectId} />
           </>
+        ) : null}
+        {route.tab !== "tara" && !projectId ? (
+          <CanvasUnconfiguredState />
         ) : null}
       </div>
     </section>
