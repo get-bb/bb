@@ -166,7 +166,7 @@ describe("firmware device panel", () => {
     expect(slot.getAllByText("Stale").length).toBeGreaterThan(0);
     expect(slot.getByText("Logic analyzers unavailable")).toBeTruthy();
     expect(slot.getByRole("button", { name: "Claim" }).hasAttribute("disabled")).toBe(true);
-    expect(slot.getByText("Serial console is not implemented (WP-87).")).toBeTruthy();
+    expect(await slot.findByText("No serial port available")).toBeTruthy();
 
     fireEvent.click(slot.getByRole("button", { name: "Review helper install" }));
     expect(await slot.findByText("Explicit confirmation required")).toBeTruthy();

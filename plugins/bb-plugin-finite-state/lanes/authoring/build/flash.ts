@@ -35,6 +35,11 @@ export interface FlashActionResult {
 }
 
 type FlashCompletedHandler = (event: FlashCompletedEvent) => void;
+export interface FlashCompletedSubscriptionScope {
+  db: Database.Database;
+  projectId: string;
+  projectVersionId: string | null;
+}
 const flashCompletedHandlers = new WeakMap<
   Database.Database,
   Map<string, Set<FlashCompletedHandler>>
@@ -51,9 +56,8 @@ function storeFor(ctx: AuthoringContext) {
   return { db: ctx.db, publish: ctx.publish };
 }
 
-function flashScopeKey(ctx: AuthoringContext): string {
-  const scope = scopeFor(ctx);
-  return `${scope.projectId}\0${scope.projectVersionId}`;
+function flashScopeKey(scope: FlashCompletedSubscriptionScope): string {
+  return `${scope.projectId}\0${toStorageProjectVersionId(scope.projectVersionId)}`;
 }
 
 /** WP-87 subscribes per database/project scope and must dispose on reload. */
@@ -61,12 +65,20 @@ export function onFlashCompleted(
   ctx: AuthoringContext,
   handler: FlashCompletedHandler,
 ): () => void {
-  let byScope = flashCompletedHandlers.get(ctx.db);
+  return subscribeFlashCompleted(ctx, handler);
+}
+
+/** Subscription-only adapter: it cannot trigger a flash or construct a runner context. */
+export function subscribeFlashCompleted(
+  scope: FlashCompletedSubscriptionScope,
+  handler: FlashCompletedHandler,
+): () => void {
+  let byScope = flashCompletedHandlers.get(scope.db);
   if (!byScope) {
     byScope = new Map();
-    flashCompletedHandlers.set(ctx.db, byScope);
+    flashCompletedHandlers.set(scope.db, byScope);
   }
-  const key = flashScopeKey(ctx);
+  const key = flashScopeKey(scope);
   let handlers = byScope.get(key);
   if (!handlers) {
     handlers = new Set();

@@ -30,7 +30,14 @@ import {
   type RegistryScope,
 } from "./registry/store.js";
 import { listBenchDevelopmentRuns } from "./probes/runs.js";
-import { getSerialSession } from "./serial/session.js";
+import {
+  createSerialRuntime,
+  getSerialSession,
+  type SerialRuntime,
+} from "./serial/session.js";
+import {
+  registerSerialRpc,
+} from "./serial/fs-serial.js";
 
 const projectScopeFields = {
   projectId: z.string().min(1).max(512),
@@ -290,6 +297,14 @@ export function createDebugBenchCommandHandlers(
 
 export function registerDebugBench(bb: BbPluginApi, ctx: PluginContext): void {
   const coordinator = coordinatorFor(bb, ctx);
+  const serial = ctx.service<SerialRuntime>(
+    "debug-bench.serial",
+    () => createSerialRuntime({
+      db: ctx.db(),
+      publish: (channel, payload) => bb.realtime.publish(channel, payload),
+      log: ctx.log,
+    }),
+  );
   const commands = ctx.service<DebugBenchCommandHandlers>(
     "debug-bench.commands",
     () => createDebugBenchCommandHandlers(bb, ctx),
@@ -302,10 +317,12 @@ export function registerDebugBench(bb: BbPluginApi, ctx: PluginContext): void {
   bb.background.service("debug-bench-rescan", {
     start: (signal) => coordinator.start(signal),
   });
+  bb.onDispose(() => serial.dispose());
 
   bb.rpc.register(frozenDebugBenchRpcContract, {
     benchDevDevicesList(input) {
       coordinator.remember(input);
+      serial.observeScope(input);
       // The frozen cursor helper erases additive-field inference, but the RPC
       // host has already parsed this value with its exact Zod schema.
       const parsed = input as typeof input & {
@@ -342,9 +359,15 @@ export function registerDebugBench(bb: BbPluginApi, ctx: PluginContext): void {
     benchDevSerialSessionGet: (input) => getSerialSession(ctx.db(), input),
   });
 
+  registerSerialRpc(bb, serial);
+
   bb.rpc.register(debugBenchRpcContract, {
-    benchDevRegistryStatus: (input) => coordinator.status(input),
+    benchDevRegistryStatus(input) {
+      serial.observeScope(input);
+      return coordinator.status(input);
+    },
     async benchDevRegistryRescan(input) {
+      serial.observeScope(input);
       const result = await commands.rescan(input);
       return {
         ...result,

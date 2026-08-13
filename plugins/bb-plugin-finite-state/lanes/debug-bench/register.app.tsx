@@ -4,7 +4,12 @@ import { DevicePanel } from "./app/device-panel.js";
 import { SerialConsole } from "./app/serial-console.js";
 
 function FirmwareBenchPanel(props: PluginNavPanelProps): React.JSX.Element {
-  return <DevicePanel {...props} consoleSlot={<SerialConsole />} />;
+  return (
+    <DevicePanel
+      {...props}
+      consoleSlot={(serialProps) => <SerialConsole {...serialProps} />}
+    />
+  );
 }
 
 export function registerDebugBenchApp(

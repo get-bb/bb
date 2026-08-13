@@ -57,7 +57,11 @@ type PanelState =
   | RegistryReadyState;
 
 interface DevicePanelProps extends PluginNavPanelProps {
-  consoleSlot?: ReactNode;
+  consoleSlot?: ReactNode | ((props: {
+    projectId: string;
+    projectVersionId: string | null;
+    devices: readonly BenchDeviceRecord[];
+  }) => ReactNode);
 }
 
 interface ProjectPickerProps {
@@ -520,7 +524,9 @@ export function DevicePanel({ consoleSlot }: DevicePanelProps): React.JSX.Elemen
               ) : null}
             </div>
             <aside className="min-h-48 overflow-hidden rounded-lg border border-border bg-card" aria-label="Serial console slot">
-              {consoleSlot}
+              {typeof consoleSlot === "function"
+                ? consoleSlot({ projectId, projectVersionId: null, devices: state.devices })
+                : consoleSlot}
             </aside>
           </div>
         )}
