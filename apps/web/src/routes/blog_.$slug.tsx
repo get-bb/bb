@@ -74,7 +74,7 @@ function BlogPostRoute() {
           <time className="date-pill" dateTime={post.dateIso}>
             {post.date}
           </time>
-          <h2>{post.title}</h2>
+          <h1>{post.title}</h1>
           {post.cover ? (
             <PostHeader src={post.cover.src} alt={post.cover.alt} lightbox />
           ) : null}

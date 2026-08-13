@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { ChangelogInline } from "../landing/changelog-inline";
+import { getImageSize } from "./image-sizes";
 import { LightboxImage } from "./lightbox";
 import type { Post, PostBlock } from "./parse-post";
 import { getTweet, type Tweet } from "./tweets";
@@ -8,7 +9,7 @@ import { getTweet, type Tweet } from "./tweets";
 function Block({ block }: { block: PostBlock }): ReactNode {
   switch (block.kind) {
     case "heading":
-      return <h3>{block.text}</h3>;
+      return <h2>{block.text}</h2>;
     case "paragraph":
       return (
         <p>
@@ -37,7 +38,12 @@ function Block({ block }: { block: PostBlock }): ReactNode {
       );
     case "image":
       return (
-        <PostMedia src={block.src} alt={block.alt} caption={block.caption} />
+        <PostMedia
+          src={block.src}
+          alt={block.alt}
+          caption={block.caption}
+          href={block.href}
+        />
       );
     case "tweet":
       return <TweetEmbed href={block.href} id={block.id} />;
@@ -119,14 +125,35 @@ export function PostMedia({
   src,
   alt,
   caption,
+  href,
 }: {
   src: string;
   alt: string;
   caption?: string;
+  href?: string;
 }) {
+  const size = getImageSize(src);
   return (
     <figure className="post-figure">
-      <LightboxImage src={src} alt={alt} />
+      {href ? (
+        // The author linked this image. A click must open that destination.
+        <a
+          className="post-figure-link"
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <img
+            src={src}
+            alt={alt}
+            loading="lazy"
+            width={size?.width}
+            height={size?.height}
+          />
+        </a>
+      ) : (
+        <LightboxImage src={src} alt={alt} />
+      )}
       {caption ? (
         <figcaption>
           <ChangelogInline text={caption} />
@@ -145,12 +172,18 @@ export function PostHeader({
   alt: string;
   lightbox?: boolean;
 }) {
+  const size = getImageSize(src);
   return (
     <figure className="post-header">
       {lightbox ? (
-        <LightboxImage src={src} alt={alt} />
+        <LightboxImage src={src} alt={alt} loading="eager" />
       ) : (
-        <img src={src} alt={alt} />
+        <img
+          src={src}
+          alt={alt}
+          width={size?.width}
+          height={size?.height}
+        />
       )}
     </figure>
   );

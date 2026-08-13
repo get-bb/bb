@@ -78,7 +78,8 @@
   background: var(--surface);
 }
 
-.post-body h2 {
+.post-body h1,
+.post-index .post-body h2 {
   margin-top: 14px;
   font-size: clamp(24px, 3.2vw, 32px);
   line-height: 1.12;
@@ -92,7 +93,7 @@
   color: color-mix(in oklab, oklch(0.21 0 0) 78%, var(--accent));
 }
 
-.article .post-body h2 {
+.article .post-body h1 {
   font-size: clamp(30px, 4.2vw, 42px);
   line-height: 1.08;
 }
@@ -122,7 +123,7 @@
   font-size: 16.5px;
 }
 
-.post-body h3 {
+.article .post-body h2 {
   margin-top: 40px;
   font-size: 18px;
   font-weight: 650;
@@ -217,7 +218,12 @@
   cursor: zoom-in;
 }
 
+.post-figure-link {
+  display: block;
+}
+
 .lightbox-trigger img,
+.post-figure-link img,
 .post-header img {
   display: block;
   width: 100%;
@@ -237,6 +243,25 @@
   padding: 24px;
   background: color-mix(in oklab, var(--ink) 72%, transparent);
   cursor: zoom-out;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .lightbox img {
