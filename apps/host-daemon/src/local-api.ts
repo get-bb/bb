@@ -89,6 +89,22 @@ interface ResolveOpenPathInTargetArgs {
 const CLIENT_CONFIG_CACHE_TTL_MS = 1_000;
 const EMPTY_CLIENT_CONFIG: ClientConfig = { servers: {} };
 
+/**
+ * Whether an origin hostname is one a DNS-rebound page cannot mint: a loopback
+ * name, or a bare IP literal. Mirrors the server's check in
+ * `browser-request-guard.ts`; see #1531 for folding both into one module.
+ */
+function isSelfEvidentLocalHostname(hostname: string): boolean {
+  if (hostname === "localhost" || hostname.endsWith(".localhost")) {
+    return true;
+  }
+  // `URL.hostname` keeps the brackets on an IPv6 literal.
+  if (hostname.startsWith("[") && hostname.endsWith("]")) {
+    return true;
+  }
+  return /^\d{1,3}(?:\.\d{1,3}){3}$/u.test(hostname);
+}
+
 function isNoEntryError(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
@@ -211,10 +227,28 @@ export async function startLocalApiServer(
   const isAllowedAppOrigin = async (
     origin: string,
     requestUrl: string,
-  ): Promise<boolean> =>
-    origin === new URL(requestUrl).origin ||
-    allowedCorsOrigins.has(origin) ||
-    (await isConfiguredClientOrigin(origin, clientConfigLoader));
+  ): Promise<boolean> => {
+    if (
+      allowedCorsOrigins.has(origin) ||
+      (await isConfiguredClientOrigin(origin, clientConfigLoader))
+    ) {
+      return true;
+    }
+    // Matching the addressed authority proves nothing by itself: a page on a
+    // public name that resolves to this machine controls both `Origin` and
+    // `Host`, so it can make them agree. This API binds loopback, so a genuine
+    // caller always addresses it by a loopback name or a bare address.
+    let originUrl: URL;
+    try {
+      originUrl = new URL(origin);
+    } catch {
+      return false;
+    }
+    return (
+      isSelfEvidentLocalHostname(originUrl.hostname) &&
+      origin === new URL(requestUrl).origin
+    );
+  };
 
   app.use(
     "*",

@@ -1,3 +1,4 @@
+import http from "node:http";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -95,6 +96,69 @@ describe("local API server", () => {
       200,
     );
     expect(openInTarget).toHaveBeenCalledTimes(2);
+  });
+
+  // A rebound page sends a matching Origin and Host pair, which the self-origin
+  // branch previously accepted as the daemon's own origin. This API binds
+  // loopback, so a genuine caller always addresses it by a loopback name or a
+  // bare address.
+  it("rejects a DNS-rebound origin that matches its own Host", async () => {
+    const openInTarget = vi.fn(async () => undefined);
+    server = await startLocalApiServer({
+      hostId: "host-1",
+      localApiConfig: createLocalApiConfig(),
+      serverUrl: "http://server.test",
+      serverPort: 3334,
+      devAppPort: 5173,
+      getConnected: () => true,
+      openInTarget,
+    });
+    const port = server.port;
+
+    function post(headers: Record<string, string>): Promise<number> {
+      return new Promise((resolve, reject) => {
+        const request = http.request(
+          {
+            host: "127.0.0.1",
+            port,
+            path: "/open-in-target",
+            method: "POST",
+            headers: { ...headers, "content-type": "application/json" },
+          },
+          (response) => {
+            response.resume();
+            resolve(response.statusCode ?? 0);
+          },
+        );
+        request.once("error", reject);
+        request.end(
+          JSON.stringify({
+            context: { kind: "local" },
+            columnNumber: null,
+            lineNumber: null,
+            path: tmpdir(),
+            targetId: "vscode",
+          }),
+        );
+      });
+    }
+
+    expect(
+      await post({
+        origin: `http://rebind.example:${port}`,
+        host: `rebind.example:${port}`,
+      }),
+    ).toBe(403);
+    expect(openInTarget).not.toHaveBeenCalled();
+
+    // The loopback authority a real local caller sends still works.
+    expect(
+      await post({
+        origin: `http://127.0.0.1:${port}`,
+        host: `127.0.0.1:${port}`,
+      }),
+    ).toBe(200);
+    expect(openInTarget).toHaveBeenCalledTimes(1);
   });
 
   it("serves host identity and status over localhost", async () => {
