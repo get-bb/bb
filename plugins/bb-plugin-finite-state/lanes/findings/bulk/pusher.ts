@@ -6,6 +6,7 @@ import {
   VEX_JUSTIFICATIONS,
   VEX_RESPONSES,
   VEX_STATUSES,
+  type Json,
   type PlatformClient,
   type VexDecisionInput,
   type VexJustification,
@@ -31,7 +32,7 @@ import { chunkVexTargets, type VexBulkTarget } from "./chunk.js";
 import { consumeSetEnvelope, VexItemAccumulator, type VexApplyError, type VexApplyResult } from "./results.js";
 import {
   detailMatchesStableKey,
-  getTargetDetail,
+  getTargetDetails,
   identityFromStableKey,
   sameVexTuple,
   stampVexReason,
@@ -40,6 +41,8 @@ import {
 
 const PROGRESS_TARGET_INTERVAL = 500;
 const RATE_LIMIT_ATTEMPTS = 6;
+const RATE_LIMIT_MIN_DELAY_MS = 250;
+const RATE_LIMIT_JITTER_MS = 250;
 
 export interface VexBulkProgress {
   runId: string;
@@ -49,9 +52,10 @@ export interface VexBulkProgress {
 
 export interface VexBulkDependencies {
   db: Database.Database;
-  platform: Pick<PlatformClient, "batchSetVexStatus" | "clearVexStatus" | "getFindingDetail">;
+  platform: Pick<PlatformClient, "batchSetVexStatus" | "clearVexStatus" | "getFindings">;
   publish(progress: VexBulkProgress): void;
   scheduler?: Scheduler;
+  random?: () => number;
 }
 
 export interface PushContext extends SyncPushContext, VexBulkDependencies {}
@@ -186,6 +190,7 @@ function errorDetail(error: unknown, fallbackCode: string, fallbackRetryable = t
 async function withRateLimitRetry<T>(
   operation: () => Promise<T>,
   scheduler: Scheduler,
+  random: () => number,
   signal?: AbortSignal,
 ): Promise<T> {
   for (let attempt = 1; ; attempt += 1) {
@@ -199,7 +204,11 @@ async function withRateLimitRetry<T>(
       ) {
         throw error;
       }
-      const delay = Math.min(error.retryAfterMs ?? 1_000 * 2 ** (attempt - 1), 64_000);
+      const requested = error.retryAfterMs ?? 1_000 * 2 ** (attempt - 1);
+      const delay = Math.min(
+        Math.max(RATE_LIMIT_MIN_DELAY_MS, requested) + Math.floor(random() * RATE_LIMIT_JITTER_MS),
+        64_000,
+      );
       await scheduler.sleep(delay, signal);
     }
   }
@@ -264,12 +273,71 @@ function prepareItems(context: PushContext, items: readonly PlanItem[]): Prepare
   });
 }
 
-async function preflight(context: PushContext, prepared: readonly PreparedItem[]): Promise<void> {
+function rejectContendedTargets(prepared: readonly PreparedItem[]): void {
+  const claims = new Map<string, PreparedItem[]>();
   for (const owner of prepared) {
-    if (owner.accumulator.terminal !== null) continue;
+    if (owner.accumulator.terminal !== null || owner.accumulator.hasErrors) continue;
+    for (const target of owner.targets) {
+      const key = `${target.pvId}\0${target.findingId}`;
+      const owners = claims.get(key) ?? [];
+      owners.push(owner);
+      claims.set(key, owners);
+    }
+  }
+  for (const [claimKey, owners] of claims) {
+    const distinct = [...new Map(owners.map((owner) => [owner.item.key, owner])).values()];
+    if (distinct.length < 2) continue;
+    for (const owner of distinct) {
+      const siblings = distinct.filter((candidate) => candidate !== owner).map((candidate) => candidate.item.key);
+      const target = owner.targets.find((candidate) => `${candidate.pvId}\0${candidate.findingId}` === claimKey);
+      if (target === undefined) continue;
+      owner.accumulator.markFailed(target.findingId, {
+        code: "VEX_TARGET_CONTENDED",
+        message: `Finding ${target.findingId} is also targeted by ${siblings.join(", ")}`.slice(0, 300),
+        retryable: false,
+      });
+    }
+  }
+}
+
+function detailsByPv(prepared: readonly PreparedItem[], state: "pending" | "provisional"): Map<string, Set<string>> {
+  const result = new Map<string, Set<string>>();
+  for (const owner of prepared) {
+    if (owner.accumulator.terminal !== null || owner.accumulator.hasErrors && state === "pending") continue;
+    for (const target of owner.targets) {
+      if (owner.accumulator.state(target.findingId) !== state) continue;
+      const ids = result.get(target.pvId) ?? new Set<string>();
+      ids.add(target.findingId);
+      result.set(target.pvId, ids);
+    }
+  }
+  return result;
+}
+
+async function preflight(
+  context: PushContext,
+  prepared: readonly PreparedItem[],
+  onProgress: (processed: number) => void,
+): Promise<void> {
+  const snapshots = new Map<string, Map<string, Record<string, Json>>>();
+  for (const [pvId, ids] of detailsByPv(prepared, "pending")) {
+    try {
+      snapshots.set(pvId, await getTargetDetails(context.platform, pvId, ids, context.signal, onProgress));
+    } catch (error: unknown) {
+      const detail = errorDetail(error, "VEX_PREFLIGHT_FAILED");
+      for (const owner of prepared) for (const target of owner.targets) {
+        if (target.pvId === pvId && owner.accumulator.state(target.findingId) === "pending") {
+          owner.accumulator.markFailed(target.findingId, detail);
+        }
+      }
+    }
+  }
+  for (const owner of prepared) {
+    if (owner.accumulator.terminal !== null || owner.accumulator.hasErrors) continue;
     for (const target of owner.targets) {
       try {
-        const detail = await getTargetDetail(context.platform, target.pvId, target.findingId, context.signal);
+        const detail = snapshots.get(target.pvId)?.get(target.findingId);
+        if (detail === undefined) throw new Error(`Platform findings snapshot omitted ${target.findingId}`);
         if (!detailMatchesStableKey(detail, target.stableKey)) {
           owner.accumulator.setTerminal("stale", {
             findingId: target.findingId,
@@ -306,35 +374,39 @@ function ownerMap(prepared: readonly PreparedItem[]): Map<string, PreparedItem> 
   return new Map(prepared.map((owner) => [owner.item.key, owner]));
 }
 
-async function sendBatches(context: PushContext, prepared: readonly PreparedItem[]): Promise<void> {
+async function sendBatches(
+  context: PushContext,
+  prepared: readonly PreparedItem[],
+  onProgress: (processed: number) => void,
+): Promise<void> {
   const owners = ownerMap(prepared);
   const pending = prepared.flatMap((owner) => owner.targets.filter((target) => (
     owner.accumulator.terminal === null && owner.accumulator.state(target.findingId) === "pending"
   )));
   const batches = chunkVexTargets(pending);
   const scheduler = context.scheduler ?? systemScheduler;
-  let completed = prepared.reduce((count, owner) => count + owner.targets.length - owner.accumulator.pendingTargets().length, 0);
-  let lastPublished = 0;
-  const publish = (force: boolean): void => {
-    if (force || completed - lastPublished >= PROGRESS_TARGET_INTERVAL) {
-      context.publish({ runId: context.runId, completed, total: prepared.reduce((sum, owner) => sum + owner.targets.length, 0) });
-      lastPublished = completed;
-    }
-  };
   for (const batch of batches) {
     try {
       if (batch.action === "set") {
         const response = await withRateLimitRetry(() => context.platform.batchSetVexStatus({
           projectVersionId: batch.pvId,
           findings: batch.targets.map((target) => setInput(target, context.runId)),
-        }, { signal: context.signal }), scheduler, context.signal);
+        }, { signal: context.signal }), scheduler, context.random ?? Math.random, context.signal);
         const consumed = consumeSetEnvelope(batch.targets, response);
         if (!consumed.ok) {
-          for (const target of batch.targets) {
-            owners.get(target.stableKey)?.accumulator.markFailed(target.findingId, {
+          const affectedOwners = new Set(batch.targets.map((target) => target.stableKey));
+          for (const stableKey of affectedOwners) {
+            owners.get(stableKey)?.accumulator.addError({
               code: consumed.code,
               message: consumed.message,
-              retryable: false,
+              retryable: true,
+            });
+          }
+          for (const target of batch.targets) {
+            owners.get(target.stableKey)?.accumulator.markFailed(target.findingId, {
+              code: "REMOTE_WRITE_INDETERMINATE",
+              message: consumed.message,
+              retryable: true,
             });
           }
         } else {
@@ -352,26 +424,40 @@ async function sendBatches(context: PushContext, prepared: readonly PreparedItem
         await withRateLimitRetry(() => context.platform.clearVexStatus({
           projectVersionId: batch.pvId,
           findingIds: batch.targets.map((target) => target.findingId),
-        }, { signal: context.signal }), scheduler, context.signal);
+        }, { signal: context.signal }), scheduler, context.random ?? Math.random, context.signal);
         for (const target of batch.targets) owners.get(target.stableKey)?.accumulator.markProvisional(target.findingId);
       }
     } catch (error: unknown) {
       const detail = errorDetail(error, "VEX_CHUNK_FAILED");
       for (const target of batch.targets) owners.get(target.stableKey)?.accumulator.markFailed(target.findingId, detail);
     }
-    completed += batch.targets.length;
-    publish(false);
+    onProgress(batch.targets.length);
   }
-  publish(true);
 }
 
-async function verifyProvisional(context: PushContext, prepared: readonly PreparedItem[]): Promise<void> {
+async function verifyProvisional(
+  context: PushContext,
+  prepared: readonly PreparedItem[],
+  onProgress: (processed: number) => void,
+): Promise<void> {
+  const snapshots = new Map<string, Map<string, Record<string, Json>>>();
+  for (const [pvId, ids] of detailsByPv(prepared, "provisional")) {
+    try {
+      snapshots.set(pvId, await getTargetDetails(context.platform, pvId, ids, context.signal, onProgress));
+    } catch (error: unknown) {
+      const detail = errorDetail(error, "VEX_READ_BACK_FAILED");
+      for (const owner of prepared) for (const findingId of owner.accumulator.provisionalTargets()) {
+        if (owner.item.projectVersionId === pvId) owner.accumulator.markFailed(findingId, detail);
+      }
+    }
+  }
   for (const owner of prepared) {
     for (const findingId of owner.accumulator.provisionalTargets()) {
       const pvId = owner.item.projectVersionId;
       if (pvId === null) throw new Error("VEX project version disappeared");
       try {
-        const detail = await getTargetDetail(context.platform, pvId, findingId, context.signal);
+        const detail = snapshots.get(pvId)?.get(findingId);
+        if (detail === undefined) throw new Error(`Platform findings read-back omitted ${findingId}`);
         if (!detailMatchesStableKey(detail, owner.item.key)) {
           owner.accumulator.markFailed(findingId, {
             code: "VEX_TARGET_MOVED",
@@ -399,9 +485,23 @@ export async function pushVexItems(context: PushContext, items: PlanItem[]): Pro
     throw new PushExecutionError("VEX_RESOLVER_MISSING", "WP-23 VEX resolver must be registered before bulk apply");
   }
   const prepared = prepareItems(context, items);
-  await preflight(context, prepared);
-  await sendBatches(context, prepared);
-  await verifyProvisional(context, prepared);
+  rejectContendedTargets(prepared);
+  const totalTargets = prepared.reduce((sum, owner) => sum + owner.targets.length, 0);
+  const totalWork = Math.max(1, totalTargets * 3);
+  let processed = 0;
+  let lastPublished = 0;
+  const progress = (count: number, force = false): void => {
+    processed = Math.min(totalWork, processed + count);
+    const completed = Math.min(totalTargets, Math.floor(processed * totalTargets / totalWork));
+    if (force || completed - lastPublished >= PROGRESS_TARGET_INTERVAL) {
+      context.publish({ runId: context.runId, completed, total: totalTargets });
+      lastPublished = completed;
+    }
+  };
+  await preflight(context, prepared, count => progress(count));
+  await sendBatches(context, prepared, count => progress(count));
+  await verifyProvisional(context, prepared, count => progress(count));
+  progress(totalWork - processed, true);
   return prepared.map((owner) => owner.accumulator.result());
 }
 
@@ -466,6 +566,8 @@ export function createVexBulkPusher(deps: VexBulkDependencies): VexBatchPusher {
           result: error === null ? {
             remoteId: null,
             serverPayload: payload,
+            // Set responses are authoritative only because pushVexItems already
+            // paged and compared every provisional target before reaching here.
             verification: payload === null ? "required" : "response-is-authoritative",
           } : null,
           error,
@@ -483,8 +585,17 @@ export function createVexBulkPusher(deps: VexBulkDependencies): VexBatchPusher {
       ) {
         throw new PushExecutionError("VEX_TARGET_NOT_FOUND", `No current findings resolve ${item.key}`, false, true);
       }
+      const pvId = item.projectVersionId;
+      if (pvId === null) throw new PushExecutionError("VEX_TARGET_NOT_FOUND", `No project version resolves ${item.key}`, false, true);
+      const details = await getTargetDetails(
+        deps.platform,
+        pvId,
+        new Set(prepared.targets.map((target) => target.findingId)),
+        context.signal,
+      );
       for (const target of prepared.targets) {
-        const detail = await getTargetDetail(deps.platform, target.pvId, target.findingId, context.signal);
+        const detail = details.get(target.findingId);
+        if (detail === undefined) throw new PushExecutionError("VEX_READ_BACK_INCONSISTENT", `Finding ${target.findingId} is missing from read-back`, false, true);
         if (!detailMatchesStableKey(detail, item.key) || !sameVexTuple(tupleFromDetail(detail), prepared.tuple)) {
           throw new PushExecutionError("VEX_READ_BACK_INCONSISTENT", `Finding rows for ${item.key} do not share the intended VEX tuple`, false, true);
         }

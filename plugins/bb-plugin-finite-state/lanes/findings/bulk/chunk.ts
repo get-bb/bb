@@ -1,8 +1,8 @@
+import { VEX_RESUMABLE_CHUNK_SIZE } from "../../../lib/remote/types.js";
 import { canonicalJson } from "../../sync/serialize/canonical.js";
 import type { VexTuple } from "../overlay/schema.js";
 
-export const VEX_PLATFORM_BATCH_LIMIT = 500;
-const VEX_CLEAR_HEAP_SAFE_BATCH_LIMIT = 10;
+export const VEX_PLATFORM_BATCH_LIMIT = VEX_RESUMABLE_CHUNK_SIZE;
 
 export interface VexBulkTarget {
   pvId: string;
@@ -63,11 +63,10 @@ export function chunkVexTargets(targets: readonly VexBulkTarget[]): VexTargetBat
 
   const batches: VexTargetBatch[] = [];
   for (const group of groups.values()) {
-    const limit = group.action === "clear" ? VEX_CLEAR_HEAP_SAFE_BATCH_LIMIT : VEX_PLATFORM_BATCH_LIMIT;
-    for (let index = 0; index < group.targets.length; index += limit) {
+    for (let index = 0; index < group.targets.length; index += VEX_PLATFORM_BATCH_LIMIT) {
       batches.push({
         ...group,
-        targets: group.targets.slice(index, index + limit),
+        targets: group.targets.slice(index, index + VEX_PLATFORM_BATCH_LIMIT),
       });
     }
   }

@@ -17,6 +17,7 @@ import {
 import { findingStableKey } from "../../../lib/sync/registry.js";
 import type { JsonValue } from "../../../shared/contract.js";
 import { syncMetadata } from "../../sync/engine/status.js";
+import { projectVexDecision } from "../../sync/entities/vex-decision.js";
 import type { FieldDiff, FieldValue, Plan, PlanItem } from "../../sync/plan/index.js";
 import { push, resumePush } from "../../sync/push/index.js";
 import { pusherFor } from "../../sync/push/pushers.js";
@@ -280,7 +281,7 @@ function setDetail(detail: Record<string, Json>, input: VexDecisionInput): void 
 function successfulPlatform(
   state: Fixture,
   batches: number[],
-): Pick<PlatformClient, "batchSetVexStatus" | "clearVexStatus" | "getFindingDetail"> {
+): Pick<PlatformClient, "batchSetVexStatus" | "clearVexStatus" | "getFindings"> {
   return {
     async batchSetVexStatus(input): Promise<VexBulkSetResult> {
       batches.push(input.findings.length);
@@ -310,10 +311,12 @@ function successfulPlatform(
         }
       }
     },
-    async getFindingDetail(input) {
-      const detail = state.details.get(input.findingId);
-      if (detail === undefined) throw new Error(`Missing fake finding ${input.findingId}`);
-      return structuredClone(detail);
+    async *getFindings() {
+      yield {
+        items: [...state.details.values()].map((detail) => structuredClone(detail)),
+        total: state.details.size,
+        next: null,
+      };
     },
   };
 }
@@ -329,6 +332,7 @@ function context(
     platform,
     publish,
     ...(scheduler === undefined ? {} : { scheduler }),
+    random: () => 0,
     runId: "run-wp29",
     scope: { projectId: PROJECT, projectVersionId: PV },
   };
@@ -347,6 +351,12 @@ describe("WP-29 VEX bulk pusher", () => {
     const batches: number[] = [];
     const progress: Array<{ completed: number; total: number }> = [];
     const platform = successfulPlatform(state, batches);
+    const getFindings = platform.getFindings;
+    let pageReads = 0;
+    platform.getFindings = async function* (input, callContext) {
+      pageReads += 1;
+      yield* getFindings(input, callContext);
+    };
     const applyContext = context(state, platform, (event) => progress.push(event));
 
     const first = await pushVexItems(applyContext, [item(key, cve)]);
@@ -361,10 +371,12 @@ describe("WP-29 VEX bulk pusher", () => {
     expect([...state.details.values()].every((detail) => detail["vexReason"] === "[bb:run-wp29] human rationale")).toBe(true);
     expect(progress.length).toBeLessThanOrEqual(3);
     expect(progress.at(-1)).toEqual({ runId: "run-wp29", completed: 501, total: 501 });
+    expect(pageReads).toBe(2);
 
     const second = await pushVexItems(applyContext, [item(key, cve)]);
     expect(batches).toEqual([500, 1]);
     expect(second[0]).toMatchObject({ targets: 501, succeeded: 501, failed: 0, state: "noop" });
+    expect(pageReads).toBe(3);
   });
 
   it("groups mixed project versions, set/clear operations, and distinct tuples separately", () => {
@@ -382,12 +394,12 @@ describe("WP-29 VEX bulk pusher", () => {
       && target.action === batch.action
       && (target.action === "clear" || JSON.stringify(target.tuple) === JSON.stringify(batch.tuple))
     )))).toBe(true);
-    expect(chunkVexTargets(Array.from({ length: 11 }, (_, index) => ({
+    expect(chunkVexTargets(Array.from({ length: 501 }, (_, index) => ({
       pvId: "pv-clear",
       findingId: String(index + 1),
       stableKey: `clear-${index}`,
       action: "clear" as const,
-    }))).map((batch) => batch.targets.length)).toEqual([10, 1]);
+    }))).map((batch) => batch.targets.length)).toEqual([500, 1]);
   });
 
   it("keeps a partially failed duplicate decision dirty while an unrelated item succeeds", async () => {
@@ -430,6 +442,36 @@ describe("WP-29 VEX bulk pusher", () => {
     ).get(firstKey)).toEqual({ local_state: "dirty" });
   });
 
+  it("rejects every stable item contending for one resolved finding before transport", async () => {
+    const state = fixture();
+    const cve = "CVE-2026-2920";
+    const purlKey = insertFinding(state, {
+      id: "29201", cve, purl: "pkg:npm/contended@1.0.0", name: "contended",
+    });
+    const broadKey = findingStableKey({
+      cve, purl: null, name: "contended", group: null, version: null,
+    }, "name-group-any-version");
+    const other = { ...DESIRED, status: "FALSE_POSITIVE" as const, reason: "other decision" };
+    insertGuard(state, purlKey, cve, DESIRED, "exact_version");
+    insertGuard(state, broadKey, cve, other, "any_version");
+    const batches: number[] = [];
+
+    const results = await pushVexItems(context(state, successfulPlatform(state, batches)), [
+      item(purlKey, cve),
+      item(broadKey, cve, other),
+    ]);
+
+    expect(batches).toEqual([]);
+    expect(results).toEqual([
+      expect.objectContaining({ state: "failed", errors: [expect.objectContaining({
+        code: "VEX_TARGET_CONTENDED", message: expect.stringContaining(broadKey), retryable: false,
+      })] }),
+      expect.objectContaining({ state: "failed", errors: [expect.objectContaining({
+        code: "VEX_TARGET_CONTENDED", message: expect.stringContaining(purlKey), retryable: false,
+      })] }),
+    ]);
+  });
+
   it("fails unknown result ids closed and never treats top-level success as row proof", async () => {
     const state = fixture();
     const cve = "CVE-2026-2904";
@@ -443,7 +485,10 @@ describe("WP-29 VEX bulk pusher", () => {
     });
     const result = (await pushVexItems(context(state, platform), [item(key, cve)]))[0];
     expect(result).toMatchObject({ state: "failed", succeeded: 0, failed: 1 });
-    expect(result?.errors[0]).toMatchObject({ code: "VEX_RESULT_INVALID", retryable: false });
+    expect(result?.errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "VEX_RESULT_INVALID", retryable: true }),
+      expect.objectContaining({ code: "REMOTE_WRITE_INDETERMINATE", retryable: true }),
+    ]));
   });
 
   it("rejects missing, duplicate, and summary-mismatched success envelopes", () => {
@@ -532,6 +577,28 @@ describe("WP-29 VEX bulk pusher", () => {
     expect(semantic[0]).toMatchObject({ state: "failed", errors: [expect.objectContaining({ retryable: false })] });
   });
 
+  it("floors zero Retry-After responses and applies bounded jitter", async () => {
+    const state = fixture();
+    const cve = "CVE-2026-2921";
+    const key = insertFinding(state, { id: "29211", cve, purl: "pkg:npm/floor@1.0.0", name: "floor" });
+    insertGuard(state, key, cve);
+    const sleeps: number[] = [];
+    const scheduler: Scheduler = { now: Date.now, async sleep(ms) { sleeps.push(ms); } };
+    const platform = successfulPlatform(state, []);
+    platform.batchSetVexStatus = async () => {
+      throw new RemoteError("rate limited", {
+        service: "platform", code: "REMOTE_RATE_LIMITED", status: 429,
+        retryable: false, retryAfterMs: 0, details: null,
+      });
+    };
+    const pushContext = { ...context(state, platform, () => undefined, scheduler), random: () => 0.5 };
+
+    const result = await pushVexItems(pushContext, [item(key, cve)]);
+
+    expect(sleeps).toEqual([375, 375, 375, 375, 375]);
+    expect(result[0]).toMatchObject({ state: "failed", errors: [expect.objectContaining({ retryable: true })] });
+  });
+
   it("fails before transport when provenance cannot fit without truncating the human reason", async () => {
     const state = fixture();
     const cve = "CVE-2026-2915";
@@ -607,7 +674,9 @@ describe("WP-29 VEX bulk pusher", () => {
       confirmed: true,
     });
     expect(setReport.summary).toEqual({ total: 1, applied: 1, failed: 0, skipped: 0 });
-    expect(new BaseSnapshotStore(setState.db).getAccepted(PROJECT, PV, "vexDecision", setKey)?.payload).toEqual(DESIRED);
+    const advanced = new BaseSnapshotStore(setState.db).getAccepted(PROJECT, PV, "vexDecision", setKey)?.payload;
+    expect(advanced).toEqual(DESIRED);
+    expect(projectVexDecision(setState.details.get("29101") ?? {})?.payload).toEqual(advanced);
 
     const clearState = fixture();
     const clearCve = "CVE-2026-2911";
@@ -762,6 +831,54 @@ describe("WP-29 VEX bulk pusher", () => {
     expect(resumed.summary).toEqual({ total: 1, applied: 1, failed: 0, skipped: 0 });
     expect(calls).toEqual([500, 1, 1]);
     expect(new BaseSnapshotStore(state.db).getAccepted(PROJECT, PV, "vexDecision", key)?.payload).toEqual(DESIRED);
+  });
+
+  it("resumes without replay when the final write lands before the socket dies", async () => {
+    const state = fixture();
+    const cve = "CVE-2026-2922";
+    const purl = "pkg:npm/indeterminate@1.0.0";
+    let key = "";
+    for (let index = 0; index < 501; index += 1) {
+      key = insertFinding(state, { id: String(50_000 + index), cve, purl, name: "indeterminate" });
+    }
+    insertGuard(state, key, cve);
+    const persisted = await persistPlan(state, [item(key, cve)], "01KWP290000000000000000005");
+    const calls: number[] = [];
+    const platform = successfulPlatform(state, []);
+    const success = platform.batchSetVexStatus;
+    let injected = false;
+    platform.batchSetVexStatus = async (input, callContext) => {
+      calls.push(input.findings.length);
+      const response = await success(input, callContext);
+      if (input.findings.length === 1 && !injected) {
+        injected = true;
+        throw new RemoteError("write outcome unknown", {
+          service: "platform", code: "REMOTE_WRITE_INDETERMINATE", status: null,
+          retryable: false, retryAfterMs: null, details: null,
+        });
+      }
+      return response;
+    };
+    const deps = {
+      db: state.db,
+      worktreeRoot: persisted.root,
+      pushers: [createVexBulkPusher({ db: state.db, platform, publish: () => undefined })],
+      createRunId: () => "wp29-indeterminate",
+    };
+    const first = await push(deps, {
+      scope: { projectId: PROJECT, projectVersionId: PV },
+      planId: persisted.plan.planId,
+      expectedPlanSha256: persisted.plan.planSha256,
+      expectedBaseStateSha256: persisted.plan.baseStateSha256,
+      confirmed: true,
+    });
+    expect(first.summary.failed).toBe(1);
+    expect(calls).toEqual([500, 1]);
+
+    const resumed = await resumePush(deps, "wp29-indeterminate");
+
+    expect(resumed.summary).toEqual({ total: 1, applied: 1, failed: 0, skipped: 0 });
+    expect(calls).toEqual([500, 1]);
   });
 
   it("processes 400 guarded items linearly without reparsing overlay files", async () => {

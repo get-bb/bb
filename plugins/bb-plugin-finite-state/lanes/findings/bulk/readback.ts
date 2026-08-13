@@ -13,6 +13,7 @@ import { canonicalJson } from "../../sync/serialize/canonical.js";
 import type { VexTuple } from "../overlay/schema.js";
 
 const VEX_REASON_MAX_LENGTH = 10_000;
+const VEX_READ_PAGE_SIZE = 1_000;
 const PROVENANCE_PREFIX = /^\[bb:[A-Za-z0-9][A-Za-z0-9._-]{0,127}\](?: |$)/u;
 
 function optionalString(value: Json | undefined): string | null {
@@ -158,11 +159,29 @@ export function sameVexTuple(left: VexTuple | null, right: VexTuple | null): boo
   return canonicalJson(left) === canonicalJson(right);
 }
 
-export async function getTargetDetail(
-  platform: Pick<PlatformClient, "getFindingDetail">,
+export async function getTargetDetails(
+  platform: Pick<PlatformClient, "getFindings">,
   pvId: string,
-  findingId: string,
+  findingIds: ReadonlySet<string>,
   signal?: AbortSignal,
-): Promise<Record<string, Json>> {
-  return await platform.getFindingDetail({ projectVersionId: pvId, findingId }, { signal });
+  onPage?: (matched: number) => void,
+): Promise<Map<string, Record<string, Json>>> {
+  const details = new Map<string, Record<string, Json>>();
+  if (findingIds.size === 0) return details;
+  for await (const page of platform.getFindings({
+    projectVersionId: pvId,
+    page: { pageSize: VEX_READ_PAGE_SIZE },
+  }, { signal })) {
+    let matched = 0;
+    for (const detail of page.items) {
+      const findingId = detail["id"];
+      if (typeof findingId !== "string" || !findingIds.has(findingId)) continue;
+      if (details.has(findingId)) throw new Error(`Platform returned duplicate finding ${findingId}`);
+      details.set(findingId, detail);
+      matched += 1;
+    }
+    onPage?.(matched);
+    if (details.size === findingIds.size) break;
+  }
+  return details;
 }
