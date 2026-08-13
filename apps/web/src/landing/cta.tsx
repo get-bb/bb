@@ -3,7 +3,7 @@ import {
   CheckmarkCircle02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 
 import { trackLandingEvent } from "./analytics";
@@ -12,6 +12,7 @@ import {
   DISCORD_URL,
   GITHUB_URL,
   PRODUCT_HUNT_URL,
+  X_URL,
   SUBSCRIBE_PATH,
   downloadMacosHref,
 } from "./site";
@@ -71,6 +72,25 @@ export function DiscordLink({ placement, className, children }: CtaLinkProps) {
   );
 }
 
+export function XLink({ placement, className, children }: CtaLinkProps) {
+  return (
+    <a
+      className={className}
+      href={X_URL}
+      target="_blank"
+      rel="noreferrer"
+      onClick={() =>
+        trackLandingEvent({
+          name: "landing_x_clicked",
+          properties: { placement },
+        })
+      }
+    >
+      {children}
+    </a>
+  );
+}
+
 /** Launch-day announcement pill, in the same shape as the release-notes
  *  callout it replaces. This is bb's own markup rather than Product Hunt's
  *  embed, so it inherits the page's type and color and can ask for the vote
@@ -103,10 +123,23 @@ type SubscribeStatus = "idle" | "submitting" | "success" | "error";
 // Email capture that POSTs to the first-party /api/subscribe Worker route,
 // which adds the address to the bb marketing audience in Resend. JS-enhanced:
 // it submits inline and swaps to a confirmation rather than navigating.
+export const SUBSCRIBE_EMAIL_ID = "subscribe-email";
+
+export function focusSubscribeEmail() {
+  document.getElementById(SUBSCRIBE_EMAIL_ID)?.focus();
+}
+
 export function EmailSignup({ placement }: { placement: CtaPlacement }) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<SubscribeStatus>("idle");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const hash = window.location.hash.replace(/^#/, "");
+    if (hash === SUBSCRIBE_EMAIL_ID || hash === "subscribe") {
+      focusSubscribeEmail();
+    }
+  }, []);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -155,6 +188,7 @@ export function EmailSignup({ placement }: { placement: CtaPlacement }) {
   return (
     <form className="subscribe-form" onSubmit={submit} noValidate>
       <input
+        id={SUBSCRIBE_EMAIL_ID}
         className="subscribe-input"
         type="email"
         name="email"

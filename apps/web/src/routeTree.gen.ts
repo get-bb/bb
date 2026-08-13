@@ -11,8 +11,10 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ChangelogRouteImport } from './routes/changelog'
+import { Route as BlogRouteImport } from './routes/blog'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DownloadMacosRouteImport } from './routes/download.macos'
+import { Route as BlogSlugRouteImport } from './routes/blog_.$slug'
 import { Route as ApiSubscribeRouteImport } from './routes/api.subscribe'
 import { Route as ApiConnectRevokeMachineRouteImport } from './routes/api.connect.revoke-machine'
 import { Route as ApiConnectRedeemMachineRouteImport } from './routes/api.connect.redeem-machine'
@@ -30,6 +32,11 @@ const ChangelogRoute = ChangelogRouteImport.update({
   path: '/changelog',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BlogRoute = BlogRouteImport.update({
+  id: '/blog',
+  path: '/blog',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -38,6 +45,11 @@ const IndexRoute = IndexRouteImport.update({
 const DownloadMacosRoute = DownloadMacosRouteImport.update({
   id: '/download/macos',
   path: '/download/macos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BlogSlugRoute = BlogSlugRouteImport.update({
+  id: '/blog_/$slug',
+  path: '/blog/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiSubscribeRoute = ApiSubscribeRouteImport.update({
@@ -73,9 +85,11 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/blog': typeof BlogRoute
   '/changelog': typeof ChangelogRoute
   '/dashboard': typeof DashboardRoute
   '/api/subscribe': typeof ApiSubscribeRoute
+  '/blog/$slug': typeof BlogSlugRoute
   '/download/macos': typeof DownloadMacosRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/connect/machine-code': typeof ApiConnectMachineCodeRoute
@@ -85,9 +99,11 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/blog': typeof BlogRoute
   '/changelog': typeof ChangelogRoute
   '/dashboard': typeof DashboardRoute
   '/api/subscribe': typeof ApiSubscribeRoute
+  '/blog/$slug': typeof BlogSlugRoute
   '/download/macos': typeof DownloadMacosRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/connect/machine-code': typeof ApiConnectMachineCodeRoute
@@ -98,9 +114,11 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/blog': typeof BlogRoute
   '/changelog': typeof ChangelogRoute
   '/dashboard': typeof DashboardRoute
   '/api/subscribe': typeof ApiSubscribeRoute
+  '/blog_/$slug': typeof BlogSlugRoute
   '/download/macos': typeof DownloadMacosRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/connect/machine-code': typeof ApiConnectMachineCodeRoute
@@ -112,9 +130,11 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/blog'
     | '/changelog'
     | '/dashboard'
     | '/api/subscribe'
+    | '/blog/$slug'
     | '/download/macos'
     | '/api/auth/$'
     | '/api/connect/machine-code'
@@ -124,9 +144,11 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/blog'
     | '/changelog'
     | '/dashboard'
     | '/api/subscribe'
+    | '/blog/$slug'
     | '/download/macos'
     | '/api/auth/$'
     | '/api/connect/machine-code'
@@ -136,9 +158,11 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/blog'
     | '/changelog'
     | '/dashboard'
     | '/api/subscribe'
+    | '/blog_/$slug'
     | '/download/macos'
     | '/api/auth/$'
     | '/api/connect/machine-code'
@@ -149,9 +173,11 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  BlogRoute: typeof BlogRoute
   ChangelogRoute: typeof ChangelogRoute
   DashboardRoute: typeof DashboardRoute
   ApiSubscribeRoute: typeof ApiSubscribeRoute
+  BlogSlugRoute: typeof BlogSlugRoute
   DownloadMacosRoute: typeof DownloadMacosRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiConnectMachineCodeRoute: typeof ApiConnectMachineCodeRoute
@@ -176,6 +202,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChangelogRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/blog': {
+      id: '/blog'
+      path: '/blog'
+      fullPath: '/blog'
+      preLoaderRoute: typeof BlogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -188,6 +221,13 @@ declare module '@tanstack/react-router' {
       path: '/download/macos'
       fullPath: '/download/macos'
       preLoaderRoute: typeof DownloadMacosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/blog_/$slug': {
+      id: '/blog_/$slug'
+      path: '/blog/$slug'
+      fullPath: '/blog/$slug'
+      preLoaderRoute: typeof BlogSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/subscribe': {
@@ -237,9 +277,11 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  BlogRoute: BlogRoute,
   ChangelogRoute: ChangelogRoute,
   DashboardRoute: DashboardRoute,
   ApiSubscribeRoute: ApiSubscribeRoute,
+  BlogSlugRoute: BlogSlugRoute,
   DownloadMacosRoute: DownloadMacosRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiConnectMachineCodeRoute: ApiConnectMachineCodeRoute,
