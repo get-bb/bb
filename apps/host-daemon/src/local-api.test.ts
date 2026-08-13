@@ -113,13 +113,16 @@ describe("local API server", () => {
       getConnected: () => true,
       openInTarget,
     });
-    const port = server.port;
+    const { port } = server;
+    // Connect to the address the API actually bound: `localhost` resolves to
+    // ::1 on some hosts, so a hardcoded 127.0.0.1 is refused there.
+    const { bindHost } = server;
 
     function post(headers: Record<string, string>): Promise<number> {
       return new Promise((resolve, reject) => {
         const request = http.request(
           {
-            host: "127.0.0.1",
+            host: bindHost,
             port,
             path: "/open-in-target",
             method: "POST",
@@ -154,8 +157,8 @@ describe("local API server", () => {
     // The loopback authority a real local caller sends still works.
     expect(
       await post({
-        origin: `http://127.0.0.1:${port}`,
-        host: `127.0.0.1:${port}`,
+        origin: `http://${bindHost}:${port}`,
+        host: `${bindHost}:${port}`,
       }),
     ).toBe(200);
     expect(openInTarget).toHaveBeenCalledTimes(1);
