@@ -44,7 +44,12 @@ jobs:
 
       - name: Verify the committed Golden Loop seed without writes
         working-directory: plugins/bb-plugin-finite-state
-        run: pnpm exec tsx test/e2e/golden-loop/seed/generate.ts --verify test/e2e/golden-loop/seed
+        # tsx resolves @bb/plugin-sdk through its package exports to dist/,
+        # which only exists after a build; the turbo test step above resolves
+        # sources through vitest aliases and leaves dist/ absent on the runner.
+        run: |
+          pnpm exec turbo run build --filter=@bb/plugin-sdk
+          pnpm exec tsx test/e2e/golden-loop/seed/generate.ts --verify test/e2e/golden-loop/seed
 
       - name: Upload Golden Loop evidence
         if: always()
