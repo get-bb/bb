@@ -836,6 +836,7 @@ decisions:
               fetched: result.fetched,
               baseRows: result.published,
               quarantined: result.quarantined,
+              advisories: result.advisories,
             };
           },
         },

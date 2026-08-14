@@ -238,6 +238,28 @@ const triageWriteFailureSchema = z
   .strict();
 
 export const findingsUiRpcContract = defineRpcContract({
+  findingsPullAdvisories: {
+    input: z
+      .object({
+        projectId: z.string().min(1).max(512),
+        projectVersionId: z.string().min(1).max(512),
+        generationId: z.string().min(1).max(512),
+      })
+      .strict(),
+    output: z
+      .object({
+        generationId: z.string().min(1).max(512),
+        advisories: z.array(
+          z
+            .object({
+              code: z.string().min(1).max(128),
+              count: z.number().int().positive(),
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
+  },
   findingsUiList: {
     input: findingsUiListInputSchema,
     output: rpcContract.findingsList.output,
@@ -958,6 +980,11 @@ export function registerFindingsRpc(
       projectVersionId: string;
       findingId: string;
     }) => Promise<number>;
+    pullAdvisories?: (input: {
+      projectId: string;
+      projectVersionId: string;
+      generationId: string;
+    }) => Promise<ReadonlyArray<{ code: string; count: number }>>;
   } = {},
 ): void {
   bb.rpc.register(findingsRpcContract, {
@@ -1073,6 +1100,14 @@ export function registerFindingsRpc(
     },
   });
   bb.rpc.register(findingsUiRpcContract, {
+    async findingsPullAdvisories(input) {
+      return {
+        generationId: input.generationId,
+        advisories: deps.pullAdvisories
+          ? [...(await deps.pullAdvisories(input))]
+          : [],
+      };
+    },
     findingsUiList(input) {
       return findingsListResult(db, input);
     },

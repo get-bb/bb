@@ -317,6 +317,8 @@ describe("finding detail", () => {
     const { slot } = await renderDetail();
     expect(await slot.findByText("vulnerable symbol is invoked")).toBeTruthy();
     expect(slot.getByText(/Source: firmware analysis/u)).toBeTruthy();
+    expect(slot.getByText("42.00%")).toBeTruthy();
+    expect(slot.getByText(/1 violations · 2 warnings/u)).toBeTruthy();
     slot.lifecycle.unmount();
 
     const noFactors = detailRow("transient-new", "usr/bin/gateway");

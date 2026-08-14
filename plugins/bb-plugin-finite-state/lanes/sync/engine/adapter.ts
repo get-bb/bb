@@ -144,7 +144,12 @@ export type CachePuller = (
   generationId: string,
   onProgress: (progress: AdapterProgress) => void,
 ) => Promise<
-  Readonly<{ fetched: number; baseRows: number; quarantined: number }>
+  Readonly<{
+    fetched: number;
+    baseRows: number;
+    quarantined: number;
+    advisories: ReadonlyArray<{ code: string; count: number }>;
+  }>
 >;
 
 /** Thrown when two lanes attempt to register an adapter for the same kind. */

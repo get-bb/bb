@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import type { Json } from "../../../lib/remote/types.js";
+import { policyCount } from "./enrichment.js";
 import {
   FindingsCacheError,
   type CacheMetadata,
@@ -80,24 +81,31 @@ function parseJson(value: string | null, fallback: Json): Json {
 }
 
 function stringArray(value: Json): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
 }
 
 function comments(value: Json, findingId: string): CachedComment[] {
   if (!Array.isArray(value)) return [];
   const result: CachedComment[] = [];
   for (const entry of value) {
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry))
+      continue;
     const id = typeof entry.id === "string" ? entry.id : null;
     const textValue = typeof entry.text === "string" ? entry.text : entry.body;
-    const createdAt = typeof entry.createdAt === "string" ? entry.createdAt : null;
+    const createdAt =
+      typeof entry.createdAt === "string" ? entry.createdAt : null;
     if (!id || typeof textValue !== "string" || !createdAt) continue;
     result.push({
       id,
       findingId,
-      actorLabel: typeof entry.actorLabel === "string"
-        ? entry.actorLabel
-        : typeof entry.actor === "string" ? entry.actor : null,
+      actorLabel:
+        typeof entry.actorLabel === "string"
+          ? entry.actorLabel
+          : typeof entry.actor === "string"
+            ? entry.actor
+            : null,
       text: textValue,
       createdAt,
       updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt : null,
@@ -109,15 +117,20 @@ function comments(value: Json, findingId: string): CachedComment[] {
 export function findingFromRow(row: FindingRow): CachedFinding {
   const overlayState = row.overlay_local_state ?? null;
   const driftState = row.overlay_drift_state ?? null;
-  const localState = overlayState === null
-    ? "none"
-    : overlayState === "conflict" || driftState === "conflict"
-      ? "conflicted"
-      : overlayState === "needs_completion" || driftState === "needs_completion"
-        ? "needs_completion"
-        : overlayState === "stale" || driftState === "stale" || driftState === "orphaned"
-          ? "stale"
-          : "local";
+  const localState =
+    overlayState === null
+      ? "none"
+      : overlayState === "conflict" || driftState === "conflict"
+        ? "conflicted"
+        : overlayState === "needs_completion" ||
+            driftState === "needs_completion"
+          ? "needs_completion"
+          : overlayState === "stale" ||
+              driftState === "stale" ||
+              driftState === "orphaned"
+            ? "stale"
+            : "local";
+  const raw = parseJson(row.raw, {}) as Record<string, Json>;
   return {
     projectId: row.project_id,
     projectVersionId: row.project_version_id,
@@ -145,10 +158,21 @@ export function findingFromRow(row: FindingRow): CachedFinding {
     reachabilityScore: row.reachability_score,
     reachabilityVerdict: row.reachability_verdict,
     reachabilityFactors: parseJson(row.reachability_factors, []),
-    vulnInDataset: row.vuln_in_dataset === null ? null : row.vuln_in_dataset === 1,
+    vulnInDataset:
+      row.vuln_in_dataset === null ? null : row.vuln_in_dataset === 1,
     cwes: stringArray(parseJson(row.cwes, [])),
-    warningCount: row.warning_count,
-    violationCount: row.violation_count,
+    // The frozen SQL count columns require a numeric surrogate. The retained
+    // raw payload distinguishes an invalid/null enrichment from a true zero.
+    warningCount: policyCount(
+      raw,
+      ["warningCount", "warnings"],
+      "FINDING_WARNING_COUNT_INVALID",
+    ).value,
+    violationCount: policyCount(
+      raw,
+      ["violationCount", "violations"],
+      "FINDING_VIOLATION_COUNT_INVALID",
+    ).value,
     location: parseJson(row.location, null),
     vexStatus: row.vex_status,
     vexResponse: row.vex_response,
@@ -157,19 +181,25 @@ export function findingFromRow(row: FindingRow): CachedFinding {
     comments: comments(parseJson(row.comments, []), row.finding_id),
     firstSeen: row.first_seen,
     softDeleted: row.soft_deleted === 1,
-    raw: parseJson(row.raw, {}) as Record<string, Json>,
+    raw,
     pulledAt: row.pulled_at,
     localState,
     localFile: row.overlay_file_path ?? null,
   };
 }
 
-function cacheState(db: Database.Database, projectId: string, pvId: string): CacheMetadata {
-  const state = db.prepare(
-    `SELECT accepted_generation_id, base_revision, last_pull, error
+function cacheState(
+  db: Database.Database,
+  projectId: string,
+  pvId: string,
+): CacheMetadata {
+  const state = db
+    .prepare(
+      `SELECT accepted_generation_id, base_revision, last_pull, error
        FROM sync_state
       WHERE project_id = ? AND project_version_id = ? AND entity_kind = 'finding'`,
-  ).get(projectId, pvId) as StateRow | undefined;
+    )
+    .get(projectId, pvId) as StateRow | undefined;
   if (!state || state.accepted_generation_id === null) {
     return {
       state: "empty",
@@ -189,7 +219,7 @@ function cacheState(db: Database.Database, projectId: string, pvId: string): Cac
 }
 
 function escapeLike(value: string): string {
-  return value.replace(/[!%_]/gu, character => `!${character}`);
+  return value.replace(/[!%_]/gu, (character) => `!${character}`);
 }
 
 function addList(
@@ -199,41 +229,72 @@ function addList(
   values: readonly string[] | undefined,
 ): void {
   if (!values || values.length === 0) return;
-  if (values.length > MAX_LIMIT) throw new FindingsCacheError("FINDINGS_FILTER_INVALID", "A filter has too many values");
+  if (values.length > MAX_LIMIT)
+    throw new FindingsCacheError(
+      "FINDINGS_FILTER_INVALID",
+      "A filter has too many values",
+    );
   where.push(`${column} IN (${values.map(() => "?").join(", ")})`);
   parameters.push(...values);
 }
 
 function decodeCursor(value: string): CursorValue {
   try {
-    const decoded = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Record<string, unknown>;
+    const decoded = JSON.parse(
+      Buffer.from(value, "base64url").toString("utf8"),
+    ) as Record<string, unknown>;
     if (
-      (decoded.riskScore === null || (typeof decoded.riskScore === "number" && Number.isFinite(decoded.riskScore)))
-      && typeof decoded.findingId === "string"
-      && decoded.findingId.length > 0
+      (decoded.riskScore === null ||
+        (typeof decoded.riskScore === "number" &&
+          Number.isFinite(decoded.riskScore))) &&
+      typeof decoded.findingId === "string" &&
+      decoded.findingId.length > 0
     ) {
-      return { riskScore: decoded.riskScore, findingId: decoded.findingId } as CursorValue;
+      return {
+        riskScore: decoded.riskScore,
+        findingId: decoded.findingId,
+      } as CursorValue;
     }
   } catch {
     // Converted to the stable public error below.
   }
-  throw new FindingsCacheError("FINDINGS_BAD_CURSOR", "Findings cursor is invalid");
+  throw new FindingsCacheError(
+    "FINDINGS_BAD_CURSOR",
+    "Findings cursor is invalid",
+  );
 }
 
 function encodeCursor(value: CursorValue): string {
   return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
 }
 
-function whereFor(filter: FindingsFilter, generationId: string): {
+function whereFor(
+  filter: FindingsFilter,
+  generationId: string,
+): {
   sql: string;
   parameters: Array<string | number>;
 } {
-  const where = ["f.project_id = ?", "f.project_version_id = ?", "f.generation_id = ?"];
-  const parameters: Array<string | number> = [filter.projectId, filter.pvId, generationId];
+  const where = [
+    "f.project_id = ?",
+    "f.project_version_id = ?",
+    "f.generation_id = ?",
+  ];
+  const parameters: Array<string | number> = [
+    filter.projectId,
+    filter.pvId,
+    generationId,
+  ];
   addList(where, parameters, "f.severity", filter.severity);
   if (filter.triage && filter.triage.length > 0) {
-    if (filter.triage.length > MAX_LIMIT) throw new FindingsCacheError("FINDINGS_FILTER_INVALID", "A filter has too many values");
-    where.push(`COALESCE(f.vex_status, 'unknown') IN (${filter.triage.map(() => "?").join(", ")})`);
+    if (filter.triage.length > MAX_LIMIT)
+      throw new FindingsCacheError(
+        "FINDINGS_FILTER_INVALID",
+        "A filter has too many values",
+      );
+    where.push(
+      `COALESCE(f.vex_status, 'unknown') IN (${filter.triage.map(() => "?").join(", ")})`,
+    );
     parameters.push(...filter.triage);
   }
   addList(where, parameters, "f.finding_type", filter.findingType);
@@ -245,12 +306,18 @@ function whereFor(filter: FindingsFilter, generationId: string): {
   if (filter.kev === "vc-kev") where.push("f.in_vc_kev = 1");
   if (filter.kev === "none") where.push("f.in_kev = 0 AND f.in_vc_kev = 0");
   if (filter.epssGte !== undefined) {
-    if (!Number.isFinite(filter.epssGte)) throw new FindingsCacheError("FINDINGS_FILTER_INVALID", "EPSS threshold is invalid");
+    if (!Number.isFinite(filter.epssGte))
+      throw new FindingsCacheError(
+        "FINDINGS_FILTER_INVALID",
+        "EPSS threshold is invalid",
+      );
     where.push("f.epss_score >= ?");
     parameters.push(filter.epssGte);
   }
   if (filter.component) {
-    where.push("(f.component_name LIKE ? ESCAPE '!' OR f.component_group LIKE ? ESCAPE '!' OR f.component_purl LIKE ? ESCAPE '!')");
+    where.push(
+      "(f.component_name LIKE ? ESCAPE '!' OR f.component_group LIKE ? ESCAPE '!' OR f.component_purl LIKE ? ESCAPE '!')",
+    );
     const value = `%${escapeLike(filter.component)}%`;
     parameters.push(value, value, value);
   }
@@ -279,14 +346,16 @@ function whereFor(filter: FindingsFilter, generationId: string): {
              AND overlay.stable_key = f.stable_key
         )`);
       } else {
-        const states = state === "conflicted"
-          ? ["conflict"]
-          : state === "needs_completion"
-            ? ["needs_completion"]
-            : state === "stale"
-              ? ["stale", "orphaned"]
-              : ["dirty", "pushed"];
-        predicates.push(`EXISTS (
+        const states =
+          state === "conflicted"
+            ? ["conflict"]
+            : state === "needs_completion"
+              ? ["needs_completion"]
+              : state === "stale"
+                ? ["stale", "orphaned"]
+                : ["dirty", "pushed"];
+        predicates.push(
+          `EXISTS (
           SELECT 1 FROM overlay_index AS overlay
            WHERE overlay.project_id = f.project_id
              AND overlay.project_version_id = f.project_version_id
@@ -294,7 +363,8 @@ function whereFor(filter: FindingsFilter, generationId: string): {
              AND overlay.stable_key = f.stable_key
              AND (overlay.local_state IN (${states.map(() => "?").join(", ")})
                OR overlay.drift_state IN (${states.map(() => "?").join(", ")}))
-        ` + ")");
+        ` + ")",
+        );
         parameters.push(...states, ...states);
       }
     }
@@ -317,58 +387,95 @@ function counts(
   db: Database.Database,
   where: { sql: string; parameters: Array<string | number> },
 ): { total: number; facets: Record<string, Record<string, number>> } {
-  const totalRow = db.prepare(`SELECT COUNT(*) AS count FROM findings AS f WHERE ${where.sql}`)
+  const totalRow = db
+    .prepare(`SELECT COUNT(*) AS count FROM findings AS f WHERE ${where.sql}`)
     .get(...where.parameters) as { count: number };
-  const facets: Record<string, Record<string, number>> = { severity: {}, triage: {}, findingType: {} };
-  for (const [name, column] of [["severity", "severity"], ["triage", "vex_status"], ["findingType", "finding_type"]] as const) {
-    const rows = db.prepare(
-      `SELECT COALESCE(f.${column}, 'unknown') AS value, COUNT(*) AS count
+  const facets: Record<string, Record<string, number>> = {
+    severity: {},
+    triage: {},
+    findingType: {},
+  };
+  for (const [name, column] of [
+    ["severity", "severity"],
+    ["triage", "vex_status"],
+    ["findingType", "finding_type"],
+  ] as const) {
+    const rows = db
+      .prepare(
+        `SELECT COALESCE(f.${column}, 'unknown') AS value, COUNT(*) AS count
          FROM findings AS f WHERE ${where.sql}
         GROUP BY COALESCE(f.${column}, 'unknown')`,
-    ).all(...where.parameters) as Array<{ value: string; count: number }>;
+      )
+      .all(...where.parameters) as Array<{ value: string; count: number }>;
     for (const row of rows) facets[name][row.value] = row.count;
   }
   return { total: totalRow.count, facets };
 }
 
-export function queryFindings(db: Database.Database, filter: FindingsFilter): FindingsPage {
+export function queryFindings(
+  db: Database.Database,
+  filter: FindingsFilter,
+): FindingsPage {
   const limit = filter.limit ?? DEFAULT_LIMIT;
   if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) {
-    throw new FindingsCacheError("FINDINGS_LIMIT_INVALID", "Findings limit must be between 1 and 200");
+    throw new FindingsCacheError(
+      "FINDINGS_LIMIT_INVALID",
+      "Findings limit must be between 1 and 200",
+    );
   }
   const cache = cacheState(db, filter.projectId, filter.pvId);
   if (cache.acceptedGenerationId === null) {
-    return { items: [], total: 0, nextCursor: null, facets: { severity: {}, triage: {}, findingType: {} }, cache };
+    return {
+      items: [],
+      total: 0,
+      nextCursor: null,
+      facets: { severity: {}, triage: {}, findingType: {} },
+      cache,
+    };
   }
   const baseWhere = whereFor(filter, cache.acceptedGenerationId);
   const summary = counts(db, baseWhere);
-  const pageWhere = { sql: baseWhere.sql, parameters: [...baseWhere.parameters] };
+  const pageWhere = {
+    sql: baseWhere.sql,
+    parameters: [...baseWhere.parameters],
+  };
   if (filter.cursor) {
     const cursor = decodeCursor(filter.cursor);
     if (cursor.riskScore === null) {
       pageWhere.sql += " AND f.risk_score IS NULL AND f.finding_id > ?";
       pageWhere.parameters.push(cursor.findingId);
     } else {
-      pageWhere.sql += " AND (f.risk_score IS NULL OR f.risk_score < ? OR (f.risk_score = ? AND f.finding_id > ?))";
-      pageWhere.parameters.push(cursor.riskScore, cursor.riskScore, cursor.findingId);
+      pageWhere.sql +=
+        " AND (f.risk_score IS NULL OR f.risk_score < ? OR (f.risk_score = ? AND f.finding_id > ?))";
+      pageWhere.parameters.push(
+        cursor.riskScore,
+        cursor.riskScore,
+        cursor.findingId,
+      );
     }
   }
-  const rows = db.prepare(
-    `SELECT ${FINDING_WITH_OVERLAY} FROM findings AS f
+  const rows = db
+    .prepare(
+      `SELECT ${FINDING_WITH_OVERLAY} FROM findings AS f
       ${FINDING_OVERLAY_JOIN}
       WHERE ${pageWhere.sql}
       ORDER BY f.risk_score DESC, f.finding_id ASC
       LIMIT ?`,
-  ).all(...pageWhere.parameters, limit + 1) as FindingRow[];
+    )
+    .all(...pageWhere.parameters, limit + 1) as FindingRow[];
   const hasMore = rows.length > limit;
   const visible = hasMore ? rows.slice(0, limit) : rows;
   const last = visible.at(-1);
   return {
     items: visible.map(findingFromRow),
     total: summary.total,
-    nextCursor: hasMore && last
-      ? encodeCursor({ riskScore: last.risk_score, findingId: last.finding_id })
-      : null,
+    nextCursor:
+      hasMore && last
+        ? encodeCursor({
+            riskScore: last.risk_score,
+            findingId: last.finding_id,
+          })
+        : null,
     facets: summary.facets,
     cache,
   };
@@ -382,11 +489,15 @@ export function getCachedFinding(
 ): { finding: CachedFinding | null; cache: CacheMetadata } {
   const cache = cacheState(db, projectId, pvId);
   if (!cache.acceptedGenerationId) return { finding: null, cache };
-  const row = db.prepare(
-    `SELECT ${FINDING_WITH_OVERLAY} FROM findings AS f
+  const row = db
+    .prepare(
+      `SELECT ${FINDING_WITH_OVERLAY} FROM findings AS f
       ${FINDING_OVERLAY_JOIN}
       WHERE f.project_id = ? AND f.project_version_id = ? AND f.generation_id = ? AND f.finding_id = ?`,
-  ).get(projectId, pvId, cache.acceptedGenerationId, findingId) as FindingRow | undefined;
+    )
+    .get(projectId, pvId, cache.acceptedGenerationId, findingId) as
+    | FindingRow
+    | undefined;
   return { finding: row ? findingFromRow(row) : null, cache };
 }
 

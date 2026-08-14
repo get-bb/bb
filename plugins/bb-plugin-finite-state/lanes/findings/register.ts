@@ -12,12 +12,84 @@ import { registerFindingsPolicyStub } from "./policy/index.js";
 import { registerFindingsStableKeyStub } from "./stable-key/index.js";
 import { registerFindingsRpc } from "./rpc.js";
 
+interface PersistedPullAdvisories {
+  generationId: string;
+  advisories: ReadonlyArray<{ code: string; count: number }>;
+}
+
+function persistedPullAdvisories(
+  value: unknown,
+): PersistedPullAdvisories | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const generationId = Reflect.get(value, "generationId");
+  const rawAdvisories = Reflect.get(value, "advisories");
+  if (typeof generationId !== "string" || !Array.isArray(rawAdvisories)) {
+    return null;
+  }
+  const advisories: Array<{ code: string; count: number }> = [];
+  for (const advisory of rawAdvisories) {
+    if (
+      typeof advisory !== "object" ||
+      advisory === null ||
+      Array.isArray(advisory)
+    ) {
+      return null;
+    }
+    const code = Reflect.get(advisory, "code");
+    const count = Reflect.get(advisory, "count");
+    if (
+      typeof code !== "string" ||
+      code.length === 0 ||
+      typeof count !== "number" ||
+      !Number.isSafeInteger(count) ||
+      count <= 0
+    ) {
+      return null;
+    }
+    advisories.push({ code, count });
+  }
+  return { generationId, advisories };
+}
+
+function pullAdvisoryKey(projectId: string, projectVersionId: string): string {
+  return `findings/pull-advisories/${Buffer.from(
+    JSON.stringify([projectId, projectVersionId]),
+  ).toString("base64url")}`;
+}
+
 export function registerFindings(bb: BbPluginApi, ctx: PluginContext): void {
   const db = ctx.db();
   const remote = ctx.service<RemoteServices>("remote-services", () => {
     throw new Error("Findings registration requires remote services");
   });
   registerCachePuller("finding", async (scope, generationId, onProgress) => {
+    const advisoryKey = pullAdvisoryKey(
+      scope.projectId,
+      scope.projectVersionId ?? "",
+    );
+    const prior = persistedPullAdvisories(
+      await bb.storage.kv.get<unknown>(advisoryKey),
+    );
+    const advisoryCounts = new Map<string, number>(
+      prior?.generationId === generationId
+        ? prior.advisories.map(({ code, count }) => [code, count])
+        : [],
+    );
+    const checkpointAdvisories = async (
+      reasons: ReadonlyArray<{ code: string; count: number }>,
+    ) => {
+      for (const { code, count } of reasons) {
+        advisoryCounts.set(code, (advisoryCounts.get(code) ?? 0) + count);
+      }
+      await bb.storage.kv.set(advisoryKey, {
+        generationId,
+        advisories: [...advisoryCounts.entries()]
+          .map(([code, count]) => ({ code, count }))
+          .sort((left, right) => left.code.localeCompare(right.code)),
+      } satisfies PersistedPullAdvisories);
+    };
     const result = await pullFindings(
       {
         db,
@@ -27,11 +99,15 @@ export function registerFindings(bb: BbPluginApi, ctx: PluginContext): void {
             `${message}: ${details.count} for project version ${details.projectVersionId}`,
           );
         },
-        quarantine({ count }) {
+        quarantine({ count, reasons }) {
+          const breakdown = reasons
+            .map(({ code, count: reasonCount }) => `${code}=${reasonCount}`)
+            .join(", ");
           ctx.log.warn(
-            `Quarantined individually unkeyable Platform finding rows: ${count}`,
+            `Quarantined Platform finding rows with invalid identity: ${count}; reasons [${breakdown}]`,
           );
         },
+        advisory: ({ reasons }) => checkpointAdvisories(reasons),
       },
       scope,
       generationId,
@@ -43,10 +119,21 @@ export function registerFindings(bb: BbPluginApi, ctx: PluginContext): void {
         });
       },
     );
+    const advisories =
+      advisoryCounts.size > 0
+        ? [...advisoryCounts.entries()]
+            .map(([code, count]) => ({ code, count }))
+            .sort((left, right) => left.code.localeCompare(right.code))
+        : [...result.advisories];
+    await bb.storage.kv.set(advisoryKey, {
+      generationId,
+      advisories,
+    } satisfies PersistedPullAdvisories);
     return {
       fetched: result.fetched,
       baseRows: result.published,
       quarantined: result.quarantined,
+      advisories,
     };
   });
   ctx.service("findings.hydration", () => ({
@@ -64,6 +151,14 @@ export function registerFindings(bb: BbPluginApi, ctx: PluginContext): void {
   registerFindingsRpc(bb, db, {
     hydrateActivity: (input) =>
       hydrateFindingActivity(db, remote.platform, input),
+    async pullAdvisories(input) {
+      const value = persistedPullAdvisories(
+        await bb.storage.kv.get<unknown>(
+          pullAdvisoryKey(input.projectId, input.projectVersionId),
+        ),
+      );
+      return value?.generationId === input.generationId ? value.advisories : [];
+    },
   });
   registerFindingsStableKeyStub(db);
   registerFindingsOverlay(ctx);

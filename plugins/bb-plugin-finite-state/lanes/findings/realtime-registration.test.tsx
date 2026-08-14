@@ -130,9 +130,10 @@ describe("registered findings realtime boundary", () => {
         );
         const projectVersionId = requiredId(
           [...state.versions.values()].find(
-            (version) => version["priorVersionId"] !== null,
+            (version) =>
+              version["id"] === "b3df3633-ebd7-560e-a3b7-77953521b4e3",
           ),
-          "successor version fixture",
+          "real-shape findings version fixture",
         );
         const app = await loadPluginApp(() => import("../../app.js"));
         const panel = app.navPanels.find(
@@ -196,6 +197,9 @@ describe("registered findings realtime boundary", () => {
         await waitFor(() => expect(slot.getByRole("grid")).toBeTruthy(), {
           timeout: 30_000,
         });
+        expect(await slot.findByText("FS-500-006")).toBeTruthy();
+        expect(slot.getByText("ca-certificates.crt")).toBeTruthy();
+        expect(slot.getByText("0.4%")).toBeTruthy();
         expect(
           (slot.getByLabelText("Findings project version") as HTMLSelectElement)
             .value,

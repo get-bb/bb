@@ -34,8 +34,8 @@ export interface CachedFinding {
   reachabilityFactors: Json;
   vulnInDataset: boolean | null;
   cwes: string[];
-  warningCount: number;
-  violationCount: number;
+  warningCount: number | null;
+  violationCount: number | null;
   location: Json;
   vexStatus: string | null;
   vexResponse: string | null;
@@ -82,8 +82,15 @@ export interface FindingsDeps {
     message: string,
     details: { count: number; projectVersionId: string },
   ) => void;
-  /** Reports only aggregate counts; quarantined remote text is never logged. */
-  quarantine?: (details: { count: number }) => void;
+  /** Reports value-free reason codes; quarantined remote text is never logged. */
+  quarantine?: (details: {
+    count: number;
+    reasons: ReadonlyArray<{ code: string; count: number }>;
+  }) => void;
+  /** Checkpoints value-free advisory counts after each committed remote page. */
+  advisory?: (details: {
+    reasons: ReadonlyArray<{ code: string; count: number }>;
+  }) => void | Promise<void>;
 }
 
 export interface FindingsFilter {
@@ -137,6 +144,8 @@ export interface PullFindingsResult {
   pages: number;
   pulledAt: string;
   deduplicated: number;
+  /** Value-free per-reason counts for quarantines and nulled enrichments. */
+  advisories: ReadonlyArray<{ code: string; count: number }>;
 }
 
 export class FindingsCacheError extends Error {

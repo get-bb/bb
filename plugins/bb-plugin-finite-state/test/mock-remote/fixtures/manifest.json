@@ -39,7 +39,7 @@
       "refs": ["platform/vex-bulk-partial.json"]
     },
     "real-binary-sast-any-version-identity": {
-      "description": "Sanitized captured Platform response preserves a binary-SAST file-path component with an empty version and no purl.",
+      "description": "Sanitized 29-key Platform response preserves a binary-SAST file-path component with an empty version, no purl, string EPSS, and policy counts.",
       "refs": ["platform/fs193-binary-sast-specimen.json"]
     },
     "real-cve-uuid-field-mapping": {
@@ -90,7 +90,7 @@
   "counts": {
     "components": 180,
     "documents": 6,
-    "findings": 4002,
+    "findings": 4003,
     "firmwarePaths": 6000,
     "requirements": 40,
     "sbomComponents": 900,
@@ -146,9 +146,9 @@
       "sha256": "f39fa98949f3fc92ae2411e7836507dfd531d8f8df48137f9d165fd43c6763dd"
     },
     {
-      "bytes": 3710,
+      "bytes": 3737,
       "path": "cases.json",
-      "sha256": "0a5cde2c11920227a8121e5c6848a2295e013cb3a1e18f56a0c50aba4e105b3e"
+      "sha256": "1d87f74e7f1d8a9e7c8b247666d7e2f72ba9dfb7d56580a93012a3a35edcb135"
     },
     {
       "bytes": 3847,
@@ -272,10 +272,10 @@
       "sha256": "f43a3c8092912632eb82234bbaa792b050f2bdcf158ebcdc57629a33286c4a55"
     },
     {
-      "bytes": 1350427,
+      "bytes": 1351592,
       "path": "platform/findings.jsonl",
-      "rows": 4003,
-      "sha256": "4f2fc47651bb75026366d810a7dd8edf717322f26bfabb3061b7ec2c6b2590bc"
+      "rows": 4004,
+      "sha256": "7ac27bd9eb4a0d2932a88ba0f13d1150280e58002fb6fdb2bdbdad856b8c8a9d"
     },
     {
       "bytes": 1296,
@@ -288,9 +288,9 @@
       "sha256": "b8e47940f7f660ae8bc0c1c5fd7dd8a916f2c5550682946e335fc6c9b0ec46c6"
     },
     {
-      "bytes": 454,
+      "bytes": 1357,
       "path": "platform/fs193-binary-sast-specimen.json",
-      "sha256": "3de38f1154cc04b34c28f6f7c19a3ccd64824ef5df09cfd4671bd845ea26796f"
+      "sha256": "f45e63d347fca34a34c2b423cc92b1a2d480c553b8c6fe95189dec54ce7cdd11"
     },
     {
       "bytes": 697,

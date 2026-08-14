@@ -195,10 +195,9 @@ function IdentitySection({
         </dd>
         <dt className="text-muted-foreground">Policy</dt>
         <dd>
-          {model.rows.reduce((sum, item) => sum + item.violationCount, 0)}{" "}
+          {policyCount(model.rows.map((item) => item.violationCount))}{" "}
           violations ·{" "}
-          {model.rows.reduce((sum, item) => sum + item.warningCount, 0)}{" "}
-          warnings
+          {policyCount(model.rows.map((item) => item.warningCount))} warnings
         </dd>
         <dt className="text-muted-foreground">Remediation</dt>
         <dd className="whitespace-pre-wrap break-words">
@@ -207,6 +206,12 @@ function IdentitySection({
       </dl>
     </section>
   );
+}
+
+function policyCount(values: Array<number | null>): number | "Unknown" {
+  return values.some((value) => value === null)
+    ? "Unknown"
+    : values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
 }
 
 function DuplicateRows({

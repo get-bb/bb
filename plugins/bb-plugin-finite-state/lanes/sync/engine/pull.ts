@@ -1056,6 +1056,24 @@ export async function pull(
           `Cache puller reported an invalid ${cache.kind} quarantine count`,
         );
       }
+      for (const advisory of cacheReport.advisories) {
+        if (
+          advisory.code.length === 0 ||
+          !Number.isSafeInteger(advisory.count) ||
+          advisory.count <= 0
+        ) {
+          throw new Error(
+            `Cache puller reported an invalid ${cache.kind} advisory`,
+          );
+        }
+        const key = `${cache.kind}\0${advisory.code}`;
+        const current = advisoryCounts.get(key);
+        advisoryCounts.set(key, {
+          kind: cache.kind,
+          code: advisory.code,
+          count: (current?.count ?? 0) + advisory.count,
+        });
+      }
       // `fetched` is work performed now. The generation checkpoint is the
       // authority for complete publication and quarantine totals across
       // every invocation that contributed to this generation.

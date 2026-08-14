@@ -100,6 +100,7 @@ async function renderFindings(
     saved?: unknown;
     projectId?: string | null;
     pull?: (input: unknown) => unknown | Promise<unknown>;
+    pullAdvisories?: (input: unknown) => unknown | Promise<unknown>;
   } = {},
 ) {
   const app = await loadPluginApp(() => import("../../../app.js"));
@@ -151,6 +152,12 @@ async function renderFindings(
           recoveredFromCorrupt: false,
         }),
         findingsUiList: (input) => list(input),
+        findingsPullAdvisories:
+          options.pullAdvisories ??
+          ((input) => ({
+            generationId: inputField(input, "generationId"),
+            advisories: [],
+          })),
         syncPull:
           options.pull ??
           (() => ({
@@ -194,14 +201,22 @@ describe("findings table panel", () => {
           workingFastForwarded: true,
           divergence: [],
         }),
+        pullAdvisories: () => ({
+          generationId: "generation-mixed",
+          advisories: [
+            { code: "FINDING_COMPONENT_IDENTITY_MISSING", count: 1 },
+            { code: "FINDING_WARNING_COUNT_INVALID", count: 2 },
+          ],
+        }),
       },
     );
     fireEvent.click(await slot.findByRole("button", { name: "Pull findings" }));
-    expect(
-      await slot.findByText(
-        "Pull complete · 3 fetched · 1 quarantined · 2 published",
-      ),
-    ).toBeTruthy();
+    const advisory = await slot.findByText(
+      /Advisories: FINDING_COMPONENT_IDENTITY_MISSING=1, FINDING_WARNING_COUNT_INVALID=2/u,
+    );
+    expect(advisory.parentElement?.textContent).toBe(
+      "Pull complete · 3 fetched · 1 quarantined · 2 published · Advisories: FINDING_COMPONENT_IDENTITY_MISSING=1, FINDING_WARNING_COUNT_INVALID=2",
+    );
     expect(slot.inspection.rpcCalls).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -211,6 +226,14 @@ describe("findings table panel", () => {
             projectId: "platform-project-1",
             projectVersionId: "version-1",
             kinds: ["finding"],
+          },
+        }),
+        expect.objectContaining({
+          method: "findingsPullAdvisories",
+          input: {
+            projectId: "platform-project-1",
+            projectVersionId: "version-1",
+            generationId: "generation-mixed",
           },
         }),
       ]),

@@ -1,7 +1,20 @@
 {
   "id": "00000000-0000-5000-8000-000000000193",
   "title": "FS-500-006 - /update/firmware-root/etc/ssl/certs/ca-certificates.crt",
+  "description": "",
+  "severity": "high",
+  "status": null,
+  "location": "ca-certificates.crt",
+  "type": "binary-sast",
   "findingId": "FS-500-006",
+  "vulnerabilityId": "00000000-0000-5000-8000-000000000197",
+  "cvssScore": 7.5,
+  "cvssVector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:H",
+  "detected": "2026-05-12T14:30:00.000Z",
+  "epssScore": "0.00426",
+  "epssPercentile": "0.34936",
+  "epssWeightedRisk": 2.6,
+  "epssWeightedSeverity": "low",
   "component": {
     "id": "00000000-0000-5000-8000-000000000194",
     "name": "/update/firmware-root/etc/ssl/certs/ca-certificates.crt",
@@ -9,5 +22,24 @@
     "appId": "00000000-0000-5000-8000-000000000195",
     "vcId": "00000000-0000-5000-8000-000000000196"
   },
-  "type": "binary-sast"
+  "inKev": false,
+  "vulnInDataset": false,
+  "inVcKev": false,
+  "risk": 75,
+  "warnings": 2,
+  "violations": 1,
+  "reachabilityScore": 0,
+  "project": {
+    "id": "cfe6fb97-ed49-5ace-b0fe-8121dba2c793",
+    "name": "I491NAX"
+  },
+  "projectVersion": {
+    "id": "b3df3633-ebd7-560e-a3b7-77953521b4e3",
+    "version": "reachability",
+    "created": "2025-08-01T20:34:39.020812Z",
+    "updated": "2026-08-13T13:31:12.642019Z"
+  },
+  "cwes": ["CWE-295"],
+  "exploitInfo": [],
+  "dependencyPath": null
 }

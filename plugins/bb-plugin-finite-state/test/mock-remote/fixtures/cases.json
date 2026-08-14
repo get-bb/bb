@@ -38,7 +38,7 @@
     "refs": ["platform/vex-bulk-partial.json"]
   },
   "real-binary-sast-any-version-identity": {
-    "description": "Sanitized captured Platform response preserves a binary-SAST file-path component with an empty version and no purl.",
+    "description": "Sanitized 29-key Platform response preserves a binary-SAST file-path component with an empty version, no purl, string EPSS, and policy counts.",
     "refs": ["platform/fs193-binary-sast-specimen.json"]
   },
   "real-cve-uuid-field-mapping": {

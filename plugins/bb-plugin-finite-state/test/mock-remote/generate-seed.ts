@@ -123,15 +123,31 @@ const FS174_CVE_UUID_FINDING = `{
   "exploitInfo": [],
   "dependencyPath": null
 }`;
-// Sanitized projection of the read-only production Platform capture in FS-192:
+// Sanitized real-shape specimen from the read-only production Platform capture
+// in FS-192:
 // bb thread thr_au4euua3y2 events 3966/4015 and
-// UX-FINDINGS-2026-08-13-sweep6.md:110. Event 3966 records the full payload
-// key set (including findingId); event 4015 records the projected values.
-// Preserve its nested component, empty version, absent purl, and binary-sast type.
+// UX-FINDINGS-2026-08-13-sweep6.md:110. Event 3966 records this exact 29-key
+// payload shape; event 4015 records the identity values. Non-identity values
+// use the vendored FindingV0 shape and sanitized values observed in the FS-174
+// captures. Preserve the nested component, empty version, absent purl,
+// string-valued EPSS fields, policy counts, and binary-sast type.
 const FS193_BINARY_SAST_FINDING = `{
   "id": "00000000-0000-5000-8000-000000000193",
   "title": "FS-500-006 - /update/firmware-root/etc/ssl/certs/ca-certificates.crt",
+  "description": "",
+  "severity": "high",
+  "status": null,
+  "location": "ca-certificates.crt",
+  "type": "binary-sast",
   "findingId": "FS-500-006",
+  "vulnerabilityId": "00000000-0000-5000-8000-000000000197",
+  "cvssScore": 7.5,
+  "cvssVector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:H",
+  "detected": "2026-05-12T14:30:00.000Z",
+  "epssScore": "0.00426",
+  "epssPercentile": "0.34936",
+  "epssWeightedRisk": 2.6,
+  "epssWeightedSeverity": "low",
   "component": {
     "id": "00000000-0000-5000-8000-000000000194",
     "name": "/update/firmware-root/etc/ssl/certs/ca-certificates.crt",
@@ -139,7 +155,28 @@ const FS193_BINARY_SAST_FINDING = `{
     "appId": "00000000-0000-5000-8000-000000000195",
     "vcId": "00000000-0000-5000-8000-000000000196"
   },
-  "type": "binary-sast"
+  "inKev": false,
+  "vulnInDataset": false,
+  "inVcKev": false,
+  "risk": 75,
+  "warnings": 2,
+  "violations": 1,
+  "reachabilityScore": 0,
+  "project": {
+    "id": "cfe6fb97-ed49-5ace-b0fe-8121dba2c793",
+    "name": "I491NAX"
+  },
+  "projectVersion": {
+    "id": "b3df3633-ebd7-560e-a3b7-77953521b4e3",
+    "version": "reachability",
+    "created": "2025-08-01T20:34:39.020812Z",
+    "updated": "2026-08-13T13:31:12.642019Z"
+  },
+  "cwes": [
+    "CWE-295"
+  ],
+  "exploitInfo": [],
+  "dependencyPath": null
 }
 `;
 const COUNTS = {
@@ -198,6 +235,7 @@ const decoder = new TextDecoder();
 const PRETTIER_JSON_DRAFTS = new Set([
   "assurance-studio/entities-page-1.json",
   "cases.json",
+  "platform/fs193-binary-sast-specimen.json",
 ]);
 
 function capturedFinding(source: string): Record<string, JsonValue> {
@@ -357,6 +395,7 @@ function buildCorpus(seed: string): {
     duplicateFinding,
     capturedFinding(FS174_DISTRO_FINDING),
     capturedFinding(FS174_CVE_UUID_FINDING),
+    capturedFinding(FS193_BINARY_SAST_FINDING),
   ];
 
   const severityCounts = Object.fromEntries(
@@ -789,7 +828,7 @@ function buildCorpus(seed: string): {
     },
     "real-binary-sast-any-version-identity": {
       description:
-        "Sanitized captured Platform response preserves a binary-SAST file-path component with an empty version and no purl.",
+        "Sanitized 29-key Platform response preserves a binary-SAST file-path component with an empty version, no purl, string EPSS, and policy counts.",
       refs: ["platform/fs193-binary-sast-specimen.json"],
     },
     "non-ascii-names": {

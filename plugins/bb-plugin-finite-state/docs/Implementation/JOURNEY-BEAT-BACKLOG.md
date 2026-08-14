@@ -53,6 +53,12 @@ Entry format — one section per defect:
 - **Broke because**: connected TARA reads sent the disjoint Platform project id to Assurance Studio, and the real product linkage is ambiguous (verified four-way and two-way groups), so every connected surface 404ed and no heuristic could choose safely
 - **Beat asserts**: the four candidates remain visible and unselected until the operator saves one; the saved AS id alone scopes remote adapter and resolver reads while Platform ids retain cache identity; the connected Product Security status/plan render after selection; missing workspace shows `WORKSPACE_PROJECT_REQUIRED` and missing AS choice shows `AS_PROJECT_SELECTION_REQUIRED`, with no status or plan request sent in either refusal state
 
+### FS-199 — full-shape finding enrichment fidelity (sweep #6)
+
+- **Journey**: disposable bb data dir with the mock Platform remote → Findings panel → pull the 29-key binary-SAST specimen through registered `syncPull` → open `FS-500-006`
+- **Broke because**: the five-key seed projection hid unmapped warning/violation counts, and string-valued EPSS was silently discarded
+- **Beat asserts**: `FS-500-006`, `ca-certificates.crt`, EPSS `0.4%`, two warnings, and one violation render after the real-shape pull; invalid/null enrichment publishes as null with value-free advisory reason counts while identity-invalid rows alone increment quarantine
+
 ### FS-201 — bench requirement puller dead-end loop (sweep #7, pending fix)
 
 - **Journey**: bench panel with no cached version → follow the product's own instruction ("Pull a version through Sync first") → `pull requirement` → bench enabled → run → WP-55 verdict card renders

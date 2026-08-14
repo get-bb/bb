@@ -13,6 +13,7 @@ import {
   selectFindingCve,
 } from "../stable-key/canonical.js";
 import { purlIdentity } from "../stable-key/wire-identity.js";
+import { epssValue, policyCount } from "./enrichment.js";
 
 const ENTITY_KIND = "finding";
 const DEFAULT_PAGE_SIZE = 200;
@@ -43,8 +44,8 @@ interface NormalizedFinding {
   reachabilityFactors: string;
   vulnInDataset: number | null;
   cwes: string[];
-  warningCount: number;
-  violationCount: number;
+  warningCount: number | null;
+  violationCount: number | null;
   location: string;
   vexStatus: string | null;
   vexResponse: string | null;
@@ -54,6 +55,7 @@ interface NormalizedFinding {
   firstSeen: string | null;
   softDeleted: number;
   raw: string;
+  advisories: string[];
 }
 
 function record(value: Json): Record<string, Json> | null {
@@ -231,6 +233,32 @@ export function normalizeFinding(value: Json): NormalizedFinding {
     );
   }
   const memberships = cwes(row);
+  const epssScore = epssValue(
+    row,
+    ["epssScore", "epss"],
+    "FINDING_EPSS_SCORE_INVALID",
+  );
+  const epssPercentile = epssValue(
+    row,
+    ["epssPercentile"],
+    "FINDING_EPSS_PERCENTILE_INVALID",
+  );
+  const warningCount = policyCount(
+    row,
+    ["warningCount", "warnings"],
+    "FINDING_WARNING_COUNT_INVALID",
+  );
+  const violationCount = policyCount(
+    row,
+    ["violationCount", "violations"],
+    "FINDING_VIOLATION_COUNT_INVALID",
+  );
+  const advisories = [
+    epssScore.advisory,
+    epssPercentile.advisory,
+    warningCount.advisory,
+    violationCount.advisory,
+  ].filter((code): code is string => code !== null);
   return {
     findingId,
     stableKey,
@@ -246,8 +274,11 @@ export function normalizeFinding(value: Json): NormalizedFinding {
     band: stringValue(row, ["band", "riskBand"]),
     cvssScore: numberValue(row, ["cvssScore", "cvss"]),
     cvssVector: stringValue(row, ["cvssVector", "vector"]),
-    epssScore: numberValue(row, ["epssScore", "epss"]),
-    epssPercentile: numberValue(row, ["epssPercentile"]),
+    // FindingV0 documents numeric EPSS values, while the sanitized production
+    // captures in the fixture corpus carry their JSON decimal representation
+    // as strings. Preserve both boundary representations as one cache number.
+    epssScore: epssScore.value,
+    epssPercentile: epssPercentile.value,
     inKev: booleanValue(row, ["inKev", "kev"]),
     inVcKev: booleanValue(row, ["inVcKev", "vcKev"]),
     hasExploit: booleanValue(row, ["hasExploit"]),
@@ -264,8 +295,8 @@ export function normalizeFinding(value: Json): NormalizedFinding {
     ),
     vulnInDataset: nullableBoolean(row, ["vulnInDataset"]),
     cwes: memberships,
-    warningCount: numberValue(row, ["warningCount"]) ?? 0,
-    violationCount: numberValue(row, ["violationCount"]) ?? 0,
+    warningCount: warningCount.value,
+    violationCount: violationCount.value,
     location: jsonField(row, ["location", "locations"], null),
     vexStatus: stringValue(row, ["vexStatus", "status"]),
     vexResponse: stringValue(row, ["vexResponse", "response"]),
@@ -275,6 +306,7 @@ export function normalizeFinding(value: Json): NormalizedFinding {
     firstSeen: stringValue(row, ["firstSeen"]),
     softDeleted: booleanValue(row, ["softDeleted", "deleted"]),
     raw: JSON.stringify(row),
+    advisories,
   };
 }
 
@@ -332,13 +364,19 @@ function writePage(
   deduplicated: number;
   quarantined: number;
   quarantineReasons: ReadonlyMap<string, number>;
+  advisoryReasons: ReadonlyMap<string, number>;
 } {
   const normalized: NormalizedFinding[] = [];
   let quarantined = 0;
   const quarantineReasons = new Map<string, number>();
+  const advisoryReasons = new Map<string, number>();
   for (const item of page.items) {
     try {
-      normalized.push(normalizeFinding(item));
+      const finding = normalizeFinding(item);
+      normalized.push(finding);
+      for (const code of finding.advisories) {
+        advisoryReasons.set(code, (advisoryReasons.get(code) ?? 0) + 1);
+      }
     } catch (error: unknown) {
       if (!(error instanceof FindingsCacheError)) throw error;
       quarantined += 1;
@@ -403,8 +441,8 @@ function writePage(
         item.reachabilityFactors,
         item.vulnInDataset,
         JSON.stringify(item.cwes),
-        item.warningCount,
-        item.violationCount,
+        item.warningCount ?? 0,
+        item.violationCount ?? 0,
         item.location,
         item.vexStatus,
         item.vexResponse,
@@ -458,7 +496,13 @@ function writePage(
         "Finding staging checkpoint moved",
       );
   })();
-  return { inserted, deduplicated, quarantined, quarantineReasons };
+  return {
+    inserted,
+    deduplicated,
+    quarantined,
+    quarantineReasons,
+    advisoryReasons,
+  };
 }
 
 const ALL_ROWS_QUARANTINED = "FINDING_ALL_ROWS_QUARANTINED";
@@ -498,6 +542,7 @@ export async function pullFindings(
   let staged = 0;
   let quarantined = 0;
   const quarantineReasons = new Map<string, number>();
+  const advisoryReasons = new Map<string, number>();
   let deduplicated = 0;
   let latestOf: number | null = null;
   try {
@@ -515,6 +560,15 @@ export async function pullFindings(
         pulledAt,
         deduplicated,
         quarantined: state.quarantined,
+        advisories:
+          state.quarantined > 0
+            ? [
+                {
+                  code: "FINDING_PRIOR_INVOCATION_QUARANTINE",
+                  count: state.quarantined,
+                },
+              ]
+            : [],
       };
     }
     const iterable = deps.platform.getFindings({
@@ -545,8 +599,28 @@ export async function pullFindings(
       for (const [code, count] of written.quarantineReasons) {
         quarantineReasons.set(code, (quarantineReasons.get(code) ?? 0) + count);
       }
+      for (const [code, count] of written.advisoryReasons) {
+        advisoryReasons.set(code, (advisoryReasons.get(code) ?? 0) + count);
+      }
+      const pageAdvisories = new Map(written.advisoryReasons);
+      for (const [code, count] of written.quarantineReasons) {
+        pageAdvisories.set(code, (pageAdvisories.get(code) ?? 0) + count);
+      }
+      if (pageAdvisories.size > 0) {
+        await deps.advisory?.({
+          reasons: [...pageAdvisories.entries()].map(([code, count]) => ({
+            code,
+            count,
+          })),
+        });
+      }
       if (written.quarantined > 0) {
-        deps.quarantine?.({ count: written.quarantined });
+        deps.quarantine?.({
+          count: written.quarantined,
+          reasons: [...written.quarantineReasons.entries()].map(
+            ([code, count]) => ({ code, count }),
+          ),
+        });
       }
       deduplicated += written.deduplicated;
       onProgress({ page: pages, of: latestOf, phase: "write" });
@@ -565,6 +639,9 @@ export async function pullFindings(
         state.quarantined,
       );
     }
+    for (const [code, count] of quarantineReasons) {
+      advisoryReasons.set(code, (advisoryReasons.get(code) ?? 0) + count);
+    }
     if (generationQuarantined > 0 && published === 0) {
       throw new TerminalPullError(
         allRowsQuarantinedError(generationQuarantined, quarantineReasons),
@@ -578,6 +655,9 @@ export async function pullFindings(
       pulledAt,
       deduplicated,
       quarantined: generationQuarantined,
+      advisories: [...advisoryReasons.entries()]
+        .map(([code, count]) => ({ code, count }))
+        .sort((left, right) => left.code.localeCompare(right.code)),
     };
   } catch (error: unknown) {
     onProgress({ page: pages, of: latestOf, phase: "error" });

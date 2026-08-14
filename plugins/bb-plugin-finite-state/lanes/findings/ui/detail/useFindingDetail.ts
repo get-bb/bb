@@ -59,8 +59,8 @@ export interface FindingDetailRow {
   reachabilityVerdict: "reachable" | "unreachable" | "unknown";
   reachabilityFactors: EvidenceFactor[];
   location: JsonValue;
-  warningCount: number;
-  violationCount: number;
+  warningCount: number | null;
+  violationCount: number | null;
   serverVex: VexTuple | null;
   localVex: VexTuple | null;
   localState: "none" | "local" | "conflicted" | "stale" | "needs_completion";
@@ -102,23 +102,47 @@ export interface FindingDetailModel {
 }
 
 export type FindingDetailState =
-  | { status: "invalid" | "unconfigured" | "loading"; data: null; error: null; retry(): void }
+  | {
+      status: "invalid" | "unconfigured" | "loading";
+      data: null;
+      error: null;
+      retry(): void;
+    }
   | { status: "empty"; data: null; error: string | null; retry(): void }
-  | { status: "error"; data: FindingDetailModel | null; error: string; retry(): void }
-  | { status: "ready"; data: FindingDetailModel; error: string | null; retry(): void };
+  | {
+      status: "error";
+      data: FindingDetailModel | null;
+      error: string;
+      retry(): void;
+    }
+  | {
+      status: "ready";
+      data: FindingDetailModel;
+      error: string | null;
+      retry(): void;
+    };
 
 const BASE64URL = /^[A-Za-z0-9_-]+$/u;
 
 function decodeSegment(segment: string): string | null {
   if (!BASE64URL.test(segment)) return null;
   try {
-    const padded = `${segment.replaceAll("-", "+").replaceAll("_", "/")}${"=".repeat((4 - segment.length % 4) % 4)}`;
+    const padded = `${segment.replaceAll("-", "+").replaceAll("_", "/")}${"=".repeat((4 - (segment.length % 4)) % 4)}`;
     const binary = atob(padded);
-    const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+    const bytes = Uint8Array.from(binary, (character) =>
+      character.charCodeAt(0),
+    );
     const decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
     let canonical = "";
-    for (const byte of new TextEncoder().encode(decoded)) canonical += String.fromCharCode(byte);
-    if (btoa(canonical).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/u, "") !== segment) return null;
+    for (const byte of new TextEncoder().encode(decoded))
+      canonical += String.fromCharCode(byte);
+    if (
+      btoa(canonical)
+        .replaceAll("+", "-")
+        .replaceAll("/", "_")
+        .replace(/=+$/u, "") !== segment
+    )
+      return null;
     return decoded === decoded.normalize("NFC") ? decoded : null;
   } catch {
     return null;
@@ -127,20 +151,33 @@ function decodeSegment(segment: string): string | null {
 
 /** Fast browser guard; the server repeats validation with the frozen codec. */
 export function validateFindingStableKey(value: string): boolean {
-  if (value.length === 0 || value.length > 512 || value !== value.trim()) return false;
+  if (value.length === 0 || value.length > 512 || value !== value.trim())
+    return false;
   const parts = value.split(".");
-  if (parts[0] !== "fs1" || parts.slice(1).some(part => part.length === 0)) return false;
+  if (parts[0] !== "fs1" || parts.slice(1).some((part) => part.length === 0))
+    return false;
   const decoded = parts.slice(1).map(decodeSegment);
-  if (decoded.some(segment => segment === null)) return false;
+  if (decoded.some((segment) => segment === null)) return false;
   const [kind, tier, cve, ...component] = decoded;
   if (kind !== "finding" || !cve) return false;
-  return (tier === "purl" && component.length === 1 && Boolean(component[0]))
-    || (tier === "name-group-version" && component.length === 3 && Boolean(component[0]) && Boolean(component[2]))
-    || (tier === "name-group-any-version" && component.length === 2 && Boolean(component[0]));
+  return (
+    (tier === "purl" && component.length === 1 && Boolean(component[0])) ||
+    (tier === "name-group-version" &&
+      component.length === 3 &&
+      Boolean(component[0]) &&
+      Boolean(component[2])) ||
+    (tier === "name-group-any-version" &&
+      component.length === 2 &&
+      Boolean(component[0]))
+  );
 }
 
-function record(value: JsonValue | undefined): Record<string, JsonValue> | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? value : null;
+function record(
+  value: JsonValue | undefined,
+): Record<string, JsonValue> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value
+    : null;
 }
 
 function text(fields: Record<string, JsonValue>, key: string): string | null {
@@ -153,15 +190,21 @@ function number(fields: Record<string, JsonValue>, key: string): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function tuple(fields: Record<string, JsonValue>, prefix: "" | "local"): VexTuple | null {
-  const key = (name: string) => prefix ? `localVex${name[0]?.toUpperCase()}${name.slice(1)}` : `vex${name[0]?.toUpperCase()}${name.slice(1)}`;
+function tuple(
+  fields: Record<string, JsonValue>,
+  prefix: "" | "local",
+): VexTuple | null {
+  const key = (name: string) =>
+    prefix
+      ? `localVex${name[0]?.toUpperCase()}${name.slice(1)}`
+      : `vex${name[0]?.toUpperCase()}${name.slice(1)}`;
   const result: VexTuple = {
     status: text(fields, key("status")),
     response: text(fields, key("response")),
     justification: text(fields, key("justification")),
     reason: text(fields, key("reason")),
   };
-  return Object.values(result).every(value => value === null) ? null : result;
+  return Object.values(result).every((value) => value === null) ? null : result;
 }
 
 function evidenceFactors(value: JsonValue | undefined): EvidenceFactor[] {
@@ -169,13 +212,21 @@ function evidenceFactors(value: JsonValue | undefined): EvidenceFactor[] {
   const result: EvidenceFactor[] = [];
   for (const [index, candidate] of value.entries()) {
     if (typeof candidate === "string" && candidate.trim()) {
-      result.push({ label: `Factor ${index + 1}`, value: candidate, source: null });
+      result.push({
+        label: `Factor ${index + 1}`,
+        value: candidate,
+        source: null,
+      });
       continue;
     }
     const item = record(candidate);
     if (!item) continue;
-    const label = ["label", "name", "factor", "type"].map(key => text(item, key)).find(Boolean);
-    const rawValue = ["value", "result", "verdict", "evidence"].map(key => item[key]).find(value => value !== undefined);
+    const label = ["label", "name", "factor", "type"]
+      .map((key) => text(item, key))
+      .find(Boolean);
+    const rawValue = ["value", "result", "verdict", "evidence"]
+      .map((key) => item[key])
+      .find((value) => value !== undefined);
     if (!label || rawValue === undefined) continue;
     result.push({
       label,
@@ -186,7 +237,10 @@ function evidenceFactors(value: JsonValue | undefined): EvidenceFactor[] {
   return result;
 }
 
-function verdict(value: string | null, factors: readonly EvidenceFactor[]): FindingDetailRow["reachabilityVerdict"] {
+function verdict(
+  value: string | null,
+  factors: readonly EvidenceFactor[],
+): FindingDetailRow["reachabilityVerdict"] {
   if (factors.length === 0) return "unknown";
   return value === "reachable" || value === "unreachable" ? value : "unknown";
 }
@@ -220,11 +274,17 @@ function rowFromResult(result: DetailResult["rows"][number]): FindingDetailRow {
     reachabilityVerdict: verdict(text(fields, "reachabilityVerdict"), factors),
     reachabilityFactors: factors,
     location: fields["location"] ?? null,
-    warningCount: number(fields, "warningCount") ?? 0,
-    violationCount: number(fields, "violationCount") ?? 0,
+    warningCount: number(fields, "warningCount"),
+    violationCount: number(fields, "violationCount"),
     serverVex: tuple(fields, ""),
     localVex: tuple(fields, "local"),
-    localState: state === "local" || state === "conflicted" || state === "stale" || state === "needs_completion" ? state : "none",
+    localState:
+      state === "local" ||
+      state === "conflicted" ||
+      state === "stale" ||
+      state === "needs_completion"
+        ? state
+        : "none",
     localFile: text(fields, "localFile"),
     remediation: text(fields, "remediation"),
     commentCount: number(fields, "commentCount") ?? 0,
@@ -232,35 +292,80 @@ function rowFromResult(result: DetailResult["rows"][number]): FindingDetailRow {
   };
 }
 
-const SEVERITY_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1, unknown: 0 };
+const SEVERITY_RANK: Record<string, number> = {
+  critical: 4,
+  high: 3,
+  medium: 2,
+  low: 1,
+  unknown: 0,
+};
 
-function consensusTuple(rows: readonly FindingDetailRow[], key: "serverVex" | "localVex"): VexTuple | null {
-  const values = rows.map(row => row[key]).filter((value): value is VexTuple => value !== null);
+function consensusTuple(
+  rows: readonly FindingDetailRow[],
+  key: "serverVex" | "localVex",
+): VexTuple | null {
+  const values = rows
+    .map((row) => row[key])
+    .filter((value): value is VexTuple => value !== null);
   if (values.length === 0) return null;
   const first = JSON.stringify(values[0]);
-  return values.every(value => JSON.stringify(value) === first) ? values[0] ?? null : null;
+  return values.every((value) => JSON.stringify(value) === first)
+    ? (values[0] ?? null)
+    : null;
 }
 
-function modelFromResult(stableKey: string, result: DetailResult): FindingDetailModel | null {
-  if (result.state !== "resolved" || result.tier === null || result.rows.length === 0) return null;
+function modelFromResult(
+  stableKey: string,
+  result: DetailResult,
+): FindingDetailModel | null {
+  if (
+    result.state !== "resolved" ||
+    result.tier === null ||
+    result.rows.length === 0
+  )
+    return null;
   const rows = result.rows.map(rowFromResult);
-  const factors = rows.flatMap(row => row.reachabilityFactors).filter((factor, index, all) =>
-    all.findIndex(candidate => candidate.label === factor.label && candidate.value === factor.value && candidate.source === factor.source) === index
+  const factors = rows
+    .flatMap((row) => row.reachabilityFactors)
+    .filter(
+      (factor, index, all) =>
+        all.findIndex(
+          (candidate) =>
+            candidate.label === factor.label &&
+            candidate.value === factor.value &&
+            candidate.source === factor.source,
+        ) === index,
+    );
+  const verdicts = new Set(rows.map((row) => row.reachabilityVerdict));
+  const combinedVerdict =
+    factors.length > 0 && verdicts.size === 1
+      ? (rows[0]?.reachabilityVerdict ?? "unknown")
+      : "unknown";
+  const severity =
+    rows
+      .map((row) => row.severity?.toLowerCase() ?? "unknown")
+      .sort(
+        (left, right) =>
+          (SEVERITY_RANK[right] ?? 0) - (SEVERITY_RANK[left] ?? 0),
+      )[0] ?? "unknown";
+  const cvssValues = rows.flatMap((row) =>
+    row.cvss === null ? [] : [row.cvss],
   );
-  const verdicts = new Set(rows.map(row => row.reachabilityVerdict));
-  const combinedVerdict = factors.length > 0 && verdicts.size === 1
-    ? rows[0]?.reachabilityVerdict ?? "unknown"
-    : "unknown";
-  const severity = rows.map(row => row.severity?.toLowerCase() ?? "unknown")
-    .sort((left, right) => (SEVERITY_RANK[right] ?? 0) - (SEVERITY_RANK[left] ?? 0))[0] ?? "unknown";
-  const cvssValues = rows.flatMap(row => row.cvss === null ? [] : [row.cvss]);
-  const epssValues = rows.flatMap(row => row.epss === null ? [] : [row.epss]);
+  const epssValues = rows.flatMap((row) =>
+    row.epss === null ? [] : [row.epss],
+  );
   const server = consensusTuple(rows, "serverVex");
   const local = consensusTuple(rows, "localVex");
-  const states = new Set(rows.map(row => row.localState));
-  const vexState = states.has("conflicted") || (server && local && JSON.stringify(server) !== JSON.stringify(local))
-    ? "conflict"
-    : local ? "local_override" : server ? "server" : "undecided";
+  const states = new Set(rows.map((row) => row.localState));
+  const vexState =
+    states.has("conflicted") ||
+    (server && local && JSON.stringify(server) !== JSON.stringify(local))
+      ? "conflict"
+      : local
+        ? "local_override"
+        : server
+          ? "server"
+          : "undecided";
   return {
     stableKey,
     resolution: { tier: result.tier, duplicateCount: rows.length },
@@ -269,8 +374,8 @@ function modelFromResult(stableKey: string, result: DetailResult): FindingDetail
       severity,
       ...(cvssValues.length > 0 ? { cvss: Math.max(...cvssValues) } : {}),
       ...(epssValues.length > 0 ? { epss: Math.max(...epssValues) } : {}),
-      kev: rows.some(row => row.kev),
-      vcKev: rows.some(row => row.vcKev),
+      kev: rows.some((row) => row.kev),
+      vcKev: rows.some((row) => row.vcKev),
     },
     reachability: { verdict: combinedVerdict, factors },
     vex: { server, local, state: vexState },
@@ -289,67 +394,88 @@ function modelFromResult(stableKey: string, result: DetailResult): FindingDetail
 }
 
 function safeError(error: unknown): string {
-  return error instanceof Error && error.message ? error.message.slice(0, 300) : "Finding detail could not be loaded.";
+  return error instanceof Error && error.message
+    ? error.message.slice(0, 300)
+    : "Finding detail could not be loaded.";
 }
 
 export function useFindingDetail(stableKey: string): FindingDetailState {
   const context = useBbContext();
   const sidebar = experimental_useSidebarThreads();
   const rpc = useRpc<typeof findingsUiRpcContract>();
-  const projectId = context.projectId ?? (sidebar.status === "ready" ? sidebar.projects[0]?.id ?? null : null);
+  const projectId =
+    context.projectId ??
+    (sidebar.status === "ready" ? (sidebar.projects[0]?.id ?? null) : null);
   const valid = useMemo(() => validateFindingStableKey(stableKey), [stableKey]);
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<Omit<FindingDetailState, "retry">>(() =>
-    !valid ? { status: "invalid", data: null, error: null }
-      : !projectId ? { status: "unconfigured", data: null, error: null }
-        : { status: "loading", data: null, error: null }
+    !valid
+      ? { status: "invalid", data: null, error: null }
+      : !projectId
+        ? { status: "unconfigured", data: null, error: null }
+        : { status: "loading", data: null, error: null },
   );
-  const retry = useCallback(() => setAttempt(current => current + 1), []);
+  const retry = useCallback(() => setAttempt((current) => current + 1), []);
 
   useEffect(() => {
     if (!valid || !projectId) return;
     let active = true;
     setState({ status: "loading", data: null, error: null });
-    void rpc.call("cachedProjectVersions", { projectId }).then(versions => {
-      if (!active) return null;
-      const scope = versions.versions.find(version =>
-        version.platformProjectId === versions.selectedPlatformProjectId
-        && version.projectVersionId === versions.selectedProjectVersionId
-      ) ?? versions.versions[0];
-      if (!scope) {
-        setState({ status: "unconfigured", data: null, error: null });
-        return null;
-      }
-      return rpc.call("findingDetailGet", {
-        projectId: scope.platformProjectId,
-        projectVersionId: scope.projectVersionId,
-        stableKey,
-      });
-    }).then(result => {
-      if (!active || !result) return;
-      const data = modelFromResult(stableKey, result);
-      if (!data) {
-        setState({
-          status: "empty",
-          data: null,
-          error: result.state === "stale" ? "The exact component version changed; refresh the findings route from the table." : null,
+    void rpc
+      .call("cachedProjectVersions", { projectId })
+      .then((versions) => {
+        if (!active) return null;
+        const scope =
+          versions.versions.find(
+            (version) =>
+              version.platformProjectId ===
+                versions.selectedPlatformProjectId &&
+              version.projectVersionId === versions.selectedProjectVersionId,
+          ) ?? versions.versions[0];
+        if (!scope) {
+          setState({ status: "unconfigured", data: null, error: null });
+          return null;
+        }
+        return rpc.call("findingDetailGet", {
+          projectId: scope.platformProjectId,
+          projectVersionId: scope.projectVersionId,
+          stableKey,
         });
-        return;
-      }
-      setState({ status: "ready", data, error: null });
-    }).catch((error: unknown) => {
-      if (!active) return;
-      const message = safeError(error);
-      setState(current => current.data
-        ? { status: "error", data: current.data, error: message }
-        : /NOT_FOUND|orphaned/u.test(message)
-          ? { status: "empty", data: null, error: null }
-          : { status: "error", data: null, error: message });
-    });
-    return () => { active = false; };
+      })
+      .then((result) => {
+        if (!active || !result) return;
+        const data = modelFromResult(stableKey, result);
+        if (!data) {
+          setState({
+            status: "empty",
+            data: null,
+            error:
+              result.state === "stale"
+                ? "The exact component version changed; refresh the findings route from the table."
+                : null,
+          });
+          return;
+        }
+        setState({ status: "ready", data, error: null });
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        const message = safeError(error);
+        setState((current) =>
+          current.data
+            ? { status: "error", data: current.data, error: message }
+            : /NOT_FOUND|orphaned/u.test(message)
+              ? { status: "empty", data: null, error: null }
+              : { status: "error", data: null, error: message },
+        );
+      });
+    return () => {
+      active = false;
+    };
   }, [attempt, projectId, rpc, stableKey, valid]);
 
   if (!valid) return { status: "invalid", data: null, error: null, retry };
-  if (!projectId) return { status: "unconfigured", data: null, error: null, retry };
+  if (!projectId)
+    return { status: "unconfigured", data: null, error: null, retry };
   return { ...state, retry } as FindingDetailState;
 }

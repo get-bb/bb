@@ -64,6 +64,7 @@ interface FindingFixture {
   };
   cve?: string;
   findingId?: string;
+  type?: string;
   severity: string;
 }
 
@@ -510,9 +511,14 @@ describe("deterministic-seed-corpus", () => {
       if (finding.projectVersionId === undefined) {
         expect(finding.projectVersion?.id).toBeTruthy();
         expect(finding.project?.id).toBeTruthy();
-        expect(finding.findingId).toMatch(/^CVE-/u);
         expect(finding.component.name).toBeTruthy();
-        expect(finding.component.version).toBeTruthy();
+        if (finding.type === "binary-sast") {
+          expect(finding.findingId).toMatch(/^FS-/u);
+          expect(finding.component.version).toBe("");
+        } else {
+          expect(finding.findingId).toMatch(/^CVE-/u);
+          expect(finding.component.version).toBeTruthy();
+        }
         continue;
       }
       expectReference(

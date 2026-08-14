@@ -272,6 +272,7 @@ export function registerBom(bb: BbPluginApi, ctx: PluginContext): void {
         fetched: result.fetched,
         baseRows: result.components,
         quarantined: 0,
+        advisories: [],
       };
     },
   );

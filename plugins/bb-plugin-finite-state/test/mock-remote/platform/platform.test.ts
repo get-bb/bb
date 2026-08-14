@@ -202,6 +202,7 @@ describe("mock-direct-platform-data", () => {
               fetched: result.fetched,
               baseRows: result.published,
               quarantined: result.quarantined,
+              advisories: result.advisories,
             })),
         },
       ],

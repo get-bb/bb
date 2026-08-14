@@ -49,6 +49,7 @@ interface PullCounts {
   fetched: number;
   baseRows: number;
   quarantined: number;
+  advisories: ReadonlyArray<{ code: string; count: number }>;
 }
 
 export function FindingsPanel({
@@ -193,7 +194,12 @@ export function FindingsPanel({
       });
       const counts = report.kinds.finding;
       if (!counts) throw new Error("Finding pull returned no finding report");
-      setPullReport(counts);
+      const diagnostics = await rpc.call("findingsPullAdvisories", {
+        projectId: platformProjectId,
+        projectVersionId,
+        generationId: report.generationId,
+      });
+      setPullReport({ ...counts, advisories: diagnostics.advisories });
       setVersionRequest((value) => value + 1);
       await retryFindings();
     } catch (cause) {
@@ -377,6 +383,15 @@ export function FindingsPanel({
           Pull complete · {pullReport.fetched.toLocaleString()} fetched ·{" "}
           {pullReport.quarantined.toLocaleString()} quarantined ·{" "}
           {pullReport.baseRows.toLocaleString()} published
+          {pullReport.advisories.length > 0 ? (
+            <span>
+              {" "}
+              · Advisories:{" "}
+              {pullReport.advisories
+                .map(({ code, count }) => `${code}=${count.toLocaleString()}`)
+                .join(", ")}
+            </span>
+          ) : null}
         </div>
       ) : null}
       <SavedViews
