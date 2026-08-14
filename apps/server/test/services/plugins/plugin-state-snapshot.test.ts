@@ -182,6 +182,24 @@ describe("plugin activation snapshots and garbage collection", () => {
       catalogMarketplaceName: _catalogMarketplaceName,
       ...legacyRegistration
     } = registration;
+    const {
+      catalogMarketplaceName: _preNamedMarketplace,
+      ...preNamedMarketplaceRegistration
+    } = registration;
+    await writeFile(
+      snapshot.registrationPath,
+      JSON.stringify(preNamedMarketplaceRegistration),
+    );
+    await expect(
+      readPluginSnapshotRegistration({ db, snapshotId: snapshot.id }),
+    ).resolves.toMatchObject({
+      provenance: "catalog",
+      catalogEntryId: "legacy-entry",
+      catalogMarketplaceName: null,
+      sourceNpmRequestedSpec: "^1.0.0",
+      npmResolvedVersion: "1.2.0",
+    });
+
     await writeFile(
       snapshot.registrationPath,
       JSON.stringify({
