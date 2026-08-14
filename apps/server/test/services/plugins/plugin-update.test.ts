@@ -224,7 +224,11 @@ describe("plugin update service and routes", () => {
     upsertInstalledPlugin(db, {
       id: "legacy-marketplace",
       source: "npm:bb-plugin-legacy-marketplace@^0.2.0",
-      provenance: { kind: "catalog", entryId: "legacy-marketplace" },
+      provenance: {
+        kind: "catalog",
+        marketplace: "bb-official",
+        entryId: "legacy-marketplace",
+      },
       sourceIntent: {
         kind: "npm",
         packageName: "bb-plugin-legacy-marketplace",

@@ -3,32 +3,82 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   createConnection,
+  getPluginMarketplace,
   markInstalledPluginRemoved,
   migrate,
   upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
+import { ROOT_PLUGIN_SOURCE_SELECTION } from "@bb/server-contract";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
+import type { MarketplaceFetch } from "../../../src/services/plugin-catalog/marketplace-http.js";
+import { BUNDLED_OFFICIAL_MARKETPLACE } from "../../../src/services/plugin-catalog/official-marketplace.js";
 import {
   BUILTIN_PLUGINS,
   BUNDLED_PLUGINS,
-  GIT_OFFICIAL_PLUGINS,
   OFFICIAL_PLUGINS,
   PLUGIN_CATALOG_CATEGORIES,
   listBundledPluginRegistrations,
 } from "../../../src/services/plugins/builtin-registry.js";
 
-describe("bundled plugin catalog service", () => {
+const MANIFEST_URL = "https://marketplace.test/marketplace/v1/marketplace.json";
+const ICON_URL = "https://marketplace.test/marketplace/v1/icons/widgets.svg";
+const SEED_ENTRY_COUNT = BUNDLED_OFFICIAL_MARKETPLACE.plugins.length;
+
+const VALID_SVG = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M0 0h16v16H0z"/></svg>',
+);
+
+function remoteEntry(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "widgets",
+    displayName: "Acme Widgets",
+    description: "Widgets for threads.",
+    icon: { url: "./icons/widgets.svg" },
+    tags: ["interface", "widgets"],
+    author: { name: "Acme", github: "acme" },
+    engines: { bb: ">=0.0.1" },
+    source: {
+      git: {
+        url: "https://github.com/acme/plugins.git",
+        subdir: "plugins/widgets",
+        ref: "v1.0.0",
+      },
+    },
+    ...overrides,
+  };
+}
+
+function manifest(plugins: unknown[]): unknown {
+  return {
+    schemaVersion: 1,
+    name: "bb-official",
+    displayName: "BB Official",
+    plugins,
+  };
+}
+
+function jsonResponse(
+  body: unknown,
+  headers: Record<string, string> = {},
+): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json", ...headers },
+  });
+}
+
+describe("plugin catalog service", () => {
   let db: DbConnection;
   let installedNames: string[];
-  let installedGitEntries: Array<{ entryId: string; source: string }>;
+  let installedCatalogEntries: unknown[];
 
   beforeEach(() => {
     db = createConnection(":memory:");
     migrate(db);
     installedNames = [];
-    installedGitEntries = [];
+    installedCatalogEntries = [];
   });
 
   afterEach(() => db.$client.close());
@@ -37,33 +87,27 @@ describe("bundled plugin catalog service", () => {
     bundledPlugins?: Parameters<
       typeof createPluginCatalogService
     >[0]["bundledPlugins"];
-    gitOfficialPlugins?: Parameters<
-      typeof createPluginCatalogService
-    >[0]["gitOfficialPlugins"];
+    fetch?: MarketplaceFetch;
     warn?: (message: string) => void;
   }) {
     return createPluginCatalogService({
       db,
       appVersion: "1.0.0",
+      marketplaceUrl: MANIFEST_URL,
       plugins: {
         installOfficialPlugin: async (name: string) => {
           installedNames.push(name);
           throw new Error("installation stopped by test");
         },
-        installGitCatalogPlugin: async (args: {
-          entryId: string;
-          source: string;
-        }) => {
-          installedGitEntries.push(args);
-          throw new Error("git installation stopped by test");
+        installCatalogPlugin: async (args: unknown) => {
+          installedCatalogEntries.push(args);
+          throw new Error("catalog installation stopped by test");
         },
       },
       ...(options?.bundledPlugins === undefined
         ? {}
         : { bundledPlugins: options.bundledPlugins }),
-      ...(options?.gitOfficialPlugins === undefined
-        ? {}
-        : { gitOfficialPlugins: options.gitOfficialPlugins }),
+      ...(options?.fetch === undefined ? {} : { fetch: options.fetch }),
       ...(options?.warn === undefined ? {} : { warn: options.warn }),
     });
   }
@@ -75,7 +119,11 @@ describe("bundled plugin catalog service", () => {
     upsertInstalledPlugin(db, {
       id: args.pluginId,
       source: `builtin:${args.name}`,
-      provenance: { kind: "catalog", entryId: args.name },
+      provenance: {
+        kind: "catalog",
+        marketplace: "bb-official",
+        entryId: args.name,
+      },
       sourceIntent: { kind: "builtin", name: args.name },
       exactResolution: { kind: "builtin" },
       updateState: {
@@ -91,39 +139,31 @@ describe("bundled plugin catalog service", () => {
     });
   }
 
-  it("lists every bundled official plugin from its manifest", async () => {
+  it("lists bundled plugins and the seeded official catalog", async () => {
     const catalog = service();
     expect(catalog.status()).toEqual({
-      pluginCount: BUNDLED_PLUGINS.length + GIT_OFFICIAL_PLUGINS.length,
+      pluginCount: BUNDLED_PLUGINS.length + SEED_ENTRY_COUNT,
       includedPluginCount: BUILTIN_PLUGINS.length,
-      optionalPluginCount:
-        OFFICIAL_PLUGINS.length + GIT_OFFICIAL_PLUGINS.length,
+      optionalPluginCount: OFFICIAL_PLUGINS.length + SEED_ENTRY_COUNT,
     });
 
     const results = await catalog.search("");
     expect(results.map((entry) => entry.entryId).sort()).toEqual(
       [
         ...BUNDLED_PLUGINS.map((plugin) => plugin.name),
-        ...GIT_OFFICIAL_PLUGINS.map((plugin) => plugin.name),
+        ...BUNDLED_OFFICIAL_MARKETPLACE.plugins.map((entry) => entry.id),
       ].sort(),
-    );
-    expect(results).toHaveLength(catalog.status().pluginCount);
-    expect(results.some((entry) => entry.category === "Included with BB")).toBe(
-      false,
-    );
-    expect([...new Set(results.map((entry) => entry.category))]).toEqual(
-      PLUGIN_CATALOG_CATEGORIES,
     );
     const docs = results.find((entry) => entry.entryId === "docs");
     expect(docs).toMatchObject({
       pluginId: "simple-notes",
       displayName: "Docs",
       icon: "FileText",
+      iconUrl: null,
       category: "Context & knowledge",
       source: "builtin:docs",
       installed: false,
       compatible: true,
-      incompatibleReason: null,
     });
     for (const category of PLUGIN_CATALOG_CATEGORIES) {
       const categoryNames = results
@@ -135,25 +175,44 @@ describe("bundled plugin catalog service", () => {
     }
   });
 
-  it("matches queries against entry id, plugin id, and manifest text", async () => {
+  it("groups a catalog entry by its curated tag", async () => {
     const catalog = service();
-    const byEntryId = await catalog.search("docs");
-    expect(byEntryId.map((entry) => entry.entryId)).toContain("docs");
+    const [hoverCards] = await catalog.search("thread-hover-cards");
+    expect(hoverCards).toMatchObject({
+      entryId: "thread-hover-cards",
+      pluginId: "thread-hover-cards",
+      category: "Interface",
+      icon: "ZoomIn",
+      iconUrl: null,
+      source:
+        "git:https://github.com/brsbl/bb-plugins.git@30f91fd977ba1ce60532af27a68534464fb62516",
+      installed: false,
+      compatible: true,
+    });
+  });
+
+  it("matches queries against entry id, plugin id, manifest text, and tags", async () => {
+    const catalog = service();
+    expect(
+      (await catalog.search("docs")).map((entry) => entry.entryId),
+    ).toContain("docs");
     // The docs directory installs under the plugin id "simple-notes".
-    const byPluginId = await catalog.search("simple-notes");
-    expect(byPluginId.map((entry) => entry.entryId)).toEqual(["docs"]);
+    expect(
+      (await catalog.search("simple-notes")).map((entry) => entry.entryId),
+    ).toEqual(["docs"]);
+    expect(
+      (await catalog.search("sidebar")).map((entry) => entry.entryId),
+    ).toContain("thread-hover-cards");
     expect(await catalog.search("no-such-plugin")).toEqual([]);
   });
 
   it("reflects install and remove in the installed flag", async () => {
     const catalog = service();
     registerInstalledOfficial({ pluginId: "simple-notes", name: "docs" });
-    let docs = (await catalog.search("docs"))[0];
-    expect(docs?.installed).toBe(true);
+    expect((await catalog.search("docs"))[0]?.installed).toBe(true);
 
     markInstalledPluginRemoved(db, "simple-notes");
-    docs = (await catalog.search("docs"))[0];
-    expect(docs?.installed).toBe(false);
+    expect((await catalog.search("docs"))[0]?.installed).toBe(false);
   });
 
   it("delegates install to the plugin service by bundled name", async () => {
@@ -187,129 +246,340 @@ describe("bundled plugin catalog service", () => {
           pluginId: "broken",
           autoInstall: false,
           defaultEnabled: true,
-          category: "Productivity",
+          category: "Developer tools",
           rootDir: missingRoot,
         },
       ],
-      gitOfficialPlugins: [],
       warn: (message) => warnings.push(message),
     });
     const results = await catalog.search("");
-    expect(results.map((entry) => entry.entryId)).toEqual(["github"]);
+    expect(results.map((entry) => entry.entryId)).not.toContain("broken");
+    expect(results.map((entry) => entry.entryId)).toContain("github");
     expect(warnings.some((warning) => warning.includes("broken"))).toBe(true);
   });
 
-  it("lists git official entries from their static metadata", async () => {
-    const catalog = service();
-    const results = await catalog.search("improve-prompt");
-    expect(results).toMatchObject([
-      {
-        entryId: "improve-prompt",
-        pluginId: "prompt-shaper",
-        displayName: "Prompt Improver",
-        icon: "AiContentGenerator01",
-        category: "Agent interaction",
+  describe("refresh", () => {
+    it("replaces the catalog, caches icons, and revalidates with the ETag", async () => {
+      const requests: Array<{ url: string; headers: Headers }> = [];
+      const fetchImpl: MarketplaceFetch = async (url, init) => {
+        requests.push({ url, headers: new Headers(init.headers) });
+        if (url === MANIFEST_URL) {
+          return requests.filter((request) => request.url === MANIFEST_URL)
+            .length === 1
+            ? jsonResponse(manifest([remoteEntry()]), { etag: '"v1"' })
+            : new Response(null, { status: 304 });
+        }
+        return new Response(VALID_SVG, {
+          status: 200,
+          headers: { "content-type": "image/svg+xml", etag: '"icon-1"' },
+        });
+      };
+      const catalog = service({ fetch: fetchImpl });
+
+      await catalog.refresh(1_000);
+      const results = await catalog.search("widgets");
+      expect(results).toHaveLength(1);
+      expect(results[0]).toMatchObject({
+        entryId: "widgets",
+        displayName: "Acme Widgets",
+        category: "Interface",
+        icon: null,
         source:
-          "git:https://github.com/brsbl/bb-plugins.git@1c6bb2e8ad3551466981e7eb027cc4b1f3428cac",
-        installed: false,
-      },
-    ]);
-    const validCategories = new Set<string>(PLUGIN_CATALOG_CATEGORIES);
-    for (const entry of GIT_OFFICIAL_PLUGINS) {
-      expect(validCategories.has(entry.category), entry.name).toBe(true);
+          "git:https://github.com/acme/plugins.git@v1.0.0#plugins/widgets",
+      });
+      expect(results[0]?.iconUrl).toBe(
+        "/api/v1/plugin-catalog/icons/bb-official/widgets?h=" +
+          catalog.icon("bb-official", "widgets")?.hash,
+      );
+      expect(catalog.icon("bb-official", "widgets")).toMatchObject({
+        contentType: "image/svg+xml",
+      });
+      // The seeded entries are gone: the published manifest is authoritative.
+      expect((await catalog.search("thread-hover-cards")).length).toBe(0);
+      expect(requests[1]?.url).toBe(ICON_URL);
+
+      await catalog.refresh(2_000);
+      const conditional = requests.filter(
+        (request) => request.url === MANIFEST_URL,
+      )[1];
+      expect(conditional?.headers.get("if-none-match")).toBe('"v1"');
+      // A 304 keeps the stored catalog and does not re-read the icon.
+      expect((await catalog.search("widgets"))[0]?.displayName).toBe(
+        "Acme Widgets",
+      );
+      expect(
+        requests.filter((request) => request.url === ICON_URL),
+      ).toHaveLength(1);
+      const row = getPluginMarketplace(db, "bb-official");
+      expect(row).toMatchObject({
+        etag: '"v1"',
+        lastSuccessfulRefreshAt: 2_000,
+        lastError: null,
+      });
+    });
+
+    it("keeps the last-known-good catalog when the payload is invalid", async () => {
+      const catalog = service({
+        fetch: async () =>
+          jsonResponse(manifest([remoteEntry({ id: "Not Valid" })])),
+      });
+      await expect(catalog.refresh(5_000)).rejects.toThrow(
+        /invalid marketplace manifest/,
+      );
+      expect((await catalog.search("thread-hover-cards")).length).toBe(1);
+      expect(getPluginMarketplace(db, "bb-official")).toMatchObject({
+        lastAttemptedRefreshAt: 5_000,
+        lastSuccessfulRefreshAt: null,
+      });
+      expect(getPluginMarketplace(db, "bb-official")?.lastError).toMatch(
+        /invalid marketplace manifest/,
+      );
+    });
+
+    it("keeps the last-known-good catalog when the request fails", async () => {
+      const catalog = service({
+        fetch: async () => new Response("nope", { status: 503 }),
+      });
+      await expect(catalog.refresh(7_000)).rejects.toThrow("HTTP 503");
+      expect((await catalog.search("")).length).toBe(
+        BUNDLED_PLUGINS.length + SEED_ENTRY_COUNT,
+      );
+      expect(getPluginMarketplace(db, "bb-official")?.lastError).toContain(
+        "HTTP 503",
+      );
+    });
+
+    it("refuses a manifest published under another marketplace name", async () => {
+      const catalog = service({
+        fetch: async () =>
+          jsonResponse({
+            ...(manifest([remoteEntry()]) as Record<string, unknown>),
+            name: "someone-else",
+          }),
+      });
+      await expect(catalog.refresh(9_000)).rejects.toThrow(/someone-else/);
+      expect((await catalog.search("widgets")).length).toBe(0);
+    });
+
+    it("falls back to the bundled snapshot when the stored catalog is unreadable", async () => {
+      service();
+      const stored = getPluginMarketplace(db, "bb-official");
+      if (stored === undefined) throw new Error("catalog row missing");
+      db.$client
+        .prepare("UPDATE plugin_marketplaces SET manifest_json = ?")
+        .run("{not json");
+      const warnings: string[] = [];
+      const catalog = service({ warn: (message) => warnings.push(message) });
+      expect((await catalog.search("thread-hover-cards")).length).toBe(1);
+      expect(warnings.some((warning) => warning.includes("bundled"))).toBe(
+        true,
+      );
+    });
+
+    it("keeps an entry whose icon fails validation and warns", async () => {
+      const warnings: string[] = [];
+      const catalog = service({
+        warn: (message) => warnings.push(message),
+        fetch: async (url) =>
+          url === MANIFEST_URL
+            ? jsonResponse(manifest([remoteEntry()]))
+            : new Response(Buffer.from("<html>not an icon</html>"), {
+                status: 200,
+              }),
+      });
+      await catalog.refresh(1_000);
+      const [entry] = await catalog.search("widgets");
+      expect(entry).toMatchObject({ entryId: "widgets", iconUrl: null });
+      expect(catalog.icon("bb-official", "widgets")).toBeUndefined();
+      expect(warnings.some((warning) => warning.includes("widgets"))).toBe(
+        true,
+      );
+    });
+
+    it("refuses an icon larger than the cap", async () => {
+      const warnings: string[] = [];
+      const catalog = service({
+        warn: (message) => warnings.push(message),
+        fetch: async (url) =>
+          url === MANIFEST_URL
+            ? jsonResponse(manifest([remoteEntry()]))
+            : new Response(Buffer.alloc(300 * 1024, 0x41), { status: 200 }),
+      });
+      await catalog.refresh(1_000);
+      expect(catalog.icon("bb-official", "widgets")).toBeUndefined();
+      expect(
+        warnings.some((warning) => warning.includes("exceeds 262144 bytes")),
+      ).toBe(true);
+    });
+
+    it("keeps cached icons while retrying a missing one on a 304", async () => {
+      let iconRequests = 0;
+      let failFirstIcon = true;
+      const catalog = service({
+        warn: () => {},
+        fetch: async (url) => {
+          if (url === MANIFEST_URL) {
+            return iconRequests === 0
+              ? jsonResponse(
+                  manifest([
+                    remoteEntry(),
+                    remoteEntry({
+                      id: "gadgets",
+                      icon: { url: "./icons/gadgets.svg" },
+                    }),
+                  ]),
+                  { etag: '"v1"' },
+                )
+              : new Response(null, { status: 304 });
+          }
+          iconRequests += 1;
+          if (url.endsWith("gadgets.svg") && failFirstIcon) {
+            failFirstIcon = false;
+            return new Response("boom", { status: 500 });
+          }
+          return new Response(VALID_SVG, { status: 200 });
+        },
+      });
+      await catalog.refresh(1_000);
+      expect(catalog.icon("bb-official", "widgets")).toBeDefined();
+      expect(catalog.icon("bb-official", "gadgets")).toBeUndefined();
+
+      await catalog.refresh(2_000);
+      // The cached icon survives the unchanged manifest; the failed one retries.
+      expect(catalog.icon("bb-official", "widgets")).toBeDefined();
+      expect(catalog.icon("bb-official", "gadgets")).toBeDefined();
+    });
+
+    it("drops a cached icon the refreshed manifest no longer lists", async () => {
+      let listIcon = true;
+      const catalog = service({
+        fetch: async (url) =>
+          url === MANIFEST_URL
+            ? jsonResponse(
+                manifest([
+                  listIcon ? remoteEntry() : remoteEntry({ icon: "Zap" }),
+                ]),
+              )
+            : new Response(VALID_SVG, { status: 200 }),
+      });
+      await catalog.refresh(1_000);
+      expect(catalog.icon("bb-official", "widgets")).toBeDefined();
+      listIcon = false;
+      await catalog.refresh(2_000);
+      expect(catalog.icon("bb-official", "widgets")).toBeUndefined();
+    });
+  });
+
+  describe("catalog installs", () => {
+    async function refreshedCatalog(entry: Record<string, unknown>) {
+      const catalog = service({
+        fetch: async (url) =>
+          url === MANIFEST_URL
+            ? jsonResponse(manifest([entry]))
+            : new Response(VALID_SVG, { status: 200 }),
+      });
+      await catalog.refresh(1_000);
+      return catalog;
     }
-  });
 
-  it("reflects the installed flag for a git entry by plugin id", async () => {
-    const catalog = service();
-    upsertInstalledPlugin(db, {
-      id: "prompt-shaper",
-      source:
-        "git:https://github.com/brsbl/bb-plugins.git@1c6bb2e8ad3551466981e7eb027cc4b1f3428cac",
-      provenance: { kind: "catalog", entryId: "improve-prompt" },
-      sourceIntent: {
-        kind: "git",
-        url: "https://github.com/brsbl/bb-plugins.git",
-        subdirectory: null,
-        requestedRef: "plugin/improve-prompt",
-        refKind: "branch",
-      },
-      exactResolution: {
-        kind: "git",
-        commit: "a985e1d5523398e9c7459d35679142cc4339771e",
-      },
-      updateState: {
-        lastCheckAt: null,
-        availableCompatibleVersion: null,
-        newestIncompatibleVersion: null,
-        statusDetail: null,
-      },
-      activeArtifactId: null,
-      rootDir: "/managed/improve-prompt",
-      version: "0.1.0",
-      enabled: true,
-    });
-    const [entry] = await catalog.search("improve-prompt");
-    expect(entry?.installed).toBe(true);
-  });
-
-  it("delegates git entry installs with catalog identity", async () => {
-    const catalog = service({
-      gitOfficialPlugins: [
+    it("routes a subdirectory entry through the install pipeline", async () => {
+      const catalog = await refreshedCatalog(remoteEntry());
+      await expect(catalog.install("widgets")).rejects.toThrow(
+        "catalog installation stopped by test",
+      );
+      expect(installedCatalogEntries).toEqual([
         {
-          name: "improve-prompt",
-          pluginId: "prompt-shaper",
-          category: "Agent interaction",
-          gitSource:
-            "git:https://github.com/brsbl/bb-plugins.git@1c6bb2e8ad3551466981e7eb027cc4b1f3428cac",
-          displayName: "Prompt Improver",
-          description: "Rewrites composer drafts.",
-          icon: "AiContentGenerator01",
-          bbEngineRange: ">=0.0.34",
-          bbPluginSdkRange: ">=0.4.1",
+          marketplace: "bb-official",
+          entryId: "widgets",
+          pluginId: "widgets",
+          source: "git:https://github.com/acme/plugins.git@v1.0.0",
+          selection: { kind: "subdirectory", path: "plugins/widgets" },
+          engines: { bb: ">=0.0.1" },
         },
-      ],
+      ]);
+      expect(installedNames).toEqual([]);
     });
-    const [entry] = await catalog.search("improve-prompt");
-    expect(entry).toMatchObject({ compatible: true, incompatibleReason: null });
-    await expect(catalog.install("improve-prompt")).rejects.toThrow(
-      "git installation stopped by test",
-    );
-    expect(installedGitEntries).toEqual([
-      {
-        entryId: "improve-prompt",
-        pluginId: "prompt-shaper",
-        source:
-          "git:https://github.com/brsbl/bb-plugins.git@1c6bb2e8ad3551466981e7eb027cc4b1f3428cac",
-      },
-    ]);
-    expect(installedNames).toEqual([]);
-  });
 
-  it("refuses installing an incompatible git entry", async () => {
-    const catalog = service({
-      gitOfficialPlugins: [
-        {
-          name: "future-plugin",
-          pluginId: "future-plugin",
-          category: "Interface",
-          gitSource: "git:https://example.com/acme/future.git@main",
-          displayName: "Future Plugin",
-          description: "Needs a newer bb.",
+    it("routes an npm entry with its dist-tag and registry", async () => {
+      const catalog = await refreshedCatalog(
+        remoteEntry({
           icon: "Zap",
-          bbEngineRange: ">=99.0.0",
-          bbPluginSdkRange: "^0.4.1",
+          source: {
+            npm: {
+              package: "bb-plugin-widgets",
+              tag: "beta",
+              registry: "https://npm.acme.test",
+            },
+          },
+        }),
+      );
+      await expect(catalog.install("widgets")).rejects.toThrow(
+        "catalog installation stopped by test",
+      );
+      expect(installedCatalogEntries).toEqual([
+        {
+          marketplace: "bb-official",
+          entryId: "widgets",
+          pluginId: "widgets",
+          source: "npm:bb-plugin-widgets@beta",
+          selection: ROOT_PLUGIN_SOURCE_SELECTION,
+          engines: { bb: ">=0.0.1" },
+          npmRegistry: "https://npm.acme.test",
         },
-      ],
+      ]);
     });
-    const [entry] = await catalog.search("future-plugin");
-    expect(entry).toMatchObject({
-      compatible: false,
-      incompatibleReason: expect.stringContaining(">=99.0.0"),
+
+    it("refuses an entry this bb build cannot run", async () => {
+      const catalog = await refreshedCatalog(
+        remoteEntry({ icon: "Zap", engines: { bb: ">=99.0.0" } }),
+      );
+      const [entry] = await catalog.search("widgets");
+      expect(entry).toMatchObject({
+        compatible: false,
+        incompatibleReason: expect.stringContaining(">=99.0.0"),
+      });
+      await expect(catalog.install("widgets")).rejects.toThrow(
+        /install refused/,
+      );
+      expect(installedCatalogEntries).toEqual([]);
     });
-    await expect(catalog.install("future-plugin")).rejects.toThrow(
-      /install refused/,
-    );
-    expect(installedGitEntries).toEqual([]);
+
+    it("reads the installed flag from catalog provenance", async () => {
+      const catalog = service();
+      upsertInstalledPlugin(db, {
+        id: "hover-cards",
+        source:
+          "git:https://github.com/brsbl/bb-plugins.git@30f91fd977ba1ce60532af27a68534464fb62516",
+        provenance: {
+          kind: "catalog",
+          marketplace: "bb-official",
+          entryId: "thread-hover-cards",
+        },
+        sourceIntent: {
+          kind: "git",
+          url: "https://github.com/brsbl/bb-plugins.git",
+          subdirectory: null,
+          requestedRef: "30f91fd977ba1ce60532af27a68534464fb62516",
+          refKind: "commit",
+        },
+        exactResolution: {
+          kind: "git",
+          commit: "30f91fd977ba1ce60532af27a68534464fb62516",
+        },
+        updateState: {
+          lastCheckAt: null,
+          availableCompatibleVersion: null,
+          newestIncompatibleVersion: null,
+          statusDetail: null,
+        },
+        activeArtifactId: null,
+        rootDir: "/managed/thread-hover-cards",
+        version: "0.1.0",
+        enabled: true,
+      });
+      expect((await catalog.search("thread-hover-cards"))[0]?.installed).toBe(
+        true,
+      );
+    });
   });
 });

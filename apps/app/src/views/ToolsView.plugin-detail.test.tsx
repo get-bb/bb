@@ -66,6 +66,7 @@ const GITHUB_CATALOG_ENTRY = {
   displayName: "GitHub",
   description: "Browse GitHub issues and pull requests in BB.",
   icon: "Github",
+  iconUrl: null,
   category: "Developer tools",
   source: "builtin:github",
   installed: false,

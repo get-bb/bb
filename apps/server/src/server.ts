@@ -452,7 +452,11 @@ export function createApp(
   const pluginCatalogService = createPluginCatalogService({
     db: deps.db,
     appVersion: deps.config.appVersion,
+    marketplaceUrl: deps.config.marketplaceUrl,
     plugins: pluginService,
+    // The store's installed/compatible flags ride the plugin-list broadcast,
+    // so a refreshed catalog reaches open windows without polling.
+    notifyCatalogChanged: () => deps.hub.notifySystem(["plugins-changed"]),
     warn: (message) => deps.logger.warn(message),
   });
   registerProjectRoutes(publicApi, deps);

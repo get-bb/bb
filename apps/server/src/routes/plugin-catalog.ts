@@ -20,6 +20,32 @@ export function registerPluginCatalogRoutes(
     }),
   );
 
+  // Marketplace entry icons the server fetched and validated during a refresh.
+  // Serving them from BB's own origin is what keeps the app from requesting a
+  // third-party URL. `?h=<content hash>` gets immutable caching; anything else
+  // is no-store, so a stale URL can never pin stale bytes.
+  app.get("/plugin-catalog/icons/:marketplace/:entryId", (context) => {
+    const icon = catalog.icon(
+      context.req.param("marketplace"),
+      context.req.param("entryId"),
+    );
+    if (icon === undefined) {
+      return context.json({ ok: false, error: "unknown catalog icon" }, 404);
+    }
+    return context.body(new Uint8Array(icon.bytes), 200, {
+      "content-type": icon.contentType,
+      "cache-control":
+        context.req.query("h") === icon.hash
+          ? "public, max-age=31536000, immutable"
+          : "no-store",
+      // Icons are inert images, but they are third-party bytes served from
+      // BB's origin: forbid scripts and framing outright.
+      "content-security-policy":
+        "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+      "x-content-type-options": "nosniff",
+    });
+  });
+
   app.post("/plugin-catalog/install", async (context) => {
     const json: unknown = await context.req.json().catch(() => null);
     const body = pluginCatalogInstallRequestSchema.safeParse(json);

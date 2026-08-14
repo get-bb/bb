@@ -780,7 +780,9 @@ export function registerPluginCommands(
 
   plugin
     .command("search <query>")
-    .description("Search BB's official plugins (bundled with the app)")
+    .description(
+      "Search BB's official plugins: the plugins bundled with the app plus the BB Official marketplace catalog",
+    )
     .option("--json", "Output JSON")
     .action(
       action(async (query: string, opts: JsonOutputOptions) => {

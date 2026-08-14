@@ -29,6 +29,7 @@ describe("normalized plugin persistence", () => {
       source: "npm:bb-plugin-linear@1.2.3",
       provenance: {
         kind: "catalog",
+        marketplace: "bb-official",
         entryId: "linear",
       },
       sourceIntent: {
@@ -77,6 +78,7 @@ describe("normalized plugin persistence", () => {
     expect(getInstalledPluginRegistration(db, "linear")).toMatchObject({
       provenance: "catalog",
       catalogEntryId: "linear",
+      catalogMarketplaceName: "bb-official",
       sourceKind: "npm",
       sourceNpmRequestedSpec: "^1.2.0",
       sourceNpmSpecKind: "range",

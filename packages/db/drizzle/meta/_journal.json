@@ -666,6 +666,13 @@
       "when": 1786719546233,
       "tag": "0094_mighty_polaris",
       "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "6",
+      "when": 1786722013088,
+      "tag": "0095_normal_elektra",
+      "breakpoints": true
     }
   ]
 }

@@ -15,6 +15,7 @@ const searchResult = {
   displayName: "Linear",
   description: "Linear issue tools",
   icon: null,
+  iconUrl: null,
   category: "Developer tools",
   source: "builtin:linear",
   installed: false,
@@ -250,9 +251,9 @@ describe("bb plugin catalog", () => {
 
   it("no longer advertises the remote catalog command group", async () => {
     const pluginHelp = await getHelpOutput(["plugin"], register);
-    expect(pluginHelp).not.toContain("catalog");
-    // No `marketplace` command may come back; the word itself is fine —
-    // `submit`'s description legitimately points at BB's marketplace intake.
+    // Neither a `catalog` nor a `marketplace` command may come back; the words
+    // themselves are fine — `search` and `submit` describe what they read.
+    expect(pluginHelp).not.toMatch(/^\s+catalog/mu);
     expect(pluginHelp).not.toMatch(/^\s+marketplace/mu);
     expect(pluginHelp).toContain("search");
 

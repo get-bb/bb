@@ -17,6 +17,10 @@ import {
   builtinPluginSource,
   type BundledPluginRegistration,
 } from "./builtin-registry.js";
+import {
+  marketplacePolicyWideningProblem,
+  OFFICIAL_MARKETPLACE_NAME,
+} from "../plugin-catalog/marketplace-manifest.js";
 import type { PluginSourceSelection } from "@bb/server-contract";
 import { resolveSelectedSubdirectory } from "./collection-manifest.js";
 import {
@@ -37,6 +41,7 @@ import type {
   PluginServiceDeps,
 } from "./plugin-service-internal.js";
 import {
+  evaluateCompatibility,
   gitResolvedVersion,
   resolveGitRef,
   type GitRefKind,
@@ -105,7 +110,8 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     }
     if (
       provenance.kind === "catalog" &&
-      row.catalogEntryId !== provenance.entryId
+      (row.catalogEntryId !== provenance.entryId ||
+        catalogMarketplaceOf(row) !== provenance.marketplace)
     ) {
       return false;
     }
@@ -137,6 +143,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       current.source === expected.source &&
       current.provenance === expected.provenance &&
       current.catalogEntryId === expected.catalogEntryId &&
+      current.catalogMarketplaceName === expected.catalogMarketplaceName &&
       current.sourceKind === expected.sourceKind &&
       current.sourcePath === expected.sourcePath &&
       current.sourceBuiltinName === expected.sourceBuiltinName &&
@@ -163,6 +170,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       source: row.source,
       provenance: row.provenance,
       catalogEntryId: row.catalogEntryId,
+      catalogMarketplaceName: row.catalogMarketplaceName,
       sourceKind: row.sourceKind,
       sourcePath: row.sourcePath,
       sourceBuiltinName: row.sourceBuiltinName,
@@ -215,6 +223,30 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       args,
       initialManifest.id,
     );
+    // A marketplace listing may narrow the plugin's own engine ranges; it may
+    // never widen them, and it may not promise this bb build a plugin the
+    // listing itself declares incompatible.
+    const wideningProblem = marketplacePolicyWideningProblem(
+      args.marketplaceEngines,
+      initialManifest,
+    );
+    if (wideningProblem !== null) {
+      throw new Error(`install refused: ${wideningProblem}`);
+    }
+    if (args.marketplaceEngines !== undefined) {
+      const listed = evaluateCompatibility({
+        bbRange: args.marketplaceEngines.bb,
+        sdkRange: args.marketplaceEngines.bbPluginSdk,
+        appVersion: deps.appVersion,
+      });
+      if (listed.effective.length > 0) {
+        throw new Error(
+          `install refused by marketplace compatibility policy: ${listed.effective
+            .map((problem) => problem.message)
+            .join("; ")}`,
+        );
+      }
+    }
     if (
       args.provenance.kind !== "builtin" &&
       args.sourceIntent.kind !== "builtin"
@@ -365,6 +397,14 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     return { version: row.version, display: row.source };
   }
 
+  /**
+   * Rows written before marketplaces were named all came from the official
+   * catalog, so a missing name reads as `bb-official` rather than as corrupt.
+   */
+  function catalogMarketplaceOf(row: InstalledPluginRow): string {
+    return row.catalogMarketplaceName ?? OFFICIAL_MARKETPLACE_NAME;
+  }
+
   function provenanceForRow(row: InstalledPluginRow): PluginProvenance {
     if (row.provenance !== "catalog") return { kind: row.provenance };
     if (row.catalogEntryId === null) {
@@ -372,6 +412,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     }
     return {
       kind: "catalog",
+      marketplace: catalogMarketplaceOf(row),
       entryId: row.catalogEntryId,
     };
   }
@@ -458,7 +499,11 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     // record the user's opt-in as a catalog install of the bundled entry.
     return plugin.autoInstall
       ? { kind: "builtin" }
-      : { kind: "catalog", entryId: plugin.name };
+      : {
+          kind: "catalog",
+          marketplace: OFFICIAL_MARKETPLACE_NAME,
+          entryId: plugin.name,
+        };
   }
 
   async function installBuiltinSource(

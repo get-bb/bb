@@ -96,8 +96,10 @@ import {
 import { createPluginActivation } from "./plugin-activation.js";
 import {
   createManagedPluginArtifacts,
+  type InstallContext,
   type RegisterInstalledArgs,
 } from "./managed-plugin-artifacts.js";
+import type { MarketplaceEngines } from "../plugin-catalog/marketplace-manifest.js";
 import { createPluginRegistration } from "./plugin-registration.js";
 import { createPluginRuntime, forgetMutableRoot } from "./plugin-runtime.js";
 import { createPluginUpdates } from "./plugin-updates.js";
@@ -190,15 +192,23 @@ export interface PluginService {
    */
   installOfficialPlugin(name: string): Promise<PluginListEntry>;
   /**
-   * Install a git-sourced official catalog entry (store install). Installs
-   * from the entry's `git:` source and stamps catalog provenance so the
-   * plugin lists as official and traces back to its catalog entry.
+   * Install a marketplace catalog entry (store install). Installs from the
+   * entry's listed source through the normal pipeline and stamps catalog
+   * provenance, so the plugin traces back to the marketplace that listed it.
    */
-  installGitCatalogPlugin(args: {
+  installCatalogPlugin(args: {
+    /** Marketplace that listed the entry, e.g. `bb-official`. */
+    marketplace: string;
     entryId: string;
     /** Manifest id the catalog entry promises; the install aborts on mismatch. */
     pluginId: string;
     source: string;
+    /** Which plugin of a multi-plugin repository the entry lists. */
+    selection: PluginSourceSelection;
+    /** Listed engine ranges; they may narrow the manifest's, never widen it. */
+    engines?: MarketplaceEngines;
+    /** npm registry the listing pins. */
+    npmRegistry?: string;
   }): Promise<PluginListEntry>;
   installPath(path: string): Promise<PluginListEntry>;
   checkForUpdates(id?: string): Promise<PluginUpdateCheckEntry[]>;
@@ -1235,6 +1245,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           ...(row.catalogEntryId === null
             ? {}
             : { catalogEntryId: row.catalogEntryId }),
+          ...(row.catalogMarketplaceName === null
+            ? {}
+            : { catalogMarketplaceName: row.catalogMarketplaceName }),
           isOrphanedBuiltin:
             row.sourceKind === "builtin" &&
             !bundledPlugins.some(
@@ -1506,18 +1519,44 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       });
     },
 
-    async installGitCatalogPlugin({ entryId, pluginId, source }) {
+    async installCatalogPlugin(entry) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
-        const parsed = parsePluginSource(source);
-        if (parsed.kind !== "git") {
-          throw new Error(
-            `catalog entry "${entryId}" has a non-git source "${source}"`,
+        const parsed = parsePluginSource(entry.source);
+        const context: InstallContext = {
+          provenance: {
+            kind: "catalog",
+            marketplace: entry.marketplace,
+            entryId: entry.entryId,
+          },
+          expectedPluginId: entry.pluginId,
+          ...(entry.engines === undefined
+            ? {}
+            : { marketplaceEngines: entry.engines }),
+          ...(entry.npmRegistry === undefined
+            ? {}
+            : { npmRegistry: entry.npmRegistry }),
+        };
+        if (parsed.kind === "git") {
+          return installGitSource(
+            parsed,
+            entry.source,
+            entry.selection,
+            context,
           );
         }
-        return installGitSource(parsed, source, ROOT_PLUGIN_SOURCE_SELECTION, {
-          provenance: { kind: "catalog", entryId },
-          expectedPluginId: pluginId,
-        });
+        if (parsed.kind === "npm") {
+          // Only a repository holds several plugins.
+          if (entry.selection.kind !== "root") {
+            throw new Error(
+              `catalog entry "${entry.entryId}" selects a subdirectory of an npm package`,
+            );
+          }
+          refuseBuiltinShadow(derivePluginId(parsed.name));
+          return installNpmSource(parsed, entry.source, context);
+        }
+        throw new Error(
+          `catalog entry "${entry.entryId}" has an unsupported source "${entry.source}"`,
+        );
       });
     },
 

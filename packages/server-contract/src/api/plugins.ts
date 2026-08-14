@@ -178,6 +178,8 @@ export const installedPluginSchema = z.object({
   provenance: z.enum(["builtin", "direct", "catalog"]),
   isOrphanedBuiltin: z.boolean(),
   catalogEntryId: z.string().optional(),
+  /** Marketplace that listed the entry; present only on catalog installs. */
+  catalogMarketplaceName: z.string().optional(),
   sourceDisplay: z.string(),
   updateState: pluginUpdateStateSchema,
   enabled: z.boolean(),
@@ -354,6 +356,11 @@ export const pluginCatalogSearchResultSchema = z.object({
   displayName: z.string(),
   description: z.string(),
   icon: z.string().nullable(),
+  /**
+   * BB-hosted URL of a cached marketplace icon image, or null when the entry
+   * names a host icon. The app never requests the marketplace's own URL.
+   */
+  iconUrl: z.string().nullable(),
   category: z.string(),
   source: z.string(),
   installed: z.boolean(),

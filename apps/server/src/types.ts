@@ -40,6 +40,8 @@ export interface ServerRuntimeConfig {
    * {@link MANAGED_ENVIRONMENT_RETIRE_GRACE_MS}; set to 0 to destroy immediately.
    */
   managedEnvironmentRetireGraceMs: number;
+  /** Manifest URL of the BB Official plugin marketplace. */
+  marketplaceUrl: string;
   openAiApiKey: string;
   serverPort: number;
   sharedSkillRoots: ProviderNativeSkillRoots;

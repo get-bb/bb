@@ -1,4 +1,5 @@
 import {
+  blob,
   check,
   index,
   integer,
@@ -210,6 +211,8 @@ export const installedPlugins = sqliteTable("plugins", {
     .notNull()
     .default("direct"),
   catalogEntryId: text("catalog_entry_id"),
+  /** Marketplace that listed the entry; non-null exactly for catalog rows. */
+  catalogMarketplaceName: text("catalog_marketplace_name"),
   sourceKind: text("source_kind", {
     enum: ["path", "builtin", "npm", "git"],
   })
@@ -286,6 +289,45 @@ export const pluginArtifacts = sqliteTable(
     validatedAt: integer("validated_at"),
   },
   (table) => [index("plugin_artifacts_plugin_idx").on(table.pluginId)],
+);
+
+// Last-known-good marketplace catalogs, one row per marketplace name
+// ("bb-official" is reserved). The row holds the validated manifest document
+// plus the conditional-request validators the refresh loop replays. A failed
+// refresh updates only the attempt/error columns, so the stored manifest keeps
+// serving the store offline.
+export const pluginMarketplaces = sqliteTable("plugin_marketplaces", {
+  name: text("name").primaryKey(),
+  /** Manifest URL the stored document came from; relative icons resolve against it. */
+  manifestUrl: text("manifest_url").notNull(),
+  manifestJson: text("manifest_json").notNull(),
+  etag: text("etag"),
+  lastModified: text("last_modified"),
+  lastSuccessfulRefreshAt: integer("last_successful_refresh_at"),
+  lastAttemptedRefreshAt: integer("last_attempted_refresh_at"),
+  lastError: text("last_error"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+// Marketplace entry icons the server fetched and validated during a refresh.
+// The app renders these bytes from BB's own origin, so it never requests a
+// third-party URL.
+export const pluginMarketplaceIcons = sqliteTable(
+  "plugin_marketplace_icons",
+  {
+    marketplaceName: text("marketplace_name").notNull(),
+    entryId: text("entry_id").notNull(),
+    /** Absolute URL the bytes came from; a changed URL forces a refetch. */
+    sourceUrl: text("source_url").notNull(),
+    contentType: text("content_type").notNull(),
+    etag: text("etag"),
+    /** Content hash; the asset route uses it as the cache-busting token. */
+    contentHash: text("content_hash").notNull(),
+    bytes: blob("bytes", { mode: "buffer" }).notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.marketplaceName, table.entryId] })],
 );
 
 export const pluginStateSnapshots = sqliteTable(

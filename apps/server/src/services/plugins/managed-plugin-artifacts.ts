@@ -40,6 +40,7 @@ import type {
   PluginListEntry,
   PluginServiceDeps,
 } from "./plugin-service-internal.js";
+import type { MarketplaceEngines } from "../plugin-catalog/marketplace-manifest.js";
 import {
   createNpmResolverRun,
   evaluateCompatibility,
@@ -59,6 +60,8 @@ export interface InstallRegistrationIdentity {
 export interface RegisterInstalledArgs extends InstallRegistrationIdentity {
   rootDir: string;
   source: string;
+  /** Engine ranges the marketplace listing declared, when it declared any. */
+  marketplaceEngines?: MarketplaceEngines;
   exactResolution: PluginExactResolution;
   refuseEngineMismatch: boolean;
   validated: boolean;
@@ -75,6 +78,13 @@ export interface InstallContext {
    * declares any other id; absent means direct installs with no expectation.
    */
   expectedPluginId?: string;
+  /**
+   * Engine ranges a marketplace listing declared. They may narrow the plugin
+   * manifest's own ranges; {@link RegisterInstalledArgs} refuses widening.
+   */
+  marketplaceEngines?: MarketplaceEngines;
+  /** npm registry a listing pins, replacing the host's npm configuration. */
+  npmRegistry?: string;
 }
 
 interface ActivateManagedUpdateArgs {
@@ -194,6 +204,15 @@ export function createManagedPluginArtifacts(
   const directInstallContext: InstallContext = {
     provenance: { kind: "direct" },
   };
+
+  /** Listing policy carried into `registerInstalled` from an install context. */
+  function marketplacePolicy(context: InstallContext): {
+    marketplaceEngines?: MarketplaceEngines;
+  } {
+    return context.marketplaceEngines === undefined
+      ? {}
+      : { marketplaceEngines: context.marketplaceEngines };
+  }
 
   function assertExpectedPluginId(
     context: InstallContext,
@@ -570,6 +589,7 @@ export function createManagedPluginArtifacts(
             rootDir: targetRoot,
             source,
             ...cachedRegistrationIdentity,
+            ...marketplacePolicy(context),
             exactResolution: { kind: "git", commit: resolvedCommit },
             refuseEngineMismatch: true,
             validated: true,
@@ -668,6 +688,7 @@ export function createManagedPluginArtifacts(
           rootDir: stagedTargetRoot,
           source,
           ...stagedRegistrationIdentity,
+          ...marketplacePolicy(context),
           exactResolution: { kind: "git", commit: resolvedCommit },
           refuseEngineMismatch: true,
           validated: true,
@@ -717,7 +738,11 @@ export function createManagedPluginArtifacts(
   ): Promise<PluginListEntry> {
     const registryProbe = join(deps.dataDir, "plugins", "npm", ".registry");
     await mkdir(registryProbe, { recursive: true });
-    const registry = await resolveNpmRegistry(registryProbe, parsed.name);
+    // A listing that pins its own registry wins over the host's npm config;
+    // the pinned value is persisted, so updates re-resolve against it too.
+    const registry =
+      context.npmRegistry ??
+      (await resolveNpmRegistry(registryProbe, parsed.name));
     const intent: NpmSourceIntentForResolution = {
       packageName: parsed.name,
       registry,
@@ -729,6 +754,9 @@ export function createManagedPluginArtifacts(
       sourceIntent: { kind: "npm", ...intent },
     };
     const pluginId = derivePluginId(parsed.name);
+    // An npm plugin's id comes from its package name, so a listing that names
+    // the wrong plugin fails before any registry request.
+    assertExpectedPluginId(context, pluginId, source);
     assertInstallRegistrationAvailable(
       getInstalledPlugin(deps.db, pluginId),
       registrationIdentity,
@@ -790,6 +818,7 @@ export function createManagedPluginArtifacts(
             rootDir,
             source,
             ...registrationIdentity,
+            ...marketplacePolicy(context),
             exactResolution: {
               kind: "npm",
               version: candidate.version,
@@ -875,6 +904,7 @@ export function createManagedPluginArtifacts(
           rootDir,
           source,
           ...registrationIdentity,
+          ...marketplacePolicy(context),
           exactResolution: {
             kind: "npm",
             version: candidate.version,

@@ -23,13 +23,13 @@ import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { Link } from "react-router-dom";
 import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {
   PluginDetailReleaseControl,
   PluginDetailReleaseStatus,
   pluginHasUpdateSurfaces,
 } from "@/components/plugin/management/PluginUpdatesCard";
 import {
+  CatalogEntryIcon,
   formatAbsoluteDate,
   PluginLogo,
 } from "@/components/plugin/management/plugin-ui";
@@ -130,13 +130,7 @@ export function CatalogPluginDetail({
   return (
     <ResourceDetailPage
       maxWidthClassName="max-w-5xl"
-      leading={
-        <PluginIcon
-          pluginId={entry.pluginId}
-          icon={entry.icon}
-          className="size-full"
-        />
-      }
+      leading={<CatalogEntryIcon entry={entry} className="size-full" />}
       title={entry.displayName}
       titleMeta={<ProvenancePill label="BB Official" />}
       metadata={<span>{entry.category}</span>}

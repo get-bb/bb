@@ -11,6 +11,7 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+import { OFFICIAL_MARKETPLACE_NAME } from "../plugin-catalog/marketplace-manifest.js";
 import {
   createPluginStateSnapshot,
   getInstalledPlugin,
@@ -85,6 +86,9 @@ const installedPluginRowSchema = z
     ...installedPluginRowFields,
     provenance: z.enum(["builtin", "direct", "catalog"]),
     catalogEntryId: z.string().nullable(),
+    // Snapshots written before marketplaces were named omit this; those rows
+    // all came from the official catalog.
+    catalogMarketplaceName: z.string().nullable().default(null),
   })
   .strict();
 const legacyInstalledPluginRowSchema = z
@@ -266,7 +270,7 @@ export async function readPluginSnapshotRegistration(args: {
   const installed = getInstalledPlugin(args.db, legacy.id);
   if (
     legacy.provenance === "marketplace" &&
-    marketplaceId === "bb-official" &&
+    marketplaceId === OFFICIAL_MARKETPLACE_NAME &&
     marketplaceEntryId !== null &&
     installed?.provenance === "catalog" &&
     installed.catalogEntryId === marketplaceEntryId
@@ -275,12 +279,14 @@ export async function readPluginSnapshotRegistration(args: {
       ...registration,
       provenance: "catalog",
       catalogEntryId: marketplaceEntryId,
+      catalogMarketplaceName: OFFICIAL_MARKETPLACE_NAME,
     };
   }
   return {
     ...registration,
     provenance: legacy.provenance === "builtin" ? "builtin" : "direct",
     catalogEntryId: null,
+    catalogMarketplaceName: null,
   };
 }
 

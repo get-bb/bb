@@ -726,8 +726,15 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - BB's official plugins (GitHub, Docs, Memory, and Tasks) ship
     bundled inside the app and install from the local copy — no network. Installed official
     plugins are pinned to the bundled copy and update with BB app releases.
+  - The store also lists the **BB Official marketplace** catalog: a manifest
+    the server re-reads at startup and every six hours from
+    `https://getbb.app/marketplace/v1/marketplace.json`
+    (override with `BB_MARKETPLACE_URL`). Its entries install from their listed
+    git or npm source through the normal install pipeline. A refresh only
+    updates discovery metadata and icons; it never installs, updates, or runs
+    plugin code, and a failed refresh keeps the last catalog bb validated.
   - `bb plugin search <query> [--json]` — search the official plugins by id,
-    name, description, or category; status shows installed / compatible /
+    name, description, category, or tag; status shows installed / compatible /
     requires newer bb.
   - `bb plugin submit [--json]` — print the link to BB's plugin marketplace intake
     form (a public GitHub repo is required; submission happens in the browser,

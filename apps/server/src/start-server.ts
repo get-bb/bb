@@ -70,6 +70,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     appSurface: serverConfig.BB_APP_SURFACE,
     appVersion: serverConfig.BB_APP_VERSION,
     builtinSkillsRootPath: resolveBuiltinSkillsRootPath(),
+    marketplaceUrl: serverConfig.BB_MARKETPLACE_URL,
     customAcpAgents: [],
     customModels: [],
     dataDir: serverConfig.BB_DATA_DIR,
@@ -140,7 +141,13 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     config: runtimeConfig,
     logger,
   });
-  const { app, closeWebSockets, injectWebSocket, pluginService } = createApp(
+  const {
+    app,
+    closeWebSockets,
+    injectWebSocket,
+    pluginCatalogService,
+    pluginService,
+  } = createApp(
     {
       appVersion,
       bbAppManagedConfig,
@@ -211,6 +218,9 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   void pluginService.start().catch((error: unknown) => {
     logger.error({ err: error }, "Plugin startup failed");
   });
+  // Discovery metadata only: a refresh never installs, updates, or runs
+  // plugin code, and a failure keeps the last-known-good catalog.
+  pluginCatalogService.startPeriodicRefresh();
 
   const sweepInterval = setInterval(() => {
     void runPeriodicSweeps(sweepDeps);
@@ -225,6 +235,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     shutdownPromise = (async () => {
       eventLoopStallMonitor.stop();
       clearInterval(sweepInterval);
+      pluginCatalogService.stopPeriodicRefresh();
       await pluginService.stop().catch((error: unknown) => {
         logger.warn({ err: error }, "Plugin shutdown failed");
       });

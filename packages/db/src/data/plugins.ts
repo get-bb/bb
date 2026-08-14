@@ -5,7 +5,8 @@ import { installedPlugins, pluginArtifacts } from "../schema.js";
 export type PluginProvenance =
   | { kind: "builtin" }
   | { kind: "direct" }
-  | { kind: "catalog"; entryId: string };
+  /** Installed from a marketplace listing; `marketplace` names the catalog. */
+  | { kind: "catalog"; marketplace: string; entryId: string };
 
 export type PluginSourceIntent =
   | { kind: "path"; canonicalPath: string }
@@ -47,6 +48,7 @@ export interface InstalledPluginRow {
   source: string;
   provenance: "builtin" | "direct" | "catalog";
   catalogEntryId: string | null;
+  catalogMarketplaceName: string | null;
   sourceKind: "path" | "builtin" | "npm" | "git";
   sourcePath: string | null;
   sourceBuiltinName: string | null;
@@ -116,6 +118,10 @@ function normalizedColumns(
     provenance: plugin.provenance.kind,
     catalogEntryId:
       plugin.provenance.kind === "catalog" ? plugin.provenance.entryId : null,
+    catalogMarketplaceName:
+      plugin.provenance.kind === "catalog"
+        ? plugin.provenance.marketplace
+        : null,
     sourceKind: plugin.sourceIntent.kind,
     sourcePath:
       plugin.sourceIntent.kind === "path"

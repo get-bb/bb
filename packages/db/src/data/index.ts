@@ -217,6 +217,19 @@ export {
   type PluginArtifactRow,
 } from "./plugin-artifacts.js";
 export {
+  deletePluginMarketplaceIcon,
+  getPluginMarketplace,
+  getPluginMarketplaceIcon,
+  listPluginMarketplaceIcons,
+  recordPluginMarketplaceRefreshFailure,
+  upsertPluginMarketplace,
+  upsertPluginMarketplaceIcon,
+  type PluginMarketplaceIconRow,
+  type PluginMarketplaceRow,
+  type UpsertPluginMarketplaceIconInput,
+  type UpsertPluginMarketplaceInput,
+} from "./plugin-marketplaces.js";
+export {
   deleteAllPluginSettings,
   deletePluginKvValue,
   getPluginKvValue,

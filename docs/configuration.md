@@ -127,6 +127,7 @@ signal it, so a stale file left by a crash cannot stop an unrelated process.
 | `BB_INFERENCE`          | `bb-app config`                                    | Optional                | Primary server-side helper model in `provider/model` format. Defaults to `codex/gpt-5.6-luna`; the Codex helper route uses no reasoning.                                                                                                |
 | `BB_INFERENCE_FALLBACK` | `bb-app config`                                    | Optional                | Helper model used after a transient primary timeout, rate limit, or service-unavailable failure. Defaults to `codex/gpt-5.4-mini`.                                                                                                      |
 | `BB_TRANSCRIPTION`      | `bb-app config`                                    | Optional                | Voice transcription model in `provider/model` format. Defaults to `codex/gpt-transcribe`.                                                                                                                                               |
+| `BB_MARKETPLACE_URL`    | `bb-app env`, or environment                       | Startup-only testing    | Manifest URL of the BB Official plugin marketplace. Defaults to `https://getbb.app/marketplace/v1/marketplace.json`; point it at a local file server to test catalog refreshes. A full launcher or desktop app restart is required.     |
 | `BB_SERVER_URL`         | `bb-app config`                                    | Remote CLI/host use     | Server URL for standalone `bb` CLI and `host-daemon` commands on the current machine. The CLI defaults to `http://127.0.0.1:38886` when unset.                                                                                          |
 | `BB_SERVER_BIND_HOST`   | `bb-app env`, environment, or `--server-bind-host` | Startup-only            | Server listener host. Defaults to `127.0.0.1`; accepts only `127.0.0.1` or `0.0.0.0`. A full launcher or desktop app restart is required; until then, a previous `0.0.0.0` listener remains exposed. This is not a `bb-app config` key. |
 | `BB_SERVER_PORT`        | `bb-app env`, environment, or `--server-port`      | Startup-only            | HTTP listener port. Defaults to `38886`. A full launcher or desktop app restart is required after a persistent set or unset.                                                                                                            |
@@ -192,32 +193,32 @@ to on. Set it with
 `bb settings keyboard hints <true|false>`. Turning it off hides the
 delayed shortcut badges without disabling any shortcuts.
 
-| Area      | Command                            | Default                           | Availability             |
-| --------- | ---------------------------------- | --------------------------------- | ------------------------ |
-| Threads   | New thread                         | `Mod+N` / `Mod+Shift+O`           | Desktop / web            |
-| Threads   | Search threads                     | `Mod+K`                           | All clients              |
-| Threads   | Rename focused thread              | Unassigned                        | Thread view              |
-| Threads   | Archive focused thread             | Unassigned                        | Thread view              |
-| Threads   | Previous / next thread             | Surface defaults above            | Desktop / web            |
-| Threads   | Open visible thread 1–9            | Platform defaults above           | Web / desktop            |
-| Layout    | Previous / next chat pane          | Unassigned                        | While split              |
-| Layout    | Focus chat pane 1–8                | Platform defaults above           | Split (web / desktop)    |
-| Layout    | Maximize / restore chat pane       | `Mod+Shift+E`                     | While split              |
-| Layout    | Close focused chat pane            | `Mod+Shift+X`                     | While split              |
-| Window    | New window                         | `Mod+Shift+N`                     | Desktop                  |
-| Window    | Settings                           | `Mod+,`                           | All clients              |
-| Layout    | Toggle sidebar                     | `Mod+\`                           | All clients              |
-| Panel     | New tab / close tab / toggle       | `Mod+T` / `Mod+W` / `Mod+J`       | All clients              |
-| Workspace | Quick open file / toggle diff      | `Mod+P` / `Mod+D`                 | All clients              |
-| Workspace | Open terminal                      | `Mod+Shift+Enter` / `Mod+Shift+T` | Web / desktop            |
-| Workspace | Open in preferred app              | `Mod+O`                           | All clients              |
-| Composer  | Focus composer                     | `Mod+Shift+C`                     | All clients              |
-| Composer  | Toggle model picker                | `Mod+Shift+M`                     | All clients              |
-| Composer  | Cycle model forward / backward     | `Alt+M` / `Alt+Shift+M`           | All clients              |
-| Composer  | Cycle provider forward / backward  | `Alt+P` / `Alt+Shift+P`           | All clients              |
-| Composer  | Cycle reasoning effort forward / backward | `Alt+T` / `Alt+Shift+T`    | All clients              |
-| Browser   | Focus location / reload            | `Mod+L` / `Mod+R`                 | Desktop embedded browser |
-| Questions | Choose visible answer 1–9          | `1` … `9`                         | While a question is open |
+| Area      | Command                                   | Default                           | Availability             |
+| --------- | ----------------------------------------- | --------------------------------- | ------------------------ |
+| Threads   | New thread                                | `Mod+N` / `Mod+Shift+O`           | Desktop / web            |
+| Threads   | Search threads                            | `Mod+K`                           | All clients              |
+| Threads   | Rename focused thread                     | Unassigned                        | Thread view              |
+| Threads   | Archive focused thread                    | Unassigned                        | Thread view              |
+| Threads   | Previous / next thread                    | Surface defaults above            | Desktop / web            |
+| Threads   | Open visible thread 1–9                   | Platform defaults above           | Web / desktop            |
+| Layout    | Previous / next chat pane                 | Unassigned                        | While split              |
+| Layout    | Focus chat pane 1–8                       | Platform defaults above           | Split (web / desktop)    |
+| Layout    | Maximize / restore chat pane              | `Mod+Shift+E`                     | While split              |
+| Layout    | Close focused chat pane                   | `Mod+Shift+X`                     | While split              |
+| Window    | New window                                | `Mod+Shift+N`                     | Desktop                  |
+| Window    | Settings                                  | `Mod+,`                           | All clients              |
+| Layout    | Toggle sidebar                            | `Mod+\`                           | All clients              |
+| Panel     | New tab / close tab / toggle              | `Mod+T` / `Mod+W` / `Mod+J`       | All clients              |
+| Workspace | Quick open file / toggle diff             | `Mod+P` / `Mod+D`                 | All clients              |
+| Workspace | Open terminal                             | `Mod+Shift+Enter` / `Mod+Shift+T` | Web / desktop            |
+| Workspace | Open in preferred app                     | `Mod+O`                           | All clients              |
+| Composer  | Focus composer                            | `Mod+Shift+C`                     | All clients              |
+| Composer  | Toggle model picker                       | `Mod+Shift+M`                     | All clients              |
+| Composer  | Cycle model forward / backward            | `Alt+M` / `Alt+Shift+M`           | All clients              |
+| Composer  | Cycle provider forward / backward         | `Alt+P` / `Alt+Shift+P`           | All clients              |
+| Composer  | Cycle reasoning effort forward / backward | `Alt+T` / `Alt+Shift+T`           | All clients              |
+| Browser   | Focus location / reload                   | `Mod+L` / `Mod+R`                 | Desktop embedded browser |
+| Questions | Choose visible answer 1–9                 | `1` … `9`                         | While a question is open |
 
 Cycle commands wrap in both directions. Reasoning cycles only through the
 current model's supported efforts in canonical low-to-high rank order, not the

@@ -29,6 +29,7 @@ const MEMORY_ENTRY: PluginCatalogSearchEntry = {
   displayName: "Memory",
   description: "Provider-independent durable memory for agents.",
   icon: "Brain",
+  iconUrl: null,
   category: "Context & knowledge",
   source: "builtin:memory",
   installed: false,
@@ -58,6 +59,7 @@ const GITHUB_ENTRY: PluginCatalogSearchEntry = {
   displayName: "GitHub",
   description: "Browse GitHub issues and pull requests in BB.",
   icon: "Github",
+  iconUrl: null,
   category: "Developer tools",
   source: "builtin:github",
 };

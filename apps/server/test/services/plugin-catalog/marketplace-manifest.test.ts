@@ -1,0 +1,275 @@
+import { describe, expect, it } from "vitest";
+import {
+  entrySourceDisplay,
+  marketplacePolicyWideningProblem,
+  parseMarketplaceManifest,
+  resolveEntryIconUrl,
+  resolvedEntrySource,
+  type MarketplaceEntry,
+} from "../../../src/services/plugin-catalog/marketplace-manifest.js";
+import { BUNDLED_OFFICIAL_MARKETPLACE } from "../../../src/services/plugin-catalog/official-marketplace.js";
+
+const MANIFEST_URL = "https://getbb.app/marketplace/v1/marketplace.json";
+
+function entry(overrides: Record<string, unknown> = {}): unknown {
+  return {
+    id: "widgets",
+    displayName: "Acme Widgets",
+    description: "Widgets for threads.",
+    icon: "Zap",
+    author: { name: "Acme" },
+    source: {
+      git: { url: "https://github.com/acme/plugins.git", ref: "v1.0.0" },
+    },
+    ...overrides,
+  };
+}
+
+function manifest(plugins: unknown[]): unknown {
+  return {
+    schemaVersion: 1,
+    name: "bb-official",
+    displayName: "BB Official",
+    plugins,
+  };
+}
+
+function parse(plugins: unknown[]) {
+  return parseMarketplaceManifest(manifest(plugins), "manifest");
+}
+
+function firstEntry(plugins: unknown[]): MarketplaceEntry {
+  const parsed = parse(plugins).plugins[0];
+  if (parsed === undefined) throw new Error("entry missing");
+  return parsed;
+}
+
+describe("marketplace manifest schema", () => {
+  it("accepts a fully populated entry", () => {
+    const parsed = parse([
+      entry({
+        icon: { url: "./icons/widgets.svg" },
+        tags: ["interface", "threads"],
+        author: {
+          name: "Acme",
+          github: "acme-co",
+          url: "https://acme.example",
+        },
+        engines: { bb: ">=0.0.34", bbPluginSdk: "^0.5.0" },
+      }),
+    ]);
+    expect(parsed.plugins).toHaveLength(1);
+  });
+
+  it("rejects a schemaVersion it does not implement", () => {
+    expect(() =>
+      parseMarketplaceManifest(
+        { ...(manifest([entry()]) as object), schemaVersion: 2 },
+        "manifest",
+      ),
+    ).toThrow(/unknown schemaVersion 2/);
+  });
+
+  it("rejects unknown fields anywhere in the document", () => {
+    expect(() => parse([entry({ category: "Interface" })])).toThrow(
+      /unrecognized key/iu,
+    );
+    expect(() =>
+      parseMarketplaceManifest(
+        { ...(manifest([entry()]) as object), extra: true },
+        "manifest",
+      ),
+    ).toThrow(/unrecognized key/iu);
+  });
+
+  it("rejects duplicate entry ids", () => {
+    expect(() => parse([entry(), entry()])).toThrow(
+      /duplicate plugin id "widgets"/,
+    );
+  });
+
+  it("rejects ids that are not lowercase kebab", () => {
+    expect(() => parse([entry({ id: "Widgets" })])).toThrow();
+    expect(() => parse([entry({ id: "-widgets" })])).toThrow();
+  });
+
+  describe("icons", () => {
+    it("accepts a host icon name, https URL, or relative URL", () => {
+      expect(() => parse([entry({ icon: "ZoomIn" })])).not.toThrow();
+      expect(() =>
+        parse([entry({ icon: { url: "https://cdn.example/icon.png" } })]),
+      ).not.toThrow();
+      expect(() =>
+        parse([entry({ icon: { url: "./icons/widgets.webp" } })]),
+      ).not.toThrow();
+    });
+
+    it("rejects http URLs and unsupported formats", () => {
+      expect(() =>
+        parse([entry({ icon: { url: "http://cdn.example/icon.png" } })]),
+      ).toThrow(/https/);
+      expect(() =>
+        parse([entry({ icon: { url: "https://cdn.example/icon.gif" } })]),
+      ).toThrow(/\.svg/);
+      expect(() => parse([entry({ icon: "./icons/widgets.svg" })])).toThrow();
+    });
+
+    it("resolves a relative URL against the manifest URL", () => {
+      expect(
+        resolveEntryIconUrl(
+          firstEntry([entry({ icon: { url: "./icons/widgets.svg" } })]),
+          MANIFEST_URL,
+        ),
+      ).toBe("https://getbb.app/marketplace/v1/icons/widgets.svg");
+      expect(resolveEntryIconUrl(firstEntry([entry()]), MANIFEST_URL)).toBe(
+        null,
+      );
+    });
+  });
+
+  describe("tags", () => {
+    it("rejects more than ten tags, long tags, and non-kebab tags", () => {
+      expect(() =>
+        parse([entry({ tags: Array.from({ length: 11 }, (_, i) => `t${i}`) })]),
+      ).toThrow();
+      expect(() => parse([entry({ tags: ["a".repeat(33)] })])).toThrow();
+      expect(() => parse([entry({ tags: ["Interface"] })])).toThrow();
+      expect(() => parse([entry({ tags: ["two--dashes"] })])).toThrow();
+    });
+  });
+
+  describe("author", () => {
+    it("requires a name and validates github and url", () => {
+      expect(() => parse([entry({ author: {} })])).toThrow();
+      expect(() =>
+        parse([entry({ author: { name: "Acme", github: "not a login" } })]),
+      ).toThrow();
+      expect(() =>
+        parse([
+          entry({ author: { name: "Acme", url: "http://acme.example" } }),
+        ]),
+      ).toThrow(/https/);
+      expect(() =>
+        parse([entry({ author: { name: "Acme", email: "a@b.test" } })]),
+      ).toThrow(/unrecognized key/iu);
+    });
+  });
+
+  describe("sources", () => {
+    it("rejects an npm entry that sets both range and tag", () => {
+      expect(() =>
+        parse([
+          entry({
+            source: {
+              npm: {
+                package: "bb-plugin-widgets",
+                range: "^1.0.0",
+                tag: "beta",
+              },
+            },
+          }),
+        ]),
+      ).toThrow(/mutually exclusive/);
+    });
+
+    it("rejects a git subdir that escapes the repository", () => {
+      for (const subdir of ["../evil", "/abs/path", "plugins/../../evil"]) {
+        expect(() =>
+          parse([
+            entry({
+              source: {
+                git: {
+                  url: "https://github.com/acme/plugins.git",
+                  ref: "v1",
+                  subdir,
+                },
+              },
+            }),
+          ]),
+        ).toThrow();
+      }
+    });
+
+    it("translates entries into install-pipeline inputs", () => {
+      const git = firstEntry([
+        entry({
+          source: {
+            git: {
+              url: "https://github.com/acme/plugins.git",
+              ref: "v1.0.0",
+              subdir: "plugins/widgets",
+            },
+          },
+        }),
+      ]);
+      expect(resolvedEntrySource(git)).toEqual({
+        source: "git:https://github.com/acme/plugins.git@v1.0.0",
+        selection: { kind: "subdirectory", path: "plugins/widgets" },
+      });
+      expect(entrySourceDisplay(git)).toBe(
+        "git:https://github.com/acme/plugins.git@v1.0.0#plugins/widgets",
+      );
+
+      const npm = firstEntry([
+        entry({
+          source: {
+            npm: {
+              package: "bb-plugin-widgets",
+              range: "^1.0.0",
+              registry: "https://npm.acme.test",
+            },
+          },
+        }),
+      ]);
+      expect(resolvedEntrySource(npm)).toEqual({
+        source: "npm:bb-plugin-widgets@^1.0.0",
+        selection: { kind: "root" },
+        npmRegistry: "https://npm.acme.test",
+      });
+    });
+  });
+
+  describe("engines policy", () => {
+    it("allows a listing to narrow the manifest ranges", () => {
+      expect(
+        marketplacePolicyWideningProblem(
+          { bb: ">=1.2.0", bbPluginSdk: "^0.5.0" },
+          { bbEngineRange: ">=1.0.0", bbPluginSdkRange: "^0.5.0" },
+        ),
+      ).toBe(null);
+    });
+
+    it("refuses a listing that widens a manifest range", () => {
+      expect(
+        marketplacePolicyWideningProblem(
+          { bb: ">=0.1.0" },
+          { bbEngineRange: ">=1.0.0", bbPluginSdkRange: undefined },
+        ),
+      ).toMatch(/widens plugin manifest range/);
+      expect(
+        marketplacePolicyWideningProblem(
+          { bbPluginSdk: ">=0.4.0" },
+          { bbEngineRange: undefined, bbPluginSdkRange: "^0.5.0" },
+        ),
+      ).toMatch(/engines\.bbPluginSdk/);
+    });
+
+    it("ignores ranges the plugin manifest does not declare", () => {
+      expect(
+        marketplacePolicyWideningProblem(
+          { bb: ">=0.1.0" },
+          { bbEngineRange: undefined, bbPluginSdkRange: undefined },
+        ),
+      ).toBe(null);
+    });
+  });
+
+  it("validates the bundled seed snapshot", () => {
+    expect(() =>
+      parseMarketplaceManifest(
+        BUNDLED_OFFICIAL_MARKETPLACE,
+        "bundled snapshot",
+      ),
+    ).not.toThrow();
+  });
+});

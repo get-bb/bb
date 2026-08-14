@@ -289,6 +289,7 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS plugin_artifacts").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_catalog").run();
   db.$client.prepare("DROP TABLE IF EXISTS marketplaces").run();
+  dropMarketplaceCatalogSchema(db);
   db.$client.prepare("DROP TABLE IF EXISTS plugins").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_kv").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_settings").run();
@@ -608,6 +609,24 @@ function resetMigrationsAfterThreadSearch(db: DbConnection): void {
   db.$client
     .prepare<[number]>("DELETE FROM __drizzle_migrations WHERE created_at > ?")
     .run(threadSearchRowidFtsMigrationWhen);
+}
+
+/**
+ * Migration 0094 adds the marketplace catalog tables and the plugins
+ * marketplace-name column. Rewind scenarios that clear its journal row must
+ * remove both, or migrate() replays the CREATE/ADD against a DB that has them.
+ */
+function dropMarketplaceCatalogSchema(db: DbConnection): void {
+  db.$client.prepare("DROP TABLE IF EXISTS plugin_marketplace_icons").run();
+  db.$client.prepare("DROP TABLE IF EXISTS plugin_marketplaces").run();
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(plugins)")
+    .all();
+  if (columns.some((column) => column.name === "catalog_marketplace_name")) {
+    db.$client
+      .prepare("ALTER TABLE plugins DROP COLUMN catalog_marketplace_name")
+      .run();
+  }
 }
 
 function dropEnvironmentNameColumn(db: DbConnection): void {
@@ -1475,6 +1494,7 @@ describe("migrate", () => {
     dropNewOnboardingExperimentColumn(db);
     dropEnvironmentRetireRequestedAtColumn(db);
     dropPluginArtifactGitCheckoutRootColumn(db);
+    dropMarketplaceCatalogSchema(db);
     // Delete by the journal timestamp, not a hash substring: migration hashes
     // are hex and can contain "0085" by coincidence.
     db.$client
@@ -1767,6 +1787,7 @@ describe("migrate", () => {
       dropHostMaxPermissionModeColumn(db);
       dropEnvironmentRetireRequestedAtColumn(db);
       dropPluginArtifactGitCheckoutRootColumn(db);
+      dropMarketplaceCatalogSchema(db);
 
       restoreLegacyThreadOriginColumn(db);
       migrate(db);
@@ -2168,6 +2189,7 @@ describe("migrate", () => {
       dropHostMaxPermissionModeColumn(db);
       dropEnvironmentRetireRequestedAtColumn(db);
       dropPluginArtifactGitCheckoutRootColumn(db);
+      dropMarketplaceCatalogSchema(db);
 
       restoreLegacyThreadOriginColumn(db);
       expect(
@@ -2266,6 +2288,7 @@ describe("migrate", () => {
       dropHostMaxPermissionModeColumn(db);
       dropEnvironmentRetireRequestedAtColumn(db);
       dropPluginArtifactGitCheckoutRootColumn(db);
+      dropMarketplaceCatalogSchema(db);
 
       restoreLegacyThreadOriginColumn(db);
       expect(() => migrate(db)).not.toThrow();

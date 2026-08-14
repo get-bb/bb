@@ -115,6 +115,7 @@ const GITHUB_CATALOG_ENTRY = {
   displayName: "GitHub",
   description: "Browse GitHub issues and pull requests in BB.",
   icon: "Github",
+  iconUrl: null,
   category: "Developer tools",
   source: "github-release:ymichael/bb/bb-plugin-github-{version}.tgz@^0.1.0",
   installed: false,

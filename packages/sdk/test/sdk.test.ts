@@ -1362,6 +1362,7 @@ describe("@bb/sdk", () => {
               displayName: "Notes",
               description: "Notes",
               icon: null,
+              iconUrl: null,
               category: "Productivity",
               source: "npm:@bb/notes@^1",
               installed: true,

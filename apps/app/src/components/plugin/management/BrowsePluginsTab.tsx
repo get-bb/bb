@@ -27,7 +27,6 @@ import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { appToast } from "@/components/ui/app-toast";
 import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
-import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { BrowseArchetypeCards } from "@/components/plugin/browse-hero/BrowseArchetypeCards";
 import { nextComposerRequestNonce } from "@/components/plugin/browse-hero/browse-hero-archetypes";
 import { BrowseHeroCarousel } from "@/components/plugin/browse-hero/BrowseHeroCarousel";
@@ -41,7 +40,7 @@ import {
 } from "@/hooks/queries/plugin-catalog-queries";
 import { removePlugin } from "@/hooks/queries/plugin-settings-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
-import { PlaceholderBadge } from "./plugin-ui";
+import { CatalogEntryIcon } from "./plugin-ui";
 
 /**
  * The Browse page: hero → one CTA row (create + install-from-source) → then
@@ -317,12 +316,7 @@ function BrowseCard({
     },
   });
 
-  const leading = (
-    <PlaceholderBadge
-      className="size-6"
-      iconName={pluginIconName(entry.icon)}
-    />
-  );
+  const leading = <CatalogEntryIcon entry={entry} className="size-6" />;
   const description =
     entry.description.length > 0 ? entry.description : undefined;
   const descriptionArea = (

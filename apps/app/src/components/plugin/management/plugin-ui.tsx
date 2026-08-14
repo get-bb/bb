@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { PluginIcon, pluginIconName } from "@/components/plugin/PluginIcon";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 
@@ -102,6 +102,39 @@ export function PluginLogo({
       data-testid={`plugin-settings-logo-${plugin.id}`}
       className={cn("rounded-sm object-contain", className)}
       onError={() => setFailedLogoUrl(logoUrl)}
+    />
+  );
+}
+
+/**
+ * Identity for a marketplace catalog entry. A listing may ship an icon image,
+ * which BB fetched, validated, and now serves from its own origin — the app
+ * never requests the marketplace's URL. Everything else falls back to the
+ * entry's named icon, then to the generic plugin glyph.
+ */
+export function CatalogEntryIcon({
+  entry,
+  className,
+}: {
+  entry: { displayName: string; icon: string | null; iconUrl: string | null };
+  className: string;
+}) {
+  const [failedIconUrl, setFailedIconUrl] = useState<string | null>(null);
+  if (entry.iconUrl === null || entry.iconUrl === failedIconUrl) {
+    return (
+      <PlaceholderBadge
+        className={className}
+        iconName={pluginIconName(entry.icon)}
+      />
+    );
+  }
+  return (
+    <img
+      src={entry.iconUrl}
+      alt=""
+      aria-hidden="true"
+      className={cn("rounded-sm object-contain", className)}
+      onError={() => setFailedIconUrl(entry.iconUrl)}
     />
   );
 }

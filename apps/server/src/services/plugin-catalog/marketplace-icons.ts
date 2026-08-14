@@ -1,0 +1,187 @@
+import { createHash } from "node:crypto";
+import {
+  deletePluginMarketplaceIcon,
+  getPluginMarketplaceIcon,
+  listPluginMarketplaceIcons,
+  upsertPluginMarketplaceIcon,
+  type DbConnection,
+} from "@bb/db";
+import { assertValidPluginCompactIconSvg } from "@bb/plugin-build";
+import {
+  boundedResponseBytes,
+  marketplaceErrorMessage,
+  MARKETPLACE_FETCH_TIMEOUT_MS,
+  type MarketplaceFetch,
+} from "./marketplace-http.js";
+import {
+  resolveEntryIconUrl,
+  type MarketplaceEntry,
+} from "./marketplace-manifest.js";
+
+/** Real logo assets are a few KB; this only bounds a hostile response. */
+export const MARKETPLACE_ICON_MAX_BYTES = 256 * 1024;
+
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+function startsWithBytes(bytes: Uint8Array, magic: number[]): boolean {
+  return (
+    bytes.length >= magic.length &&
+    magic.every((byte, index) => bytes[index] === byte)
+  );
+}
+
+function isWebp(bytes: Uint8Array): boolean {
+  const ascii = (offset: number, text: string): boolean =>
+    bytes.length >= offset + text.length &&
+    text
+      .split("")
+      .every((char, index) => bytes[offset + index] === char.charCodeAt(0));
+  return ascii(0, "RIFF") && ascii(8, "WEBP");
+}
+
+/**
+ * Validate downloaded icon bytes against the format the URL declares, and
+ * return the content type BB will serve them as. SVG goes through the same
+ * sanitizer the plugin manifest uses; raster formats are checked by magic
+ * bytes, so a mislabelled or hostile payload never reaches the app.
+ */
+export function marketplaceIconContentType(
+  iconUrl: string,
+  bytes: Uint8Array,
+): string {
+  const pathname = new URL(iconUrl).pathname.toLowerCase();
+  if (bytes.byteLength > MARKETPLACE_ICON_MAX_BYTES) {
+    throw new Error(`icon exceeds ${MARKETPLACE_ICON_MAX_BYTES} bytes`);
+  }
+  if (pathname.endsWith(".svg")) {
+    assertValidPluginCompactIconSvg(bytes, "icon");
+    return "image/svg+xml";
+  }
+  if (pathname.endsWith(".png")) {
+    if (!startsWithBytes(bytes, PNG_MAGIC)) {
+      throw new Error("icon is not a PNG file");
+    }
+    return "image/png";
+  }
+  if (pathname.endsWith(".webp")) {
+    if (!isWebp(bytes)) throw new Error("icon is not a WebP file");
+    return "image/webp";
+  }
+  throw new Error("icon must be a .svg, .png, or .webp file");
+}
+
+/**
+ * Fetch, validate, and cache the image icons a refreshed manifest declares.
+ *
+ * Icons are fetched here, by the server, so the app never requests a
+ * third-party URL and the cached catalog stays renderable offline. A failed
+ * icon is dropped with a warning: the entry keeps its default glyph, and
+ * neither the entry nor the catalog is invalidated. An icon whose URL and
+ * ETag are unchanged is revalidated conditionally and usually not re-read.
+ *
+ * `entries` is always the whole catalog — icons of entries it no longer lists
+ * are dropped. `onlyMissing` (an unchanged manifest) retries entries with no
+ * cached icon without re-reading the ones already cached.
+ */
+export async function refreshMarketplaceIcons(args: {
+  db: DbConnection;
+  marketplaceName: string;
+  manifestUrl: string;
+  entries: readonly MarketplaceEntry[];
+  onlyMissing: boolean;
+  fetch: MarketplaceFetch;
+  warn?: (message: string) => void;
+}): Promise<void> {
+  const wanted = new Map<string, string>();
+  for (const entry of args.entries) {
+    let iconUrl: string | null;
+    try {
+      iconUrl = resolveEntryIconUrl(entry, args.manifestUrl);
+    } catch (error) {
+      args.warn?.(
+        `marketplace ${args.marketplaceName} entry "${entry.id}": ${marketplaceErrorMessage(error)}`,
+      );
+      continue;
+    }
+    if (iconUrl !== null) wanted.set(entry.id, iconUrl);
+  }
+
+  for (const cached of listPluginMarketplaceIcons(
+    args.db,
+    args.marketplaceName,
+  )) {
+    if (!wanted.has(cached.entryId)) {
+      deletePluginMarketplaceIcon(
+        args.db,
+        args.marketplaceName,
+        cached.entryId,
+      );
+    }
+  }
+
+  for (const [entryId, iconUrl] of wanted) {
+    if (
+      args.onlyMissing &&
+      getPluginMarketplaceIcon(args.db, args.marketplaceName, entryId) !==
+        undefined
+    ) {
+      continue;
+    }
+    try {
+      await refreshOneIcon({ ...args, entryId, iconUrl });
+    } catch (error) {
+      args.warn?.(
+        `marketplace ${args.marketplaceName} entry "${entryId}" icon ${iconUrl} was rejected: ${marketplaceErrorMessage(error)}`,
+      );
+    }
+  }
+}
+
+async function refreshOneIcon(args: {
+  db: DbConnection;
+  marketplaceName: string;
+  entryId: string;
+  iconUrl: string;
+  fetch: MarketplaceFetch;
+}): Promise<void> {
+  const cached = getPluginMarketplaceIcon(
+    args.db,
+    args.marketplaceName,
+    args.entryId,
+  );
+  const unchangedUrl =
+    cached !== undefined && cached.sourceUrl === args.iconUrl;
+  const headers = new Headers({ accept: "image/*" });
+  if (unchangedUrl && cached.etag !== null) {
+    headers.set("if-none-match", cached.etag);
+  }
+  const response = await args.fetch(args.iconUrl, {
+    method: "GET",
+    headers,
+    redirect: "error",
+    signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
+  });
+  if (response.status === 304 && unchangedUrl) {
+    await response.body?.cancel();
+    return;
+  }
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new Error(`request failed with HTTP ${response.status}`);
+  }
+  const bytes = await boundedResponseBytes(
+    response,
+    MARKETPLACE_ICON_MAX_BYTES,
+    "icon",
+  );
+  const contentType = marketplaceIconContentType(args.iconUrl, bytes);
+  upsertPluginMarketplaceIcon(args.db, {
+    marketplaceName: args.marketplaceName,
+    entryId: args.entryId,
+    sourceUrl: args.iconUrl,
+    contentType,
+    etag: response.headers.get("etag"),
+    contentHash: createHash("sha256").update(bytes).digest("hex").slice(0, 16),
+    bytes: Buffer.from(bytes),
+  });
+}
