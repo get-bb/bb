@@ -1,6 +1,6 @@
 import {
   jsonValueSchema,
-  PLUGIN_SUBMISSION_FORM_URL,
+  PLUGIN_MARKETPLACE_SUBMISSION_URL,
   type JsonValue,
 } from "@bb/domain";
 import {
@@ -193,7 +193,7 @@ export interface PluginMarketplaceRemoveResult {
 }
 
 export interface PluginCatalogSubmissionResult {
-  /** BB's canonical browser form for proposing a plugin to the marketplace. */
+  /** Public repository for BB Official marketplace submissions. */
   url: string;
 }
 
@@ -205,7 +205,7 @@ export interface PluginCatalogArea {
   ): Promise<PluginCatalogInstallPlanResult>;
   search(args: PluginCatalogSearchArgs): Promise<PluginCatalogSearchResult>;
   status(args?: PluginCatalogStatusArgs): Promise<PluginCatalogStatusResult>;
-  /** Return the canonical marketplace submission form; submitting stays browser-owned. */
+  /** Return the public repository for BB Official marketplace submissions. */
   submission(): PluginCatalogSubmissionResult;
 }
 
@@ -328,7 +328,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       return response.catalog;
     },
     submission() {
-      return { url: PLUGIN_SUBMISSION_FORM_URL };
+      return { url: PLUGIN_MARKETPLACE_SUBMISSION_URL };
     },
   };
 

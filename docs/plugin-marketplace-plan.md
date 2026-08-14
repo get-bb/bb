@@ -257,34 +257,27 @@ their authors' repos or npm packages. The registry never hosts plugin code.
 
 ### Submission flow
 
-Submission is an in-app form, not an external page. The plugin detail page's
-"Submit to marketplace" action opens a dialog instead of linking out, and
-`bb plugin submit` runs the same flow from the terminal.
+Submission uses the built-in `submit-a-plugin` skill. The skill completes the
+release and marketplace pull request without a product-specific form.
 
-1. **Prefill from what BB already knows.** For a locally developed plugin,
-   the app reads the package manifest and git remote: plugin id, display
+1. **Read what BB already knows.** For a locally developed plugin, the agent
+   reads the package manifest and Git remote: plugin id, display
    name, description, icon, repository URL, subdir from the collection
    manifest, and current version tags. The author reviews and completes the
    entry — tags, `url`, the range — rather than typing it from scratch.
-2. **Create the PR as the author.** BB composes `entries/<id>.json` and uses
+2. **Create the PR as the author.** The agent composes `entries/<id>.json` and uses
    the author's own GitHub credentials — `gh` auth on the host, which BB's
    audience overwhelmingly has — to fork the registry repo, push a branch,
    and open the PR from their account. This makes `author.github`
    self-verifying: the listing's owner is the account that opened the PR.
-3. **Fallback without `gh`.** BB writes the composed `entries/<id>.json` to
-   disk and shows the manual steps: fork the registry repo, add the file,
-   open the PR. No hosted form exists — the in-app flow replaces the Google
-   Form behind `PLUGIN_SUBMISSION_FORM_URL`, and that constant and its
-   detail-page link retire in the same change.
+3. **Fallback without `gh`.** The agent writes the composed entry to disk.
+   It then gives the manual fork and pull request steps.
 4. Registry CI validates the entry. A maintainer reviews the plugin itself —
    source, behavior, requested engine ranges — and merges to approve.
 5. Merge publishes the updated catalog; the app picks it up on its next
    conditional refresh.
 
-The in-app path is ordinary feature work: a dialog, manifest prefill, and
-`gh repo fork` / `gh pr create` orchestration on the host. The hosted
-fallback is the larger lift (worker API, bot account, abuse protection) and
-can ship after the `gh` path.
+The skill uses `gh repo fork` and `gh pr create` on the host when available.
 
 ### Author identity and ownership
 
@@ -363,8 +356,8 @@ files, the compose-and-validate build, and publishing to
 entries. The app bundles a seed snapshot as offline fallback. Restore the
 refresh loop. Replace `GIT_OFFICIAL_PLUGINS` with catalog rows; the Browse tab
 reads the catalog. Generalize provenance. Server-side icon fetch and
-validation. The in-app submission dialog and `bb plugin submit` upgrade can
-land late in this phase; until then, maintainers write entry files by hand.
+validation. Add the built-in submission skill after the registry contract
+stabilizes.
 
 **Phase 2 — semver from git tags.**
 Add the tags candidate path to the update resolver, `tagPrefix`, moved-tag

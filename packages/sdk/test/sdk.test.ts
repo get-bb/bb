@@ -1411,9 +1411,8 @@ describe("@bb/sdk", () => {
       { entryId: "notes", pluginId: "notes", compatible: true },
     ]);
     expect(sdk.plugins.catalog.submission()).toEqual({
-      url: "https://docs.google.com/forms/d/e/1FAIpQLScRTABhHwCjuZWYn0lJJd0aZT2cYvGk2KaZ2GF-1GsXoLMLSQ/viewform",
+      url: "https://github.com/get-bb/marketplace",
     });
-
     expect(queue.requests).toEqual([
       {
         bodyText: undefined,

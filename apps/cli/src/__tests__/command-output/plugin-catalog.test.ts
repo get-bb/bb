@@ -451,9 +451,10 @@ describe("bb plugin catalog", () => {
   it("no longer advertises the remote catalog command group", async () => {
     const pluginHelp = await getHelpOutput(["plugin"], register);
     // Neither a `catalog` nor a `marketplace` command may come back; the words
-    // themselves are fine — `search` and `submit` describe what they read.
+    // themselves are fine because `search` describes what it reads.
     expect(pluginHelp).not.toMatch(/^\s+catalog/mu);
     expect(pluginHelp).not.toMatch(/^\s+marketplace/mu);
+    expect(pluginHelp).not.toMatch(/^\s+submit\b/mu);
     expect(pluginHelp).toContain("search");
 
     const installHelp = await getHelpOutput(["plugin", "install"], register);
