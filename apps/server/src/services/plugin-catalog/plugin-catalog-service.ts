@@ -607,12 +607,17 @@ export function createPluginCatalogService(deps: {
       const entry = catalogOf(row)?.plugins.find(
         (candidate) => candidate.id === entryId,
       );
-      if (entry === undefined) {
-        throw new Error(
-          `unknown marketplace entry "${entryId}@${selector.marketplace}"`,
-        );
-      }
-      return { kind: "marketplace", row, entry };
+      if (entry !== undefined) return { kind: "marketplace", row, entry };
+      // Plugins bundled with the app are BB's own, and the store lists them
+      // under bb-official, so "<id>@bb-official" names them too.
+      const bundled =
+        selector.marketplace === OFFICIAL_MARKETPLACE_NAME
+          ? officialPlugins.find((candidate) => candidate.name === entryId)
+          : undefined;
+      if (bundled !== undefined) return { kind: "bundled", entry: bundled };
+      throw new Error(
+        `unknown marketplace entry "${entryId}@${selector.marketplace}"`,
+      );
     }
     const matches: { row: PluginMarketplaceRow; entry: MarketplaceEntry }[] =
       [];

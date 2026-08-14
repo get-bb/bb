@@ -324,6 +324,44 @@ describe("third-party marketplaces", () => {
     ]);
   });
 
+  it("names a bundled official plugin with <id>@bb-official", async () => {
+    const catalog = createPluginCatalogService({
+      db,
+      appVersion: "1.0.0",
+      marketplaceUrl: OFFICIAL_URL,
+      dataDir,
+      bundledPlugins: [
+        {
+          name: "docs",
+          pluginId: "docs",
+          rootDir: join(dataDir, "missing-bundled-plugin"),
+          autoInstall: false,
+          defaultEnabled: true,
+          category: "Context & knowledge",
+        },
+      ],
+      plugins: {
+        installOfficialPlugin: async (name: string) => {
+          installedCatalogEntries.push({ bundled: name });
+          throw new Error("bundled installation stopped by test");
+        },
+        installCatalogPlugin: async () => {
+          throw new Error("unexpected catalog install");
+        },
+      },
+      fetch: marketplaceFetch({ [OFFICIAL_URL]: manifest("bb-official", []) }),
+    });
+
+    // The store lists bundled plugins under bb-official, so the qualified form
+    // the Browse card sends must resolve to the bundled copy.
+    await expect(
+      catalog.install({ entryId: "docs", marketplace: "bb-official" }),
+    ).rejects.toThrow(/bundled installation stopped by test|unavailable/u);
+    await expect(
+      catalog.install({ entryId: "docs", marketplace: "acme-plugins" }),
+    ).rejects.toThrow('unknown marketplace "acme-plugins"');
+  });
+
   it("installs a single marketplace match from a bare entry id", async () => {
     const catalog = service({
       fetch: marketplaceFetch({

@@ -112,6 +112,33 @@ describe("bb plugin catalog", () => {
     expect(output).not.toContain("Marketplace");
   });
 
+  it("names the marketplace once a third-party listing appears", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      json({
+        results: [
+          searchResult,
+          {
+            ...searchResult,
+            entryId: "notes",
+            pluginId: "notes",
+            displayName: "Acme Notes",
+            marketplace: "acme-plugins",
+            marketplaceDisplayName: "Acme Plugins",
+            official: false,
+            author: { name: "Acme", url: null },
+          },
+        ],
+      }),
+    );
+
+    await runCommand(["plugin", "search", ""], register);
+
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("Marketplace");
+    expect(output).toContain("Acme Plugins");
+    expect(output).toContain("BB Official");
+  });
+
   it("outputs raw catalog search results as JSON", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(json({ results: [searchResult] }));
 

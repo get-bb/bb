@@ -905,9 +905,13 @@ export function registerPluginCommands(
           outputJson(opts, results);
           return;
         }
+        // Where a listing came from only matters once something other than
+        // BB's own catalog is registered; until then the column is noise.
+        const showMarketplace = results.some((result) => !result.official);
         const rows = results.map((result) => [
           result.displayName,
           result.description,
+          ...(showMarketplace ? [result.marketplaceDisplayName] : []),
           result.installed
             ? "✓ installed"
             : result.compatible
@@ -917,8 +921,15 @@ export function registerPluginCommands(
         console.log(
           renderBorderlessTable(
             {
-              head: ["Name", "Description", "Status"],
-              colWidths: [28, 54, 48],
+              head: [
+                "Name",
+                "Description",
+                ...(showMarketplace ? ["Marketplace"] : []),
+                "Status",
+              ],
+              colWidths: showMarketplace
+                ? [26, 42, 22, 40]
+                : [28, 54, 48],
               trimTrailingWhitespace: true,
             },
             rows,
