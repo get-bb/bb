@@ -1,4 +1,9 @@
 import type { AgentToolSpec, DirectiveId } from "./types.js";
+import type {
+  GatingDeps,
+  ToolExecutionCtx,
+} from "../../lanes/debug-bench/gating/mode.js";
+import { DestructiveGateError } from "../../lanes/debug-bench/gating/destructive.js";
 
 export const ACTION_TOOL_NAMES = [
   "fs_verification_run",
@@ -49,7 +54,7 @@ export type AgentToolRegistry = {
   };
 };
 
-export const DIRECTIVE_IDS = [
+export const DIRECTIVE_IDS = Object.freeze([
   "fs-plan",
   "fs-finding",
   "fs-triage-summary",
@@ -62,14 +67,24 @@ export const DIRECTIVE_IDS = [
   "fs-bench",
   "fs-verdict",
   "fs-doc",
-] as const;
+] as const);
 
 const PAGE = { default: 50, max: 200 } as const;
+
+function freezeAgentToolRegistry<Registry extends AgentToolRegistry>(
+  registry: Registry,
+): Registry {
+  for (const tool of Object.values(registry)) {
+    if ("page" in tool) Object.freeze(tool.page);
+    Object.freeze(tool);
+  }
+  return Object.freeze(registry);
+}
 
 // This is the canonical registry seam consumed by WP-57–WP-60. The mapped
 // type makes class: "action" unrepresentable for any name outside the closed
 // ActionToolName union while retaining the complete agent-surface metadata.
-export const AGENT_TOOL_REGISTRY = {
+export const AGENT_TOOL_REGISTRY = freezeAgentToolRegistry({
   fs_sync_status: {
     name: "fs_sync_status",
     class: "read",
@@ -212,21 +227,23 @@ export const AGENT_TOOL_REGISTRY = {
     server: "none",
     idempotency: "non-idempotent",
   },
-} as const satisfies AgentToolRegistry;
+} as const satisfies AgentToolRegistry);
 
-export const AGENT_SURFACE = {
+const MENTION_TRIGGERS = Object.freeze({
+  "@": Object.freeze(["fs-model", "fs-docs"] as const),
+  "#": Object.freeze(["fs-intel"] as const),
+  "~": Object.freeze(["fs-runs"] as const),
+});
+
+export const AGENT_SURFACE = Object.freeze({
   tools: AGENT_TOOL_REGISTRY,
   directives: DIRECTIVE_IDS,
-  mentionTriggers: {
-    "@": ["fs-model", "fs-docs"],
-    "#": ["fs-intel"],
-    "~": ["fs-runs"],
-  },
+  mentionTriggers: MENTION_TRIGGERS,
 } as const satisfies Readonly<{
   tools: AgentToolRegistry;
   directives: typeof DIRECTIVE_IDS;
   mentionTriggers: Readonly<Record<"@" | "#" | "~", readonly string[]>>;
-}>;
+}>);
 
 const CANONICAL_TOOL_NAMES = new Set(Object.keys(AGENT_SURFACE.tools));
 const CANONICAL_ACTION_ACCESS = new Map<string, AgentToolSpec["server"]>([
@@ -240,38 +257,50 @@ const CANONICAL_ACTION_ACCESS = new Map<string, AgentToolSpec["server"]>([
   ["fs_probe", "none"],
 ]);
 
-export interface AgentToolExecutionContext {
-  readonly currentTurnId: string;
-  readonly instruction: Readonly<{
-    readonly source: "human" | "plan";
-    readonly turnId: string;
-  }> | null;
+export interface RegisteredAgentToolGateContext {
+  readonly deps: GatingDeps;
+  readonly deviceId: string;
+  readonly execution: ToolExecutionCtx;
 }
 
-export class DestructiveInstructionRequiredError extends Error {
-  constructor(readonly toolName: AgentToolName) {
-    super(
-      `${toolName} requires an explicit human instruction in the current turn; plan-inherited or prior-turn intent does not count.`,
+const ACTION_TOOL_NAME_SET: ReadonlySet<string> = new Set(ACTION_TOOL_NAMES);
+
+function isActionToolName(toolName: string): toolName is ActionToolName {
+  return ACTION_TOOL_NAME_SET.has(toolName);
+}
+
+function isAgentToolName(toolName: string): toolName is AgentToolName {
+  return Object.hasOwn(AGENT_TOOL_REGISTRY, toolName);
+}
+
+export async function executeRegisteredAgentTool<Result>(
+  toolName: string,
+  gate: RegisteredAgentToolGateContext,
+  execute: () => Promise<Result> | Result,
+): Promise<Result> {
+  if (!isAgentToolName(toolName)) {
+    throw new DestructiveGateError(
+      "DESTRUCTIVE_AUTHORIZATION_UNAVAILABLE",
+      `${toolName} is refused because it is not in the canonical agent tool registry.`,
     );
-    this.name = "DestructiveInstructionRequiredError";
   }
-}
-
-export function executeAgentToolWithDestructiveGate<Result>(
-  toolName: AgentToolName,
-  context: AgentToolExecutionContext,
-  execute: () => Result,
-): Result {
   const tool = AGENT_TOOL_REGISTRY[toolName];
-  if (
-    "destructive" in tool
-    && tool.destructive === true
-    && (context.instruction?.source !== "human"
-      || context.instruction.turnId !== context.currentTurnId)
-  ) {
-    throw new DestructiveInstructionRequiredError(toolName);
+  if ("destructive" in tool && tool.destructive === true) {
+    // Caller-supplied turn identity is deliberately not authorization. Until bb
+    // supplies actor-attested evidence, no context or stored grant can permit a
+    // destructive-classified registered tool.
+    void gate;
+    if (!isActionToolName(toolName)) {
+      throw new Error(
+        `DESTRUCTIVE_REGISTRY_INVARIANT: ${toolName} is destructive but is not in the closed action registry.`,
+      );
+    }
+    throw new DestructiveGateError(
+      "DESTRUCTIVE_AUTHORIZATION_UNAVAILABLE",
+      `${toolName} is refused because bb cannot attest destructive-grade actor authorization.`,
+    );
   }
-  return execute();
+  return await execute();
 }
 
 export interface AgentSurfaceCandidate {
@@ -296,24 +325,34 @@ export function assertAgentSurface(surface: AgentSurfaceCandidate): void {
     entries.length !== CANONICAL_TOOL_NAMES.size ||
     entries.some(([name]) => !CANONICAL_TOOL_NAMES.has(name))
   ) {
-    throw new Error("Agent registry must contain exactly twenty-one canonical tools.");
+    throw new Error(
+      "Agent registry must contain exactly twenty-one canonical tools.",
+    );
   }
 
   const names = entries.map(([name]) => name);
   if (
     new Set(names).size !== names.length ||
-    entries.some(([name, tool]) => !name.startsWith("fs_") || tool.name !== name)
+    entries.some(
+      ([name, tool]) => !name.startsWith("fs_") || tool.name !== name,
+    )
   ) {
-    throw new Error("Agent tool names must be unique, fs_-prefixed, and self-identifying.");
+    throw new Error(
+      "Agent tool names must be unique, fs_-prefixed, and self-identifying.",
+    );
   }
 
   const directives = new Set(surface.directives);
   if (
     directives.size !== DIRECTIVE_IDS.length ||
     DIRECTIVE_IDS.some((directive) => !directives.has(directive)) ||
-    entries.some(([, tool]) => tool.directive && !directives.has(tool.directive))
+    entries.some(
+      ([, tool]) => tool.directive && !directives.has(tool.directive),
+    )
   ) {
-    throw new Error("Agent registry directives must match the canonical twelve-id set.");
+    throw new Error(
+      "Agent registry directives must match the canonical twelve-id set.",
+    );
   }
 }
 
