@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -90,7 +90,9 @@ describe("third-party marketplaces", () => {
     db.$client.close();
     for (const restore of restoreEnv.splice(0)) restore();
     await Promise.all(
-      cleanup.splice(0).map((path) => rm(path, { recursive: true, force: true })),
+      cleanup
+        .splice(0)
+        .map((path) => rm(path, { recursive: true, force: true })),
     );
   });
 
@@ -233,10 +235,32 @@ describe("third-party marketplaces", () => {
     const removed = await catalog.removeMarketplace("acme-plugins");
     expect(removed.convertedPluginIds).toEqual([]);
     expect(getPluginMarketplace(db, "acme-plugins")).toBeUndefined();
-    expect(getPluginMarketplaceIcon(db, "acme-plugins", "notes")).toBeUndefined();
+    expect(
+      getPluginMarketplaceIcon(db, "acme-plugins", "notes"),
+    ).toBeUndefined();
     expect(catalog.listMarketplaces().map((row) => row.name)).toEqual([
       "bb-official",
     ]);
+  });
+
+  it("removes a checkout left by a prior process crash", async () => {
+    const repo = await gitMarketplace({
+      name: "acme-plugins",
+      plugins: [entry()],
+    });
+    const staleCheckout = join(
+      dataDir,
+      "marketplaces",
+      "staging",
+      "stale-checkout",
+    );
+    await mkdir(staleCheckout, { recursive: true });
+    await writeFile(join(staleCheckout, "marketplace.json"), "stale");
+
+    const catalog = service({ fetch: marketplaceFetch({}) });
+    await catalog.addMarketplace(`git:${repo}@main`);
+
+    expect(await stat(staleCheckout).catch(() => null)).toBeNull();
   });
 
   it("reads a path marketplace and its icons in place", async () => {
@@ -247,7 +271,9 @@ describe("third-party marketplaces", () => {
     await writeFile(
       join(directory, "marketplace.json"),
       JSON.stringify(
-        manifest("acme-plugins", [entry({ icon: { url: "./icons/notes.svg" } })]),
+        manifest("acme-plugins", [
+          entry({ icon: { url: "./icons/notes.svg" } }),
+        ]),
       ),
     );
     const catalog = service({ fetch: marketplaceFetch({}) });
@@ -383,7 +409,9 @@ describe("third-party marketplaces", () => {
 
   it("keeps installed plugins updatable after their marketplace is removed", async () => {
     const catalog = service({
-      fetch: marketplaceFetch({ [ACME_URL]: manifest("acme-plugins", [entry()]) }),
+      fetch: marketplaceFetch({
+        [ACME_URL]: manifest("acme-plugins", [entry()]),
+      }),
     });
     await catalog.addMarketplace(ACME_URL);
     upsertInstalledPlugin(db, {
@@ -463,11 +491,17 @@ describe("third-party marketplaces", () => {
     await catalog.refresh(1_000);
     await catalog.addMarketplace(ACME_URL);
 
-    const official = getPluginMarketplaceIcon(db, "bb-official", "official-notes");
+    const official = getPluginMarketplaceIcon(
+      db,
+      "bb-official",
+      "official-notes",
+    );
     const acme = getPluginMarketplaceIcon(db, "acme-plugins", "notes");
     expect(official?.contentHash).not.toBe(acme?.contentHash);
     // Neither marketplace can read the other's rows.
-    expect(getPluginMarketplaceIcon(db, "bb-official", "notes")).toBeUndefined();
+    expect(
+      getPluginMarketplaceIcon(db, "bb-official", "notes"),
+    ).toBeUndefined();
     expect(
       getPluginMarketplaceIcon(db, "acme-plugins", "official-notes"),
     ).toBeUndefined();
@@ -477,7 +511,9 @@ describe("third-party marketplaces", () => {
     expect(
       getPluginMarketplaceIcon(db, "bb-official", "official-notes"),
     ).toBeDefined();
-    expect(getPluginMarketplaceIcon(db, "acme-plugins", "notes")).toBeUndefined();
+    expect(
+      getPluginMarketplaceIcon(db, "acme-plugins", "notes"),
+    ).toBeUndefined();
   });
 
   it("leaves bb-official serving when a third-party refresh fails", async () => {
