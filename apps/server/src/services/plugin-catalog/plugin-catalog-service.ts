@@ -1068,23 +1068,36 @@ export function createPluginCatalogService(deps: {
     async install(input) {
       const resolved = resolveEntry(input);
       if (resolved.kind === "marketplace") {
-        const thirdParty = resolved.row.name !== OFFICIAL_MARKETPLACE_NAME;
-        if (!thirdParty && input.confirmedSource !== undefined) {
-          throw new Error(
-            "install refused: confirmedSource applies only to third-party marketplaces",
-          );
-        }
-        const expectedGitCommit = thirdParty
-          ? await confirmedThirdPartySource({
-              entry: resolved.entry,
-              confirmed: input.confirmedSource,
-            })
-          : undefined;
-        return installMarketplaceEntry(
-          resolved.row,
-          resolved.entry,
-          expectedGitCommit,
-        );
+        // Hold the marketplace lock for the whole install. Without it a
+        // removal could delete the row, or a refresh could retarget the
+        // entry, between resolving the plan and writing catalog provenance —
+        // and the plugin would trace back to a listing that no longer says
+        // what it said. The entry is resolved again inside the lock so the
+        // install runs against the row that is current under it.
+        return withLock(resolved.row.name, async () => {
+          const current = resolveEntry({
+            ...input,
+            marketplace: resolved.row.name,
+          });
+          if (current.kind !== "marketplace") {
+            throw new Error(
+              `install refused: "${input.entryId}" is no longer listed by marketplace "${resolved.row.name}"`,
+            );
+          }
+          const thirdParty = current.row.name !== OFFICIAL_MARKETPLACE_NAME;
+          if (!thirdParty && input.confirmedSource !== undefined) {
+            throw new Error(
+              "install refused: confirmedSource applies only to third-party marketplaces",
+            );
+          }
+          const binding = thirdParty
+            ? await confirmedThirdPartySource({
+                entry: current.entry,
+                confirmed: input.confirmedSource,
+              })
+            : undefined;
+          return installMarketplaceEntry(current.row, current.entry, binding);
+        });
       }
       if (input.confirmedSource !== undefined) {
         throw new Error(
