@@ -77,3 +77,9 @@ Entry format — one section per defect:
 - **Journey**: bench panel with no cached version → follow the product's own instruction ("Pull a version through Sync first") → `pull requirement` → bench enabled → run → WP-55 verdict card renders
 - **Broke because**: no puller is registered for `requirement`; the product's instruction is impossible, bench unreachable in every flow
 - **Beat asserts**: the full loop completes: sync pull → accepted version → bench run → verdict card visible
+
+### Performance budgets on the largest seeded surfaces (supervisor audit, 2026-08-14)
+
+- **Journey**: seed the largest standard datasets (findings and SBOM at FS-195 scale: ~900 components / ~6k findings) → open the Findings panel and the SBOM panel → initial render → sustained scroll through the virtualized lists → read renderer heap
+- **Broke because**: nothing broke — this beat is preventive. The 2026-08-14 frontend audit was clean (idle 0% CPU / ~210MB RSS / 124MB JS heap; all six heavy surfaces virtualized via `@tanstack/react-virtual`), and this beat pins those properties so a regression surfaces in the harness rather than in a sweep
+- **Beat asserts**: initial render of each panel completes within its budget on the seeded dataset; scroll remains responsive (virtualization intact — DOM row count stays bounded during sustained scroll); JS heap stays within a ceiling derived from the ledgered 124MB baseline (see `patch-verifications-matrix-visibility-gating` for the full baseline numbers). Budget values are set by the implementer from first measurement on the CI runner class, recorded in the beat itself, and tightened only deliberately
