@@ -20,7 +20,7 @@ Entry format — one section per defect:
 
 ### FS-171 — bench panel dead surface (sweep FS-140 cluster)
 
-- **Pending — not Harnessed**: `golden-loop.e2e.test.ts` — beat 3, `FS-171 bench dispatch durability`, pinned to `No puller is registered for verificationRun` until FS-201 lands the production Bench bootstrap path
+- **Harnessed**: `golden-loop.e2e.test.ts` — beat 3, `FS-171 bench dispatch durability`
 - **Journey**: bench panel → select project/version → view runs → dispatch run → verdict renders
 - **Broke because**: queued checkpoint outside the `try`; throwing resolver recorded no run row; cross-scope version auto-select
 - **Beat asserts**: run row appears in the registered runs list; a failed dispatch still records a row with a visible failure state
@@ -55,15 +55,17 @@ Entry format — one section per defect:
 
 ### FS-198 — explicit Platform-to-Assurance-Studio project selection (sweep #6)
 
+- **Harnessed**: `golden-loop.e2e.test.ts` — beat 9, `Canvas authoring`
 - **Journey**: fresh disposable workspace → Sync Review → Platform project/version scope → Product Security surface → choose bb workspace project → inspect all four equally-primary linked AS candidates → explicitly save one candidate → status and plan render from the selected AS project; repeat without a bb project and without an AS selection
 - **Broke because**: connected TARA reads sent the disjoint Platform project id to Assurance Studio, and the real product linkage is ambiguous (verified four-way and two-way groups), so every connected surface 404ed and no heuristic could choose safely
 - **Beat asserts**: the four candidates remain visible and unselected until the operator saves one; the saved AS id alone scopes remote adapter and resolver reads while Platform ids retain cache identity; the connected Product Security status/plan render after selection; missing workspace shows `WORKSPACE_PROJECT_REQUIRED` and missing AS choice shows `AS_PROJECT_SELECTION_REQUIRED`, with no status or plan request sent in either refusal state
 
 ### FS-199 — full-shape finding enrichment fidelity (sweep #6)
 
+- **Harnessed**: `golden-loop.e2e.test.ts` — beat 5, `FS-193 quarantined finding recovery`
 - **Journey**: disposable bb data dir with the mock Platform remote → Findings panel → pull the 29-key binary-SAST specimen through registered `syncPull` → open `FS-500-006`
 - **Broke because**: the five-key seed projection hid unmapped warning/violation counts, and string-valued EPSS was silently discarded
-- **Beat asserts**: `FS-500-006`, `ca-certificates.crt`, EPSS `0.4%`, two warnings, and one violation render after the real-shape pull; invalid/null enrichment publishes as null with value-free advisory reason counts while identity-invalid rows alone increment quarantine
+- **Beat asserts**: `FS-500-006`, `ca-certificates.crt`, EPSS `0.43%`, two warnings, and one violation render after the real-shape pull; invalid/null enrichment publishes as null with value-free advisory reason counts while identity-invalid rows alone increment quarantine
 
 ### FS-195 — scoped SBOM pull and file-path component identity (sweep #6)
 

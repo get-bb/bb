@@ -1,0 +1,14 @@
+{
+  "runId": "RUN-OFFLINE-AX3000-24",
+  "firmwareDigest": "148b4a814b5b2057d855afa7ebdae4d6698e8632e2b1a2ed4a169a0514a1af6d",
+  "events": [
+    { "sequence": 1, "at": "2026-01-01T00:00:00.000Z", "type": "queued" },
+    { "sequence": 2, "at": "2026-01-01T00:00:01.000Z", "type": "started" },
+    {
+      "sequence": 3,
+      "at": "2026-01-01T00:00:02.000Z",
+      "type": "completed",
+      "result": "verified"
+    }
+  ]
+}

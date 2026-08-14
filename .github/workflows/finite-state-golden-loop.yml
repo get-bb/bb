@@ -40,7 +40,11 @@ jobs:
         # workflow fails to parse with 0 jobs); it is only available in steps.
         env:
           GOLDEN_LOOP_EVIDENCE_DIR: ${{ runner.temp }}/finite-state-golden-loop
-        run: pnpm exec turbo run test --filter=bb-plugin-finite-state --force -- test/e2e/golden-loop/harness.test.ts test/e2e/golden-loop/golden-loop.e2e.test.ts
+        run: pnpm exec turbo run test --filter=bb-plugin-finite-state --force -- test/e2e/golden-loop/harness.test.ts test/e2e/golden-loop/golden-loop.e2e.test.ts test/e2e/golden-loop/seed/seed.test.ts
+
+      - name: Verify the committed Golden Loop seed without writes
+        working-directory: plugins/bb-plugin-finite-state
+        run: pnpm exec tsx test/e2e/golden-loop/seed/generate.ts --verify test/e2e/golden-loop/seed
 
       - name: Upload Golden Loop evidence
         if: always()

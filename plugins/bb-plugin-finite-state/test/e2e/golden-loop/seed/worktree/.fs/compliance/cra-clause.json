@@ -1,0 +1,5 @@
+{
+  "clause": "CRA-ANNEX-I-1.2",
+  "check": "CHECK-HTTPD-WAN",
+  "missingRequirement": "REQ-118"
+}

@@ -1,0 +1,9 @@
+{
+  "id": "THREAT-22",
+  "component": "COMP-httpd",
+  "finding": "CVE-2026-31337",
+  "attackPath": {
+    "id": "ATTACK-PATH-WAN-HTTPD",
+    "crosses": ["WAN", "dmz", "httpd"]
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "source": {
+    "before": {
+      "path": "src/v2.3/httpd.c",
+      "sha256": "72f9d13518400f381137f7665a1f50bde9052a8a01bdae17a062c361f4902e7c"
+    },
+    "after": {
+      "path": "src/v2.4/httpd.c",
+      "sha256": "86afaaca8a7d1947923710e642b2b8c318c35b7dd151a24bfd1e8d95891883c3"
+    }
+  },
+  "binary": {
+    "path": ".fs-firmware/pv-ax3000-2.4/rootfs/usr/sbin/httpd",
+    "sha256": "912ea706a9618d7583b9a1e9ba4faef0cb4006305b7e47c0df25ab3c0d89abed"
+  },
+  "firmware": {
+    "pvId": "pv-ax3000-2.4",
+    "sha256": "148b4a814b5b2057d855afa7ebdae4d6698e8632e2b1a2ed4a169a0514a1af6d"
+  },
+  "run": "RUN-OFFLINE-AX3000-24",
+  "attestation": "attestations/ax3000-v24.dsse.json"
+}

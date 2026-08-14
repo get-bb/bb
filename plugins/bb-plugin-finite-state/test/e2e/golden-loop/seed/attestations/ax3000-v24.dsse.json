@@ -1,0 +1,16 @@
+{
+  "fixtureIdentity": "TEST ONLY — RFC 8032 vector identity; no public Rekor inclusion",
+  "payloadType": "application/vnd.in-toto+json",
+  "payload": "eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjEiLCJzdWJqZWN0IjpbeyJuYW1lIjoiQVgzMDAwLXYyLjQtZmlybXdhcmUiLCJkaWdlc3QiOnsic2hhMjU2IjoiMTQ4YjRhODE0YjViMjA1N2Q4NTVhZmE3ZWJkYWU0ZDY2OThlODYzMmUyYjFhMmVkNGExNjlhMDUxNGExYWY2ZCJ9fV0sInByZWRpY2F0ZVR5cGUiOiJodHRwczovL3Nsc2EuZGV2L3Byb3ZlbmFuY2UvdjEiLCJwcmVkaWNhdGUiOnsiYnVpbGREZWZpbml0aW9uIjp7ImJ1aWxkVHlwZSI6ImJiLnRlc3Qvb2ZmbGluZS1nb2xkZW4tbG9vcCJ9LCJydW5EZXRhaWxzIjp7ImJ1aWxkZXIiOnsiaWQiOiJiYi50ZXN0L2Zpbml0ZS1zdGF0ZS1nb2xkZW4tc2VlZCJ9LCJtZXRhZGF0YSI6eyJpbnZvY2F0aW9uSWQiOiJSVU4tT0ZGTElORS1BWDMwMDAtMjQifX19fQ==",
+  "signatures": [
+    {
+      "keyid": "rfc8032-test-vector-1",
+      "sig": "6RF7Yr2hT6xsnikOOUpAklLdHXhuNkkrUF08LevnKPE/JP2WF/UEyjblQ/ol6rYNo0p6+49R9kYobLJzVTS0Cg=="
+    }
+  ],
+  "transparencyLog": {
+    "included": false,
+    "service": "none",
+    "reason": "offline test fixture"
+  }
+}

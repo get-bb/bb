@@ -448,7 +448,7 @@ async function ensureFirmware(runtime: Runtime, pvId: string): Promise<void> {
   if (runtime.firmwareReady.has(pvId)) return;
   const pull = await runtime.host.harness.behavior.runCli(
     ["finite-state", "firmware", "pull", pvId, "--source", "api"],
-    { projectId: runtime.projectId, threadId: "thread-firmware-golden" },
+    { projectId: WORKSPACE_PROJECT_ID, threadId: "thread-firmware-golden" },
   );
   if (!successfulCli(pull)) {
     throw new Error(
@@ -458,7 +458,7 @@ async function ensureFirmware(runtime: Runtime, pvId: string): Promise<void> {
   await waitFor(async () => {
     const page = object(
       await runtime.host.harness.behavior.callRpc("firmwareMountsList", {
-        projectId: runtime.projectId,
+        projectId: WORKSPACE_PROJECT_ID,
         projectVersionId: pvId,
         pageSize: 100,
         continuation: null,
@@ -486,11 +486,32 @@ async function ensureFirmware(runtime: Runtime, pvId: string): Promise<void> {
 
 async function ensureBenchReady(runtime: Runtime): Promise<void> {
   if (runtime.benchReady) return;
+  const candidates = object(
+    await runtime.host.harness.behavior.callRpc("syncAsProjectCandidates", {
+      workspaceProjectId: WORKSPACE_PROJECT_ID,
+      projectId: runtime.projectId,
+      projectVersionId: null,
+    }),
+    "Bench Assurance Studio candidates",
+  );
+  const candidate = object(
+    array(candidates["items"], "Bench Assurance Studio candidates")[0],
+    "Bench Assurance Studio candidate",
+  );
+  await runtime.host.harness.behavior.callRpc("syncAsProjectSelect", {
+    workspaceProjectId: WORKSPACE_PROJECT_ID,
+    projectId: runtime.projectId,
+    projectVersionId: null,
+    assuranceStudioProjectId: string(
+      candidate["assuranceStudioProjectId"],
+      "Bench Assurance Studio project id",
+    ),
+  });
   await runtime.host.harness.behavior.callRpc("syncPull", {
     workspaceProjectId: WORKSPACE_PROJECT_ID,
     projectId: runtime.projectId,
     projectVersionId: BENCH_VERSION,
-    kinds: ["verificationRun"],
+    kinds: ["requirement"],
   });
   await ensureFirmware(runtime, BENCH_VERSION);
   runtime.benchReady = true;
@@ -502,7 +523,7 @@ async function mountedFirmwareDigest(
 ): Promise<string> {
   const page = object(
     await runtime.host.harness.behavior.callRpc("firmwareMountsList", {
-      projectId: runtime.projectId,
+      projectId: WORKSPACE_PROJECT_ID,
       projectVersionId: pvId,
       pageSize: 100,
       continuation: null,
@@ -906,11 +927,6 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
     },
     {
       ...metadata(3),
-      expectedFailure: {
-        task: "FS-201",
-        reason: "the production Bench bootstrap path has not landed",
-        signature: "No puller is registered for verificationRun",
-      },
       setup: async () => ensureBenchReady(runtime),
       action: async ({ artifacts }) => {
         cleanup();
@@ -923,6 +939,7 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
         ).toBeTruthy();
         const runButtons = await slot.findAllByRole("button", { name: "Run" });
         fireEvent.click(runButtons[0]!);
+        await slot.findByRole("option", { name: "Golden host · connected" });
         fireEvent.change(await slot.findByLabelText("Host"), {
           target: { value: "golden-host" },
         });
@@ -931,19 +948,15 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
             /I confirm this version, host, firmware digest, and deployment scope/u,
           ),
         );
+        const start = slot.getByRole("button", { name: "Start Tier 0" });
+        if (!(start instanceof HTMLButtonElement))
+          throw new Error("Start Tier 0 control is not a button");
+        await waitFor(() => expect(start.disabled).toBe(false));
         runtime.failNextThreadSpawn = true;
-        fireEvent.click(slot.getByRole("button", { name: "Start Tier 0" }));
-        await waitFor(() =>
-          expect(
-            slot.inspection.navigateCalls.some(
-              (call) =>
-                call.method === "toPluginPanel" &&
-                call.path === "bench" &&
-                typeof call.options?.subPath === "string" &&
-                call.options.subPath.length > 0,
-            ),
-          ).toBe(true),
-        );
+        fireEvent.click(start);
+        await waitFor(async () => {
+          expect(runtime.failNextThreadSpawn).toBe(false);
+        });
         const runs = await runtime.host.harness.behavior.callRpc(
           "benchRunsList",
           {
@@ -959,7 +972,11 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
             (item) =>
               object(item["fields"], "run fields")["status"] === "failed",
           );
-        const runId = string(failed?.["key"], "failed run id");
+        if (!failed)
+          throw new Error(
+            `failed bench run missing from list: ${JSON.stringify(runs)}`,
+          );
+        const runId = string(failed["key"], "failed run id");
         slot.unmount();
         const detail = renderSlot(
           panel,
@@ -1109,6 +1126,12 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
             version: "1",
           },
         });
+        runtime.findings.set("fs193-partial-bad", {
+          id: "fs193-partial-bad",
+          projectVersionId: runtime.fs193Version,
+          findingId: "CVE-2026-19302",
+          component: { id: "fs193-partial-invalid", version: "" },
+        });
         const pull = () =>
           runtime.host.harness.behavior.callRpc("syncPull", {
             workspaceProjectId: WORKSPACE_PROJECT_ID,
@@ -1116,8 +1139,59 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
             projectVersionId: runtime.fs193Version,
             kinds: ["finding"],
           });
-        await pull();
-        for (const id of ["fs193-valid-a", "fs193-valid-b"])
+        const partialCli = await runtime.host.harness.behavior.runCli(
+          [
+            "finite-state",
+            "pull",
+            "finding",
+            "--project",
+            runtime.projectId,
+            "--version",
+            runtime.fs193Version,
+            "--json",
+          ],
+          cliContext(),
+        );
+        if (!successfulCli(partialCli))
+          throw new Error(
+            String(object(partialCli, "partial finding pull")["stderr"]),
+          );
+        const partial = object(
+          JSON.parse(
+            string(
+              object(partialCli, "partial finding pull")["stdout"],
+              "partial finding pull stdout",
+            ),
+          ),
+          "partial finding pull JSON",
+        );
+        const partialSlot = renderSlot(
+          await registeredPanel("findings"),
+          { subPath: "" },
+          panelRuntime(runtime),
+        );
+        await waitFor(() =>
+          expect(
+            partialSlot.container.querySelectorAll("[data-finding-row]"),
+          ).toHaveLength(2),
+        );
+        fireEvent.click(
+          partialSlot.getByRole("button", { name: "Pull findings" }),
+        );
+        await partialSlot.findByText(
+          /3 fetched · 1 quarantined · 2 published/u,
+        );
+        const partialReportText = partialSlot.container.textContent ?? "";
+        await artifacts.writeText(
+          "partial-quarantine.dom.html",
+          partialSlot.container.innerHTML,
+        );
+        partialSlot.unmount();
+        for (const id of [
+          "fs193-valid-a",
+          "fs193-valid-b",
+          "fs193-partial-bad",
+        ])
           runtime.findings.delete(id);
         for (let index = 1; index <= 3; index += 1) {
           runtime.findings.set(`fs193-bad-${index}`, {
@@ -1166,17 +1240,111 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
             filters: {},
           },
         );
+        runtime.findings.delete("fs193-repaired");
+        const specimen = object(
+          JSON.parse(
+            await readFile(
+              join(FIXTURE_ROOT, "platform", "fs193-binary-sast-specimen.json"),
+              "utf8",
+            ),
+          ),
+          "FS-199 specimen",
+        );
+        runtime.findings.set("fs199-full-shape", {
+          ...specimen,
+          id: "fs199-full-shape",
+          projectVersionId: runtime.fs193Version,
+        });
+        runtime.findings.set("fs199-advisory", {
+          ...specimen,
+          id: "fs199-advisory",
+          findingId: "FS-500-007",
+          projectVersionId: runtime.fs193Version,
+          warnings: null,
+          violations: "invalid",
+        });
+        runtime.findings.set("fs199-quarantined", {
+          id: "fs199-quarantined",
+          projectVersionId: runtime.fs193Version,
+          findingId: "FS-500-008",
+          component: { id: "fs199-missing-name", version: "" },
+        });
+        const enrichmentPull = await pull();
+        const enrichmentAdvisories =
+          await runtime.host.harness.behavior.callRpc(
+            "findingsPullAdvisories",
+            {
+              projectId: runtime.projectId,
+              projectVersionId: runtime.fs193Version,
+              generationId: string(
+                object(enrichmentPull, "FS-199 pull")["generationId"],
+                "FS-199 generation id",
+              ),
+            },
+          );
+        const enrichmentPage = object(
+          await runtime.host.harness.behavior.callRpc("findingsUiList", {
+            projectId: runtime.projectId,
+            projectVersionId: runtime.fs193Version,
+            pageSize: 100,
+            continuation: null,
+            filters: {},
+          }),
+          "FS-199 findings page",
+        );
+        const fullShape = array(enrichmentPage["items"], "FS-199 rows")
+          .map((item) => object(item, "FS-199 row"))
+          .find(
+            (item) =>
+              object(item["fields"], "FS-199 fields")["cve"] === "FS-500-006",
+          );
+        if (!fullShape) {
+          throw new Error(
+            `FS-199 row missing: ${JSON.stringify(enrichmentPage["items"])}`,
+          );
+        }
+        const { findingDetailSubPath } =
+          await import("../../../lanes/findings/ui/route.js");
+        const detailSlot = renderSlot(
+          await registeredPanel("findings"),
+          {
+            subPath: findingDetailSubPath(
+              string(
+                object(fullShape["fields"], "FS-199 fields")["stableKey"],
+                "FS-199 stable key",
+              ),
+              {},
+            ),
+          },
+          panelRuntime(runtime),
+        );
+        await detailSlot.findByText("FS-500-006");
+        const detailText = detailSlot.container.textContent ?? "";
+        await artifacts.writeText(
+          "fs199-finding-detail.dom.html",
+          detailSlot.container.innerHTML,
+        );
+        detailSlot.unmount();
         runtime.evidence.set("fs193", {
+          partial,
+          partialReport: partialReportText,
           failure,
           retained,
           recovered,
           published,
+          enrichmentPull,
+          enrichmentAdvisories,
+          enrichmentPage,
+          detailText,
         });
         await artifacts.writeJson("quarantine-recovery.json", {
           failure,
           retained,
           recovered,
           published,
+          enrichmentPull,
+          enrichmentAdvisories,
+          enrichmentPage,
         });
       },
       assert: async () => {
@@ -1192,7 +1360,41 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
           object(evidence["published"], "published page")["items"],
           "published rows",
         );
+        const enrichmentPull = object(
+          evidence["enrichmentPull"],
+          "FS-199 pull",
+        );
+        const enrichmentKind = object(
+          object(enrichmentPull["kinds"], "FS-199 kinds")["finding"],
+          "FS-199 finding report",
+        );
+        const enrichmentAdvisories = array(
+          object(evidence["enrichmentAdvisories"], "FS-199 advisories")[
+            "advisories"
+          ],
+          "FS-199 advisory rows",
+        );
+        const partialKind = object(
+          object(
+            object(evidence["partial"], "partial CLI report")["kinds"],
+            "partial CLI kinds",
+          )["finding"],
+          "partial CLI finding report",
+        );
+        const detailText = string(evidence["detailText"], "FS-199 detail");
         return [
+          assertion(
+            "partial quarantine is truthful in CLI JSON",
+            partialKind["fetched"] === 3 &&
+              partialKind["quarantined"] === 1 &&
+              partialKind["baseRows"] === 2,
+          ),
+          assertion(
+            "partial quarantine is truthful in the registered Findings panel",
+            String(evidence["partialReport"]).includes(
+              "Pull complete · 3 fetched · 1 quarantined · 2 published",
+            ),
+          ),
           assertion(
             "all-quarantined pull fails with truthful count",
             string(evidence["failure"], "failure").includes(
@@ -1206,6 +1408,24 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
           assertion(
             "same-kind repaired pull publishes",
             published.length === 1,
+          ),
+          assertion(
+            "full-shape pull isolates identity errors and publishes enrichment advisories",
+            enrichmentKind["fetched"] === 3 &&
+              enrichmentKind["quarantined"] === 1 &&
+              enrichmentKind["baseRows"] === 2 &&
+              enrichmentAdvisories.some(
+                (item) =>
+                  object(item, "FS-199 advisory")["code"] ===
+                  "FINDING_WARNING_COUNT_INVALID",
+              ),
+          ),
+          assertion(
+            "registered finding detail renders real-shape enrichment",
+            detailText.includes("ca-certificates.crt") &&
+              detailText.includes("0.43%") &&
+              detailText.includes("2 warnings") &&
+              detailText.includes("1 violations"),
           ),
         ];
       },
@@ -1429,6 +1649,62 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
     {
       ...metadata(9),
       action: async ({ artifacts }) => {
+        cleanup();
+        runtime.panelRpcCalls.length = 0;
+        const syncSlot = renderSlot(
+          await registeredSyncPanelWithHumanApproval(),
+          {
+            subPath:
+              "scope/platform-project-a/platform-version-a/surface/product-security",
+          },
+          panelRuntime(runtime),
+        );
+        await syncSlot.findByText(
+          "4 linked projects require an explicit choice.",
+        );
+        expect(
+          syncSlot.getByText("AS_PROJECT_SELECTION_REQUIRED"),
+        ).toBeTruthy();
+        expect(
+          syncSlot.getByText("No status or plan request was sent."),
+        ).toBeTruthy();
+        const selector = syncSlot.getByLabelText(
+          "Assurance Studio project",
+        ) as HTMLSelectElement;
+        const candidateIds = [...selector.options]
+          .map((option) => option.value)
+          .filter(Boolean);
+        const initiallyUnselected = selector.value === "";
+        const preSelectionCalls = [...runtime.panelRpcCalls];
+        fireEvent.change(selector, { target: { value: "as-project-a3" } });
+        fireEvent.click(
+          syncSlot.getByRole("button", { name: "Save selection" }),
+        );
+        await waitFor(() =>
+          expect(
+            runtime.panelRpcCalls.some(
+              ({ method }) => method === "syncAsProjectSelect",
+            ),
+          ).toBe(true),
+        );
+        await waitFor(() =>
+          expect(
+            runtime.panelRpcCalls.some(
+              ({ method }) => method === "syncStatus" || method === "syncPlan",
+            ),
+          ).toBe(true),
+        );
+        await artifacts.writeText(
+          "fs198-as-project-selection.dom.html",
+          syncSlot.container.innerHTML,
+        );
+        runtime.evidence.set("fs198", {
+          candidateIds,
+          initiallyUnselected,
+          preSelectionCalls,
+          calls: [...runtime.panelRpcCalls],
+        });
+        syncSlot.unmount();
         const { architectureEntityPayload, parseArchitectureEntity } =
           await import("../../../lanes/product-security/canvas/editing/schema.js");
         const fields = architectureEntityPayload(
@@ -1471,6 +1747,52 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
           "canvas write",
         );
         return [
+          assertion(
+            "ambiguous Assurance Studio links remain visible and unselected",
+            array(
+              object(runtime.evidence.get("fs198"), "FS-198 evidence")[
+                "candidateIds"
+              ],
+              "FS-198 candidate ids",
+            ).length === 4 &&
+              object(runtime.evidence.get("fs198"), "FS-198 evidence")[
+                "initiallyUnselected"
+              ] === true,
+          ),
+          assertion(
+            "AS selection refusal sends no status or plan request",
+            !array(
+              object(runtime.evidence.get("fs198"), "FS-198 evidence")[
+                "preSelectionCalls"
+              ],
+              "FS-198 pre-selection calls",
+            )
+              .map((call) => object(call, "FS-198 pre-selection call"))
+              .some(
+                ({ method }) =>
+                  method === "syncStatus" || method === "syncPlan",
+              ),
+          ),
+          assertion(
+            "explicit AS project selection resumes registered status and plan",
+            array(
+              object(runtime.evidence.get("fs198"), "FS-198 evidence")["calls"],
+              "FS-198 calls",
+            )
+              .map((call) => object(call, "FS-198 call"))
+              .some(({ method }) => method === "syncAsProjectSelect") &&
+              array(
+                object(runtime.evidence.get("fs198"), "FS-198 evidence")[
+                  "calls"
+                ],
+                "FS-198 calls",
+              )
+                .map((call) => object(call, "FS-198 call"))
+                .some(
+                  ({ method }) =>
+                    method === "syncStatus" || method === "syncPlan",
+                ),
+          ),
           assertion(
             "canvas RPC reads authored component",
             array(
@@ -1547,11 +1869,6 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
     },
     {
       ...metadata(11),
-      expectedFailure: {
-        task: "FS-201",
-        reason: "the production Bench bootstrap path has not landed",
-        signature: "No puller is registered for verificationRun",
-      },
       setup: async () => ensureBenchReady(runtime),
       action: async ({ artifacts }) => {
         const digest = await mountedFirmwareDigest(runtime, BENCH_VERSION);
@@ -1614,11 +1931,6 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
     },
     {
       ...metadata(12),
-      expectedFailure: {
-        task: "FS-201",
-        reason: "the production Bench bootstrap path has not landed",
-        signature: "No puller is registered for verificationRun",
-      },
       setup: async () => ensureBenchReady(runtime),
       action: async ({ artifacts }) => {
         const slot = renderSlot(
@@ -1634,19 +1946,23 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
         slot.unmount();
       },
       assert: async () => {
+        const digest = await mountedFirmwareDigest(runtime, BENCH_VERSION);
         const verdict = object(
           await runtime.host.harness.behavior.callRpc("benchOtaVerdictGet", {
             projectId: runtime.projectId,
             pvId: BENCH_VERSION,
-            digest: await mountedFirmwareDigest(runtime, BENCH_VERSION),
+            digest,
           }),
           "bench verdict",
         );
         return [
           assertion(
             "registered Bench panel reads a current durable verdict",
-            verdict["currentMountedDigest"] === verdict["firmwareDigest"] &&
-              verdict["stale"] === false,
+            verdict["firmwareDigest"] === digest &&
+              verdict["stale"] === false &&
+              ["INCONCLUSIVE", "SAFE_TO_OTA", "NOT_SAFE"].includes(
+                string(verdict["verdict"], "verdict state"),
+              ),
           ),
         ];
       },
@@ -1774,10 +2090,7 @@ async function createRun(
         threads: {
           get: async ({ threadId }) => ({
             id: threadId,
-            projectId:
-              threadId === "thread-firmware-golden"
-                ? (runtime?.projectId ?? WORKSPACE_PROJECT_ID)
-                : WORKSPACE_PROJECT_ID,
+            projectId: WORKSPACE_PROJECT_ID,
             environmentId:
               threadId === "thread-firmware-golden"
                 ? "environment-firmware-golden"
@@ -1816,10 +2129,7 @@ async function createRun(
         environments: {
           get: async ({ environmentId }) => ({
             id: environmentId,
-            projectId:
-              environmentId === "environment-firmware-golden"
-                ? (runtime?.projectId ?? WORKSPACE_PROJECT_ID)
-                : WORKSPACE_PROJECT_ID,
+            projectId: WORKSPACE_PROJECT_ID,
             path: worktree,
             hostId: "golden-host",
           }),
@@ -2157,7 +2467,7 @@ describe.sequential("Golden Loop incremental acceptance", () => {
         expect(firstResults.map(({ beat }) => beat)).toEqual(
           GOLDEN_LOOP_BEATS.map(({ number }) => number),
         );
-        const pendingBeats = new Set([3, 11, 12]);
+        const pendingBeats = new Set<number>();
         expect(
           firstResults
             .filter(({ status }) => status === "skipped")

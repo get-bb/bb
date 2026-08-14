@@ -1,0 +1,169 @@
+{
+  "seedVersion": 1,
+  "generatorVersion": "wp66-v2",
+  "seed": 66,
+  "sourceSeed": "wp08-sha256:16aa519b5b568dcb08646f31a76cc76bea210db5f572f645689ded51af589d61;seed=66;generator=wp66-v2",
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "products": {
+    "v23": {
+      "pvId": "pv-ax3000-2.3",
+      "firmwareDigest": "44a82b885fc486372052cb2f3e13cbf67020b9778c37b73dfbae9c5b2d438ce9",
+      "fileCount": 4
+    },
+    "v24": {
+      "pvId": "pv-ax3000-2.4",
+      "firmwareDigest": "148b4a814b5b2057d855afa7ebdae4d6698e8632e2b1a2ed4a169a0514a1af6d",
+      "fileCount": 4
+    }
+  },
+  "expected": {
+    "newUntriaged": 412,
+    "policyMatches": 306,
+    "policyWritten": 305,
+    "heldKev": 1,
+    "carryForwardRecovered": 14,
+    "stale": 9,
+    "orphans": 2
+  },
+  "artifacts": [
+    {
+      "path": "attestations/ax3000-v24.dsse.json",
+      "sha256": "dfd4d0a78741973ea51974fb8128b69602e2e5eb1d428043982f93243767c4aa",
+      "purpose": "offline test attestation verification material"
+    },
+    {
+      "path": "attestations/rfc8032-test-vector-1.pub.pem",
+      "sha256": "7f2d9ed0b71b8e5a6c5cf30e647d6e20b5bca6dac8071f11abe3fef8014db610",
+      "purpose": "offline test attestation verification material"
+    },
+    {
+      "path": "generate.ts",
+      "sha256": "79158bfbc964f103e184febecce0fc9cb6b2bd39bbe500249afa7aec67d7f84b",
+      "purpose": "versioned deterministic Golden Loop generator"
+    },
+    {
+      "path": "seed.test.ts",
+      "sha256": "43a379dba7a83474355c48e1d98e561694603723d0f42ade234595c764791836",
+      "purpose": "seed determinism, integrity, and safety tests"
+    },
+    {
+      "path": "warm-cache/data.db",
+      "sha256": "a70b44e5dba2e69b17288f65659ede5d389bfe3eb56fc68455ffa6420a355146",
+      "purpose": "production-migrated offline finding cache",
+      "schemaVersion": 121
+    },
+    {
+      "path": "warm-cache/run-events.json",
+      "sha256": "fb629573545e814d153ed6ebd10f9501a1eca0265d9246ffe7f7ee49a9e4685d",
+      "purpose": "deterministic offline bench run and event sequence"
+    },
+    {
+      "path": "worktree/.fs-firmware/pv-ax3000-2.3/manifest.sqlite",
+      "sha256": "3de7552eec633daa33baf0aabc4ea58b2c868daf6f1beaa1b2b36cd99d339493",
+      "purpose": "production firmware mount manifest",
+      "schemaVersion": 2
+    },
+    {
+      "path": "worktree/.fs-firmware/pv-ax3000-2.3/rootfs/etc/ax3000-release",
+      "sha256": "6e6f5d808670f4f8cca667478fc23fcb33b3693be360e117aa61c1b59552023d",
+      "purpose": "fully materialized synthetic firmware file"
+    },
+    {
+      "path": "worktree/.fs-firmware/pv-ax3000-2.3/rootfs/etc/httpd/httpd.conf",
+      "sha256": "2c78becc1bd8a42d88acf8d2959e31f2b88436dbdc178eb3644b237709b09c54",
+      "purpose": "fully materialized synthetic firmware file"
+    },
+    {
+      "path": "worktree/.fs-firmware/pv-ax3000-2.3/rootfs/lib/libcrypto.so",
+      "sha256": "a986e4d1409205ed556d2a4d758d6b7511096a30d5be3b71b234c219aa619c76",
+      "purpose": "fully materialized synthetic firmware file"
+    },
+    {
+      "path": "worktree/.fs-firmware/pv-ax3000-2.3/rootfs/usr/sbin/httpd",
+      "sha256": "ae1ac9e97cad4d5621a026176e52632e431cb6e5b335445be8ed38e21e643204",
+      "purpose": "fully materialized synthetic firmware file"
+    },
+    {
+      "path": "worktree/.fs-firmware/pv-ax3000-2.4/manifest.sqlite",
+      "sha256": "e81d032b12b2ca820f7399e6f2dde8ad60512855a34b9cc885107efb09aeb3de",
+      "purpose": "production firmware mount manifest",
+      "schemaVersion": 2
+    },
+    {
+      "path": "worktree/.fs-firmware/pv-ax3000-2.4/rootfs/etc/ax3000-release",
+      "sha256": "e06557e3ae5a09161388b961ff31b7ea8114499b4ca6d1f36ecc92df4495be2f",
+      "purpose": "fully materialized synthetic firmware file"
+    },
+    {
+      "path": "worktree/.fs-firmware/pv-ax3000-2.4/rootfs/etc/httpd/httpd.conf",
+      "sha256": "0c359ce454d6ceb73575bf48ab3cf97db71b2ef5834db357ee1a4c594e84aaee",
+      "purpose": "fully materialized synthetic firmware file"
+    },
+    {
+      "path": "worktree/.fs-firmware/pv-ax3000-2.4/rootfs/lib/libcrypto.so",
+      "sha256": "a986e4d1409205ed556d2a4d758d6b7511096a30d5be3b71b234c219aa619c76",
+      "purpose": "fully materialized synthetic firmware file"
+    },
+    {
+      "path": "worktree/.fs-firmware/pv-ax3000-2.4/rootfs/usr/sbin/httpd",
+      "sha256": "912ea706a9618d7583b9a1e9ba4faef0cb4006305b7e47c0df25ab3c0d89abed",
+      "purpose": "fully materialized synthetic firmware file"
+    },
+    {
+      "path": "worktree/.fs-firmware/pv-ax3000-unpack-gap/manifest.sqlite",
+      "sha256": "a496fb4c4e8c8aa029604f961ae39766a89179e9e8f254bbb006ae6de339630f",
+      "purpose": "production firmware mount manifest",
+      "schemaVersion": 2
+    },
+    {
+      "path": "worktree/.fs-firmware/pv-ax3000-unpack-gap/rootfs/README.txt",
+      "sha256": "ab21e84991daa6a9b9cd10ec663884852eb97a8ae996746369ed0ee0227b0d03",
+      "purpose": "explicit non-fatal unpack-gap honesty fixture"
+    },
+    {
+      "path": "worktree/.fs/compliance/cra-clause.json",
+      "sha256": "4a69bba7cfa619fe77eecbb1c8a95f87728930dff249aeb5cf91eebd024bc938",
+      "purpose": "CRA clause, check, and missing-requirement fixture"
+    },
+    {
+      "path": "worktree/.fs/golden-loop/story.json",
+      "sha256": "2483ea77ff46c773471114388f2b2909017566419ff6a8c4a12264dcb3852b3c",
+      "purpose": "Golden Loop identities, counts, and drift cross-links"
+    },
+    {
+      "path": "worktree/.fs/golden-loop/trace.json",
+      "sha256": "bf1b0f890aaebe2a3dbb2963037f07842e71e085f16b972c90d89df96ba023c8",
+      "purpose": "source, binary, firmware, run, and attestation trace links"
+    },
+    {
+      "path": "worktree/.fs/threats/THREAT-22.json",
+      "sha256": "2b860d7cbd127a1c9195a341973372f2910ac57941c01fb5d5403c0d5d6ff479",
+      "purpose": "reachable KEV threat and WAN attack-path fixture"
+    },
+    {
+      "path": "worktree/.fs/triage/project-ax3000-demo/httpd-1.yaml",
+      "sha256": "1e3c42cebbc7827dbdb81c39d782e63e4518f0731a0ca2d3dfff5bd78bf6c828",
+      "purpose": "production-format authored VEX triage overlay"
+    },
+    {
+      "path": "worktree/.fs/triage/project-ax3000-demo/httpd-2.yaml",
+      "sha256": "d55b6f0d25947cd0fddefef587f5cf4a395dfa601e9e4194ff2fb766e3080f71",
+      "purpose": "production-format authored VEX triage overlay"
+    },
+    {
+      "path": "worktree/.gitignore",
+      "sha256": "2d832145e5f9b057351347ece55a993ba3304e5cd0bd0bb8b3bfb25f0139e888",
+      "purpose": "firmware cache repository-safety fixture"
+    },
+    {
+      "path": "worktree/src/v2.3/httpd.c",
+      "sha256": "72f9d13518400f381137f7665a1f50bde9052a8a01bdae17a062c361f4902e7c",
+      "purpose": "traceable source repair fixture"
+    },
+    {
+      "path": "worktree/src/v2.4/httpd.c",
+      "sha256": "86afaaca8a7d1947923710e642b2b8c318c35b7dd151a24bfd1e8d95891883c3",
+      "purpose": "traceable source repair fixture"
+    }
+  ]
+}

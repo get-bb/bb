@@ -1,0 +1,4029 @@
+component:
+  group: finite-state
+  name: httpd
+  purl: pkg:generic/finite-state/httpd@2.3.1
+  version: 2.3.1
+decisions:
+  CVE-2026-106002:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 001
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base:
+        justification: null
+        reason: Golden Loop deterministic policy decision
+        response: null
+        status: IN_TRIAGE
+      pushed_at: 2026-01-01T00:00:00.000Z
+  CVE-2026-106003:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 002
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base:
+        justification: null
+        reason: Golden Loop deterministic policy decision
+        response: null
+        status: IN_TRIAGE
+      pushed_at: 2026-01-01T00:00:00.000Z
+  CVE-2026-106004:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 003
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base:
+        justification: null
+        reason: Golden Loop deterministic policy decision
+        response: null
+        status: IN_TRIAGE
+      pushed_at: 2026-01-01T00:00:00.000Z
+  CVE-2026-106005:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 004
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base:
+        justification: null
+        reason: Golden Loop deterministic policy decision
+        response: null
+        status: IN_TRIAGE
+      pushed_at: 2026-01-01T00:00:00.000Z
+  CVE-2026-106006:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 005
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base:
+        justification: null
+        reason: Golden Loop deterministic policy decision
+        response: null
+        status: IN_TRIAGE
+      pushed_at: 2026-01-01T00:00:00.000Z
+  CVE-2026-106007:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 006
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base:
+        justification: null
+        reason: Golden Loop deterministic policy decision
+        response: null
+        status: IN_TRIAGE
+      pushed_at: 2026-01-01T00:00:00.000Z
+  CVE-2026-106008:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 007
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base:
+        justification: null
+        reason: Golden Loop deterministic policy decision
+        response: null
+        status: IN_TRIAGE
+      pushed_at: 2026-01-01T00:00:00.000Z
+  CVE-2026-106009:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 008
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base:
+        justification: null
+        reason: Golden Loop deterministic policy decision
+        response: null
+        status: IN_TRIAGE
+      pushed_at: 2026-01-01T00:00:00.000Z
+  CVE-2026-106010:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 009
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base:
+        justification: null
+        reason: Golden Loop deterministic policy decision
+        response: null
+        status: IN_TRIAGE
+      pushed_at: 2026-01-01T00:00:00.000Z
+  CVE-2026-106011:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 010
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base:
+        justification: null
+        reason: Golden Loop deterministic policy decision
+        response: null
+        status: IN_TRIAGE
+      pushed_at: 2026-01-01T00:00:00.000Z
+  CVE-2026-106012:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 011
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base:
+        justification: null
+        reason: Golden Loop deterministic policy decision
+        response: null
+        status: IN_TRIAGE
+      pushed_at: 2026-01-01T00:00:00.000Z
+  CVE-2026-106013:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 012
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base:
+        justification: null
+        reason: Golden Loop deterministic policy decision
+        response: null
+        status: IN_TRIAGE
+      pushed_at: 2026-01-01T00:00:00.000Z
+  CVE-2026-106014:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 013
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base:
+        justification: null
+        reason: Golden Loop deterministic policy decision
+        response: null
+        status: IN_TRIAGE
+      pushed_at: 2026-01-01T00:00:00.000Z
+  CVE-2026-106015:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 014
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base:
+        justification: null
+        reason: Golden Loop deterministic policy decision
+        response: null
+        status: IN_TRIAGE
+      pushed_at: 2026-01-01T00:00:00.000Z
+  CVE-2026-106016:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 026
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106017:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 027
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106018:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 028
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106019:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 029
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106020:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 030
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106021:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 031
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106022:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 032
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106023:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 033
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106024:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 034
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106025:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 035
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106026:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 036
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106027:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 037
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106028:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 038
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106029:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 039
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106030:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 040
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106031:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 041
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106032:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 042
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106033:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 043
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106034:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 044
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106035:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 045
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106036:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 046
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106037:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 047
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106038:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 048
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106039:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 049
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106040:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 050
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106041:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 051
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106042:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 052
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106043:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 053
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106044:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 054
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106045:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 055
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106046:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 056
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106047:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 057
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106048:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 058
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106049:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 059
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106050:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 060
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106051:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 061
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106052:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 062
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106053:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 063
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106054:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 064
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106055:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 065
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106056:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 066
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106057:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 067
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106058:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 068
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106059:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 069
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106060:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 070
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106061:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 071
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106062:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 072
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106063:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 073
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106064:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 074
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106065:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 075
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106066:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 076
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106067:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 077
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106068:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 078
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106069:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 079
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106070:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 080
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106071:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 081
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106072:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 082
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106073:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 083
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106074:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 084
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106075:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 085
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106076:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 086
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106077:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 087
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106078:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 088
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106079:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 089
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106080:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 090
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106081:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 091
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106082:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 092
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106083:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 093
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106084:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 094
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106085:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 095
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106086:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 096
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106087:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 097
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106088:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 098
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106089:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 099
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106090:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 100
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106091:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 101
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106092:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 102
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106093:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 103
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106094:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 104
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106095:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 105
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106096:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 106
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106097:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 107
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106098:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 108
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106099:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 109
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106100:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 110
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106101:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 111
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106102:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 112
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106103:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 113
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106104:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 114
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106105:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 115
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106106:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 116
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106107:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 117
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106108:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 118
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106109:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 119
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106110:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 120
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106111:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 121
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106112:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 122
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106113:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 123
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106114:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 124
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106115:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 125
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106116:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 126
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106117:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 127
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106118:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 128
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106119:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 129
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106120:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 130
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106121:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 131
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106122:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 132
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106123:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 133
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106124:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 134
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106125:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 135
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106126:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 136
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106127:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 137
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106128:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 138
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106129:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 139
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106130:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 140
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106131:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 141
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106132:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 142
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106133:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 143
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106134:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 144
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106135:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 145
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106136:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 146
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106137:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 147
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106138:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 148
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106139:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 149
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106140:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 150
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106141:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 151
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106142:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 152
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106143:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 153
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106144:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 154
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106145:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 155
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106146:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 156
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106147:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 157
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106148:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 158
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106149:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 159
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106150:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 160
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106151:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 161
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106152:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 162
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106153:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 163
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106154:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 164
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106155:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 165
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106156:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 166
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106157:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 167
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106158:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 168
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106159:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 169
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106160:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 170
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106161:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 171
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106162:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 172
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106163:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 173
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106164:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 174
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106165:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 175
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106166:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 176
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106167:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 177
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106168:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 178
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106169:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 179
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106170:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 180
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106171:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 181
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106172:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 182
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106173:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 183
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106174:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 184
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106175:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 185
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106176:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 186
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106177:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 187
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106178:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 188
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106179:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 189
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106180:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 190
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106181:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 191
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106182:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 192
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106183:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 193
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106184:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 194
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106185:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 195
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106186:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 196
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106187:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 197
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106188:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 198
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106189:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 199
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106190:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 200
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106191:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 201
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106192:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 202
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106193:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 203
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106194:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 204
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106195:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 205
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106196:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 206
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106197:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 207
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106198:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 208
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106199:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 209
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106200:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 210
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106201:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 211
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106202:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 212
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106203:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 213
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106204:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 214
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106205:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 215
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106206:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 216
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106207:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 217
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106208:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 218
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106209:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 219
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106210:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 220
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106211:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 221
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106212:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 222
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106213:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 223
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106214:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 224
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106215:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 225
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106216:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 226
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106217:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 227
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106218:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 228
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106219:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 229
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106220:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 230
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106221:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 231
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106222:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 232
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106223:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 233
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106224:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 234
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106225:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 235
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106226:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 236
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106227:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 237
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106228:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 238
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106229:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 239
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106230:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 240
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106231:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 241
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106232:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 242
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106233:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 243
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106234:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 244
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106235:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 245
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106236:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 246
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106237:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 247
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106238:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 248
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106239:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 249
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106240:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 250
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106241:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 251
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106242:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 252
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106243:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 253
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106244:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 254
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106245:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 255
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106246:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 256
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106247:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 257
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106248:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 258
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106249:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 259
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106250:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 260
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106251:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 261
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106252:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 262
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106253:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 263
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106254:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 264
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106255:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 265
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106256:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 266
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106257:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 267
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106258:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 268
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106259:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 269
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106260:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 270
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106261:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 271
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106262:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 272
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106263:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 273
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106264:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 274
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106265:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 275
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106266:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 276
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106267:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 277
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106268:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 278
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106269:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 279
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106270:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 280
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106271:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 281
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106272:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 282
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106273:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 283
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106274:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 284
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106275:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 285
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106276:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 286
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106277:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 287
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106278:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 288
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106279:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 289
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106280:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 290
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106281:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 291
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106282:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 292
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106283:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 293
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106284:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 294
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106285:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 295
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106286:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 296
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106287:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 297
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106288:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 298
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106289:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 299
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106290:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 300
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106291:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 301
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106292:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 302
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106293:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 303
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106294:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 304
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106295:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 305
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106296:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 306
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106297:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 307
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106298:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 308
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106299:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 309
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106300:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 310
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106301:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 311
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106302:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 312
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106303:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 313
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106304:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 314
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106305:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 315
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+  CVE-2026-106306:
+    justification: null
+    pin: exact_version
+    provenance:
+      at: 2026-01-01T00:00:00.000Z
+      by: bb.test/golden-seed
+      evidence: offline policy evaluation 316
+    reason: Golden Loop deterministic policy decision
+    response: null
+    status: IN_TRIAGE
+    sync:
+      base: null
+      pushed_at: null
+project: project-ax3000-demo
+schema: fs-triage/v1
