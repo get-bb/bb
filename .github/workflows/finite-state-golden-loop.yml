@@ -1,0 +1,50 @@
+name: Finite State Golden Loop
+
+on:
+  push:
+    branches:
+      - main
+      - finite-state/integration
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+env:
+  PNPM_VERSION: "9.15.0"
+
+concurrency:
+  group: finite-state-golden-loop-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  offline-golden-loop:
+    name: Offline Golden Loop (Node 22.19.0)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOLDEN_LOOP_EVIDENCE_DIR: ${{ runner.temp }}/finite-state-golden-loop
+
+    steps:
+      - name: Checkout repository with worktree seed history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup workspace
+        uses: ./.github/actions/setup-workspace
+        with:
+          node-version: "22.19.0"
+          pnpm-version: ${{ env.PNPM_VERSION }}
+          cache-prefix: finite-state-golden-loop
+
+      - name: Run the offline Golden Loop twice
+        run: pnpm exec turbo run test --filter=bb-plugin-finite-state --force -- test/e2e/golden-loop/harness.test.ts test/e2e/golden-loop/golden-loop.e2e.test.ts
+
+      - name: Upload Golden Loop evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: finite-state-golden-loop-${{ github.run_id }}
+          path: ${{ runner.temp }}/finite-state-golden-loop
+          if-no-files-found: error
+          retention-days: 14

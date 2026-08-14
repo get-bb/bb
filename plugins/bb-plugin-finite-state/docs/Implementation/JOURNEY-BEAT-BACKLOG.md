@@ -13,36 +13,42 @@ Entry format — one section per defect:
 
 ### FS-168 — bulk triage apply silent no-op (sweep #5)
 
+- **Harnessed**: `golden-loop.e2e.test.ts` — beat 2, `FS-168 bulk triage writes`
 - **Journey**: triage panel → select multiple findings → bulk apply decision → confirm
 - **Broke because**: `commitBulk` swallowed unresolved-scope failures; click produced no toast, no file, no error, no log
 - **Beat asserts**: YAML files exist on disk after confirm; a failure path renders a visible error
 
 ### FS-171 — bench panel dead surface (sweep FS-140 cluster)
 
+- **Pending — not Harnessed**: `golden-loop.e2e.test.ts` — beat 3, `FS-171 bench dispatch durability`, pinned to `No puller is registered for verificationRun` until FS-201 lands the production Bench bootstrap path
 - **Journey**: bench panel → select project/version → view runs → dispatch run → verdict renders
 - **Broke because**: queued checkpoint outside the `try`; throwing resolver recorded no run row; cross-scope version auto-select
 - **Beat asserts**: run row appears in the registered runs list; a failed dispatch still records a row with a visible failure state
 
 ### FS-172 — SBOM panel dead end (sweep FS-140 cluster)
 
+- **Harnessed**: `golden-loop.e2e.test.ts` — beat 4, `FS-172 recoverable SBOM pull`
 - **Journey**: SBOM panel first use → pull → components render → pull again after failure
 - **Broke because**: orphaned staging sqlite made every later pull fail forever; `pullError` rendered only in the empty state
 - **Beat asserts**: a failed pull is recoverable by retry; the error is visible outside the empty state
 
 ### FS-167 — Sync Review first-use dead end (sweep #5)
 
+- **Harnessed**: `golden-loop.e2e.test.ts` — beat 1, `FS-167 fresh sync review`
 - **Journey**: fresh workspace → sync panel → first pull → review changes → accept
 - **Broke because**: first-use paging dead-ended the review flow
 - **Beat asserts**: the accept path completes from a fresh workspace
 
 ### FS-193 — all-quarantined findings pull (sweep #6)
 
+- **Harnessed**: `golden-loop.e2e.test.ts` — beat 5, `FS-193 quarantined finding recovery`
 - **Journey**: `bb finite-state pull finding --json` against a partially-degenerate corpus → inspect fetched/quarantined/published counts in CLI and Findings panel → pull an all-unkeyable corpus → repair remote → same pull again
 - **Broke because**: one degenerate row aborted the whole pull; then the failed staging generation resumed forever, never contacting the repaired remote
 - **Beat asserts**: partial quarantine publishes keyable rows and reports the same truthful per-generation quarantine count in CLI JSON and the Findings panel; all-quarantined fails loudly with truthful counts and preserves the accepted generation; the next same-kinds pull against a healthy remote succeeds and publishes
 
 ### FS-194 — triage single write YAML silent no-op (sweep #6)
 
+- **Harnessed**: `golden-loop.e2e.test.ts` — beat 6, `FS-194 single triage write and undo`
 - **Journey**: triage panel → single finding → write YAML with unresolved scope ids
 - **Broke because**: `commitSingle` early-returned with the button enabled; undo announced success while the YAML never changed
 - **Beat asserts**: the write either completes (file on disk) or renders a visible truthful refusal; undo reverts what it claims to revert
@@ -61,6 +67,7 @@ Entry format — one section per defect:
 
 ### FS-201 — bench requirement puller dead-end loop (sweep #7, pending fix)
 
+- **Pending — not Harnessed**: `golden-loop.e2e.test.ts` — beat 7, `FS-201 requirement-to-bench loop`, pinned to `No puller is registered for requirement`
 - **Journey**: bench panel with no cached version → follow the product's own instruction ("Pull a version through Sync first") → `pull requirement` → bench enabled → run → WP-55 verdict card renders
 - **Broke because**: no puller is registered for `requirement`; the product's instruction is impossible, bench unreachable in every flow
 - **Beat asserts**: the full loop completes: sync pull → accepted version → bench run → verdict card visible

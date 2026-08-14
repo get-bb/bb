@@ -811,6 +811,19 @@ enrolled to other servers. Atomic reservations under
 
 ## Source Development
 
+Finite State Golden Loop rehearsals accept `GOLDEN_LOOP_EVIDENCE_DIR` as an
+absolute or checkout-relative destination for the two sanitized run reports and
+beat artifacts. Run the regression tier through Turbo so its declared
+environment reaches Vitest, and force execution when the purpose is a nightly
+or post-merge rehearsal rather than a cached test replay:
+
+```bash
+GOLDEN_LOOP_EVIDENCE_DIR=/tmp/finite-state-golden-loop \
+  pnpm exec turbo run test --filter=bb-plugin-finite-state --force -- \
+  test/e2e/golden-loop/harness.test.ts \
+  test/e2e/golden-loop/golden-loop.e2e.test.ts
+```
+
 For source development only, `pnpm dev` and `pnpm start` load the repo-root
 dotenv cascade. Add a repo-root `.env` only when you need to override the
 defaults described above.

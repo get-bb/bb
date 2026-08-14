@@ -97,6 +97,40 @@ export const GOLDEN_LOOP_BEATS: readonly {
 - [ ] Report includes durations, evidence paths, and artifacts for beats 5, 7, 11, and 12.
 - [ ] Full offline run is budgeted under fifteen minutes and deterministic across two runs.
 
+## Running the offline regression tier
+
+The post-merge/nightly command must force execution so an unchanged commit is
+rehearsed again instead of replaying a Turbo cache entry. Set
+`GOLDEN_LOOP_EVIDENCE_DIR` to retain both sanitized machine reports, rehearsal
+reports, and per-beat artifacts:
+
+```bash
+GOLDEN_LOOP_EVIDENCE_DIR=/tmp/finite-state-golden-loop \
+  pnpm exec turbo run test --filter=bb-plugin-finite-state --force -- \
+  test/e2e/golden-loop/harness.test.ts \
+  test/e2e/golden-loop/golden-loop.e2e.test.ts
+```
+
+The workflow uploads that directory even when the run is red. A fully skipped
+connected-mode preflight is reported as failed, never as a passing rehearsal.
+
+### Round-1 review disposition
+
+- D3, D4, D5, and D6 are closed: the workflow cannot cancel an active nightly
+  rehearsal, forces Turbo execution, forwards and uploads the evidence
+  directory, unregisters failed worktrees, and reports an all-skipped run as
+  failed.
+- D1 remains intentionally semantic: production-owned UUID and wall-clock
+  seams are outside this test-only WP, so the harness compares normalized
+  reports while preserving real production identifiers in evidence.
+- D2 is exposed through the typed clock, id, job, realtime, and interrupt
+  controls. Merged journeys use durable RPC reads after realtime hints; future
+  owning WPs consume the remaining controls when their beats land.
+- Extending the offline guard to every possible low-level `tls`, `dgram`, or
+  preconstructed socket path is deferred. The guard currently fails DNS,
+  `net.connect`, HTTP(S), and `fetch`; mock transports and explicitly declared
+  loopback owners remain the only allowed paths.
+
 ## Test plan
 
 `harness.test.ts`

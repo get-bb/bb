@@ -329,6 +329,9 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/vitest.shared.ts"
+      ],
+      "env": [
+        "GOLDEN_LOOP_EVIDENCE_DIR"
       ]
     },
     "@bb/templates#test": {
