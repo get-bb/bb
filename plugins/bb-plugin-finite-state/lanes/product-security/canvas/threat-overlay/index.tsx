@@ -38,6 +38,7 @@ import {
   threatFocusSubPath,
   threatSlugFromPathname,
 } from "./selection.js";
+import { useThreatOverlayVisibility } from "./visibility.js";
 
 const PROJECT_SCOPE_STORAGE_KEY =
   "finite-state:product-security:project-scope:v1";
@@ -483,6 +484,11 @@ function ConfiguredThreatOverlay({
   const { fitView } = useReactFlow();
   const rpc = appRuntime.useRpc<typeof threatOverlayRpcContract>();
   const snapshot = useThreatSnapshot(projectId, appRuntime);
+  const sharedVisibility = useThreatOverlayVisibility();
+  const [localCollapsed, setLocalCollapsed] = useState(false);
+  const collapsed = sharedVisibility?.collapsed ?? localCollapsed;
+  const onCollapsedChange =
+    sharedVisibility?.onCollapsedChange ?? setLocalCollapsed;
   const [selectionState, dispatchSelection] = useReducer(
     reduceThreatSelection,
     EMPTY_THREAT_SELECTION,
@@ -836,6 +842,12 @@ function ConfiguredThreatOverlay({
       ),
     [aggregatesMap, architectureEdgesBySlug, architectureNodesBySlug],
   );
+  const degradationMessage = snapshot.state.error
+    ? "Refresh failed; accepted threats remain usable."
+    : (snapshot.state.data?.partialError ??
+      (snapshot.state.data?.cache.state === "stale"
+        ? "Threat overlay is stale; accepted cache remains usable."
+        : null));
 
   if (!snapshot.state.data && snapshot.state.loading) return loadingPanel();
   if (!snapshot.state.data) {
@@ -875,82 +887,134 @@ function ConfiguredThreatOverlay({
           labels={labels}
         />
       ) : null}
-      <div className="absolute bottom-3 left-3 right-3 z-20 flex h-64 min-h-0 overflow-hidden rounded-lg border border-border bg-card/95 text-card-foreground shadow-lg backdrop-blur-sm">
-        {selectedThreat ? (
-          <AttackPathOverlay
-            error={
-              selectionState.selection.routeSignature
-                ? (pathDetail.result?.error ?? pathList.error)
-                : pathList.error
+      <div
+        className={
+          collapsed
+            ? "absolute bottom-3 left-3 z-20 max-w-[calc(100%-1.5rem)]"
+            : "absolute bottom-3 left-3 z-20 flex w-[min(32rem,calc(100%-1.5rem))] min-h-0 overflow-hidden rounded-lg border border-border bg-card/95 text-card-foreground shadow-lg backdrop-blur-sm"
+        }
+        data-state={collapsed ? "collapsed" : "expanded"}
+        data-threat-overlay-dock=""
+        style={collapsed ? undefined : { height: "40%", maxHeight: "16rem" }}
+      >
+        {collapsed ? (
+          <button
+            aria-expanded="false"
+            aria-label={
+              degradationMessage
+                ? `Expand threat overlay; attention required: ${degradationMessage}`
+                : "Expand threat overlay"
             }
-            loading={
-              pathList.loading ||
-              (selectionState.selection.routeSignature !== null &&
-                pathDetail.loading)
-            }
-            next={pathList.next}
-            onBack={clearThreat}
-            onLoadMore={() => {
-              if (pathList.threatSlug && pathList.next) {
-                loadPaths(pathList.threatSlug, pathList.next, true);
-              }
-            }}
-            onSelectPath={selectPath}
-            paths={pathList.items}
-            selectedPath={resolvedPath}
-            selectedRouteSignature={selectionState.selection.routeSignature}
-            threatLabel={selectedThreat.title}
-            total={pathList.total}
-          />
-        ) : (
-          <section
-            className="flex min-w-0 flex-1 flex-col"
-            aria-label="Threat overlay"
+            className="flex min-h-10 max-w-full items-center gap-2 rounded-lg border border-border bg-card/95 px-3 py-2 text-xs font-medium text-card-foreground shadow-lg backdrop-blur-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => onCollapsedChange(false)}
+            type="button"
           >
-            <div className="flex min-h-11 items-center gap-3 border-b border-border px-3 py-2">
-              {labels ? (
-                <ThreatLegend
-                  configured={snapshot.state.data.methodology.configured}
-                  labels={labels}
-                />
-              ) : null}
-              <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">
-                {snapshot.state.data.threats.length} open threats
-              </span>
-            </div>
-            {snapshot.state.error ||
-            snapshot.state.data.partialError ||
-            snapshot.state.data.cache.state === "stale" ? (
-              <div
-                className="flex items-center gap-2 border-b border-border bg-muted px-3 py-1.5 text-xs text-foreground"
-                role="status"
-              >
+            <Icon aria-hidden="true" className="size-3.5" name="Target" />
+            <span className="truncate">STRIDE threats</span>
+            <span className="shrink-0 tabular-nums text-muted-foreground">
+              {snapshot.state.data.threats.length}
+            </span>
+            {degradationMessage ? (
+              <span className="inline-flex shrink-0 items-center gap-1 text-destructive">
                 <Icon
                   aria-hidden="true"
-                  className="size-3.5 text-destructive"
+                  className="size-3.5"
                   name="AlertTriangle"
                 />
-                <span className="truncate">
-                  {snapshot.state.error
-                    ? "Refresh failed; accepted threats remain usable."
-                    : (snapshot.state.data.partialError ??
-                      "Threat overlay is stale; accepted cache remains usable.")}
-                </span>
-              </div>
+                Needs attention
+              </span>
             ) : null}
-            {labels ? (
-              <ThreatTable
-                filterTargetSlug={selectionState.selection.targetSlug}
-                labels={labels}
-                onClearFilter={() =>
-                  dispatchSelection({ type: "graph", targetSlug: null })
-                }
-                onSelectThreat={selectThreat}
-                selectedThreatSlug={selectionState.selection.threatSlug}
-                threats={threats}
+            <Icon aria-hidden="true" className="size-3.5" name="ChevronUp" />
+          </button>
+        ) : (
+          <>
+            <button
+              aria-expanded="true"
+              aria-label="Collapse threat overlay"
+              className="absolute right-2 top-2 z-10 flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => onCollapsedChange(true)}
+              type="button"
+            >
+              <Icon
+                aria-hidden="true"
+                className="size-3.5"
+                name="ChevronDown"
               />
-            ) : null}
-          </section>
+            </button>
+            <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+              {selectedThreat ? (
+                <AttackPathOverlay
+                  error={
+                    selectionState.selection.routeSignature
+                      ? (pathDetail.result?.error ?? pathList.error)
+                      : pathList.error
+                  }
+                  loading={
+                    pathList.loading ||
+                    (selectionState.selection.routeSignature !== null &&
+                      pathDetail.loading)
+                  }
+                  next={pathList.next}
+                  onBack={clearThreat}
+                  onLoadMore={() => {
+                    if (pathList.threatSlug && pathList.next) {
+                      loadPaths(pathList.threatSlug, pathList.next, true);
+                    }
+                  }}
+                  onSelectPath={selectPath}
+                  paths={pathList.items}
+                  selectedPath={resolvedPath}
+                  selectedRouteSignature={
+                    selectionState.selection.routeSignature
+                  }
+                  threatLabel={selectedThreat.title}
+                  total={pathList.total}
+                />
+              ) : (
+                <section
+                  className="flex min-w-0 flex-1 flex-col"
+                  aria-label="Threat overlay"
+                >
+                  <div className="flex min-h-11 items-center gap-3 border-b border-border px-3 py-2 pr-11">
+                    {labels ? (
+                      <ThreatLegend
+                        configured={snapshot.state.data.methodology.configured}
+                        labels={labels}
+                      />
+                    ) : null}
+                    <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">
+                      {snapshot.state.data.threats.length} open threats
+                    </span>
+                  </div>
+                  {degradationMessage ? (
+                    <div
+                      className="flex items-center gap-2 border-b border-border bg-muted px-3 py-1.5 text-xs text-foreground"
+                      role="status"
+                    >
+                      <Icon
+                        aria-hidden="true"
+                        className="size-3.5 text-destructive"
+                        name="AlertTriangle"
+                      />
+                      <span className="truncate">{degradationMessage}</span>
+                    </div>
+                  ) : null}
+                  {labels ? (
+                    <ThreatTable
+                      filterTargetSlug={selectionState.selection.targetSlug}
+                      labels={labels}
+                      onClearFilter={() =>
+                        dispatchSelection({ type: "graph", targetSlug: null })
+                      }
+                      onSelectThreat={selectThreat}
+                      selectedThreatSlug={selectionState.selection.threatSlug}
+                      threats={threats}
+                    />
+                  ) : null}
+                </section>
+              )}
+            </div>
+          </>
         )}
       </div>
     </>

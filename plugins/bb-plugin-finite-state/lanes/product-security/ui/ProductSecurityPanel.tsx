@@ -46,6 +46,7 @@ import {
   CanvasUnconfiguredState,
 } from "./states.js";
 import { isVerificationTier } from "../verifications/matrix/status.js";
+import { ThreatOverlayVisibilityProvider } from "../canvas/threat-overlay/visibility.js";
 
 const PROJECT_SCOPE_STORAGE_KEY =
   "finite-state:product-security:project-scope:v1";
@@ -365,41 +366,43 @@ export function ProductSecurityPanel({
           </select>
         </div>
       </nav>
-      <div className="min-h-0 flex-1">
-        {route.tab === "tara" ? (
-          <TaraPanel
-            detail={route.detail}
-            features={features}
-            projectId={projectId}
-          />
-        ) : null}
-        {route.tab === "requirements" && projectId ? (
-          <>
-            {route.detail[0] === "trace" ? (
-              <RequirementsTraceabilityLayer
+      <ThreatOverlayVisibilityProvider>
+        <div className="min-h-0 flex-1">
+          {route.tab === "tara" ? (
+            <TaraPanel
+              detail={route.detail}
+              features={features}
+              projectId={projectId}
+            />
+          ) : null}
+          {route.tab === "requirements" && projectId ? (
+            <>
+              {route.detail[0] === "trace" ? (
+                <RequirementsTraceabilityLayer
+                  detail={route.detail}
+                  projectId={projectId}
+                />
+              ) : (
+                <RequirementsCards projectId={projectId} />
+              )}
+              <RequirementsConversionLayer projectId={projectId} />
+            </>
+          ) : null}
+          {route.tab === "verifications" && projectId ? (
+            isVerificationRunDetail ? (
+              <VerificationRunDetailLayer
                 detail={route.detail}
                 projectId={projectId}
               />
             ) : (
-              <RequirementsCards projectId={projectId} />
-            )}
-            <RequirementsConversionLayer projectId={projectId} />
-          </>
-        ) : null}
-        {route.tab === "verifications" && projectId ? (
-          isVerificationRunDetail ? (
-            <VerificationRunDetailLayer
-              detail={route.detail}
-              projectId={projectId}
-            />
-          ) : (
-            <VerificationMatrix projectId={projectId} />
-          )
-        ) : null}
-        {route.tab !== "tara" && !projectId ? (
-          <CanvasUnconfiguredState />
-        ) : null}
-      </div>
+              <VerificationMatrix projectId={projectId} />
+            )
+          ) : null}
+          {route.tab !== "tara" && !projectId ? (
+            <CanvasUnconfiguredState />
+          ) : null}
+        </div>
+      </ThreatOverlayVisibilityProvider>
     </section>
   );
 }

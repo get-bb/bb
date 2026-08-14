@@ -29,6 +29,11 @@ import {
   toFoundationCanvasModel,
 } from "./index.js";
 import { ComponentNode } from "./ComponentNode.js";
+import {
+  ProductSecurityThreatOverlay,
+  type ThreatOverlayAppRuntime,
+} from "../threat-overlay/index.js";
+import { threatOverlayRpcContract } from "../threat-overlay/backend.js";
 
 const cache = {
   state: "fresh" as const,
@@ -222,6 +227,18 @@ function taraPage(input: unknown) {
 }
 
 const observedElements = new WeakSet<Element>();
+
+function installedThreatOverlayRuntime(): ThreatOverlayAppRuntime {
+  const host = Reflect.get(globalThis, "__bbPluginRuntime");
+  if (typeof host !== "object" || host === null) {
+    throw new Error("BB test plugin runtime was not installed");
+  }
+  const runtime = Reflect.get(host, "pluginSdkApp");
+  if (typeof runtime !== "object" || runtime === null) {
+    throw new Error("BB test plugin runtime is missing app hooks");
+  }
+  return runtime as ThreatOverlayAppRuntime;
+}
 
 class CanvasResizeObserver implements ResizeObserver {
   constructor(private readonly callback: ResizeObserverCallback) {}
@@ -511,25 +528,21 @@ describe("WP-32 inspector and project scope", () => {
     const { ProductSecurityPanel } =
       await import("../../ui/ProductSecurityPanel.js");
     const EmptyLayer = () => null;
+    const features = {
+      loadNodeTypes: loadProductSecurityNodeTypes,
+      edgeTypes: {},
+      ThreatOverlay: EmptyLayer,
+      LinksLayer: EmptyLayer,
+      EditingLayer: EmptyLayer,
+      RequirementsCards: EmptyLayer,
+      RequirementsTraceabilityLayer: EmptyLayer,
+      RequirementsConversionLayer: EmptyLayer,
+      VerificationMatrix: EmptyLayer,
+      VerificationRunDetailLayer: EmptyLayer,
+    };
     const panel = {
       component(props: PluginNavPanelProps): React.JSX.Element {
-        return (
-          <ProductSecurityPanel
-            {...props}
-            features={{
-              loadNodeTypes: loadProductSecurityNodeTypes,
-              edgeTypes: {},
-              ThreatOverlay: EmptyLayer,
-              LinksLayer: EmptyLayer,
-              EditingLayer: EmptyLayer,
-              RequirementsCards: EmptyLayer,
-              RequirementsTraceabilityLayer: EmptyLayer,
-              RequirementsConversionLayer: EmptyLayer,
-              VerificationMatrix: EmptyLayer,
-              VerificationRunDetailLayer: EmptyLayer,
-            }}
-          />
-        );
+        return <ProductSecurityPanel {...props} features={features} />;
       },
     };
     const slot = renderSlot(
@@ -642,6 +655,119 @@ describe("WP-32 inspector and project scope", () => {
     fireEvent.click(hardwareWrapper, { shiftKey: true });
     fireEvent.keyUp(document, { key: "Shift" });
     expect(await slot.findByText("2 selected")).toBeTruthy();
+    slot.lifecycle.unmount();
+  });
+
+  it("keeps the real threat overlay collapsed across a focus-route remount", async () => {
+    const { ProductSecurityPanel } =
+      await import("../../ui/ProductSecurityPanel.js");
+    const EmptyLayer = () => null;
+    const appRuntime = installedThreatOverlayRuntime();
+    const ThreatOverlay = () => (
+      <ProductSecurityThreatOverlay
+        appRuntime={appRuntime}
+        projectId="project-1"
+      />
+    );
+    const features = {
+      loadNodeTypes: loadProductSecurityNodeTypes,
+      edgeTypes: {},
+      ThreatOverlay,
+      LinksLayer: EmptyLayer,
+      EditingLayer: EmptyLayer,
+      RequirementsCards: EmptyLayer,
+      RequirementsTraceabilityLayer: EmptyLayer,
+      RequirementsConversionLayer: EmptyLayer,
+      VerificationMatrix: EmptyLayer,
+      VerificationRunDetailLayer: EmptyLayer,
+    };
+    function PanelComponent(props: PluginNavPanelProps): React.JSX.Element {
+      return <ProductSecurityPanel {...props} features={features} />;
+    }
+    const slot = renderSlot(
+      { component: PanelComponent },
+      { subPath: "tara" },
+      {
+        context: { projectId: "project-1", threadId: null },
+        sidebarThreads: {
+          status: "ready",
+          projects: [
+            { id: "project-1", name: "Medical device", isPersonal: false },
+          ],
+          threads: [],
+        },
+        rpc: {
+          taraList: (input) => taraPage(input),
+          threatOverlaySnapshot: () =>
+            threatOverlayRpcContract.threatOverlaySnapshot.output.parse({
+              projectVersionId: null,
+              revision: "revision-focus-route",
+              threats: [
+                {
+                  slug: "THREAT-route",
+                  title: "Route persistence threat",
+                  rawCategory: "tampering",
+                  category: "tampering",
+                  severity: "high",
+                  targetSlugs: ["component-software"],
+                  attackPathCount: 0,
+                },
+              ],
+              aggregates: [],
+              methodology: {
+                configured: true,
+                labels: {
+                  spoofing: "Spoofing",
+                  tampering: "Tampering",
+                  repudiation: "Repudiation",
+                  information_disclosure: "Information disclosure",
+                  denial_of_service: "Denial of service",
+                  elevation_of_privilege: "Elevation of privilege",
+                },
+              },
+              total: 1,
+              truncated: false,
+              partialError: null,
+              cache: {
+                state: "fresh",
+                asOf: "2026-08-14T12:00:00.000Z",
+                message: null,
+              },
+            }),
+        },
+      },
+    );
+
+    expect(await slot.findByText("Route persistence threat")).toBeTruthy();
+    const dockBefore = slot.container.querySelector(
+      "[data-threat-overlay-dock]",
+    );
+    if (!(dockBefore instanceof HTMLElement)) {
+      throw new Error("Real threat overlay dock did not render");
+    }
+    expect(dockBefore.style.height).toBe("40%");
+    expect(dockBefore.style.maxHeight).toBe("16rem");
+    fireEvent.click(
+      slot.getByRole("button", { name: "Collapse threat overlay" }),
+    );
+    expect(
+      slot.getByRole("button", { name: "Expand threat overlay" }),
+    ).toBeTruthy();
+
+    slot.lifecycle.rerender(
+      <PanelComponent subPath="tara/nodes/component-software" />,
+    );
+
+    expect(
+      await slot.findByRole("button", { name: "Expand threat overlay" }),
+    ).toBeTruthy();
+    const dockAfter = slot.container.querySelector(
+      "[data-threat-overlay-dock]",
+    );
+    expect(dockAfter).not.toBe(dockBefore);
+    expect(
+      slot.queryByRole("button", { name: "Collapse threat overlay" }),
+    ).toBeNull();
     slot.lifecycle.unmount();
   });
 

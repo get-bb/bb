@@ -219,9 +219,9 @@ function installedAppRuntime(): ThreatOverlayAppRuntime {
   return runtime as ThreatOverlayAppRuntime;
 }
 
-function mountedRpcHandlers() {
+function mountedRpcHandlers(snapshot = MOUNTED_SNAPSHOT) {
   return {
-    threatOverlaySnapshot: () => MOUNTED_SNAPSHOT,
+    threatOverlaySnapshot: () => snapshot,
     threatOverlayPaths: () => MOUNTED_PATHS,
     threatOverlayPath: () => ({
       path: {
@@ -613,6 +613,91 @@ describe("WP-33 bidirectional selection and deep links", () => {
         options: { subPath: "tara/threats/THREAT-single" },
       },
     ]);
+    slot.lifecycle.unmount();
+  });
+
+  it("collapses the threat details and reopens them on demand", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/plugins/finite-state/product-security/tara",
+    );
+    const { ProductSecurityThreatOverlay } = await import("./index.js");
+    const appRuntime = installedAppRuntime();
+    const slot = renderSlot<{}, typeof threatOverlayRpcContract>(
+      {
+        component: () => (
+          <ArchitectureHarness setSelectedIds={() => undefined}>
+            <ProductSecurityThreatOverlay
+              appRuntime={appRuntime}
+              projectId={PROJECT_ID}
+            />
+          </ArchitectureHarness>
+        ),
+      },
+      {},
+      { rpc: mountedRpcHandlers() },
+    );
+
+    await slot.findByText("2 open threats");
+    const dock = slot.container.querySelector("[data-threat-overlay-dock]");
+    expect(dock).toBeInstanceOf(HTMLElement);
+    expect(dock?.getAttribute("data-state")).toBe("expanded");
+
+    fireEvent.click(
+      slot.getByRole("button", { name: "Collapse threat overlay" }),
+    );
+    expect(dock?.getAttribute("data-state")).toBe("collapsed");
+    expect(slot.queryByText("2 open threats")).toBeNull();
+    expect(
+      slot
+        .getByRole("button", { name: "Expand threat overlay" })
+        .getAttribute("aria-expanded"),
+    ).toBe("false");
+
+    fireEvent.click(
+      slot.getByRole("button", { name: "Expand threat overlay" }),
+    );
+    expect(await slot.findByText("2 open threats")).toBeTruthy();
+    expect(dock?.getAttribute("data-state")).toBe("expanded");
+    slot.lifecycle.unmount();
+  });
+
+  it("keeps degradation status visible while the overlay is collapsed", async () => {
+    const degradedSnapshot =
+      threatOverlayRpcContract.threatOverlaySnapshot.output.parse({
+        ...MOUNTED_SNAPSHOT,
+        partialError: "1 cached threat row is malformed and omitted.",
+      });
+    const { ProductSecurityThreatOverlay } = await import("./index.js");
+    const appRuntime = installedAppRuntime();
+    const slot = renderSlot<{}, typeof threatOverlayRpcContract>(
+      {
+        component: () => (
+          <ArchitectureHarness setSelectedIds={() => undefined}>
+            <ProductSecurityThreatOverlay
+              appRuntime={appRuntime}
+              projectId={PROJECT_ID}
+            />
+          </ArchitectureHarness>
+        ),
+      },
+      {},
+      { rpc: mountedRpcHandlers(degradedSnapshot) },
+    );
+
+    expect(
+      await slot.findByText("1 cached threat row is malformed and omitted."),
+    ).toBeTruthy();
+    fireEvent.click(
+      slot.getByRole("button", { name: "Collapse threat overlay" }),
+    );
+    expect(
+      slot.getByRole("button", {
+        name: /Expand threat overlay; attention required: 1 cached threat row is malformed and omitted/,
+      }),
+    ).toBeTruthy();
+    expect(slot.getByText("Needs attention")).toBeTruthy();
     slot.lifecycle.unmount();
   });
 
