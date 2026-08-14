@@ -95,6 +95,7 @@ import { findPaneByThread } from "@/lib/split-layout";
 import { applyThreadOpenToLayout } from "@/views/thread-detail/splitThreadNavigation";
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
+import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -417,6 +418,14 @@ export function AppLayout({ children }: AppLayoutProps) {
     restoreIOSViewportOnKeyboardDismissal,
   );
   const location = useLocation();
+  const {
+    projectId,
+    threadId,
+    isThreadView,
+    isArchivedView,
+    isSettingsView,
+    isRootView,
+  } = useRouteState();
   const [resourceRouteLabel, setResourceRouteLabel] = useAtom(
     resourceRouteLabelAtom,
   );
@@ -453,6 +462,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     toolsBackRoutePath,
     toolsRoutePath,
   } = useAppSettingsRouteMemory();
+  const setRootComposeProjectId = useSetRootComposeProjectId();
   useEffect(
     () =>
       wsManager.onThreadOpen((signal) => {
@@ -482,6 +492,9 @@ export function AppLayout({ children }: AppLayoutProps) {
     [isCompactViewport, navigate, store, threadSplitsEnabled],
   );
   useAppCommandHandler("thread.new", () => {
+    if (projectId !== undefined) {
+      setRootComposeProjectId(projectId);
+    }
     void navigate(getRootComposeRoutePath(), {
       state: { focusPrompt: true },
     });
@@ -496,14 +509,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     void navigate(`${SETTINGS_ROUTE_PATH}/servers`);
     return true;
   });
-  const {
-    projectId,
-    threadId,
-    isThreadView,
-    isArchivedView,
-    isSettingsView,
-    isRootView,
-  } = useRouteState();
   const archivedSectionId = isArchivedView
     ? new URLSearchParams(location.search).get("sectionId")
     : null;
