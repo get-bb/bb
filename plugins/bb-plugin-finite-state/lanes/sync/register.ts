@@ -60,13 +60,25 @@ export function registerSync(bb: BbPluginApi, ctx: PluginContext): void {
     db: ctx.db(),
     worktreeRoot: null,
     publish: (channel, progress) => ctx.bb.realtime.publish(channel, progress),
-    // Keep the established kind-specific channel: only SBOM consumers need
-    // this invalidation, and the sync engine invokes it after atomic publish.
+    // Keep kind-specific channels so mounted consumers only invalidate the
+    // accepted surface they read. The engine invokes this callback after the
+    // atomic generation publish has committed.
     published: ({ scope, kinds }) => {
-      if (scope.projectVersionId !== null && kinds.includes("sbomComponent")) {
+      if (scope.projectVersionId === null) return;
+      const payload = {
+        projectId: scope.projectId,
+        projectVersionId: scope.projectVersionId,
+      };
+      if (kinds.includes("sbomComponent")) {
         ctx.bb.realtime.publish("bom:changed", {
           projectVersionId: scope.projectVersionId,
         });
+      }
+      if (kinds.includes("requirement")) {
+        ctx.bb.realtime.publish("requirements:changed", payload);
+      }
+      if (kinds.includes("threat")) {
+        ctx.bb.realtime.publish("tara:changed", payload);
       }
     },
     fastForwardWorking: async ({ adapter, baseRows, files, worktreeRoot }) => {

@@ -74,6 +74,7 @@ const EMPTY_GRAPH: CanvasArchitectureGraph = {
 };
 const MOUNTED_SNAPSHOT =
   threatOverlayRpcContract.threatOverlaySnapshot.output.parse({
+    projectVersionId: null,
     revision: "revision-mounted",
     threats: [
       {
@@ -854,6 +855,7 @@ describe("WP-33 bounded cache and DOM", () => {
       cache,
     );
     expect(second).toBe(first);
+    expect(first.projectVersionId).toBeNull();
     ctx
       .db()
       .prepare(
@@ -924,6 +926,45 @@ describe("WP-33 bounded cache and DOM", () => {
         }),
       );
     expect(stillUsable.threats).toHaveLength(2);
+    await harness.lifecycle.dispose();
+  });
+
+  it("resolves the latest accepted threat version for an unscoped snapshot", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "finite-state-wp33-version-resolution",
+    });
+    const ctx = createPluginContext(bb);
+    ctx
+      .db()
+      .prepare(
+        `INSERT INTO pull_generation
+           (project_id, project_version_id, generation_id, status,
+            requested_kinds_json, started_at, completed_at, accepted_at)
+         VALUES (?, ?, ?, 'accepted', '["threat"]', ?, ?, ?)`,
+      )
+      .run(
+        PROJECT_ID,
+        "version-accepted",
+        "generation-versioned",
+        PULLED_AT,
+        PULLED_AT,
+        PULLED_AT,
+      );
+    ctx
+      .db()
+      .prepare(
+        `INSERT INTO sync_state
+           (project_id, project_version_id, entity_kind,
+            accepted_generation_id, base_revision, last_pull, error)
+         VALUES (?, ?, 'threat', ?, 1, ?, NULL)`,
+      )
+      .run(PROJECT_ID, "version-accepted", "generation-versioned", PULLED_AT);
+
+    const snapshot = readThreatSnapshot(ctx.db(), {
+      projectId: PROJECT_ID,
+      projectVersionId: null,
+    });
+    expect(snapshot.projectVersionId).toBe("version-accepted");
     await harness.lifecycle.dispose();
   });
 

@@ -636,7 +636,7 @@ function ConfiguredThreatOverlay({
       void rpc
         .call("threatOverlayPaths", {
           projectId,
-          projectVersionId: null,
+          projectVersionId: snapshot.state.data?.projectVersionId ?? null,
           threatSlug,
           pageSize: 50,
           continuation,
@@ -665,7 +665,7 @@ function ConfiguredThreatOverlay({
           }));
         });
     },
-    [projectId, rpc],
+    [projectId, rpc, snapshot.state.data?.projectVersionId],
   );
 
   useEffect(() => {
@@ -689,7 +689,7 @@ function ConfiguredThreatOverlay({
       void rpc
         .call("threatOverlayPath", {
           projectId,
-          projectVersionId: null,
+          projectVersionId: snapshot.state.data?.projectVersionId ?? null,
           routeSignature,
         })
         .then((result: PathResult) => {
@@ -713,7 +713,7 @@ function ConfiguredThreatOverlay({
           });
         });
     },
-    [projectId, rpc],
+    [projectId, rpc, snapshot.state.data?.projectVersionId],
   );
 
   useEffect(() => {
