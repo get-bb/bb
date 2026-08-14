@@ -22,9 +22,21 @@ export interface PollForgeJobOptions {
   initialBackoffMs?: number;
   maximumBackoffMs?: number;
   maximumConsecutiveErrors?: number;
+  maximumPollAttempts?: number;
 }
 
 const TERMINAL = new Set<ForgeJobTerminal>(["COMPLETED", "FAILED", "TIMEOUT"]);
+
+export class ForgeJobPollLimitError extends Error {
+  readonly code = "FORGE_JOB_POLL_LIMIT";
+
+  constructor(jobId: string, pollAttempts: number) {
+    super(
+      `FORGE_JOB_POLL_LIMIT: ${jobId} remained RUNNING after ${pollAttempts} polls`,
+    );
+    this.name = "ForgeJobPollLimitError";
+  }
+}
 
 function validateStatus(status: string): asserts status is ForgeJobStatus {
   if (status !== "RUNNING" && !TERMINAL.has(status as ForgeJobTerminal)) {
@@ -41,8 +53,16 @@ export async function pollForgeJob(
   const initialBackoffMs = options.initialBackoffMs ?? 500;
   const maximumBackoffMs = options.maximumBackoffMs ?? 8_000;
   const maximumConsecutiveErrors = options.maximumConsecutiveErrors ?? 4;
+  // At the maximum backoff this bounds one serial-queue task to roughly two
+  // hours. Forge's expected Tier 1 duration is minutes, so this is a generous
+  // liveness ceiling rather than a normal timeout.
+  const maximumPollAttempts = options.maximumPollAttempts ?? 900;
+  if (!Number.isInteger(maximumPollAttempts) || maximumPollAttempts < 1) {
+    throw new Error("FORGE_JOB_POLL_LIMIT_INVALID");
+  }
   let backoffMs = initialBackoffMs;
   let consecutiveErrors = 0;
+  let pollAttempts = 0;
 
   while (true) {
     signal.throwIfAborted();
@@ -50,6 +70,7 @@ export async function pollForgeJob(
     try {
       snapshot = await client.getJobStatus(jobId, 50, { signal });
       consecutiveErrors = 0;
+      pollAttempts += 1;
     } catch (error) {
       signal.throwIfAborted();
       consecutiveErrors += 1;
@@ -65,6 +86,9 @@ export async function pollForgeJob(
       eventCount: snapshot.eventCount,
     });
     if (snapshot.status !== "RUNNING") return snapshot;
+    if (pollAttempts >= maximumPollAttempts) {
+      throw new ForgeJobPollLimitError(jobId, pollAttempts);
+    }
     await options.scheduler.sleep(backoffMs, signal);
     backoffMs = Math.min(maximumBackoffMs, backoffMs * 2);
   }
@@ -76,7 +100,9 @@ export async function pollForgeJobs(
   signal: AbortSignal,
   options: PollForgeJobOptions,
 ): Promise<ForgeJobSnapshot[]> {
-  return await Promise.all(jobIds.map((jobId) => pollForgeJob(client, jobId, signal, options)));
+  return await Promise.all(
+    jobIds.map((jobId) => pollForgeJob(client, jobId, signal, options)),
+  );
 }
 
 export interface BenchJobTask {

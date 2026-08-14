@@ -19,10 +19,12 @@ import { getAcceptedBenchGeneration } from "../store/runs.js";
 import type { BenchEvidenceBundle, BenchRunRecord } from "../store/types.js";
 import {
   BENCH_DISPATCH_AMBIGUOUS_CODE,
+  BENCH_DISPATCH_RECONCILIATION_FAILED_CODE,
   BENCH_DISPATCH_RECONCILED_CODE,
 } from "../ambiguity.js";
 import { forgeEvidenceCheckpoint, type ForgeEvidenceDeps } from "./evidence.js";
 import {
+  ForgeJobPollLimitError,
   pollForgeJobs,
   type BenchJobQueue,
   type BenchJobScheduler,
@@ -624,125 +626,200 @@ function queueTier1AmbiguityReconciliation(
   dispatchedJobs: readonly DispatchedForgeJob[],
   requirementId: string,
 ): void {
+  const reconciliationPolicy =
+    "baseline_diff_scope_match_without_evidence_promotion";
+  const finishReconciliationFailure = (
+    error: unknown,
+    failureReason: string,
+    candidateJobIds: readonly string[] = dispatchedJobs.map((job) => job.jobId),
+  ): void => {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Forge dispatch reconciliation failed";
+    const finishedAt = deps.now().toISOString();
+    checkpoint(deps, {
+      run: {
+        ...run,
+        status: "failed",
+        finishedAt,
+        jobId: candidateJobIds[0] ?? run.jobId,
+        durationMs:
+          run.startedAt === null
+            ? null
+            : Math.max(0, Date.parse(finishedAt) - Date.parse(run.startedAt)),
+        raw: {
+          ...(jsonObject(run.raw) ?? {}),
+          dispatchAmbiguous: true,
+          reconciliationState: "terminal",
+          reconciliationError: message.slice(0, 20_000),
+          reconciliationCandidateJobIds: [...candidateJobIds],
+          reconciliationPolicy,
+          failureCode: BENCH_DISPATCH_RECONCILIATION_FAILED_CODE,
+          failureReason,
+        },
+      },
+      results: [
+        {
+          requirementId,
+          checkId: "forge-dispatch-reconciliation",
+          outcome: "error",
+          evidenceSummary:
+            "Automatic Forge reconciliation failed without resolving the ambiguous dispatch.",
+        },
+      ],
+      artifacts: [],
+    });
+  };
   const task = {
     async run(signal: AbortSignal): Promise<void> {
       const candidates = new Map(
         dispatchedJobs.map((job) => [job.jobId, job] as const),
       );
-      try {
-        for (let attempt = 0; attempt < 4; attempt += 1) {
-          for (const intent of intents) {
-            const prior = new Set(intent.priorJobIds);
-            for await (const page of client.listJobs(
-              { tool: intent.tool },
-              { signal },
-            )) {
-              for (const job of page.items) {
-                if (
-                  !prior.has(job.jobId) &&
-                  matchesDispatchIntent(job, intent)
-                ) {
-                  candidates.set(job.jobId, {
-                    tool: intent.tool,
-                    jobId: job.jobId,
-                  });
+      const matchedIntents = new Set<number>();
+      for (const [index, intent] of intents.entries()) {
+        // dispatchTier1 currently issues at most one intent per tool. If it
+        // ever adds a second pen_test_run target, this pre-seed must key on
+        // full intent identity rather than treating tool identity as unique.
+        if (dispatchedJobs.some((job) => job.tool === intent.tool)) {
+          matchedIntents.add(index);
+        }
+      }
+      for (let retryAttempt = 0; retryAttempt < 3; retryAttempt += 1) {
+        try {
+          for (
+            let discoveryAttempt = 0;
+            discoveryAttempt < 4;
+            discoveryAttempt += 1
+          ) {
+            for (const [intentIndex, intent] of intents.entries()) {
+              if (matchedIntents.has(intentIndex)) continue;
+              const prior = new Set(intent.priorJobIds);
+              for await (const page of client.listJobs(
+                { tool: intent.tool },
+                { signal },
+              )) {
+                for (const job of page.items) {
+                  if (
+                    !prior.has(job.jobId) &&
+                    matchesDispatchIntent(job, intent)
+                  ) {
+                    candidates.set(job.jobId, {
+                      tool: intent.tool,
+                      jobId: job.jobId,
+                    });
+                    matchedIntents.add(intentIndex);
+                  }
                 }
               }
             }
+            if (matchedIntents.size === intents.length) break;
+            if (discoveryAttempt < 3) {
+              await deps.scheduler.sleep(500 * 2 ** discoveryAttempt, signal);
+            }
           }
-          if (attempt < 3)
-            await deps.scheduler.sleep(500 * 2 ** attempt, signal);
-        }
-        const jobIds = [...candidates.keys()];
-        if (jobIds.length > 0) {
-          await pollForgeJobs(client, jobIds, signal, {
-            scheduler: deps.scheduler,
-            publishHint(hint) {
-              deps.publish("bench:log", {
-                runId: run.runId,
-                jobId: hint.jobId,
-                status: hint.status,
-              });
+          const jobIds = [...candidates.keys()];
+          if (jobIds.length > 0) {
+            // Forge exposes no client correlation id. Conservatively drain all
+            // baseline-diff scope matches, including a theoretical concurrent
+            // identical run, and never promote reconciliation output to evidence.
+            await pollForgeJobs(client, jobIds, signal, {
+              scheduler: deps.scheduler,
+              publishHint(hint) {
+                deps.publish("bench:log", {
+                  runId: run.runId,
+                  jobId: hint.jobId,
+                  status: hint.status,
+                });
+              },
+            });
+          }
+          const finishedAt = deps.now().toISOString();
+          checkpoint(deps, {
+            run: {
+              ...run,
+              status: "failed",
+              finishedAt,
+              durationMs:
+                run.startedAt === null
+                  ? null
+                  : Math.max(
+                      0,
+                      Date.parse(finishedAt) - Date.parse(run.startedAt),
+                    ),
+              jobId: jobIds[0] ?? run.jobId,
+              raw: {
+                ...(jsonObject(run.raw) ?? {}),
+                dispatchAmbiguous: false,
+                reconciliationState: "terminal",
+                reconciliationAttempts: retryAttempt + 1,
+                reconciledJobIds: jobIds,
+                reconciliationPolicy,
+                failureCode: BENCH_DISPATCH_RECONCILED_CODE,
+                failureReason:
+                  jobIds.length > 0
+                    ? "Forge reconciliation observed every candidate dispatch reach a terminal state. The incomplete bench attempt was not promoted to evidence."
+                    : "Forge reconciliation repeatedly found no matching accepted job. The incomplete bench attempt was not promoted to evidence.",
+              },
             },
+            results: [
+              {
+                requirementId,
+                checkId: "forge-dispatch-reconciliation",
+                outcome: "error",
+                evidenceSummary:
+                  "Ambiguous Forge dispatch reconciled without producing complete Tier 1 evidence.",
+              },
+            ],
+            artifacts: [],
           });
+          return;
+        } catch (error) {
+          if (signal.aborted) return;
+          if (error instanceof ForgeJobPollLimitError) {
+            finishReconciliationFailure(
+              error,
+              "Automatic Forge reconciliation reached the job polling liveness ceiling. The dispatch outcome remains ambiguous; do not dispatch a duplicate.",
+              [...candidates.keys()],
+            );
+            return;
+          }
+          if (retryAttempt === 2) {
+            finishReconciliationFailure(
+              error,
+              "Automatic Forge reconciliation exhausted its retry budget. The dispatch outcome remains ambiguous; do not dispatch a duplicate.",
+            );
+            return;
+          }
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Forge dispatch reconciliation failed";
+          checkpoint(deps, {
+            run: {
+              ...run,
+              raw: {
+                ...(jsonObject(run.raw) ?? {}),
+                reconciliationState: "retry_required",
+                reconciliationAttempts: retryAttempt + 1,
+                reconciliationError: message.slice(0, 20_000),
+              },
+            },
+            results: [],
+            artifacts: [],
+          });
+          await deps.scheduler.sleep(500 * 2 ** retryAttempt, signal);
         }
-        const finishedAt = deps.now().toISOString();
-        checkpoint(deps, {
-          run: {
-            ...run,
-            status: "failed",
-            finishedAt,
-            durationMs:
-              run.startedAt === null
-                ? null
-                : Math.max(
-                    0,
-                    Date.parse(finishedAt) - Date.parse(run.startedAt),
-                  ),
-            jobId: jobIds[0] ?? run.jobId,
-            raw: {
-              ...(jsonObject(run.raw) ?? {}),
-              dispatchAmbiguous: false,
-              reconciliationState: "terminal",
-              reconciledJobIds: jobIds,
-              failureCode: BENCH_DISPATCH_RECONCILED_CODE,
-              failureReason:
-                jobIds.length > 0
-                  ? "Forge reconciliation observed every candidate dispatch reach a terminal state. The incomplete bench attempt was not promoted to evidence."
-                  : "Forge reconciliation repeatedly found no matching accepted job. The incomplete bench attempt was not promoted to evidence.",
-            },
-          },
-          results: [
-            {
-              requirementId,
-              checkId: "forge-dispatch-reconciliation",
-              outcome: "error",
-              evidenceSummary:
-                "Ambiguous Forge dispatch reconciled without producing complete Tier 1 evidence.",
-            },
-          ],
-          artifacts: [],
-        });
-      } catch (error) {
-        if (signal.aborted) return;
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Forge dispatch reconciliation failed";
-        checkpoint(deps, {
-          run: {
-            ...run,
-            raw: {
-              ...(jsonObject(run.raw) ?? {}),
-              reconciliationState: "retry_required",
-              reconciliationError: message.slice(0, 20_000),
-            },
-          },
-          results: [],
-          artifacts: [],
-        });
       }
     },
   };
   try {
     deps.jobQueue.enqueue(task);
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Forge reconciliation could not be queued";
-    checkpoint(deps, {
-      run: {
-        ...run,
-        raw: {
-          ...(jsonObject(run.raw) ?? {}),
-          reconciliationState: "retry_required",
-          reconciliationError: message.slice(0, 20_000),
-        },
-      },
-      results: [],
-      artifacts: [],
-    });
+    finishReconciliationFailure(
+      error,
+      "Automatic Forge reconciliation could not be queued. The dispatch outcome remains ambiguous; do not dispatch a duplicate.",
+    );
   }
 }
 

@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ForgeJobSnapshot } from "../../../lib/remote/types.js";
-import { pollForgeJob } from "./jobs.js";
+import { ForgeJobPollLimitError, pollForgeJob } from "./jobs.js";
 
-function snapshot(status: ForgeJobSnapshot["status"], result: ForgeJobSnapshot["result"] = null) {
+function snapshot(
+  status: ForgeJobSnapshot["status"],
+  result: ForgeJobSnapshot["result"] = null,
+) {
   return {
     jobId: "job-1",
     status,
@@ -26,26 +29,34 @@ describe("Forge job polling", () => {
   it("polls RUNNING to COMPLETED and reads result only from the terminal response", async () => {
     const getJobStatus = vi
       .fn()
-      .mockResolvedValueOnce(snapshot("RUNNING", { forbiddenEarlyResult: true }))
+      .mockResolvedValueOnce(
+        snapshot("RUNNING", { forbiddenEarlyResult: true }),
+      )
       .mockResolvedValueOnce(snapshot("COMPLETED", { outcome: "pass" }));
     await expect(
       pollForgeJob({ getJobStatus }, "job-1", new AbortController().signal, {
         scheduler: immediate,
       }),
-    ).resolves.toMatchObject({ status: "COMPLETED", result: { outcome: "pass" } });
+    ).resolves.toMatchObject({
+      status: "COMPLETED",
+      result: { outcome: "pass" },
+    });
     expect(getJobStatus).toHaveBeenCalledTimes(2);
   });
 
-  it.each(["FAILED", "TIMEOUT"] as const)("returns exact %s terminal state", async (status) => {
-    await expect(
-      pollForgeJob(
-        { getJobStatus: async () => snapshot(status) },
-        "job-1",
-        new AbortController().signal,
-        { scheduler: immediate },
-      ),
-    ).resolves.toMatchObject({ status });
-  });
+  it.each(["FAILED", "TIMEOUT"] as const)(
+    "returns exact %s terminal state",
+    async (status) => {
+      await expect(
+        pollForgeJob(
+          { getJobStatus: async () => snapshot(status) },
+          "job-1",
+          new AbortController().signal,
+          { scheduler: immediate },
+        ),
+      ).resolves.toMatchObject({ status });
+    },
+  );
 
   it("cancels during backoff", async () => {
     const controller = new AbortController();
@@ -65,7 +76,9 @@ describe("Forge job polling", () => {
   });
 
   it("rejects an unknown runtime state", async () => {
-    const invalid = Object.defineProperty(snapshot("RUNNING"), "status", { value: "CANCELLED" });
+    const invalid = Object.defineProperty(snapshot("RUNNING"), "status", {
+      value: "CANCELLED",
+    });
     await expect(
       pollForgeJob(
         { getJobStatus: async () => invalid },
@@ -81,10 +94,28 @@ describe("Forge job polling", () => {
       .fn()
       .mockRejectedValueOnce(new Error("ECONNRESET"))
       .mockResolvedValueOnce(snapshot("COMPLETED", { outcome: "pass" }));
-    await pollForgeJob({ getJobStatus }, "job-1", new AbortController().signal, {
-      scheduler: immediate,
-    });
-    expect(getJobStatus.mock.calls.map((call) => call[0])).toEqual(["job-1", "job-1"]);
+    await pollForgeJob(
+      { getJobStatus },
+      "job-1",
+      new AbortController().signal,
+      {
+        scheduler: immediate,
+      },
+    );
+    expect(getJobStatus.mock.calls.map((call) => call[0])).toEqual([
+      "job-1",
+      "job-1",
+    ]);
+  });
+
+  it("bounds a never-terminal job so the serial queue can advance", async () => {
+    const getJobStatus = vi.fn(async () => snapshot("RUNNING"));
+    await expect(
+      pollForgeJob({ getJobStatus }, "job-1", new AbortController().signal, {
+        scheduler: immediate,
+        maximumPollAttempts: 3,
+      }),
+    ).rejects.toBeInstanceOf(ForgeJobPollLimitError);
+    expect(getJobStatus).toHaveBeenCalledTimes(3);
   });
 });
-

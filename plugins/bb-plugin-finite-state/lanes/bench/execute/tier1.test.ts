@@ -233,4 +233,46 @@ describe("Tier 1 execution", () => {
     expect(verifyDynamic).not.toHaveBeenCalled();
     expect(penTestRun).not.toHaveBeenCalled();
   });
+
+  it("fails closed without dispatch when the list_jobs baseline is unavailable", async () => {
+    const fixture = await preparedFixture();
+    const verifyDynamic = vi.fn(async () => ({ job_id: "unexpected" }));
+    const penTestRun = vi.fn(async () => ({ jobId: "unexpected" }));
+    await expect(
+      dispatchTier1(
+        {
+          forgeCompute: {
+            verifyDynamic,
+            penTestRun,
+            listJobs() {
+              return {
+                async *[Symbol.asyncIterator]() {
+                  throw new Error("list_jobs unavailable");
+                },
+              };
+            },
+          },
+          firmwareHandshake: { worktreeRoot: fixture.root },
+          onDispatchIssued: vi.fn(),
+          onJobDispatched: vi.fn(),
+          forgeProcess: {
+            kind: "plugin_owned_stdio",
+            hostId: "host-1",
+            command: ["forge"],
+            start: async () => undefined,
+          },
+        },
+        {
+          projectId: "project-a",
+          pvId: "pv-1",
+          prepared: fixture.prepared,
+          targets,
+          deploymentContext,
+        },
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow("list_jobs unavailable");
+    expect(verifyDynamic).not.toHaveBeenCalled();
+    expect(penTestRun).not.toHaveBeenCalled();
+  });
 });
