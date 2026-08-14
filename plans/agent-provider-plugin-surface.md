@@ -219,10 +219,16 @@ Disposition of every current `ProviderAdapter` member:
 | `buildThreadDetachedEvents` | generic: runtime reconciles from its own background-work state |
 | per-provider `visibility.ts` | deleted — bridge classifies before emitting `provider/raw` |
 
-`ProviderExecutionContext` loses `claudeCodePermissionMode` /
-`claudeCodeMockCliTraffic`: plan-mode becomes a declared prompt-mode
-capability + a normalized field; mock CLI traffic becomes a
-bridge-test-harness concern inside the claude plugin.
+`ProviderExecutionContext` sheds every provider-flavored field.
+`claudeCodePermissionMode` becomes the declared prompt-mode capability + a
+normalized field; `claudeCodeMockCliTraffic` becomes a bridge-test-harness
+concern inside the claude plugin; and `workflowsEnabled` / `memoryEnabled` /
+`providerSubagentsEnabled` — claude-specific knobs riding the shared
+contract today — move to **provider-scoped session options**: opaque data a
+provider plugin derives from its own settings, which core passes through to
+that provider's bridge untouched (the `acpLaunchSpec` precedent,
+generalized). Core stays agnostic; the plugin owns setting, delivery, and
+enforcement end to end.
 
 ### 3. The declaration (plugin surface)
 
@@ -243,16 +249,24 @@ bb.agents.experimental_registerProvider({
   kind: "agent",                        // "agent" | "router" — see router note below
   capabilities: {
     // One merged block: today's ProviderCapabilities + ProviderServerCapabilities.
-    // Every boolean declares a provider-native fact. bb features and server
-    // policy gate on these; the capability states ability, never enablement.
-    // (bb's own provider-independent systems — e.g. the workflows plugin's
-    // durable engine — need no capability here; they work via plugin tools.)
+    // Every boolean declares a provider-native fact, and a fact earns a slot
+    // here ONLY when a consumer outside the provider's own plugin needs it
+    // (e.g. supportsNativeUserQuestion: the ask-user-question plugin must
+    // know it to skip its duplicate tool). Facts only the provider's own
+    // plugin consumes do NOT belong here — today's `supportsWorkflows` is
+    // the example: its one consumer computes `workflowsEnabled` =
+    // capability && !claudeCodeWorkflowsDisabled, a bit only the claude
+    // bridge reads (its PreToolUse hook gates the native Workflow tool) and
+    // every other provider ignores. That whole chain moves inside the
+    // claude plugin: the toggle becomes a claude-plugin setting, delivered
+    // to its bridge as provider-scoped session options (below), and both
+    // the capability and the shared `workflowsEnabled` wire field are
+    // deleted. (bb's own provider-independent workflows plugin needs no
+    // capability either; it registers plain plugin tools with no provider
+    // check.)
     supportsNativeFork: true,          // clone a session at a branch point
     supportsNativeUserQuestion: true,  // ships its own ask-the-user tool (bb's
                                        // plugin fallback tool is skipped)
-    supportsNativeWorkflows: true,     // ships its own Workflow tool (Claude
-                                       // Code's); bb policy toggles it per
-                                       // session, enforced in the bridge
     supportsNativeSessionRewind: true, // session rewinds to an earlier point;
                                        // gates bb's edit-past-message feature
     supportsSessionArchiveSync: false, // mirror bb archive state into the
