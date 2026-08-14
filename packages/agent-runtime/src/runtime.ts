@@ -335,7 +335,48 @@ function createAgentRuntimeInternal(
   const threadRuntimeConfigs = new Map<string, ThreadRuntimeConfig>();
   const codexThreadsRequiringAccountRestart = new Set<string>();
   const idleProviderSessionSinceMsByThreadId = new Map<string, number>();
-  const pendingTurnStartThreadIds = new Set<string>();
+  // Accepted turn dispatches awaiting the provider's turn/started. The
+  // watchdog makes a stalled entry visible instead of silently hung (#1156's
+  // unimplemented third suggestion; grammar rule 4 in
+  // docs/provider-bridge-protocol.md).
+  const pendingTurnStarts = new Map<
+    string,
+    { sinceMs: number; watchdogFired: boolean }
+  >();
+  const pendingTurnStartThreadIds = {
+    has: (threadId: string) => pendingTurnStarts.has(threadId),
+    delete: (threadId: string) => pendingTurnStarts.delete(threadId),
+    add: (threadId: string) =>
+      pendingTurnStarts.set(threadId, {
+        sinceMs: Date.now(),
+        watchdogFired: false,
+      }),
+  };
+  const turnStartWatchdogThresholdMs =
+    options.turnStartWatchdog?.thresholdMs ?? 120_000;
+  const turnStartWatchdogTimer = setInterval(
+    () => {
+      const nowMs = Date.now();
+      for (const [threadId, entry] of pendingTurnStarts) {
+        if (
+          entry.watchdogFired ||
+          nowMs - entry.sinceMs < turnStartWatchdogThresholdMs
+        ) {
+          continue;
+        }
+        entry.watchdogFired = true;
+        options.onEvent({
+          type: "system/error",
+          threadId,
+          scope: { kind: "thread" },
+          code: "provider_turn_start_timeout",
+          message: `The provider accepted a turn but did not start it within ${Math.round(turnStartWatchdogThresholdMs / 1000)}s. The request may be stalled; stopping the thread interrupts it.`,
+        });
+      }
+    },
+    options.turnStartWatchdog?.intervalMs ?? 15_000,
+  );
+  turnStartWatchdogTimer.unref?.();
   const threadOperationCounts = new Map<string, number>();
   const stagedThreadRewinds = new Map<string, StagedThreadRewind>();
   const suppressedThreadEventIds = new Set<string>();
@@ -2304,7 +2345,7 @@ function createAgentRuntimeInternal(
       return [
         ...new Set([
           ...turnState.getActiveThreadIds(),
-          ...pendingTurnStartThreadIds,
+          ...pendingTurnStarts.keys(),
         ]),
       ];
     },
@@ -2314,13 +2355,14 @@ function createAgentRuntimeInternal(
     },
 
     async shutdown() {
+      clearInterval(turnStartWatchdogTimer);
       await Promise.all(
         [...stagedThreadRewinds.keys()].map((leaseId) =>
           discardStagedThreadRewind(leaseId),
         ),
       );
       idleProviderSessionSinceMsByThreadId.clear();
-      pendingTurnStartThreadIds.clear();
+      pendingTurnStarts.clear();
       threadOperationCounts.clear();
       threadGoalState.clear();
       turnState.clear();
