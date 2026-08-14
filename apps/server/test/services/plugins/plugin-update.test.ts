@@ -15,6 +15,7 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createConnection,
+  getInstalledPlugin,
   getPluginKvValue,
   getInstalledPluginRegistration,
   getPluginSettingsValues,
@@ -25,10 +26,12 @@ import {
   setPluginSettingsValues,
   upsertPluginSchedule,
   upsertInstalledPlugin,
+  upsertPluginMarketplace,
   type DbConnection,
 } from "@bb/db";
 import type { Logger } from "@bb/logger";
 import { registerPluginRoutes } from "../../../src/routes/plugins.js";
+import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
 import {
   createPluginService,
   type PluginService,
@@ -357,6 +360,59 @@ describe("plugin update service and routes", () => {
     // ...and applying it does fail, so the check is not hiding a real problem.
     const applied = await service.applyUpdate("updater");
     expect(applied.ok ? applied.result.outcome : "failed").not.toBe("updated");
+  });
+
+  it("checks for updates after marketplace removal converts provenance", async () => {
+    await service.remove("updater");
+    await service.installCatalogPlugin({
+      marketplace: "acme-plugins",
+      entryId: "updater",
+      pluginId: "updater",
+      source: `git:${repo}@main`,
+      selection: { kind: "root" },
+    });
+    upsertPluginMarketplace(db, {
+      name: "acme-plugins",
+      sourceKind: "path",
+      manifestUrl: workDir,
+      sourceGitRef: null,
+      sourceGitCommit: null,
+      manifestJson: JSON.stringify({
+        schemaVersion: 1,
+        name: "acme-plugins",
+        displayName: "Acme Plugins",
+        plugins: [],
+      }),
+      etag: null,
+      lastModified: null,
+      lastSuccessfulRefreshAt: Date.now(),
+      lastAttemptedRefreshAt: Date.now(),
+      lastError: null,
+    });
+    const catalog = createPluginCatalogService({
+      db,
+      appVersion: "1.0.0",
+      marketplaceUrl: "https://marketplace.test/marketplace.json",
+      dataDir: join(workDir, "data"),
+      plugins: service,
+    });
+    const candidate = await commitPlugin(repo, "1.1.0");
+
+    const removed = await catalog.removeMarketplace("acme-plugins");
+    expect(removed.convertedPluginIds).toEqual(["updater"]);
+    expect(getInstalledPlugin(db, "updater")).toMatchObject({
+      provenance: "direct",
+      catalogEntryId: null,
+      catalogMarketplaceName: null,
+    });
+
+    await expect(service.checkForUpdates("updater")).resolves.toMatchObject([
+      {
+        id: "updater",
+        outcome: "update-available",
+        candidate: { version: candidate },
+      },
+    ]);
   });
 
   it("returns an actionable 422 and keeps the installed commit for an incompatible candidate", async () => {
