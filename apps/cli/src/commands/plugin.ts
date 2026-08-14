@@ -598,7 +598,8 @@ function formatAbsoluteDate(value: string | number | undefined): string {
 function dualInterpretationError(source: string): string {
   return (
     `Could not resolve "${source}" as either a catalog plugin or a path on disk. ` +
-    "Use a Git repository URL, path:<path>, npm:<package>, or git:<url>[@<ref>] to choose an interpretation explicitly."
+    "Use a Git repository URL, path:<path>, npm:<package>, git:<url>[@<ref>], or " +
+    "git:<url>@<semver-range> to choose an interpretation explicitly."
   );
 }
 
