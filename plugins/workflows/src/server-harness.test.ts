@@ -61,6 +61,32 @@ describe("workflows plugin", () => {
     await harness.setSettings({ maxActiveRuns: "5" });
   });
 
+  it("registers tool schemas without recursive $refs", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "workflows",
+      agentSkillIds: ["workflows"],
+    });
+    hosts.push(harness);
+    await plugin(bb);
+
+    const tools = harness.registrations.agentTools;
+    expect(tools.map((tool) => tool.name)).toEqual(
+      expect.arrayContaining(["bb_workflow_run", "bb_workflow_result"]),
+    );
+    // A self-referential $ref makes some providers reject the whole tool list
+    // before the turn starts, so no tool may ship one.
+    for (const tool of tools) {
+      const schema = JSON.stringify(tool.inputSchema);
+      expect(schema, `tool ${tool.name}`).not.toContain("$ref");
+      expect(schema, `tool ${tool.name}`).not.toContain("$defs");
+    }
+
+    const run = tools.find((tool) => tool.name === "bb_workflow_run");
+    expect(
+      run?.parse({ name: "demo", args: { nested: [1, { deep: null }] } }),
+    ).toMatchObject({ ok: true });
+  });
+
   it("runs a structured workflow asynchronously and notifies its origin", async () => {
     let childCount = 0;
     const { bb, harness } = createFakePluginHost({
