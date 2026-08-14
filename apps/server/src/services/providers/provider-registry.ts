@@ -15,11 +15,14 @@
  * stay in the bridge handshake; neither belongs here.
  */
 import {
+  buildAcpProviderInfo,
+  getAcpProviderServerCapabilities,
   getBuiltInAgentProviderServerCapabilities,
+  isAcpProviderId,
   listBuiltInAgentProviderInfos,
   type ProviderServerCapabilities,
 } from "@bb/agent-providers";
-import type { ProviderInfo } from "@bb/domain";
+import type { PermissionMode, ProviderInfo } from "@bb/domain";
 
 export type ProviderRegistrationSource =
   | { kind: "core" }
@@ -35,6 +38,17 @@ export interface ProviderRegistryService {
   /** Registered provider metadata, stable order: core seed first, then plugins by registration. */
   list(): ProviderRegistration[];
   get(providerId: string): ProviderRegistration | null;
+  /**
+   * Policy accessors: one answer per question, covering registered providers
+   * plus the dynamic ACP tier (acp-* ids resolved from launch specs are never
+   * registered — they fall back to the shared ACP capability set, exactly as
+   * the catalog helpers did). Null when the id belongs to no known provider.
+   */
+  getServerCapabilities(providerId: string): ProviderServerCapabilities | null;
+  getSupportedPermissionModes(
+    providerId: string,
+  ): readonly PermissionMode[] | null;
+  supportsNativeFork(providerId: string): boolean;
   /**
    * Adds a plugin-registered provider. Rejects id collisions with any live
    * registration — a plugin cannot shadow a core provider or another plugin.
@@ -66,19 +80,62 @@ export function createProviderRegistryService(): ProviderRegistryService {
     return ids;
   }
 
+  function getRegistration(providerId: string): ProviderRegistration | null {
+    const fromPlugin = pluginRegistrations.get(providerId);
+    if (fromPlugin) {
+      return fromPlugin;
+    }
+    return coreSeed.find((entry) => entry.info.id === providerId) ?? null;
+  }
+
   return {
     list() {
       return [...coreSeed, ...pluginRegistrations.values()];
     },
 
     get(providerId) {
-      const fromPlugin = pluginRegistrations.get(providerId);
-      if (fromPlugin) {
-        return fromPlugin;
+      return getRegistration(providerId);
+    },
+
+    getServerCapabilities(providerId) {
+      const registration = getRegistration(providerId);
+      if (registration) {
+        return registration.serverCapabilities;
       }
-      return (
-        coreSeed.find((entry) => entry.info.id === providerId) ?? null
-      );
+      if (isAcpProviderId(providerId)) {
+        return getAcpProviderServerCapabilities(providerId);
+      }
+      return null;
+    },
+
+    getSupportedPermissionModes(providerId) {
+      const registration = getRegistration(providerId);
+      if (registration) {
+        return registration.info.capabilities.supportedPermissionModes;
+      }
+      if (isAcpProviderId(providerId)) {
+        return buildAcpProviderInfo({
+          id: providerId,
+          displayName: providerId,
+          logoUrl: null,
+        }).capabilities.supportedPermissionModes;
+      }
+      return null;
+    },
+
+    supportsNativeFork(providerId) {
+      const registration = getRegistration(providerId);
+      if (registration) {
+        return registration.info.capabilities.supportsFork;
+      }
+      if (isAcpProviderId(providerId)) {
+        return buildAcpProviderInfo({
+          id: providerId,
+          displayName: providerId,
+          logoUrl: null,
+        }).capabilities.supportsFork;
+      }
+      return false;
     },
 
     register(registration) {

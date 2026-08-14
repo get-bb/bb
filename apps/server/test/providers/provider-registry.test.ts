@@ -28,6 +28,43 @@ const MINIMAL_SERVER_CAPABILITIES = {
   reasoningLevels: ["medium" as const],
 };
 
+describe("provider registry policy accessors", () => {
+  it("answers policy questions identically to the catalog helpers", () => {
+    const registry = createProviderRegistryService();
+    for (const info of listBuiltInAgentProviderInfos()) {
+      expect(registry.getServerCapabilities(info.id)).toStrictEqual(
+        getBuiltInAgentProviderServerCapabilities(info.id),
+      );
+      expect(registry.getSupportedPermissionModes(info.id)).toStrictEqual(
+        info.capabilities.supportedPermissionModes,
+      );
+      expect(registry.supportsNativeFork(info.id)).toBe(
+        info.capabilities.supportsFork,
+      );
+    }
+  });
+
+  it("falls back to the shared ACP tier for unregistered acp-* ids", () => {
+    const registry = createProviderRegistryService();
+    expect(registry.getServerCapabilities("acp-custom-agent")).not.toBeNull();
+    expect(
+      registry.getSupportedPermissionModes("acp-custom-agent"),
+    ).toStrictEqual(["accept-edits", "full"]);
+    // ACP fork support is the declared offer; per-agent truth is negotiated
+    // at the bridge handshake.
+    expect(typeof registry.supportsNativeFork("acp-custom-agent")).toBe(
+      "boolean",
+    );
+  });
+
+  it("answers null/false for unknown provider ids", () => {
+    const registry = createProviderRegistryService();
+    expect(registry.getServerCapabilities("nope")).toBeNull();
+    expect(registry.getSupportedPermissionModes("nope")).toBeNull();
+    expect(registry.supportsNativeFork("nope")).toBe(false);
+  });
+});
+
 describe("provider registry", () => {
   it("resolves a provider set identical to the core catalog (the phase-3 equality pin)", () => {
     const registry = createProviderRegistryService();
