@@ -863,6 +863,11 @@ function HtmlFilePreviewBody({
         aria-hidden={isPreviewVisible ? undefined : true}
       >
         <IframeFilePreview
+          // The raw HTML route is stable across file revisions. Remount the
+          // frame when the fetched source changes so it navigates again and
+          // renders the updated document, while unrelated parent renders keep
+          // the current frame (and its in-document state) intact.
+          key={state.file.cacheKey}
           sandbox={state.iframe.sandbox}
           title={state.iframe.title}
           url={state.iframe.url}

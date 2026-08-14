@@ -573,4 +573,49 @@ describe("FilePreview", () => {
       expect(pierreMock.state.lastFile?.cacheKey).not.toBe(firstCacheKey);
     });
   });
+
+  it("reloads an HTML iframe only when the fetched source changes", () => {
+    const path = "reports/preview.html";
+    const htmlPreviewUrl = "/api/v1/threads/thread-1/worktree/files/preview.html";
+    const firstPreview = {
+      kind: "text" as const,
+      content: "<!doctype html><h1>First</h1>",
+      mimeType: "text/html",
+      path,
+      url: htmlPreviewUrl,
+    };
+    const view = render(
+      <SecondaryPanelFilePreview
+        activePath={path}
+        filePreview={firstPreview}
+        htmlPreviewUrl={htmlPreviewUrl}
+        isLoading={false}
+      />,
+    );
+
+    const firstIframe = screen.getByTitle(path);
+
+    view.rerender(
+      <SecondaryPanelFilePreview
+        activePath={path}
+        filePreview={{ ...firstPreview }}
+        htmlPreviewUrl={htmlPreviewUrl}
+        isLoading={false}
+      />,
+    );
+    expect(screen.getByTitle(path)).toBe(firstIframe);
+
+    view.rerender(
+      <SecondaryPanelFilePreview
+        activePath={path}
+        filePreview={{
+          ...firstPreview,
+          content: "<!doctype html><h1>Updated</h1>",
+        }}
+        htmlPreviewUrl={htmlPreviewUrl}
+        isLoading={false}
+      />,
+    );
+    expect(screen.getByTitle(path)).not.toBe(firstIframe);
+  });
 });
