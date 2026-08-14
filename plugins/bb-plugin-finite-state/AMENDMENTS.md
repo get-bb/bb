@@ -271,7 +271,7 @@ UPDATE hw_project
 
 ## Approved amendments — SPEC 07 / SPEC 08 intake
 
-*Drafted 2026-08-12 as AMD-0001…0006. Approved 2026-08-13 by the product
+_Drafted 2026-08-12 as AMD-0001…0006. Approved 2026-08-13 by the product
 owner (Matt), relayed via supervisor thread `thr_rxxqm3px8s`, under two
 binding conditions: (1) the batch was renumbered to AMD-0010…0015 because
 the identifiers AMD-0002 and AMD-0003 were already claimed by in-flight
@@ -286,7 +286,7 @@ is tested against a populated database. WP-71 is the single implementation
 task for AMD-0010 through AMD-0013 and AMD-0015; AMD-0014 is a
 dependency-batch change. Artifact hashes are recorded by the accept tooling
 (`check-frozen-artifacts.mjs --accept`) when WP-71 lands each change. Source
-specs: `docs/Product Specs/SPEC 07` and `SPEC 08`.*
+specs: `docs/Product Specs/SPEC 07` and `SPEC 08`._
 
 ### AMD-0010 — Hardware and grounding tables; `hardware` verification matrix column
 
@@ -448,8 +448,10 @@ specs: `docs/Product Specs/SPEC 07` and `SPEC 08`.*
   no KiCad install) and `@google/model-viewer` (GLB rendering, SPEC 07 §3
   Tab 2). `@xyflow/react` is already declared via the canvas lane. Python-side
   tooling (probe runtime, PyVISA, vendor instrument SDKs) and `kicad-cli` are
-  runtime host prerequisites detected via `needsConfiguration`, not npm
-  dependencies, and are out of scope here.
+  runtime host prerequisites, not npm dependencies, and are out of scope here.
+  Per FS-158, their absence keeps the plugin running and appears as an
+  actionable advisory only on the dependent lane; plugin-global
+  `needsConfiguration` is reserved for missing required credentials.
 - Reason: dependency freeze (WP-09) requires new packages to land as a
   reviewed batch.
 - Affected WPs and gates: WP-72, WP-73, WP-74, WP-76; dependency-freeze

@@ -21,7 +21,7 @@ WP-88 owns `lanes/debug-bench/register.ts`/`register.app.tsx` and pre-wires the 
 
 ## Files you must not touch
 
-server.ts, app.tsx, shared/contract.ts, lib/store/schema.ts, lib/context.ts, lib/remote/types.ts, lib/agentic/registry.ts, lanes/debug-bench/register.ts, lanes/debug-bench/register.app.tsx, lanes/debug-bench/registry/**, lanes/authoring/**, test/mock-remote/fixtures/**, package.json, pnpm-lock.yaml, or another lane.
+server.ts, app.tsx, shared/contract.ts, lib/store/schema.ts, lib/context.ts, lib/remote/types.ts, lib/agentic/registry.ts, lanes/debug-bench/register.ts, lanes/debug-bench/register.app.tsx, lanes/debug-bench/registry/**, lanes/authoring/**, test/mock-remote/fixtures/\*\*, package.json, pnpm-lock.yaml, or another lane.
 
 ## Context
 
@@ -31,11 +31,11 @@ Serial output is **tier D — diagnostic, never evidentiary**. Transcripts never
 
 The read/send asymmetry is AMD-0013's: **read is free, send is the guarded half.** `fs_serial` read returns bounded recent output to the agent with no gate; send goes to a physical device and sits behind confirmation — in the UI as the `~`-prefixed send path with explicit confirm, on the agent path as a confirmation token in the execution context. Send confirmation is the AMD-0013 confirmation tier, distinct from `fs_flash`'s `destructive` in-turn rule.
 
-No npm serial library exists in the dependency freeze and none is being added. The v1 transport is a supervised host helper subprocess (Python + pyserial — Python is already a host prerequisite for probe scripts) speaking NDJSON over stdio, detected behind `needsConfiguration`. CI has no serial devices and no Python guarantee: every hardware path skips cleanly.
+No npm serial library exists in the dependency freeze and none is being added. The v1 transport is a supervised host helper subprocess (Python + pyserial — Python is already a host prerequisite for probe scripts) speaking NDJSON over stdio. Per FS-158, missing helper prerequisites produce a serial-lane advisory while the plugin remains running. CI has no serial devices and no Python guarantee: every hardware path skips cleanly.
 
 ## What to build
 
-1. Transport interface (`SerialTransport`: open/close/write/data-events/error-events) with the helper-subprocess backend: spawn per session, frame NDJSON, supervise (helper death is a transport event, not a crash), detect the helper behind `needsConfiguration`. Port identity comes from the WP-88 device registry (`bench_device` kind `serial`), never a caller-supplied device path.
+1. Transport interface (`SerialTransport`: open/close/write/data-events/error-events) with the helper-subprocess backend: spawn per session, frame NDJSON, supervise (helper death is a transport event, not a crash), and report helper absence through the serial-lane advisory without changing plugin lifecycle. Port identity comes from the WP-88 device registry (`bench_device` kind `serial`), never a caller-supplied device path.
 2. Session lifecycle: open claims the device through WP-88 claim/release; close releases it. Disconnects trigger reconnect with capped exponential backoff and jitter, surfacing state (`connected | reconnecting | closed | unconfigured`) to UI and agent alike; an explicit close stops reconnecting.
 3. **Auto-connect after flash**: subscribe to WP-86's flash-completed event and open a session on the flashed device's associated serial port (registry association, falling back to the last-used port) unless a session is already open. Failure to auto-connect is a visible status, not an exception.
 4. Ring buffer: bounded in-memory line buffer (default 10,000 lines / 2 MiB, configurable) with a monotonic line cursor. **A slow reader never blocks the port**: overflow drops oldest lines and records an explicit gap marker carrying the dropped count — silent loss is the one unforgivable failure here.
@@ -85,7 +85,7 @@ RPC names/shapes come from the frozen AMD-0011 `benchDev.*` group (session metad
 - [ ] Regex filtering never affects the transcript or ring-buffer contents; an invalid pattern is a typed, recoverable error.
 - [ ] Transcript rotation enforces the stated size/session caps; outbound sends are recorded and marked.
 - [ ] No serial artifact, transcript, or read result ever enters `verification_results` or any attestation path.
-- [ ] Helper/Python absent ⇒ `needsConfiguration` end to end; CI (no serial devices, no helper) passes with hardware tests skipped cleanly.
+- [ ] Helper/Python absent ⇒ typed serial-lane advisory end to end while plugin status remains running; CI (no serial devices, no helper) passes with hardware tests skipped cleanly.
 - [ ] Console UI is virtualized with all four designed states, tokens, and Hugeicons; realtime carries hints only.
 
 ## Test plan
@@ -101,7 +101,7 @@ Fake transport: an in-process `SerialTransport` scripted with data bursts, disco
 
 ## Do not
 
-- Do not add a serial npm dependency; the transport is a host-prerequisite helper behind `needsConfiguration`.
+- Do not add a serial npm dependency; the transport is a host-prerequisite helper whose absence is reported through the serial-lane advisory.
 - Do not let send bypass confirmation from any path — UI, CLI, or agent — and do not gate read.
 - Do not drop lines silently, apply filters to persisted data, or stream line content over realtime.
 - Do not accept caller-supplied device paths; devices resolve through the WP-88 registry only.

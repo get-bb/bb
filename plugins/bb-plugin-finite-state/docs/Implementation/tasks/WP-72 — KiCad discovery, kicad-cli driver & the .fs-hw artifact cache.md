@@ -25,15 +25,17 @@ The registration file replaces WP-71's hardware backend stub and wires the `hard
 
 KiCad remains the editor; this WP is the extraction seam under everything else in L9. The KiCad project is source in the worktree, never our data. Derived artifacts (sheet SVGs, board SVG/GLB, BOM, netlist, gerbers, drill, DRC/ERC JSON) are CACHED: regenerable, content-addressed by the hash of the source file they were made from, gitignored, indexed in `hw_project`/`hw_artifact`.
 
-`kicad-cli` ships with KiCad 7+ and runs headless — a background job, not an integration. But it is a host prerequisite CI does not have: every capability that needs it sits behind `bb.status.needsConfiguration`, and parsing (WP-73) must keep working when it is absent. Two projects per worktree are supported; `project_key` (relative path of the `.kicad_pro`) is the discriminator.
+`kicad-cli` ships with KiCad 7+ and runs headless — a background job, not an integration. But it is a host prerequisite CI does not have: per FS-158, its absence keeps the plugin running and produces a hardware-lane advisory while only dependent extraction capabilities are unavailable. Plugin-global `bb.status.needsConfiguration` is reserved for missing required credentials, and parsing (WP-73) must keep working when KiCad is absent. Two projects per worktree are supported; `project_key` (relative path of the `.kicad_pro`) is the discriminator.
 
 The cache mirrors the `.fs-firmware` discipline from WP-47, including its ignore tripwire: verify `.fs-hw` is gitignored before writing, and fail with `HW_CACHE_NOT_IGNORED` rather than polluting diffs.
+
+**Current visibility limitation:** `hardwareArtifactsStatus` is project-scoped and returns `HW_PROJECT_NOT_FOUND` before it can expose KiCad capability when no project has been ingested, so KiCad absence is log-only in that state. FS-160 does not add an unconditional status probe; a future product requirement may add one through the normal RPC/CLI/SDK contract process.
 
 ## What to build
 
 1. Replace the hardware backend stub. Registration is reload-safe, uses `ctx.service` for shared handles, and exports the extract action service for WP-81's `fs_hw_extract` and command handlers for the CLI WP — it does not call `bb.agents.registerTool` or `bb.cli.register` itself.
 2. Discovery: scan the worktree for `.kicad_pro` files, resolve each project's root schematic and optional `.kicad_pcb`, hash the sources, read the file-format version for compat gating, and upsert `hw_project`. Ignored/untracked projects get the `.worktreeinclude` hint in the status payload (SPEC 07 §2).
-3. `kicad-cli` detection: locate the binary, parse `kicad-cli version`, require 7+, and publish a capability record consumed by `needsConfiguration` and by the panel's unconfigured state. Detection failure is a degraded capability, not an error.
+3. `kicad-cli` detection: locate the binary, parse `kicad-cli version`, require 7+, and publish a capability record consumed by the hardware lane's advisory and unavailable state. Detection failure is a degraded capability, not an error, and never changes the plugin lifecycle.
 4. The driver: one function per export in SPEC 07 §4 (sheet SVG with `--no-background-color --exclude-drawing-sheet`, BOM CSV, netlist, ERC JSON, board SVG/GLB, gerbers, drill, DRC JSON). Non-zero exit captures stderr verbatim into the failure result — the error state renders it.
 5. Cache layout `.fs-hw/<project-hash>/…` per artifact kind, with sheet SVGs under `sheets/`. Before any write, verify the ignore rule (step 8 of WP-47's pattern). Content addressing: an artifact is fresh iff its recorded `source_hash` equals the current source file hash; re-export only on change, `--force` overrides.
 6. Provenance per artifact into `hw_artifact`: source path, `source_hash`, `cli_version`, `generated_at`. Every derived value must be able to name where it came from.
@@ -80,7 +82,7 @@ The worktree root comes from the verified invoking execution context, as WP-47 e
 ## Acceptance criteria
 
 - [ ] A fixture worktree with two `.kicad_pro` projects yields two `hw_project` rows keyed by relative path, each with correct source hashes.
-- [ ] With `kicad-cli` absent, discovery and status RPCs work, extraction returns a typed `KICAD_NOT_INSTALLED` failure, and the capability record drives `needsConfiguration`.
+- [ ] With `kicad-cli` absent, discovery and status RPCs work after a project is ingested, extraction returns a typed `KICAD_NOT_INSTALLED` failure, and the capability record drives a hardware-lane advisory while the plugin remains running.
 - [ ] Extraction is skipped when `source_hash` is unchanged and re-runs when it differs or `--force` is set; provenance rows record path, hash, CLI version, and timestamp.
 - [ ] A failing export surfaces the verbatim `kicad-cli` stderr in the result; other artifact kinds in the same run still complete.
 - [ ] Writing into a non-ignored `.fs-hw` aborts with `HW_CACHE_NOT_IGNORED` before any file is created.

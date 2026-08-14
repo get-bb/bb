@@ -5,6 +5,7 @@
 **Produces a FROZEN artifact:** no
 
 ## Files you own
+
 ```
 plugins/bb-plugin-finite-state/test/e2e/golden-loop/offline/network-guard.ts
 plugins/bb-plugin-finite-state/test/e2e/golden-loop/offline/failures.ts
@@ -17,12 +18,15 @@ plugins/bb-plugin-finite-state/docs/demo/CONNECTED-REHEARSAL.md
 ```
 
 ## Files you must not touch
-Production behavior to make the demo pass, seed/frozen fixtures, composition roots, frozen interfaces, dependencies, or live tenant data.
+
+Production behavior to make the demo pass, seed/fixture corpus, composition roots, frozen interfaces, dependencies, or live tenant data. Fixture exclusions are ownership boundaries, not the retired WP-08 freeze.
 
 ## Context
+
 G4 requires the Golden Loop to run unattended and offline from a warm cache, twice, under fifteen minutes. “Offline” means no undeclared external network; local mock transports and the in-process deterministic bench/Forge fixture stand in for remote dependencies while exercising the same public adapters. The human demo runbook is a separate connected rehearsal mode with explicit preflight and fallbacks. Failure recovery is part of the product story: gaps remain visible and every interrupted write leaves reviewable state.
 
 ## What to build
+
 1. Harden the network guard across fetch/HTTP/MCP/socket paths used by the plugin. Log and fail the originating beat on any undeclared external destination.
 2. Run all fourteen beats twice from independently copied warm seeds. Assert semantic reports/commits/evidence match and total duration stays below fifteen minutes per run on the documented reference machine.
 3. Define and inject six named failure scenarios with deterministic trigger points and recovery assertions:
@@ -40,6 +44,7 @@ G4 requires the Golden Loop to run unattended and offline from a warm cache, twi
 9. Ensure no fallback is silent: offline fixture, connected dev tenant, canned run, and public-log availability each display their provenance.
 
 ## Interface contract
+
 ```ts
 export type FailureScenario =
   | "sync-conflict"
@@ -65,6 +70,7 @@ export function assertRecovery(name: FailureScenario): Promise<RecoveryProof>;
 Required runbook commands use the shipped CLI only; examples must be verified by `harness.runCli` during doc tests.
 
 ## Acceptance criteria
+
 - [ ] Full Golden Loop runs twice offline from fresh warm-seed copies, with zero external requests and <15 minutes each.
 - [ ] All six failures produce honest visible state and a tested recovery/resume path.
 - [ ] Partial push advances base only for successes and resumes without re-sending noops.
@@ -76,12 +82,15 @@ Required runbook commands use the shipped CLI only; examples must be verified by
 - [ ] Four-command plugin gate plus all E2E/recovery suites are green.
 
 ## Test plan
+
 `offline.e2e.test.ts`
+
 - two complete runs; compare semantic report, final git tree, plan results, verdict, and attestation hash.
 - `unexpected HTTPS/DNS/socket call fails immediately` (**offline error path**).
 - enforce reference timing budget and report slowest beat.
 
 `recovery.e2e.test.ts`
+
 - one test per six named scenarios.
 - `mid-push reset resumes only failed/pending rows`.
 - `killed writer leaves parseable YAML and incomplete run marker`.
@@ -90,10 +99,12 @@ Required runbook commands use the shipped CLI only; examples must be verified by
 - `digest/signature mismatch blocks verdict`.
 
 Documentation checks:
+
 - execute every fenced CLI command in dry-run/test mode.
 - validate all referenced files/error codes/expected seed counts exist.
 
 ## Do not
+
 - Do not disable networking without proving every attempted request is caught.
 - Do not alter production rules, evidence, or counts only for the demo.
 - Do not call an unchanged external state a successful offline result.
@@ -102,5 +113,6 @@ Documentation checks:
 - Do not run destructive reset commands against a real tenant or the developer's checkout.
 
 ## Open questions
+
 1. Record the reference machine/profile for the fifteen-minute gate and separate product regressions from slow shared CI workers.
 2. The connected runbook needs an approved dev-tenant reset command; omit automated reset rather than infer destructive authority.

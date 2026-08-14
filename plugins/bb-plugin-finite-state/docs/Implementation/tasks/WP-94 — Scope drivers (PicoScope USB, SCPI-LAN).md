@@ -20,7 +20,7 @@ server.ts, app.tsx, the five frozen artifacts and composition roots (WP-71 owns 
 
 Phase 5 of the instrument bridge: analog integrity. The questions this driver exists to answer are the ones no other tier can see — rail droop under load, signal quality and edge rates on a bus that decodes fine but glitches in the field, ripple, ringing, and the analog face of "works on the bench, fails in the enclosure". Per SPEC 08 §4.5 these are exactly the hypothesis classes a D1/D2 result may never confirm, so this driver is where analog-class escalations from WP-91's cascade land.
 
-Two backends behind WP-92's one `InstrumentDriver` interface. PicoScope over the vendor USB SDK (`picosdk` Python wrappers — scope, logic analyzer, and signal generator in one box). Siglent-class bench scopes over SCPI/LAN with **PyVISA as the transport floor** (`pyvisa` + `pyvisa-py`), so any SCPI scope is reachable and the `lan` transport from decision 9.5 is exercised for real. Both stacks are host-side Python prerequisites behind `needsConfiguration`; never npm dependencies, never silently installed (WP-90's confirmation rail). `instro` stays out per decision 9.6 — its scope support is explicitly unstable and the production bench is deferred — but nothing here may foreclose adding it behind the same interface later.
+Two backends behind WP-92's one `InstrumentDriver` interface. PicoScope over the vendor USB SDK (`picosdk` Python wrappers — scope, logic analyzer, and signal generator in one box). Siglent-class bench scopes over SCPI/LAN with **PyVISA as the transport floor** (`pyvisa` + `pyvisa-py`), so any SCPI scope is reachable and the `lan` transport from decision 9.5 is exercised for real. Both stacks are host-side Python prerequisites; never npm dependencies, never silently installed (WP-90's confirmation rail). Per FS-158, their absence produces backend-scoped advisories while the plugin remains running. `instro` stays out per decision 9.6 — its scope support is explicitly unstable and the production bench is deferred — but nothing here may foreclose adding it behind the same interface later.
 
 CI has no hardware and no Python instrument stack: waveform math and both backend protocols are tested against replay fixtures and scripted fake transports. Captures land as `probe_run` artifacts. Tier D discipline holds: diagnostic, never evidentiary.
 
@@ -31,7 +31,7 @@ CI has no hardware and no Python instrument stack: waveform math and both backen
 3. `waveform.ts` — analog integrity measurements over captured waveforms, computed locally and deterministically: rise/fall time between configurable thresholds, overshoot/undershoot, min/max/mean/RMS, peak-to-peak ripple, and a windowed rail-droop measure (baseline vs. loaded window, using the same event-mark scheme as WP-93's `correlate.ts`). Full-resolution waveforms are artifacts; RPC/tool surfaces get bounded summaries and downsampled previews, paged.
 4. Trigger-timeout semantics: a capture that never triggers returns `TRIGGER_TIMEOUT` with the armed configuration — an honest "the edge you predicted did not occur" is itself a discriminating observation for the cascade, distinct from a transport failure.
 5. Replay fixture backend implementing `InstrumentDriver` from recorded waveform files, exercising the full path — session, trigger config, capture, measurement, artifact write — in CI.
-6. Prerequisite detection per backend (picosdk wrappers present and the PicoSDK C libraries they bind; `pyvisa` with a working backend) under distinct `needsConfiguration` keys with named remediation.
+6. Prerequisite detection per backend (picosdk wrappers present and the PicoSDK C libraries they bind; `pyvisa` with a working backend) under distinct lane-advisory keys with named remediation; none changes plugin status.
 7. Artifacts attach to `probe_run` rows via WP-89's runs module; `probe:changed` refetch hints only; every list/query surface paged.
 
 ## Interface contract
@@ -73,12 +73,12 @@ CI has no hardware and no Python instrument stack: waveform math and both backen
 - [ ] `TRIGGER_TIMEOUT` is distinguishable from transport failure and carries the armed configuration.
 - [ ] Signal-generator output cannot be enabled outside the WP-90-gated path.
 - [ ] Full waveforms are gitignored artifacts; RPC/tool outputs are bounded, downsampled, and paged.
-- [ ] Missing picosdk/PyVISA stacks yield distinct `needsConfiguration` reports; CI passes with no Python and no hardware.
+- [ ] Missing picosdk/PyVISA stacks yield distinct backend-scoped advisories while plugin status remains running; CI passes with no Python and no hardware.
 - [ ] No npm dependency; no silent host installation; nothing evidentiary is written.
 
 ## Test plan
 
-- picoscope.test.ts — subprocess bridge protocol against a scripted fake, channel/trigger configuration echo, capture abort cleanup, missing SDK → `needsConfiguration` (error path), and signal-generator refusal without the gate (safety error path).
+- picoscope.test.ts — subprocess bridge protocol against a scripted fake, channel/trigger configuration echo, capture abort cleanup, missing SDK → scoped unavailable advisory (degraded path), and signal-generator refusal without the gate (safety error path).
 - scpi.test.ts — `*IDN?` identification and capability mapping, command/response sequencing against a fake VISA endpoint, connection drop mid-capture → typed `DEVICE_LOST` (error path), malformed waveform payload rejected without crashing.
 - waveform.test.ts — golden measurements on synthetic waveforms with known rise times and droop, threshold-configuration edge cases, and downsampling preserves extremes (min/max envelope) rather than aliasing them away.
 - trigger.test.ts — trigger fires, trigger timeout (error path with configuration echo), and re-arm after timeout.

@@ -29,7 +29,6 @@ const dependencyScript = path.join(
 const eslintBinary = path.join(repositoryRoot, "node_modules/.bin/eslint");
 const prettierBinary = path.join(repositoryRoot, "node_modules/.bin/prettier");
 const pluginRoot = "plugins/bb-plugin-finite-state";
-const fixtureTree = `${pluginRoot}/test/mock-remote/fixtures/**`;
 const artifacts = [
   `${pluginRoot}/server.ts`,
   `${pluginRoot}/app.tsx`,
@@ -37,7 +36,6 @@ const artifacts = [
   `${pluginRoot}/lib/store/schema.ts`,
   `${pluginRoot}/lib/sync/registry.ts`,
   `${pluginRoot}/lib/remote/types.ts`,
-  fixtureTree,
 ] as const;
 const temporaryRoots: string[] = [];
 const contents: Record<string, string> = {
@@ -49,7 +47,6 @@ const contents: Record<string, string> = {
   [`${pluginRoot}/lib/store/schema.ts`]: "export const migrations = [];\n",
   [`${pluginRoot}/lib/sync/registry.ts`]: "export const entities = {};\n",
   [`${pluginRoot}/lib/remote/types.ts`]: "export interface Remote {}\n",
-  [`${pluginRoot}/test/mock-remote/fixtures/base.json`]: '{"fixture":true}\n',
 };
 
 function sha256(value: string) {
@@ -127,10 +124,6 @@ async function fixtureRoot() {
     peerDependencies: {},
     optionalDependencies: {},
   };
-  const fixtureContents =
-    contents[`${pluginRoot}/test/mock-remote/fixtures/base.json`];
-  if (fixtureContents === undefined)
-    throw new Error("Missing fixture-tree contents");
   const baseline = {
     version: 1,
     source: { mergeCommit: "0".repeat(40) },
@@ -138,18 +131,12 @@ async function fixtureRoot() {
     artifacts: Object.fromEntries(
       artifacts.map((artifact) => {
         const fileContents = contents[artifact];
-        if (artifact !== fixtureTree && fileContents === undefined) {
+        if (fileContents === undefined) {
           throw new Error(`Missing fixture contents for ${artifact}`);
         }
-        const hash =
-          artifact === fixtureTree
-            ? sha256(`base.json\0${sha256(fixtureContents)}\n`)
-            : sha256(fileContents);
         return [
           artifact,
-          artifact === fixtureTree
-            ? { treeSha256: hash, amendment: null, active: true }
-            : { sha256: hash, amendment: null, active: true },
+          { sha256: sha256(fileContents), amendment: null, active: true },
         ];
       }),
     ),
@@ -327,7 +314,7 @@ describe("lean contract tripwires", () => {
     expect(run(dependencyScript, root).status).toBe(0);
   });
 
-  it("names controlled frozen-file and fixture-tree mutations", async () => {
+  it("names controlled frozen-file mutations", async () => {
     const root = await fixtureRoot();
     const appPath = `${pluginRoot}/app.tsx`;
     await write(
@@ -341,12 +328,22 @@ describe("lean contract tripwires", () => {
     if (originalApp === undefined)
       throw new Error("Missing app fixture contents");
     await write(root, appPath, originalApp);
-    await write(
-      root,
-      `${pluginRoot}/test/mock-remote/fixtures/extra.json`,
-      "{}\n",
+  });
+
+  it("rejects drift between frozenPaths and the baseline artifact keys", async () => {
+    const root = await fixtureRoot();
+    const baselinePath = `${pluginRoot}/frozen-artifacts.json`;
+    const baseline = JSON.parse(
+      await readFile(path.join(root, baselinePath), "utf8"),
     );
-    expect(run(frozenScript, root).output).toContain(fixtureTree);
+    delete baseline.artifacts[`${pluginRoot}/app.tsx`];
+    await write(root, baselinePath, `${JSON.stringify(baseline, null, 2)}\n`);
+
+    const result = run(frozenScript, root);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain(
+      "frozen-artifacts.json must retain the fixed frozen-artifact scope",
+    );
   });
 
   it("does not treat the fenced AMD-0001 documentation example as approval", async () => {

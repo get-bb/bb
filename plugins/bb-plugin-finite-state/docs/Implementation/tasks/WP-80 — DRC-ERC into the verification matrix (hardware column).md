@@ -15,11 +15,11 @@ Replace WP-72's compiling NOT_IMPLEMENTED placeholders at these exact paths in p
 
 ## Files you must not touch
 
-server.ts, app.tsx, shared/contract.ts, lib/store/schema.ts, lib/sync/registry.ts, lib/remote/types.ts, lib/agentic/registry.ts, lanes/product-security/** (including the WP-39 matrix), lanes/bench/**, lanes/hardware/register.ts, test/mock-remote/fixtures/**, package.json, pnpm-lock.yaml, or another lane.
+server.ts, app.tsx, shared/contract.ts, lib/store/schema.ts, lib/sync/registry.ts, lib/remote/types.ts, lib/agentic/registry.ts, lanes/product-security/** (including the WP-39 matrix), lanes/bench/**, lanes/hardware/register.ts, test/mock-remote/fixtures/\*\*, package.json, pnpm-lock.yaml, or another lane.
 
 ## Context
 
-DRC and ERC are verification, not reporting. A requirement like *"the isolation barrier SHALL maintain 8mm creepage"* is verified by a DRC rule, and its result belongs in the same matrix as a firmware test — the matrix answers "what's unproven" and does not care which discipline the proof came from. This WP maps `hw_violation` rows (WP-77 parses `--format json` into them) into `verification_results` keyed by requirement, **exactly as bench results do**, in the `hardware` column that AMD-0010 adds to the tier vocabulary.
+DRC and ERC are verification, not reporting. A requirement like _"the isolation barrier SHALL maintain 8mm creepage"_ is verified by a DRC rule, and its result belongs in the same matrix as a firmware test — the matrix answers "what's unproven" and does not care which discipline the proof came from. This WP maps `hw_violation` rows (WP-77 parses `--format json` into them) into `verification_results` keyed by requirement, **exactly as bench results do**, in the `hardware` column that AMD-0010 adds to the tier vocabulary.
 
 Be precise about the boundary: SPEC 08's Tier D rule — diagnostic, never evidentiary — does **not** apply here. DRC/ERC results ARE evidentiary; they are deterministic checks of the design against declared rules, not exploratory bench work. What carries over unchanged is the WP-36/39 law: **status is derived from results; there is no "mark verified" path**, and stale overlays evidence rather than replacing it. A violation set produced from an older `source_hash` than the current schematic/board marks its results stale, feeding the verified/partial/failed/not-run/stale ladder.
 
@@ -32,7 +32,7 @@ Be precise about the boundary: SPEC 08's Tier D rule — diagnostic, never evide
 5. Requirement-level rollup stays derived: this WP writes results only; the matrix's worst-wins aggregation and the `hardware` column rendering are WP-39's consumption of the amended vocabulary.
 6. Idempotency per `(requirement, rule, source_hash)`: re-ingesting the same run is a noop; a re-extract at a new hash supersedes via the latest-chain convention the matrix already reads.
 7. Serve everything through the amended `hardware.*` RPC group's paged endpoints where the panel needs lists; no unpaged list, no per-cell queries.
-8. Tests consume fixture `hw_violation` rows; `kicad-cli` is never required — running DRC/ERC is WP-77's job behind `needsConfiguration`, and this WP's suite skips nothing because it needs nothing external.
+8. Tests consume fixture `hw_violation` rows; `kicad-cli` is never required — running DRC/ERC is WP-77's job, with missing KiCad reported as an FS-158 hardware-lane advisory while the plugin remains running, and this WP's suite skips nothing because it needs nothing external.
 
 ## Interface contract
 
@@ -85,7 +85,7 @@ The `verification_results` row shape and the `hardware` tier value are frozen by
 
 - Do not apply the Tier-D "diagnostic only" rule here — and conversely, do not let any bench Tier-D result ride in through this path.
 - Do not add a mark-verified affordance, write `verification_status` directly, or let a fixture flag bypass derivation.
-- Do not guess a rule mapping, default an unknown severity, or count `exclusion` as pass *or* fail.
+- Do not guess a rule mapping, default an unknown severity, or count `exclusion` as pass _or_ fail.
 - Do not edit the WP-39 matrix, the requirements schema file, or any frozen artifact.
 - Do not run `kicad-cli` from this lane's ingestion or tests.
 

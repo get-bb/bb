@@ -1,6 +1,6 @@
 # SPEC 07 — KiCad & the Hardware Design Plane
 
-*Product spec. Depends on SPEC 00 (conventions), SPEC 04 (HBOM), SPEC 05 (mount pattern). Amends SPEC 03 (verification matrix) and SPEC 04 (provenance tiers). This is the surface that brings the hardware design into the workspace — and it is the piece that makes "one workspace" true for a physical product rather than just its firmware.*
+_Product spec. Depends on SPEC 00 (conventions), SPEC 04 (HBOM), SPEC 05 (mount pattern). Amends SPEC 03 (verification matrix) and SPEC 04 (provenance tiers). This is the surface that brings the hardware design into the workspace — and it is the piece that makes "one workspace" true for a physical product rather than just its firmware._
 
 **Spec set:** 00 Foundation · 01 Sync Engine · 02 Findings & VEX Triage · 03 Product Security · 04 Bill of Materials · 05 Firmware, Bench & Documents · 06 Agentic Surfaces · **07 KiCad & the Hardware Design Plane (this)**
 
@@ -12,7 +12,7 @@ Today a hardware engineer's design lives in KiCad, the firmware lives in a repo,
 
 On this surface, the KiCad project sits in the same worktree as the firmware source and the security model. The agent reads a schematic the way it reads code. The HBOM is not assembled — it is **read off the board**, with the schematic as its citation. And clicking a part on the schematic reaches its bill-of-materials row, the firmware that drives it, the CVEs against its SDK, and the threat-model node it belongs to.
 
-**The product claim in one sentence:** *the reference designator is a join key, and once the design is in the workspace, everything else is already connected.*
+**The product claim in one sentence:** _the reference designator is a join key, and once the design is in the workspace, everything else is already connected._
 
 **Who it's for.** The hardware engineer who wants their design to stop being an island. The firmware engineer who needs to know what's actually on the board. The compliance lead who currently builds the HBOM by hand. And the agent, which cannot reason about a product it can only see half of.
 
@@ -31,11 +31,11 @@ KiCad (the editor)          ──►  files in the worktree  ──►  bb (con
 
 **Three data treatments, consistent with the four-class model (SPEC 01 §2):**
 
-| What | Treatment | Where it lives |
-|---|---|---|
-| The KiCad project | **Source.** Not ours, not synced, not classified | The worktree, git-tracked by the user |
-| Rendered and extracted artifacts (SVG, GLB, BOM, netlist, DRC/ERC) | **CACHED** — regenerable, gitignored | `.fs-hw/<project-hash>/`, indexed in SQLite |
-| What flows onward into the HBOM | **VERSIONED / OVERLAY** via SPEC 04 | `product-security/hbom/hbom.yaml` |
+| What                                                               | Treatment                                        | Where it lives                              |
+| ------------------------------------------------------------------ | ------------------------------------------------ | ------------------------------------------- |
+| The KiCad project                                                  | **Source.** Not ours, not synced, not classified | The worktree, git-tracked by the user       |
+| Rendered and extracted artifacts (SVG, GLB, BOM, netlist, DRC/ERC) | **CACHED** — regenerable, gitignored             | `.fs-hw/<project-hash>/`, indexed in SQLite |
+| What flows onward into the HBOM                                    | **VERSIONED / OVERLAY** via SPEC 04              | `product-security/hbom/hbom.yaml`           |
 
 The design itself never becomes our data. We read it, derive from it, and cite it.
 
@@ -65,20 +65,20 @@ Transparent hit-targets are positioned over the render from that transform. The 
 
 **Interactions.**
 
-| Action | Behavior |
-|---|---|
-| Hover a part | Card: reference, value, footprint, HBOM confidence, open CVE count |
-| Click a part | Selects it; inspector opens; the part enters agent context |
-| Click a net | Highlights the net across the sheet; lists connected parts |
-| `⌘F` | Search by reference, value, or footprint — **against parsed semantics, not SVG glyphs** |
-| Select + `→` | Jump to the linked surface (BOM row, findings, firmware, threat node) |
-| Sheet tree | Navigate hierarchy; breadcrumb shows the sheet path |
+| Action       | Behavior                                                                                |
+| ------------ | --------------------------------------------------------------------------------------- |
+| Hover a part | Card: reference, value, footprint, HBOM confidence, open CVE count                      |
+| Click a part | Selects it; inspector opens; the part enters agent context                              |
+| Click a net  | Highlights the net across the sheet; lists connected parts                              |
+| `⌘F`         | Search by reference, value, or footprint — **against parsed semantics, not SVG glyphs** |
+| Select + `→` | Jump to the linked surface (BOM row, findings, firmware, threat node)                   |
+| Sheet tree   | Navigate hierarchy; breadcrumb shows the sheet path                                     |
 
-**States.** Loading (skeleton sheet list) · empty ("No KiCad project in this workspace" with the `.worktreeinclude` hint) · error (export failed, with the `kicad-cli` stderr) · unconfigured (KiCad not installed — `bb.status.needsConfiguration`).
+**States.** Loading (skeleton sheet list) · empty ("No KiCad project in this workspace" with the `.worktreeinclude` hint) · error (export failed, with the `kicad-cli` stderr) · lane-unavailable (KiCad not installed — an actionable hardware advisory). Per FS-158, missing KiCad keeps the plugin running; plugin-global `bb.status.needsConfiguration` is reserved for missing required credentials.
 
 ### Tab 2 — Board (`/hardware/board`)
 
-**The 3D view.** A GLB exported from the board file, rendered in the panel. `<model-viewer>` is the default: it takes a GLB URL and renders it, with no React-reconciler entanglement. `@react-three/fiber` v9 + `drei` is the upgrade path when scene control is actually needed — noting that R3F bundles the React reconciler and is compatible with React 19.0–19.2, with 19.2's internal reconciler bump *not* backward compatible with 19.1. **Pin deliberately or avoid.**
+**The 3D view.** A GLB exported from the board file, rendered in the panel. `<model-viewer>` is the default: it takes a GLB URL and renders it, with no React-reconciler entanglement. `@react-three/fiber` v9 + `drei` is the upgrade path when scene control is actually needed — noting that R3F bundles the React reconciler and is compatible with React 19.0–19.2, with 19.2's internal reconciler bump _not_ backward compatible with 19.1. **Pin deliberately or avoid.**
 
 **The 2D view.** Board SVG with the same overlay technique as the schematic, driven by footprint positions from `.kicad_pcb`. Layer toggles. Same selection model, so a part selected on the schematic stays selected here.
 
@@ -198,14 +198,14 @@ All of it is **CACHED** — every row is rebuildable from the KiCad files by a s
 
 The reference designator joins the hardware design to surfaces that are already built.
 
-| From a part on the schematic | To | Via | Spec |
-|---|---|---|---|
-| `U3` | Its HBOM row and provenance cells | `reference` → `part_key` | SPEC 04 |
-| `U3` | SBOM entries for its SDK / driver stack | MPN or vendor mapping | SPEC 04 |
-| `U3` | Open CVEs against those components | findings cache | SPEC 02 |
-| `U3` | Firmware source that drives it | worktree grep on symbol/driver name | SPEC 05 |
-| `U3` | The threat-model node it belongs to | architecture component mapping | SPEC 03 |
-| `U3` | Requirements that constrain it | EARS traceability | SPEC 03 |
+| From a part on the schematic | To                                      | Via                                 | Spec    |
+| ---------------------------- | --------------------------------------- | ----------------------------------- | ------- |
+| `U3`                         | Its HBOM row and provenance cells       | `reference` → `part_key`            | SPEC 04 |
+| `U3`                         | SBOM entries for its SDK / driver stack | MPN or vendor mapping               | SPEC 04 |
+| `U3`                         | Open CVEs against those components      | findings cache                      | SPEC 02 |
+| `U3`                         | Firmware source that drives it          | worktree grep on symbol/driver name | SPEC 05 |
+| `U3`                         | The threat-model node it belongs to     | architecture component mapping      | SPEC 03 |
+| `U3`                         | Requirements that constrain it          | EARS traceability                   | SPEC 03 |
 
 Links are stored as an explicit, reviewable mapping rather than inferred at read time, because inference that silently guesses wrong is worse than a gap:
 
@@ -220,7 +220,7 @@ links:
     threat_node: COMP-mcu
     firmware_paths: [src/drivers/stm32/]
     confidence: 1.0
-    by: human            # or: agent — proposals require acceptance
+    by: human # or: agent — proposals require acceptance
 ```
 
 **The demo beat:** click the MCU on the schematic and see its HBOM row with provenance, the firmware that drives it, the CVEs against its SDK, and the threat-model node it sits in — one click, one workspace.
@@ -237,20 +237,20 @@ This surface changes two things elsewhere. Both are small; both are load-bearing
 
 The HBOM cell model already carries `{value, provenance, source_ref, confidence}`. KiCad adds the highest-quality source available:
 
-| Source | Provenance | Confidence | What it means |
-|---|---|---|---|
-| **KiCad BOM / schematic fields** | **`kicad_bom`** | **1.0** | **Asserted by the design. Not inferred** |
-| Human entry | `human` | 1.0 | Someone typed it |
-| AS architecture seed | `as_seed` | 0.9 | Modeled, but shallow |
-| Document extraction | `document` | ~0.72 | An agent read a PDF and proposed it |
+| Source                           | Provenance      | Confidence | What it means                            |
+| -------------------------------- | --------------- | ---------- | ---------------------------------------- |
+| **KiCad BOM / schematic fields** | **`kicad_bom`** | **1.0**    | **Asserted by the design. Not inferred** |
+| Human entry                      | `human`         | 1.0        | Someone typed it                         |
+| AS architecture seed             | `as_seed`       | 0.9        | Modeled, but shallow                     |
+| Document extraction              | `document`      | ~0.72      | An agent read a PDF and proposed it      |
 
 `source_ref` is the schematic path plus the reference designator — so every HBOM value can name the exact symbol on the exact sheet it came from.
 
-**The consequence worth stating plainly:** the HBOM stops being assembled and starts being *derived*, with the design as its citation. That is the difference between a compliance artifact produced under duress and one that falls out of the work.
+**The consequence worth stating plainly:** the HBOM stops being assembled and starts being _derived_, with the design as its citation. That is the difference between a compliance artifact produced under duress and one that falls out of the work.
 
 ### 7.2 SPEC 03 §4 — a `hardware` column in the verification matrix
 
-DRC and ERC are verification, not reporting. The requirement × tier matrix gains a `hardware` column alongside `static`, `emulation`, `hil`, and `manual`. A requirement like *"the isolation barrier SHALL maintain 8mm creepage"* is verified by a DRC rule, and its result belongs in the same matrix as a firmware test — because the question the matrix answers is "what's unproven," and that question does not care which discipline the proof came from.
+DRC and ERC are verification, not reporting. The requirement × tier matrix gains a `hardware` column alongside `static`, `emulation`, `hil`, and `manual`. A requirement like _"the isolation barrier SHALL maintain 8mm creepage"_ is verified by a DRC rule, and its result belongs in the same matrix as a firmware test — because the question the matrix answers is "what's unproven," and that question does not care which discipline the proof came from.
 
 `hw_violation` rows map into `verification_results` keyed by requirement, exactly as bench results do.
 
@@ -259,37 +259,41 @@ DRC and ERC are verification, not reporting. The requirement × tier matrix gain
 ## 8. bb integration
 
 ### Panel and routing
+
 `app.slots.navPanel({ id: "hardware", … })` with subPaths `schematics` · `board` · `fab`. Selection state is shared across tabs — a part selected on the schematic stays selected on the board.
 
 ### Agent tools
 
-| Tool | Class | Behavior |
-|---|---|---|
-| `fs_hw_query` | read | Query symbols, nets, violations. Returns **summaries with references, not dumps** (SPEC 06 §4) |
-| `fs_hw_part` | read | Everything known about one reference designator, across all linked surfaces |
-| `fs_hw_link_write` | write | Proposes entries in `links/hardware.yaml`. **YAML only** |
-| `fs_hw_extract` | **action** | Runs `kicad-cli` to regenerate artifacts. **A fourth server-touching-class tool — see below** |
+| Tool               | Class      | Behavior                                                                                       |
+| ------------------ | ---------- | ---------------------------------------------------------------------------------------------- |
+| `fs_hw_query`      | read       | Query symbols, nets, violations. Returns **summaries with references, not dumps** (SPEC 06 §4) |
+| `fs_hw_part`       | read       | Everything known about one reference designator, across all linked surfaces                    |
+| `fs_hw_link_write` | write      | Proposes entries in `links/hardware.yaml`. **YAML only**                                       |
+| `fs_hw_extract`    | **action** | Runs `kicad-cli` to regenerate artifacts. **A fourth server-touching-class tool — see below**  |
 
 **On `fs_hw_extract` and the allowlist.** SPEC 06 §5.3 enumerates three ACTION-class tools and requires an `AMENDMENTS.md` entry to add a fourth. This is that fourth. The justification: it invokes a **local subprocess**, not a server mutation — it is closer to `fs_firmware_materialize` than to anything that writes to Assurance Studio. It changes no model state, and everything it produces is regenerable. **It must still be added to the compile-time allowlist explicitly**, because the guard's value is that nobody adds a fifth by accident.
 
 ### Directives
 
-| Directive | Renders |
-|---|---|
-| `::fs-schematic{project,sheet,focus}` | The sheet, zoomed to a part or net |
-| `::fs-part{ref}` | The part card with cross-surface links |
-| `::fs-board{project,view}` | 3D or 2D board view |
-| `::fs-drc{project}` | Violations summary |
+| Directive                             | Renders                                |
+| ------------------------------------- | -------------------------------------- |
+| `::fs-schematic{project,sheet,focus}` | The sheet, zoomed to a part or net     |
+| `::fs-part{ref}`                      | The part card with cross-surface links |
+| `::fs-board{project,view}`            | 3D or 2D board view                    |
+| `::fs-drc{project}`                   | Violations summary                     |
 
 Per SPEC 00 §7, each mounts a domain component that takes an id and self-fetches — so `<PartCard reference="U3"/>` works identically in a panel and inside an agent message.
 
 ### Mentions
+
 Extend the existing **`fs-intel`** provider on `#` to resolve reference designators (`#U3`) alongside CVEs and software components. It is already the "what is this thing" provider; hardware parts belong to the same question. Disambiguation is by pattern, with the surface named in the result label so `#U3` never silently resolves to a software package.
 
 ### Skills
+
 `skills/fs-hardware/SKILL.md` — when to use the surface, the reference designator as join key, the directive syntax, and the prohibitions: never edit KiCad files directly (KiCad owns them), never assert an HBOM value the design doesn't support, always propose links rather than writing them as fact.
 
 ### CLI
+
 ```
 bb finite-state hw
   discover                  # find KiCad projects in the worktree
@@ -304,38 +308,38 @@ bb finite-state hw
 
 ## 9. Edge cases and failure modes
 
-| Case | Behavior |
-|---|---|
-| KiCad not installed | `needsConfiguration` with install guidance. **Parsing still works** — `kicadts` needs no KiCad, so symbols, nets, and search degrade gracefully while renders don't |
-| KiCad 5 or earlier files | Unsupported; say so explicitly. The format predates S-expressions |
-| Very large or dense sheets | Heavy SVGs. Measure before optimizing; if needed, render coarse and swap detail on zoom |
-| GLB export slow or large | Never generate during a demo. Pre-export, cache, and show the cached artifact |
-| Stroke fonts plotted as paths | In-SVG text search breaks. **Search parsed semantics instead** — better anyway |
-| Multi-unit symbols (U3A, U3B) | Keyed by `(reference, unit)`; the part card aggregates units |
-| Parts with no MPN | Common and legitimate. Link by footprint plus value; leave HBOM cells bare-null (`—`), never fabricate |
-| Reference renumbering between revisions | Links break silently. Detect by comparing symbol sets across hashes and **report as drift**, mirroring SPEC 02's re-scan handling |
-| Two KiCad projects in one worktree | Supported; `project_key` is the discriminator, with a project selector in the panel header |
-| Schematic edited while a panel is open | File-watch, invalidate the cache, banner offering re-extract. **Never auto-regenerate during an agent run** |
+| Case                                    | Behavior                                                                                                                                                                                                                                                                                                                                                                                                           |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| KiCad not installed                     | Hardware-lane advisory with install guidance while the plugin remains running (FS-158). **Parsing still works** — `kicadts` needs no KiCad, so symbols, nets, and search degrade gracefully while renders don't. Before any project is ingested, project-scoped `hardwareArtifactsStatus` returns `HW_PROJECT_NOT_FOUND`, so this advisory is log-only; an unconditional probe is not part of the current contract |
+| KiCad 5 or earlier files                | Unsupported; say so explicitly. The format predates S-expressions                                                                                                                                                                                                                                                                                                                                                  |
+| Very large or dense sheets              | Heavy SVGs. Measure before optimizing; if needed, render coarse and swap detail on zoom                                                                                                                                                                                                                                                                                                                            |
+| GLB export slow or large                | Never generate during a demo. Pre-export, cache, and show the cached artifact                                                                                                                                                                                                                                                                                                                                      |
+| Stroke fonts plotted as paths           | In-SVG text search breaks. **Search parsed semantics instead** — better anyway                                                                                                                                                                                                                                                                                                                                     |
+| Multi-unit symbols (U3A, U3B)           | Keyed by `(reference, unit)`; the part card aggregates units                                                                                                                                                                                                                                                                                                                                                       |
+| Parts with no MPN                       | Common and legitimate. Link by footprint plus value; leave HBOM cells bare-null (`—`), never fabricate                                                                                                                                                                                                                                                                                                             |
+| Reference renumbering between revisions | Links break silently. Detect by comparing symbol sets across hashes and **report as drift**, mirroring SPEC 02's re-scan handling                                                                                                                                                                                                                                                                                  |
+| Two KiCad projects in one worktree      | Supported; `project_key` is the discriminator, with a project selector in the panel header                                                                                                                                                                                                                                                                                                                         |
+| Schematic edited while a panel is open  | File-watch, invalidate the cache, banner offering re-extract. **Never auto-regenerate during an agent run**                                                                                                                                                                                                                                                                                                        |
 
 ---
 
 ## 10. Build plan
 
-| Phase | Deliverable | Effort |
-|---|---|---|
-| **7a** | KiCad discovery, `kicad-cli` driver, artifact cache, `hw_project`/`hw_artifact` | 3 d |
-| **7b** | `kicadts` parser → `hw_symbol`, `hw_net`; search | 2.5 d |
-| **7c** | Schematics tab — React Flow viewport, sheet tree, SVG render | 3 d |
-| **7d** | Semantic overlay — transform, hit-targets, inspector, part card | 3 d |
-| **7e** | Board tab — GLB view, 2D board SVG, stackup card | 2.5 d |
-| **7f** | Fab tab — gerbers/drill, BOM view, netlist browser, DRC/ERC list | 2 d |
-| **7g** | HBOM ingest with `kicad_bom` provenance *(SPEC 04 amendment)* | 2 d |
-| **7h** | Cross-surface linking + `links/hardware.yaml` | 3 d |
-| **7i** | DRC/ERC into the verification matrix *(SPEC 03 amendment)* | 1.5 d |
-| **7j** | Agent tools, directives, mentions, skill, CLI | 3 d |
-| | **Total** | **~25.5 d / 5–6 wk at one agent, ~3 wk at two** |
+| Phase  | Deliverable                                                                     | Effort                                          |
+| ------ | ------------------------------------------------------------------------------- | ----------------------------------------------- |
+| **7a** | KiCad discovery, `kicad-cli` driver, artifact cache, `hw_project`/`hw_artifact` | 3 d                                             |
+| **7b** | `kicadts` parser → `hw_symbol`, `hw_net`; search                                | 2.5 d                                           |
+| **7c** | Schematics tab — React Flow viewport, sheet tree, SVG render                    | 3 d                                             |
+| **7d** | Semantic overlay — transform, hit-targets, inspector, part card                 | 3 d                                             |
+| **7e** | Board tab — GLB view, 2D board SVG, stackup card                                | 2.5 d                                           |
+| **7f** | Fab tab — gerbers/drill, BOM view, netlist browser, DRC/ERC list                | 2 d                                             |
+| **7g** | HBOM ingest with `kicad_bom` provenance _(SPEC 04 amendment)_                   | 2 d                                             |
+| **7h** | Cross-surface linking + `links/hardware.yaml`                                   | 3 d                                             |
+| **7i** | DRC/ERC into the verification matrix _(SPEC 03 amendment)_                      | 1.5 d                                           |
+| **7j** | Agent tools, directives, mentions, skill, CLI                                   | 3 d                                             |
+|        | **Total**                                                                       | **~25.5 d / 5–6 wk at one agent, ~3 wk at two** |
 
-**Sequencing note.** 7a–7d is the demonstrable core and lands in about two weeks. 7g and 7h are where the *product* claim gets made — they are not polish, and they should not be deferred to a second pass on the theory that the viewer is the feature. The viewer is table stakes; the linking is the moat.
+**Sequencing note.** 7a–7d is the demonstrable core and lands in about two weeks. 7g and 7h are where the _product_ claim gets made — they are not polish, and they should not be deferred to a second pass on the theory that the viewer is the feature. The viewer is table stakes; the linking is the moat.
 
 ---
 
@@ -345,7 +349,7 @@ bb finite-state hw
 
 **The reason it is not the plan of record:** it is early alpha, upstream development appears stalled, and it supports KiCad 6+ with KiCad 7 only "mostly supported" — leaving KiCad 8/9 files, which is what current designs produce, an open question.
 
-**Decision rule.** Test it against real project files before phase 7c. If it renders correctly, adopt it *for rendering only* — the parser, cache, linking, and HBOM path are unchanged either way, because those never depended on the renderer. If adopted for anything beyond a demo, plan to vendor and maintain a fork, and keep the `kicad-cli` SVG path alive as a fallback. **Do not make a stalled alpha load-bearing.**
+**Decision rule.** Test it against real project files before phase 7c. If it renders correctly, adopt it _for rendering only_ — the parser, cache, linking, and HBOM path are unchanged either way, because those never depended on the renderer. If adopted for anything beyond a demo, plan to vendor and maintain a fork, and keep the `kicad-cli` SVG path alive as a fallback. **Do not make a stalled alpha load-bearing.**
 
 ---
 

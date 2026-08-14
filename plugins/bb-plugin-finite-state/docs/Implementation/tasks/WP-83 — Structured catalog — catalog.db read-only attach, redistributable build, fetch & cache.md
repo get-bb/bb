@@ -25,13 +25,13 @@ This is plane A of SPEC 08 §5.1 and the best-specified WP in the lane: implemen
 
 `catalog.db` is a **read-only sidecar beside `data.db`**, never inside it. It is a build artifact, not user state: opened `mode=ro` so the plugin cannot corrupt it, excluded from `bb.storage.migrate`'s append-only chain, versioned by `catalog_version`, immutable per version and therefore safe to fetch once and cache. It is fetched on first use into the plugin data dir and is re-fetchable, like the firmware mount.
 
-**No embeddings for structured facts.** A register lookup is an exact-match query, not a similarity query — `STM32H753.USART1.CR1.UE` is an identifier. Embedding 2.5M short strings would be expensive, slow, and actively harmful: nearest-neighbour over `USART1.CR1.UE` and `USART2.CR1.UE` returns near-misses indistinguishable from hits, which is precisely the failure mode that produces a confidently wrong base address in generated code. Citation gating catches an *uncited* value; it does not catch a value cited to the wrong peripheral. So: B-tree indices for identifier lookup, FTS5 for descriptive text, nothing else.
+**No embeddings for structured facts.** A register lookup is an exact-match query, not a similarity query — `STM32H753.USART1.CR1.UE` is an identifier. Embedding 2.5M short strings would be expensive, slow, and actively harmful: nearest-neighbour over `USART1.CR1.UE` and `USART2.CR1.UE` returns near-misses indistinguishable from hits, which is precisely the failure mode that produces a confidently wrong base address in generated code. Citation gating catches an _uncited_ value; it does not catch a value cited to the wrong peripheral. So: B-tree indices for identifier lookup, FTS5 for descriptive text, nothing else.
 
 Licensing is an enforced build boundary, not a note. Of the eight vendors built, only Raspberry Pi is redistributable; the catalog builds in two flavours — `--redistributable-only` ships as a release artifact, the full catalog is built locally by the user from their own fetch. Same schema, same code path; the plugin opens whichever is present and reports coverage honestly.
 
 ## What to build
 
-1. Attach: open `catalog.db` from `<pluginDataDir>/catalog/<catalog_version>/catalog.db` with `mode=ro`. Verify the expected `cat_*` tables and `catalog_version` before serving a single query; a malformed or wrong-version file is `CATALOG_INVALID`, never a partial answer. Absent catalog is `needsConfiguration`, not an error — every consumer degrades to plane-B-only.
+1. Attach: open `catalog.db` from `<pluginDataDir>/catalog/<catalog_version>/catalog.db` with `mode=ro`. Verify the expected `cat_*` tables and `catalog_version` before serving a single query; a malformed or wrong-version file is `CATALOG_INVALID`, never a partial answer. An absent catalog produces a catalog-lane advisory, not an error or plugin lifecycle change (FS-158) — every consumer degrades to plane-B-only.
 2. Fetch-on-first-use: resolve the configured artifact source (release URL or local file path for a user-built full catalog), download to a staging file while hashing, verify the published digest, and atomically promote into the versioned cache directory. Interrupted or mismatched fetches leave no partial file in the cache path.
 3. Flavour detection: derive shipped-redistributable vs full from `cat_source.redistributable` composition, and prefer the full catalog when both are present. Expose the answer through coverage, never by guessing.
 4. Identifier lookup — the primary path: exact and prefix queries over `(device, peripheral, register, field)` using `ix_fact_path`/`ix_fact_periph`. Resolve `register.size` at query time: **null is correct SVD behaviour meaning the register inherits `cat_device.width`** — treating null as unknown drops widths on a large fraction of registers.
@@ -87,7 +87,7 @@ Licensing is an enforced build boundary, not a note. Of the eight vendors built,
 ## Acceptance criteria
 
 - [ ] `catalog.db` opens `mode=ro`; a write attempt through the handle fails, and nothing about it ever touches `bb.storage.migrate` or `data.db`.
-- [ ] Absent catalog yields `needsConfiguration` plus an honest `CatalogCoverage { present: false }`; no consumer throws.
+- [ ] Absent catalog yields a scoped unavailable advisory plus an honest `CatalogCoverage { present: false }` while the plugin remains running; no consumer throws.
 - [ ] Fetch verifies the digest before promotion; a mismatch or interruption leaves the versioned cache path empty.
 - [ ] Identifier lookup resolves `register.size` null to `cat_device.width` at query time.
 - [ ] No fact crosses the service boundary without `source_file` and vendor.
@@ -100,7 +100,7 @@ Licensing is an enforced build boundary, not a note. Of the eight vendors built,
 
 Build a small fixture `catalog.db` (two vendors, one redistributable) in test setup using the §5.1 schema — real SQLite, same shape the pipeline emits.
 
-- attach.test.ts — valid attach, `mode=ro` write rejection, missing file → `needsConfiguration`, malformed schema → `CATALOG_INVALID` (**error path**), version verification.
+- attach.test.ts — valid attach, `mode=ro` write rejection, missing file → scoped unavailable advisory, malformed schema → `CATALOG_INVALID` (**error path**), version verification.
 - fetch.test.ts — staged download, digest mismatch rejected without cache pollution (**error path**), interrupted-stream cleanup, idempotent re-fetch of a cached version.
 - query.test.ts — exact and prefix identifier lookup, null-size fallback to device width, `source_file` present on every row, paging, unknown device returns empty not error.
 - fts.test.ts — descriptive search ranking and bounds; query terms matching descriptions, not identifiers.

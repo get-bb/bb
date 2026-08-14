@@ -1,6 +1,6 @@
 # IMPLEMENTATION PLAN — `bb-plugin-finite-state`
 
-*Owner: Matt Wyckhouse. Status: ready to dispatch under the FS-93 scheduling gates. This is the tech-lead document — read before assigning any work. It converts SPECs 00–08 into a repo, a dependency graph, eleven logical lanes, and a set of frozen interfaces that let those lanes run without colliding. SPECs 07–08 were adopted 2026-08-12, after the freeze: their intake is §5.2, their WPs are WP-71…WP-98, and their frozen-contract changes are the proposed AMD-0010…AMD-0014 entries in `AMENDMENTS.md`.*
+_Owner: Matt Wyckhouse. Status: ready to dispatch under the FS-93 scheduling gates. This is the tech-lead document — read before assigning any work. It converts SPECs 00–08 into a repo, a dependency graph, eleven logical lanes, and a set of frozen interfaces that let those lanes run without colliding. SPECs 07–08 were adopted 2026-08-12, after the freeze: their intake is §5.2, their WPs are WP-71…WP-98, and their frozen-contract changes are the proposed AMD-0010…AMD-0014 entries in `AMENDMENTS.md`._
 
 **Companion artifacts:** `HANDOFF — Product & Architecture.md` (self-contained product and system overview) · `ADR — Direct APIs & Optional Forge Compute.md` (current integration ruling) · `api-reference/` (vendored reviewed API snapshots) · `AGENTS.md` (the instruction file every coding agent reads) · `tasks/WP-*.md` (the work packages) · `scheduling/PROGRAM-BOOTSTRAP.md` (binding decisions and model policy) · `scheduling/wp-coupling-manifest.json` (effective dispatch graph) · `scheduling/COORDINATOR-RUNBOOK.md` (cap and dispatch procedure) · `RECON — bb SDK & Forge Surface.md` (historical code-grounded recon, superseded by the ADR where noted).
 
@@ -10,18 +10,18 @@
 
 We ran code-level reconnaissance of bb, Forge, the Platform API, and Assurance Studio before planning. The first pass found nine corrections; the later Forge source audit added the load-bearing integration ruling in row 10. All are reflected in SPECs 00–06.
 
-| # | What the spec assumed | What the code actually says | Impact |
-|---|---|---|---|
-| 1 | Forge needs new VEX wrappers | The Platform already exposes the required VEX routes, and the plugin calls them directly through `PlatformClient` | **Removes Forge as a blocking dependency.** Triage can start on day one |
-| 2 | Manifest = `{name, server, app, skills, themes}` | Manifest is **`.strict()`** and additionally **requires `description` and `branding`**; `engines` sits outside the `bb` key | SPEC 00's manifest would have **failed validation**. Fixed |
-| 3 | Migrations are `migrations/NNNN_*.sql` files | `bb.storage.migrate(db, statements: string[])` — **inline TS string arrays**, append-only, `_bb_migrations` table | Changes the shape of every store WP |
-| 4 | Agent tools can be individually approval-gated | **No per-tool approval field exists.** bb's generic approval UI applies uniformly and is not configurable | SPEC 06 §5.3's safety claim was wrong. The gate must be **architectural** (no push tool at all), not a UI setting |
-| 5 | Bench rack "enrolls as a bb host" — mechanism unknown | **Resolved.** `bb.hosts` is tunnel-only. Enrollment is `bb.sdk.hosts.createJoinCode()` — the same call the "Add a machine" dialog makes — **but the target must run bb's `host-daemon` binary**, and threads are always server-initiated | The design works, with a real prerequisite. No longer `[UNVERIFIED]` |
-| 6 | Bulk limits: deletes ≤100, review ≤500, VEX ≤500 | Platform VEX endpoint ceiling is **5000**, while v1 intentionally uses resumable client chunks of 500. Review bulk is **100, not 500** | Chunking constants change |
-| 7 | `bb.http` is the main frontend↔backend bridge | **`bb.rpc`** is, with Standard Schema contracts. `bb.http` is for binary/large payloads only | Confirms SPEC 00 §5, sharpens it |
-| 8 | Firmware bytes are fetchable | Direct Platform bytes require **org-admin `VIEW_ANY_PROJECT_FILE`**; ranged reads cap at **128 KiB**; full mode must stream | Per-file hydration is bounded; local STP unpack remains the reliable fallback and a Platform tarball remains high leverage |
-| 9 | A generic raw AS call can cover missing document APIs | The public client must have a closed route set; AS binary routes need handler verification and explicit typed methods | Documents are **plugin-local in v1**; no raw escape hatch |
-| 10 | The bb plugin should connect to Forge for all Platform/AS data | Forge's clients are thin HTTP wrappers, while full Forge hard-requires PostgreSQL; its unique value is QEMU/dynamic verification, pen test, and compute-job orchestration | **Direct Platform + AS clients; Forge optional compute only.** Core works with Forge stopped |
+| #   | What the spec assumed                                          | What the code actually says                                                                                                                                                                                                              | Impact                                                                                                                     |
+| --- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Forge needs new VEX wrappers                                   | The Platform already exposes the required VEX routes, and the plugin calls them directly through `PlatformClient`                                                                                                                        | **Removes Forge as a blocking dependency.** Triage can start on day one                                                    |
+| 2   | Manifest = `{name, server, app, skills, themes}`               | Manifest is **`.strict()`** and additionally **requires `description` and `branding`**; `engines` sits outside the `bb` key                                                                                                              | SPEC 00's manifest would have **failed validation**. Fixed                                                                 |
+| 3   | Migrations are `migrations/NNNN_*.sql` files                   | `bb.storage.migrate(db, statements: string[])` — **inline TS string arrays**, append-only, `_bb_migrations` table                                                                                                                        | Changes the shape of every store WP                                                                                        |
+| 4   | Agent tools can be individually approval-gated                 | **No per-tool approval field exists.** bb's generic approval UI applies uniformly and is not configurable                                                                                                                                | SPEC 06 §5.3's safety claim was wrong. The gate must be **architectural** (no push tool at all), not a UI setting          |
+| 5   | Bench rack "enrolls as a bb host" — mechanism unknown          | **Resolved.** `bb.hosts` is tunnel-only. Enrollment is `bb.sdk.hosts.createJoinCode()` — the same call the "Add a machine" dialog makes — **but the target must run bb's `host-daemon` binary**, and threads are always server-initiated | The design works, with a real prerequisite. No longer `[UNVERIFIED]`                                                       |
+| 6   | Bulk limits: deletes ≤100, review ≤500, VEX ≤500               | Platform VEX endpoint ceiling is **5000**, while v1 intentionally uses resumable client chunks of 500. Review bulk is **100, not 500**                                                                                                   | Chunking constants change                                                                                                  |
+| 7   | `bb.http` is the main frontend↔backend bridge                  | **`bb.rpc`** is, with Standard Schema contracts. `bb.http` is for binary/large payloads only                                                                                                                                             | Confirms SPEC 00 §5, sharpens it                                                                                           |
+| 8   | Firmware bytes are fetchable                                   | Direct Platform bytes require **org-admin `VIEW_ANY_PROJECT_FILE`**; ranged reads cap at **128 KiB**; full mode must stream                                                                                                              | Per-file hydration is bounded; local STP unpack remains the reliable fallback and a Platform tarball remains high leverage |
+| 9   | A generic raw AS call can cover missing document APIs          | The public client must have a closed route set; AS binary routes need handler verification and explicit typed methods                                                                                                                    | Documents are **plugin-local in v1**; no raw escape hatch                                                                  |
+| 10  | The bb plugin should connect to Forge for all Platform/AS data | Forge's clients are thin HTTP wrappers, while full Forge hard-requires PostgreSQL; its unique value is QEMU/dynamic verification, pen test, and compute-job orchestration                                                                | **Direct Platform + AS clients; Forge optional compute only.** Core works with Forge stopped                               |
 
 **One more finding worth its own line:** `plugins/tasks/WORKERS.md` in the bb repo is literally a multi-agent build-coordination document for exactly this scenario. `AGENTS.md` is modeled on it.
 
@@ -30,7 +30,7 @@ We ran code-level reconnaissance of bb, Forge, the Platform API, and Assurance S
 ## 1. Repo decision
 
 > **Partly superseded — see `ADR — bb Is Not Modified.md` (accepted 2026-08-12).**
-> The fork stands as a *development container*, but it is not a product artifact
+> The fork stands as a _development container_, but it is not a product artifact
 > and **bb is never modified**. The "SDK changes (we will need some)" rationale
 > below did not materialise and is withdrawn: no work package may change bb's
 > source, its builtin plugins, or `builtin-registry.ts`. The product ships as an
@@ -39,17 +39,18 @@ We ran code-level reconnaissance of bb, Forge, the Platform API, and Assurance S
 
 **Fork the bb monorepo. Develop at `plugins/bb-plugin-finite-state/`.**
 
-| | Fork the monorepo (chosen) | Standalone repo via `bb plugin new` |
-|---|---|---|
-| Workspace resolution | Free — `pnpm-workspace.yaml` globs `plugins/*` | Manual |
-| Build step in dev | **None** — `customConditions: ["source"]` resolves `@bb/*` to `src/` | Required |
-| UI components | Import `@bb/shared-ui` directly | Vendor 44 components via shadcn registry |
-| Reference implementation | `plugins/tasks/` sits in-tree, copyable | Read-only reference |
-| Test harness | `@bb/plugin-sdk/testing` wired | Wired, but you own the config |
-| SDK changes (we will need some) | Edit in place | Blocked on upstream |
-| Cost | Carry a fork; rebase deliberately | Clean separation |
+|                                 | Fork the monorepo (chosen)                                           | Standalone repo via `bb plugin new`      |
+| ------------------------------- | -------------------------------------------------------------------- | ---------------------------------------- |
+| Workspace resolution            | Free — `pnpm-workspace.yaml` globs `plugins/*`                       | Manual                                   |
+| Build step in dev               | **None** — `customConditions: ["source"]` resolves `@bb/*` to `src/` | Required                                 |
+| UI components                   | Import `@bb/shared-ui` directly                                      | Vendor 44 components via shadcn registry |
+| Reference implementation        | `plugins/tasks/` sits in-tree, copyable                              | Read-only reference                      |
+| Test harness                    | `@bb/plugin-sdk/testing` wired                                       | Wired, but you own the config            |
+| SDK changes (we will need some) | Edit in place                                                        | Blocked on upstream                      |
+| Cost                            | Carry a fork; rebase deliberately                                    | Clean separation                         |
 
 **Rules for the fork:**
+
 - Pin to a bb release tag. Rebase on a schedule, never mid-phase.
 - **Everything we write lives under `plugins/bb-plugin-finite-state/`** with two enumerated exceptions (§4.3), so the plugin can be extracted to standalone later without archaeology.
 - Any change outside that directory requires a note in `FORK-DELTA.md` explaining why it couldn't live inside.
@@ -58,19 +59,19 @@ We ran code-level reconnaissance of bb, Forge, the Platform API, and Assurance S
 
 ## 2. Toolchain (pinned, non-negotiable)
 
-| Thing | Version / choice | Source |
-|---|---|---|
-| Package manager | **pnpm 9.15.0** (`packageManager` field) | bb root `package.json:61` |
-| Node | **22.x** — `.nvmrc` says 22.12.0, root engines say ≥22.19.0. **Use 22.19.0**; fix `.nvmrc` in WP-01 | Conflict found in recon |
-| Monorepo | Turborepo ^2.4.0 | `turbo.json` |
-| Language | TypeScript, `strict: true`, `NodeNext`, ES2022, `noUnusedLocals` | `@bb/tsconfig/base.json` |
-| Tests | **Vitest ^4.1.1**, `*.test.ts(x)`, `defineWorkspaceTestConfig` | `vitest.shared.ts` |
-| Plugin test harness | `@bb/plugin-sdk/testing` (backend) · `/testing/app` (frontend) | SDK 0.4.1 |
-| Bundler | esbuild **0.28.1 exact** (SDK-managed, don't touch) | `packages/plugin-build/src/toolchain.ts` |
-| Lint/format | ESLint 9 flat config + Prettier 3 defaults | root configs |
-| SDK | `@bb/plugin-sdk` **0.4.1** | `packages/plugin-sdk/package.json` |
-| Icons | **Hugeicons only.** Never Lucide, never emoji | `plugins/tasks/WORKERS.md` |
-| Styling | bb theme tokens only. No hex, no oklch literals, no arbitrary Tailwind colors | ibid. |
+| Thing               | Version / choice                                                                                    | Source                                   |
+| ------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| Package manager     | **pnpm 9.15.0** (`packageManager` field)                                                            | bb root `package.json:61`                |
+| Node                | **22.x** — `.nvmrc` says 22.12.0, root engines say ≥22.19.0. **Use 22.19.0**; fix `.nvmrc` in WP-01 | Conflict found in recon                  |
+| Monorepo            | Turborepo ^2.4.0                                                                                    | `turbo.json`                             |
+| Language            | TypeScript, `strict: true`, `NodeNext`, ES2022, `noUnusedLocals`                                    | `@bb/tsconfig/base.json`                 |
+| Tests               | **Vitest ^4.1.1**, `*.test.ts(x)`, `defineWorkspaceTestConfig`                                      | `vitest.shared.ts`                       |
+| Plugin test harness | `@bb/plugin-sdk/testing` (backend) · `/testing/app` (frontend)                                      | SDK 0.4.1                                |
+| Bundler             | esbuild **0.28.1 exact** (SDK-managed, don't touch)                                                 | `packages/plugin-build/src/toolchain.ts` |
+| Lint/format         | ESLint 9 flat config + Prettier 3 defaults                                                          | root configs                             |
+| SDK                 | `@bb/plugin-sdk` **0.4.1**                                                                          | `packages/plugin-sdk/package.json`       |
+| Icons               | **Hugeicons only.** Never Lucide, never emoji                                                       | `plugins/tasks/WORKERS.md`               |
+| Styling             | bb theme tokens only. No hex, no oklch literals, no arbitrary Tailwind colors                       | ibid.                                    |
 
 **`zod` is pinned repo-wide to `4.3.6`** via a root override. Do not add a different zod.
 
@@ -111,13 +112,13 @@ Max fan-out only works if the boundaries are settled before the lanes start. Fiv
 
 ### 4.1 The five frozen files
 
-| File | WP | Contains | Why frozen |
-|---|---|---|---|
-| `shared/contract.ts` | WP-03 | Every RPC method signature for all nine surfaces | Frontend and backend lanes develop against it in parallel |
-| `lib/store/schema.ts` | WP-04 | Every SQLite table, as `bb.storage.migrate` statement arrays | Migrations are append-only; two lanes inventing table 001 is unrecoverable |
-| `lib/sync/registry.ts` | WP-05 | `ENTITIES` — every entity, its class, dir/table, key function | SPEC 01's core abstraction; every surface reads it |
-| `lib/remote/types.ts` | WP-06 | `PlatformClient`, `AssuranceStudioClient`, optional `ForgeComputeClient` | Production and mock implementations satisfy the same closed interfaces |
-| `test/mock-remote/fixtures/` | WP-08 | Recorded Platform/AS/compute corpus | Every lane's tests assert against these bytes |
+| File                         | WP    | Contains                                                                 | Why frozen                                                                 |
+| ---------------------------- | ----- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| `shared/contract.ts`         | WP-03 | Every RPC method signature for all nine surfaces                         | Frontend and backend lanes develop against it in parallel                  |
+| `lib/store/schema.ts`        | WP-04 | Every SQLite table, as `bb.storage.migrate` statement arrays             | Migrations are append-only; two lanes inventing table 001 is unrecoverable |
+| `lib/sync/registry.ts`       | WP-05 | `ENTITIES` — every entity, its class, dir/table, key function            | SPEC 01's core abstraction; every surface reads it                         |
+| `lib/remote/types.ts`        | WP-06 | `PlatformClient`, `AssuranceStudioClient`, optional `ForgeComputeClient` | Production and mock implementations satisfy the same closed interfaces     |
+| `test/mock-remote/fixtures/` | WP-08 | Recorded Platform/AS/compute corpus                                      | Every lane's tests assert against these bytes                              |
 
 ### 4.2 Amendment protocol
 
@@ -136,19 +137,19 @@ Everything else outside `plugins/bb-plugin-finite-state/` needs a `FORK-DELTA.md
 
 ## 5. The nine lanes
 
-| Lane | Owns | Spec | WPs | Can start after |
-|---|---|---|---|---|
-| **L0 Foundation** | Scaffold, composition roots, store, contracts, registry, theme, CI | 00 | WP-01…09 | — |
-| **L1 Remote Services + Mocks** | `lanes/remote/`, `test/mock-remote/` | 00 §6 | WP-10…14 | WP-06 |
-| **L2 Sync** | `lanes/sync/` | 01 | WP-15…21 | WP-05, WP-13 |
-| **L3 Findings & Triage** | `lanes/findings/` | 02 | WP-22…30 | WP-13, WP-17 |
-| **L4 Product Security** | `lanes/product-security/` | 03 | WP-31…40 | WP-13, WP-17 |
-| **L5 BOM** | `lanes/bom/` | 04 | WP-41…46 | WP-13 |
-| **L6 Firmware/Bench/Docs** | `lanes/firmware/`, `lanes/bench/`, `lanes/documents/` | 05 | WP-47…56 | WP-13 |
-| **L7 Agentic** | `lanes/agentic/`, `skills/` | 06 | WP-57…64 | WP-13; per-surface tools follow their surface |
-| **L8 Demo & E2E** | `test/e2e/`, `demo/` | 06 §6 | WP-65…70, WP-98 | G3 |
-| **L9 Hardware Design Plane** | `lanes/hardware/`, `test/fixtures/kicad/` | 07 | WP-72…81 | WP-71 (AMD-0010…0014 landed) |
-| **L10 Firmware Authoring & Bench Loop** | `lanes/authoring/`, `lanes/grounding/`, `lanes/debug-bench/` | 08 | WP-82…97 | WP-71 (AMD-0010…0014 landed) |
+| Lane                                    | Owns                                                               | Spec  | WPs             | Can start after                               |
+| --------------------------------------- | ------------------------------------------------------------------ | ----- | --------------- | --------------------------------------------- |
+| **L0 Foundation**                       | Scaffold, composition roots, store, contracts, registry, theme, CI | 00    | WP-01…09        | —                                             |
+| **L1 Remote Services + Mocks**          | `lanes/remote/`, `test/mock-remote/`                               | 00 §6 | WP-10…14        | WP-06                                         |
+| **L2 Sync**                             | `lanes/sync/`                                                      | 01    | WP-15…21        | WP-05, WP-13                                  |
+| **L3 Findings & Triage**                | `lanes/findings/`                                                  | 02    | WP-22…30        | WP-13, WP-17                                  |
+| **L4 Product Security**                 | `lanes/product-security/`                                          | 03    | WP-31…40        | WP-13, WP-17                                  |
+| **L5 BOM**                              | `lanes/bom/`                                                       | 04    | WP-41…46        | WP-13                                         |
+| **L6 Firmware/Bench/Docs**              | `lanes/firmware/`, `lanes/bench/`, `lanes/documents/`              | 05    | WP-47…56        | WP-13                                         |
+| **L7 Agentic**                          | `lanes/agentic/`, `skills/`                                        | 06    | WP-57…64        | WP-13; per-surface tools follow their surface |
+| **L8 Demo & E2E**                       | `test/e2e/`, `demo/`                                               | 06 §6 | WP-65…70, WP-98 | G3                                            |
+| **L9 Hardware Design Plane**            | `lanes/hardware/`, `test/fixtures/kicad/`                          | 07    | WP-72…81        | WP-71 (AMD-0010…0014 landed)                  |
+| **L10 Firmware Authoring & Bench Loop** | `lanes/authoring/`, `lanes/grounding/`, `lanes/debug-bench/`       | 08    | WP-82…97        | WP-71 (AMD-0010…0014 landed)                  |
 
 **L4's canvas is a sub-lane.** It is ~2–2.5 weeks on its own and has no dependency on the other L4 work beyond the registry. Assign it a dedicated agent from the start.
 
@@ -170,9 +171,11 @@ Four facts that shape these lanes:
    paths. The six new ACTION tools invoke local subprocesses/hardware only
    (AMD-0013), and `fs_flash` carries the new `destructive` in-turn rule.
 3. **They add host prerequisites bb cannot ship:** `kicad-cli` (KiCad 7+),
-   a Python runtime for probe scripts, and per-instrument SDKs. Every consumer
-   degrades via `needsConfiguration` — parsing/search/linking work with no
-   KiCad installed; grounding works with no bench attached. Debug-mode tool
+   a Python runtime for probe scripts, and per-instrument SDKs. Per FS-158,
+   their absence keeps the plugin running and appears as an actionable advisory
+   only on each dependent lane; plugin-global `needsConfiguration` is reserved
+   for missing required credentials. Parsing/search/linking work with no KiCad
+   installed; grounding works with no bench attached. Debug-mode tool
    gating and the authoring gate pipeline must be plugin-only mechanisms
    (`ADR — bb Is Not Modified.md`); WP-90 and WP-95 carry explicit
    stop-and-report feasibility checks.
@@ -280,15 +283,15 @@ Nine lanes cannot share live customer services, and full Forge requires PostgreS
 
 Demo-complete-first: a thin vertical slice of all fourteen Golden Loop beats before any surface gets its depth pass.
 
-| Gate | Bar | Proves |
-|---|---|---|
-| **G0** | Plugin loads in bb; nav renders; native `bb.settings.define`/`get`/`onChange` works; typed `connections.status` RPC reports three independent service mocks; CI green | The scaffold, native configuration lifecycle, and service boundary are real without depending on WP-64 CLI |
-| **G1** | `pull` populates SQLite; in a live bb instance, an `agent-browser` scripted scroll over the 4,000-row findings fixture uses CDP frame tracing to show no sustained frame time above approximately 16 ms, while the 39,000-row fixture does not create 39,000 DOM nodes | The data plane works end to end, and the findings-table browser behavior is measured on the real surface |
-| **G2** | Triage round-trips: agent writes YAML → `git diff` → `plan` → `push` to mock → base advances | **The architecture is proven.** This is the moment the risk drops |
-| **G3** | Every Golden Loop beat executes, even if some are stubs | No unknown unknowns remain |
-| **G4** | Golden Loop runs end-to-end against the mock, **offline, from a warm cache**, unattended | It's demoable |
-| **G5** | Golden Loop runs against real Platform + AS on a real product; Forge-compute beats also pass when configured | It's true and degradation boundaries hold |
-| **G6** | Per-surface definition of done (SPEC 00 §12) met on all surfaces | It's a product |
+| Gate   | Bar                                                                                                                                                                                                                                                                    | Proves                                                                                                     |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| **G0** | Plugin loads in bb; nav renders; native `bb.settings.define`/`get`/`onChange` works; typed `connections.status` RPC reports three independent service mocks; CI green                                                                                                  | The scaffold, native configuration lifecycle, and service boundary are real without depending on WP-64 CLI |
+| **G1** | `pull` populates SQLite; in a live bb instance, an `agent-browser` scripted scroll over the 4,000-row findings fixture uses CDP frame tracing to show no sustained frame time above approximately 16 ms, while the 39,000-row fixture does not create 39,000 DOM nodes | The data plane works end to end, and the findings-table browser behavior is measured on the real surface   |
+| **G2** | Triage round-trips: agent writes YAML → `git diff` → `plan` → `push` to mock → base advances                                                                                                                                                                           | **The architecture is proven.** This is the moment the risk drops                                          |
+| **G3** | Every Golden Loop beat executes, even if some are stubs                                                                                                                                                                                                                | No unknown unknowns remain                                                                                 |
+| **G4** | Golden Loop runs end-to-end against the mock, **offline, from a warm cache**, unattended                                                                                                                                                                               | It's demoable                                                                                              |
+| **G5** | Golden Loop runs against real Platform + AS on a real product; Forge-compute beats also pass when configured                                                                                                                                                           | It's true and degradation boundaries hold                                                                  |
+| **G6** | Per-surface definition of done (SPEC 00 §12) met on all surfaces                                                                                                                                                                                                       | It's a product                                                                                             |
 
 **G4 is the demo bar.** Everything between G4 and G6 is the depth pass and can be resequenced against whatever the demo feedback says. **SPECs 07/08 do not move any gate:** L9/L10 are depth-pass lanes, and the authoring-grade Golden Loop beat 11 (WP-98) lands after G4 as a v2 beat rather than raising the G4 bar.
 
@@ -298,21 +301,21 @@ Demo-complete-first: a thin vertical slice of all fourteen Golden Loop beats bef
 
 ## 9. Effort and staffing
 
-| Lane | Serial effort | Unconstrained owner demand | Unconstrained wall-clock to G4 |
-|---|---|---|---|
-| L0 Foundation | 1.5–2 wk | 2 | 1 wk (mostly serial) |
-| L1 Remote Services + Mocks | 2–2.5 wk | 2 | 1.5 wk |
-| L2 Sync | 3.5–4.5 wk | 2 | 2.5 wk |
-| L3 Findings & Triage | 4.5 wk | 2 | 3 wk |
-| L4 Product Security | 5.5–7 wk | 3 (1 on canvas) | 3 wk |
-| L5 BOM | 3.5–4.5 wk | 1 | 3.5 wk |
-| L6 Firmware/Bench/Docs | 5–7 wk | 2 | 3.5 wk |
-| L7 Agentic | 2.5–3.5 wk | 1 | 2 wk (trails surfaces) |
-| L8 Demo & E2E | 1.5 wk | 1 | 1 wk |
-| **Total (SPECs 00–06)** | **~30–37 agent-weeks** | **~14–16 potential; operationally capped below** | **~6–7 wk scenario, not a dispatch promise** |
-| L9 Hardware Design Plane | ~5.5 wk | 1–2 | post-G4 depth lane |
-| L10 Firmware Authoring & Bench | ~11.5 wk (8i–8k and 8n deferrable/long-lead) | 2 | post-G4 depth lane |
-| **Total (SPECs 00–08)** | **~47–54 agent-weeks** | — | — |
+| Lane                           | Serial effort                                | Unconstrained owner demand                       | Unconstrained wall-clock to G4               |
+| ------------------------------ | -------------------------------------------- | ------------------------------------------------ | -------------------------------------------- |
+| L0 Foundation                  | 1.5–2 wk                                     | 2                                                | 1 wk (mostly serial)                         |
+| L1 Remote Services + Mocks     | 2–2.5 wk                                     | 2                                                | 1.5 wk                                       |
+| L2 Sync                        | 3.5–4.5 wk                                   | 2                                                | 2.5 wk                                       |
+| L3 Findings & Triage           | 4.5 wk                                       | 2                                                | 3 wk                                         |
+| L4 Product Security            | 5.5–7 wk                                     | 3 (1 on canvas)                                  | 3 wk                                         |
+| L5 BOM                         | 3.5–4.5 wk                                   | 1                                                | 3.5 wk                                       |
+| L6 Firmware/Bench/Docs         | 5–7 wk                                       | 2                                                | 3.5 wk                                       |
+| L7 Agentic                     | 2.5–3.5 wk                                   | 1                                                | 2 wk (trails surfaces)                       |
+| L8 Demo & E2E                  | 1.5 wk                                       | 1                                                | 1 wk                                         |
+| **Total (SPECs 00–06)**        | **~30–37 agent-weeks**                       | **~14–16 potential; operationally capped below** | **~6–7 wk scenario, not a dispatch promise** |
+| L9 Hardware Design Plane       | ~5.5 wk                                      | 1–2                                              | post-G4 depth lane                           |
+| L10 Firmware Authoring & Bench | ~11.5 wk (8i–8k and 8n deferrable/long-lead) | 2                                                | post-G4 depth lane                           |
+| **Total (SPECs 00–08)**        | **~47–54 agent-weeks**                       | —                                                | —                                            |
 
 Then **G4 → G6 is roughly another 4–5 weeks** of depth work at lower parallelism — and L9/L10 add ~17 agent-weeks on top, running in that same window and after. That is a near-half-again increase to the program; it is proportionate (SPEC 08 is the entire write direction) but it should be staffed as a deliberate decision, not absorbed silently.
 
@@ -322,23 +325,23 @@ Then **G4 → G6 is roughly another 4–5 weeks** of depth work at lower paralle
 
 ## 10. Risk register
 
-| # | Risk | Likelihood | Impact | Mitigation |
-|---|---|---|---|---|
-| R1 | **`pnpm-lock.yaml` merge hell.** 764KB, ordering-sensitive, not human-mergeable; any dep addition anywhere rewrites it | High | Medium | **Dependency freeze after WP-09.** All third-party deps declared once in WP-01. A lane needing a new dep files an amendment. One designated agent applies lockfile changes in a batch, daily |
-| R2 | **Frozen interface churn** — contract.ts amended repeatedly, invalidating in-flight lane work | High | High | Spend real time on WP-03/04/05 with human review. Version the contract. Broadcast amendments. Accept 3–6; investigate at 10 |
-| R3 | **Firmware bytes are admin-gated and range reads cap at 128 KiB.** N direct full streams make a 6,000-file first hydrate impractical | **Confirmed fact** | High | Direct Platform is primary for canonical metadata and bounded selected bytes; **STP `standalone_unpack.py`** is primary for a complete image/offline/non-admin use until a Platform tarball exists |
-| R4 | Canvas port harder than estimated (React Flow + elkjs + AS extraction) | Medium | Medium | Dedicated agent from day one; spike in week 1 (WP-31) with a go/no-go before the rest of L4 commits |
-| R5 | **Bench rack needs bb's `host-daemon` binary installed** to appear as threads | Medium | Medium | Provision the rack in parallel with L6 build. Fallback: bench runs as plugin background service with realtime progress — worse demo, same function |
-| R6 | Composition-root discipline breaks; agents edit `server.ts` anyway | Medium | High | **Lint rule + CI check**: fail the build if `server.ts` or `app.tsx` diff after WP-01 without an `AMENDMENTS.md` entry |
-| R7 | Mock and live Platform/AS/compute drift; G5 becomes a rewrite | Medium | High | WP-14 implements the frozen remote interfaces early; nightly contract suites run independently against mock and permitted live services |
-| R8 | AS binary document contract remains unverified | **Confirmed gap** | Low | Documents are plugin-local in v1. Add direct AS binary methods only after handler verification; never use a raw escape hatch |
-| R11 | Optional Forge outage accidentally breaks core data surfaces | Medium | High | Nullable `ForgeComputeClient`, narrow injection, independent health states, and a mandatory “Forge stopped” integration test |
-| R9 | Agent tools can't be individually approval-gated | **Confirmed fact** | Medium | The safety model is **architectural, not UI**: no push tool exists. Rewrite SPEC 06 §5.3 claims accordingly (done) |
-| R10 | Human review becomes the bottleneck and lanes idle | High | Medium | Batch reviews on a cadence. Let lanes stack PRs. Prefer many small WPs over few large ones — already reflected in the WP granularity |
-| R12 | **KiCanvas is a stalled early alpha** (KiCad 8/9 parsing incomplete, embedding API unpublished); adopting it for rendering strands the schematic viewer | Medium | Medium | It is not the plan of record. `kicad-cli` SVG is; the WP-74 spike may adopt KiCanvas *for rendering only*, behind a fallback, with a vendored fork if it graduates past demo use |
-| R13 | **`fs_flash` can brick a device or a unit on a line** — allowlisting alone does not change that | Low | High | AMD-0013's `destructive` primitive: explicit human instruction in the current turn, plan-inherited intent does not count, enforced by one mechanism and one test (WP-90) |
-| R14 | **Catalog licensing/size**: of eight SVD vendors only Raspberry Pi is redistributable; `catalog.db` size at 2.5M facts is unmeasured | **Confirmed fact** / Medium | Medium | Two-flavour build (`--redistributable-only` ships; full builds locally); license per source queryable in `ground_source`; measure size before designing fetch UX (WP-83) |
-| R15 | **Debug-mode tool gating or the authoring gate pipeline turns out to need a bb change**, violating the bb-is-not-modified ADR | Medium | High | WP-90/WP-95 open with a plugin-only feasibility check and a hard stop-and-report; fallback shapes (session-scoped tool registration, gate-as-CLI-preflight) are named in the WPs, and dropping the capability beats forking bb |
+| #   | Risk                                                                                                                                                    | Likelihood                  | Impact | Mitigation                                                                                                                                                                                                                     |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| R1  | **`pnpm-lock.yaml` merge hell.** 764KB, ordering-sensitive, not human-mergeable; any dep addition anywhere rewrites it                                  | High                        | Medium | **Dependency freeze after WP-09.** All third-party deps declared once in WP-01. A lane needing a new dep files an amendment. One designated agent applies lockfile changes in a batch, daily                                   |
+| R2  | **Frozen interface churn** — contract.ts amended repeatedly, invalidating in-flight lane work                                                           | High                        | High   | Spend real time on WP-03/04/05 with human review. Version the contract. Broadcast amendments. Accept 3–6; investigate at 10                                                                                                    |
+| R3  | **Firmware bytes are admin-gated and range reads cap at 128 KiB.** N direct full streams make a 6,000-file first hydrate impractical                    | **Confirmed fact**          | High   | Direct Platform is primary for canonical metadata and bounded selected bytes; **STP `standalone_unpack.py`** is primary for a complete image/offline/non-admin use until a Platform tarball exists                             |
+| R4  | Canvas port harder than estimated (React Flow + elkjs + AS extraction)                                                                                  | Medium                      | Medium | Dedicated agent from day one; spike in week 1 (WP-31) with a go/no-go before the rest of L4 commits                                                                                                                            |
+| R5  | **Bench rack needs bb's `host-daemon` binary installed** to appear as threads                                                                           | Medium                      | Medium | Provision the rack in parallel with L6 build. Fallback: bench runs as plugin background service with realtime progress — worse demo, same function                                                                             |
+| R6  | Composition-root discipline breaks; agents edit `server.ts` anyway                                                                                      | Medium                      | High   | **Lint rule + CI check**: fail the build if `server.ts` or `app.tsx` diff after WP-01 without an `AMENDMENTS.md` entry                                                                                                         |
+| R7  | Mock and live Platform/AS/compute drift; G5 becomes a rewrite                                                                                           | Medium                      | High   | WP-14 implements the frozen remote interfaces early; nightly contract suites run independently against mock and permitted live services                                                                                        |
+| R8  | AS binary document contract remains unverified                                                                                                          | **Confirmed gap**           | Low    | Documents are plugin-local in v1. Add direct AS binary methods only after handler verification; never use a raw escape hatch                                                                                                   |
+| R11 | Optional Forge outage accidentally breaks core data surfaces                                                                                            | Medium                      | High   | Nullable `ForgeComputeClient`, narrow injection, independent health states, and a mandatory “Forge stopped” integration test                                                                                                   |
+| R9  | Agent tools can't be individually approval-gated                                                                                                        | **Confirmed fact**          | Medium | The safety model is **architectural, not UI**: no push tool exists. Rewrite SPEC 06 §5.3 claims accordingly (done)                                                                                                             |
+| R10 | Human review becomes the bottleneck and lanes idle                                                                                                      | High                        | Medium | Batch reviews on a cadence. Let lanes stack PRs. Prefer many small WPs over few large ones — already reflected in the WP granularity                                                                                           |
+| R12 | **KiCanvas is a stalled early alpha** (KiCad 8/9 parsing incomplete, embedding API unpublished); adopting it for rendering strands the schematic viewer | Medium                      | Medium | It is not the plan of record. `kicad-cli` SVG is; the WP-74 spike may adopt KiCanvas _for rendering only_, behind a fallback, with a vendored fork if it graduates past demo use                                               |
+| R13 | **`fs_flash` can brick a device or a unit on a line** — allowlisting alone does not change that                                                         | Low                         | High   | AMD-0013's `destructive` primitive: explicit human instruction in the current turn, plan-inherited intent does not count, enforced by one mechanism and one test (WP-90)                                                       |
+| R14 | **Catalog licensing/size**: of eight SVD vendors only Raspberry Pi is redistributable; `catalog.db` size at 2.5M facts is unmeasured                    | **Confirmed fact** / Medium | Medium | Two-flavour build (`--redistributable-only` ships; full builds locally); license per source queryable in `ground_source`; measure size before designing fetch UX (WP-83)                                                       |
+| R15 | **Debug-mode tool gating or the authoring gate pipeline turns out to need a bb change**, violating the bb-is-not-modified ADR                           | Medium                      | High   | WP-90/WP-95 open with a plugin-only feasibility check and a hard stop-and-report; fallback shapes (session-scoped tool registration, gate-as-CLI-preflight) are named in the WPs, and dropping the capability beats forking bb |
 
 ---
 
@@ -346,12 +349,12 @@ Then **G4 → G6 is roughly another 4–5 weeks** of depth work at lower paralle
 
 Four unknowns are cheap to resolve now and expensive to discover in week four. Run these in parallel with WP-01.
 
-| Spike | Question | Timebox | Kills / changes what |
-|---|---|---|---|
-| **S1** | Does the AS canvas actually extract cleanly? Port one node type + elkjs layout into a bare bb panel | 3 d | L4 sizing; possibly the whole canvas approach |
-| **S2** | Run `standalone_unpack.py` on a real firmware image outside STP. What's the true dependency footprint and wall-clock? | 2 d | L6 approach; the mount's feasibility |
-| **S3** | Stand up a bb `host-daemon` on a spare Linux box and drive a trivial thread onto it | 2 d | The bench-as-threads design (R5) |
-| **S4** | Generate independent mocks from the vendored API references and measure generated vs hand-written coverage | 2 d | The mock estimate, which sits on the critical path |
+| Spike  | Question                                                                                                              | Timebox | Kills / changes what                               |
+| ------ | --------------------------------------------------------------------------------------------------------------------- | ------- | -------------------------------------------------- |
+| **S1** | Does the AS canvas actually extract cleanly? Port one node type + elkjs layout into a bare bb panel                   | 3 d     | L4 sizing; possibly the whole canvas approach      |
+| **S2** | Run `standalone_unpack.py` on a real firmware image outside STP. What's the true dependency footprint and wall-clock? | 2 d     | L6 approach; the mount's feasibility               |
+| **S3** | Stand up a bb `host-daemon` on a spare Linux box and drive a trivial thread onto it                                   | 2 d     | The bench-as-threads design (R5)                   |
+| **S4** | Generate independent mocks from the vendored API references and measure generated vs hand-written coverage            | 2 d     | The mock estimate, which sits on the critical path |
 
 **Do not skip S4.** The mock's cost is the single largest estimation uncertainty in the plan.
 

@@ -5,6 +5,7 @@
 **Produces a FROZEN artifact:** no — generated route metadata is reproducible; WP-06 remains the frozen callable surface
 
 ## Files you own
+
 `plugins/bb-plugin-finite-state/test/mock-remote/server.ts`
 `plugins/bb-plugin-finite-state/test/mock-remote/router.ts`
 `plugins/bb-plugin-finite-state/test/mock-remote/types.ts`
@@ -17,12 +18,15 @@
 `plugins/bb-plugin-finite-state/test/mock-remote/*.test.ts`
 
 ## Files you must not touch
-Frozen fixtures/interfaces, composition roots, production clients/lanes, vendored API references, package/lock files, or a sibling Forge checkout.
+
+Fixture corpus, frozen interfaces, composition roots, production clients/lanes, vendored API references, package/lock files, or a sibling Forge checkout. The fixture path is excluded by WP ownership, not by the retired WP-08 freeze.
 
 ## Context
+
 The plugin calls Platform and Assurance Studio directly. Forge is independently optional compute, so the test topology must preserve three failure domains instead of pretending there is one gateway. API inputs are the checked-in, checksummed files under `docs/Implementation/api-reference/`; test/code generation never depends on `@finite-state-forge` being present. The AS snapshot is incomplete: handler-backed evidence named by the vendored notes/gap audit wins over OpenAPI. Unknown operations remain absent.
 
 ## What to build
+
 1. Verify source filenames and SHA-256 against the API-reference index before generation. Record vendored source name/hash, path/operation counts, generator version, and deterministic output hashes in `source-manifest.json`; exclude wall-clock time.
 2. Generate normalized Platform and AS route records: service, method, path template, operation id, auth kind, media types, response statuses, and evidence source. Sort by service/path/method.
 3. Apply only AS patches documented in the vendored handler-backed audit. Each patch records evidence file/section and `source:"handler-audit"`. Reject a patch with no evidence.
@@ -34,29 +38,42 @@ The plugin calls Platform and Assurance Studio directly. Forge is independently 
 9. `generate-routes --check` regenerates in isolation and fails on reference/hash/generated drift without writing.
 
 ## Interface contract
+
 ```ts
 export type MockService = "platform" | "assurance-studio";
 export interface MockRoute {
-  routeId: string; service: MockService;
+  routeId: string;
+  service: MockService;
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  pathTemplate: string; operationId: string | null;
+  pathTemplate: string;
+  operationId: string | null;
   auth: "X-Authorization" | "X-API-Key";
-  requestMediaTypes: readonly string[]; responseStatuses: readonly number[];
-  source: "openapi" | "handler-audit"; evidence?: string;
+  requestMediaTypes: readonly string[];
+  responseStatuses: readonly number[];
+  source: "openapi" | "handler-audit";
+  evidence?: string;
 }
 export interface MockRemoteOptions {
-  platformToken: string; assuranceStudioKey: string; fixtureRoot: string;
+  platformToken: string;
+  assuranceStudioKey: string;
+  fixtureRoot: string;
   register?: (service: MockService, registry: MockHandlerRegistry) => void;
 }
 export interface MockRemoteHarness {
-  platform: MockServiceServer; assuranceStudio: MockServiceServer;
-  listen(): Promise<{ platformBaseUrl: string; assuranceStudioBaseUrl: string }>;
-  reset(service?: MockService): Promise<void>; close(): Promise<void>;
+  platform: MockServiceServer;
+  assuranceStudio: MockServiceServer;
+  listen(): Promise<{
+    platformBaseUrl: string;
+    assuranceStudioBaseUrl: string;
+  }>;
+  reset(service?: MockService): Promise<void>;
+  close(): Promise<void>;
 }
 export function createMockRemote(options: MockRemoteOptions): MockRemoteHarness;
 ```
 
 ## Acceptance criteria
+
 - [ ] Generation consumes only vendored, checksum-verified references and is byte-deterministic.
 - [ ] Platform and AS route/auth inventories are separate and independently startable.
 - [ ] Every AS patch cites handler-backed evidence; an evidence-free patch fails generation.
@@ -68,6 +85,7 @@ export function createMockRemote(options: MockRemoteOptions): MockRemoteHarness;
 - [ ] Typecheck/test/lint/build is green.
 
 ## Test plan — `remote-mock-routing-gate`
+
 - `vendored checksums and generated output are stable`.
 - `platform and AS auth are service-specific` (**security/error path**).
 - `handler-audit patch without evidence fails generation` (**error path**).
@@ -77,6 +95,7 @@ export function createMockRemote(options: MockRemoteOptions): MockRemoteHarness;
 - `check mode detects one-byte reference/output drift and writes nothing` (**fault path**).
 
 ## Do not
+
 - Do not read a sibling Forge repo at build/test time.
 - Do not generate a public generic request client or expose arbitrary paths.
 - Do not infer AS routes from names or Forge wrappers without handler evidence.
@@ -84,5 +103,6 @@ export function createMockRemote(options: MockRemoteOptions): MockRemoteHarness;
 - Do not add parser/runtime dependencies without an amendment.
 
 ## Open questions
+
 1. If the existing declared YAML parser cannot parse the 462-KB Platform reference deterministically, batch the smallest parser addition through the dependency amendment; do not write a partial YAML parser.
 2. Path/operation counts are recorded from the vendored files and may differ from historical recon. The vendored hash/count pair is the gate, not old prose numbers.

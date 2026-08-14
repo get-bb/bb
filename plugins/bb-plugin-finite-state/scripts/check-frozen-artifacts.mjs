@@ -9,7 +9,6 @@ import { fileURLToPath } from "node:url";
 const scriptPath = fileURLToPath(import.meta.url);
 const repositoryRoot = path.resolve(path.dirname(scriptPath), "../../..");
 const pluginRoot = "plugins/bb-plugin-finite-state";
-const fixtureTree = `${pluginRoot}/test/mock-remote/fixtures/**`;
 const contractPath = `${pluginRoot}/shared/contract.ts`;
 const packagePath = `${pluginRoot}/package.json`;
 const baselinePath = `${pluginRoot}/frozen-artifacts.json`;
@@ -27,7 +26,6 @@ const frozenPaths = [
   `${pluginRoot}/lib/store/schema.ts`,
   `${pluginRoot}/lib/sync/registry.ts`,
   `${pluginRoot}/lib/remote/types.ts`,
-  fixtureTree,
 ];
 const recovery = "file an amendment; do not edit the frozen artifact locally.";
 
@@ -39,48 +37,14 @@ function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function toPosix(value) {
-  return value.split(path.sep).join("/");
-}
-
 async function hashFile(root, relativePath) {
   try {
     return sha256(await fs.readFile(path.join(root, relativePath)));
   } catch (error) {
-    if (error?.code === "ENOENT") fail(`Frozen artifact is missing: ${relativePath}`);
+    if (error?.code === "ENOENT")
+      fail(`Frozen artifact is missing: ${relativePath}`);
     throw error;
   }
-}
-
-async function hashFixtureTree(root) {
-  const treeRoot = path.join(root, pluginRoot, "test/mock-remote/fixtures");
-  const entries = [];
-
-  async function visit(directory) {
-    let children;
-    try {
-      children = await fs.readdir(directory, { withFileTypes: true });
-    } catch (error) {
-      if (error?.code === "ENOENT") return;
-      throw error;
-    }
-    for (const child of children.sort((left, right) =>
-      left.name.localeCompare(right.name, "en"),
-    )) {
-      const childPath = path.join(directory, child.name);
-      if (child.isDirectory()) await visit(childPath);
-      else if (child.isFile()) {
-        entries.push(
-          `${toPosix(path.relative(treeRoot, childPath))}\0${sha256(await fs.readFile(childPath))}\n`,
-        );
-      } else {
-        fail(`Fixture tree contains a non-regular file: ${toPosix(path.relative(root, childPath))}`);
-      }
-    }
-  }
-
-  await visit(treeRoot);
-  return sha256(entries.join(""));
 }
 
 async function currentHashes(root) {
@@ -88,9 +52,7 @@ async function currentHashes(root) {
     await Promise.all(
       frozenPaths.map(async (relativePath) => [
         relativePath,
-        relativePath === fixtureTree
-          ? await hashFixtureTree(root)
-          : await hashFile(root, relativePath),
+        await hashFile(root, relativePath),
       ]),
     ),
   );
@@ -134,7 +96,7 @@ function validateBaseline(baseline) {
   }
   for (const relativePath of frozenPaths) {
     const entry = baseline.artifacts[relativePath];
-    const hash = entry?.[relativePath === fixtureTree ? "treeSha256" : "sha256"];
+    const hash = entry?.sha256;
     if (
       !/^[a-f0-9]{64}$/u.test(hash ?? "") ||
       typeof entry.active !== "boolean" ||
@@ -189,8 +151,12 @@ function parseAmendments(source) {
     const id = /^(?<id>(?:A|AMD)-\d{3,})\s+—/u.exec(heading)?.groups?.id;
     const body = bodyLines.join("\n");
     const approved = /^- Status: approved(?: and merged)?$/mu.test(body);
-    const artifactBlock = /^- Artifacts:\n(?<items>(?:  - `[^`]+`\n?)+)/mu.exec(body)?.groups?.items;
-    const contractVersion = /^- Contract version: (?<value>\d+|n\/a)$/mu.exec(body)?.groups?.value;
+    const artifactBlock = /^- Artifacts:\n(?<items>(?:  - `[^`]+`\n?)+)/mu.exec(
+      body,
+    )?.groups?.items;
+    const contractVersion = /^- Contract version: (?<value>\d+|n\/a)$/mu.exec(
+      body,
+    )?.groups?.value;
     if (!id || !approved || !artifactBlock || !contractVersion) continue;
     const artifacts = [...artifactBlock.matchAll(/  - `(?<path>[^`]+)`/gu)].map(
       (match) => match.groups.path,
@@ -201,12 +167,15 @@ function parseAmendments(source) {
 }
 
 async function amendmentMap(root) {
-  return parseAmendments(await fs.readFile(path.join(root, amendmentPath), "utf8"));
+  return parseAmendments(
+    await fs.readFile(path.join(root, amendmentPath), "utf8"),
+  );
 }
 
 async function currentContractVersion(root) {
   const source = await fs.readFile(path.join(root, contractPath), "utf8");
-  const value = /\bCONTRACT_VERSION\s*=\s*(?<value>\d+)/u.exec(source)?.groups?.value;
+  const value = /\bCONTRACT_VERSION\s*=\s*(?<value>\d+)/u.exec(source)?.groups
+    ?.value;
   if (!value) fail(`${contractPath} must export a numeric CONTRACT_VERSION`);
   return Number.parseInt(value, 10);
 }
@@ -218,16 +187,18 @@ async function check(root) {
   const hashes = await currentHashes(root);
   const changed = frozenPaths.filter((relativePath) => {
     const entry = baseline.artifacts[relativePath];
-    const key = relativePath === fixtureTree ? "treeSha256" : "sha256";
     if (entry.active && entry.amendment) {
       const amendment = amendments.get(entry.amendment);
       if (!amendment?.artifacts.includes(relativePath)) {
-        fail(`Frozen baseline for ${relativePath} lacks a structured approved amendment`);
+        fail(
+          `Frozen baseline for ${relativePath} lacks a structured approved amendment`,
+        );
       }
     }
-    return entry.active && entry[key] !== hashes[relativePath];
+    return entry.active && entry.sha256 !== hashes[relativePath];
   });
-  if (changed.length) fail(`Frozen artifact hash mismatch: ${changed.join(", ")}`);
+  if (changed.length)
+    fail(`Frozen artifact hash mismatch: ${changed.join(", ")}`);
   process.stdout.write("Frozen artifact baseline is intact.\n");
 }
 
@@ -240,7 +211,8 @@ async function accept(root, amendmentId) {
     );
   }
   const recordedPath = frozenPaths.find(
-    (relativePath) => baseline.artifacts[relativePath].amendment === amendmentId,
+    (relativePath) =>
+      baseline.artifacts[relativePath].amendment === amendmentId,
   );
   if (recordedPath) {
     fail(
@@ -259,7 +231,6 @@ async function accept(root, amendmentId) {
   const dependencies = normalizeDependencies(manifest);
   const changedArtifacts = frozenPaths.filter((relativePath) => {
     const entry = baseline.artifacts[relativePath];
-    const key = relativePath === fixtureTree ? "treeSha256" : "sha256";
     // Inactive baselines are ignored by check(); they participate in accept()
     // only when the amendment names them (the activation path). Without this
     // filter an inactive-and-drifted entry pollutes every other amendment's
@@ -267,14 +238,13 @@ async function accept(root, amendmentId) {
     if (!entry.active && !amendment.artifacts.includes(relativePath)) {
       return false;
     }
-    return entry[key] !== hashes[relativePath];
+    return entry.sha256 !== hashes[relativePath];
   });
-  const dependencyChanged =
-    dependencySections.some(
-      (section) =>
-        JSON.stringify(baseline.dependencyBaseline[section]) !==
-        JSON.stringify(dependencies[section]),
-    );
+  const dependencyChanged = dependencySections.some(
+    (section) =>
+      JSON.stringify(baseline.dependencyBaseline[section]) !==
+      JSON.stringify(dependencies[section]),
+  );
   const changedTargets = [
     ...changedArtifacts,
     ...(dependencyChanged ? [packagePath] : []),
@@ -296,13 +266,14 @@ async function accept(root, amendmentId) {
       Number.parseInt(amendment.contractVersion, 10) !== version ||
       version <= baseline.contractVersion
     ) {
-      fail(`Amendment ${amendmentId} must advance Contract version above ${baseline.contractVersion}`);
+      fail(
+        `Amendment ${amendmentId} must advance Contract version above ${baseline.contractVersion}`,
+      );
     }
     baseline.contractVersion = version;
   }
   for (const relativePath of changedArtifacts) {
-    const key = relativePath === fixtureTree ? "treeSha256" : "sha256";
-    baseline.artifacts[relativePath][key] = hashes[relativePath];
+    baseline.artifacts[relativePath].sha256 = hashes[relativePath];
     baseline.artifacts[relativePath].active = true;
     baseline.artifacts[relativePath].amendment = amendmentId;
   }
@@ -316,7 +287,9 @@ async function accept(root, amendmentId) {
     path.join(root, baselinePath),
     `${JSON.stringify(baseline, null, 2)}\n`,
   );
-  process.stdout.write(`Accepted ${amendmentId} for ${changedTargets.join(", ")}\n`);
+  process.stdout.write(
+    `Accepted ${amendmentId} for ${changedTargets.join(", ")}\n`,
+  );
 }
 
 function parseArguments(argv) {

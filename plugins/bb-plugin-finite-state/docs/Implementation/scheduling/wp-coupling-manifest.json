@@ -218,15 +218,11 @@
     }
   },
   "dispatchPolicy": {
-    "prohibitedWorkPackages": [
-      "WP02"
-    ],
+    "prohibitedWorkPackages": ["WP02"],
     "prohibitedWorkPackageReasons": {
       "WP02": "ADR — bb Is Not Modified: builtin registration is a BB release decision; dispatch is prohibited and FS-16 stays in backlog until the ADR is superseded."
     },
-    "stoppedWorkPackages": [
-      "WP56"
-    ],
+    "stoppedWorkPackages": ["WP56"],
     "stoppedWorkPackageReasons": {
       "WP56": {
         "reason": "At integration 056899c2d, local-auth plugin mutations reject multipart before dispatch and plugin HTTP routes match exact paths, blocking the required upload and content route.",
@@ -259,9 +255,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP01"
-      ],
+      "dependencies": ["WP01"],
       "reason": "Builtin registration is a bounded distribution change with no remaining shared design choice."
     },
     {
@@ -274,11 +268,8 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP04",
-        "WP06"
-      ],
-      "reason": "The frozen fixture corpus is an isolated prerequisite consumed by mocks and demos."
+      "dependencies": ["WP04", "WP06"],
+      "reason": "The fixture-fidelity corpus is an isolated prerequisite consumed by mocks and demos."
     },
     {
       "wp": "WP09",
@@ -290,9 +281,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP01"
-      ],
+      "dependencies": ["WP01"],
       "reason": "Repository guards are mechanical policy enforcement and own no product-surface decision."
     },
     {
@@ -305,9 +294,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP06"
-      ],
+      "dependencies": ["WP06"],
       "reason": "The route skeleton freezes mock infrastructure but not service behavior."
     },
     {
@@ -320,10 +307,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP08",
-        "WP10"
-      ],
+      "dependencies": ["WP08", "WP10"],
       "reason": "Platform mock behavior is independently specified after the route and fixture contracts land."
     },
     {
@@ -336,10 +320,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP08",
-        "WP10"
-      ],
+      "dependencies": ["WP08", "WP10"],
       "reason": "Assurance Studio, firmware, and compute mock behavior is independently specified after route and fixture contracts land."
     },
     {
@@ -352,10 +333,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP11",
-        "WP12"
-      ],
+      "dependencies": ["WP11", "WP12"],
       "reason": "Fault and drift behavior is a distinct gate over both completed service mocks."
     },
     {
@@ -368,10 +346,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP03",
-        "WP06"
-      ],
+      "dependencies": ["WP03", "WP06"],
       "reason": "The production remote adapter has a frozen boundary and can be owned independently of mock behavior."
     },
     {
@@ -384,10 +359,7 @@
       "sequence": 1,
       "riskTier": "critical",
       "preset": "fs-critical",
-      "dependencies": [
-        "WP01",
-        "WP05"
-      ],
+      "dependencies": ["WP01", "WP05"],
       "reason": "Serializer exclusions define the transaction semantics consumed by every later sync stage."
     },
     {
@@ -400,10 +372,7 @@
       "sequence": 2,
       "riskTier": "critical",
       "preset": "fs-critical",
-      "dependencies": [
-        "WP04",
-        "WP15"
-      ],
+      "dependencies": ["WP04", "WP15"],
       "reason": "Base and id-map persistence must share the serializer owner's definition of stable identity."
     },
     {
@@ -416,12 +385,7 @@
       "sequence": 3,
       "riskTier": "critical",
       "preset": "fs-critical",
-      "dependencies": [
-        "WP06",
-        "WP13",
-        "WP15",
-        "WP16"
-      ],
+      "dependencies": ["WP06", "WP13", "WP15", "WP16"],
       "reason": "The one-entity gate proves the shared serialization, identity, and base contract before plan or push expands it."
     },
     {
@@ -434,9 +398,7 @@
       "sequence": 4,
       "riskTier": "critical",
       "preset": "fs-critical",
-      "dependencies": [
-        "WP17"
-      ],
+      "dependencies": ["WP17"],
       "reason": "Plan freezes ordering and the expected-base fence that push and conflict resolution must consume."
     },
     {
@@ -449,9 +411,7 @@
       "sequence": 5,
       "riskTier": "critical",
       "preset": "fs-critical",
-      "dependencies": [
-        "WP18"
-      ],
+      "dependencies": ["WP18"],
       "reason": "Push implements the exact plan fence and owns per-entity base advancement and resumability semantics."
     },
     {
@@ -464,10 +424,7 @@
       "sequence": 6,
       "riskTier": "critical",
       "preset": "fs-critical",
-      "dependencies": [
-        "WP18",
-        "WP19"
-      ],
+      "dependencies": ["WP18", "WP19"],
       "reason": "Conflict resolution cannot be accepted without the same owner's plan-fence and base-advance decisions."
     },
     {
@@ -480,11 +437,7 @@
       "sequence": 7,
       "riskTier": "critical",
       "preset": "fs-critical",
-      "dependencies": [
-        "WP07",
-        "WP18",
-        "WP20"
-      ],
+      "dependencies": ["WP07", "WP18", "WP20"],
       "reason": "The review UI exposes plan, push, and conflict policy and therefore stays with the transaction decision owner."
     },
     {
@@ -497,11 +450,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP04",
-        "WP05",
-        "WP13"
-      ],
+      "dependencies": ["WP04", "WP05", "WP13"],
       "reason": "Cache normalization defines the inputs from which stable finding identity is derived."
     },
     {
@@ -514,10 +463,7 @@
       "sequence": 2,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP05",
-        "WP22"
-      ],
+      "dependencies": ["WP05", "WP22"],
       "reason": "The resolver acceptance criteria depend on the cache owner's normalization and lookup choices."
     },
     {
@@ -530,10 +476,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP07",
-        "WP22"
-      ],
+      "dependencies": ["WP07", "WP22"],
       "reason": "The table establishes the list-state and navigation contract for the finding workflow."
     },
     {
@@ -546,9 +489,7 @@
       "sequence": 2,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP24"
-      ],
+      "dependencies": ["WP24"],
       "reason": "Detail navigation and cross-links must preserve the table owner's finding-state contract."
     },
     {
@@ -561,10 +502,7 @@
       "sequence": 3,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP25",
-        "WP27"
-      ],
+      "dependencies": ["WP25", "WP27"],
       "reason": "Manual triage closes the list-detail workflow while consuming the frozen overlay writer."
     },
     {
@@ -577,10 +515,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP15",
-        "WP23"
-      ],
+      "dependencies": ["WP15", "WP23"],
       "reason": "The overlay writer defines stable YAML identity and the only supported triage-intent write path."
     },
     {
@@ -593,9 +528,7 @@
       "sequence": 2,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP27"
-      ],
+      "dependencies": ["WP27"],
       "reason": "Policy dry-run must emit the same stable overlay intent as the writer."
     },
     {
@@ -608,11 +541,7 @@
       "sequence": 3,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP19",
-        "WP27",
-        "WP28"
-      ],
+      "dependencies": ["WP19", "WP27", "WP28"],
       "reason": "Bulk apply consumes policy output and must preserve overlay identity, CAS, and partial-failure semantics."
     },
     {
@@ -625,10 +554,7 @@
       "sequence": 4,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP23",
-        "WP29"
-      ],
+      "dependencies": ["WP23", "WP29"],
       "reason": "Drift, orphan, and import reconciliation must use the same stable identity and pushability decisions."
     },
     {
@@ -641,9 +567,7 @@
       "sequence": 1,
       "riskTier": "critical",
       "preset": "fs-critical",
-      "dependencies": [
-        "WP07"
-      ],
+      "dependencies": ["WP07"],
       "reason": "The spike freezes the React Flow and ELK port foundation for every canvas behavior."
     },
     {
@@ -656,9 +580,7 @@
       "sequence": 2,
       "riskTier": "critical",
       "preset": "fs-critical",
-      "dependencies": [
-        "WP31"
-      ],
+      "dependencies": ["WP31"],
       "reason": "Node, edge, and inspector data contracts specialize the foundation and constrain later overlays."
     },
     {
@@ -671,9 +593,7 @@
       "sequence": 3,
       "riskTier": "critical",
       "preset": "fs-critical",
-      "dependencies": [
-        "WP32"
-      ],
+      "dependencies": ["WP32"],
       "reason": "Threat overlays depend on the same node and layout representation selected by the canvas owner."
     },
     {
@@ -686,10 +606,7 @@
       "sequence": 4,
       "riskTier": "critical",
       "preset": "fs-critical",
-      "dependencies": [
-        "WP32",
-        "WP33"
-      ],
+      "dependencies": ["WP32", "WP33"],
       "reason": "Cross-links and layout persistence freeze identity and coordinate semantics shared with overlays and editing."
     },
     {
@@ -702,10 +619,7 @@
       "sequence": 5,
       "riskTier": "critical",
       "preset": "fs-critical",
-      "dependencies": [
-        "WP18",
-        "WP34"
-      ],
+      "dependencies": ["WP18", "WP34"],
       "reason": "Canvas editing converts the owner's graph representation into YAML and the sync plan contract."
     },
     {
@@ -718,10 +632,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP05",
-        "WP07"
-      ],
+      "dependencies": ["WP05", "WP07"],
       "reason": "The EARS schema and validator define the authoring grammar."
     },
     {
@@ -734,9 +645,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP36"
-      ],
+      "dependencies": ["WP36"],
       "reason": "Traceability is a read-only workflow over the frozen requirements schema and owns no authoring decision."
     },
     {
@@ -749,9 +658,7 @@
       "sequence": 2,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP36"
-      ],
+      "dependencies": ["WP36"],
       "reason": "Conversion acceptance depends on the same owner's grammar, validation, and gate decisions."
     },
     {
@@ -764,10 +671,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP36",
-        "WP71"
-      ],
+      "dependencies": ["WP36", "WP71"],
       "reason": "The matrix establishes requirement-to-tier evidence mapping."
     },
     {
@@ -780,10 +684,7 @@
       "sequence": 2,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP19",
-        "WP39"
-      ],
+      "dependencies": ["WP19", "WP39"],
       "reason": "Run detail, attestations, and TARA concurrency expose and mutate the matrix owner's evidence model."
     },
     {
@@ -796,10 +697,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP04",
-        "WP13"
-      ],
+      "dependencies": ["WP04", "WP13"],
       "reason": "SBOM cache normalization and rollups define the interactive data shape."
     },
     {
@@ -812,10 +710,7 @@
       "sequence": 2,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP07",
-        "WP41"
-      ],
+      "dependencies": ["WP07", "WP41"],
       "reason": "The table and expansion UX depend on cache normalization and rollup decisions."
     },
     {
@@ -828,9 +723,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP41"
-      ],
+      "dependencies": ["WP41"],
       "reason": "Standards export is a bounded adapter over the frozen cache representation."
     },
     {
@@ -843,11 +736,7 @@
       "sequence": 2,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP04",
-        "WP05",
-        "WP56"
-      ],
+      "dependencies": ["WP04", "WP05", "WP56"],
       "reason": "HBOM provenance acceptance depends on the canonical document source-reference codec owned with WP56."
     },
     {
@@ -860,10 +749,7 @@
       "sequence": 3,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP07",
-        "WP44"
-      ],
+      "dependencies": ["WP07", "WP44"],
       "reason": "Confidence display and review state expose the shared provenance and source-reference decisions."
     },
     {
@@ -876,11 +762,7 @@
       "sequence": 4,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP44",
-        "WP45",
-        "WP56"
-      ],
+      "dependencies": ["WP44", "WP45", "WP56"],
       "reason": "Extraction, merge, and export must preserve the same provenance codec and review semantics."
     },
     {
@@ -893,9 +775,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP04"
-      ],
+      "dependencies": ["WP04"],
       "reason": "The content-addressed cache and readiness manifest define every later firmware state transition."
     },
     {
@@ -908,9 +788,7 @@
       "sequence": 2,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP47"
-      ],
+      "dependencies": ["WP47"],
       "reason": "Primary unpack must publish artifacts atomically into the owner's cache and manifest model."
     },
     {
@@ -923,11 +801,7 @@
       "sequence": 3,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP13",
-        "WP47",
-        "WP48"
-      ],
+      "dependencies": ["WP13", "WP47", "WP48"],
       "reason": "API fallback must produce the same materialized-file and readiness contract as primary unpack."
     },
     {
@@ -940,10 +814,7 @@
       "sequence": 4,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP48",
-        "WP49"
-      ],
+      "dependencies": ["WP48", "WP49"],
       "reason": "The Forge handshake and digest gate consume the same definition of materialized firmware readiness."
     },
     {
@@ -956,12 +827,7 @@
       "sequence": 5,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP07",
-        "WP48",
-        "WP49",
-        "WP50"
-      ],
+      "dependencies": ["WP07", "WP48", "WP49", "WP50"],
       "reason": "Firmware UX exposes pull, fallback, digest, and readiness state and stays with that decision owner."
     },
     {
@@ -974,9 +840,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP04"
-      ],
+      "dependencies": ["WP04"],
       "reason": "The bench data model defines digest-bound run, result, artifact, and attestation evidence."
     },
     {
@@ -989,10 +853,7 @@
       "sequence": 2,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP50",
-        "WP52"
-      ],
+      "dependencies": ["WP50", "WP52"],
       "reason": "Tier execution must write exactly the evidence contract and firmware digest defined by the model."
     },
     {
@@ -1005,11 +866,7 @@
       "sequence": 3,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP07",
-        "WP52",
-        "WP53"
-      ],
+      "dependencies": ["WP07", "WP52", "WP53"],
       "reason": "Timeline and run detail expose the evidence model and live execution state."
     },
     {
@@ -1022,9 +879,7 @@
       "sequence": 4,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP54"
-      ],
+      "dependencies": ["WP54"],
       "reason": "The OTA verdict is a policy projection of the same digest-bound bench evidence."
     },
     {
@@ -1037,10 +892,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP04",
-        "WP07"
-      ],
+      "dependencies": ["WP04", "WP07"],
       "reason": "The document store owns the canonical source-reference codec consumed by every HBOM provenance surface."
     },
     {
@@ -1053,9 +905,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP01"
-      ],
+      "dependencies": ["WP01"],
       "reason": "The registry freezes tool naming and error contracts before the action boundary is selected."
     },
     {
@@ -1109,14 +959,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP27",
-        "WP28",
-        "WP36",
-        "WP44",
-        "WP46",
-        "WP57"
-      ],
+      "dependencies": ["WP27", "WP28", "WP36", "WP44", "WP46", "WP57"],
       "reason": "Write tools are bounded YAML-only adapters over already-frozen domain write paths."
     },
     {
@@ -1129,13 +972,7 @@
       "sequence": 2,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP40",
-        "WP49",
-        "WP50",
-        "WP53",
-        "WP57"
-      ],
+      "dependencies": ["WP40", "WP49", "WP50", "WP53", "WP57"],
       "reason": "The action allowlist is the authoritative safety decision that the CLI must mirror exactly."
     },
     {
@@ -1280,10 +1117,7 @@
       "sequence": 2,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP08",
-        "WP65"
-      ],
+      "dependencies": ["WP08", "WP65"],
       "reason": "Seed and warm-cache data must satisfy the harness owner's deterministic evidence contract."
     },
     {
@@ -1375,10 +1209,7 @@
       "sequence": 6,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP64",
-        "WP69"
-      ],
+      "dependencies": ["WP64", "WP69"],
       "reason": "Offline recovery and the demo runbook must describe and verify the final harness behavior."
     },
     {
@@ -1404,9 +1235,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP71"
-      ],
+      "dependencies": ["WP71"],
       "reason": "Owns the kicad-cli driver and .fs-hw cache contract that the parser and every viewer consume."
     },
     {
@@ -1419,10 +1248,7 @@
       "sequence": 2,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP71",
-        "WP72"
-      ],
+      "dependencies": ["WP71", "WP72"],
       "reason": "The parsed-semantics store shares extraction/caching decisions with WP-72 and must follow its cache contract."
     },
     {
@@ -1435,11 +1261,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP07",
-        "WP72",
-        "WP73"
-      ],
+      "dependencies": ["WP07", "WP72", "WP73"],
       "reason": "The KiCanvas go/no-go and viewport idiom decide the rendering approach for every hardware tab."
     },
     {
@@ -1452,9 +1274,7 @@
       "sequence": 2,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP74"
-      ],
+      "dependencies": ["WP74"],
       "reason": "The overlay transform and selection model extend WP-74's viewport decisions."
     },
     {
@@ -1467,11 +1287,7 @@
       "sequence": 3,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP72",
-        "WP74",
-        "WP75"
-      ],
+      "dependencies": ["WP72", "WP74", "WP75"],
       "reason": "Board views reuse the schematic tab's render/selection decisions; one owner keeps the idiom coherent."
     },
     {
@@ -1484,11 +1300,7 @@
       "sequence": 4,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP72",
-        "WP73",
-        "WP76"
-      ],
+      "dependencies": ["WP72", "WP73", "WP76"],
       "reason": "Fab outputs and the violations list complete the panel owned by the viewer decision owner."
     },
     {
@@ -1501,10 +1313,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP44",
-        "WP73"
-      ],
+      "dependencies": ["WP44", "WP73"],
       "reason": "kicad_bom ingest fixes the provenance semantics the linking and matrix work build on."
     },
     {
@@ -1517,13 +1326,7 @@
       "sequence": 2,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP25",
-        "WP34",
-        "WP71",
-        "WP73",
-        "WP78"
-      ],
+      "dependencies": ["WP25", "WP34", "WP71", "WP73", "WP78"],
       "reason": "links/hardware.yaml shares the join-key and provenance decisions with WP-78; MPN→SBOM mapping ruling required before dispatch."
     },
     {
@@ -1536,12 +1339,7 @@
       "sequence": 3,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP39",
-        "WP71",
-        "WP77",
-        "WP79"
-      ],
+      "dependencies": ["WP39", "WP71", "WP77", "WP79"],
       "reason": "Matrix mapping consumes the same requirement-binding decisions; sequenced to keep one owner on hardware evidence semantics."
     },
     {
@@ -1577,10 +1375,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP56",
-        "WP71"
-      ],
+      "dependencies": ["WP56", "WP71"],
       "reason": "The grounding store and chunking contract anchor every citation the authoring loop emits."
     },
     {
@@ -1593,10 +1388,7 @@
       "sequence": 2,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP71",
-        "WP82"
-      ],
+      "dependencies": ["WP71", "WP82"],
       "reason": "catalog.db federation shares the retrieval and plane-labeling decisions with WP-82."
     },
     {
@@ -1609,11 +1401,7 @@
       "sequence": 3,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP07",
-        "WP82",
-        "WP83"
-      ],
+      "dependencies": ["WP07", "WP82", "WP83"],
       "reason": "The grounding tab renders the two planes decided by WP-82/83; same decision owner."
     },
     {
@@ -1626,10 +1414,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP71",
-        "WP82"
-      ],
+      "dependencies": ["WP71", "WP82"],
       "reason": "Citation gating and quarantine semantics are the core authoring mechanic; one owner end to end."
     },
     {
@@ -1642,10 +1427,7 @@
       "sequence": 2,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP85",
-        "WP86"
-      ],
+      "dependencies": ["WP85", "WP86"],
       "reason": "Workflows and the gate pipeline enforce WP-85's citation semantics; plugin-only feasibility check opens the WP."
     },
     {
@@ -1658,9 +1440,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP71"
-      ],
+      "dependencies": ["WP71"],
       "reason": "Build/flash runner owns the toolchain and digest decisions the serial console depends on."
     },
     {
@@ -1673,9 +1453,7 @@
       "sequence": 2,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP86"
-      ],
+      "dependencies": ["WP86"],
       "reason": "Serial auto-connect is coupled to flash lifecycle decisions made in WP-86."
     },
     {
@@ -1688,9 +1466,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP71"
-      ],
+      "dependencies": ["WP71"],
       "reason": "Device registry and claim arbitration are the substrate for every instrument capability."
     },
     {
@@ -1703,9 +1479,7 @@
       "sequence": 2,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP88"
-      ],
+      "dependencies": ["WP88"],
       "reason": "GDB and the probe runtime consume WP-88's claim model; same safety decision owner."
     },
     {
@@ -1718,9 +1492,7 @@
       "sequence": 3,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP89"
-      ],
+      "dependencies": ["WP89"],
       "reason": "Debug-mode gating and the destructive primitive sit on WP-89's tool seams; plugin-only feasibility check opens the WP."
     },
     {
@@ -1733,11 +1505,7 @@
       "sequence": 4,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP48",
-        "WP53",
-        "WP90"
-      ],
+      "dependencies": ["WP48", "WP53", "WP90"],
       "reason": "The D0–D2 cascade and escalation rules extend the same debug-safety decision set."
     },
     {
@@ -1750,9 +1518,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP88"
-      ],
+      "dependencies": ["WP88"],
       "reason": "Declares the shared InstrumentDriver interface all vendor drivers implement."
     },
     {
@@ -1765,10 +1531,7 @@
       "sequence": 2,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP88",
-        "WP92"
-      ],
+      "dependencies": ["WP88", "WP92"],
       "reason": "Implements the WP-92 interface; sequenced so the interface has one owner."
     },
     {
@@ -1781,10 +1544,7 @@
       "sequence": 3,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP88",
-        "WP93"
-      ],
+      "dependencies": ["WP88", "WP93"],
       "reason": "Implements the WP-92 interface; sequenced so the interface has one owner."
     },
     {
@@ -1822,9 +1582,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP82"
-      ],
+      "dependencies": ["WP82"],
       "reason": "RE-corpus grounding is independent, longest-lead, and gated on the decision-9.1 access mechanics."
     },
     {
@@ -1837,11 +1595,7 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP69",
-        "WP95",
-        "WP96"
-      ],
+      "dependencies": ["WP69", "WP95", "WP96"],
       "reason": "The authoring-grade beat 11 is additive post-G4 demo material with its own runbook decisions."
     }
   ]

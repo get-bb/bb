@@ -1,13 +1,13 @@
 # SPEC 05 — Firmware Mount, Verification Bench & Documents
 
-*Product spec. Depends on SPEC 00 (conventions, plugin skeleton, direct remote clients, optional Forge compute, four data classes) and SPEC 01 (sync engine — everything editable here rides on it). Consumes SPEC 03 (the requirement × tier matrix that the bench proves) and feeds SPEC 04 (HBOM extraction). Grounding docs: `bb Feature Designs — Firmware FS, EARS Conversion, HBOM.md` §Feature 1, `Verification Bench — Technical Design & Toolchain Evaluation.md`, `Shortest Path — The Finite State Plugin for bb.md`, `bb Plugin Build Guide — The Finite State Panels.md`. Owner: Matt Wyckhouse. Status: ready for implementation.*
+_Product spec. Depends on SPEC 00 (conventions, plugin skeleton, direct remote clients, optional Forge compute, four data classes) and SPEC 01 (sync engine — everything editable here rides on it). Consumes SPEC 03 (the requirement × tier matrix that the bench proves) and feeds SPEC 04 (HBOM extraction). Grounding docs: `bb Feature Designs — Firmware FS, EARS Conversion, HBOM.md` §Feature 1, `Verification Bench — Technical Design & Toolchain Evaluation.md`, `Shortest Path — The Finite State Plugin for bb.md`, `bb Plugin Build Guide — The Finite State Panels.md`. Owner: Matt Wyckhouse. Status: ready for implementation._
 
 **Spec set:** 00 Foundation · 01 Sync Engine · 02 Findings & VEX Triage · 03 Product Security (TARA/Requirements/Verifications) · 04 Bill of Materials (SBOM/HBOM) · **05 Firmware Mount, Bench & Documents (this)** · 06 Agentic Surfaces
 
 **Scope:** three related surfaces that share one substrate.
 
-1. **The Firmware Mount** — not a panel. It is bb's *native file tree*, populated directly from Platform firmware APIs or a local unpack, sitting in the worktree next to the source code and the `product-security/` model. The human browses it; the agent greps it with native Read/Grep/Edit; optional Forge compute reads the identical fully materialized bytes only for QEMU/pen-test jobs.
-2. **The Verification Bench** — the panel where firmware is *proven* (before and after hardware exists) and the proof is emitted as signed evidence. The single most demo-important artifact in the whole product — the **"safe-to-OTA" verdict card** — lives here.
+1. **The Firmware Mount** — not a panel. It is bb's _native file tree_, populated directly from Platform firmware APIs or a local unpack, sitting in the worktree next to the source code and the `product-security/` model. The human browses it; the agent greps it with native Read/Grep/Edit; optional Forge compute reads the identical fully materialized bytes only for QEMU/pen-test jobs.
+2. **The Verification Bench** — the panel where firmware is _proven_ (before and after hardware exists) and the proof is emitted as signed evidence. The single most demo-important artifact in the whole product — the **"safe-to-OTA" verdict card** — lives here.
 3. **Documents** — datasheets, register maps, and specs as first-class context for both humans and agents, and the fuel for HBOM extraction (SPEC 04) and requirements grounding (SPEC 03).
 
 They belong in one spec because they are one chain: **the mount is the bytes, the bench proves the bytes, and the documents describe the bytes** — and all three converge on the evidence graph anchored to a single firmware digest.
@@ -20,13 +20,13 @@ They belong in one spec because they are one chain: **the mount is the bytes, th
 
 **The user:** the firmware engineer and the product security engineer, working a connected product in bb.
 
-**What's painful today.** The firmware filesystem lives inside a scanner (STP/ArangoDB, keyed by `fsan_id` + `sha256`). To answer *"is there a hardcoded credential in `/etc`?"* or *"which binary opens port 443?"* the engineer leaves bb, drives a web UI, and copy-pastes findings back. The agent — the one that should do the bulk of that grepping — has no reach into the firmware at all: plugin panels have no path to hand files to an agent session (Build Guide §4, "MCP: the honest picture").
+**What's painful today.** The firmware filesystem lives inside a scanner (STP/ArangoDB, keyed by `fsan_id` + `sha256`). To answer _"is there a hardcoded credential in `/etc`?"_ or _"which binary opens port 443?"_ the engineer leaves bb, drives a web UI, and copy-pastes findings back. The agent — the one that should do the bulk of that grepping — has no reach into the firmware at all: plugin panels have no path to hand files to an agent session (Build Guide §4, "MCP: the honest picture").
 
 **What this surface makes possible:**
 
-1. **Browse and grep the firmware alongside source.** The extracted rootfs is materialized as *real files* under a reserved worktree subdir (`.fs-firmware/<pv_id>/rootfs/`). Because it is in the worktree, bb's native file tree renders it and the agent's native `Grep`/`Glob`/`Read` reach it with zero extra wiring. *This is the whole point* — a custom RPC-backed file browser (SPEC 00 anti-pattern) would rebuild a worse version of bb's own tree and would starve the agent.
+1. **Browse and grep the firmware alongside source.** The extracted rootfs is materialized as _real files_ under a reserved worktree subdir (`.fs-firmware/<pv_id>/rootfs/`). Because it is in the worktree, bb's native file tree renders it and the agent's native `Grep`/`Glob`/`Read` reach it with zero extra wiring. _This is the whole point_ — a custom RPC-backed file browser (SPEC 00 anti-pattern) would rebuild a worse version of bb's own tree and would starve the agent.
 2. **One filesystem, three consumers, zero translation.** The same materialized bytes serve the human (file tree), the agent (native tools), and—when configured—the Forge pen-test/QEMU compute lane. The path seal, ELF-closure staging, and artifact hashing Forge performs all operate on exactly the bytes the user is looking at.
-3. **Correctness by construction.** The platform's extraction *is* the coordinate system every other artifact references — STP findings, SBOM component→file mappings, reachability results, and the AI assessor's citations all point at paths and `file_hash` values recorded during *that* unpack run. Pulling the platform's own extraction (rather than re-unpacking locally) guarantees the findings↔files↔evidence join is exact. For an evidence product, that alignment is worth more than the download time.
+3. **Correctness by construction.** The platform's extraction _is_ the coordinate system every other artifact references — STP findings, SBOM component→file mappings, reachability results, and the AI assessor's citations all point at paths and `file_hash` values recorded during _that_ unpack run. Pulling the platform's own extraction (rather than re-unpacking locally) guarantees the findings↔files↔evidence join is exact. For an evidence product, that alignment is worth more than the download time.
 
 This is the mount that SPEC 03 §2.4 links into ("node → files in the firmware mount"), that SPEC 03 §3.4 traces to ("commit that implemented it"), and that Part B proves.
 
@@ -95,7 +95,10 @@ async function materialize(pvId: string, scanId?: string): Promise<void> {
   while (queue.length) {
     const path = queue.shift()!;
     const page = await platform.browseFirmwareFilesystem({
-      projectVersionId: pvId, scanId, path, depth: 1,
+      projectVersionId: pvId,
+      scanId,
+      path,
+      depth: 1,
     });
     await persistNodesAndPlaceholders(page); // validates containment before every write
     queue.push(...childDirectories(page));
@@ -110,18 +113,18 @@ This is the load-bearing integration. Forge **never unpacks and never fetches** 
 
 **So the handshake is: materialize into the worktree, then register that path with Forge.** After that, all three consumers read identical, hash-verified bytes:
 
-| Consumer | Reaches the rootfs via |
-|---|---|
-| **The human** | bb's native file tree (it's in the worktree) |
-| **The agent** | Claude Code's native `Grep`/`Glob`/`Read` (same reason) |
-| **Forge's pen-test / QEMU lane** | `FORGE_QEMU_FIRMWARE_<pv_id>` → that same directory |
+| Consumer                         | Reaches the rootfs via                                  |
+| -------------------------------- | ------------------------------------------------------- |
+| **The human**                    | bb's native file tree (it's in the worktree)            |
+| **The agent**                    | Claude Code's native `Grep`/`Glob`/`Read` (same reason) |
+| **Forge's pen-test / QEMU lane** | `FORGE_QEMU_FIRMWARE_<pv_id>` → that same directory     |
 
 **How the plugin prepares compute.** `prepareFirmwareRoot` is a reserved, non-freezeable boundary—not a verified Forge MCP method at pinned commit `5083a9d7`. It does not expose a generic Forge tool. WP-50 may close it in one of two deployment-honest ways; until then the remote client reports unsupported and WP-06 cannot freeze that member:
 
 - **Demo appliance (today):** Forge is launched on the same host; inject `FORGE_QEMU_FIRMWARE_<pv_id>=<abs path to rootfs>` (and `FORGE_QEMU_BUNDLE_<pv_id>` when an evidence bundle exists) at Forge spawn/restart. The docstring confirms the env var exists "to register another pv_id without editing this module."
 - **Productization (small backend ask, X15):** a narrowly scoped Forge runtime method registers a root plus expected digest without restart. The plugin maps only that method to `prepareFirmwareRoot`; remote Forge returns an explicit unsupported capability until a safe byte/root contract exists.
 
-**The ordering constraint (non-negotiable).** Forge's compute lane has **no fetch fallback** — a lazily-hydrated tree with placeholder files fails opaquely *inside* the verifier. Therefore, before dispatching any Part B pen-test/QEMU run, the plugin **must fully materialize the target's bytes first**: at minimum the target binary's ELF closure, in practice the whole rootfs (a bulk hydrate). The `fs_bench_run` handler and the panel Run button both assert `materialized=1` for the target path(s), verify the digest, and trigger a blocking bulk hydrate — with progress — before dispatch. Core firmware browsing and hydration do not require Forge.
+**The ordering constraint (non-negotiable).** Forge's compute lane has **no fetch fallback** — a lazily-hydrated tree with placeholder files fails opaquely _inside_ the verifier. Therefore, before dispatching any Part B pen-test/QEMU run, the plugin **must fully materialize the target's bytes first**: at minimum the target binary's ELF closure, in practice the whole rootfs (a bulk hydrate). The `fs_bench_run` handler and the panel Run button both assert `materialized=1` for the target path(s), verify the digest, and trigger a blocking bulk hydrate — with progress — before dispatch. Core firmware browsing and hydration do not require Forge.
 
 ## A4. UX
 
@@ -182,9 +185,9 @@ AX3000 v2.3 → v2.4
 
 ## B6. The job to be done
 
-**The user:** the product security engineer, the firmware engineer, and — for Eagle specifically — the person who has to sign off that an AI-generated/AI-assisted firmware build is safe to ship *before* the hardware exists and *again* after it does.
+**The user:** the product security engineer, the firmware engineer, and — for Eagle specifically — the person who has to sign off that an AI-generated/AI-assisted firmware build is safe to ship _before_ the hardware exists and _again_ after it does.
 
-**What this makes possible:** prove firmware across a tiered ladder and emit **signed evidence** that maps 1:1 to the Assurance Studio requirement IDs (SPEC 03). Every tier's runner produces an in-toto/SLSA attestation whose *subject* is the firmware digest and whose *predicate* carries the requirement IDs exercised, pass/fail, coverage, and measured values. The result is a verifiable evidence graph — "commit SHA → signed static analysis → signed rehosted pen-test → signed HIL measurements → countersigned lab report" — all anchored to the threat model. **That evidence graph is the certification/compliance deliverable and the differentiated product story.**
+**What this makes possible:** prove firmware across a tiered ladder and emit **signed evidence** that maps 1:1 to the Assurance Studio requirement IDs (SPEC 03). Every tier's runner produces an in-toto/SLSA attestation whose _subject_ is the firmware digest and whose _predicate_ carries the requirement IDs exercised, pass/fail, coverage, and measured values. The result is a verifiable evidence graph — "commit SHA → signed static analysis → signed rehosted pen-test → signed HIL measurements → countersigned lab report" — all anchored to the threat model. **That evidence graph is the certification/compliance deliverable and the differentiated product story.**
 
 The bench is where SPEC 03 §4.2 promised the verdict card ("for bench-tier runs, the SPEC 05 verdict card"). This part defines it.
 
@@ -192,19 +195,19 @@ The bench is where SPEC 03 §4.2 promised the verdict card ("for bench-tier runs
 
 Design principle (from the Verification Bench design §5): **fast feedback on every commit, deeper checks nightly, hardware on merge/nightly, lab on milestones — and every tier emits signed evidence mapped to a requirement ID.** You do **not** need full-system SoC emulation to get 80% of the value; you will never emulate PHY/RF/baseband (physics and law), so don't spend a dollar trying.
 
-| Tier | Cadence | Runs | Forge/tooling | Evidence |
-|---|---|---|---|---|
-| **Tier 0 — Static/binary** | per commit (secs–2 min), no emulation boot | SBOM, known-CVE, secrets, memory-safety smells, **AI-injection/hallucination diffs** on changed binaries; per-binary/per-function harnessing (Qiling/Unicorn) | FS core binary analysis; maps to `config_check`/`sbom_query`/`binary_analysis`/`binary_pattern`/`vuln_absence` → SPEC 03 **static** column | signed static-analysis + SBOM attestation |
-| **Tier 1 — Rehosted image** | per commit / per PR (2–10 min) | Automated rehosting (FirmAE/EMBA lineage, fed by FS unpacker) boots the Linux twin; **Forge `verify_dynamic` (QEMU rehost) + `pen_test_run` two-agent pen-test**; AFL++ short fuzz on network services/parsers; LLM repair agent diagnoses boot failures, un-repairable → flags **needs-HIL** | `verify_dynamic`, `pen_test_run`, 10 STP relay tools; **requires the full mount materialized first (A3 ordering constraint)** | signed rehosting + Forge run attestation with coverage + verifier results → SPEC 03 **emulation** column |
-| **Tier 2 — Deterministic/deep** | nightly (10 min–hrs) | Renode deterministic golden-path regressions: boot chain, **secure-boot accept/reject**, Verilator-co-simulated custom IP; extended LibAFL; differential AI-vs-reference logic; optional Corellium high-fidelity twin | Renode `.repl`/`.resc` on the bench host; byte-identical signable regressions | signed regression + long-fuzz attestations; diff vs last green |
-| **Tier 3 — HIL** | on-merge / nightly-on-hardware (hrs) | Labgrid + pytest drive the real board: real boot, secure-boot with real fuses, sleep-current/power profile, physical-interface robustness, Wi-Fi/cellular functional bring-up, `tc netem` resilience; Avatar2 bridges emulator↔board for un-modeled peripherals | the **HIL rack, enrolled as a bb host** (B9); results write back via `external_sync` → SPEC 03 **HIL** column | signed HIL run with **measured values** (OpenHTF-style) tied to requirement IDs |
-| **Tier 4 — Chamber/lab** | milestone/release (days, external) | RF conformance (shield box + LitePoint/R&S), cellular carrier acceptance (accredited lab, PTCRB/GCF), thermal/environmental | external lab; reports ingested + countersigned | lab reports ingested and **countersigned** into the evidence chain |
+| Tier                            | Cadence                                    | Runs                                                                                                                                                                                                                                                                                          | Forge/tooling                                                                                                                              | Evidence                                                                                                 |
+| ------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| **Tier 0 — Static/binary**      | per commit (secs–2 min), no emulation boot | SBOM, known-CVE, secrets, memory-safety smells, **AI-injection/hallucination diffs** on changed binaries; per-binary/per-function harnessing (Qiling/Unicorn)                                                                                                                                 | FS core binary analysis; maps to `config_check`/`sbom_query`/`binary_analysis`/`binary_pattern`/`vuln_absence` → SPEC 03 **static** column | signed static-analysis + SBOM attestation                                                                |
+| **Tier 1 — Rehosted image**     | per commit / per PR (2–10 min)             | Automated rehosting (FirmAE/EMBA lineage, fed by FS unpacker) boots the Linux twin; **Forge `verify_dynamic` (QEMU rehost) + `pen_test_run` two-agent pen-test**; AFL++ short fuzz on network services/parsers; LLM repair agent diagnoses boot failures, un-repairable → flags **needs-HIL** | `verify_dynamic`, `pen_test_run`, 10 STP relay tools; **requires the full mount materialized first (A3 ordering constraint)**              | signed rehosting + Forge run attestation with coverage + verifier results → SPEC 03 **emulation** column |
+| **Tier 2 — Deterministic/deep** | nightly (10 min–hrs)                       | Renode deterministic golden-path regressions: boot chain, **secure-boot accept/reject**, Verilator-co-simulated custom IP; extended LibAFL; differential AI-vs-reference logic; optional Corellium high-fidelity twin                                                                         | Renode `.repl`/`.resc` on the bench host; byte-identical signable regressions                                                              | signed regression + long-fuzz attestations; diff vs last green                                           |
+| **Tier 3 — HIL**                | on-merge / nightly-on-hardware (hrs)       | Labgrid + pytest drive the real board: real boot, secure-boot with real fuses, sleep-current/power profile, physical-interface robustness, Wi-Fi/cellular functional bring-up, `tc netem` resilience; Avatar2 bridges emulator↔board for un-modeled peripherals                               | the **HIL rack, enrolled as a bb host** (B9); results write back via `external_sync` → SPEC 03 **HIL** column                              | signed HIL run with **measured values** (OpenHTF-style) tied to requirement IDs                          |
+| **Tier 4 — Chamber/lab**        | milestone/release (days, external)         | RF conformance (shield box + LitePoint/R&S), cellular carrier acceptance (accredited lab, PTCRB/GCF), thermal/environmental                                                                                                                                                                   | external lab; reports ingested + countersigned                                                                                             | lab reports ingested and **countersigned** into the evidence chain                                       |
 
-Un-repairable Tier-1 failures draw a **needs-HIL** arrow to Tier 3; un-modeled peripherals draw an Avatar2 bridge from Tier 1/2 to a Tier-3 board. The tier taxonomy is *the same* `static | emulation | hil | manual` axis SPEC 03 §4.1 uses for its matrix columns — one vocabulary, two surfaces; the five run tiers map onto those four columns per the B10 mapping table.
+Un-repairable Tier-1 failures draw a **needs-HIL** arrow to Tier 3; un-modeled peripherals draw an Avatar2 bridge from Tier 1/2 to a Tier-3 board. The tier taxonomy is _the same_ `static | emulation | hil | manual` axis SPEC 03 §4.1 uses for its matrix columns — one vocabulary, two surfaces; the five run tiers map onto those four columns per the B10 mapping table.
 
 ## B8. Panel design
 
-`navPanel` **"Bench"** (`icon: "FlaskConical"`, `path: "bench"`), subPath-routed. Four states designed per SPEC 00 §7 (loading = skeleton timeline; empty = "No bench runs yet — run Tier 0 on the current firmware, or `bb finite-state bench run`"; error = what failed + retry; unconfigured = `needsConfiguration`).
+`navPanel` **"Bench"** (`icon: "FlaskConical"`, `path: "bench"`), subPath-routed. States designed per SPEC 00 §7: loading = skeleton timeline; empty = "No bench runs yet — run Tier 0 on the current firmware, or `bb finite-state bench run`"; error = what failed + retry; credential-unconfigured = `needsConfiguration`; missing optional bench tooling = a bench-scoped advisory while the plugin remains running (FS-158).
 
 ### B8.1 Runs as a timeline (landing view)
 
@@ -226,7 +229,7 @@ Each row: status glyph+color, timestamp, **tier**, kind, trigger (commit/merge/n
 Cell/row click → run detail (right sheet; subPath `bench/<run_id>`):
 
 - **Config** — tier, kind, verifier set / Renode script / pytest suite, parameters, firmware digest, trigger, host.
-- **Live logs** — cursor-paged RPC (`getBenchLog({ runId, afterSeq, limit })`) nudged by `fs-bench-log` realtime; large logs stream via a `bb.http` route (RPC is strict-JSON, no streaming). For host-run tiers the *native thread terminal* is the live log (B9); this pane mirrors/links it.
+- **Live logs** — cursor-paged RPC (`getBenchLog({ runId, afterSeq, limit })`) nudged by `fs-bench-log` realtime; large logs stream via a `bb.http` route (RPC is strict-JSON, no streaming). For host-run tiers the _native thread terminal_ is the live log (B9); this pane mirrors/links it.
 - **Artifacts** — pcaps, coredumps, fuzz corpora, screenshots, reports — links served through `bb.http` proxy routes (auth stays server-side), or previewed via `bb.sdk.files.createPreview` for synced copies.
 - **The signed verdict** — the run's attestation, rendered as the verdict card (B8.3).
 
@@ -258,21 +261,21 @@ Cell/row click → run detail (right sheet; subPath `bench/<run_id>`):
 
 - `SAFE TO OTA` (green) iff: every **required** requirement (SPEC 03 `is_required` checks) has a `verified` latest result at each of its **required** tiers, **and** no `failed`/`error` anywhere in scope, **and** the run's `firmware_digest` equals the current materialized rootfs artifact hash (else the card carries a **stale** overlay — "verdict is for a firmware that has since changed").
 - `NOT SAFE` (red) iff any required check is `failed`/`error`. The card lists the failing requirements with drill-through to the run detail.
-- `INCONCLUSIVE` (amber) iff no failures but ≥1 required tier is unproven (`○ mapped, not run`, or `— no check mapped`). **Gaps are shown as gaps, never as passes** — the copy is explicit: *"Safe-to-OTA reflects the evidence that exists; unmapped or unrun tiers are gaps, not green."*
+- `INCONCLUSIVE` (amber) iff no failures but ≥1 required tier is unproven (`○ mapped, not run`, or `— no check mapped`). **Gaps are shown as gaps, never as passes** — the copy is explicit: _"Safe-to-OTA reflects the evidence that exists; unmapped or unrun tiers are gaps, not green."_
 
-**Requirement coverage links straight back to SPEC 03's matrix.** The "N of M required requirements proven" line *is* the SPEC 03 §4.1 requirement × tier matrix filtered to required checks; clicking it deep-links to `product-security` → `verifications` with the same filter. The verdict card and the matrix are two renderings of one truth: the matrix answers "what's unproven?" per requirement; the verdict answers "is the whole build shippable?" — and they must never disagree (both derive from the cached `verification_results` + rollup).
+**Requirement coverage links straight back to SPEC 03's matrix.** The "N of M required requirements proven" line _is_ the SPEC 03 §4.1 requirement × tier matrix filtered to required checks; clicking it deep-links to `product-security` → `verifications` with the same filter. The verdict card and the matrix are two renderings of one truth: the matrix answers "what's unproven?" per requirement; the verdict answers "is the whole build shippable?" — and they must never disagree (both derive from the cached `verification_results` + rollup).
 
 ## B9. bb hosts — bench runs as threads (bb's strongest structural fit)
 
-A bench run is a long-lived process with logs, artifacts, and often a reasoning agent driving it. **That is exactly a bb thread.** So the emulation host and the HIL rack are enrolled as bb **hosts**, and a bench run *is* a thread running on that host.
+A bench run is a long-lived process with logs, artifacts, and often a reasoning agent driving it. **That is exactly a bb thread.** So the emulation host and the HIL rack are enrolled as bb **hosts**, and a bench run _is_ a thread running on that host.
 
 **How it works:**
 
 1. **Enroll the rack/host.** Register the emulation box (Tiers 1–2, QEMU/Renode + Forge, `FORGE_ALLOW_PENTEST` + verifier binary + Docker) and the HIL rack (Tier 3, Labgrid coordinator → exporter hosts → shield-boxed DUTs) as bb hosts. Each `bench_run.host_id` names the host the run executed on; a tier can target a different host. **[UNVERIFIED — exact SDK surface]:** the Build Guide documents `bb.sdk.environments` (worktree-bearing environments) and multi-host `bb.sdk.files`, but does not fully document a first-class "host registration" API. Confirm the enrollment primitive against the bb SDK before Phase 5; if hosts are modeled as environments, bind runs to an environment id instead. Flagged in Open Questions.
 2. **A run = a thread on the host.** Dispatching a bench run spawns a thread (`bb.sdk.threads.spawn`, `origin: "plugin"`, bound to the host/environment) that executes the Labgrid/pytest suite, the Renode script, or the Forge verifier. The thread's terminal is the **native live log**; artifacts land in the host's worktree; the `bench_run.thread_id` links the row to the thread.
-3. **Surfacing.** The timeline row's "→ thread ↗" opens that thread. The `threadPanelAction` "Bench run" tab (params = `runId`, persists across reloads — Build Guide §2) embeds the run beside whatever thread is doing the work, using the host-provided `ThreadChat variant="timeline"` component. No custom log renderer — the thread *is* the log.
+3. **Surfacing.** The timeline row's "→ thread ↗" opens that thread. The `threadPanelAction` "Bench run" tab (params = `runId`, persists across reloads — Build Guide §2) embeds the run beside whatever thread is doing the work, using the host-provided `ThreadChat variant="timeline"` component. No custom log renderer — the thread _is_ the log.
 
-This is why the bench is bb's best structural fit: we are not inventing a job runner and a log viewer; we are letting bb's thread/host model *be* the bench, and the plugin is the index and the verdict layer over it.
+This is why the bench is bb's best structural fit: we are not inventing a job runner and a log viewer; we are letting bb's thread/host model _be_ the bench, and the plugin is the index and the verdict layer over it.
 
 ## B10. Data model
 
@@ -334,15 +337,15 @@ CREATE TABLE bench_attestation (     -- the in-toto/SLSA evidence, bound to the 
 
 **Tier mapping (declared at sync time — SPEC 06 §2.6 ⚑14).** `bench_run.tier` is five-valued (`tier0…tier4`); `bench_result.tier` and the SPEC 03 §4.1 matrix are four-valued (`static|emulation|hil|manual`). The mapping is fixed:
 
-| `bench_run.tier` | `bench_result.tier` / matrix column | Note |
-|---|---|---|
-| tier0 | `static` | |
-| tier1 | `emulation` | |
-| tier2 | `emulation` | it *is* emulation; the deterministic sub-kind (Renode/Verilator) is recorded in `bench_result.evidence_summary` |
-| tier3 | `hil` | |
-| tier4 | `manual` | a countersigned lab report is attestation-class evidence |
+| `bench_run.tier` | `bench_result.tier` / matrix column | Note                                                                                                            |
+| ---------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| tier0            | `static`                            |                                                                                                                 |
+| tier1            | `emulation`                         |                                                                                                                 |
+| tier2            | `emulation`                         | it _is_ emulation; the deterministic sub-kind (Renode/Verilator) is recorded in `bench_result.evidence_summary` |
+| tier3            | `hil`                               |                                                                                                                 |
+| tier4            | `manual`                            | a countersigned lab report is attestation-class evidence                                                        |
 
-**Requirement mapping + writeback.** `bench_result.requirement_key` is the join to SPEC 03. Results also write back into AS via `external_sync` so SPEC 03 §5.6's `verification_results` cache (and thus the matrix and status pills) reflects bench outcomes — the bench is the *producer*, the SPEC 03 matrix is a *reader*. This closes the loop SPEC 03 §4.3 described ("Bench/HIL runs dispatch through the SPEC 05 bench… this tab only reflects them").
+**Requirement mapping + writeback.** `bench_result.requirement_key` is the join to SPEC 03. Results also write back into AS via `external_sync` so SPEC 03 §5.6's `verification_results` cache (and thus the matrix and status pills) reflects bench outcomes — the bench is the _producer_, the SPEC 03 matrix is a _reader_. This closes the loop SPEC 03 §4.3 described ("Bench/HIL runs dispatch through the SPEC 05 bench… this tab only reflects them").
 
 **Attestation binding.** Every attestation's `subject_digest` is the firmware artifact hash (identical to `qemu_dynamic.py`'s `_firmware_artifact_hash` and the manifest's `artifact_hash`), the predicate carries `requirement_ids` + `verdict` + measured values, signed via **Sigstore keyless (Fulcio OIDC + Rekor)** in an in-toto/DSSE envelope with a **SLSA provenance** predicate. The `rekor_uuid` makes the "verify ↗" link on the verdict card real — anyone can check the transparency log. This is the signed-evidence spine the Verification Bench design §5 specifies.
 
@@ -383,7 +386,7 @@ CREATE TABLE bench_attestation (     -- the in-toto/SLSA evidence, bound to the 
 
 - **List (left):** filter by `doc_type` and project; each row shows filename, type badge, analyzed/not-analyzed state.
 - **Viewer (right):** **PDF inline** via bb's built-in preview or a sandboxed iframe pointed at `bb.sdk.files.createPreview` (confined transport for synced local copies). Register-map/SVD/BOM formats render structured.
-- **Agent-extracted structure as an overlay.** When the agent has extracted fields from a page, an overlay panel shows *"we read these 14 fields from this page"* — each field a `{value, confidence}` cell with a **source_ref** (page + region) and a link to its target (`→ HBOM-0001`, `→ REQ-104`). This is the credibility surface: an extraction nobody can trace is worthless; page-level provenance is what makes it defensible for CRA/FCC (mirrors SPEC 04's per-field provenance model). Low-confidence cells carry a `[review]` action.
+- **Agent-extracted structure as an overlay.** When the agent has extracted fields from a page, an overlay panel shows _"we read these 14 fields from this page"_ — each field a `{value, confidence}` cell with a **source_ref** (page + region) and a link to its target (`→ HBOM-0001`, `→ REQ-104`). This is the credibility surface: an extraction nobody can trace is worthless; page-level provenance is what makes it defensible for CRA/FCC (mirrors SPEC 04's per-field provenance model). Low-confidence cells carry a `[review]` action.
 - **Upload via `bb.http` (binary, not RPC).** The `[＋ Add]` dropzone POSTs the binary to `bb.http.route("POST", "documents/upload", handler, { auth: "local" })`; the route stores the file in the single document store at `product-security/documents/<sha256>-<name>` in the worktree (git-tracked — anything a `source_ref` cites must survive a clone; shared with SPEC 04's HBOM ingestion, SPEC 06 §2.6 ⚑12) and writes a `document` row. After direct AS binary methods are verified and frozen, the backend may also stream through AS `upload-url`→object-store→`finalize`; v1 keeps docs worktree-local.
 - **`fileOpener` registration.** Register openers for `pdf` (native preview handles rendering; our opener adds the extraction overlay), and for register-map formats (`svd`, register-header `.h`, BOM `.csv`/`.xlsx`) → our structured viewer. Registration is ~an hour (Build Guide §7).
 
@@ -448,38 +451,41 @@ Per SPEC 00 §8, each surface declares its four agent affordances. Reads are fre
 
 ```ts
 bb.agents.registerTool({
-  name: "fs_firmware_materialize",          // READ + ACTION (hydrate is the flagged exception)
-  description: "Materialize a firmware version's file tree (manifest) and/or hydrate bytes for "
-    + "specific paths so native Read/Grep can reach them. Manifest is always safe; hydrating "
-    + "pulls bytes (admin-gated) and is required before a Tier-1 pen-test. Never edits the model.",
+  name: "fs_firmware_materialize", // READ + ACTION (hydrate is the flagged exception)
+  description:
+    "Materialize a firmware version's file tree (manifest) and/or hydrate bytes for " +
+    "specific paths so native Read/Grep can reach them. Manifest is always safe; hydrating " +
+    "pulls bytes (admin-gated) and is required before a Tier-1 pen-test. Never edits the model.",
   input: z.object({
     pv_id: z.string(),
     scan_id: z.string().optional(),
     mode: z.enum(["manifest", "hydrate", "hydrate_all"]).default("manifest"),
-    paths: z.array(z.string()).optional(),  // for mode:"hydrate" — e.g. ["/etc", "/usr/sbin"]
+    paths: z.array(z.string()).optional(), // for mode:"hydrate" — e.g. ["/etc", "/usr/sbin"]
   }),
   // handler: materialize()/hydrateFile() from A2; publishes fs-firmware-progress; asserts rootPath confinement
 });
 
 bb.agents.registerTool({
-  name: "fs_bench_run",                     // ACTION-ONLY — the flagged exception (see SPEC 03 §6.2)
-  description: "Trigger a verification-bench run at a tier against a firmware version. Invokes the "
-    + "platform's own analysis (verify_dynamic / pen_test_run / HIL suite); results land as signed "
-    + "evidence rows. Does NOT edit the model. Requires the mount fully materialized (auto-hydrates first).",
+  name: "fs_bench_run", // ACTION-ONLY — the flagged exception (see SPEC 03 §6.2)
+  description:
+    "Trigger a verification-bench run at a tier against a firmware version. Invokes the " +
+    "platform's own analysis (verify_dynamic / pen_test_run / HIL suite); results land as signed " +
+    "evidence rows. Does NOT edit the model. Requires the mount fully materialized (auto-hydrates first).",
   input: z.object({
     pv_id: z.string(),
     tier: z.enum(["tier0", "tier1", "tier2", "tier3", "tier4"]),
-    requirement: z.string().optional(),      // scope to one requirement's checks
-    target: z.string().optional(),           // e.g. a binary path to stage
+    requirement: z.string().optional(), // scope to one requirement's checks
+    target: z.string().optional(), // e.g. a binary path to stage
   }),
   // handler: assert materialized; use ForgeComputeClient only for Tier-1/QEMU/pen-test;
   // other tiers dispatch to their declared local/host runner; all return normalized run summaries
 });
 
 bb.agents.registerTool({
-  name: "fs_bench_status",                  // READ
-  description: "List/get bench runs, results, artifacts, and the safe-to-OTA verdict for a firmware "
-    + "version. Serves from the SQLite cache; returns run ids suitable for ::fs-bench and ::fs-verdict.",
+  name: "fs_bench_status", // READ
+  description:
+    "List/get bench runs, results, artifacts, and the safe-to-OTA verdict for a firmware " +
+    "version. Serves from the SQLite cache; returns run ids suitable for ::fs-bench and ::fs-verdict.",
   input: z.object({
     pv_id: z.string().optional(),
     run_id: z.string().optional(),
@@ -489,10 +495,11 @@ bb.agents.registerTool({
 });
 
 bb.agents.registerTool({
-  name: "fs_doc_search",                    // READ
-  description: "Search documents and their agent-extracted structure (datasheets, register maps, "
-    + "specs, regulations). Returns matches with page + region source_refs, for grounding "
-    + "requirements and HBOM fields. Never uploads or edits.",
+  name: "fs_doc_search", // READ
+  description:
+    "Search documents and their agent-extracted structure (datasheets, register maps, " +
+    "specs, regulations). Returns matches with page + region source_refs, for grounding " +
+    "requirements and HBOM fields. Never uploads or edits.",
   input: z.object({
     project_id: z.string(),
     query: z.string(),
@@ -512,11 +519,11 @@ bb.agents.registerTool({
 
 All fetch by id via RPC (attributes are attacker-controlled — never render attribute content, never accept payloads; SPEC 00 §8, Build Guide §5):
 
-| Directive | Renders | Notes |
-|---|---|---|
-| `::fs-bench{id="run-88"}` | bench-run card — status, tier, duration, verifier count, artifacts summary, link to thread + panel | click-through → `bench/run-88` |
-| `::fs-verdict{id="7a10be44"}` | **the safe-to-OTA verdict card** (B8.3) — keyed by firmware digest or run id | the demo centerpiece; self-fetches from cache so it works offline (SPEC 00 §12) |
-| `::fs-doc{id="doc-1"}` | document card with the extraction overlay preview + page thumbnails + source-ref links | click-through → `documents` with the doc open |
+| Directive                     | Renders                                                                                            | Notes                                                                           |
+| ----------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `::fs-bench{id="run-88"}`     | bench-run card — status, tier, duration, verifier count, artifacts summary, link to thread + panel | click-through → `bench/run-88`                                                  |
+| `::fs-verdict{id="7a10be44"}` | **the safe-to-OTA verdict card** (B8.3) — keyed by firmware digest or run id                       | the demo centerpiece; self-fetches from cache so it works offline (SPEC 00 §12) |
+| `::fs-doc{id="doc-1"}`        | document card with the extraction overlay preview + page thumbnails + source-ref links             | click-through → `documents` with the doc open                                   |
 
 Unknown ids render the designed empty/error card, never a crash (directives are ErrorBoundary'd; fallback is literal text).
 
@@ -548,13 +555,13 @@ bb finite-state doc search <query> [--project <id>]
 
 Ephemeral broadcast — publish "changed" nudges, refetch via RPC; never a data channel (SPEC 00 §5):
 
-| Channel | Payload | Trigger |
-|---|---|---|
-| `fs-firmware-progress` | `{ pvId, phase, done, total }` | manifest sync + bulk hydrate progress |
-| `fs-firmware-stale` | `{ pvId }` | scan-id / artifact-hash change on re-open (A5.5) |
-| `fs-bench-run` | `{ runId, status }` | run state transition (queued→running→passed/failed) |
-| `fs-bench-log` | `{ runId, seq }` | new log lines available (cursor refetch nudge) |
-| `fs-doc-changed` | `{ projectId }` | upload finalized / extraction merged |
+| Channel                | Payload                        | Trigger                                             |
+| ---------------------- | ------------------------------ | --------------------------------------------------- |
+| `fs-firmware-progress` | `{ pvId, phase, done, total }` | manifest sync + bulk hydrate progress               |
+| `fs-firmware-stale`    | `{ pvId }`                     | scan-id / artifact-hash change on re-open (A5.5)    |
+| `fs-bench-run`         | `{ runId, status }`            | run state transition (queued→running→passed/failed) |
+| `fs-bench-log`         | `{ runId, seq }`               | new log lines available (cursor refetch nudge)      |
+| `fs-doc-changed`       | `{ projectId }`                | upload finalized / extraction merged                |
 
 ## X15. Platform, Assurance Studio, and optional Forge-compute dependencies
 
@@ -584,27 +591,27 @@ Ephemeral broadcast — publish "changed" nudges, refetch via RPC; never a data 
 
 Slots into SPEC 00 build sequence **Phase 5** after the shared infra—direct remote clients, optional compute adapter, SQLite, panel kit, and theming—is standing. One strong engineer; upstream asks (X15) run in parallel.
 
-| Part | Step | Deliverable | Effort |
-|---|---|---|---|
-| **A** | A.1 | Manifest sync via direct Platform tree recursion (optional reviewed flat-search optimization) → placeholders + `manifest.sqlite` | 2–3 d |
-| **A** | A.2 | Direct Platform selective hydration + blob dedup; local complete-image materialization + progress | 2–3 d |
-| **A** | A.3 | Optional `ForgeComputeClient.prepareFirmwareRoot` handshake + digest and ordering-constraint enforcement | 1 d |
-| **A** | A.4 | `fileOpener` binary metadata card + version-diff view + status chip + CLI verbs | 2 d |
-| **A** | A.5 | `standalone_unpack.py` fallback path (ingest `snapshot.json`), gitignore/pollution test, staleness detection | 1–2 d |
-| | | **Part A subtotal** | **~6–9 d** (A.5 fallback removes rate-limit/admin risk) |
-| **B** | B.1 | Bench data model + normalized AS/optional-Forge/local run sync + timeline panel (states, filters) | 2–3 d |
-| **B** | B.2 | Run detail — config, cursor-paged log tail, artifact proxy routes | 2–3 d |
-| **B** | B.3 | **The safe-to-OTA verdict card** — verdict logic, attestation binding, Sigstore/Rekor verify link, DSSE download | 2–3 d |
-| **B** | B.4 | bb-host enrollment + run-as-thread wiring + `threadPanelAction` tab | 2–4 d ([UNVERIFIED host API — may reduce to environment binding) |
-| **B** | B.5 | Tier orchestration (dispatch `verify_dynamic`/`pen_test_run`, needs-HIL flag) + writeback to SPEC 03 matrix | 2–3 d |
-| | | **Part B subtotal** | **~10–16 d** (Tiers 2–4 are staged; Tier 1 + verdict is the demo MVP) |
-| **C** | C.1 | Documents panel — split list/viewer, PDF inline, `bb.http` upload route, `fileOpener` registrations | 3–4 d |
-| **C** | C.2 | Extraction overlay + `document_extraction` model + `fs_doc_search` + HBOM/requirements feed wiring | 2–3 d |
-| | | **Part C subtotal** | **~5–7 d** |
-| **X** | X.1 | Agent tools (4), SKILL.md (3), directives (`::fs-bench`/`::fs-verdict`/`::fs-doc`), mention provider, realtime | 3–4 d |
-| | | **Total (Part 05)** | **~5–7 eng-weeks** on shared infra, Tiers 3–4 partial |
+| Part  | Step | Deliverable                                                                                                                      | Effort                                                                |
+| ----- | ---- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| **A** | A.1  | Manifest sync via direct Platform tree recursion (optional reviewed flat-search optimization) → placeholders + `manifest.sqlite` | 2–3 d                                                                 |
+| **A** | A.2  | Direct Platform selective hydration + blob dedup; local complete-image materialization + progress                                | 2–3 d                                                                 |
+| **A** | A.3  | Optional `ForgeComputeClient.prepareFirmwareRoot` handshake + digest and ordering-constraint enforcement                         | 1 d                                                                   |
+| **A** | A.4  | `fileOpener` binary metadata card + version-diff view + status chip + CLI verbs                                                  | 2 d                                                                   |
+| **A** | A.5  | `standalone_unpack.py` fallback path (ingest `snapshot.json`), gitignore/pollution test, staleness detection                     | 1–2 d                                                                 |
+|       |      | **Part A subtotal**                                                                                                              | **~6–9 d** (A.5 fallback removes rate-limit/admin risk)               |
+| **B** | B.1  | Bench data model + normalized AS/optional-Forge/local run sync + timeline panel (states, filters)                                | 2–3 d                                                                 |
+| **B** | B.2  | Run detail — config, cursor-paged log tail, artifact proxy routes                                                                | 2–3 d                                                                 |
+| **B** | B.3  | **The safe-to-OTA verdict card** — verdict logic, attestation binding, Sigstore/Rekor verify link, DSSE download                 | 2–3 d                                                                 |
+| **B** | B.4  | bb-host enrollment + run-as-thread wiring + `threadPanelAction` tab                                                              | 2–4 d ([UNVERIFIED host API — may reduce to environment binding)      |
+| **B** | B.5  | Tier orchestration (dispatch `verify_dynamic`/`pen_test_run`, needs-HIL flag) + writeback to SPEC 03 matrix                      | 2–3 d                                                                 |
+|       |      | **Part B subtotal**                                                                                                              | **~10–16 d** (Tiers 2–4 are staged; Tier 1 + verdict is the demo MVP) |
+| **C** | C.1  | Documents panel — split list/viewer, PDF inline, `bb.http` upload route, `fileOpener` registrations                              | 3–4 d                                                                 |
+| **C** | C.2  | Extraction overlay + `document_extraction` model + `fs_doc_search` + HBOM/requirements feed wiring                               | 2–3 d                                                                 |
+|       |      | **Part C subtotal**                                                                                                              | **~5–7 d**                                                            |
+| **X** | X.1  | Agent tools (4), SKILL.md (3), directives (`::fs-bench`/`::fs-verdict`/`::fs-doc`), mention provider, realtime                   | 3–4 d                                                                 |
+|       |      | **Total (Part 05)**                                                                                                              | **~5–7 eng-weeks** on shared infra, Tiers 3–4 partial                 |
 
-**Ship order within Phase 5:** the firmware mount first (it is the prerequisite for the pen-test lane *and* what lets the agent grep firmware alongside source — SPEC 03 §2.4/§3.4 and Part B both depend on it landing), then Documents (unblocks SPEC 04 HBOM), then the bench Tier-0/Tier-1 + verdict card (the demo MVP), then Tiers 2–4 as breadth. **The verdict card (B.3) is the single highest-value component in this spec — build it deliberately, demo it early.**
+**Ship order within Phase 5:** the firmware mount first (it is the prerequisite for the pen-test lane _and_ what lets the agent grep firmware alongside source — SPEC 03 §2.4/§3.4 and Part B both depend on it landing), then Documents (unblocks SPEC 04 HBOM), then the bench Tier-0/Tier-1 + verdict card (the demo MVP), then Tiers 2–4 as breadth. **The verdict card (B.3) is the single highest-value component in this spec — build it deliberately, demo it early.**
 
 **Definition of done** (SPEC 00 §12 + surface-specific): a 10k-file mount materializes directly from Platform or local unpack with Forge absent, is gitignored, and the agent greps it alongside source · when Forge compute is configured, its prepared-root digest matches and a Tier-1 pen-test runs against that fully materialized target · a bench run appears as a bb thread on an enrolled host · the safe-to-OTA verdict card renders from warm cache offline, with a verifiable Rekor link · a datasheet upload extracts fields with page-level source refs that populate an HBOM cell · `::fs-verdict` works offline.
 
@@ -615,7 +622,7 @@ Slots into SPEC 00 build sequence **Phase 5** after the shared infra—direct re
 1. **bb host-registration API (B9).** The Build Guide documents `bb.sdk.environments` and multi-host `bb.sdk.files` but not a first-class "enroll a host" primitive. Confirm against the bb SDK before Phase 5; if hosts are environments, bind bench runs to an environment id. **This is the one architectural unknown in Part B** — resolve early.
 2. **Forge firmware-root preparation.** Env-var-at-spawn works for the local demo appliance; a narrow digest-bound runtime registration is the productization fix. Remote Forge must report unsupported until it has a secure byte/root handoff.
 3. **Platform artifact hash (A5.5).** Staleness detection is best with a direct, reviewed Platform artifact hash; until it is exposed, fall back to scan-id comparison. Forge is not the source of this metadata.
-4. **Verdict scope boundary.** Does "safe to OTA" evaluate *all* required requirements for the version, or a run-scoped subset? Proposal: the card is always version-scoped (all required requirements) and a run contributes evidence; a single run rarely earns the whole verdict. Confirm the demo narrative wants version-scoped.
+4. **Verdict scope boundary.** Does "safe to OTA" evaluate _all_ required requirements for the version, or a run-scoped subset? Proposal: the card is always version-scoped (all required requirements) and a run contributes evidence; a single run rarely earns the whole verdict. Confirm the demo narrative wants version-scoped.
 5. **Tier 3/4 evidence ingestion format.** Tier 4 lab reports are external PDFs to countersign; Tier 3 HIL emits OpenHTF-style measurements. Decide the canonical `measured` JSON shape and the countersign flow (who signs, with what identity) before HIL lands.
 6. **Document retention in v1 (C12).** Docs live worktree-local until `as_upload_document` exists — acceptable for FDE/demo, a data-loss risk for a tenanted product. Decide whether Phase 5 ships the binary I/O tools or defers to Horizon 2.
 7. **`doc_type` enum extension.** `datasheet`/`bom` need a small AS migration or land as `specification`/`other`. Confirm whether we extend the enum now (cleaner HBOM provenance) or map locally and defer.
@@ -625,5 +632,5 @@ Slots into SPEC 00 build sequence **Phase 5** after the shared infra—direct re
 ## Amendments applied by later specs
 
 - **SPEC 08 §4.1 — tier D (development) below tier 0.** The bench answers "does this build pass?"; debug answers "why is this hanging?" — different loops, different safety postures. Tier D is interactive, human-initiated, read-mostly, with destructive operations requiring explicit instruction. **Tier D results are diagnostic, never evidentiary**: they never feed the requirement × tier matrix and never produce attestations. A hypothesis confirmed at the bench is a finding, not a proof. Data lands in `probe_run` (AMD-0010), not `verification_results`.
-- **SPEC 08 §5 — `build_run.digest` joins the attestation chain.** A firmware image built by the authoring loop is the subject of the attestation produced by this spec's bench, binding "the requirement flipped because *this* build passed" to a digest.
+- **SPEC 08 §5 — `build_run.digest` joins the attestation chain.** A firmware image built by the authoring loop is the subject of the attestation produced by this spec's bench, binding "the requirement flipped because _this_ build passed" to a digest.
 - **SPEC 07 §2 — the hardware artifact cache mirrors the firmware mount.** `.fs-hw/<project-hash>/` follows the same CACHED discipline as `.fs-firmware/`: content-addressed, gitignored, regenerable, provenance recorded per artifact.

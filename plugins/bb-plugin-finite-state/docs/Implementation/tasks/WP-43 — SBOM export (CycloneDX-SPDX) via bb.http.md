@@ -15,7 +15,7 @@
 
 ## Files you must not touch
 
-server.ts, app.tsx, lanes/bom/register.ts, shared/contract.ts, lib/remote/types.ts, lib/store/schema.ts, test/mock-remote/fixtures/**, package.json, pnpm-lock.yaml, or another lane.
+server.ts, app.tsx, lanes/bom/register.ts, shared/contract.ts, lib/remote/types.ts, lib/store/schema.ts, test/mock-remote/fixtures/\*\*, package.json, pnpm-lock.yaml, or another lane.
 
 ## Context
 
@@ -97,6 +97,6 @@ The route uses bb.http auth local. It is not mirrored as an RPC returning base64
 
 ## Open questions
 
-1. Confirm the exact SPDX media type and extension exposed by the frozen client fixture; the platform bytes and filename convention win.
+1. Confirm the exact SPDX media type and extension exposed by the fixture-fidelity-governed client fixture; the platform bytes and filename convention win.
 2. WP-14's frozen `RemoteArtifact` is the sole upstream boundary; keep any local stream adapter request-owned and path-free.
 3. If the upstream supports additional SPDX encodings, add them only through a contract amendment rather than accepting an ambiguous spdx string.

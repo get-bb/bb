@@ -1,6 +1,6 @@
 # SPEC 00 — Foundation, Conventions & the bb Contract
 
-*Product spec. Owner: Matt Wyckhouse. Status: ready for implementation. This is the spec every other spec references — the plugin skeleton, the shared infrastructure, and the conventions that keep seven surfaces coherent. Read this first.*
+_Product spec. Owner: Matt Wyckhouse. Status: ready for implementation. This is the spec every other spec references — the plugin skeleton, the shared infrastructure, and the conventions that keep seven surfaces coherent. Read this first._
 
 **Spec set:** 00 Foundation (this) · 01 Sync Engine · 02 Findings & VEX Triage · 03 Product Security (TARA/Requirements/Verifications) · 04 Bill of Materials (SBOM/HBOM) · 05 Firmware Mount, Bench & Documents · 06 Agentic Surfaces
 
@@ -10,18 +10,18 @@
 
 A single bb plugin — **`bb-plugin-finite-state`** — that turns bb from a coding IDE into the workspace where a connected product is designed, analyzed, secured, and proven. It brings seven surfaces (threat model, requirements, verifications, SBOM, HBOM, documents, verification bench) plus the firmware filesystem into the same workspace as the source code, and makes all of it editable by both the human and the agent, with changes reviewed as diffs and pushed to Assurance Studio deliberately.
 
-**The product principle that decides arguments:** *the agent and the human work on the same artifacts, through the same review flow, in one workspace.* If a feature requires the agent to have a private channel the human can't inspect, or requires the human to leave bb, it's wrong.
+**The product principle that decides arguments:** _the agent and the human work on the same artifacts, through the same review flow, in one workspace._ If a feature requires the agent to have a private channel the human can't inspect, or requires the human to leave bb, it's wrong.
 
 ---
 
 ## 2. Users and jobs
 
-| User | Job | What success feels like |
-|---|---|---|
-| **Product security engineer** (primary) | Triage findings, maintain the threat model, prove requirements | "I did a day of triage in twenty minutes and every decision is reviewable" |
-| **Firmware engineer** | Fix what the analysis found; ship without breaking compliance | "I can see the security requirements next to the code that satisfies them" |
-| **The agent** (a first-class user) | Do the bulk work: triage, draft requirements, extract HBOM fields, run verification | Edits files, produces diffs, never surprises anyone |
-| **Compliance/program lead** (secondary) | Know what's proven and what isn't | "I can see the gap and the evidence chain without asking anyone" |
+| User                                    | Job                                                                                 | What success feels like                                                    |
+| --------------------------------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| **Product security engineer** (primary) | Triage findings, maintain the threat model, prove requirements                      | "I did a day of triage in twenty minutes and every decision is reviewable" |
+| **Firmware engineer**                   | Fix what the analysis found; ship without breaking compliance                       | "I can see the security requirements next to the code that satisfies them" |
+| **The agent** (a first-class user)      | Do the bulk work: triage, draft requirements, extract HBOM fields, run verification | Edits files, produces diffs, never surprises anyone                        |
+| **Compliance/program lead** (secondary) | Know what's proven and what isn't                                                   | "I can see the gap and the evidence chain without asking anyone"           |
 
 **Anti-user for v1:** multi-user concurrent editing. bb is a single-user, full-trust workspace. Assurance Studio remains the collaboration surface; bb is where focused work happens and gets pushed.
 
@@ -63,7 +63,13 @@ bb-plugin-finite-state/
     "server": "./server.ts",
     "app": "./app.tsx",
     "skills": ["skills"],
-    "themes": [{ "id": "fsds-dark", "name": "Finite State Dark", "css": "./themes/fsds-dark.css" }]
+    "themes": [
+      {
+        "id": "fsds-dark",
+        "name": "Finite State Dark",
+        "css": "./themes/fsds-dark.css"
+      }
+    ]
   }
 }
 ```
@@ -196,9 +202,9 @@ At plugin RPC, domain, and storage boundaries, D-1 scope is the explicit `projec
 
 **Virtualize anything unbounded.** SBOM, findings, filesystem, logs. TanStack Virtual, matching AS.
 
-**Four states, always designed:** loading (skeleton, not spinner), empty (what to do next), error (what failed and the retry), and **unconfigured** (`needsConfiguration`). A plugin that degrades gracefully feels like a product.
+**Four states, always designed:** loading (skeleton, not spinner), empty (what to do next), error (what failed and the retry), and **unconfigured** (`needsConfiguration`) for missing required credentials. Per FS-158, missing optional host executables, runtimes, SDKs, workspace sources, or local data instead yields a scoped advisory on the dependent lane while the plugin remains running. A plugin that degrades gracefully feels like a product.
 
-**Density.** These are professional data surfaces — compact rows, monospace for identifiers (CVE, hash, purl), right-aligned numerics, and severity as color *plus* label (never color alone).
+**Density.** These are professional data surfaces — compact rows, monospace for identifiers (CVE, hash, purl), right-aligned numerics, and severity as color _plus_ label (never color alone).
 
 ---
 
@@ -206,14 +212,14 @@ At plugin RPC, domain, and storage boundaries, D-1 scope is the explicit `projec
 
 Detailed in SPEC 06, but every surface spec must declare its four agent affordances:
 
-| Affordance | Convention |
-|---|---|
+| Affordance                                 | Convention                                                                                                                                                                   |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Agent tools** (`bb.agents.registerTool`) | Read tools are free; **write tools mutate local YAML, never the server.** Remote human-only mutations remain unavailable until bb provides verifiable actor/capability proof |
-| **Skill** (`skills/<surface>/SKILL.md`) | Teaches the agent when to use the surface, the stable keys, the directive syntax, and the review expectation |
-| **Directive** (`::fs-*`) | For anything worth showing inline rather than describing |
-| **Mentions** | Stable ids that resolve to fresh context at send time: `@REQ-104`, `#CVE-2026-1234`, `~bench-run-88` |
+| **Skill** (`skills/<surface>/SKILL.md`)    | Teaches the agent when to use the surface, the stable keys, the directive syntax, and the review expectation                                                                 |
+| **Directive** (`::fs-*`)                   | For anything worth showing inline rather than describing                                                                                                                     |
+| **Mentions**                               | Stable ids that resolve to fresh context at send time: `@REQ-104`, `#CVE-2026-1234`, `~bench-run-88`                                                                         |
 
-**The rule that keeps this safe:** *agents write intent to files; humans review; a future authenticated capability may authorize the sync engine to push.* No agent tool calls a **model-mutating remote endpoint**, and v1 does not pretend panel input proves a human. The narrow, deliberate exception: **ACTION-ONLY invocations** (SPEC 01 class table — `fs_verification_run` in SPEC 03; `fs_bench_run` and `fs_firmware_materialize` byte modes in SPEC 05) may invoke enumerated actions; they are listed in SPEC 06 §5.3 and nowhere else. Transport does not change this policy.
+**The rule that keeps this safe:** _agents write intent to files; humans review; a future authenticated capability may authorize the sync engine to push._ No agent tool calls a **model-mutating remote endpoint**, and v1 does not pretend panel input proves a human. The narrow, deliberate exception: **ACTION-ONLY invocations** (SPEC 01 class table — `fs_verification_run` in SPEC 03; `fs_bench_run` and `fs_firmware_materialize` byte modes in SPEC 05) may invoke enumerated actions; they are listed in SPEC 06 §5.3 and nowhere else. Transport does not change this policy.
 
 ---
 
@@ -241,29 +247,29 @@ bb finite-state
 
 ## 10. Non-functional requirements
 
-| Concern | Requirement |
-|---|---|
-| **Performance** | Panel first paint < 200ms from cache; 10k-row table scrolls at 60fps; no external call in a render path |
-| **Offline** | All panels read from cache; sync failures degrade to stale-with-banner, never blank |
-| **Data safety** | Deletes require confirmation with blast radius; pushes are resumable; a failed push leaves coherent state; an interrupted pull never publishes a mixed generation |
-| **Observability** | Every sync run logged to `bb plugin logs finite-state`; push runs recorded in `push_log` with per-entity outcome |
-| **Secrets** | Platform auth, AS key, and optional Forge credential live in plugin secret settings (0600), never in the worktree, a diff, telemetry, or an error message |
-| **Bundle** | Lazy-load heavy libs (canvas/diagram, XLSX); target < 1MB initial panel bundle |
+| Concern           | Requirement                                                                                                                                                       |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Performance**   | Panel first paint < 200ms from cache; 10k-row table scrolls at 60fps; no external call in a render path                                                           |
+| **Offline**       | All panels read from cache; sync failures degrade to stale-with-banner, never blank                                                                               |
+| **Data safety**   | Deletes require confirmation with blast radius; pushes are resumable; a failed push leaves coherent state; an interrupted pull never publishes a mixed generation |
+| **Observability** | Every sync run logged to `bb plugin logs finite-state`; push runs recorded in `push_log` with per-entity outcome                                                  |
+| **Secrets**       | Platform auth, AS key, and optional Forge credential live in plugin secret settings (0600), never in the worktree, a diff, telemetry, or an error message         |
+| **Bundle**        | Lazy-load heavy libs (canvas/diagram, XLSX); target < 1MB initial panel bundle                                                                                    |
 
 ---
 
 ## 11. Build sequence
 
-| Phase | Deliverable | Spec |
-|---|---|---|
-| **1** | Plugin skeleton, direct remote clients + optional Forge compute adapter, SQLite + migrations, one typed RPC, theme | 00 |
-| **2** | **Findings & VEX triage** — the first sync-engine surface | 01, 02 |
-| **3** | Product Security — TARA canvas, Requirements, Verifications | 03 |
-| **4** | BOM — SBOM, HBOM | 04 |
-| **5** | Firmware mount, Bench, Documents | 05 |
-| **6** | Agentic surfaces — directives, mentions, skills; the Golden Loop | 06 |
+| Phase | Deliverable                                                                                                        | Spec   |
+| ----- | ------------------------------------------------------------------------------------------------------------------ | ------ |
+| **1** | Plugin skeleton, direct remote clients + optional Forge compute adapter, SQLite + migrations, one typed RPC, theme | 00     |
+| **2** | **Findings & VEX triage** — the first sync-engine surface                                                          | 01, 02 |
+| **3** | Product Security — TARA canvas, Requirements, Verifications                                                        | 03     |
+| **4** | BOM — SBOM, HBOM                                                                                                   | 04     |
+| **5** | Firmware mount, Bench, Documents                                                                                   | 05     |
+| **6** | Agentic surfaces — directives, mentions, skills; the Golden Loop                                                   | 06     |
 
-**Phase 2 is deliberately first.** Triage is the highest-value demo *and* the hardest technical case (stable keys, three-way merge without server preconditions, bulk apply with partial failure). Everything after it reuses the engine it forces us to build.
+**Phase 2 is deliberately first.** Triage is the highest-value demo _and_ the hardest technical case (stable keys, three-way merge without server preconditions, bulk apply with partial failure). Everything after it reuses the engine it forces us to build.
 
 ---
 

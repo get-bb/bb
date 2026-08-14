@@ -34,11 +34,12 @@ create a database, or modify the quarantined workflow factory.
 
 ## Frozen baseline
 
-The artifact map has a fixed, exact path set: both composition roots, the four
-FS-89 frozen contracts, and the deterministic mock-fixture tree. The fixture
-tree stays inactive until its owning WP lands through an approved structured
-amendment. The initial baseline records FS-89, PR #6, Matt's approval evidence,
-the approved head, and merge commit
+The artifact map has a fixed, exact path set: both composition roots and the
+four FS-89 frozen contracts. The deterministic mock-fixture tree was removed
+from that set when the WP-08 freeze was retired by owner ruling on 2026-08-13;
+fixture changes instead follow the fixture-fidelity rule and need no amendment.
+The initial baseline records FS-89, PR #6, Matt's approval evidence, the
+approved head, and merge commit
 `1062b0c799a8a538da8131d298175a9e47ed2a38`.
 
 Default mode only recalculates active hashes and names mismatched paths. It is

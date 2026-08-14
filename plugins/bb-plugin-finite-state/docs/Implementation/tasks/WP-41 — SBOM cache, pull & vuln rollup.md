@@ -2,7 +2,7 @@
 
 **Lane:** L5 Bill of Materials · **Spec refs:** SPEC 04 §1.1, §2, §4.1–4.2, §5.8 · SPEC 02 §4.3 · SPEC 00 §5, §10 · RECON §2.2, §2.4–2.6 · **Effort:** 2.5 d · **Status:** unassigned
 **Depends on:** WP-13, WP-04 · **Blocks:** WP-42, WP-43, WP-58
-**Produces a FROZEN artifact:** no — consumes the frozen store, RPC, registry, direct-client, and mock-fixture contracts
+**Produces a FROZEN artifact:** no — consumes the frozen store, RPC, registry, and direct-client contracts plus fixture-fidelity-governed mock data
 
 ## Files you own
 
@@ -20,7 +20,7 @@ Where a later handler module does not exist yet, create only a compiling NOT_IMP
 
 ## Files you must not touch
 
-server.ts, app.tsx, shared/contract.ts, lib/store/schema.ts, lib/sync/registry.ts, lib/remote/types.ts, test/mock-remote/fixtures/**, package.json, pnpm-lock.yaml, or another lane.
+server.ts, app.tsx, shared/contract.ts, lib/store/schema.ts, lib/sync/registry.ts, lib/remote/types.ts, test/mock-remote/fixtures/\*\*, package.json, pnpm-lock.yaml, or another lane.
 
 ## Context
 

@@ -40,7 +40,7 @@ Per §4.2.1, `license` and `redistributable` are recorded per source and must be
 3. Source registration: given a WP-56 document SHA already in the ledger, insert a `ground_source` row with kind (`reference_manual|datasheet|svd|errata|appnote|sdk|re_corpus`), part, title, `path` into the document store, `license` (SPDX id where possible), and `redistributable`. Status lifecycle is `pending → indexing → ready|failed`; failures record a reason and stay queryable.
 4. The indexing pipeline: extract text per page, classify regions, and chunk with structure preservation. `ground_chunk.kind` uses the exact spec vocabulary `prose|register_table|pin_table|timing|figure`. Tables chunk as row groups that retain their header row and table identity; timing diagrams and figures become caption-plus-reference chunks; only prose is chunked as prose.
 5. Anchoring: every chunk carries `page` and `anchor` (table id or section number). A chunk that cannot be assigned a clickable coordinate is recorded with a page-level anchor and flagged, never emitted anchorless.
-6. Embeddings for plane B only, behind an `EmbeddingProvider` interface. Store vectors in `ground_chunk.embedding` BLOB. Indexing is idempotent per (source, content): re-running on an unchanged source is a no-op; a changed provider or model re-embeds and records the model id. No provider configured means indexing parks at `pending` behind `needsConfiguration` — not an error.
+6. Embeddings for plane B only, behind an `EmbeddingProvider` interface. Store vectors in `ground_chunk.embedding` BLOB. Indexing is idempotent per (source, content): re-running on an unchanged source is a no-op; a changed provider or model re-embeds and records the model id. No provider configured means indexing parks at `pending` with a grounding-lane advisory — not an error and never a plugin lifecycle change (FS-158).
 7. `queryDocuments`: similarity retrieval returning passages with `{sourceId, documentName, page, anchor, kind, snippet}`, labeled `plane: "document"` with confidence ~0.72 per the §4.2.1 provenance ladder. Paged `{items, total, cursor}`, bounded snippets, never raw chunk dumps.
 8. License queryability: a source filter and an aggregate ("N sources, M redistributable") that WP-84's coverage view and the CLI can consume directly.
 9. Publish `grounding:changed` with `{sourceId, status}` only after a committed change; the signal is a refetch hint, not a data channel.
@@ -84,7 +84,7 @@ The `EmbeddingProvider` interface takes text batches and returns fixed-dimension
 - [ ] Every retrieval result carries document, page, and anchor coordinates that open the exact location in the WP-56 viewer.
 - [ ] `license` and `redistributable` are populated at registration and queryable through the exported service.
 - [ ] Indexing is idempotent and a failed index leaves the source `failed` with a reason, not half-indexed as `ready`.
-- [ ] Absent embedding provider surfaces `needsConfiguration`; nothing throws and plane-A/catalog work is unaffected.
+- [ ] Absent embedding provider surfaces a grounding-lane advisory while the plugin remains running; nothing throws and plane-A/catalog work is unaffected.
 - [ ] Every list surface is paged `{items, total, cursor}` and snippets are bounded.
 - [ ] Real SQLite in every test; the frozen tables are used exactly as declared.
 - [ ] Realtime publishes tiny refetch hints only after commit.
@@ -95,7 +95,7 @@ The `EmbeddingProvider` interface takes text batches and returns fixed-dimension
 - pipeline.test.ts — pending→indexing→ready lifecycle, idempotent re-index, changed-content re-index, and a corrupt/unparseable PDF lands `failed` with a queryable reason (**error path**).
 - query-documents.test.ts — plane/confidence labeling, kind filters, paging, bounded snippets, and anchorless-chunk flagging.
 - sources.test.ts — registration against a WP-56 ledger SHA, unknown SHA rejected with hint, license aggregate math.
-- embedding.test.ts — provider absent parks at `needsConfiguration` and skips cleanly (CI has no embedding runtime); provider swap re-embeds and stamps the model id.
+- embedding.test.ts — provider absent parks at `pending` with a scoped advisory and skips cleanly (CI has no embedding runtime); provider swap re-embeds and stamps the model id.
 
 ## Do not
 
@@ -108,6 +108,6 @@ The `EmbeddingProvider` interface takes text batches and returns fixed-dimension
 
 ## Open questions
 
-1. **The embedding model/provider is unresolved** — local (llama.cpp/ONNX-class) versus API-backed. Deployment must work air-gapped, so a local default is strongly implied, but model choice, dimension, and where the runtime comes from (host prerequisite behind `needsConfiguration`, per the no-new-npm-deps rule) need an owner decision before `ready` sources exist in production.
+1. **The embedding model/provider is unresolved** — local (llama.cpp/ONNX-class) versus API-backed. Deployment must work air-gapped, so a local default is strongly implied, but model choice, dimension, and where the runtime comes from (host prerequisite reported through a grounding-lane advisory, per FS-158 and the no-new-npm-deps rule) need an owner decision before `ready` sources exist in production.
 2. Vector search strategy at plane-B scale (tens of documents, thousands of chunks): brute-force cosine over BLOBs is likely sufficient; confirm before reaching for an index structure.
 3. Image-only PDFs inherit WP-56's OCR gap: without page/region evidence they must park as unindexable rather than produce uncitable chunks. Confirm the shared `needs_ocr` handling.

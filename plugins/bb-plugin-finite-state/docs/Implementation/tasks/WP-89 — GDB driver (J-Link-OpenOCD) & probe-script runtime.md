@@ -19,13 +19,13 @@
 
 ## Files you must not touch
 
-server.ts, app.tsx, the five frozen artifacts and composition roots (WP-71 owns those changes under approved AMDs), lanes/debug-bench/register.ts and the device registry (WP-88), lib/agentic/registry.ts, package.json, pnpm-lock.yaml, test/mock-remote/fixtures/**, or another lane.
+server.ts, app.tsx, the five frozen artifacts and composition roots (WP-71 owns those changes under approved AMDs), lanes/debug-bench/register.ts and the device registry (WP-88), lib/agentic/registry.ts, package.json, pnpm-lock.yaml, test/mock-remote/fixtures/\*\*, or another lane.
 
 ## Context
 
 This is phase 1 of the instrument bridge: GDB over a J-Link or OpenOCD GDB server against a claimed `bench_device`, plus the probe-script runtime that makes agent debugging inspectable. The agent writes Python probe scripts to `.fs/bench/probes/` — source, git-tracked, diffable — and runs them via the exported probe service. A probe that found a bug once becomes a regression test; an opaque tool call is gone the moment it returns.
 
-Everything host-side is a prerequisite bb cannot ship: a Python 3 runtime, `arm-none-eabi-gdb`/`gdb-multiarch`, and OpenOCD or the J-Link tools. All of it sits behind `needsConfiguration`; CI has no hardware and no Python instrument stack, so every test must skip or use transcript fixtures when the prerequisites are absent. There are no new npm dependencies — the GDB/MI protocol is parsed in TypeScript.
+Everything host-side is a prerequisite bb cannot ship: a Python 3 runtime, `arm-none-eabi-gdb`/`gdb-multiarch`, and OpenOCD or the J-Link tools. Per FS-158, missing prerequisites produce a debug-bench lane advisory while the plugin remains running; plugin-global `needsConfiguration` is reserved for missing required credentials. CI has no hardware and no Python instrument stack, so every test must skip or use transcript fixtures when the prerequisites are absent. There are no new npm dependencies — the GDB/MI protocol is parsed in TypeScript.
 
 Non-destructive by default (SPEC 08 §4.4): nothing in this WP may reset, erase, or flash a target. Register/memory reads, breakpoints, RTOS task walking, and the live snapshot are read-mostly; destructive monitor commands are refused at the runtime layer with a deny-by-default filter. WP-90 supplies the only path that can ever lift that refusal. Tier D output is diagnostic, never evidentiary: nothing here writes `verification_results` or produces attestations.
 
@@ -40,7 +40,7 @@ Non-destructive by default (SPEC 08 §4.4): nothing in this WP may reset, erase,
 7. Deny-by-default command filter in the runtime bridge: `monitor reset`, erase, flash, and fuse operations are refused with a `DESTRUCTIVE_REQUIRES_GRANT` error naming the WP-90 path. The filter is on the TypeScript side of the bridge, not in the Python helper, so a script cannot bypass it.
 8. Record every execution as a `probe_run` row: script path, devices JSON, hypothesis, outcome (`confirmed|refuted|inconclusive`), artifact paths, started/finished. Artifacts (captures, traces, CSV) land under the gitignored bench artifact root, not in git; only scripts are source.
 9. Per-session hardware I/O throttling hooks (token bucket around GDB commands and probe device calls) with limits injected as deps; WP-90 owns the policy values.
-10. Detect prerequisites (python3, gdb, OpenOCD/J-Link) and report `needsConfiguration` with per-tool remediation; export `openGdbSession` and `runProbe` for WP-90/WP-96. Do not register agent tools, CLI, or panels here.
+10. Detect prerequisites (python3, gdb, OpenOCD/J-Link) and report a typed debug-bench advisory with per-tool remediation without changing plugin lifecycle; export `openGdbSession` and `runProbe` for WP-90/WP-96. Do not register agent tools, CLI, or panels here.
 
 ## Interface contract
 
@@ -99,14 +99,14 @@ Non-destructive by default (SPEC 08 §4.4): nothing in this WP may reset, erase,
 - [ ] Destructive monitor commands from a probe script are refused with `DESTRUCTIVE_REQUIRES_GRANT` before any byte reaches the GDB server.
 - [ ] Every probe execution persists a `probe_run` row with outcome and artifacts; artifacts are outside git and scripts are inside it.
 - [ ] Probe script names/paths cannot escape `.fs/bench/probes/`; traversal and absolute paths are rejected.
-- [ ] Missing python3/gdb/OpenOCD/J-Link degrades to `needsConfiguration` with named remediation, never a crash.
+- [ ] Missing python3/gdb/OpenOCD/J-Link degrades the dependent debug-bench surface with a named-remediation advisory while plugin status remains running, never a crash.
 - [ ] The full suite is green in CI with no Python, no gdb, and no hardware present; hardware-dependent tests skip cleanly and visibly.
 - [ ] No agent tool, CLI command, directive, or panel is registered here; nothing writes `verification_results` or attestations.
 
 ## Test plan
 
 - mi.test.ts — golden MI transcripts (breakpoint, registers, memory, backtrace), interleaved async records, malformed record recovery, and truncated stream mid-record.
-- server.test.ts — argv construction for OpenOCD and J-Link, missing binary → `needsConfiguration` (error path), nonzero exit with bounded stderr, and teardown kills the process tree on abort.
+- server.test.ts — argv construction for OpenOCD and J-Link, missing binary → scoped unavailable advisory (degraded path), nonzero exit with bounded stderr, and teardown kills the process tree on abort.
 - session.test.ts — fake GDB server fixture: connect, typed operations, memory read over the 64 KiB bound rejected, RTOS fallback selection, and refusal without a claim (error path).
 - runtime.test.ts — fixture probe scripts: happy path with artifacts, destructive command refusal (safety error path), timeout kill, device-handle limited to requested claims, and outcome persisted on script exception as `inconclusive` with the error captured.
 - store.test.ts — docstring header parse, traversal/absolute/NUL name rejection, and idempotent re-write of an unchanged script.

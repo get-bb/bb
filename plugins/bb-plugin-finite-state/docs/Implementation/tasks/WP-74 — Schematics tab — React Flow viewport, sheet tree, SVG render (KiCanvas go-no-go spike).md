@@ -38,7 +38,7 @@ All data enters through typed RPC hooks; realtime `hardware:changed` is a refetc
 4. The canvas: React Flow viewport with a single custom node hosting the sheet SVG (fetched from the `.fs-hw` cache via `bb.http`), pan/zoom/fit-to-view controls, minimap. Lossless zoom — no rasterization. Lazy-load `@xyflow/react` behind the tab.
 5. The shared selection store: `{projectKey, reference | netName | null}`, exposed to WP-75/76/77 and to agent-context wiring later. Selecting is possible in this WP only via the sheet tree/search results; hit-testing arrives with WP-75.
 6. Stale/re-extract banner: when WP-72 marks artifacts stale (file edited while the panel is open), show a banner offering explicit re-extract. Never trigger extraction automatically.
-7. The four states: loading (skeleton sheet list), empty ("No KiCad project in this workspace" with the `.worktreeinclude` hint), error (export failed, showing the `kicad-cli` stderr from WP-72's result), unconfigured (KiCad not installed via `needsConfiguration` — **parsed sheet tree and search still render; only the canvas degrades**, per SPEC 07 §9).
+7. The four states: loading (skeleton sheet list), empty ("No KiCad project in this workspace" with the `.worktreeinclude` hint), error (export failed, showing the `kicad-cli` stderr from WP-72's result), and lane-unavailable (KiCad not installed, shown as the FS-158 hardware advisory — **parsed sheet tree and search still render; only the canvas degrades**, per SPEC 07 §9). Missing KiCad never changes the plugin lifecycle.
 
 ## Interface contract
 
@@ -72,7 +72,7 @@ All data enters through typed RPC hooks; realtime `hardware:changed` is a refetc
 - [ ] The `hardware` panel registers with `schematics`/`board`/`fab` subpaths; board/fab render their WP-76/77 stubs without crashing.
 - [ ] The fixture project's sheet tree renders hierarchically and clicking a sheet displays its cached SVG in the React Flow viewport with working pan/zoom/fit.
 - [ ] With two fixture projects, the header selector switches `project_key` and all queries re-scope.
-- [ ] With KiCad absent, the tab shows the unconfigured state for the canvas while the sheet tree (parsed data) still populates.
+- [ ] With KiCad absent, the tab shows the lane-unavailable advisory for the canvas while the sheet tree (parsed data) still populates.
 - [ ] A stale artifact shows the re-extract banner; no code path regenerates automatically.
 - [ ] All four states exist and are tested; no raw colors, no Lucide, no emoji; the React Flow chunk loads only when the tab opens.
 - [ ] Selection set from the tree persists when switching to the board tab stub and back.
@@ -80,9 +80,10 @@ All data enters through typed RPC hooks; realtime `hardware:changed` is a refetc
 ## Test plan
 
 `schematics-tab.test.tsx` (via `loadPluginApp`/`renderSlot`)
+
 - `sheet tree renders fixture hierarchy and breadcrumb`, `svg node mounts and viewport pans/zooms`, `project selector re-scopes queries`, `selection survives tab switch`.
 - **Error path:** artifact fetch 404/failed export renders the error state containing the driver stderr, with retry re-requesting status — not a blank canvas.
-- **Unconfigured path:** capability `installed: false` renders install guidance while `hardware.sheets.list` data still displays.
+- **Lane-unavailable path:** capability `installed: false` renders install guidance while `hardware.sheets.list` data still displays.
 - `lazy chunk absent until schematics route opens`.
 
 ## Do not

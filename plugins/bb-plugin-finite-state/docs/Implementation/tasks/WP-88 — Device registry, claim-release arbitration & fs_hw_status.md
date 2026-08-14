@@ -23,7 +23,7 @@ Where WP-87 (`serial/**`, serial app files) and WP-89–94 (driver modules) do n
 
 ## Files you must not touch
 
-server.ts, app.tsx, shared/contract.ts, lib/store/schema.ts, lib/context.ts, lib/remote/types.ts, lib/agentic/registry.ts, lanes/authoring/**, lanes/bench/**, test/mock-remote/fixtures/**, package.json, pnpm-lock.yaml, or another lane.
+server.ts, app.tsx, shared/contract.ts, lib/store/schema.ts, lib/context.ts, lib/remote/types.ts, lib/agentic/registry.ts, lanes/authoring/**, lanes/bench/**, test/mock-remote/fixtures/\*\*, package.json, pnpm-lock.yaml, or another lane.
 
 ## Context
 
@@ -31,7 +31,7 @@ The registry is the arbitration layer everything at tier D stands on: debug prob
 
 Decision 9.5 is the field that is cheap now and expensive to retrofit: instruments are local by default but the driver interface takes a **transport** (local USB, local network, or a bb host), and claim scope is **machine-wide now with the field supporting fleet-wide** — so the same probe script runs on a desk and, later, on the rack. Encode both; implement only the local half.
 
-Enumeration is host-tooling-dependent and **degrades gracefully per family**: serial enumeration may work while Saleae detection does not, and each family reports available/unavailable-with-reason independently. Vendor helper libraries (`logic2-automation`, `dwfpy`, `ppk2-api`, `joulescope`, probe tools) are Python-side host prerequisites behind `needsConfiguration` — **installed on first use with explicit confirmation, never silently**. Tier D is diagnostic, never evidentiary; nothing this lane produces enters `verification_results`.
+Enumeration is host-tooling-dependent and **degrades gracefully per family**: serial enumeration may work while Saleae detection does not, and each family reports available/unavailable-with-reason independently. Vendor helper libraries (`logic2-automation`, `dwfpy`, `ppk2-api`, `joulescope`, probe tools) are Python-side host prerequisites; per FS-158 their absence is a family-scoped advisory while the plugin remains running. They are **installed on first use with explicit confirmation, never silently**. Tier D is diagnostic, never evidentiary; nothing this lane produces enters `verification_results`.
 
 ## What to build
 
@@ -41,7 +41,7 @@ Enumeration is host-tooling-dependent and **degrades gracefully per family**: se
 4. Store (`store.ts`): repository over the exact frozen AMD-0010 `bench_device` table. `device_id` is stable across rescans; `last_seen` advances on sighting; a device that disappears is marked stale and retained — an unplugged probe with an active claim is a state worth seeing, not a row to delete.
 5. Claims (`claims.ts`): transactional single-claimant acquisition — claim sets `claimed_by` (thread/run id) and `claimed_at` only if currently free, in one SQLite transaction; a losing contender gets `DEVICE_CLAIMED` naming the holder. Release is idempotent and holder-checked. Claim scope is `machine` in v1; the scope field is stored and honored in queries so fleet-wide arbitration is additive later.
 6. Stale-claim expiry: claims carry a refresh deadline (default 15 minutes); long-running holders (probe runs, serial sessions) refresh; an expired claim is released by the next arbitration touch, recorded with reason `expired`, and published. No claim outlives its holder silently.
-7. Helper installs (`helpers.ts`): first use of a family whose helper is missing produces an install proposal (what, where from, why) that executes only on explicit human confirmation through the panel or CLI; the outcome is recorded. Absence keeps the family `unavailable` behind `needsConfiguration` — never a silent `pip install`.
+7. Helper installs (`helpers.ts`): first use of a family whose helper is missing produces an install proposal (what, where from, why) that executes only on explicit human confirmation through the panel or CLI; the outcome is recorded. Absence keeps only that family `unavailable` with an actionable advisory and never changes plugin status — never a silent `pip install`.
 8. `fs_hw_status` (read, registered by WP-96): enumerated instruments with kind, make, model, connection, transport, claim state and holder, family availability, and last-seen — bounded, paged, WP-57 budget rules. This is the "Observe" step of the debug loop; it must be cheap and honest.
 9. Device panel: live list grouped by kind with claim state, stale markers, family-unavailable rows with their reason and install affordance, claim/release actions, rescan. Four designed states; theme tokens and Hugeicons; `benchDev:changed` `{deviceId}` hints after committed changes.
 

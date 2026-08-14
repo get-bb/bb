@@ -19,20 +19,20 @@ Where WP-85 (`citations/**`, `cite-write.ts`, app files) and WP-95 (`workflows/*
 
 ## Files you must not touch
 
-server.ts, app.tsx, shared/contract.ts, lib/store/schema.ts, lib/context.ts, lib/remote/types.ts, lib/agentic/registry.ts, lanes/bench/**, lanes/debug-bench/**, test/mock-remote/fixtures/**, package.json, pnpm-lock.yaml, or another lane.
+server.ts, app.tsx, shared/contract.ts, lib/store/schema.ts, lib/context.ts, lib/remote/types.ts, lib/agentic/registry.ts, lanes/bench/**, lanes/debug-bench/**, test/mock-remote/fixtures/\*\*, package.json, pnpm-lock.yaml, or another lane.
 
 ## Context
 
-Build and flash are **local subprocess jobs**. Nothing here calls Platform, Assurance Studio, or Forge; toolchains (`arm-none-eabi-gcc`, cmake/ninja, `west`, vendor flashers) are host prerequisites bb cannot ship. **No toolchain is not an error — it is unconfigured**: detection sits behind `needsConfiguration` and every consumer degrades to a designed unconfigured state. CI has no toolchains; tests run against fixture scripts and skip real-tool paths cleanly.
+Build and flash are **local subprocess jobs**. Nothing here calls Platform, Assurance Studio, or Forge; toolchains (`arm-none-eabi-gcc`, cmake/ninja, `west`, vendor flashers) are host prerequisites bb cannot ship. **No toolchain is not an error — it is a scoped unavailable advisory**: per FS-158, detection leaves the plugin running and only dependent authoring consumers degrade. Plugin-global `needsConfiguration` is reserved for missing required credentials. CI has no toolchains; tests run against fixture scripts and skip real-tool paths cleanly.
 
-`build_run.digest` is the join to SPEC 05: a firmware image built here is the subject of the attestation produced there, which is what makes *"the requirement flipped to verified because THIS build passed"* a true statement rather than a narrative one. The digest is computed from the artifact bytes at build completion and never backfilled or reused across runs.
+`build_run.digest` is the join to SPEC 05: a firmware image built here is the subject of the attestation produced there, which is what makes _"the requirement flipped to verified because THIS build passed"_ a true statement rather than a narrative one. The digest is computed from the artifact bytes at build completion and never backfilled or reused across runs.
 
 **Flash is destructive.** Under AMD-0013/decision 9.3 it executes only on an explicit human instruction in the current turn — intent inherited from an approved plan does not count. The enforcement mechanism (how the token is minted and threaded through the execution context) is WP-90's; **this WP's flash entry point must consume it**, refusing to run without a valid destructive-confirmation token, fail-closed from day one even while WP-90 is unbuilt. `fs_build` and `fs_flash` are ACTION tools in the amended nine-tool union — implemented here as services, registered through the agentic seam by WP-96, never by this lane.
 
 ## What to build
 
 1. Replace the authoring backend registration stub; wire `authoring.*` build/flash/run-history RPC seams, the log-tail `bb.http` route, and background job supervision. Export action services and CLI handlers; create WP-85/WP-95 placeholders.
-2. Toolchain detection: a data-driven probe table (binary name, version command, parse) evaluated against the host, cached with explicit re-detect. Result is a typed report — found toolchains with versions, missing ones with what they unlock. Missing ⇒ `needsConfiguration` on dependent surfaces; never a thrown error, never an auto-install.
+2. Toolchain detection: a data-driven probe table (binary name, version command, parse) evaluated against the host, cached with explicit re-detect. Result is a typed report — found toolchains with versions, missing ones with what they unlock. Missing ⇒ typed authoring-lane advisory on dependent surfaces while plugin status remains running; never a thrown error, never an auto-install.
 3. Build runner: spawn the configured build command as a local subprocess with a bounded environment and the worktree root from the verified execution context (never process cwd). Capture interleaved stdout/stderr to a log file under the plugin data dir; enforce a wall-clock timeout and kill process trees cleanly on cancel.
 4. `build_run` repository over the exact frozen AMD-0010 table: kind `build|flash`, target, toolchain, status, artifact path, digest, log_path, started_at. Transactional status transitions; on plugin restart, rows stuck `running` with a dead pid are marked failed with an `orphaned` reason — never left running forever, never deleted.
 5. Digest: stream SHA-256 over the produced firmware image at build success and store it on the row. Multi-artifact builds record the configured primary image (see open question 2). The digest is what WP-52's attestation subject binding compares against; treat it as immutable evidence.
@@ -47,7 +47,7 @@ Build and flash are **local subprocess jobs**. Nothing here calls Platform, Assu
     export interface ToolchainReport {
       found: Array<{ id: string; version: string; path: string }>;
       missing: Array<{ id: string; unlocks: "build" | "flash" }>;
-      configured: boolean;                 // false ⇒ needsConfiguration
+      configured: boolean;                 // false ⇒ lane-scoped advisory
     }
 
     export interface BuildRunRecord {

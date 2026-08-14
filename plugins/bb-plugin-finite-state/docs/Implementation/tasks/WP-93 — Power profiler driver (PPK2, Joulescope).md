@@ -19,7 +19,7 @@ server.ts, app.tsx, the five frozen artifacts and composition roots (WP-71 owns 
 
 ## Context
 
-Phase 3 of the instrument bridge. Sleep-current regressions are a top defect class in connected products — firmware that works and quietly drains the battery ships all the time — and the questions this driver answers are exactly three: sleep current, boot energy, and active draw correlated to code paths. Vendor backends are the Nordic PPK2 (`ppk2-api`, which also supplies power to the target in source-meter mode) and the Jetperch Joulescope (`joulescope` package). Both are host-side Python prerequisites behind `needsConfiguration`; never npm dependencies, never silently installed (WP-90's confirmation rail).
+Phase 3 of the instrument bridge. Sleep-current regressions are a top defect class in connected products — firmware that works and quietly drains the battery ships all the time — and the questions this driver answers are exactly three: sleep current, boot energy, and active draw correlated to code paths. Vendor backends are the Nordic PPK2 (`ppk2-api`, which also supplies power to the target in source-meter mode) and the Jetperch Joulescope (`joulescope` package). Both are host-side Python prerequisites; never npm dependencies, never silently installed (WP-90's confirmation rail). Per FS-158, missing backends produce instrument-scoped advisories while the plugin remains running.
 
 The driver implements WP-92's `InstrumentDriver` with transport-typed open (decision 9.5) — a power profiler on a rack is the same driver over a `bb-host` transport later. `instro` stays out per decision 9.6 (production bench deferred), and nothing here may foreclose it.
 
@@ -33,7 +33,7 @@ Correlation is what makes a current trace useful: a measurement window tied to w
 4. `correlate.ts` — bind a measurement to context: the `build_run` digest of the flashed image (from WP-86's records, joined not recomputed), and an ordered list of event marks `{at, label, source: "serial"|"gdb"|"manual"}` supplied by the caller, so a window like "between `boot_done` and `radio_on`" is expressible and replayable.
 5. Baseline comparison for the regression workflow: store a named baseline summary per `{deviceId, measurementKind, buildDigest}`, and a compare operation returning the delta with both summaries — a diagnostic record for the agent to reason over, carrying no pass/fail authority.
 6. Replay fixture backend implementing `InstrumentDriver` from recorded sample streams, so measurement math, correlation, and baseline comparison are fully CI-testable.
-7. Prerequisite detection per backend behind distinct `needsConfiguration` keys; artifacts attach to `probe_run` rows via WP-89's runs module; `probe:changed` refetch hints only; every list/query surface paged.
+7. Prerequisite detection per backend behind distinct instrument-advisory keys that never change plugin status; artifacts attach to `probe_run` rows via WP-89's runs module; `probe:changed` refetch hints only; every list/query surface paged.
 
 ## Interface contract
 
@@ -77,12 +77,12 @@ Correlation is what makes a current trace useful: a measurement window tied to w
 - [ ] Baseline comparison returns a `diagnostic: true` delta; nothing in this lane can write `verification_results` or attestations.
 - [ ] Raw traces are artifacts outside git; RPC/tool-facing outputs are bounded summaries; all queries paged.
 - [ ] PPK2 source-mode power-on is a target power action and is gated: it requires debug mode (WP-90 guard at the consuming seam) and is refused otherwise.
-- [ ] Missing `ppk2-api`/`joulescope` yields distinct `needsConfiguration` reports; CI passes with no Python and no hardware.
+- [ ] Missing `ppk2-api`/`joulescope` yields distinct instrument-scoped advisories while plugin status remains running; CI passes with no Python and no hardware.
 - [ ] No npm dependency; no silent host installation.
 
 ## Test plan
 
-- ppk2.test.ts — argv bridge protocol against a scripted fake subprocess, mode selection, missing package → `needsConfiguration` (error path), and abort mid-capture preserves a partial artifact with truncation marked.
+- ppk2.test.ts — argv bridge protocol against a scripted fake subprocess, mode selection, missing package → scoped unavailable advisory (degraded path), and abort mid-capture preserves a partial artifact with truncation marked.
 - joulescope.test.ts — capability advertisement, sample-stream framing, device lost mid-stream → typed `DEVICE_LOST` (error path).
 - measure.test.ts — golden statistics on fixture streams, settle-window exclusion, boot-energy integration between marks, missing boot-complete mark → `INCOMPLETE_WINDOW` rather than a wrong number (error path).
 - correlate.test.ts — digest join from a fixture `build_run` row (real SQLite, never mocked), mark ordering validation, and manual marks round-tripping.

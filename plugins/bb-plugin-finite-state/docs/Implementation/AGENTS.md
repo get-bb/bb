@@ -216,7 +216,7 @@ bb auto-generates a `plugin-commands` skill from the `commands` metadata. **Keep
 - Vendored Radix gets `usePortalScopeProps()`.
 - **Every domain component takes an `id` and self-fetches.** This is the convention that makes the directive layer nearly free: the same `<ThreatCard id="THREAT-22"/>` renders in a panel and inside an agent message. No wrappers, no prop-drilling.
 - **Virtualize anything unbounded** (TanStack Virtual): findings, SBOM, filesystem, logs.
-- **Four states, always designed:** loading (skeleton, not spinner) · empty (what to do next) · error (what failed + retry) · unconfigured (`bb.status.needsConfiguration`).
+- **Four states, always designed:** loading (skeleton, not spinner) · empty (what to do next) · error (what failed + retry) · unconfigured (`bb.status.needsConfiguration`) for missing required credentials. Per FS-158, optional host executables, runtimes, SDKs, workspace sources, and local data never change the plugin lifecycle: keep the plugin running and expose an actionable advisory only on the dependent lane/surface.
 - Density: compact rows, monospace for identifiers (CVE, hash, purl), right-aligned numerics, severity as **color plus label** — never color alone.
 
 ---

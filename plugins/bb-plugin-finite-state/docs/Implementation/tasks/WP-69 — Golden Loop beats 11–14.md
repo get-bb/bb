@@ -5,6 +5,7 @@
 **Produces a FROZEN artifact:** no
 
 ## Files you own
+
 ```
 plugins/bb-plugin-finite-state/test/e2e/golden-loop/beats/beat-11-verdict.ts
 plugins/bb-plugin-finite-state/test/e2e/golden-loop/beats/beat-12-one-commit.ts
@@ -14,12 +15,15 @@ plugins/bb-plugin-finite-state/test/e2e/golden-loop/beats/beats-11-14.test.ts
 ```
 
 ## Files you must not touch
-Production code, seed/harness core, previous beat files, frozen fixtures/interfaces, composition roots, or dependencies.
+
+Production code, seed/harness core, previous beat files, fixture corpus, frozen interfaces, composition roots, or dependencies. The fixture exclusion is ownership, not the retired WP-08 freeze.
 
 ## Context
+
 The last act proves the product's strongest claim: verification is derived from digest-bound evidence; source, security model, and decisions share one commit; the trace is clickable; and the exported attestation is independently inspectable. Offline CI validates a clearly labeled test attestation with bundled verification material. It must not claim a public Rekor entry or production signer that was not actually contacted.
 
 ## What to build
+
 1. **Beat 11 — Evidence, not assertion.** Advance the seeded run through real owner-service ingestion to terminal success. Assert requirement results, artifacts, and attestation bind to the exact v2.4 digest. Render `fs-verdict`; deterministic rule yields green only when every mandatory gate is satisfied and no stale/gap rule blocks it.
 2. Validate DSSE/in-toto structure and signature with bundled test verification material offline. Connected mode may additionally verify public transparency metadata; report the two modes distinctly.
 3. **Beat 12 — One commit.** Assert the working diff includes `src/httpd/session.c`, `product-security/requirements/req-118.yaml`, and the stable-key triage YAML. Commit once in the disposable repo. Query the matrix and requirement card; status becomes Verified only because ingested results cover the contract and digest.
@@ -29,6 +33,7 @@ The last act proves the product's strongest claim: verification is derived from 
 7. Add negative runs for stale digest, missing mandatory evidence, failed check, and invalid signature; none may render green/Verified.
 
 ## Interface contract
+
 ```ts
 export const beats11to14: readonly GoldenLoopBeat[] = [
   { number: 11, name: "signed evidence verdict", run: runBeat11 },
@@ -48,6 +53,7 @@ type GoldenLoopOutcome = ActTwoState & {
 ```
 
 ## Acceptance criteria
+
 - [ ] Green/Verified derive from required results and exact firmware digest, never a button/test flag.
 - [ ] Offline attestation validation is cryptographic/structural and labeled test evidence; no false public-log claim.
 - [ ] One git commit contains source, model, and decision files.
@@ -58,7 +64,9 @@ type GoldenLoopOutcome = ActTwoState & {
 - [ ] Act completes without external network in offline mode.
 
 ## Test plan
+
 `beats-11-14.test.ts`
+
 - happy path for each beat and sequential act.
 - `subject digest mismatch blocks green and marks requirement stale` (**binding error path**).
 - `missing mandatory tier/check yields amber gap, not pass`.
@@ -68,6 +76,7 @@ type GoldenLoopOutcome = ActTwoState & {
 - `export hash equals stored/verified artifact hash`.
 
 ## Do not
+
 - Do not set `verification_status` directly or let a fixture truth flag bypass derivation.
 - Do not claim public Rekor/OIDC provenance in offline fixture mode.
 - Do not turn absent/manual evidence into a pass.
@@ -75,6 +84,6 @@ type GoldenLoopOutcome = ActTwoState & {
 - Do not export a regenerated envelope that differs from the verified bytes.
 
 ## Open questions
+
 1. Select the exact offline signature fixture format after WP-52 freezes its attestation adapter; preserve subject binding regardless of format.
 2. Connected public-log verification is optional for G4 and must be separately timed/reported.
-

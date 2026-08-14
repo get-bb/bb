@@ -38,7 +38,7 @@ Per-source citation counts and the citation trace read the citation overlay, whi
 4. Part picker: search plane A by device/part name (catalog identifier + FTS paths); selecting a catalog part records it as the project platform selection. **Add a custom part** by uploading PDFs through the WP-56 `bb.http` upload path — this WP never implements upload; it drives the existing route, then registers the resulting document SHA as a `ground_source` via the WP-82 RPC.
 5. Coverage card: catalog flavour, `catalog_version`, device/vendor counts, redistributable-vs-total sources, and project-document index status — WP-83's coverage plus WP-82's license aggregate, rendered without editorializing. If only the redistributable catalog is present, say so and name the full-catalog local-build path.
 6. Citation trace ("what does this ground?"): per source, the generated symbols whose citations point at it, grouped by file, each linking to the exact page/anchor in the WP-56 viewer and to the citation entry in the authoring panel. Empty state explains that traces appear once cited values exist.
-7. All four designed states (skeleton loading, actionable empty, error with retry, `needsConfiguration` when neither plane is available) on every component; theme tokens and Hugeicons only; monospace for identifiers and hex addresses.
+7. All four designed states (skeleton loading, actionable empty, error with retry, scoped unavailable advisory when neither plane is available) on every component; per FS-158 this advisory leaves the plugin running and `needsConfiguration` remains reserved for missing required credentials. Theme tokens and Hugeicons only; monospace for identifiers and hex addresses.
 
 ## Interface contract
 

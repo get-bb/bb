@@ -1,6 +1,6 @@
 # Work Package Index
 
-*98 work packages across eleven logical lanes (WP-71…98 added 2026-08-12 for SPECs 07–08). Start with `HANDOFF — Product & Architecture.md`, then the accepted direct-API ADR and `api-reference/README.md`, then the Master Plan, AGENTS, the scheduling bootstrap/manifest, and your WP. The ADR and frozen interfaces outrank historical Forge-first recon on transport ownership.*
+_98 work packages across eleven logical lanes (WP-71…98 added 2026-08-12 for SPECs 07–08). Start with `HANDOFF — Product & Architecture.md`, then the accepted direct-API ADR and `api-reference/README.md`, then the Master Plan, AGENTS, the scheduling bootstrap/manifest, and your WP. The ADR and frozen interfaces outrank historical Forge-first recon on transport ownership._
 
 **Status legend:** ✅ detailed implementation spec written
 
@@ -16,7 +16,7 @@ Each WP is a self-contained unit sized for one coding agent working one to four 
 
 The 70 historical WP keys remain intact: 64 were unstarted at the FS-93 audit point and map to 28 remaining decision-owner clusters. No WP was merged. Keep the four-lane cap until WP-10 through WP-13 and the machine readiness gate complete; then cap at six, with promotion to nine conditional on the runbook's dependency, workflow, and disk checks.
 
-**Five artifacts are frozen** and may not be edited by any lane: `shared/contract.ts` (WP-03) · `lib/store/schema.ts` (WP-04) · `lib/sync/registry.ts` (WP-05) · `lib/remote/types.ts` (WP-06) · `test/mock-remote/fixtures/**` (WP-08). Plus the two composition roots from WP-01. Need a change? Write to `AMENDMENTS.md` and stop.
+**Four interfaces are frozen** and may not be edited by any lane: `shared/contract.ts` (WP-03) · `lib/store/schema.ts` (WP-04) · `lib/sync/registry.ts` (WP-05) · `lib/remote/types.ts` (WP-06). Plus the two composition roots from WP-01. Need a change? Write to `AMENDMENTS.md` and stop. The WP-08 freeze on `test/mock-remote/fixtures/**` was retired by owner ruling on 2026-08-13; fixture changes instead follow the fixture-fidelity rule in `docs/Implementation/AGENTS.md` and need no amendment.
 
 ---
 
@@ -28,23 +28,23 @@ Staff this path with your strongest agents. Keep a human reviewer on WP-03/04/05
 
 ---
 
-## L0 — Foundation *(2 agents, ~1 wk wall-clock)*
+## L0 — Foundation _(2 agents, ~1 wk wall-clock)_
 
-| WP | Title | Effort | Depends on | Frozen | Status |
-|---|---|---|---|---|---|
-| 01 | Repo scaffold, manifest & composition roots | 1.5 d | — | **yes** | ✅ |
-| 02 | Register plugin in bb builtin registry | 0.5 d | 01 | no | ✅ |
-| 03 | `shared/contract.ts` — every RPC contract | 2 d | 01 | **yes** | ✅ |
-| 04 | `lib/store/schema.ts` — every table + migrations | 2 d | 01 | **yes** | ✅ |
-| 05 | `lib/sync/registry.ts` — the entity registry | 1.5 d | 03, 04 | **yes** | ✅ |
-| 06 | `lib/remote/types.ts` — direct services & optional compute contracts | 1.5 d | 01 | **yes** | ✅ |
-| 07 | FSDS theme, tokens & `lib/format.ts` | 1.5 d | 01 | no | ✅ |
-| 08 | Mock fixture corpus & seed-data generator | 2 d | 04, 06 | **yes** | ✅ |
-| 09 | CI gates, custom lint rules & dependency freeze | 1 d | 01 | no | ✅ |
+| WP  | Title                                                                | Effort | Depends on | Frozen  | Status |
+| --- | -------------------------------------------------------------------- | ------ | ---------- | ------- | ------ |
+| 01  | Repo scaffold, manifest & composition roots                          | 1.5 d  | —          | **yes** | ✅     |
+| 02  | Register plugin in bb builtin registry                               | 0.5 d  | 01         | no      | ✅     |
+| 03  | `shared/contract.ts` — every RPC contract                            | 2 d    | 01         | **yes** | ✅     |
+| 04  | `lib/store/schema.ts` — every table + migrations                     | 2 d    | 01         | **yes** | ✅     |
+| 05  | `lib/sync/registry.ts` — the entity registry                         | 1.5 d  | 03, 04     | **yes** | ✅     |
+| 06  | `lib/remote/types.ts` — direct services & optional compute contracts | 1.5 d  | 01         | **yes** | ✅     |
+| 07  | FSDS theme, tokens & `lib/format.ts`                                 | 1.5 d  | 01         | no      | ✅     |
+| 08  | Mock fixture corpus & seed-data generator                            | 2 d    | 04, 06     | **yes** | ✅     |
+| 09  | CI gates, custom lint rules & dependency freeze                      | 1 d    | 01         | no      | ✅     |
 
 **WP-02 scope.** The one sanctioned out-of-directory change. Add the entry to `apps/server/src/services/plugins/builtin-registry.ts` and update the two lockstep test files with hardcoded assertion lists (`official-plugins.test.ts` ~L87-102, `builtin-plugins.test.ts` ~L189-219) plus `docs/official-plugin-release-process.md`. Add a `turbo.json` build-ordering block only if the SDK-build-first pattern is needed (mirror the `bb-plugin-tasks#build` block). Record everything in `FORK-DELTA.md`.
 
-**WP-07 scope.** Ship FSDS as a bb theme (`themes/fsds-dark.css`), declared in the manifest — themes are *not* registered via `definePluginApp` (RECON §1.3). Source tokens from `/CEO Strategy/Design System/`. Embed Space Grotesk + Instrument Sans as base64 so the theme is single-file. Then `lib/format.ts`: severity, CVSS, EPSS, dates, hashes, purl shortening, byte sizes. Every formatter is pure and unit-tested. **No hex anywhere in component code** — the theme defines tokens, components consume them.
+**WP-07 scope.** Ship FSDS as a bb theme (`themes/fsds-dark.css`), declared in the manifest — themes are _not_ registered via `definePluginApp` (RECON §1.3). Source tokens from `/CEO Strategy/Design System/`. Embed Space Grotesk + Instrument Sans as base64 so the theme is single-file. Then `lib/format.ts`: severity, CVSS, EPSS, dates, hashes, purl shortening, byte sizes. Every formatter is pure and unit-tested. **No hex anywhere in component code** — the theme defines tokens, components consume them.
 
 **WP-08 scope.** The seed corpus every lane's tests assert against. Target: one product version with **~4,000 findings** across ~180 components, a 12-node TARA model, 40 requirements, a 900-entry SBOM, a 6,000-file firmware tree, and 6 documents. Generated deterministically from a seed so it's reproducible and diffable; committed as fixtures. Must include the awkward cases on purpose: duplicate finding rows, a component with no purl, a finding whose component version changed between scans, a soft-deleted-then-re-confirmed finding, and a requirement with no verification.
 
@@ -52,15 +52,15 @@ Staff this path with your strongest agents. Keep a human reviewer on WP-03/04/05
 
 ---
 
-## L1 — Remote services & mocks *(2 agents, ~1.5 wk)*
+## L1 — Remote services & mocks _(2 agents, ~1.5 wk)_
 
-| WP | Title | Effort | Depends on | Status |
-|---|---|---|---|---|
-| 10 | Remote-service mock skeleton — vendored API generation & route tables | 2 d | 06 | ✅ |
-| 11 | Mock: findings, VEX, SBOM & components | 2 d | 10, 08 | ✅ |
-| 12 | Mock: AS/TARA + requirements, Platform firmware, optional compute jobs | 2.5 d | 10, 08 | ✅ |
-| 13 | **Mock: fault injection & live-drift quirks — GATE** | 2 d | 11, 12 | ✅ |
-| 14 | Direct remote clients & optional Forge compute — auth, limits, jobs | 4 d | 06 | ✅ |
+| WP  | Title                                                                  | Effort | Depends on | Status |
+| --- | ---------------------------------------------------------------------- | ------ | ---------- | ------ |
+| 10  | Remote-service mock skeleton — vendored API generation & route tables  | 2 d    | 06         | ✅     |
+| 11  | Mock: findings, VEX, SBOM & components                                 | 2 d    | 10, 08     | ✅     |
+| 12  | Mock: AS/TARA + requirements, Platform firmware, optional compute jobs | 2.5 d  | 10, 08     | ✅     |
+| 13  | **Mock: fault injection & live-drift quirks — GATE**                   | 2 d    | 11, 12     | ✅     |
+| 14  | Direct remote clients & optional Forge compute — auth, limits, jobs    | 4 d    | 06         | ✅     |
 
 **WP-10 scope.** Generate independent Platform and AS mock route inventories from `docs/Implementation/api-reference/`, not a sibling checkout. Read the provenance/authority index first. The AS snapshot is incomplete, so patch only handler-backed gaps recorded in the vendored notes/audit. Unknown routes remain absent. **Rule: handler evidence wins over the incomplete spec; closed WP-06 interfaces win over both at runtime.**
 
@@ -74,39 +74,39 @@ Staff this path with your strongest agents. Keep a human reviewer on WP-03/04/05
 
 ---
 
-## L2 — Sync engine *(2 agents, ~2.5 wk)* · SPEC 01
+## L2 — Sync engine _(2 agents, ~2.5 wk)_ · SPEC 01
 
-| WP | Title | Effort | Depends on | Status |
-|---|---|---|---|---|
-| 15 | Serializer framework & the exclusion list | 2 d | 01, 05 | ✅ |
-| 16 | Base snapshot store & `id_map` | 1.5 d | 04, 15 | ✅ |
-| 17 | **`pull` + `status` for one OVERLAY entity — GATE** | 3 d | 06, 13, 15, 16 | ✅ |
-| 18 | `plan` — diff, validation, ordering, blast radius | 3 d | 17 | ✅ |
-| 19 | `push` — chunking, base advance, resumability, read-back | 4 d | 18 | ✅ |
-| 20 | Conflict detection & field-level resolution | 3 d | 18 | ✅ |
-| 21 | The review panel UI | 3 d | 18, 20, 07 | ✅ |
+| WP  | Title                                                    | Effort | Depends on     | Status |
+| --- | -------------------------------------------------------- | ------ | -------------- | ------ |
+| 15  | Serializer framework & the exclusion list                | 2 d    | 01, 05         | ✅     |
+| 16  | Base snapshot store & `id_map`                           | 1.5 d  | 04, 15         | ✅     |
+| 17  | **`pull` + `status` for one OVERLAY entity — GATE**      | 3 d    | 06, 13, 15, 16 | ✅     |
+| 18  | `plan` — diff, validation, ordering, blast radius        | 3 d    | 17             | ✅     |
+| 19  | `push` — chunking, base advance, resumability, read-back | 4 d    | 18             | ✅     |
+| 20  | Conflict detection & field-level resolution              | 3 d    | 18             | ✅     |
+| 21  | The review panel UI                                      | 3 d    | 18, 20, 07     | ✅     |
 
 **WP-19 scope.** Apply the plan against the backend's real shape. Per-row calls for core entities (**no bulk create/update exists**), chunked and rate-limited; **VEX is the exception** — `batch_set_vex_status`, cap 500. Diff before writing (an identical re-PUT still bumps timestamps and emits an audit row, so `noop` items are skipped, not re-sent). **Advance base per entity** on each success so a failed push leaves a coherent, partially-advanced state. Bracket TARA content writes between a head check and a `POST /versions` checkpoint with `expectedHeadVersionId`. **Read-back verification** on routes where `.strict()` isn't applied — a 200 is not proof. Stamp provenance where the API allows (`[bb:{run-id}]` in `vex_reason`). Resumable from `push_log`.
 
-**WP-20 scope.** Field-level, not file-level — these are records, not prose, and YAML with `<<<<<<<` can be invalid. Present base/ours/theirs with server audit attribution (who, when). Explicit per-item resolution: `take-ours`, `take-theirs`, or edit. Auto-merge only where safe: different fields on the same entity, and set-operations on graph nodes/edges. **Never auto-merge same-field edits.** Per-surface policy defaults — for VEX, *theirs-wins on human server edits*, because the server cannot distinguish our stale write from an intentional override.
+**WP-20 scope.** Field-level, not file-level — these are records, not prose, and YAML with `<<<<<<<` can be invalid. Present base/ours/theirs with server audit attribution (who, when). Explicit per-item resolution: `take-ours`, `take-theirs`, or edit. Auto-merge only where safe: different fields on the same entity, and set-operations on graph nodes/edges. **Never auto-merge same-field edits.** Per-surface policy defaults — for VEX, _theirs-wins on human server edits_, because the server cannot distinguish our stale write from an intentional override.
 
-**WP-21 scope.** The plan as a first-class UI, because it's a demo moment: *the agent proposed changes to your security model — here's the exact diff — approve to push.* Grouped by operation, collapsible; each row expands to a field-level diff rendering the **domain component inline** (a threat diff shows a `<ThreatCard>`, not raw YAML); conflicts inline with resolution controls; footer with blast-radius summary and a single Push button disabled while conflicts remain; post-push per-item results with retry. Lives at the `sync` nav route, reachable from a pending-count chip in every panel header.
+**WP-21 scope.** The plan as a first-class UI, because it's a demo moment: _the agent proposed changes to your security model — here's the exact diff — approve to push._ Grouped by operation, collapsible; each row expands to a field-level diff rendering the **domain component inline** (a threat diff shows a `<ThreatCard>`, not raw YAML); conflicts inline with resolution controls; footer with blast-radius summary and a single Push button disabled while conflicts remain; post-push per-item results with retry. Lives at the `sync` nav route, reachable from a pending-count chip in every panel header.
 
 ---
 
-## L3 — Findings & VEX triage *(2 agents, ~3 wk)* · SPEC 02 — the flagship
+## L3 — Findings & VEX triage _(2 agents, ~3 wk)_ · SPEC 02 — the flagship
 
-| WP | Title | Effort | Depends on | Status |
-|---|---|---|---|---|
-| 22 | Findings cache & pull pipeline | 2.5 d | 04, 05, 13 | ✅ |
-| 23 | **Stable-key tier ladder & `resolve()`** | 3 d | 05, 22 | ✅ |
-| 24 | Findings table panel — virtualized, filters, saved views | 4 d | 22, 07 | ✅ |
-| 25 | Finding detail view & cross-surface links | 2.5 d | 24 | ✅ |
-| 26 | Manual triage flow & keyboard shortcuts | 3 d | 25, 27 | ✅ |
-| 27 | YAML overlay writer & `overlay_index` | 2.5 d | 23, 15 | ✅ |
-| 28 | Policy-as-code engine & dry-run | 3 d | 27 | ✅ |
-| 29 | Bulk apply & partial-failure handling | 2.5 d | 19, 27 | ✅ |
-| 30 | Re-scan drift, orphans & vendor VEX import | 3 d | 23, 29 | ✅ |
+| WP  | Title                                                    | Effort | Depends on | Status |
+| --- | -------------------------------------------------------- | ------ | ---------- | ------ |
+| 22  | Findings cache & pull pipeline                           | 2.5 d  | 04, 05, 13 | ✅     |
+| 23  | **Stable-key tier ladder & `resolve()`**                 | 3 d    | 05, 22     | ✅     |
+| 24  | Findings table panel — virtualized, filters, saved views | 4 d    | 22, 07     | ✅     |
+| 25  | Finding detail view & cross-surface links                | 2.5 d  | 24         | ✅     |
+| 26  | Manual triage flow & keyboard shortcuts                  | 3 d    | 25, 27     | ✅     |
+| 27  | YAML overlay writer & `overlay_index`                    | 2.5 d  | 23, 15     | ✅     |
+| 28  | Policy-as-code engine & dry-run                          | 3 d    | 27         | ✅     |
+| 29  | Bulk apply & partial-failure handling                    | 2.5 d  | 19, 27     | ✅     |
+| 30  | Re-scan drift, orphans & vendor VEX import               | 3 d    | 23, 29     | ✅     |
 
 **WP-23 is the highest-risk item in the build.** Findings have no unique business key by design — the unique index was deliberately dropped because legacy data carries legitimate duplicates, and ingest dedupes by anti-join rather than upsert. Two consequences: finding UUIDs are **per-version ephemeral**, and a monitor soft-delete → re-confirm cycle silently loses triage. So key every overlay decision on stable business identity: `(project, component-identity, CVE)` with the tier ladder **purl → case-folded (name, group, version) → (name, group) any-version**. This is the platform's own `carry_forward_vex` ladder — matching it means our decisions re-attach the way the platform's do, and where carry-forward fails (non-fatal, unretried) **our overlay becomes the recovery mechanism**. The `pin` field encodes promotability: `exact_version` vs `any_version`, mirroring the rule that **`CODE_NOT_REACHABLE` never promotes across versions** because it's build-specific. Exhaustive test matrix required.
 
@@ -114,26 +114,26 @@ Staff this path with your strongest agents. Keep a human reviewer on WP-03/04/05
 
 **WP-26 scope.** Triage must feel fast — that's the whole product claim. Full keyboard model: `j/k` navigate, `Enter` open detail, six status letters mapping to the six VEX statuses, `u` undo, `/` focus filter, `x` select, `Shift-X` select range, `b` bulk-decide selection, `?` shortcut sheet. Every action writes local YAML only; nothing touches the server.
 
-**WP-28 scope.** `.fs/triage/policy.yaml` as reviewable rules-as-code, porting fs-report's band rules and AS's holdback rules. Rule schema with match predicates and a decision. Dry-run that reports what *would* change without writing. **Never clobber a human decision** — policy fills gaps, it does not overwrite. Doubles as the specification for a future server-side policy engine.
+**WP-28 scope.** `.fs/triage/policy.yaml` as reviewable rules-as-code, porting fs-report's band rules and AS's holdback rules. Rule schema with match predicates and a decision. Dry-run that reports what _would_ change without writing. **Never clobber a human decision** — policy fills gaps, it does not overwrite. Doubles as the specification for a future server-side policy engine.
 
 **WP-30 scope.** Three distinct behaviors. **Drift**: on a version bump, re-attach decisions via the tier ladder; report what re-applied, what went stale, what could not attach. **Orphans**: decisions whose stable key no longer resolves — surfaced in `status`, never silently dropped. **Vendor VEX import**: ingest a supplier's VEX document, map to stable keys, present as proposals in the review queue rather than facts.
 
 ---
 
-## L4 — Product Security *(3 agents, ~3 wk; canvas is its own sub-lane)* · SPEC 03
+## L4 — Product Security _(3 agents, ~3 wk; canvas is its own sub-lane)_ · SPEC 03
 
-| WP | Title | Effort | Depends on | Status |
-|---|---|---|---|---|
-| 31 | **Canvas spike & React Flow/elkjs port foundation — GATE** | 4 d | 07 | ✅ |
-| 32 | Canvas node types, dataflows & inspector | 4 d | 31 | ✅ |
-| 33 | Canvas threat overlay (STRIDE micro-bars) & attack paths | 3 d | 32 | ✅ |
-| 34 | Canvas cross-surface links & layout persistence | 2.5 d | 32 | ✅ |
-| 35 | Canvas editing → YAML → plan | 3 d | 34, 18 | ✅ |
-| 36 | Requirements EARS schema, validation & cards UI | 4 d | 05, 07 | ✅ |
-| 37 | Requirements traceability view & filters | 2.5 d | 36 | ✅ |
-| 38 | EARS conversion flow (agent + three gates) | 3 d | 36 | ✅ |
-| 39 | Verifications matrix (requirement × tier) | 3 d | 36 | ✅ |
-| 40 | Verification run detail, attestations & TARA concurrency | 3 d | 39, 19 | ✅ |
+| WP  | Title                                                      | Effort | Depends on | Status |
+| --- | ---------------------------------------------------------- | ------ | ---------- | ------ |
+| 31  | **Canvas spike & React Flow/elkjs port foundation — GATE** | 4 d    | 07         | ✅     |
+| 32  | Canvas node types, dataflows & inspector                   | 4 d    | 31         | ✅     |
+| 33  | Canvas threat overlay (STRIDE micro-bars) & attack paths   | 3 d    | 32         | ✅     |
+| 34  | Canvas cross-surface links & layout persistence            | 2.5 d  | 32         | ✅     |
+| 35  | Canvas editing → YAML → plan                               | 3 d    | 34, 18     | ✅     |
+| 36  | Requirements EARS schema, validation & cards UI            | 4 d    | 05, 07     | ✅     |
+| 37  | Requirements traceability view & filters                   | 2.5 d  | 36         | ✅     |
+| 38  | EARS conversion flow (agent + three gates)                 | 3 d    | 36         | ✅     |
+| 39  | Verifications matrix (requirement × tier)                  | 3 d    | 36         | ✅     |
+| 40  | Verification run detail, attestations & TARA concurrency   | 3 d    | 39, 19     | ✅     |
 
 **WP-31 is a go/no-go gate.** Spike first (Master Plan §11, S1): port one node type plus elkjs layout into a bare bb panel and time it. React Flow v12 (`@xyflow/react`) is portable from AS — recon found only one Next.js import to remove. If the spike runs long, the rest of L4 does not commit until it's resolved.
 
@@ -147,39 +147,39 @@ Staff this path with your strongest agents. Keep a human reviewer on WP-03/04/05
 
 ---
 
-## L5 — Bill of Materials *(1 agent, ~3.5 wk)* · SPEC 04
+## L5 — Bill of Materials _(1 agent, ~3.5 wk)_ · SPEC 04
 
-| WP | Title | Effort | Depends on | Status |
-|---|---|---|---|---|
-| 41 | SBOM cache, pull & vuln rollup | 2.5 d | 13, 04 | ✅ |
-| 42 | SBOM table panel, row expansion & cross-links | 3 d | 41, 07 | ✅ |
-| 43 | SBOM export (CycloneDX/SPDX) via `bb.http` | 1.5 d | 41 | ✅ |
-| 44 | HBOM schema & the provenance cell model | 3 d | 04, 05 | ✅ |
-| 45 | HBOM UI, confidence display & review queue | 4 d | 44, 07 | ✅ |
-| 46 | HBOM extraction merge engine & XLSX export | 4 d | 44, 56 | ✅ |
+| WP  | Title                                         | Effort | Depends on | Status |
+| --- | --------------------------------------------- | ------ | ---------- | ------ |
+| 41  | SBOM cache, pull & vuln rollup                | 2.5 d  | 13, 04     | ✅     |
+| 42  | SBOM table panel, row expansion & cross-links | 3 d    | 41, 07     | ✅     |
+| 43  | SBOM export (CycloneDX/SPDX) via `bb.http`    | 1.5 d  | 41         | ✅     |
+| 44  | HBOM schema & the provenance cell model       | 3 d    | 04, 05     | ✅     |
+| 45  | HBOM UI, confidence display & review queue    | 4 d    | 44, 07     | ✅     |
+| 46  | HBOM extraction merge engine & XLSX export    | 4 d    | 44, 56     | ✅     |
 
 **WP-44 is the credibility backbone.** Every HBOM field is a `{value, provenance, source_ref, confidence, by, at}` cell — confidence numeric 0–1, bands display-only. An HBOM full of confidently-wrong part numbers is worse than no HBOM, so the cell model is the feature, not the container. Distinguish bare-null (`—`, never asserted) from human-null (`n/a`, deliberately empty).
 
-**WP-45 scope.** Low-confidence and inferred cells are visually distinct (dashed underline, muted); hover reveals the source — *"MPN from datasheet_p7.pdf, confidence 0.72, extracted by agent 2026-07-29."* Agent extractions are presented as **proposals, not facts**, and acceptance is human-only. Review queue with bulk accept/reject.
+**WP-45 scope.** Low-confidence and inferred cells are visually distinct (dashed underline, muted); hover reveals the source — _"MPN from datasheet_p7.pdf, confidence 0.72, extracted by agent 2026-07-29."_ Agent extractions are presented as **proposals, not facts**, and acceptance is human-only. Review queue with bulk accept/reject.
 
 **WP-46 scope.** Eight precedence rules for merging extractions from multiple documents; never silently overwrite. Export via `exceljs` through `bb.http` (RPC is JSON-only) with four sheets including a **mandatory provenance ledger**, plus a verified-only mode. CycloneDX-HBOM JSON is optional and **its field schema needs verification before any customer-facing claim** — flag it, don't assume ECMA-424 shape.
 
 ---
 
-## L6 — Firmware, Bench & Documents *(2 agents, ~3.5 wk)* · SPEC 05
+## L6 — Firmware, Bench & Documents _(2 agents, ~3.5 wk)_ · SPEC 05
 
-| WP | Title | Effort | Depends on | Status |
-|---|---|---|---|---|
-| 47 | Firmware cache layout, `manifest.sqlite` & content addressing | 2.5 d | 04 | ✅ |
-| 48 | `standalone_unpack.py` driver — the primary path | 3 d | 47 | ✅ |
-| 49 | API per-file fallback & admin-gate handling | 2 d | 47, 13 | ✅ |
-| 50 | Optional Forge compute root preparation & ordering constraint | 1.5 d | 48 | ✅ |
-| 51 | Firmware UX — pull job, status chip, binary opener, version diff | 3 d | 07, 48, 49 | ✅ |
-| 52 | Bench data model — runs, results, artifacts, attestations | 2 d | 04 | ✅ |
-| 53 | Bench tiers 0–1 execution (static + rehosted) | 4 d | 52, 50 | ✅ |
-| 54 | Bench timeline panel, run detail & live log tail | 3 d | 07, 52, 53 | ✅ |
-| 55 | **The safe-to-OTA verdict card** | 2 d | 54 | ✅ |
-| 56 | Documents store, viewer, extraction overlay & upload | 3.5 d | 04, 07 | ✅ |
+| WP  | Title                                                            | Effort | Depends on | Status |
+| --- | ---------------------------------------------------------------- | ------ | ---------- | ------ |
+| 47  | Firmware cache layout, `manifest.sqlite` & content addressing    | 2.5 d  | 04         | ✅     |
+| 48  | `standalone_unpack.py` driver — the primary path                 | 3 d    | 47         | ✅     |
+| 49  | API per-file fallback & admin-gate handling                      | 2 d    | 47, 13     | ✅     |
+| 50  | Optional Forge compute root preparation & ordering constraint    | 1.5 d  | 48         | ✅     |
+| 51  | Firmware UX — pull job, status chip, binary opener, version diff | 3 d    | 07, 48, 49 | ✅     |
+| 52  | Bench data model — runs, results, artifacts, attestations        | 2 d    | 04         | ✅     |
+| 53  | Bench tiers 0–1 execution (static + rehosted)                    | 4 d    | 52, 50     | ✅     |
+| 54  | Bench timeline panel, run detail & live log tail                 | 3 d    | 07, 52, 53 | ✅     |
+| 55  | **The safe-to-OTA verdict card**                                 | 2 d    | 54         | ✅     |
+| 56  | Documents store, viewer, extraction overlay & upload             | 3.5 d  | 04, 07     | ✅     |
 
 **WP-48 is the primary path, not the fallback.** Recon settled this: firmware byte modes require org-admin `VIEW_ANY_PROJECT_FILE`, ranged reads cap at 128 KiB, `full` mode requires `save_to`, and there is no tarball export endpoint. Materializing a 6,000-file rootfs per-file is not viable. So local unpack leads. Note `standalone_unpack.py` is **not pip-installable** — it needs the FACT-extractor Docker image (`localhost:5000/services-unpack:latest`). Contract: `snapshot.json` with `input_sha256`, `file_tree[]`, `unpack_metadata{}`, `errors[]` — **surface the errors so unpack gaps are visible, not silent.**
 
@@ -191,18 +191,18 @@ Staff this path with your strongest agents. Keep a human reviewer on WP-03/04/05
 
 ---
 
-## L7 — Agentic surfaces *(1 agent, ~2 wk, trails the surfaces)* · SPEC 06
+## L7 — Agentic surfaces _(1 agent, ~2 wk, trails the surfaces)_ · SPEC 06
 
-| WP | Title | Effort | Depends on | Status |
-|---|---|---|---|---|
-| 57 | Agent tool registry, conventions & error shapes | 2 d | 01 | ✅ |
-| 58 | Read tools | 2.5 d | 18, 22–30, 36–46, 52–57 | ✅ |
-| 59 | Write tools (YAML only) | 3 d | 27, 28, 36, 44, 46, 57 | ✅ |
-| 60 | Action tools & the allowlist guard | 2 d | 40, 49, 50, 53, 57 | ✅ |
-| 61 | Directives — all twelve | 3 d | 21, 25, 28, 32–40, 42, 45, 54–57 | ✅ |
-| 62 | Mention providers | 2 d | 22, 23, 36, 41, 44, 52, 56, 57 | ✅ |
-| 63 | Skills tree — root plus per-surface | 2.5 d | 58–60, completed surface contracts | ✅ |
-| 64 | CLI — the full `bb finite-state` tree | 2.5 d | 57, completed domain services | ✅ |
+| WP  | Title                                           | Effort | Depends on                         | Status |
+| --- | ----------------------------------------------- | ------ | ---------------------------------- | ------ |
+| 57  | Agent tool registry, conventions & error shapes | 2 d    | 01                                 | ✅     |
+| 58  | Read tools                                      | 2.5 d  | 18, 22–30, 36–46, 52–57            | ✅     |
+| 59  | Write tools (YAML only)                         | 3 d    | 27, 28, 36, 44, 46, 57             | ✅     |
+| 60  | Action tools & the allowlist guard              | 2 d    | 40, 49, 50, 53, 57                 | ✅     |
+| 61  | Directives — all twelve                         | 3 d    | 21, 25, 28, 32–40, 42, 45, 54–57   | ✅     |
+| 62  | Mention providers                               | 2 d    | 22, 23, 36, 41, 44, 52, 56, 57     | ✅     |
+| 63  | Skills tree — root plus per-surface             | 2.5 d  | 58–60, completed surface contracts | ✅     |
+| 64  | CLI — the full `bb finite-state` tree           | 2.5 d  | 57, completed domain services      | ✅     |
 
 **WP-57 scope.** The conventions that make sixteen tools coherent: read tools return **summaries with ids, not dumps** (context economy); pagination with a token budget; write tools return the **file path written plus a diff summary**; error shapes that teach recovery rather than just failing; idempotency; and the pairing rule — `fs_findings_query` returns ids, the agent renders `::fs-finding{id}`.
 
@@ -216,77 +216,77 @@ Staff this path with your strongest agents. Keep a human reviewer on WP-03/04/05
 
 ---
 
-## L8 — Demo & E2E *(1 agent, ~1 wk)* · SPEC 06 §6
+## L8 — Demo & E2E _(1 agent, ~1 wk)_ · SPEC 06 §6
 
-| WP | Title | Effort | Depends on | Status |
-|---|---|---|---|---|
-| 65 | Golden Loop E2E harness | 2 d | G3 | ✅ |
-| 66 | Demo seed data & warm-cache snapshot | 1.5 d | 08, 65 | ✅ |
-| 67 | Golden Loop beats 1–5 | 2 d | 61–66, L2/L3 prerequisites | ✅ |
-| 68 | Golden Loop beats 6–10 | 2 d | 19–21, 32–40, 50, 52–54, 59–62, 67 | ✅ |
-| 69 | Golden Loop beats 11–14 | 2 d | 39, 40, 52–55, 61, 68 | ✅ |
-| 70 | Offline mode, demo runbook & failure recovery | 2 d | 64, 69, Golden Loop production deps | ✅ |
-| 98 | Golden Loop v2 — the authoring beat (post-G4) | 2 d | 69, 95, 96 | ✅ |
+| WP  | Title                                         | Effort | Depends on                          | Status |
+| --- | --------------------------------------------- | ------ | ----------------------------------- | ------ |
+| 65  | Golden Loop E2E harness                       | 2 d    | G3                                  | ✅     |
+| 66  | Demo seed data & warm-cache snapshot          | 1.5 d  | 08, 65                              | ✅     |
+| 67  | Golden Loop beats 1–5                         | 2 d    | 61–66, L2/L3 prerequisites          | ✅     |
+| 68  | Golden Loop beats 6–10                        | 2 d    | 19–21, 32–40, 50, 52–54, 59–62, 67  | ✅     |
+| 69  | Golden Loop beats 11–14                       | 2 d    | 39, 40, 52–55, 61, 68               | ✅     |
+| 70  | Offline mode, demo runbook & failure recovery | 2 d    | 64, 69, Golden Loop production deps | ✅     |
+| 98  | Golden Loop v2 — the authoring beat (post-G4) | 2 d    | 69, 95, 96                          | ✅     |
 
 **The Golden Loop, for reference.** New firmware version lands → agent materializes the mount → queries findings → applies triage policy → writes YAML → human reviews the diff → plan → push → a finding is real, so the agent traces it to the threat model → drafts an EARS requirement → implements the fix in firmware source → dispatches a bench run → the verdict card goes green → the requirement flips to verified → **one commit spans source, model, and decisions** → attestation.
 
-**The four "oh" moments** — protect these above all else: *one workspace* (beat 1, the firmware tree sitting beside the source) · *the agent proposes, the human approves* (beats 5–7, the git diff of forty decisions) · *evidence, not assertion* (beat 13, the requirement flipping because a run produced a result, not because someone clicked a button) · *one commit spans all three* (beat 14).
+**The four "oh" moments** — protect these above all else: _one workspace_ (beat 1, the firmware tree sitting beside the source) · _the agent proposes, the human approves_ (beats 5–7, the git diff of forty decisions) · _evidence, not assertion_ (beat 13, the requirement flipping because a run produced a result, not because someone clicked a button) · _one commit spans all three_ (beat 14).
 
 **WP-70 scope.** G4's bar is that the whole loop runs **unattended, offline, from a warm cache**. That means every network call has a cached path, every long operation has a deterministic fixture, and there's a documented recovery for each of the six failure points. Plus the runbook a human can rehearse from.
 
 ---
 
-## Amendment intake — SPEC 07/08 *(one WP, gates L9 and L10)*
+## Amendment intake — SPEC 07/08 _(one WP, gates L9 and L10)_
 
-| WP | Title | Effort | Depends on | Frozen | Status |
-|---|---|---|---|---|---|
-| 71 | Consolidated SPEC 07/08 frozen-contract amendments (AMD-0010…0015) | 3 d | AMD approval by contract owner | **yes** | ✅ |
+| WP  | Title                                                              | Effort | Depends on                     | Frozen  | Status |
+| --- | ------------------------------------------------------------------ | ------ | ------------------------------ | ------- | ------ |
+| 71  | Consolidated SPEC 07/08 frozen-contract amendments (AMD-0010…0015) | 3 d    | AMD approval by contract owner | **yes** | ✅     |
 
 **WP-71 scope.** The single implementation task for the six proposed amendments in `AMENDMENTS.md`: hardware/grounding/bench tables plus the `hardware` matrix column rebuild (AMD-0010), the `hardware.*`/`grounding.*`/`authoring.*`/`benchDev.*` RPC groups (AMD-0011), the `hardwareLink`/`citationFile`/`authoringGate` registry entities (AMD-0012), the ACTION allowlist growing three→nine with the `destructive` in-turn primitive (AMD-0013), the `kicadts` + `@google/model-viewer` dependency batch (AMD-0014), and the one-time composition-root registration of the four new lane stubs (AMD-0015). CI updates the frozen baselines after merge. **No L9/L10 package dispatches before this merges.**
 
 ---
 
-## L9 — Hardware Design Plane *(1–2 agents, ~5.5 wk serial)* · SPEC 07
+## L9 — Hardware Design Plane _(1–2 agents, ~5.5 wk serial)_ · SPEC 07
 
-| WP | Title | Effort | Depends on | Status |
-|---|---|---|---|---|
-| 72 | KiCad discovery, `kicad-cli` driver & the `.fs-hw` artifact cache | 3 d | 71 | ✅ |
-| 73 | `kicadts` parsing — symbols, nets & semantic search | 2.5 d | 71, 72 | ✅ |
-| 74 | Schematics tab — React Flow viewport, sheet tree, SVG render (KiCanvas go/no-go spike) | 3 d | 07, 72, 73 | ✅ |
-| 75 | Semantic overlay — coordinate transform, hit targets, part card & inspector | 3 d | 74 | ✅ |
-| 76 | Board tab — GLB view, 2D board SVG, stackup card | 2.5 d | 72, 74 | ✅ |
-| 77 | Fab tab — gerbers/drill, BOM extract, netlist browser, DRC/ERC list | 2 d | 72, 73 | ✅ |
-| 78 | HBOM ingest with `kicad_bom` provenance | 2 d | 73, 44 | ✅ |
-| 79 | Cross-surface links & `links/hardware.yaml` | 3 d | 71, 73, 25, 34 | ✅ |
-| 80 | DRC/ERC into the verification matrix (`hardware` column) | 1.5 d | 71, 77, 39 | ✅ |
-| 81 | Hardware agentic surfaces — tools, directives, `#refdes` mentions, skill, CLI | 3 d | 57, 73–80 | ✅ |
+| WP  | Title                                                                                  | Effort | Depends on     | Status |
+| --- | -------------------------------------------------------------------------------------- | ------ | -------------- | ------ |
+| 72  | KiCad discovery, `kicad-cli` driver & the `.fs-hw` artifact cache                      | 3 d    | 71             | ✅     |
+| 73  | `kicadts` parsing — symbols, nets & semantic search                                    | 2.5 d  | 71, 72         | ✅     |
+| 74  | Schematics tab — React Flow viewport, sheet tree, SVG render (KiCanvas go/no-go spike) | 3 d    | 07, 72, 73     | ✅     |
+| 75  | Semantic overlay — coordinate transform, hit targets, part card & inspector            | 3 d    | 74             | ✅     |
+| 76  | Board tab — GLB view, 2D board SVG, stackup card                                       | 2.5 d  | 72, 74         | ✅     |
+| 77  | Fab tab — gerbers/drill, BOM extract, netlist browser, DRC/ERC list                    | 2 d    | 72, 73         | ✅     |
+| 78  | HBOM ingest with `kicad_bom` provenance                                                | 2 d    | 73, 44         | ✅     |
+| 79  | Cross-surface links & `links/hardware.yaml`                                            | 3 d    | 71, 73, 25, 34 | ✅     |
+| 80  | DRC/ERC into the verification matrix (`hardware` column)                               | 1.5 d  | 71, 77, 39     | ✅     |
+| 81  | Hardware agentic surfaces — tools, directives, `#refdes` mentions, skill, CLI          | 3 d    | 57, 73–80      | ✅     |
 
 **The lane's product claim:** the reference designator is a join key — click the MCU on the schematic and reach its HBOM row, the firmware that drives it, the CVEs against its SDK, and its threat-model node. **7g/7h (WP-78/79) are the moat, not polish**; the viewer is table stakes. KiCad stays the editor: everything here is read-only over worktree files, parsing works with no KiCad installed (`kicadts` is pure TS), and `kicad-cli` is required only for renders, fab outputs, and DRC/ERC. Sample projects live in `test/fixtures/kicad/` (not frozen). **Before WP-79 dispatches, the MPN→SBOM mapping decision (SPEC 07 §12.1) needs an owner ruling** — curated vendor table, agent proposal with human acceptance, manual linking, or all three tiered by confidence.
 
 ---
 
-## L10 — Firmware Authoring, Grounding & the Bench Loop *(2 agents, ~11.5 wk serial; 8i–8k and 8n deferrable)* · SPEC 08
+## L10 — Firmware Authoring, Grounding & the Bench Loop _(2 agents, ~11.5 wk serial; 8i–8k and 8n deferrable)_ · SPEC 08
 
-| WP | Title | Effort | Depends on | Status |
-|---|---|---|---|---|
-| 82 | Grounding store & document index — structure-aware chunking, anchored retrieval | 4 d | 71, 56 | ✅ |
-| 83 | Structured catalog — `catalog.db` read-only attach, redistributable build, fetch & cache | 4 d | 71 | ✅ |
-| 84 | Grounding tab — sources, part picker, coverage, citation trace | 3 d | 07, 82, 83 | ✅ |
-| 85 | Citation store, quarantine & review queue — gutter annotations | 4 d | 71, 82 | ✅ |
-| 86 | Build & flash runner — toolchain detection, `build_run`, digest join to attestations | 3 d | 71 | ✅ |
-| 87 | Serial console — auto-connect after flash, regex filter, agent read, `~` send | 3 d | 86 | ✅ |
-| 88 | Device registry, claim/release arbitration & `fs_hw_status` | 2.5 d | 71 | ✅ |
-| 89 | GDB driver (J-Link/OpenOCD) & probe-script runtime | 4 d | 88 | ✅ |
-| 90 | Debug-mode gating, safety rails & the `destructive` primitive test | 2.5 d | 89 | ✅ |
-| 91 | Cascade tiers D0–D2 — STP static, rehosted repro, Renode replay, escalation rules | 4 d | 90, 48, 53 | ✅ |
-| 92 | Logic analyzer driver (Saleae, Digilent) | 3 d | 88 | ✅ |
-| 93 | Power profiler driver (PPK2, Joulescope) | 2.5 d | 88 | ✅ |
-| 94 | Scope drivers (PicoScope USB, SCPI/LAN) | 3 d | 88 | ✅ |
-| 95 | Authoring workflows & the gate pipeline — bring-up, port, requirement→code | 4 d | 85, 86 | ✅ |
-| 96 | Firmware-authoring agentic surfaces — hand-written skills, tools, directives, CLI | 4 d | 57, 82–91 | ✅ |
-| 97 | RE-corpus grounding *(the moat — start on corpus access, longest lead)* | 5 d | 82, corpus-access decision 9.1 | ✅ |
+| WP  | Title                                                                                    | Effort | Depends on                     | Status |
+| --- | ---------------------------------------------------------------------------------------- | ------ | ------------------------------ | ------ |
+| 82  | Grounding store & document index — structure-aware chunking, anchored retrieval          | 4 d    | 71, 56                         | ✅     |
+| 83  | Structured catalog — `catalog.db` read-only attach, redistributable build, fetch & cache | 4 d    | 71                             | ✅     |
+| 84  | Grounding tab — sources, part picker, coverage, citation trace                           | 3 d    | 07, 82, 83                     | ✅     |
+| 85  | Citation store, quarantine & review queue — gutter annotations                           | 4 d    | 71, 82                         | ✅     |
+| 86  | Build & flash runner — toolchain detection, `build_run`, digest join to attestations     | 3 d    | 71                             | ✅     |
+| 87  | Serial console — auto-connect after flash, regex filter, agent read, `~` send            | 3 d    | 86                             | ✅     |
+| 88  | Device registry, claim/release arbitration & `fs_hw_status`                              | 2.5 d  | 71                             | ✅     |
+| 89  | GDB driver (J-Link/OpenOCD) & probe-script runtime                                       | 4 d    | 88                             | ✅     |
+| 90  | Debug-mode gating, safety rails & the `destructive` primitive test                       | 2.5 d  | 89                             | ✅     |
+| 91  | Cascade tiers D0–D2 — STP static, rehosted repro, Renode replay, escalation rules        | 4 d    | 90, 48, 53                     | ✅     |
+| 92  | Logic analyzer driver (Saleae, Digilent)                                                 | 3 d    | 88                             | ✅     |
+| 93  | Power profiler driver (PPK2, Joulescope)                                                 | 2.5 d  | 88                             | ✅     |
+| 94  | Scope drivers (PicoScope USB, SCPI/LAN)                                                  | 3 d    | 88                             | ✅     |
+| 95  | Authoring workflows & the gate pipeline — bring-up, port, requirement→code               | 4 d    | 85, 86                         | ✅     |
+| 96  | Firmware-authoring agentic surfaces — hand-written skills, tools, directives, CLI        | 4 d    | 57, 82–91                      | ✅     |
+| 97  | RE-corpus grounding _(the moat — start on corpus access, longest lead)_                  | 5 d    | 82, corpus-access decision 9.1 | ✅     |
 
-**The lane in one sentence:** the loop from requirement to running, instrumented firmware on real silicon — grounded in datasheets and the schematic, gated by citations, coupled to the verification layer. Citation gating is the core mechanic: **an uncited hardware constant is quarantined, not written.** Tier D is diagnostic, never evidentiary. The cascade rule: answer at the cheapest tier that can answer (D0 static → D1 rehosted → D2 deterministic → D3 physical); a D1/D2 result may *refute* but never *confirm* a timing-, power-, or analog-class hypothesis. WP-92/93/94 are independently valuable and independently deferrable; the production/ATE bench (SPEC 09) is deferred per decision 9.6, but the driver interface takes a transport so the rack is not foreclosed. **Skills in WP-96 are hand-written by people who have brought up hardware** — IoT-SkillsBench is unambiguous that self-generated skills underperform.
+**The lane in one sentence:** the loop from requirement to running, instrumented firmware on real silicon — grounded in datasheets and the schematic, gated by citations, coupled to the verification layer. Citation gating is the core mechanic: **an uncited hardware constant is quarantined, not written.** Tier D is diagnostic, never evidentiary. The cascade rule: answer at the cheapest tier that can answer (D0 static → D1 rehosted → D2 deterministic → D3 physical); a D1/D2 result may _refute_ but never _confirm_ a timing-, power-, or analog-class hypothesis. WP-92/93/94 are independently valuable and independently deferrable; the production/ATE bench (SPEC 09) is deferred per decision 9.6, but the driver interface takes a transport so the rack is not foreclosed. **Skills in WP-96 are hand-written by people who have brought up hardware** — IoT-SkillsBench is unambiguous that self-generated skills underperform.
 
 ---
 
@@ -294,11 +294,11 @@ Staff this path with your strongest agents. Keep a human reviewer on WP-03/04/05
 
 Frozen-interface change requests land in `AMENDMENTS.md`. **Expect 3–6 over the build** — that's the freeze working, not failing. Investigate at ten.
 
-| # | Interface | Requested by | Change | Status |
-|---|---|---|---|---|
-| AMD-0010 | `lib/store/schema.ts` | SPEC 07/08 intake | `hw_*`, `ground_*`, `bench_device`, `probe_run`, `build_run` tables; `hardware` matrix column | proposed |
-| AMD-0011 | `shared/contract.ts` | SPEC 07/08 intake | `hardware.*` / `grounding.*` / `authoring.*` / `benchDev.*` RPC groups; `hardware` in tier enums | proposed |
-| AMD-0012 | `lib/sync/registry.ts` | SPEC 07/08 intake | `hardwareLink`, `citationFile`, `authoringGate` entities + CACHED registrations | proposed |
-| AMD-0013 | `lib/agentic/registry.ts` | SPEC 07/08 intake | ACTION allowlist three→nine; `destructive` in-turn primitive | proposed |
-| AMD-0014 | `package.json` / lockfile | SPEC 07/08 intake | `kicadts`, `@google/model-viewer` dependency batch | proposed |
-| AMD-0015 | `server.ts` / `app.tsx` | SPEC 07/08 intake | One-time composition-root registration of the four new lane stubs | proposed |
+| #        | Interface                 | Requested by      | Change                                                                                           | Status   |
+| -------- | ------------------------- | ----------------- | ------------------------------------------------------------------------------------------------ | -------- |
+| AMD-0010 | `lib/store/schema.ts`     | SPEC 07/08 intake | `hw_*`, `ground_*`, `bench_device`, `probe_run`, `build_run` tables; `hardware` matrix column    | proposed |
+| AMD-0011 | `shared/contract.ts`      | SPEC 07/08 intake | `hardware.*` / `grounding.*` / `authoring.*` / `benchDev.*` RPC groups; `hardware` in tier enums | proposed |
+| AMD-0012 | `lib/sync/registry.ts`    | SPEC 07/08 intake | `hardwareLink`, `citationFile`, `authoringGate` entities + CACHED registrations                  | proposed |
+| AMD-0013 | `lib/agentic/registry.ts` | SPEC 07/08 intake | ACTION allowlist three→nine; `destructive` in-turn primitive                                     | proposed |
+| AMD-0014 | `package.json` / lockfile | SPEC 07/08 intake | `kicadts`, `@google/model-viewer` dependency batch                                               | proposed |
+| AMD-0015 | `server.ts` / `app.tsx`   | SPEC 07/08 intake | One-time composition-root registration of the four new lane stubs                                | proposed |

@@ -16,7 +16,7 @@ L8 additions to `test/e2e/` and `docs/demo/` only. Production lanes, the WP-65 h
 
 ## Files you must not touch
 
-Production source, composition roots, frozen interfaces/fixtures, `test/e2e/golden-loop/{harness,scenario,assertions,reporter}.ts`, `test/e2e/golden-loop/beats/**`, `test/e2e/golden-loop/offline/**`, WP-70's four demo docs, `test/mock-remote/fixtures/**`, package.json, pnpm-lock.yaml.
+Production source, composition roots, frozen interfaces, fixture corpus, `test/e2e/golden-loop/{harness,scenario,assertions,reporter}.ts`, `test/e2e/golden-loop/beats/**`, `test/e2e/golden-loop/offline/**`, WP-70's four demo docs, `test/mock-remote/fixtures/**`, package.json, pnpm-lock.yaml. Fixture exclusions are ownership boundaries, not the retired WP-08 freeze.
 
 ## Context
 
@@ -31,10 +31,10 @@ The scripted arc: the EARS requirement from beat 8 (REQ-118) → `fs_ground_quer
 3. The deliberate quarantine: the authored change includes one hardware-touching constant written without a citation. Assert it lands in `.fs/authoring/citations/<file>.yaml` with `status: quarantined` and a note, appears in the review queue and the gutter annotation, and that the value was **blocked, not silently written**.
 4. On-script resolution: a follow-up `fs_ground_query` finds the source; the value re-enters cited; assert the citation file records the resolution and the queue empties.
 5. Gate pipeline: run `.fs/workflows/authoring-gate.yaml` — citations (`no_quarantined_values`), static, secrets, build — and capture per-gate status. A negative fixture with a still-quarantined value must fail the citations gate and block the pipeline.
-6. Build: `fs_build` yields a `build_run` row whose `digest` is the attestation subject the downstream beats verify — assert the join holds so "this requirement flipped because *this* build passed" is a database fact, not narration.
+6. Build: `fs_build` yields a `build_run` row whose `digest` is the attestation subject the downstream beats verify — assert the join holds so "this requirement flipped because _this_ build passed" is a database fact, not narration.
 7. Downstream: drive the existing bench-dispatch, verdict, one-commit, trace, and attestation beats over the v2 working tree without editing their modules. The v2 one-commit assertion is this WP's own: the commit additionally contains the citation YAML (and the gate file if changed); do not weaken WP-69's exact-three v1 check.
 8. Degradation: `detectAuthoringSurfaces` probes for the L10 registrations (grounding query, citation store, gate runner, `fs_build`). Unavailable → run the v1 stub beat, stamp the report `mode: "v1-stub-fallback"` with the missing surfaces named, and keep every downstream assertion green. No silent substitution in either direction.
-9. Runbook section (`GOLDEN-LOOP-V2-AUTHORING.md`): operator prompts, expected screen states (citation gutter, quarantine queue, gate pipeline card, build result), timing marks, and failure-recovery notes keyed by symptom — grounding index cold, quarantine that will not resolve, gate failure mid-demo, toolchain missing (`needsConfiguration`), bench fallback — each with a safe resume and the v1-stub bailout labeled as such. Every fenced CLI command is executed in test mode by the doc checks.
+9. Runbook section (`GOLDEN-LOOP-V2-AUTHORING.md`): operator prompts, expected screen states (citation gutter, quarantine queue, gate pipeline card, build result), timing marks, and failure-recovery notes keyed by symptom — grounding index cold, quarantine that will not resolve, gate failure mid-demo, toolchain missing (FS-158 authoring-lane advisory while the plugin stays running), bench fallback — each with a safe resume and the v1-stub bailout labeled as such. Every fenced CLI command is executed in test mode by the doc checks.
 10. Hard exclusions, asserted: no `fs_flash`, no serial send, no physical hardware, no external network anywhere in the beat. The build is the only subprocess and it runs against the deterministic toolchain fixture.
 
 ## Interface contract
@@ -72,6 +72,7 @@ The scripted arc: the EARS requirement from beat 8 (REQ-118) → `fs_ground_quer
 ## Test plan
 
 `authoring-beat.e2e.test.ts`
+
 - happy path: full v2 beat plus downstream beats from a fresh warm-seed copy, twice; compare semantic outcomes.
 - `uncited constant is quarantined, queued, and blocked from the source write` (**gating error path**).
 - `pipeline fails closed while quarantine is non-empty; passes after citation` (**gate error path**).
