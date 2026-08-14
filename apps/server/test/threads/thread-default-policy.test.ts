@@ -342,7 +342,9 @@ describe("resolveThreadExecutionPermissionMode", () => {
     ).toBe("full");
   });
 
-  it("reconciles inherited parent permission to the child provider's supported modes", () => {
+  it("never upgrades an inherited mode past the parent for provider support", () => {
+    // Pi only supports full; the parent's mode stays the ceiling so provider
+    // validation rejects the pairing instead of silently granting full.
     expect(
       resolveThreadExecutionPermissionMode({
         parentThread: makeParentThread(),
@@ -353,7 +355,63 @@ describe("resolveThreadExecutionPermissionMode", () => {
           providerId: "pi",
         }),
       }),
+    ).toBe("accept-edits");
+  });
+
+  it("clamps an explicitly requested mode to the parent's mode", () => {
+    expect(
+      resolveThreadExecutionPermissionMode({
+        requestedPermissionMode: "full",
+        parentThread: makeParentThread(),
+        parentThreadExecutionPermissionMode: "auto",
+        thread: makeThread({
+          parentThreadId: "thr-parent-1",
+          providerId: "codex",
+        }),
+      }),
+    ).toBe("auto");
+  });
+
+  it("clamps the child's recorded mode to the parent's current mode", () => {
+    expect(
+      resolveThreadExecutionPermissionMode({
+        lastExecutionPermissionMode: "full",
+        parentThread: makeParentThread(),
+        parentThreadExecutionPermissionMode: "auto",
+        thread: makeThread({
+          parentThreadId: "thr-parent-1",
+          providerId: "codex",
+        }),
+      }),
+    ).toBe("auto");
+  });
+
+  it("keeps an explicit full request under a full parent", () => {
+    expect(
+      resolveThreadExecutionPermissionMode({
+        requestedPermissionMode: "full",
+        parentThread: makeParentThread(),
+        parentThreadExecutionPermissionMode: "full",
+        thread: makeThread({
+          parentThreadId: "thr-parent-1",
+          providerId: "codex",
+        }),
+      }),
     ).toBe("full");
+  });
+
+  it("allows a child to run below its parent's mode", () => {
+    expect(
+      resolveThreadExecutionPermissionMode({
+        requestedPermissionMode: "accept-edits",
+        parentThread: makeParentThread(),
+        parentThreadExecutionPermissionMode: "full",
+        thread: makeThread({
+          parentThreadId: "thr-parent-1",
+          providerId: "codex",
+        }),
+      }),
+    ).toBe("accept-edits");
   });
 
   it("uses root-thread defaults when the parent reference is not live", () => {

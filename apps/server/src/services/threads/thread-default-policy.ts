@@ -11,7 +11,7 @@ import type {
   ServiceTier,
   Thread,
 } from "@bb/domain";
-import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { PERSONAL_PROJECT_ID, clampPermissionModeToCeiling } from "@bb/domain";
 import type { EnvironmentArgs } from "@bb/server-contract";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import type { WorkSessionDeps } from "../../types.js";
@@ -310,6 +310,34 @@ export function resolveThreadDefaultPermissionMode(
 }
 
 export function resolveThreadExecutionPermissionMode(
+  args: ResolveThreadExecutionPermissionModeArgs,
+): PermissionMode {
+  const permissionMode = resolvePreferredThreadExecutionPermissionMode(args);
+  if (
+    !isManagedChildThread(args) ||
+    args.parentThreadExecutionPermissionMode === undefined
+  ) {
+    return permissionMode;
+  }
+
+  const ceiling = normalizeRecordedPermissionMode(
+    args.parentThreadExecutionPermissionMode,
+  );
+  const supported = args.thread.providerId
+    ? getSupportedPermissionModes(args.thread.providerId)
+    : null;
+  // A null clamp means the provider supports nothing at or below the parent's
+  // mode; returning the ceiling lets provider validation reject the pairing.
+  return (
+    clampPermissionModeToCeiling({
+      ceiling,
+      permissionMode,
+      ...(supported ? { supportedPermissionModes: supported } : {}),
+    }) ?? ceiling
+  );
+}
+
+function resolvePreferredThreadExecutionPermissionMode(
   args: ResolveThreadExecutionPermissionModeArgs,
 ): PermissionMode {
   if (args.requestedPermissionMode) {
