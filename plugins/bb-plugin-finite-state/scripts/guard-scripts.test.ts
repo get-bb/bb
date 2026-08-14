@@ -4,6 +4,7 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  rename,
   rm,
   symlink,
   writeFile,
@@ -11,14 +12,22 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import {
+  changedFiniteStateFiles,
+  checkChangedFiniteStateFormatting,
+} from "./check-changed-formatting.mjs";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "../../..");
-const frozenScript = path.join(import.meta.dirname, "check-frozen-artifacts.mjs");
+const frozenScript = path.join(
+  import.meta.dirname,
+  "check-frozen-artifacts.mjs",
+);
 const dependencyScript = path.join(
   import.meta.dirname,
   "check-dependency-freeze.mjs",
 );
 const eslintBinary = path.join(repositoryRoot, "node_modules/.bin/eslint");
+const prettierBinary = path.join(repositoryRoot, "node_modules/.bin/prettier");
 const pluginRoot = "plugins/bb-plugin-finite-state";
 const fixtureTree = `${pluginRoot}/test/mock-remote/fixtures/**`;
 const artifacts = [
@@ -33,7 +42,8 @@ const artifacts = [
 const temporaryRoots: string[] = [];
 const contents: Record<string, string> = {
   [`${pluginRoot}/server.ts`]: "export default function plugin() {}\n",
-  [`${pluginRoot}/app.tsx`]: "export default function App() { return <main />; }\n",
+  [`${pluginRoot}/app.tsx`]:
+    "export default function App() { return <main />; }\n",
   [`${pluginRoot}/shared/contract.ts`]:
     "export const CONTRACT_VERSION = 1 as const;\n",
   [`${pluginRoot}/lib/store/schema.ts`]: "export const migrations = [];\n",
@@ -117,8 +127,10 @@ async function fixtureRoot() {
     peerDependencies: {},
     optionalDependencies: {},
   };
-  const fixtureContents = contents[`${pluginRoot}/test/mock-remote/fixtures/base.json`];
-  if (fixtureContents === undefined) throw new Error("Missing fixture-tree contents");
+  const fixtureContents =
+    contents[`${pluginRoot}/test/mock-remote/fixtures/base.json`];
+  if (fixtureContents === undefined)
+    throw new Error("Missing fixture-tree contents");
   const baseline = {
     version: 1,
     source: { mergeCommit: "0".repeat(40) },
@@ -154,7 +166,11 @@ async function fixtureRoot() {
     `${pluginRoot}/AMENDMENTS.md`,
     `# Amendments\n\n\`\`\`md\n${amendment("AMD-0001", [`${pluginRoot}/app.tsx`])}\`\`\`\n`,
   );
-  await write(root, "package.json", JSON.stringify({ pnpm: { overrides: { zod: "4.3.6" } } }));
+  await write(
+    root,
+    "package.json",
+    JSON.stringify({ pnpm: { overrides: { zod: "4.3.6" } } }),
+  );
   await write(
     root,
     "pnpm-lock.yaml",
@@ -177,6 +193,44 @@ packages:
   return root;
 }
 
+function git(root: string, ...args: string[]) {
+  return spawnSync("git", args, {
+    cwd: root,
+    encoding: "utf8",
+  });
+}
+
+async function gitFormattingFixture() {
+  const root = await mkdtemp(path.join(tmpdir(), "finite-state-formatting-"));
+  temporaryRoots.push(root);
+  await write(
+    root,
+    `${pluginRoot}/formatted.ts`,
+    "export const formatted = true;\n",
+  );
+  expect(git(root, "init", "--initial-branch=main").status).toBe(0);
+  expect(
+    git(root, "config", "user.name", "Finite State Guard Test").status,
+  ).toBe(0);
+  expect(
+    git(root, "config", "user.email", "guard-test@example.invalid").status,
+  ).toBe(0);
+  expect(git(root, "add", ".").status).toBe(0);
+  expect(git(root, "commit", "-m", "base").status).toBe(0);
+  const baseRef = git(root, "rev-parse", "HEAD").stdout.trim();
+  return { baseRef, root };
+}
+
+function checkFormatting(root: string, baseRef: string) {
+  return checkChangedFiniteStateFormatting({
+    repositoryRoot: root,
+    baseRef,
+    prettierCommand: prettierBinary,
+    prettierArguments: [],
+    stdio: "pipe",
+  });
+}
+
 afterEach(async () => {
   await Promise.all(
     temporaryRoots.splice(0).map((root) => rm(root, { recursive: true })),
@@ -184,6 +238,89 @@ afterEach(async () => {
 });
 
 describe("lean contract tripwires", () => {
+  it("passes the changed-file Prettier ratchet when the merge-base diff is empty", async () => {
+    const { baseRef, root } = await gitFormattingFixture();
+    await expect(checkFormatting(root, baseRef)).resolves.toEqual({
+      files: [],
+      status: 0,
+    });
+  });
+
+  it("fails the changed-file Prettier ratchet for an unformatted PR file", async () => {
+    const { baseRef, root } = await gitFormattingFixture();
+    await write(
+      root,
+      `${pluginRoot}/formatted.ts`,
+      "export const formatted={answer:42}\n",
+    );
+    expect(git(root, "add", ".").status).toBe(0);
+    expect(git(root, "commit", "-m", "unformatted change").status).toBe(0);
+
+    const result = await checkFormatting(root, baseRef);
+    expect(result.files).toEqual([`${pluginRoot}/formatted.ts`]);
+    expect(result.status).toBe(1);
+  });
+
+  it("ignores base-side drift after the pull request branch diverges", async () => {
+    const { root } = await gitFormattingFixture();
+    expect(git(root, "switch", "-c", "pull-request").status).toBe(0);
+    await write(root, `${pluginRoot}/mine.ts`, "export const mine = true;\n");
+    expect(git(root, "add", ".").status).toBe(0);
+    expect(git(root, "commit", "-m", "pull request change").status).toBe(0);
+
+    expect(git(root, "switch", "main").status).toBe(0);
+    await write(
+      root,
+      `${pluginRoot}/formatted.ts`,
+      "export const formatted={baseSideDrift:true}\n",
+    );
+    expect(git(root, "add", ".").status).toBe(0);
+    expect(git(root, "commit", "-m", "base-side drift").status).toBe(0);
+    const baseRef = git(root, "rev-parse", "HEAD").stdout.trim();
+
+    expect(git(root, "switch", "pull-request").status).toBe(0);
+    await expect(
+      changedFiniteStateFiles({ repositoryRoot: root, baseRef }),
+    ).resolves.toEqual([`${pluginRoot}/mine.ts`]);
+
+    const naiveTwoDot = git(
+      root,
+      "diff",
+      "--name-only",
+      `${baseRef}..HEAD`,
+      "--",
+      pluginRoot,
+    )
+      .stdout.trim()
+      .split("\n");
+    expect(naiveTwoDot).toEqual([
+      `${pluginRoot}/formatted.ts`,
+      `${pluginRoot}/mine.ts`,
+    ]);
+  });
+
+  it("ignores deleted paths and checks the destination of a rename", async () => {
+    const { root } = await gitFormattingFixture();
+    const deleted = `${pluginRoot}/deleted.ts`;
+    const renamed = `${pluginRoot}/renamed.ts`;
+    await write(root, deleted, "export const deleted={legacy:true}\n");
+    expect(git(root, "add", ".").status).toBe(0);
+    expect(git(root, "commit", "-m", "add deletion fixture").status).toBe(0);
+    const baseRef = git(root, "rev-parse", "HEAD").stdout.trim();
+
+    await rename(
+      path.join(root, `${pluginRoot}/formatted.ts`),
+      path.join(root, renamed),
+    );
+    expect(git(root, "rm", deleted).status).toBe(0);
+    expect(git(root, "add", ".").status).toBe(0);
+    expect(git(root, "commit", "-m", "rename and delete").status).toBe(0);
+
+    await expect(
+      changedFiniteStateFiles({ repositoryRoot: root, baseRef }),
+    ).resolves.toEqual([renamed]);
+  });
+
   it("accepts the frozen hash/tree and dependency baselines", async () => {
     const root = await fixtureRoot();
     expect(run(frozenScript, root).status).toBe(0);
@@ -193,13 +330,22 @@ describe("lean contract tripwires", () => {
   it("names controlled frozen-file and fixture-tree mutations", async () => {
     const root = await fixtureRoot();
     const appPath = `${pluginRoot}/app.tsx`;
-    await write(root, appPath, "export default function Changed() { return null; }\n");
+    await write(
+      root,
+      appPath,
+      "export default function Changed() { return null; }\n",
+    );
     expect(run(frozenScript, root).output).toContain(appPath);
 
     const originalApp = contents[appPath];
-    if (originalApp === undefined) throw new Error("Missing app fixture contents");
+    if (originalApp === undefined)
+      throw new Error("Missing app fixture contents");
     await write(root, appPath, originalApp);
-    await write(root, `${pluginRoot}/test/mock-remote/fixtures/extra.json`, "{}\n");
+    await write(
+      root,
+      `${pluginRoot}/test/mock-remote/fixtures/extra.json`,
+      "{}\n",
+    );
     expect(run(frozenScript, root).output).toContain(fixtureTree);
   });
 
@@ -218,7 +364,11 @@ describe("lean contract tripwires", () => {
   it("keeps an accepted amendment valid through the approved-and-merged lifecycle", async () => {
     const root = await fixtureRoot();
     const appPath = `${pluginRoot}/app.tsx`;
-    await write(root, appPath, "export default function Changed() { return null; }\n");
+    await write(
+      root,
+      appPath,
+      "export default function Changed() { return null; }\n",
+    );
     await write(
       root,
       `${pluginRoot}/AMENDMENTS.md`,
@@ -227,7 +377,10 @@ describe("lean contract tripwires", () => {
     expect(run(frozenScript, root, "--accept", "AMD-0002").status).toBe(0);
     expect(run(frozenScript, root).status).toBe(0);
     const baseline = JSON.parse(
-      await readFile(path.join(root, `${pluginRoot}/frozen-artifacts.json`), "utf8"),
+      await readFile(
+        path.join(root, `${pluginRoot}/frozen-artifacts.json`),
+        "utf8",
+      ),
     );
     expect(baseline.artifacts[appPath].amendment).toBe("AMD-0002");
 
@@ -253,7 +406,11 @@ describe("lean contract tripwires", () => {
   it("refuses to replay an amendment already recorded on a baseline entry", async () => {
     const root = await fixtureRoot();
     const appPath = `${pluginRoot}/app.tsx`;
-    await write(root, appPath, "export default function Changed() { return null; }\n");
+    await write(
+      root,
+      appPath,
+      "export default function Changed() { return null; }\n",
+    );
     await write(
       root,
       `${pluginRoot}/AMENDMENTS.md`,
@@ -261,7 +418,11 @@ describe("lean contract tripwires", () => {
     );
     expect(run(frozenScript, root, "--accept", "AMD-0002").status).toBe(0);
 
-    await write(root, appPath, "export default function ChangedAgain() { return null; }\n");
+    await write(
+      root,
+      appPath,
+      "export default function ChangedAgain() { return null; }\n",
+    );
     const replay = run(frozenScript, root, "--accept", "AMD-0002");
     expect(replay.status).toBe(1);
     expect(replay.output).toContain("already recorded");
@@ -307,7 +468,9 @@ describe("lean contract tripwires", () => {
     await write(
       root,
       `${pluginRoot}/package.json`,
-      JSON.stringify({ dependencies: { yaml: "^2.9.0", zod: "npm:zod@4.3.6" } }),
+      JSON.stringify({
+        dependencies: { yaml: "^2.9.0", zod: "npm:zod@4.3.6" },
+      }),
     );
     expect(run(dependencyScript, root).output).toContain(
       "Plugin dependency freeze drift",

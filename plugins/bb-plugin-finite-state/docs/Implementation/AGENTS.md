@@ -1,6 +1,6 @@
 # AGENTS.md — `bb-plugin-finite-state`
 
-*This file is read on every run. It is the standing contract for anyone — human or agent — writing code in this plugin. If something here conflicts with a work package, the work package wins for its own scope; if it conflicts with a SPEC, this file wins (it reflects code-level recon the specs predate).*
+_This file is read on every run. It is the standing contract for anyone — human or agent — writing code in this plugin. If something here conflicts with a work package, the work package wins for its own scope; if it conflicts with a SPEC, this file wins (it reflects code-level recon the specs predate)._
 
 **Place this at `plugins/bb-plugin-finite-state/AGENTS.md` in the bb fork.**
 
@@ -10,7 +10,7 @@
 
 A bb plugin that turns bb from a coding IDE into the workspace where a connected product is designed, analyzed, secured, and proven. Nine surfaces (threat model, requirements, verifications, SBOM, HBOM, documents, verification bench, findings triage, sync) plus the firmware filesystem, in the same worktree as the source code, editable by both the human and the agent.
 
-**The product principle that decides arguments:** *the agent and the human work on the same artifacts, through the same review flow, in one workspace.* If a feature needs the agent to have a private channel the human can't inspect, or needs the human to leave bb, it's wrong.
+**The product principle that decides arguments:** _the agent and the human work on the same artifacts, through the same review flow, in one workspace._ If a feature needs the agent to have a private channel the human can't inspect, or needs the human to leave bb, it's wrong.
 
 **Read before your first commit:** `IMPLEMENTATION PLAN — Master.md`, your own `tasks/WP-NN-*.md`, and the SPEC your lane implements. Skim `plugins/tasks/` in this repo — it is the reference implementation for nearly everything you'll need.
 
@@ -40,7 +40,7 @@ export default async function plugin(bb: BbPluginApi) {
   const ctx = createPluginContext(bb);
   await registerRemoteServices(bb, ctx); // sole bb.settings.define owner; registers connections.status
   registerSync(bb, ctx);
-  registerFindings(bb, ctx);      // ← you implement lanes/findings/register.ts
+  registerFindings(bb, ctx); // ← you implement lanes/findings/register.ts
   registerProductSecurity(bb, ctx);
   registerBom(bb, ctx);
   registerFirmware(bb, ctx);
@@ -54,12 +54,12 @@ You implement `lanes/<yours>/register.ts`. You do not touch the root. **CI fails
 
 ### 2. Never edit a frozen interface
 
-| File | Owner |
-|---|---|
-| `shared/contract.ts` | WP-03 |
-| `lib/store/schema.ts` | WP-04 |
+| File                   | Owner |
+| ---------------------- | ----- |
+| `shared/contract.ts`   | WP-03 |
+| `lib/store/schema.ts`  | WP-04 |
 | `lib/sync/registry.ts` | WP-05 |
-| `lib/remote/types.ts` | WP-06 |
+| `lib/remote/types.ts`  | WP-06 |
 
 Need one changed? **Stop. Write to `AMENDMENTS.md`:** the interface, the change, why the current shape can't work, which lanes are affected. Then work on something else in your WP. Do not edit locally and do not work around it with a cast.
 
@@ -89,19 +89,25 @@ Agent write tools mutate **local YAML only**. Eight tools are the enumerated ACT
 
 The `bb` key is validated with **`.strict()`**. Unknown keys fail the load. `description` and `branding` are **required** — the specs omitted them.
 
-```jsonc
+```json
 {
   "name": "bb-plugin-finite-state",
   "version": "0.1.0",
-  "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.4.1" },  // ← outside the bb key
+  "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.4.1" },
   "bb": {
     "name": "Finite State",
-    "description": "Design, analyze, secure, and prove connected products.",  // required
-    "branding": { "icon": "./assets/fs-icon.svg" },                           // required
+    "description": "Design, analyze, secure, and prove connected products.",
+    "branding": { "icon": "./assets/fs-icon.svg" },
     "server": "./server.ts",
     "app": "./app.tsx",
     "skills": ["skills"],
-    "themes": [{ "id": "fsds-dark", "name": "Finite State Dark", "css": "./themes/fsds-dark.css" }]
+    "themes": [
+      {
+        "id": "fsds-dark",
+        "name": "Finite State Dark",
+        "css": "./themes/fsds-dark.css"
+      }
+    ]
   }
 }
 ```
@@ -111,8 +117,8 @@ The `bb` key is validated with **`.strict()`**. Unknown keys fail the load. `des
 Migrations are **inline TypeScript string arrays**, append-only, tracked in `_bb_migrations`. There is no `migrations/NNNN_*.sql` convention for plugins.
 
 ```ts
-const db = bb.storage.database();               // <dataDir>/plugins/finite-state/data.db
-bb.storage.migrate(db, MIGRATIONS);              // append-only; never reorder or edit a shipped statement
+const db = bb.storage.database(); // <dataDir>/plugins/finite-state/data.db
+bb.storage.migrate(db, MIGRATIONS); // append-only; never reorder or edit a shipped statement
 ```
 
 Use real SQLite in tests. **Never mock sqlite** — that's a house rule from `plugins/tasks/WORKERS.md` and it's a good one.
@@ -135,11 +141,11 @@ const { data } = useRpc(...);          // frontend
 ### Realtime
 
 ```ts
-bb.realtime.publish("findings:changed", { projectId });   // backend
-useRealtime("findings:changed", handler);                  // frontend
+bb.realtime.publish("findings:changed", { projectId }); // backend
+useRealtime("findings:changed", handler); // frontend
 ```
 
-**There are no per-channel subscriptions in v1** — the server fans out to every connected client and the client filters. So: treat a signal as *a hint to refetch*, never as a data channel, and keep payloads tiny. House naming style is `<entity>:changed`.
+**There are no per-channel subscriptions in v1** — the server fans out to every connected client and the client filters. So: treat a signal as _a hint to refetch_, never as a data channel, and keep payloads tiny. House naming style is `<entity>:changed`.
 
 ### Agent tools
 
@@ -147,7 +153,9 @@ useRealtime("findings:changed", handler);                  // frontend
 bb.agents.registerTool({
   name: "fs_findings_query",
   description: "…",
-  parameters: z.object({ /* zod is the validated path */ }),
+  parameters: z.object({
+    /* zod is the validated path */
+  }),
   async execute(params, ctx) {
     return { content: [{ type: "text", text: JSON.stringify(result) }] };
   },
@@ -159,7 +167,10 @@ Return `string` or `{content: PluginAgentToolContentPart[], isError?: boolean}`.
 ### Directives
 
 ```ts
-app.slots.messageDirective({ id: "fs-finding", component: FindingDirectiveCard });
+app.slots.messageDirective({
+  id: "fs-finding",
+  component: FindingDirectiveCard,
+});
 ```
 
 `id` must match `/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/`. **Attributes arrive as strings, always** — `Readonly<Record<string,string>>`, untrusted. Parse and validate them yourself. Components are ordinary React, so hooks and async fetching work.
@@ -178,10 +189,14 @@ Enrollment goes through the SDK escape hatch: `bb.sdk.hosts.createJoinCode()` �
 
 ```ts
 bb.cli.register({
-  name: "finite-state",          // lowercase, not a reserved name
+  name: "finite-state", // lowercase, not a reserved name
   summary: "…",
-  commands: [ /* metadata only — rendered in help without executing plugin code */ ],
-  run(argv, ctx) { /* … */ },
+  commands: [
+    /* metadata only — rendered in help without executing plugin code */
+  ],
+  run(argv, ctx) {
+    /* … */
+  },
 });
 ```
 
@@ -277,6 +292,7 @@ pnpm exec turbo run typecheck test lint build --filter=bb-plugin-finite-state
 
 All four green, then check:
 
+- [ ] Run `prettier --write` on your changed files before flagging review
 - [ ] Every acceptance criterion in the WP is satisfied — quote each one and say how
 - [ ] No composition root touched
 - [ ] No frozen interface touched
@@ -298,15 +314,15 @@ All four green, then check:
 
 ## Things that will get a PR rejected
 
-| Don't | Instead |
-|---|---|
-| Edit `server.ts` / `app.tsx` | Implement `lanes/<yours>/register.ts` |
-| Edit a frozen interface | File an amendment |
-| `pnpm add <anything>` | File an amendment |
-| Call Forge from a panel or a render path | Sync to SQLite, serve RPC |
-| Add a tool that pushes to the server | There is no push tool. By design |
-| Hex colors, oklch, Lucide icons, emoji | bb tokens, Hugeicons |
-| Mock SQLite | Use a real database |
-| `as any` at a frozen boundary | File an amendment |
-| Unpaged list endpoint | `{items, total, cursor}` |
-| Silence a failing test | Fix it or report the blocker |
+| Don't                                    | Instead                               |
+| ---------------------------------------- | ------------------------------------- |
+| Edit `server.ts` / `app.tsx`             | Implement `lanes/<yours>/register.ts` |
+| Edit a frozen interface                  | File an amendment                     |
+| `pnpm add <anything>`                    | File an amendment                     |
+| Call Forge from a panel or a render path | Sync to SQLite, serve RPC             |
+| Add a tool that pushes to the server     | There is no push tool. By design      |
+| Hex colors, oklch, Lucide icons, emoji   | bb tokens, Hugeicons                  |
+| Mock SQLite                              | Use a real database                   |
+| `as any` at a frozen boundary            | File an amendment                     |
+| Unpaged list endpoint                    | `{items, total, cursor}`              |
+| Silence a failing test                   | Fix it or report the blocker          |

@@ -85,6 +85,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup workspace
         uses: ./.github/actions/setup-workspace
@@ -92,6 +94,12 @@ jobs:
           node-version: "22.19.0"
           pnpm-version: ${{ env.PNPM_VERSION }}
           cache-prefix: finite-state-guards
+
+      - name: Check formatting of changed Finite State files
+        if: github.event_name == 'pull_request'
+        env:
+          FINITE_STATE_PR_BASE_REF: origin/${{ github.base_ref }}
+        run: node plugins/bb-plugin-finite-state/scripts/check-changed-formatting.mjs "$FINITE_STATE_PR_BASE_REF"
 
       - name: Check Finite State frozen and dependency baselines
         run: |

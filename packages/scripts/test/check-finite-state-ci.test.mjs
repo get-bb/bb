@@ -118,6 +118,11 @@ test("keeps the stable check shape and excludes the plugin from the packages sha
     /\n  finite-state-guards:\n(?<job>[\s\S]*?)\n  tests:/u.exec(workflow)
       ?.groups?.job;
   assert.ok(finiteStateJob);
+  assert.match(finiteStateJob, /fetch-depth: 0/u);
+  assert.match(
+    finiteStateJob,
+    /FINITE_STATE_PR_BASE_REF: origin\/\$\{\{ github\.base_ref \}\}[\s\S]*check-changed-formatting\.mjs "\$FINITE_STATE_PR_BASE_REF"/u,
+  );
   assert.doesNotMatch(finiteStateJob, /\n    needs:|needs\.changes|run_heavy/u);
 });
 
