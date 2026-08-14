@@ -281,12 +281,24 @@ bb.agents.experimental_registerProvider({
   // hold no override state) works on every provider too, same-provider
   // only: #1610 deleted both the claude-only gate (a v1 scoping choice from
   // commit `1a5620b53`) and the `supportsExecutionOverride` capability.
-  // What still differs is underneath — claude applies live, everyone else
-  // gets a session rebuild on the next turn, today with zero visibility.
-  // So this declaration is purely a UI/product signal (show "applies
-  // seamlessly" vs "will rebuild the agent session"), and #1610 makes the
-  // rebuild-notification rule *more* important, not less: the silent
-  // disruptive case is now reachable on every provider via API.
+  // Per-provider cost of a mid-thread model/reasoning change today, from
+  // the code (not folklore):
+  //   - claude: live — options ride the next turn; nothing else happens.
+  //   - codex: `turn/start` already carries model/serviceTier per turn
+  //     (`codex/adapter.ts:2094`) and codex applies them in-session; bb
+  //     *additionally* issues a session-scoped `thread/resume` on the same
+  //     process (rollout re-open, context preserved) because codex's
+  //     classify marks every change session-scoped. Cheap, and arguably
+  //     redundant — direct evidence for bridge-owned reconciliation, which
+  //     would just send the turn.
+  //   - pi: session-scoped `thread/resume` on the same process, applying
+  //     the new settings (per #1610's own analysis).
+  //   - acp: session-scoped; genuinely lossy only when the agent lacks
+  //     `loadSession` (fresh session — the agent's context is gone).
+  // So the declared scopes exist to tell the user the truth in the cases
+  // where a change is actually lossy (acp without loadSession; claude
+  // session-construction settings, the #1268 class) — not to dramatize
+  // cheap same-process re-opens.
   // The conformance kit cross-checks declaration against bridge behavior,
   // and session rebuilds must be reported (session-replacement notification
   // + background-work settlement events), never silent — the #1268 lesson
