@@ -239,30 +239,25 @@ export function createPluginUpdates(
   }
 
   /**
-   * The selector to persist when a git candidate activates. A range install
-   * re-resolves its tags here so the recorded tag is the one this commit came
-   * from, and so a listing that changed under the update is refused.
+   * The selector to persist when a git candidate activates. The resolution
+   * carries the exact tag it selected and displayed, so activation stores
+   * that pair. A second tag query here would be a window: a higher tag added
+   * to the same commit between approval and activation would be recorded as
+   * the installed release, and the stored release would differ from the one
+   * the user approved.
    */
-  async function activationSelectorForCandidate(args: {
-    url: string;
+  function activationSelectorForCandidate(args: {
     selector: PluginGitSelector;
     candidateCommit: string;
-  }): Promise<PluginGitSelector> {
+    candidateTag: string | undefined;
+  }): PluginGitSelector {
     if (args.selector.kind === "ref") return args.selector;
-    const tags: GitSemverTag[] = await listGitSemverTags({
-      url: args.url,
-      tagPrefix: args.selector.tagPrefix,
-    });
-    const selected = selectGitSemverTag({
-      tags,
-      range: args.selector.range,
-    });
-    if (selected === null || selected.commit !== args.candidateCommit) {
+    if (args.candidateTag === undefined) {
       throw new Error(
-        `git candidate changed during update: resolved ${args.candidateCommit}, selected ${selected?.commit ?? "nothing"}`,
+        `git candidate for ${args.candidateCommit} carries no resolved release tag`,
       );
     }
-    return { ...args.selector, resolvedTag: selected.tag };
+    return { ...args.selector, resolvedTag: args.candidateTag };
   }
 
   async function resolveUpdateForRow(args: {
@@ -304,12 +299,33 @@ export function createPluginUpdates(
     }
     const intent = await classifiedGitIntentForRow(args.row);
     if (intent.outcome === "unavailable") return intent;
+    const row = args.row;
+    const probeGitCandidate: GitCandidateProbe = async (candidate) => {
+      const probed = await stageGitCandidate({
+        row,
+        commit: candidate.commit,
+        promote: false,
+      });
+      return probed.outcome === "valid"
+        ? {
+            outcome: "compatible",
+            devMode: probed.devMode,
+            packagedBuildProblems: probed.packagedBuildProblems,
+          }
+        : probed;
+    };
+    // A range tracks whatever release this bb can run, so the resolver walks
+    // its matching tags. A ref names one commit, so it is staged once here.
     const remote = await resolveGitUpdate({
       url: intent.url,
       intent: intent.selector,
       currentCommit: args.row.gitResolvedCommit,
+      ...(intent.selector.kind === "range"
+        ? { probeCandidate: probeGitCandidate }
+        : {}),
     });
     if (remote.outcome !== "update-available") return remote;
+    if (intent.selector.kind === "range") return remote;
     const staged = await stageGitCandidate({
       row: args.row,
       commit: remote.candidate.version,
@@ -470,7 +486,7 @@ export function createPluginUpdates(
         if (resolution.outcome === "pinned") {
           return {
             ok: false,
-            error: `plugin "${id}" is pinned by its source intent; remove and reinstall it with an npm range or git branch to track updates`,
+            error: `plugin "${id}" is pinned by its source intent; remove and reinstall it with an npm range, a git branch, or a git semver range to track updates`,
           };
         }
         if (resolution.outcome === "incompatible") {
@@ -542,10 +558,10 @@ export function createPluginUpdates(
               row: activationRow,
               commit: resolution.candidate.version,
               promote: true,
-              activationSelector: await activationSelectorForCandidate({
-                url: intent.url,
+              activationSelector: activationSelectorForCandidate({
                 selector: intent.selector,
                 candidateCommit: resolution.candidate.version,
+                candidateTag: resolution.candidateGitTag,
               }),
             });
             if (staged.outcome !== "valid") {

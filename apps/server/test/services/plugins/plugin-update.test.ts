@@ -847,7 +847,7 @@ describe("plugin update service and routes", () => {
     expect(response.status).toBe(422);
     expect(await response.json()).toEqual({
       error:
-        'plugin "updater" is pinned by its source intent; remove and reinstall it with an npm range or git branch to track updates',
+        'plugin "updater" is pinned by its source intent; remove and reinstall it with an npm range, a git branch, or a git semver range to track updates',
     });
   });
 

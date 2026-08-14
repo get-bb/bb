@@ -479,6 +479,114 @@ describe("git semver tag resolution", () => {
     }
   });
 
+  it("carries the selected release tag on the resolution", async () => {
+    const { repo, commitOf } = await tagRepo();
+
+    expect(
+      await resolveGitUpdate({
+        url: repo,
+        intent: {
+          kind: "range",
+          range: "^1.0.0",
+          tagPrefix: "",
+          resolvedTag: "v1.0.0",
+        },
+        currentCommit: commitOf.get("v1.0.0") ?? "",
+      }),
+    ).toMatchObject({
+      outcome: "update-available",
+      candidateGitTag: "v1.1.0",
+      candidate: { version: commitOf.get("v1.1.0") },
+    });
+  });
+
+  it("walks down to the newest release this bb can run", async () => {
+    const { repo, commitOf } = await tagRepo();
+    const probed: string[] = [];
+
+    const resolution = await resolveGitUpdate({
+      url: repo,
+      intent: {
+        kind: "range",
+        range: "*",
+        tagPrefix: "",
+        resolvedTag: "v1.0.0",
+      },
+      currentCommit: commitOf.get("v1.0.0") ?? "",
+      probeCandidate: async (candidate) => {
+        probed.push(candidate.tag);
+        return candidate.tag === "v2.0.0"
+          ? {
+              outcome: "incompatible",
+              devMode: false,
+              reasons: [
+                {
+                  engine: "bb",
+                  required: ">=99.0.0",
+                  actual: "1.0.0",
+                  message: "requires bb >=99.0.0, running bb is 1.0.0",
+                },
+              ],
+            }
+          : {
+              outcome: "compatible",
+              devMode: false,
+              packagedBuildProblems: [],
+            };
+      },
+    });
+
+    // The newest release is blocked, so the newest runnable one wins and the
+    // blocked release is still reported.
+    expect(probed).toEqual(["v2.0.0", "v1.1.0"]);
+    expect(resolution).toMatchObject({
+      outcome: "update-available",
+      candidateGitTag: "v1.1.0",
+      candidate: { version: commitOf.get("v1.1.0") },
+      blocked: {
+        version: { version: commitOf.get("v2.0.0") },
+        reasons: [{ engine: "bb" }],
+      },
+    });
+  });
+
+  it("stays current and reports the blocked release when nothing newer runs", async () => {
+    const { repo, commitOf } = await tagRepo();
+
+    expect(
+      await resolveGitUpdate({
+        url: repo,
+        intent: {
+          kind: "range",
+          range: "^1.0.0",
+          tagPrefix: "",
+          resolvedTag: "v1.0.0",
+        },
+        currentCommit: commitOf.get("v1.0.0") ?? "",
+        probeCandidate: async () => ({
+          outcome: "incompatible",
+          devMode: false,
+          reasons: [
+            {
+              engine: "bb",
+              required: ">=99.0.0",
+              actual: "1.0.0",
+              message: "requires bb >=99.0.0, running bb is 1.0.0",
+            },
+          ],
+        }),
+      }),
+    ).toMatchObject({
+      // The installed release is still the newest runnable one, and the
+      // blocked newer release is named rather than silently dropped.
+      outcome: "current",
+      blocked: {
+        version: { version: commitOf.get("v1.1.0") },
+        reasons: [{ engine: "bb" }],
+      },
+    });
+  });
+
   it("refuses to downgrade when the recorded range tag disappeared", async () => {
     const { repo, commitOf } = await tagRepo();
     await run("git", ["tag", "-d", "v1.1.0"], { cwd: repo });

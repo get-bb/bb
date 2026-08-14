@@ -49,6 +49,12 @@ export type PluginUpdateResolution =
       outcome: "update-available";
       current: PluginResolvedUpdateVersion;
       candidate: PluginResolvedUpdateVersion;
+      /**
+       * Release tag a git semver range resolved to. Absent for every other
+       * source, which has no tag to record. Activation stores exactly this
+       * pair rather than asking the remote a second time.
+       */
+      candidateGitTag?: string;
     } & ResolutionFlags)
   | ({
       outcome: "pinned";
@@ -592,16 +598,25 @@ export function selectGitSemverTag(args: {
   tags: readonly GitSemverTag[];
   range: string;
 }): GitSemverTag | null {
+  return satisfyingGitSemverTags(args)[0] ?? null;
+}
+
+/**
+ * Every release satisfying `range`, newest first. A caller that must check
+ * each release against the running bb walks this list from the top, exactly
+ * as {@link selectNpmCandidate} walks the allowed npm versions.
+ */
+export function satisfyingGitSemverTags(args: {
+  tags: readonly GitSemverTag[];
+  range: string;
+}): GitSemverTag[] {
   const permitsPrerelease = requestedRangeIncludesPrerelease(args.range);
-  return (
-    args.tags
-      .filter((tag) => semver.satisfies(tag.version, args.range))
-      .filter(
-        (tag) => permitsPrerelease || semver.prerelease(tag.version) === null,
-      )
-      .sort((left, right) => semver.rcompare(left.version, right.version))[0] ??
-    null
-  );
+  return args.tags
+    .filter((tag) => semver.satisfies(tag.version, args.range))
+    .filter(
+      (tag) => permitsPrerelease || semver.prerelease(tag.version) === null,
+    )
+    .sort((left, right) => semver.rcompare(left.version, right.version));
 }
 
 /**
@@ -636,11 +651,38 @@ export type GitUpdateIntent =
       resolvedTag: string;
     };
 
+/**
+ * Whether the running bb can load one release. Only the caller can answer
+ * this: a git release declares its engine ranges in the checked-out
+ * package.json, not in the ref listing.
+ */
+export type GitCandidateProbe = (candidate: GitSemverTag) => Promise<
+  | {
+      outcome: "compatible";
+      devMode: boolean;
+      packagedBuildProblems: CompatibilityProblem[];
+    }
+  | {
+      outcome: "incompatible";
+      reasons: CompatibilityProblem[];
+      devMode: boolean;
+    }
+  | { outcome: "invalid"; detail: string }
+>;
+
+/**
+ * Releases probed before bb gives up. Each probe checks out one release, so
+ * an unbounded walk down a long range would clone a repository many times on
+ * every scheduled check.
+ */
+const MAX_GIT_CANDIDATE_PROBES = 10;
+
 async function resolveGitRangeUpdate(args: {
   url: string;
   intent: Extract<GitUpdateIntent, { kind: "range" }>;
   current: PluginResolvedUpdateVersion;
   currentCommit: string;
+  probeCandidate?: GitCandidateProbe;
 }): Promise<PluginUpdateResolution> {
   const tags = await listGitSemverTags({
     url: args.url,
@@ -662,24 +704,93 @@ async function resolveGitRangeUpdate(args: {
     currentCommit: recorded.commit,
   });
   if (moved !== null) return { outcome: "unavailable", detail: moved };
-  const selected = selectGitSemverTag({ tags, range: args.intent.range });
-  if (selected === null) {
+  const candidates = satisfyingGitSemverTags({
+    tags,
+    range: args.intent.range,
+  });
+  if (candidates.length === 0) {
     return {
       outcome: "unavailable",
       detail: `no tag of ${args.url} matches ${args.intent.range} (looking for tags named "${gitSemverTagName(args.intent.tagPrefix, "X.Y.Z")}")`,
     };
   }
-  if (selected.commit === args.currentCommit) {
-    return { outcome: "current", current: args.current };
+  const probeCandidate = args.probeCandidate;
+  if (probeCandidate === undefined) {
+    const selected = candidates[0];
+    if (selected === undefined || selected.commit === args.currentCommit) {
+      return { outcome: "current", current: args.current };
+    }
+    return {
+      outcome: "update-available",
+      current: args.current,
+      candidateGitTag: selected.tag,
+      candidate: gitResolvedVersion({
+        url: args.url,
+        ref: selected.tag,
+        commit: selected.commit,
+      }),
+    };
+  }
+  // Walk down from the newest release, exactly as selectNpmCandidate walks
+  // the allowed npm versions: an engine-incompatible newest release must not
+  // hide the newest release this bb can actually run.
+  let blocked: ResolutionFlags["blocked"] | undefined;
+  let invalidDetail: string | undefined;
+  let probes = 0;
+  for (const candidate of candidates) {
+    const version = gitResolvedVersion({
+      url: args.url,
+      ref: candidate.tag,
+      commit: candidate.commit,
+    });
+    if (candidate.commit === args.currentCommit) {
+      return {
+        outcome: "current",
+        current: args.current,
+        ...(blocked ? { blocked } : {}),
+      };
+    }
+    if (probes >= MAX_GIT_CANDIDATE_PROBES) {
+      return {
+        outcome: "unavailable",
+        detail: `no release of ${args.url} matching ${args.intent.range} runs on this bb within the newest ${MAX_GIT_CANDIDATE_PROBES} releases`,
+      };
+    }
+    probes += 1;
+    const probed = await probeCandidate(candidate);
+    if (probed.outcome === "invalid") {
+      invalidDetail ??= probed.detail;
+      continue;
+    }
+    if (probed.outcome === "incompatible") {
+      blocked ??= { version, reasons: probed.reasons };
+      continue;
+    }
+    return {
+      outcome: "update-available",
+      current: args.current,
+      candidate: version,
+      candidateGitTag: candidate.tag,
+      ...(blocked ? { blocked } : {}),
+      ...(probed.devMode ? { devMode: true } : {}),
+      ...(probed.packagedBuildProblems.length > 0
+        ? { packagedBuildProblems: probed.packagedBuildProblems }
+        : {}),
+    };
+  }
+  if (blocked !== undefined) {
+    return {
+      outcome: "incompatible",
+      current: args.current,
+      newest: blocked.version,
+      reasons: blocked.reasons,
+    };
   }
   return {
-    outcome: "update-available",
-    current: args.current,
-    candidate: gitResolvedVersion({
-      url: args.url,
-      ref: selected.tag,
-      commit: selected.commit,
-    }),
+    outcome: "unavailable",
+    detail:
+      invalidDetail ??
+      `no tag of ${args.url} matches ${args.intent.range} (looking for tags named "${gitSemverTagName(args.intent.tagPrefix, "X.Y.Z")}")`,
   };
 }
 
@@ -687,6 +798,8 @@ export async function resolveGitUpdate(args: {
   url: string;
   intent: GitUpdateIntent;
   currentCommit: string;
+  /** Supplied for a range intent so bb can skip incompatible releases. */
+  probeCandidate?: GitCandidateProbe;
 }): Promise<PluginUpdateResolution> {
   const current = gitResolvedVersion({
     url: args.url,
@@ -700,6 +813,9 @@ export async function resolveGitUpdate(args: {
       intent: args.intent,
       current,
       currentCommit: args.currentCommit,
+      ...(args.probeCandidate === undefined
+        ? {}
+        : { probeCandidate: args.probeCandidate }),
     });
   }
   if (args.intent.refKind === "commit") return { outcome: "pinned", current };
