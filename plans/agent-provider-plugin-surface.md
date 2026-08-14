@@ -409,10 +409,16 @@ branch. Provider ids never change, so there is no data migration anywhere.
 
 ### Phase 2 — Make each provider protocol-pure (one PR per provider)
 
-Move translation/schemas/visibility/model code from each in-core adapter into
-that provider's bridge; delete the bespoke adapter; the provider now runs on
-the generic adapter. Adapter unit tests move with the code and become bridge
-tests; every bridge passes the conformance kit in its own package.
+Move translation/schemas/visibility/model code from each in-core adapter
+into that provider's bridge; the provider runs on the generic adapter
+**behind a per-provider experiment flag** (read at provider-process spawn —
+existing sessions are never handed between paths). During the window the old
+adapter and the new bridge import the *same* translation modules — the code
+moves once, only thin glue differs — so "keeping the old path" costs no
+duplicated 5k-line translators and no double maintenance. Graduation (see
+Rollout below) deletes the bespoke adapter and the flag. Adapter unit tests
+move with the code and become bridge tests; every bridge passes the
+conformance kit in its own package.
 
 Order by distance from the target shape:
 
@@ -504,6 +510,33 @@ protocol method:
   own list instead), and the provider-retry banner's `providerLabel` switch
   (`plugins/provider-retry/banner.tsx`) duplicates registry display names.
 
+## Rollout: experiment toggles and graduation
+
+Risky flips ship behind experiments, per the house pattern: the provider
+session-release experiment (`3bc9ce54b`, on main) already plumbs an
+experiment flag server → session payload → daemon → runtime, which is
+exactly the path the phase-2 flag needs.
+
+Three toggles, at the seams the phases already have — deliberately **not**
+one global "plugin providers" switch (providers migrate one at a time, so
+mixed old/new states must work regardless; a global switch would couple the
+phases and keep the entire old world alive at once):
+
+1. **Per-provider adapter path** (phase 2): bespoke adapter vs generic
+   bridge adapter, default old, evaluated when a provider process spawns.
+2. **Registry source** (phases 3–4): core catalog vs plugin declarations,
+   backed by the registry-equality snapshot test.
+3. **Bridge delivery source** (phase 5): `bundled` vs `artifact` per
+   provider — already modeled as data in the launch spec.
+
+Phases 1–4 change no wire schemas, so toggles create no daemon-version
+matrix; the phase-2 flag rides the session payload like the release
+experiment does. Graduation per toggle: conformance kit green, dual-path
+parity replay clean, a defined incident-free soak with default-on, then a
+**deletion PR** that removes the old path and the flag. Every toggle is
+created with its deletion PR scheduled — "for the time being" is a soak
+window, not a steady state.
+
 ## Verification
 
 - **Behavior pin**: the `agent-runtime` integration suites and
@@ -515,6 +548,11 @@ protocol method:
   loudly.
 - **Translation fidelity**: adapter test suites move with the code — they are
   not rewritten, so event-translation expectations carry over verbatim.
+- **Dual-path parity replay** (unique to the toggle window): recorded
+  provider traffic replayed through the old in-core adapter and the new
+  bridge must emit identical `ThreadEvent` streams; run per provider before
+  flipping its default. This is stronger evidence than the moved tests — it
+  compares the two live implementations, not expectations.
 - **Registry equality**: snapshot test that the provider set, capabilities,
   and defaults resolved from plugins are byte-identical to the catalog at the
   phase 3→4 boundary.
