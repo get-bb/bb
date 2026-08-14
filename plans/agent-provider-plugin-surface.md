@@ -217,23 +217,24 @@ bb.agents.experimental_registerProvider({
   kind: "agent",                        // "agent" | "router" — see router note below
   capabilities: {
     // One merged block: today's ProviderCapabilities + ProviderServerCapabilities.
-    // Named by kind: "native" = the provider itself has the primitive;
-    // un-prefixed supports* = a bb feature enabled on this provider (policy).
-
-    // Provider-native primitives
+    // Every boolean declares a provider-native fact. bb features and server
+    // policy gate on these; the capability states ability, never enablement.
+    // (bb's own provider-independent systems — e.g. the workflows plugin's
+    // durable engine — need no capability here; they work via plugin tools.)
     supportsNativeFork: true,          // clone a session at a branch point
     supportsNativeUserQuestion: true,  // ships its own ask-the-user tool (bb's
                                        // plugin fallback tool is skipped)
+    supportsNativeWorkflows: true,     // ships its own Workflow tool (Claude
+                                       // Code's); bb policy toggles it per
+                                       // session, enforced in the bridge
+    supportsNativeSessionRewind: true, // session rewinds to an earlier point;
+                                       // gates bb's edit-past-message feature
     supportsSessionArchiveSync: false, // mirror bb archive state into the
                                        // provider's own session list
     supportsSessionNameSync: false,    // push bb thread titles to the provider
     supportsManualCompaction: true,    // explicit context compaction
     supportsServiceTier: false,        // fast/priority tier toggle
     supportsHostAiServices: false,     // backs voice transcription / inference
-
-    // bb feature enablement (product policy per provider, not provider-native)
-    supportsWorkflows: true,           // bb Workflows feature on sessions
-    supportsMessageEditRewind: true,   // bb edit-past-message → rewind
 
     // Enumerations
     permissionModes: ["accept-edits", "auto", "full"],
