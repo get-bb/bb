@@ -24,24 +24,26 @@ The provider "contract" today is six scattered surfaces:
    (`codex`, `claude-code`, `pi`, `acp-cursor`), wire-facing `ProviderInfo`
    (capabilities, composer actions, `logoUrl` — null for all built-ins) plus
    backend-only `ProviderServerCapabilities`. Imported by server policy, the
-   runtime, **and the app bundle** (`apps/app/src/hooks/queries/system-queries.ts`,
-   `apps/app/src/lib/provider-icon.ts`).
+   runtime, `@bb/config`, **and the app bundle** (three files:
+   `system-queries.ts`, `provider-icon.ts`, `fork-thread-request.ts`).
 2. **Adapter** — `packages/agent-runtime/src/{codex,claude-code,pi,acp}/`:
    the 18-member in-process `ProviderAdapter`
    (`packages/agent-runtime/src/provider-adapter.ts`), 4.4k–9.4k lines per
    provider. Three of four already spawn a bb-authored **bridge** Node bundle
-   over line-delimited JSON-RPC (`shared/bridge-harness.ts`); codex speaks its
-   native app-server protocol in-process. Event translation, schemas,
+   over line-delimited JSON-RPC (`shared/bridge-harness.ts`); codex spawns
+   `codex app-server` directly and translates its native protocol in-core
+   (no bb-authored bridge). Event translation, schemas,
    visibility, and model parsing live **in core**, per provider.
 3. **Registry wiring** — `packages/agent-runtime/src/provider-registry.ts`.
 4. **Daemon host-local tables** — `apps/host-daemon/src/provider-cli-health.ts`
    (executables, install/update commands), `injected-skills.ts` (skill-root
    layout), `command-handlers/list-commands.ts::PROVIDER_SKILL_SPECS`
    (largest per-provider table, 8 ids).
-5. **UI metadata** — hardcoded icon/color maps in
-   `apps/app/src/lib/provider-icon.ts` and a duplicate in
-   `plugins/tasks/views/activity/provider-logo.tsx`; `logoUrl` honored at only
-   one of ~6 icon call sites.
+5. **UI metadata** — hardcoded icon/color maps in three places:
+   `apps/app/src/lib/provider-icon.ts`, plus duplicates in
+   `plugins/tasks/views/activity/provider-logo.tsx` and
+   `plugins/automations/lib/provider-icon.tsx`; `logoUrl` honored at only
+   one of seven app icon call sites.
 6. **Scattered enums/lists** — `supportsManualCompaction` string list,
    `skillProviderSchema` (`packages/server-contract/src/api/projects.ts`),
    `providerCliKeyValues` + fixed-key `providerUsageResponseSchema`
@@ -54,21 +56,25 @@ The provider "contract" today is six scattered surfaces:
    `claudeCodeMockCliTraffic`).
 
 **ACP** is the only extension point: a pure-data launch spec
-(`hostDaemonAcpLaunchSpecSchema`) resolved per command from config, run by the
-generic ACP bridge. It works, but the path is deliberately least-common-
-denominator: no fork, no `auto` permission mode (ACP threads default to
-`full`), no token usage, no native slash commands/modes, degraded
-approvals/models/reasoning, config.json-only setup, no settings UI.
+(`hostDaemonAcpLaunchSpecSchema`) resolved per command — from `config.json`
+for custom agents, from the in-repo `KNOWN_ACP_AGENTS` table (a code change)
+for known ones — and run by the generic ACP bridge. It works, but the path
+is deliberately least-common-denominator: no fork, no `auto` permission mode
+(ACP threads default to `full`), no token usage, no plan/goal composer
+modes, no command-shaped scan roots (native *skill* typeahead does work),
+degraded approvals/models/reasoning, config-file-only setup, no settings UI.
 
-**Plugins** run in-process in the server only. The host daemon has **zero**
+**Plugin backends** run in-process in the server (frontends ship as app
+bundles). The host daemon has **zero**
 plugin extension points; a plugin reaches a host only through `bb.sdk` routes
 or the shared-port control plane. Plugin registration surfaces, artifact
 management (`managed-plugin-artifacts.ts`), builtin auto-install
 (`builtin-registry.ts`), asset serving, and the `experimental_` +
 `docs/api_to_audit.md` convention all exist and are reusable here.
 
-**Wire facts**: DB and domain already store `providerId` as a free string (the
-closed enum lives only in the catalog); `HOST_DAEMON_PROTOCOL_VERSION` is 121
+**Wire facts**: the DB and thread domain schemas store `providerId` as a free
+string (the closed vocabularies are the catalog enum plus the stray enums in
+item 6); `HOST_DAEMON_PROTOCOL_VERSION` is 121
 and has been bumped by **87 commits since 2026-06-01** (26 → 121) — provider behavior is
 tightly coupled to daemon deploys, which this plan explicitly decouples.
 
@@ -107,7 +113,8 @@ exists, not an invention:
   fixed method names and schemas): `initialize`, `model/list`,
   `thread/start`, `thread/resume`, `thread/fork`, `turn/start`, `turn/steer`,
   `thread/stop` (with `intent`), `thread/discard`, `thread/name/set`,
-  `thread/archive`, `thread/unarchive`, `skills/configure`.
+  `thread/archive`, `thread/unarchive`, `thread/goal/clear`,
+  `skills/configure`.
 - **Bridge → runtime notifications**: normalized bb `ThreadEvent` envelopes
   (the "normalized codec" in `shared/standard-adapter-members.ts` +
   `shared/json-rpc-envelope.ts` is the starting point: `thread/event`,
@@ -205,7 +212,8 @@ bridge-test-harness concern inside the claude plugin.
 
 ### 3. The declaration (plugin surface)
 
-New `BbPluginApi` member, per the stability convention shipped as
+A new method on the existing `bb.agents` plugin namespace, per the
+stability convention shipped as
 `bb.agents.experimental_registerProvider(declaration): { dispose() }` with an
 entry in `docs/api_to_audit.md`. A plugin may register several providers
 (the ACP plugin does) and re-register on settings change; registrations are
@@ -290,9 +298,10 @@ Server side, a new `ProviderRegistryService` becomes the single source of
 provider metadata. Every current consumer of `@bb/agent-providers`
 (execution options, thread default policy, reasoning policy, permission
 ceiling, fork/compaction gates, typeahead, onboarding) reads from it.
-`ProviderInfo` gains `kind` and a real `logoUrl`; the app deletes both
-hardcoded icon maps and reads `logoUrl` at every icon call site. The app
-stops importing `@bb/agent-providers` entirely (the speculative
+`ProviderInfo` gains `kind`, and built-ins finally populate the existing
+`logoUrl` field (plugin asset URL); all three hardcoded icon maps (app,
+tasks plugin, automations plugin) die, and every icon call site reads
+`logoUrl`. The app stops importing `@bb/agent-providers` entirely (the speculative
 execution-options placeholder switches to last-known server data).
 
 **Routers.** A provider entry is ultimately a picker option that resolves
@@ -409,8 +418,9 @@ No server↔daemon wire change in this phase; bridges stay daemon-bundled.
   it. During this phase the static catalog feeds the registry as core-owned
   declarations, so the resolved provider set is provably identical
   (snapshot-equality test on `GET /system/providers` before/after).
-- `ProviderInfo` gains `kind` + populated `logoUrl`; delete both hardcoded
-  icon maps; fix the ~5 call sites that ignore `logoUrl`; remove
+- `ProviderInfo` gains `kind`; built-ins populate the existing `logoUrl`;
+  delete all three hardcoded icon maps (app, tasks plugin, automations
+  plugin); fix the six call sites that ignore `logoUrl`; remove
   `@bb/agent-providers` from the app bundle.
 
 ### Phase 4 — Built-ins ship as first-party plugins
@@ -570,8 +580,9 @@ is a method-mapping layer, not a passthrough. `createStandardAdapterMembers`
 (`shared/standard-adapter-members.ts`) is already the de-facto base class —
 it synthesizes command dispatch, unsupported-command noops, accepted-user-
 message events, tool-call decode, and normalized model-list parsing. The
-generic `BridgeProviderAdapter` is essentially that helper with its two open
-slots (`buildProviderCommandPlan`, `translateEvent`) turned into constants.
+generic `BridgeProviderAdapter` is essentially that helper with its
+per-provider slots — chiefly `buildProviderCommandPlan` and `translateEvent`
+— turned into constants or declaration data.
 
 **Genuinely different — the four deltas:**
 
