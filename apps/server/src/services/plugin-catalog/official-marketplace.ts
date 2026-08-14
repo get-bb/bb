@@ -24,7 +24,6 @@ export const BUNDLED_OFFICIAL_MARKETPLACE: MarketplaceManifest = {
       icon: "ZoomIn",
       tags: ["interface", "threads", "sidebar"],
       author: { name: "BB Team", github: "get-bb", url: "https://getbb.app" },
-      engines: { bb: ">=0.0.34", bbPluginSdk: "^0.5.0" },
       source: {
         git: {
           url: "https://github.com/brsbl/bb-plugins.git",
@@ -41,7 +40,6 @@ export const BUNDLED_OFFICIAL_MARKETPLACE: MarketplaceManifest = {
       icon: "AiContentGenerator01",
       tags: ["agent-interaction", "prompts"],
       author: { name: "BB Team", github: "get-bb", url: "https://getbb.app" },
-      engines: { bb: ">=0.0.34", bbPluginSdk: "^0.5.0" },
       source: {
         git: {
           url: "https://github.com/brsbl/bb-plugins.git",

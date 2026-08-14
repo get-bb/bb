@@ -48,7 +48,6 @@ collection manifest by pinning a ref and pointing each entry at its subdir.
         "github": "get-bb",
         "url": "https://getbb.app"
       },
-      "engines": { "bb": ">=0.0.34", "bbPluginSdk": "^0.5.0" },
       "source": {
         "git": {
           "url": "https://github.com/brsbl/bb-plugins.git",
@@ -88,8 +87,12 @@ Rules:
   the Browse tab derives its groupings from tags. The official marketplace
   keeps a curated tag vocabulary (the current `PLUGIN_CATALOG_CATEGORIES`
   set, lowercased) so its sections stay stable.
-- `engines` may narrow the package manifest's ranges. It may never widen them.
-  Restore the `marketplacePolicyWideningProblem` check from PR #636.
+- A listing declares no compatibility. There is no `engines` field, and the
+  strict schema rejects one. A listing's copy of a range is a second source of
+  truth that goes stale as soon as the plugin publishes a new version, and it
+  hid compatible plugins behind an out-of-date manifest. bb reads `engines.bb`
+  and `engines.bbPluginSdk` from the fetched plugin's own `package.json` and
+  refuses the install there instead.
 - Sources are objects, not strings. Strings stay in the CLI; the manifest is a
   machine contract with per-field validation and no parser to reimplement.
 - Display fields exist so the store renders without a clone or an npm fetch.

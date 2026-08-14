@@ -49,7 +49,6 @@ import type {
   PluginListEntry,
   PluginServiceDeps,
 } from "./plugin-service-internal.js";
-import type { MarketplaceEngines } from "../plugin-catalog/marketplace-manifest.js";
 import {
   createNpmResolverRun,
   evaluateCompatibility,
@@ -72,8 +71,6 @@ export interface InstallRegistrationIdentity {
 export interface RegisterInstalledArgs extends InstallRegistrationIdentity {
   rootDir: string;
   source: string;
-  /** Engine ranges the marketplace listing declared, when it declared any. */
-  marketplaceEngines?: MarketplaceEngines;
   exactResolution: PluginExactResolution;
   refuseEngineMismatch: boolean;
   validated: boolean;
@@ -92,11 +89,6 @@ export interface InstallContext {
   expectedPluginId?: string;
   /** Git commit shown in the third-party install confirmation. */
   expectedGitCommit?: string;
-  /**
-   * Engine ranges a marketplace listing declared. They may narrow the plugin
-   * manifest's own ranges; {@link RegisterInstalledArgs} refuses widening.
-   */
-  marketplaceEngines?: MarketplaceEngines;
   /** npm registry a listing pins, replacing the host's npm configuration. */
   npmRegistry?: string;
   /**
@@ -228,15 +220,6 @@ export function createManagedPluginArtifacts(
   const directInstallContext: InstallContext = {
     provenance: { kind: "direct" },
   };
-
-  /** Listing policy carried into `registerInstalled` from an install context. */
-  function marketplacePolicy(context: InstallContext): {
-    marketplaceEngines?: MarketplaceEngines;
-  } {
-    return context.marketplaceEngines === undefined
-      ? {}
-      : { marketplaceEngines: context.marketplaceEngines };
-  }
 
   /** Use the guarded network and byte policy only for a listing's registry. */
   function npmResolverRun(listedRegistry: string | undefined) {
@@ -802,7 +785,6 @@ export function createManagedPluginArtifacts(
             rootDir: targetRoot,
             source,
             ...cachedRegistrationIdentity,
-            ...marketplacePolicy(context),
             exactResolution: { kind: "git", commit: resolvedCommit },
             refuseEngineMismatch: true,
             validated: true,
@@ -901,7 +883,6 @@ export function createManagedPluginArtifacts(
           rootDir: stagedTargetRoot,
           source,
           ...stagedRegistrationIdentity,
-          ...marketplacePolicy(context),
           exactResolution: { kind: "git", commit: resolvedCommit },
           refuseEngineMismatch: true,
           validated: true,
@@ -1099,7 +1080,6 @@ export function createManagedPluginArtifacts(
             rootDir,
             source,
             ...registrationIdentity,
-            ...marketplacePolicy(context),
             exactResolution: {
               kind: "npm",
               version: candidate.version,
@@ -1186,7 +1166,6 @@ export function createManagedPluginArtifacts(
           rootDir,
           source,
           ...registrationIdentity,
-          ...marketplacePolicy(context),
           exactResolution: {
             kind: "npm",
             version: candidate.version,

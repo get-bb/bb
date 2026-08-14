@@ -18,10 +18,7 @@ import {
   builtinPluginSource,
   type BundledPluginRegistration,
 } from "./builtin-registry.js";
-import {
-  marketplacePolicyWideningProblem,
-  OFFICIAL_MARKETPLACE_NAME,
-} from "../plugin-catalog/marketplace-manifest.js";
+import { OFFICIAL_MARKETPLACE_NAME } from "../plugin-catalog/marketplace-manifest.js";
 import type { PluginSourceSelection } from "@bb/server-contract";
 import { resolveSelectedSubdirectory } from "./collection-manifest.js";
 import {
@@ -43,7 +40,6 @@ import type {
   PluginServiceDeps,
 } from "./plugin-service-internal.js";
 import {
-  evaluateCompatibility,
   gitResolvedVersion,
   resolveGitRef,
   type GitRefKind,
@@ -247,30 +243,6 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       args,
       initialManifest.id,
     );
-    // A marketplace listing may narrow the plugin's own engine ranges; it may
-    // never widen them, and it may not promise this bb build a plugin the
-    // listing itself declares incompatible.
-    const wideningProblem = marketplacePolicyWideningProblem(
-      args.marketplaceEngines,
-      initialManifest,
-    );
-    if (wideningProblem !== null) {
-      throw new Error(`install refused: ${wideningProblem}`);
-    }
-    if (args.marketplaceEngines !== undefined) {
-      const listed = evaluateCompatibility({
-        bbRange: args.marketplaceEngines.bb,
-        sdkRange: args.marketplaceEngines.bbPluginSdk,
-        appVersion: deps.appVersion,
-      });
-      if (listed.effective.length > 0) {
-        throw new Error(
-          `install refused by marketplace compatibility policy: ${listed.effective
-            .map((problem) => problem.message)
-            .join("; ")}`,
-        );
-      }
-    }
     if (
       args.provenance.kind !== "builtin" &&
       args.sourceIntent.kind !== "builtin"

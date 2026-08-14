@@ -99,7 +99,6 @@ import {
   type InstallContext,
   type RegisterInstalledArgs,
 } from "./managed-plugin-artifacts.js";
-import type { MarketplaceEngines } from "../plugin-catalog/marketplace-manifest.js";
 import { createPluginRegistration } from "./plugin-registration.js";
 import { createPluginRuntime, forgetMutableRoot } from "./plugin-runtime.js";
 import { createPluginUpdates } from "./plugin-updates.js";
@@ -205,8 +204,6 @@ export interface PluginService {
     source: string;
     /** Which plugin of a multi-plugin repository the entry lists. */
     selection: PluginSourceSelection;
-    /** Listed engine ranges; they may narrow the manifest's, never widen it. */
-    engines?: MarketplaceEngines;
     /** npm registry the listing pins. */
     npmRegistry?: string;
     /** Git commit the user confirmed before a third-party install. */
@@ -1554,9 +1551,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             entryId: entry.entryId,
           },
           expectedPluginId: entry.pluginId,
-          ...(entry.engines === undefined
-            ? {}
-            : { marketplaceEngines: entry.engines }),
           ...(entry.npmRegistry === undefined
             ? {}
             : { npmRegistry: entry.npmRegistry }),

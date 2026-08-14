@@ -67,8 +67,13 @@ function rangeFixture(label: string, range: string, valid: boolean): Fixture {
   };
 }
 
-function enginesFixture(label: string, bb: string, valid: boolean): Fixture {
-  return { label, valid, manifest: manifestWith({ engines: { bb } }) };
+/**
+ * A listing declares no compatibility ranges. Both documents must reject the
+ * old `engines` key alike, so a stale manifest fails in the registry's CI
+ * rather than only inside bb.
+ */
+function enginesFixture(label: string, engines: unknown): Fixture {
+  return { label, valid: false, manifest: manifestWith({ engines }) };
 }
 
 const fixtures: readonly Fixture[] = [
@@ -154,8 +159,9 @@ const fixtures: readonly Fixture[] = [
   rangeFixture("four segments", "1.2.3.4", false),
   rangeFixture("garbage alternative", "1.0.0 || garbage", false),
 
-  enginesFixture("engines range", ">=0.30.0", true),
-  enginesFixture("engines prose", "newest", false),
+  enginesFixture("engines.bb range", { bb: ">=0.30.0" }),
+  enginesFixture("engines.bbPluginSdk range", { bbPluginSdk: "^0.5.0" }),
+  enginesFixture("empty engines object", {}),
 
   {
     label: "marketplace name at the route limit",

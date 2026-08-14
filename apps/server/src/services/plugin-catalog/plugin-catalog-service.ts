@@ -318,6 +318,12 @@ export function createPluginCatalogService(deps: {
     };
   }
 
+  /**
+   * Compatibility of a plugin whose own manifest bb already has. Only bundled
+   * plugins qualify before an install: a marketplace listing declares no
+   * ranges, so its entry is offered as compatible and the install pipeline
+   * refuses it once the fetched package.json says otherwise.
+   */
   function compatibilityProblem(ranges: {
     bbRange: string | undefined;
     sdkRange: string | undefined;
@@ -411,10 +417,6 @@ export function createPluginCatalogService(deps: {
   }): PluginCatalogSearchResult {
     const { entry, row, catalog } = args;
     const official = row.name === OFFICIAL_MARKETPLACE_NAME;
-    const problem = compatibilityProblem({
-      bbRange: entry.engines?.bb,
-      sdkRange: entry.engines?.bbPluginSdk,
-    });
     return {
       entryId: entry.id,
       // An entry id is the plugin id it installs; the install aborts when the
@@ -433,8 +435,10 @@ export function createPluginCatalogService(deps: {
       installed:
         args.installedEntryIds.has(catalogEntryKey(row.name, entry.id)) ||
         getInstalledPlugin(deps.db, entry.id) !== undefined,
-      compatible: problem === null,
-      incompatibleReason: problem,
+      // The listing declares no ranges, so bb cannot judge a marketplace
+      // entry until it has fetched the plugin's own manifest.
+      compatible: true,
+      incompatibleReason: null,
     };
   }
 
@@ -812,13 +816,6 @@ export function createPluginCatalogService(deps: {
     return resolveGitEntrySource(git);
   }
 
-  function entryCompatibilityProblem(entry: MarketplaceEntry): string | null {
-    return compatibilityProblem({
-      bbRange: entry.engines?.bb,
-      sdkRange: entry.engines?.bbPluginSdk,
-    });
-  }
-
   /**
    * The exact artifact a confirmed third-party install is bound to. The
    * install pipeline refuses anything else, so a mutable range, dist-tag, or
@@ -833,10 +830,9 @@ export function createPluginCatalogService(deps: {
     entry: MarketplaceEntry,
     binding?: ConfirmedEntryBinding,
   ): Promise<InstalledPlugin> {
-    // The UI disables incompatible entries, but the server owns the policy:
-    // refuse direct installs the store would not offer.
-    const problem = entryCompatibilityProblem(entry);
-    if (problem !== null) throw new Error(`install refused: ${problem}`);
+    // Compatibility is the install pipeline's call: it reads the ranges from
+    // the plugin's own package.json once the source is fetched, and refuses
+    // the install there.
     const resolved = resolvedEntrySource(entry);
     return deps.plugins.installCatalogPlugin({
       marketplace: row.name,
@@ -844,7 +840,6 @@ export function createPluginCatalogService(deps: {
       pluginId: entry.id,
       source: resolved.source,
       selection: resolved.selection,
-      ...(entry.engines === undefined ? {} : { engines: entry.engines }),
       ...(resolved.npmRegistry === undefined
         ? {}
         : { npmRegistry: resolved.npmRegistry }),
@@ -1127,7 +1122,6 @@ export function createPluginCatalogService(deps: {
       }
       const { row, entry } = resolved;
       const official = row.name === OFFICIAL_MARKETPLACE_NAME;
-      const problem = entryCompatibilityProblem(entry);
       return {
         kind: "marketplace",
         entryId: entry.id,
@@ -1139,8 +1133,8 @@ export function createPluginCatalogService(deps: {
         author: entryAuthor(entry),
         source: resolvedEntrySource(entry).source,
         resolvedSource: await resolvedEntrySourceView(entry, official),
-        compatible: problem === null,
-        incompatibleReason: problem,
+        compatible: true,
+        incompatibleReason: null,
       };
     },
 

@@ -450,27 +450,34 @@ describe("plugin install flows", () => {
       expect(getInstalledPlugin(db, "confirmed")).toBeUndefined();
     });
 
-    it("refuses a catalog entry that widens the plugin's engine range", async () => {
-      const repoDir = join(workDir, "repo-catalog-widening");
+    // A listing declares no ranges, so nothing rejects this entry before the
+    // clone. The plugin's own package.json is the only source of truth, and
+    // the install pipeline must read it and refuse.
+    it("refuses a catalog entry whose plugin requires another plugin SDK", async () => {
+      const repoDir = join(workDir, "repo-catalog-sdk-too-new");
       await writePluginFixture(repoDir, {
-        name: "bb-plugin-narrow",
-        engines: ">=0.5.0",
+        name: "bb-plugin-sdk-listed",
+        pluginSdkRange: ">=99.0.0",
       });
       await initGitRepo(repoDir);
       await commitAll(repoDir, "init");
-      await git(repoDir, ["branch", "plugin/narrow"]);
+      await git(repoDir, ["branch", "plugin/listed"]);
 
       await expect(
         service.installCatalogPlugin({
           marketplace: "bb-official",
-          entryId: "narrow",
-          pluginId: "narrow",
-          source: `git:${repoDir}@plugin/narrow`,
+          entryId: "sdk-listed",
+          pluginId: "sdk-listed",
+          source: `git:${repoDir}@plugin/listed`,
           selection: ROOT_PLUGIN_SOURCE_SELECTION,
-          engines: { bb: ">=0.1.0" },
         }),
-      ).rejects.toThrow(/widens plugin manifest range/);
-      expect(getInstalledPluginRegistration(db, "narrow")).toBeUndefined();
+      ).rejects.toThrow(
+        new RegExp(
+          `install refused.*requires bb plugin SDK >=99\\.0\\.0, running SDK is ${PLUGIN_SDK_VERSION.replaceAll(".", "\\.")}`,
+          "u",
+        ),
+      );
+      expect(getInstalledPluginRegistration(db, "sdk-listed")).toBeUndefined();
     });
 
     it("refuses a listed npm registry that is not a public https host", async () => {

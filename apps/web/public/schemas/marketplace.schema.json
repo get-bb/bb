@@ -40,6 +40,7 @@
     "entry": {
       "type": "object",
       "additionalProperties": false,
+      "$comment": "An entry does not declare compatibility. BB reads engines.bb and engines.bbPluginSdk from the plugin's own package.json and refuses the install there.",
       "required": [
         "id",
         "displayName",
@@ -110,19 +111,6 @@
             "url": {
               "type": "string",
               "pattern": "^https://"
-            }
-          }
-        },
-        "engines": {
-          "type": "object",
-          "additionalProperties": false,
-          "$comment": "May narrow the plugin manifest's ranges; BB refuses an install that widens them.",
-          "properties": {
-            "bb": {
-              "$ref": "#/$defs/semverRange"
-            },
-            "bbPluginSdk": {
-              "$ref": "#/$defs/semverRange"
             }
           }
         },

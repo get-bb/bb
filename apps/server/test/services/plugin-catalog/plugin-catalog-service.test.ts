@@ -9,7 +9,6 @@ import {
   upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
-import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import { ROOT_PLUGIN_SOURCE_SELECTION } from "@bb/server-contract";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
@@ -39,7 +38,6 @@ function remoteEntry(overrides: Record<string, unknown> = {}) {
     icon: { url: "./icons/widgets.svg" },
     tags: ["interface", "widgets"],
     author: { name: "Acme", github: "acme" },
-    engines: { bb: ">=0.0.1" },
     source: {
       git: {
         url: "https://github.com/acme/plugins.git",
@@ -199,8 +197,8 @@ describe("plugin catalog service", () => {
       source:
         "git:https://github.com/brsbl/bb-plugins.git@30f91fd977ba1ce60532af27a68534464fb62516",
       installed: false,
-      compatible: false,
-      incompatibleReason: `requires bb plugin SDK ^0.5.0, running SDK is ${PLUGIN_SDK_VERSION}`,
+      compatible: true,
+      incompatibleReason: null,
     });
   });
 
@@ -555,7 +553,6 @@ describe("plugin catalog service", () => {
           pluginId: "widgets",
           source: "git:https://github.com/acme/plugins.git@v1.0.0",
           selection: { kind: "subdirectory", path: "plugins/widgets" },
-          engines: { bb: ">=0.0.1" },
         },
       ]);
       expect(installedNames).toEqual([]);
@@ -584,25 +581,26 @@ describe("plugin catalog service", () => {
           pluginId: "widgets",
           source: "npm:bb-plugin-widgets@beta",
           selection: ROOT_PLUGIN_SOURCE_SELECTION,
-          engines: { bb: ">=0.0.1" },
           npmRegistry: "https://npm.acme.test",
         },
       ]);
     });
 
-    it("refuses an entry this bb build cannot run", async () => {
-      const catalog = await refreshedCatalog(
-        remoteEntry({ icon: "Zap", engines: { bb: ">=99.0.0" } }),
-      );
+    // A listing carries no ranges, so the store cannot pre-judge an entry.
+    // It offers every entry and lets the install pipeline read the plugin's
+    // own package.json and refuse there.
+    it("offers a marketplace entry without judging compatibility", async () => {
+      const catalog = await refreshedCatalog(remoteEntry({ icon: "Zap" }));
       const [entry] = await catalog.search("widgets");
       expect(entry).toMatchObject({
-        compatible: false,
-        incompatibleReason: expect.stringContaining(">=99.0.0"),
+        compatible: true,
+        incompatibleReason: null,
       });
+      const plan = await catalog.installPlan({ entryId: "widgets" });
+      expect(plan).toMatchObject({ compatible: true, incompatibleReason: null });
       await expect(catalog.install({ entryId: "widgets" })).rejects.toThrow(
-        /install refused/,
+        "catalog installation stopped by test",
       );
-      expect(installedCatalogEntries).toEqual([]);
     });
 
     it("reads the installed flag from catalog provenance", async () => {
