@@ -309,6 +309,7 @@ All four green, then check:
 - [ ] Attack tests written for every MUST/guard (see the review kill list above)
 - [ ] Amendment echo table in the PR body, if the WP implements signed amendment text
 - [ ] Journey beats (1–3) ran against a disposable dev instance + seeded mock; evidence attached to the task — and the beat spec recorded in JOURNEY-BEAT-BACKLOG.md if this fixes a sweep-found defect
+- [ ] Disposable dev instance stopped (`scripts/bb-dev-app stop`, plus any mock remote) AND the `agent-browser` tabs/session pointed at it closed — an orphaned SPA tab spins reconnect loops against the dead backend forever
 - [ ] All four UI states exist, if you built UI
 - [ ] No secret, no absolute local path, no `console.log` left behind
 - [ ] `[UNVERIFIED]` or `TODO` markers either resolved or explicitly listed in your summary
