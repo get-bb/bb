@@ -445,13 +445,6 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
         failure: result.failure,
       });
     }
-    if (result.files.length > WORKSPACE_DIFF_MAX_FILES) {
-      return context.json({
-        outcome: "not_applicable",
-        reason: "too_many_files",
-        message: `This diff changes more than ${WORKSPACE_DIFF_MAX_FILES} files; it is too large to display.`,
-      });
-    }
     const files = result.files.map(rawDiffFileStatToEntry);
     // Ship a small diff's `auto`-tier patches with the TOC so initial content
     // paints in one round-trip (empty for large diffs — see
@@ -482,6 +475,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
       shortstat: result.shortstat,
       mergeBaseRef: result.mergeBaseRef,
       initialPatches,
+      truncated: result.truncated,
     });
   });
 

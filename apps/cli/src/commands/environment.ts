@@ -514,6 +514,9 @@ export function registerEnvironmentCommands(
         if (result.shortstat.trim().length > 0) {
           console.log(result.shortstat.trim());
         }
+        if (result.truncated) {
+          console.log("(additional changed files omitted)");
+        }
       }),
     );
 

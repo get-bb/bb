@@ -398,7 +398,7 @@ describe("Workspace.diffFiles", () => {
     );
   });
 
-  it("returns one overflow sentinel without reading untracked stats past the file cap", async () => {
+  it("returns an exact truncated untracked slice at the file cap", async () => {
     const repoPath = await initRepo();
     await Promise.all([
       write(repoPath, "one.txt", "one\n"),
@@ -411,13 +411,16 @@ describe("Workspace.diffFiles", () => {
       maxFiles: 2,
     });
 
-    expect(result.files).toHaveLength(3);
+    expect(result.files).toHaveLength(2);
     expect(result.files.every((file) => file.origin === "untracked")).toBe(
       true,
     );
+    expect(result.files.every((file) => file.additions === 1)).toBe(true);
+    expect(result.truncated).toBe(true);
+    expect(result.shortstat).toContain("2 files changed");
   });
 
-  it("returns one overflow sentinel after bounded tracked enumeration", async () => {
+  it("returns an exact truncated tracked slice after bounded enumeration", async () => {
     const repoPath = await initRepo();
     for (let index = 0; index < 5; index += 1) {
       await write(repoPath, `tracked-${index}.txt`, `base ${index}\n`);
@@ -432,8 +435,47 @@ describe("Workspace.diffFiles", () => {
       maxFiles: 2,
     });
 
-    expect(result.files).toHaveLength(3);
+    expect(result.files).toHaveLength(2);
     expect(result.files.every((file) => file.origin === "tracked")).toBe(true);
+    expect(result.files).toEqual([
+      expect.objectContaining({ additions: 1, deletions: 1 }),
+      expect.objectContaining({ additions: 1, deletions: 1 }),
+    ]);
+    expect(result.truncated).toBe(true);
+    expect(result.shortstat).toContain("2 files changed");
+  });
+
+  it("keeps rename stats exact in a truncated tracked slice", async () => {
+    const repoPath = await initRepo();
+    await write(repoPath, "a-before.txt", "one\ntwo\nthree\nfour\nfive\n");
+    await write(repoPath, "b.txt", "before\n");
+    await write(repoPath, "c.txt", "before\n");
+    await commitAll(repoPath, "base");
+
+    await runGit(["mv", "a-before.txt", "a-after.txt"], { cwd: repoPath });
+    await write(
+      repoPath,
+      "a-after.txt",
+      "one\ntwo\nthree\nfour\nfive\nsix\n",
+    );
+    await write(repoPath, "b.txt", "after\n");
+    await write(repoPath, "c.txt", "after\n");
+
+    const result = await new Workspace(repoPath).diffFiles({
+      target: UNCOMMITTED,
+      maxFiles: 2,
+    });
+
+    expect(result.truncated).toBe(true);
+    expect(result.files).toContainEqual(
+      expect.objectContaining({
+        path: "a-after.txt",
+        previousPath: "a-before.txt",
+        statusLetter: "R",
+        additions: 1,
+        deletions: 0,
+      }),
+    );
   });
 
   it("does not include untracked files for a commit target", async () => {

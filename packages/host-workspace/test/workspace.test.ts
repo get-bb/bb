@@ -250,6 +250,21 @@ describe("Workspace", () => {
     expect(branchFingerprint).not.toBe(dirtyFingerprint);
   });
 
+  it("fingerprints an untracked path without reading its contents", async () => {
+    const repoPath = await initRepo();
+    const workspace = new Workspace(repoPath);
+    const initialFingerprint = await workspace.getLocalStateFingerprint();
+
+    await fs.writeFile(path.join(repoPath, "notes.txt"), "one\n", "utf8");
+    const untrackedFingerprint = await workspace.getLocalStateFingerprint();
+    expect(untrackedFingerprint).not.toBe(initialFingerprint);
+
+    await fs.writeFile(path.join(repoPath, "notes.txt"), "one\ntwo\n", "utf8");
+    expect(await workspace.getLocalStateFingerprint()).toBe(
+      untrackedFingerprint,
+    );
+  });
+
   it("changes the shared git refs fingerprint only when refs change", async () => {
     const repoPath = await initRepo();
     const workspace = new Workspace(repoPath);
@@ -664,6 +679,73 @@ describe("Workspace", () => {
     expect(parseShortstat(uncommittedChanges.shortstat)).toEqual(
       parseShortstat(allChanges.shortstat),
     );
+  });
+
+  it("enriches small untracked status snapshots within file and byte budgets", async () => {
+    const repoPath = await initRepo();
+    await fs.writeFile(
+      path.join(repoPath, "README.md"),
+      "hello\npending\n",
+      "utf8",
+    );
+    await fs.writeFile(path.join(repoPath, "notes.txt"), "one\ntwo\n", "utf8");
+    const statusBefore = await runGit(["status", "--porcelain=v1"], {
+      cwd: repoPath,
+    });
+
+    const status = await new Workspace(repoPath).getStatus({
+      maxUntrackedLineStatFiles: 10,
+      maxUntrackedLineStatBytes: 1024,
+    });
+
+    expect(status.workingTree.files).toEqual([
+      {
+        path: "README.md",
+        status: "M",
+        insertions: 1,
+        deletions: 0,
+      },
+      {
+        path: "notes.txt",
+        status: "??",
+        insertions: 2,
+        deletions: 0,
+      },
+    ]);
+    expect(status.workingTree).toMatchObject({
+      insertions: 3,
+      deletions: 0,
+      lineStatsComplete: true,
+    });
+    const statusAfter = await runGit(["status", "--porcelain=v1"], {
+      cwd: repoPath,
+    });
+    expect(statusAfter.stdout).toBe(statusBefore.stdout);
+  });
+
+  it("leaves untracked status stats unknown when either enrichment budget is exceeded", async () => {
+    const repoPath = await initRepo();
+    await fs.writeFile(path.join(repoPath, "one.txt"), "one\n", "utf8");
+    await fs.writeFile(path.join(repoPath, "two.txt"), "two\n", "utf8");
+    const workspace = new Workspace(repoPath);
+
+    const overFileBudget = await workspace.getStatus({
+      maxUntrackedLineStatFiles: 1,
+      maxUntrackedLineStatBytes: 1024,
+    });
+    const overByteBudget = await workspace.getStatus({
+      maxUntrackedLineStatFiles: 10,
+      maxUntrackedLineStatBytes: 1,
+    });
+
+    for (const status of [overFileBudget, overByteBudget]) {
+      expect(status.workingTree.lineStatsComplete).toBe(false);
+      expect(
+        status.workingTree.files
+          .filter((file) => file.status === "??")
+          .every((file) => file.insertions === null && file.deletions === null),
+      ).toBe(true);
+    }
   });
 
   it("keeps tracked status totals explicitly incomplete in a mixed workspace", async () => {

@@ -204,6 +204,7 @@ export function createFakeWorkspace(pathname: string) {
         files: [],
         shortstat: "",
         mergeBaseRef: null,
+        truncated: false,
       };
     },
     async diffPatch() {

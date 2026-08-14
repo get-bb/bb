@@ -37,6 +37,7 @@ import {
   runGitWithNullRecordLimit,
   type GitCommandResult,
   type GitNullRecordLimitResult,
+  type NameStatusSourceEntry,
   type RunGitOptions,
   runShellPipeline,
   summarizeNumstat,
@@ -59,6 +60,10 @@ export interface DiffOptions {
 
 export interface StatusOptions {
   mergeBaseBranch?: string;
+  /** Maximum untracked files whose line stats may be enriched. */
+  maxUntrackedLineStatFiles?: number;
+  /** Maximum aggregate untracked bytes whose line stats may be enriched. */
+  maxUntrackedLineStatBytes?: number;
 }
 
 export type DiffResult = ThreadGitDiffResponse;
@@ -102,7 +107,7 @@ type DiffSummary = {
 
 export interface DiffFilesArgs {
   target: WorkspaceDiffTarget;
-  /** Maximum returned files; one extra sentinel entry reports overflow. */
+  /** Maximum returned files; `truncated` reports additional changed files. */
   maxFiles: number;
 }
 
@@ -110,6 +115,8 @@ export interface DiffFilesResult {
   files: RawDiffFileStat[];
   shortstat: string;
   mergeBaseRef: string | null;
+  /** True when more changed files exist beyond the returned bounded slice. */
+  truncated: boolean;
 }
 
 export interface DiffPatchArgs {
@@ -217,6 +224,14 @@ type DiffStatArtifacts = {
   untrackedPaths: string[];
 };
 
+type BoundedDiffStatArtifacts = {
+  trackedEntries: NameStatusSourceEntry[];
+  numstat: string;
+  mergeBaseRef: string | null;
+  untrackedPaths: string[];
+  truncated: boolean;
+};
+
 type ReadTrackedPatchByPathArgs = {
   target: WorkspaceDiffTarget;
   paths: string[];
@@ -248,6 +263,7 @@ const WORKSPACE_STATUS_GIT_TIMEOUT_MS = 15_000;
 const TEMPORARY_UNTRACKED_INDEX_ADD_ATTEMPTS = 3;
 const DIFF_NUMSTAT_BASE_BUFFER_BYTES = 64 * 1024;
 const DIFF_NUMSTAT_PER_FILE_BUFFER_BYTES = 16 * 1024;
+const DIFF_NUMSTAT_PATH_BATCH_SIZE = 25;
 
 function parseWorktreeList(porcelainOutput: string): WorktreeEntry[] {
   const entries: WorktreeEntry[] = [];
@@ -692,51 +708,80 @@ export class Workspace {
   }
 
   async getStatus(options: StatusOptions = {}): Promise<WorkspaceStatus> {
+    const maxUntrackedLineStatFiles = options.maxUntrackedLineStatFiles;
+    const maxUntrackedLineStatBytes = options.maxUntrackedLineStatBytes;
+    const hasLineStatFileBudget = maxUntrackedLineStatFiles !== undefined;
+    const hasLineStatByteBudget = maxUntrackedLineStatBytes !== undefined;
+    if (hasLineStatFileBudget !== hasLineStatByteBudget) {
+      throw new WorkspaceError(
+        "invalid_request",
+        "Untracked line-stat file and byte budgets must be provided together",
+      );
+    }
+    if (
+      maxUntrackedLineStatFiles !== undefined &&
+      maxUntrackedLineStatBytes !== undefined
+    ) {
+      assertPositiveInteger(
+        maxUntrackedLineStatFiles,
+        "maxUntrackedLineStatFiles",
+      );
+      assertPositiveInteger(
+        maxUntrackedLineStatBytes,
+        "maxUntrackedLineStatBytes",
+      );
+    }
     await ensureGitRepo(this.path, {
       timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS,
     });
 
     const mergeBaseBranch = options.mergeBaseBranch;
-    const [
-      statusOutput,
-      diffOutput,
-      checkout,
-      defaultBranch,
-      mergeBaseData,
-    ] = await Promise.all([
-      // --no-optional-locks: this runs on the watcher polling cadence and
-      // must not take index.lock under a concurrent commit.
-      runGit(
-        [
-          "--no-optional-locks",
-          "status",
-          "--porcelain=v1",
-          "--branch",
-          "--untracked-files=all",
-        ],
-        { cwd: this.path, timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS },
-      ),
-      readHeadNumstat(this.path, WORKSPACE_STATUS_GIT_TIMEOUT_MS),
-      getCheckoutRef(this.path, {
-        timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS,
-      }),
-      readDefaultBranch(this.path, {
-        timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS,
-      }),
-      mergeBaseBranch
-        ? this.readMergeBaseStatus(
-            mergeBaseBranch,
-            WORKSPACE_STATUS_GIT_TIMEOUT_MS,
-          )
-        : null,
-    ]);
+    const [statusOutput, diffOutput, checkout, defaultBranch, mergeBaseData] =
+      await Promise.all([
+        // --no-optional-locks: this runs on the watcher polling cadence and
+        // must not take index.lock under a concurrent commit.
+        runGit(
+          [
+            "--no-optional-locks",
+            "status",
+            "--porcelain=v1",
+            "--branch",
+            "--untracked-files=all",
+          ],
+          { cwd: this.path, timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS },
+        ),
+        readHeadNumstat(this.path, WORKSPACE_STATUS_GIT_TIMEOUT_MS),
+        getCheckoutRef(this.path, {
+          timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS,
+        }),
+        readDefaultBranch(this.path, {
+          timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS,
+        }),
+        mergeBaseBranch
+          ? this.readMergeBaseStatus(
+              mergeBaseBranch,
+              WORKSPACE_STATUS_GIT_TIMEOUT_MS,
+            )
+          : null,
+      ]);
 
     const entries = parsePorcelainEntries(statusOutput.stdout);
-    // Automatic status runs on the watcher polling cadence. Keep its process
-    // count and content reads independent of the number of untracked files:
-    // tracked line stats come from the single HEAD diff above, while untracked
-    // files remain visible with unknown per-file stats.
-    const numstatEntries = parseNumstatEntriesZ(diffOutput);
+    const untrackedPaths = entries
+      .filter((entry) => entry.status === "??")
+      .map((entry) => entry.path);
+    const untrackedNumstatEntries =
+      maxUntrackedLineStatFiles !== undefined &&
+      maxUntrackedLineStatBytes !== undefined
+        ? await this.readBoundedUntrackedStatusNumstat({
+            paths: untrackedPaths,
+            maxFiles: maxUntrackedLineStatFiles,
+            maxBytes: maxUntrackedLineStatBytes,
+          })
+        : null;
+    const numstatEntries = [
+      ...parseNumstatEntriesZ(diffOutput),
+      ...(untrackedNumstatEntries ?? []),
+    ];
     const numstatByPath = new Map(
       numstatEntries.map((entry) => [entry.path, entry] as const),
     );
@@ -759,7 +804,7 @@ export class Workspace {
         deletions: numstat?.deletions ?? null,
       };
     });
-    const hasUntracked = entries.some((entry) => entry.status === "??");
+    const hasUntracked = untrackedPaths.length > 0;
     const hasTrackedChanges = entries.some((entry) => entry.status !== "??");
     const hasDirtyEntries = entries.length > 0;
     const hasCommittedChanges =
@@ -776,7 +821,7 @@ export class Workspace {
         state,
         insertions: workingTreeInsertions,
         deletions: workingTreeDeletions,
-        lineStatsComplete: !hasUntracked,
+        lineStatsComplete: !hasUntracked || untrackedNumstatEntries !== null,
         files,
       },
       branch: {
@@ -796,15 +841,25 @@ export class Workspace {
   }
 
   async getLocalStateFingerprint(): Promise<string> {
+    await ensureGitRepo(this.path, {
+      timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS,
+    });
     const [headSha, status] = await Promise.all([
       this.getHeadSha(),
-      this.getStatus(),
+      runGit(
+        [
+          "--no-optional-locks",
+          "status",
+          "--porcelain=v1",
+          "--branch",
+          "--untracked-files=normal",
+        ],
+        { cwd: this.path, timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS },
+      ),
     ]);
     return JSON.stringify({
-      checkout: status.checkout,
-      currentBranch: status.branch.currentBranch,
       headSha,
-      workingTree: status.workingTree,
+      porcelain: status.stdout,
     });
   }
 
@@ -865,51 +920,42 @@ export class Workspace {
         (entry) => [entry.path, entry] as const,
       ),
     );
-    const files: RawDiffFileStat[] = parseNameStatusSourceEntries(
-      stats.nameStatus,
-    ).map((entry) => {
-      const numstat = numstatByPath.get(entry.path);
-      const binary =
-        numstat !== undefined &&
-        numstat.insertions === null &&
-        numstat.deletions === null;
-      return {
-        path: entry.path,
-        previousPath: entry.previousPath,
-        statusLetter: normalizeNameStatusLetter(entry.status),
-        additions: binary ? 0 : (numstat?.insertions ?? 0),
-        deletions: binary ? 0 : (numstat?.deletions ?? 0),
-        binary,
-        origin: "tracked",
-      };
-    });
-
-    const overflowCount = args.maxFiles + 1;
-    if (files.length + stats.untrackedPaths.length > args.maxFiles) {
-      const overflowFiles = files.slice(0, overflowCount);
-      const untrackedSlots = overflowCount - overflowFiles.length;
-      if (untrackedSlots > 0) {
-        overflowFiles.push(
-          ...stats.untrackedPaths
-            .slice(0, untrackedSlots)
-            .map(toUntrackedDiffFilePlaceholder),
-        );
-      }
-      return {
-        files: overflowFiles,
-        shortstat: stats.shortstat,
-        mergeBaseRef: stats.mergeBaseRef,
-      };
-    }
-
+    const trackedFiles: RawDiffFileStat[] = stats.trackedEntries.map(
+      (entry) => {
+        const numstat = numstatByPath.get(entry.path);
+        const binary =
+          numstat !== undefined &&
+          numstat.insertions === null &&
+          numstat.deletions === null;
+        return {
+          path: entry.path,
+          previousPath: entry.previousPath,
+          statusLetter: normalizeNameStatusLetter(entry.status),
+          additions: binary ? 0 : (numstat?.insertions ?? 0),
+          deletions: binary ? 0 : (numstat?.deletions ?? 0),
+          binary,
+          origin: "tracked",
+        };
+      },
+    );
     const untrackedFiles = await this.readUntrackedDiffFileStats(
       stats.untrackedPaths,
     );
+    const files = [...trackedFiles, ...untrackedFiles];
+    const summary = files.reduce(
+      (result, file) => ({
+        changedFiles: result.changedFiles + 1,
+        insertions: result.insertions + file.additions,
+        deletions: result.deletions + file.deletions,
+      }),
+      { changedFiles: 0, insertions: 0, deletions: 0 },
+    );
 
     return {
-      files: [...files, ...untrackedFiles],
-      shortstat: stats.shortstat,
+      files,
+      shortstat: formatShortstat(summary),
       mergeBaseRef: stats.mergeBaseRef,
+      truncated: stats.truncated,
     };
   }
 
@@ -926,7 +972,7 @@ export class Workspace {
     await ensureGitRepo(this.path);
 
     const untrackedForTarget = this.targetIncludesUntracked(args.target)
-      ? new Set(await this.listUntrackedPaths())
+      ? new Set(await this.listRequestedUntrackedPaths(args.paths))
       : new Set<string>();
 
     const untrackedPaths = args.paths.filter((p) => untrackedForTarget.has(p));
@@ -1560,23 +1606,91 @@ export class Workspace {
   }
 
   /**
-   * Reads at most `maxFiles + 1` tracked/untracked paths before deciding
-   * whether the diff table of contents can be built. Only an in-cap snapshot
-   * proceeds to numstat work, whose output buffer is sized from the admitted
-   * record count. The shortstat is then derived from that bounded numstat.
+   * Enriches a small untracked status snapshot with exact Git numstat data.
+   * This is optional presentation work: exceeding either budget, a concurrent
+   * file disappearance, or a Git failure degrades to unknown line counts
+   * instead of making workspace status unavailable.
+   */
+  private async readBoundedUntrackedStatusNumstat(args: {
+    paths: string[];
+    maxFiles: number;
+    maxBytes: number;
+  }): Promise<ReturnType<typeof parseNumstatEntriesZ> | null> {
+    if (args.paths.length === 0) {
+      return [];
+    }
+    if (args.paths.length > args.maxFiles) {
+      return null;
+    }
+
+    try {
+      const sizes = await Promise.all(
+        args.paths.map(async (relativePath) => {
+          const stats = await fs.lstat(path.join(this.path, relativePath));
+          return stats.isFile() || stats.isSymbolicLink() ? stats.size : null;
+        }),
+      );
+      let totalBytes = 0;
+      for (const size of sizes) {
+        if (size === null) {
+          return null;
+        }
+        totalBytes += size;
+        if (totalBytes > args.maxBytes) {
+          return null;
+        }
+      }
+
+      return await this.withTemporaryUntrackedIndex(
+        args.paths,
+        async (env, indexedPaths) => {
+          if (indexedPaths.length !== args.paths.length) {
+            return null;
+          }
+          const result = await runGit(
+            ["diff", "--no-ext-diff", "--numstat", "-z"],
+            {
+              cwd: this.path,
+              env,
+              timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS,
+              maxBufferBytes:
+                DIFF_NUMSTAT_BASE_BUFFER_BYTES +
+                indexedPaths.length * DIFF_NUMSTAT_PER_FILE_BUFFER_BYTES,
+            },
+          );
+          const parsed = parseNumstatEntriesZ(result.stdout);
+          const parsedPaths = new Set(parsed.map((entry) => entry.path));
+          return indexedPaths.every((relativePath) =>
+            parsedPaths.has(relativePath),
+          )
+            ? parsed
+            : null;
+        },
+        { timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS },
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Reads at most `maxFiles + 1` tracked/untracked paths and returns an exact
+   * bounded slice. When tracked enumeration overflows, numstat is scoped in
+   * fixed-size path batches to the admitted entries; files beyond the slice
+   * are never sent through content/stat work.
    */
   private async readBoundedDiffStatArtifacts(
     target: WorkspaceDiffTarget,
     maxFiles: number,
-  ): Promise<DiffStatArtifacts> {
+  ): Promise<BoundedDiffStatArtifacts> {
     const range = await this.resolveTrackedDiffRange(target);
     if (range === null) {
       return {
-        nameStatus: "",
+        trackedEntries: [],
         numstat: "",
-        shortstat: "",
         mergeBaseRef: null,
         untrackedPaths: [],
+        truncated: false,
       };
     }
 
@@ -1585,80 +1699,111 @@ export class Workspace {
       range,
       overflowCount,
     );
-    const trackedEntries = parseNameStatusSourceEntries(nameStatus.stdout);
-    if (trackedEntries.length >= overflowCount) {
-      return {
-        nameStatus: nameStatus.stdout,
-        numstat: "",
-        shortstat: "",
-        mergeBaseRef: range.mergeBaseRef,
-        untrackedPaths: [],
-      };
-    }
+    const enumeratedTrackedEntries = parseNameStatusSourceEntries(
+      nameStatus.stdout,
+    );
+    const trackedTruncated =
+      nameStatus.recordLimitReached ||
+      enumeratedTrackedEntries.length > maxFiles;
+    const trackedEntries = enumeratedTrackedEntries.slice(0, maxFiles);
 
     const remainingFileSlots = maxFiles - trackedEntries.length;
-    const untrackedPaths = this.targetIncludesUntracked(target)
-      ? await this.listUntrackedPathsLimited(remainingFileSlots + 1)
-      : [];
-    if (trackedEntries.length + untrackedPaths.length > maxFiles) {
-      return {
-        nameStatus: nameStatus.stdout,
-        numstat: "",
-        shortstat: "",
-        mergeBaseRef: range.mergeBaseRef,
-        untrackedPaths,
-      };
-    }
+    const enumeratedUntrackedPaths =
+      !trackedTruncated && this.targetIncludesUntracked(target)
+        ? await this.listUntrackedPathsLimited(remainingFileSlots + 1)
+        : [];
+    const untrackedTruncated =
+      enumeratedUntrackedPaths.length > remainingFileSlots;
+    const untrackedPaths = enumeratedUntrackedPaths.slice(
+      0,
+      remainingFileSlots,
+    );
+    const numstat = await this.readBoundedTrackedNumstat({
+      entries: trackedEntries,
+      range,
+      scopedToEntries: trackedTruncated,
+    });
 
-    if (trackedEntries.length === 0) {
-      return {
-        nameStatus: "",
-        numstat: "",
-        shortstat: "",
-        mergeBaseRef: range.mergeBaseRef,
-        untrackedPaths,
-      };
-    }
+    return {
+      trackedEntries,
+      numstat,
+      mergeBaseRef: range.mergeBaseRef,
+      untrackedPaths,
+      truncated: trackedTruncated || untrackedTruncated,
+    };
+  }
 
+  private async readBoundedTrackedNumstat(args: {
+    entries: NameStatusSourceEntry[];
+    range: ResolvedTrackedDiffRange;
+    scopedToEntries: boolean;
+  }): Promise<string> {
+    if (args.entries.length === 0) {
+      return "";
+    }
     const runUncommittedDiff = createUncommittedDiffRunner(this.path);
     const runRangeGit = (
       buildArgs: (rangeArgs: string[]) => string[],
       options: RunGitOptions,
     ): Promise<GitCommandResult> =>
-      range.usesUncommittedHead
+      args.range.usesUncommittedHead
         ? runUncommittedDiff((baseRef) => buildArgs([baseRef]), options)
-        : runGit(buildArgs(range.rangeArgs), options);
-    const numstat = await runRangeGit(
-      (rangeArgs) => [
-        ...range.baseArgs,
-        "--numstat",
-        "-M",
-        "-z",
-        ...rangeArgs,
-      ],
-      {
-        cwd: this.path,
-        maxBufferBytes:
-          DIFF_NUMSTAT_BASE_BUFFER_BYTES +
-          trackedEntries.length * DIFF_NUMSTAT_PER_FILE_BUFFER_BYTES,
-        allowTruncatedStdout: true,
-      },
-    );
-    const numstatSummary = parseNumstatEntriesZ(numstat.stdout).reduce(
-      (summary, entry) => ({
-        changedFiles: summary.changedFiles + 1,
-        insertions: summary.insertions + (entry.insertions ?? 0),
-        deletions: summary.deletions + (entry.deletions ?? 0),
-      }),
-      { changedFiles: 0, insertions: 0, deletions: 0 },
-    );
-    return {
-      nameStatus: nameStatus.stdout,
-      numstat: numstat.stdout,
-      shortstat: formatShortstat(numstatSummary),
-      mergeBaseRef: range.mergeBaseRef,
-      untrackedPaths,
-    };
+        : runGit(buildArgs(args.range.rangeArgs), options);
+
+    if (!args.scopedToEntries) {
+      const numstat = await runRangeGit(
+        (rangeArgs) => [
+          ...args.range.baseArgs,
+          "--numstat",
+          "-M",
+          "-z",
+          ...rangeArgs,
+        ],
+        {
+          cwd: this.path,
+          maxBufferBytes:
+            DIFF_NUMSTAT_BASE_BUFFER_BYTES +
+            args.entries.length * DIFF_NUMSTAT_PER_FILE_BUFFER_BYTES,
+        },
+      );
+      return numstat.stdout;
+    }
+
+    const outputs: string[] = [];
+    for (
+      let index = 0;
+      index < args.entries.length;
+      index += DIFF_NUMSTAT_PATH_BATCH_SIZE
+    ) {
+      const entries = args.entries.slice(
+        index,
+        index + DIFF_NUMSTAT_PATH_BATCH_SIZE,
+      );
+      const pathspec = Array.from(
+        new Set(
+          entries.flatMap((entry) =>
+            entry.previousPath === null
+              ? [entry.path]
+              : [entry.previousPath, entry.path],
+          ),
+        ),
+      );
+      const numstat = await runRangeGit(
+        (rangeArgs) =>
+          withDiffPathspec(
+            [...args.range.baseArgs, "--numstat", "-M", "-z", ...rangeArgs],
+            pathspec,
+          ),
+        {
+          cwd: this.path,
+          maxBufferBytes:
+            DIFF_NUMSTAT_BASE_BUFFER_BYTES +
+            entries.length * DIFF_NUMSTAT_PER_FILE_BUFFER_BYTES,
+        },
+      );
+      outputs.push(numstat.stdout);
+    }
+    return outputs.join("");
   }
 
   private async runTrackedNameStatusWithLimit(
@@ -2327,9 +2472,11 @@ export class Workspace {
     args: AppendUntrackedDiffArtifactsArgs,
   ): Promise<DiffArtifactsWithTruncation> {
     const untrackedPaths =
-      args.paths === undefined && args.maxUntrackedFiles !== undefined
-        ? await this.listUntrackedPathsLimited(args.maxUntrackedFiles + 1)
-        : await this.listUntrackedPaths();
+      args.paths !== undefined
+        ? await this.listRequestedUntrackedPaths(args.paths)
+        : args.maxUntrackedFiles !== undefined
+          ? await this.listUntrackedPathsLimited(args.maxUntrackedFiles + 1)
+          : await this.listUntrackedPaths();
     const requestedUntrackedPaths =
       args.paths === undefined
         ? untrackedPaths
@@ -2464,6 +2611,7 @@ export class Workspace {
       env: NodeJS.ProcessEnv,
       indexedPaths: readonly string[],
     ) => Promise<T>,
+    options: { timeoutMs?: number } = {},
   ): Promise<T> {
     const tempDir = await createTempDir("bb-untracked-index-");
     const indexPath = path.join(tempDir, "index");
@@ -2477,7 +2625,11 @@ export class Workspace {
         attempt += 1
       ) {
         candidates = await this.filterExistingUntrackedPaths(candidates);
-        await runGit(["read-tree", "--empty"], { cwd: this.path, env });
+        await runGit(["read-tree", "--empty"], {
+          cwd: this.path,
+          env,
+          timeoutMs: options.timeoutMs,
+        });
         if (candidates.length === 0) {
           return await work(env, []);
         }
@@ -2493,7 +2645,12 @@ export class Workspace {
             `--pathspec-from-file=${pathspecPath}`,
             "--pathspec-file-nul",
           ],
-          { cwd: this.path, env, allowFailure: true },
+          {
+            cwd: this.path,
+            env,
+            allowFailure: true,
+            timeoutMs: options.timeoutMs,
+          },
         );
         if (add.exitCode === 0) {
           return await work(env, candidates);
@@ -2514,7 +2671,11 @@ export class Workspace {
       // A path kept disappearing during every bounded retry. Reset any partial
       // alternate-index state and let callers return placeholders/empty patches
       // for this stale snapshot instead of rejecting the whole batch.
-      await runGit(["read-tree", "--empty"], { cwd: this.path, env });
+      await runGit(["read-tree", "--empty"], {
+        cwd: this.path,
+        env,
+        timeoutMs: options.timeoutMs,
+      });
       return await work(env, []);
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
@@ -2547,6 +2708,27 @@ export class Workspace {
   private async listUntrackedPaths(): Promise<string[]> {
     const untrackedFilesOutput = await runGit(
       ["ls-files", "--others", "--exclude-standard", "-z"],
+      { cwd: this.path },
+    );
+    return parseNullSeparatedLines(untrackedFilesOutput.stdout);
+  }
+
+  /** Lists only the caller's requested paths that are currently untracked. */
+  private async listRequestedUntrackedPaths(
+    relativePaths: readonly string[],
+  ): Promise<string[]> {
+    if (relativePaths.length === 0) {
+      return [];
+    }
+    const untrackedFilesOutput = await runGit(
+      [
+        "ls-files",
+        "--others",
+        "--exclude-standard",
+        "-z",
+        "--",
+        ...relativePaths.map((relativePath) => `:(literal)${relativePath}`),
+      ],
       { cwd: this.path },
     );
     return parseNullSeparatedLines(untrackedFilesOutput.stdout);

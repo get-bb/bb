@@ -694,6 +694,8 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
         outcome: "available",
         workspaceStatus: await resolution.entry.workspace.getStatus({
           mergeBaseBranch: command.mergeBaseBranch,
+          maxUntrackedLineStatFiles: command.maxUntrackedLineStatFiles,
+          maxUntrackedLineStatBytes: command.maxUntrackedLineStatBytes,
         }),
       };
     } catch (error) {

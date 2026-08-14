@@ -36,7 +36,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 122 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 123 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -1064,6 +1064,8 @@ const environmentDestroyCommandSchema = hostDaemonWorkspaceTargetSchema
 const workspaceStatusCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
   type: z.literal("workspace.status"),
   mergeBaseBranch: gitBranchNameSchema.optional(),
+  maxUntrackedLineStatFiles: z.number().int().positive(),
+  maxUntrackedLineStatBytes: z.number().int().positive(),
 });
 
 const workspaceDiffCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
@@ -1215,6 +1217,7 @@ const workspaceDiffFilesResultSchema = z.discriminatedUnion("outcome", [
       files: z.array(rawDiffFileStatSchema),
       shortstat: z.string(),
       mergeBaseRef: z.string().nullable(),
+      truncated: z.boolean(),
     })
     .strict(),
   z

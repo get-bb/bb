@@ -474,19 +474,6 @@ export const diffPatchEntrySchema = z.object({
 });
 export type DiffPatchEntry = z.infer<typeof diffPatchEntrySchema>;
 
-// `too_many_files` is specific to the diff table of contents: the server
-// declines to enumerate a diff whose TOC exceeds the server's
-// `WORKSPACE_DIFF_MAX_FILES`
-// entry cap. `/status` and `/diff` never produce it, so it stays off the shared
-// `environmentWorkspaceNotApplicableReasonSchema`.
-const diffFilesNotApplicableOutcomeSchema = z
-  .object({
-    outcome: z.literal("not_applicable"),
-    reason: z.enum(["non_git_environment", "too_many_files"]),
-    message: z.string().min(1),
-  })
-  .strict();
-
 export const environmentDiffFilesResponseSchema = z.discriminatedUnion(
   "outcome",
   [
@@ -494,6 +481,8 @@ export const environmentDiffFilesResponseSchema = z.discriminatedUnion(
       .object({
         outcome: z.literal("available"),
         files: z.array(diffFileEntrySchema),
+        /** True when the response contains only the bounded leading file slice. */
+        truncated: z.boolean(),
         shortstat: z.string(),
         /** Required + nullable: null = no merge-base for the current target. */
         mergeBaseRef: z.string().nullable(),
@@ -507,7 +496,7 @@ export const environmentDiffFilesResponseSchema = z.discriminatedUnion(
         initialPatches: z.array(diffPatchEntrySchema),
       })
       .strict(),
-    diffFilesNotApplicableOutcomeSchema,
+    environmentWorkspaceNotApplicableOutcomeSchema,
     z
       .object({
         outcome: z.literal("unavailable"),

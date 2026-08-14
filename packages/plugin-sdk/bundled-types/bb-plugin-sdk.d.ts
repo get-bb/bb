@@ -3239,6 +3239,7 @@ declare const environmentDiffFilesResponseSchema: z$1.ZodDiscriminatedUnion<[z$1
             too_large: "too_large";
         }>;
     }, z$1.core.$strip>>;
+    truncated: z$1.ZodBoolean;
     shortstat: z$1.ZodString;
     mergeBaseRef: z$1.ZodNullable<z$1.ZodString>;
     initialPatches: z$1.ZodArray<z$1.ZodObject<{
@@ -3250,7 +3251,6 @@ declare const environmentDiffFilesResponseSchema: z$1.ZodDiscriminatedUnion<[z$1
     outcome: z$1.ZodLiteral<"not_applicable">;
     reason: z$1.ZodEnum<{
         non_git_environment: "non_git_environment";
-        too_many_files: "too_many_files";
     }>;
     message: z$1.ZodString;
 }, z$1.core.$strict>, z$1.ZodObject<{
@@ -5767,6 +5767,8 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strip>;
         type: z$1.ZodLiteral<"workspace.status">;
         mergeBaseBranch: z$1.ZodOptional<z$1.ZodString>;
+        maxUntrackedLineStatFiles: z$1.ZodNumber;
+        maxUntrackedLineStatBytes: z$1.ZodNumber;
     }, z$1.core.$strict>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         outcome: z$1.ZodLiteral<"available">;
         workspaceStatus: z$1.ZodObject<{
@@ -5963,6 +5965,7 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strip>>;
         shortstat: z$1.ZodString;
         mergeBaseRef: z$1.ZodNullable<z$1.ZodString>;
+        truncated: z$1.ZodBoolean;
     }, z$1.core.$strict>, z$1.ZodObject<{
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{

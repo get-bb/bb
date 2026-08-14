@@ -394,6 +394,7 @@ describe("bb environment command output", () => {
       ],
       shortstat: "1 file changed",
       mergeBaseRef: null,
+      truncated: false,
       initialPatches: [
         {
           path: "assets/logo.png",
@@ -424,6 +425,47 @@ describe("bb environment command output", () => {
     expect(
       JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
     ).toEqual(response);
+  });
+
+  it("bb environment diff-files reports a truncated file list", async () => {
+    stubServerApi({
+      "v1.environments.:id.diff.files.$get": vi.fn(async () => ({
+        outcome: "available",
+        files: [
+          {
+            path: "one.txt",
+            previousPath: null,
+            changeKind: "added",
+            additions: 1,
+            deletions: 0,
+            binary: false,
+            origin: "untracked",
+            loadMode: "auto",
+          },
+        ],
+        shortstat: "1 file changed, 1 insertion(+)",
+        mergeBaseRef: null,
+        initialPatches: [],
+        truncated: true,
+      })),
+    });
+
+    await runCommand(
+      [
+        "environment",
+        "diff-files",
+        "env-diff-files-truncated",
+        "--target",
+        "uncommitted",
+      ],
+      register,
+    );
+
+    expect(collectLogLines(vi.mocked(console.log))).toEqual([
+      "added\t+1 -0\tuntracked\tauto\tone.txt",
+      "1 file changed, 1 insertion(+)",
+      "(additional changed files omitted)",
+    ]);
   });
 
   it("bb environment diff-file distinguishes text and binary content", async () => {

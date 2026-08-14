@@ -563,6 +563,7 @@ const WORKSPACE_DIFF_FILES_AVAILABLE_RESULT: JsonObject = {
   ],
   shortstat: "1 file changed, 3 insertions(+), 1 deletion(-)",
   mergeBaseRef: "abc123",
+  truncated: false,
 };
 
 const WORKSPACE_DIFF_PATCH_AVAILABLE_RESULT: JsonObject = {
@@ -1059,6 +1060,9 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
+  // Version 123 adds required status-enrichment budgets and a required
+  // diff-files truncation marker. Older daemons cannot safely enforce or
+  // interpret the new bounded workspace response contract.
   // Version 122 adds the daemon runtime-policy read for provider session
   // release. Older daemons do not read the experiment before maintenance.
   // Version 122 also covers two other changes that ship with it: the host PTY
@@ -1088,8 +1092,8 @@ describe("host-daemon command schemas", () => {
   // against its Pi provider ladder, so enrolled machines must not run that
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
-  it("uses protocol version 122 for provider session release policy", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(122);
+  it("uses the current host-daemon protocol version", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(123);
   });
 
   it("requires an explicit intent on a thread stop command", () => {
@@ -1676,6 +1680,8 @@ describe("host-daemon command schemas", () => {
       {
         type: "workspace.status",
         environmentId: "env_123",
+        maxUntrackedLineStatFiles: 50,
+        maxUntrackedLineStatBytes: 8 * 1024 * 1024,
         workspaceContext: {
           workspacePath: "/tmp/workspace",
           workspaceProvisionType: "managed-worktree",
@@ -2606,6 +2612,8 @@ describe("host-daemon command schemas", () => {
         type: "workspace.status",
         environmentId: "env_123",
         environmentStatus: "ready",
+        maxUntrackedLineStatFiles: 50,
+        maxUntrackedLineStatBytes: 8 * 1024 * 1024,
         workspaceContext: {
           workspacePath: "/tmp/workspace",
           workspaceProvisionType: "unmanaged",

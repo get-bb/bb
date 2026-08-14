@@ -13,6 +13,65 @@ import {
 import { withTestHarness } from "../helpers/test-app.js";
 
 describe("public environments", () => {
+  it("propagates a bounded truncated diff table of contents", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-environment-truncated-diff",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/truncated-diff-env",
+        workspaceProvisionType: "managed-worktree",
+      });
+
+      const responsePromise = harness.app.request(
+        `/api/v1/environments/${environment.id}/diff/files?target=uncommitted`,
+      );
+      const diffFilesCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "workspace.diffFiles" &&
+          command.environmentId === environment.id,
+      );
+      expect(diffFilesCommand.command).toMatchObject({ maxFiles: 500 });
+      await reportQueuedCommandSuccess(harness, diffFilesCommand, {
+        outcome: "available",
+        files: [
+          {
+            path: "large.bin",
+            previousPath: null,
+            statusLetter: "A",
+            additions: 0,
+            deletions: 0,
+            binary: true,
+            origin: "untracked",
+          },
+        ],
+        shortstat: "1 file changed",
+        mergeBaseRef: null,
+        truncated: true,
+      });
+
+      const response = await responsePromise;
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject({
+        outcome: "available",
+        truncated: true,
+        files: [
+          {
+            path: "large.bin",
+            origin: "untracked",
+            loadMode: "on_demand",
+          },
+        ],
+      });
+    });
+  });
+
   it("records the daemon-observed current branch after workspace status", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
@@ -39,6 +98,10 @@ describe("public environments", () => {
           command.type === "workspace.status" &&
           command.environmentId === environment.id,
       );
+      expect(statusCommand.command).toMatchObject({
+        maxUntrackedLineStatFiles: 50,
+        maxUntrackedLineStatBytes: 8 * 1024 * 1024,
+      });
       await reportQueuedCommandSuccess(harness, statusCommand, {
         outcome: "available",
         workspaceStatus: {
