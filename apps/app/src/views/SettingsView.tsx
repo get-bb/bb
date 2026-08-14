@@ -507,13 +507,18 @@ export function LocalOpenTargetSettingsSection({
                 href={LOCAL_EDITOR_INTEGRATION_DOCS_URL}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="inline-flex items-center gap-0.5 rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 onClick={(event) => {
                   event.preventDefault();
                   openUrlInExternalBrowser(LOCAL_EDITOR_INTEGRATION_DOCS_URL);
                 }}
               >
                 Setup guide
+                <Icon
+                  name="ExternalLink"
+                  className="size-3 shrink-0"
+                  aria-hidden
+                />
               </a>
             </>
           }
