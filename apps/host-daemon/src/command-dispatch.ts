@@ -430,10 +430,14 @@ const commandHandlers: CommandHandlerMap = {
       // and the turn/started event has not been observed yet. Wait for the
       // runtime to learn the active turn (event-driven, resolves null on
       // timeout or when the thread goes idle) so the provider stop carries
-      // the right turn id.
-      await entry.runtime.waitForActiveTurn(command.threadId, {
-        timeoutMs: THREAD_STOP_ACTIVE_TURN_WAIT_MS,
-      });
+      // the right turn id. A release intent has no such race: the server
+      // already settled the thread as idle, so waiting only burns the full
+      // timeout on every runtime it unloads.
+      if (command.intent === "interrupt") {
+        await entry.runtime.waitForActiveTurn(command.threadId, {
+          timeoutMs: THREAD_STOP_ACTIVE_TURN_WAIT_MS,
+        });
+      }
       const result = await entry.runtime.stopThread({
         threadId: command.threadId,
       });

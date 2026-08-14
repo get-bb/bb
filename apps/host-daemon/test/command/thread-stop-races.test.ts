@@ -277,6 +277,7 @@ function turnSubmitCommand(
 function threadStopCommand(threadId: string): CommandOf<"thread.stop"> {
   return {
     type: "thread.stop",
+    intent: "interrupt",
     environmentId: ENVIRONMENT_ID,
     threadId,
   };

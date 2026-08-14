@@ -33,6 +33,7 @@ import {
   hostDaemonSessionOpenResponseSchema,
   hostDaemonTerminalOutputChunkSchema,
   normalizeHostDaemonAcpLaunchSpec,
+  threadStopCommandSchema,
   type HostDaemonAcpLaunchSpec,
   type HostDaemonSettledCommandType,
 } from "../src/index.js";
@@ -1058,6 +1059,8 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
+  // Version 121 adds the required thread.stop intent. Older daemons reject the
+  // field, and they wait for an active turn that a release never has.
   // Version 120 makes thread.stop idempotent and releases idle runtimes. Older
   // daemons reject a stop when no environment runtime is loaded.
   // Version 119 carries required workspace diff limits and line-stat
@@ -1079,8 +1082,23 @@ describe("host-daemon command schemas", () => {
   // against its Pi provider ladder, so enrolled machines must not run that
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
-  it("uses protocol version 120 for idempotent thread stop", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(120);
+  it("uses protocol version 121 for the thread stop intent", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(121);
+  });
+
+  it("requires an explicit intent on a thread stop command", () => {
+    const base = {
+      environmentId: "env_1",
+      threadId: "thr_1",
+      type: "thread.stop" as const,
+    };
+    expect(threadStopCommandSchema.safeParse(base).success).toBe(false);
+    expect(
+      threadStopCommandSchema.safeParse({ ...base, intent: "release" }).success,
+    ).toBe(true);
+    expect(
+      threadStopCommandSchema.safeParse({ ...base, intent: "pause" }).success,
+    ).toBe(false);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

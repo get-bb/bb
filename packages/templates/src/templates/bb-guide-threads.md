@@ -233,7 +233,9 @@ Lifecycle:
   `thread stop` preserves the thread history, metadata, environment, and future
   resume behavior. It stops active work and releases an idle agent runtime.
   The command succeeds when no runtime is loaded. Archive a finished hidden
-  worker first, then stop it to release memory promptly.
+  worker first, then stop it to release memory promptly. A stop that only
+  releases an idle runtime adds no interruption: it leaves the timeline and any
+  pending interaction of that thread untouched.
 
   bb thread unarchive [id]                 Unarchive a thread
     --self                                 Unarchive current thread

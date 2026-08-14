@@ -36,7 +36,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 120 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 121 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -376,9 +376,20 @@ const turnSubmitCommandSchema = hostDaemonThreadTargetSchema
   .strict()
   .superRefine(refineGroupedInputMatchesFlatInput);
 
+/**
+ * `interrupt` stops a live turn: the daemon waits for the runtime to learn the
+ * active turn so the provider stop carries the right turn id. `release` only
+ * unloads a runtime the server already knows is idle, so the daemon skips that
+ * wait and the server leaves thread lifecycle state alone.
+ */
+export const threadStopIntentSchema = z.enum(["interrupt", "release"]);
+
+export type ThreadStopIntent = z.infer<typeof threadStopIntentSchema>;
+
 export const threadStopCommandSchema = hostDaemonThreadTargetSchema
   .extend({
     type: z.literal("thread.stop"),
+    intent: threadStopIntentSchema,
   })
   .strict();
 

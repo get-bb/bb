@@ -56,7 +56,6 @@ import {
 import { editThreadMessage } from "../../services/threads/thread-edit-message.js";
 import {
   buildExecutionOptions,
-  buildThreadStopCommand,
   dispatchThreadUnarchiveCommand,
   prepareTurnSubmitCommandPayload,
 } from "../../services/threads/thread-commands.js";
@@ -529,12 +528,9 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     });
     await runLiveHostCommand(deps, {
       command: {
-        ...buildThreadStopCommand({
-          environmentId: environment.id,
-          hostId: environment.hostId,
-          threadId: thread.id,
-        }),
         type: "thread.plan.cancel",
+        environmentId: environment.id,
+        threadId: thread.id,
         expectedTurnId: activity.activePlanTurnId,
       },
       hostId: environment.hostId,

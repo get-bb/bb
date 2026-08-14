@@ -953,6 +953,7 @@ describe("thread command dispatch", () => {
     const stopResult = await dispatchCommand(
       {
         type: "thread.stop",
+        intent: "interrupt",
         environmentId: "env-1",
         threadId: "thread-1",
       },
@@ -1024,6 +1025,7 @@ describe("thread command dispatch", () => {
     const stopResult = await dispatchCommand(
       {
         type: "thread.stop",
+        intent: "interrupt",
         environmentId: "env-1",
         threadId: "thread-stop",
       },
@@ -1040,6 +1042,7 @@ describe("thread command dispatch", () => {
       dispatchCommand(
         {
           type: "thread.stop",
+          intent: "interrupt",
           environmentId: "env-1",
           threadId: "thread-stop",
         },

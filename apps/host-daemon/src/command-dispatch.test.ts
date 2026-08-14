@@ -202,8 +202,9 @@ function createRuntime(): FakeDispatchRuntime {
     })),
     listRunningProviders: vi.fn(() => ["fake"]),
     getActiveTurnId: (threadId) => activeTurnsByThreadId.get(threadId) ?? null,
-    waitForActiveTurn: async (threadId) =>
-      activeTurnsByThreadId.get(threadId) ?? null,
+    waitForActiveTurn: vi.fn(
+      async (threadId: string) => activeTurnsByThreadId.get(threadId) ?? null,
+    ),
     getProviderSession: (threadId) =>
       hostedThreadIds.has(threadId)
         ? { providerId: "fake", providerThreadId: "provider-thread-1" }
@@ -335,6 +336,7 @@ describe("dispatchCommand", () => {
     const flush = vi.fn(async () => flushDeferred.promise);
     const command: CommandOf<"thread.stop"> = {
       type: "thread.stop",
+      intent: "interrupt",
       environmentId: "env-1",
       threadId: "thread-1",
     };
@@ -644,6 +646,7 @@ describe("dispatchCommand", () => {
     // never loaded. The stop must still reach the turn in the old runtime.
     const command: CommandOf<"thread.stop"> = {
       type: "thread.stop",
+      intent: "interrupt",
       environmentId: "env-new",
       threadId: "thread-1",
     };
@@ -666,6 +669,59 @@ describe("dispatchCommand", () => {
     expect(flush).toHaveBeenCalledOnce();
   });
 
+  it("releases an idle runtime without the active-turn wait", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace("/tmp/bb-release"),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-release",
+      workspacePath: "/tmp/bb-release",
+    });
+    runtime.setIdle("thread-1");
+
+    const options = {
+      dataDir: "/tmp/bb-data",
+      eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+      fetchProjectAttachment: async () => {
+        throw new Error("Unexpected project attachment fetch");
+      },
+      runtimeManager: manager,
+      threadStorageRootPath: "/tmp/bb-thread-storage",
+    };
+
+    // The server already settled this thread as idle. Waiting for an active
+    // turn would burn the full stop timeout on every runtime released.
+    await dispatchCommand(
+      {
+        type: "thread.stop",
+        intent: "release",
+        environmentId: "env-release",
+        threadId: "thread-1",
+      },
+      options,
+    );
+    expect(runtime.waitForActiveTurn).not.toHaveBeenCalled();
+    expect(runtime.stopThread).toHaveBeenCalledWith({ threadId: "thread-1" });
+
+    // An interrupt keeps the wait: the stop can race a start whose
+    // turn/started event the runtime has not observed yet.
+    runtime.setIdle("thread-1");
+    await dispatchCommand(
+      {
+        type: "thread.stop",
+        intent: "interrupt",
+        environmentId: "env-release",
+        threadId: "thread-1",
+      },
+      options,
+    );
+    expect(runtime.waitForActiveTurn).toHaveBeenCalledWith("thread-1", {
+      timeoutMs: expect.any(Number),
+    });
+  });
+
   it("treats thread.stop as successful when no runtime holds the thread", async () => {
     const manager = new RuntimeManager({
       createRuntime: () => createRuntime(),
@@ -673,6 +729,7 @@ describe("dispatchCommand", () => {
     });
     const command: CommandOf<"thread.stop"> = {
       type: "thread.stop",
+      intent: "interrupt",
       environmentId: "env-missing-runtime",
       threadId: "thread-1",
     };
