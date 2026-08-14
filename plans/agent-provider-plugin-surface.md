@@ -207,7 +207,7 @@ Disposition of every current `ProviderAdapter` member:
 | Member | Becomes |
 | --- | --- |
 | `id`, `displayName`, `capabilities` | declaration data |
-| `approvalRequestPolicy` | declaration field |
+| `approvalRequestPolicy` | handshake fact (`initialize` result) |
 | `process` | uniform: `node <bridge entry>` from the bridge ref |
 | `buildCommandPlan` | deleted — fixed protocol methods; the bridge maps internally |
 | `translateEvent`, `translateAcceptedCommand` | deleted — bridge emits `ThreadEvent`s (accepted-user-message synthesis stays generic in runtime) |
@@ -246,80 +246,67 @@ bb.agents.experimental_registerProvider({
   id: "claude-code",                    // stable; existing ids unchanged
   displayName: "Claude Code",
   icon: { asset: "icons/claude.svg" },  // served via existing plugin assets
-  kind: "agent",                        // "agent" | "router" — see router note below
-  capabilities: {
-    // One merged block: today's ProviderCapabilities + ProviderServerCapabilities.
-    // Every boolean declares a provider-native fact, and a fact earns a slot
-    // here ONLY when a consumer outside the provider's own plugin needs it
-    // (e.g. supportsNativeUserQuestion: the ask-user-question plugin must
-    // know it to skip its duplicate tool). Facts only the provider's own
-    // plugin consumes do NOT belong here — today's `supportsWorkflows` is
-    // the example: its one consumer computes `workflowsEnabled` =
-    // capability && !claudeCodeWorkflowsDisabled, a bit only the claude
-    // bridge reads (its PreToolUse hook gates the native Workflow tool) and
-    // every other provider ignores. That whole chain moves inside the
-    // claude plugin: the toggle becomes a claude-plugin setting, delivered
-    // to its bridge as provider-scoped session options (below), and both
-    // the capability and the shared `workflowsEnabled` wire field are
-    // deleted. (bb's own provider-independent workflows plugin needs no
-    // capability either; it registers plain plugin tools with no provider
-    // check.)
-    supportsNativeFork: true,          // clone a session at a branch point
-    supportsNativeUserQuestion: true,  // ships its own ask-the-user tool (bb's
-                                       // plugin fallback tool is skipped)
-    supportsNativeSessionRewind: true, // session rewinds to an earlier point;
-                                       // gates bb's edit-past-message feature
-    supportsSessionArchiveSync: false, // mirror bb archive state into the
-                                       // provider's own session list
-    supportsSessionNameSync: false,    // push bb thread titles to the provider
-    supportsManualCompaction: true,    // explicit context compaction
-    supportsServiceTier: false,        // fast/priority tier toggle
-    supportsHostAiServices: false,     // backs voice transcription / inference
+  kind: "agent",                        // "agent" | "router" — see router note
+  bridge: { entry: "provider-bridge" }, // required for kind "agent"; routers omit
 
-    // Enumerations
+  // A capability is DECLARED only when it passes BOTH tests:
+  //   1. a consumer outside the provider's own plugin needs the fact, and
+  //   2. the fact is needed before / without a live session (picker
+  //      rendering, route gating, cross-plugin tool composition — including
+  //      with the host offline).
+  // Everything else is a HANDSHAKE fact reported by the bridge at
+  // `initialize`, where it cannot drift from behavior: the code that
+  // implements the feature is the code that reports it.
+  capabilities: {
     permissionModes: ["accept-edits", "auto", "full"],
     reasoningLevels: ["low", "medium", "high", "xhigh", "ultracode", "max"],
-    promptModes: ["plan"],
-    sessionPersistence: "resume",       // reap/resume eligibility. Shipped on
-                                       // main as a two-level design this
-                                       // field absorbs: declared default
-                                       // (`supportsSessionRestore`,
-                                       // `3bc9ce54b`) refined per session by
-                                       // the `sessionRestorable` flag on
-                                       // thread-identity results (ACP reads
-                                       // the agent's `loadSession` at
-                                       // initialize; kept fresh across
-                                       // session replacement).
-    processScope: "shared",             // "thread" (codex) | "shared"
+                                       // fallback ladder only; precise
+                                       // per-model sets come from model/list
+    supportsServiceTier: false,        // fast/priority toggle in the picker
+    supportsHostAiServices: false,     // server routes voice/inference
+    supportsNativeUserQuestion: true,  // ask-user-question plugin skips its
+                                       // duplicate tool
+    supportsNativeFork: true,          // fork affordance in the UI
+    supportsNativeSessionRewind: true, // edit-past-message affordance
+    supportsManualCompaction: true,    // compact affordance
+    // MERGE CANDIDATE: fork + rewind may collapse into
+    // `fork: "none" | "tip" | "checkpoint"` (rewind ≙ checkpoint fork) —
+    // verify per provider how edit-message rewind is implemented before
+    // merging. ACP is the motivating case: tip forks, no checkpoints.
   },
-  composerActions: [...],
-  approvalRequestPolicy: "provider",
-  // NOTE: there is deliberately NO `executionOptionScopes` (or any
-  // live-vs-session cost table). Its would-be consumers are all gone:
-  // #1610 deleted the override gate and `supportsExecutionOverride`; the
-  // runtime never diffs options (the bridge reconciles internally); and
-  // the truth-telling duty is event-sourced where it already works today —
-  // the ACP bridge warns at the moment a resume falls back to a fresh
-  // session ("continuing in a fresh session without in-agent history",
-  // `acp/bridge/bridge.ts:1618`), and this protocol makes the equivalent
-  // universal via the mandatory session-replacement notification. A
-  // declared table with zero consumers would violate the repo's own
-  // contract rules (accepted-but-ignored fields are forbidden). If a
-  // pre-submit "this will rebuild the session" hint is ever wanted, source
-  // the per-option scopes from the bridge's `initialize` result and add
-  // the declaration field when that consumer exists — deleting now
-  // forecloses nothing.
-  // Per-provider reality of a mid-thread model/reasoning change, from the
-  // code: claude applies live; codex takes model/serviceTier per turn
-  // (`codex/adapter.ts:2094`) and bb's extra same-process `thread/resume`
-  // is redundant conservatism; pi resumes same-process with the new
-  // settings; acp is lossy only without `loadSession` — and warns.
-  bridge: { entry: "provider-bridge" }, // required for kind "agent"; routers omit it
-  // NOTE: no `cli` and no `skillRoots` blocks — CLI lifecycle and skill
-  // layout knowledge are bridge protocol methods, not declaration data. See
-  // "CLI lifecycle lives in the bridge" and "Skills live in the bridge".
+  composerActions: ["plan"],           // just names. Skills typeahead is
+                                       // universal (bb injects skills into
+                                       // every provider) so it is implicit,
+                                       // and the {trigger, name,
+                                       // trailingText} boilerplate was
+                                       // identical everywhere — the
+                                       // composer owns the syntax.
 });
 ```
+
+**Moved to the `initialize` handshake** (session-behavior facts; reported by
+the bridge, conformance-checked, drift-proof by construction):
+
+- **archive/name sync**: the runtime skips `thread/archive` /
+  `thread/name/set` for bridges that don't advertise them — which also
+  deletes today's per-adapter unsupported-command noop plans.
+- **session persistence**: already per-session on main (`sessionRestorable`
+  on thread-identity results); the handshake supplies the default, the
+  session report refines it.
+- **`approvalRequestPolicy`**: a runtime branch consulted only when a
+  session exists.
+- **process scope — provisionally deleted entirely**: if the codex bridge
+  owns its app-server children internally (one shared bridge process
+  managing per-thread app-servers), every bridge is shared-scope, the
+  runtime's release/reap machinery targets sessions uniformly via
+  `thread/stop {intent: "release"}`, and the field has no reason to exist.
+  Settle this in the codex phase-2 design; if codex genuinely needs
+  bridge-process-per-thread, the field returns as a handshake fact.
+
+**Deleted outright**: `promptModes` (duplicated `composerActions` — "has a
+plan action" is the same fact), `executionOptionScopes`,
+`supportsNativeWorkflows`, `executionOverride` (see notes above for each).
+
 
 Server side, a new `ProviderRegistryService` becomes the single source of
 provider metadata. Every current consumer of `@bb/agent-providers`
@@ -713,8 +700,8 @@ per-provider slots — chiefly `buildProviderCommandPlan` and `translateEvent`
    `acp/permission/request`. pi: none (`full`-only). The canonical
    `PendingInteractionPayload` union already exists in `@bb/domain`
    (`packages/domain/src/pending-interactions.ts`); bridges emit those
-   shapes, the mapping moves inside, and `approvalRequestPolicy` stays declared (the
-   runtime already supports both modes).
+   shapes, the mapping moves inside, and `approvalRequestPolicy` becomes a handshake
+   fact (the runtime already supports both modes).
 4. **Execution-settings behavior.** claude is the sole outlier:
    `classifyClaudeExecutionSettingsChange` supports live model/reasoning
    swap, while codex, pi, and acp all share
