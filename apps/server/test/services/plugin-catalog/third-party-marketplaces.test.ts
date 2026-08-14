@@ -241,6 +241,16 @@ describe("third-party marketplaces", () => {
     expect(catalog.listMarketplaces().map((row) => row.name)).toEqual([
       "bb-official",
     ]);
+
+    const readded = await catalog.addMarketplace(`git:${repo}@main`);
+    expect(readded).toMatchObject({
+      name: "acme-plugins",
+      entryCount: 2,
+      resolvedCommit: refreshed?.marketplace.resolvedCommit,
+    });
+    expect(
+      getPluginMarketplaceIcon(db, "acme-plugins", "notes")?.contentType,
+    ).toBe("image/svg+xml");
   });
 
   it("removes a checkout left by a prior process crash", async () => {
