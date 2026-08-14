@@ -174,6 +174,44 @@ describe("RunDetail", () => {
     );
   });
 
+  it("renders a non-terminal ambiguous dispatch distinctly", async () => {
+    const { RunDetail } = await import("./run-detail.js");
+    const current = detail();
+    const slot = renderSlot(
+      {
+        component: () => (
+          <RunDetail projectId="p1" projectVersionId="v1" runId="run-1" />
+        ),
+      },
+      {},
+      {
+        rpc: {
+          benchRunGet: () => ({
+            ...current,
+            label: "tier1 running",
+            fields: {
+              ...current.fields,
+              tier: "tier1",
+              status: "running",
+              failureCode: "FORGE_DISPATCH_AMBIGUOUS",
+              failureReason: "socket hang up",
+            },
+          }),
+          benchLogsList: () => ({ items: [], total: 0, next: null, cache }),
+          benchOtaVerdictGet: verdict,
+        },
+      },
+    );
+
+    expect(
+      await slot.findByText(/Forge dispatch outcome is ambiguous/u),
+    ).toBeTruthy();
+    expect(slot.getByText("socket hang up")).toBeTruthy();
+    expect(
+      slot.getByText(/Do not dispatch a duplicate while reconciliation/u),
+    ).toBeTruthy();
+  });
+
   it("renders unknown-run recovery and stale cache truthfully", async () => {
     const { RunDetail } = await import("./run-detail.js");
     const unknown = renderSlot(

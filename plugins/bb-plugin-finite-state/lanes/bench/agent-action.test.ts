@@ -6,7 +6,12 @@ import { join } from "node:path";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createPluginContext } from "../../lib/context.js";
-import type { RemoteServices } from "../../lib/remote/types.js";
+import type {
+  ForgeJobSnapshot,
+  Json,
+  RemoteServices,
+} from "../../lib/remote/types.js";
+import { BENCH_DISPATCH_RECONCILED_CODE } from "./ambiguity.js";
 import { registerActionTools } from "../agentic/tools/actions.js";
 import {
   openManifest,
@@ -16,8 +21,10 @@ import {
 } from "../firmware/cache/manifest.js";
 import { rootfsPath } from "../firmware/cache/layout.js";
 import { computeForgeArtifactHash } from "../firmware/forge/artifact-hash.js";
+import { prepareFirmwareForBench } from "../firmware/forge/handshake.js";
 import { registerRemoteServices } from "../remote/register.js";
 import { registerBenchAgentAction } from "./agent-action.js";
+import { createDefaultBenchExecutionDeps } from "./execute/run.js";
 
 const hosts: Array<ReturnType<typeof createFakePluginHost>> = [];
 const roots: string[] = [];
@@ -33,6 +40,17 @@ afterEach(async () => {
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+type FakeHost = ReturnType<typeof createFakePluginHost>;
+
+function decoded(
+  result: Awaited<ReturnType<FakeHost["harness"]["behavior"]["callAgentTool"]>>,
+): unknown {
+  if (typeof result === "string") return JSON.parse(result) as unknown;
+  const text = result.content.find((part) => part.type === "text")?.text;
+  if (!text) throw new Error("Tool returned no text");
+  return JSON.parse(text) as unknown;
 }
 
 async function writeReadyMount(root: string): Promise<string> {
@@ -189,10 +207,314 @@ describe("registered bench agent action", () => {
       status: "failed",
     });
     if (!failed) throw new Error("Expected one durable failed bench run");
-    expect(JSON.stringify(result)).toContain(failed.run_id);
-    expect(JSON.stringify(result)).toMatch(
-      /HOST_NOT_ENROLLED.*Fix the selected firmware mount or bench prerequisites before retrying/iu,
-    );
+    expect(decoded(result)).toMatchObject({
+      ok: false,
+      error: {
+        code: "HOST_NOT_ENROLLED",
+        hint: "Fix the selected firmware mount or bench prerequisites before retrying.",
+        details: { runId: failed.run_id },
+      },
+    });
     expect(host.harness.sdk.callsTo("threads.spawn")).toHaveLength(0);
   });
+
+  it.each([
+    {
+      name: "pen-test dispatch fails after a parsed verify job",
+      mode: "pen_failure" as const,
+      expectedInitialJobId: "dynamic-live-1",
+      expectedPenCalls: 1,
+    },
+    {
+      name: "verify dispatch returns no parseable job id",
+      mode: "malformed_verify" as const,
+      expectedInitialJobId: null,
+      expectedPenCalls: 0,
+    },
+    {
+      name: "verify transport fails after Forge accepts the job",
+      mode: "verify_transport" as const,
+      expectedInitialJobId: null,
+      expectedPenCalls: 0,
+    },
+  ])(
+    "preserves ambiguity when $name",
+    async ({ mode, expectedInitialJobId, expectedPenCalls }) => {
+      const root = await mkdtemp(join(tmpdir(), "fs-agent-bench-ambiguous-"));
+      roots.push(root);
+      const artifactHash = await writeReadyMount(root);
+      const prepared = await prepareFirmwareForBench(
+        { worktreeRoot: root },
+        "pv-1",
+        new AbortController().signal,
+      );
+      const host = createFakePluginHost({
+        pluginId: `fs-action-bench-ambiguous-${crypto.randomUUID()}`,
+      });
+      hosts.push(host);
+      host.harness.sdk.stub("threads.get", async () => ({
+        id: "thread-test",
+        projectId: "project-test",
+        environmentId: "environment-test",
+      }));
+      host.harness.sdk.stub("threads.spawn", async () => ({
+        id: "bench-thread-ambiguous",
+      }));
+      host.harness.sdk.stub("environments.get", async () => ({
+        id: "environment-test",
+        projectId: "project-test",
+        path: root,
+        hostId: "host-test",
+      }));
+      host.harness.sdk.stub("projects.get", async () => ({
+        id: "project-test",
+        kind: "standard",
+        name: "Project Test",
+        gitRemoteUrl: null,
+        createdAt: 1,
+        updatedAt: 1,
+        sources: [
+          {
+            id: "source-test",
+            projectId: "project-test",
+            type: "local_path",
+            hostId: "host-test",
+            path: root,
+            isDefault: true,
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        ],
+      }));
+      host.harness.sdk.stub("hosts.list", async () => [
+        {
+          id: "host-test",
+          name: "Bench Test",
+          type: "persistent",
+          status: "connected",
+          maxPermissionMode: "full",
+          lastSeenAt: 1,
+          lastRejectedProtocolVersion: null,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ]);
+      const ctx = createPluginContext(host.bb);
+      await registerRemoteServices(host.bb, ctx);
+      const at = "2026-08-14T04:30:00.000Z";
+      ctx
+        .db()
+        .prepare(
+          `INSERT INTO pull_generation
+        (project_id, project_version_id, generation_id, status,
+         requested_kinds_json, started_at, accepted_at)
+       VALUES ('project-test', 'pv-1', 'generation-1', 'accepted',
+               '["verificationRun"]', ?, ?)`,
+        )
+        .run(at, at);
+      ctx
+        .db()
+        .prepare(
+          `INSERT INTO sync_state
+        (project_id, project_version_id, entity_kind,
+         accepted_generation_id, last_pull)
+       VALUES ('project-test', 'pv-1', 'verificationRun',
+               'generation-1', ?)`,
+        )
+        .run(at);
+      ctx
+        .db()
+        .prepare(
+          `INSERT INTO firmware_mounts
+        (project_id, project_version_id, generation_id, source, state,
+         input_sha256, artifact_hash, root_path, file_count,
+         materialized_files, error_count, pulled_at)
+       VALUES ('project-test', 'pv-1', 'generation-1', 'standalone_unpack',
+               'ready', ?, ?, ?, 1, 1, 0, ?)`,
+        )
+        .run(sha256("input"), artifactHash, rootfsPath(root, "pv-1"), at);
+      let verifyIssued = false;
+      const acceptedJob: ForgeJobSnapshot = {
+        jobId: "dynamic-live-1",
+        status: "COMPLETED",
+        tool: "verify_dynamic",
+        recipe: null,
+        scope: { projectVersionId: "pv-1", verdictIds: ["REQ-1"] },
+        environment: {},
+        runId: null,
+        elapsedSeconds: 1,
+        logTail: [],
+        events: [],
+        eventCount: 0,
+        result: null,
+        error: null,
+      };
+      const verifyDynamic = vi.fn(async (): Promise<Json> => {
+        verifyIssued = true;
+        if (mode === "verify_transport") throw new Error("socket hang up");
+        return mode === "malformed_verify" ? {} : { job_id: "dynamic-live-1" };
+      });
+      const penTestRun = vi.fn(async () => {
+        throw new Error("pen-test dispatch transport closed");
+      });
+      let reconciliationTask:
+        | { run(signal: AbortSignal): Promise<void> }
+        | undefined;
+      const jobQueue = {
+        enqueue: vi.fn((task: { run(signal: AbortSignal): Promise<void> }) => {
+          reconciliationTask = task;
+        }),
+        take: vi.fn(async () => {
+          throw new Error("No queued bench job");
+        }),
+      };
+      registerBenchAgentAction(
+        ctx,
+        () =>
+          ctx.service<RemoteServices>("remote-services", () => {
+            throw new Error("REMOTE_SERVICES_NOT_REGISTERED");
+          }),
+        jobQueue,
+        (ownerCtx, request, remote, queue) => {
+          request.deploymentContext = {
+            productType: "gateway",
+            networkExposure: "internet",
+            regulatory: "CRA",
+            deploymentNotes: "Production edge",
+            rootComponentName: "Eagle",
+            rootComponentType: "firmware",
+          };
+          return {
+            ...createDefaultBenchExecutionDeps(
+              ownerCtx,
+              request,
+              remote,
+              queue,
+            ),
+            scheduler: { sleep: async () => undefined },
+            hostProbe: {
+              inspect: async () => ({
+                allowPentest: true,
+                docker: true,
+                cveEvidenceVerifier: true,
+                forgeCompute: true,
+              }),
+            },
+            forgeCompute: {
+              verifyDynamic,
+              penTestRun,
+              getJobStatus: vi.fn(async () => acceptedJob),
+              listJobs() {
+                return {
+                  async *[Symbol.asyncIterator]() {
+                    yield {
+                      items: verifyIssued ? [acceptedJob] : [],
+                      total: verifyIssued ? 1 : 0,
+                      next: null,
+                    };
+                  },
+                };
+              },
+            },
+            prepareFirmware: async () => ({
+              prepared,
+              firmwareHandshake: { worktreeRoot: root },
+              forgeProcess: {
+                kind: "plugin_owned_stdio" as const,
+                hostId: "host-test",
+                command: ["forge"],
+                start: async () => undefined,
+              },
+            }),
+            resolveTier1Targets: async () => ({
+              verdictIds: ["REQ-1"],
+              cveId: "CVE-2026-0001",
+              componentId: "component-1",
+              findingId: null,
+            }),
+            createRunId: () => "bench-ambiguous-1",
+          };
+        },
+      );
+      registerActionTools(host.bb, ctx);
+
+      const result = await host.harness.behavior.callAgentTool(
+        "fs_bench_run",
+        {
+          pvId: "pv-1",
+          tier: "tier1",
+          requirement: "REQ-1",
+          target: "CVE-2026-0001@component-1",
+        },
+        { projectId: "project-test", threadId: "thread-test" },
+      );
+
+      expect(decoded(result)).toMatchObject({
+        ok: false,
+        error: {
+          code: "FORGE_DISPATCH_AMBIGUOUS",
+          hint: expect.stringMatching(
+            /bench-ambiguous-1.*automatic Forge reconciliation.*do not dispatch/iu,
+          ),
+          retryable: false,
+          details: {
+            runId: "bench-ambiguous-1",
+            threadId: "bench-thread-ambiguous",
+          },
+        },
+      });
+      const row = ctx
+        .db()
+        .prepare(
+          `SELECT status, job_id, finished_at, raw
+         FROM verification_runs WHERE run_id='bench-ambiguous-1'`,
+        )
+        .get() as {
+        status: string;
+        job_id: string | null;
+        finished_at: string | null;
+        raw: string;
+      };
+      expect(row).toMatchObject({
+        status: "running",
+        job_id: expectedInitialJobId,
+        finished_at: null,
+      });
+      expect(JSON.parse(row.raw)).toMatchObject({
+        dispatchAmbiguous: true,
+        failureCode: "FORGE_DISPATCH_AMBIGUOUS",
+        jobIds: expectedInitialJobId === null ? [] : [expectedInitialJobId],
+      });
+      expect(verifyDynamic).toHaveBeenCalledTimes(1);
+      expect(penTestRun).toHaveBeenCalledTimes(expectedPenCalls);
+      expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
+      if (!reconciliationTask) {
+        throw new Error("Expected ambiguity reconciliation task");
+      }
+      await reconciliationTask.run(new AbortController().signal);
+      const reconciled = ctx
+        .db()
+        .prepare(
+          `SELECT status, job_id, finished_at, raw
+           FROM verification_runs WHERE run_id='bench-ambiguous-1'`,
+        )
+        .get() as {
+        status: string;
+        job_id: string | null;
+        finished_at: string | null;
+        raw: string;
+      };
+      expect(reconciled).toMatchObject({
+        status: "failed",
+        job_id: "dynamic-live-1",
+        finished_at: expect.any(String),
+      });
+      expect(JSON.parse(reconciled.raw)).toMatchObject({
+        dispatchAmbiguous: false,
+        reconciliationState: "terminal",
+        reconciledJobIds: ["dynamic-live-1"],
+        failureCode: BENCH_DISPATCH_RECONCILED_CODE,
+      });
+    },
+  );
 });

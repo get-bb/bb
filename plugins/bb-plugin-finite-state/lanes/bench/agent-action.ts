@@ -6,6 +6,7 @@ import {
   type ScopedBenchAction,
 } from "../../lib/agentic/action-allowlist.js";
 import type { RemoteServices } from "../../lib/remote/types.js";
+import { BENCH_DISPATCH_AMBIGUOUS_CODE } from "./ambiguity.js";
 import { computeForgeArtifactHash } from "../firmware/forge/artifact-hash.js";
 import { loadFirmwareReadiness } from "../firmware/forge/readiness.js";
 import {
@@ -28,6 +29,8 @@ interface BenchRunIdentityRow {
   thread_id: string | null;
 }
 
+type BenchExecutionDepsFactory = typeof createDefaultBenchExecutionDeps;
+
 function precondition(code: string, message: string): ActionServiceError {
   return new ActionServiceError(code, message, "precondition");
 }
@@ -36,6 +39,7 @@ export function registerBenchAgentAction(
   ctx: PluginContext,
   remote: () => RemoteServices,
   jobQueue: BenchExecutionDeps["jobQueue"],
+  createExecutionDeps: BenchExecutionDepsFactory = createDefaultBenchExecutionDeps,
 ): void {
   ctx.service<ScopedBenchAction>(BENCH_ACTION_SERVICE, () => ({
     async run(input, scope?: ActionInvocationScope) {
@@ -113,12 +117,7 @@ export function registerBenchAgentAction(
         ...(input.requirement ? { requirementId: input.requirement } : {}),
         ...(input.target ? { target: input.target } : {}),
       };
-      const ownerDeps = createDefaultBenchExecutionDeps(
-        ctx,
-        request,
-        remote(),
-        jobQueue,
-      );
+      const ownerDeps = createExecutionDeps(ctx, request, remote(), jobQueue);
       let durableRunId: string | undefined;
       const guardedDeps: BenchExecutionDeps = {
         ...ownerDeps,
@@ -148,10 +147,17 @@ export function registerBenchAgentAction(
             ORDER BY synced_at DESC LIMIT 1`,
           )
           .get(scope.projectId, attempt.runId);
-        throw new ActionServiceError(attempt.code, attempt.message, "failed", {
-          runId: attempt.runId,
-          ...(identity?.thread_id ? { threadId: identity.thread_id } : {}),
-        });
+        throw new ActionServiceError(
+          attempt.code,
+          attempt.message,
+          attempt.code === BENCH_DISPATCH_AMBIGUOUS_CODE
+            ? "dispatch_ambiguous"
+            : "failed",
+          {
+            runId: attempt.runId,
+            ...(identity?.thread_id ? { threadId: identity.thread_id } : {}),
+          },
+        );
       } catch (error) {
         if (error instanceof ActionServiceError) throw error;
         if (durableRunId === undefined) {

@@ -14,6 +14,7 @@ import { Skeleton } from "@bb/shared-ui/skeleton";
 import type { JsonValue, RpcContract } from "../../../shared/contract.js";
 import { ArtifactList } from "./artifact-list.js";
 import { LogTail } from "./log-tail.js";
+import { BENCH_DISPATCH_AMBIGUOUS_CODE } from "../ambiguity.js";
 import { VerdictCard } from "./verdict-card.js";
 
 interface RunDetailProps {
@@ -253,7 +254,23 @@ export function RunDetail({
             )}
           </div>
         </header>
-        {detail.status === "failed" ? (
+        {detail.failureCode === BENCH_DISPATCH_AMBIGUOUS_CODE ? (
+          <Alert>
+            <Icon name="AlertTriangle" />
+            <AlertDescription>
+              <span className="font-medium">
+                Forge dispatch outcome is ambiguous · {detail.failureCode}
+              </span>
+              <p className="mt-1">
+                {detail.failureReason ??
+                  "Automatic reconciliation is checking every possible Forge dispatch."}
+              </p>
+              <p className="mt-1 font-medium">
+                Do not dispatch a duplicate while reconciliation is in progress.
+              </p>
+            </AlertDescription>
+          </Alert>
+        ) : detail.status === "failed" ? (
           <Alert variant="destructive">
             <Icon name="CircleX" />
             <AlertDescription>

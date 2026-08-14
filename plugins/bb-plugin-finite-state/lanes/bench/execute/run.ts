@@ -17,6 +17,10 @@ import type {
 import { storeEvidenceCheckpointWithResult } from "../store/results.js";
 import { getAcceptedBenchGeneration } from "../store/runs.js";
 import type { BenchEvidenceBundle, BenchRunRecord } from "../store/types.js";
+import {
+  BENCH_DISPATCH_AMBIGUOUS_CODE,
+  BENCH_DISPATCH_RECONCILED_CODE,
+} from "../ambiguity.js";
 import { forgeEvidenceCheckpoint, type ForgeEvidenceDeps } from "./evidence.js";
 import {
   pollForgeJobs,
@@ -34,6 +38,8 @@ import { runTier0, type Tier0Analyzer } from "./tier0.js";
 import {
   dispatchTier1,
   validateDeploymentContext,
+  type Tier1DispatchIntent,
+  type Tier1DispatchTool,
   type Tier1Targets,
 } from "./tier1.js";
 
@@ -79,7 +85,7 @@ export interface BenchExecutionDeps {
   tier0Analyzers: readonly Tier0Analyzer[];
   forgeCompute: Pick<
     ForgeComputeClient,
-    "verifyDynamic" | "penTestRun" | "getJobStatus"
+    "verifyDynamic" | "penTestRun" | "getJobStatus" | "listJobs"
   > | null;
   scheduler: BenchJobScheduler;
   jobQueue: Pick<BenchJobQueue, "take"> & {
@@ -542,6 +548,204 @@ function queueTier1Polling(
   });
 }
 
+interface DispatchedForgeJob {
+  tool: Tier1DispatchTool;
+  jobId: string;
+}
+
+function jsonObject(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value))
+    : null;
+}
+
+function scopeString(
+  scope: Record<string, unknown>,
+  ...names: readonly string[]
+): string | null {
+  for (const name of names) {
+    const value = scope[name];
+    if (typeof value === "string") return value;
+  }
+  return null;
+}
+
+function scopeStrings(
+  scope: Record<string, unknown>,
+  ...names: readonly string[]
+): string[] | null {
+  for (const name of names) {
+    const value = scope[name];
+    if (
+      Array.isArray(value) &&
+      value.every((candidate) => typeof candidate === "string")
+    ) {
+      return [...value];
+    }
+  }
+  return null;
+}
+
+function matchesDispatchIntent(
+  job: ForgeJobSnapshot,
+  intent: Tier1DispatchIntent,
+): boolean {
+  if (job.tool !== intent.tool) return false;
+  const scope = jsonObject(job.scope);
+  if (!scope) return false;
+  const projectVersionId = scopeString(
+    scope,
+    "projectVersionId",
+    "project_version_id",
+    "pv_id",
+  );
+  if (projectVersionId !== intent.scope.projectVersionId) return false;
+  if (intent.tool === "verify_dynamic") {
+    const verdictIds = scopeStrings(scope, "verdictIds", "verdict_ids");
+    return (
+      verdictIds !== null &&
+      JSON.stringify([...verdictIds].sort()) ===
+        JSON.stringify([...intent.scope.verdictIds].sort())
+    );
+  }
+  return (
+    scopeString(scope, "projectId", "project_id") === intent.scope.projectId &&
+    scopeString(scope, "cveId", "cve_id") === intent.scope.cveId &&
+    scopeString(scope, "componentId", "component_id") ===
+      intent.scope.componentId
+  );
+}
+
+function queueTier1AmbiguityReconciliation(
+  deps: BenchExecutionDeps,
+  client: NonNullable<BenchExecutionDeps["forgeCompute"]>,
+  run: BenchRunRecord,
+  intents: readonly Tier1DispatchIntent[],
+  dispatchedJobs: readonly DispatchedForgeJob[],
+  requirementId: string,
+): void {
+  const task = {
+    async run(signal: AbortSignal): Promise<void> {
+      const candidates = new Map(
+        dispatchedJobs.map((job) => [job.jobId, job] as const),
+      );
+      try {
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          for (const intent of intents) {
+            const prior = new Set(intent.priorJobIds);
+            for await (const page of client.listJobs(
+              { tool: intent.tool },
+              { signal },
+            )) {
+              for (const job of page.items) {
+                if (
+                  !prior.has(job.jobId) &&
+                  matchesDispatchIntent(job, intent)
+                ) {
+                  candidates.set(job.jobId, {
+                    tool: intent.tool,
+                    jobId: job.jobId,
+                  });
+                }
+              }
+            }
+          }
+          if (attempt < 3)
+            await deps.scheduler.sleep(500 * 2 ** attempt, signal);
+        }
+        const jobIds = [...candidates.keys()];
+        if (jobIds.length > 0) {
+          await pollForgeJobs(client, jobIds, signal, {
+            scheduler: deps.scheduler,
+            publishHint(hint) {
+              deps.publish("bench:log", {
+                runId: run.runId,
+                jobId: hint.jobId,
+                status: hint.status,
+              });
+            },
+          });
+        }
+        const finishedAt = deps.now().toISOString();
+        checkpoint(deps, {
+          run: {
+            ...run,
+            status: "failed",
+            finishedAt,
+            durationMs:
+              run.startedAt === null
+                ? null
+                : Math.max(
+                    0,
+                    Date.parse(finishedAt) - Date.parse(run.startedAt),
+                  ),
+            jobId: jobIds[0] ?? run.jobId,
+            raw: {
+              ...(jsonObject(run.raw) ?? {}),
+              dispatchAmbiguous: false,
+              reconciliationState: "terminal",
+              reconciledJobIds: jobIds,
+              failureCode: BENCH_DISPATCH_RECONCILED_CODE,
+              failureReason:
+                jobIds.length > 0
+                  ? "Forge reconciliation observed every candidate dispatch reach a terminal state. The incomplete bench attempt was not promoted to evidence."
+                  : "Forge reconciliation repeatedly found no matching accepted job. The incomplete bench attempt was not promoted to evidence.",
+            },
+          },
+          results: [
+            {
+              requirementId,
+              checkId: "forge-dispatch-reconciliation",
+              outcome: "error",
+              evidenceSummary:
+                "Ambiguous Forge dispatch reconciled without producing complete Tier 1 evidence.",
+            },
+          ],
+          artifacts: [],
+        });
+      } catch (error) {
+        if (signal.aborted) return;
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Forge dispatch reconciliation failed";
+        checkpoint(deps, {
+          run: {
+            ...run,
+            raw: {
+              ...(jsonObject(run.raw) ?? {}),
+              reconciliationState: "retry_required",
+              reconciliationError: message.slice(0, 20_000),
+            },
+          },
+          results: [],
+          artifacts: [],
+        });
+      }
+    },
+  };
+  try {
+    deps.jobQueue.enqueue(task);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Forge reconciliation could not be queued";
+    checkpoint(deps, {
+      run: {
+        ...run,
+        raw: {
+          ...(jsonObject(run.raw) ?? {}),
+          reconciliationState: "retry_required",
+          reconciliationError: message.slice(0, 20_000),
+        },
+      },
+      results: [],
+      artifacts: [],
+    });
+  }
+}
+
 async function executeRunBench(
   deps: BenchExecutionDeps,
   request: BenchRunRequest,
@@ -566,6 +770,8 @@ async function executeRunBench(
     firmwareDigest?: string;
     dispatchError?: string;
     jobIds?: string[];
+    dispatchIntents?: Tier1DispatchIntent[];
+    dispatchedJobs?: DispatchedForgeJob[];
   } = {};
 
   try {
@@ -666,12 +872,45 @@ async function executeRunBench(
       );
     }
     let jobIds: string[];
+    const dispatchIntents: Tier1DispatchIntent[] = [];
+    const dispatchedJobs: DispatchedForgeJob[] = [];
     try {
       jobIds = await dispatchTier1(
         {
           forgeCompute: client,
           firmwareHandshake: preparedExecution.firmwareHandshake,
           forgeProcess: preparedExecution.forgeProcess,
+          onDispatchIssued(intent) {
+            dispatchIntents.push(intent);
+            const jobIds = dispatchedJobs.map((job) => job.jobId);
+            const dispatching: BenchRunRecord = {
+              ...linked,
+              status: "running",
+              jobId: jobIds[0] ?? null,
+              raw: {
+                firmwareDigest,
+                jobIds,
+                dispatchIntents: [...dispatchIntents],
+                dispatchedJobs: [...dispatchedJobs],
+                dispatching: true,
+              },
+            };
+            currentRun = dispatching;
+            failureContext = {
+              firmwareDigest,
+              jobIds,
+              dispatchIntents: [...dispatchIntents],
+              dispatchedJobs: [...dispatchedJobs],
+            };
+            checkpoint(deps, {
+              run: dispatching,
+              results: [],
+              artifacts: [],
+            });
+          },
+          onJobDispatched(tool, jobId) {
+            dispatchedJobs.push({ tool, jobId });
+          },
         },
         {
           projectId: validated.projectId,
@@ -685,7 +924,13 @@ async function executeRunBench(
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Tier 1 dispatch failed";
-      failureContext = { firmwareDigest, jobIds: [], dispatchError: message };
+      failureContext = {
+        firmwareDigest,
+        jobIds: dispatchedJobs.map((job) => job.jobId),
+        dispatchIntents: [...dispatchIntents],
+        dispatchedJobs: [...dispatchedJobs],
+        dispatchError: message,
+      };
       throw new BenchRunError("FORGE_DISPATCH_FAILED", message);
     }
     const running: BenchRunRecord = {
@@ -707,23 +952,38 @@ async function executeRunBench(
     const message =
       error instanceof Error ? error.message : "Bench run preflight failed";
     const aborted = signal.aborted;
-    const code = aborted ? "BENCH_RUN_ABORTED" : failureCode(error);
+    const dispatchAmbiguous = (failureContext.dispatchIntents?.length ?? 0) > 0;
+    const code = dispatchAmbiguous
+      ? BENCH_DISPATCH_AMBIGUOUS_CODE
+      : aborted
+        ? "BENCH_RUN_ABORTED"
+        : failureCode(error);
     if (!attemptRecorded) throw new BenchRunError(code, message);
     const finishedAt = deps.now().toISOString();
-    checkpoint(deps, {
-      run: {
-        ...currentRun,
-        status: aborted ? "timeout" : "failed",
-        finishedAt,
-        durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt)),
-        raw: {
-          ...failureContext,
-          stage: currentRun.threadId ? "execution" : "preflight",
-          failureCode: code,
-          failureReason: message.slice(0, 20_000),
-          jobIds: failureContext.jobIds ?? [],
-        },
+    const persistedRun: BenchRunRecord = {
+      ...currentRun,
+      status: dispatchAmbiguous ? "running" : aborted ? "timeout" : "failed",
+      ...(dispatchAmbiguous
+        ? { finishedAt: null, durationMs: null }
+        : {
+            finishedAt,
+            durationMs: Math.max(
+              0,
+              Date.parse(finishedAt) - Date.parse(startedAt),
+            ),
+          }),
+      jobId: failureContext.jobIds?.[0] ?? currentRun.jobId,
+      raw: {
+        ...failureContext,
+        stage: currentRun.threadId ? "execution" : "preflight",
+        dispatchAmbiguous,
+        failureCode: code,
+        failureReason: message.slice(0, 20_000),
+        jobIds: failureContext.jobIds ?? [],
       },
+    };
+    checkpoint(deps, {
+      run: persistedRun,
       results: [
         {
           requirementId: validated.requirementId ?? "unmapped:bench-run",
@@ -739,6 +999,16 @@ async function executeRunBench(
       ],
       artifacts: [],
     });
+    if (dispatchAmbiguous && deps.forgeCompute) {
+      queueTier1AmbiguityReconciliation(
+        deps,
+        deps.forgeCompute,
+        persistedRun,
+        failureContext.dispatchIntents ?? [],
+        failureContext.dispatchedJobs ?? [],
+        validated.requirementId ?? "unmapped:tier1",
+      );
+    }
     throw new BenchRunError(code, message, runId);
   }
 }

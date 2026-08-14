@@ -19,8 +19,14 @@ import { dispatchTier1, validateDeploymentContext } from "./tier1.js";
 
 const roots: string[] = [];
 
+async function* noForgeJobs() {
+  yield { items: [], total: 0, next: null };
+}
+
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(
+    roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+  );
 });
 
 function sha256(value: string): string {
@@ -105,8 +111,14 @@ describe("Tier 1 execution", () => {
     await expect(
       dispatchTier1(
         {
-          forgeCompute: { verifyDynamic, penTestRun },
+          forgeCompute: {
+            verifyDynamic,
+            penTestRun,
+            listJobs: noForgeJobs,
+          },
           firmwareHandshake: { worktreeRoot: fixture.root },
+          onDispatchIssued: vi.fn(),
+          onJobDispatched: vi.fn(),
           forgeProcess: {
             kind: "plugin_owned_stdio",
             hostId: "host-1",
@@ -124,7 +136,9 @@ describe("Tier 1 execution", () => {
         new AbortController().signal,
       ),
     ).resolves.toEqual(["dynamic-1", "pentest-1"]);
-    expect(start.mock.calls[0]?.[0].environment).toEqual(fixture.prepared.environment);
+    expect(start.mock.calls[0]?.[0].environment).toEqual(
+      fixture.prepared.environment,
+    );
     expect(verifyDynamic).toHaveBeenCalledWith(
       { projectVersionId: "pv-1", verdictIds: ["verdict-1"] },
       expect.anything(),
@@ -144,7 +158,9 @@ describe("Tier 1 execution", () => {
     expect(() => validateDeploymentContext(missingField)).toThrow(
       "DEPLOYMENT_CONTEXT_INVALID: rootComponentType",
     );
-    expect(() => validateDeploymentContext(undefined)).toThrow("DEPLOYMENT_CONTEXT_REQUIRED");
+    expect(() => validateDeploymentContext(undefined)).toThrow(
+      "DEPLOYMENT_CONTEXT_REQUIRED",
+    );
   });
 
   it("makes zero Forge action calls when bytes mutate after preparation", async () => {
@@ -155,8 +171,14 @@ describe("Tier 1 execution", () => {
     await expect(
       dispatchTier1(
         {
-          forgeCompute: { verifyDynamic, penTestRun },
+          forgeCompute: {
+            verifyDynamic,
+            penTestRun,
+            listJobs: noForgeJobs,
+          },
           firmwareHandshake: { worktreeRoot: fixture.root },
+          onDispatchIssued: vi.fn(),
+          onJobDispatched: vi.fn(),
           forgeProcess: {
             kind: "plugin_owned_stdio",
             hostId: "host-1",
@@ -185,9 +207,18 @@ describe("Tier 1 execution", () => {
     await expect(
       dispatchTier1(
         {
-          forgeCompute: { verifyDynamic, penTestRun },
+          forgeCompute: {
+            verifyDynamic,
+            penTestRun,
+            listJobs: noForgeJobs,
+          },
           firmwareHandshake: { worktreeRoot: fixture.root },
-          forgeProcess: { kind: "remote", reason: "no prepared-root registration" },
+          onDispatchIssued: vi.fn(),
+          onJobDispatched: vi.fn(),
+          forgeProcess: {
+            kind: "remote",
+            reason: "no prepared-root registration",
+          },
         },
         {
           projectId: "project-a",

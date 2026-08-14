@@ -18,9 +18,28 @@ export interface Tier1Targets {
 }
 
 export interface Tier1DispatchDeps {
-  forgeCompute: Pick<ForgeComputeClient, "verifyDynamic" | "penTestRun">;
+  forgeCompute: Pick<
+    ForgeComputeClient,
+    "verifyDynamic" | "penTestRun" | "listJobs"
+  >;
   firmwareHandshake: FirmwareHandshakeDeps;
   forgeProcess: ForgeProcessAdapter;
+  onDispatchIssued(intent: Tier1DispatchIntent): void;
+  onJobDispatched(tool: Tier1DispatchTool, jobId: string): void;
+}
+
+export type Tier1DispatchTool = "verify_dynamic" | "pen_test_run";
+
+export interface Tier1DispatchIntent {
+  tool: Tier1DispatchTool;
+  priorJobIds: readonly string[];
+  scope: Readonly<{
+    projectId: string;
+    projectVersionId: string;
+    verdictIds: readonly string[];
+    cveId: string;
+    componentId: string;
+  }>;
 }
 
 function jobIdFromVerifyDynamic(value: Json): string {
@@ -32,6 +51,18 @@ function jobIdFromVerifyDynamic(value: Json): string {
     throw new Error("FORGE_VERIFY_DYNAMIC_INVALID_JOB");
   }
   return jobId;
+}
+
+async function listedJobIds(
+  client: Pick<ForgeComputeClient, "listJobs">,
+  tool: Tier1DispatchTool,
+  signal: AbortSignal,
+): Promise<string[]> {
+  const jobIds: string[] = [];
+  for await (const page of client.listJobs({ tool }, { signal })) {
+    jobIds.push(...page.items.map((job) => job.jobId));
+  }
+  return jobIds;
 }
 
 export function validateDeploymentContext(
@@ -67,7 +98,8 @@ export async function dispatchTier1(
   signal: AbortSignal,
 ): Promise<string[]> {
   signal.throwIfAborted();
-  if (input.targets.verdictIds.length === 0) throw new Error("TIER1_VERDICT_TARGET_REQUIRED");
+  if (input.targets.verdictIds.length === 0)
+    throw new Error("TIER1_VERDICT_TARGET_REQUIRED");
   const deploymentContext = validateDeploymentContext(input.deploymentContext);
 
   // This reads the sealed object's non-enumerable environment directly and
@@ -79,11 +111,33 @@ export async function dispatchTier1(
     signal,
   );
 
+  const scope = {
+    projectId: input.projectId,
+    projectVersionId: input.pvId,
+    verdictIds: [...input.targets.verdictIds],
+    cveId: input.targets.cveId,
+    componentId: input.targets.componentId,
+  };
+  deps.onDispatchIssued({
+    tool: "verify_dynamic",
+    priorJobIds: await listedJobIds(
+      deps.forgeCompute,
+      "verify_dynamic",
+      signal,
+    ),
+    scope,
+  });
   const dynamic = await deps.forgeCompute.verifyDynamic(
     { projectVersionId: input.pvId, verdictIds: input.targets.verdictIds },
     { signal },
   );
   const dynamicJobId = jobIdFromVerifyDynamic(dynamic);
+  deps.onJobDispatched("verify_dynamic", dynamicJobId);
+  deps.onDispatchIssued({
+    tool: "pen_test_run",
+    priorJobIds: await listedJobIds(deps.forgeCompute, "pen_test_run", signal),
+    scope,
+  });
   const pentest = await deps.forgeCompute.penTestRun(
     {
       cveId: input.targets.cveId,
@@ -96,5 +150,6 @@ export async function dispatchTier1(
     { signal },
   );
   if (!pentest.jobId) throw new Error("FORGE_PENTEST_INVALID_JOB");
+  deps.onJobDispatched("pen_test_run", pentest.jobId);
   return [dynamicJobId, pentest.jobId];
 }

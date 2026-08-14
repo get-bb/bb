@@ -26,6 +26,10 @@ import {
 const fixtures: Array<ReturnType<typeof createBenchTestStore>> = [];
 const roots: string[] = [];
 
+async function* noForgeJobs() {
+  yield { items: [], total: 0, next: null };
+}
+
 afterEach(async () => {
   await Promise.all([
     ...fixtures
@@ -238,6 +242,7 @@ describe("runBench", () => {
     execution.forgeCompute = {
       verifyDynamic,
       penTestRun,
+      listJobs: noForgeJobs,
       getJobStatus: vi.fn(async () => ({
         jobId: "unexpected",
         status: "RUNNING" as const,
@@ -345,6 +350,7 @@ describe("runBench", () => {
     execution.forgeCompute = {
       verifyDynamic: vi.fn(async () => ({ job_id: "dynamic-a" })),
       penTestRun: vi.fn(async () => ({ jobId: "pentest-a" })),
+      listJobs: noForgeJobs,
       getJobStatus: vi.fn(),
     };
     execution.prepareFirmware = async () => ({
@@ -394,7 +400,7 @@ describe("runBench", () => {
     ).toBe(JSON.stringify(deploymentContext));
   });
 
-  it("records one lossless result when Tier 1 dispatch fails", async () => {
+  it("records dispatch ambiguity from the moment a Tier 1 call is issued", async () => {
     const fixture = createBenchTestStore("execute-run-tier1-dispatch-failure");
     fixtures.push(fixture);
     const firmware = await preparedFirmwareFixture();
@@ -412,6 +418,7 @@ describe("runBench", () => {
         throw new Error("Forge dispatch unavailable");
       }),
       penTestRun: vi.fn(),
+      listJobs: noForgeJobs,
       getJobStatus: vi.fn(),
     };
     execution.prepareFirmware = async () => ({
@@ -452,7 +459,7 @@ describe("runBench", () => {
         new AbortController().signal,
       ),
     ).rejects.toMatchObject({
-      code: "FORGE_DISPATCH_FAILED",
+      code: "FORGE_DISPATCH_AMBIGUOUS",
       message: "Forge dispatch unavailable",
       runId: "run-execute-a",
     });
@@ -463,14 +470,18 @@ describe("runBench", () => {
       )
       .get() as { status: string; firmware_digest: string; raw: string };
     expect(row).toMatchObject({
-      status: "failed",
+      status: "running",
       firmware_digest: firmware.prepared.artifactHash,
     });
     expect(JSON.parse(row.raw)).toMatchObject({
       firmwareDigest: firmware.prepared.artifactHash,
       dispatchError: "Forge dispatch unavailable",
-      failureCode: "FORGE_DISPATCH_FAILED",
+      dispatchAmbiguous: true,
+      failureCode: "FORGE_DISPATCH_AMBIGUOUS",
       jobIds: [],
+      dispatchIntents: [
+        expect.objectContaining({ tool: "verify_dynamic", priorJobIds: [] }),
+      ],
     });
     expect(
       fixture.db
