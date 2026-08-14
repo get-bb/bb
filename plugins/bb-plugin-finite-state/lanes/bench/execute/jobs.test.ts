@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ForgeJobSnapshot } from "../../../lib/remote/types.js";
-import { ForgeJobPollLimitError, pollForgeJob } from "./jobs.js";
+import { ForgeJobPollLimitError, pollForgeJob, pollForgeJobs } from "./jobs.js";
 
 function snapshot(
   status: ForgeJobSnapshot["status"],
@@ -117,5 +117,36 @@ describe("Forge job polling", () => {
       }),
     ).rejects.toBeInstanceOf(ForgeJobPollLimitError);
     expect(getJobStatus).toHaveBeenCalledTimes(3);
+  });
+
+  it("lets each job reach its own polling outcome before rejecting the batch", async () => {
+    const calls = new Map<string, number>();
+    const getJobStatus = vi.fn(async (jobId: string) => {
+      calls.set(jobId, (calls.get(jobId) ?? 0) + 1);
+      if (jobId === "transient-job") throw new Error("ECONNRESET");
+      return { ...snapshot("RUNNING"), jobId };
+    });
+
+    await expect(
+      pollForgeJobs(
+        { getJobStatus },
+        ["transient-job", "ceiling-job"],
+        new AbortController().signal,
+        {
+          scheduler: immediate,
+          maximumConsecutiveErrors: 0,
+          maximumPollAttempts: 3,
+        },
+      ),
+    ).rejects.toMatchObject({
+      name: "ForgeJobPollLimitError",
+      message: expect.stringMatching(/ceiling-job.*3 polls/iu),
+    });
+    expect(calls).toEqual(
+      new Map([
+        ["transient-job", 1],
+        ["ceiling-job", 3],
+      ]),
+    );
   });
 });

@@ -788,6 +788,7 @@ function queueTier1AmbiguityReconciliation(
             finishReconciliationFailure(
               error,
               "Automatic Forge reconciliation exhausted its retry budget. The dispatch outcome remains ambiguous; do not dispatch a duplicate.",
+              [...candidates.keys()],
             );
             return;
           }

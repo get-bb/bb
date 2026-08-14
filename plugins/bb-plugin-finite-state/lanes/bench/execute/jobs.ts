@@ -100,9 +100,21 @@ export async function pollForgeJobs(
   signal: AbortSignal,
   options: PollForgeJobOptions,
 ): Promise<ForgeJobSnapshot[]> {
-  return await Promise.all(
+  const outcomes = await Promise.allSettled(
     jobIds.map((jobId) => pollForgeJob(client, jobId, signal, options)),
   );
+  const pollLimit = outcomes.find(
+    (outcome) =>
+      outcome.status === "rejected" &&
+      outcome.reason instanceof ForgeJobPollLimitError,
+  );
+  if (pollLimit?.status === "rejected") throw pollLimit.reason;
+  const failure = outcomes.find((outcome) => outcome.status === "rejected");
+  if (failure?.status === "rejected") throw failure.reason;
+  return outcomes.map((outcome) => {
+    if (outcome.status === "rejected") throw outcome.reason;
+    return outcome.value;
+  });
 }
 
 export interface BenchJobTask {

@@ -231,6 +231,9 @@ describe("registered bench agent action", () => {
       expectedReconciliationAttempts: 1,
       enqueueFailure: false,
       terminalFailure: null,
+      discoveredPollingJobIds: [] as string[],
+      pollingFailure: false,
+      mixedPollLimit: false,
     },
     {
       name: "verify dispatch returns no parseable job id",
@@ -241,6 +244,9 @@ describe("registered bench agent action", () => {
       expectedReconciliationAttempts: 1,
       enqueueFailure: false,
       terminalFailure: null,
+      discoveredPollingJobIds: [] as string[],
+      pollingFailure: false,
+      mixedPollLimit: false,
     },
     {
       name: "verify transport fails after Forge accepts the job",
@@ -251,6 +257,9 @@ describe("registered bench agent action", () => {
       expectedReconciliationAttempts: 2,
       enqueueFailure: false,
       terminalFailure: null,
+      discoveredPollingJobIds: [] as string[],
+      pollingFailure: false,
+      mixedPollLimit: false,
     },
     {
       name: "reconciliation exhausts its retry budget",
@@ -261,6 +270,22 @@ describe("registered bench agent action", () => {
       expectedReconciliationAttempts: 0,
       enqueueFailure: false,
       terminalFailure: "retry_exhausted" as const,
+      discoveredPollingJobIds: [] as string[],
+      pollingFailure: false,
+      mixedPollLimit: false,
+    },
+    {
+      name: "polling exhausts retries after discovering every candidate",
+      mode: "verify_transport" as const,
+      expectedInitialJobId: null,
+      expectedPenCalls: 0,
+      reconciliationFailures: 0,
+      expectedReconciliationAttempts: 0,
+      enqueueFailure: false,
+      terminalFailure: "retry_exhausted" as const,
+      discoveredPollingJobIds: ["dynamic-live-1", "dynamic-live-2"],
+      pollingFailure: true,
+      mixedPollLimit: false,
     },
     {
       name: "a reconciled job remains running for 900 polls",
@@ -271,6 +296,22 @@ describe("registered bench agent action", () => {
       expectedReconciliationAttempts: 0,
       enqueueFailure: false,
       terminalFailure: "poll_limit" as const,
+      discoveredPollingJobIds: [] as string[],
+      pollingFailure: false,
+      mixedPollLimit: false,
+    },
+    {
+      name: "one candidate has a transient polling error while another reaches its ceiling",
+      mode: "verify_transport" as const,
+      expectedInitialJobId: null,
+      expectedPenCalls: 0,
+      reconciliationFailures: 0,
+      expectedReconciliationAttempts: 0,
+      enqueueFailure: false,
+      terminalFailure: "poll_limit" as const,
+      discoveredPollingJobIds: ["ceiling-job", "transient-job"],
+      pollingFailure: false,
+      mixedPollLimit: true,
     },
     {
       name: "the reconciliation task cannot be queued",
@@ -281,6 +322,9 @@ describe("registered bench agent action", () => {
       expectedReconciliationAttempts: 0,
       enqueueFailure: true,
       terminalFailure: null,
+      discoveredPollingJobIds: [] as string[],
+      pollingFailure: false,
+      mixedPollLimit: false,
     },
   ])(
     "preserves ambiguity when $name",
@@ -292,6 +336,9 @@ describe("registered bench agent action", () => {
       expectedReconciliationAttempts,
       enqueueFailure,
       terminalFailure,
+      discoveredPollingJobIds,
+      pollingFailure,
+      mixedPollLimit,
     }) => {
       const root = await mkdtemp(join(tmpdir(), "fs-agent-bench-ambiguous-"));
       roots.push(root);
@@ -402,6 +449,19 @@ describe("registered bench agent action", () => {
         result: null,
         error: null,
       };
+      const discoveredPollingJobs = discoveredPollingJobIds.map(
+        (jobId): ForgeJobSnapshot => ({ ...acceptedJob, jobId }),
+      );
+      const jobsSeenDuringReconciliation =
+        discoveredPollingJobs.length > 0
+          ? discoveredPollingJobs
+          : [acceptedJob];
+      const expectedTerminalCandidateJobIds =
+        discoveredPollingJobIds.length > 0
+          ? discoveredPollingJobIds
+          : terminalFailure === "poll_limit"
+            ? [acceptedJob.jobId]
+            : [];
       const verifyDynamic = vi.fn(async (): Promise<Json> => {
         verifyIssued = true;
         if (mode === "verify_transport") throw new Error("socket hang up");
@@ -410,11 +470,19 @@ describe("registered bench agent action", () => {
       const penTestRun = vi.fn(async () => {
         throw new Error("pen-test dispatch transport closed");
       });
+      const pollCallsByJob = new Map<string, number>();
       const getJobStatus = vi.fn(
-        async (): Promise<ForgeJobSnapshot> => ({
-          ...acceptedJob,
-          status: terminalFailure === "poll_limit" ? "RUNNING" : "COMPLETED",
-        }),
+        async (jobId: string): Promise<ForgeJobSnapshot> => {
+          pollCallsByJob.set(jobId, (pollCallsByJob.get(jobId) ?? 0) + 1);
+          if (pollingFailure || (mixedPollLimit && jobId === "transient-job")) {
+            throw new Error("transient get_job_status outage");
+          }
+          return {
+            ...acceptedJob,
+            jobId,
+            status: terminalFailure === "poll_limit" ? "RUNNING" : "COMPLETED",
+          };
+        },
       );
       let reconciliationFailuresRemaining = reconciliationFailures;
       let reconciliationListAttempts = 0;
@@ -493,8 +561,14 @@ describe("registered bench agent action", () => {
                     }
                     const matchesTool = input?.tool === acceptedJob.tool;
                     yield {
-                      items: verifyIssued && matchesTool ? [acceptedJob] : [],
-                      total: verifyIssued && matchesTool ? 1 : 0,
+                      items:
+                        verifyIssued && matchesTool
+                          ? jobsSeenDuringReconciliation
+                          : [],
+                      total:
+                        verifyIssued && matchesTool
+                          ? jobsSeenDuringReconciliation.length
+                          : 0,
                       next: null,
                     };
                   },
@@ -612,7 +686,7 @@ describe("registered bench agent action", () => {
         >;
         expect(reconciled).toMatchObject({
           status: "failed",
-          job_id: terminalFailure === "poll_limit" ? "dynamic-live-1" : null,
+          job_id: expectedTerminalCandidateJobIds[0] ?? null,
           finished_at: expect.any(String),
         });
         expect(terminalRaw).toMatchObject({
@@ -620,13 +694,14 @@ describe("registered bench agent action", () => {
           reconciliationState: "terminal",
           reconciliationPolicy:
             "baseline_diff_scope_match_without_evidence_promotion",
+          reconciliationCandidateJobIds: expectedTerminalCandidateJobIds,
           failureCode: BENCH_DISPATCH_RECONCILIATION_FAILED_CODE,
         });
         expect(String(terminalRaw["failureReason"])).toMatch(
           /do not dispatch a duplicate/iu,
         );
         if (terminalFailure === "retry_exhausted") {
-          expect(reconciliationListAttempts).toBe(3);
+          expect(reconciliationListAttempts).toBe(pollingFailure ? 1 : 3);
           expect(String(terminalRaw["failureReason"])).toMatch(
             /exhausted its retry budget/iu,
           );
@@ -635,7 +710,16 @@ describe("registered bench agent action", () => {
           );
         } else {
           expect(reconciliationListAttempts).toBe(1);
-          expect(getJobStatus).toHaveBeenCalledTimes(900);
+          if (mixedPollLimit) {
+            expect(pollCallsByJob).toEqual(
+              new Map([
+                ["ceiling-job", 900],
+                ["transient-job", 5],
+              ]),
+            );
+          } else {
+            expect(getJobStatus).toHaveBeenCalledTimes(900);
+          }
           expect(reconciliationStatesSeenDuringSleep).not.toContain(
             "retry_required",
           );
