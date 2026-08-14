@@ -1088,24 +1088,8 @@
       "sequence": 1,
       "riskTier": "standard",
       "preset": "fs-standard",
-      "dependencies": [
-        "WP21",
-        "WP30",
-        "WP40",
-        "WP43",
-        "WP46",
-        "WP51",
-        "WP55",
-        "WP56",
-        "WP58",
-        "WP59",
-        "WP60",
-        "WP61",
-        "WP62",
-        "WP63",
-        "WP64"
-      ],
-      "reason": "The harness defines the single evidence vocabulary and orchestration boundary for every demo beat."
+      "dependencies": ["WP21", "WP30", "WP40", "WP43", "WP51", "WP55", "WP60"],
+      "reason": "The harness defines the single evidence vocabulary and orchestration boundary for every demo beat. Owner reprioritization 2026-08-14 (QA restructuring package): pulled ahead of remaining feature WPs as an INCREMENTAL harness — it covers merged surfaces now (sync, triage, BOM, canvas, bench) and consumes docs/Implementation/JOURNEY-BEAT-BACKLOG.md; beats for unmerged WPs (WP46/56/58/59/61-64) are added by those WPs when they land. Original full dependency list retained in git history."
     },
     {
       "wp": "WP66",

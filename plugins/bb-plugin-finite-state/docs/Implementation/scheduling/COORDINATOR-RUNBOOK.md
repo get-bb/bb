@@ -105,6 +105,8 @@ All L2 sync work and the L4 canvas use `fs-critical`. Routine or mechanical work
 
 ## 5. Review and close
 
+Implementation evidence must include **journey-smoke evidence** (owner ruling, 2026-08-14): 1–3 journey beats — the primary user story through the registered surface — run against a disposable dev instance with seeded mock data, output or screenshot attached to the task. Reviewers treat missing journey evidence like missing wired-in proof: an immediate cheap REQUEST_CHANGES, no further analysis needed. Fixes for sweep-found defects additionally add a harness beat reproducing the broken journey (or, until WP-65 lands, append the beat spec to [JOURNEY-BEAT-BACKLOG.md](../JOURNEY-BEAT-BACKLOG.md)) — sweeps thereafter explore only new surface, never re-cover harness-protected ground. Once the WP-65 harness runs nightly and post-merge, sweep cadence drops from 6h to 12h, reassessed on sweep yield.
+
 After implementation evidence and a draft PR are attached, leave the WP `in_review` and dispatch an independent review:
 
 ```sh
@@ -125,6 +127,8 @@ Open the affected surface with `agent-browser`, exercise the reviewed behavior, 
 Before posting the final verdict, stop your disposable dev instance: run `scripts/bb-dev-app stop` (and stop any mock remote you started). Orphaned dev stacks — server, vite, watchers — keep running from deleted inodes after the worktree is GC'd (~1 GiB each; three zombies fed the 2026-08-14 memory exhaustion). The resource watchdog auto-reaps sessions whose worktree is gone, but it is a 6-hour backstop, not the primary mechanism.
 
 When a round-1 verdict lands, classify its blockers against [REVIEW-KILL-LIST.md](../REVIEW-KILL-LIST.md) and add or prune classes so the list tracks what round-1 reviews actually find.
+
+The program-control task's oversight ticks track two QA metrics (owner ruling, 2026-08-14): **sweep yield per pass** (defects found per UX sweep — expected to decay toward zero as the harness accumulates beats) and **journey-smoke escape rate** (sweep- or harness-found defects in surfaces whose implementer had attached passing journey-smoke evidence). If sweep yield has not begun decaying within roughly a week of the WP-65 harness landing, the QA package is not working — escalate for reassessment.
 
 Among the unstarted work packages, this recurring cost applies to 21 UI-owning WPs: WP-21, WP-24, WP-25, WP-26, WP-31, WP-32, WP-33, WP-34, WP-35, WP-36, WP-37, WP-38, WP-39, WP-40, WP-42, WP-45, WP-51, WP-54, WP-55, WP-56, and WP-61. The recurring cost is one live-browser evidence pass per UI WP review.
 

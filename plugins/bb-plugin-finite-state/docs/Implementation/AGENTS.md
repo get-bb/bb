@@ -262,7 +262,7 @@ pnpm exec turbo run test --filter=bb-plugin-finite-state
 
 ## The review kill list — attack your own work before you flag review
 
-Ten consecutive WPs got zero first-pass approvals, and every round-1 blocker was a real defect. They cluster into a small number of classes, tracked in [REVIEW-KILL-LIST.md](./REVIEW-KILL-LIST.md) — attest against that list when you flag review. Four standing rules come out of it:
+Ten consecutive WPs got zero first-pass approvals, and every round-1 blocker was a real defect. They cluster into a small number of classes, tracked in [REVIEW-KILL-LIST.md](./REVIEW-KILL-LIST.md) — attest against that list when you flag review. Five standing rules come out of it:
 
 ### 1. Registered-surface proof ("wired-in proof")
 
@@ -281,6 +281,12 @@ For each MUST or guard in your WP, write the attack test that tries to defeat it
 ### 4. Amendment echo table
 
 If your WP implements signed amendment text, the PR body quotes each amendment constraint verbatim, each with the `file:line` and the test that satisfies it. FS-121 turned AMD-0013's "one mechanism and one test" into two mechanisms; FS-74's intake note said "nine" tools where the ratified union has eight. The echo table catches this drift mechanically.
+
+### 5. Journey smoke (owner ruling, 2026-08-14)
+
+Every WP or fix task defines **1–3 journey beats**: the primary user story walked through the registered surface — an RPC sequence, or an `agent-browser` path for UI work. Before flagging review, run the beats against a disposable dev instance with seeded mock data and attach the evidence (command output or screenshot) to the task. This extends rule 1 from "a test exists through the registered surface" to "the journey completes in a live instance": components that each pass their tests can still compose into a dead panel (FS-171/FS-172), a silent no-op (FS-168), or a first-use dead-end (FS-167) — every one of those escaped to a UX sweep and would have been caught by a two-minute journey walk. Reviewers treat missing journey evidence like missing wired-in proof: an immediate REQUEST_CHANGES without further analysis.
+
+If the task fixes a sweep-found defect, the fix must also add a harness beat reproducing the broken journey once the WP-65 Golden Loop harness exists; until then, record the beat spec in [JOURNEY-BEAT-BACKLOG.md](./JOURNEY-BEAT-BACKLOG.md) for the WP-65 implementer to consume.
 
 ---
 
@@ -302,6 +308,7 @@ All four green, then check:
 - [ ] Parser/remote-client changes verified against a real artifact; fixtures mirror the vendored reference shape
 - [ ] Attack tests written for every MUST/guard (see the review kill list above)
 - [ ] Amendment echo table in the PR body, if the WP implements signed amendment text
+- [ ] Journey beats (1–3) ran against a disposable dev instance + seeded mock; evidence attached to the task — and the beat spec recorded in JOURNEY-BEAT-BACKLOG.md if this fixes a sweep-found defect
 - [ ] All four UI states exist, if you built UI
 - [ ] No secret, no absolute local path, no `console.log` left behind
 - [ ] `[UNVERIFIED]` or `TODO` markers either resolved or explicitly listed in your summary
