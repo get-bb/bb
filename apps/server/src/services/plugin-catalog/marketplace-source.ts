@@ -251,12 +251,15 @@ async function materializeLocal(
       join(root, MARKETPLACE_MANIFEST_FILENAME),
       "marketplace manifest",
     );
-    const raw = await readFile(manifestPath, "utf8");
-    if (Buffer.byteLength(raw, "utf8") > MARKETPLACE_MANIFEST_MAX_BYTES) {
+    // Size first, then read: an oversize manifest is refused before it is
+    // loaded, the same bound an https manifest gets from its content-length.
+    const manifestSize = (await stat(manifestPath)).size;
+    if (manifestSize > MARKETPLACE_MANIFEST_MAX_BYTES) {
       throw new Error(
         `marketplace manifest exceeds ${MARKETPLACE_MANIFEST_MAX_BYTES} bytes`,
       );
     }
+    const raw = await readFile(manifestPath, "utf8");
     const catalog = parseMarketplaceManifest(
       JSON.parse(raw) as unknown,
       "marketplace manifest",

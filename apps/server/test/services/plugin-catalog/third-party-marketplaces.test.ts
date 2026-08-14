@@ -744,6 +744,24 @@ describe("third-party marketplaces", () => {
     });
   });
 
+  it("refuses an oversize local manifest before reading it", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "bb-marketplace-big-"));
+    cleanup.push(directory);
+    const padded = manifest("acme-plugins", [
+      entry({ description: "x".repeat(1_100_000) }),
+    ]);
+    await writeFile(
+      join(directory, "marketplace.json"),
+      JSON.stringify(padded),
+    );
+    const catalog = service({ fetch: marketplaceFetch({}) });
+
+    await expect(catalog.addMarketplace(`path:${directory}`)).rejects.toThrow(
+      /marketplace manifest exceeds/u,
+    );
+    expect(getPluginMarketplace(db, "acme-plugins")).toBeUndefined();
+  });
+
   it("refuses a marketplace source bb cannot interpret", async () => {
     const catalog = service({ fetch: marketplaceFetch({}) });
     await expect(catalog.addMarketplace("acme/marketplace")).rejects.toThrow(
