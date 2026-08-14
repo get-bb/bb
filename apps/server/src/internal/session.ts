@@ -44,6 +44,15 @@ export function registerInternalSessionRoutes(
     });
   });
 
+  get("/provider-bridge-policy", (context) => {
+    getAuthenticatedDaemon(context);
+    return context.json({
+      bridgeProtocolProviderPrefixes: getExperiments(deps.db).providerBridgeAcp
+        ? ["acp-"]
+        : [],
+    });
+  });
+
   post(
     "/session/open",
     hostDaemonSessionOpenRequestSchema,

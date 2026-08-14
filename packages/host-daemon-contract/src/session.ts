@@ -828,10 +828,31 @@ export const hostDaemonSkillTreeSchema = z
   .strict();
 export type HostDaemonSkillTree = z.infer<typeof hostDaemonSkillTreeSchema>;
 
+/**
+ * Which providers run on the canonical bridge protocol (the generic
+ * bridge-protocol adapter) instead of their bespoke adapters. Prefix match
+ * against provider ids ("acp-" covers every ACP provider). A separate,
+ * additive endpoint rather than a field on /runtime-policy: that schema is
+ * strict, so extending it would fail old daemons' parses. Old daemons never
+ * call this route; new daemons treat any failure as an empty list.
+ */
+export const hostDaemonProviderBridgePolicySchema = z
+  .object({
+    bridgeProtocolProviderPrefixes: z.array(z.string().min(1)),
+  })
+  .strict();
+export type HostDaemonProviderBridgePolicy = z.infer<
+  typeof hostDaemonProviderBridgePolicySchema
+>;
+
 export type HostDaemonInternalSchema = {
   "/runtime-policy": {
     /** Returns current server-owned runtime policy before a daemon maintenance sweep. */
     $get: Endpoint<Record<never, never>, HostDaemonRuntimePolicy, 200>;
+  };
+  "/provider-bridge-policy": {
+    /** Providers running the canonical bridge protocol (experiment-gated). */
+    $get: Endpoint<Record<never, never>, HostDaemonProviderBridgePolicy, 200>;
   };
   "/skills/tree/:hash": {
     /** Used by the daemon to pull a missing server-owned injected skill tree. */

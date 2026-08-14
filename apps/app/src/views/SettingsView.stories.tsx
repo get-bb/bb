@@ -336,6 +336,13 @@ function ExperimentsStory() {
       disabled={false}
       editMessagesEnabled={state.experiments.editMessages}
       newOnboardingEnabled={state.experiments.newOnboarding}
+      providerBridgeAcpEnabled={state.experiments.providerBridgeAcp ?? false}
+      onProviderBridgeAcpEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          providerBridgeAcp: enabled,
+        }))
+      }
       providerSessionReapingEnabled={state.experiments.providerSessionReaping}
       onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
         state.setExperiments((current) => ({

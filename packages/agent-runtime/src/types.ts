@@ -98,6 +98,8 @@ export interface AgentRuntimeOptions {
 
   /** Optional directory containing bundled provider bridges. */
   bridgeBundleDir?: string;
+  /** Provider-id prefixes routed to the canonical bridge-protocol adapter. */
+  bridgeProtocolProviderPrefixes?: readonly string[];
 
   /** Optional executable used to run Node-based provider bridges. */
   bridgeNodeExecutablePath?: string;

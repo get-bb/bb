@@ -67,6 +67,7 @@ describe("createAgentRuntime process lifecycle", () => {
     let nextRequestId = 1;
     return new RuntimeProviderProcessManager({
       additionalWorkspaceWriteRoots: [],
+      bridgeProtocolProviderPrefixes: [],
       adapterFactory: () =>
         createNoopInitializeAdapter(args.scriptPath, args.adapterProcessEnv),
       bridgeBundleDir: undefined,

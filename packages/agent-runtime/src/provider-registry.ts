@@ -6,6 +6,7 @@
  */
 
 import {
+  buildAcpProviderInfo,
   getBuiltInAgentProviderInfo,
   isAcpProviderId,
   isAgentProviderId,
@@ -13,6 +14,8 @@ import {
 } from "@bb/agent-providers";
 import type { ProviderInfo } from "@bb/domain";
 import { createAcpProviderAdapter } from "./acp/adapter.js";
+import { createBridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
+import { resolveBridgeProcessArgs } from "./shared/bridge-path.js";
 import {
   acpProfileFromLaunchSpec,
   ACP_AGENT_PROFILES,
@@ -72,10 +75,65 @@ const builtInProvidersById = new Map(
  *
  * Looks up built-in providers. Throws if the ID is not found.
  */
+/**
+ * Experiment-gated canonical path: providers whose id matches an enabled
+ * bridge-protocol prefix run on the generic adapter speaking the canonical
+ * Provider Bridge Protocol. Only ACP providers participate today; the
+ * ACP launch spec travels opaquely via staticProviderOptions. Transitional
+ * wiring — phase 3 provider declarations replace this table.
+ */
+function createBridgeProtocolAdapterForId(
+  providerId: string,
+  options: ProviderAdapterFactoryOptions,
+): ProviderAdapter | null {
+  const prefixes = options.bridgeProtocolProviderPrefixes ?? [];
+  if (!prefixes.some((prefix) => providerId.startsWith(prefix))) {
+    return null;
+  }
+  if (!isAcpProviderId(providerId)) {
+    return null;
+  }
+  const info =
+    isAgentProviderId(providerId) && providerId === "acp-cursor"
+      ? getBuiltInAgentProviderInfo(providerId)
+      : buildAcpProviderInfo({
+          id: providerId,
+          displayName: options.acpLaunchSpec?.displayName ?? providerId,
+          logoUrl: null,
+        });
+  return createBridgeProtocolAdapter({
+    id: providerId,
+    displayName: info.displayName,
+    capabilities: info.capabilities,
+    process: {
+      command: options.bridgeNodeExecutablePath ?? "node",
+      args: resolveBridgeProcessArgs({
+        bridgeBundleDir: options.bridgeBundleDir,
+        bundleFileName: "bb-acp-bridge.mjs",
+        importMetaUrl: import.meta.url,
+        bridgeRelativePath: "acp/bridge/bridge.js",
+      }),
+      ...(options.bridgeNodeEnv !== undefined
+        ? { env: options.bridgeNodeEnv }
+        : {}),
+    },
+    ...(options.acpLaunchSpec !== undefined
+      ? { staticProviderOptions: { acpLaunchSpec: options.acpLaunchSpec } }
+      : {}),
+  });
+}
+
 export function createProviderForId(
   providerId: string,
   options?: ProviderAdapterFactoryOptions,
 ): ProviderAdapter {
+  const bridgeProtocolAdapter = options
+    ? createBridgeProtocolAdapterForId(providerId, options)
+    : null;
+  if (bridgeProtocolAdapter !== null) {
+    return bridgeProtocolAdapter;
+  }
+
   if (!isAgentProviderId(providerId) && options?.acpLaunchSpec) {
     if (!isAcpProviderId(providerId)) {
       throw new Error(

@@ -505,8 +505,17 @@ export async function createHostDaemonApp(
       );
     },
   });
+  let bridgeProtocolProviderPrefixes: readonly string[] = [];
+  const refreshProviderBridgePolicy = async (): Promise<void> => {
+    bridgeProtocolProviderPrefixes = (
+      await serverClient.getProviderBridgePolicy()
+    ).bridgeProtocolProviderPrefixes;
+  };
+
   runtimeManager = new RuntimeManager({
     bridgeBundleDir: options.bridgeBundleDir,
+    resolveBridgeProtocolProviderPrefixes: () =>
+      bridgeProtocolProviderPrefixes,
     createRuntime: options.createRuntime,
     dataDir: options.dataDir,
     dataDirSkillsRootPath,
@@ -711,11 +720,18 @@ export async function createHostDaemonApp(
       throw error;
     }
   };
+  // Eager first read so runtimes created before the first maintenance sweep
+  // see the policy; failures resolve to the empty (disabled) policy.
+  void refreshProviderBridgePolicy();
   const idleProviderSessionReaper = startIdleProviderSessionReaper({
     logger: options.logger,
     nowMs: Date.now,
-    resolveProviderSessionReapingEnabled: async () =>
-      (await serverClient.getRuntimePolicy()).providerSessionReaping,
+    resolveProviderSessionReapingEnabled: async () => {
+      // Piggyback the provider-bridge policy refresh on the same sweep; its
+      // client method never throws.
+      void refreshProviderBridgePolicy();
+      return (await serverClient.getRuntimePolicy()).providerSessionReaping;
+    },
     runtimeManager,
     setIntervalFn: (callback, intervalMs) => {
       const timer = setInterval(callback, intervalMs);

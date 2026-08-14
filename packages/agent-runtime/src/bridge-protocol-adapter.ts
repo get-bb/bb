@@ -48,6 +48,13 @@ export interface BridgeProtocolAdapterOptions {
   displayName: string;
   capabilities: ProviderCapabilities;
   process: { command: string; args: string[]; env?: Record<string, string> };
+  /**
+   * Provider-scoped options merged under `options.providerOptions` on every
+   * session and turn command (per-command values win). The transitional
+   * delivery path for data the provider's bridge needs but core does not
+   * interpret — e.g. the ACP launch spec.
+   */
+  staticProviderOptions?: Record<string, unknown>;
 }
 
 const threadEventNotificationParamsSchema = z
@@ -103,6 +110,7 @@ const interactionRequestParamsSchema = z.object({
  */
 function toBridgeWireOptions(
   options: ProviderExecutionContext,
+  staticProviderOptions?: Record<string, unknown>,
 ): Record<string, unknown> {
   const {
     model,
@@ -117,9 +125,14 @@ function toBridgeWireOptions(
     skillRoots: _skillRoots,
     ...providerFlavored
   } = options;
-  const providerOptions = Object.fromEntries(
-    Object.entries(providerFlavored).filter(([, value]) => value !== undefined),
-  );
+  const providerOptions = {
+    ...staticProviderOptions,
+    ...Object.fromEntries(
+      Object.entries(providerFlavored).filter(
+        ([, value]) => value !== undefined,
+      ),
+    ),
+  };
   return {
     ...(model !== undefined ? { model } : {}),
     ...(serviceTier !== undefined ? { serviceTier } : {}),
@@ -188,7 +201,7 @@ export function createBridgeProtocolAdapter(
               threadId: command.threadId,
               cwd: command.cwd,
               ...(command.input !== undefined ? { input: command.input } : {}),
-              options: toBridgeWireOptions(command.options),
+              options: toBridgeWireOptions(command.options, options.staticProviderOptions),
               ...(command.dynamicTools !== undefined
                 ? { dynamicTools: command.dynamicTools }
                 : {}),
@@ -206,7 +219,7 @@ export function createBridgeProtocolAdapter(
               threadId: command.threadId,
               cwd: command.cwd,
               providerThreadId: command.providerThreadId,
-              options: toBridgeWireOptions(command.options),
+              options: toBridgeWireOptions(command.options, options.staticProviderOptions),
               ...(command.dynamicTools !== undefined
                 ? { dynamicTools: command.dynamicTools }
                 : {}),
@@ -230,7 +243,7 @@ export function createBridgeProtocolAdapter(
                       command.sourceProviderCheckpointId,
                   }
                 : {}),
-              options: toBridgeWireOptions(command.options),
+              options: toBridgeWireOptions(command.options, options.staticProviderOptions),
               ...(command.dynamicTools !== undefined
                 ? { dynamicTools: command.dynamicTools }
                 : {}),
@@ -249,7 +262,7 @@ export function createBridgeProtocolAdapter(
               providerThreadId: command.providerThreadId,
               input: command.input,
               clientRequestId: command.clientRequestId,
-              options: toBridgeWireOptions(command.options),
+              options: toBridgeWireOptions(command.options, options.staticProviderOptions),
             },
           };
         case "turn/steer":
@@ -262,7 +275,7 @@ export function createBridgeProtocolAdapter(
               expectedTurnId: command.expectedTurnId,
               input: command.input,
               clientRequestId: command.clientRequestId,
-              options: toBridgeWireOptions(command.options),
+              options: toBridgeWireOptions(command.options, options.staticProviderOptions),
             },
           };
         case "thread/stop":

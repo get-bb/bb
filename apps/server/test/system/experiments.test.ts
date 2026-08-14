@@ -17,6 +17,7 @@ describe("experiments settings", () => {
         claudeCodeMockCliTraffic: false,
         editMessages: true,
         newOnboarding: false,
+        providerBridgeAcp: false,
         providerSessionReaping: false,
       });
     });
@@ -31,6 +32,7 @@ describe("experiments settings", () => {
           claudeCodeMockCliTraffic: true,
           editMessages: true,
           newOnboarding: true,
+          providerBridgeAcp: true,
           providerSessionReaping: true,
         }),
       });
@@ -39,12 +41,14 @@ describe("experiments settings", () => {
         claudeCodeMockCliTraffic: true,
         editMessages: true,
         newOnboarding: true,
+        providerBridgeAcp: true,
         providerSessionReaping: true,
       });
       expect(getExperiments(harness.db)).toEqual({
         claudeCodeMockCliTraffic: true,
         editMessages: true,
         newOnboarding: true,
+        providerBridgeAcp: true,
         providerSessionReaping: true,
       });
 
@@ -55,6 +59,7 @@ describe("experiments settings", () => {
         claudeCodeMockCliTraffic: true,
         editMessages: true,
         newOnboarding: true,
+        providerBridgeAcp: true,
         providerSessionReaping: true,
       });
     });
@@ -74,6 +79,14 @@ describe("experiments settings", () => {
       await expect(readJson(initial)).resolves.toEqual({
         providerSessionReaping: false,
       });
+      const initialBridgePolicy = await harness.app.request(
+        "/internal/provider-bridge-policy",
+        { headers },
+      );
+      expect(initialBridgePolicy.status).toBe(200);
+      await expect(readJson(initialBridgePolicy)).resolves.toEqual({
+        bridgeProtocolProviderPrefixes: [],
+      });
 
       await harness.app.request("/api/v1/settings/experiments", {
         method: "PUT",
@@ -82,6 +95,7 @@ describe("experiments settings", () => {
           claudeCodeMockCliTraffic: false,
           editMessages: true,
           newOnboarding: false,
+          providerBridgeAcp: true,
           providerSessionReaping: true,
         }),
       });
@@ -90,6 +104,13 @@ describe("experiments settings", () => {
       });
       await expect(readJson(updated)).resolves.toEqual({
         providerSessionReaping: true,
+      });
+      const updatedBridgePolicy = await harness.app.request(
+        "/internal/provider-bridge-policy",
+        { headers },
+      );
+      await expect(readJson(updatedBridgePolicy)).resolves.toEqual({
+        bridgeProtocolProviderPrefixes: ["acp-"],
       });
     });
   });
@@ -106,6 +127,7 @@ describe("experiments settings", () => {
           claudeCodeMockCliTraffic: false,
           editMessages: false,
           newOnboarding: false,
+          providerBridgeAcp: false,
           providerSessionReaping: false,
         }),
       });

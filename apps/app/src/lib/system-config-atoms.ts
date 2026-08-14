@@ -24,6 +24,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
     claudeCodeMockCliTraffic: false,
     editMessages: false,
     newOnboarding: false,
+    providerBridgeAcp: false,
     providerSessionReaping: false,
   },
   appearance: defaultAppTheme,

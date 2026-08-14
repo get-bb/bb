@@ -4,7 +4,9 @@ import {
   hostDaemonEventBatchResponseSchema,
   hostDaemonInteractiveInterruptResponseSchema,
   hostDaemonInteractiveRequestResponseSchema,
+  hostDaemonProviderBridgePolicySchema,
   hostDaemonRuntimePolicySchema,
+  type HostDaemonProviderBridgePolicy,
   hostDaemonSessionOpenResponseSchema,
   hostDaemonSkillTreeSchema,
   hostDaemonToolCallResponseSchema,
@@ -182,6 +184,13 @@ interface OpenSessionArgs {
 
 export interface ServerClient {
   getRuntimePolicy(): Promise<HostDaemonRuntimePolicy>;
+  /**
+   * Providers running the canonical bridge protocol. Tolerates every failure
+   * (older server without the route, transport errors, schema drift) as an
+   * empty list: the experiment defaults off and must never take a daemon
+   * down.
+   */
+  getProviderBridgePolicy(): Promise<HostDaemonProviderBridgePolicy>;
   openSession(args: OpenSessionArgs): Promise<HostDaemonSessionOpenResponse>;
   fetchProjectAttachment(
     args: FetchProjectAttachmentArgs,
@@ -426,6 +435,23 @@ export function createServerClient(
         throw await createResponseError("get runtime policy", response);
       }
       return hostDaemonRuntimePolicySchema.parse(await response.json());
+    },
+
+    async getProviderBridgePolicy(): Promise<HostDaemonProviderBridgePolicy> {
+      try {
+        const response = await fetchFn(
+          buildInternalUrl("/provider-bridge-policy"),
+          { method: "GET", headers: headers() },
+        );
+        if (!response.ok) {
+          return { bridgeProtocolProviderPrefixes: [] };
+        }
+        return hostDaemonProviderBridgePolicySchema.parse(
+          await response.json(),
+        );
+      } catch {
+        return { bridgeProtocolProviderPrefixes: [] };
+      }
     },
 
     async openSession(

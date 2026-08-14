@@ -209,10 +209,12 @@ export interface ExperimentsSettingsSectionProps {
   claudeCodeMockCliTrafficEnabled: boolean;
   editMessagesEnabled: boolean;
   newOnboardingEnabled: boolean;
+  providerBridgeAcpEnabled: boolean;
   providerSessionReapingEnabled: boolean;
   onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
   onEditMessagesEnabledChange: (enabled: boolean) => void;
   onNewOnboardingEnabledChange: (enabled: boolean) => void;
+  onProviderBridgeAcpEnabledChange: (enabled: boolean) => void;
   onProviderSessionReapingEnabledChange: (enabled: boolean) => void;
 }
 
@@ -995,15 +997,18 @@ const EDIT_MESSAGES_EXPERIMENT_LABEL = "Edit messages";
 const NEW_ONBOARDING_EXPERIMENT_LABEL = "New onboarding";
 const PROVIDER_SESSION_REAPING_EXPERIMENT_LABEL =
   "Idle provider session release";
+const PROVIDER_BRIDGE_ACP_EXPERIMENT_LABEL = "ACP bridge protocol";
 export function ExperimentsSettingsSection({
   claudeCodeMockCliTrafficEnabled,
   disabled,
   editMessagesEnabled,
   newOnboardingEnabled,
+  providerBridgeAcpEnabled,
   providerSessionReapingEnabled,
   onClaudeCodeMockCliTrafficEnabledChange,
   onEditMessagesEnabledChange,
   onNewOnboardingEnabledChange,
+  onProviderBridgeAcpEnabledChange,
   onProviderSessionReapingEnabledChange,
 }: ExperimentsSettingsSectionProps) {
   return (
@@ -1046,6 +1051,19 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onNewOnboardingEnabledChange}
             aria-label={NEW_ONBOARDING_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={PROVIDER_BRIDGE_ACP_EXPERIMENT_LABEL}
+          labelBadge="dev-only"
+          description="Run ACP providers on the canonical provider bridge protocol."
+        >
+          <Switch
+            checked={providerBridgeAcpEnabled}
+            disabled={disabled}
+            onCheckedChange={onProviderBridgeAcpEnabledChange}
+            aria-label={PROVIDER_BRIDGE_ACP_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
@@ -1226,6 +1244,13 @@ export function SettingsView() {
           updateExperimentsMutation.mutate({
             ...experiments,
             editMessages: enabled,
+          })
+        }
+        providerBridgeAcpEnabled={experiments.providerBridgeAcp}
+        onProviderBridgeAcpEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            providerBridgeAcp: enabled,
           })
         }
         newOnboardingEnabled={experiments.newOnboarding}
