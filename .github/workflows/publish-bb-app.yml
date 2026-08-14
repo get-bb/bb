@@ -59,9 +59,9 @@ jobs:
 
     steps:
       - name: Require main branch
-        if: ${{ github.ref_name != 'main' }}
+        if: ${{ github.ref != 'refs/heads/main' }}
         run: |
-          echo "::error::Publish bb-app must run from main, got ${GITHUB_REF_NAME}."
+          echo "::error::Publish bb-app must run from the main branch, got ${GITHUB_REF}."
           exit 1
 
       - name: Checkout repository
@@ -220,6 +220,142 @@ jobs:
             echo
             echo "- version: \`$PACKAGE_VERSION\`"
             echo "- npm tag: \`$RELEASE_NPM_TAG\`"
+            echo "- dry run: \`$RELEASE_DRY_RUN\`"
+            echo "- commit: \`${GITHUB_SHA}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Rides the same release train as bb-app but stays independent of it: the SDK
+  # version is settled in the repo (packages/domain/src/plugin-sdk-version.ts,
+  # mirrored in packages/plugin-sdk/package.json), never computed here. Every
+  # run publishes only when that exact version is missing from npm, so a run
+  # where it already exists skips and succeeds. Nothing needs this job and it
+  # needs nothing, so a failure here cannot hold back the app or desktop
+  # release.
+  #
+  # BOOTSTRAP: until @get-bb/plugin-sdk has been published once by hand and its
+  # npm trusted publisher is configured (this repo, this workflow file, the
+  # npm-release environment), the publish step below will fail with a 404/auth
+  # error. That is expected and does not affect the bb-app jobs. See
+  # docs/bb-release-process.md#publishing-the-plugin-sdk.
+  publish-plugin-sdk:
+    name: Publish @get-bb/plugin-sdk
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: npm-release
+    permissions:
+      contents: read
+      id-token: write
+    # Its own group, separate from the workflow-level one: that group splits
+    # nightly from ref, so the cron and a manual dispatch on main land in
+    # different groups and can run at the same time. Both would then reach
+    # `npm publish` for the same immutable version, and the loser fails red.
+    # Serializing this job lets the second run observe the first one's publish
+    # and skip. Job-level concurrency does not affect the bb-app jobs.
+    concurrency:
+      group: publish-plugin-sdk
+      cancel-in-progress: false
+
+    steps:
+      - name: Require main branch
+        if: ${{ github.ref != 'refs/heads/main' }}
+        run: |
+          echo "::error::Publish @get-bb/plugin-sdk must run from the main branch, got ${GITHUB_REF}."
+          exit 1
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 9.15.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Ensure npm supports trusted publishing
+        run: |
+          npm_version="$(npm --version)"
+          node - "$npm_version" <<'NODE' || npm install --global npm@latest
+          const version = process.argv[2];
+          const [major, minor, patch] = version.split(".").map(Number);
+          const supported =
+            major > 11 ||
+            (major === 11 && (minor > 5 || (minor === 5 && patch >= 1)));
+          process.exit(supported ? 0 : 1);
+          NODE
+          npm --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the SDK
+        run: pnpm exec turbo run build --filter=@get-bb/plugin-sdk --output-logs=new-only
+
+      - name: Resolve the settled SDK version
+        id: sdk_version
+        run: |
+          set -euo pipefail
+
+          # The version is whatever the repo already says it is. Never bump or
+          # derive one at publish time.
+          sdk_version="$(node -p "require('./packages/plugin-sdk/package.json').version")"
+          echo "SDK_VERSION=${sdk_version}" >> "$GITHUB_ENV"
+          echo "version=${sdk_version}" >> "$GITHUB_OUTPUT"
+          echo "Local @get-bb/plugin-sdk version is ${sdk_version}."
+
+      - name: Check whether this version is already on npm
+        id: published
+        run: |
+          set -euo pipefail
+
+          # `npm view` exits non-zero both for "no such version" and for real
+          # registry errors, so distinguish them from the captured output
+          # rather than from the exit code alone.
+          if view_output="$(npm view "@get-bb/plugin-sdk@${SDK_VERSION}" version 2>&1)"; then
+            if [[ -n "$view_output" ]]; then
+              echo "@get-bb/plugin-sdk@${SDK_VERSION} already published, skipping."
+              echo "already_published=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          elif ! grep -qiE "E404|no match(ing)? version|is not in this registry" <<<"$view_output"; then
+            echo "::error::Could not query npm for @get-bb/plugin-sdk@${SDK_VERSION}: ${view_output}"
+            exit 1
+          fi
+
+          echo "@get-bb/plugin-sdk@${SDK_VERSION} is not on npm; it will be published."
+          echo "already_published=false" >> "$GITHUB_OUTPUT"
+
+      - name: Preview npm package
+        if: ${{ steps.published.outputs.already_published == 'false' }}
+        working-directory: packages/plugin-sdk
+        run: npm pack --dry-run
+
+      - name: npm publish dry run
+        if: ${{ steps.published.outputs.already_published == 'false' && env.RELEASE_DRY_RUN == 'true' }}
+        working-directory: packages/plugin-sdk
+        run: npm publish --dry-run
+
+      - name: Publish to npm
+        if: ${{ steps.published.outputs.already_published == 'false' && env.RELEASE_DRY_RUN != 'true' }}
+        working-directory: packages/plugin-sdk
+        # prepack rebuilds bundled-types and dist; publishConfig.access is
+        # already public in the manifest, so no --access flag is needed.
+        run: npm publish
+
+      - name: Summarize the SDK release
+        env:
+          ALREADY_PUBLISHED: ${{ steps.published.outputs.already_published }}
+        run: |
+          {
+            echo "## @get-bb/plugin-sdk"
+            echo
+            echo "- version: \`$SDK_VERSION\`"
+            echo "- already published: \`$ALREADY_PUBLISHED\`"
             echo "- dry run: \`$RELEASE_DRY_RUN\`"
             echo "- commit: \`${GITHUB_SHA}\`"
           } >> "$GITHUB_STEP_SUMMARY"
