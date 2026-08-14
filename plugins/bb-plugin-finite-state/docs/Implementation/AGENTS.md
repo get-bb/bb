@@ -81,6 +81,18 @@ Dependencies were frozen after WP-09 — `pnpm-lock.yaml` is 764KB, ordering-sen
 
 Agent write tools mutate **local YAML only**. Eight tools are the enumerated ACTION exceptions: `fs_verification_run`, `fs_bench_run`, `fs_firmware_materialize`, `fs_hw_extract`, `fs_build`, `fs_flash`, `fs_serial`, and `fs_probe`. The first three may invoke server-side work; the five AMD-0013 additions are local-subprocess/local-hardware only. None mutates the authored model, and `fs_flash` is destructive-gated. **Adding a ninth requires a human decision recorded in `AMENDMENTS.md`.**
 
+### 6. Authority: Git SoR, Platform facts, AS seed (owner ruling 2026-08-14)
+
+**The sentence: Git holds the contract. Platform holds facts and, later, the published Graph. Assurance Studio is import/seed — not where this year's work becomes real.** Canonical text: finite-studio main `52f89b7`, `docs/Implementation/AUTHORITY — Git SoR, Platform Graph & AS Seed.md`, SPEC 00 §14, SPEC 01 §3/§5, ADR addendum 2026-08-14.
+
+What this means for your WP:
+
+- `.fs/` YAML in git is the truth surface for the product contract (VERSIONED + OVERLAY). **No acceptance criterion may REQUIRE an AS round-trip to pass.** If your WP's acceptance says "round-trips to Assurance Studio," the real bar is "round-trips to `.fs/` YAML; AS import optional."
+- `AssuranceStudioClient` is an **import adapter**: enumerate link candidates, read TARA/requirements/checks for `seed`. Missing AS configuration must not disable Design / Firmware / Prove when `.fs/` YAML exists.
+- The **already-built** bidirectional AS push (`lanes/sync/push/*`, frozen human-only `syncPush`/`syncPushRetry`, Sync Review wiring) is **KEPT-FROZEN** (owner refinement 2026-08-14 20:53Z): defect repair yes, new investment no. It is a human-gated export convenience, never what makes work real.
+- **PARKED — do not build:** TARA head tokens, `stale_tara_state` machinery, trial-apply gates, new AS write routes, bidirectional requirements push, new AS write-route archaeology. AS route/capture work is in scope only if `seed` needs it.
+- Platform stays the fact plane (findings, VEX, SBOM, firmware) — unchanged, and VEX publish stays on Platform. G5 means "real Platform facts + a seeded or in-repo contract," not "live AS as a second home."
+
 ---
 
 ## How things actually work here (recon-verified — trust this over the specs)
