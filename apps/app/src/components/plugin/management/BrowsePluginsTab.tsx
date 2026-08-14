@@ -269,26 +269,19 @@ export function BrowsePluginsTab({
                             )}
                           </h2>
                         ) : null}
-                        {group.sections.map((section) => (
-                          <div key={section.category} className="space-y-2">
-                            <h3 className="text-2xs font-medium uppercase tracking-wide text-subtle-foreground">
-                              {section.category}
-                            </h3>
-                            <ResourceBrowseGrid className="grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-2">
-                              {section.entries.map((entry) => (
-                                <BrowseCard
-                                  key={`${entry.marketplace}/${entry.entryId}`}
-                                  entry={entry}
-                                  installedPluginId={
-                                    entry.installed ? entry.pluginId : null
-                                  }
-                                  onInstall={onInstall}
-                                  onOpenPlugin={onOpenPlugin}
-                                />
-                              ))}
-                            </ResourceBrowseGrid>
-                          </div>
-                        ))}
+                        <ResourceBrowseGrid className="grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-2">
+                          {group.entries.map((entry) => (
+                            <BrowseCard
+                              key={`${entry.marketplace}/${entry.entryId}`}
+                              entry={entry}
+                              installedPluginId={
+                                entry.installed ? entry.pluginId : null
+                              }
+                              onInstall={onInstall}
+                              onOpenPlugin={onOpenPlugin}
+                            />
+                          ))}
+                        </ResourceBrowseGrid>
                       </section>
                     ))
                   )}
@@ -306,13 +299,14 @@ interface MarketplaceGroup {
   marketplace: string;
   displayName: string;
   official: boolean;
-  sections: { category: string; entries: PluginCatalogSearchEntry[] }[];
+  entries: PluginCatalogSearchEntry[];
 }
 
 /**
  * Group the catalog the way the store reads it: by marketplace (the server
- * returns the official one first), then by the tag-derived section within each
- * one. Encounter order is the server's order, so grouping never reshuffles it.
+ * returns the official one first), as a flat grid within each one. Category
+ * stays a filter, not a layout. Encounter order is the server's order, so
+ * grouping never reshuffles it.
  */
 function groupByMarketplace(
   entries: readonly PluginCatalogSearchEntry[],
@@ -326,27 +320,18 @@ function groupByMarketplace(
         marketplace: entry.marketplace,
         displayName: entry.marketplaceDisplayName,
         official: entry.official,
-        sections: [],
+        entries: [],
       };
       groups.push(group);
     }
-    const section = group.sections.find(
-      (item) => item.category === entry.category,
-    );
-    if (section === undefined) {
-      group.sections.push({ category: entry.category, entries: [entry] });
-    } else {
-      section.entries.push(entry);
-    }
+    group.entries.push(entry);
   }
   for (const group of groups) {
-    for (const section of group.sections) {
-      section.entries.sort((left, right) => {
-        const result = left.displayName.localeCompare(right.displayName);
-        if (result !== 0) return sortDirection === "asc" ? result : -result;
-        return left.entryId.localeCompare(right.entryId);
-      });
-    }
+    group.entries.sort((left, right) => {
+      const result = left.displayName.localeCompare(right.displayName);
+      if (result !== 0) return sortDirection === "asc" ? result : -result;
+      return left.entryId.localeCompare(right.entryId);
+    });
   }
   return groups;
 }

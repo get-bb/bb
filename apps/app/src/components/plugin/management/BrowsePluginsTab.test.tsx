@@ -103,9 +103,9 @@ afterEach(() => {
 });
 
 describe("BrowsePluginsTab", () => {
-  // Browse groups by marketplace and then by section, so the sort direction
-  // orders entries inside a section rather than across the whole page.
-  it("sorts by plugin name inside each section and reverses direction", async () => {
+  // Browse groups by marketplace only; entries render as one flat grid per
+  // marketplace, so the sort direction orders the whole group.
+  it("sorts by plugin name across the grid and reverses direction", async () => {
     const entries = [
       { ...MEMORY_ENTRY, displayName: "Zulu" },
       { ...GITHUB_ENTRY, displayName: "Alpha" },
@@ -149,9 +149,9 @@ describe("BrowsePluginsTab", () => {
         ),
       ].map((button) => button.getAttribute("aria-label"));
     expect(cardOrder()).toEqual([
+      "Open Alpha details",
       "Open Middle details",
       "Open Zulu details",
-      "Open Alpha details",
     ]);
 
     const sortTrigger = screen.getByRole("button", {
@@ -165,9 +165,9 @@ describe("BrowsePluginsTab", () => {
       "Open Middle details",
       "Open Alpha details",
     ]);
-    // Section headings name the tag-derived groups the entries fall into.
-    expect(screen.getByText("Context & knowledge")).toBeTruthy();
-    expect(screen.getByText("Developer tools")).toBeTruthy();
+    // Category never renders as a heading; it stays a filter only.
+    expect(screen.queryByText("Context & knowledge")).toBeNull();
+    expect(screen.queryByText("Developer tools")).toBeNull();
   });
 
   it("groups entries by marketplace and names third-party origins on cards", async () => {
