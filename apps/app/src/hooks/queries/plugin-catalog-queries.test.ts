@@ -102,6 +102,7 @@ describe("plugin installs", () => {
     expect(calls[0]?.url).toBe("/api/v1/plugins/install");
     expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
       source: "./plugins/local",
+      selection: { kind: "root" },
     });
   });
 

@@ -112,7 +112,10 @@ describe("AddPluginDialog", () => {
       const post = requests.find(
         (request) => request.url === "/api/v1/plugins/install",
       );
-      expect(JSON.parse(String(post?.init?.body))).toEqual({ source });
+      expect(JSON.parse(String(post?.init?.body))).toEqual({
+        source,
+        selection: { kind: "root" },
+      });
     });
   });
 
@@ -141,6 +144,7 @@ describe("AddPluginDialog", () => {
       expect(post).toBeDefined();
       expect(JSON.parse(String(post?.init?.body))).toEqual({
         source: "./plugins/linear",
+        selection: { kind: "root" },
       });
     });
   });
