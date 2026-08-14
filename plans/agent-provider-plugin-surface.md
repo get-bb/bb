@@ -254,8 +254,13 @@ bb.agents.experimental_registerProvider({
   // place vs rebuild its provider session), and the runtime never diffs
   // options — it forwards them on every command. The declaration exists for
   // the consumers that need the answer before anything executes and without
-  // a host round trip: offering the sticky mid-thread override picker,
-  // validating the override PATCH, and warning before a disruptive change.
+  // a host round trip: validating the no-message override API
+  // (`PATCH /threads/:id {model, reasoningLevel}` — today claude-only via
+  // `supportsExecutionOverride`), and letting the UI distinguish "applies
+  // seamlessly" from "will rebuild the provider session" when a user changes
+  // model/reasoning mid-thread. Every provider offers the composer switcher
+  // today; what differs is underneath — claude applies live, everyone else
+  // gets a silent session rebuild on the next turn.
   // In-place override support derives from it (`model` and `reasoningLevel`
   // both "live") — there is no separate `executionOverride` capability.
   // The conformance kit cross-checks declaration against bridge behavior,
