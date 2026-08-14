@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertPublicMarketplaceAddress,
   assertPublicMarketplaceUrl,
+  boundedResponseJson,
   createPublicMarketplaceLookup,
 } from "../../../src/services/plugin-catalog/marketplace-http.js";
 
@@ -69,5 +70,14 @@ describe("marketplace HTTP policy", () => {
       );
     });
     await expect(result).rejects.toThrow(/non-public address 127\.0\.0\.1/u);
+  });
+
+  it("refuses registry JSON before an oversized body is read", async () => {
+    const response = new Response("{}", {
+      headers: { "content-length": "1025" },
+    });
+    await expect(
+      boundedResponseJson(response, 1024, "npm registry metadata"),
+    ).rejects.toThrow(/exceeds 1024 bytes/u);
   });
 });

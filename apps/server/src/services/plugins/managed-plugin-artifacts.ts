@@ -17,8 +17,10 @@ import {
 import { buildPluginApp, buildPluginServer } from "@bb/plugin-build";
 import {
   assertPublicMarketplaceUrl,
+  boundedResponseJson,
   publicMarketplaceFetch,
   MARKETPLACE_FETCH_TIMEOUT_MS,
+  MARKETPLACE_PACKUMENT_MAX_BYTES,
 } from "../plugin-catalog/marketplace-http.js";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { validatePluginArtifactMeta } from "./app-bundle.js";
@@ -789,6 +791,12 @@ export function createManagedPluginArtifacts(
                   redirect: "error",
                   signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
                 }),
+              readJson: (response) =>
+                boundedResponseJson(
+                  response,
+                  MARKETPLACE_PACKUMENT_MAX_BYTES,
+                  "npm registry metadata",
+                ),
             },
       ),
     });

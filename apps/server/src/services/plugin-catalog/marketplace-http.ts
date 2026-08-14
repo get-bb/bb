@@ -10,6 +10,8 @@ export type MarketplaceFetch = (
 ) => Promise<Response>;
 
 export const MARKETPLACE_FETCH_TIMEOUT_MS = 10_000;
+/** Registry metadata can be large, but it must not consume unbounded memory. */
+export const MARKETPLACE_PACKUMENT_MAX_BYTES = 8 * 1024 * 1024;
 
 const deniedMarketplaceIpv4Addresses = new BlockList();
 for (const [network, prefix] of [
@@ -248,4 +250,20 @@ export async function boundedResponseBytes(
     offset += chunk.byteLength;
   }
   return body;
+}
+
+/** Parse JSON only after the shared response reader enforces its byte cap. */
+export async function boundedResponseJson(
+  response: Response,
+  maxBytes: number,
+  label: string,
+): Promise<unknown> {
+  const bytes = await boundedResponseBytes(response, maxBytes, label);
+  try {
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch (error) {
+    throw new Error(
+      `${label} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
