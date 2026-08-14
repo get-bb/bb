@@ -21,7 +21,8 @@ export const ACTION_TOOL_ALLOWLIST = [
 
 export type AllowedActionToolName = (typeof ACTION_TOOL_ALLOWLIST)[number];
 
-export const VERIFICATION_ACTION_SERVICE = "agentic.action.verification" as const;
+export const VERIFICATION_ACTION_SERVICE =
+  "agentic.action.verification" as const;
 export const BENCH_ACTION_SERVICE = "agentic.action.bench" as const;
 export const FIRMWARE_ACTION_SERVICE = "agentic.action.firmware" as const;
 
@@ -62,8 +63,13 @@ export interface VerificationAction {
 }
 
 export interface ScopedVerificationAction extends VerificationAction {
-  run(input: Parameters<VerificationAction["run"]>[0]): ReturnType<VerificationAction["run"]>;
-  run(input: Parameters<VerificationAction["run"]>[0], scope: ActionInvocationScope): ReturnType<VerificationAction["run"]>;
+  run(
+    input: Parameters<VerificationAction["run"]>[0],
+  ): ReturnType<VerificationAction["run"]>;
+  run(
+    input: Parameters<VerificationAction["run"]>[0],
+    scope: ActionInvocationScope,
+  ): ReturnType<VerificationAction["run"]>;
 }
 
 export interface BenchAction {
@@ -72,12 +78,19 @@ export interface BenchAction {
     tier: string;
     requirement?: string;
     target?: string;
-  }): Promise<{ runId: string; threadId: string; status: "queued" | "running" }>;
+  }): Promise<{
+    runId: string;
+    threadId: string;
+    status: "queued" | "running";
+  }>;
 }
 
 export interface ScopedBenchAction extends BenchAction {
   run(input: Parameters<BenchAction["run"]>[0]): ReturnType<BenchAction["run"]>;
-  run(input: Parameters<BenchAction["run"]>[0], scope: ActionInvocationScope): ReturnType<BenchAction["run"]>;
+  run(
+    input: Parameters<BenchAction["run"]>[0],
+    scope: ActionInvocationScope,
+  ): ReturnType<BenchAction["run"]>;
 }
 
 export interface FirmwareAction {
@@ -96,8 +109,13 @@ export interface FirmwareAction {
 }
 
 export interface ScopedFirmwareAction extends FirmwareAction {
-  materialize(input: Parameters<FirmwareAction["materialize"]>[0]): ReturnType<FirmwareAction["materialize"]>;
-  materialize(input: Parameters<FirmwareAction["materialize"]>[0], scope: ActionInvocationScope): ReturnType<FirmwareAction["materialize"]>;
+  materialize(
+    input: Parameters<FirmwareAction["materialize"]>[0],
+  ): ReturnType<FirmwareAction["materialize"]>;
+  materialize(
+    input: Parameters<FirmwareAction["materialize"]>[0],
+    scope: ActionInvocationScope,
+  ): ReturnType<FirmwareAction["materialize"]>;
 }
 
 function sorted(values: readonly string[]): string[] {
@@ -108,9 +126,28 @@ export function assertActionBoundary(
   registry: AgentSurfaceCandidate,
   registeredToolNames?: readonly string[],
 ): void {
+  const entries = Object.entries(registry.tools);
+  const ownToolKeys = Object.getOwnPropertyNames(registry.tools);
+  if (
+    "fs_sync_push" in registry.tools ||
+    ownToolKeys.some((key) => registry.tools[key].name === "fs_sync_push")
+  ) {
+    throw new Error(
+      "PROHIBITED_AGENT_PUSH_TOOL: fs_sync_push must never be registered",
+    );
+  }
+  const splitIdentities = entries
+    .filter(([key, tool]) => key !== tool.name)
+    .map(([key, tool]) => `${key}=>${tool.name}`);
+  if (splitIdentities.length > 0) {
+    throw new Error(
+      `AGENT_TOOL_REGISTRY_DRIFT: registry keys must match tool.name: ${sorted(splitIdentities).join(", ")}`,
+    );
+  }
   const allowed = sorted(ACTION_TOOL_ALLOWLIST);
   const canonical = sorted(
-    Object.values(registry.tools)
+    entries
+      .map(([, tool]) => tool)
       .filter((tool) => tool.class === "action")
       .map((tool) => tool.name),
   );
@@ -122,15 +159,14 @@ export function assertActionBoundary(
   if (ACTION_TOOL_NAMES.length !== ACTION_TOOL_ALLOWLIST.length) {
     throw new Error("ACTION_ALLOWLIST_COMPILE_RUNTIME_DRIFT");
   }
-  if (Object.hasOwn(registry.tools, "fs_sync_push")) {
-    throw new Error("PROHIBITED_AGENT_PUSH_TOOL: fs_sync_push must never be registered");
-  }
   if (registeredToolNames === undefined) return;
 
   const known = new Set<string>(AGENT_TOOL_NAMES);
   const registered = new Set(registeredToolNames);
   if (registered.has("fs_sync_push")) {
-    throw new Error("PROHIBITED_AGENT_PUSH_TOOL: fs_sync_push must never be registered");
+    throw new Error(
+      "PROHIBITED_AGENT_PUSH_TOOL: fs_sync_push must never be registered",
+    );
   }
   const unknown = registeredToolNames.filter((name) => !known.has(name));
   if (unknown.length > 0) {
@@ -144,7 +180,10 @@ export function assertActionBoundary(
   const registeredServerActions = registeredToolNames.filter((name) =>
     serverActions.some((serverAction) => serverAction === name),
   );
-  if (JSON.stringify(sorted(registeredServerActions)) !== JSON.stringify(sorted(serverActions))) {
+  if (
+    JSON.stringify(sorted(registeredServerActions)) !==
+    JSON.stringify(sorted(serverActions))
+  ) {
     throw new Error(
       "ACTION_REGISTRATION_DRIFT: server-backed registry actions must equal the registered action-tool set",
     );
