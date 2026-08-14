@@ -29,7 +29,7 @@ The manifest is `package.json`:
   "name": "bb-plugin-hello",
   "version": "0.1.0",
   "type": "module",
-  "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.5.0" },
+  "engines": { "bb": ">=0.9", "bbPluginSdk": ">=0.4.3" },
   "bb": {
     "name": "Hello",
     "description": "A friendly example plugin.",
@@ -100,9 +100,12 @@ The manifest is `package.json`:
   different branded artwork and provide a dark variant when needed.
 - `engines.bb` — optional semver range checked against the bb app version.
 - `engines.bbPluginSdk` — optional semver range for the plugin SDK surface
-  (currently `0.5.0`; the scaffold writes `"^0.5.0"`). Absent means a legacy
-  manifest. Managed (`git:`/`npm:`) installs **refuse** a mismatch against
-  the running SDK; path installs surface it as `incompatible` at load.
+  (currently `0.4.3`; the scaffold writes `">=0.4.3"`). bb reads it as a floor,
+  not a ceiling: a later SDK in the same major still loads the plugin, so a
+  caret range keeps working after the SDK moves forward. Absent means a legacy
+  manifest. Managed (`git:`/`npm:`) installs **refuse** a plugin that needs a
+  newer SDK than the host provides, or one pinned to a different major; path
+  installs surface it as `incompatible` at load.
   Compatible updates (`bb plugin outdated` / `bb plugin update`) only select
   candidates that satisfy these ranges; newer incompatible releases are
   reported as blocked rather than applied. Dev builds (bb `0.0.0`) skip

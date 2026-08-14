@@ -24,6 +24,11 @@ describe("isPluginSdkRangeSatisfied", () => {
     expect(isPluginSdkRangeSatisfied(`^${major + 1}.0.0`)).toBe(false);
   });
 
+  it("returns false for a malformed range instead of throwing", () => {
+    expect(() => isPluginSdkRangeSatisfied("not-a-range")).not.toThrow();
+    expect(isPluginSdkRangeSatisfied("not-a-range")).toBe(false);
+  });
+
   it("accepts the ranges the scaffold and the running SDK produce", () => {
     expect(isPluginSdkRangeSatisfied(`>=${PLUGIN_SDK_VERSION}`)).toBe(true);
     expect(isPluginSdkRangeSatisfied(PLUGIN_SDK_VERSION)).toBe(true);

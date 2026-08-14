@@ -370,8 +370,9 @@ least `icon` or `logo.light`, `bb.server`
 (frontend entry), optional `bb.skills` (static skill directories auto-imported
 into agent threads unless filtered by `bb.agents.configure`; default
 `skills/`), `engines.bb` (supported bb range),
-and optional `engines.bbPluginSdk` (supported plugin SDK range; scaffold
-writes `"^0.5.0"` for SDK 0.5.0). Use `bb-plugin-hello` for the package name by
+and optional `engines.bbPluginSdk` (the lowest plugin SDK you need, read as a
+floor rather than a ceiling; scaffold writes `">=0.4.3"` for SDK 0.4.3). Use
+`bb-plugin-hello` for the package name by
 default. Scoped names such as `@acme/bb-plugin-hello` are also supported. The
 plugin id is the final package-name component minus `bb-plugin-`, so both forms
 use `hello`.

@@ -18,6 +18,9 @@ import { PLUGIN_SDK_VERSION } from "@bb/domain";
  * break bumps the major, which this check does honor.
  */
 export function isPluginSdkRangeSatisfied(range: string): boolean {
+  // Callers reject a malformed range with their own message before reaching
+  // here; keep the helper total anyway, because semver.minVersion throws.
+  if (semver.validRange(range) === null) return false;
   if (semver.satisfies(PLUGIN_SDK_VERSION, range)) return true;
   const floor = semver.minVersion(range);
   if (floor === null) return false;
