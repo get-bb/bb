@@ -21,6 +21,19 @@ import {
 /** Real logo assets are a few KB; this only bounds a hostile response. */
 const MARKETPLACE_ICON_MAX_BYTES = 256 * 1024;
 
+/**
+ * Every icon of one marketplace together. The per-icon cap alone still lets a
+ * large catalog store tens of megabytes of BLOB data in one refresh.
+ */
+export const MARKETPLACE_ICON_TOTAL_MAX_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Icon requests that run at the same time. Serial fetches multiply the
+ * per-request timeout by the entry count, so one slow host could hold a
+ * refresh for hours.
+ */
+const MARKETPLACE_ICON_CONCURRENCY = 6;
+
 const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
 function startsWithBytes(bytes: Uint8Array, magic: number[]): boolean {
@@ -112,26 +125,46 @@ export async function fetchMarketplaceIcons(args: {
       icon,
     ]),
   );
-  const nextIcons: UpsertPluginMarketplaceIconInput[] = [];
+  const resolved = new Map<string, UpsertPluginMarketplaceIconInput>();
+  const pending = [...wanted.entries()];
+  let totalBytes = 0;
+  // A budget failure is a refresh failure, not a dropped icon: the catalog
+  // asks for more icon storage than BB gives one marketplace.
+  let budgetError: Error | null = null;
 
-  for (const [entryId, iconUrl] of wanted) {
+  const keep = (
+    entryId: string,
+    icon: UpsertPluginMarketplaceIconInput,
+  ): void => {
+    totalBytes += icon.bytes.byteLength;
+    if (totalBytes > MARKETPLACE_ICON_TOTAL_MAX_BYTES) {
+      budgetError ??= new Error(
+        `marketplace icons exceed the ${MARKETPLACE_ICON_TOTAL_MAX_BYTES} byte total limit`,
+      );
+      return;
+    }
+    resolved.set(entryId, icon);
+  };
+
+  const runOne = async (entryId: string, iconUrl: string): Promise<void> => {
     const cached = cachedByEntryId.get(entryId);
     const unchangedUrl = cached?.sourceUrl === iconUrl;
     if (args.onlyMissing && cached !== undefined && unchangedUrl) {
-      nextIcons.push(iconInputFromRow(cached));
-      continue;
+      keep(entryId, iconInputFromRow(cached));
+      return;
     }
     try {
       const refreshed = await fetchOneIcon({
-        ...args,
+        marketplaceName: args.marketplaceName,
         entryId,
         iconUrl,
         cached,
+        fetch: args.fetch,
       });
       if (refreshed !== null) {
-        nextIcons.push(refreshed);
+        keep(entryId, refreshed);
       } else if (cached !== undefined && unchangedUrl) {
-        nextIcons.push(iconInputFromRow(cached));
+        keep(entryId, iconInputFromRow(cached));
       }
     } catch (error) {
       args.warn?.(
@@ -140,11 +173,33 @@ export async function fetchMarketplaceIcons(args: {
       // A failed revalidation keeps the matching last-known-good asset. An
       // asset from a previous URL does not describe the new catalog.
       if (cached !== undefined && unchangedUrl) {
-        nextIcons.push(iconInputFromRow(cached));
+        keep(entryId, iconInputFromRow(cached));
       }
     }
-  }
-  return nextIcons;
+  };
+
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      if (budgetError !== null) return;
+      const next = pending.shift();
+      if (next === undefined) return;
+      await runOne(next[0], next[1]);
+    }
+  };
+  await Promise.all(
+    Array.from(
+      { length: Math.min(MARKETPLACE_ICON_CONCURRENCY, pending.length) },
+      worker,
+    ),
+  );
+  if (budgetError !== null) throw budgetError;
+
+  // Catalog order, not completion order, so a stored snapshot is stable.
+  return [...wanted.keys()]
+    .map((entryId) => resolved.get(entryId))
+    .filter(
+      (icon): icon is UpsertPluginMarketplaceIconInput => icon !== undefined,
+    );
 }
 
 function iconInputFromRow(

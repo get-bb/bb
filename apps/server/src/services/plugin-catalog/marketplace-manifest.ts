@@ -16,6 +16,12 @@ const MARKETPLACE_SCHEMA_URL =
 /** Reserved name of the marketplace BB itself curates. */
 export const OFFICIAL_MARKETPLACE_NAME = "bb-official";
 
+/**
+ * Entries one manifest may list. The 1 MiB document limit alone still allows
+ * thousands of entries, and each entry costs an icon request and an icon row.
+ */
+export const MARKETPLACE_MAX_ENTRIES = 256;
+
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
 /** Lowercase kebab-case, the store's grouping vocabulary. */
 const TAG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
@@ -202,19 +208,25 @@ const marketplaceManifestSchema = z
     name: z.string().regex(NAME_PATTERN),
     displayName: z.string().min(1),
     description: z.string().min(1).optional(),
-    plugins: z.array(entrySchema).superRefine((entries, ctx) => {
-      const seen = new Set<string>();
-      entries.forEach((entry, index) => {
-        if (seen.has(entry.id)) {
-          ctx.addIssue({
-            code: "custom",
-            path: [index, "id"],
-            message: `duplicate plugin id "${entry.id}"`,
-          });
-        }
-        seen.add(entry.id);
-      });
-    }),
+    plugins: z
+      .array(entrySchema)
+      .max(
+        MARKETPLACE_MAX_ENTRIES,
+        `a marketplace may list at most ${MARKETPLACE_MAX_ENTRIES} plugins`,
+      )
+      .superRefine((entries, ctx) => {
+        const seen = new Set<string>();
+        entries.forEach((entry, index) => {
+          if (seen.has(entry.id)) {
+            ctx.addIssue({
+              code: "custom",
+              path: [index, "id"],
+              message: `duplicate plugin id "${entry.id}"`,
+            });
+          }
+          seen.add(entry.id);
+        });
+      }),
   })
   .strict();
 

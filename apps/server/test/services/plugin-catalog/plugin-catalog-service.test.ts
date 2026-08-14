@@ -632,4 +632,166 @@ describe("plugin catalog service", () => {
       );
     });
   });
+
+  describe("catalog limits and trust", () => {
+    it("refuses a manifest that lists more than the entry limit", async () => {
+      const oversize = manifest(
+        Array.from({ length: 257 }, (_unused, index) =>
+          remoteEntry({ id: `widgets-${index}` }),
+        ),
+      );
+      const catalog = service({
+        fetch: async () => jsonResponse(oversize),
+      });
+
+      await expect(catalog.refresh(1_000)).rejects.toThrow(
+        /at most 256 plugins/u,
+      );
+      expect(getPluginMarketplace(db, "bb-official")?.lastError).toMatch(
+        /at most 256 plugins/u,
+      );
+    });
+
+    it("refuses a catalog whose icons pass the total byte budget", async () => {
+      // Each icon stays under the per-icon cap; together they pass 8 MiB.
+      const bigSvg = Buffer.from(
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><title>${"a".repeat(200 * 1024)}</title><path d="M0 0h16v16H0z"/></svg>`,
+      );
+      const entries = Array.from({ length: 64 }, (_unused, index) =>
+        remoteEntry({
+          id: `widgets-${index}`,
+          icon: { url: `./icons/widgets-${index}.svg` },
+        }),
+      );
+      const catalog = service({
+        fetch: async (url) =>
+          url === MANIFEST_URL
+            ? jsonResponse(manifest(entries))
+            : new Response(bigSvg, {
+                status: 200,
+                headers: { "content-type": "image/svg+xml" },
+              }),
+      });
+
+      await expect(catalog.refresh(1_000)).rejects.toThrow(
+        /exceed the 8388608 byte total limit/u,
+      );
+    });
+
+    it("fetches entry icons concurrently", async () => {
+      let inFlight = 0;
+      let peak = 0;
+      const entries = Array.from({ length: 12 }, (_unused, index) =>
+        remoteEntry({
+          id: `widgets-${index}`,
+          icon: { url: `./icons/widgets-${index}.svg` },
+        }),
+      );
+      const catalog = service({
+        fetch: async (url) => {
+          if (url === MANIFEST_URL) return jsonResponse(manifest(entries));
+          inFlight += 1;
+          peak = Math.max(peak, inFlight);
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          inFlight -= 1;
+          return new Response(VALID_SVG, {
+            status: 200,
+            headers: { "content-type": "image/svg+xml" },
+          });
+        },
+      });
+
+      await catalog.refresh(1_000);
+      expect(peak).toBeGreaterThan(1);
+      expect(await catalog.search("widgets-11")).toHaveLength(1);
+    });
+
+    it("drops an icon aimed at a non-public address", async () => {
+      const warnings: string[] = [];
+      const iconRequests: string[] = [];
+      const catalog = service({
+        warn: (message) => warnings.push(message),
+        fetch: async (url) => {
+          if (url === MANIFEST_URL) {
+            return jsonResponse(
+              manifest([
+                remoteEntry({ icon: { url: "https://127.0.0.1/widgets.svg" } }),
+              ]),
+            );
+          }
+          iconRequests.push(url);
+          return new Response(VALID_SVG, {
+            status: 200,
+            headers: { "content-type": "image/svg+xml" },
+          });
+        },
+      });
+
+      await catalog.refresh(1_000);
+      expect(iconRequests).toEqual([]);
+      expect(catalog.icon("bb-official", "widgets")).toBeUndefined();
+      expect(warnings.join("\n")).toMatch(/non-public address 127\.0\.0\.1/u);
+    });
+
+    it("drops a remote entry that claims a bundled plugin id", async () => {
+      const bundled = listBundledPluginRegistrations();
+      const occupied = bundled[0];
+      if (occupied === undefined) throw new Error("no bundled plugin");
+      const catalog = service({
+        fetch: async (url) =>
+          url === MANIFEST_URL
+            ? jsonResponse(
+                manifest([
+                  remoteEntry({ id: occupied.pluginId }),
+                  remoteEntry({ id: "widgets" }),
+                ]),
+              )
+            : new Response(VALID_SVG, {
+                status: 200,
+                headers: { "content-type": "image/svg+xml" },
+              }),
+      });
+
+      await catalog.refresh(1_000);
+      const results = await catalog.search("");
+      // Exactly one row keeps that id: the bundled one.
+      expect(
+        results.filter((entry) => entry.pluginId === occupied.pluginId),
+      ).toHaveLength(1);
+      expect(
+        results.find((entry) => entry.pluginId === occupied.pluginId)?.source,
+      ).toBe(`builtin:${occupied.name}`);
+      expect(results.some((entry) => entry.entryId === "widgets")).toBe(true);
+      expect(getPluginMarketplace(db, "bb-official")?.lastError).toMatch(
+        new RegExp(`matches a bundled plugin: ${occupied.pluginId}`, "u"),
+      );
+    });
+
+    it("names the pinned npm registry in the entry source display", async () => {
+      const catalog = service({
+        fetch: async (url) =>
+          url === MANIFEST_URL
+            ? jsonResponse(
+                manifest([
+                  remoteEntry({
+                    icon: "ZoomIn",
+                    source: {
+                      npm: {
+                        package: "bb-plugin-widgets",
+                        range: "^1.0.0",
+                        registry: "https://npm.acme.test",
+                      },
+                    },
+                  }),
+                ]),
+              )
+            : new Response(null, { status: 404 }),
+      });
+
+      await catalog.refresh(1_000);
+      expect((await catalog.search("widgets"))[0]?.source).toBe(
+        "npm:bb-plugin-widgets@^1.0.0 (registry https://npm.acme.test)",
+      );
+    });
+  });
 });

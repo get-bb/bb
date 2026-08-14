@@ -287,8 +287,35 @@ export function createPluginCatalogService(deps: {
     };
   }
 
+  /**
+   * A bundled plugin owns its id. A remote entry that claims the same id would
+   * appear twice in search, and an install would take the catalog route rather
+   * than the local bundled one. Such an entry is dropped and the drop is
+   * recorded on the marketplace row, so the rest of the catalog still
+   * publishes.
+   */
+  function rejectBundledIdCollisions(catalog: MarketplaceManifest): {
+    catalog: MarketplaceManifest;
+    error: string | null;
+  } {
+    const bundledIds = new Set(bundledPlugins.map((plugin) => plugin.pluginId));
+    const colliding = catalog.plugins.filter((entry) =>
+      bundledIds.has(entry.id),
+    );
+    if (colliding.length === 0) return { catalog, error: null };
+    const ids = colliding.map((entry) => entry.id).join(", ");
+    return {
+      catalog: {
+        ...catalog,
+        plugins: catalog.plugins.filter((entry) => !bundledIds.has(entry.id)),
+      },
+      error: `dropped ${colliding.length} catalog ${colliding.length === 1 ? "entry" : "entries"} whose id matches a bundled plugin: ${ids}`,
+    };
+  }
+
   async function performRefresh(attemptedAt: number): Promise<void> {
     const before = currentRow();
+    let collisionError: string | null = null;
     const headers = new Headers({ accept: "application/json" });
     if (before.etag !== null) headers.set("if-none-match", before.etag);
     if (before.lastModified !== null) {
@@ -328,6 +355,14 @@ export function createPluginCatalogService(deps: {
             `invalid marketplace manifest: expected name "${OFFICIAL_MARKETPLACE_NAME}", got ${JSON.stringify(catalog.name)}`,
           );
         }
+        const rejection = rejectBundledIdCollisions(catalog);
+        catalog = rejection.catalog;
+        collisionError = rejection.error;
+        if (collisionError !== null) {
+          deps.warn?.(
+            `${OFFICIAL_MARKETPLACE_NAME} catalog refresh ${collisionError}`,
+          );
+        }
         manifestJson = JSON.stringify(catalog);
       }
       // An unchanged manifest still retries entries whose icon never cached,
@@ -355,7 +390,7 @@ export function createPluginCatalogService(deps: {
             (unchanged ? before.lastModified : null),
           lastSuccessfulRefreshAt: attemptedAt,
           lastAttemptedRefreshAt: attemptedAt,
-          lastError: null,
+          lastError: collisionError,
         });
         replacePluginMarketplaceIcons(tx, OFFICIAL_MARKETPLACE_NAME, icons);
       });
