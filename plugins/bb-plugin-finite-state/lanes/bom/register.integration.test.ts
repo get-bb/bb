@@ -156,8 +156,18 @@ describe("registered SBOM pull surfaces", () => {
 
       expect(pulled).toMatchObject({ exitCode: 0, stderr: "" });
       expect(JSON.parse(pulled.stdout)).toMatchObject({
-        kinds: { sbomComponent: { fetched: 0, baseRows: 0 } },
+        kinds: {
+          sbomComponent: {
+            fetched: expect.any(Number),
+            baseRows: expect.any(Number),
+          },
+        },
       });
+      const pullReport = JSON.parse(pulled.stdout) as {
+        kinds: { sbomComponent: { fetched: number; baseRows: number } };
+      };
+      expect(pullReport.kinds.sbomComponent.fetched).toBeGreaterThan(0);
+      expect(pullReport.kinds.sbomComponent.baseRows).toBeGreaterThan(0);
       expect(
         host.harness.inspection.realtimeSignals.filter(
           (signal) => signal.channel === "bom:changed",
@@ -168,17 +178,19 @@ describe("registered SBOM pull surfaces", () => {
           payload: { projectVersionId },
         },
       ]);
-      expect(
-        ctx
-          .db()
-          .prepare(
-            `SELECT COUNT(*)
+      const acceptedComponentCount = ctx
+        .db()
+        .prepare(
+          `SELECT COUNT(*)
            FROM sbom_components
           WHERE project_id = ? AND project_version_id = ?`,
-          )
-          .pluck()
-          .get(projectId, projectVersionId),
-      ).toBeGreaterThan(0);
+        )
+        .pluck()
+        .get(projectId, projectVersionId);
+      expect(acceptedComponentCount).toBeGreaterThan(0);
+      expect(pullReport.kinds.sbomComponent.baseRows).toBe(
+        acceptedComponentCount,
+      );
 
       const sbomAsOf = ctx
         .db()

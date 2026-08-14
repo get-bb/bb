@@ -574,6 +574,7 @@ export async function pullSbom(
 
   try {
     let state = meta(stage)!;
+    let fetched = 0;
     const initialPhase = decodePhase(state.continuation);
     for (const excluded of initialPhase.excluded ? [true] : [false, true]) {
       const remoteContinuation =
@@ -597,6 +598,7 @@ export async function pullSbom(
             "SBOM refresh was cancelled",
           );
         }
+        fetched += page.items.length;
         const normalized = page.items.map(normalizeComponent);
         const next =
           page.next === null
@@ -632,6 +634,7 @@ export async function pullSbom(
     removeStage(path);
     return {
       projectVersionId: input.projectVersionId,
+      fetched,
       components: state.rows,
       pages: state.pages,
       rollups,

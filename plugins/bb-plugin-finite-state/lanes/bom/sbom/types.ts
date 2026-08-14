@@ -19,6 +19,8 @@ export interface SbomPullInput {
 
 export interface SbomPullResult {
   projectVersionId: string;
+  /** Remote component rows fetched during this invocation. */
+  fetched: number;
   components: number;
   pages: number;
   rollups: number;

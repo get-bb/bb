@@ -74,6 +74,9 @@ export function registerSync(bb: BbPluginApi, ctx: PluginContext): void {
           projectVersionId: scope.projectVersionId,
         });
       }
+      if (kinds.includes("finding")) {
+        ctx.bb.realtime.publish("findings:changed", payload);
+      }
       if (kinds.includes("requirement")) {
         ctx.bb.realtime.publish("requirements:changed", payload);
       }

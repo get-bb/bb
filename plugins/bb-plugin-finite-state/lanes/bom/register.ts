@@ -256,7 +256,7 @@ export function registerBom(bb: BbPluginApi, ctx: PluginContext): void {
       if (db.memory || !isAbsolute(db.name)) {
         throw new Error("SBOM_STAGING_ROOT_UNAVAILABLE");
       }
-      await commands.pull({
+      const result = await commands.pull({
         projectId: scope.projectId,
         projectVersionId: scope.projectVersionId,
         stagingRoot: dirname(db.name),
@@ -264,6 +264,7 @@ export function registerBom(bb: BbPluginApi, ctx: PluginContext): void {
         generationId,
         onProgress: ({ pages }) => onProgress({ page: pages, of: null }),
       });
+      return { fetched: result.fetched, baseRows: result.components };
     },
   );
   bb.rpc.register(bomCachedVersionsContract, {

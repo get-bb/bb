@@ -190,6 +190,7 @@ describe("resumable SBOM pull", () => {
 
     expect(result).toEqual({
       projectVersionId: "v",
+      fetched: 900,
       components: 900,
       pages: Math.ceil(899 / 37) + 1,
       rollups: 900,
@@ -314,7 +315,12 @@ describe("resumable SBOM pull", () => {
       },
       { excluded: true, page: { pageSize: 200 } },
     ]);
-    expect(result).toMatchObject({ components: 2, pages: 3, resumed: true });
+    expect(result).toMatchObject({
+      fetched: 1,
+      components: 2,
+      pages: 3,
+      resumed: true,
+    });
     expect(
       db
         .prepare(
@@ -424,7 +430,12 @@ describe("resumable SBOM pull", () => {
       },
       { projectId: "p", projectVersionId: "v", resume: true },
     );
-    expect(result).toMatchObject({ components: 2, pages: 3, resumed: true });
+    expect(result).toMatchObject({
+      fetched: 1,
+      components: 2,
+      pages: 3,
+      resumed: true,
+    });
     expect(resumedInputs[0]).toEqual({
       excluded: false,
       page: { pageSize: 200, continuation: "after-one" },

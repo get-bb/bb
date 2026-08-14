@@ -5,7 +5,12 @@ import { Icon } from "@bb/shared-ui/icon";
 
 export type FilterBoolean = "all" | "yes" | "no";
 export type FilterSeverity = "" | "critical" | "high" | "medium" | "low";
-export type FilterReachability = "" | "reachable" | "unreachable" | "mixed" | "unknown";
+export type FilterReachability =
+  | ""
+  | "reachable"
+  | "unreachable"
+  | "mixed"
+  | "unknown";
 export type FilterSort = "name" | "severity" | "kev" | "license";
 
 export interface SbomFiltersValue {
@@ -47,10 +52,12 @@ export const SHIPPED_VIEWS: Readonly<Record<string, SbomFiltersValue>> = {
 
 function editingText(event: KeyboardEvent): boolean {
   const target = event.target;
-  return target instanceof HTMLInputElement ||
+  return (
+    target instanceof HTMLInputElement ||
     target instanceof HTMLTextAreaElement ||
     target instanceof HTMLSelectElement ||
-    (target instanceof HTMLElement && target.isContentEditable);
+    (target instanceof HTMLElement && target.isContentEditable)
+  );
 }
 
 const controlClass =
@@ -72,7 +79,13 @@ export function SbomFilters({
   const searchRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey || editingText(event)) {
+      if (
+        event.key !== "/" ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        editingText(event)
+      ) {
         return;
       }
       event.preventDefault();
@@ -94,7 +107,9 @@ export function SbomFilters({
           <Input
             aria-label="Search software components"
             className="h-8 pl-8 pr-9 text-xs"
-            onChange={(event) => onChange({ ...value, search: event.target.value })}
+            onChange={(event) =>
+              onChange({ ...value, search: event.target.value })
+            }
             placeholder="Search component or group"
             ref={searchRef}
             value={value.search}
@@ -111,7 +126,9 @@ export function SbomFilters({
         >
           <option value="">Shipped views</option>
           {Object.keys(SHIPPED_VIEWS).map((view) => (
-            <option key={view} value={view}>{view}</option>
+            <option key={view} value={view}>
+              {view}
+            </option>
           ))}
         </select>
         <select
@@ -120,9 +137,13 @@ export function SbomFilters({
           onChange={(event) => {
             const severity = event.target.value;
             if (
-              severity === "" || severity === "critical" || severity === "high" ||
-              severity === "medium" || severity === "low"
-            ) onChange({ ...value, severity });
+              severity === "" ||
+              severity === "critical" ||
+              severity === "high" ||
+              severity === "medium" ||
+              severity === "low"
+            )
+              onChange({ ...value, severity });
           }}
           value={value.severity}
         >
@@ -137,7 +158,8 @@ export function SbomFilters({
           className={controlClass}
           onChange={(event) => {
             const kev = event.target.value;
-            if (kev === "all" || kev === "yes" || kev === "no") onChange({ ...value, kev });
+            if (kev === "all" || kev === "yes" || kev === "no")
+              onChange({ ...value, kev });
           }}
           value={value.kev}
         >
@@ -151,10 +173,13 @@ export function SbomFilters({
           onChange={(event) => {
             const reachability = event.target.value;
             if (
-              reachability === "" || reachability === "reachable" ||
-              reachability === "unreachable" || reachability === "mixed" ||
+              reachability === "" ||
+              reachability === "reachable" ||
+              reachability === "unreachable" ||
+              reachability === "mixed" ||
               reachability === "unknown"
-            ) onChange({ ...value, reachability });
+            )
+              onChange({ ...value, reachability });
           }}
           value={value.reachability}
         >
@@ -167,14 +192,18 @@ export function SbomFilters({
         <Input
           aria-label="License filter"
           className="h-8 w-28 text-xs"
-          onChange={(event) => onChange({ ...value, license: event.target.value })}
+          onChange={(event) =>
+            onChange({ ...value, license: event.target.value })
+          }
           placeholder="License"
           value={value.license}
         />
         <Input
           aria-label="Component source filter"
           className="h-8 w-28 text-xs"
-          onChange={(event) => onChange({ ...value, source: event.target.value })}
+          onChange={(event) =>
+            onChange({ ...value, source: event.target.value })
+          }
           placeholder="Source"
           value={value.source}
         />
@@ -183,7 +212,8 @@ export function SbomFilters({
           className={controlClass}
           onChange={(event) => {
             const linked = event.target.value;
-            if (linked === "all" || linked === "yes" || linked === "no") onChange({ ...value, linked });
+            if (linked === "all" || linked === "yes" || linked === "no")
+              onChange({ ...value, linked });
           }}
           value={value.linked}
         >
@@ -196,7 +226,11 @@ export function SbomFilters({
           className={controlClass}
           onChange={(event) => {
             const localChange = event.target.value;
-            if (localChange === "all" || localChange === "yes" || localChange === "no") {
+            if (
+              localChange === "all" ||
+              localChange === "yes" ||
+              localChange === "no"
+            ) {
               onChange({ ...value, localChange });
             }
           }}
@@ -211,7 +245,12 @@ export function SbomFilters({
           className={controlClass}
           onChange={(event) => {
             const sort = event.target.value;
-            if (sort === "name" || sort === "severity" || sort === "kev" || sort === "license") {
+            if (
+              sort === "name" ||
+              sort === "severity" ||
+              sort === "kev" ||
+              sort === "license"
+            ) {
               onChange({ ...value, sort });
             }
           }}
@@ -225,10 +264,12 @@ export function SbomFilters({
         <Button
           aria-label={`Sort ${value.direction === "asc" ? "descending" : "ascending"}`}
           className="h-8 px-2"
-          onClick={() => onChange({
-            ...value,
-            direction: value.direction === "asc" ? "desc" : "asc",
-          })}
+          onClick={() =>
+            onChange({
+              ...value,
+              direction: value.direction === "asc" ? "desc" : "asc",
+            })
+          }
           size="sm"
           variant="outline"
         >
@@ -237,7 +278,8 @@ export function SbomFilters({
         </Button>
       </div>
       <p className="mt-1.5 text-xs text-muted-foreground">
-        Shipped views are immutable. User-saved persistence is unavailable until bb exposes a frontend preference surface.
+        Built-in views can’t be changed. Saving custom views isn’t available
+        yet.
       </p>
     </div>
   );
