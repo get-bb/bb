@@ -87,7 +87,7 @@ function parseArgs(argv: string[]): CliInput {
     verb !== "status"
   ) {
     throw new Error(
-      "usage: bb finite-state <as-projects|as-project-select|plan|pull|status> [surface] [--project ID] [--version ID] [--as-project ID] [--json]",
+      "usage: bb finite-state <as-projects|as-project-select|plan|pull|status|firmware|bench|triage> ...",
     );
   }
   let surface: string | null = null;
@@ -367,6 +367,13 @@ export function registerSyncCli(
         name: "bench",
         summary: "Evaluate cached bench evidence",
         usage: "bench verdict <pv-id> [--digest <sha256>] [--json]",
+      },
+      {
+        name: "triage",
+        summary:
+          "Read or refresh finding drift, preview/apply vendor VEX, and CAS-prune orphans",
+        usage:
+          "triage --help\ntriage drift report --project ID --version ID [--cursor CURSOR] [--limit N] [--json]\ntriage drift refresh --project ID --version ID [--limit N] [--json]\ntriage import-vex preview <file> --vendor NAME --project ID --version ID [--json]\ntriage import-vex apply --import-id ID --expected-document-sha256 SHA256 --project ID --version ID [--json]\ntriage orphans list --project ID --version ID [--json]\ntriage orphans prune --stable-key KEY [--stable-key KEY ... (max 500 per invocation)] --expected-base SHA256 --project ID --version ID [--json]",
       },
     ],
     async run(argv, context) {

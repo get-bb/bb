@@ -15,6 +15,7 @@ import { FindingsHeader } from "./FindingsHeader.js";
 import { FindingsTable } from "./FindingsTable.js";
 import { SavedViews } from "./SavedViews.js";
 import { FindingDetailStub } from "./detail/index.js";
+import { DriftReportPanel } from "./drift/DriftReportPanel.js";
 import {
   filterSnapshot,
   findingDetailSubPath,
@@ -401,6 +402,11 @@ export function FindingsPanel({
           ) : null}
         </div>
       ) : null}
+      <DriftReportPanel
+        platformProjectId={platformProjectId}
+        projectVersionId={projectVersionId}
+        workspaceProjectId={projectId}
+      />
       <SavedViews
         activeId={route.kind === "view" ? route.view : undefined}
         columns={columns}

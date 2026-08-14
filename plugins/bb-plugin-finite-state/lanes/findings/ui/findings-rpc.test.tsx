@@ -2,6 +2,8 @@ import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createPluginContext } from "../../../lib/context.js";
 import { findingStableKey } from "../../../lib/sync/registry.js";
+import { AGENT_TOOL_NAMES } from "../../../lib/agentic/registry.js";
+import { registerAgentic } from "../../agentic/register.js";
 import { findingsUiRpcContract, registerFindingsRpc } from "../rpc.js";
 
 const hosts: Array<ReturnType<typeof createFakePluginHost>> = [];
@@ -395,5 +397,183 @@ describe("findings UI RPC seams", () => {
         continuation: null,
       }),
     ).resolves.toMatchObject({ total: 1, items: [{ key: "event-1" }] });
+  });
+
+  it("registers zero-write drift reads and human import flags without adding an agent tool", async () => {
+    const host = createFakePluginHost({
+      pluginId: "findings-drift-rpc",
+      sdk: {
+        projects: {
+          get: ({ projectId }) => ({
+            id: projectId,
+            sources: [
+              { hostId: "host-1", path: "/workspace", isDefault: true },
+            ],
+          }),
+        },
+      },
+    });
+    hosts.push(host);
+    const db = createPluginContext(host.bb).db();
+    db.prepare(
+      `INSERT INTO workspace_platform_project_binding
+       (workspace_project_id, platform_project_id)
+       VALUES ('workspace-1', 'platform-1')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO pull_generation
+       (project_id, project_version_id, generation_id, status,
+        requested_kinds_json, started_at, completed_at, accepted_at)
+       VALUES ('platform-1', 'version-1', 'generation-1', 'accepted',
+               '["finding"]', ?, ?, ?)`,
+    ).run(
+      "2026-08-14T12:00:00.000Z",
+      "2026-08-14T12:00:00.000Z",
+      "2026-08-14T12:00:00.000Z",
+    );
+    db.prepare(
+      `INSERT INTO sync_state
+       (project_id, project_version_id, entity_kind, accepted_generation_id)
+       VALUES ('platform-1', 'version-1', 'finding', 'generation-1')`,
+    ).run();
+    const report = {
+      pvId: "version-1",
+      runId: "drift-run-1",
+      createdAt: "2026-08-14T12:00:00.000Z",
+      unclassifiedCount: 2,
+      totals: {
+        reattached_noop: 1,
+        reapply: 0,
+        stale: 0,
+        orphaned: 0,
+        conflict: 0,
+        needs_completion: 0,
+      },
+      items: [
+        {
+          stableKey: "stable-key-1",
+          state: "reattached_noop" as const,
+          tier: 1 as const,
+          reason: "Server tuple matches",
+        },
+      ],
+      nextCursor: null,
+    };
+    const drift = {
+      refresh: vi.fn(() => report),
+      report: vi.fn(() => report),
+      orphanState: vi.fn(() => ({
+        baseStateSha256: "a".repeat(64),
+        total: 0,
+      })),
+      stageVendorDocument: vi.fn(() => ({ documentSha256: "b".repeat(64) })),
+      previewVendorVex: vi.fn(async () => ({
+        importId: "vendor-import-1",
+        source: {
+          format: "openvex" as const,
+          digest: "b".repeat(64),
+          vendor: "Supplier",
+        },
+        matched: 0,
+        unmatched: 0,
+        needsCompletion: 0,
+        keptLocal: 0,
+        written: 0,
+        proposals: [
+          {
+            stableKey: "stable-vendor-1",
+            state: "proposal",
+            sourceRef: "supplier.json#statement-1",
+          },
+        ],
+        errors: [],
+      })),
+      applyVendorVex: vi.fn(async () => ({
+        importId: "vendor-import-1",
+        source: {
+          format: "openvex" as const,
+          digest: "b".repeat(64),
+          vendor: "Supplier",
+        },
+        matched: 0,
+        unmatched: 0,
+        needsCompletion: 0,
+        keptLocal: 0,
+        written: 0,
+        proposals: [],
+        errors: [],
+      })),
+      pruneOrphans: vi.fn(async () => ({
+        baseStateSha256: "a".repeat(64),
+        selected: 0,
+        pruned: 0,
+        files: [],
+        results: [],
+      })),
+    };
+    registerFindingsRpc(host.bb, db, { drift });
+
+    const changes = db.prepare("SELECT total_changes()").pluck().get();
+    await expect(
+      host.harness.behavior.callRpc("findingsDriftReport", {
+        workspaceProjectId: "workspace-1",
+        platformProjectId: "platform-1",
+        projectVersionId: "version-1",
+        cursor: null,
+        limit: 100,
+      }),
+    ).resolves.toEqual(report);
+    expect(db.prepare("SELECT total_changes()").pluck().get()).toBe(changes);
+    expect(drift.report).toHaveBeenCalledWith({
+      projectId: "platform-1",
+      pvId: "version-1",
+      cursor: null,
+      limit: 100,
+    });
+
+    const vendorPreview = await host.harness.behavior.callRpc(
+      "triageVendorVexPreview",
+      {
+        projectId: "workspace-1",
+        projectVersionId: "version-1",
+        pageSize: 100,
+        continuation: null,
+        documentSha256: "b".repeat(64),
+        vendor: "Supplier",
+      },
+    );
+    expect(vendorPreview).toMatchObject({
+      projectId: "platform-1",
+      items: [{ projectId: "platform-1", key: "stable-vendor-1" }],
+    });
+    expect(drift.previewVendorVex).toHaveBeenCalledWith(
+      expect.objectContaining({
+        root: "/workspace",
+        documentSha256: "b".repeat(64),
+      }),
+    );
+    await host.harness.behavior.callRpc("triageVendorVexApply", {
+      projectId: "workspace-1",
+      projectVersionId: "version-1",
+      pageSize: 100,
+      continuation: null,
+      importId: "vendor-import-1",
+      expectedDocumentSha256: "b".repeat(64),
+      overwrite: true,
+    });
+    expect(drift.applyVendorVex).toHaveBeenCalledWith(
+      expect.objectContaining({ overwrite: true }),
+    );
+
+    registerAgentic(host.bb, createPluginContext(host.bb));
+    const registeredNames =
+      host.harness.inspection.registrations.agentTools.map((tool) => tool.name);
+    expect(registeredNames.length).toBeGreaterThan(0);
+    expect(registeredNames).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/drift|orphan|vendor/iu)]),
+    );
+    expect(AGENT_TOOL_NAMES).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/drift|orphan|vendor/iu)]),
+    );
   });
 });

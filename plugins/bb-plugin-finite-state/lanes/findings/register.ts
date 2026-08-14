@@ -1,16 +1,23 @@
 import type { BbPluginApi } from "@bb/plugin-sdk";
 import type { PluginContext } from "../../lib/context.js";
 import type { RemoteServices } from "../../lib/remote/types.js";
+import type { NamespacedCliRunner } from "../sync/cli.js";
 import { registerCachePuller } from "../sync/engine/adapter.js";
 import { hydrateFindingActivity } from "./cache/activity.js";
 import { hydrateFindingComments } from "./cache/comments.js";
 import { pullFindings } from "./cache/pull.js";
 import { registerFindingsBulk } from "./bulk/index.js";
-import { registerFindingsDrift } from "./drift/index.js";
+import {
+  registerFindingsDrift,
+  type FindingsDriftService,
+} from "./drift/index.js";
 import { registerFindingsOverlay } from "./overlay/index.js";
 import { registerFindingsPolicyStub } from "./policy/index.js";
 import { registerFindingsStableKeyStub } from "./stable-key/index.js";
 import { registerFindingsRpc } from "./rpc.js";
+import { createFindingsCliRunner } from "./cli.js";
+import { assertAcceptedFindingsScope } from "./scope.js";
+import { MAX_VENDOR_VEX_BYTES } from "./drift/vendor/parse.js";
 
 interface PersistedPullAdvisories {
   generationId: string;
@@ -148,7 +155,74 @@ export function registerFindings(bb: BbPluginApi, ctx: PluginContext): void {
       findingId: string;
     }) => hydrateFindingComments(db, remote.platform, input),
   }));
+  registerFindingsDrift(ctx);
+  const drift = ctx.service<FindingsDriftService>("findings.drift", () => {
+    throw new Error("Findings drift services are unavailable");
+  });
+  bb.http.route(
+    "POST",
+    "/findings/vendor-vex/document",
+    async (http) => {
+      const workspaceProjectId =
+        http.req.header("x-fs-workspace-project")?.trim() ?? "";
+      const platformProjectId =
+        http.req.header("x-fs-platform-project")?.trim() ?? "";
+      const projectVersionId =
+        http.req.header("x-fs-project-version")?.trim() ?? "";
+      if (
+        !workspaceProjectId ||
+        !platformProjectId ||
+        !projectVersionId ||
+        workspaceProjectId.length > 512 ||
+        platformProjectId.length > 512 ||
+        projectVersionId.length > 512
+      ) {
+        return http.json({ error: "FINDINGS_SCOPE_REQUIRED" }, 400);
+      }
+      assertAcceptedFindingsScope(db, {
+        workspaceProjectId,
+        platformProjectId,
+        projectVersionId,
+      });
+      const declaredLength = Number(http.req.header("content-length") ?? "0");
+      if (
+        !Number.isSafeInteger(declaredLength) ||
+        declaredLength < 1 ||
+        declaredLength > MAX_VENDOR_VEX_BYTES
+      ) {
+        return http.json({ error: "VENDOR_FILE_OVERSIZED" }, 413);
+      }
+      const bytes = new Uint8Array(await http.req.arrayBuffer());
+      if (bytes.byteLength < 1 || bytes.byteLength > MAX_VENDOR_VEX_BYTES) {
+        return http.json({ error: "VENDOR_FILE_OVERSIZED" }, 413);
+      }
+      let file = "vendor-vex.json";
+      try {
+        file = decodeURIComponent(http.req.header("x-fs-vendor-file") ?? file);
+      } catch {
+        return http.json({ error: "VENDOR_FILE_INVALID" }, 400);
+      }
+      if (file.length > 1_024) {
+        return http.json({ error: "VENDOR_FILE_INVALID" }, 400);
+      }
+      return http.json(
+        drift.stageVendorDocument({
+          projectId: platformProjectId,
+          pvId: projectVersionId,
+          file,
+          bytes,
+        }),
+      );
+    },
+    { auth: "local" },
+  );
+  ctx.service<{ run: NamespacedCliRunner }>("findings.cli", () => ({
+    run: createFindingsCliRunner(bb, drift, (input) =>
+      assertAcceptedFindingsScope(db, input),
+    ),
+  }));
   registerFindingsRpc(bb, db, {
+    drift,
     hydrateActivity: (input) =>
       hydrateFindingActivity(db, remote.platform, input),
     async pullAdvisories(input) {
@@ -169,5 +243,4 @@ export function registerFindings(bb: BbPluginApi, ctx: PluginContext): void {
     publish: (progress) =>
       bb.realtime.publish("fs-vex-push-progress", progress),
   });
-  registerFindingsDrift(ctx);
 }

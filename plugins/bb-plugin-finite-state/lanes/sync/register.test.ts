@@ -156,6 +156,7 @@ beforeAll(async () => {
   host.harness.sdk.stub("environments.get", async () => ({
     id: "environment-sync-cli",
     projectId: "bb-project-sync",
+    hostId: "host-sync",
     path: root,
   }));
   host.harness.sdk.stub("projects.get", async ({ projectId }) => {
@@ -1671,6 +1672,222 @@ decisions:
       })}\n`,
       stderr: "",
     });
+  });
+
+  it("runs the registered triage drift namespace and keeps confirmation outside agent tools", async () => {
+    const scope = platformScope();
+    const usage = await host.harness.behavior.runCli(["finite-state"], {});
+    expect(usage).toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining("triage"),
+    });
+    const refreshed = await host.harness.behavior.runCli(
+      [
+        "finite-state",
+        "triage",
+        "drift",
+        "refresh",
+        "--project",
+        scope.projectId,
+        "--version",
+        scope.projectVersionId,
+        "--json",
+      ],
+      { threadId: "thread-sync-cli", projectId: "bb-project-sync" },
+    );
+    expect(refreshed).toMatchObject({ exitCode: 0, stderr: "" });
+    const refreshReport = JSON.parse(refreshed.stdout) as {
+      runId: string;
+      createdAt: string;
+      unclassifiedCount: number;
+    };
+    expect(refreshReport).toMatchObject({
+      runId: expect.stringMatching(/^drift-/u),
+      createdAt: expect.any(String),
+      unclassifiedCount: 0,
+    });
+
+    const vendorDocument = JSON.stringify({
+      "@context": "https://openvex.dev/ns/v0.2.0",
+      "@id": "https://vendor.test/vex/fs-147",
+      statements: [],
+    });
+    const unscopedUpload = await host.harness.behavior.fetchHttp(
+      "POST",
+      "/findings/vendor-vex/document",
+      {
+        headers: {
+          "content-type": "application/json",
+          "content-length": String(Buffer.byteLength(vendorDocument)),
+          "x-fs-vendor-file": encodeURIComponent("vendor/openvex.json"),
+        },
+        body: vendorDocument,
+      },
+    );
+    expect(unscopedUpload.status).toBe(400);
+    const uploaded = await host.harness.behavior.fetchHttp(
+      "POST",
+      "/findings/vendor-vex/document",
+      {
+        headers: {
+          "content-type": "application/json",
+          "content-length": String(Buffer.byteLength(vendorDocument)),
+          "x-fs-vendor-file": encodeURIComponent("vendor/openvex.json"),
+          "x-fs-workspace-project": "bb-project-sync",
+          "x-fs-platform-project": scope.projectId,
+          "x-fs-project-version": scope.projectVersionId,
+        },
+        body: vendorDocument,
+      },
+    );
+    expect(uploaded.status).toBe(200);
+    const staged = (await uploaded.json()) as { documentSha256: string };
+    const preview = (await host.harness.behavior.callRpc(
+      "triageVendorVexPreview",
+      {
+        projectId: "bb-project-sync",
+        projectVersionId: scope.projectVersionId,
+        pageSize: 100,
+        continuation: null,
+        documentSha256: staged.documentSha256,
+        vendor: "Supplier",
+      },
+    )) as {
+      importId: string;
+      documentSha256: string;
+      written: number;
+    };
+    expect(preview).toMatchObject({
+      projectId: scope.projectId,
+      projectVersionId: scope.projectVersionId,
+      documentSha256: staged.documentSha256,
+      written: 0,
+    });
+    await expect(
+      host.harness.behavior.callRpc("triageVendorVexApply", {
+        projectId: "bb-project-sync",
+        projectVersionId: scope.projectVersionId,
+        pageSize: 100,
+        continuation: null,
+        importId: preview.importId,
+        expectedDocumentSha256: "f".repeat(64),
+        overwrite: false,
+      }),
+    ).rejects.toThrow("VENDOR_DOCUMENT_CHANGED");
+    await expect(
+      host.harness.behavior.callRpc("triageVendorVexApply", {
+        projectId: "bb-project-sync",
+        projectVersionId: scope.projectVersionId,
+        pageSize: 100,
+        continuation: null,
+        importId: preview.importId,
+        expectedDocumentSha256: staged.documentSha256,
+        overwrite: false,
+      }),
+    ).resolves.toMatchObject({
+      importId: preview.importId,
+      documentSha256: staged.documentSha256,
+      written: 0,
+    });
+
+    const read = await host.harness.behavior.runCli(
+      [
+        "triage",
+        "drift",
+        "report",
+        "--project",
+        scope.projectId,
+        "--version",
+        scope.projectVersionId,
+        "--json",
+      ],
+      { threadId: "thread-sync-cli", projectId: "bb-project-sync" },
+    );
+    expect(JSON.parse(read.stdout)).toMatchObject({
+      runId: refreshReport.runId,
+      createdAt: refreshReport.createdAt,
+    });
+
+    const refused = await host.harness.behavior.runCli(
+      [
+        "triage",
+        "orphans",
+        "prune",
+        "--stable-key",
+        "stable-1",
+        "--expected-base",
+        "a".repeat(64),
+        "--project",
+        scope.projectId,
+        "--version",
+        scope.projectVersionId,
+      ],
+      { threadId: "thread-sync-cli", projectId: "bb-project-sync" },
+    );
+    expect(refused).toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining("ORPHAN_BASE_STATE_CHANGED"),
+    });
+    const callerBoolean = await host.harness.behavior.runCli(
+      ["triage", "orphans", "prune", "--confirm"],
+      { threadId: "thread-sync-cli", projectId: "bb-project-sync" },
+    );
+    expect(callerBoolean).toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining("unknown option"),
+    });
+    const overwriteFlag = await host.harness.behavior.runCli(
+      [
+        "triage",
+        "import-vex",
+        "apply",
+        "--import-id",
+        preview.importId,
+        "--expected-document-sha256",
+        staged.documentSha256,
+        "--overwrite",
+        "--project",
+        scope.projectId,
+        "--version",
+        scope.projectVersionId,
+      ],
+      { threadId: "thread-sync-cli", projectId: "bb-project-sync" },
+    );
+    expect(overwriteFlag).toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining("unknown option"),
+    });
+    const help = await host.harness.behavior.runCli(["triage", "--help"], {
+      threadId: "thread-sync-cli",
+      projectId: "bb-project-sync",
+    });
+    expect(help).toMatchObject({ exitCode: 0, stderr: "" });
+    expect(help.stdout).not.toContain("--confirm");
+    expect(help.stdout).not.toContain("--overwrite");
+    const registeredUsage = host.harness.registrations.cli?.commands.find(
+      (command) => command.name === "triage",
+    )?.usage;
+    expect(registeredUsage).toEqual(expect.any(String));
+    for (const flag of [
+      "--cursor",
+      "--limit",
+      "--json",
+      "--vendor",
+      "--import-id",
+      "--expected-document-sha256",
+      "--stable-key",
+      "--expected-base",
+      "--help",
+    ]) {
+      expect(registeredUsage).toContain(flag);
+    }
+    expect(registeredUsage).not.toContain("--confirm");
+    expect(registeredUsage).not.toContain("--overwrite");
+    expect(
+      host.harness.inspection.registrations.agentTools.some((tool) =>
+        /drift|orphan|vendor/iu.test(tool.name),
+      ),
+    ).toBe(false);
   });
 
   it("refuses CLI working-tree access without a bb thread identity", async () => {

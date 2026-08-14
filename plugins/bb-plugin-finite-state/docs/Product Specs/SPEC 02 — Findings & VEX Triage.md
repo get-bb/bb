@@ -103,10 +103,10 @@ _Trigger: v2.2 firmware is scanned. New version ⇒ every finding is a brand-new
 
 _Trigger: a supplier ships a CycloneDX VEX / CSAF / OpenVEX document for a component in the image._
 
-1. **Import is local-first.** `bb finite-state triage import-vex ./vendor/acme-soc-vex.json --vendor "Acme SoC"` (also a panel action: **Import VEX…**). Port the already-reviewed CDX VEX / CSAF / OpenVEX reader logic as local plugin code, preserving the OpenVEX mapping `affected→EXPLOITABLE`, `fixed→RESOLVED`, `under_investigation→IN_TRIAGE`, `not_affected→NOT_AFFECTED` [LFD §2.1]. Do not import or invoke the Forge runtime. The command **writes YAML overlay decisions** with `provenance.by: "vendor:acme-soc"` and `provenance.evidence: "<doc id/filename>"`.
+1. **Import is local-first.** `bb finite-state triage import-vex preview ./vendor/acme-soc-vex.json --vendor "Acme SoC" …`, followed by the digest-fenced `import-vex apply` verb (also a panel action: **Import VEX…**). Port the already-reviewed CDX VEX / CSAF / OpenVEX reader logic as local plugin code, preserving the OpenVEX mapping `affected→EXPLOITABLE`, `fixed→RESOLVED`, `under_investigation→IN_TRIAGE`, `not_affected→NOT_AFFECTED` [LFD §2.1]. Do not import or invoke the Forge runtime. Apply **writes YAML overlay decisions** with `provenance.by: "vendor:acme-soc"` and `provenance.evidence: "<doc id/filename>"`.
 2. **We reject the legacy importer's fabrication caveat.** The prior importer defaulted omitted fields to `justification=CODE_NOT_PRESENT`, `response=WILL_NOT_FIX` — fabricated rationale that reaches exports [LFD §3.2]. Our importer **never invents fields**: an omitted justification on NOT_AFFECTED imports as an **incomplete decision** — written to YAML with `justification: null` and listed in a "needs completion" report; plan validation blocks pushing it until a human (or agent, with evidence) completes it.
 3. **Match report.** Statements match to cached findings via the tier ladder. Output: `matched: 71 · unmatched: 6 (component not in image) · already-triaged locally: 3 (kept ours — see conflicts)`. Unmatched statements are retained in the YAML with a `match: none` marker so a later pull can catch them (a component may appear in the next scan).
-4. **Vendor-vs-local collisions** are not server conflicts — they're resolved at import time: existing local decisions win by default (`--overwrite` to prefer vendor), and each collision is listed.
+4. **Vendor-vs-local collisions** are not server conflicts — they're resolved at import time: existing local decisions win by default; the human panel can select overwrite mode to prefer vendor, and each collision is listed. The executable CLI does not expose overwrite mode.
 5. **Review and push as normal.** The vendor's assertions become a git-reviewable diff, then a plan, then a push — same gate as the agent's work. A vendor document is just another untrusted author.
 
 ---
@@ -536,10 +536,15 @@ bb finite-state triage                          # surface group — domain verbs
   list [--filter …] [--json]         # query the cache (CLI twin of fs_findings_query)
   set <stableKey> --status … [--justification …] [--reason …] [--pin …]   # single YAML write
   apply-policy [--filter …] [--dry-run]
-  import-vex <file> --vendor <name> [--overwrite]
-  orphans [--prune]                  # list / clean orphaned decisions (§8.2)
+  drift report|refresh --project <id> --version <pv> [--cursor …] [--limit …]
+  import-vex preview <file> --vendor <name> --project <id> --version <pv> [--json]
+  import-vex apply --import-id <id> --expected-document-sha256 <sha256> --project <id> --version <pv> [--json]
+  orphans list --project <id> --version <pv> [--json]
+  orphans prune --stable-key <key> --expected-base <sha256> --project <id> --version <pv> [--json]
   pull | status | plan | push        # scoped aliases; push is the same non-mutating panel handoff
 ```
+
+`drift report` is a zero-write persisted-index read and returns freshness metadata plus a keyset cursor. Vendor import is durably fenced by the preview's `importId` and document SHA-256 across plugin reloads. The CLI apply verb always preserves existing local decisions; the panel alone exposes the truthful overwrite mode, and agent tools expose neither import mode. Orphan pruning edits local YAML only for explicit stable keys behind a fresh base-state digest. Each CLI invocation accepts at most 500 keys and requires a new list/digest before another chunk; the panel preserves committed progress and separately confirms every additional chunk against its refreshed visible digest.
 
 The four sync verbs are **verb-first at top level** (SPEC 00 §9, SPEC 06 §2.4) — deliberately git/Terraform-shaped. The `triage`-scoped forms are retained as documented aliases with no behavior difference. In v1 both `push` spellings are non-mutating review-panel handoffs; only the panel can apply or resolve conflicts.
 
@@ -600,7 +605,7 @@ Nothing in this spec's build depends on 7.4; items 7.2–7.3 are the only prereq
 
 **8.1 Partial bulk failure.** The bulk endpoint returns per-item results inside HTTP 200 [LFD §3.1]. The apply loop consumes them item-by-item: successes advance their `sync.base` and record `pushed_at`; failures are recorded in `push_log` with the server error, stay dirty, and re-plan next run (SPEC 01 §5). A crash mid-push leaves a coherent partially-advanced state — never a corrupted one. Retry-able from the post-push results card. **Never** mimic the platform UI's hardcoded-success bug [LFD §5].
 
-**8.2 Orphaned decisions.** Stable key resolves at no tier (component removed, or CVE id rewritten upstream). Orphans are: kept in YAML, excluded from plan, listed in `status` and the _Needs attention_ view with the component + last-known evidence. Lifecycle: auto-resurrect if a later pull re-resolves them (component returns); `orphans --prune` (or panel bulk action) deletes blocks after explicit confirmation with blast radius. Orphans older than a configurable horizon (default 180 days) get a nudge banner. Never auto-deleted — an orphan may be the only surviving record of a real decision.
+**8.2 Orphaned decisions.** Stable key resolves at no tier (component removed, or CVE id rewritten upstream). Orphans are: kept in YAML, excluded from plan, listed in `status` and the _Needs attention_ view with the component + last-known evidence. Lifecycle: auto-resurrect if a later pull re-resolves them (component returns); `orphans prune` (or panel bulk action) deletes only explicitly selected blocks behind the fresh orphan-state digest. Orphans older than a configurable horizon (default 180 days) get a nudge banner. Never auto-deleted — an orphan may be the only surviving record of a real decision.
 
 **8.3 Duplicate finding rows.** Duplicates per (version, component, CVE) are legitimate and deliberate (multi-scan-source; the unique index was dropped; 48k dup groups existed in legacy data) [LFD §1.2]. The table groups them into one logical row with a `×N` badge (expandable to per-row provenance); one stable key = one decision covering all rows. Push addresses every cached uuid in bulk (precise), or falls back to the CVE-keyed single PUT whose server-side fan-out covers them anyway (`X-Affected-Count` is verified against the expected row count; mismatch logs a warning) [LFD §6.3].
 

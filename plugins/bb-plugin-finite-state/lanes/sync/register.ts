@@ -113,6 +113,12 @@ export function registerSync(bb: BbPluginApi, ctx: PluginContext): void {
             throw new Error("Bench CLI services are unavailable");
           })
           .run(argv, cliContext),
+      triage: (argv, cliContext) =>
+        ctx
+          .service<{ run: NamespacedCliRunner }>("findings.cli", () => {
+            throw new Error("Findings CLI services are unavailable");
+          })
+          .run(argv, cliContext),
     },
   );
 }

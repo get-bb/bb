@@ -20,12 +20,16 @@ const hosts: Array<ReturnType<typeof createFakePluginHost>> = [];
 const roots: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
-  await Promise.all(hosts.splice(0).map((host) => host.harness.lifecycle.dispose()));
+  await Promise.all(
+    roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+  );
+  await Promise.all(
+    hosts.splice(0).map((host) => host.harness.lifecycle.dispose()),
+  );
 });
 
 describe("orphan pruning", () => {
-  it("is dry-run and confirmation gated, then removes only explicitly selected proven orphans", async () => {
+  it("is digest gated and removes only explicitly selected proven orphans", async () => {
     const root = await realpath(await mkdtemp(join(tmpdir(), "fs-orphans-")));
     roots.push(root);
     const host = createFakePluginHost({ pluginId: "orphan-prune" });
@@ -44,23 +48,32 @@ describe("orphan pruning", () => {
           staged_rows, last_pull, error)
        VALUES (?, ?, 'finding', ?, NULL, 1, NULL, 0, 0, ?, NULL)`,
     ).run(PROJECT, PV, GENERATION, AT);
-    const component = { purl: null, name: "removed", group: "acme", version: "1" };
+    const component = {
+      purl: null,
+      name: "removed",
+      group: "acme",
+      version: "1",
+    };
     const keys: string[] = [];
     let sha: string | undefined;
     for (const cve of ["CVE-ORPHAN-1", "CVE-ORPHAN-2"]) {
       const key = stableKeyFor(PROJECT, component, cve);
       keys.push(key);
-      const result = await setDecision(root, {
-        project: PROJECT,
-        component,
-        cve,
-        stableKey: key,
-        status: "IN_TRIAGE",
-        justification: null,
-        response: null,
-        reason: `Retained evidence for ${cve}`,
-        provenance: { by: "engineer", at: AT, evidence: "ticket FS-44" },
-      }, sha);
+      const result = await setDecision(
+        root,
+        {
+          project: PROJECT,
+          component,
+          cve,
+          stableKey: key,
+          status: "IN_TRIAGE",
+          justification: null,
+          response: null,
+          reason: `Retained evidence for ${cve}`,
+          provenance: { by: "engineer", at: AT, evidence: "ticket FS-44" },
+        },
+        sha,
+      );
       sha = result.afterSha256;
     }
     await rebuildOverlayIndex(db, root);
@@ -68,30 +81,35 @@ describe("orphan pruning", () => {
     expect(beforePrune.totals.orphaned).toBe(2);
     const state = orphanBaseState(db, PROJECT, PV);
     const deps = { db, root, projectId: PROJECT, pvId: PV };
-    const dryRun = await pruneOrphans(deps, {
-      stableKeys: [keys[0] ?? ""],
-      dryRun: true,
-      confirmed: false,
-      expectedBaseStateSha256: state.sha256,
+    await expect(
+      pruneOrphans(deps, {
+        stableKeys: [keys[0] ?? ""],
+        expectedBaseStateSha256: "f".repeat(64),
+      }),
+    ).rejects.toThrow("ORPHAN_BASE_STATE_CHANGED");
+    await expect(
+      pruneOrphans(deps, {
+        stableKeys: [keys[0] ?? ""],
+        expectedBaseStateSha256: state.sha256,
+      }),
+    ).resolves.toMatchObject({
+      selected: 1,
+      pruned: 1,
+      results: [{ stableKey: keys[0], success: true, error: null }],
     });
-    expect(dryRun).toMatchObject({ selected: 1, pruned: 0 });
-    expect(Object.keys((await readOverlayFiles(root)).files[0]?.overlay.decisions ?? {})).toHaveLength(2);
-    await expect(pruneOrphans(deps, {
-      stableKeys: [keys[0] ?? ""],
-      dryRun: false,
-      confirmed: false,
-      expectedBaseStateSha256: state.sha256,
-    })).rejects.toThrow("ORPHAN_PRUNE_CONFIRMATION_REQUIRED");
-    await expect(pruneOrphans(deps, {
-      stableKeys: [keys[0] ?? ""],
-      dryRun: false,
-      confirmed: true,
-      expectedBaseStateSha256: state.sha256,
-    })).resolves.toMatchObject({ selected: 1, pruned: 1 });
-    expect(Object.keys((await readOverlayFiles(root)).files[0]?.overlay.decisions ?? {})).toEqual(["CVE-ORPHAN-2"]);
-    expect(orphanBaseState(db, PROJECT, PV).rows.map((row) => row.stable_key)).toEqual([keys[1]]);
+    expect(
+      Object.keys(
+        (await readOverlayFiles(root)).files[0]?.overlay.decisions ?? {},
+      ),
+    ).toEqual(["CVE-ORPHAN-2"]);
+    expect(
+      orphanBaseState(db, PROJECT, PV).rows.map((row) => row.stable_key),
+    ).toEqual([keys[1]]);
     const afterPrune = readDriftReport({ db, projectId: PROJECT }, PV);
-    expect(afterPrune).toMatchObject({ totals: { orphaned: 1 }, unclassifiedCount: 0 });
+    expect(afterPrune).toMatchObject({
+      totals: { orphaned: 1 },
+      unclassifiedCount: 0,
+    });
     expect(afterPrune.runId).not.toBe(beforePrune.runId);
     expect(afterPrune.items.map((item) => item.stableKey)).toEqual([keys[1]]);
   });

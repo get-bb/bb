@@ -6,6 +6,8 @@ export type DriftState =
   | "conflict"
   | "needs_completion";
 
+export const FINDINGS_DRIFT_CHANGED_CHANNEL = "fs-findings-drift-changed";
+
 export interface DriftItem {
   stableKey: string;
   state: DriftState;
@@ -41,6 +43,7 @@ export function driftTotals(): Record<DriftState, number> {
 
 export function boundedDriftLimit(limit: number | undefined): number {
   if (limit === undefined) return DRIFT_REPORT_DEFAULT_LIMIT;
-  if (!Number.isInteger(limit) || limit < 1) throw new TypeError("Drift report limit must be a positive integer");
+  if (!Number.isInteger(limit) || limit < 1)
+    throw new TypeError("Drift report limit must be a positive integer");
   return Math.min(limit, DRIFT_REPORT_MAX_LIMIT);
 }
