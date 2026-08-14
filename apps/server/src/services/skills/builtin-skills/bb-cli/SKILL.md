@@ -737,8 +737,6 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - `bb plugin search <query> [--json]` — search the official plugins by id,
     name, description, category, or tag; status shows installed / compatible /
     requires newer bb.
-  - Use the built-in `submit-a-plugin` skill when a user wants to add a
-    plugin to the BB Official marketplace.
 - **Third-party marketplaces** (routes under `/api/v1/marketplaces`):
   - `bb marketplace add <source>` — add a marketplace from an https manifest
     URL, `git:<url>[@<ref>]` (bb reads `marketplace.json` from the checkout),

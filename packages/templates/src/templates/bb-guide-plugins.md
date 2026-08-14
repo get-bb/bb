@@ -399,8 +399,6 @@ catalog (status: installed / compatible / requires newer bb). Entries carry
 tags; the Browse tab groups them by the curated category vocabulary. Install an official plugin by its bare name. Direct
 HTTP(S) Git repository URLs, `path:`, `npm:`, `git:`, and `builtin:`
 sources—and path-like syntax—continue to bypass official-plugin resolution.
-Agents use the built-in `submit-a-plugin` skill to prepare a release, validate
-an official marketplace entry, and open the listing pull request.
 
 Builds are automatic once installed. Git installs run `npm install`
 (lifecycle scripts disabled), then compile both bundles — so a git plugin may
