@@ -20,12 +20,12 @@ import {
 } from "./marketplace-manifest.js";
 
 /** File a git or path marketplace keeps its manifest in. */
-export const MARKETPLACE_MANIFEST_FILENAME = "marketplace.json";
+const MARKETPLACE_MANIFEST_FILENAME = "marketplace.json";
 
 export const MARKETPLACE_MANIFEST_MAX_BYTES = 1_048_576;
 
 /** Where a marketplace's manifest is read from. */
-export type MarketplaceSource =
+type MarketplaceSource =
   | { kind: "https"; manifestUrl: string }
   | { kind: "git"; url: string; ref: string }
   | { kind: "path"; directory: string };
@@ -129,7 +129,7 @@ export function marketplaceSourceColumns(source: MarketplaceSource): {
   };
 }
 
-export interface MaterializedMarketplace {
+interface MaterializedMarketplace {
   catalog: MarketplaceManifest;
   /** Canonical JSON of `catalog`, ready to store. */
   manifestJson: string;

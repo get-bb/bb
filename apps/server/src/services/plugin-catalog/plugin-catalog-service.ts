@@ -67,9 +67,9 @@ import {
 } from "./marketplace-source.js";
 import { BUNDLED_OFFICIAL_MARKETPLACE } from "./official-marketplace.js";
 
-export const MARKETPLACE_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1_000;
+const MARKETPLACE_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1_000;
 
-export interface PluginCatalogIcon {
+interface PluginCatalogIcon {
   bytes: Buffer;
   contentType: string;
   hash: string;
@@ -81,7 +81,7 @@ export interface PluginCatalogEntrySelector {
   marketplace?: string;
 }
 
-export interface PluginCatalogInstallInput extends PluginCatalogEntrySelector {
+interface PluginCatalogInstallInput extends PluginCatalogEntrySelector {
   /** Source facts shown in a third-party marketplace confirmation. */
   confirmedSource?: PluginCatalogResolvedSource;
 }
