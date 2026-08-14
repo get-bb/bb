@@ -46,6 +46,20 @@ const macConfigSchema = z
     icon: z.string().min(1),
     identity: z.string().nullable().optional(),
     notarize: z.boolean(),
+    target: z.tuple([
+      z
+        .object({
+          arch: z.tuple([z.literal("arm64")]),
+          target: z.literal("dmg"),
+        })
+        .passthrough(),
+      z
+        .object({
+          arch: z.tuple([z.literal("arm64")]),
+          target: z.literal("zip"),
+        })
+        .passthrough(),
+    ]),
   })
   .passthrough();
 
@@ -473,6 +487,21 @@ describe("electron-builder signing config", () => {
     await expect(
       access(resolve(desktopPackageRoot, config.mac.entitlementsInherit)),
     ).resolves.toBeUndefined();
+  });
+
+  // An x64 macOS target forces the release job onto a slow Intel runner and
+  // notarizes twice, which tripled desktop release time when it last shipped.
+  it("packages macOS artifacts for arm64 only", async () => {
+    const configText = await readFile(
+      resolve(desktopPackageRoot, "electron-builder.config.json"),
+      "utf8",
+    );
+    const config = electronBuilderConfigSchema.parse(JSON.parse(configText));
+
+    expect(config.mac.target).toEqual([
+      { arch: ["arm64"], target: "dmg" },
+      { arch: ["arm64"], target: "zip" },
+    ]);
   });
 
   it("packages a Linux AppImage for x64", async () => {
