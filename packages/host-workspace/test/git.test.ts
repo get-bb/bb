@@ -155,6 +155,50 @@ describe("runGitWithNullRecordLimit", () => {
     expect(result.recordCount).toBe(2);
     expect(parseNameStatusEntries(result.stdout)).toHaveLength(2);
   });
+
+  it("keeps rename records complete when stopping numstat output", async () => {
+    const repoPath = await initReadGitBlobRepo();
+    await runGit(["mv", "README.md", "RENAMED.md"], { cwd: repoPath });
+    await fs.writeFile(path.join(repoPath, "RENAMED.md"), "hello\nmore\n");
+    await fs.writeFile(path.join(repoPath, "docs", "index.md"), "changed\n");
+    await fs.rm(path.join(repoPath, "large.txt"));
+
+    const result = await runGitWithNullRecordLimit(
+      ["diff", "--numstat", "-M", "-z", "HEAD"],
+      { cwd: repoPath },
+      "numstat",
+      2,
+    );
+
+    expect(result.recordLimitReached).toBe(true);
+    expect(result.recordCount).toBe(2);
+    expect(parseNumstatEntriesZ(result.stdout)).toHaveLength(2);
+    expect(parseNumstatEntriesZ(result.stdout)).toContainEqual({
+      path: "RENAMED.md",
+      insertions: 1,
+      deletions: 0,
+    });
+  });
+
+  it("does not confuse a regular numstat path ending in a tab with a rename", async () => {
+    const repoPath = await initReadGitBlobRepo();
+    const unusualPath = "trailing-tab\t";
+    await fs.writeFile(path.join(repoPath, unusualPath), "one\n");
+    await runGit(["add", unusualPath], { cwd: repoPath });
+
+    const result = await runGitWithNullRecordLimit(
+      ["diff", "--cached", "--numstat", "-z", "HEAD"],
+      { cwd: repoPath },
+      "numstat",
+      1,
+    );
+
+    expect(result.recordLimitReached).toBe(true);
+    expect(result.recordCount).toBe(1);
+    expect(parseNumstatEntriesZ(result.stdout)).toEqual([
+      { path: unusualPath, insertions: 1, deletions: 0 },
+    ]);
+  });
 });
 
 describe("getCheckoutRef", () => {

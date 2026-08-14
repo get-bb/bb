@@ -478,6 +478,58 @@ describe("Workspace.diffFiles", () => {
     );
   });
 
+  it("keeps full-diff add/delete classification when a truncated slice is below the rename limit", async () => {
+    const repoPath = await initRepo();
+    await runGit(["config", "diff.renameLimit", "15"], { cwd: repoPath });
+    const originalContents = Array.from({ length: 20 }, (_unused, index) =>
+      [`identity ${index}`, ...Array.from({ length: 40 }, () => "shared")]
+        .join("\n")
+        .concat("\n"),
+    );
+    for (let index = 0; index < originalContents.length; index += 1) {
+      const pair = String(index).padStart(2, "0");
+      await write(
+        repoPath,
+        `pair-${pair}-a.txt`,
+        originalContents[index] ?? "",
+      );
+    }
+    await commitAll(repoPath, "base");
+
+    for (let index = 0; index < originalContents.length; index += 1) {
+      const pair = String(index).padStart(2, "0");
+      await write(
+        repoPath,
+        `pair-${pair}-b.txt`,
+        `${originalContents[index] ?? ""}changed ${index}\n`,
+      );
+      await fs.rm(path.join(repoPath, `pair-${pair}-a.txt`));
+    }
+    await runGit(["add", "-A"], { cwd: repoPath });
+
+    const result = await new Workspace(repoPath).diffFiles({
+      target: UNCOMMITTED,
+      maxFiles: 10,
+    });
+
+    expect(result.truncated).toBe(true);
+    expect(result.files).toHaveLength(10);
+    for (const file of result.files) {
+      if (file.statusLetter === "D") {
+        expect(file).toMatchObject({ additions: 0, deletions: 41 });
+      } else {
+        expect(file).toMatchObject({
+          statusLetter: "A",
+          additions: 42,
+          deletions: 0,
+        });
+      }
+    }
+    expect(result.shortstat).toContain("10 files changed");
+    expect(result.shortstat).toContain("210 insertions(+)");
+    expect(result.shortstat).toContain("205 deletions(-)");
+  });
+
   it("does not include untracked files for a commit target", async () => {
     const repoPath = await initRepo();
     await write(repoPath, "a.txt", "a\n");

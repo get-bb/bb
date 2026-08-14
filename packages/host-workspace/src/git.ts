@@ -62,7 +62,7 @@ export interface GitCommandResult {
   exitCode: number;
 }
 
-export type GitNullRecordFormat = "single" | "name-status";
+export type GitNullRecordFormat = "single" | "name-status" | "numstat";
 
 export interface GitNullRecordLimitResult extends GitCommandResult {
   /** Complete records retained in stdout. */
@@ -314,7 +314,8 @@ export async function runGit(
  * Runs Git while collecting at most `maxRecords` complete NUL-delimited
  * records, then stops the child. `single` records contain one token (for
  * example `ls-files -z`); `name-status` records contain a status plus one path,
- * or a status plus old/new paths for renames and copies.
+ * or a status plus old/new paths for renames and copies; `numstat` records
+ * contain counts plus one path, or counts plus old/new rename paths.
  *
  * This is deliberately record-bounded instead of byte-buffer-bounded: callers
  * enforcing a file-count ceiling can collect exactly the ceiling plus one
@@ -384,9 +385,18 @@ export async function runGitWithNullRecordLimit(
 
         const token = Buffer.from(input.subarray(tokenStart, index));
         currentRecord.push(token);
-        if (recordFormat === "name-status" && currentRecord.length === 1) {
-          const statusLetter = token[0];
-          expectedTokens = statusLetter === 82 || statusLetter === 67 ? 3 : 2;
+        if (currentRecord.length === 1) {
+          if (recordFormat === "name-status") {
+            const statusLetter = token[0];
+            expectedTokens = statusLetter === 82 || statusLetter === 67 ? 3 : 2;
+          } else if (recordFormat === "numstat") {
+            // With `--numstat -z`, ordinary entries are one token containing
+            // counts + path. Rename/copy entries end the first token after the
+            // counts, then carry old/new paths as two additional tokens.
+            const firstTab = token.indexOf(9);
+            const secondTab = token.indexOf(9, firstTab + 1);
+            expectedTokens = secondTab === token.length - 1 ? 3 : 1;
+          }
         }
 
         if (currentRecord.length === expectedTokens) {

@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
+import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
 import {
   formatChangeSummary,
   renderChangeSummary,
@@ -182,7 +183,8 @@ export function GitDiffToolbar({
   });
   const changeTally = { ...stats, lineStatsComplete: true };
   const completeSummary = formatChangeSummary(changeTally);
-  const summary = isTruncated ? `${stats.filesCount}+ files` : completeSummary;
+  const truncatedFilesLabel = `${stats.filesCount}+ file${stats.filesCount === 1 ? "" : "s"}`;
+  const hasShownLineChanges = stats.insertions > 0 || stats.deletions > 0;
 
   return (
     <div ref={rootRef} className="px-4 pb-3 pt-3">
@@ -203,11 +205,26 @@ export function GitDiffToolbar({
           )}
           title={
             isTruncated
-              ? `Showing the first ${stats.filesCount} changed files`
+              ? `Showing the first ${stats.filesCount} changed file${stats.filesCount === 1 ? "" : "s"}; shown slice: ${stats.insertions} insertion${stats.insertions === 1 ? "" : "s"}, ${stats.deletions} deletion${stats.deletions === 1 ? "" : "s"}`
               : completeSummary
           }
         >
-          {isTruncated ? summary : renderChangeSummary(changeTally)}
+          {isTruncated ? (
+            <>
+              {truncatedFilesLabel}
+              {hasShownLineChanges ? (
+                <>
+                  {" · shown "}
+                  <DiffStatsTally
+                    insertions={stats.insertions}
+                    deletions={stats.deletions}
+                  />
+                </>
+              ) : null}
+            </>
+          ) : (
+            renderChangeSummary(changeTally)
+          )}
         </span>
         <div className="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-1">
           <Button

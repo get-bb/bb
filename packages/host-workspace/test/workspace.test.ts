@@ -723,6 +723,79 @@ describe("Workspace", () => {
     expect(statusAfter.stdout).toBe(statusBefore.stdout);
   });
 
+  it("keeps tracked deletion stats separate from an untracked replacement at the same path", async () => {
+    const repoPath = await initRepo();
+    await fs.writeFile(
+      path.join(repoPath, "replacement.txt"),
+      "one\ntwo\nthree\n",
+      "utf8",
+    );
+    await runGit(["add", "replacement.txt"], { cwd: repoPath });
+    await runGit(["commit", "-m", "Add replacement target"], {
+      cwd: repoPath,
+    });
+    await runGit(["rm", "--cached", "replacement.txt"], { cwd: repoPath });
+
+    const status = await new Workspace(repoPath).getStatus({
+      maxUntrackedLineStatFiles: 10,
+      maxUntrackedLineStatBytes: 1024,
+    });
+
+    expect(status.workingTree.files).toEqual([
+      {
+        path: "replacement.txt",
+        status: "D",
+        insertions: 0,
+        deletions: 3,
+      },
+      {
+        path: "replacement.txt",
+        status: "??",
+        insertions: 3,
+        deletions: 0,
+      },
+    ]);
+    expect(status.workingTree).toMatchObject({
+      insertions: 3,
+      deletions: 3,
+      lineStatsComplete: true,
+    });
+  });
+
+  it("enriches eligible untracked files when another entry is a nested repository", async () => {
+    const repoPath = await initRepo();
+    await fs.writeFile(path.join(repoPath, "notes.txt"), "one\ntwo\n", "utf8");
+    const nestedRepoPath = path.join(repoPath, "vendor");
+    await fs.mkdir(nestedRepoPath);
+    await runGit(["init", "-b", "main"], { cwd: nestedRepoPath });
+    await fs.writeFile(path.join(nestedRepoPath, "inside.txt"), "inside\n");
+
+    const status = await new Workspace(repoPath).getStatus({
+      maxUntrackedLineStatFiles: 10,
+      maxUntrackedLineStatBytes: 1024,
+    });
+
+    expect(status.workingTree.files).toEqual([
+      {
+        path: "notes.txt",
+        status: "??",
+        insertions: 2,
+        deletions: 0,
+      },
+      {
+        path: "vendor/",
+        status: "??",
+        insertions: null,
+        deletions: null,
+      },
+    ]);
+    expect(status.workingTree).toMatchObject({
+      insertions: 2,
+      deletions: 0,
+      lineStatsComplete: false,
+    });
+  });
+
   it("leaves untracked status stats unknown when either enrichment budget is exceeded", async () => {
     const repoPath = await initRepo();
     await fs.writeFile(path.join(repoPath, "one.txt"), "one\n", "utf8");

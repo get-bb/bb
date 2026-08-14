@@ -36,8 +36,10 @@ import {
   runGit,
   runGitWithNullRecordLimit,
   type GitCommandResult,
+  type GitNullRecordFormat,
   type GitNullRecordLimitResult,
   type NameStatusSourceEntry,
+  type NumstatEntry,
   type RunGitOptions,
   runShellPipeline,
   summarizeNumstat,
@@ -232,6 +234,11 @@ type BoundedDiffStatArtifacts = {
   truncated: boolean;
 };
 
+type UntrackedStatusNumstatEnrichment = {
+  entries: NumstatEntry[];
+  complete: boolean;
+};
+
 type ReadTrackedPatchByPathArgs = {
   target: WorkspaceDiffTarget;
   paths: string[];
@@ -260,10 +267,10 @@ interface ListWorkspaceFilesRecursivelyArgs {
 }
 
 const WORKSPACE_STATUS_GIT_TIMEOUT_MS = 15_000;
+const WORKSPACE_STATUS_UNTRACKED_ENRICHMENT_TIMEOUT_MS = 10_000;
 const TEMPORARY_UNTRACKED_INDEX_ADD_ATTEMPTS = 3;
 const DIFF_NUMSTAT_BASE_BUFFER_BYTES = 64 * 1024;
 const DIFF_NUMSTAT_PER_FILE_BUFFER_BYTES = 16 * 1024;
-const DIFF_NUMSTAT_PATH_BATCH_SIZE = 25;
 
 function parseWorktreeList(porcelainOutput: string): WorktreeEntry[] {
   const entries: WorktreeEntry[] = [];
@@ -769,7 +776,8 @@ export class Workspace {
     const untrackedPaths = entries
       .filter((entry) => entry.status === "??")
       .map((entry) => entry.path);
-    const untrackedNumstatEntries =
+    const trackedNumstatEntries = parseNumstatEntriesZ(diffOutput);
+    const untrackedNumstatEnrichment =
       maxUntrackedLineStatFiles !== undefined &&
       maxUntrackedLineStatBytes !== undefined
         ? await this.readBoundedUntrackedStatusNumstat({
@@ -777,22 +785,29 @@ export class Workspace {
             maxFiles: maxUntrackedLineStatFiles,
             maxBytes: maxUntrackedLineStatBytes,
           })
-        : null;
-    const numstatEntries = [
-      ...parseNumstatEntriesZ(diffOutput),
-      ...(untrackedNumstatEntries ?? []),
-    ];
-    const numstatByPath = new Map(
-      numstatEntries.map((entry) => [entry.path, entry] as const),
+        : { entries: [], complete: false };
+    const trackedNumstatByPath = new Map(
+      trackedNumstatEntries.map((entry) => [entry.path, entry] as const),
+    );
+    const untrackedNumstatByPath = new Map(
+      untrackedNumstatEnrichment.entries.map(
+        (entry) => [entry.path, entry] as const,
+      ),
     );
     let workingTreeInsertions = 0;
     let workingTreeDeletions = 0;
-    for (const entry of numstatEntries) {
+    for (const entry of [
+      ...trackedNumstatEntries,
+      ...untrackedNumstatEnrichment.entries,
+    ]) {
       if (entry.insertions !== null) workingTreeInsertions += entry.insertions;
       if (entry.deletions !== null) workingTreeDeletions += entry.deletions;
     }
     const files: WorkspaceFileStatus[] = entries.map((entry) => {
-      const numstat = numstatByPath.get(entry.path);
+      const numstat =
+        entry.status === "??"
+          ? untrackedNumstatByPath.get(entry.path)
+          : trackedNumstatByPath.get(entry.path);
       return {
         path: entry.path,
         status: resolveWorkspaceFileStatusKind({
@@ -821,7 +836,7 @@ export class Workspace {
         state,
         insertions: workingTreeInsertions,
         deletions: workingTreeDeletions,
-        lineStatsComplete: !hasUntracked || untrackedNumstatEntries !== null,
+        lineStatsComplete: !hasUntracked || untrackedNumstatEnrichment.complete,
         files,
       },
       branch: {
@@ -1607,51 +1622,97 @@ export class Workspace {
 
   /**
    * Enriches a small untracked status snapshot with exact Git numstat data.
-   * This is optional presentation work: exceeding either budget, a concurrent
-   * file disappearance, or a Git failure degrades to unknown line counts
-   * instead of making workspace status unavailable.
+   * This is optional presentation work: exceeding either budget, hitting the
+   * enrichment deadline, a concurrent file disappearance, a directory-like
+   * untracked entry, or a Git failure degrades to incomplete line counts
+   * instead of making workspace status unavailable. Eligible files can still
+   * carry exact per-file counts when another entry is ineligible.
    */
   private async readBoundedUntrackedStatusNumstat(args: {
     paths: string[];
     maxFiles: number;
     maxBytes: number;
-  }): Promise<ReturnType<typeof parseNumstatEntriesZ> | null> {
+  }): Promise<UntrackedStatusNumstatEnrichment> {
     if (args.paths.length === 0) {
-      return [];
+      return { entries: [], complete: true };
     }
     if (args.paths.length > args.maxFiles) {
-      return null;
+      return { entries: [], complete: false };
     }
 
+    const controller = new AbortController();
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<UntrackedStatusNumstatEnrichment>(
+      (resolve) => {
+        timeout = setTimeout(() => {
+          controller.abort();
+          resolve({ entries: [], complete: false });
+        }, WORKSPACE_STATUS_UNTRACKED_ENRICHMENT_TIMEOUT_MS);
+      },
+    );
     try {
-      const sizes = await Promise.all(
+      return await Promise.race([
+        this.readUntrackedStatusNumstatWithinBudget(args, controller.signal),
+        deadline,
+      ]);
+    } finally {
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+      }
+    }
+  }
+
+  private async readUntrackedStatusNumstatWithinBudget(
+    args: { paths: string[]; maxBytes: number },
+    signal: AbortSignal,
+  ): Promise<UntrackedStatusNumstatEnrichment> {
+    try {
+      const candidates = await Promise.all(
         args.paths.map(async (relativePath) => {
-          const stats = await fs.lstat(path.join(this.path, relativePath));
-          return stats.isFile() || stats.isSymbolicLink() ? stats.size : null;
+          try {
+            const stats = await fs.lstat(path.join(this.path, relativePath));
+            return stats.isFile() || stats.isSymbolicLink()
+              ? { path: relativePath, size: stats.size }
+              : null;
+          } catch (error) {
+            if (
+              error instanceof Error &&
+              "code" in error &&
+              error.code === "ENOENT"
+            ) {
+              return null;
+            }
+            throw error;
+          }
         }),
       );
+      const eligible = candidates.filter(
+        (candidate): candidate is { path: string; size: number } =>
+          candidate !== null,
+      );
       let totalBytes = 0;
-      for (const size of sizes) {
-        if (size === null) {
-          return null;
-        }
-        totalBytes += size;
+      for (const candidate of eligible) {
+        totalBytes += candidate.size;
         if (totalBytes > args.maxBytes) {
-          return null;
+          return { entries: [], complete: false };
         }
+      }
+      if (eligible.length === 0) {
+        return { entries: [], complete: false };
       }
 
       return await this.withTemporaryUntrackedIndex(
-        args.paths,
+        eligible.map((candidate) => candidate.path),
         async (env, indexedPaths) => {
-          if (indexedPaths.length !== args.paths.length) {
-            return null;
+          if (indexedPaths.length === 0) {
+            return { entries: [], complete: false };
           }
           const result = await runGit(
             ["diff", "--no-ext-diff", "--numstat", "-z"],
             {
               cwd: this.path,
               env,
+              signal,
               timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS,
               maxBufferBytes:
                 DIFF_NUMSTAT_BASE_BUFFER_BYTES +
@@ -1660,24 +1721,28 @@ export class Workspace {
           );
           const parsed = parseNumstatEntriesZ(result.stdout);
           const parsedPaths = new Set(parsed.map((entry) => entry.path));
-          return indexedPaths.every((relativePath) =>
-            parsedPaths.has(relativePath),
-          )
-            ? parsed
-            : null;
+          return {
+            entries: parsed,
+            complete:
+              eligible.length === args.paths.length &&
+              indexedPaths.length === eligible.length &&
+              indexedPaths.every((relativePath) =>
+                parsedPaths.has(relativePath),
+              ),
+          };
         },
-        { timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS },
+        { signal, timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS },
       );
     } catch {
-      return null;
+      return { entries: [], complete: false };
     }
   }
 
   /**
-   * Reads at most `maxFiles + 1` tracked/untracked paths and returns an exact
-   * bounded slice. When tracked enumeration overflows, numstat is scoped in
-   * fixed-size path batches to the admitted entries; files beyond the slice
-   * are never sent through content/stat work.
+   * Reads at most `maxFiles + 1` tracked/untracked records and returns an exact
+   * bounded slice. Name-status and numstat use the same complete diff universe,
+   * so Git cannot reclassify an add/delete pair as a rename merely because a
+   * later stat pass sees a smaller pathspec.
    */
   private async readBoundedDiffStatArtifacts(
     target: WorkspaceDiffTarget,
@@ -1695,10 +1760,20 @@ export class Workspace {
     }
 
     const overflowCount = maxFiles + 1;
-    const nameStatus = await this.runTrackedNameStatusWithLimit(
-      range,
-      overflowCount,
-    );
+    const [nameStatus, numstat] = await Promise.all([
+      this.runTrackedDiffWithLimit({
+        range,
+        outputArgs: ["--name-status", "-M", "-z"],
+        recordFormat: "name-status",
+        maxRecords: overflowCount,
+      }),
+      this.runTrackedDiffWithLimit({
+        range,
+        outputArgs: ["--numstat", "-M", "-z"],
+        recordFormat: "numstat",
+        maxRecords: overflowCount,
+      }),
+    ]);
     const enumeratedTrackedEntries = parseNameStatusSourceEntries(
       nameStatus.stdout,
     );
@@ -1718,111 +1793,32 @@ export class Workspace {
       0,
       remainingFileSlots,
     );
-    const numstat = await this.readBoundedTrackedNumstat({
-      entries: trackedEntries,
-      range,
-      scopedToEntries: trackedTruncated,
-    });
-
     return {
       trackedEntries,
-      numstat,
+      numstat: numstat.stdout,
       mergeBaseRef: range.mergeBaseRef,
       untrackedPaths,
       truncated: trackedTruncated || untrackedTruncated,
     };
   }
 
-  private async readBoundedTrackedNumstat(args: {
-    entries: NameStatusSourceEntry[];
+  private async runTrackedDiffWithLimit(args: {
     range: ResolvedTrackedDiffRange;
-    scopedToEntries: boolean;
-  }): Promise<string> {
-    if (args.entries.length === 0) {
-      return "";
-    }
-    const runUncommittedDiff = createUncommittedDiffRunner(this.path);
-    const runRangeGit = (
-      buildArgs: (rangeArgs: string[]) => string[],
-      options: RunGitOptions,
-    ): Promise<GitCommandResult> =>
-      args.range.usesUncommittedHead
-        ? runUncommittedDiff((baseRef) => buildArgs([baseRef]), options)
-        : runGit(buildArgs(args.range.rangeArgs), options);
-
-    if (!args.scopedToEntries) {
-      const numstat = await runRangeGit(
-        (rangeArgs) => [
-          ...args.range.baseArgs,
-          "--numstat",
-          "-M",
-          "-z",
-          ...rangeArgs,
-        ],
-        {
-          cwd: this.path,
-          maxBufferBytes:
-            DIFF_NUMSTAT_BASE_BUFFER_BYTES +
-            args.entries.length * DIFF_NUMSTAT_PER_FILE_BUFFER_BYTES,
-        },
-      );
-      return numstat.stdout;
-    }
-
-    const outputs: string[] = [];
-    for (
-      let index = 0;
-      index < args.entries.length;
-      index += DIFF_NUMSTAT_PATH_BATCH_SIZE
-    ) {
-      const entries = args.entries.slice(
-        index,
-        index + DIFF_NUMSTAT_PATH_BATCH_SIZE,
-      );
-      const pathspec = Array.from(
-        new Set(
-          entries.flatMap((entry) =>
-            entry.previousPath === null
-              ? [entry.path]
-              : [entry.previousPath, entry.path],
-          ),
-        ),
-      );
-      const numstat = await runRangeGit(
-        (rangeArgs) =>
-          withDiffPathspec(
-            [...args.range.baseArgs, "--numstat", "-M", "-z", ...rangeArgs],
-            pathspec,
-          ),
-        {
-          cwd: this.path,
-          maxBufferBytes:
-            DIFF_NUMSTAT_BASE_BUFFER_BYTES +
-            entries.length * DIFF_NUMSTAT_PER_FILE_BUFFER_BYTES,
-        },
-      );
-      outputs.push(numstat.stdout);
-    }
-    return outputs.join("");
-  }
-
-  private async runTrackedNameStatusWithLimit(
-    range: ResolvedTrackedDiffRange,
-    maxRecords: number,
-  ): Promise<GitNullRecordLimitResult> {
+    outputArgs: string[];
+    recordFormat: GitNullRecordFormat;
+    maxRecords: number;
+  }): Promise<GitNullRecordLimitResult> {
     const buildArgs = (rangeArgs: string[]): string[] => [
-      ...range.baseArgs,
-      "--name-status",
-      "-M",
-      "-z",
+      ...args.range.baseArgs,
+      ...args.outputArgs,
       ...rangeArgs,
     ];
-    if (!range.usesUncommittedHead) {
+    if (!args.range.usesUncommittedHead) {
       return runGitWithNullRecordLimit(
-        buildArgs(range.rangeArgs),
+        buildArgs(args.range.rangeArgs),
         { cwd: this.path },
-        "name-status",
-        maxRecords,
+        args.recordFormat,
+        args.maxRecords,
       );
     }
 
@@ -1830,8 +1826,8 @@ export class Workspace {
     const headResult = await runGitWithNullRecordLimit(
       headArgs,
       { cwd: this.path, allowFailure: true },
-      "name-status",
-      maxRecords,
+      args.recordFormat,
+      args.maxRecords,
     );
     if (headResult.exitCode === 0) {
       return headResult;
@@ -1848,8 +1844,8 @@ export class Workspace {
     return runGitWithNullRecordLimit(
       buildArgs([emptyTreeSha]),
       { cwd: this.path },
-      "name-status",
-      maxRecords,
+      args.recordFormat,
+      args.maxRecords,
     );
   }
 
@@ -2611,7 +2607,7 @@ export class Workspace {
       env: NodeJS.ProcessEnv,
       indexedPaths: readonly string[],
     ) => Promise<T>,
-    options: { timeoutMs?: number } = {},
+    options: { signal?: AbortSignal; timeoutMs?: number } = {},
   ): Promise<T> {
     const tempDir = await createTempDir("bb-untracked-index-");
     const indexPath = path.join(tempDir, "index");
@@ -2628,6 +2624,7 @@ export class Workspace {
         await runGit(["read-tree", "--empty"], {
           cwd: this.path,
           env,
+          signal: options.signal,
           timeoutMs: options.timeoutMs,
         });
         if (candidates.length === 0) {
@@ -2649,6 +2646,7 @@ export class Workspace {
             cwd: this.path,
             env,
             allowFailure: true,
+            signal: options.signal,
             timeoutMs: options.timeoutMs,
           },
         );
@@ -2674,6 +2672,7 @@ export class Workspace {
       await runGit(["read-tree", "--empty"], {
         cwd: this.path,
         env,
+        signal: options.signal,
         timeoutMs: options.timeoutMs,
       });
       return await work(env, []);
