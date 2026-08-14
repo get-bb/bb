@@ -94,6 +94,7 @@ encodes the testable ones.
 | Provider-minted ids trusted as bb ids froze a host for 30 min (#1320) | Protocol schema forbids the bridge from minting bb turn ids; only caller-vouched ids scope events. Diagnostic events are droppable by construction. |
 | Silently dropped undecodable JSON-RPC → 30s timeouts (#853) | Conformance rule: undecodable → `-32602` reply with issues; unknown method → `-32601`; request/response discriminated on `method`. |
 | Per-session item-id counters collided across resumes → permanent 500 (#1224) | Conformance rule: item ids unique across resume (turn-scoped with per-instance entropy); projection degrades, never throws. |
+| Normalized events with divergent shapes: pi/claude/acp open assistant text with bare `item/agentMessage/delta`, no `item/started`; timeline window cuts dropped the earlier deltas (fix in flight: `6e4628e9e`) | Conformance rule: every item's first event is `item/started` — bridges synthesize it when their SDK streams delta-first. The projection backfill stays for persisted history but becomes legacy-only. |
 | One bad entry or unknown enum member took down whole listings (#1044 null-for-absent, #580 new enum members, #1148 throwing extension loader) | Protocol schemas are lenient at the edge (soft-parse unknown enum members, null-tolerant); one malformed entry degrades to one missing entry. |
 | Ambient env leaks (`BB_THREAD_STORAGE`, Volta, Electron, fnm churn) (#1366, #1545, #1156) | Bridge env is **constructed by one allowlist function**; the daemon's own env is not reachable from provider-facing code. |
 | Same binary name, wrong CLI (#1231); launch drift not in process key | Process identity = hash(bridge artifact + declared exec inputs + env overrides + providerId), generalizing the ACP fingerprint to every provider. |
@@ -386,7 +387,9 @@ branch. Provider ids never change, so there is no data migration anywhere.
   bridge binary through the full lifecycle (initialize handshake, start,
   turn, steer, permission request, resume, fork-or-declared-absence, stop
   with both intents, malformed-message replies, item-id uniqueness across
-  resume, env allowlist). It encodes the incident-derived rules above.
+  resume, item lifecycle ordering — every item opens with `item/started`,
+  delta-first openings are non-conformant — and the env allowlist). It
+  encodes the incident-derived rules above.
 - Implement the generic `BridgeProviderAdapter` in `agent-runtime`, driven by
   declaration data. Add the turn-start watchdog.
 - Existing integration tests (`integration.provider-basic`, `multi-provider`,
