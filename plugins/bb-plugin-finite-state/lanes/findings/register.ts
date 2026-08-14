@@ -18,17 +18,19 @@ export function registerFindings(bb: BbPluginApi, ctx: PluginContext): void {
     throw new Error("Findings registration requires remote services");
   });
   registerCachePuller("finding", async (scope, generationId, onProgress) => {
-    await pullFindings(
+    const result = await pullFindings(
       {
         db,
         platform: remote.platform,
         warn(message, details) {
-          ctx.log.warn(`${message}: ${details.count} for project version ${details.projectVersionId}`);
+          ctx.log.warn(
+            `${message}: ${details.count} for project version ${details.projectVersionId}`,
+          );
         },
       },
       scope,
       generationId,
-      progress => {
+      (progress) => {
         onProgress({ page: progress.page, of: progress.of });
         bb.realtime.publish("fs-findings-pull", {
           pvId: scope.projectVersionId,
@@ -36,19 +38,32 @@ export function registerFindings(bb: BbPluginApi, ctx: PluginContext): void {
         });
       },
     );
+    return { fetched: result.fetched, baseRows: result.published };
   });
   ctx.service("findings.hydration", () => ({
-    activity: (input: { projectId: string; projectVersionId: string; findingId: string }) =>
-      hydrateFindingActivity(db, remote.platform, input),
-    comments: (input: { projectId: string; projectVersionId: string; findingId: string }) =>
-      hydrateFindingComments(db, remote.platform, input),
+    activity: (input: {
+      projectId: string;
+      projectVersionId: string;
+      findingId: string;
+    }) => hydrateFindingActivity(db, remote.platform, input),
+    comments: (input: {
+      projectId: string;
+      projectVersionId: string;
+      findingId: string;
+    }) => hydrateFindingComments(db, remote.platform, input),
   }));
   registerFindingsRpc(bb, db, {
-    hydrateActivity: input => hydrateFindingActivity(db, remote.platform, input),
+    hydrateActivity: (input) =>
+      hydrateFindingActivity(db, remote.platform, input),
   });
   registerFindingsStableKeyStub(db);
   registerFindingsOverlay(ctx);
   registerFindingsPolicyStub();
-  registerFindingsBulk({ db, platform: remote.platform, publish: progress => bb.realtime.publish("fs-vex-push-progress", progress) });
+  registerFindingsBulk({
+    db,
+    platform: remote.platform,
+    publish: (progress) =>
+      bb.realtime.publish("fs-vex-push-progress", progress),
+  });
   registerFindingsDrift(ctx);
 }

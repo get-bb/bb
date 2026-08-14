@@ -78,7 +78,10 @@ export interface FindingsDeps {
   db: Database.Database;
   platform: Pick<PlatformClient, "getFindings" | "listComponents">;
   pageSize?: number;
-  warn?: (message: string, details: { count: number; projectVersionId: string }) => void;
+  warn?: (
+    message: string,
+    details: { count: number; projectVersionId: string },
+  ) => void;
 }
 
 export interface FindingsFilter {
@@ -93,7 +96,9 @@ export interface FindingsFilter {
   triage?: string[];
   findingType?: string[];
   hasLocalChange?: boolean;
-  localState?: Array<"none" | "local" | "conflicted" | "stale" | "needs_completion">;
+  localState?: Array<
+    "none" | "local" | "conflicted" | "stale" | "needs_completion"
+  >;
   cursor?: string;
   limit?: number;
 }
@@ -121,14 +126,20 @@ export interface PullProgress {
 }
 
 export interface PullFindingsResult {
+  /** Rows fetched and staged by this invocation, excluding reused staging. */
   fetched: number;
+  /** Complete row count in the generation that is ready to publish. */
+  published: number;
   pages: number;
   pulledAt: string;
   deduplicated: number;
 }
 
 export class FindingsCacheError extends Error {
-  constructor(readonly code: string, message: string) {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
     super(message);
     this.name = "FindingsCacheError";
   }

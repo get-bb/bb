@@ -1,0 +1,47 @@
+{
+  "id": "0b529d2b-9da8-556e-81e4-f0f57a59956a",
+  "title": "CVE-2016-4658 - debian/libxml2@2.9.4%2Bdfsg1-2.2%2Bdeb9u2",
+  "description": "",
+  "severity": "critical",
+  "status": null,
+  "location": "libxml2",
+  "type": "cve",
+  "findingId": "CVE-2016-4658",
+  "vulnerabilityId": "97f077e8-fc05-5198-8ab6-9111fb37e83a",
+  "cvssScore": 9.8,
+  "cvssVector": "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H/E:U/RL:X/RC:C",
+  "detected": "2025-08-02T03:41:39.595176Z",
+  "epssScore": "0.08628",
+  "epssPercentile": "0.94573",
+  "epssWeightedRisk": 9.3,
+  "epssWeightedSeverity": "critical",
+  "component": {
+    "id": "e1a048dc-9890-5333-9e97-cd5d6f429fcd",
+    "name": "debian/libxml2",
+    "version": "2.9.4%2Bdfsg1-2.2%2Bdeb9u2",
+    "appId": "cfe6fb97-ed49-5ace-b0fe-8121dba2c793",
+    "vcId": "c75bd181-e012-5cdf-92e9-5e431596285f"
+  },
+  "inKev": false,
+  "vulnInDataset": true,
+  "inVcKev": false,
+  "risk": 98,
+  "warnings": 0,
+  "violations": 1,
+  "reachabilityScore": 315,
+  "project": {
+    "id": "cfe6fb97-ed49-5ace-b0fe-8121dba2c793",
+    "name": "I491NAX"
+  },
+  "projectVersion": {
+    "id": "b3df3633-ebd7-560e-a3b7-77953521b4e3",
+    "version": "reachability",
+    "created": "2025-08-01T20:34:39.020812Z",
+    "updated": "2026-08-13T13:31:12.642019Z"
+  },
+  "cwes": [
+    "CWE-119"
+  ],
+  "exploitInfo": [],
+  "dependencyPath": null
+}

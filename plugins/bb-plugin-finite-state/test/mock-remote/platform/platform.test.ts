@@ -33,7 +33,9 @@ const hosts: Array<ReturnType<typeof createFakePluginHost>> = [];
 
 afterEach(async () => {
   await Promise.all(harnesses.splice(0).map((harness) => harness.close()));
-  await Promise.all(hosts.splice(0).map((host) => host.harness.lifecycle.dispose()));
+  await Promise.all(
+    hosts.splice(0).map((host) => host.harness.lifecycle.dispose()),
+  );
 });
 
 function setup(): {
@@ -54,7 +56,11 @@ function setup(): {
   return {
     state,
     harness,
-    client: new PlatformClient({ baseUrl: "http://platform.mock", token: TOKEN, fetch: harness.platform.fetch }),
+    client: new PlatformClient({
+      baseUrl: "http://platform.mock",
+      token: TOKEN,
+      fetch: harness.platform.fetch,
+    }),
   };
 }
 
@@ -64,7 +70,9 @@ async function collect<T>(pages: AsyncIterable<{ items: T[] }>): Promise<T[]> {
   return values;
 }
 
-async function artifactBytes(artifact: { stream(): AsyncIterable<Uint8Array> }): Promise<Buffer> {
+async function artifactBytes(artifact: {
+  stream(): AsyncIterable<Uint8Array>;
+}): Promise<Buffer> {
   const chunks: Uint8Array[] = [];
   for await (const chunk of artifact.stream()) chunks.push(chunk);
   return Buffer.concat(chunks);
@@ -73,7 +81,10 @@ async function artifactBytes(artifact: { stream(): AsyncIterable<Uint8Array> }):
 function request(path: string, init?: RequestInit): [string, RequestInit] {
   return [
     `http://platform.mock${path}`,
-    { ...init, headers: { "X-Authorization": TOKEN, ...(init?.headers ?? {}) } },
+    {
+      ...init,
+      headers: { "X-Authorization": TOKEN, ...(init?.headers ?? {}) },
+    },
   ];
 }
 
@@ -81,20 +92,34 @@ describe("mock-direct-platform-data", () => {
   it("projects, versions, and findings page deterministically using the audited raw shapes", async () => {
     const { client, harness, state } = setup();
     const projectId = state.projects.keys().next().value;
-    const projectVersionId = [...state.versions.values()].find((version) => version.priorVersionId !== null)?.id;
+    const projectVersionId = [...state.versions.values()].find(
+      (version) => version.priorVersionId !== null,
+    )?.id;
     expect(typeof projectId).toBe("string");
     expect(typeof projectVersionId).toBe("string");
 
-    expect(await collect(client.listProjects({ pageSize: 1 }))).toEqual([...state.projects.values()]);
-    expect(await collect(client.listVersions(String(projectId), { pageSize: 1 }))).toEqual([...state.versions.values()]);
-    const findings = await collect(client.getFindings({
-      projectVersionId: String(projectVersionId),
-      page: { pageSize: 777 },
-    }));
+    expect(await collect(client.listProjects({ pageSize: 1 }))).toEqual([
+      ...state.projects.values(),
+    ]);
+    expect(
+      await collect(client.listVersions(String(projectId), { pageSize: 1 })),
+    ).toEqual(
+      [...state.versions.values()].filter(
+        (version) => version.projectId === projectId,
+      ),
+    );
+    const findings = await collect(
+      client.getFindings({
+        projectVersionId: String(projectVersionId),
+        page: { pageSize: 777 },
+      }),
+    );
     expect(findings).toHaveLength(4_001);
     expect(new Set(findings.map((finding) => finding.id)).size).toBe(4_000);
     expect(findings.map((finding) => finding.id)).toEqual(
-      [...state.findings.values()].map((finding) => finding.id),
+      [...state.findings.values()]
+        .filter((finding) => finding.projectVersionId === projectVersionId)
+        .map((finding) => finding.id),
     );
 
     const [url, init] = request("/public/v0/findings?offset=0&limit=2");
@@ -102,40 +127,65 @@ describe("mock-direct-platform-data", () => {
     const raw: unknown = await response.json();
     expect(Array.isArray(raw)).toBe(true);
     expect(response.headers.get("x-offset")).toBe("0");
-    expect(JSON.stringify(raw)).not.toMatch(/file_path|preview|saved_to|continuation/u);
+    expect(JSON.stringify(raw)).not.toMatch(
+      /file_path|preview|saved_to|continuation/u,
+    );
   });
 
   it("pulls the real nested component wire through PlatformClient and pullFindings", async () => {
     const { client, state } = setup();
     const project = [...state.projects.values()][0];
     const projectVersionId = String(
-      [...state.versions.values()].find((version) => version.priorVersionId !== null)?.id,
+      [...state.versions.values()].find(
+        (version) => version.priorVersionId !== null,
+      )?.id,
     );
-    const [finding] = await collect(client.getFindings({
-      projectVersionId,
-      page: { pageSize: 1 },
-    }));
+    const [finding] = await collect(
+      client.getFindings({
+        projectVersionId,
+        page: { pageSize: 1 },
+      }),
+    );
     expect(finding).toBeDefined();
-    if (finding === undefined) throw new Error("Mock Platform returned no finding");
-    expect(finding.component).toEqual(expect.objectContaining({
-      appId: expect.any(String),
-      id: expect.any(String),
-      name: expect.any(String),
-      vcId: expect.any(String),
-      version: expect.any(String),
-    }));
-    expect(Object.keys(finding.component ?? {}).sort()).toEqual(["appId", "id", "name", "vcId", "version"]);
+    if (finding === undefined)
+      throw new Error("Mock Platform returned no finding");
+    expect(finding.component).toEqual(
+      expect.objectContaining({
+        appId: expect.any(String),
+        id: expect.any(String),
+        name: expect.any(String),
+        vcId: expect.any(String),
+        version: expect.any(String),
+      }),
+    );
+    expect(Object.keys(finding.component ?? {}).sort()).toEqual([
+      "appId",
+      "id",
+      "name",
+      "vcId",
+      "version",
+    ]);
     expect(finding).not.toHaveProperty("componentId");
     expect(finding).not.toHaveProperty("componentPurl");
 
     const component = finding.component;
-    if (component === null || Array.isArray(component) || typeof component !== "object") {
+    if (
+      component === null ||
+      Array.isArray(component) ||
+      typeof component !== "object"
+    ) {
       throw new Error("Mock Platform finding component is not an object");
     }
     const joined = state.components.get(String(component.id));
-    if (joined === undefined) throw new Error("Mock Platform finding component did not join by ComponentV0.id");
-    if (typeof project?.id !== "string") throw new Error("Mock Platform returned no project");
-    const host = createFakePluginHost({ pluginId: "finite-state-platform-finding-wire" });
+    if (joined === undefined)
+      throw new Error(
+        "Mock Platform finding component did not join by ComponentV0.id",
+      );
+    if (typeof project?.id !== "string")
+      throw new Error("Mock Platform returned no project");
+    const host = createFakePluginHost({
+      pluginId: "finite-state-platform-finding-wire",
+    });
     hosts.push(host);
     const db = createPluginContext(host.bb).db();
     const scope: SyncScope = { projectId: project.id, projectVersionId };
@@ -144,30 +194,51 @@ describe("mock-direct-platform-data", () => {
       worktreeRoot: null,
       now: () => new Date("2026-08-13T00:00:00.000Z"),
       createGenerationId: () => "nested-wire-generation",
-      cachePullers: [{
-        kind: "finding",
-        pull: (pullScope, generationId, onProgress) =>
-          pullFindings({ db, platform: client }, pullScope, generationId, onProgress).then(() => undefined),
-      }],
+      cachePullers: [
+        {
+          kind: "finding",
+          pull: (pullScope, generationId, onProgress) =>
+            pullFindings(
+              { db, platform: client },
+              pullScope,
+              generationId,
+              onProgress,
+            ).then((result) => ({
+              fetched: result.fetched,
+              baseRows: result.published,
+            })),
+        },
+      ],
     };
 
     await pull(deps, scope, ["finding"]);
-    const cached = db.prepare(
-      "SELECT stable_key FROM findings WHERE project_id = ? AND project_version_id = ? AND finding_id = ?",
-    ).get(scope.projectId, projectVersionId, finding.id) as { stable_key: string } | undefined;
-    expect(cached?.stable_key).toBe(findingStableKey({
-      cve: String(finding.cve),
-      purl: typeof joined.purl === "string" ? joined.purl : null,
-      name: String(joined.name),
-      group: typeof joined.group === "string" ? joined.group : null,
-      version: typeof joined.version === "string" ? joined.version : null,
-    }, "purl"));
+    const cached = db
+      .prepare(
+        "SELECT stable_key FROM findings WHERE project_id = ? AND project_version_id = ? AND finding_id = ?",
+      )
+      .get(scope.projectId, projectVersionId, finding.id) as
+      | { stable_key: string }
+      | undefined;
+    expect(cached?.stable_key).toBe(
+      findingStableKey(
+        {
+          cve: String(finding.cve),
+          purl: typeof joined.purl === "string" ? joined.purl : null,
+          name: String(joined.name),
+          group: typeof joined.group === "string" ? joined.group : null,
+          version: typeof joined.version === "string" ? joined.version : null,
+        },
+        "purl",
+      ),
+    );
   });
 
   it("binds all four reviewed findings-summary routes through PlatformClient", async () => {
     const { client, state } = setup();
     const projectVersionId = String(
-      [...state.versions.values()].find((version) => version.priorVersionId !== null)?.id,
+      [...state.versions.values()].find(
+        (version) => version.priorVersionId !== null,
+      )?.id,
     );
     await expect(client.getFindingsSummary(projectVersionId)).resolves.toEqual({
       exploit: {
@@ -186,12 +257,16 @@ describe("mock-direct-platform-data", () => {
   });
 
   it("missing or corrupt fixtures fail with a typed error before state is exposed", async () => {
-    expect(() => createMockPlatformState(resolve(tmpdir(), "fixture-root-does-not-exist"))).toThrow(
-      MockPlatformFixtureError,
-    );
+    expect(() =>
+      createMockPlatformState(resolve(tmpdir(), "fixture-root-does-not-exist")),
+    ).toThrow(MockPlatformFixtureError);
     const root = await mkdtemp(resolve(tmpdir(), "fs-platform-fixtures-"));
     await cp(FIXTURE_ROOT, root, { recursive: true });
-    await writeFile(resolve(root, "platform/findings.jsonl"), "{corrupt\n", "utf8");
+    await writeFile(
+      resolve(root, "platform/findings.jsonl"),
+      "{corrupt\n",
+      "utf8",
+    );
     expect(() => createMockPlatformState(root)).toThrowError(
       expect.objectContaining({ code: "MOCK_PLATFORM_FIXTURE_INVALID" }),
     );
@@ -200,7 +275,12 @@ describe("mock-direct-platform-data", () => {
   it("validates exact VEX vocabulary and rejects transport dry-run without mutation", async () => {
     const { harness, state } = setup();
     expect(VEX_STATUSES).toEqual([
-      "EXPLOITABLE", "IN_TRIAGE", "NOT_AFFECTED", "FALSE_POSITIVE", "RESOLVED", "RESOLVED_WITH_PEDIGREE",
+      "EXPLOITABLE",
+      "IN_TRIAGE",
+      "NOT_AFFECTED",
+      "FALSE_POSITIVE",
+      "RESOLVED",
+      "RESOLVED_WITH_PEDIGREE",
     ]);
     expect(VEX_RESPONSES).toHaveLength(5);
     expect(VEX_JUSTIFICATIONS).toHaveLength(9);
@@ -240,14 +320,18 @@ describe("mock-direct-platform-data", () => {
         body: JSON.stringify({ status: "NOT_EXPLOITABLE" }),
       },
     );
-    expect((await harness.platform.fetch(invalidUrl, invalidInit)).status).toBe(400);
+    expect((await harness.platform.fetch(invalidUrl, invalidInit)).status).toBe(
+      400,
+    );
   });
 
   it("bulk VEX preserves ordered partial results and mutates successful rows only", async () => {
     const { client, state } = setup();
     const findings = [...state.findings.values()].slice(0, 5);
     const projectVersionId = String(findings[0]?.projectVersionId);
-    const before = findings.map((finding) => state.vexTuple(projectVersionId, String(finding.id)));
+    const before = findings.map((finding) =>
+      state.vexTuple(projectVersionId, String(finding.id)),
+    );
     const result = await client.batchSetVexStatus({
       projectVersionId,
       findings: findings.map((finding) => ({
@@ -261,12 +345,29 @@ describe("mock-direct-platform-data", () => {
       status: "partial_success",
       summary: { total: 5, succeeded: 3, failed: 2 },
     });
-    expect(result.results.map((item) => item.findingId)).toEqual(findings.map((finding) => finding.id));
-    expect(result.results.map((item) => item.success)).toEqual([true, true, true, false, false]);
-    expect(findings.slice(0, 3).map((finding) => state.vexTuple(projectVersionId, String(finding.id))?.status)).toEqual([
-      "NOT_AFFECTED", "NOT_AFFECTED", "NOT_AFFECTED",
+    expect(result.results.map((item) => item.findingId)).toEqual(
+      findings.map((finding) => finding.id),
+    );
+    expect(result.results.map((item) => item.success)).toEqual([
+      true,
+      true,
+      true,
+      false,
+      false,
     ]);
-    expect(findings.slice(3).map((finding) => state.vexTuple(projectVersionId, String(finding.id)))).toEqual(before.slice(3));
+    expect(
+      findings
+        .slice(0, 3)
+        .map(
+          (finding) =>
+            state.vexTuple(projectVersionId, String(finding.id))?.status,
+        ),
+    ).toEqual(["NOT_AFFECTED", "NOT_AFFECTED", "NOT_AFFECTED"]);
+    expect(
+      findings
+        .slice(3)
+        .map((finding) => state.vexTuple(projectVersionId, String(finding.id))),
+    ).toEqual(before.slice(3));
   });
 
   it("clears VEX for an owning version and rejects a foreign version", async () => {
@@ -274,8 +375,12 @@ describe("mock-direct-platform-data", () => {
     const finding = state.findings.values().next().value;
     const projectVersionId = String(finding?.projectVersionId);
     const findingId = String(finding?.id);
-    expect(state.vexTuple(projectVersionId, findingId)?.status).toBe("IN_TRIAGE");
-    await expect(client.clearVexStatus({ projectVersionId, findingIds: [findingId] })).resolves.toBeUndefined();
+    expect(state.vexTuple(projectVersionId, findingId)?.status).toBe(
+      "IN_TRIAGE",
+    );
+    await expect(
+      client.clearVexStatus({ projectVersionId, findingIds: [findingId] }),
+    ).resolves.toBeUndefined();
     expect(state.vexTuple(projectVersionId, findingId)).toEqual({
       status: null,
       response: null,
@@ -292,24 +397,38 @@ describe("mock-direct-platform-data", () => {
       `/public/v0/findings/${projectVersionId}/status/clear/bulk`,
       clearRequest,
     );
-    expect((await harness.platform.fetch(clearUrl, clearInit)).status).toBe(204);
+    expect((await harness.platform.fetch(clearUrl, clearInit)).status).toBe(
+      204,
+    );
     const [foreignUrl, foreignInit] = request(
       "/public/v0/findings/pv-does-not-exist/status/clear/bulk",
       clearRequest,
     );
-    expect((await harness.platform.fetch(foreignUrl, foreignInit)).status).toBe(404);
+    expect((await harness.platform.fetch(foreignUrl, foreignInit)).status).toBe(
+      404,
+    );
   });
 
   it("applies single and bulk VEX decisions to every physical duplicate UUID row", async () => {
     const { client, harness, state } = setup();
     const projectVersionId = "pv-a481df87dadf";
     const findingId = "8000000000000000027";
-    const duplicates = () => [...state.findings.values()].filter(
-      (finding) => finding.projectVersionId === projectVersionId && finding.id === findingId,
-    );
+    const duplicates = () =>
+      [...state.findings.values()].filter(
+        (finding) =>
+          finding.projectVersionId === projectVersionId &&
+          finding.id === findingId,
+      );
     expect(duplicates()).toHaveLength(2);
-    await client.setVexStatus({ projectVersionId, findingId, status: "RESOLVED" });
-    expect(duplicates().map((finding) => finding.vexStatus)).toEqual(["RESOLVED", "RESOLVED"]);
+    await client.setVexStatus({
+      projectVersionId,
+      findingId,
+      status: "RESOLVED",
+    });
+    expect(duplicates().map((finding) => finding.vexStatus)).toEqual([
+      "RESOLVED",
+      "RESOLVED",
+    ]);
     await harness.reset("platform");
     await client.batchSetVexStatus({
       projectVersionId,
@@ -347,87 +466,163 @@ describe("mock-direct-platform-data", () => {
     const { client, state } = setup();
     const projectId = String(state.projects.keys().next().value);
     const versions = [...state.versions.values()];
-    const currentVersionId = String(versions.find((version) => version.priorVersionId !== null)?.id);
-    const priorVersionId = String(versions.find((version) => version.priorVersionId === null)?.id);
+    const currentVersionId = String(
+      versions.find((version) => version.priorVersionId !== null)?.id,
+    );
+    const priorVersionId = String(
+      versions.find((version) => version.priorVersionId === null)?.id,
+    );
     const detailFinding = [...state.findings.values()].find(
-      (finding) => state.findingComments.get(currentVersionId) &&
-        [...state.findingComments.get(currentVersionId)!.values()].some((comment) => comment.findingId === finding.id),
+      (finding) =>
+        state.findingComments.get(currentVersionId) &&
+        [...state.findingComments.get(currentVersionId)!.values()].some(
+          (comment) => comment.findingId === finding.id,
+        ),
     );
     expect(detailFinding).toBeDefined();
     expect([...state.findingComments.keys()]).toEqual([currentVersionId]);
     expect(state.findingComments.has(priorVersionId)).toBe(false);
-    expect(await collect(client.listFindingComments({
-      projectVersionId: currentVersionId,
-      findingId: String(detailFinding?.id),
-    }))).toHaveLength(1);
-    expect(await client.getFindingDetail({
-      projectVersionId: currentVersionId,
-      findingId: String(detailFinding?.id),
-    })).toHaveProperty("cves");
-    await expect(collect(client.listFindingComments({
-      projectVersionId: priorVersionId,
-      findingId: String(detailFinding?.id),
-    }))).rejects.toMatchObject({ status: 404 });
+    expect(
+      await collect(
+        client.listFindingComments({
+          projectVersionId: currentVersionId,
+          findingId: String(detailFinding?.id),
+        }),
+      ),
+    ).toHaveLength(1);
+    expect(
+      await client.getFindingDetail({
+        projectVersionId: currentVersionId,
+        findingId: String(detailFinding?.id),
+      }),
+    ).toHaveProperty("cves");
+    await expect(
+      collect(
+        client.listFindingComments({
+          projectVersionId: priorVersionId,
+          findingId: String(detailFinding?.id),
+        }),
+      ),
+    ).rejects.toMatchObject({ status: 404 });
 
     const [activity] = state.findingActivity.values();
     const cve = String(activity?.[0]?.cve);
-    expect(await collect(client.getFindingActivity({
-      projectId,
-      projectVersionId: currentVersionId,
-      cve,
-    }))).toEqual(expect.arrayContaining([
-      expect.objectContaining({ action: "soft_delete" }),
-      expect.objectContaining({ action: "upstream_reconfirm" }),
-    ]));
-    expect(await collect(client.getFindingActivity({
-      projectId,
-      projectVersionId: priorVersionId,
-      cve,
-    }))).toEqual([]);
-    await expect(collect(client.getFindingActivity({
-      projectId: "foreign-project",
-      projectVersionId: currentVersionId,
-      cve,
-    }))).rejects.toMatchObject({ status: 404 });
+    expect(
+      await collect(
+        client.getFindingActivity({
+          projectId,
+          projectVersionId: currentVersionId,
+          cve,
+        }),
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: "soft_delete" }),
+        expect.objectContaining({ action: "upstream_reconfirm" }),
+      ]),
+    );
+    expect(
+      await collect(
+        client.getFindingActivity({
+          projectId,
+          projectVersionId: priorVersionId,
+          cve,
+        }),
+      ),
+    ).toEqual([]);
+    await expect(
+      collect(
+        client.getFindingActivity({
+          projectId: "foreign-project",
+          projectVersionId: currentVersionId,
+          cve,
+        }),
+      ),
+    ).rejects.toMatchObject({ status: 404 });
   });
 
   it("streams the frozen SBOM hash and resolves all purl and fallback component identities", async () => {
     const { client, state } = setup();
-    const projectVersionId = String([...state.versions.values()].find((version) => version.priorVersionId !== null)?.id);
-    const artifact = await client.downloadSbom({ projectVersionId, format: "cyclonedx", includeVex: true });
+    const projectVersionId = String(
+      [...state.versions.values()].find(
+        (version) => version.priorVersionId !== null,
+      )?.id,
+    );
+    const artifact = await client.downloadSbom({
+      projectVersionId,
+      format: "cyclonedx",
+      includeVex: true,
+    });
     const joined = await artifactBytes(artifact);
     expect(artifact.mediaType).toBe("application/vnd.cyclonedx+json");
     expect(artifact.size).toBe(joined.byteLength);
-    expect(artifact.sha256).toBe(createHash("sha256").update(joined).digest("hex"));
+    expect(artifact.sha256).toBe(
+      createHash("sha256").update(joined).digest("hex"),
+    );
     const sbom = JSON.parse(joined.toString("utf8")) as {
       components: Array<Record<string, Json>>;
       metadata: { component: { version: string }; properties: Json[] };
       vulnerabilities: Json[];
     };
     expect(sbom.components).toHaveLength(900);
-    expect(new Set(sbom.components.map((component) => component["bom-ref"]))).toEqual(new Set(state.components.keys()));
+    expect(
+      new Set(sbom.components.map((component) => component["bom-ref"])),
+    ).toEqual(new Set(state.components.keys()));
     expect(sbom.metadata.component.version).toBe("2.4.0");
     expect(sbom.vulnerabilities.length).toBeGreaterThan(0);
 
-    const withoutVex = await client.downloadSbom({ projectVersionId, format: "cyclonedx", includeVex: false });
+    const withoutVex = await client.downloadSbom({
+      projectVersionId,
+      format: "cyclonedx",
+      includeVex: false,
+    });
     const withoutVexBytes = await artifactBytes(withoutVex);
     expect(withoutVex.sha256).not.toBe(artifact.sha256);
-    expect(JSON.parse(withoutVexBytes.toString("utf8"))).not.toHaveProperty("vulnerabilities");
-    const priorVersionId = String([...state.versions.values()].find((version) => version.priorVersionId === null)?.id);
-    const prior = await client.downloadSbom({ projectVersionId: priorVersionId, format: "cyclonedx", includeVex: true });
+    expect(JSON.parse(withoutVexBytes.toString("utf8"))).not.toHaveProperty(
+      "vulnerabilities",
+    );
+    const priorVersionId = String(
+      [...state.versions.values()].find(
+        (version) => version.priorVersionId === null,
+      )?.id,
+    );
+    const prior = await client.downloadSbom({
+      projectVersionId: priorVersionId,
+      format: "cyclonedx",
+      includeVex: true,
+    });
     expect(prior.sha256).not.toBe(artifact.sha256);
 
-    const spdx = await client.downloadSbom({ projectVersionId, format: "spdx", includeVex: false });
+    const spdx = await client.downloadSbom({
+      projectVersionId,
+      format: "spdx",
+      includeVex: false,
+    });
     expect(spdx.mediaType).toBe("application/spdx+json");
-    expect((await spdx.readJson<{ packages: Json[] }>(1_000_000)).packages).toHaveLength(900);
+    expect(
+      (await spdx.readJson<{ packages: Json[] }>(1_000_000)).packages,
+    ).toHaveLength(900);
 
-    const withoutPurl = [...state.components.values()].find((component) => component.purl === null);
+    const withoutPurl = [...state.components.values()].find(
+      (component) => component.purl === null,
+    );
     expect(withoutPurl?.fallbackIdentity).toMatch(/^sha256:/u);
-    expect(await collect(client.searchComponents({ name: String(withoutPurl?.name), version: String(withoutPurl?.version) }))).toEqual([
-      expect.objectContaining({ id: withoutPurl?.id, purl: null }),
-    ]);
-    const withPurl = [...state.components.values()].find((component) => typeof component.purl === "string");
-    expect(await collect(client.listComponents({ filter: `name==${String(withPurl?.name)}` }))).toEqual([
+    expect(
+      await collect(
+        client.searchComponents({
+          name: String(withoutPurl?.name),
+          version: String(withoutPurl?.version),
+        }),
+      ),
+    ).toEqual([expect.objectContaining({ id: withoutPurl?.id, purl: null })]);
+    const withPurl = [...state.components.values()].find(
+      (component) => typeof component.purl === "string",
+    );
+    expect(
+      await collect(
+        client.listComponents({ filter: `name==${String(withPurl?.name)}` }),
+      ),
+    ).toEqual([
       expect.objectContaining({ id: withPurl?.id, purl: withPurl?.purl }),
     ]);
   });
@@ -436,15 +631,21 @@ describe("mock-direct-platform-data", () => {
     const { client } = setup();
     const included = await collect(client.listComponents({ excluded: false }));
     const excluded = await collect(client.listComponents({ excluded: true }));
-    const edited = await collect(client.listComponents({ excluded: false, editStatus: "edited" }));
-    const unedited = await collect(client.listComponents({ excluded: false, editStatus: "unedited" }));
+    const edited = await collect(
+      client.listComponents({ excluded: false, editStatus: "edited" }),
+    );
+    const unedited = await collect(
+      client.listComponents({ excluded: false, editStatus: "unedited" }),
+    );
     expect(included).toHaveLength(899);
     expect(excluded).toEqual([expect.objectContaining({ excluded: true })]);
     expect(edited).toEqual([
       expect.objectContaining({ id: "component-0002", edited: true }),
     ]);
     expect(unedited).toHaveLength(898);
-    expect(new Set([...included, ...excluded].map((component) => component.id)).size).toBe(900);
+    expect(
+      new Set([...included, ...excluded].map((component) => component.id)).size,
+    ).toBe(900);
   });
 
   it("reset restores byte-equivalent logical state", async () => {
@@ -453,7 +654,12 @@ describe("mock-direct-platform-data", () => {
     const projectVersionId = String(finding?.projectVersionId);
     const findingId = String(finding?.id);
     const before = JSON.stringify(state.snapshot());
-    await client.setVexStatus({ projectVersionId, findingId, status: "RESOLVED", reason: "fixture mutation" });
+    await client.setVexStatus({
+      projectVersionId,
+      findingId,
+      status: "RESOLVED",
+      reason: "fixture mutation",
+    });
     expect(JSON.stringify(state.snapshot())).not.toBe(before);
     await harness.reset("platform");
     expect(JSON.stringify(state.snapshot())).toBe(before);

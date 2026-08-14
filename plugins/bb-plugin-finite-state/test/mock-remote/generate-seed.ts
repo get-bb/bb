@@ -26,6 +26,103 @@ import {
 } from "./seed-schema.js";
 
 const FIXED_NOW = "2026-05-12T14:30:00.000Z";
+// Sanitized GET /public/v0/versions/{pv}/findings captures attached to FS-174.
+// Keep these bytes verbatim: they exist specifically to prevent mock/reality drift.
+const FS174_DISTRO_FINDING = `{
+  "id": "0b529d2b-9da8-556e-81e4-f0f57a59956a",
+  "title": "CVE-2016-4658 - debian/libxml2@2.9.4%2Bdfsg1-2.2%2Bdeb9u2",
+  "description": "",
+  "severity": "critical",
+  "status": null,
+  "location": "libxml2",
+  "type": "cve",
+  "findingId": "CVE-2016-4658",
+  "vulnerabilityId": "97f077e8-fc05-5198-8ab6-9111fb37e83a",
+  "cvssScore": 9.8,
+  "cvssVector": "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H/E:U/RL:X/RC:C",
+  "detected": "2025-08-02T03:41:39.595176Z",
+  "epssScore": "0.08628",
+  "epssPercentile": "0.94573",
+  "epssWeightedRisk": 9.3,
+  "epssWeightedSeverity": "critical",
+  "component": {
+    "id": "e1a048dc-9890-5333-9e97-cd5d6f429fcd",
+    "name": "debian/libxml2",
+    "version": "2.9.4%2Bdfsg1-2.2%2Bdeb9u2",
+    "appId": "cfe6fb97-ed49-5ace-b0fe-8121dba2c793",
+    "vcId": "c75bd181-e012-5cdf-92e9-5e431596285f"
+  },
+  "inKev": false,
+  "vulnInDataset": true,
+  "inVcKev": false,
+  "risk": 98,
+  "warnings": 0,
+  "violations": 1,
+  "reachabilityScore": 315,
+  "project": {
+    "id": "cfe6fb97-ed49-5ace-b0fe-8121dba2c793",
+    "name": "I491NAX"
+  },
+  "projectVersion": {
+    "id": "b3df3633-ebd7-560e-a3b7-77953521b4e3",
+    "version": "reachability",
+    "created": "2025-08-01T20:34:39.020812Z",
+    "updated": "2026-08-13T13:31:12.642019Z"
+  },
+  "cwes": [
+    "CWE-119"
+  ],
+  "exploitInfo": [],
+  "dependencyPath": null
+}`;
+const FS174_CVE_UUID_FINDING = `{
+  "id": "85c04807-db47-4853-b659-ece4214ef395",
+  "title": "CVE-2026-34877 - Mbed TLS@3.0.0",
+  "description": "",
+  "severity": "critical",
+  "status": null,
+  "location": "Mbed TLS",
+  "type": "cve",
+  "findingId": "CVE-2026-34877",
+  "vulnerabilityId": "cbdc8dc1-66ad-5264-b81b-67b2eaf1257e",
+  "cvssScore": 9.8,
+  "cvssVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+  "detected": "2026-07-22T02:36:58.05251Z",
+  "epssScore": "0.00426",
+  "epssPercentile": "0.34936",
+  "epssWeightedRisk": 3.4,
+  "epssWeightedSeverity": "low",
+  "component": {
+    "id": "df542a94-2571-5f0d-aaf9-3892e9d70ef5",
+    "name": "Mbed TLS",
+    "version": "3.0.0",
+    "appId": "5d78bed3-fa8e-59cf-b8a1-6046853ba785",
+    "vcId": "b812780a-fa4c-5562-8919-b00293b43b6d"
+  },
+  "inKev": false,
+  "vulnInDataset": null,
+  "inVcKev": false,
+  "risk": 98,
+  "warnings": 0,
+  "violations": 1,
+  "reachabilityScore": null,
+  "project": {
+    "id": "5d78bed3-fa8e-59cf-b8a1-6046853ba785",
+    "name": "I490M1-Xirgo"
+  },
+  "projectVersion": {
+    "id": "89ad8a41-2185-5df0-968b-c250312c908b",
+    "version": "2026-02-25",
+    "created": "2026-02-25T18:21:08.118654Z",
+    "updated": "2026-07-28T22:12:37.961582Z"
+  },
+  "cwes": [
+    "CWE-250",
+    "CWE-502"
+  ],
+  "exploitInfo": [],
+  "dependencyPath": null
+}`;
 const COUNTS = {
   findings: 4_000,
   components: 180,
@@ -79,7 +176,18 @@ interface FindingRecord extends Record<string, JsonValue> {
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
-const PRETTIER_JSON_DRAFTS = new Set(["assurance-studio/entities-page-1.json"]);
+const PRETTIER_JSON_DRAFTS = new Set([
+  "assurance-studio/entities-page-1.json",
+  "cases.json",
+]);
+
+function capturedFinding(source: string): Record<string, JsonValue> {
+  const value: unknown = JSON.parse(source);
+  if (value === null || Array.isArray(value) || typeof value !== "object") {
+    throw new TypeError("Captured finding fixture must be an object");
+  }
+  return value as Record<string, JsonValue>;
+}
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -225,7 +333,12 @@ function buildCorpus(seed: string): {
     },
   );
   const duplicateFinding = { ...findings[27] };
-  const findingRows = [...findings, duplicateFinding];
+  const findingRows = [
+    ...findings,
+    duplicateFinding,
+    capturedFinding(FS174_DISTRO_FINDING),
+    capturedFinding(FS174_CVE_UUID_FINDING),
+  ];
 
   const severityCounts = Object.fromEntries(
     severities.map((severity) => [
@@ -645,6 +758,16 @@ function buildCorpus(seed: string): {
         "Bulk VEX succeeds for three rows and fails independently for two.",
       refs: ["platform/vex-bulk-partial.json"],
     },
+    "real-distro-finding-identity": {
+      description:
+        "Captured Platform response preserves a namespaced package name and percent-encoded Debian version.",
+      refs: ["platform/fs174-i491nax-distro-specimen.json"],
+    },
+    "real-cve-uuid-field-mapping": {
+      description:
+        "Captured Platform response carries the CVE in findingId and an opaque UUID in vulnerabilityId.",
+      refs: ["platform/fs174-cve-uuid-mapping-specimen.json"],
+    },
     "non-ascii-names": {
       description:
         "Names contain composed non-ASCII Latin characters and the micro sign.",
@@ -746,6 +869,14 @@ function buildCorpus(seed: string): {
     {
       path: "platform/findings-summary.json",
       bytes: json({ bySeverity: severityCounts, total: findings.length }),
+    },
+    {
+      path: "platform/fs174-i491nax-distro-specimen.json",
+      bytes: text(FS174_DISTRO_FINDING),
+    },
+    {
+      path: "platform/fs174-cve-uuid-mapping-specimen.json",
+      bytes: text(FS174_CVE_UUID_FINDING),
     },
     {
       path: "platform/components.jsonl",

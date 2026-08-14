@@ -52,7 +52,9 @@ interface ComponentFixture {
 
 interface FindingFixture {
   id: string;
-  projectVersionId: string;
+  projectVersionId?: string;
+  projectVersion?: { id: string };
+  project?: { id: string };
   component: {
     appId: string;
     id: string;
@@ -60,7 +62,8 @@ interface FindingFixture {
     vcId: string;
     version: string;
   };
-  cve: string;
+  cve?: string;
+  findingId?: string;
   severity: string;
 }
 
@@ -504,6 +507,14 @@ describe("deterministic-seed-corpus", () => {
       ),
     );
     for (const finding of findings) {
+      if (finding.projectVersionId === undefined) {
+        expect(finding.projectVersion?.id).toBeTruthy();
+        expect(finding.project?.id).toBeTruthy();
+        expect(finding.findingId).toMatch(/^CVE-/u);
+        expect(finding.component.name).toBeTruthy();
+        expect(finding.component.version).toBeTruthy();
+        continue;
+      }
       expectReference(
         versionIds,
         finding.projectVersionId,
@@ -578,7 +589,11 @@ describe("deterministic-seed-corpus", () => {
       findings.slice(0, findingsPage.items.length),
     );
     expect(findingsPage.total).toBe(
-      new Set(findings.map((finding) => finding.id)).size,
+      new Set(
+        findings
+          .filter((finding) => finding.projectVersionId !== undefined)
+          .map((finding) => finding.id),
+      ).size,
     );
     expect(componentsPage.items).toEqual(
       components.slice(0, componentsPage.items.length),
@@ -943,6 +958,8 @@ describe("deterministic-seed-corpus", () => {
       "firmware-unpack-error",
       "non-ascii-names",
       "partial-vex-failure",
+      "real-cve-uuid-field-mapping",
+      "real-distro-finding-identity",
       "requirement-without-verification",
       "same-field-tara-drift",
       "soft-delete-then-reconfirm",

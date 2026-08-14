@@ -9,7 +9,10 @@ export interface MockPlatformState {
   readonly findingActivity: Map<string, Record<string, unknown>[]>;
   readonly findingComments: Map<string, Map<string, Record<string, unknown>>>;
   readonly components: Map<string, Record<string, unknown>>;
-  vexTuple(pvId: string, findingId: string): {
+  vexTuple(
+    pvId: string,
+    findingId: string,
+  ): {
     status: string | null;
     response: string | null;
     justification: string | null;
@@ -43,12 +46,35 @@ function object(value: unknown, source: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function stringField(record: Record<string, unknown>, key: string, source: string): string {
+function stringField(
+  record: Record<string, unknown>,
+  key: string,
+  source: string,
+): string {
   const value = record[key];
   if (typeof value !== "string" || value.length === 0) {
-    throw new MockPlatformFixtureError(`${source} must contain a non-empty ${key}`);
+    throw new MockPlatformFixtureError(
+      `${source} must contain a non-empty ${key}`,
+    );
   }
   return value;
+}
+
+export function findingProjectVersionId(
+  finding: Record<string, unknown>,
+  source: string,
+): string {
+  if (
+    typeof finding.projectVersionId === "string" &&
+    finding.projectVersionId.length > 0
+  ) {
+    return finding.projectVersionId;
+  }
+  return stringField(
+    object(finding.projectVersion, `${source} projectVersion`),
+    "id",
+    source,
+  );
 }
 
 function cloneRecord(record: Record<string, unknown>): Record<string, unknown> {
@@ -60,11 +86,16 @@ function parseJson(bytes: Uint8Array, source: string): Record<string, unknown> {
     return object(JSON.parse(Buffer.from(bytes).toString("utf8")), source);
   } catch (error: unknown) {
     if (error instanceof MockPlatformFixtureError) throw error;
-    throw new MockPlatformFixtureError(`${source} is not valid JSON`, { cause: error });
+    throw new MockPlatformFixtureError(`${source} is not valid JSON`, {
+      cause: error,
+    });
   }
 }
 
-function parseJsonLines(bytes: Uint8Array, source: string): Record<string, unknown>[] {
+function parseJsonLines(
+  bytes: Uint8Array,
+  source: string,
+): Record<string, unknown>[] {
   const text = Buffer.from(bytes).toString("utf8");
   try {
     return text
@@ -73,7 +104,9 @@ function parseJsonLines(bytes: Uint8Array, source: string): Record<string, unkno
       .map((line, index) => object(JSON.parse(line), `${source}:${index + 1}`));
   } catch (error: unknown) {
     if (error instanceof MockPlatformFixtureError) throw error;
-    throw new MockPlatformFixtureError(`${source} is not valid JSONL`, { cause: error });
+    throw new MockPlatformFixtureError(`${source} is not valid JSONL`, {
+      cause: error,
+    });
   }
 }
 
@@ -85,9 +118,12 @@ function readRequired(root: string, relativePath: string): Uint8Array {
   try {
     return readFileSync(resolve(root, ...relativePath.split("/")));
   } catch (error: unknown) {
-    throw new MockPlatformFixtureError(`Required fixture is unavailable: ${relativePath}`, {
-      cause: error,
-    });
+    throw new MockPlatformFixtureError(
+      `Required fixture is unavailable: ${relativePath}`,
+      {
+        cause: error,
+      },
+    );
   }
 }
 
@@ -101,35 +137,52 @@ function validateManifestFile(
     throw new MockPlatformFixtureError("manifest.json has no files collection");
   }
   const entry = files.find((candidate: unknown) => {
-    return candidate !== null && typeof candidate === "object" &&
-      (candidate as Record<string, unknown>).path === relativePath;
+    return (
+      candidate !== null &&
+      typeof candidate === "object" &&
+      (candidate as Record<string, unknown>).path === relativePath
+    );
   });
   const record = object(entry, `manifest entry for ${relativePath}`);
   if (record.bytes !== bytes.byteLength || record.sha256 !== sha256(bytes)) {
-    throw new MockPlatformFixtureError(`Fixture content does not match manifest: ${relativePath}`);
+    throw new MockPlatformFixtureError(
+      `Fixture content does not match manifest: ${relativePath}`,
+    );
   }
 }
 
-function replaceMap<K, V>(target: Map<K, V>, source: ReadonlyMap<K, V>, clone: (value: V) => V): void {
+function replaceMap<K, V>(
+  target: Map<K, V>,
+  source: ReadonlyMap<K, V>,
+  clone: (value: V) => V,
+): void {
   target.clear();
   for (const [key, value] of source) target.set(key, clone(value));
 }
 
-function jsonSnapshot(map: ReadonlyMap<string, Record<string, unknown>>): unknown[] {
+function jsonSnapshot(
+  map: ReadonlyMap<string, Record<string, unknown>>,
+): unknown[] {
   return [...map.entries()].map(([key, value]) => [key, cloneRecord(value)]);
 }
 
 export function platformSbom(state: MockPlatformState): PlatformBacking {
   const backing = backingByState.get(state);
-  if (backing === undefined) throw new Error("Mock Platform state has no SBOM backing");
+  if (backing === undefined)
+    throw new Error("Mock Platform state has no SBOM backing");
   return backing;
 }
 
-export function platformVexFailure(state: MockPlatformState, findingId: string): string | null {
+export function platformVexFailure(
+  state: MockPlatformState,
+  findingId: string,
+): string | null {
   return backingByState.get(state)?.vexFailures.get(findingId) ?? null;
 }
 
-export function createMockPlatformState(fixtureRoot: string): MockPlatformState {
+export function createMockPlatformState(
+  fixtureRoot: string,
+): MockPlatformState {
   const required = [
     "platform/identity.json",
     "platform/findings.jsonl",
@@ -142,19 +195,39 @@ export function createMockPlatformState(fixtureRoot: string): MockPlatformState 
   ] as const;
   const manifestBytes = readRequired(fixtureRoot, "manifest.json");
   const manifest = parseJson(manifestBytes, "manifest.json");
-  const bytesByPath = new Map(required.map((path) => [path, readRequired(fixtureRoot, path)]));
-  for (const [path, bytes] of bytesByPath) validateManifestFile(manifest, path, bytes);
+  const bytesByPath = new Map(
+    required.map((path) => [path, readRequired(fixtureRoot, path)]),
+  );
+  for (const [path, bytes] of bytesByPath)
+    validateManifestFile(manifest, path, bytes);
 
-  const identity = parseJson(bytesByPath.get("platform/identity.json")!, "platform/identity.json");
+  const identity = parseJson(
+    bytesByPath.get("platform/identity.json")!,
+    "platform/identity.json",
+  );
   const project = object(identity.project, "platform/identity.json project");
   const versionValues = identity.versions;
   if (!Array.isArray(versionValues)) {
-    throw new MockPlatformFixtureError("platform/identity.json must contain versions");
+    throw new MockPlatformFixtureError(
+      "platform/identity.json must contain versions",
+    );
   }
-  const findingRows = parseJsonLines(bytesByPath.get("platform/findings.jsonl")!, "platform/findings.jsonl");
-  const detail = parseJson(bytesByPath.get("platform/finding-detail.json")!, "platform/finding-detail.json");
-  const history = parseJson(bytesByPath.get("expected/finding-history.json")!, "expected/finding-history.json");
-  const componentRows = parseJsonLines(bytesByPath.get("platform/components.jsonl")!, "platform/components.jsonl");
+  const findingRows = parseJsonLines(
+    bytesByPath.get("platform/findings.jsonl")!,
+    "platform/findings.jsonl",
+  );
+  const detail = parseJson(
+    bytesByPath.get("platform/finding-detail.json")!,
+    "platform/finding-detail.json",
+  );
+  const history = parseJson(
+    bytesByPath.get("expected/finding-history.json")!,
+    "expected/finding-history.json",
+  );
+  const componentRows = parseJsonLines(
+    bytesByPath.get("platform/components.jsonl")!,
+    "platform/components.jsonl",
+  );
   const sbomBytes = bytesByPath.get("platform/sbom.cdx.json")!;
   const sbom = parseJson(sbomBytes, "platform/sbom.cdx.json");
   const vexPartial = parseJson(
@@ -162,13 +235,28 @@ export function createMockPlatformState(fixtureRoot: string): MockPlatformState 
     "platform/vex-bulk-partial.json",
   );
 
-  const initialProjects = new Map([[stringField(project, "id", "project"), cloneRecord(project)]]);
+  const initialProjects = new Map([
+    [stringField(project, "id", "project"), cloneRecord(project)],
+  ]);
   const initialVersions = new Map<string, Record<string, unknown>>();
   for (const value of versionValues) {
     const version = object(value, "platform version");
     const id = stringField(version, "id", "platform version");
-    if (initialVersions.has(id)) throw new MockPlatformFixtureError(`Duplicate version id: ${id}`);
+    if (initialVersions.has(id))
+      throw new MockPlatformFixtureError(`Duplicate version id: ${id}`);
     initialVersions.set(id, cloneRecord(version));
+  }
+  for (const [index, finding] of findingRows.entries()) {
+    if (finding.projectVersion !== undefined) {
+      const nestedVersion = object(
+        finding.projectVersion,
+        `finding row ${index + 1} projectVersion`,
+      );
+      initialVersions.set(
+        stringField(nestedVersion, "id", "finding projectVersion"),
+        cloneRecord(nestedVersion),
+      );
+    }
   }
 
   // Occurrence keys deliberately retain physical duplicate UUID rows from the frozen corpus.
@@ -176,21 +264,33 @@ export function createMockPlatformState(fixtureRoot: string): MockPlatformState 
   const findingOccurrences = new Map<string, number>();
   findingRows.forEach((finding, index) => {
     const id = stringField(finding, "id", `finding row ${index + 1}`);
-    const projectVersionId = stringField(finding, "projectVersionId", `finding row ${index + 1}`);
+    const projectVersionId = findingProjectVersionId(
+      finding,
+      `finding row ${index + 1}`,
+    );
     if (!initialVersions.has(projectVersionId)) {
-      throw new MockPlatformFixtureError(`Finding ${id} references unknown version ${projectVersionId}`);
+      throw new MockPlatformFixtureError(
+        `Finding ${id} references unknown version ${projectVersionId}`,
+      );
     }
     const occurrence = (findingOccurrences.get(id) ?? 0) + 1;
     findingOccurrences.set(id, occurrence);
-    initialFindings.set(occurrence === 1 ? id : `${id}#${occurrence}`, cloneRecord(finding));
+    initialFindings.set(
+      occurrence === 1 ? id : `${id}#${occurrence}`,
+      cloneRecord(finding),
+    );
   });
-  const detailPvId = stringField(detail, "projectVersionId", "finding detail");
+  const detailPvId = findingProjectVersionId(detail, "finding detail");
   const detailFindingId = stringField(detail, "id", "finding detail");
   const detailFinding = [...initialFindings.values()].find(
-    (finding) => finding.projectVersionId === detailPvId && finding.id === detailFindingId,
+    (finding) =>
+      findingProjectVersionId(finding, "finding detail candidate") ===
+        detailPvId && finding.id === detailFindingId,
   );
   if (detailFinding === undefined) {
-    throw new MockPlatformFixtureError("Finding detail does not resolve to a canonical finding");
+    throw new MockPlatformFixtureError(
+      "Finding detail does not resolve to a canonical finding",
+    );
   }
   for (const [key, value] of Object.entries(detail)) {
     if (key !== "comments") detailFinding[key] = structuredClone(value);
@@ -199,7 +299,8 @@ export function createMockPlatformState(fixtureRoot: string): MockPlatformState 
   const initialComponents = new Map<string, Record<string, unknown>>();
   componentRows.forEach((component, index) => {
     const id = stringField(component, "id", "platform component");
-    if (initialComponents.has(id)) throw new MockPlatformFixtureError(`Duplicate component id: ${id}`);
+    if (initialComponents.has(id))
+      throw new MockPlatformFixtureError(`Duplicate component id: ${id}`);
     initialComponents.set(id, {
       ...cloneRecord(component),
       // The frozen corpus has no override/exclusion columns. Preserve its one
@@ -210,42 +311,70 @@ export function createMockPlatformState(fixtureRoot: string): MockPlatformState 
   });
   for (const finding of initialFindings.values()) {
     const component = object(finding.component, "platform finding component");
-    const componentId = stringField(component, "id", "platform finding component");
+    const componentId = stringField(
+      component,
+      "id",
+      "platform finding component",
+    );
     if (!initialComponents.has(componentId)) {
-      throw new MockPlatformFixtureError(`Finding references unknown component ${componentId}`);
+      // Captured real findings may reference components outside the generated
+      // SBOM corpus. Their nested wire identity remains authoritative.
+      continue;
     }
   }
   if (!Array.isArray(sbom.components)) {
-    throw new MockPlatformFixtureError("platform/sbom.cdx.json must contain components");
+    throw new MockPlatformFixtureError(
+      "platform/sbom.cdx.json must contain components",
+    );
   }
   for (const value of sbom.components) {
     const component = object(value, "SBOM component");
     const id = stringField(component, "bom-ref", "SBOM component");
     if (!initialComponents.has(id)) {
-      throw new MockPlatformFixtureError(`SBOM references unknown component ${id}`);
+      throw new MockPlatformFixtureError(
+        `SBOM references unknown component ${id}`,
+      );
     }
   }
   if (!Array.isArray(vexPartial.results)) {
-    throw new MockPlatformFixtureError("platform/vex-bulk-partial.json must contain results");
+    throw new MockPlatformFixtureError(
+      "platform/vex-bulk-partial.json must contain results",
+    );
   }
   const vexFailures = new Map<string, string>();
   for (const value of vexPartial.results) {
     const result = object(value, "bulk VEX fixture result");
-    const findingId = stringField(result, "findingId", "bulk VEX fixture result");
-    if (![...initialFindings.values()].some((finding) => finding.id === findingId)) {
-      throw new MockPlatformFixtureError(`Bulk VEX fixture references unknown finding ${findingId}`);
+    const findingId = stringField(
+      result,
+      "findingId",
+      "bulk VEX fixture result",
+    );
+    if (
+      ![...initialFindings.values()].some((finding) => finding.id === findingId)
+    ) {
+      throw new MockPlatformFixtureError(
+        `Bulk VEX fixture references unknown finding ${findingId}`,
+      );
     }
     if (result.success === false && typeof result.error === "string") {
       vexFailures.set(findingId, result.error);
     }
   }
 
-  const initialComments = new Map<string, Map<string, Record<string, unknown>>>();
+  const initialComments = new Map<
+    string,
+    Map<string, Record<string, unknown>>
+  >();
   if (!initialVersions.has(detailPvId)) {
-    throw new MockPlatformFixtureError(`Finding detail references unknown version ${detailPvId}`);
+    throw new MockPlatformFixtureError(
+      `Finding detail references unknown version ${detailPvId}`,
+    );
   }
   const comments = detail.comments;
-  if (!Array.isArray(comments)) throw new MockPlatformFixtureError("finding detail comments must be an array");
+  if (!Array.isArray(comments))
+    throw new MockPlatformFixtureError(
+      "finding detail comments must be an array",
+    );
   const commentMap = new Map<string, Record<string, unknown>>();
   for (const value of comments) {
     const comment = object(value, "finding comment");
@@ -256,42 +385,69 @@ export function createMockPlatformState(fixtureRoot: string): MockPlatformState 
 
   const projectId = stringField(project, "id", "project");
   const historyFindingId = stringField(history, "findingId", "finding history");
-  const historyFinding = [...initialFindings.values()].find((finding) => finding.id === historyFindingId);
+  const historyFinding = [...initialFindings.values()].find(
+    (finding) => finding.id === historyFindingId,
+  );
   if (historyFinding === undefined || !Array.isArray(history.events)) {
-    throw new MockPlatformFixtureError("finding history does not resolve to a canonical finding");
+    throw new MockPlatformFixtureError(
+      "finding history does not resolve to a canonical finding",
+    );
   }
   const activityKey = `${projectId}:${String(historyFinding.cve)}`;
-  const initialActivity = new Map([[activityKey, history.events.map((event) => ({
-    ...cloneRecord(object(event, "finding history event")),
-    findingId: historyFindingId,
-    projectVersionId: historyFinding.projectVersionId,
-    cve: historyFinding.cve,
-  }))]]);
+  const initialActivity = new Map([
+    [
+      activityKey,
+      history.events.map((event) => ({
+        ...cloneRecord(object(event, "finding history event")),
+        findingId: historyFindingId,
+        projectVersionId: historyFinding.projectVersionId,
+        cve: historyFinding.cve,
+      })),
+    ],
+  ]);
 
   const projects = new Map<string, Record<string, unknown>>();
   const versions = new Map<string, Record<string, unknown>>();
   const findings = new Map<string, Record<string, unknown>>();
   const findingActivity = new Map<string, Record<string, unknown>[]>();
-  const findingComments = new Map<string, Map<string, Record<string, unknown>>>();
+  const findingComments = new Map<
+    string,
+    Map<string, Record<string, unknown>>
+  >();
   const components = new Map<string, Record<string, unknown>>();
-  const spdxBytes = Buffer.from(`${JSON.stringify({
-    spdxVersion: "SPDX-2.3",
-    dataLicense: "CC0-1.0",
-    SPDXID: "SPDXRef-DOCUMENT",
-    name: "Eagle Connected Gateway 2.4.0",
-    documentNamespace: `https://finite-state.example/sbom/${detailPvId}`,
-    creationInfo: { created: "2026-05-12T14:30:00.000Z", creators: ["Tool: Finite State mock"] },
-    packages: componentRows.map((component) => ({
-      SPDXID: `SPDXRef-${String(component.id)}`,
-      name: component.name,
-      versionInfo: component.version,
-      externalRefs: component.purl === null ? [] : [{
-        referenceCategory: "PACKAGE-MANAGER",
-        referenceType: "purl",
-        referenceLocator: component.purl,
-      }],
-    })),
-  }, null, 2)}\n`, "utf8");
+  const spdxBytes = Buffer.from(
+    `${JSON.stringify(
+      {
+        spdxVersion: "SPDX-2.3",
+        dataLicense: "CC0-1.0",
+        SPDXID: "SPDXRef-DOCUMENT",
+        name: "Eagle Connected Gateway 2.4.0",
+        documentNamespace: `https://finite-state.example/sbom/${detailPvId}`,
+        creationInfo: {
+          created: "2026-05-12T14:30:00.000Z",
+          creators: ["Tool: Finite State mock"],
+        },
+        packages: componentRows.map((component) => ({
+          SPDXID: `SPDXRef-${String(component.id)}`,
+          name: component.name,
+          versionInfo: component.version,
+          externalRefs:
+            component.purl === null
+              ? []
+              : [
+                  {
+                    referenceCategory: "PACKAGE-MANAGER",
+                    referenceType: "purl",
+                    referenceLocator: component.purl,
+                  },
+                ],
+        })),
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
 
   const state: MockPlatformState = {
     projects,
@@ -302,14 +458,22 @@ export function createMockPlatformState(fixtureRoot: string): MockPlatformState 
     components,
     vexTuple(pvId, findingId) {
       const finding = [...findings.values()].find(
-        (candidate) => candidate.projectVersionId === pvId && candidate.id === findingId,
+        (candidate) =>
+          findingProjectVersionId(candidate, "VEX tuple") === pvId &&
+          candidate.id === findingId,
       );
       if (finding === undefined) return null;
       return {
-        status: typeof finding.vexStatus === "string" ? finding.vexStatus : null,
-        response: typeof finding.vexResponse === "string" ? finding.vexResponse : null,
-        justification: typeof finding.vexJustification === "string" ? finding.vexJustification : null,
-        reason: typeof finding.vexReason === "string" ? finding.vexReason : null,
+        status:
+          typeof finding.vexStatus === "string" ? finding.vexStatus : null,
+        response:
+          typeof finding.vexResponse === "string" ? finding.vexResponse : null,
+        justification:
+          typeof finding.vexJustification === "string"
+            ? finding.vexJustification
+            : null,
+        reason:
+          typeof finding.vexReason === "string" ? finding.vexReason : null,
       };
     },
     snapshot() {
@@ -317,8 +481,13 @@ export function createMockPlatformState(fixtureRoot: string): MockPlatformState 
         projects: jsonSnapshot(projects),
         versions: jsonSnapshot(versions),
         findings: jsonSnapshot(findings),
-        findingActivity: [...findingActivity.entries()].map(([key, values]) => [key, structuredClone(values)]),
-        findingComments: [...findingComments.entries()].map(([pvId, values]) => [pvId, jsonSnapshot(values)]),
+        findingActivity: [...findingActivity.entries()].map(([key, values]) => [
+          key,
+          structuredClone(values),
+        ]),
+        findingComments: [...findingComments.entries()].map(
+          ([pvId, values]) => [pvId, jsonSnapshot(values)],
+        ),
         components: jsonSnapshot(components),
         sbomSha256: sha256(sbomBytes),
         spdxSha256: sha256(spdxBytes),
@@ -330,10 +499,14 @@ export function createMockPlatformState(fixtureRoot: string): MockPlatformState 
       replaceMap(findings, initialFindings, cloneRecord);
       replaceMap(components, initialComponents, cloneRecord);
       findingActivity.clear();
-      for (const [key, values] of initialActivity) findingActivity.set(key, structuredClone(values));
+      for (const [key, values] of initialActivity)
+        findingActivity.set(key, structuredClone(values));
       findingComments.clear();
       for (const [pvId, values] of initialComments) {
-        findingComments.set(pvId, new Map([...values].map(([key, value]) => [key, cloneRecord(value)])));
+        findingComments.set(
+          pvId,
+          new Map([...values].map(([key, value]) => [key, cloneRecord(value)])),
+        );
       }
     },
   };

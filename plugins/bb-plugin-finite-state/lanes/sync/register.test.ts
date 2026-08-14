@@ -2,7 +2,10 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { createFakePluginHost, makeThreadResponse } from "@bb/plugin-sdk/testing";
+import {
+  createFakePluginHost,
+  makeThreadResponse,
+} from "@bb/plugin-sdk/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createPluginContext } from "../../lib/context.js";
@@ -10,10 +13,17 @@ import type { PluginContext } from "../../lib/context.js";
 import { AssuranceStudioClient } from "../../lib/remote/assurance-studio/client.js";
 import { PlatformClient } from "../../lib/remote/platform/client.js";
 import type { RemoteServices } from "../../lib/remote/types.js";
-import { ENTITIES } from "../../lib/sync/registry.js";
-import { createMockRemote, type MockRemoteHarness } from "../../test/mock-remote/server.js";
+import { ENTITIES, parseFindingStableKey } from "../../lib/sync/registry.js";
+import { registerFindings } from "../findings/register.js";
+import {
+  createMockRemote,
+  type MockRemoteHarness,
+} from "../../test/mock-remote/server.js";
 import { registerPlatformHandlers } from "../../test/mock-remote/platform/register.js";
-import { createMockPlatformState, type MockPlatformState } from "../../test/mock-remote/platform/state.js";
+import {
+  createMockPlatformState,
+  type MockPlatformState,
+} from "../../test/mock-remote/platform/state.js";
 import { createSerializer } from "./serialize/serializer.js";
 import {
   DuplicateAdapterError,
@@ -26,7 +36,10 @@ import { pull } from "./engine/pull.js";
 import { status } from "./engine/status.js";
 import { registerSync } from "./register.js";
 
-const FIXTURE_ROOT = resolve(import.meta.dirname, "../../test/mock-remote/fixtures");
+const FIXTURE_ROOT = resolve(
+  import.meta.dirname,
+  "../../test/mock-remote/fixtures",
+);
 const TOKEN = "wp17-register-token";
 const host = createFakePluginHost({ pluginId: "finite-state-wp17-register" });
 let mock: MockRemoteHarness;
@@ -36,24 +49,28 @@ let root: string;
 let context: PluginContext;
 
 const requirementKey = ENTITIES.requirement.key({ reqId: "REQ-SEAM" });
-let remoteRequirements: ServerEntity[] = [{
-  key: requirementKey,
-  remoteId: "as-requirement-seam",
-  payload: {
-    id: "as-requirement-seam",
-    projectId: "project-seam",
-    kind: "requirement",
-    fields: { reqId: "REQ-SEAM", title: "base" },
-    humanEdited: null,
-    reviewStatus: null,
-    reviewVersion: null,
+let remoteRequirements: ServerEntity[] = [
+  {
+    key: requirementKey,
+    remoteId: "as-requirement-seam",
+    payload: {
+      id: "as-requirement-seam",
+      projectId: "project-seam",
+      kind: "requirement",
+      fields: { reqId: "REQ-SEAM", title: "base" },
+      humanEdited: null,
+      reviewStatus: null,
+      reviewVersion: null,
+    },
   },
-}];
-let workingRequirements: WorkingEntity[] = [{
-  key: requirementKey,
-  payload: { reqId: "REQ-SEAM", title: "base" },
-  file: "product-security/requirements/REQ-SEAM.yaml",
-}];
+];
+let workingRequirements: WorkingEntity[] = [
+  {
+    key: requirementKey,
+    payload: { reqId: "REQ-SEAM", title: "base" },
+    file: "product-security/requirements/REQ-SEAM.yaml",
+  },
+];
 
 const foreignAdapter: EntityAdapter = {
   kind: "requirement",
@@ -63,7 +80,9 @@ const foreignAdapter: EntityAdapter = {
     progress({ page: 1, of: 1 });
     yield remoteRequirements;
   },
-  async readWorking() { return workingRequirements; },
+  async readWorking() {
+    return workingRequirements;
+  },
 };
 
 beforeAll(async () => {
@@ -109,11 +128,13 @@ beforeAll(async () => {
   registerSync(host.bb, context);
   registerAdapter(foreignAdapter);
   root = await mkdtemp(join(tmpdir(), "fs-wp17-register-"));
-  host.harness.sdk.stub("threads.get", async () => makeThreadResponse({
-    id: "thread-sync-cli",
-    projectId: "bb-project-sync",
-    environmentId: "environment-sync-cli",
-  }));
+  host.harness.sdk.stub("threads.get", async () =>
+    makeThreadResponse({
+      id: "thread-sync-cli",
+      projectId: "bb-project-sync",
+      environmentId: "environment-sync-cli",
+    }),
+  );
   host.harness.sdk.stub("environments.get", async () => ({
     id: "environment-sync-cli",
     projectId: "bb-project-sync",
@@ -130,20 +151,36 @@ afterAll(async () => {
 
 function platformScope() {
   const project = [...state.projects.values()][0];
-  const finding = [...state.findings.values()].find((row) => row["vexStatus"] !== null);
-  if (typeof project?.["id"] !== "string" || typeof finding?.["projectVersionId"] !== "string") {
+  const finding = [...state.findings.values()].find(
+    (row) => row["vexStatus"] !== null,
+  );
+  if (
+    typeof project?.["id"] !== "string" ||
+    typeof finding?.["projectVersionId"] !== "string"
+  ) {
     throw new Error("fixture has no platform scope");
   }
-  return { projectId: project["id"], projectVersionId: finding["projectVersionId"] };
+  return {
+    projectId: project["id"],
+    projectVersionId: finding["projectVersionId"],
+  };
 }
 
-function findingComponentId(finding: Record<string, unknown>): string | null {
+function findingComponentIdentity(
+  finding: Record<string, unknown>,
+): { name: string; version: string } | null {
   const component = finding["component"];
   if (
-    component === null || Array.isArray(component) || typeof component !== "object" ||
-    !("id" in component) || typeof component.id !== "string"
-  ) return null;
-  return component.id;
+    component === null ||
+    Array.isArray(component) ||
+    typeof component !== "object" ||
+    !("name" in component) ||
+    typeof component.name !== "string" ||
+    !("version" in component) ||
+    typeof component.version !== "string"
+  )
+    return null;
+  return { name: component.name, version: component.version };
 }
 
 describe("sync registration", () => {
@@ -155,19 +192,38 @@ describe("sync registration", () => {
       createGenerationId: () => "generation-seam-proof",
       now: () => new Date("2026-08-12T20:00:00.000Z"),
     };
-    await expect(pull(deps, { projectId: "project-seam", projectVersionId: "version-seam" }, ["requirement"]))
-      .resolves.toMatchObject({ kinds: { requirement: { fetched: 1, baseRows: 1 } } });
-    workingRequirements = [{ ...workingRequirements[0]!, payload: { reqId: "REQ-SEAM", title: "local edit" } }];
-    await expect(status(deps, { projectId: "project-seam", projectVersionId: "version-seam" }, ["requirement"]))
-      .resolves.toMatchObject({
-        local: [{ kind: "requirement", key: requirementKey, fields: ["title"] }],
-        upstream: [],
-        conflicts: [],
-      });
+    await expect(
+      pull(
+        deps,
+        { projectId: "project-seam", projectVersionId: "version-seam" },
+        ["requirement"],
+      ),
+    ).resolves.toMatchObject({
+      kinds: { requirement: { fetched: 1, baseRows: 1 } },
+    });
+    workingRequirements = [
+      {
+        ...workingRequirements[0]!,
+        payload: { reqId: "REQ-SEAM", title: "local edit" },
+      },
+    ];
+    await expect(
+      status(
+        deps,
+        { projectId: "project-seam", projectVersionId: "version-seam" },
+        ["requirement"],
+      ),
+    ).resolves.toMatchObject({
+      local: [{ kind: "requirement", key: requirementKey, fields: ["title"] }],
+      upstream: [],
+      conflicts: [],
+    });
   });
 
   it("throws on duplicate kind registration", () => {
-    expect(() => registerAdapter(foreignAdapter)).toThrow(DuplicateAdapterError);
+    expect(() => registerAdapter(foreignAdapter)).toThrow(
+      DuplicateAdapterError,
+    );
   });
 
   it("serves frozen sync RPCs and fails push closed when human authorization is unavailable", async () => {
@@ -182,14 +238,17 @@ describe("sync registration", () => {
       baseStateSha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
       kinds: {
         requirement: { fetched: 1, baseRows: 1 },
-        vexDecision: { fetched: expect.any(Number), baseRows: expect.any(Number) },
+        vexDecision: {
+          fetched: expect.any(Number),
+          baseRows: expect.any(Number),
+        },
       },
     });
     if (
-      typeof pulled !== "object"
-      || pulled === null
-      || !("generationId" in pulled)
-      || typeof pulled.generationId !== "string"
+      typeof pulled !== "object" ||
+      pulled === null ||
+      !("generationId" in pulled) ||
+      typeof pulled.generationId !== "string"
     ) {
       throw new Error("syncPull returned no generation id");
     }
@@ -211,7 +270,9 @@ describe("sync registration", () => {
       },
       cache: { acceptedGenerationId: pulledGenerationId },
     });
-    await expect(host.harness.behavior.callRpc("syncPlan", scope)).resolves.toMatchObject({
+    await expect(
+      host.harness.behavior.callRpc("syncPlan", scope),
+    ).resolves.toMatchObject({
       ...scope,
       planId: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{26}$/u),
       planSha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
@@ -224,7 +285,8 @@ describe("sync registration", () => {
       staleness: { degraded: true },
       cache: {
         state: "stale",
-        message: "Working tree unavailable; plan includes upstream changes only",
+        message:
+          "Working tree unavailable; plan includes upstream changes only",
         acceptedGenerationId: pulledGenerationId,
       },
     });
@@ -235,25 +297,31 @@ describe("sync registration", () => {
       expectedBaseStateSha256: "b".repeat(64),
       humanApprovalCapability: "approval-capability-wp17-00000000",
     };
-    await expect(host.harness.behavior.callRpc("syncPush", pushInput)).rejects.toMatchObject({
+    await expect(
+      host.harness.behavior.callRpc("syncPush", pushInput),
+    ).rejects.toMatchObject({
       code: "handler_error",
       message: expect.stringContaining("authorization-unavailable"),
     });
-    await expect(host.harness.behavior.callRpc("syncPushRetry", {
-      ...pushInput,
-      runId: "push-run-wp19",
-    })).rejects.toMatchObject({
+    await expect(
+      host.harness.behavior.callRpc("syncPushRetry", {
+        ...pushInput,
+        runId: "push-run-wp19",
+      }),
+    ).rejects.toMatchObject({
       code: "handler_error",
       message: expect.stringContaining("authorization-unavailable"),
     });
-    expect(host.harness.registrations.rpcMethods).toEqual(expect.arrayContaining([
-      "syncPull",
-      "syncStatus",
-      "syncPlan",
-      "syncConflictResolve",
-      "syncPush",
-      "syncPushRetry",
-    ]));
+    expect(host.harness.registrations.rpcMethods).toEqual(
+      expect.arrayContaining([
+        "syncPull",
+        "syncStatus",
+        "syncPlan",
+        "syncConflictResolve",
+        "syncPush",
+        "syncPushRetry",
+      ]),
+    );
   });
 
   it("partitions direct-Platform local, upstream, and both-side VEX edits exactly", async () => {
@@ -264,35 +332,48 @@ describe("sync registration", () => {
       isFileClean: async () => false,
     };
     await pull(deps, scope, ["vexDecision"]);
-    const findings = [...state.findings.values()].flatMap((row) => {
-      const componentId = findingComponentId(row);
-      return row["projectVersionId"] === scope.projectVersionId
-        && typeof row["vexStatus"] === "string"
-        && componentId !== null
-        ? [{ row, componentId }]
-        : [];
-    }).slice(0, 3);
-    if (findings.length !== 3) throw new Error("fixture has fewer than three VEX findings");
+    const findings = [...state.findings.values()]
+      .flatMap((row) => {
+        const component = findingComponentIdentity(row);
+        return row["projectVersionId"] === scope.projectVersionId &&
+          typeof row["vexStatus"] === "string" &&
+          component !== null
+          ? [{ row, component }]
+          : [];
+      })
+      .slice(0, 3);
+    if (findings.length !== 3)
+      throw new Error("fixture has fewer than three VEX findings");
     const directory = join(root, ".fs", "triage", scope.projectId);
     await mkdir(directory, { recursive: true });
     for (const [index, finding] of findings.entries()) {
-      const { row, componentId } = finding;
-      const localStatus = index === 0 ? "NOT_AFFECTED" : index === 2 ? "FALSE_POSITIVE" : row["vexStatus"];
-      const localReason = index === 0 || index === 2 ? `local edit ${index}` : null;
-      await writeFile(join(directory, `${index}.yaml`), `schema: fs-triage/v1
+      const { row, component } = finding;
+      const localStatus =
+        index === 0
+          ? "NOT_AFFECTED"
+          : index === 2
+            ? "FALSE_POSITIVE"
+            : row["vexStatus"];
+      const localReason =
+        index === 0 || index === 2 ? `local edit ${index}` : null;
+      await writeFile(
+        join(directory, `${index}.yaml`),
+        `schema: fs-triage/v1
 project: ${JSON.stringify(scope.projectId)}
 component:
   purl: null
-  name: ${JSON.stringify(componentId)}
+  name: ${JSON.stringify(component.name)}
   group: null
-  version: null
+  version: ${JSON.stringify(component.version)}
 decisions:
   ${String(row["cve"])}:
     status: ${JSON.stringify(localStatus)}
     justification: null
     response: null
     reason: ${JSON.stringify(localReason)}
-`, "utf8");
+`,
+        "utf8",
+      );
     }
     findings[1]!.row["vexStatus"] = "RESOLVED";
     findings[1]!.row["vexReason"] = "upstream edit";
@@ -304,7 +385,12 @@ decisions:
     expect(report.upstream).toHaveLength(1);
     expect(report.conflicts).toHaveLength(1);
     expect(report.orphans).toEqual([]);
-    expect(Object.keys(report)).toEqual(["local", "upstream", "conflicts", "orphans"]);
+    expect(Object.keys(report)).toEqual([
+      "local",
+      "upstream",
+      "conflicts",
+      "orphans",
+    ]);
   });
 
   it("runs the verb-first triage CLI with the documented leading command tolerance", async () => {
@@ -317,9 +403,14 @@ decisions:
         projectId: "bb-project-sync",
       },
     );
-    expect(result.exitCode).toBe(0);
+    expect(result).toMatchObject({ exitCode: 0, stderr: "" });
     expect(JSON.parse(result.stdout)).toMatchObject({
-      kinds: { vexDecision: { fetched: expect.any(Number), baseRows: expect.any(Number) } },
+      kinds: {
+        vexDecision: {
+          fetched: expect.any(Number),
+          baseRows: expect.any(Number),
+        },
+      },
     });
     const machine = await host.harness.behavior.runCli(
       ["status", "triage", "--json"],
@@ -330,10 +421,124 @@ decisions:
       },
     );
     expect(machine).toMatchObject({ exitCode: 0, stderr: "" });
-    expect(JSON.parse(machine.stdout)).toMatchObject({ local: [], conflicts: [], orphans: [] });
-    expect(host.harness.realtimeSignals.some((signal) => signal.channel === "fs-sync-pull")).toBe(true);
+    expect(JSON.parse(machine.stdout)).toMatchObject({
+      local: [],
+      conflicts: [],
+      orphans: [],
+    });
+    expect(
+      host.harness.realtimeSignals.some(
+        (signal) => signal.channel === "fs-sync-pull",
+      ),
+    ).toBe(true);
     expect(host.harness.sdk.callsTo("threads.get")).toHaveLength(2);
     expect(host.harness.sdk.callsTo("environments.get")).toHaveLength(2);
+  });
+
+  it("reports truthful counts and persists captured real findings through the registered CLI", async () => {
+    registerFindings(host.bb, context);
+    const scope = platformScope();
+    const argv = [
+      "pull",
+      "finding",
+      "--project",
+      scope.projectId,
+      "--version",
+      scope.projectVersionId,
+      "--json",
+    ];
+    const first = await host.harness.behavior.runCli(argv, {
+      cwd: root,
+      threadId: "thread-sync-cli",
+      projectId: "bb-project-sync",
+    });
+    expect(first.exitCode).toBe(0);
+    expect(JSON.parse(first.stdout)).toMatchObject({
+      kinds: { finding: { fetched: 4_000, baseRows: 4_000 } },
+    });
+    const repeated = await host.harness.behavior.runCli(argv, {
+      cwd: root,
+      threadId: "thread-sync-cli",
+      projectId: "bb-project-sync",
+    });
+    expect(repeated.exitCode).toBe(0);
+    expect(JSON.parse(repeated.stdout)).toMatchObject({
+      kinds: { finding: { fetched: 4_000, baseRows: 4_000 } },
+    });
+
+    for (const captured of [
+      {
+        projectId: "cfe6fb97-ed49-5ace-b0fe-8121dba2c793",
+        projectVersionId: "b3df3633-ebd7-560e-a3b7-77953521b4e3",
+        findingId: "0b529d2b-9da8-556e-81e4-f0f57a59956a",
+        cve: "CVE-2016-4658",
+        componentGroup: "debian",
+        componentName: "libxml2",
+        componentVersion: "2.9.4+dfsg1-2.2+deb9u2",
+      },
+      {
+        projectId: "5d78bed3-fa8e-59cf-b8a1-6046853ba785",
+        projectVersionId: "89ad8a41-2185-5df0-968b-c250312c908b",
+        findingId: "85c04807-db47-4853-b659-ece4214ef395",
+        cve: "CVE-2026-34877",
+        componentGroup: null,
+        componentName: "Mbed TLS",
+        componentVersion: "3.0.0",
+      },
+    ]) {
+      const result = await host.harness.behavior.runCli(
+        [
+          "pull",
+          "finding",
+          "--project",
+          captured.projectId,
+          "--version",
+          captured.projectVersionId,
+          "--json",
+        ],
+        {
+          cwd: root,
+          threadId: "thread-sync-cli",
+          projectId: "bb-project-sync",
+        },
+      );
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        kinds: { finding: { fetched: 1, baseRows: 1 } },
+      });
+      const persisted = context
+        .db()
+        .prepare(
+          `SELECT cve, stable_key AS stableKey,
+                  component_group AS componentGroup,
+                  component_name AS componentName,
+                  component_version AS componentVersion
+           FROM findings
+          WHERE project_id = ? AND project_version_id = ? AND finding_id = ?`,
+        )
+        .get(
+          captured.projectId,
+          captured.projectVersionId,
+          captured.findingId,
+        ) as
+        | {
+            cve: string;
+            stableKey: string;
+            componentGroup: string | null;
+            componentName: string;
+            componentVersion: string | null;
+          }
+        | undefined;
+      expect(persisted).toMatchObject({
+        cve: captured.cve,
+        componentGroup: captured.componentGroup,
+        componentName: captured.componentName,
+        componentVersion: captured.componentVersion,
+      });
+      expect(parseFindingStableKey(persisted?.stableKey ?? "").cve).toBe(
+        captured.cve,
+      );
+    }
   });
 
   it("delegates the firmware namespace without changing sync verb parsing", async () => {
@@ -354,7 +559,15 @@ decisions:
 
   it("delegates the additive bench verdict namespace without changing sync verbs", async () => {
     const result = await host.harness.behavior.runCli(
-      ["finite-state", "bench", "verdict", "pv-1", "--digest", "a".repeat(64), "--json"],
+      [
+        "finite-state",
+        "bench",
+        "verdict",
+        "pv-1",
+        "--digest",
+        "a".repeat(64),
+        "--json",
+      ],
       { threadId: "thread-sync-cli", projectId: "bb-project-sync" },
     );
 
@@ -369,9 +582,12 @@ decisions:
   });
 
   it("refuses CLI working-tree access without a bb thread identity", async () => {
-    const result = await host.harness.behavior.runCli(["status", "triage", "--json"], {
-      cwd: root,
-    });
+    const result = await host.harness.behavior.runCli(
+      ["status", "triage", "--json"],
+      {
+        cwd: root,
+      },
+    );
     expect(result).toMatchObject({
       exitCode: 1,
       stdout: "",

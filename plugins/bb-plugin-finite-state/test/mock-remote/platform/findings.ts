@@ -4,7 +4,7 @@ import {
   platformArrayPage,
   platformPageBounds,
 } from "./paging.js";
-import type { MockPlatformState } from "./state.js";
+import { findingProjectVersionId, type MockPlatformState } from "./state.js";
 
 function findingComments(
   state: MockPlatformState,
@@ -18,7 +18,10 @@ function findingComments(
     .map(({ findingId: _findingId, ...comment }) => structuredClone(comment));
 }
 
-function filteredFindings(request: Request, state: MockPlatformState): Record<string, unknown>[] | null {
+function filteredFindings(
+  request: Request,
+  state: MockPlatformState,
+): Record<string, unknown>[] | null {
   const url = new URL(request.url);
   const filter = url.searchParams.get("filter");
   const all = [...state.findings.values()];
@@ -26,7 +29,9 @@ function filteredFindings(request: Request, state: MockPlatformState): Record<st
   const match = /^projectVersion==([^;]+);findingId==([^;]+)$/u.exec(filter);
   if (match === null) return null;
   return all.filter(
-    (finding) => finding.projectVersionId === match[1] && finding.id === match[2],
+    (finding) =>
+      findingProjectVersionId(finding, "finding route") === match[1] &&
+      finding.id === match[2],
   );
 }
 
@@ -34,11 +39,17 @@ function detailRows(request: Request, state: MockPlatformState): Response {
   const values = filteredFindings(request, state);
   if (values === null) {
     return Response.json(
-      { error: { code: "PLATFORM_INVALID_FILTER", message: "Finding filter is invalid" } },
+      {
+        error: {
+          code: "PLATFORM_INVALID_FILTER",
+          message: "Finding filter is invalid",
+        },
+      },
       { status: 400 },
     );
   }
-  const includeComments = new URL(request.url).searchParams.get("includeComments") === "true";
+  const includeComments =
+    new URL(request.url).searchParams.get("includeComments") === "true";
   return platformArrayPage(
     request,
     values.map((finding) => ({
@@ -47,7 +58,7 @@ function detailRows(request: Request, state: MockPlatformState): Response {
         ? {
             comments: findingComments(
               state,
-              String(finding.projectVersionId),
+              findingProjectVersionId(finding, "finding comments"),
               String(finding.id),
             ),
           }
@@ -56,9 +67,13 @@ function detailRows(request: Request, state: MockPlatformState): Response {
   );
 }
 
-function versionFindings(state: MockPlatformState, projectVersionId: string): Record<string, unknown>[] {
+function versionFindings(
+  state: MockPlatformState,
+  projectVersionId: string,
+): Record<string, unknown>[] {
   return [...state.findings.values()].filter(
-    (finding) => finding.projectVersionId === projectVersionId,
+    (finding) =>
+      findingProjectVersionId(finding, "finding route") === projectVersionId,
   );
 }
 
@@ -95,7 +110,12 @@ export function registerFindingHandlers(
     ({ request, params }) => {
       if (!state.versions.has(params.projectVersionId)) {
         return Response.json(
-          { error: { code: "VERSION_NOT_FOUND", message: "Version was not found" } },
+          {
+            error: {
+              code: "VERSION_NOT_FOUND",
+              message: "Version was not found",
+            },
+          },
           { status: 404 },
         );
       }
@@ -116,7 +136,12 @@ export function registerFindingHandlers(
     ({ request, params }) => {
       if (!state.projects.has(params.projectId)) {
         return Response.json(
-          { error: { code: "PROJECT_NOT_FOUND", message: "Project was not found" } },
+          {
+            error: {
+              code: "PROJECT_NOT_FOUND",
+              message: "Project was not found",
+            },
+          },
           { status: 404 },
         );
       }
@@ -129,10 +154,14 @@ export function registerFindingHandlers(
           { status: 400 },
         );
       }
-      const values = state.findingActivity.get(`${params.projectId}:${cve}`) ?? [];
-      const members = projectVersionId === null
-        ? values
-        : values.filter((event) => event.projectVersionId === projectVersionId);
+      const values =
+        state.findingActivity.get(`${params.projectId}:${cve}`) ?? [];
+      const members =
+        projectVersionId === null
+          ? values
+          : values.filter(
+              (event) => event.projectVersionId === projectVersionId,
+            );
       return platformArrayPage(request, members);
     },
   );
@@ -144,11 +173,18 @@ export function registerFindingHandlers(
     registry.register(routeId, ({ params }) => {
       if (!state.versions.has(params.projectVersionId)) {
         return Response.json(
-          { error: { code: "VERSION_NOT_FOUND", message: "Version was not found" } },
+          {
+            error: {
+              code: "VERSION_NOT_FOUND",
+              message: "Version was not found",
+            },
+          },
           { status: 404 },
         );
       }
-      return Response.json(body(uniqueVersionFindings(state, params.projectVersionId)));
+      return Response.json(
+        body(uniqueVersionFindings(state, params.projectVersionId)),
+      );
     });
   };
   registerSummary(
@@ -171,7 +207,10 @@ export function registerFindingHandlers(
   );
   registerSummary(
     "platform:GET:/public/v0/project/version/{projectVersionId}/findings/category/counts",
-    (findings) => ({ byCategory: { CVE: findings.length }, total: findings.length }),
+    (findings) => ({
+      byCategory: { CVE: findings.length },
+      total: findings.length,
+    }),
   );
   registerSummary(
     "platform:GET:/public/v0/project/version/{projectVersionId}/findings/severities/counts",

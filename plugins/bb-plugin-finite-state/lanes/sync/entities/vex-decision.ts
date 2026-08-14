@@ -1,10 +1,25 @@
 import { randomUUID } from "node:crypto";
-import { readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import {
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { basename, join, relative, resolve, sep } from "node:path";
 
 import type { Json, PlatformClient } from "../../../lib/remote/types.js";
-import { ENTITIES } from "../../../lib/sync/registry.js";
 import { stripVexProvenance } from "../../findings/bulk/readback.js";
+import {
+  canonicalFindingStableKey,
+  canonicalizeFindingIdentity,
+  legacyFindingStableKey,
+  selectFindingCve,
+  type CanonicalFindingIdentity,
+  type FindingIdentityInput,
+} from "../../findings/stable-key/canonical.js";
+import { currentFindingIdentity } from "../../findings/stable-key/wire-identity.js";
 import { createSerializer } from "../serialize/serializer.js";
 import { SerializeError } from "../serialize/yaml.js";
 import type {
@@ -25,7 +40,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isJsonRecord(value: Json | undefined): value is Record<string, Json> {
-  return value !== null && value !== undefined && typeof value === "object" && !Array.isArray(value);
+  return (
+    value !== null &&
+    value !== undefined &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+  );
 }
 
 function requiredString(
@@ -45,11 +65,14 @@ function optionalString(
 ): string | null {
   const value = row[field];
   if (value === undefined || value === null) return null;
-  if (typeof value !== "string") throw new TypeError(`Platform finding ${field} must be a string or null`);
+  if (typeof value !== "string")
+    throw new TypeError(`Platform finding ${field} must be a string or null`);
   return value;
 }
 
-function nestedComponent(row: Readonly<Record<string, Json>>): Readonly<Record<string, Json>> | null {
+function nestedComponent(
+  row: Readonly<Record<string, Json>>,
+): Readonly<Record<string, Json>> | null {
   const value = row["component"];
   return isJsonRecord(value) ? value : null;
 }
@@ -72,17 +95,23 @@ function purlIdentity(purl: string | null): {
   try {
     return {
       name: decodeURIComponent(encodedName),
-      group: segments.length === 0 ? null : segments.map(decodeURIComponent).join("/"),
-      version: encodedVersion === null || encodedVersion.length === 0
-        ? null
-        : decodeURIComponent(encodedVersion),
+      group:
+        segments.length === 0
+          ? null
+          : segments.map(decodeURIComponent).join("/"),
+      version:
+        encodedVersion === null || encodedVersion.length === 0
+          ? null
+          : decodeURIComponent(encodedVersion),
     };
   } catch {
     return null;
   }
 }
 
-function vexPayload(row: Readonly<Record<string, Json>>): Record<string, unknown> | null {
+function vexPayload(
+  row: Readonly<Record<string, Json>>,
+): Record<string, unknown> | null {
   const tuple = {
     status: optionalString(row, "vexStatus"),
     justification: optionalString(row, "vexJustification"),
@@ -92,16 +121,21 @@ function vexPayload(row: Readonly<Record<string, Json>>): Record<string, unknown
   return Object.values(tuple).every((value) => value === null) ? null : tuple;
 }
 
-function findingIdentity(row: Readonly<Record<string, Json>>) {
+function legacyVexIdentity(
+  row: Readonly<Record<string, Json>>,
+): FindingIdentityInput | null {
   const component = nestedComponent(row);
-  const componentId = optionalString(row, "componentId")
-    ?? (component === null ? null : optionalString(component, "id"));
-  if (componentId === null) throw new TypeError("Platform finding is missing component identity id");
+  const componentId =
+    optionalString(row, "componentId") ??
+    (component === null ? null : optionalString(component, "id"));
+  const cve = optionalString(row, "cve");
+  if (componentId === null || cve === null) return null;
   const purl = optionalString(row, "componentPurl");
   const parsed = purlIdentity(purl);
-  const fallback = optionalString(row, "componentFallbackIdentity") ?? componentId;
+  const fallback =
+    optionalString(row, "componentFallbackIdentity") ?? componentId;
   return {
-    cve: requiredString(row, "cve"),
+    cve,
     purl,
     name: parsed?.name ?? fallback,
     group: parsed?.group ?? null,
@@ -109,9 +143,45 @@ function findingIdentity(row: Readonly<Record<string, Json>>) {
   };
 }
 
+function findingIdentity(
+  row: Readonly<Record<string, Json>>,
+): CanonicalFindingIdentity {
+  const identity = currentFindingIdentity(row, new Map());
+  if (identity !== null) return canonicalizeFindingIdentity(identity);
+  const component = nestedComponent(row);
+  const cve = selectFindingCve({
+    cve: optionalString(row, "cve"),
+    findingIdentifier: optionalString(row, "findingIdentifier"),
+    findingId: optionalString(row, "findingId"),
+    vulnerabilityId: optionalString(row, "vulnerabilityId"),
+  });
+  const purl =
+    optionalString(row, "componentPurl") ?? optionalString(row, "purl");
+  const parsed = purlIdentity(purl);
+  const componentId =
+    optionalString(row, "componentId") ??
+    (component === null ? null : optionalString(component, "id"));
+  const name =
+    parsed?.name ??
+    optionalString(row, "componentFallbackIdentity") ??
+    componentId;
+  if (cve === null || name === null) {
+    throw new TypeError("Platform finding is missing canonical identity");
+  }
+  return canonicalizeFindingIdentity({
+    cve,
+    purl,
+    name,
+    group: parsed?.group ?? null,
+    version: parsed?.version ?? null,
+  });
+}
+
 /** Computes the frozen exact canonical key for any normalized Platform finding. */
-export function projectVexDecisionKey(row: Readonly<Record<string, Json>>): string {
-  return ENTITIES.vexDecision.key(findingIdentity(row));
+export function projectVexDecisionKey(
+  row: Readonly<Record<string, Json>>,
+): string {
+  return canonicalFindingStableKey(findingIdentity(row));
 }
 
 /** Projects one normalized Platform finding into the frozen VEX overlay shape. */
@@ -133,7 +203,10 @@ export function projectVexDecision(
  */
 export function createVexDecisionResolver(client: PlatformClient): KeyResolver {
   const pending = new Map<string, Promise<ReadonlySet<string>>>();
-  const serverKeys = (projectId: string, projectVersionId: string): Promise<ReadonlySet<string>> => {
+  const serverKeys = (
+    projectId: string,
+    projectVersionId: string,
+  ): Promise<ReadonlySet<string>> => {
     const scopeKey = `${projectId}\0${projectVersionId}`;
     const current = pending.get(scopeKey);
     if (current !== undefined) return current;
@@ -166,7 +239,10 @@ function normalizedFile(root: string, file: string): string {
   return relative(root, file).split(sep).join("/");
 }
 
-async function yamlFiles(directory: string, projectId?: string): Promise<string[]> {
+async function yamlFiles(
+  directory: string,
+  projectId?: string,
+): Promise<string[]> {
   let entries;
   try {
     entries = await readdir(directory, { withFileTypes: true });
@@ -178,11 +254,11 @@ async function yamlFiles(directory: string, projectId?: string): Promise<string[
   for (const entry of entries) {
     if (projectId !== undefined && entry.name !== projectId) continue;
     const path = join(directory, entry.name);
-    if (entry.isDirectory()) files.push(...await yamlFiles(path));
+    if (entry.isDirectory()) files.push(...(await yamlFiles(path)));
     if (
-      entry.isFile()
-      && (entry.name.endsWith(".yaml") || entry.name.endsWith(".yml"))
-      && entry.name !== "policy.yaml"
+      entry.isFile() &&
+      (entry.name.endsWith(".yaml") || entry.name.endsWith(".yml")) &&
+      entry.name !== "policy.yaml"
     ) {
       files.push(path);
     }
@@ -190,48 +266,94 @@ async function yamlFiles(directory: string, projectId?: string): Promise<string[
   return files.sort((left, right) => left.localeCompare(right));
 }
 
-function stringOrNull(value: unknown, field: string, file: string): string | null {
+function stringOrNull(
+  value: unknown,
+  field: string,
+  file: string,
+): string | null {
   if (value === undefined || value === null) return null;
-  if (typeof value !== "string") throw new SerializeError(file, 1, `${field} must be a string or null`);
+  if (typeof value !== "string")
+    throw new SerializeError(file, 1, `${field} must be a string or null`);
   return value;
 }
 
 function componentIdentity(
   raw: Record<string, unknown>,
   file: string,
-): { purl: string | null; name: string; group: string | null; version: string | null } {
+): {
+  purl: string | null;
+  name: string;
+  group: string | null;
+  version: string | null;
+} {
   const purl = stringOrNull(raw["purl"], "component.purl", file);
   const parsed = purlIdentity(purl);
   const name = raw["name"];
   if (typeof name !== "string" && parsed === null) {
-    throw new SerializeError(file, 1, "component.name is required when component.purl cannot provide it");
+    throw new SerializeError(
+      file,
+      1,
+      "component.name is required when component.purl cannot provide it",
+    );
   }
   return {
     purl,
-    name: typeof name === "string" ? name : parsed?.name ?? "",
-    group: stringOrNull(raw["group"], "component.group", file) ?? parsed?.group ?? null,
-    version: stringOrNull(raw["version"], "component.version", file) ?? parsed?.version ?? null,
+    name: typeof name === "string" ? name : (parsed?.name ?? ""),
+    group:
+      stringOrNull(raw["group"], "component.group", file) ??
+      parsed?.group ??
+      null,
+    version:
+      stringOrNull(raw["version"], "component.version", file) ??
+      parsed?.version ??
+      null,
   };
 }
 
-function decisionPayload(raw: Record<string, unknown>, file: string): Record<string, unknown> {
-  return Object.fromEntries(VEX_FIELDS.map((field) => [
-    field,
-    stringOrNull(raw[field], `decision.${field}`, file),
-  ]));
+function authoredVexKey(
+  cve: string,
+  identity: ReturnType<typeof componentIdentity>,
+  file: string,
+): string {
+  try {
+    return canonicalFindingStableKey(
+      canonicalizeFindingIdentity({ cve, ...identity }),
+    );
+  } catch (error: unknown) {
+    throw new SerializeError(file, 1, "triage component identity is invalid", {
+      cause: error,
+    });
+  }
+}
+
+function decisionPayload(
+  raw: Record<string, unknown>,
+  file: string,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    VEX_FIELDS.map((field) => [
+      field,
+      stringOrNull(raw[field], `decision.${field}`, file),
+    ]),
+  );
 }
 
 function aggregateDecisions(
   document: Record<string, unknown>,
   file: string,
-): Array<{ cve: string; identity: ReturnType<typeof componentIdentity>; payload: Record<string, unknown> }> {
+): Array<{
+  cve: string;
+  identity: ReturnType<typeof componentIdentity>;
+  payload: Record<string, unknown>;
+}> {
   if (!isRecord(document["component"]) || !isRecord(document["decisions"])) {
     return [];
   }
   const identity = componentIdentity(document["component"], file);
   const result = [];
   for (const [cve, value] of Object.entries(document["decisions"])) {
-    if (!isRecord(value)) throw new SerializeError(file, 1, `decision ${cve} must be a mapping`);
+    if (!isRecord(value))
+      throw new SerializeError(file, 1, `decision ${cve} must be a mapping`);
     result.push({ cve, identity, payload: decisionPayload(value, file) });
   }
   return result;
@@ -240,13 +362,19 @@ function aggregateDecisions(
 function singleDecision(
   document: Record<string, unknown>,
   file: string,
-): Array<{ cve: string; identity: ReturnType<typeof componentIdentity>; payload: Record<string, unknown> }> {
+): Array<{
+  cve: string;
+  identity: ReturnType<typeof componentIdentity>;
+  payload: Record<string, unknown>;
+}> {
   if (typeof document["cve"] !== "string") return [];
-  return [{
-    cve: document["cve"],
-    identity: componentIdentity(document, file),
-    payload: decisionPayload(document, file),
-  }];
+  return [
+    {
+      cve: document["cve"],
+      identity: componentIdentity(document, file),
+      payload: decisionPayload(document, file),
+    },
+  ];
 }
 
 /**
@@ -257,9 +385,13 @@ export class VexWorkingReadError extends SerializeError {
   readonly issues: readonly SerializeError[];
   readonly partialWorking: readonly WorkingEntity[];
 
-  constructor(issues: readonly SerializeError[], partialWorking: readonly WorkingEntity[]) {
+  constructor(
+    issues: readonly SerializeError[],
+    partialWorking: readonly WorkingEntity[],
+  ) {
     const first = issues[0];
-    if (first === undefined) throw new TypeError("VexWorkingReadError requires at least one issue");
+    if (first === undefined)
+      throw new TypeError("VexWorkingReadError requires at least one issue");
     super(
       first.file,
       first.line,
@@ -281,29 +413,48 @@ export async function readVexWorking(
   const result: WorkingEntity[] = [];
   const keys = new Map<string, string>();
   const issues: SerializeError[] = [];
-  for (const absoluteFile of await yamlFiles(join(root, ".fs", "triage"), scope?.projectId)) {
+  for (const absoluteFile of await yamlFiles(
+    join(root, ".fs", "triage"),
+    scope?.projectId,
+  )) {
     const file = normalizedFile(root, absoluteFile);
     try {
-      const document = serializer.fromYaml(await readFile(absoluteFile, "utf8"), file);
+      const document = serializer.fromYaml(
+        await readFile(absoluteFile, "utf8"),
+        file,
+      );
       const aggregate = aggregateDecisions(document, file);
-      const decisions = aggregate.length > 0 ? aggregate : singleDecision(document, file);
+      const decisions =
+        aggregate.length > 0 ? aggregate : singleDecision(document, file);
       if (scope !== undefined && document["project"] !== scope.projectId) {
-        throw new SerializeError(file, 1, `overlay project must match sync scope ${scope.projectId}`);
+        throw new SerializeError(
+          file,
+          1,
+          `overlay project must match sync scope ${scope.projectId}`,
+        );
       }
       if (decisions.length === 0) {
         // Supplier proposals are a separate, local-only record class. They are
         // visible through the overlay projection but must never become sync
         // entities until a human writes a strict decision.
         if (isRecord(document["proposals"])) continue;
-        throw new SerializeError(file, 1, `${basename(file)} is not an fs-triage decision document`);
+        throw new SerializeError(
+          file,
+          1,
+          `${basename(file)} is not an fs-triage decision document`,
+        );
       }
       const fileRows: WorkingEntity[] = [];
       const fileKeys = new Set<string>();
       for (const decision of decisions) {
-        const key = ENTITIES.vexDecision.key({ cve: decision.cve, ...decision.identity });
+        const key = authoredVexKey(decision.cve, decision.identity, file);
         const prior = keys.get(key);
         if (prior !== undefined || fileKeys.has(key)) {
-          throw new SerializeError(file, 1, `decision key is already authored in ${prior ?? file}`);
+          throw new SerializeError(
+            file,
+            1,
+            `decision key is already authored in ${prior ?? file}`,
+          );
         }
         fileKeys.add(key);
         fileRows.push({ key, payload: decision.payload, file });
@@ -330,12 +481,153 @@ async function atomicWrite(file: string, contents: string): Promise<void> {
   const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
   try {
     const metadata = await stat(file);
-    await writeFile(temporary, contents, { encoding: "utf8", mode: metadata.mode });
+    await writeFile(temporary, contents, {
+      encoding: "utf8",
+      mode: metadata.mode,
+    });
     await rename(temporary, file);
   } catch (error: unknown) {
     await rm(temporary, { force: true }).catch(() => undefined);
     throw error;
   }
+}
+
+export interface VexKeyMigration {
+  key: string;
+  identity: CanonicalFindingIdentity;
+}
+
+function rememberMigration(
+  migrations: Map<string, VexKeyMigration>,
+  legacyIdentity: FindingIdentityInput | null,
+  canonical: CanonicalFindingIdentity,
+): void {
+  if (legacyIdentity === null) return;
+  const legacyKey = legacyFindingStableKey(legacyIdentity);
+  const canonicalKey = canonicalFindingStableKey(canonical);
+  if (legacyKey === null || legacyKey === canonicalKey) return;
+  const prior = migrations.get(legacyKey);
+  if (prior !== undefined && prior.key !== canonicalKey) {
+    throw new TypeError(`Legacy VEX key maps to multiple canonical identities`);
+  }
+  migrations.set(legacyKey, { key: canonicalKey, identity: canonical });
+}
+
+function writeCanonicalComponent(
+  target: Record<string, unknown>,
+  identity: CanonicalFindingIdentity,
+): void {
+  target["purl"] = identity.purl;
+  target["name"] = identity.name;
+  target["group"] = identity.group;
+  // Authored values must reproduce the server key on the next read. The
+  // decoded version is presentation-only; keyVersion retains wire identity.
+  target["version"] = identity.keyVersion;
+}
+
+/** Applies the FS-173 declared old-to-new map while retaining decision tuples and provenance. */
+export async function migrateVexWorkingKeys(
+  worktreeRoot: string,
+  scope: SyncScope,
+  migrations: ReadonlyMap<string, VexKeyMigration>,
+): Promise<number> {
+  if (migrations.size === 0) return 0;
+  const root = resolve(worktreeRoot);
+  const serializer = createSerializer("vexDecision");
+  let migrated = 0;
+  for (const absoluteFile of await yamlFiles(
+    join(root, ".fs", "triage"),
+    scope.projectId,
+  )) {
+    const file = normalizedFile(root, absoluteFile);
+    let document: Record<string, unknown>;
+    try {
+      document = serializer.fromYaml(
+        await readFile(absoluteFile, "utf8"),
+        file,
+      );
+    } catch (error: unknown) {
+      if (error instanceof SerializeError) continue;
+      throw error;
+    }
+    if (document["project"] !== scope.projectId) continue;
+    let changed = false;
+    if (isRecord(document["component"]) && isRecord(document["decisions"])) {
+      let component: ReturnType<typeof componentIdentity>;
+      try {
+        component = componentIdentity(document["component"], file);
+      } catch (error: unknown) {
+        if (error instanceof SerializeError) continue;
+        throw error;
+      }
+      let targetComponent: CanonicalFindingIdentity | null = null;
+      const replacements: Array<{ from: string; to: string; value: unknown }> =
+        [];
+      for (const [cve, value] of Object.entries(document["decisions"])) {
+        const oldKey = legacyFindingStableKey({ cve, ...component });
+        const migration = oldKey === null ? undefined : migrations.get(oldKey);
+        if (migration === undefined) continue;
+        if (
+          targetComponent !== null &&
+          (targetComponent.purl !== migration.identity.purl ||
+            targetComponent.name !== migration.identity.name ||
+            targetComponent.group !== migration.identity.group ||
+            targetComponent.keyVersion !== migration.identity.keyVersion)
+        ) {
+          throw new SerializeError(
+            file,
+            1,
+            "one aggregate triage file maps to multiple canonical components",
+          );
+        }
+        targetComponent = migration.identity;
+        replacements.push({ from: cve, to: migration.identity.cve, value });
+      }
+      if (targetComponent !== null) {
+        for (const replacement of replacements) {
+          if (
+            replacement.from !== replacement.to &&
+            document["decisions"][replacement.to] !== undefined
+          ) {
+            throw new SerializeError(
+              file,
+              1,
+              `canonical CVE ${replacement.to} is already authored`,
+            );
+          }
+        }
+        for (const replacement of replacements) {
+          if (replacement.from !== replacement.to)
+            delete document["decisions"][replacement.from];
+          document["decisions"][replacement.to] = replacement.value;
+          migrated += 1;
+        }
+        writeCanonicalComponent(document["component"], targetComponent);
+        changed = true;
+      }
+    } else if (typeof document["cve"] === "string") {
+      let component: ReturnType<typeof componentIdentity>;
+      try {
+        component = componentIdentity(document, file);
+      } catch (error: unknown) {
+        if (error instanceof SerializeError) continue;
+        throw error;
+      }
+      const oldKey = legacyFindingStableKey({
+        cve: document["cve"],
+        ...component,
+      });
+      const migration = oldKey === null ? undefined : migrations.get(oldKey);
+      if (migration !== undefined) {
+        document["cve"] = migration.identity.cve;
+        writeCanonicalComponent(document, migration.identity);
+        migrated += 1;
+        changed = true;
+      }
+    }
+    if (changed) await atomicWrite(absoluteFile, emitYaml(document));
+  }
+  return migrated;
 }
 
 /**
@@ -355,24 +647,33 @@ export async function fastForwardVexWorking(
     if (absoluteFile !== root && !absoluteFile.startsWith(`${root}${sep}`)) {
       throw new SerializeError(file, null, "triage file escapes the worktree");
     }
-    const document = serializer.fromYaml(await readFile(absoluteFile, "utf8"), file);
+    const document = serializer.fromYaml(
+      await readFile(absoluteFile, "utf8"),
+      file,
+    );
     let changed = false;
     if (isRecord(document["component"]) && isRecord(document["decisions"])) {
       const identity = componentIdentity(document["component"], file);
       for (const [cve, decision] of Object.entries(document["decisions"])) {
         if (!isRecord(decision)) continue;
-        const key = ENTITIES.vexDecision.key({ cve, ...identity });
+        const key = authoredVexKey(cve, identity, file);
         const payload = base.get(key);
         if (payload === undefined) continue;
-        decision["sync"] = { ...syncBlock(decision["sync"]), base: { ...payload } };
+        decision["sync"] = {
+          ...syncBlock(decision["sync"]),
+          base: { ...payload },
+        };
         changed = true;
       }
     } else if (typeof document["cve"] === "string") {
       const identity = componentIdentity(document, file);
-      const key = ENTITIES.vexDecision.key({ cve: document["cve"], ...identity });
+      const key = authoredVexKey(document["cve"], identity, file);
       const payload = base.get(key);
       if (payload !== undefined) {
-        document["sync"] = { ...syncBlock(document["sync"]), base: { ...payload } };
+        document["sync"] = {
+          ...syncBlock(document["sync"]),
+          base: { ...payload },
+        };
         changed = true;
       }
     }
@@ -381,7 +682,10 @@ export async function fastForwardVexWorking(
 }
 
 /** Creates the VEX adapter while closing over only its owning Platform client. */
-export function createVexDecisionAdapter(client: PlatformClient): EntityAdapter {
+export function createVexDecisionAdapter(
+  client: Pick<PlatformClient, "getFindings">,
+): EntityAdapter {
+  const migrationsByScope = new Map<string, Map<string, VexKeyMigration>>();
   return {
     kind: "vexDecision",
     klass: "OVERLAY",
@@ -391,6 +695,9 @@ export function createVexDecisionAdapter(client: PlatformClient): EntityAdapter 
         throw new TypeError("vexDecision requires a project version");
       }
       let pageNumber = 0;
+      const scopeKey = `${scope.projectId}\0${scope.projectVersionId}`;
+      const migrations = new Map<string, VexKeyMigration>();
+      migrationsByScope.set(scopeKey, migrations);
       const pages = client.getFindings({
         projectVersionId: scope.projectVersionId,
         page: { pageSize: PAGE_SIZE },
@@ -403,10 +710,30 @@ export function createVexDecisionAdapter(client: PlatformClient): EntityAdapter 
         });
         yield page.items.flatMap((row) => {
           const projected = projectVexDecision(row);
-          return projected === null ? [] : [projected];
+          if (projected === null) {
+            // Migration is best-effort for undecided rows: they are not VEX
+            // entities and therefore must never make this pull key-dependent.
+            try {
+              const canonical = findingIdentity(row);
+              rememberMigration(migrations, legacyVexIdentity(row), canonical);
+            } catch {
+              // Deliberately ignored for a row that cannot produce an entity.
+            }
+            return [];
+          }
+          const canonical = findingIdentity(row);
+          rememberMigration(migrations, legacyVexIdentity(row), canonical);
+          return [projected];
         });
       }
     },
     readWorking: readVexWorking,
+    async migrateWorkingKeys(worktreeRoot, scope) {
+      const scopeKey = `${scope.projectId}\0${scope.projectVersionId}`;
+      const migrations = migrationsByScope.get(scopeKey);
+      migrationsByScope.delete(scopeKey);
+      if (migrations !== undefined)
+        await migrateVexWorkingKeys(worktreeRoot, scope, migrations);
+    },
   };
 }

@@ -99,7 +99,12 @@ export interface EntityAdapter {
     onProgress: (progress: AdapterProgress) => void,
   ): AsyncIterable<ServerEntity[]>;
   /** Read authored entities from `worktreeRoot`; malformed files reject with their typed parse error. */
-  readWorking(worktreeRoot: string, scope?: SyncScope): Promise<WorkingEntity[]>;
+  readWorking(
+    worktreeRoot: string,
+    scope?: SyncScope,
+  ): Promise<WorkingEntity[]>;
+  /** Apply a declared remote-key migration to authored files before local/base comparison. */
+  migrateWorkingKeys?(worktreeRoot: string, scope: SyncScope): Promise<void>;
 }
 
 /** Optional full-domain context for finding resolvers that need more fidelity than the opaque key retains. */
@@ -124,12 +129,15 @@ export type KeyResolver = (
 /**
  * Refreshes one CACHED surface into tables owned by the registering lane.
  * `generationId` binds those rows to the same atomic pull publication.
+ * Pullers that can distinguish current fetch work from reused staging return
+ * explicit counts. Legacy pullers may omit them, in which case the engine
+ * reports zero rather than inferring network work from staged-row counts.
  */
 export type CachePuller = (
   scope: SyncScope,
   generationId: string,
   onProgress: (progress: AdapterProgress) => void,
-) => Promise<void>;
+) => Promise<void | Readonly<{ fetched: number; baseRows: number }>>;
 
 /** Thrown when two lanes attempt to register an adapter for the same kind. */
 export class DuplicateAdapterError extends Error {
@@ -161,7 +169,9 @@ export function registerAdapter(adapter: EntityAdapter): void {
   }
   const entry = ENTITIES[adapter.kind];
   if (entry.class !== "VERSIONED" && entry.class !== "OVERLAY") {
-    throw new InvalidAdapterError(`${adapter.kind} cannot have a sync adapter because it is ${entry.class}`);
+    throw new InvalidAdapterError(
+      `${adapter.kind} cannot have a sync adapter because it is ${entry.class}`,
+    );
   }
   if (entry.class !== adapter.klass) {
     throw new InvalidAdapterError(
@@ -178,7 +188,10 @@ export function registerAdapter(adapter: EntityAdapter): void {
 }
 
 /** Installs or replaces the key resolver for one registered semantic kind. */
-export function registerResolver(kind: EntityKind, resolver: KeyResolver): void {
+export function registerResolver(
+  kind: EntityKind,
+  resolver: KeyResolver,
+): void {
   resolvers.set(kind, resolver);
 }
 
@@ -192,7 +205,10 @@ export function registerPusher(kind: EntityKind, pusher: unknown): void {
 }
 
 /** Installs or replaces the pull function for a CACHED registry kind. */
-export function registerCachePuller(kind: EntityKind, puller: CachePuller): void {
+export function registerCachePuller(
+  kind: EntityKind,
+  puller: CachePuller,
+): void {
   if (ENTITIES[kind].class !== "CACHED") {
     throw new InvalidAdapterError(`${kind} is not a CACHED registry kind`);
   }
@@ -201,7 +217,9 @@ export function registerCachePuller(kind: EntityKind, puller: CachePuller): void
 
 /** @internal Returns registered adapters in deterministic registry-kind order. */
 export function registeredAdapters(): readonly EntityAdapter[] {
-  return [...adapters.values()].sort((left, right) => left.kind.localeCompare(right.kind));
+  return [...adapters.values()].sort((left, right) =>
+    left.kind.localeCompare(right.kind),
+  );
 }
 
 /** @internal Returns the current resolver for `kind`, when another lane installed one. */

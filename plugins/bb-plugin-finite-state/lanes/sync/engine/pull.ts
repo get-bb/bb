@@ -54,14 +54,16 @@ export interface EngineDeps {
    * supplies only accepted semantic rows; the owning surface preserves its
    * document shape and bookkeeping fields.
    */
-  fastForwardWorking?(input: Readonly<{
-    scope: SyncScope;
-    generationId: string;
-    adapter: EntityAdapter;
-    files: readonly string[];
-    baseRows: readonly BaseRow[];
-    worktreeRoot: string;
-  }>): Promise<void>;
+  fastForwardWorking?(
+    input: Readonly<{
+      scope: SyncScope;
+      generationId: string;
+      adapter: EntityAdapter;
+      files: readonly string[];
+      baseRows: readonly BaseRow[];
+      worktreeRoot: string;
+    }>,
+  ): Promise<void>;
 }
 
 /** Successful atomic pull publication report. */
@@ -76,7 +78,11 @@ export interface PullReport {
 /** Typed upstream-data failure that prevents raw SQLite constraints escaping. */
 export class PullDataError extends Error {
   /** Creates a safe data diagnostic for a kind and stable key. */
-  constructor(readonly kind: EntityKind, readonly key: string, message: string) {
+  constructor(
+    readonly kind: EntityKind,
+    readonly key: string,
+    message: string,
+  ) {
     super(`${kind}/${key}: ${message}`);
     this.name = "PullDataError";
   }
@@ -87,9 +93,14 @@ export class PullFailedError extends Error {
   /** Creates an aggregate failure while preserving the resumable staging generation. */
   constructor(
     readonly generationId: string,
-    readonly failures: readonly Readonly<{ kind: EntityKind; message: string }>[] ,
+    readonly failures: readonly Readonly<{
+      kind: EntityKind;
+      message: string;
+    }>[],
   ) {
-    super(`Pull generation ${generationId} did not publish: ${failures.map((item) => `${item.kind}: ${item.message}`).join("; ")}`);
+    super(
+      `Pull generation ${generationId} did not publish: ${failures.map((item) => `${item.kind}: ${item.message}`).join("; ")}`,
+    );
     this.name = "PullFailedError";
   }
 }
@@ -111,10 +122,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isWorkingEntity(value: unknown): value is WorkingEntity {
-  return isRecord(value)
-    && typeof value["key"] === "string"
-    && isRecord(value["payload"])
-    && typeof value["file"] === "string";
+  return (
+    isRecord(value) &&
+    typeof value["key"] === "string" &&
+    isRecord(value["payload"]) &&
+    typeof value["file"] === "string"
+  );
 }
 
 function isWorkingReadIssue(value: unknown): value is { file: string } {
@@ -129,10 +142,10 @@ function partialWorkingRead(error: unknown): {
   const working = error["partialWorking"];
   const issues = error["issues"];
   if (
-    !Array.isArray(working)
-    || !working.every(isWorkingEntity)
-    || !Array.isArray(issues)
-    || !issues.every(isWorkingReadIssue)
+    !Array.isArray(working) ||
+    !working.every(isWorkingEntity) ||
+    !Array.isArray(issues) ||
+    !issues.every(isWorkingReadIssue)
   ) {
     return null;
   }
@@ -148,14 +161,21 @@ function errorMessage(error: unknown): string {
 }
 
 function sqliteConstraint(error: unknown): boolean {
-  return isRecord(error) && typeof error["code"] === "string" && error["code"].startsWith("SQLITE_CONSTRAINT");
+  return (
+    isRecord(error) &&
+    typeof error["code"] === "string" &&
+    error["code"].startsWith("SQLITE_CONSTRAINT")
+  );
 }
 
 function nowIso(deps: EngineDeps): string {
   return (deps.now?.() ?? new Date()).toISOString();
 }
 
-function requestedAdapters(deps: EngineDeps, kinds: readonly EntityKind[] | undefined): EntityAdapter[] {
+function requestedAdapters(
+  deps: EngineDeps,
+  kinds: readonly EntityKind[] | undefined,
+): EntityAdapter[] {
   const requested = kinds === undefined ? null : new Set(kinds);
   return [...(deps.adapters ?? registeredAdapters())]
     .filter((adapter) => requested === null || requested.has(adapter.kind))
@@ -183,10 +203,14 @@ function assertSelection(
   ]);
   if (kinds !== undefined) {
     const missing = kinds.find((kind) => !available.has(kind));
-    if (missing !== undefined) throw new Error(`No puller is registered for ${missing}`);
+    if (missing !== undefined)
+      throw new Error(`No puller is registered for ${missing}`);
   }
-  const selected = [...available].sort((left, right) => left.localeCompare(right));
-  if (selected.length === 0) throw new Error("No sync adapters or cache pullers are registered");
+  const selected = [...available].sort((left, right) =>
+    left.localeCompare(right),
+  );
+  if (selected.length === 0)
+    throw new Error("No sync adapters or cache pullers are registered");
   return selected;
 }
 
@@ -197,29 +221,34 @@ function stagingState(
   requestedKindsJson: string,
   kinds: readonly EntityKind[],
 ): StagingState | null {
-  const generation = db.prepare(
-    `SELECT generation_id
+  const generation = db
+    .prepare(
+      `SELECT generation_id
        FROM pull_generation
       WHERE project_id = ? AND project_version_id = ? AND status = 'staging'
         AND requested_kinds_json = ?
       ORDER BY started_at DESC, generation_id DESC
       LIMIT 1`,
-  ).get(scope.projectId, storageVersionId, requestedKindsJson);
-  if (!isRecord(generation) || typeof generation["generation_id"] !== "string") return null;
+    )
+    .get(scope.projectId, storageVersionId, requestedKindsJson);
+  if (!isRecord(generation) || typeof generation["generation_id"] !== "string")
+    return null;
   const generationId = generation["generation_id"];
   let stagedPages = 0;
   let stagedRows = 0;
   for (const kind of kinds) {
-    const state = db.prepare(
-      `SELECT staging_generation_id, staged_pages, staged_rows
+    const state = db
+      .prepare(
+        `SELECT staging_generation_id, staged_pages, staged_rows
          FROM sync_state
         WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?`,
-    ).get(scope.projectId, storageVersionId, kind);
+      )
+      .get(scope.projectId, storageVersionId, kind);
     if (
-      !isRecord(state)
-      || state["staging_generation_id"] !== generationId
-      || typeof state["staged_pages"] !== "number"
-      || typeof state["staged_rows"] !== "number"
+      !isRecord(state) ||
+      state["staging_generation_id"] !== generationId ||
+      typeof state["staged_pages"] !== "number" ||
+      typeof state["staged_rows"] !== "number"
     ) {
       return null;
     }
@@ -236,49 +265,77 @@ function beginGeneration(
   kinds: readonly EntityKind[],
 ): string {
   const requestedKindsJson = canonicalJson(kinds);
-  const resumable = stagingState(deps.db, scope, storageVersionId, requestedKindsJson, kinds);
+  const resumable = stagingState(
+    deps.db,
+    scope,
+    storageVersionId,
+    requestedKindsJson,
+    kinds,
+  );
   if (resumable !== null) return resumable.generationId;
 
   const generationId = (deps.createGenerationId ?? randomUUID)();
-  if (generationId.trim().length === 0) throw new Error("Pull generation id must not be empty");
+  if (generationId.trim().length === 0)
+    throw new Error("Pull generation id must not be empty");
   const startedAt = nowIso(deps);
   deps.db.transaction(() => {
     const superseded = new Set<string>();
     for (const kind of kinds) {
-      const row = deps.db.prepare(
-        `SELECT staging_generation_id
+      const row = deps.db
+        .prepare(
+          `SELECT staging_generation_id
            FROM sync_state
           WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?`,
-      ).get(scope.projectId, storageVersionId, kind);
+        )
+        .get(scope.projectId, storageVersionId, kind);
       if (isRecord(row) && typeof row["staging_generation_id"] === "string") {
         superseded.add(row["staging_generation_id"]);
       }
     }
     for (const previousGenerationId of superseded) {
-      deps.db.prepare(
-        `UPDATE pull_generation
+      deps.db
+        .prepare(
+          `UPDATE pull_generation
             SET status = 'superseded', completed_at = ?
           WHERE project_id = ? AND project_version_id = ? AND generation_id = ?
             AND status = 'staging'`,
-      ).run(startedAt, scope.projectId, storageVersionId, previousGenerationId);
-      deps.db.prepare(
-        `UPDATE sync_state
+        )
+        .run(
+          startedAt,
+          scope.projectId,
+          storageVersionId,
+          previousGenerationId,
+        );
+      deps.db
+        .prepare(
+          `UPDATE sync_state
             SET staging_generation_id = NULL, staging_continuation = NULL,
                 staged_pages = 0, staged_rows = 0
           WHERE project_id = ? AND project_version_id = ?
             AND staging_generation_id = ?`,
-      ).run(scope.projectId, storageVersionId, previousGenerationId);
-      deps.db.prepare(
-        `DELETE FROM base_snapshot
+        )
+        .run(scope.projectId, storageVersionId, previousGenerationId);
+      deps.db
+        .prepare(
+          `DELETE FROM base_snapshot
           WHERE project_id = ? AND project_version_id = ? AND generation_id = ?`,
-      ).run(scope.projectId, storageVersionId, previousGenerationId);
+        )
+        .run(scope.projectId, storageVersionId, previousGenerationId);
     }
-    deps.db.prepare(
-      `INSERT INTO pull_generation
+    deps.db
+      .prepare(
+        `INSERT INTO pull_generation
          (project_id, project_version_id, generation_id, status,
           requested_kinds_json, started_at, completed_at, accepted_at, error)
        VALUES (?, ?, ?, 'staging', ?, ?, NULL, NULL, NULL)`,
-    ).run(scope.projectId, storageVersionId, generationId, requestedKindsJson, startedAt);
+      )
+      .run(
+        scope.projectId,
+        storageVersionId,
+        generationId,
+        requestedKindsJson,
+        startedAt,
+      );
     const upsert = deps.db.prepare(
       `INSERT INTO sync_state
          (project_id, project_version_id, entity_kind, accepted_generation_id,
@@ -292,7 +349,8 @@ function beginGeneration(
          staged_rows = 0,
          error = NULL`,
     );
-    for (const kind of kinds) upsert.run(scope.projectId, storageVersionId, kind, generationId);
+    for (const kind of kinds)
+      upsert.run(scope.projectId, storageVersionId, kind, generationId);
   })();
   return generationId;
 }
@@ -304,16 +362,18 @@ function kindCheckpoint(
   kind: EntityKind,
   generationId: string,
 ): { pages: number; rows: number } {
-  const value = db.prepare(
-    `SELECT staged_pages, staged_rows
+  const value = db
+    .prepare(
+      `SELECT staged_pages, staged_rows
        FROM sync_state
       WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?
         AND staging_generation_id = ?`,
-  ).get(scope.projectId, storageVersionId, kind, generationId);
+    )
+    .get(scope.projectId, storageVersionId, kind, generationId);
   if (
-    !isRecord(value)
-    || typeof value["staged_pages"] !== "number"
-    || typeof value["staged_rows"] !== "number"
+    !isRecord(value) ||
+    typeof value["staged_pages"] !== "number" ||
+    typeof value["staged_rows"] !== "number"
   ) {
     throw new Error(`Staging fence moved for ${kind}`);
   }
@@ -331,19 +391,21 @@ function existingStagingRows(
   const keys = [...new Set(entityKeys)];
   if (keys.length === 0) return new Map();
   const placeholders = keys.map(() => "?").join(", ");
-  const rows = db.prepare(
-    `SELECT entity_key, remote_id, payload
+  const rows = db
+    .prepare(
+      `SELECT entity_key, remote_id, payload
        FROM base_snapshot
       WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?
         AND generation_id = ? AND entity_key IN (${placeholders})`,
-  ).all(scope.projectId, storageVersionId, kind, generationId, ...keys);
+    )
+    .all(scope.projectId, storageVersionId, kind, generationId, ...keys);
   const result = new Map<string, ExistingStagingRow>();
   for (const row of rows) {
     if (
-      !isRecord(row)
-      || typeof row["entity_key"] !== "string"
-      || (row["remote_id"] !== null && typeof row["remote_id"] !== "string")
-      || typeof row["payload"] !== "string"
+      !isRecord(row) ||
+      typeof row["entity_key"] !== "string" ||
+      (row["remote_id"] !== null && typeof row["remote_id"] !== "string") ||
+      typeof row["payload"] !== "string"
     ) {
       throw new Error(`Corrupt staging row for ${kind}`);
     }
@@ -367,26 +429,47 @@ function uniquePage(
     if (row.remoteId !== null) remoteOwners.set(row.remoteId, row.entityKey);
   }
   for (const entity of page) {
-    const semantic = { ...entity, payload: adapter.serializer.semanticPayload(entity.payload) };
+    const semantic = {
+      ...entity,
+      payload: adapter.serializer.semanticPayload(entity.payload),
+    };
     const payloadJson = canonicalJson(semantic.payload);
     const prior = unique.get(semantic.key);
     const persisted = existing.get(semantic.key);
     if (prior !== undefined) {
-      if (prior.remoteId !== semantic.remoteId || canonicalJson(prior.payload) !== payloadJson) {
-        throw new PullDataError(adapter.kind, semantic.key, "remote page contains conflicting duplicate keys");
+      if (
+        prior.remoteId !== semantic.remoteId ||
+        canonicalJson(prior.payload) !== payloadJson
+      ) {
+        throw new PullDataError(
+          adapter.kind,
+          semantic.key,
+          "remote page contains conflicting duplicate keys",
+        );
       }
       continue;
     }
     if (persisted !== undefined) {
-      if (persisted.remoteId !== semantic.remoteId || persisted.payloadJson !== payloadJson) {
-        throw new PullDataError(adapter.kind, semantic.key, "remote pages disagree about one stable key");
+      if (
+        persisted.remoteId !== semantic.remoteId ||
+        persisted.payloadJson !== payloadJson
+      ) {
+        throw new PullDataError(
+          adapter.kind,
+          semantic.key,
+          "remote pages disagree about one stable key",
+        );
       }
       continue;
     }
     if (semantic.remoteId !== null) {
       const owner = remoteOwners.get(semantic.remoteId);
       if (owner !== undefined && owner !== semantic.key) {
-        throw new PullDataError(adapter.kind, semantic.key, `remote id is already claimed by ${owner}`);
+        throw new PullDataError(
+          adapter.kind,
+          semantic.key,
+          `remote id is already claimed by ${owner}`,
+        );
       }
       remoteOwners.set(semantic.remoteId, semantic.key);
     }
@@ -434,27 +517,34 @@ function writePage(
         generationId,
         rows,
       );
-      const updated = deps.db.prepare(
-        `UPDATE sync_state
+      const updated = deps.db
+        .prepare(
+          `UPDATE sync_state
             SET staging_continuation = ?, staged_pages = ?,
                 staged_rows = staged_rows + ?, error = NULL
           WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?
             AND staging_generation_id = ? AND staged_pages = ?`,
-      ).run(
-        String(pageNumber),
-        pageNumber,
-        rows.length,
-        scope.projectId,
-        storageVersionId,
-        adapter.kind,
-        generationId,
-        pageNumber - 1,
-      );
-      if (updated.changes !== 1) throw new Error(`Staging checkpoint moved for ${adapter.kind}`);
+        )
+        .run(
+          String(pageNumber),
+          pageNumber,
+          rows.length,
+          scope.projectId,
+          storageVersionId,
+          adapter.kind,
+          generationId,
+          pageNumber - 1,
+        );
+      if (updated.changes !== 1)
+        throw new Error(`Staging checkpoint moved for ${adapter.kind}`);
     })();
   } catch (error: unknown) {
     if (sqliteConstraint(error)) {
-      throw new PullDataError(adapter.kind, "remote-page", "remote identifiers violate stable-key uniqueness");
+      throw new PullDataError(
+        adapter.kind,
+        "remote-page",
+        "remote identifiers violate stable-key uniqueness",
+      );
     }
     throw error;
   }
@@ -505,11 +595,23 @@ async function pullAdapter(
         ),
       );
       if (unseen.length > 0) {
-        throw new PullDataError(adapter.kind, "resumed-page", "remote page changed after its checkpoint");
+        throw new PullDataError(
+          adapter.kind,
+          "resumed-page",
+          "remote page changed after its checkpoint",
+        );
       }
       continue;
     }
-    writePage(deps, scope, storageVersionId, adapter, generationId, pageNumber, page);
+    writePage(
+      deps,
+      scope,
+      storageVersionId,
+      adapter,
+      generationId,
+      pageNumber,
+      page,
+    );
     deps.publish?.("fs-sync-pull", {
       scope,
       generationId,
@@ -520,14 +622,18 @@ async function pullAdapter(
     });
   }
   if (pageNumber < checkpoint.pages) {
-    throw new Error(`Remote stream for ${adapter.kind} ended before staged page ${checkpoint.pages}`);
+    throw new Error(
+      `Remote stream for ${adapter.kind} ended before staged page ${checkpoint.pages}`,
+    );
   }
-  const count = deps.db.prepare(
-    `SELECT COUNT(*) AS count
+  const count = deps.db
+    .prepare(
+      `SELECT COUNT(*) AS count
        FROM base_snapshot
       WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?
         AND generation_id = ?`,
-  ).get(scope.projectId, storageVersionId, adapter.kind, generationId);
+    )
+    .get(scope.projectId, storageVersionId, adapter.kind, generationId);
   if (!isRecord(count) || typeof count["count"] !== "number") {
     throw new Error(`Could not count staged ${adapter.kind} rows`);
   }
@@ -544,10 +650,14 @@ async function pullAdapter(
 
 async function defaultFileClean(root: string, file: string): Promise<boolean> {
   try {
-    const { stdout } = await execFileAsync("git", ["status", "--porcelain", "--", file], {
-      cwd: root,
-      encoding: "utf8",
-    });
+    const { stdout } = await execFileAsync(
+      "git",
+      ["status", "--porcelain", "--", file],
+      {
+        cwd: root,
+        encoding: "utf8",
+      },
+    );
     return stdout.trim().length === 0;
   } catch {
     return false;
@@ -589,7 +699,10 @@ async function workingState(
       if (await isClean(root, entity.file)) clean.add(entity.file);
       else divergence.push(`${adapter.kind}/${entity.key}`);
     }
-    cleanFiles.set(adapter.kind, [...clean].sort((left, right) => left.localeCompare(right)));
+    cleanFiles.set(
+      adapter.kind,
+      [...clean].sort((left, right) => left.localeCompare(right)),
+    );
   }
   divergence.sort((left, right) => left.localeCompare(right));
   return { divergence, cleanFiles };
@@ -649,12 +762,23 @@ function recordKindFailure(
       `UPDATE sync_state SET error = ?
         WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?
           AND staging_generation_id = ?`,
-    ).run(message.slice(0, 2_000), scope.projectId, storageVersionId, kind, generationId);
+    ).run(
+      message.slice(0, 2_000),
+      scope.projectId,
+      storageVersionId,
+      kind,
+      generationId,
+    );
     db.prepare(
       `UPDATE pull_generation SET error = ?
         WHERE project_id = ? AND project_version_id = ? AND generation_id = ?
           AND status = 'staging'`,
-    ).run(`${kind}: ${message}`.slice(0, 2_000), scope.projectId, storageVersionId, generationId);
+    ).run(
+      `${kind}: ${message}`.slice(0, 2_000),
+      scope.projectId,
+      storageVersionId,
+      generationId,
+    );
   })();
 }
 
@@ -684,19 +808,30 @@ function publishGeneration(
         kind,
         generationId,
       );
-      if (result.changes !== 1) throw new Error(`Publication fence moved for ${kind}`);
+      if (result.changes !== 1)
+        throw new Error(`Publication fence moved for ${kind}`);
     }
-    const accepted = deps.db.prepare(
-      `UPDATE pull_generation
+    const accepted = deps.db
+      .prepare(
+        `UPDATE pull_generation
           SET status = 'accepted', completed_at = ?, accepted_at = ?, error = NULL
         WHERE project_id = ? AND project_version_id = ? AND generation_id = ?
           AND status = 'staging'`,
-    ).run(acceptedAt, acceptedAt, scope.projectId, storageVersionId, generationId);
-    if (accepted.changes !== 1) throw new Error(`Publication generation fence moved for ${generationId}`);
+      )
+      .run(
+        acceptedAt,
+        acceptedAt,
+        scope.projectId,
+        storageVersionId,
+        generationId,
+      );
+    if (accepted.changes !== 1)
+      throw new Error(`Publication generation fence moved for ${generationId}`);
     // Base rows are machinery, not history: retain only rows referenced by
     // the current accepted or active staging pointer for their own kind.
-    deps.db.prepare(
-      `DELETE FROM base_snapshot
+    deps.db
+      .prepare(
+        `DELETE FROM base_snapshot
         WHERE project_id = ? AND project_version_id = ?
           AND NOT EXISTS (
             SELECT 1 FROM sync_state AS state
@@ -708,9 +843,11 @@ function publishGeneration(
                  OR state.staging_generation_id = base_snapshot.generation_id
                )
           )`,
-    ).run(scope.projectId, storageVersionId);
-    deps.db.prepare(
-      `UPDATE pull_generation AS generation
+      )
+      .run(scope.projectId, storageVersionId);
+    deps.db
+      .prepare(
+        `UPDATE pull_generation AS generation
           SET status = 'superseded'
         WHERE generation.project_id = ? AND generation.project_version_id = ?
           AND generation.status = 'accepted' AND generation.generation_id <> ?
@@ -720,7 +857,8 @@ function publishGeneration(
                AND state.project_version_id = generation.project_version_id
                AND state.accepted_generation_id = generation.generation_id
           )`,
-    ).run(scope.projectId, storageVersionId, generationId);
+      )
+      .run(scope.projectId, storageVersionId, generationId);
   })();
   return acceptedAt;
 }
@@ -735,12 +873,18 @@ export async function pull(
   scope: SyncScope,
   kinds?: EntityKind[],
 ): Promise<PullReport> {
-  if (scope.projectId.trim().length === 0) throw new Error("projectId must not be empty");
+  if (scope.projectId.trim().length === 0)
+    throw new Error("projectId must not be empty");
   const adapters = requestedAdapters(deps, kinds);
   const cachePullers = requestedCachePullers(deps, kinds);
   const selectedKinds = assertSelection(kinds, adapters, cachePullers);
   const storageVersionId = toStorageProjectVersionId(scope.projectVersionId);
-  const generationId = beginGeneration(deps, scope, storageVersionId, selectedKinds);
+  const generationId = beginGeneration(
+    deps,
+    scope,
+    storageVersionId,
+    selectedKinds,
+  );
   const reportKinds: PullReport["kinds"] = {};
   const failures: Array<{ kind: EntityKind; message: string }> = [];
 
@@ -756,12 +900,19 @@ export async function pull(
     } catch (error: unknown) {
       const message = errorMessage(error);
       failures.push({ kind: adapter.kind, message });
-      recordKindFailure(deps.db, scope, storageVersionId, generationId, adapter.kind, message);
+      recordKindFailure(
+        deps.db,
+        scope,
+        storageVersionId,
+        generationId,
+        adapter.kind,
+        message,
+      );
     }
   }
   for (const cache of cachePullers) {
     try {
-      await cache.pull(scope, generationId, (progress) => {
+      const cacheReport = await cache.pull(scope, generationId, (progress) => {
         deps.publish?.("fs-sync-pull", {
           scope,
           generationId,
@@ -770,7 +921,31 @@ export async function pull(
           phase: "fetch",
         });
       });
-      reportKinds[cache.kind] = { fetched: 0, baseRows: 0 };
+      const staged = deps.db
+        .prepare(
+          `SELECT staged_rows
+           FROM sync_state
+          WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?
+            AND staging_generation_id = ?`,
+        )
+        .get(scope.projectId, storageVersionId, cache.kind, generationId);
+      if (!isRecord(staged) || typeof staged["staged_rows"] !== "number") {
+        throw new Error(`Could not count staged ${cache.kind} rows`);
+      }
+      if (
+        cacheReport !== undefined &&
+        cacheReport.baseRows !== staged["staged_rows"]
+      ) {
+        throw new Error(
+          `Cache puller reported an invalid ${cache.kind} publication count`,
+        );
+      }
+      // `fetched` is work performed now; `baseRows` is the complete generation
+      // published now, including rows staged by a prior failed invocation.
+      reportKinds[cache.kind] = cacheReport ?? {
+        fetched: 0,
+        baseRows: 0,
+      };
       deps.publish?.("fs-sync-pull", {
         scope,
         generationId,
@@ -782,10 +957,23 @@ export async function pull(
     } catch (error: unknown) {
       const message = errorMessage(error);
       failures.push({ kind: cache.kind, message });
-      recordKindFailure(deps.db, scope, storageVersionId, generationId, cache.kind, message);
+      recordKindFailure(
+        deps.db,
+        scope,
+        storageVersionId,
+        generationId,
+        cache.kind,
+        message,
+      );
     }
   }
   if (failures.length > 0) throw new PullFailedError(generationId, failures);
+
+  if (deps.worktreeRoot !== null && deps.worktreeRoot !== undefined) {
+    for (const adapter of adapters) {
+      await adapter.migrateWorkingKeys?.(deps.worktreeRoot, scope);
+    }
+  }
 
   const working = await workingState(deps, scope, adapters);
   const acceptedAt = publishGeneration(

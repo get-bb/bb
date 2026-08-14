@@ -24,3 +24,7 @@ packages/db/drizzle/meta/
 
 # These templates intentionally use aligned plain-text command columns.
 packages/templates/src/templates/
+
+# FS-174 captured real-tenant responses are fixture-fidelity artifacts.
+plugins/bb-plugin-finite-state/test/mock-remote/fixtures/platform/fs174-cve-uuid-mapping-specimen.json
+plugins/bb-plugin-finite-state/test/mock-remote/fixtures/platform/fs174-i491nax-distro-specimen.json
