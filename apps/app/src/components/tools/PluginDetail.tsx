@@ -62,9 +62,10 @@ import { usePluginSlots } from "@/lib/plugin-slots";
 import { useClipboardCopy } from "@/lib/clipboard";
 
 function pluginSourceLabel(plugin: PluginListItem): string | null {
-  return plugin.provenance === "builtin" || plugin.provenance === "catalog"
-    ? "BB Official"
-    : null;
+  // Only plugins that ship inside the app wear the pill. A catalog install
+  // can come from any marketplace, and the list DTO does not say which, so
+  // claiming BB Official for all of them would be a wrong trust signal.
+  return plugin.provenance === "builtin" ? "BB Official" : null;
 }
 
 /** Passive provenance shown beside an installed plugin's name. */
