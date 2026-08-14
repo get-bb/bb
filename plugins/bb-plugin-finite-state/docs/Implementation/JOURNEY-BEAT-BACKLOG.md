@@ -71,9 +71,9 @@ Entry format — one section per defect:
 - **Broke because**: the component request omitted the documented project/projectVersion filter and pulled the tenant-global portfolio; fallback identity rejected file paths, while one odd row aborted the complete corpus
 - **Beat asserts**: every included/excluded component request carries the exact selected Platform project/version filter; the panel renders only that scope including `/apps/*.elf` and purl-less path rows; the component detail shows the joined finding; odd unkeyable rows are isolated and the CLI reports their truthful generation-total quarantine count
 
-### FS-201 — bench requirement puller dead-end loop (sweep #7, pending fix)
+### FS-201 — bench requirement puller dead-end loop (sweep #7)
 
-- **Pending — not Harnessed**: `golden-loop.e2e.test.ts` — beat 7, `FS-201 requirement-to-bench loop`, pinned to `No puller is registered for requirement`
+- **Harnessed**: `golden-loop.e2e.test.ts` — beat 7, `FS-201 requirement-to-bench loop`
 - **Journey**: bench panel with no cached version → follow the product's own instruction ("Pull a version through Sync first") → `pull requirement` → bench enabled → run → WP-55 verdict card renders
 - **Broke because**: no puller is registered for `requirement`; the product's instruction is impossible, bench unreachable in every flow
 - **Beat asserts**: the full loop completes: sync pull → accepted version → bench run → verdict card visible

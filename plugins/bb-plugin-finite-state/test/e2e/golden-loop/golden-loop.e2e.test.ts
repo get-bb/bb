@@ -31,7 +31,7 @@ import { GOLDEN_LOOP_BEATS, type GoldenLoopBeat } from "./scenario.js";
 const REPOSITORY_ROOT = resolve(import.meta.dirname, "../../../../..");
 const FIXTURE_ROOT = resolve(import.meta.dirname, "../../mock-remote/fixtures");
 const WORKSPACE_PROJECT_ID = "workspace-golden-loop";
-const BENCH_VERSION = "golden-bench-version";
+const BENCH_VERSION = "pv-a481df87dadf";
 const execFileAsync = promisify(execFile);
 
 interface Runtime {
@@ -446,19 +446,8 @@ async function filesBelow(root: string): Promise<string[]> {
 
 async function ensureFirmware(runtime: Runtime, pvId: string): Promise<void> {
   if (runtime.firmwareReady.has(pvId)) return;
-  const image = `golden-${pvId}.bin`;
-  await writeFile(join(runtime.worktree, image), `firmware:${pvId}\n`, "utf8");
   const pull = await runtime.host.harness.behavior.runCli(
-    [
-      "finite-state",
-      "firmware",
-      "pull",
-      pvId,
-      "--image",
-      image,
-      "--max-depth",
-      "4",
-    ],
+    ["finite-state", "firmware", "pull", pvId, "--source", "api"],
     { projectId: runtime.projectId, threadId: "thread-firmware-golden" },
   );
   if (!successfulCli(pull)) {
@@ -483,11 +472,12 @@ async function ensureFirmware(runtime: Runtime, pvId: string): Promise<void> {
       object(mount, "selected firmware mount")["fields"],
       "firmware mount fields",
     );
-    if (
-      fields["state"] !== "ready" ||
-      fields["files"] !== fields["materializedFiles"] ||
-      fields["errors"] !== 0
-    ) {
+    const apiMetadataReady =
+      fields["source"] === "api" &&
+      fields["state"] === "metadata_only" &&
+      number(fields["files"], "firmware files") > 0 &&
+      typeof fields["artifactHash"] === "string";
+    if (!apiMetadataReady) {
       throw new Error(`firmware mount is not ready: ${JSON.stringify(fields)}`);
     }
   });
@@ -748,8 +738,8 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
           );
         }
         expect(
-          await slot.findByText("No local changes", undefined, {
-            timeout: 10_000,
+          await slot.findByRole("button", {
+            name: "Open Sync review: 0 local changes and 0 conflicts",
           }),
         ).toBeTruthy();
         const rpcStatus = await runtime.host.harness.behavior.callRpc(
@@ -1286,12 +1276,31 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
     },
     {
       ...metadata(7),
-      expectedFailure: {
-        task: "FS-201",
-        reason: "the registered requirement Sync puller has not landed",
-        signature: "No puller is registered for requirement",
-      },
       action: async ({ artifacts }) => {
+        const candidates = object(
+          await runtime.host.harness.behavior.callRpc(
+            "syncAsProjectCandidates",
+            {
+              workspaceProjectId: WORKSPACE_PROJECT_ID,
+              projectId: runtime.projectId,
+              projectVersionId: null,
+            },
+          ),
+          "Assurance Studio project candidates",
+        );
+        const candidate = object(
+          array(candidates["items"], "AS project candidates")[0],
+          "AS project candidate",
+        );
+        await runtime.host.harness.behavior.callRpc("syncAsProjectSelect", {
+          workspaceProjectId: WORKSPACE_PROJECT_ID,
+          projectId: runtime.projectId,
+          projectVersionId: null,
+          assuranceStudioProjectId: string(
+            candidate["assuranceStudioProjectId"],
+            "AS project id",
+          ),
+        });
         const pull = await runtime.host.harness.behavior.runCli(
           [
             "finite-state",
@@ -1305,16 +1314,8 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
           ],
           cliContext(),
         );
-        if (!successfulCli(pull)) {
-          const refusal = String(object(pull, "requirement pull")["stderr"]);
-          await artifacts.writeJson("fs201-pending.json", {
-            marker: "EXPECTED_FAILURE",
-            task: "FS-201",
-            signature: "No puller is registered for requirement",
-            refusal,
-          });
-          throw new Error(refusal);
-        }
+        if (!successfulCli(pull))
+          throw new Error(String(object(pull, "requirement pull")["stderr"]));
         await ensureFirmware(runtime, runtime.findingVersion);
         const versions = await runtime.host.harness.behavior.callRpc(
           "benchProjectVersions",
@@ -1879,6 +1880,15 @@ async function createRun(
     },
     configure: async ({ bb, host, worktree: configuredWorktree }) => {
       worktree = configuredWorktree;
+      const gitignorePath = join(worktree, ".gitignore");
+      const gitignore = await readFile(gitignorePath, "utf8").catch(() => "");
+      if (!gitignore.split("\n").includes(".fs-firmware/")) {
+        await writeFile(
+          gitignorePath,
+          `${gitignore}${gitignore.endsWith("\n") || gitignore.length === 0 ? "" : "\n"}.fs-firmware/\n`,
+          "utf8",
+        );
+      }
       const [
         contextModule,
         platformClientModule,
@@ -1886,6 +1896,7 @@ async function createRun(
         mockModule,
         platformStateModule,
         platformRegisterModule,
+        platformFirmwareModule,
         asRegisterModule,
         syncModule,
         pushModule,
@@ -1902,6 +1913,7 @@ async function createRun(
         import("../../mock-remote/server.js"),
         import("../../mock-remote/platform/state.js"),
         import("../../mock-remote/platform/register.js"),
+        import("../../mock-remote/platform/firmware.js"),
         import("../../mock-remote/assurance-studio/register.js"),
         import("../../../lanes/sync/register.js"),
         import("../../../lanes/sync/push/index.js"),
@@ -1913,13 +1925,16 @@ async function createRun(
         import("../../../lanes/agentic/tools/actions.js"),
       ]);
       const state = platformStateModule.createMockPlatformState(FIXTURE_ROOT);
-      const templateVersion = state.versions.values().next().value;
+      const templateVersion =
+        [...state.versions.values()].find(
+          (version) => version["priorVersionId"] !== null,
+        ) ?? state.versions.values().next().value;
       const templateProject = state.projects.values().next().value;
       if (!templateVersion || !templateProject)
         throw new Error("Mock Platform seed is empty");
       const projectId = string(templateProject["id"], "Platform project id");
       const bomVersion = string(templateVersion["id"], "Platform version id");
-      const findingVersion = "golden-finding-version";
+      const findingVersion = BENCH_VERSION;
       const fs167Version = "golden-fs167-version";
       state.versions.set(findingVersion, {
         ...templateVersion,
@@ -1928,6 +1943,7 @@ async function createRun(
       state.versions.set(fs167Version, {
         ...templateVersion,
         id: fs167Version,
+        priorVersionId: null,
       });
       state.findings.clear();
       for (let index = 1; index <= 3; index += 1) {
@@ -1984,9 +2000,13 @@ async function createRun(
         assuranceStudioKey: "golden-as-key",
         fixtureRoot: FIXTURE_ROOT,
         register(service, registry) {
-          if (service === "platform")
+          if (service === "platform") {
             platformRegisterModule.registerPlatformHandlers(registry, state);
-          else
+            platformFirmwareModule.registerMockPlatformFirmware(
+              registry,
+              FIXTURE_ROOT,
+            );
+          } else
             asRegisterModule.registerMockAssuranceStudio(
               registry,
               FIXTURE_ROOT,
@@ -2137,7 +2157,7 @@ describe.sequential("Golden Loop incremental acceptance", () => {
         expect(firstResults.map(({ beat }) => beat)).toEqual(
           GOLDEN_LOOP_BEATS.map(({ number }) => number),
         );
-        const pendingBeats = new Set([3, 7, 11, 12]);
+        const pendingBeats = new Set([3, 11, 12]);
         expect(
           firstResults
             .filter(({ status }) => status === "skipped")
