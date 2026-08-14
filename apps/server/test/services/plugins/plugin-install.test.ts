@@ -6,6 +6,7 @@ import {
   mkdir,
   readFile,
   readdir,
+  realpath,
   rename,
   rm,
   stat,
@@ -1091,12 +1092,15 @@ describe("plugin install flows", () => {
           name: "beta",
         });
 
-        expect(entry.rootDir).toBe(join(repoDir, "plugins", "beta"));
+        // The service records the canonical path. macOS resolves the temporary
+        // directory through /private, so the expectation must canonicalize too.
+        const betaRoot = await realpath(join(repoDir, "plugins", "beta"));
+        expect(entry.rootDir).toBe(betaRoot);
         expect(
           getInstalledPluginRegistration(db, "collection-beta"),
         ).toMatchObject({
           sourceKind: "path",
-          sourcePath: join(repoDir, "plugins", "beta"),
+          sourcePath: betaRoot,
         });
       });
 
