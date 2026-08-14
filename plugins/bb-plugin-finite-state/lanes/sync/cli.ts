@@ -13,7 +13,8 @@ import { diagnoseRemoteFailure } from "../../lib/remote/errors.js";
 import { RemoteError } from "../../lib/remote/types.js";
 import { bindWorkspacePlatformProject } from "../../lib/store/project-scope.js";
 import { ENTITIES, type EntityKind } from "../../lib/sync/registry.js";
-import { pull, type EngineDeps } from "./engine/pull.js";
+import { pullIsolated, type EngineDeps } from "./engine/pull.js";
+import { pullReportHasFailures, renderPullOutcomeCli } from "./pull-outcome.js";
 import { statusPerKind } from "./engine/status.js";
 import { computePlan } from "./plan/index.js";
 import { renderPlanCli } from "./plan/render-cli.js";
@@ -286,13 +287,17 @@ async function run(
     ),
   };
   if (input.verb === "pull") {
-    const report = await pull(cliDeps, scope, kinds, binding);
+    const report = await pullIsolated(cliDeps, scope, kinds, binding);
     bindWorkspacePlatformProject(
       deps.db,
       workspace.workspaceProjectId,
       scope.projectId,
     );
-    return { exitCode: 0, stdout: output(report, input.json), stderr: "" };
+    return {
+      exitCode: pullReportHasFailures(report) ? 1 : 0,
+      stdout: input.json ? output(report, true) : renderPullOutcomeCli(report),
+      stderr: "",
+    };
   }
   if (input.verb === "status") {
     const statusResult = await statusPerKind(cliDeps, scope, kinds, binding);
@@ -340,7 +345,7 @@ export function registerSyncCli(
       },
       {
         name: "pull",
-        summary: "Pull remote entity state",
+        summary: "Pull each remote kind independently and report every outcome",
         usage: "pull [surface] [--project ID] [--version ID] [--json]",
       },
       {

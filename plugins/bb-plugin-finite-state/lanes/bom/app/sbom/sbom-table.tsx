@@ -276,12 +276,21 @@ export function SbomTable({
     setPulling(true);
     setPullError(null);
     try {
-      await rpc.call("syncPull", {
+      const report = await rpc.call("syncPull", {
         workspaceProjectId,
         projectId,
         projectVersionId,
         kinds: ["sbomComponent"],
       });
+      const outcome = report.kinds.sbomComponent;
+      if (!outcome) throw new Error("SBOM pull returned no SBOM report");
+      if (outcome.status === "failed") {
+        throw new Error(
+          outcome.reasons
+            .map((reason) => `${reason.code}=${reason.count}`)
+            .join(", "),
+        );
+      }
       await refresh();
     } catch (cause) {
       setPullError(

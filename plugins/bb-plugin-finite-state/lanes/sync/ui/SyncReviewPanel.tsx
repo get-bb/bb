@@ -39,6 +39,7 @@ import {
   type SyncPlanPage,
 } from "./PlanRow.js";
 import { PushResults, type SyncPushReport } from "./PushResults.js";
+import { SyncPullOutcomes } from "./SyncPullOutcomes.js";
 
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/u;
 const SCOPE_STORAGE_KEY = "finite-state:sync-review-scope:v1";
@@ -77,6 +78,7 @@ const ASSURANCE_STUDIO_KINDS: ReadonlySet<string> = new Set(
 );
 
 type SyncStatus = z.output<(typeof rpcContract)["syncStatus"]["output"]>;
+type SyncPullReport = z.output<(typeof rpcContract)["syncPull"]["output"]>;
 type Connections = z.output<
   (typeof rpcContract)["connectionsStatus"]["output"]
 >;
@@ -780,6 +782,9 @@ export function SyncReviewPanel({
   const kinds = useMemo(() => routeKinds(surface), [surface]);
   const [state, setState] = useState<ReviewState>({ kind: "loading" });
   const [refreshing, setRefreshing] = useState(false);
+  const [pulling, setPulling] = useState(false);
+  const [pullReport, setPullReport] = useState<SyncPullReport | null>(null);
+  const [pullError, setPullError] = useState<string | null>(null);
   const [confirmationChecked, setConfirmationChecked] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [pushReport, setPushReport] = useState<SyncPushReport | null>(null);
@@ -1005,6 +1010,45 @@ export function SyncReviewPanel({
       workspaceProjectId,
     ],
   );
+
+  const pullRemoteKinds = useCallback(async () => {
+    if (
+      !activeScope ||
+      activeScope.projectVersionId === null ||
+      !workspaceProjectId ||
+      !surfaceAvailable
+    ) {
+      return;
+    }
+    setPulling(true);
+    setPullError(null);
+    try {
+      const report = await rpc.call("syncPull", {
+        workspaceProjectId,
+        projectId: activeScope.projectId,
+        projectVersionId: activeScope.projectVersionId,
+        ...(kinds ? { kinds } : {}),
+      });
+      setPullReport(report);
+      if (assuranceStudioSelectionReady) await refresh(true);
+    } catch (error: unknown) {
+      setPullError(
+        error instanceof Error
+          ? error.message.slice(0, 400)
+          : "Pull report could not be loaded",
+      );
+    } finally {
+      setPulling(false);
+    }
+  }, [
+    activeScope,
+    assuranceStudioSelectionReady,
+    kinds,
+    refresh,
+    rpc,
+    surfaceAvailable,
+    workspaceProjectId,
+  ]);
 
   useEffect(() => {
     if (
@@ -1270,6 +1314,18 @@ export function SyncReviewPanel({
             />
           ) : null}
         </>
+      ) : null}
+
+      {activeScope?.projectVersionId !== null &&
+      surfaceAvailable &&
+      workspaceProjectId ? (
+        <SyncPullOutcomes
+          disabled={false}
+          error={pullError}
+          onPull={() => void pullRemoteKinds()}
+          pulling={pulling}
+          report={pullReport}
+        />
       ) : null}
 
       {!activeScope ? (

@@ -93,6 +93,7 @@ describe("registered sync CLI remote diagnostics", () => {
     const failure = new PullFailedError("generation-1", [
       {
         kind: "finding",
+        reasonCode: "authentication",
         message:
           "REMOTE_HTTP_401: Platform authentication failed for GET https://platform.example/api/findings?token=secret using X-Authorization.",
       },
@@ -133,8 +134,10 @@ describe("registered sync CLI remote diagnostics", () => {
     );
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toMatch(
-      /^bb finite-state failed: Pull generation .+ did not publish: finding: REMOTE_HTTP_401: Platform authentication failed for GET https:\/\/platform\.example\/api\/public\/v0\/versions\/platform-version\/findings\?offset=0&limit=200 with HTTP 401 using X-Authorization\. Refresh Platform token \(platformToken\)\.$/u,
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe(
+      "Pull complete: 0 published, 1 failed\n" +
+        "finding: failed · 0 fetched, 0 base rows, 0 quarantined · authentication=1\n",
     );
     expect(platformFetch).toHaveBeenCalledTimes(1);
     expect(storedErrors).toEqual(["REMOTE_HTTP_401: remote request failed"]);

@@ -192,14 +192,21 @@ export function FindingsPanel({
         projectVersionId,
         kinds: ["finding"],
       });
-      const counts = report.kinds.finding;
-      if (!counts) throw new Error("Finding pull returned no finding report");
+      const outcome = report.kinds.finding;
+      if (!outcome) throw new Error("Finding pull returned no finding report");
+      if (outcome.status === "failed") {
+        throw new Error(
+          outcome.reasons
+            .map((reason) => `${reason.code}=${reason.count}`)
+            .join(", "),
+        );
+      }
       const diagnostics = await rpc.call("findingsPullAdvisories", {
         projectId: platformProjectId,
         projectVersionId,
-        generationId: report.generationId,
+        generationId: outcome.generationId,
       });
-      setPullReport({ ...counts, advisories: diagnostics.advisories });
+      setPullReport({ ...outcome, advisories: diagnostics.advisories });
       setVersionRequest((value) => value + 1);
       await retryFindings();
     } catch (cause) {

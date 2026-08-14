@@ -180,8 +180,8 @@ function objectField(
 }
 
 describe("rpc-contract-freeze", () => {
-  it("exports version nine and all 88 bijective logical-to-wire names", () => {
-    expect(CONTRACT_VERSION).toBe(9);
+  it("exports version ten and all 88 bijective logical-to-wire names", () => {
+    expect(CONTRACT_VERSION).toBe(10);
     expect(Object.keys(RPC_WIRE_METHODS).sort()).toEqual(
       [...EXPECTED_LOGICAL_METHODS].sort(),
     );
@@ -552,16 +552,58 @@ describe("rpc-contract-freeze", () => {
       "baseGenerationIds",
     );
     expect(rpcContract.syncPlan.output.shape).toHaveProperty("baseRevisions");
-    expect(rpcContract.syncPull.output.shape).toHaveProperty("generationId");
-    expect(rpcContract.syncPull.output.shape).toHaveProperty("acceptedAt");
+    expect(rpcContract.syncPull.output.shape).not.toHaveProperty(
+      "generationId",
+    );
+    expect(rpcContract.syncPull.output.shape).not.toHaveProperty("acceptedAt");
     const pullKinds = rpcContract.syncPull.output.shape.kinds;
     expect(
       pullKinds.safeParse({
-        finding: { fetched: 3, baseRows: 2, quarantined: 1 },
+        finding: {
+          status: "published",
+          generationId: "generation-finding",
+          acceptedAt: "2026-08-14T20:15:00.000Z",
+          fetched: 3,
+          baseRows: 2,
+          quarantined: 1,
+          reasons: [{ code: "FINDING_IDENTITY_MISSING", count: 1 }],
+        },
+        requirement: {
+          status: "failed",
+          generationId: null,
+          acceptedAt: null,
+          fetched: 0,
+          baseRows: 0,
+          quarantined: 0,
+          reasons: [{ code: "AS_PROJECT_SELECTION_REQUIRED", count: 1 }],
+        },
       }).success,
     ).toBe(true);
     expect(
-      pullKinds.safeParse({ finding: { fetched: 3, baseRows: 2 } }).success,
+      pullKinds.safeParse({
+        finding: {
+          status: "failed",
+          generationId: "generation-failed",
+          acceptedAt: null,
+          fetched: 3,
+          baseRows: 0,
+          quarantined: 3,
+          reasons: [],
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      pullKinds.safeParse({
+        finding: {
+          status: "published",
+          generationId: null,
+          acceptedAt: null,
+          fetched: 3,
+          baseRows: 2,
+          quarantined: 1,
+          reasons: [],
+        },
+      }).success,
     ).toBe(false);
     expect(rpcContract.syncPull.input.shape).toHaveProperty(
       "workspaceProjectId",

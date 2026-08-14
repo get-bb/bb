@@ -393,7 +393,10 @@ describe.sequential("registered requirement-to-bench journey", () => {
       cliContext(),
     );
     expect(failed.exitCode).toBe(1);
-    expect(failed.stderr).toContain("induced requirement page failure");
+    expect(failed.stderr).toBe("");
+    expect(failed.stdout).toContain("requirement: failed");
+    expect(failed.stdout).toContain("PULL_KIND_FAILED=1");
+    expect(failed.stdout).not.toContain("induced requirement page failure");
     expect(
       ctx
         .db()
@@ -424,7 +427,15 @@ describe.sequential("registered requirement-to-bench journey", () => {
       cliContext(),
     );
     expect(JSON.parse(empty.stdout)).toMatchObject({
-      kinds: { requirement: { fetched: 0, baseRows: 0, quarantined: 0 } },
+      kinds: {
+        requirement: {
+          status: "published",
+          fetched: 0,
+          baseRows: 0,
+          quarantined: 0,
+          reasons: [],
+        },
+      },
     });
     await expect(
       host.harness.behavior.callRpc("benchProjectVersions", {

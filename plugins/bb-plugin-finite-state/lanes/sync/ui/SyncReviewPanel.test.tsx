@@ -423,6 +423,71 @@ describe("Sync review panel", () => {
     });
   });
 
+  it("runs a default pull while AS is unselected and presents every per-kind outcome", async () => {
+    const slot = renderSlot(
+      await syncPanel(),
+      { subPath: SCOPE_PATH },
+      {
+        rpc: {
+          ...handlers(() => plan([])),
+          syncAsProjectCandidates: () => ({
+            platformProjectId: PROJECT,
+            candidateState: "unambiguous" as const,
+            selectedAssuranceStudioProjectId: null,
+            items: [],
+          }),
+          syncPull: () => ({
+            projectId: PROJECT,
+            projectVersionId: VERSION,
+            baseStateSha256: BASE_SHA,
+            workingFastForwarded: true,
+            divergence: [],
+            kinds: {
+              requirement: {
+                status: "failed" as const,
+                generationId: null,
+                acceptedAt: null,
+                fetched: 0,
+                baseRows: 0,
+                quarantined: 0,
+                reasons: [{ code: "AS_PROJECT_SELECTION_REQUIRED", count: 1 }],
+              },
+              vexDecision: {
+                status: "published" as const,
+                generationId: "generation-vex",
+                acceptedAt: "2026-08-14T20:15:00.000Z",
+                fetched: 3,
+                baseRows: 3,
+                quarantined: 0,
+                reasons: [],
+              },
+            },
+          }),
+        },
+      },
+    );
+
+    await slot.findByText("AS_PROJECT_SELECTION_REQUIRED");
+    fireEvent.click(slot.getByRole("button", { name: "Pull remote kinds" }));
+    await slot.findByText("1 published · 1 failed");
+    expect(slot.getByText("vexDecision")).toBeTruthy();
+    expect(slot.getByText("requirement")).toBeTruthy();
+    expect(slot.getByText("AS_PROJECT_SELECTION_REQUIRED=1")).toBeTruthy();
+    expect(slot.inspection.rpcCalls).toContainEqual({
+      method: "syncPull",
+      input: {
+        workspaceProjectId: "workspace-project",
+        projectId: PROJECT,
+        projectVersionId: VERSION,
+      },
+    });
+    expect(
+      slot.inspection.rpcCalls.some(
+        (call) => call.method === "syncStatus" || call.method === "syncPlan",
+      ),
+    ).toBe(false);
+  });
+
   it("renders WORKSPACE_PROJECT_REQUIRED instead of a silent product-security panel", async () => {
     const slot = renderTestSlot(
       await syncPanel(),

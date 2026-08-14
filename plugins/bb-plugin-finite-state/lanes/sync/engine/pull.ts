@@ -10,6 +10,13 @@ import { entryFor, type EntityKind } from "../../../lib/sync/registry.js";
 import { canonicalJson } from "../serialize/canonical.js";
 import { BaseSnapshotStore, type BaseRow } from "../store/base-snapshot.js";
 import {
+  aggregatePullReasons,
+  pullFailureCode,
+  type FailedPullOutcome,
+  type IsolatedPullReport,
+  type PullOutcomeCounts,
+} from "../pull-outcome.js";
+import {
   registeredCachePullers,
   registeredPullAdapters,
   type AdapterAdvisory,
@@ -133,6 +140,7 @@ export class PullFailedError extends Error {
     readonly failures: readonly Readonly<{
       kind: EntityKind;
       message: string;
+      reasonCode: string;
     }>[],
   ) {
     super(
@@ -222,6 +230,21 @@ function storedErrorMessage(error: unknown): string {
     : errorMessage(error);
 }
 
+function remoteFailure(error: unknown): RemoteError | null {
+  if (error instanceof RemoteError) return error;
+  return error instanceof TerminalPullError &&
+    error.cause instanceof RemoteError
+    ? error.cause
+    : null;
+}
+
+function failureReasonCode(error: unknown): string {
+  const remote = remoteFailure(error);
+  return remote === null
+    ? pullFailureCode(errorMessage(error))
+    : diagnoseRemoteFailure(remote).kind;
+}
+
 function sqliteConstraint(error: unknown): boolean {
   return (
     isRecord(error) &&
@@ -274,6 +297,17 @@ function assertSelection(
   if (selected.length === 0)
     throw new Error("No sync adapters or cache pullers are registered");
   return selected;
+}
+
+function selectedKinds(
+  deps: EngineDeps,
+  kinds: readonly EntityKind[] | undefined,
+): EntityKind[] {
+  return assertSelection(
+    kinds,
+    requestedAdapters(deps, kinds),
+    requestedCachePullers(deps, kinds),
+  );
 }
 
 function stagingState(
@@ -445,6 +479,82 @@ function kindCheckpoint(
     pages: value["staged_pages"],
     rows: value["staged_rows"],
     quarantined: value["staged_quarantined"],
+  };
+}
+
+function failedKindCounts(
+  db: Database.Database,
+  scope: SyncScope,
+  storageVersionId: string,
+  kind: EntityKind,
+  generationId: string,
+): PullOutcomeCounts {
+  const value = db
+    .prepare(
+      `SELECT staged_rows, staged_quarantined
+       FROM sync_state
+      WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?
+        AND staging_generation_id = ?`,
+    )
+    .get(scope.projectId, storageVersionId, kind, generationId);
+  if (
+    !isRecord(value) ||
+    typeof value["staged_rows"] !== "number" ||
+    typeof value["staged_quarantined"] !== "number"
+  ) {
+    return { fetched: 0, baseRows: 0, quarantined: 0 };
+  }
+  const baseRows = value["staged_rows"];
+  const quarantined = value["staged_quarantined"];
+  return { fetched: baseRows + quarantined, baseRows, quarantined };
+}
+
+function stagingGenerationForKind(
+  db: Database.Database,
+  scope: SyncScope,
+  storageVersionId: string,
+  kind: EntityKind,
+): string | null {
+  const value = db
+    .prepare(
+      `SELECT staging_generation_id
+       FROM sync_state
+      WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?`,
+    )
+    .get(scope.projectId, storageVersionId, kind);
+  return isRecord(value) && typeof value["staging_generation_id"] === "string"
+    ? value["staging_generation_id"]
+    : null;
+}
+
+function failedOutcome(
+  deps: EngineDeps,
+  scope: SyncScope,
+  storageVersionId: string,
+  kind: EntityKind,
+  generationId: string | null,
+  reasonCodes: readonly string[],
+): FailedPullOutcome {
+  const counts =
+    generationId === null
+      ? { fetched: 0, baseRows: 0, quarantined: 0 }
+      : failedKindCounts(deps.db, scope, storageVersionId, kind, generationId);
+  return {
+    status: "failed",
+    generationId,
+    acceptedAt: null,
+    ...counts,
+    reasons: aggregatePullReasons(
+      reasonCodes.map((code) => {
+        return {
+          code,
+          count:
+            code === "FINDING_ALL_ROWS_QUARANTINED" && counts.quarantined > 0
+              ? counts.quarantined
+              : 1,
+        };
+      }),
+    ),
   };
 }
 
@@ -1002,7 +1112,11 @@ export async function pull(
   );
   const reportKinds: PullReport["kinds"] = {};
   const advisoryCounts = new Map<string, PullReport["advisories"][number]>();
-  const failures: Array<{ kind: EntityKind; message: string }> = [];
+  const failures: Array<{
+    kind: EntityKind;
+    message: string;
+    reasonCode: string;
+  }> = [];
 
   for (const adapter of adapters) {
     try {
@@ -1026,7 +1140,11 @@ export async function pull(
       );
     } catch (error: unknown) {
       const message = errorMessage(error);
-      failures.push({ kind: adapter.kind, message });
+      failures.push({
+        kind: adapter.kind,
+        message,
+        reasonCode: failureReasonCode(error),
+      });
       recordKindFailure(
         deps.db,
         scope,
@@ -1110,7 +1228,11 @@ export async function pull(
       });
     } catch (error: unknown) {
       const message = errorMessage(error);
-      failures.push({ kind: cache.kind, message });
+      failures.push({
+        kind: cache.kind,
+        message,
+        reasonCode: failureReasonCode(error),
+      });
       recordKindFailure(
         deps.db,
         scope,
@@ -1162,6 +1284,92 @@ export async function pull(
       (left, right) =>
         left.kind.localeCompare(right.kind) ||
         left.code.localeCompare(right.code),
+    ),
+  };
+}
+
+/**
+ * Runs each requested kind through the existing single-kind transaction.
+ * One failed kind cannot suppress a sibling publication, and only the
+ * single-kind engine owns accepted-pointer flips and post-commit emissions.
+ */
+export async function pullIsolated(
+  deps: EngineDeps,
+  scope: SyncScope,
+  kinds?: EntityKind[],
+  binding: PullProjectBinding = { assuranceStudioProjectId: null },
+): Promise<IsolatedPullReport> {
+  if (scope.projectId.trim().length === 0)
+    throw new Error("projectId must not be empty");
+  const selected = selectedKinds(deps, kinds);
+  const storageVersionId = toStorageProjectVersionId(scope.projectVersionId);
+  const outcomes: IsolatedPullReport["kinds"] = {};
+  const divergence = new Set<string>();
+  let published = 0;
+  let workingFastForwarded = true;
+
+  for (const kind of selected) {
+    try {
+      remoteScopeForKind(kind, scope, binding);
+    } catch (error: unknown) {
+      outcomes[kind] = failedOutcome(
+        deps,
+        scope,
+        storageVersionId,
+        kind,
+        null,
+        [failureReasonCode(error)],
+      );
+      continue;
+    }
+
+    try {
+      const report = await pull(deps, scope, [kind], binding);
+      const counts = report.kinds[kind];
+      if (counts === undefined) {
+        throw new Error(`Pull report omitted requested kind ${kind}`);
+      }
+      outcomes[kind] = {
+        status: "published",
+        generationId: report.generationId,
+        acceptedAt: report.acceptedAt,
+        ...counts,
+        reasons: aggregatePullReasons(
+          report.advisories
+            .filter((advisory) => advisory.kind === kind)
+            .map(({ code, count }) => ({ code, count })),
+        ),
+      };
+      published += 1;
+      workingFastForwarded &&= report.workingFastForwarded;
+      for (const item of report.divergence) divergence.add(item);
+    } catch (error: unknown) {
+      const generationId =
+        error instanceof PullFailedError
+          ? error.generationId
+          : stagingGenerationForKind(deps.db, scope, storageVersionId, kind);
+      const reasonCodes =
+        error instanceof PullFailedError
+          ? error.failures
+              .filter((failure) => failure.kind === kind)
+              .map((failure) => failure.reasonCode)
+          : [failureReasonCode(error)];
+      outcomes[kind] = failedOutcome(
+        deps,
+        scope,
+        storageVersionId,
+        kind,
+        generationId,
+        reasonCodes.length > 0 ? reasonCodes : ["PULL_KIND_FAILED"],
+      );
+    }
+  }
+
+  return {
+    kinds: outcomes,
+    workingFastForwarded: published > 0 && workingFastForwarded,
+    divergence: [...divergence].sort((left, right) =>
+      left.localeCompare(right),
     ),
   };
 }

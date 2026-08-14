@@ -46,6 +46,7 @@ interface Runtime {
   versions: Map<string, Record<string, unknown>>;
   evidence: Map<string, unknown>;
   failSbom: boolean;
+  failThreat: boolean;
   failNextTriageWrite: boolean;
   failNextThreadSpawn: boolean;
   firmwareReady: Set<string>;
@@ -1053,7 +1054,7 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
         );
         fireEvent.click(slot.getByRole("button", { name: "Pull again" }));
         const pullFailure = await slot.findByRole("alert");
-        expect(pullFailure.textContent).toMatch(/Pull generation|SBOM/u);
+        expect(pullFailure.textContent).toMatch(/http=1/u);
         runtime.failSbom = false;
         fireEvent.click(slot.getByRole("button", { name: "Pull again" }));
         await waitFor(() => expect(slot.queryByRole("alert")).toBeNull());
@@ -1201,12 +1202,7 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
             component: { id: `fs193-invalid-${index}`, version: "" },
           });
         }
-        let failure = "";
-        try {
-          await pull();
-        } catch (error) {
-          failure = error instanceof Error ? error.message : String(error);
-        }
+        const failure = await pull();
         const retained = await runtime.host.harness.behavior.callRpc(
           "findingsUiList",
           {
@@ -1270,6 +1266,13 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
           component: { id: "fs199-missing-name", version: "" },
         });
         const enrichmentPull = await pull();
+        const enrichmentFinding = object(
+          object(
+            object(enrichmentPull, "FS-199 pull")["kinds"],
+            "FS-199 kinds",
+          )["finding"],
+          "FS-199 finding outcome",
+        );
         const enrichmentAdvisories =
           await runtime.host.harness.behavior.callRpc(
             "findingsPullAdvisories",
@@ -1277,7 +1280,7 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
               projectId: runtime.projectId,
               projectVersionId: runtime.fs193Version,
               generationId: string(
-                object(enrichmentPull, "FS-199 pull")["generationId"],
+                enrichmentFinding["generationId"],
                 "FS-199 generation id",
               ),
             },
@@ -1368,6 +1371,13 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
           object(enrichmentPull["kinds"], "FS-199 kinds")["finding"],
           "FS-199 finding report",
         );
+        const failureKind = object(
+          object(
+            object(evidence["failure"], "failed pull")["kinds"],
+            "failed pull kinds",
+          )["finding"],
+          "failed finding outcome",
+        );
         const enrichmentAdvisories = array(
           object(evidence["enrichmentAdvisories"], "FS-199 advisories")[
             "advisories"
@@ -1397,9 +1407,18 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
           ),
           assertion(
             "all-quarantined pull fails with truthful count",
-            string(evidence["failure"], "failure").includes(
-              "quarantined 3 fetched finding rows",
-            ),
+            failureKind["status"] === "failed" &&
+              failureKind["fetched"] === 3 &&
+              failureKind["quarantined"] === 3 &&
+              array(failureKind["reasons"], "failed finding reasons").some(
+                (reason) => {
+                  const outcomeReason = object(reason, "failed finding reason");
+                  return (
+                    outcomeReason["code"] === "FINDING_ALL_ROWS_QUARANTINED" &&
+                    outcomeReason["count"] === 3
+                  );
+                },
+              ),
           ),
           assertion(
             "accepted generation remains visible",
@@ -1821,6 +1840,43 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
       ...metadata(10),
       action: async ({ artifacts }) => {
         await ensureFindingPull(runtime);
+        cleanup();
+        runtime.panelRpcCalls.length = 0;
+        const syncSlot = renderSlot(
+          await registeredSyncPanelWithHumanApproval(),
+          {
+            subPath: `scope/${runtime.projectId}/${runtime.findingVersion}`,
+          },
+          panelRuntime(runtime),
+        );
+        runtime.failThreat = true;
+        try {
+          fireEvent.click(
+            await syncSlot.findByRole("button", {
+              name: "Pull remote kinds",
+            }),
+          );
+          await syncSlot.findByRole("button", { name: "Pulling kinds…" });
+          await syncSlot.findByRole(
+            "button",
+            { name: "Pull remote kinds" },
+            { timeout: 50_000 },
+          );
+        } finally {
+          runtime.failThreat = false;
+        }
+        const isolatedPullText = syncSlot.container.textContent ?? "";
+        if (!isolatedPullText.includes("threatfailed")) {
+          throw new Error(`FS-196 outcome missing: ${isolatedPullText}`);
+        }
+        const defaultPullCall = runtime.panelRpcCalls.find(
+          ({ method }) => method === "syncPull",
+        );
+        await artifacts.writeText(
+          "fs196-default-pull-isolation.dom.html",
+          syncSlot.container.innerHTML,
+        );
+        syncSlot.unmount();
         const before = runtime.host.harness.inspection.realtimeSignals.length;
         await runtime.host.harness.behavior.callRpc("syncPull", {
           workspaceProjectId: WORKSPACE_PROJECT_ID,
@@ -1840,8 +1896,15 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
             filters: {},
           },
         );
-        runtime.evidence.set("realtime", { signals, durable });
+        runtime.evidence.set("realtime", {
+          defaultPullCall,
+          isolatedPullText,
+          signals,
+          durable,
+        });
         await artifacts.writeJson("realtime-refetch.json", {
+          defaultPullCall,
+          isolatedPullText,
           signals,
           durable,
         });
@@ -1852,6 +1915,29 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
           "realtime evidence",
         );
         return [
+          assertion(
+            "default Sync-panel pull isolates an induced threat failure",
+            !Object.hasOwn(
+              object(
+                object(evidence["defaultPullCall"], "default pull call")[
+                  "input"
+                ],
+                "default pull input",
+              ),
+              "kinds",
+            ) &&
+              string(
+                evidence["isolatedPullText"],
+                "isolated pull text",
+              ).includes("threatfailed") &&
+              string(
+                evidence["isolatedPullText"],
+                "isolated pull text",
+              ).includes("http=1") &&
+              /[1-9][0-9]* published · 1 failed/u.test(
+                string(evidence["isolatedPullText"], "isolated pull text"),
+              ),
+          ),
           assertion(
             "publication emits refetch hint",
             array(evidence["signals"], "signals").some(
@@ -2343,7 +2429,18 @@ async function createRun(
       const assuranceStudio = new asClientModule.AssuranceStudioClient({
         baseUrl: "http://assurance-studio.mock",
         apiKey: "golden-as-key",
-        fetch: remote.assuranceStudio.fetch,
+        async fetch(input, init) {
+          const url = new URL(
+            input instanceof Request ? input.url : input.toString(),
+          );
+          if (runtime?.failThreat && url.pathname.includes("/threats")) {
+            return Response.json(
+              { message: "induced FS-196 threat failure" },
+              { status: 422 },
+            );
+          }
+          return remote.assuranceStudio.fetch(input, init);
+        },
       });
       const ctx = contextModule.createPluginContext(bb);
       ctx.service("remote-services", () => ({
@@ -2386,6 +2483,7 @@ async function createRun(
         versions: state.versions,
         evidence: new Map(),
         failSbom: false,
+        failThreat: false,
         failNextTriageWrite: false,
         failNextThreadSpawn: false,
         firmwareReady: new Set(),

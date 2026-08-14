@@ -160,7 +160,7 @@ const derivedResolver: AdapterSlugResolver = {
 };
 
 describe("canvas real-wire adapter contract", () => {
-  it("publishes the default registered pull from committed fixtures atomically without identity drift", async () => {
+  it("publishes each default-pull kind atomically from committed fixtures without identity drift", async () => {
     let corrupt = false;
     let invalidTrustLevel = false;
     const requestedPageSizes: number[] = [];
@@ -268,15 +268,29 @@ describe("canvas real-wire adapter contract", () => {
     const first = await runDefaultPull();
     expect(first).toMatchObject({ exitCode: 0, stderr: "" });
     const firstReport = JSON.parse(first.stdout) as {
-      generationId: string;
-      kinds: Record<string, { fetched: number; baseRows: number }>;
+      kinds: Record<
+        string,
+        {
+          status: "published" | "failed";
+          generationId: string | null;
+          fetched: number;
+          baseRows: number;
+          quarantined: number;
+        }
+      >;
     };
     expect(firstReport.kinds).toMatchObject({
-      vexDecision: { fetched: 308, baseRows: 308, quarantined: 0 },
+      vexDecision: {
+        status: "published",
+        fetched: 308,
+        baseRows: 308,
+        quarantined: 0,
+      },
       ...Object.fromEntries(
         TARA_KINDS.map((kind) => [
           kind,
           {
+            status: "published",
             fetched: expectedCounts[kind],
             baseRows: expectedCounts[kind],
             quarantined: 0,
@@ -369,13 +383,28 @@ describe("canvas real-wire adapter contract", () => {
     corrupt = true;
     const failed = await runDefaultPull();
     expect(failed.exitCode).toBe(1);
-    const failureMessage = `${failed.stdout}\n${failed.stderr}`;
-    for (const [kind, field] of Object.entries(corruptionFields)) {
-      expect(failureMessage).toContain(
-        `${kind}: REMOTE_FIELD_MISSING: ${kind} payload lacks`,
-      );
-      expect(failureMessage).toContain(field);
+    expect(failed.stderr).toBe("");
+    const failedReport = JSON.parse(failed.stdout) as {
+      kinds: Record<
+        string,
+        {
+          status: "published" | "failed";
+          generationId: string | null;
+          reasons: Array<{ code: string; count: number }>;
+        }
+      >;
+    };
+    for (const kind of Object.keys(corruptionFields)) {
+      expect(failedReport.kinds[kind]).toMatchObject({
+        status: "failed",
+        generationId: expect.any(String),
+        reasons: [{ code: "REMOTE_FIELD_MISSING", count: 1 }],
+      });
     }
+    expect(failedReport.kinds.vexDecision).toMatchObject({
+      status: "published",
+      generationId: expect.any(String),
+    });
     const acceptedAfterFailure = context
       .db()
       .prepare(
@@ -392,23 +421,32 @@ describe("canvas real-wire adapter contract", () => {
     expect(acceptedAfterFailure).toHaveLength(TARA_KINDS.length);
     expect(
       acceptedAfterFailure.every(
-        (row) => row.accepted_generation_id === firstReport.generationId,
+        (row) =>
+          row.accepted_generation_id ===
+          firstReport.kinds[row.entity_kind]?.generationId,
       ),
     ).toBe(true);
-    expect(
-      context
-        .db()
-        .prepare(
-          `SELECT status, error FROM pull_generation
-        WHERE project_id = ? AND project_version_id = ?
-          AND status = 'staging'
-        LIMIT 1`,
-        )
-        .get(PROJECT_ID, VERSION_ID),
-    ).toMatchObject({
-      status: "staging",
-      error: expect.stringContaining("zone: REMOTE_FIELD_MISSING"),
-    });
+    const failedGenerations = context
+      .db()
+      .prepare(
+        `SELECT requested_kinds_json, status, error FROM pull_generation
+          WHERE project_id = ? AND project_version_id = ?
+            AND status = 'staging' AND error IS NOT NULL
+          ORDER BY requested_kinds_json`,
+      )
+      .all(PROJECT_ID, VERSION_ID) as Array<{
+      requested_kinds_json: string;
+      status: string;
+      error: string;
+    }>;
+    expect(failedGenerations).toHaveLength(TARA_KINDS.length);
+    for (const kind of TARA_KINDS) {
+      expect(failedGenerations).toContainEqual({
+        requested_kinds_json: JSON.stringify([kind]),
+        status: "staging",
+        error: expect.stringContaining(`${kind}: REMOTE_FIELD_MISSING`),
+      });
+    }
 
     corrupt = false;
     const recovered = await runDefaultPull();

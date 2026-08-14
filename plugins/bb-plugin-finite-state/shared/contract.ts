@@ -9,7 +9,7 @@
 import { defineRpcContract } from "@bb/plugin-sdk";
 import { z } from "zod";
 
-export const CONTRACT_VERSION = 9 as const;
+export const CONTRACT_VERSION = 10 as const;
 
 export type JsonValue =
   | null
@@ -668,22 +668,44 @@ const assuranceStudioProjectCandidatesSchema = z
     items: z.array(assuranceStudioProjectCandidateSchema).max(1_000),
   })
   .strict();
+const pullReasonSchema = z
+  .object({
+    code: identifierSchema,
+    count: z.number().int().positive(),
+  })
+  .strict();
+const pullCountFields = {
+  fetched: z.number().int().nonnegative(),
+  baseRows: z.number().int().nonnegative(),
+  quarantined: z.number().int().nonnegative(),
+};
+const publishedPullOutcomeSchema = z
+  .object({
+    status: z.literal("published"),
+    generationId: identifierSchema,
+    acceptedAt: timestampSchema,
+    ...pullCountFields,
+    reasons: z.array(pullReasonSchema).max(100),
+  })
+  .strict();
+const failedPullOutcomeSchema = z
+  .object({
+    status: z.literal("failed"),
+    generationId: identifierSchema.nullable(),
+    acceptedAt: z.null(),
+    ...pullCountFields,
+    reasons: z.array(pullReasonSchema).min(1).max(100),
+  })
+  .strict();
+const pullKindOutcomeSchema = z.discriminatedUnion("status", [
+  publishedPullOutcomeSchema,
+  failedPullOutcomeSchema,
+]);
 const pullReportSchema = z
   .object({
     ...projectScopeFields,
-    generationId: identifierSchema,
-    acceptedAt: timestampSchema,
     baseStateSha256: sha256Schema,
-    kinds: z.record(
-      identifierSchema,
-      z
-        .object({
-          fetched: z.number().int().nonnegative(),
-          baseRows: z.number().int().nonnegative(),
-          quarantined: z.number().int().nonnegative(),
-        })
-        .strict(),
-    ),
+    kinds: z.record(identifierSchema, pullKindOutcomeSchema),
     workingFastForwarded: z.boolean(),
     divergence: z.array(identifierSchema),
   })

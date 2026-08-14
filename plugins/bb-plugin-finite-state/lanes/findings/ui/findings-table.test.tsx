@@ -192,11 +192,20 @@ describe("findings table panel", () => {
         pull: () => ({
           projectId: "platform-project-1",
           projectVersionId: "version-1",
-          generationId: "generation-mixed",
-          acceptedAt: "2026-08-14T13:00:00.000Z",
           baseStateSha256: "b".repeat(64),
           kinds: {
-            finding: { fetched: 3, baseRows: 2, quarantined: 1 },
+            finding: {
+              status: "published",
+              generationId: "generation-mixed",
+              acceptedAt: "2026-08-14T13:00:00.000Z",
+              fetched: 3,
+              baseRows: 2,
+              quarantined: 1,
+              reasons: [
+                { code: "FINDING_COMPONENT_IDENTITY_MISSING", count: 1 },
+                { code: "FINDING_WARNING_COUNT_INVALID", count: 2 },
+              ],
+            },
           },
           workingFastForwarded: true,
           divergence: [],

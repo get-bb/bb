@@ -12,7 +12,7 @@ import {
   type Scheduler,
 } from "../../../lib/remote/rate-limit.js";
 import { RemoteError, type Json } from "../../../lib/remote/types.js";
-import { ENTITIES } from "../../../lib/sync/registry.js";
+import { ENTITIES, type EntityKind } from "../../../lib/sync/registry.js";
 import { createSerializer } from "../serialize/serializer.js";
 import { BaseSnapshotStore } from "../store/base-snapshot.js";
 import {
@@ -41,7 +41,9 @@ import {
 import type { EntityAdapter, ServerEntity, WorkingEntity } from "./adapter.js";
 import {
   PullFailedError,
+  TerminalPullError,
   pull as pullEngine,
+  pullIsolated,
   type EngineDeps,
   type PullProgress,
 } from "./pull.js";
@@ -999,6 +1001,216 @@ decisions:
       message: expect.stringContaining(
         "threat: REMOTE_INVALID_PAGE_SIZE: Invalid remote paging state",
       ),
+    });
+  });
+
+  it("publishes a successful kind when a sibling returns a remote 5xx and emits only the success", async () => {
+    const scope = { projectId: "project-isolated", projectVersionId: "v1" };
+    const requirement: EntityAdapter = {
+      kind: "requirement",
+      klass: "VERSIONED",
+      serializer: createSerializer("requirement"),
+      async *fetchRemote(_scope, progress) {
+        progress({ page: 1, of: 1 });
+        yield [
+          {
+            key: ENTITIES.requirement.key({ reqId: "REQ-ISOLATED" }),
+            remoteId: "remote-requirement-isolated",
+            payload: {
+              id: "remote-requirement-isolated",
+              projectId: scope.projectId,
+              kind: "requirement",
+              fields: { reqId: "REQ-ISOLATED", title: "Published" },
+              humanEdited: null,
+              reviewStatus: null,
+              reviewVersion: null,
+            },
+          },
+        ];
+      },
+      async readWorking() {
+        return [];
+      },
+    };
+    const threat: EntityAdapter = {
+      kind: "threat",
+      klass: "VERSIONED",
+      serializer: createSerializer("threat"),
+      async *fetchRemote() {
+        throw new RemoteError("Assurance Studio is unavailable", {
+          service: "assurance-studio",
+          code: "REMOTE_SERVER_ERROR",
+          status: 503,
+          retryable: true,
+          retryAfterMs: null,
+          details: null,
+        });
+      },
+      async readWorking() {
+        return [];
+      },
+    };
+    const emitted: EntityKind[][] = [];
+    let generation = 0;
+    const deps = engine(requirement, {
+      adapters: [requirement, threat],
+      cachePullers: [],
+      createGenerationId: () => `isolated-remote-${++generation}`,
+      published: ({ kinds }) => emitted.push([...kinds]),
+    });
+
+    const report = await pullIsolated(deps, scope, undefined, {
+      assuranceStudioProjectId: "as-selected",
+    });
+
+    expect(report.kinds).toEqual({
+      requirement: {
+        status: "published",
+        generationId: "isolated-remote-1",
+        acceptedAt: "2026-08-12T19:00:00.000Z",
+        fetched: 1,
+        baseRows: 1,
+        quarantined: 0,
+        reasons: [],
+      },
+      threat: {
+        status: "failed",
+        generationId: "isolated-remote-2",
+        acceptedAt: null,
+        fetched: 0,
+        baseRows: 0,
+        quarantined: 0,
+        reasons: [{ code: "http", count: 1 }],
+      },
+    });
+    expect(emitted).toEqual([["requirement"]]);
+    expect(
+      new BaseSnapshotStore(deps.db).listAccepted(
+        scope.projectId,
+        scope.projectVersionId,
+        "requirement",
+      ),
+    ).toHaveLength(1);
+    expect(
+      new BaseSnapshotStore(deps.db).listAccepted(
+        scope.projectId,
+        scope.projectVersionId,
+        "threat",
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("reports an unselected AS kind as a pre-generation failure while Platform publishes", async () => {
+    const scope = {
+      projectId: "platform-project-unselected",
+      projectVersionId: "v1",
+    };
+    const vex: EntityAdapter = {
+      kind: "vexDecision",
+      klass: "OVERLAY",
+      serializer: createSerializer("vexDecision"),
+      async *fetchRemote(_scope, progress) {
+        progress({ page: 1, of: 1 });
+        yield [];
+      },
+      async readWorking() {
+        return [];
+      },
+    };
+    const requirement: EntityAdapter = {
+      kind: "requirement",
+      klass: "VERSIONED",
+      serializer: createSerializer("requirement"),
+      async *fetchRemote() {
+        throw new Error("unselected AS adapter must not be contacted");
+      },
+      async readWorking() {
+        return [];
+      },
+    };
+    const deps = engine(vex, {
+      adapters: [requirement, vex],
+      cachePullers: [],
+      createGenerationId: () => "isolated-platform-generation",
+    });
+
+    const report = await pullIsolated(deps, scope);
+
+    expect(report.kinds.requirement).toEqual({
+      status: "failed",
+      generationId: null,
+      acceptedAt: null,
+      fetched: 0,
+      baseRows: 0,
+      quarantined: 0,
+      reasons: [{ code: "AS_PROJECT_SELECTION_REQUIRED", count: 1 }],
+    });
+    expect(report.kinds.vexDecision).toMatchObject({
+      status: "published",
+      generationId: "isolated-platform-generation",
+    });
+  });
+
+  it("reports a totally quarantined cache kind without suppressing a sibling publication", async () => {
+    const scope = {
+      projectId: "project-total-quarantine",
+      projectVersionId: "v1",
+    };
+    const requirement: EntityAdapter = {
+      kind: "requirement",
+      klass: "VERSIONED",
+      serializer: createSerializer("requirement"),
+      async *fetchRemote(_scope, progress) {
+        progress({ page: 1, of: 1 });
+        yield [];
+      },
+      async readWorking() {
+        return [];
+      },
+    };
+    let generation = 0;
+    const deps = engine(requirement, {
+      adapters: [requirement],
+      createGenerationId: () => `isolated-quarantine-${++generation}`,
+      cachePullers: [
+        {
+          kind: "finding",
+          async pull(_scope, generationId) {
+            deps.db
+              .prepare(
+                `UPDATE sync_state
+                    SET staged_quarantined = 3
+                  WHERE project_id = ? AND project_version_id = ?
+                    AND entity_kind = 'finding'
+                    AND staging_generation_id = ?`,
+              )
+              .run(scope.projectId, scope.projectVersionId, generationId);
+            throw new TerminalPullError(
+              new Error(
+                "FINDING_ALL_ROWS_QUARANTINED: quarantined 3 fetched finding rows",
+              ),
+            );
+          },
+        },
+      ],
+    });
+
+    const report = await pullIsolated(deps, scope, undefined, {
+      assuranceStudioProjectId: "as-selected",
+    });
+
+    expect(report.kinds.finding).toEqual({
+      status: "failed",
+      generationId: "isolated-quarantine-1",
+      acceptedAt: null,
+      fetched: 3,
+      baseRows: 0,
+      quarantined: 3,
+      reasons: [{ code: "FINDING_ALL_ROWS_QUARANTINED", count: 3 }],
+    });
+    expect(report.kinds.requirement).toMatchObject({
+      status: "published",
+      generationId: "isolated-quarantine-2",
     });
   });
 

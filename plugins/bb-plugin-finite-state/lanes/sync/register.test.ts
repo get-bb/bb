@@ -13,6 +13,7 @@ import { createPluginContext } from "../../lib/context.js";
 import type { PluginContext } from "../../lib/context.js";
 import { AssuranceStudioClient } from "../../lib/remote/assurance-studio/client.js";
 import { PlatformClient } from "../../lib/remote/platform/client.js";
+import { RemoteError } from "../../lib/remote/types.js";
 import type {
   Json,
   RemotePage,
@@ -36,6 +37,7 @@ import {
   type MockPlatformState,
 } from "../../test/mock-remote/platform/state.js";
 import { createSerializer } from "./serialize/serializer.js";
+import type { IsolatedPullReport } from "./pull-outcome.js";
 import {
   DuplicateAdapterError,
   registerAdapter,
@@ -301,7 +303,19 @@ describe("sync registration", () => {
         workspaceProjectId: "bb-project-sync",
         kinds: ["requirement"],
       }),
-    ).rejects.toThrow("AS_PROJECT_SELECTION_REQUIRED");
+    ).resolves.toMatchObject({
+      kinds: {
+        requirement: {
+          status: "failed",
+          generationId: null,
+          acceptedAt: null,
+          fetched: 0,
+          baseRows: 0,
+          quarantined: 0,
+          reasons: [{ code: "AS_PROJECT_SELECTION_REQUIRED", count: 1 }],
+        },
+      },
+    });
     bindWorkspacePlatformProject(
       context.db(),
       "bb-project-sync",
@@ -314,33 +328,43 @@ describe("sync registration", () => {
       "as-project-explicit",
     );
 
-    const pulled = await host.harness.behavior.callRpc("syncPull", {
-      ...scope,
-      workspaceProjectId: "bb-project-sync",
-      kinds: ["requirement", "vexDecision"],
-    });
+    const pulled = rpcContract.syncPull.output.parse(
+      await host.harness.behavior.callRpc("syncPull", {
+        ...scope,
+        workspaceProjectId: "bb-project-sync",
+        kinds: ["requirement", "vexDecision"],
+      }),
+    );
     expect(pulled).toMatchObject({
       ...scope,
-      generationId: expect.any(String),
       baseStateSha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
       kinds: {
-        requirement: { fetched: 1, baseRows: 1, quarantined: 0 },
+        requirement: {
+          status: "published",
+          generationId: expect.any(String),
+          fetched: 1,
+          baseRows: 1,
+          quarantined: 0,
+        },
         vexDecision: {
+          status: "published",
+          generationId: expect.any(String),
           fetched: expect.any(Number),
           baseRows: expect.any(Number),
           quarantined: expect.any(Number),
         },
       },
     });
+    const requirementOutcome = pulled.kinds.requirement;
+    const vexDecisionOutcome = pulled.kinds.vexDecision;
     if (
-      typeof pulled !== "object" ||
-      pulled === null ||
-      !("generationId" in pulled) ||
-      typeof pulled.generationId !== "string"
+      requirementOutcome?.status !== "published" ||
+      vexDecisionOutcome?.status !== "published"
     ) {
-      throw new Error("syncPull returned no generation id");
+      throw new Error("syncPull did not publish both requested kinds");
     }
-    const pulledGenerationId = pulled.generationId;
+    const requirementGenerationId = requirementOutcome.generationId;
+    const vexDecisionGenerationId = vexDecisionOutcome.generationId;
     expect(
       context
         .db()
@@ -372,7 +396,14 @@ describe("sync registration", () => {
           workspaceProjectId: "bb-project-failed-sync",
           kinds: ["requirement"],
         }),
-      ).rejects.toThrow("registered RPC pull failed");
+      ).resolves.toMatchObject({
+        kinds: {
+          requirement: {
+            status: "failed",
+            reasons: [{ code: "PULL_KIND_FAILED", count: 1 }],
+          },
+        },
+      });
     } finally {
       remoteRequirementError = null;
     }
@@ -404,10 +435,10 @@ describe("sync registration", () => {
       conflicts: [],
       orphans: [],
       acceptedGenerationIds: {
-        requirement: pulledGenerationId,
-        vexDecision: pulledGenerationId,
+        requirement: requirementGenerationId,
+        vexDecision: vexDecisionGenerationId,
       },
-      cache: { acceptedGenerationId: pulledGenerationId },
+      cache: { acceptedGenerationId: null },
     });
     await expect(
       host.harness.behavior.callRpc("syncPlan", {
@@ -419,8 +450,8 @@ describe("sync registration", () => {
       planId: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{26}$/u),
       planSha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
       baseGenerationIds: {
-        requirement: pulledGenerationId,
-        vexDecision: pulledGenerationId,
+        requirement: requirementGenerationId,
+        vexDecision: vexDecisionGenerationId,
       },
       items: expect.any(Array),
       total: expect.any(Number),
@@ -429,7 +460,7 @@ describe("sync registration", () => {
         state: "stale",
         message:
           "Working tree unavailable; plan includes upstream changes only",
-        acceptedGenerationId: pulledGenerationId,
+        acceptedGenerationId: null,
       },
     });
     const firstFilteredPage = await host.harness.behavior.callRpc("syncPlan", {
@@ -718,16 +749,9 @@ decisions:
       },
     );
     expect(result).toMatchObject({ exitCode: 0, stderr: "" });
-    expect(JSON.parse(result.stdout)).toMatchObject({
-      advisories: [],
-      kinds: {
-        vexDecision: {
-          fetched: expect.any(Number),
-          baseRows: expect.any(Number),
-          quarantined: 0,
-        },
-      },
-    });
+    expect(result.stdout).toMatch(
+      /^Pull complete: 1 published, 0 failed\nvexDecision: published · \d+ fetched, \d+ base rows, 0 quarantined\n$/u,
+    );
     const machine = await host.harness.behavior.runCli(
       ["status", "triage", "--json"],
       {
@@ -784,13 +808,12 @@ decisions:
       );
       expect(result).toMatchObject({ exitCode: 0, stderr: "" });
       expect(JSON.parse(result.stdout)).toMatchObject({
-        advisories: [
-          {
-            kind: "vexDecision",
-            code: "VEX_REMOTE_IDENTITY_MISSING",
-            count: 1,
+        kinds: {
+          vexDecision: {
+            status: "published",
+            reasons: [{ code: "VEX_REMOTE_IDENTITY_MISSING", count: 1 }],
           },
-        ],
+        },
       });
       expect(host.harness.inspection.logEntries).toContainEqual({
         level: "warn",
@@ -822,7 +845,12 @@ decisions:
     expect(first.exitCode).toBe(0);
     expect(JSON.parse(first.stdout)).toMatchObject({
       kinds: {
-        finding: { fetched: 4_001, baseRows: 4_000, quarantined: 0 },
+        finding: {
+          status: "published",
+          fetched: 4_001,
+          baseRows: 4_000,
+          quarantined: 0,
+        },
       },
     });
     const repeated = await host.harness.behavior.runCli(argv, {
@@ -833,7 +861,12 @@ decisions:
     expect(repeated.exitCode).toBe(0);
     expect(JSON.parse(repeated.stdout)).toMatchObject({
       kinds: {
-        finding: { fetched: 4_001, baseRows: 4_000, quarantined: 0 },
+        finding: {
+          status: "published",
+          fetched: 4_001,
+          baseRows: 4_000,
+          quarantined: 0,
+        },
       },
     });
 
@@ -879,6 +912,7 @@ decisions:
       expect(JSON.parse(result.stdout)).toMatchObject({
         kinds: {
           finding: {
+            status: "published",
             fetched: captured.expectedRows,
             baseRows: captured.expectedRows,
             quarantined: 0,
@@ -989,23 +1023,29 @@ decisions:
       state.findings.set(rowId, row);
     }
     try {
-      const mixed = await host.harness.behavior.callRpc("syncPull", {
-        workspaceProjectId: "bb-project-sync",
-        projectId: scope.projectId,
-        projectVersionId: mixedVersion,
-        kinds: ["finding"],
-      });
+      const mixed = rpcContract.syncPull.output.parse(
+        await host.harness.behavior.callRpc("syncPull", {
+          workspaceProjectId: "bb-project-sync",
+          projectId: scope.projectId,
+          projectVersionId: mixedVersion,
+          kinds: ["finding"],
+        }),
+      );
       expect(mixed).toMatchObject({
-        kinds: { finding: { fetched: 4, baseRows: 3, quarantined: 1 } },
+        kinds: {
+          finding: {
+            status: "published",
+            fetched: 4,
+            baseRows: 3,
+            quarantined: 1,
+          },
+        },
       });
-      if (
-        typeof mixed !== "object" ||
-        mixed === null ||
-        !("generationId" in mixed) ||
-        typeof mixed.generationId !== "string"
-      ) {
+      const mixedFinding = mixed.kinds.finding;
+      if (mixedFinding?.status !== "published") {
         throw new Error("syncPull returned no mixed-corpus generation id");
       }
+      const mixedGenerationId = mixedFinding.generationId;
       const persisted = context
         .db()
         .prepare(
@@ -1016,7 +1056,7 @@ decisions:
             WHERE project_id = ? AND project_version_id = ? AND generation_id = ?
             ORDER BY finding_id`,
         )
-        .all(scope.projectId, mixedVersion, mixed.generationId) as Array<{
+        .all(scope.projectId, mixedVersion, mixedGenerationId) as Array<{
         findingId: string;
         stableKey: string;
         epssScore: number | null;
@@ -1076,11 +1116,11 @@ decisions:
         {
           projectId: scope.projectId,
           projectVersionId: mixedVersion,
-          generationId: mixed.generationId,
+          generationId: mixedGenerationId,
         },
       );
       expect(diagnostics).toEqual({
-        generationId: mixed.generationId,
+        generationId: mixedGenerationId,
         advisories: [
           { code: "FINDING_COMPONENT_IDENTITY_MISSING", count: 1 },
           { code: "FINDING_EPSS_SCORE_INVALID", count: 1 },
@@ -1134,37 +1174,27 @@ decisions:
         },
       );
       expect(mixedCli).toMatchObject({ exitCode: 0, stderr: "" });
-      const mixedCliReport: unknown = JSON.parse(mixedCli.stdout);
+      const mixedCliReport = JSON.parse(mixedCli.stdout) as IsolatedPullReport;
       expect(mixedCliReport).toMatchObject({
-        kinds: { finding: { fetched: 4, baseRows: 3, quarantined: 1 } },
-        advisories: [
-          {
-            kind: "finding",
-            code: "FINDING_COMPONENT_IDENTITY_MISSING",
-            count: 1,
+        kinds: {
+          finding: {
+            status: "published",
+            fetched: 4,
+            baseRows: 3,
+            quarantined: 1,
+            reasons: [
+              { code: "FINDING_COMPONENT_IDENTITY_MISSING", count: 1 },
+              { code: "FINDING_EPSS_SCORE_INVALID", count: 1 },
+              { code: "FINDING_VIOLATION_COUNT_INVALID", count: 1 },
+              { code: "FINDING_WARNING_COUNT_INVALID", count: 1 },
+            ],
           },
-          {
-            kind: "finding",
-            code: "FINDING_EPSS_SCORE_INVALID",
-            count: 1,
-          },
-          {
-            kind: "finding",
-            code: "FINDING_VIOLATION_COUNT_INVALID",
-            count: 1,
-          },
-          {
-            kind: "finding",
-            code: "FINDING_WARNING_COUNT_INVALID",
-            count: 1,
-          },
-        ],
+        },
       });
+      const mixedFindingOutcome = mixedCliReport.kinds.finding;
       if (
-        typeof mixedCliReport !== "object" ||
-        mixedCliReport === null ||
-        !("generationId" in mixedCliReport) ||
-        typeof mixedCliReport.generationId !== "string"
+        mixedFindingOutcome?.status !== "published" ||
+        typeof mixedFindingOutcome.generationId !== "string"
       ) {
         throw new Error("finding CLI returned no mixed-corpus generation id");
       }
@@ -1182,22 +1212,28 @@ decisions:
           },
         });
       }
-      const allQuarantinedPull = () =>
-        host.harness.behavior.callRpc("syncPull", {
-          workspaceProjectId: "bb-project-sync",
-          projectId: scope.projectId,
-          projectVersionId: mixedVersion,
-          kinds: ["finding"],
-        });
-      const allQuarantinedFailure = {
-        code: "handler_error",
-        message: expect.stringContaining(
-          "finding: FINDING_ALL_ROWS_QUARANTINED: quarantined 3 fetched finding rows; reasons [FINDING_COMPONENT_IDENTITY_MISSING=3]",
-        ),
-      };
-      await expect(allQuarantinedPull()).rejects.toMatchObject(
-        allQuarantinedFailure,
-      );
+      const allQuarantinedPull = async () =>
+        rpcContract.syncPull.output.parse(
+          await host.harness.behavior.callRpc("syncPull", {
+            workspaceProjectId: "bb-project-sync",
+            projectId: scope.projectId,
+            projectVersionId: mixedVersion,
+            kinds: ["finding"],
+          }),
+        );
+      await expect(allQuarantinedPull()).resolves.toMatchObject({
+        kinds: {
+          finding: {
+            status: "failed",
+            generationId: expect.any(String),
+            acceptedAt: null,
+            fetched: 3,
+            baseRows: 0,
+            quarantined: 3,
+            reasons: [{ code: "FINDING_ALL_ROWS_QUARANTINED", count: 3 }],
+          },
+        },
+      });
       const failedGeneration = context
         .db()
         .prepare(
@@ -1215,7 +1251,7 @@ decisions:
         | undefined;
       expect(failedGeneration).toMatchObject({ status: "failed" });
       expect(failedGeneration?.generationId).not.toBe(
-        mixedCliReport.generationId,
+        mixedFindingOutcome.generationId,
       );
       const acceptedAfterFailure = context
         .db()
@@ -1233,7 +1269,7 @@ decisions:
         )
         .get(scope.projectId, mixedVersion);
       expect(acceptedAfterFailure).toEqual({
-        acceptedGenerationId: mixedCliReport.generationId,
+        acceptedGenerationId: mixedFindingOutcome.generationId,
         visibleRows: 3,
       });
       expect(JSON.stringify(host.harness.inspection.logEntries)).not.toContain(
@@ -1253,17 +1289,21 @@ decisions:
       });
       const recovered = await allQuarantinedPull();
       expect(recovered).toMatchObject({
-        kinds: { finding: { fetched: 1, baseRows: 1, quarantined: 0 } },
+        kinds: {
+          finding: {
+            status: "published",
+            fetched: 1,
+            baseRows: 1,
+            quarantined: 0,
+          },
+        },
       });
-      if (
-        typeof recovered !== "object" ||
-        recovered === null ||
-        !("generationId" in recovered) ||
-        typeof recovered.generationId !== "string"
-      ) {
+      const recoveredFinding = recovered.kinds.finding;
+      if (recoveredFinding?.status !== "published") {
         throw new Error("syncPull returned no recovered generation id");
       }
-      expect(recovered.generationId).not.toBe(failedGeneration?.generationId);
+      const recoveredGenerationId = recoveredFinding.generationId;
+      expect(recoveredGenerationId).not.toBe(failedGeneration?.generationId);
       expect(
         context
           .db()
@@ -1281,7 +1321,7 @@ decisions:
           )
           .get(scope.projectId, mixedVersion),
       ).toEqual({
-        acceptedGenerationId: recovered.generationId,
+        acceptedGenerationId: recoveredGenerationId,
         visibleRows: 1,
       });
 
@@ -1314,9 +1354,17 @@ decisions:
         },
       });
       try {
-        await expect(allQuarantinedPull()).rejects.toMatchObject({
-          code: "handler_error",
-          message: expect.stringContaining("FS193_RETRYABLE_INTERRUPT"),
+        await expect(allQuarantinedPull()).resolves.toMatchObject({
+          kinds: {
+            finding: {
+              status: "failed",
+              generationId: expect.any(String),
+              fetched: 1,
+              baseRows: 0,
+              quarantined: 1,
+              reasons: [{ code: "FS193_RETRYABLE_INTERRUPT", count: 1 }],
+            },
+          },
         });
         const resumable = context
           .db()
@@ -1349,11 +1397,17 @@ decisions:
           status: "staging",
         });
 
-        await expect(allQuarantinedPull()).rejects.toMatchObject({
-          code: "handler_error",
-          message: expect.stringContaining(
-            "finding: FINDING_ALL_ROWS_QUARANTINED: quarantined 1 fetched finding rows; reasons [FINDING_PRIOR_INVOCATION_QUARANTINE=1]",
-          ),
+        await expect(allQuarantinedPull()).resolves.toMatchObject({
+          kinds: {
+            finding: {
+              status: "failed",
+              generationId: resumable.generationId,
+              fetched: 1,
+              baseRows: 0,
+              quarantined: 1,
+              reasons: [{ code: "FINDING_ALL_ROWS_QUARANTINED", count: 1 }],
+            },
+          },
         });
         expect(continuations).toEqual([undefined, "after-quarantine"]);
         expect(
@@ -1373,7 +1427,7 @@ decisions:
             .get(scope.projectId, mixedVersion),
         ).toEqual({
           status: "failed",
-          acceptedGenerationId: recovered.generationId,
+          acceptedGenerationId: recoveredGenerationId,
           stagingGenerationId: resumable.generationId,
         });
       } finally {
@@ -1383,17 +1437,21 @@ decisions:
       state.findings.clear();
       const empty = await allQuarantinedPull();
       expect(empty).toMatchObject({
-        kinds: { finding: { fetched: 0, baseRows: 0, quarantined: 0 } },
+        kinds: {
+          finding: {
+            status: "published",
+            fetched: 0,
+            baseRows: 0,
+            quarantined: 0,
+          },
+        },
       });
-      if (
-        typeof empty !== "object" ||
-        empty === null ||
-        !("generationId" in empty) ||
-        typeof empty.generationId !== "string"
-      ) {
+      const emptyFinding = empty.kinds.finding;
+      if (emptyFinding?.status !== "published") {
         throw new Error("syncPull returned no empty generation id");
       }
-      expect(empty.generationId).not.toBe(recovered.generationId);
+      const emptyGenerationId = emptyFinding.generationId;
+      expect(emptyGenerationId).not.toBe(recoveredGenerationId);
       expect(
         context
           .db()
@@ -1411,13 +1469,167 @@ decisions:
           )
           .get(scope.projectId, mixedVersion),
       ).toEqual({
-        acceptedGenerationId: empty.generationId,
+        acceptedGenerationId: emptyGenerationId,
         visibleRows: 0,
       });
     } finally {
       state.findings.clear();
       for (const [id, row] of originalFindings) state.findings.set(id, row);
       state.versions.delete(mixedVersion);
+    }
+  });
+
+  it("isolates default-pull remote, quarantine, and unselected-AS failures through the registered CLI", async () => {
+    const scope = platformScope();
+    const cliContext = {
+      cwd: root,
+      threadId: "thread-sync-cli",
+      projectId: "bb-project-sync",
+    };
+    const argv = [
+      "pull",
+      "--project",
+      scope.projectId,
+      "--version",
+      scope.projectVersionId,
+      "--json",
+    ];
+    bindWorkspacePlatformProject(
+      context.db(),
+      "bb-project-sync",
+      scope.projectId,
+    );
+    context
+      .db()
+      .prepare(
+        `UPDATE workspace_platform_project_binding
+            SET assurance_studio_project_id = NULL
+          WHERE workspace_project_id = ? AND platform_project_id = ?`,
+      )
+      .run("bb-project-sync", scope.projectId);
+
+    const originalFindings = new Map(state.findings);
+    const changedSignals = () =>
+      host.harness.realtimeSignals.filter(
+        (signal) =>
+          signal.channel === "findings:changed" ||
+          signal.channel === "requirements:changed" ||
+          signal.channel === "tara:changed",
+      );
+    try {
+      const beforeRemoteFailure = changedSignals().length;
+      selectAssuranceStudioProjectBinding(
+        context.db(),
+        "bb-project-sync",
+        scope.projectId,
+        "as-project-explicit",
+      );
+      remoteRequirementError = new RemoteError(
+        "Assurance Studio requirements unavailable",
+        {
+          service: "assurance-studio",
+          code: "REMOTE_SERVER_ERROR",
+          status: 503,
+          retryable: true,
+          retryAfterMs: null,
+          details: null,
+        },
+      );
+      const remoteFailure = await host.harness.behavior.runCli(
+        argv,
+        cliContext,
+      );
+      expect(remoteFailure).toMatchObject({ exitCode: 1, stderr: "" });
+      const remoteReport = JSON.parse(
+        remoteFailure.stdout,
+      ) as IsolatedPullReport;
+      expect(remoteReport.kinds.requirement).toMatchObject({
+        status: "failed",
+        generationId: expect.any(String),
+        reasons: [{ code: "http", count: 1 }],
+      });
+      expect(remoteReport.kinds.vexDecision).toMatchObject({
+        status: "published",
+        generationId: expect.any(String),
+      });
+      expect(
+        changedSignals()
+          .slice(beforeRemoteFailure)
+          .map((signal) => signal.channel),
+      ).toEqual(["findings:changed"]);
+
+      remoteRequirementError = null;
+      context
+        .db()
+        .prepare(
+          `UPDATE workspace_platform_project_binding
+              SET assurance_studio_project_id = NULL
+            WHERE workspace_project_id = ? AND platform_project_id = ?`,
+        )
+        .run("bb-project-sync", scope.projectId);
+      state.findings.clear();
+      for (let index = 1; index <= 3; index += 1) {
+        state.findings.set(`fs196-quarantined-${index}`, {
+          id: `fs196-quarantined-${index}`,
+          projectVersionId: scope.projectVersionId,
+          findingId: `CVE-2026-1960${index}`,
+          component: { id: `invalid-${index}`, version: "" },
+        });
+      }
+      const beforeQuarantine = changedSignals().length;
+      const quarantineFailure = await host.harness.behavior.runCli(
+        argv,
+        cliContext,
+      );
+      expect(quarantineFailure).toMatchObject({ exitCode: 1, stderr: "" });
+      const quarantineReport = JSON.parse(
+        quarantineFailure.stdout,
+      ) as IsolatedPullReport;
+      expect(quarantineReport.kinds.finding).toEqual({
+        status: "failed",
+        generationId: expect.any(String),
+        acceptedAt: null,
+        fetched: 3,
+        baseRows: 0,
+        quarantined: 3,
+        reasons: [{ code: "FINDING_ALL_ROWS_QUARANTINED", count: 3 }],
+      });
+      expect(quarantineReport.kinds.vexDecision).toMatchObject({
+        status: "published",
+      });
+      expect(changedSignals()).toHaveLength(beforeQuarantine);
+
+      state.findings.clear();
+      for (const [id, row] of originalFindings) state.findings.set(id, row);
+      const beforeUnselected = changedSignals().length;
+      const unselected = await host.harness.behavior.runCli(argv, cliContext);
+      expect(unselected).toMatchObject({ exitCode: 1, stderr: "" });
+      const unselectedReport = JSON.parse(
+        unselected.stdout,
+      ) as IsolatedPullReport;
+      expect(unselectedReport.kinds.requirement).toEqual({
+        status: "failed",
+        generationId: null,
+        acceptedAt: null,
+        fetched: 0,
+        baseRows: 0,
+        quarantined: 0,
+        reasons: [{ code: "AS_PROJECT_SELECTION_REQUIRED", count: 1 }],
+      });
+      expect(unselectedReport.kinds.finding).toMatchObject({
+        status: "published",
+      });
+      expect(unselectedReport.kinds.vexDecision).toMatchObject({
+        status: "published",
+      });
+      const emitted = changedSignals().slice(beforeUnselected);
+      expect(emitted.map((signal) => signal.channel)).toEqual([
+        "findings:changed",
+      ]);
+    } finally {
+      remoteRequirementError = null;
+      state.findings.clear();
+      for (const [id, row] of originalFindings) state.findings.set(id, row);
     }
   });
 

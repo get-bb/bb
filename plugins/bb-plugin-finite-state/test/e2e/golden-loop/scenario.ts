@@ -109,7 +109,11 @@ export const GOLDEN_LOOP_BEATS = [
   { number: 7, name: "FS-201 requirement-to-bench loop", maxMs: 90_000 },
   { number: 8, name: "BOM inventory durable read", maxMs: 60_000 },
   { number: 9, name: "Canvas authored model", maxMs: 60_000 },
-  { number: 10, name: "Sync publication and refetch hint", maxMs: 60_000 },
+  {
+    number: 10,
+    name: "FS-196 default-pull kind isolation and refetch hint",
+    maxMs: 60_000,
+  },
   { number: 11, name: "Bench run evidence", maxMs: 90_000 },
   { number: 12, name: "Demo cards rendered state", maxMs: 60_000 },
   { number: 13, name: "Reviewable git commit", maxMs: 60_000 },

@@ -8,7 +8,7 @@
     "approvedBy": "@mattwyckhouse",
     "approvalEvidence": "https://github.com/mattwyckhouse/bb/pull/6#issuecomment-5270159899"
   },
-  "contractVersion": 9,
+  "contractVersion": 10,
   "artifacts": {
     "plugins/bb-plugin-finite-state/server.ts": {
       "sha256": "0f2a1047ba074533deb0e1520f690093f88f631eefdb841387ba2b70856bd145",
@@ -21,8 +21,8 @@
       "active": true
     },
     "plugins/bb-plugin-finite-state/shared/contract.ts": {
-      "sha256": "2b4ecfdfc335188f3165b9acee680da755731cd6661f33f7c2678f6b84621403",
-      "amendment": "AMD-0022",
+      "sha256": "a8ddb7d20a3b989f80841b3688781f4e5ee82e5386a37cec668253d1890df30a",
+      "amendment": "AMD-0024",
       "active": true
     },
     "plugins/bb-plugin-finite-state/lib/store/schema.ts": {
