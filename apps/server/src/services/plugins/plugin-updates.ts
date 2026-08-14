@@ -9,17 +9,20 @@ import {
   type PluginGitSelector,
 } from "@bb/db";
 import { gitSelectorForRow } from "./git-source-intent.js";
+import {
+  gitArtifactCacheDir,
+  parsePluginSource,
+  runInstallCommand,
+} from "./install-sources.js";
 import { readPluginManifest } from "./manifest.js";
 import {
   createNpmResolverRun,
-  listGitSemverTags,
   resolveGitRef,
   resolveGitUpdate,
   resolveNpmUpdate,
-  selectGitSemverTag,
   selectNpmCandidate,
   type CompatibilityProblem,
-  type GitSemverTag,
+  type GitCandidateProbe,
   type NpmSourceIntentForResolution,
   type PluginResolvedUpdateVersion,
   type PluginUpdateResolution,
@@ -131,6 +134,51 @@ export function createPluginUpdates(
   }
 
   /**
+   * What the install-time clone says a legacy ref was. `git clone` copies
+   * every ref, so the cached checkout still holds the tags and branches the
+   * remote published when bb installed the plugin. "unknown" means the
+   * checkout or its refs are gone, which is not evidence of anything.
+   */
+  async function legacyGitRefEvidence(args: {
+    url: string;
+    commit: string | null;
+    ref: string;
+  }): Promise<"tag" | "branch" | "unknown"> {
+    if (args.commit === null) return "unknown";
+    const parsed = parsePluginSource(`git:${args.url}@${args.commit}`);
+    if (parsed.kind !== "git") return "unknown";
+    let checkoutDir: string;
+    try {
+      checkoutDir = gitArtifactCacheDir(
+        deps.dataDir,
+        parsed.cachePath,
+        args.commit,
+      );
+    } catch {
+      return "unknown";
+    }
+    const hasRef = async (candidate: string): Promise<boolean> => {
+      try {
+        await runInstallCommand("git", [
+          "-C",
+          checkoutDir,
+          "rev-parse",
+          "--verify",
+          "--quiet",
+          candidate,
+        ]);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    if (await hasRef(`refs/tags/${args.ref}`)) return "tag";
+    if (await hasRef(`refs/remotes/origin/${args.ref}`)) return "branch";
+    if (await hasRef(`refs/heads/${args.ref}`)) return "branch";
+    return "unknown";
+  }
+
+  /**
    * The git intent of a row, classifying a legacy ref that was persisted
    * before bb recorded whether it names a branch, a tag, or a commit.
    */
@@ -152,6 +200,29 @@ export function createPluginUpdates(
     const ref = row.sourceGitRequestedRef;
     const classified = await resolveGitRef({ url, ref });
     if (classified.outcome === "unavailable") return classified;
+    // A tag is a pin; a branch tracks whatever the remote later publishes.
+    // The remote alone cannot decide which one a legacy row installed: an
+    // attacker who deletes a tag and pushes a same-name branch would turn the
+    // pin into tracking and get the next update installed as trusted code.
+    // The install-time clone is the local evidence, and it is not on the
+    // network.
+    if (classified.refKind === "branch") {
+      const evidence = await legacyGitRefEvidence({
+        url,
+        commit: row.gitResolvedCommit,
+        ref,
+      });
+      if (evidence !== "branch") {
+        return {
+          outcome: "unavailable",
+          detail:
+            `security check failed: ${url} now publishes "${ref}" as a branch, but this install ` +
+            `${evidence === "tag" ? "recorded it as a tag" : "has no local record of its ref kind"}. ` +
+            `bb keeps the plugin pinned to ${row.gitResolvedCommit ?? "its recorded commit"} rather than ` +
+            "tracking that branch. Remove the plugin and install it again to accept the new ref",
+        };
+      }
+    }
     if (
       !setInstalledPluginSourceClassification(deps.db, row.id, {
         kind: "git",

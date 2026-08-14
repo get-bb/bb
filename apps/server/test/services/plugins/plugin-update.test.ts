@@ -1043,6 +1043,84 @@ describe("plugin update service and routes", () => {
     });
   });
 
+  it("refuses to turn a legacy tag pin into a same-name branch", async () => {
+    const tagged = await taggedRepo();
+    await service.install(`git:${tagged}@v1.0.0`, { kind: "root" });
+    const installed = getInstalledPluginRegistration(db, "tagged");
+    // An offline migration left this row without a classified ref kind.
+    db.$client
+      .prepare("UPDATE plugins SET source_git_ref_kind = NULL WHERE id = ?")
+      .run("tagged");
+
+    // The attacker deletes the release tag and publishes a branch of the
+    // same name carrying their own commit.
+    await git(tagged, ["tag", "-d", "v1.0.0"]);
+    await writeFile(join(tagged, "release.txt"), "attacker code");
+    await git(tagged, ["add", "-A"]);
+    await git(tagged, ["commit", "-qm", "attacker"]);
+    await git(tagged, ["branch", "v1.0.0"]);
+
+    expect(await service.checkForUpdates("tagged")).toMatchObject([
+      {
+        id: "tagged",
+        outcome: "unavailable",
+        detail: expect.stringContaining("security check failed"),
+      },
+    ]);
+    // The row stays pinned: no branch classification, no new commit.
+    expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
+      sourceGitRefKind: null,
+      gitResolvedCommit: installed?.gitResolvedCommit,
+    });
+    await expect(service.applyUpdate("tagged")).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining('publishes "v1.0.0" as a branch'),
+    });
+  });
+
+  it("falls back to the newest compatible release in a range", async () => {
+    const tagged = await taggedRepo();
+    await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
+    const compatible = await releaseTag(tagged, "v1.1.0");
+    // v1.2.0 demands a bb nobody is running, so it must not be offered and
+    // must not hide v1.1.0. Activation must also store the tag this
+    // resolution selected, not the highest tag a second query would find.
+    await writeFile(
+      join(tagged, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-tagged",
+        version: "1.2.0",
+        engines: { bb: ">=99.0.0" },
+        bb: {
+          name: "Tagged fixture",
+          description: "Tagged release fixture.",
+          branding: { icon: "Zap" },
+          server: "./server.ts",
+        },
+      }),
+    );
+    const blockedCommit = await releaseTag(tagged, "v1.2.0");
+
+    expect(await service.checkForUpdates("tagged")).toMatchObject([
+      {
+        id: "tagged",
+        outcome: "update-available",
+        candidate: {
+          version: compatible,
+          display: expect.stringContaining("@v1.1.0"),
+        },
+        blocked: { version: blockedCommit },
+      },
+    ]);
+
+    const applied = await service.applyUpdate("tagged");
+    expect(applied).toMatchObject({ ok: true, result: { applied: true } });
+    expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
+      sourceGitResolvedTag: "v1.1.0",
+      gitResolvedCommit: compatible,
+    });
+  });
+
   it("refuses an exact-tag install whose tag moved", async () => {
     const tagged = await taggedRepo();
     await service.install(`git:${tagged}@v1.0.0`, { kind: "root" });
