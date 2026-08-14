@@ -43,6 +43,7 @@ export function TriageEditor({
   seededReason,
   reasonConfirmed,
   pending,
+  commitBlockedReason,
   prior,
   error,
   onChange,
@@ -56,6 +57,7 @@ export function TriageEditor({
   seededReason: boolean;
   reasonConfirmed: boolean;
   pending: boolean;
+  commitBlockedReason: string | null;
   prior: PriorDecision | null;
   error: TriageWriteError | null;
   onChange(draft: TriageDraft): void;
@@ -65,6 +67,7 @@ export function TriageEditor({
   onReload(): void;
 }): React.JSX.Element {
   const validation = validateTriageDraft(draft);
+  const validationMessage = validation.ok ? null : validation.message;
   const [showCompare, setShowCompare] = useState(false);
   const [submitFeedback, setSubmitFeedback] = useState<string | null>(null);
   const exactPin = draft.justification === "CODE_NOT_REACHABLE";
@@ -82,6 +85,10 @@ export function TriageEditor({
   const attemptCommit = () => {
     if (pending) {
       setSubmitFeedback("A local write is already in progress.");
+      return;
+    }
+    if (commitBlockedReason) {
+      setSubmitFeedback(commitBlockedReason);
       return;
     }
     if (!validation.ok) {
@@ -141,7 +148,15 @@ export function TriageEditor({
               </Button>
               <Button
                 aria-keyshortcuts="Control+Enter Meta+Enter"
-                disabled={pending || !reasonConfirmed || !validation.ok}
+                aria-describedby={
+                  commitBlockedReason ? "triage-commit-blocked" : undefined
+                }
+                disabled={
+                  pending ||
+                  Boolean(commitBlockedReason) ||
+                  !reasonConfirmed ||
+                  !validation.ok
+                }
                 size="sm"
                 type="submit"
               >
@@ -338,13 +353,28 @@ export function TriageEditor({
               {validation.message}
             </p>
           ) : null}
+          {commitBlockedReason ? (
+            <p
+              className="mt-3 text-xs text-destructive"
+              id="triage-commit-blocked"
+              role="alert"
+            >
+              {commitBlockedReason}
+            </p>
+          ) : null}
           {!reasonConfirmed && validation.ok ? (
             <p className="mt-3 text-xs text-muted-foreground">
               Confirm that you reviewed the reason and evidence to enable Write
               YAML.
             </p>
           ) : null}
-          {submitFeedback && (pending || !reasonConfirmed || !validation.ok) ? (
+          {submitFeedback &&
+          submitFeedback !== commitBlockedReason &&
+          submitFeedback !== validationMessage &&
+          (pending ||
+            Boolean(commitBlockedReason) ||
+            !reasonConfirmed ||
+            !validation.ok) ? (
             <p className="mt-3 text-xs text-destructive" role="alert">
               {submitFeedback}
             </p>

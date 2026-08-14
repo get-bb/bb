@@ -240,4 +240,138 @@ describe("bulk triage registered surface", () => {
       await slot.findByText("2 local YAML decisions written; 0 failed."),
     ).toBeTruthy();
   });
+
+  it("commits a single decision with the target-read scope after the live catalog becomes unresolved", async () => {
+    const { host, root } = await registeredFixture();
+    const app = await loadPluginApp(() => import("../../../../app.js"));
+    const panel = app.navPanels.find(
+      (candidate) => candidate.path === "findings",
+    );
+    if (!panel) throw new Error("registered Findings panel missing");
+
+    let catalogReads = 0;
+    let announceTargetRead: (() => void) | undefined;
+    const targetReadStarted = new Promise<void>((resolve) => {
+      announceTargetRead = resolve;
+    });
+    let releaseTargetRead: (() => void) | undefined;
+    const targetReadGate = new Promise<void>((resolve) => {
+      releaseTargetRead = resolve;
+    });
+    const slot = renderSlot(
+      panel,
+      { subPath: "" },
+      {
+        context: { projectId: "workspace-project-1" },
+        sidebarThreads: {
+          status: "ready",
+          projects: [
+            { id: "workspace-project-1", name: "Workspace", isPersonal: false },
+          ],
+        },
+        rpc: {
+          connectionsStatus: connectedRemoteStatus,
+          cachedProjectVersions: async (input) => {
+            catalogReads += 1;
+            if (catalogReads > 1) {
+              return {
+                versions: [],
+                selectedPlatformProjectId: null,
+                selectedProjectVersionId: null,
+              };
+            }
+            return findingsUiRpcContract.cachedProjectVersions.output.parse(
+              await host.harness.callRpc("cachedProjectVersions", input),
+            );
+          },
+          findingsSavedViewsGet: () => ({
+            views: [],
+            sha256: null,
+            recoveredFromCorrupt: false,
+          }),
+          findingsUiList: async (input) =>
+            findingsUiRpcContract.findingsUiList.output.parse(
+              await host.harness.callRpc("findingsUiList", input),
+            ),
+          triageTargetsRead: async (input) => {
+            const result = findingsUiRpcContract.triageTargetsRead.output.parse(
+              await host.harness.callRpc("triageTargetsRead", input),
+            );
+            announceTargetRead?.();
+            await targetReadGate;
+            return result;
+          },
+          triageDecisionsWrite: async (input) =>
+            findingsUiRpcContract.triageDecisionsWrite.output.parse(
+              await host.harness.callRpc("triageDecisionsWrite", input),
+            ),
+          triageDecisionUndo: async (input) =>
+            findingsUiRpcContract.triageDecisionUndo.output.parse(
+              await host.harness.callRpc("triageDecisionUndo", input),
+            ),
+        },
+      },
+    );
+
+    await waitFor(() =>
+      expect(
+        slot.container.querySelectorAll("[data-finding-row]"),
+      ).toHaveLength(2),
+    );
+    fireEvent.keyDown(window, { key: "e" });
+    await targetReadStarted;
+    await slot.behavior.emitRealtime("findings:changed", {
+      projectVersionId: "different-version",
+    });
+    await waitFor(() => expect(catalogReads).toBeGreaterThan(1));
+    releaseTargetRead?.();
+
+    const editor = await slot.findByRole("form", { name: /Triage/u });
+    fireEvent.change(within(editor).getByLabelText("Reason"), {
+      target: { value: "Reviewed the exact cached finding" },
+    });
+    fireEvent.click(within(editor).getByRole("checkbox"));
+    const write = within(editor).getByRole("button", { name: /Write YAML/u });
+    expect((write as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(write);
+
+    const written = join(root, ".fs/triage/platform-project-1/gateway.yaml");
+    await waitFor(async () =>
+      expect(await readFile(written, "utf8")).toContain("status: EXPLOITABLE"),
+    );
+    const rpcWrite = slot.inspection.rpcCalls.find(
+      (call) => call.method === "triageDecisionsWrite",
+    );
+    expect(rpcWrite?.input).toMatchObject({
+      workspaceProjectId: "workspace-project-1",
+      platformProjectId: "platform-project-1",
+      projectVersionId: "version-1",
+    });
+    expect(
+      slot.queryByText(/no resolved project and version scope/u),
+    ).toBeNull();
+
+    fireEvent.keyDown(window, { key: "u" });
+    await waitFor(() =>
+      expect(
+        slot.inspection.rpcCalls.filter(
+          (call) => call.method === "triageDecisionUndo",
+        ),
+      ).toHaveLength(1),
+    );
+    const rpcUndo = slot.inspection.rpcCalls.find(
+      (call) => call.method === "triageDecisionUndo",
+    );
+    expect(rpcUndo?.input).toMatchObject({
+      workspaceProjectId: "workspace-project-1",
+      platformProjectId: "platform-project-1",
+      projectVersionId: "version-1",
+    });
+    await waitFor(async () =>
+      expect(await readFile(written, "utf8").catch(() => "")).not.toContain(
+        "status: EXPLOITABLE",
+      ),
+    );
+    expect(slot.getByText(/Undid the last local decision/u)).toBeTruthy();
+  });
 });
