@@ -322,11 +322,13 @@ function FilePreferencesStory() {
 
   return (
     <LocalOpenTargetSettingsSection
+      accessState="available"
       directoryTargetId={state.directoryTargetId}
       fileTargetId={state.fileTargetId}
       hasDaemon={true}
       onDirectoryTargetChange={handleDirectoryTargetChange}
       onFileTargetChange={handleFileTargetChange}
+      onRequestAccess={async () => true}
       targets={connectedTargets}
     />
   );

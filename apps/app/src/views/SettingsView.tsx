@@ -35,7 +35,7 @@ import {
   useThemePreference,
   type ThemePreference,
 } from "@/hooks/useTheme";
-import { useHostDaemon } from "@/hooks/useHostDaemon";
+import { useHostDaemon, useLocalHostDaemonAccess } from "@/hooks/useHostDaemon";
 import { UsageLimitsSettingsSection } from "@/components/settings/UsageLimitsSettingsSection";
 import { SidebarThreadListSetting } from "@/components/settings/SidebarThreadListSetting";
 import { SplitDimmingSetting } from "@/components/settings/SplitDimmingSetting";
@@ -79,6 +79,7 @@ import {
   type WorkspaceOpenTargetCapability,
 } from "@/lib/workspace-open-target-preference";
 import { getWorkspaceOpenTargetFallbackLabel } from "@/components/workspace-open-target/workspace-open-target-display";
+import type { LocalHostDaemonAccessState } from "@/lib/local-host-daemon-access";
 
 interface ThemePreferenceOption {
   label: string;
@@ -104,11 +105,13 @@ interface LocalOpenTargetPreferenceControlProps {
 }
 
 export interface LocalOpenTargetSettingsSectionProps {
+  accessState: LocalHostDaemonAccessState;
   directoryTargetId: StoredWorkspaceOpenTargetPreference;
   fileTargetId: StoredWorkspaceOpenTargetPreference;
   hasDaemon: boolean;
   onDirectoryTargetChange: (targetId: WorkspaceOpenTargetId) => void;
   onFileTargetChange: (targetId: WorkspaceOpenTargetId) => void;
+  onRequestAccess: () => Promise<boolean>;
   targets: WorkspaceOpenTarget[];
 }
 
@@ -447,15 +450,63 @@ function LocalOpenTargetPreferenceControl({
 }
 
 export function LocalOpenTargetSettingsSection({
+  accessState,
   directoryTargetId,
   fileTargetId,
   hasDaemon,
   onDirectoryTargetChange,
   onFileTargetChange,
+  onRequestAccess,
   targets,
 }: LocalOpenTargetSettingsSectionProps) {
-  if (!hasDaemon) {
+  const [accessRequestPending, setAccessRequestPending] = useState(false);
+
+  if (accessState === "unavailable") {
     return null;
+  }
+
+  const handleRequestAccess = async () => {
+    setAccessRequestPending(true);
+    try {
+      await onRequestAccess();
+    } finally {
+      setAccessRequestPending(false);
+    }
+  };
+
+  if (!hasDaemon) {
+    const accessDenied = accessState === "denied";
+    const accessAvailable = accessState === "available";
+    const description = accessDenied
+      ? "Loopback access is blocked. Allow it for this site in your browser settings, then reload bb."
+      : accessAvailable
+        ? "No local bb helper is reachable on this device. Start bb locally to discover installed editors."
+        : "Allow bb to discover editors on this device. Your browser may ask for access to apps and services on this computer.";
+    const buttonLabel = accessRequestPending
+      ? "Enabling…"
+      : accessDenied
+        ? "Blocked"
+        : accessAvailable
+          ? "Unavailable"
+          : "Enable";
+
+    return (
+      <SettingsSection title="File Preferences">
+        <SettingsWithControl
+          label="Local editor integration"
+          description={description}
+        >
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={accessRequestPending || accessDenied || accessAvailable}
+            onClick={handleRequestAccess}
+          >
+            {buttonLabel}
+          </Button>
+        </SettingsWithControl>
+      </SettingsSection>
+    );
   }
 
   return (
@@ -1015,6 +1066,7 @@ export function SettingsView() {
   const themePreference = useThemePreference();
   const systemConfigQuery = useSystemConfig();
   const { hasDaemon } = useHostDaemon();
+  const { accessState, requestAccess } = useLocalHostDaemonAccess();
   const { workspaceOpenTargets } = useWorkspaceOpenTargets({
     enabled: hasDaemon,
   });
@@ -1135,11 +1187,13 @@ export function SettingsView() {
     content = (
       <>
         <LocalOpenTargetSettingsSection
+          accessState={accessState}
           directoryTargetId={directoryTargetId}
           fileTargetId={fileTargetId}
           hasDaemon={hasDaemon}
           onDirectoryTargetChange={setDirectoryTargetId}
           onFileTargetChange={setFileTargetId}
+          onRequestAccess={requestAccess}
           targets={workspaceOpenTargets}
         />
         <FileOpenersSettingsSection />

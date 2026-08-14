@@ -1,9 +1,12 @@
 import { useCallback } from "react";
+import { useSetAtom } from "jotai";
 import {
+  localHostDaemonAccessStateAtom,
   localHostDaemonHostIdAtom,
   localHostDaemonReachableAtom,
   localHostIdAtom,
   localHostStatusAtom,
+  requestLocalHostDaemonAccessAtom,
 } from "@/lib/system-config-atoms";
 import { useAsyncAtomValue } from "@/lib/use-async-atom-value";
 
@@ -48,4 +51,14 @@ export function useHostDaemon() {
     platform,
     isLocalDaemonHost,
   };
+}
+
+export function useLocalHostDaemonAccess() {
+  const accessState = useAsyncAtomValue(
+    localHostDaemonAccessStateAtom,
+    "unavailable",
+  );
+  const requestAccess = useSetAtom(requestLocalHostDaemonAccessAtom);
+
+  return { accessState, requestAccess };
 }

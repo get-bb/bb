@@ -8,8 +8,13 @@ import { resetPluginSlotStoreForTest } from "@/lib/plugin-slots";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { useSettingsNavState } from "./settings-nav";
 
+const mocks = vi.hoisted(() => ({
+  accessState: "unavailable",
+}));
+
 vi.mock("@/hooks/useHostDaemon", () => ({
   useHostDaemon: () => ({ hasDaemon: false }),
+  useLocalHostDaemonAccess: () => ({ accessState: mocks.accessState }),
 }));
 
 function wrapperFor(path: string) {
@@ -26,6 +31,7 @@ function wrapperFor(path: string) {
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
+  mocks.accessState = "unavailable";
 });
 
 describe("useSettingsNavState", () => {
@@ -48,6 +54,17 @@ describe("useSettingsNavState", () => {
 
     expect(result.current.sections.map((section) => section.id)).toContain(
       "machines",
+    );
+  });
+
+  it("shows Files when local helper access can be enabled", () => {
+    mocks.accessState = "permission-required";
+    const { result } = renderHook(() => useSettingsNavState(), {
+      wrapper: wrapperFor("/settings/files"),
+    });
+
+    expect(result.current.sections.map((section) => section.id)).toContain(
+      "files",
     );
   });
 

@@ -53,6 +53,11 @@ the server/work-host to that SSH target:
 npx bb-app client ssh-target set <bb-server-origin> <ssh-target>
 ```
 
+Then open Settings → Files in that browser and enable **Local editor
+integration**. The browser may ask once for permission to connect to software
+on the computer. bb does not request that permission during normal remote page
+loads; it is only needed for discovering and launching local editors.
+
 Phones and tablets need no helper; editor-launch actions are simply unavailable.
 
 ## Point the desktop app at another bb
