@@ -1,13 +1,6 @@
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  stat,
-  writeFile,
-} from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { join } from "node:path";
 import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,6 +8,7 @@ import {
   registerPluginCommands,
   resolveNewPluginTarget,
 } from "../commands/plugin.js";
+import { installFakeNpm } from "./helpers/fake-npm.js";
 
 describe("resolveNewPluginTarget", () => {
   it.each([
@@ -45,54 +39,13 @@ describe("resolveNewPluginTarget", () => {
  * `omit=dev`. Issue #1133: npm skipped the packages the scaffold needs, exited
  * 0, and the CLI reported success for a plugin that could not build.
  *
- * The fake npm reproduces npm's actual config rule rather than recording
- * arguments, so these pin the outcome — the scaffold's declared tree is on
- * disk, and the CLI only claims success when it is — instead of a flag string
- * the CLI happens to pass today.
+ * The fake npm (helpers/fake-npm.ts) reproduces npm's actual config rule rather
+ * than recording arguments, so these pin the outcome — the scaffold's declared
+ * tree is on disk, and the CLI only claims success when it is — instead of a
+ * flag string the CLI happens to pass today. It also answers the
+ * published-version probe, which now runs through npm rather than a raw fetch
+ * so it honors the same `.npmrc` the install will read.
  */
-const FAKE_NPM = `#!/usr/bin/env node
-const { mkdirSync, readFileSync } = require("node:fs");
-const { join } = require("node:path");
-
-const args = process.argv.slice(2);
-// npm treats NODE_ENV=production as omit=dev; a command-line --include=dev
-// outranks it. BB_TEST_NPM_ALWAYS_OMIT_DEV forces the omission to stand in for
-// an install that silently drops packages.
-const omitDev =
-  process.env.BB_TEST_NPM_ALWAYS_OMIT_DEV === "1" ||
-  (process.env.NODE_ENV === "production" && !args.includes("--include=dev"));
-const manifest = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
-const installed = {
-  ...manifest.dependencies,
-  ...(omitDev ? {} : manifest.devDependencies),
-};
-// npm installs the whole workspace and hoists to its root when the package is
-// a workspace member; BB_TEST_NPM_HOIST_TO stands in for that root.
-const installRoot = process.env.BB_TEST_NPM_HOIST_TO ?? process.cwd();
-for (const name of Object.keys(installed)) {
-  mkdirSync(join(installRoot, "node_modules", ...name.split("/")), {
-    recursive: true,
-  });
-}
-`;
-
-/** Answer the npm registry probe with a fixed version list. */
-function stubRegistryVersions(versions: string[]): void {
-  vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
-    expect(String(input)).toContain("registry.npmjs.org");
-    return Promise.resolve(
-      new Response(
-        JSON.stringify({
-          versions: Object.fromEntries(
-            versions.map((version) => [version, {}]),
-          ),
-        }),
-        { headers: { "content-type": "application/json" } },
-      ),
-    );
-  });
-}
-
 describe.sequential("bb plugin new dependency install", () => {
   const originalCwd = process.cwd();
   let workDir: string;
@@ -101,20 +54,13 @@ describe.sequential("bb plugin new dependency install", () => {
 
   beforeEach(async () => {
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-new-"));
-    const binDir = join(workDir, "bin");
-    await mkdir(binDir);
-    await writeFile(join(binDir, "npm"), FAKE_NPM, { mode: 0o755 });
     process.chdir(workDir);
-    // Only the fake npm is reachable, so a real npm can never service these.
-    vi.stubEnv("PATH", `${binDir}${delimiter}${process.env.PATH ?? ""}`);
+    // Only the fake npm is reachable, so a real npm can never service these —
+    // neither the install nor the published-version probe.
+    await installFakeNpm(workDir);
     vi.stubEnv("NODE_ENV", "production");
     logged = [];
     warned = [];
-    // `bb plugin new` asks npm whether this bb's SDK version is published, so
-    // it can warn that the scaffold's exact pin will not install yet. Stubbed
-    // here: these tests are about the npm tree, and must not depend on the
-    // network or on where the release train happens to be.
-    stubRegistryVersions([PLUGIN_SDK_VERSION]);
     vi.spyOn(console, "log").mockImplementation((line: unknown) => {
       logged.push(String(line));
     });
@@ -216,7 +162,9 @@ describe.sequential("bb plugin new dependency install", () => {
   });
 
   it("warns, without failing, when this bb's SDK version is not on npm yet", async () => {
-    stubRegistryVersions(["0.0.1"]);
+    // `npm view <pkg>@<version>` exits 0 printing nothing for a version that
+    // does not exist — the release-train window this warning is for.
+    vi.stubEnv("BB_TEST_NPM_VIEW", "missing");
 
     await runPluginNew(["unpublished"]);
 
@@ -231,14 +179,24 @@ describe.sequential("bb plugin new dependency install", () => {
     expect(warnings).toContain("npm pack");
   });
 
+  it("treats a 404 for the package itself as a positive miss", async () => {
+    vi.stubEnv("BB_TEST_NPM_VIEW", "e404");
+
+    await runPluginNew(["missing-package"]);
+
+    expect(warned.join("\n")).toContain(
+      `@get-bb/plugin-sdk ${PLUGIN_SDK_VERSION} — this bb's SDK version — was not found on npm`,
+    );
+  });
+
   it("warns rather than failing when the registry cannot be reached", async () => {
-    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
+    vi.stubEnv("BB_TEST_NPM_VIEW", "error");
 
     await runPluginNew(["offline"]);
 
     expect(logged).toContain("Created bb-plugin-offline/ (bb-plugin-offline).");
-    // An unreachable registry must not claim the install will fail — only a
-    // positive registry miss earns that firm warning.
+    // A failed check must not claim the install will fail — only a positive
+    // registry miss earns that firm warning.
     expect(warned.join("\n")).toContain("could not reach the npm registry");
     expect(warned.join("\n")).not.toContain("was not found on npm");
   });
@@ -250,5 +208,9 @@ describe.sequential("bb plugin new dependency install", () => {
 
     expect(warned.join("\n")).toContain("Could not run npm install");
     expect(logged).toContain("  npm install --include=dev");
+    // The probe shells out to the same missing npm, so it can only report that
+    // it could not verify the pin — never that the version is unpublished.
+    expect(warned.join("\n")).toContain("could not reach the npm registry");
+    expect(warned.join("\n")).not.toContain("was not found on npm");
   });
 });

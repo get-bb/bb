@@ -149,11 +149,12 @@ does not cover:
 
 1. **`bb plugin types`**, run in the plugin directory (or given its path),
    syncs that plugin's SDK surface to the running bb — no server needed. For a
-   plugin that depends on the npm package it reports the pin against this bb;
-   for an older plugin that still vendors `types/*.d.ts` it rewrites those
-   declarations. Either way a cloned or older plugin can be thousands of lines
-   behind. `--check` reports a mismatch without writing; `bb plugin build` and
-   `bb plugin dev` keep things in step too.
+   plugin that depends on the npm package it repins the exact
+   `@get-bb/plugin-sdk` devDependency to this bb's SDK version (run
+   `npm install` after); for an older plugin that still vendors `types/*.d.ts`
+   it rewrites those declarations. Either way a cloned or older plugin can be
+   thousands of lines behind. `--check` reports a mismatch without writing;
+   `bb plugin build` and `bb plugin dev` keep things in step too.
 2. **Read the bundled declarations** — the authoritative surface, ~13,000
    lines of readable declarations with doc comments:
    - plugins scaffolded by a current bb depend on the npm package, so after
@@ -163,7 +164,10 @@ does not cover:
    - plugins scaffolded before that still carry the same declarations in
      `types/bb-plugin-sdk.d.ts` (`types/bb-plugin-sdk-app.d.ts`), which the
      plugin's `tsconfig.json` maps `@get-bb/plugin-sdk` onto. Read whichever
-     the plugin in front of you has.
+     the plugin in front of you has. That layout still works; `bb plugin
+     migrate` converts such a plugin to the npm package (it prints the plan
+     and asks first, and needs `--yes` when stdin is not a terminal). Never
+     migrate a plugin the user did not ask you to migrate.
 3. **`git clone --depth 1 https://github.com/get-bb/bb`** for host behavior or
    a reference implementation: `packages/plugin-sdk/src/`,
    `apps/server/src/services/plugins/`, `plugins/`.
@@ -1522,10 +1526,12 @@ hardcoded colors break custom palettes.
 
 `@get-bb/plugin-sdk/testing` is the official vitest harness for workspace and
 standalone plugins. The packed package ships runtime JavaScript and portable
-declarations for both testing subpaths. A scaffold still vendors the root/app
-types, so add `@get-bb/plugin-sdk` as a devDependency when tests import the
-testing harness (plus its optional peers: `better-sqlite3` for backend tests;
-React, React DOM, Testing Library, and jsdom for frontend tests).
+declarations for both testing subpaths. A current scaffold already declares
+`@get-bb/plugin-sdk` as an exact devDependency, so the harness is on disk after
+`npm install`; an older plugin that still vendors `types/` must add that
+devDependency (or run `bb plugin migrate`) before tests can import the harness.
+Either way, install its optional peers too: `better-sqlite3` for backend tests;
+React, React DOM, Testing Library, and jsdom for frontend tests.
 
 The fake plugin host's `bb` satisfies `BbPluginApi` with host-faithful
 semantics: real better-sqlite3 temporary storage (never mock the db), the kv
@@ -1732,5 +1738,7 @@ Remaining reference examples in `examples/plugins/`:
 - The declarations you read are pinned to one SDK version, not a live view:
   new plugins get them from the exact `@get-bb/plugin-sdk` devDependency, older
   ones from a vendored `types/*.d.ts` copy. Run `bb plugin types` before
-  trusting either, and never fall back to a minified `dist/` bundle — see
-  "Looking up the exact API".
+  trusting either — it repins the devDependency or rewrites `types/` as
+  appropriate — and never fall back to a minified `dist/` bundle — see
+  "Looking up the exact API". `bb plugin migrate` moves an older plugin off the
+  vendored copy, but only when the user asks for it.
