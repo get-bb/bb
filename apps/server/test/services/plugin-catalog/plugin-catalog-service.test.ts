@@ -9,6 +9,7 @@ import {
   upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
+import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import { ROOT_PLUGIN_SOURCE_SELECTION } from "@bb/server-contract";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
@@ -188,8 +189,7 @@ describe("plugin catalog service", () => {
         "git:https://github.com/brsbl/bb-plugins.git@30f91fd977ba1ce60532af27a68534464fb62516",
       installed: false,
       compatible: false,
-      incompatibleReason:
-        "requires bb plugin SDK ^0.5.0, running SDK is 0.4.3",
+      incompatibleReason: `requires bb plugin SDK ^0.5.0, running SDK is ${PLUGIN_SDK_VERSION}`,
     });
   });
 
