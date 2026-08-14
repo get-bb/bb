@@ -478,6 +478,33 @@ describe("ModelReasoningPicker", () => {
     ).toBe("");
   });
 
+  it("keeps the desktop menu scrollable within the available viewport height", () => {
+    renderPicker({ modelOptions: manyCodexModels });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    const menu = screen.getByRole("dialog");
+    expect(menu.className).toContain(
+      "max-h-[var(--radix-popover-content-available-height)]",
+    );
+    expect(menu.className).toContain("overflow-y-auto");
+    expect(menu.className).toContain("overscroll-contain");
+  });
+
+  it("leaves compact drawer height and scrolling to the responsive shell", () => {
+    renderPicker({ compact: true, modelOptions: manyCodexModels });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    expect(screen.getByRole("dialog").className).not.toContain(
+      "max-h-[var(--radix-popover-content-available-height)]",
+    );
+  });
+
   it("commits a provider tab immediately and keeps its models selectable", async () => {
     const { onSelectedProviderChange, onModelChange } = renderPicker();
 

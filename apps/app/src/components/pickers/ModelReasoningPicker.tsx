@@ -925,6 +925,8 @@ export function ModelReasoningPicker({
           "flex flex-col p-0",
           MODEL_PICKER_MENU_WIDTH_CLASS_NAME,
           "max-md:w-full max-md:min-w-0 max-md:max-w-none",
+          !isCompactViewport &&
+            "max-h-[var(--radix-popover-content-available-height)] overflow-y-auto overscroll-contain",
         )}
       >
         <ResetBrowseStateOnContentUnmount onReset={resetBrowseState} />
