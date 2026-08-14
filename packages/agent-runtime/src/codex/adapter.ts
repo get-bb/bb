@@ -2228,6 +2228,21 @@ export function createCodexProviderAdapter(
 
   return {
     ...standardAdapterMembers,
+    // Codex reports native subagents as toolCall items rather than as BB
+    // background tasks, so the shared background-work state cannot see them.
+    // Report them here; a session release must not stop the parent process
+    // while a child agent still runs or still owes a followup turn.
+    hasOpenThreadWork({ providerThreadId }: { providerThreadId: string }) {
+      for (const tracked of trackedSubAgentsByCallId.values()) {
+        if (tracked.parentProviderThreadId !== providerThreadId) {
+          continue;
+        }
+        if (!tracked.terminal || tracked.pendingFollowups > 0) {
+          return true;
+        }
+      }
+      return false;
+    },
     buildPostInitializeRequests,
     decodeInteractiveRequest(request: ProviderInboundRequest) {
       return decodeCodexInteractiveRequest(request);

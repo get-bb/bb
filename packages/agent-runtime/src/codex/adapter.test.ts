@@ -3982,6 +3982,65 @@ describe("codex provider adapter", () => {
     );
   });
 
+  it("reports an unfinished Codex subagent as open thread work", () => {
+    const adapter = createCodexProviderAdapter();
+    const work = {
+      providerThreadId: "root-provider-thread",
+      threadId: "thr_1",
+    };
+
+    expect(adapter.hasOpenThreadWork?.(work)).toBe(false);
+
+    adapter.translateEvent({
+      jsonrpc: "2.0",
+      method: "item/completed",
+      params: {
+        threadId: "root-provider-thread",
+        turnId: "parent-turn",
+        item: {
+          type: "subAgentActivity",
+          id: "subagent-call-1",
+          kind: "started",
+          agentThreadId: "agent-thread-1",
+          agentPath: "/root/audit_do_browser",
+        },
+      },
+    });
+
+    // A running child agent outlives the parent turn, so an idle release must
+    // not stop the parent session.
+    expect(adapter.hasOpenThreadWork?.(work)).toBe(true);
+    expect(
+      adapter.hasOpenThreadWork?.({
+        providerThreadId: "other-provider-thread",
+        threadId: "thr_2",
+      }),
+    ).toBe(false);
+
+    adapter.translateEvent(
+      codexEvent("turn/started", {
+        threadId: "root-provider-thread",
+        turn: codexTurn({
+          id: "child-turn-1",
+          status: "inProgress",
+          error: null,
+        }),
+      }),
+    );
+    adapter.translateEvent(
+      codexEvent("turn/completed", {
+        threadId: "root-provider-thread",
+        turn: codexTurn({
+          id: "child-turn-1",
+          status: "completed",
+          error: null,
+        }),
+      }),
+    );
+
+    expect(adapter.hasOpenThreadWork?.(work)).toBe(false);
+  });
+
   it("materializes Codex subagent activity as a nested delegation lifecycle", () => {
     const adapter = createCodexProviderAdapter();
 

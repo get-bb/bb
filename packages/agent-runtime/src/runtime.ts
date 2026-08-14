@@ -724,6 +724,9 @@ function createAgentRuntimeInternal(
     const runtimeConfig = threadRuntimeConfigs.get(args.threadId);
     if (
       !runtimeConfig ||
+      // The experiment extends release to every restorable provider. It does
+      // not gate release: Codex idle sessions are released without it, which
+      // is the behavior BB shipped before the experiment.
       (args.providerSessionReapingEnabled
         ? !runtimeConfig.sessionRestorable
         : runtimeConfig.providerId !== CODEX_PROVIDER_ID)
@@ -985,6 +988,10 @@ function createAgentRuntimeInternal(
       instructionMode: currentConfig.instructionMode,
     };
     const plan = proc.adapter.buildCommandPlan(adapterCommand);
+    // The replacement session reports its own restore support. An updated
+    // agent can drop loadSession, and a stale `true` would let the idle sweep
+    // release a session that can no longer resume.
+    let sessionRestorable = currentConfig.sessionRestorable;
     if (plan.kind === "request") {
       const result = await sendCommand({
         proc,
@@ -1003,6 +1010,9 @@ function createAgentRuntimeInternal(
       if (providerThreadId) {
         recordProviderThreadIdentity(proc, args.threadId, providerThreadId);
       }
+      if (result.sessionRestorable !== undefined) {
+        sessionRestorable = result.sessionRestorable;
+      }
       emitAcceptedCommandEvents({
         command: adapterCommand,
         proc,
@@ -1014,6 +1024,7 @@ function createAgentRuntimeInternal(
     setThreadRuntimeConfig(args.threadId, {
       ...currentConfig,
       options: nextOptions,
+      sessionRestorable,
     });
   }
 
@@ -2243,13 +2254,28 @@ function createAgentRuntimeInternal(
           if (
             providerSessionReapingEnabled
               ? backgroundWorkState.hasOpenThreadWork(candidate.threadId) ||
-                (proc.adapter.hasOpenThreadWork?.(candidate.threadId) ?? false)
+                (proc.adapter.hasOpenThreadWork?.({
+                  providerThreadId: candidate.providerThreadId,
+                  threadId: candidate.threadId,
+                }) ??
+                  false)
               : !isThreadScopedCodexProcess(proc)
           ) {
             return null;
           }
 
-          await runtime.stopThread({ threadId: candidate.threadId });
+          try {
+            await runtime.stopThread({ threadId: candidate.threadId });
+          } catch (error) {
+            // One damaged session must not block every later candidate, so
+            // report the failure and let the next pass retry this thread.
+            options.onStderr?.(
+              `Provider session release failed for ${candidate.threadId}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+            return null;
+          }
           return {
             idleForMs: Math.max(0, nowMs - candidate.idleSinceMs),
             providerId: candidate.runtimeConfig.providerId,

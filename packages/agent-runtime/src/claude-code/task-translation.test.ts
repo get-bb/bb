@@ -354,7 +354,12 @@ describe("claude-code background task translation", () => {
     );
 
     expect(started).toEqual([]);
-    expect(adapter.hasOpenThreadWork?.(context.threadId)).toBe(true);
+    expect(
+      adapter.hasOpenThreadWork?.({
+        providerThreadId: "s-monitor-1",
+        threadId: context.threadId,
+      }),
+    ).toBe(true);
 
     const completed = adapter.translateEvent(
       {
@@ -371,7 +376,12 @@ describe("claude-code background task translation", () => {
     );
 
     expect(completed).toEqual([]);
-    expect(adapter.hasOpenThreadWork?.(context.threadId)).toBe(false);
+    expect(
+      adapter.hasOpenThreadWork?.({
+        providerThreadId: "s-monitor-1",
+        threadId: context.threadId,
+      }),
+    ).toBe(false);
   });
 
   it("preserves skip_transcript on the item", () => {

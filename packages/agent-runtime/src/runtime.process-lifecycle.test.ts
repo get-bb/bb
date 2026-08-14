@@ -325,6 +325,14 @@ rl.on("line", (line) => {
   if (message.method === "thread/stop") {
     const threadId = messageParams.threadId;
     fs.appendFileSync(logPath, "thread-stop:" + processId + ":" + threadId + "\\n");
+    if (threadId.includes("stopfail")) {
+      send({
+        jsonrpc: "2.0",
+        id: message.id,
+        error: { code: -32000, message: "stop refused for " + threadId },
+      });
+      return;
+    }
     threads.delete(threadId);
     send({ jsonrpc: "2.0", id: message.id, result: { ok: true } });
   }
@@ -1354,6 +1362,54 @@ rl.on("line", (line) => {
         }),
       ]);
       expect(runtime.hasThread("t1")).toBe(false);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("keeps releasing later sessions after one release fails", async () => {
+    const providerScript = join(tmpDir, "claude-stop-failure-provider.cjs");
+    writeThreadScopedProviderScript({
+      logPath: join(tmpDir, "claude-stop-failure-provider.log"),
+      scriptPath: providerScript,
+    });
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: () => {},
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: () => ({
+        ...createFakeAdapter(providerScript),
+        displayName: "Claude Code",
+        id: "claude-code",
+      }),
+    });
+
+    try {
+      // The provider refuses a stop for any thread whose id says "stopfail".
+      for (const threadId of ["t-stopfail-1", "t2"]) {
+        await runtime.startThread({
+          environmentId: "env-1",
+          threadId,
+          projectId: "p1",
+          providerId: "claude-code",
+          options: fullRuntimeOptions,
+        });
+      }
+
+      const result = await runtime.reapIdleProviderSessions({
+        idleForMs: 0,
+        nowMs: Date.now(),
+        providerSessionReapingEnabled: true,
+      });
+
+      expect(result.reapedSessions).toEqual([
+        expect.objectContaining({ threadId: "t2" }),
+      ]);
+      expect(runtime.hasThread("t-stopfail-1")).toBe(true);
+      expect(runtime.hasThread("t2")).toBe(false);
     } finally {
       await runtime.shutdown();
     }

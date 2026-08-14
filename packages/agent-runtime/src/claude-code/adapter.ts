@@ -1209,7 +1209,7 @@ export function createClaudeCodeProviderAdapter(
       return events;
     },
 
-    hasOpenThreadWork(threadId) {
+    hasOpenThreadWork({ threadId }) {
       const state = turnState.get({ threadId });
       return (
         state !== null &&

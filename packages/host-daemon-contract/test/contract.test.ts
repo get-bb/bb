@@ -1061,6 +1061,10 @@ describe("host-daemon local schemas", () => {
 describe("host-daemon command schemas", () => {
   // Version 122 adds the daemon runtime-policy read for provider session
   // release. Older daemons do not read the experiment before maintenance.
+  // Version 122 also covers two other changes that ship with it: the host PTY
+  // now answers terminal device-attribute queries and strips them from replay,
+  // and the server can route an ACP thread fork to the daemon. An older daemon
+  // has neither behavior.
   // Version 121 adds the required thread.stop intent. Older daemons reject the
   // field, and they wait for an active turn that a release never has.
   // Version 120 makes thread.stop idempotent and releases idle runtimes. Older
