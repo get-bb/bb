@@ -107,7 +107,10 @@ export function BrowsePluginsTab({
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [debouncedQuery] = useDebounceValue(query.trim(), 300);
   const searchQuery = usePluginCatalogSearch(debouncedQuery, { enabled: true });
-  const entries = searchQuery.data ?? [];
+  // Browse offers installs, so an entry this BB cannot install is noise here.
+  // The search API still returns incompatible entries with their reasons for
+  // the CLI, where the "requires newer bb" status is the useful signal.
+  const entries = (searchQuery.data ?? []).filter((entry) => entry.compatible);
   const availableCategories: string[] = [];
   for (const entry of entries) {
     if (!availableCategories.includes(entry.category)) {

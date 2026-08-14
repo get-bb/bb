@@ -148,9 +148,9 @@ describe("BrowsePluginsTab", () => {
           'button[aria-label^="Open "][aria-label$=" details"]',
         ),
       ].map((button) => button.getAttribute("aria-label"));
+    // "Middle" is the incompatible entry: hidden from Browse entirely.
     expect(cardOrder()).toEqual([
       "Open Alpha details",
-      "Open Middle details",
       "Open Zulu details",
     ]);
 
@@ -162,7 +162,6 @@ describe("BrowsePluginsTab", () => {
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Plugin name" }));
     expect(cardOrder()).toEqual([
       "Open Zulu details",
-      "Open Middle details",
       "Open Alpha details",
     ]);
     // Category never renders as a heading; it stays a filter only.
@@ -380,12 +379,13 @@ describe("BrowsePluginsTab", () => {
     expect(screen.queryByText("BB Official plugins")).toBeNull();
 
     expect(screen.queryByText(MEMORY_ENTRY.source)).toBeNull();
-    expect(screen.getByText("Requires a newer BB version")).toBeTruthy();
+    // Incompatible entries never render on Browse: an entry this BB cannot
+    // install is noise. The CLI search still reports them with reasons.
+    expect(screen.queryByText("Future Memory")).toBeNull();
+    expect(screen.queryByText("Requires a newer BB version")).toBeNull();
     expect(
-      screen
-        .getByRole("button", { name: "Install Future Memory" })
-        .hasAttribute("disabled"),
-    ).toBe(true);
+      screen.queryByRole("button", { name: "Install Future Memory" }),
+    ).toBeNull();
 
     // The remote-catalog Refresh action is gone: plugins ship with the app.
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
