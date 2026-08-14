@@ -7,23 +7,31 @@ import { createBenchTestStore, evidenceBundle } from "./store/test-helpers.js";
 
 const hosts: Array<ReturnType<typeof createFakePluginHost>> = [];
 
-function requiredNestedString(value: unknown, path: readonly (string | number)[]): string {
+function requiredNestedString(
+  value: unknown,
+  path: readonly (string | number)[],
+): string {
   let current = value;
   for (const part of path) {
     if (typeof part === "number") {
-      if (!Array.isArray(current)) throw new Error(`Expected array at ${String(part)}`);
+      if (!Array.isArray(current))
+        throw new Error(`Expected array at ${String(part)}`);
       current = current[part];
     } else {
-      if (typeof current !== "object" || current === null) throw new Error(`Expected object at ${part}`);
+      if (typeof current !== "object" || current === null)
+        throw new Error(`Expected object at ${part}`);
       current = Reflect.get(current, part);
     }
   }
-  if (typeof current !== "string") throw new Error(`Expected string at ${path.join(".")}`);
+  if (typeof current !== "string")
+    throw new Error(`Expected string at ${path.join(".")}`);
   return current;
 }
 
 afterEach(async () => {
-  await Promise.all(hosts.splice(0).map((host) => host.harness.lifecycle.dispose()));
+  await Promise.all(
+    hosts.splice(0).map((host) => host.harness.lifecycle.dispose()),
+  );
 });
 
 describe("bench registration", () => {
@@ -98,6 +106,22 @@ describe("bench registration", () => {
           base_revision, last_pull)
        VALUES ('project-a', 'version-a', 'verificationRun', 'generation-a', 1,
                '2026-08-12T20:00:00.000Z');
+       INSERT INTO pull_generation
+         (project_id, project_version_id, generation_id, status,
+          requested_kinds_json, started_at, completed_at, accepted_at)
+       VALUES ('project-a', 'findings-only', 'generation-findings', 'accepted',
+               '["finding"]', '2026-08-12T20:00:01.000Z',
+               '2026-08-12T20:00:01.000Z', '2026-08-12T20:00:01.000Z'),
+              ('project-foreign', 'foreign-version', 'generation-foreign', 'accepted',
+               '["verificationRun"]', '2026-08-12T20:00:02.000Z',
+               '2026-08-12T20:00:02.000Z', '2026-08-12T20:00:02.000Z');
+       INSERT INTO sync_state
+         (project_id, project_version_id, entity_kind, accepted_generation_id,
+          base_revision, last_pull)
+       VALUES ('project-a', 'findings-only', 'finding', 'generation-findings', 1,
+               '2026-08-12T20:00:01.000Z'),
+              ('project-foreign', 'foreign-version', 'verificationRun',
+               'generation-foreign', 1, '2026-08-12T20:00:02.000Z');
        INSERT INTO firmware_mounts
          (project_id, project_version_id, generation_id, source, state,
           input_sha256, artifact_hash, root_path, file_count,
@@ -114,6 +138,22 @@ describe("bench registration", () => {
       continuation: null,
     });
     expect(page).toMatchObject({ items: [], total: 0, next: null });
+    await expect(
+      host.harness.behavior.callRpc("benchProjectVersions", {
+        projectId: "project-a",
+      }),
+    ).resolves.toEqual({
+      versions: [
+        {
+          platformProjectId: "project-a",
+          projectVersionId: "version-a",
+          asOf: "2026-08-12T20:00:00.000Z",
+          state: "fresh",
+        },
+      ],
+      selectedPlatformProjectId: "project-a",
+      selectedProjectVersionId: "version-a",
+    });
     await expect(
       host.harness.behavior.callRpc("benchOtaVerdictGet", {
         projectId: "project-a",
@@ -163,10 +203,13 @@ describe("bench registration", () => {
       ],
     });
     const runId = requiredNestedString(startedPage, ["items", 0, "key"]);
-    const locallyResolvedPage = await host.harness.behavior.callRpc("benchRunsList", {
-      projectId: "project-a",
-      projectVersionId: null,
-    });
+    const locallyResolvedPage = await host.harness.behavior.callRpc(
+      "benchRunsList",
+      {
+        projectId: "project-a",
+        projectVersionId: null,
+      },
+    );
     expect(locallyResolvedPage).toMatchObject({
       items: [{ key: runId, projectVersionId: "version-a" }],
       total: 1,
@@ -178,20 +221,33 @@ describe("bench registration", () => {
         runId,
       }),
     ).resolves.toMatchObject({ key: runId, projectVersionId: "version-a" });
-    context.db().prepare(
-      `UPDATE verification_runs
+    context
+      .db()
+      .prepare(
+        `UPDATE verification_runs
        SET raw = ?, log_cursor = 'forge-cursor-a'
        WHERE run_id = ?`,
-    ).run(JSON.stringify({ jobs: [{ logTail: ["one", "two", "three"] }] }), runId);
-    context.db().prepare(
-      `INSERT INTO attestations
+      )
+      .run(
+        JSON.stringify({ jobs: [{ logTail: ["one", "two", "three"] }] }),
+        runId,
+      );
+    context
+      .db()
+      .prepare(
+        `INSERT INTO attestations
          (project_id, project_version_id, generation_id, attestation_id, run_id,
           format, subject_digest, payload, signature_verified,
           subject_matches_run, verified, created_at, pulled_at)
        VALUES ('project-a', 'version-a', 'generation-a', 'attestation-a', ?,
                'in-toto', ?, ?, 1, 1, 1,
                '2026-08-12T20:00:01.000Z', '2026-08-12T20:00:01.000Z')`,
-    ).run(runId, `sha256:${"a".repeat(64)}`, JSON.stringify({ project: "project-a" }));
+      )
+      .run(
+        runId,
+        `sha256:${"a".repeat(64)}`,
+        JSON.stringify({ project: "project-a" }),
+      );
     context.db().exec(
       `INSERT INTO pull_generation
          (project_id, project_version_id, generation_id, status,
@@ -235,11 +291,14 @@ describe("bench registration", () => {
       total: 3,
       next: expect.any(String),
     });
-    const defaultedLogPage = await host.harness.behavior.callRpc("benchLogsList", {
-      projectId: "project-a",
-      projectVersionId: null,
-      runId,
-    });
+    const defaultedLogPage = await host.harness.behavior.callRpc(
+      "benchLogsList",
+      {
+        projectId: "project-a",
+        projectVersionId: null,
+        runId,
+      },
+    );
     expect(defaultedLogPage).toMatchObject({
       items: [
         { projectVersionId: "version-a", sequence: 0, text: "one" },
@@ -279,7 +338,9 @@ describe("bench registration", () => {
       `/bench/runs/log?projectId=project-a&runId=${encodeURIComponent(runId)}`,
     );
     expect(downloadedLog.status).toBe(206);
-    expect(downloadedLog.headers.get("X-BB-Log-Completeness")).toBe("cached-tail");
+    expect(downloadedLog.headers.get("X-BB-Log-Completeness")).toBe(
+      "cached-tail",
+    );
     await expect(downloadedLog.text()).resolves.toBe("one\ntwo\nthree\n");
     const artifactRecovery = await host.harness.behavior.fetchHttp(
       "GET",
@@ -294,7 +355,9 @@ describe("bench registration", () => {
       `/bench/runs/attestation?projectId=project-a&runId=${encodeURIComponent(runId)}`,
     );
     expect(downloadedAttestation.status).toBe(200);
-    await expect(downloadedAttestation.json()).resolves.toEqual({ project: "project-a" });
+    await expect(downloadedAttestation.json()).resolves.toEqual({
+      project: "project-a",
+    });
     for (const path of [
       "/bench/runs/log?projectId=project-a&runId=run-foreign",
       "/bench/runs/attestation?projectId=project-a&runId=run-foreign",
@@ -315,18 +378,57 @@ describe("bench registration", () => {
       "/bench/runs/attestation?projectId=project-b&runId=run-foreign",
     );
     expect(foreignOwnerAttestation.status).toBe(200);
-    await expect(foreignOwnerAttestation.json()).resolves.toEqual({ project: "project-b" });
+    await expect(foreignOwnerAttestation.json()).resolves.toEqual({
+      project: "project-b",
+    });
     const traversalRejected = await host.harness.behavior.fetchHttp(
       "GET",
       "/bench/runs/artifact?projectId=project-a&runId=..%2Frun&artifactName=..%2Fsecret",
     );
     expect(traversalRejected.status).toBe(400);
     expect(host.harness.registrations.httpRoutes).toEqual([
-      expect.objectContaining({ method: "GET", path: "/bench/runs/log", auth: "local" }),
-      expect.objectContaining({ method: "GET", path: "/bench/runs/artifact", auth: "local" }),
-      expect.objectContaining({ method: "GET", path: "/bench/runs/attestation", auth: "local" }),
+      expect.objectContaining({
+        method: "GET",
+        path: "/bench/runs/log",
+        auth: "local",
+      }),
+      expect.objectContaining({
+        method: "GET",
+        path: "/bench/runs/artifact",
+        auth: "local",
+      }),
+      expect.objectContaining({
+        method: "GET",
+        path: "/bench/runs/attestation",
+        auth: "local",
+      }),
     ]);
     expect(host.harness.registrations.cli).toBeNull();
+
+    const failedAttempt = await host.harness.behavior.callRpc(
+      "benchRunAttemptStart",
+      {
+        projectId: "project-a",
+        projectVersionId: "version-a",
+        tier: "tier0",
+        hostId: "host-missing",
+      },
+    );
+    expect(failedAttempt).toMatchObject({
+      success: false,
+      code: "HOST_PROJECT_SOURCE_MISSING",
+      message: expect.any(String),
+      runId: expect.stringMatching(/^bench-/u),
+    });
+    const failedRunId = requiredNestedString(failedAttempt, ["runId"]);
+    expect(
+      context
+        .db()
+        .prepare(
+          "SELECT status, thread_id FROM verification_runs WHERE run_id = ?",
+        )
+        .get(failedRunId),
+    ).toEqual({ status: "failed", thread_id: null });
 
     const service = host.harness.behavior.runService("bench-jobs");
     service.controller.abort();
@@ -340,10 +442,16 @@ describe("bench registration", () => {
     services.storeEvidenceCheckpoint(evidenceBundle());
     services.storeEvidenceCheckpoint(evidenceBundle());
     expect(fixture.host.harness.realtimeSignals).toEqual([
-      { channel: "bench:changed", payload: { runId: "run-a", status: "completed" } },
+      {
+        channel: "bench:changed",
+        payload: { runId: "run-a", status: "completed" },
+      },
     ]);
     expect(
-      fixture.db.prepare("SELECT synced_at FROM verification_runs").pluck().get(),
+      fixture.db
+        .prepare("SELECT synced_at FROM verification_runs")
+        .pluck()
+        .get(),
     ).not.toBeNull();
   });
 });

@@ -9,14 +9,13 @@ import type {
   RemoteServices,
 } from "../../../lib/remote/types.js";
 import { prepareFirmwareForBench } from "../../firmware/forge/handshake.js";
-import type {
-  PreparedFirmware,
-} from "../../firmware/forge/handshake.js";
+import type { PreparedFirmware } from "../../firmware/forge/handshake.js";
 import type {
   FirmwareHandshakeDeps,
   ForgeProcessAdapter,
 } from "../../firmware/forge/handshake.js";
 import { storeEvidenceCheckpointWithResult } from "../store/results.js";
+import { getAcceptedBenchGeneration } from "../store/runs.js";
 import type { BenchEvidenceBundle, BenchRunRecord } from "../store/types.js";
 import { forgeEvidenceCheckpoint, type ForgeEvidenceDeps } from "./evidence.js";
 import {
@@ -98,10 +97,16 @@ export interface BenchExecutionDeps {
     hostId: string,
     signal: AbortSignal,
   ): Promise<Tier1PreparedExecution>;
-  resolveTier1Targets(request: BenchRunRequest, signal: AbortSignal): Promise<Tier1Targets>;
+  resolveTier1Targets(
+    request: BenchRunRequest,
+    signal: AbortSignal,
+  ): Promise<Tier1Targets>;
   createRunId(): string;
   now(): Date;
-  publish(channel: "bench:changed" | "bench:log", payload: Record<string, string>): void;
+  publish(
+    channel: "bench:changed" | "bench:log",
+    payload: Record<string, string>,
+  ): void;
 }
 
 interface FirmwareDigestRow {
@@ -134,13 +139,18 @@ export async function persistBenchLog(
   job: Pick<ForgeJobSnapshot, "jobId" | "logTail">,
   signal: AbortSignal,
 ): Promise<string | null> {
-  if (!SAFE_LOCATOR_SEGMENT.test(runId) || !SAFE_LOCATOR_SEGMENT.test(job.jobId)) {
+  if (
+    !SAFE_LOCATOR_SEGMENT.test(runId) ||
+    !SAFE_LOCATOR_SEGMENT.test(job.jobId)
+  ) {
     return null;
   }
   const locator = `runs/${runId}/jobs/${job.jobId}.log`;
   const persisted: PersistedBenchLog = {
     version: 1,
-    text: boundedUtf8Tail(job.logTail.length === 0 ? "" : `${job.logTail.join("\n")}\n`),
+    text: boundedUtf8Tail(
+      job.logTail.length === 0 ? "" : `${job.logTail.join("\n")}\n`,
+    ),
     complete: false,
   };
   signal.throwIfAborted();
@@ -182,7 +192,9 @@ async function projectWorkspacePath(
   signal: AbortSignal,
 ): Promise<string> {
   const project = await bb.sdk.projects.get({ projectId, signal });
-  const source = project.sources.find((candidate) => candidate.hostId === hostId);
+  const source = project.sources.find(
+    (candidate) => candidate.hostId === hostId,
+  );
   if (!source) {
     throw new BenchRunError(
       "HOST_PROJECT_SOURCE_MISSING",
@@ -192,7 +204,10 @@ async function projectWorkspacePath(
   return source.path;
 }
 
-function cancellableSleep(milliseconds: number, signal: AbortSignal): Promise<void> {
+function cancellableSleep(
+  milliseconds: number,
+  signal: AbortSignal,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(resolve, milliseconds);
     signal.addEventListener(
@@ -244,7 +259,9 @@ export function createDefaultBenchExecutionDeps(
             .get(input.projectId, input.pvId);
           return {
             checkId: mapped?.check_id ?? "firmware-digest-integrity",
-            ...(input.requirementId ? { requirementId: input.requirementId } : {}),
+            ...(input.requirementId
+              ? { requirementId: input.requirementId }
+              : {}),
             outcome: SHA256.test(input.firmwareDigest) ? "pass" : "error",
             summary: `Static firmware digest ${input.firmwareDigest} was bound before execution.`,
           };
@@ -273,7 +290,8 @@ export function createDefaultBenchExecutionDeps(
            ORDER BY pulled_at DESC LIMIT 1`,
         )
         .get(projectId, pvId);
-      const firmwareDigest = digest?.artifact_hash ?? digest?.input_sha256 ?? null;
+      const firmwareDigest =
+        digest?.artifact_hash ?? digest?.input_sha256 ?? null;
       if (!firmwareDigest || !SHA256.test(firmwareDigest)) {
         throw new BenchRunError(
           "FIRMWARE_DIGEST_UNAVAILABLE",
@@ -283,9 +301,18 @@ export function createDefaultBenchExecutionDeps(
       return { workspacePath, firmwareDigest };
     },
     async prepareFirmware(projectId, pvId, hostId, signal) {
-      const worktreeRoot = await projectWorkspacePath(ctx.bb, projectId, hostId, signal);
+      const worktreeRoot = await projectWorkspacePath(
+        ctx.bb,
+        projectId,
+        hostId,
+        signal,
+      );
       const firmwareHandshake = { worktreeRoot };
-      const prepared = await prepareFirmwareForBench(firmwareHandshake, pvId, signal);
+      const prepared = await prepareFirmwareForBench(
+        firmwareHandshake,
+        pvId,
+        signal,
+      );
       return {
         prepared,
         firmwareHandshake,
@@ -299,7 +326,12 @@ export function createDefaultBenchExecutionDeps(
     async resolveTier1Targets(input) {
       const target = input.target;
       const separator = target?.indexOf("@");
-      if (!target || separator === undefined || separator < 1 || separator === target.length - 1) {
+      if (
+        !target ||
+        separator === undefined ||
+        separator < 1 ||
+        separator === target.length - 1
+      ) {
         throw new BenchRunError(
           "TIER1_TARGET_INVALID",
           "Tier 1 target must be <CVE-ID>@<component-id>",
@@ -327,19 +359,36 @@ export function createDefaultBenchExecutionDeps(
 }
 
 export class BenchRunError extends Error {
-  constructor(readonly code: string, message: string) {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly runId: string | null = null,
+  ) {
     super(message);
     this.name = "BenchRunError";
   }
 }
 
 const SHA256 = /^[a-f0-9]{64}$/u;
+const FAILURE_CODE = /^[A-Z][A-Z0-9_]{0,127}$/u;
 const CONTROL = /[\u0000-\u001f\u007f]/u;
+
+function failureCode(error: unknown): string {
+  if (error instanceof BenchRunError) return error.code;
+  if (typeof error === "object" && error !== null) {
+    const code = Reflect.get(error, "code");
+    if (typeof code === "string" && FAILURE_CODE.test(code)) return code;
+  }
+  return "BENCH_RUN_FAILED";
+}
 
 function requiredText(name: string, value: string): string {
   const normalized = value.trim();
   if (!normalized || normalized.length > 512 || CONTROL.test(normalized)) {
-    throw new BenchRunError("INVALID_REQUEST", `${name} must be a non-empty bounded string`);
+    throw new BenchRunError(
+      "INVALID_REQUEST",
+      `${name} must be a non-empty bounded string`,
+    );
   }
   return normalized;
 }
@@ -357,7 +406,10 @@ function validateRequest(request: BenchRunRequest): {
 } {
   const tier: string = request.tier;
   if (tier !== "tier0" && tier !== "tier1") {
-    throw new BenchRunError("TIER_NOT_IMPLEMENTED", `Bench tier ${tier} is not implemented`);
+    throw new BenchRunError(
+      "TIER_NOT_IMPLEMENTED",
+      `Bench tier ${tier} is not implemented`,
+    );
   }
   return {
     projectId: requiredText("projectId", request.projectId),
@@ -372,11 +424,14 @@ function baseRun(
   input: ReturnType<typeof validateRequest>,
   tier: BenchRunRequest["tier"],
   runId: string,
-  firmwareDigest: string,
+  firmwareDigest: string | null,
   now: string,
 ): BenchRunRecord {
-  if (!SHA256.test(firmwareDigest)) {
-    throw new BenchRunError("INVALID_FIRMWARE_DIGEST", "Firmware digest must be lowercase sha256");
+  if (firmwareDigest !== null && !SHA256.test(firmwareDigest)) {
+    throw new BenchRunError(
+      "INVALID_FIRMWARE_DIGEST",
+      "Firmware digest must be lowercase sha256",
+    );
   }
   return {
     runId,
@@ -400,7 +455,8 @@ function assertForgeProcessAvailable(adapter: ForgeProcessAdapter): void {
   if (adapter.kind === "remote") {
     throw new BenchRunError(
       "FIRMWARE_REGISTRATION_UNAVAILABLE",
-      adapter.reason ?? "Remote Forge cannot register the prepared firmware environment",
+      adapter.reason ??
+        "Remote Forge cannot register the prepared firmware environment",
     );
   }
   if (adapter.kind === "persistent" && !adapter.restart) {
@@ -411,8 +467,15 @@ function assertForgeProcessAvailable(adapter: ForgeProcessAdapter): void {
   }
 }
 
-function checkpoint(deps: BenchExecutionDeps, bundle: BenchEvidenceBundle): void {
-  const result = storeEvidenceCheckpointWithResult(deps.db, bundle, deps.now().toISOString());
+function checkpoint(
+  deps: BenchExecutionDeps,
+  bundle: BenchEvidenceBundle,
+): void {
+  const result = storeEvidenceCheckpointWithResult(
+    deps.db,
+    bundle,
+    deps.now().toISOString(),
+  );
   if (result.changed) {
     deps.publish("bench:changed", {
       projectId: bundle.run.projectId,
@@ -450,13 +513,18 @@ function queueTier1Polling(
         checkpoint(deps, evidence);
       } catch (error) {
         if (signal.aborted) return;
-        const message = error instanceof Error ? error.message : "Tier 1 polling failed";
+        const message =
+          error instanceof Error ? error.message : "Tier 1 polling failed";
         const failed: BenchEvidenceBundle = {
           run: {
             ...run,
             status: "failed",
             finishedAt: deps.now().toISOString(),
-            raw: { firmwareDigest: run.firmwareDigest, jobIds, pollingError: message },
+            raw: {
+              firmwareDigest: run.firmwareDigest,
+              jobIds,
+              pollingError: message,
+            },
           },
           results: [
             {
@@ -481,138 +549,198 @@ async function executeRunBench(
 ): Promise<BenchRunStarted> {
   signal.throwIfAborted();
   const validated = validateRequest(request);
-  const version = await deps.assertProjectVersion(validated.projectId, validated.pvId, signal);
-  const tier1 = request.tier === "tier1";
-  const deploymentContext = tier1
-    ? validateDeploymentContext(request.deploymentContext)
-    : undefined;
-  const required: readonly BenchHostPrerequisite[] = tier1
-    ? ["forgeCompute", "allowPentest", "docker", "cveEvidenceVerifier"]
-    : [];
-  await selectBenchHost(deps.bb, deps.hostProbe, validated.hostId, required, signal);
-
-  const preparedExecution = tier1
-    ? await deps.prepareFirmware(
-        validated.projectId,
-        validated.pvId,
-        validated.hostId,
-        signal,
-      )
-    : null;
-  const client = tier1 ? deps.forgeCompute : null;
-  if (tier1 && (!client || !preparedExecution || !deploymentContext)) {
-    throw new BenchRunError("FORGE_COMPUTE_UNAVAILABLE", "Tier 1 requires Forge Compute");
-  }
-  if (preparedExecution) assertForgeProcessAvailable(preparedExecution.forgeProcess);
-  const targets = tier1 ? await deps.resolveTier1Targets(request, signal) : null;
-  const prepared = preparedExecution?.prepared ?? null;
-  const firmwareDigest = prepared?.artifactHash ?? version.firmwareDigest;
+  // A verification_run is generation-owned. Reject an invalid evidence scope
+  // before minting an attempt id; after this boundary every minted attempt can
+  // be checkpointed durably, including all later preflight failures.
+  getAcceptedBenchGeneration(deps.db, validated.projectId, validated.pvId);
   const runId = requiredText("runId", deps.createRunId());
-  const queued: BenchRunRecord = {
-    ...baseRun(
-      validated,
-      request.tier,
-      runId,
-      firmwareDigest,
-      deps.now().toISOString(),
-    ),
-    ...(deploymentContext ? { config: deploymentContext } : {}),
+  const startedAt = deps.now().toISOString();
+  let currentRun: BenchRunRecord = {
+    ...baseRun(validated, request.tier, runId, null, startedAt),
+    kind: "bench",
+    trigger: "manual",
+    raw: { stage: "preflight", jobIds: [] },
   };
-  checkpoint(deps, { run: queued, results: [], artifacts: [] });
+  let attemptRecorded = false;
+  let failureContext: {
+    firmwareDigest?: string;
+    dispatchError?: string;
+    jobIds?: string[];
+  } = {};
 
-  const workspacePath = prepared?.rootfsPath ?? version.workspacePath;
-  const threadId = await startBenchThread(deps.bb, {
-    projectId: validated.projectId,
-    pvId: validated.pvId,
-    tier: request.tier,
-    hostId: validated.hostId,
-    workspacePath,
-    firmwareDigest,
-  });
-  const linked: BenchRunRecord = { ...queued, threadId };
-  checkpoint(deps, { run: linked, results: [], artifacts: [] });
-
-  if (!tier1) {
-    const evidence = await runTier0(
-      deps.tier0Analyzers,
-      {
-        projectId: validated.projectId,
-        pvId: validated.pvId,
-        firmwareDigest,
-        hostId: validated.hostId,
-        target: validated.target,
-        requirementId: validated.requirementId,
-      },
-      signal,
-    );
-    checkpoint(deps, {
-      run: {
-        ...linked,
-        status: "completed",
-        finishedAt: deps.now().toISOString(),
-        raw: { firmwareDigest, analyzerCount: deps.tier0Analyzers.length },
-      },
-      ...evidence,
-    });
-    return { runId, threadId, jobIds: [], firmwareDigest, status: "running" };
-  }
-
-  if (!client || !preparedExecution || !deploymentContext || !targets) {
-    throw new BenchRunError("FORGE_COMPUTE_UNAVAILABLE", "Tier 1 requires Forge Compute");
-  }
-  let jobIds: string[];
   try {
-    jobIds = await dispatchTier1(
-      {
-        forgeCompute: client,
-        firmwareHandshake: preparedExecution.firmwareHandshake,
-        forgeProcess: preparedExecution.forgeProcess,
-      },
-      {
-        projectId: validated.projectId,
-        pvId: validated.pvId,
-        prepared: preparedExecution.prepared,
-        targets,
-        deploymentContext,
-      },
+    checkpoint(deps, { run: currentRun, results: [], artifacts: [] });
+    attemptRecorded = true;
+    const version = await deps.assertProjectVersion(
+      validated.projectId,
+      validated.pvId,
       signal,
     );
+    const tier1 = request.tier === "tier1";
+    const deploymentContext = tier1
+      ? validateDeploymentContext(request.deploymentContext)
+      : undefined;
+    const required: readonly BenchHostPrerequisite[] = tier1
+      ? ["forgeCompute", "allowPentest", "docker", "cveEvidenceVerifier"]
+      : [];
+    await selectBenchHost(
+      deps.bb,
+      deps.hostProbe,
+      validated.hostId,
+      required,
+      signal,
+    );
+
+    const preparedExecution = tier1
+      ? await deps.prepareFirmware(
+          validated.projectId,
+          validated.pvId,
+          validated.hostId,
+          signal,
+        )
+      : null;
+    const client = tier1 ? deps.forgeCompute : null;
+    if (tier1 && (!client || !preparedExecution || !deploymentContext)) {
+      throw new BenchRunError(
+        "FORGE_COMPUTE_UNAVAILABLE",
+        "Tier 1 requires Forge Compute",
+      );
+    }
+    if (preparedExecution)
+      assertForgeProcessAvailable(preparedExecution.forgeProcess);
+    const targets = tier1
+      ? await deps.resolveTier1Targets(request, signal)
+      : null;
+    const prepared = preparedExecution?.prepared ?? null;
+    const firmwareDigest = prepared?.artifactHash ?? version.firmwareDigest;
+    failureContext = { firmwareDigest };
+    const queued: BenchRunRecord = {
+      ...baseRun(validated, request.tier, runId, firmwareDigest, startedAt),
+      ...(deploymentContext ? { config: deploymentContext } : {}),
+    };
+    currentRun = queued;
+    checkpoint(deps, { run: queued, results: [], artifacts: [] });
+
+    const workspacePath = prepared?.rootfsPath ?? version.workspacePath;
+    const threadId = await startBenchThread(deps.bb, {
+      projectId: validated.projectId,
+      pvId: validated.pvId,
+      tier: request.tier,
+      hostId: validated.hostId,
+      workspacePath,
+      firmwareDigest,
+    });
+    const linked: BenchRunRecord = { ...queued, threadId };
+    currentRun = linked;
+    checkpoint(deps, { run: linked, results: [], artifacts: [] });
+
+    if (!tier1) {
+      const evidence = await runTier0(
+        deps.tier0Analyzers,
+        {
+          projectId: validated.projectId,
+          pvId: validated.pvId,
+          firmwareDigest,
+          hostId: validated.hostId,
+          target: validated.target,
+          requirementId: validated.requirementId,
+        },
+        signal,
+      );
+      checkpoint(deps, {
+        run: {
+          ...linked,
+          status: "completed",
+          finishedAt: deps.now().toISOString(),
+          raw: { firmwareDigest, analyzerCount: deps.tier0Analyzers.length },
+        },
+        ...evidence,
+      });
+      return { runId, threadId, jobIds: [], firmwareDigest, status: "running" };
+    }
+
+    if (!client || !preparedExecution || !deploymentContext || !targets) {
+      throw new BenchRunError(
+        "FORGE_COMPUTE_UNAVAILABLE",
+        "Tier 1 requires Forge Compute",
+      );
+    }
+    let jobIds: string[];
+    try {
+      jobIds = await dispatchTier1(
+        {
+          forgeCompute: client,
+          firmwareHandshake: preparedExecution.firmwareHandshake,
+          forgeProcess: preparedExecution.forgeProcess,
+        },
+        {
+          projectId: validated.projectId,
+          pvId: validated.pvId,
+          prepared: preparedExecution.prepared,
+          targets,
+          deploymentContext,
+        },
+        signal,
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Tier 1 dispatch failed";
+      failureContext = { firmwareDigest, jobIds: [], dispatchError: message };
+      throw new BenchRunError("FORGE_DISPATCH_FAILED", message);
+    }
+    const running: BenchRunRecord = {
+      ...linked,
+      status: "running",
+      jobId: jobIds[0] ?? null,
+      raw: { firmwareDigest, jobIds },
+    };
+    checkpoint(deps, { run: running, results: [], artifacts: [] });
+    queueTier1Polling(
+      deps,
+      client,
+      running,
+      jobIds,
+      validated.requirementId ?? "unmapped:tier1",
+    );
+    return { runId, threadId, jobIds, firmwareDigest, status: "running" };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Tier 1 dispatch failed";
+    const message =
+      error instanceof Error ? error.message : "Bench run preflight failed";
+    const aborted = signal.aborted;
+    const code = aborted ? "BENCH_RUN_ABORTED" : failureCode(error);
+    if (!attemptRecorded) throw new BenchRunError(code, message);
+    const finishedAt = deps.now().toISOString();
     checkpoint(deps, {
       run: {
-        ...linked,
-        status: "failed",
-        finishedAt: deps.now().toISOString(),
-        raw: { firmwareDigest, jobIds: [], dispatchError: message },
+        ...currentRun,
+        status: aborted ? "timeout" : "failed",
+        finishedAt,
+        durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt)),
+        raw: {
+          ...failureContext,
+          stage: currentRun.threadId ? "execution" : "preflight",
+          failureCode: code,
+          failureReason: message.slice(0, 20_000),
+          jobIds: failureContext.jobIds ?? [],
+        },
       },
       results: [
         {
-          requirementId: validated.requirementId ?? "unmapped:tier1",
-          checkId: "forge-dispatch",
+          requirementId: validated.requirementId ?? "unmapped:bench-run",
+          checkId:
+            code === "FORGE_DISPATCH_FAILED"
+              ? "forge-dispatch"
+              : currentRun.threadId
+                ? "bench-execution"
+                : "bench-preflight",
           outcome: "error",
-          evidenceSummary: message,
+          evidenceSummary: message.slice(0, 20_000),
         },
       ],
       artifacts: [],
     });
-    throw error;
+    throw new BenchRunError(code, message, runId);
   }
-  const running: BenchRunRecord = {
-    ...linked,
-    status: "running",
-    jobId: jobIds[0] ?? null,
-    raw: { firmwareDigest, jobIds },
-  };
-  checkpoint(deps, { run: running, results: [], artifacts: [] });
-  queueTier1Polling(
-    deps,
-    client,
-    running,
-    jobIds,
-    validated.requirementId ?? "unmapped:tier1",
-  );
-  return { runId, threadId, jobIds, firmwareDigest, status: "running" };
 }
 
 export function runBench(

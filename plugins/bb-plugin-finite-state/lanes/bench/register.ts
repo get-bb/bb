@@ -15,15 +15,20 @@ import {
 } from "./execute/hosts.js";
 import { InMemoryBenchJobQueue, runBenchJobService } from "./execute/jobs.js";
 import {
+  BenchRunError,
   createDefaultBenchExecutionDeps,
   readPersistedBenchLog,
   runBench,
 } from "./execute/run.js";
 import { listBenchArtifacts } from "./store/artifacts.js";
 import { listBenchAttestations } from "./store/attestations.js";
-import { listBenchResults, storeEvidenceCheckpointWithResult } from "./store/results.js";
+import {
+  listBenchResults,
+  storeEvidenceCheckpointWithResult,
+} from "./store/results.js";
 import { getBenchRun, listBenchRuns } from "./store/runs.js";
 import type { BenchEvidenceBundle } from "./store/types.js";
+import { benchUiRpcContract } from "./rpc.js";
 import { createBenchVerdictCliRunner } from "./verdict/render-cli.js";
 import {
   getOtaVerdict,
@@ -99,6 +104,12 @@ interface ProjectVersionRow {
   project_version_id: string;
 }
 
+interface BenchProjectVersionRow extends ProjectVersionRow {
+  project_id: string;
+  as_of: string | null;
+  stale: number;
+}
+
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,511}$/u;
 const SAFE_ARTIFACT_NAME = /^[A-Za-z0-9][A-Za-z0-9._ -]{0,199}$/u;
 
@@ -106,9 +117,10 @@ function acceptedBenchProjectVersionId(
   db: Database.Database,
   projectId: string,
 ): string | null {
-  return db
-    .prepare<[string, string], ProjectVersionRow>(
-      `SELECT s.project_version_id
+  return (
+    db
+      .prepare<[string, string], ProjectVersionRow>(
+        `SELECT s.project_version_id
          FROM sync_state s
          JOIN pull_generation g
            ON g.project_id = s.project_id
@@ -120,8 +132,9 @@ function acceptedBenchProjectVersionId(
           AND s.accepted_generation_id IS NOT NULL
         ORDER BY s.last_pull DESC, s.project_version_id DESC
         LIMIT 1`,
-    )
-    .get(projectId, PROJECT_LEVEL_VERSION_ID)?.project_version_id ?? null;
+      )
+      .get(projectId, PROJECT_LEVEL_VERSION_ID)?.project_version_id ?? null
+  );
 }
 
 function runProjectVersionId(
@@ -176,6 +189,17 @@ function object(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function runFailure(row: RunSurfaceRow | null): {
+  code: string | null;
+  reason: string | null;
+} {
+  const raw = object(parseJson(row?.raw ?? null));
+  return {
+    code: typeof raw?.failureCode === "string" ? raw.failureCode : null,
+    reason: typeof raw?.failureReason === "string" ? raw.failureReason : null,
+  };
+}
+
 function runSurfaceRows(
   db: Database.Database,
   projectId: string,
@@ -198,11 +222,7 @@ function runSurfaceRows(
        WHERE r.project_id = ? AND r.project_version_id = ?
          AND r.run_id IN (${placeholders})`,
     )
-    .all(
-      projectId,
-      toStorageProjectVersionId(projectVersionId),
-      ...runIds,
-    );
+    .all(projectId, toStorageProjectVersionId(projectVersionId), ...runIds);
   return new Map(rows.map((row) => [row.run_id, row]));
 }
 
@@ -212,7 +232,9 @@ function runSurfaceRow(
   projectVersionId: string | null,
   runId: string,
 ): RunSurfaceRow | null {
-  return runSurfaceRows(db, projectId, projectVersionId, [runId]).get(runId) ?? null;
+  return (
+    runSurfaceRows(db, projectId, projectVersionId, [runId]).get(runId) ?? null
+  );
 }
 
 function cachedLogLines(row: RunSurfaceRow): CachedLogLine[] {
@@ -245,14 +267,20 @@ function decodeLogCursor(value: string | null, runId: string): number {
     throw new Error("INVALID_BENCH_LOG_CONTINUATION");
   }
   const cursor = object(parsed);
-  if (cursor?.runId !== runId || !Number.isSafeInteger(cursor.after) || Number(cursor.after) < 0) {
+  if (
+    cursor?.runId !== runId ||
+    !Number.isSafeInteger(cursor.after) ||
+    Number(cursor.after) < 0
+  ) {
     throw new Error("INVALID_BENCH_LOG_CONTINUATION");
   }
   return Number(cursor.after);
 }
 
 function encodeLogCursor(runId: string, after: number): string {
-  return Buffer.from(JSON.stringify({ runId, after }), "utf8").toString("base64url");
+  return Buffer.from(JSON.stringify({ runId, after }), "utf8").toString(
+    "base64url",
+  );
 }
 
 function uniqueRunRowById(
@@ -313,14 +341,109 @@ export function createBenchCommandServices(
 
 export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
   const db = ctx.db();
-  const jobQueue = ctx.service("bench.job-queue", () => new InMemoryBenchJobQueue());
-  registerBenchAgentAction(ctx, () => ctx.service<RemoteServices>("remote-services", () => { throw new Error("REMOTE_SERVICES_NOT_REGISTERED"); }), jobQueue);
-  ctx.service("bench.command-services", () => createBenchCommandServices(bb, db));
+  const jobQueue = ctx.service(
+    "bench.job-queue",
+    () => new InMemoryBenchJobQueue(),
+  );
+  registerBenchAgentAction(
+    ctx,
+    () =>
+      ctx.service<RemoteServices>("remote-services", () => {
+        throw new Error("REMOTE_SERVICES_NOT_REGISTERED");
+      }),
+    jobQueue,
+  );
+  ctx.service("bench.command-services", () =>
+    createBenchCommandServices(bb, db),
+  );
   ctx.service("bench.cli", () => ({ run: createBenchVerdictCliRunner(db) }));
+
+  bb.rpc.register(benchUiRpcContract, {
+    async benchProjectVersions(input) {
+      await bb.sdk.projects.get({ projectId: input.projectId });
+      const rows = db
+        .prepare<[string, string], BenchProjectVersionRow>(
+          `SELECT s.project_id, s.project_version_id, MAX(s.last_pull) AS as_of,
+                  MAX(CASE WHEN s.error IS NOT NULL THEN 1 ELSE 0 END) AS stale
+             FROM sync_state s
+             JOIN pull_generation g
+               ON g.project_id = s.project_id
+              AND g.project_version_id = s.project_version_id
+              AND g.generation_id = s.accepted_generation_id
+              AND g.status = 'accepted'
+            WHERE s.project_id = ? AND s.entity_kind = 'verificationRun'
+              AND s.project_version_id <> ?
+              AND s.accepted_generation_id IS NOT NULL
+            GROUP BY s.project_id, s.project_version_id
+            ORDER BY as_of DESC, s.project_version_id DESC`,
+        )
+        .all(input.projectId, PROJECT_LEVEL_VERSION_ID);
+      const versions = rows.map((row) => ({
+        platformProjectId: row.project_id,
+        projectVersionId: row.project_version_id,
+        asOf: row.as_of,
+        state: row.stale === 1 ? ("stale" as const) : ("fresh" as const),
+      }));
+      return {
+        versions,
+        selectedPlatformProjectId: versions[0]?.platformProjectId ?? null,
+        selectedProjectVersionId: versions[0]?.projectVersionId ?? null,
+      };
+    },
+    async benchRunAttemptStart(input) {
+      if (input.projectVersionId === null) {
+        throw new Error("BENCH_PROJECT_VERSION_REQUIRED");
+      }
+      const request = {
+        projectId: input.projectId,
+        pvId: input.projectVersionId,
+        tier: input.tier,
+        hostId: input.hostId,
+        ...(input.requirementId ? { requirementId: input.requirementId } : {}),
+        ...(input.target ? { target: input.target } : {}),
+        ...(input.deploymentContext
+          ? { deploymentContext: input.deploymentContext }
+          : {}),
+      };
+      const remote = ctx.service<RemoteServices>("remote-services", () => {
+        throw new Error("REMOTE_SERVICES_NOT_REGISTERED");
+      });
+      try {
+        const started = await runBench(
+          createDefaultBenchExecutionDeps(ctx, request, remote, jobQueue),
+          request,
+          new AbortController().signal,
+        );
+        return {
+          success: true as const,
+          run: {
+            projectId: input.projectId,
+            projectVersionId: input.projectVersionId,
+            runId: started.runId,
+            threadId: started.threadId,
+            jobIds: started.jobIds,
+            firmwareSha256: started.firmwareDigest,
+            status: started.status,
+          },
+        };
+      } catch (error) {
+        if (error instanceof BenchRunError && error.runId) {
+          return {
+            success: false as const,
+            runId: error.runId,
+            code: error.code,
+            message: error.message,
+          };
+        }
+        throw error;
+      }
+    },
+  });
 
   bb.rpc.register(benchRpcContract, {
     benchRunsList(input) {
-      const projectVersionId = input.projectVersionId ??
+      const projectVersionId =
+        input.projectVersionId ??
         acceptedBenchProjectVersionId(db, input.projectId);
       if (projectVersionId === null) {
         return {
@@ -351,6 +474,7 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
       return {
         items: page.items.map((run) => {
           const stored = surface.get(run.runId) ?? null;
+          const failure = runFailure(stored);
           return {
             projectId: run.projectId,
             projectVersionId: run.pvId,
@@ -375,8 +499,11 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
               durationMs: stored?.duration_ms ?? null,
               logAvailable:
                 stored !== null &&
-                (stored.log_locator !== null || cachedLogLines(stored).length > 0),
+                (stored.log_locator !== null ||
+                  cachedLogLines(stored).length > 0),
               logCursor: stored?.log_cursor ?? null,
+              failureCode: failure.code,
+              failureReason: failure.reason,
             },
           };
         }),
@@ -392,7 +519,8 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
         input.projectVersionId,
         input.runId,
       );
-      if (projectVersionId === null) throw new Error(`BENCH_RUN_NOT_FOUND: ${input.runId}`);
+      if (projectVersionId === null)
+        throw new Error(`BENCH_RUN_NOT_FOUND: ${input.runId}`);
       const detail = getBenchRun(db, {
         projectId: input.projectId,
         pvId: projectVersionId,
@@ -415,6 +543,7 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
         projectVersionId,
         input.runId,
       );
+      const failure = runFailure(stored);
       return {
         projectId: detail.run.projectId,
         projectVersionId: detail.run.pvId,
@@ -440,6 +569,8 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
             stored !== null &&
             (stored.log_locator !== null || cachedLogLines(stored).length > 0),
           logCursor: stored?.log_cursor ?? null,
+          failureCode: failure.code,
+          failureReason: failure.reason,
           results: results.items,
           resultsTotal: results.total,
           resultsNext: results.next,
@@ -470,13 +601,9 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
         input.projectVersionId,
         runId,
       );
-      if (projectVersionId === null) throw new Error(`BENCH_RUN_NOT_FOUND: ${runId}`);
-      const row = runSurfaceRow(
-        db,
-        input.projectId,
-        projectVersionId,
-        runId,
-      );
+      if (projectVersionId === null)
+        throw new Error(`BENCH_RUN_NOT_FOUND: ${runId}`);
+      const row = runSurfaceRow(db, input.projectId, projectVersionId, runId);
       if (!row) throw new Error(`BENCH_RUN_NOT_FOUND: ${runId}`);
       const lines = cachedLogLines(row);
       const offset = decodeLogCursor(input.continuation, runId);
@@ -507,7 +634,10 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
     },
     async benchVerdictGet(input) {
       const pvId = input.projectVersionId ?? input.verdictId;
-      const result = await getOtaVerdict({ db, projectId: input.projectId }, pvId);
+      const result = await getOtaVerdict(
+        { db, projectId: input.projectId },
+        pvId,
+      );
       return projectFrozenVerdict(db, input.projectId, input.verdictId, result);
     },
     benchOtaVerdictGet(input) {
@@ -528,7 +658,9 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
         hostId: input.hostId,
         ...(input.requirementId ? { requirementId: input.requirementId } : {}),
         ...(input.target ? { target: input.target } : {}),
-        ...(input.deploymentContext ? { deploymentContext: input.deploymentContext } : {}),
+        ...(input.deploymentContext
+          ? { deploymentContext: input.deploymentContext }
+          : {}),
       };
       const remote = ctx.service<RemoteServices>("remote-services", () => {
         throw new Error("REMOTE_SERVICES_NOT_REGISTERED");
@@ -550,9 +682,13 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
     },
     async benchHostsList(input) {
       const hosts = await listBenchHosts(bb);
-      const offset = input.continuation === null
-        ? 0
-        : Number.parseInt(Buffer.from(input.continuation, "base64url").toString("utf8"), 10);
+      const offset =
+        input.continuation === null
+          ? 0
+          : Number.parseInt(
+              Buffer.from(input.continuation, "base64url").toString("utf8"),
+              10,
+            );
       if (!Number.isSafeInteger(offset) || offset < 0) {
         throw new Error("INVALID_BENCH_HOST_CONTINUATION");
       }
@@ -595,49 +731,76 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
     },
   });
 
-  bb.http.route("GET", "/bench/runs/log", async (http) => {
-    const projectId = queryRunId(http.req.query("projectId"));
-    const runId = queryRunId(http.req.query("runId"));
-    if (projectId === null || runId === null) {
-      return streamUnavailable("Valid projectId and runId query parameters are required.", 400);
-    }
-    const row = uniqueRunRowById(db, projectId, runId);
-    if (!row) return streamUnavailable("Run log is unknown or ambiguous.", 404);
-    if (row.log_locator !== null) {
-      const persisted = await readPersistedBenchLog(bb.storage.kv, row.log_locator);
-      if (persisted) {
-        const headers = downloadHeaders(`${runId}.cached.log`, "text/plain; charset=utf-8");
-        headers.set("X-BB-Log-Completeness", "cached-tail");
-        return new Response(persisted.text, { status: 206, headers });
+  bb.http.route(
+    "GET",
+    "/bench/runs/log",
+    async (http) => {
+      const projectId = queryRunId(http.req.query("projectId"));
+      const runId = queryRunId(http.req.query("runId"));
+      if (projectId === null || runId === null) {
+        return streamUnavailable(
+          "Valid projectId and runId query parameters are required.",
+          400,
+        );
       }
-    }
-    const lines = cachedLogLines(row);
-    if (lines.length === 0) {
-      return streamUnavailable(
-        row.log_locator === null
-          ? "No cached log or complete logical log locator is recorded. Open the native run thread."
-          : "The complete logical log locator has no approved byte adapter. Open the native run thread.",
+      const row = uniqueRunRowById(db, projectId, runId);
+      if (!row)
+        return streamUnavailable("Run log is unknown or ambiguous.", 404);
+      if (row.log_locator !== null) {
+        const persisted = await readPersistedBenchLog(
+          bb.storage.kv,
+          row.log_locator,
+        );
+        if (persisted) {
+          const headers = downloadHeaders(
+            `${runId}.cached.log`,
+            "text/plain; charset=utf-8",
+          );
+          headers.set("X-BB-Log-Completeness", "cached-tail");
+          return new Response(persisted.text, { status: 206, headers });
+        }
+      }
+      const lines = cachedLogLines(row);
+      if (lines.length === 0) {
+        return streamUnavailable(
+          row.log_locator === null
+            ? "No cached log or complete logical log locator is recorded. Open the native run thread."
+            : "The complete logical log locator has no approved byte adapter. Open the native run thread.",
+        );
+      }
+      const body = `${lines.map((line) => line.text).join("\n")}\n`;
+      const headers = downloadHeaders(
+        `${runId}.cached.log`,
+        "text/plain; charset=utf-8",
       );
-    }
-    const body = `${lines.map((line) => line.text).join("\n")}\n`;
-    const headers = downloadHeaders(`${runId}.cached.log`, "text/plain; charset=utf-8");
-    headers.set("X-BB-Log-Completeness", "cached-tail");
-    return new Response(body, { status: 206, headers });
-  }, { auth: "local" });
-  bb.http.route("GET", "/bench/runs/artifact", async (http) => {
-    const projectId = queryRunId(http.req.query("projectId"));
-    const runId = queryRunId(http.req.query("runId"));
-    const artifactName = queryArtifactName(http.req.query("artifactName"));
-    if (projectId === null || runId === null || artifactName === null) {
-      return streamUnavailable("Valid projectId, runId and artifactName query parameters are required.", 400);
-    }
-    const row = uniqueRunRowById(db, projectId, runId);
-    if (!row) {
-      return streamUnavailable("Artifact is unknown or has an unsafe logical name.", 404);
-    }
-    const artifact = db
-      .prepare<[string, string, string, string], ArtifactStreamRow>(
-        `SELECT a.name, a.kind, a.sha256, a.bytes
+      headers.set("X-BB-Log-Completeness", "cached-tail");
+      return new Response(body, { status: 206, headers });
+    },
+    { auth: "local" },
+  );
+  bb.http.route(
+    "GET",
+    "/bench/runs/artifact",
+    async (http) => {
+      const projectId = queryRunId(http.req.query("projectId"));
+      const runId = queryRunId(http.req.query("runId"));
+      const artifactName = queryArtifactName(http.req.query("artifactName"));
+      if (projectId === null || runId === null || artifactName === null) {
+        return streamUnavailable(
+          "Valid projectId, runId and artifactName query parameters are required.",
+          400,
+        );
+      }
+      const row = uniqueRunRowById(db, projectId, runId);
+      if (!row) {
+        return streamUnavailable(
+          "Artifact is unknown or has an unsafe logical name.",
+          404,
+        );
+      }
+      const artifact = db
+        .prepare<[string, string, string, string], ArtifactStreamRow>(
+          `SELECT a.name, a.kind, a.sha256, a.bytes
          FROM verification_artifacts a
          JOIN sync_state s
            ON s.project_id = a.project_id
@@ -647,24 +810,37 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
          WHERE a.project_id = ? AND a.project_version_id = ?
            AND a.run_id = ? AND a.name = ?
          LIMIT 1`,
-      )
-      .get(row.project_id, row.project_version_id, runId, artifactName);
-    if (!artifact) return streamUnavailable("Artifact metadata is no longer available.", 404);
-    return streamUnavailable(
-      `Artifact ${artifact.name} (${artifact.kind}) has verified metadata but its logical locator has no approved byte adapter. Refresh evidence to recover it.`,
-    );
-  }, { auth: "local" });
-  bb.http.route("GET", "/bench/runs/attestation", async (http) => {
-    const projectId = queryRunId(http.req.query("projectId"));
-    const runId = queryRunId(http.req.query("runId"));
-    if (projectId === null || runId === null) {
-      return streamUnavailable("Valid projectId and runId query parameters are required.", 400);
-    }
-    const row = uniqueRunRowById(db, projectId, runId);
-    if (!row) return streamUnavailable("Attestation is unknown or ambiguous.", 404);
-    const attestation = db
-      .prepare<[string, string, string], AttestationStreamRow>(
-        `SELECT a.format, a.payload
+        )
+        .get(row.project_id, row.project_version_id, runId, artifactName);
+      if (!artifact)
+        return streamUnavailable(
+          "Artifact metadata is no longer available.",
+          404,
+        );
+      return streamUnavailable(
+        `Artifact ${artifact.name} (${artifact.kind}) has verified metadata but its logical locator has no approved byte adapter. Refresh evidence to recover it.`,
+      );
+    },
+    { auth: "local" },
+  );
+  bb.http.route(
+    "GET",
+    "/bench/runs/attestation",
+    async (http) => {
+      const projectId = queryRunId(http.req.query("projectId"));
+      const runId = queryRunId(http.req.query("runId"));
+      if (projectId === null || runId === null) {
+        return streamUnavailable(
+          "Valid projectId and runId query parameters are required.",
+          400,
+        );
+      }
+      const row = uniqueRunRowById(db, projectId, runId);
+      if (!row)
+        return streamUnavailable("Attestation is unknown or ambiguous.", 404);
+      const attestation = db
+        .prepare<[string, string, string], AttestationStreamRow>(
+          `SELECT a.format, a.payload
          FROM attestations a
          JOIN sync_state s
            ON s.project_id = a.project_id
@@ -673,16 +849,19 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
           AND s.accepted_generation_id = a.generation_id
          WHERE a.project_id = ? AND a.project_version_id = ? AND a.run_id = ?
          ORDER BY a.pulled_at DESC LIMIT 1`,
-      )
-      .get(row.project_id, row.project_version_id, runId);
-    if (!attestation) return streamUnavailable("No attestation envelope is recorded.", 404);
-    return new Response(attestation.payload, {
-      headers: downloadHeaders(
-        `${runId}.${attestation.format}.json`,
-        "application/json; charset=utf-8",
-      ),
-    });
-  }, { auth: "local" });
+        )
+        .get(row.project_id, row.project_version_id, runId);
+      if (!attestation)
+        return streamUnavailable("No attestation envelope is recorded.", 404);
+      return new Response(attestation.payload, {
+        headers: downloadHeaders(
+          `${runId}.${attestation.format}.json`,
+          "application/json; charset=utf-8",
+        ),
+      });
+    },
+    { auth: "local" },
+  );
   bb.background.service("bench-jobs", {
     start: (signal) => runBenchJobService(jobQueue, signal),
   });

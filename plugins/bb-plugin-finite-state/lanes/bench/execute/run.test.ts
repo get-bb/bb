@@ -28,8 +28,12 @@ const roots: string[] = [];
 
 afterEach(async () => {
   await Promise.all([
-    ...fixtures.splice(0).map((fixture) => fixture.host.harness.lifecycle.dispose()),
-    ...roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+    ...fixtures
+      .splice(0)
+      .map((fixture) => fixture.host.harness.lifecycle.dispose()),
+    ...roots
+      .splice(0)
+      .map((root) => rm(root, { recursive: true, force: true })),
   ]);
 });
 
@@ -106,9 +110,13 @@ function enrolledHost() {
   };
 }
 
-function deps(fixture: ReturnType<typeof createBenchTestStore>): BenchExecutionDeps {
+function deps(
+  fixture: ReturnType<typeof createBenchTestStore>,
+): BenchExecutionDeps {
   fixture.host.harness.sdk.stub("hosts.list", async () => [enrolledHost()]);
-  fixture.host.harness.sdk.stub("threads.spawn", async () => ({ id: "thread-a" }));
+  fixture.host.harness.sdk.stub("threads.spawn", async () => ({
+    id: "thread-a",
+  }));
   return {
     bb: fixture.host.bb,
     db: fixture.db,
@@ -123,14 +131,21 @@ function deps(fixture: ReturnType<typeof createBenchTestStore>): BenchExecutionD
     tier0Analyzers: [
       {
         id: "static-a",
-        run: async () => ({ checkId: "static-a", outcome: "pass", summary: "explicit pass" }),
+        run: async () => ({
+          checkId: "static-a",
+          outcome: "pass",
+          summary: "explicit pass",
+        }),
       },
     ],
     forgeCompute: null,
     scheduler: { sleep: async () => undefined },
     jobQueue: new InMemoryBenchJobQueue(),
     evidence: { persistLog: async () => null },
-    assertProjectVersion: async () => ({ workspacePath: "/workspace", firmwareDigest: DIGEST_A }),
+    assertProjectVersion: async () => ({
+      workspacePath: "/workspace",
+      firmwareDigest: DIGEST_A,
+    }),
     prepareFirmware: async () => {
       throw new Error("not used for tier0");
     },
@@ -144,6 +159,32 @@ function deps(fixture: ReturnType<typeof createBenchTestStore>): BenchExecutionD
 }
 
 describe("runBench", () => {
+  it("rejects an unaccepted evidence scope before minting an attempt", async () => {
+    const fixture = createBenchTestStore("execute-run-invalid-scope");
+    fixtures.push(fixture);
+    const execution = deps(fixture);
+    execution.createRunId = vi.fn(() => "must-not-be-minted");
+    await expect(
+      runBench(
+        execution,
+        {
+          projectId: "project-a",
+          pvId: "unaccepted-version",
+          tier: "tier0",
+          hostId: "host-a",
+        },
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow("accepted verificationRun generation");
+    expect(execution.createRunId).not.toHaveBeenCalled();
+    expect(
+      fixture.db
+        .prepare("SELECT COUNT(*) FROM verification_runs")
+        .pluck()
+        .get(),
+    ).toBe(0);
+  });
+
   it("persists the prepared digest and selected host/thread in frozen columns", async () => {
     const fixture = createBenchTestStore("execute-run-linkage");
     fixtures.push(fixture);
@@ -178,8 +219,10 @@ describe("runBench", () => {
     });
   });
 
-  it("fails closed before creating a run or thread when prepared-root registration is unavailable", async () => {
-    const fixture = createBenchTestStore("execute-run-tier1-lifecycle-unavailable");
+  it("records a failed attempt without creating a thread when prepared-root registration is unavailable", async () => {
+    const fixture = createBenchTestStore(
+      "execute-run-tier1-lifecycle-unavailable",
+    );
     fixtures.push(fixture);
     const execution = deps(fixture);
     execution.hostProbe = {
@@ -253,8 +296,35 @@ describe("runBench", () => {
         new AbortController().signal,
       ),
     ).rejects.toMatchObject({ code: "FIRMWARE_REGISTRATION_UNAVAILABLE" });
-    expect(fixture.db.prepare("SELECT COUNT(*) FROM verification_runs").pluck().get()).toBe(0);
-    expect(fixture.host.harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(0);
+    expect(
+      fixture.db
+        .prepare(
+          `SELECT status, thread_id, firmware_digest, raw
+         FROM verification_runs WHERE run_id = 'run-execute-a'`,
+        )
+        .get(),
+    ).toMatchObject({
+      status: "failed",
+      thread_id: null,
+      firmware_digest: null,
+      raw: expect.stringContaining(
+        '"failureCode":"FIRMWARE_REGISTRATION_UNAVAILABLE"',
+      ),
+    });
+    expect(
+      fixture.db
+        .prepare(
+          `SELECT outcome, evidence_summary
+         FROM verification_results WHERE run_id = 'run-execute-a'`,
+        )
+        .get(),
+    ).toEqual({
+      outcome: "error",
+      evidence_summary: "no prepared-root registration",
+    });
+    expect(
+      fixture.host.harness.inspection.sdk.callsTo("threads.spawn"),
+    ).toHaveLength(0);
     expect(verifyDynamic).not.toHaveBeenCalled();
     expect(penTestRun).not.toHaveBeenCalled();
   });
@@ -316,10 +386,106 @@ describe("runBench", () => {
     );
     expect(
       fixture.db
-        .prepare("SELECT config FROM verification_runs WHERE run_id = 'run-execute-a'")
+        .prepare(
+          "SELECT config FROM verification_runs WHERE run_id = 'run-execute-a'",
+        )
         .pluck()
         .get(),
     ).toBe(JSON.stringify(deploymentContext));
+  });
+
+  it("records one lossless result when Tier 1 dispatch fails", async () => {
+    const fixture = createBenchTestStore("execute-run-tier1-dispatch-failure");
+    fixtures.push(fixture);
+    const firmware = await preparedFirmwareFixture();
+    const execution = deps(fixture);
+    execution.hostProbe = {
+      inspect: async () => ({
+        allowPentest: true,
+        docker: true,
+        cveEvidenceVerifier: true,
+        forgeCompute: true,
+      }),
+    };
+    execution.forgeCompute = {
+      verifyDynamic: vi.fn(async () => {
+        throw new Error("Forge dispatch unavailable");
+      }),
+      penTestRun: vi.fn(),
+      getJobStatus: vi.fn(),
+    };
+    execution.prepareFirmware = async () => ({
+      prepared: firmware.prepared,
+      firmwareHandshake: { worktreeRoot: firmware.root },
+      forgeProcess: {
+        kind: "plugin_owned_stdio",
+        hostId: "host-a",
+        command: ["forge"],
+        start: async () => undefined,
+      },
+    });
+    execution.resolveTier1Targets = async () => ({
+      verdictIds: ["REQ-A"],
+      cveId: "CVE-2026-0001",
+      componentId: "component-a",
+      findingId: null,
+    });
+    await expect(
+      runBench(
+        execution,
+        {
+          projectId: "project-a",
+          pvId: "version-a",
+          tier: "tier1",
+          hostId: "host-a",
+          requirementId: "REQ-A",
+          target: "CVE-2026-0001@component-a",
+          deploymentContext: {
+            productType: "gateway",
+            networkExposure: "internet",
+            regulatory: "CRA",
+            deploymentNotes: "Production edge",
+            rootComponentName: "Eagle",
+            rootComponentType: "firmware",
+          },
+        },
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({
+      code: "FORGE_DISPATCH_FAILED",
+      message: "Forge dispatch unavailable",
+      runId: "run-execute-a",
+    });
+    const row = fixture.db
+      .prepare(
+        `SELECT status, firmware_digest, raw
+           FROM verification_runs WHERE run_id = 'run-execute-a'`,
+      )
+      .get() as { status: string; firmware_digest: string; raw: string };
+    expect(row).toMatchObject({
+      status: "failed",
+      firmware_digest: firmware.prepared.artifactHash,
+    });
+    expect(JSON.parse(row.raw)).toMatchObject({
+      firmwareDigest: firmware.prepared.artifactHash,
+      dispatchError: "Forge dispatch unavailable",
+      failureCode: "FORGE_DISPATCH_FAILED",
+      jobIds: [],
+    });
+    expect(
+      fixture.db
+        .prepare(
+          `SELECT check_id, outcome, evidence_summary
+             FROM verification_results WHERE run_id = 'run-execute-a'`,
+        )
+        .all(),
+    ).toEqual([
+      {
+        check_id: null,
+        outcome: "error",
+        evidence_summary: "Forge dispatch unavailable",
+      },
+    ]);
   });
 
   it("rejects tiers 2-4 explicitly before any host or persistence call", async () => {
@@ -335,10 +501,19 @@ describe("runBench", () => {
     await expect(
       runBench(deps(fixture), request, new AbortController().signal),
     ).rejects.toEqual(
-      expect.objectContaining<Partial<BenchRunError>>({ code: "TIER_NOT_IMPLEMENTED" }),
+      expect.objectContaining<Partial<BenchRunError>>({
+        code: "TIER_NOT_IMPLEMENTED",
+      }),
     );
-    expect(fixture.db.prepare("SELECT COUNT(*) FROM verification_runs").pluck().get()).toBe(0);
-    expect(fixture.host.harness.inspection.sdk.callsTo("hosts.list")).toHaveLength(0);
+    expect(
+      fixture.db
+        .prepare("SELECT COUNT(*) FROM verification_runs")
+        .pluck()
+        .get(),
+    ).toBe(0);
+    expect(
+      fixture.host.harness.inspection.sdk.callsTo("hosts.list"),
+    ).toHaveLength(0);
   });
 });
 
@@ -365,7 +540,9 @@ describe("persistBenchLog", () => {
     expect(locator).toBe("runs/run-a/jobs/job-a.log");
     const persisted = await readPersistedBenchLog(kv, locator!);
     expect(persisted?.text.endsWith("last line\n")).toBe(true);
-    expect(Buffer.byteLength(persisted?.text ?? "", "utf8")).toBeLessThanOrEqual(240 * 1024);
+    expect(
+      Buffer.byteLength(persisted?.text ?? "", "utf8"),
+    ).toBeLessThanOrEqual(240 * 1024);
     expect(persisted?.complete).toBe(false);
   });
 
