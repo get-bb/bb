@@ -216,10 +216,26 @@ bb.agents.experimental_registerProvider({
   icon: { asset: "icons/claude.svg" },  // served via existing plugin assets
   kind: "agent",                        // "agent" | "router" — see router note below
   capabilities: {
-    // one merged block: today's ProviderCapabilities + ProviderServerCapabilities
-    fork: true, archive: false, rename: false, serviceTier: false,
-    userQuestion: true, workflows: true, hostAiServices: false,
-    manualCompaction: true, messageEditing: true,
+    // One merged block: today's ProviderCapabilities + ProviderServerCapabilities.
+    // Named by kind: "native" = the provider itself has the primitive;
+    // un-prefixed supports* = a bb feature enabled on this provider (policy).
+
+    // Provider-native primitives
+    supportsNativeFork: true,          // clone a session at a branch point
+    supportsNativeUserQuestion: true,  // ships its own ask-the-user tool (bb's
+                                       // plugin fallback tool is skipped)
+    supportsSessionArchiveSync: false, // mirror bb archive state into the
+                                       // provider's own session list
+    supportsSessionNameSync: false,    // push bb thread titles to the provider
+    supportsManualCompaction: true,    // explicit context compaction
+    supportsServiceTier: false,        // fast/priority tier toggle
+    supportsHostAiServices: false,     // backs voice transcription / inference
+
+    // bb feature enablement (product policy per provider, not provider-native)
+    supportsWorkflows: true,           // bb Workflows feature on sessions
+    supportsMessageEditRewind: true,   // bb edit-past-message → rewind
+
+    // Enumerations
     permissionModes: ["accept-edits", "auto", "full"],
     reasoningLevels: ["low", "medium", "high", "xhigh", "ultracode", "max"],
     promptModes: ["plan"],
