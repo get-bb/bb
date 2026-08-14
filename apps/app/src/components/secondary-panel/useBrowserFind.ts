@@ -86,13 +86,14 @@ export function useBrowserFind({
     [desktopBrowser, tabId],
   );
 
+  const query = state?.query;
   const move = useCallback(
     (forward: boolean) => {
-      if (state?.query) {
-        desktopBrowser?.find?.({ tabId, text: state.query, forward });
+      if (query) {
+        desktopBrowser?.find?.({ tabId, text: query, forward });
       }
     },
-    [desktopBrowser, state?.query, tabId],
+    [desktopBrowser, query, tabId],
   );
 
   const close = useCallback(() => stop(true), [stop]);
