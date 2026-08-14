@@ -10,14 +10,20 @@ import {
 import { planItemId } from "../../../sync/plan/order.js";
 import type { PlanItem, ValidationError } from "../../../sync/plan/index.js";
 import {
+  ASSURANCE_STUDIO_TRUST_LEVEL_NAMES,
+  ASSURANCE_STUDIO_TRUST_LEVEL_SCORES,
   CANVAS_ENTITY_KINDS,
   assetTypeSchema,
   componentTypeSchema,
+  criticalitySchema,
+  dataClassificationSchema,
   entityReferences,
   parseArchitectureEntity,
   retiredAuthoredComponentEntitySchema,
   retiredAuthoredComponentTypeSchema,
   strideCategorySchema,
+  threatSourceSchema,
+  trustLevelSchema,
   type ArchitectureYamlEntity,
   type CanvasReadableEntity,
   type CanvasEntityKind,
@@ -110,6 +116,57 @@ export class UnsupportedAssetTypeValidationAdvisory extends CanvasEntityValidati
   }
 }
 
+export class UnsupportedRemoteVocabularyValidationAdvisory extends CanvasEntityValidationError {
+  constructor(
+    readonly value: string,
+    field: string,
+    allowedValues: readonly string[],
+  ) {
+    super(
+      "UNSUPPORTED_REMOTE_VOCABULARY",
+      `${field} “${value}” is not recognized by the current authored vocabulary. Choose one of: ${allowedValues.join(", ")}.`,
+      field,
+    );
+    this.name = "UnsupportedRemoteVocabularyValidationAdvisory";
+  }
+}
+
+export function isRemoteVocabularyValidationAdvisory(
+  error: unknown,
+): error is
+  | RetiredComponentTypeValidationAdvisory
+  | UnsupportedAssetTypeValidationAdvisory
+  | UnsupportedComponentTypeValidationAdvisory
+  | UnsupportedRemoteVocabularyValidationAdvisory {
+  return (
+    error instanceof RetiredComponentTypeValidationAdvisory ||
+    error instanceof UnsupportedAssetTypeValidationAdvisory ||
+    error instanceof UnsupportedComponentTypeValidationAdvisory ||
+    error instanceof UnsupportedRemoteVocabularyValidationAdvisory
+  );
+}
+
+function rejectUnsupportedVocabulary(
+  payload: Record<string, unknown>,
+  field: string,
+  schema: {
+    safeParse(value: unknown): { success: boolean };
+  },
+  allowedValues: readonly (string | number)[],
+): void {
+  const value = payload[field];
+  if (
+    (typeof value === "string" || typeof value === "number") &&
+    !schema.safeParse(value).success
+  ) {
+    throw new UnsupportedRemoteVocabularyValidationAdvisory(
+      String(value),
+      field,
+      allowedValues.map(String),
+    );
+  }
+}
+
 function inspectAuthoredValue(value: unknown, path: string): void {
   if (typeof value === "string" && UUID.test(value)) {
     throw new CanvasEntityValidationError(
@@ -159,6 +216,12 @@ export function validateArchitecturePayload(
     ) {
       throw new UnsupportedComponentTypeValidationAdvisory(componentType);
     }
+    rejectUnsupportedVocabulary(
+      payload,
+      "criticality",
+      criticalitySchema,
+      criticalitySchema.options,
+    );
   }
   if (
     kind === "asset" &&
@@ -166,6 +229,26 @@ export function validateArchitecturePayload(
     !assetTypeSchema.safeParse(payload["asset_type"]).success
   ) {
     throw new UnsupportedAssetTypeValidationAdvisory(payload["asset_type"]);
+  }
+  if (kind === "asset") {
+    rejectUnsupportedVocabulary(
+      payload,
+      "criticality",
+      criticalitySchema,
+      criticalitySchema.options,
+    );
+    rejectUnsupportedVocabulary(
+      payload,
+      "data_classification",
+      dataClassificationSchema,
+      dataClassificationSchema.options,
+    );
+  }
+  if (kind === "zone") {
+    rejectUnsupportedVocabulary(payload, "trust_level", trustLevelSchema, [
+      ...ASSURANCE_STUDIO_TRUST_LEVEL_NAMES,
+      ...ASSURANCE_STUDIO_TRUST_LEVEL_SCORES,
+    ]);
   }
   if (
     kind === "threat" &&
@@ -176,6 +259,20 @@ export function validateArchitecturePayload(
       "INVALID_METHODOLOGY_VOCABULARY",
       `threat.category “${payload["category"]}” is not in the accepted STRIDE methodology vocabulary.`,
       "category",
+    );
+  }
+  if (kind === "threat") {
+    rejectUnsupportedVocabulary(
+      payload,
+      "threat_source",
+      threatSourceSchema,
+      threatSourceSchema.options,
+    );
+    rejectUnsupportedVocabulary(
+      payload,
+      "severity",
+      criticalitySchema,
+      criticalitySchema.options,
     );
   }
   try {

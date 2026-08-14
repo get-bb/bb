@@ -325,9 +325,33 @@ function pagePayload(
       retryAfterMs: null,
       details: null,
     });
+  const paginationValue = nested.pagination ?? envelope.pagination;
+  const pagination =
+    paginationValue !== null &&
+    paginationValue !== undefined &&
+    !Array.isArray(paginationValue) &&
+    typeof paginationValue === "object"
+      ? object(paginationValue)
+      : null;
   const totalValue =
-    nested.total ?? nested.total_count ?? nested.count ?? envelope.total;
-  const hasMoreValue = nested.has_more ?? nested.hasMore;
+    nested.total ??
+    nested.total_count ??
+    nested.count ??
+    envelope.total ??
+    pagination?.total ??
+    pagination?.total_count ??
+    pagination?.totalItems;
+  const pageValue = pagination?.page;
+  const totalPagesValue = pagination?.total_pages ?? pagination?.totalPages;
+  const hasMoreValue =
+    nested.has_more ??
+    nested.hasMore ??
+    (typeof pageValue === "number" &&
+    typeof totalPagesValue === "number" &&
+    Number.isSafeInteger(pageValue) &&
+    Number.isSafeInteger(totalPagesValue)
+      ? pageValue < totalPagesValue
+      : undefined);
   return {
     items,
     total:

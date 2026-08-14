@@ -1757,8 +1757,49 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
           pageSize: 50,
           continuation: null,
         });
-        runtime.evidence.set("canvas", { written, page });
-        await artifacts.writeJson("canvas-rpc.json", { written, page });
+        const assetFields = architectureEntityPayload(
+          parseArchitectureEntity("asset", {
+            slug: "golden-pii-profile",
+            name: "Golden PII profile",
+            asset_type: "data",
+            criticality: "high",
+            data_classification: "pii",
+          }),
+        );
+        const assetWritten = await runtime.host.harness.behavior.callRpc(
+          "taraCommandApply",
+          {
+            projectId: WORKSPACE_PROJECT_ID,
+            projectVersionId: null,
+            operation: "create",
+            kind: "asset",
+            fields: assetFields,
+            expectedContentSha256: null,
+          },
+        );
+        const assetPage = await runtime.host.harness.behavior.callRpc(
+          "taraList",
+          {
+            projectId: WORKSPACE_PROJECT_ID,
+            projectVersionId: null,
+            kind: "asset",
+            filters: {},
+            pageSize: 50,
+            continuation: null,
+          },
+        );
+        runtime.evidence.set("canvas", {
+          written,
+          page,
+          assetWritten,
+          assetPage,
+        });
+        await artifacts.writeJson("canvas-rpc.json", {
+          written,
+          page,
+          assetWritten,
+          assetPage,
+        });
       },
       assert: async ({ worktree }) => {
         const written = object(
@@ -1824,10 +1865,32 @@ function beats(runtime: Runtime): GoldenLoopBeat[] {
               (item) => object(item, "canvas row")["key"] === "golden-gateway",
             ),
           ),
+          assertion(
+            "FS-207 canvas RPC authors and reads the observed PII classification",
+            array(
+              object(
+                object(runtime.evidence.get("canvas"), "canvas")["assetPage"],
+                "asset page",
+              )["items"],
+              "asset items",
+            ).some((item) => {
+              const row = object(item, "asset row");
+              return (
+                row["key"] === "golden-pii-profile" &&
+                object(row["fields"], "asset fields")["data_classification"] ===
+                  "pii"
+              );
+            }),
+          ),
           await fileAssertion(
             worktree,
             "product-security/architecture/components/golden-gateway.yaml",
             "slug: golden-gateway",
+          ),
+          await fileAssertion(
+            worktree,
+            "product-security/architecture/assets/golden-pii-profile.yaml",
+            "data_classification: pii",
           ),
           assertion(
             "canvas write returns review diff",

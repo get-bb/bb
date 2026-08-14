@@ -6,6 +6,12 @@ Large collections use JSONL. The 6,000-path firmware tree is metadata-only excep
 
 Manifest `rows` counts physical LF-delimited lines. For JSONL that equals records; for CSV it includes the header and trailer lines.
 
+## Assurance Studio list-envelope provenance
+
+`assurance-studio/entities-page-1.json` is a sanitized, synthetic-ID fixture derived from the supervisor's FS-207 read-only capture at `~/bb-demo/captures/fs207/<projectId>--<segment>.json` (approximately 20:30Z on the FS-207 task date). It preserves the live per-kind response envelopes: assets under `data.assets`; components, zones, and data flows under top-level `data[]`; and the remaining kinds under their named `data.<collection>` keys. The source aggregate is `VOCABULARY-SUMMARY.json`, SHA-256 `f7481aa60604550fa881c1c8d265a309e4b1984305095c224c01ee73f9c11cc5`.
+
+Tenant IDs and unrelated payload content are not copied. Generated rows retain the real API field names and identity-bearing `id`, `project_id`, and review fields required to exercise the production client's stable-key behavior.
+
 Regenerate from the plugin directory:
 
 ```sh

@@ -52,10 +52,15 @@ afterEach(async () => {
 describe("mock Assurance Studio CRUD", () => {
   it("registers every frozen callable route including the exact SBOM page fixture", async () => {
     const registered = new Set<string>();
-    registerMockAssuranceStudio({
-      register(routeId) { registered.add(routeId); },
-      onReset() {},
-    } satisfies MockHandlerRegistry, fixtureRoot);
+    registerMockAssuranceStudio(
+      {
+        register(routeId) {
+          registered.add(routeId);
+        },
+        onReset() {},
+      } satisfies MockHandlerRegistry,
+      fixtureRoot,
+    );
     expect(registered).toEqual(new Set(ASSURANCE_STUDIO_CALLABLE_ROUTE_IDS));
 
     const { client, harness: remote } = setup();
@@ -64,17 +69,25 @@ describe("mock Assurance Studio CRUD", () => {
       { headers: { "X-API-Key": apiKey } },
     );
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual(JSON.parse(readFileSync(
-      new URL("../fixtures/assurance-studio/project-sbom-page-1.json", import.meta.url),
-      "utf8",
-    )));
+    expect(await response.json()).toEqual(
+      JSON.parse(
+        readFileSync(
+          new URL(
+            "../fixtures/assurance-studio/project-sbom-page-1.json",
+            import.meta.url,
+          ),
+          "utf8",
+        ),
+      ),
+    );
 
     for (const pageSize of [50, 37]) {
       const pages = [];
       for await (const page of client.listProjectSbomPackages({
         projectId: "project-4a752600a07a",
         page: { pageSize },
-      })) pages.push(page);
+      }))
+        pages.push(page);
       const items = pages.flatMap((page) => page.items);
       expect(items).toHaveLength(900);
       expect(new Set(items.map((item) => item.id)).size).toBe(900);
@@ -91,7 +104,8 @@ describe("mock Assurance Studio CRUD", () => {
     for await (const page of client.listEntities("component", {
       projectId: "project-4a752600a07a",
       page: { pageSize: 5 },
-    })) pages.push(page);
+    }))
+      pages.push(page);
     expect(pages.map((page) => page.items.length)).toEqual([5, 5, 2]);
     expect(pages[0]?.items[0]).toMatchObject({
       id: "as-component-01",
@@ -99,19 +113,20 @@ describe("mock Assurance Studio CRUD", () => {
       reviewStatus: "human_approved",
       humanEdited: true,
     });
-    const wirePage = await setupResult.harness.assuranceStudio.fetch(
-      "http://mock.invalid/api/projects/project-4a752600a07a/components?page=1&limit=5",
-      { headers: { "X-API-Key": apiKey } },
-    ).then((response) => response.json()) as {
-      success: boolean;
-      data: { page: number; pageSize: number; items: { kind: string }[] };
+    const wirePage = (await setupResult.harness.assuranceStudio
+      .fetch(
+        "http://mock.invalid/api/projects/project-4a752600a07a/components?page=1&limit=5",
+        { headers: { "X-API-Key": apiKey } },
+      )
+      .then((response) => response.json())) as {
+      data: { kind: string }[];
+      pagination: { page: number; limit: number; total: number };
     };
     expect(wirePage).toMatchObject({
-      success: true,
-      data: { page: 1, pageSize: 5 },
+      pagination: { page: 1, limit: 5, total: 12 },
     });
-    expect(wirePage.data.items).toHaveLength(5);
-    expect(wirePage.data.items.every((item) => item.kind === "component")).toBe(true);
+    expect(wirePage.data).toHaveLength(5);
+    expect(wirePage.data.every((item) => item.kind === "component")).toBe(true);
 
     const created = await client.createEntity("threat", {
       projectId: "project-4a752600a07a",
@@ -128,14 +143,27 @@ describe("mock Assurance Studio CRUD", () => {
         review_version: created.entity.reviewVersion!,
       },
     });
-    expect(updated.entity).toMatchObject({ humanEdited: true, fields: { title: "Reviewed mock threat" } });
-    expect(BigInt(updated.entity.reviewVersion!)).toBe(BigInt(created.entity.reviewVersion!) + 1n);
-    expect(BigInt(setupResult.state.head.versionId)).toBe(BigInt(initialHead.versionId) + 3n);
-    expect(setupResult.state.head.workingHash).not.toBe(initialHead.workingHash);
-    expect(setupResult.state.audit("threat", created.entity.id).map((entry) => entry.action)).toEqual([
-      "created", "updated", "updated",
-    ]);
-    expect(setupResult.state.audit("threat", created.entity.id)[0]?.actor).toBe("mock-admin");
+    expect(updated.entity).toMatchObject({
+      humanEdited: true,
+      fields: { title: "Reviewed mock threat" },
+    });
+    expect(BigInt(updated.entity.reviewVersion!)).toBe(
+      BigInt(created.entity.reviewVersion!) + 1n,
+    );
+    expect(BigInt(setupResult.state.head.versionId)).toBe(
+      BigInt(initialHead.versionId) + 3n,
+    );
+    expect(setupResult.state.head.workingHash).not.toBe(
+      initialHead.workingHash,
+    );
+    expect(
+      setupResult.state
+        .audit("threat", created.entity.id)
+        .map((entry) => entry.action),
+    ).toEqual(["created", "updated", "updated"]);
+    expect(setupResult.state.audit("threat", created.entity.id)[0]?.actor).toBe(
+      "mock-admin",
+    );
   });
 
   it("returns deletion impact and makes detach differ from cascade", async () => {
@@ -146,14 +174,19 @@ describe("mock Assurance Studio CRUD", () => {
     });
     expect(blocked).toMatchObject({
       success: false,
-      impact: { allowedActions: ["detach", "cascade"], recommendedAction: "cascade" },
+      impact: {
+        allowedActions: ["detach", "cascade"],
+        recommendedAction: "cascade",
+      },
     });
 
-    await expect(client.deleteEntity("zone", {
-      projectId: "project-4a752600a07a",
-      id: "zone-1",
-      mode: "detach",
-    })).resolves.toEqual({ success: true });
+    await expect(
+      client.deleteEntity("zone", {
+        projectId: "project-4a752600a07a",
+        id: "zone-1",
+        mode: "detach",
+      }),
+    ).resolves.toEqual({ success: true });
     const detachedComponent = await client.getEntity("component", {
       projectId: "project-4a752600a07a",
       id: "as-component-01",
@@ -161,20 +194,26 @@ describe("mock Assurance Studio CRUD", () => {
     expect(detachedComponent.fields.zoneId).toBeUndefined();
 
     await remote.reset("assurance-studio");
-    await expect(client.deleteEntity("zone", {
-      projectId: "project-4a752600a07a",
-      id: "zone-1",
-      mode: "cascade",
-    })).resolves.toEqual({ success: true });
-    await expect(client.getEntity("component", {
-      projectId: "project-4a752600a07a",
-      id: "as-component-01",
-    })).rejects.toMatchObject({ status: 404 });
+    await expect(
+      client.deleteEntity("zone", {
+        projectId: "project-4a752600a07a",
+        id: "zone-1",
+        mode: "cascade",
+      }),
+    ).resolves.toEqual({ success: true });
+    await expect(
+      client.getEntity("component", {
+        projectId: "project-4a752600a07a",
+        id: "as-component-01",
+      }),
+    ).rejects.toMatchObject({ status: 404 });
   });
 
   it("keeps attack-path create and raw request out of the callable surface", async () => {
     const { harness: remote } = setup();
-    expect(remote.assuranceStudio.routes.map((route) => route.routeId)).not.toContain(
+    expect(
+      remote.assuranceStudio.routes.map((route) => route.routeId),
+    ).not.toContain(
       "assurance-studio:POST:/api/projects/{projectId}/attack-paths",
     );
     const response = await remote.assuranceStudio.fetch(
@@ -190,10 +229,13 @@ describe("mock Assurance Studio CRUD", () => {
     // @ts-expect-error attack-path is deliberately excluded from the create contract.
     const impossible: AsCreatableEntityKind = "attack-path";
     expect(impossible).toBe("attack-path");
-    expect("asRawApi" in new AssuranceStudioClient({
-      baseUrl: "http://mock.invalid",
-      apiKey,
-      fetch: remote.assuranceStudio.fetch,
-    })).toBe(false);
+    expect(
+      "asRawApi" in
+        new AssuranceStudioClient({
+          baseUrl: "http://mock.invalid",
+          apiKey,
+          fetch: remote.assuranceStudio.fetch,
+        }),
+    ).toBe(false);
   });
 });

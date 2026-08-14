@@ -103,20 +103,20 @@
       "sha256": "c7c6541111ee53947140bac154f1275c6b1b244c40c045b190662f23226509c9"
     },
     {
-      "bytes": 710,
+      "bytes": 1559,
       "path": "README.md",
-      "sha256": "00215cc1c8e31894acb1ca68543cb18ce68c2f4bd0e25309fb66fb778582091c"
+      "sha256": "e718da444c14fdf625a0dfae8a141c60b38e99611987a760ec24e35c3611c59f"
     },
     {
-      "bytes": 11996,
+      "bytes": 41473,
       "path": "assurance-studio/entities-page-1.json",
-      "sha256": "fa6de9ec424fbd79b3a3da6c1e30ad60db0f72acc11d96aa239bd9a6c1b5caf6"
+      "sha256": "6825c11e1fbdbba5b215d2c1260af57de279ef5190c524daa2d98d5111178aae"
     },
     {
-      "bytes": 18778,
+      "bytes": 19053,
       "path": "assurance-studio/entities.jsonl",
       "rows": 62,
-      "sha256": "e8ac953253588d7928efdebc35d63572b2eb44bfd2f1cbb02fa6026cbb993519"
+      "sha256": "558cb03197b25ea50dc6190762bdcd88296a93d99180ce15507b813134c60aa9"
     },
     {
       "bytes": 7059,

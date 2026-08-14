@@ -97,24 +97,37 @@ export type TaraRemoteFieldReadObserver = (read: TaraRemoteFieldRead) => void;
 
 // The authored YAML schemas stay strict. These boundary-only variants preserve
 // absence for fields that the vendored AS response schemas do not require.
+const remoteVocabularyStringSchema = z.string().trim().min(1).max(200);
+const remoteVocabularyScalarSchema = z.union([
+  remoteVocabularyStringSchema,
+  z.number().int().safe(),
+]);
 const remoteComponentEntitySchema = componentEntitySchema
   .partial({
     component_type: true,
     criticality: true,
   })
   .extend({
-    component_type: z.string().trim().min(1).max(200).optional(),
+    component_type: remoteVocabularyStringSchema.optional(),
   });
-const remoteZoneEntitySchema = zoneEntitySchema.partial({ trust_level: true });
+const remoteZoneEntitySchema = zoneEntitySchema
+  .partial({ trust_level: true })
+  .extend({ trust_level: remoteVocabularyScalarSchema.optional() });
 const remoteAssetEntitySchema = assetEntitySchema
   .partial({
     asset_type: true,
     criticality: true,
   })
   .extend({
-    asset_type: z.string().trim().min(1).max(200).optional(),
+    asset_type: remoteVocabularyStringSchema.optional(),
+    criticality: remoteVocabularyStringSchema.optional(),
+    data_classification: remoteVocabularyStringSchema.optional(),
   });
-const remoteThreatEntitySchema = threatEntitySchema.partial({ severity: true });
+const remoteThreatEntitySchema = threatEntitySchema
+  .partial({ severity: true })
+  .extend({
+    severity: remoteVocabularyStringSchema.optional(),
+  });
 
 function optional<T extends Json>(
   field: string,
@@ -353,6 +366,21 @@ class RemoteFieldReader {
     return this.findString(aliases);
   }
 
+  optionalVocabularyScalar(
+    field: string,
+    aliases: readonly string[],
+  ): string | number | undefined {
+    this.record(field, aliases, "optional");
+    for (const alias of aliases) {
+      const value = this.fields[alias];
+      if (typeof value === "string" && value.trim().length > 0) return value;
+      if (typeof value === "number" && Number.isSafeInteger(value)) {
+        return value;
+      }
+    }
+    return undefined;
+  }
+
   requiredSingleString(field: string, aliases: readonly string[]): string {
     this.record(field, aliases, "required");
     const scalar = this.findString(aliases);
@@ -561,7 +589,10 @@ function remotePayload(
         ...common,
         ...optional(
           "trust_level",
-          remote.optionalString("trust_level", REMOTE_FIELDS.zone.trustLevel),
+          remote.optionalVocabularyScalar(
+            "trust_level",
+            REMOTE_FIELDS.zone.trustLevel,
+          ),
         ),
         ...optional(
           "zone",

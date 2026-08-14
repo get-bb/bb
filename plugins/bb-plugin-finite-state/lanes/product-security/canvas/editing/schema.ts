@@ -46,9 +46,15 @@ const stringListSchema = z
   .max(500)
   .default([]);
 
-export const criticalitySchema = z.enum(["low", "medium", "high", "critical"]);
+export const ASSURANCE_STUDIO_CRITICALITIES = [
+  "low",
+  "medium",
+  "high",
+  "critical",
+] as const;
+export const criticalitySchema = z.enum(ASSURANCE_STUDIO_CRITICALITIES);
 // Known authored values: the vendored ComponentType enum plus the connected
-// FS-206 capture documented in assurance-studio-tara-vocabulary-live-2026-08-14.md.
+// FS-207 capture documented in assurance-studio-tara-vocabulary-live-2026-08-14.md.
 export const ASSURANCE_STUDIO_COMPONENT_TYPES = [
   "firmware",
   "software",
@@ -63,8 +69,9 @@ export const ASSURANCE_STUDIO_COMPONENT_TYPES = [
   "actuator",
   "communication",
   "other",
-  // Connected FS-206 capture; absent from the older vendored OpenAPI enum.
+  // Connected FS-207 capture; absent from the older vendored OpenAPI enum.
   "external_service",
+  "medical_device",
 ] as const;
 
 export const componentTypeSchema = z.enum(ASSURANCE_STUDIO_COMPONENT_TYPES);
@@ -79,14 +86,24 @@ export const ASSURANCE_STUDIO_ASSET_TYPES = [
   "availability",
   "hardware",
   "communication",
+  "service",
 ] as const;
 export const assetTypeSchema = z.enum(ASSURANCE_STUDIO_ASSET_TYPES);
-export const RETIRED_AUTHORED_COMPONENT_TYPES = [
-  "ecu",
-  "hsm",
-  "tee",
-  "medical_device",
+// Connected AS capture: docs/Implementation/api-reference/
+// assurance-studio-tara-vocabulary-live-2026-08-14.md. The observed set is
+// an authoring floor; remote projection remains bounded-open.
+export const ASSURANCE_STUDIO_DATA_CLASSIFICATIONS = [
+  "public",
+  "internal",
+  "confidential",
+  "restricted",
+  "phi",
+  "pii",
 ] as const;
+export const dataClassificationSchema = z.enum(
+  ASSURANCE_STUDIO_DATA_CLASSIFICATIONS,
+);
+export const RETIRED_AUTHORED_COMPONENT_TYPES = ["ecu", "hsm", "tee"] as const;
 export const retiredAuthoredComponentTypeSchema = z.enum(
   RETIRED_AUTHORED_COMPONENT_TYPES,
 );
@@ -103,6 +120,23 @@ export const threatSourceSchema = z.enum([
   "stride_analysis",
   "imported",
   "library",
+]);
+
+// The vendored API documents the four string values, while the FS-207 live
+// corpus returns integer trust scores 1-10. Both sets are known authoring
+// floors; remote projection remains bounded-open for future wire values.
+export const ASSURANCE_STUDIO_TRUST_LEVEL_NAMES = [
+  "untrusted",
+  "semi_trusted",
+  "trusted",
+  "highly_trusted",
+] as const;
+export const ASSURANCE_STUDIO_TRUST_LEVEL_SCORES = [
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+] as const;
+export const trustLevelSchema = z.union([
+  z.enum(ASSURANCE_STUDIO_TRUST_LEVEL_NAMES),
+  z.number().int().min(1).max(10),
 ]);
 
 const architectureInterfaceSchema = z
@@ -142,12 +176,7 @@ export const zoneEntitySchema = z
     slug: stableSlugSchema,
     name: nameSchema,
     description: descriptionSchema.optional(),
-    trust_level: z.enum([
-      "trusted",
-      "highly_trusted",
-      "semi_trusted",
-      "untrusted",
-    ]),
+    trust_level: trustLevelSchema,
     zone: stableSlugSchema.optional(),
   })
   .strict();
@@ -161,9 +190,7 @@ export const assetEntitySchema = z
     asset_type: assetTypeSchema,
     criticality: criticalitySchema,
     zone: stableSlugSchema.optional(),
-    data_classification: z
-      .enum(["public", "internal", "confidential", "restricted"])
-      .optional(),
+    data_classification: dataClassificationSchema.optional(),
   })
   .strict();
 

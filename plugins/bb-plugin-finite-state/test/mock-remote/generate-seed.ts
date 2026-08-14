@@ -282,6 +282,98 @@ function text(value: string): Uint8Array {
   return encoder.encode(value.replaceAll("\r\n", "\n"));
 }
 
+type AssuranceStudioFixtureKind =
+  | "asset"
+  | "attack-path"
+  | "component"
+  | "dataflow"
+  | "mitigation"
+  | "requirement"
+  | "risk"
+  | "threat"
+  | "zone";
+
+function assuranceStudioWireEntity(entity: {
+  id: string;
+  projectId: string;
+  kind: string;
+  reviewVersion: string | null;
+  reviewStatus: string | null;
+  humanEdited: boolean | null;
+  fields: Record<string, JsonValue | undefined>;
+}): JsonValue {
+  const fields: Record<string, JsonValue> = {};
+  for (const [field, value] of Object.entries(entity.fields)) {
+    if (value !== undefined) fields[field] = value;
+  }
+  return {
+    ...fields,
+    id: entity.id,
+    kind: entity.kind,
+    project_id: entity.projectId,
+    review_version: entity.reviewVersion,
+    review_status: entity.reviewStatus,
+    human_edited: entity.humanEdited,
+  };
+}
+
+// FS-207 live capture authority:
+// ~/bb-demo/captures/fs207/<projectId>--<segment>.json. These are the two
+// observed page-envelope families, kept here without tenant identifiers.
+function assuranceStudioListPage(
+  kind: AssuranceStudioFixtureKind,
+  items: JsonValue[],
+  total: number,
+  page = 1,
+  limit = 25,
+): JsonValue {
+  const pagination = {
+    page,
+    limit,
+    total,
+    total_pages: Math.ceil(total / limit),
+  };
+  switch (kind) {
+    case "component":
+    case "zone":
+    case "dataflow":
+      return { data: items, pagination };
+    case "asset":
+      return {
+        success: true,
+        data: { assets: items, components: [], pagination },
+      };
+    case "threat":
+      return {
+        success: true,
+        data: { threats: items, total, pagination },
+      };
+    case "risk":
+      return { success: true, data: { risks: items, total, pagination } };
+    case "mitigation":
+      return {
+        success: true,
+        data: { mitigations: items, total, pagination },
+      };
+    case "requirement":
+      return { success: true, data: { requirements: items, total } };
+    case "attack-path":
+      return {
+        success: true,
+        data: {
+          attack_paths: items,
+          pagination: {
+            page,
+            pageSize: limit,
+            totalItems: total,
+            totalPages: Math.ceil(total / limit),
+          },
+          summary: {},
+        },
+      };
+  }
+}
+
 function seedToUint32(seed: string): number {
   let state = 0x811c9dc5;
   for (const byte of encoder.encode(`${FIXTURE_SCHEMA_VERSION}:${seed}`)) {
@@ -409,15 +501,18 @@ function buildCorpus(seed: string): {
    * FS-166 fixture-fidelity provenance (vendored under docs/Implementation/api-reference):
    * - Component, Zone, and DataFlow field names/types come from the OpenAPI
    *   `components.schemas.Component`, `.Zone`, and `.DataFlow` response schemas.
-   * - Component values use the exact OpenAPI `ComponentType` enum, including
-   *   `firmware`, rather than sampling only its overlap with the local schema.
+   * - Component values include OpenAPI `firmware` plus live-only
+   *   `external_service` and `medical_device` from the FS-207 capture.
    * - DataFlow uses response property `crosses_trust_boundary`; the request-only
    *   `bidirectional`/`is_bidirectional` names are deliberately absent.
    * - Threat `stride_categories`, `threat_source`, `preconditions`, `asset_ids`,
    *   and `linked_mitigations` come from `components.schemas.Threat`. The fixture
    *   deliberately omits unsupported severity/component/dataflow relation keys.
-   * - The vendored spec has no JSON Asset collection response contract, so its
-   *   fixture carries identity only; domain fields remain optional in the adapter.
+   * - The vendored spec has no JSON Asset collection response contract. Asset 1
+   *   mirrors the sanitized FS-206 targeted connected capture recorded in
+   *   FS-207 (`asset_type=function`, `criticality=high`,
+   *   `data_classification=pii`), with additional live `service`, `phi`, and
+   *   explicit-null specimens. Stable IDs remain synthetic.
    */
   const taraComponents = Array.from(
     { length: COUNTS.taraNodes },
@@ -436,9 +531,13 @@ function buildCorpus(seed: string): {
             : `Architecture node ${index + 1}`,
         zone_id: `zone-${(index % 3) + 1}`,
         component_type:
-          ASSURANCE_STUDIO_COMPONENT_TYPES[
-            index % ASSURANCE_STUDIO_COMPONENT_TYPES.length
-          ],
+          index === COUNTS.taraNodes - 1
+            ? "medical_device"
+            : index === COUNTS.taraNodes - 2
+              ? "external_service"
+              : ASSURANCE_STUDIO_COMPONENT_TYPES[
+                  index % ASSURANCE_STUDIO_COMPONENT_TYPES.length
+                ],
         criticality: ["low", "medium", "high", "critical"][index % 4],
         interfaces: [index % 2 === 0 ? "ethernet" : "serial"],
         technologies: [index % 2 === 0 ? "linux" : "bare-metal"],
@@ -456,7 +555,7 @@ function buildCorpus(seed: string): {
     humanEdited: false,
     fields: {
       name: ["Untrusted", "Control", "Safety"][index],
-      trust_level: ["untrusted", "semi_trusted", "highly_trusted"][index],
+      trust_level: [1, 5, 10][index],
     },
   }));
   const assets = Array.from({ length: 4 }, (_, index) => ({
@@ -468,6 +567,9 @@ function buildCorpus(seed: string): {
     humanEdited: false,
     fields: {
       name: `Protected asset ${index + 1}`,
+      asset_type: ["function", "service", "hardware", "software"][index],
+      criticality: ["high", "critical", "medium", "high"][index],
+      data_classification: ["pii", "phi", null, "restricted"][index],
     },
   }));
   const dataflows = Array.from({ length: 11 }, (_, index) => ({
@@ -1087,14 +1189,47 @@ function buildCorpus(seed: string): {
     {
       path: "assurance-studio/entities-page-1.json",
       bytes: json({
-        success: true,
-        data: {
-          items: asEntities.slice(0, 25),
-          total: asEntities.length,
-          page: 1,
-          pageSize: 25,
-          hasMore: true,
-        },
+        asset: assuranceStudioListPage(
+          "asset",
+          assets.slice(0, 25).map(assuranceStudioWireEntity),
+          assets.length,
+        ),
+        "attack-path": assuranceStudioListPage(
+          "attack-path",
+          attackPaths.slice(0, 25).map(assuranceStudioWireEntity),
+          attackPaths.length,
+        ),
+        component: assuranceStudioListPage(
+          "component",
+          taraComponents.slice(0, 25).map(assuranceStudioWireEntity),
+          taraComponents.length,
+        ),
+        dataflow: assuranceStudioListPage(
+          "dataflow",
+          dataflows.slice(0, 25).map(assuranceStudioWireEntity),
+          dataflows.length,
+        ),
+        mitigation: assuranceStudioListPage(
+          "mitigation",
+          mitigations.slice(0, 25).map(assuranceStudioWireEntity),
+          mitigations.length,
+        ),
+        requirement: assuranceStudioListPage(
+          "requirement",
+          requirements.slice(0, 25).map(assuranceStudioWireEntity),
+          requirements.length,
+        ),
+        risk: assuranceStudioListPage("risk", [], 0),
+        threat: assuranceStudioListPage(
+          "threat",
+          threats.slice(0, 25).map(assuranceStudioWireEntity),
+          threats.length,
+        ),
+        zone: assuranceStudioListPage(
+          "zone",
+          zones.slice(0, 25).map(assuranceStudioWireEntity),
+          zones.length,
+        ),
       }),
     },
     {
@@ -1258,7 +1393,7 @@ function buildCorpus(seed: string): {
     {
       path: "README.md",
       bytes: text(
-        `# Deterministic mock-remote fixture corpus\n\nGenerated by \`generate-seed.ts\` with schema ${FIXTURE_SCHEMA_VERSION}, seed \`${seed}\`, and fixed clock \`${FIXED_NOW}\`. Do not hand-edit generated files.\n\nLarge collections use JSONL. The 6,000-path firmware tree is metadata-only except for the bounded samples under \`firmware/bytes/\`. Forge compute is optional and isolated under \`forge-compute/\`.\n\nManifest \`rows\` counts physical LF-delimited lines. For JSONL that equals records; for CSV it includes the header and trailer lines.\n\nRegenerate from the plugin directory:\n\n\`\`\`sh\n../../node_modules/.bin/tsx test/mock-remote/generate-seed.ts\n../../node_modules/.bin/tsx test/mock-remote/generate-seed.ts --check\n\`\`\`\n`,
+        `# Deterministic mock-remote fixture corpus\n\nGenerated by \`generate-seed.ts\` with schema ${FIXTURE_SCHEMA_VERSION}, seed \`${seed}\`, and fixed clock \`${FIXED_NOW}\`. Do not hand-edit generated files.\n\nLarge collections use JSONL. The 6,000-path firmware tree is metadata-only except for the bounded samples under \`firmware/bytes/\`. Forge compute is optional and isolated under \`forge-compute/\`.\n\nManifest \`rows\` counts physical LF-delimited lines. For JSONL that equals records; for CSV it includes the header and trailer lines.\n\n## Assurance Studio list-envelope provenance\n\n\`assurance-studio/entities-page-1.json\` is a sanitized, synthetic-ID fixture derived from the supervisor's FS-207 read-only capture at \`~/bb-demo/captures/fs207/<projectId>--<segment>.json\` (approximately 20:30Z on the FS-207 task date). It preserves the live per-kind response envelopes: assets under \`data.assets\`; components, zones, and data flows under top-level \`data[]\`; and the remaining kinds under their named \`data.<collection>\` keys. The source aggregate is \`VOCABULARY-SUMMARY.json\`, SHA-256 \`f7481aa60604550fa881c1c8d265a309e4b1984305095c224c01ee73f9c11cc5\`.\n\nTenant IDs and unrelated payload content are not copied. Generated rows retain the real API field names and identity-bearing \`id\`, \`project_id\`, and review fields required to exercise the production client's stable-key behavior.\n\nRegenerate from the plugin directory:\n\n\`\`\`sh\n../../node_modules/.bin/tsx test/mock-remote/generate-seed.ts\n../../node_modules/.bin/tsx test/mock-remote/generate-seed.ts --check\n\`\`\`\n`,
       ),
     },
   ];

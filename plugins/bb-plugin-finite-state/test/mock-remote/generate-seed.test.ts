@@ -463,9 +463,18 @@ describe("deterministic-seed-corpus", () => {
       join(committedFixtures, "platform", "vex-export.csv"),
       "utf8",
     );
-    const asEntitiesPage = await parseJson<{
-      success: boolean;
-      data: { items: AsEntityFixture[]; total: number };
+    const asEntityPages = await parseJson<{
+      asset: {
+        success: boolean;
+        data: {
+          assets: Array<Record<string, unknown>>;
+          pagination: { total: number };
+        };
+      };
+      component: {
+        data: Array<Record<string, unknown>>;
+        pagination: { total: number };
+      };
     }>(join(committedFixtures, "assurance-studio", "entities-page-1.json"));
     const openApi = await parseJson<{
       components: { schemas: { ComponentType: { enum: string[] } } };
@@ -676,20 +685,40 @@ describe("deterministic-seed-corpus", () => {
       staleTara.entityId,
       "faults/assurance-studio-stale-tara.json entityId",
     );
-    expect(asEntitiesPage.success).toBe(true);
-    expect(asEntitiesPage.data.items).toEqual(
-      entities.slice(0, asEntitiesPage.data.items.length),
-    );
-    expect(asEntitiesPage.data.total).toBe(entities.length);
     const taraComponents = entities.filter(
       (entity) => entity.kind === "component",
     );
+    const taraAssets = entities.filter((entity) => entity.kind === "asset");
+    expect(asEntityPages.component.data.map((entity) => entity["id"])).toEqual(
+      taraComponents.map((entity) => entity.id),
+    );
+    expect(asEntityPages.component.data[0]).toMatchObject({
+      component_type: "firmware",
+      project_id: identity.project.id,
+      review_version: "9007199254740993",
+    });
+    expect(asEntityPages.component.data[0]).not.toHaveProperty("fields");
+    expect(asEntityPages.component.pagination.total).toBe(
+      taraComponents.length,
+    );
+    expect(asEntityPages.asset.success).toBe(true);
+    expect(
+      asEntityPages.asset.data.assets.map((entity) => entity["id"]),
+    ).toEqual(taraAssets.map((entity) => entity.id));
+    expect(asEntityPages.asset.data.assets[0]).toMatchObject({
+      asset_type: "function",
+      data_classification: "pii",
+      project_id: identity.project.id,
+    });
+    expect(asEntityPages.asset.data.assets[0]).not.toHaveProperty("fields");
+    expect(asEntityPages.asset.data.pagination.total).toBe(taraAssets.length);
     expect(ASSURANCE_STUDIO_COMPONENT_TYPES).toEqual([
       ...openApi.components.schemas.ComponentType.enum,
       // Connected Assurance Studio exposes this value even though the
       // vendored specification has not caught up yet. See the FS-206 live
       // vocabulary reference in docs/Implementation/api-reference/.
       "external_service",
+      "medical_device",
     ]);
     expect(
       taraComponents.map((entity) => entity.fields.component_type),
@@ -706,9 +735,21 @@ describe("deterministic-seed-corpus", () => {
       expect(dataflow.fields).not.toHaveProperty("is_bidirectional");
       expect(typeof dataflow.fields.crosses_trust_boundary).toBe("boolean");
     }
-    for (const asset of entities.filter((entity) => entity.kind === "asset")) {
-      expect(Object.keys(asset.fields)).toEqual(["name"]);
-    }
+    expect(taraAssets[0]?.fields).toEqual({
+      asset_type: "function",
+      criticality: "high",
+      data_classification: "pii",
+      name: "Protected asset 1",
+    });
+    expect(taraAssets[1]?.fields).toMatchObject({
+      asset_type: "service",
+      criticality: "critical",
+      data_classification: "phi",
+    });
+    expect(taraAssets[2]?.fields).toMatchObject({
+      asset_type: "hardware",
+      data_classification: null,
+    });
     for (const entity of entities) {
       expectReference(
         projectIds,
@@ -1058,21 +1099,37 @@ describe("deterministic-seed-corpus", () => {
       Object.values(summary.bySeverity).reduce((sum, value) => sum + value, 0),
     ).toBe(summary.total);
 
-    const asPage = await parseJson<{
-      success: boolean;
-      data: {
-        items: object[];
-        total: number;
-        page: number;
-        pageSize: number;
-        hasMore: boolean;
-      };
+    const asPages = await parseJson<{
+      asset: { data: { assets: object[]; pagination: object } };
+      "attack-path": { data: { attack_paths: object[]; pagination: object } };
+      component: { data: object[]; pagination: object };
+      dataflow: { data: object[]; pagination: object };
+      mitigation: { data: { mitigations: object[]; pagination: object } };
+      requirement: { data: { requirements: object[]; total: number } };
+      risk: { data: { risks: object[]; pagination: object } };
+      threat: { data: { threats: object[]; pagination: object } };
+      zone: { data: object[]; pagination: object };
     }>(join(committedFixtures, "assurance-studio", "entities-page-1.json"));
-    expect(asPage).toMatchObject({
-      success: true,
-      data: { page: 1, pageSize: 25, hasMore: true },
-    });
-    expect(asPage.data.total).toBeGreaterThan(asPage.data.items.length);
+    expect(Object.keys(asPages).sort()).toEqual([
+      "asset",
+      "attack-path",
+      "component",
+      "dataflow",
+      "mitigation",
+      "requirement",
+      "risk",
+      "threat",
+      "zone",
+    ]);
+    expect(Array.isArray(asPages.component.data)).toBe(true);
+    expect(Array.isArray(asPages.zone.data)).toBe(true);
+    expect(Array.isArray(asPages.dataflow.data)).toBe(true);
+    expect(asPages.asset.data).toHaveProperty("assets");
+    expect(asPages.threat.data).toHaveProperty("threats");
+    expect(asPages.risk.data).toHaveProperty("risks");
+    expect(asPages.mitigation.data).toHaveProperty("mitigations");
+    expect(asPages.requirement.data).toHaveProperty("requirements");
+    expect(asPages["attack-path"].data).toHaveProperty("attack_paths");
     const entities = await parseJsonl<AsEntityFixture>(
       join(committedFixtures, "assurance-studio", "entities.jsonl"),
     );

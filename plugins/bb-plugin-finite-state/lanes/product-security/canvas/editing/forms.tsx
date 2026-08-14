@@ -2,10 +2,13 @@ import { useMemo, useState } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import {
+  ASSURANCE_STUDIO_TRUST_LEVEL_NAMES,
+  ASSURANCE_STUDIO_TRUST_LEVEL_SCORES,
   architectureEntityPayload,
   assetTypeSchema,
   componentTypeSchema,
   criticalitySchema,
+  dataClassificationSchema,
   parseArchitectureEntity,
   strideCategorySchema,
   threatSourceSchema,
@@ -44,6 +47,25 @@ function stringValue(
 ): string {
   const value = fields[field];
   return typeof value === "string" ? value : fallback;
+}
+
+function vocabularyValue(
+  fields: Record<string, unknown>,
+  field: string,
+  fallback = "",
+): string {
+  const value = fields[field];
+  return typeof value === "string" || typeof value === "number"
+    ? String(value)
+    : fallback;
+}
+
+function trustLevelValue(value: string): string | number {
+  return (
+    ASSURANCE_STUDIO_TRUST_LEVEL_SCORES.find(
+      (candidate) => String(candidate) === value,
+    ) ?? value
+  );
 }
 
 function booleanValue(fields: Record<string, unknown>, field: string): boolean {
@@ -192,7 +214,7 @@ export function EntityForm({
   );
   const [zone, setZone] = useState(() => stringValue(initialPayload, "zone"));
   const [trustLevel, setTrustLevel] = useState(() =>
-    stringValue(initialPayload, "trust_level", "semi_trusted"),
+    vocabularyValue(initialPayload, "trust_level", "semi_trusted"),
   );
   const [assetType, setAssetType] = useState(() =>
     stringValue(initialPayload, "asset_type", "data"),
@@ -271,7 +293,11 @@ export function EntityForm({
         };
         break;
       case "zone":
-        payload = { ...common, trust_level: trustLevel, zone: optional(zone) };
+        payload = {
+          ...common,
+          trust_level: trustLevelValue(trustLevel),
+          zone: optional(zone),
+        };
         break;
       case "asset":
         payload = {
@@ -448,16 +474,12 @@ export function EntityForm({
                   onChange={(event) => setTrustLevel(event.target.value)}
                   value={trustLevel}
                 >
-                  {(
-                    [
-                      "trusted",
-                      "highly_trusted",
-                      "semi_trusted",
-                      "untrusted",
-                    ] as const
-                  ).map((value) => (
+                  {[
+                    ...ASSURANCE_STUDIO_TRUST_LEVEL_NAMES,
+                    ...ASSURANCE_STUDIO_TRUST_LEVEL_SCORES,
+                  ].map((value) => (
                     <option key={value} value={value}>
-                      {value.replaceAll("_", " ")}
+                      {String(value).replaceAll("_", " ")}
                     </option>
                   ))}
                 </select>
@@ -510,14 +532,7 @@ export function EntityForm({
                   value={classification}
                 >
                   <option value="">Not classified</option>
-                  {(
-                    [
-                      "public",
-                      "internal",
-                      "confidential",
-                      "restricted",
-                    ] as const
-                  ).map((value) => (
+                  {dataClassificationSchema.options.map((value) => (
                     <option key={value} value={value}>
                       {value}
                     </option>

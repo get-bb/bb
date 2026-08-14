@@ -44,6 +44,7 @@ import {
 import {
   ASSURANCE_STUDIO_ASSET_TYPES,
   ASSURANCE_STUDIO_COMPONENT_TYPES,
+  ASSURANCE_STUDIO_TRUST_LEVEL_SCORES,
 } from "./schema.js";
 
 const FIXTURE_ROOT = fileURLToPath(
@@ -100,6 +101,36 @@ function collectionKind(pathname: string): (typeof TARA_KINDS)[number] | null {
   return null;
 }
 
+function collectionRows(
+  body: unknown,
+  kind: (typeof TARA_KINDS)[number],
+): Array<Record<string, Json>> {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return [];
+  }
+  const data = Reflect.get(body, "data");
+  const rows = Array.isArray(data)
+    ? data
+    : typeof data === "object" && data !== null
+      ? Reflect.get(
+          data,
+          {
+            asset: "assets",
+            component: "components",
+            dataflow: "data_flows",
+            threat: "threats",
+            zone: "zones",
+          }[kind],
+        )
+      : null;
+  return Array.isArray(rows)
+    ? rows.filter(
+        (row): row is Record<string, Json> =>
+          typeof row === "object" && row !== null && !Array.isArray(row),
+      )
+    : [];
+}
+
 async function corruptRequiredField(
   request: Request,
   response: Response,
@@ -109,10 +140,8 @@ async function corruptRequiredField(
       ? collectionKind(new URL(request.url).pathname)
       : null;
   if (kind === null || !response.ok) return response;
-  const body = (await response.json()) as {
-    data?: { items?: Array<Record<string, Json>> };
-  };
-  for (const item of body.data?.items ?? []) {
+  const body: unknown = await response.json();
+  for (const item of collectionRows(body, kind)) {
     delete item[corruptionFields[kind]];
   }
   return Response.json(body, { status: response.status });
@@ -130,10 +159,8 @@ async function replaceRemoteField(
       ? collectionKind(new URL(request.url).pathname)
       : null;
   if (requestKind !== kind || !response.ok) return response;
-  const body = (await response.json()) as {
-    data?: { items?: Array<Record<string, Json>> };
-  };
-  for (const item of body.data?.items ?? []) item[field] = value;
+  const body: unknown = await response.json();
+  for (const item of collectionRows(body, kind)) item[field] = value;
   return Response.json(body, { status: response.status });
 }
 
@@ -162,7 +189,7 @@ const derivedResolver: AdapterSlugResolver = {
 describe("canvas real-wire adapter contract", () => {
   it("publishes each default-pull kind atomically from committed fixtures without identity drift", async () => {
     let corrupt = false;
-    let invalidTrustLevel = false;
+    let futureTrustLevel = false;
     const requestedPageSizes: number[] = [];
     const platformState = createMockPlatformState(FIXTURE_ROOT);
     harness = createMockRemote({
@@ -191,7 +218,7 @@ describe("canvas real-wire adapter contract", () => {
         }
         const response = await harness!.assuranceStudio.fetch(request);
         if (corrupt) return corruptRequiredField(request, response);
-        return invalidTrustLevel
+        return futureTrustLevel
           ? replaceRemoteField(
               request,
               response,
@@ -333,17 +360,14 @@ describe("canvas real-wire adapter contract", () => {
       stores_data: true,
     });
     expect(acceptedByName.get("Untrusted")).toMatchObject({
-      trust_level: "untrusted",
+      trust_level: 1,
     });
     expect(acceptedByName.get("Protected asset 1")).toMatchObject({
       name: "Protected asset 1",
+      asset_type: "function",
+      criticality: "high",
+      data_classification: "pii",
     });
-    expect(acceptedByName.get("Protected asset 1")).not.toHaveProperty(
-      "asset_type",
-    );
-    expect(acceptedByName.get("Protected asset 1")).not.toHaveProperty(
-      "criticality",
-    );
     expect(acceptedByName.get("Dataflow 1")).toMatchObject({
       from: componentSlug,
       to: nextComponentSlug,
@@ -453,8 +477,8 @@ describe("canvas real-wire adapter contract", () => {
     expect(recovered.exitCode).toBe(0);
     expect(taraMappings()).toEqual(firstMappings);
 
-    invalidTrustLevel = true;
-    const degradedStatus = await host.harness.behavior.runCli(
+    futureTrustLevel = true;
+    const openVocabularyStatus = await host.harness.behavior.runCli(
       [
         "finite-state",
         "status",
@@ -470,20 +494,12 @@ describe("canvas real-wire adapter contract", () => {
         projectId: "bb-project-fs166",
       },
     );
-    expect(degradedStatus).toMatchObject({ exitCode: 1, stderr: "" });
-    expect(degradedStatus.stdout).not.toContain('"issues"');
-    expect(JSON.parse(degradedStatus.stdout)).toMatchObject({
-      unavailable: [
-        {
-          kind: "zone",
-          code: "AS_INVALID_RESPONSE",
-          message: expect.stringMatching(
-            /zone\.trust_level.*tenant_future_trust/iu,
-          ),
-        },
-      ],
-    });
-    invalidTrustLevel = false;
+    expect(openVocabularyStatus).toMatchObject({ exitCode: 0, stderr: "" });
+    const openVocabularyReport = JSON.parse(openVocabularyStatus.stdout) as {
+      unavailable?: unknown[];
+    };
+    expect(openVocabularyReport.unavailable ?? []).toEqual([]);
+    futureTrustLevel = false;
     expect(host.harness.registrations.rpcMethods).toContain("syncPull");
     expect(
       host.harness.realtimeSignals.some(
@@ -551,6 +567,123 @@ describe("canvas real-wire adapter contract", () => {
 
     expect(assetKeys.size).toBe(1);
     expect(componentKeys.size).toBe(1);
+
+    const zoneKeys = new Set(
+      [...ASSURANCE_STUDIO_TRUST_LEVEL_SCORES, "tenant_future_trust"].map(
+        (trustLevel) => {
+          const projected = projectRemoteEntity(
+            "zone",
+            {
+              id: "zone-live-trust",
+              projectId: PROJECT_ID,
+              kind: "zone",
+              reviewVersion: null,
+              reviewStatus: null,
+              humanEdited: null,
+              fields: { name: "Live zone", trust_level: trustLevel },
+            },
+            scope,
+            derivedResolver,
+          );
+          expect(projected.payload["fields"]).toMatchObject({
+            trust_level: trustLevel,
+          });
+          return projected.key;
+        },
+      ),
+    );
+    expect(zoneKeys.size).toBe(1);
+
+    for (const dataClassification of [
+      "phi",
+      "pii",
+      "tenant_future_classification",
+    ]) {
+      const projected = projectRemoteEntity(
+        "asset",
+        {
+          id: "asset-live-classification",
+          projectId: PROJECT_ID,
+          kind: "asset",
+          reviewVersion: null,
+          reviewStatus: null,
+          humanEdited: null,
+          fields: {
+            name: "Classified asset",
+            data_classification: dataClassification,
+          },
+        },
+        scope,
+        derivedResolver,
+      );
+      expect(projected.payload["fields"]).toMatchObject({
+        data_classification: dataClassification,
+      });
+    }
+
+    const nullClassification = projectRemoteEntity(
+      "asset",
+      {
+        id: "asset-null-classification",
+        projectId: PROJECT_ID,
+        kind: "asset",
+        reviewVersion: null,
+        reviewStatus: null,
+        humanEdited: null,
+        fields: { name: "Unclassified asset", data_classification: null },
+      },
+      scope,
+      derivedResolver,
+    );
+    expect(nullClassification.payload["fields"]).not.toHaveProperty(
+      "data_classification",
+    );
+
+    const futureAssetCriticality = projectRemoteEntity(
+      "asset",
+      {
+        id: "asset-live-criticality",
+        projectId: PROJECT_ID,
+        kind: "asset",
+        reviewVersion: null,
+        reviewStatus: null,
+        humanEdited: null,
+        fields: {
+          name: "Future criticality asset",
+          criticality: "tenant_future_criticality",
+        },
+      },
+      scope,
+      derivedResolver,
+    );
+    expect(futureAssetCriticality.payload["fields"]).toMatchObject({
+      criticality: "tenant_future_criticality",
+    });
+
+    const futureSeverity = projectRemoteEntity(
+      "threat",
+      {
+        id: "threat-live-severity",
+        projectId: PROJECT_ID,
+        kind: "threat",
+        reviewVersion: null,
+        reviewStatus: null,
+        humanEdited: null,
+        fields: {
+          name: "Future severity threat",
+          category: "spoofing",
+          threat_source: "manual",
+          severity: "tenant_future_severity",
+          affected_assets: [],
+          mitigation_ids: [],
+        },
+      },
+      scope,
+      derivedResolver,
+    );
+    expect(futureSeverity.payload["fields"]).toMatchObject({
+      severity: "tenant_future_severity",
+    });
   });
 
   it("reports the actual value at a nested remote validation path", () => {

@@ -31,16 +31,14 @@ import {
   canvasEditingLoadOutputSchema,
   canvasJsonValueSchema,
   parseAcceptedArchitectureEntity,
-  parseArchitectureEntity,
   stableSlugSchema,
   type CanvasEntityKind,
   type DeletionImpact,
 } from "./schema.js";
 import {
   computeDeletionImpact,
+  isRemoteVocabularyValidationAdvisory,
   registerCanvasValidators,
-  UnsupportedAssetTypeValidationAdvisory,
-  UnsupportedComponentTypeValidationAdvisory,
   validateArchitecturePayload,
 } from "./validators.js";
 import {
@@ -423,10 +421,7 @@ async function materializeAcceptedCanvasKind(
     try {
       entity = parseAcceptedCanvasWritableEntity(kind, row);
     } catch (error: unknown) {
-      if (
-        error instanceof UnsupportedAssetTypeValidationAdvisory ||
-        error instanceof UnsupportedComponentTypeValidationAdvisory
-      ) {
+      if (isRemoteVocabularyValidationAdvisory(error)) {
         continue;
       }
       throw error;
@@ -679,7 +674,7 @@ export function registerCanvasEditingBackend(
   const usedSlugs = new Set<string>();
   const restorableDeletes = new Map<
     string,
-    ReturnType<typeof parseArchitectureEntity>
+    ReturnType<typeof validateArchitecturePayload>
   >();
   const editIdentity = (
     input: { projectId: string; projectVersionId: string | null },
@@ -689,7 +684,7 @@ export function registerCanvasEditingBackend(
     `${input.projectId}\u0000${toStorageProjectVersionId(input.projectVersionId)}\u0000${kind}\u0000${slug}`;
   const rememberDelete = (
     identity: string,
-    entity: ReturnType<typeof parseArchitectureEntity>,
+    entity: ReturnType<typeof validateArchitecturePayload>,
   ) => {
     restorableDeletes.delete(identity);
     restorableDeletes.set(identity, entity);
@@ -872,7 +867,7 @@ export function registerCanvasEditingBackend(
     let identity: string;
     let restoration: { kind: CanvasEntityKind; slug: string } | undefined;
     if (input.operation === "create") {
-      const entity = parseArchitectureEntity(input.kind, input.fields);
+      const entity = validateArchitecturePayload(input.kind, input.fields);
       command = { kind: "create", entity };
       identity = editIdentity(input, input.kind, entity.slug);
       const deletedSnapshot = restorableDeletes.get(identity);

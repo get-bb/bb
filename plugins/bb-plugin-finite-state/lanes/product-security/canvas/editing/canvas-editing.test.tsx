@@ -416,6 +416,50 @@ describe("WP-35 canvas commands and canonical YAML", () => {
       expect.objectContaining({ code: "INVALID_METHODOLOGY_VOCABULARY" }),
     );
   });
+
+  it.each([
+    ["component", "criticality", "tenant_future_criticality"],
+    ["zone", "trust_level", "tenant_future_trust"],
+    ["asset", "data_classification", "tenant_future_classification"],
+    ["threat", "threat_source", "tenant_future_source"],
+    ["threat", "severity", "tenant_future_severity"],
+  ] as const)(
+    "returns a typed authored-vocabulary advisory for %s.%s",
+    (kind, field, value) => {
+      const base =
+        kind === "component"
+          ? architectureEntityPayload(component("typed-component"))
+          : kind === "zone"
+            ? { slug: "typed-zone", name: "Typed zone", trust_level: "trusted" }
+            : kind === "asset"
+              ? {
+                  slug: "typed-asset",
+                  name: "Typed asset",
+                  asset_type: "data",
+                  criticality: "high",
+                }
+              : {
+                  slug: "typed-threat",
+                  name: "Typed threat",
+                  category: "spoofing",
+                  threat_source: "manual",
+                  severity: "high",
+                  affected_components: [],
+                  affected_assets: [],
+                  dataflows: [],
+                  mitigations: [],
+                  assumptions: [],
+                };
+      expect(() =>
+        validateArchitecturePayload(kind, { ...base, [field]: value }),
+      ).toThrowError(
+        expect.objectContaining({
+          code: "UNSUPPORTED_REMOTE_VOCABULARY",
+          field,
+        }),
+      );
+    },
+  );
 });
 
 describe("WP-35 plan ordering and adapter projections", () => {

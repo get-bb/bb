@@ -60,6 +60,7 @@ const componentIconNames = {
   actuator: "ElectricPlugs",
   communication: "Connect",
   external_service: "Cloud",
+  medical_device: "TestTube01",
   other: "Question",
 } as const satisfies Record<(typeof componentTypes)[number], string>;
 
@@ -126,6 +127,15 @@ function architectureFixture(): ArchitectureModel {
         affectedAssets: ["asset-patient-data"],
         threatCount: 4,
       })),
+      {
+        slug: "component-tenant-future",
+        kind: "component",
+        name: "tenant future component node",
+        componentType: "tenant_future_component",
+        criticality: "medium",
+        zone: "zone-clinical",
+        sourceFile: "architecture/components/component-tenant-future.yaml",
+      },
       {
         slug: "asset-patient-data",
         kind: "asset",
@@ -595,6 +605,15 @@ describe("WP-32 inspector and project scope", () => {
           ),
       ).toBeTruthy();
     }
+    const futureComponent = await slot.findByLabelText(
+      "component tenant future component node",
+    );
+    expect(
+      within(futureComponent).getByText("tenant_future_component"),
+    ).toBeTruthy();
+    expect(
+      futureComponent.querySelector('[data-component-icon="Circle"]'),
+    ).toBeTruthy();
     expect(await slot.findByLabelText("zone Clinical network")).toBeTruthy();
     expect(await slot.findByLabelText("asset Patient data")).toBeTruthy();
     const flow = await slot.findByLabelText(

@@ -73,6 +73,21 @@ function asset(slug: string): ArchitectureYamlEntity {
   });
 }
 
+function threat(slug: string): ArchitectureYamlEntity {
+  return parseArchitectureEntity("threat", {
+    slug,
+    name: slug,
+    category: "spoofing",
+    threat_source: "manual",
+    severity: "high",
+    affected_components: [],
+    affected_assets: [],
+    dataflows: [],
+    mitigations: [],
+    assumptions: [],
+  });
+}
+
 function seedAccepted(
   context: ReturnType<typeof createPluginContext>,
   entities: readonly ArchitectureYamlEntity[],
@@ -137,7 +152,12 @@ function seedAccepted(
 function replaceAcceptedVocabulary(
   context: ReturnType<typeof createPluginContext>,
   entity: ArchitectureYamlEntity,
-  field: "asset_type" | "component_type",
+  field:
+    | "asset_type"
+    | "component_type"
+    | "criticality"
+    | "data_classification"
+    | "severity",
   value: string,
 ): void {
   const payload = { ...architectureEntityPayload(entity), [field]: value };
@@ -878,6 +898,7 @@ describe("WP-35 read-classified editing RPCs", () => {
       "communication",
       "other",
       "external_service",
+      "medical_device",
     ]);
     expect(() => parseArchitectureEntity("component", loaded.fields)).toThrow();
   });
@@ -1012,14 +1033,24 @@ describe("WP-35 read-classified editing RPCs", () => {
     hosts.push(host);
     const context = createPluginContext(host.bb);
     const futureComponent = component("a-future-component");
+    const retiredComponent = component("b-retired-component", "hardware");
     const knownComponent = component("z-known-component");
     const futureAsset = asset("a-future-asset");
+    const futureClassification = asset("b-future-classification");
+    const futureAssetCriticality = asset("c-future-criticality");
     const knownAsset = asset("z-known-asset");
+    const futureThreatSeverity = threat("a-future-threat-severity");
+    const knownThreat = threat("z-known-threat");
     seedAccepted(context, [
       futureComponent,
+      retiredComponent,
       knownComponent,
       futureAsset,
+      futureClassification,
+      futureAssetCriticality,
       knownAsset,
+      futureThreatSeverity,
+      knownThreat,
     ]);
     replaceAcceptedVocabulary(
       context,
@@ -1029,9 +1060,33 @@ describe("WP-35 read-classified editing RPCs", () => {
     );
     replaceAcceptedVocabulary(
       context,
+      retiredComponent,
+      "component_type",
+      "ecu",
+    );
+    replaceAcceptedVocabulary(
+      context,
       futureAsset,
       "asset_type",
       "tenant_future_asset",
+    );
+    replaceAcceptedVocabulary(
+      context,
+      futureClassification,
+      "data_classification",
+      "tenant_future_classification",
+    );
+    replaceAcceptedVocabulary(
+      context,
+      futureAssetCriticality,
+      "criticality",
+      "tenant_future_criticality",
+    );
+    replaceAcceptedVocabulary(
+      context,
+      futureThreatSeverity,
+      "severity",
+      "tenant_future_severity",
     );
     registerCanvasEditingBackend(host.bb, context);
 
@@ -1069,7 +1124,33 @@ describe("WP-35 read-classified editing RPCs", () => {
     expect(assetError.message).toContain("tenant_future_asset");
     expect(assetError.message).not.toContain('[{"code"');
 
-    for (const entity of [knownComponent, knownAsset]) {
+    for (const [entity, expected] of [
+      [retiredComponent, "ecu"],
+      [futureClassification, "tenant_future_classification"],
+      [futureAssetCriticality, "tenant_future_criticality"],
+      [futureThreatSeverity, "tenant_future_severity"],
+    ] as const) {
+      const rowError = await host.harness
+        .callRpc("canvasEditingLoad", {
+          projectId: PROJECT,
+          projectVersionId: null,
+          kind: entity.kind,
+          slug: entity.slug,
+        })
+        .then(
+          () => null,
+          (error: unknown) => error,
+        );
+      if (!(rowError instanceof Error)) {
+        throw new Error(
+          `expected a typed vocabulary advisory for ${entity.slug}`,
+        );
+      }
+      expect(rowError.message).toContain(expected);
+      expect(rowError.message).not.toContain('[{"code"');
+    }
+
+    for (const entity of [knownComponent, knownAsset, knownThreat]) {
       const loaded = canvasEditingLoadOutputSchema.parse(
         await host.harness.callRpc("canvasEditingLoad", {
           projectId: PROJECT,
@@ -1103,13 +1184,36 @@ describe("WP-35 read-classified editing RPCs", () => {
       ),
     ).toContain("name: Edited z-known-asset");
     expect(
+      files.get("/workspace/product-security/threats/z-known-threat.yaml"),
+    ).toContain("name: Edited z-known-threat");
+    expect(
       files.has(
         "/workspace/product-security/architecture/components/a-future-component.yaml",
       ),
     ).toBe(false);
     expect(
       files.has(
+        "/workspace/product-security/architecture/components/b-retired-component.yaml",
+      ),
+    ).toBe(false);
+    expect(
+      files.has(
         "/workspace/product-security/architecture/assets/a-future-asset.yaml",
+      ),
+    ).toBe(false);
+    expect(
+      files.has(
+        "/workspace/product-security/architecture/assets/b-future-classification.yaml",
+      ),
+    ).toBe(false);
+    expect(
+      files.has(
+        "/workspace/product-security/architecture/assets/c-future-criticality.yaml",
+      ),
+    ).toBe(false);
+    expect(
+      files.has(
+        "/workspace/product-security/threats/a-future-threat-severity.yaml",
       ),
     ).toBe(false);
   });

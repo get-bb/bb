@@ -57,6 +57,7 @@ const COMPONENT_ICONS: Record<string, ComponentIconDefinition> &
   actuator: { icon: ElectricPlugsIcon, name: "ElectricPlugs" },
   communication: { icon: ConnectIcon, name: "Connect" },
   external_service: { icon: CloudIcon, name: "Cloud" },
+  medical_device: { icon: TestTube01Icon, name: "TestTube01" },
   other: { icon: QuestionIcon, name: "Question" },
 };
 
@@ -64,7 +65,6 @@ const RETIRED_COMPONENT_ICONS: Record<string, ComponentIconDefinition> = {
   ecu: { icon: ComputerTerminal01Icon, name: "ComputerTerminal01" },
   hsm: { icon: LockIcon, name: "Lock" },
   tee: { icon: CloudIcon, name: "Cloud" },
-  medical_device: { icon: TestTube01Icon, name: "TestTube01" },
 };
 
 const FALLBACK_COMPONENT_ICON: ComponentIconDefinition = {
