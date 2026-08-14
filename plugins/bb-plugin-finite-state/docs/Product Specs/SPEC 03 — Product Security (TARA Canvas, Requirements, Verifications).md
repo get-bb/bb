@@ -49,7 +49,7 @@ Full-bleed inside the nav panel body (bb gives us zero host padding — we own l
 ```
 
 - **Pan/zoom/select** — unchanged from AS: wheel zoom, space-drag pan, click select, shift-box multi-select, fit-view button, minimap toggle. `elkjs` auto-layout on demand ("Tidy" button), never on every change.
-- **Node types.** Zones render as labeled container groups (trust boundaries; nested per the parent hierarchy, cycle-guarded server-side). Components render as typed nodes with a distinct glyph per `component_type`: `software`, `hardware`, `sensor`, `actuator`, `ecu`, `hsm`, `tee`, `medical_device`, `network`. Entry points (`is_entry_point`) get a doorway badge; criticality tints the border (color + label, never color alone — SPEC 00 §7).
+- **Node types.** Zones render as labeled container groups (trust boundaries; nested per the parent hierarchy, cycle-guarded server-side). Components render as typed nodes with a distinct glyph per `component_type`: `firmware`, `software`, `hardware`, `network`, `cloud_service`, `mobile_app`, `web_app`, `database`, `api`, `sensor`, `actuator`, `communication`, `other`. Entry points (`is_entry_point`) get a doorway badge; criticality tints the border (color + label, never color alone — SPEC 00 §7).
 - **Dataflows** — directed edges with protocol label; lock glyph when `encrypted`, key glyph when `authenticated`; edges crossing a zone boundary render the boundary-crossing tick that makes trust boundaries legible.
 
 ### 2.3 Threat overlay (the reason the canvas matters)
@@ -374,7 +374,7 @@ Mapping lists serialize as slug arrays inside the owning entity (SPEC 01 §4) an
 # product-security/architecture/components/comp-httpd.yaml
 id: COMP-httpd
 name: httpd
-component_type: software          # software|hardware|sensor|actuator|ecu|hsm|tee|medical_device|network
+component_type: software          # firmware|software|hardware|network|cloud_service|mobile_app|web_app|database|api|sensor|actuator|communication|other
 description: "WAN-facing management HTTP daemon"
 zone: ZONE-wan
 criticality: high

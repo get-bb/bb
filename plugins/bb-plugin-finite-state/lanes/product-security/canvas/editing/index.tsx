@@ -6,10 +6,7 @@ import { useOptionalArchitectureSelection } from "../nodes/selection.js";
 import type { DeletionImpact } from "./commands.js";
 import { DeleteImpactDialog } from "./delete-impact.js";
 import { EntityForm, type CanvasReferenceOptions } from "./forms.js";
-import {
-  CanvasEditHistory,
-  type CanvasHistoryExecutor,
-} from "./history.js";
+import { CanvasEditHistory, type CanvasHistoryExecutor } from "./history.js";
 import type { canvasEditingRpcContract } from "./backend.js";
 import {
   architectureEntityPayload,
@@ -302,6 +299,10 @@ function ProjectEditingLayer({
         );
         return;
       }
+      if (loaded.state === "migration_required") {
+        setError(loaded.advisory.message);
+        return;
+      }
       const entity = parseArchitectureEntity(loaded.kind, loaded.fields);
       setForm({
         mode: "edit",
@@ -396,6 +397,9 @@ function ProjectEditingLayer({
         throw new Error(
           "This entity no longer exists in working YAML. Reload the canvas before deleting.",
         );
+      }
+      if (loaded.state === "migration_required") {
+        throw new Error(loaded.advisory.message);
       }
       setDeleteTarget({
         kind: loaded.kind,

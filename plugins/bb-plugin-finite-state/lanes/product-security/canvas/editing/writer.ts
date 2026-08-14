@@ -12,9 +12,11 @@ import {
   type ArchitectureYamlEntity,
   type CanvasEntityKind,
   type DeletionImpact,
+  type RetiredAuthoredComponentYamlEntity,
 } from "./schema.js";
 import {
   CanvasEntityValidationError,
+  RetiredComponentTypeValidationAdvisory,
   validateArchitecturePayload,
   validateEntityReferences,
 } from "./validators.js";
@@ -24,6 +26,21 @@ export interface StoredCanvasEntity {
   file: string;
   content: string;
   sha256: string;
+}
+
+export class RetiredComponentTypeReadAdvisory extends Error {
+  readonly code = "RETIRED_COMPONENT_TYPE" as const;
+  readonly field = "component_type" as const;
+
+  constructor(
+    readonly entity: RetiredAuthoredComponentYamlEntity,
+    readonly file: string,
+    readonly sha256: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "RetiredComponentTypeReadAdvisory";
+  }
 }
 
 export interface CanvasFileDiagnostic {
@@ -414,7 +431,25 @@ export function createSdkCanvasFileStore(
       file.startsWith(`${ENTITIES[candidate].dir}/`),
     );
     if (!kind) throw new Error(`${file} is not an owned canvas entity path.`);
-    const entity = parseCanvasEntity(kind, stored.content, file);
+    let entity: ArchitectureYamlEntity;
+    try {
+      entity = parseCanvasEntity(kind, stored.content, file);
+    } catch (error) {
+      if (error instanceof RetiredComponentTypeValidationAdvisory) {
+        if (canvasEntityFile("component", error.entity.slug) !== file) {
+          throw new Error(
+            `${file} declares slug ${error.entity.slug}; expected ${canvasEntityFile("component", error.entity.slug)}.`,
+          );
+        }
+        throw new RetiredComponentTypeReadAdvisory(
+          error.entity,
+          file,
+          stored.sha256,
+          error.message,
+        );
+      }
+      throw error;
+    }
     if (canvasEntityFile(kind, entity.slug) !== file) {
       throw new Error(
         `${file} declares slug ${entity.slug}; expected ${canvasEntityFile(kind, entity.slug)}.`,
@@ -426,82 +461,77 @@ export function createSdkCanvasFileStore(
   async function listWithDiagnostics(
     kind: CanvasEntityKind,
   ): Promise<CanvasFileListing> {
-      const directory = ENTITIES[kind].dir;
-      let listing;
-      try {
-        listing = await bb.sdk.files.list({
-          hostId: source.hostId,
-          path: absolutePath(source, directory),
-          limit: 10_000,
-        });
-      } catch (error) {
-        if (isMissingFile(error)) return { entities: [], diagnostics: [] };
-        throw error;
-      }
-      if (listing.truncated) {
-        throw new Error(`${directory} exceeds the 10,000-file safety bound.`);
-      }
-      const regular = new Set(
-        listing.files
-          .filter((entry) => /\.ya?ml$/iu.test(entry.name))
-          .map((entry) =>
-            isAbsolute(entry.path)
-              ? entry.name
-              : (entry.path.replaceAll("\\", "/").split("/").at(-1) ??
-                entry.name),
-          ),
-      );
-      const tombstoneTargets = listing.files.flatMap((entry) => {
-        const target = tombstoneTargetName(entry.name);
-        return target && /\.ya?ml$/iu.test(target) ? [target] : [];
+    const directory = ENTITIES[kind].dir;
+    let listing;
+    try {
+      listing = await bb.sdk.files.list({
+        hostId: source.hostId,
+        path: absolutePath(source, directory),
+        limit: 10_000,
       });
-      if (shouldReclaim) {
-        await Promise.all(
-          [...new Set(tombstoneTargets)].map((name) =>
-            reclaimCanvasDeleteTombstones(bb, source, `${directory}/${name}`),
-          ),
-        );
-      }
-      const files = [...new Set([...regular, ...tombstoneTargets])]
-        .map((name) => `${directory}/${name}`)
-        .sort();
-      const documents = await Promise.all(
-        files.map(async (file) => {
-          try {
-            return { entity: await read(file, false), diagnostic: null };
-          } catch (error) {
-            const name = basename(file).replace(/\.ya?ml$/iu, "");
-            return {
-              entity: null,
-              diagnostic: {
-                file,
-                slug: name,
-                message:
-                  error instanceof Error && error.message.length > 0
-                    ? error.message
-                    : "The working canvas YAML is invalid.",
-              },
-            };
-          }
-        }),
-      );
-      return {
-        entities: documents.flatMap(({ entity }) => (entity ? [entity] : [])),
-        diagnostics: documents.flatMap(({ diagnostic }) =>
-          diagnostic ? [diagnostic] : [],
+    } catch (error) {
+      if (isMissingFile(error)) return { entities: [], diagnostics: [] };
+      throw error;
+    }
+    if (listing.truncated) {
+      throw new Error(`${directory} exceeds the 10,000-file safety bound.`);
+    }
+    const regular = new Set(
+      listing.files
+        .filter((entry) => /\.ya?ml$/iu.test(entry.name))
+        .map((entry) =>
+          isAbsolute(entry.path)
+            ? entry.name
+            : (entry.path.replaceAll("\\", "/").split("/").at(-1) ??
+              entry.name),
         ),
-      };
+    );
+    const tombstoneTargets = listing.files.flatMap((entry) => {
+      const target = tombstoneTargetName(entry.name);
+      return target && /\.ya?ml$/iu.test(target) ? [target] : [];
+    });
+    if (shouldReclaim) {
+      await Promise.all(
+        [...new Set(tombstoneTargets)].map((name) =>
+          reclaimCanvasDeleteTombstones(bb, source, `${directory}/${name}`),
+        ),
+      );
+    }
+    const files = [...new Set([...regular, ...tombstoneTargets])]
+      .map((name) => `${directory}/${name}`)
+      .sort();
+    const documents = await Promise.all(
+      files.map(async (file) => {
+        try {
+          return { entity: await read(file, false), diagnostic: null };
+        } catch (error) {
+          const name = basename(file).replace(/\.ya?ml$/iu, "");
+          return {
+            entity: null,
+            diagnostic: {
+              file,
+              slug: name,
+              message:
+                error instanceof Error && error.message.length > 0
+                  ? error.message
+                  : "The working canvas YAML is invalid.",
+            },
+          };
+        }
+      }),
+    );
+    return {
+      entities: documents.flatMap(({ entity }) => (entity ? [entity] : [])),
+      diagnostics: documents.flatMap(({ diagnostic }) =>
+        diagnostic ? [diagnostic] : [],
+      ),
+    };
   }
 
   return {
     read,
     async list(kind) {
-      const listing = await listWithDiagnostics(kind);
-      const first = listing.diagnostics[0];
-      if (first) {
-        throw new Error(`${first.file}: ${first.message}`);
-      }
-      return listing.entities;
+      return (await listWithDiagnostics(kind)).entities;
     },
     listWithDiagnostics,
     async write(file, content, expectedSha256) {

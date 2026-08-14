@@ -34,6 +34,7 @@ import {
 } from "./commands.js";
 import { CanvasEditHistory } from "./history.js";
 import {
+  ASSURANCE_STUDIO_COMPONENT_TYPES,
   architectureEntityPayload,
   parseArchitectureEntity,
   type ArchitectureYamlEntity,
@@ -725,6 +726,45 @@ describe("WP-35 plan ordering and adapter projections", () => {
           projectionResolver,
         ).payload["fields"],
       ).toEqual(architectureEntityPayload(asset));
+    }
+  });
+
+  it("round-trips every vendored Assurance Studio component type through remote projection and YAML", () => {
+    for (const componentType of ASSURANCE_STUDIO_COMPONENT_TYPES) {
+      const entity = parseArchitectureEntity("component", {
+        slug: `component-${componentType.replaceAll("_", "-")}`,
+        name: `${componentType} component`,
+        component_type: componentType,
+        criticality: "high",
+        interfaces: [],
+        technologies: ["typescript"],
+        is_entry_point: false,
+        stores_data: false,
+      });
+      const projected = projectCreateFields(entity, scope, projectionResolver);
+      const remote = projectRemoteEntity(
+        "component",
+        {
+          id: `remote-${entity.slug}`,
+          projectId: scope.projectId,
+          kind: "component",
+          reviewVersion: null,
+          reviewStatus: null,
+          humanEdited: null,
+          fields: projected,
+        },
+        scope,
+        projectionResolver,
+      );
+      const remoteFields = remote.payload["fields"];
+      expect(remoteFields).toEqual(architectureEntityPayload(entity));
+      expect(
+        parseCanvasEntity(
+          "component",
+          serializeCanvasEntity(entity),
+          `${entity.slug}.yaml`,
+        ),
+      ).toEqual(entity);
     }
   });
 

@@ -3,27 +3,16 @@ import { Badge } from "@bb/shared-ui/badge";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
+import { ASSURANCE_STUDIO_COMPONENT_TYPES } from "../editing/schema.js";
 import { componentIcon } from "./ComponentNode.js";
 import { wp35MutationStubs } from "./selection.js";
-
-const COMPONENT_TYPES = [
-  "software",
-  "hardware",
-  "sensor",
-  "actuator",
-  "ecu",
-  "hsm",
-  "tee",
-  "medical_device",
-  "network",
-] as const;
 
 export function Stencil(): React.JSX.Element {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(true);
   const visibleTypes = useMemo(
     () =>
-      COMPONENT_TYPES.filter((type) =>
+      ASSURANCE_STUDIO_COMPONENT_TYPES.filter((type) =>
         type.includes(query.trim().toLowerCase()),
       ),
     [query],

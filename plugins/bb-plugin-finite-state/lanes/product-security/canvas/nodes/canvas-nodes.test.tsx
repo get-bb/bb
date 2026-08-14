@@ -16,6 +16,7 @@ import {
 import type { PluginNavPanelProps } from "@bb/plugin-sdk/app";
 import type { JsonValue } from "../../../../shared/contract.js";
 import type { CanvasNodeModel } from "../foundation/types.js";
+import { ASSURANCE_STUDIO_COMPONENT_TYPES } from "../editing/schema.js";
 import {
   buildArchitectureAdjacency,
   fromCanvasGraph,
@@ -38,17 +39,7 @@ const cache = {
 };
 const clipboardWrite = vi.fn(async (_value: string) => undefined);
 
-const componentTypes = [
-  "software",
-  "hardware",
-  "sensor",
-  "actuator",
-  "ecu",
-  "hsm",
-  "tee",
-  "medical_device",
-  "network",
-] as const;
+const componentTypes = ASSURANCE_STUDIO_COMPONENT_TYPES;
 
 interface TestCanvasNodeData extends Record<string, unknown> {
   model: CanvasNodeModel;
@@ -100,12 +91,15 @@ function architectureFixture(): ArchitectureModel {
         criticality: index === 0 ? "high" : "medium",
         zone: "zone-clinical",
         sourceFile: `architecture/components/component-${componentType}.yaml`,
-        interfaces: Array.from({ length: index === 0 ? 45 : 1 }, (_, row) => ({
-          name: `interface-${row}`,
-          protocol: row % 2 === 0 ? "HTTPS" : "CAN",
-          port: 443 + row,
-          direction: "bidirectional",
-        })),
+        interfaces: Array.from(
+          { length: componentType === "software" ? 45 : 1 },
+          (_, row) => ({
+            name: `interface-${row}`,
+            protocol: row % 2 === 0 ? "HTTPS" : "CAN",
+            port: 443 + row,
+            direction: "bidirectional",
+          }),
+        ),
         technologies: ["TLS 1.3", "AUTOSAR"],
         affectedAssets: ["asset-patient-data"],
         threatCount: 4,
@@ -450,7 +444,7 @@ describe("WP-32 inspector and project scope", () => {
           slug: "component-bad-zone",
           kind: "component",
           name: "Unassigned controller",
-          componentType: "ecu",
+          componentType: "hardware",
           zone: "zone-not-authored",
           sourceFile: "architecture/components/component-bad-zone.yaml",
         },
@@ -489,15 +483,13 @@ describe("WP-32 inspector and project scope", () => {
     });
     fireEvent.click(wrapper);
     await waitFor(() => {
-      expect(onFocusRoute).toHaveBeenCalledWith(
-        "node",
-        "component-bad-zone",
-      );
+      expect(onFocusRoute).toHaveBeenCalledWith("node", "component-bad-zone");
     });
     expect(await view.findByText("Slug: component-bad-zone")).toBeTruthy();
     expect(view.getByText("1 selected")).toBeTruthy();
-    expect(view.getByRole("button", { name: "Fit" }).hasAttribute("disabled"))
-      .toBe(false);
+    expect(
+      view.getByRole("button", { name: "Fit" }).hasAttribute("disabled"),
+    ).toBe(false);
   });
 
   it("selects and persists project scope without injected route context", async () => {

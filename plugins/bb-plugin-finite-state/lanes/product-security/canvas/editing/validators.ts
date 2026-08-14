@@ -13,11 +13,13 @@ import {
   CANVAS_ENTITY_KINDS,
   entityReferences,
   parseArchitectureEntity,
+  retiredAuthoredComponentEntitySchema,
   strideCategorySchema,
   type ArchitectureYamlEntity,
   type CanvasEntityKind,
   type CanvasReference,
   type DeletionImpact,
+  type RetiredAuthoredComponentYamlEntity,
 } from "./schema.js";
 
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/iu;
@@ -71,6 +73,17 @@ export class CanvasEntityValidationError extends Error {
   }
 }
 
+export class RetiredComponentTypeValidationAdvisory extends CanvasEntityValidationError {
+  constructor(readonly entity: RetiredAuthoredComponentYamlEntity) {
+    super(
+      "RETIRED_COMPONENT_TYPE",
+      `component_type “${entity.component_type}” was valid in an earlier canvas vocabulary but cannot be authored to Assurance Studio. Update it to one of the current vendored component types before editing or syncing this component.`,
+      "component_type",
+    );
+    this.name = "RetiredComponentTypeValidationAdvisory";
+  }
+}
+
 function inspectAuthoredValue(value: unknown, path: string): void {
   if (typeof value === "string" && UUID.test(value)) {
     throw new CanvasEntityValidationError(
@@ -104,6 +117,15 @@ export function validateArchitecturePayload(
   payload: Record<string, unknown>,
 ): ArchitectureYamlEntity {
   inspectAuthoredValue(payload, "");
+  if (kind === "component") {
+    const retired = retiredAuthoredComponentEntitySchema.safeParse({
+      kind,
+      ...payload,
+    });
+    if (retired.success) {
+      throw new RetiredComponentTypeValidationAdvisory(retired.data);
+    }
+  }
   if (
     kind === "threat" &&
     typeof payload["category"] === "string" &&
