@@ -2942,8 +2942,8 @@ declare const environmentArchiveThreadsResponseSchema: z$1.ZodObject<{
 type EnvironmentArchiveThreadsResponse = z$1.infer<typeof environmentArchiveThreadsResponseSchema>;
 declare const pullRequestMergeMethodSchema: z$1.ZodEnum<{
     merge: "merge";
-    rebase: "rebase";
     squash: "squash";
+    rebase: "rebase";
 }>;
 type PullRequestMergeMethod = z$1.infer<typeof pullRequestMergeMethodSchema>;
 declare const commitActionResponseSchema: z$1.ZodObject<{
@@ -2974,8 +2974,8 @@ declare const pullRequestMergeActionResponseSchema: z$1.ZodObject<{
     action: z$1.ZodLiteral<"pull_request_merge">;
     method: z$1.ZodEnum<{
         merge: "merge";
-        rebase: "rebase";
         squash: "squash";
+        rebase: "rebase";
     }>;
     message: z$1.ZodString;
 }, z$1.core.$strip>;
@@ -6724,11 +6724,106 @@ declare const pluginCatalogSearchResultSchema: z$1.ZodObject<{
     iconUrl: z$1.ZodNullable<z$1.ZodString>;
     category: z$1.ZodString;
     source: z$1.ZodString;
+    marketplace: z$1.ZodString;
+    marketplaceDisplayName: z$1.ZodString;
+    official: z$1.ZodBoolean;
+    author: z$1.ZodNullable<z$1.ZodObject<{
+        name: z$1.ZodString;
+        url: z$1.ZodNullable<z$1.ZodString>;
+    }, z$1.core.$strip>>;
     installed: z$1.ZodBoolean;
     compatible: z$1.ZodBoolean;
     incompatibleReason: z$1.ZodNullable<z$1.ZodString>;
 }, z$1.core.$strip>;
 type PluginCatalogSearchResult$1 = z$1.infer<typeof pluginCatalogSearchResultSchema>;
+/**
+ * What `POST /plugin-catalog/install` would do with the same arguments, shown
+ * to the user before anything runs. `bundled` entries install from the copy
+ * inside the app; `marketplace` entries install from their listed source.
+ */
+declare const pluginCatalogInstallPlanSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+    kind: z$1.ZodLiteral<"bundled">;
+    entryId: z$1.ZodString;
+    pluginId: z$1.ZodString;
+    displayName: z$1.ZodString;
+    source: z$1.ZodString;
+    compatible: z$1.ZodBoolean;
+    incompatibleReason: z$1.ZodNullable<z$1.ZodString>;
+}, z$1.core.$strip>, z$1.ZodObject<{
+    kind: z$1.ZodLiteral<"marketplace">;
+    entryId: z$1.ZodString;
+    pluginId: z$1.ZodString;
+    displayName: z$1.ZodString;
+    marketplace: z$1.ZodString;
+    marketplaceDisplayName: z$1.ZodString;
+    official: z$1.ZodBoolean;
+    author: z$1.ZodObject<{
+        name: z$1.ZodString;
+        url: z$1.ZodNullable<z$1.ZodString>;
+    }, z$1.core.$strip>;
+    source: z$1.ZodString;
+    resolvedSource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+        kind: z$1.ZodLiteral<"npm">;
+        package: z$1.ZodString;
+        range: z$1.ZodOptional<z$1.ZodString>;
+        tag: z$1.ZodOptional<z$1.ZodString>;
+        registry: z$1.ZodOptional<z$1.ZodString>;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        kind: z$1.ZodLiteral<"git">;
+        url: z$1.ZodString;
+        subdir: z$1.ZodOptional<z$1.ZodString>;
+        ref: z$1.ZodOptional<z$1.ZodString>;
+        range: z$1.ZodOptional<z$1.ZodString>;
+        tagPrefix: z$1.ZodOptional<z$1.ZodString>;
+        resolvedTag: z$1.ZodOptional<z$1.ZodString>;
+        resolvedCommit: z$1.ZodOptional<z$1.ZodString>;
+        unresolvedReason: z$1.ZodOptional<z$1.ZodString>;
+    }, z$1.core.$strict>], "kind">;
+    compatible: z$1.ZodBoolean;
+    incompatibleReason: z$1.ZodNullable<z$1.ZodString>;
+}, z$1.core.$strip>], "kind">;
+type PluginCatalogInstallPlan = z$1.infer<typeof pluginCatalogInstallPlanSchema>;
+declare const pluginMarketplaceSchema: z$1.ZodObject<{
+    name: z$1.ZodString;
+    displayName: z$1.ZodString;
+    description: z$1.ZodNullable<z$1.ZodString>;
+    official: z$1.ZodBoolean;
+    sourceKind: z$1.ZodEnum<{
+        path: "path";
+        git: "git";
+        https: "https";
+    }>;
+    source: z$1.ZodString;
+    resolvedCommit: z$1.ZodNullable<z$1.ZodString>;
+    entryCount: z$1.ZodNumber;
+    lastRefreshAt: z$1.ZodNullable<z$1.ZodNumber>;
+    lastAttemptAt: z$1.ZodNullable<z$1.ZodNumber>;
+    lastError: z$1.ZodNullable<z$1.ZodString>;
+}, z$1.core.$strip>;
+type PluginMarketplace = z$1.infer<typeof pluginMarketplaceSchema>;
+declare const pluginMarketplaceRefreshResultSchema: z$1.ZodObject<{
+    name: z$1.ZodString;
+    ok: z$1.ZodBoolean;
+    error: z$1.ZodNullable<z$1.ZodString>;
+    marketplace: z$1.ZodObject<{
+        name: z$1.ZodString;
+        displayName: z$1.ZodString;
+        description: z$1.ZodNullable<z$1.ZodString>;
+        official: z$1.ZodBoolean;
+        sourceKind: z$1.ZodEnum<{
+            path: "path";
+            git: "git";
+            https: "https";
+        }>;
+        source: z$1.ZodString;
+        resolvedCommit: z$1.ZodNullable<z$1.ZodString>;
+        entryCount: z$1.ZodNumber;
+        lastRefreshAt: z$1.ZodNullable<z$1.ZodNumber>;
+        lastAttemptAt: z$1.ZodNullable<z$1.ZodNumber>;
+        lastError: z$1.ZodNullable<z$1.ZodString>;
+    }, z$1.core.$strip>;
+}, z$1.core.$strip>;
+type PluginMarketplaceRefreshResult$1 = z$1.infer<typeof pluginMarketplaceRefreshResultSchema>;
 
 declare const systemExecutionOptionsResponseSchema: z$1.ZodObject<{
     providers: z$1.ZodArray<z$1.ZodObject<{
@@ -7369,9 +7464,9 @@ declare const terminalSessionSchema: z$1.ZodObject<{
     cols: z$1.ZodNumber;
     rows: z$1.ZodNumber;
     status: z$1.ZodEnum<{
+        running: "running";
         starting: "starting";
         disconnected: "disconnected";
-        running: "running";
         exited: "exited";
     }>;
     exitCode: z$1.ZodNullable<z$1.ZodNumber>;
@@ -7400,9 +7495,9 @@ declare const terminalListResponseSchema: z$1.ZodObject<{
         cols: z$1.ZodNumber;
         rows: z$1.ZodNumber;
         status: z$1.ZodEnum<{
+            running: "running";
             starting: "starting";
             disconnected: "disconnected";
-            running: "running";
             exited: "exited";
         }>;
         exitCode: z$1.ZodNullable<z$1.ZodNumber>;
@@ -10226,8 +10321,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
         updatedAt: z$1.ZodNumber;
         objective: z$1.ZodString;
         status: z$1.ZodEnum<{
-            active: "active";
             paused: "paused";
+            active: "active";
             budgetLimited: "budgetLimited";
             complete: "complete";
         }>;
@@ -12260,9 +12355,36 @@ interface PluginInstallArgs {
      */
     plugin?: string;
 }
-/** Install an entry from BB's official catalog. */
+/** Install a catalog entry, from BB's official catalog or another marketplace. */
 interface PluginCatalogInstallArgs {
     entryId: string;
+    /**
+     * Marketplace that lists the entry. Omitted resolves across every
+     * marketplace: exactly one match installs, none falls back to the bundled
+     * official plugin of that name, and several are refused as ambiguous.
+     */
+    marketplace?: string;
+}
+/** Ask what an install would do before confirming it. */
+interface PluginCatalogInstallPlanArgs {
+    entryId: string;
+    marketplace?: string;
+    signal?: AbortSignal;
+}
+/** Add a marketplace by `https:` manifest URL, `git:<url>[@ref]`, or `path:<dir>`. */
+interface PluginMarketplaceAddArgs {
+    source: string;
+}
+interface PluginMarketplaceListArgs {
+    signal?: AbortSignal;
+}
+interface PluginMarketplaceRefreshArgs {
+    /** One marketplace to refresh; omitted refreshes every one of them. */
+    name?: string;
+    signal?: AbortSignal;
+}
+interface PluginMarketplaceRemoveArgs {
+    name: string;
 }
 interface PluginReloadArgs {
     pluginId?: string;
@@ -12315,22 +12437,40 @@ type PluginCheckUpdatesResult = PluginUpdateCheckEntry[];
 type PluginApplyUpdateResult = PluginApplyUpdateResult$1;
 type PluginCatalogStatusResult = PluginCatalogStatus;
 type PluginCatalogSearchResult = PluginCatalogSearchResult$1[];
+type PluginCatalogInstallPlanResult = PluginCatalogInstallPlan;
+type PluginMarketplaceListResult = PluginMarketplace[];
+type PluginMarketplaceAddResult = PluginMarketplace;
+type PluginMarketplaceRefreshResult = PluginMarketplaceRefreshResult$1[];
+interface PluginMarketplaceRemoveResult {
+    /** Installs whose provenance became `direct`; they keep running as before. */
+    convertedPluginIds: string[];
+}
 interface PluginCatalogSubmissionResult {
     /** BB's canonical browser form for proposing a plugin to the marketplace. */
     url: string;
 }
 interface PluginCatalogArea {
     install(args: PluginCatalogInstallArgs): Promise<PluginInstallResult>;
+    /** The true resolved source an install would use, before anything runs. */
+    installPlan(args: PluginCatalogInstallPlanArgs): Promise<PluginCatalogInstallPlanResult>;
     search(args: PluginCatalogSearchArgs): Promise<PluginCatalogSearchResult>;
     status(args?: PluginCatalogStatusArgs): Promise<PluginCatalogStatusResult>;
     /** Return the canonical marketplace submission form; submitting stays browser-owned. */
     submission(): PluginCatalogSubmissionResult;
+}
+/** Registered marketplaces. Adding one installs nothing; removing one uninstalls nothing. */
+interface PluginMarketplacesArea {
+    add(args: PluginMarketplaceAddArgs): Promise<PluginMarketplaceAddResult>;
+    list(args?: PluginMarketplaceListArgs): Promise<PluginMarketplaceListResult>;
+    refresh(args?: PluginMarketplaceRefreshArgs): Promise<PluginMarketplaceRefreshResult>;
+    remove(args: PluginMarketplaceRemoveArgs): Promise<PluginMarketplaceRemoveResult>;
 }
 interface PluginsArea {
     applyUpdate(args: PluginIdArgs): Promise<PluginApplyUpdateResult>;
     callRpc<TOutput>(args: PluginRpcArgs<TOutput>): Promise<TOutput>;
     checkUpdates(args?: PluginCheckUpdatesArgs): Promise<PluginCheckUpdatesResult>;
     catalog: PluginCatalogArea;
+    marketplaces: PluginMarketplacesArea;
     disable(args: PluginIdArgs): Promise<PluginDisableResult>;
     enable(args: PluginIdArgs): Promise<PluginEnableResult>;
     getSettings(args: PluginGetSettingsArgs): Promise<PluginGetSettingsResult>;

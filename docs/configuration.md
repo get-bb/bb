@@ -127,7 +127,7 @@ signal it, so a stale file left by a crash cannot stop an unrelated process.
 | `BB_INFERENCE`          | `bb-app config`                                    | Optional                | Primary server-side helper model in `provider/model` format. Defaults to `codex/gpt-5.6-luna`; the Codex helper route uses no reasoning.                                                                                                |
 | `BB_INFERENCE_FALLBACK` | `bb-app config`                                    | Optional                | Helper model used after a transient primary timeout, rate limit, or service-unavailable failure. Defaults to `codex/gpt-5.4-mini`.                                                                                                      |
 | `BB_TRANSCRIPTION`      | `bb-app config`                                    | Optional                | Voice transcription model in `provider/model` format. Defaults to `codex/gpt-transcribe`.                                                                                                                                               |
-| `BB_MARKETPLACE_URL`    | `bb-app env`, or environment                       | Startup-only testing    | Manifest URL of the BB Official plugin marketplace. Defaults to `https://getbb.app/marketplace/v1/marketplace.json`; point it at a local file server to test catalog refreshes. A full launcher or desktop app restart is required.     |
+| `BB_MARKETPLACE_URL`    | `bb-app env`, or environment                       | Startup-only testing    | Manifest URL of the BB Official plugin marketplace. Defaults to `https://getbb.app/marketplace/v1/marketplace.json`; point it at a local file server to test catalog refreshes. It sets only the reserved `bb-official` marketplace; other marketplaces are added at runtime with `bb marketplace add`. A full launcher or desktop app restart is required.     |
 | `BB_SERVER_URL`         | `bb-app config`                                    | Remote CLI/host use     | Server URL for standalone `bb` CLI and `host-daemon` commands on the current machine. The CLI defaults to `http://127.0.0.1:38886` when unset.                                                                                          |
 | `BB_SERVER_BIND_HOST`   | `bb-app env`, environment, or `--server-bind-host` | Startup-only            | Server listener host. Defaults to `127.0.0.1`; accepts only `127.0.0.1` or `0.0.0.0`. A full launcher or desktop app restart is required; until then, a previous `0.0.0.0` listener remains exposed. This is not a `bb-app config` key. |
 | `BB_SERVER_PORT`        | `bb-app env`, environment, or `--server-port`      | Startup-only            | HTTP listener port. Defaults to `38886`. A full launcher or desktop app restart is required after a persistent set or unset.                                                                                                            |
@@ -655,6 +655,9 @@ Plugin state lives under the data dir:
 <dataDir>/plugins/<id>/logs/       bb.log output (plugin.log, JSONL, rotated
                                    at 5MB; read with `bb plugin logs <id>`)
 <dataDir>/plugins/git/, npm/       Managed installs for git:/npm: sources
+<dataDir>/marketplaces/staging/    Throwaway checkouts a git: marketplace
+                                   refresh reads its manifest from, deleted
+                                   as soon as the catalog is stored
 <dataDir>/skills-generated/        Server-generated skills (the
                                    plugin-commands skill listing plugin CLI
                                    commands, injected into agent threads)
@@ -663,10 +666,17 @@ Plugin state lives under the data dir:
 BB's official plugins (GitHub, Docs, Memory, and Tasks) ship bundled
 inside the app and install from the local bundled copy — no network, no remote catalog.
 Discover them with `bb plugin search` or Extensions → Plugins → Browse; users
-cannot add, remove, or configure the official plugin set. Installed official
+cannot add, remove, or configure the bundled official plugin set. Installed official
 plugins are pinned to the bundled copy and update with BB app releases. Local
 path installs remain available directly through `bb plugin install ./path` or
 `path:...`, and direct `npm:`/`git:` installs stay supported.
+
+Marketplace catalogs and their validated icon bytes live in the bb database,
+not on disk. `bb marketplace add|list|refresh|remove` and Settings → Plugin
+marketplaces manage them; the reserved `bb-official` marketplace comes from
+`BB_MARKETPLACE_URL` and cannot be added or removed. Adding a marketplace
+installs nothing, and removing one keeps its installed plugins as direct
+installs.
 
 ### Multi-plugin repositories
 

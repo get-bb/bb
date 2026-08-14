@@ -3,7 +3,7 @@ kind: instruction
 title: bb Guide — Plugins
 summary: Command reference for installing, configuring, running, and authoring bb plugins and their contributed CLI commands.
 intent: Provide complete plugin command documentation plus an authoring walkthrough for agents and humans building bb plugins.
-editingNotes: Keep flags accurate against the CLI implementation (apps/cli/src/commands/plugin.ts) and the server plugin service; a CLI test asserts every `bb plugin` subcommand appears in this chapter. The full authoring reference is the bb-plugin-authoring builtin skill.
+editingNotes: Keep flags accurate against the CLI implementation (apps/cli/src/commands/plugin.ts, apps/cli/src/commands/marketplace.ts) and the server plugin service; a CLI test asserts every `bb plugin` and `bb marketplace` subcommand appears in this chapter. The full authoring reference is the bb-plugin-authoring builtin skill.
 ---
 Plugin commands
 
@@ -155,7 +155,8 @@ added/updated/unchanged counts.
   bb plugin submit               Print the intake form link for submitting a
                                  plugin to BB's marketplace
   bb plugin install <entry>      Install a bundled official plugin by name
-                                 (github, docs, memory, tasks), a Git repository
+                                 (github, docs, memory, tasks),
+                                 <entry-id>@<marketplace>, a Git repository
                                  URL, local path, builtin:<name>,
                                  git:<url>[@<ref|semver-range>], or
                                  npm:<package>[@<version|tag|range>]
@@ -235,6 +236,24 @@ added/updated/unchanged counts.
                                  (if it declares bb.app) and reload the
                                  plugin; Ctrl+C to stop
 
+  bb marketplace add <source>    Add a marketplace from an https manifest URL,
+                                 git:<url>[@<ref>], or path:<directory>. bb
+                                 validates the manifest, caches the catalog,
+                                 and fetches the entry icons. Adding a
+                                 marketplace installs nothing
+  bb marketplace list            Name, source, entry count, and last refresh of
+                                 every marketplace (--json for raw rows)
+  bb marketplace refresh [name]  Re-read one catalog, or every one of them.
+                                 Discovery metadata and icons only — a refresh
+                                 never installs, updates, or runs plugin code.
+                                 A failed refresh keeps the last catalog bb
+                                 validated and exits non-zero
+  bb marketplace remove <name>   Forget a marketplace. Its catalog rows and
+                                 cached icons are deleted; plugins installed
+                                 from it keep running as direct installs and
+                                 keep checking for updates from their recorded
+                                 source. bb-official cannot be removed
+
 Multi-plugin repositories
 
 One repository can hold several plugins. Each plugin directory stays an
@@ -291,6 +310,53 @@ only — it never installs, updates, or runs plugin code. Entry icons are
 fetched, validated, and served by the bb server, so the app never requests a
 marketplace URL. Installing an entry runs the normal install pipeline against
 its listed git or npm source and records which marketplace listed it.
+
+Third-party marketplaces
+
+Anyone can host a marketplace manifest. Add one with its https manifest URL,
+with git:<url>[@<ref>] (bb reads marketplace.json from the checkout), or with
+path:<directory> on the bb server's machine:
+
+  bb marketplace add https://plugins.acme.dev/marketplace.json
+  bb marketplace add git:github.com/acme/bb-marketplace@main
+  bb marketplace add path:/work/acme-marketplace
+
+The manifest's own `name` is the marketplace's identity, so adding refuses a
+name another marketplace already uses. `bb-official` is reserved: it cannot be
+added and cannot be removed. A git or path marketplace reads its icons from
+the checkout beside the manifest; an https one resolves relative icon URLs
+against the manifest URL. Either way the bb server fetches, validates, and
+serves the icons, so the app never requests a marketplace URL. A git
+marketplace is cloned into a throwaway checkout that bb deletes after reading
+it — the validated manifest and icon bytes are all bb keeps.
+
+Install an entry of a specific marketplace with <entry-id>@<marketplace>:
+
+  bb plugin install thread-hover-cards@acme-plugins
+
+A bare id resolves across every marketplace. Exactly one match installs, no
+match falls back to the bundled official plugin of that name, and several
+matches fail and list the id@marketplace choices. Every other source
+form — Git repository URLs, path:, npm:, git:, builtin:, and path-like
+syntax — is unchanged and still bypasses catalog resolution.
+
+Before an install from a marketplace other than bb-official, bb resolves and
+shows the true source: the npm package with its range or dist-tag, or the git
+URL with its ref or semver range, its subdirectory, and the exact release tag
+and commit that range currently lands on. The confirmation names the
+marketplace and the entry's author. `--yes` skips the prompt, not the
+resolution. The same disclosure appears in the app's install dialog, and
+Settings → Plugin marketplaces adds, refreshes, and removes marketplaces with
+the same server routes the CLI uses.
+
+Removing a marketplace never disturbs installed code. Each plugin it listed
+becomes a direct install that keeps its full source intent and exact
+resolution, so `bb plugin outdated` and `bb plugin update` keep working from
+the recorded source. Only the catalog rows and the cached icons are deleted.
+
+The Browse tab groups entries by marketplace with BB Official first, and by
+tag-derived sections inside each marketplace. Entry cards show the author, and
+entries from a marketplace other than bb-official name it.
 
 For direct git:/npm: installs, updates are manual: `bb plugin outdated`
 checks tracking sources and `bb plugin update` applies compatible candidates.

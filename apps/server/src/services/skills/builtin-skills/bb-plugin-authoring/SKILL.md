@@ -237,11 +237,69 @@ bb plugin install path:. --plugin notes
 entry name from it. If the repository is not itself a plugin, an install with
 neither flag fails and lists the entry names.
 
-BB has one maintained set of official plugins; users cannot add third-party
-catalogs. Official-plugin inclusion is a BB release decision, not part of the
-plugin authoring workflow: official plugins ship bundled inside the app itself
-and install from that local copy — no network fetch, no separate publish
-pipeline.
+### Publishing your own marketplace
+
+A marketplace is one `marketplace.json` file. It lists plugins with their
+store branding and their npm or git source; it never hosts plugin code, and
+installing an entry runs the same install pipeline a direct install runs.
+
+```json
+{
+  "$schema": "https://getbb.app/schemas/marketplace.schema.json",
+  "schemaVersion": 1,
+  "name": "acme-plugins",
+  "displayName": "Acme Plugins",
+  "description": "Plugins the Acme team maintains.",
+  "plugins": [
+    {
+      "id": "notes",
+      "displayName": "Notes",
+      "description": "Keep notes beside a thread.",
+      "icon": { "url": "./icons/notes.svg" },
+      "tags": ["notes", "interface"],
+      "author": { "name": "Acme", "github": "acme", "url": "https://acme.dev" },
+      "engines": { "bb": ">=0.0.34" },
+      "source": {
+        "git": {
+          "url": "https://github.com/acme/bb-plugins.git",
+          "subdir": "plugins/notes",
+          "range": "^1.0.0",
+          "tagPrefix": "notes/"
+        }
+      }
+    }
+  ]
+}
+```
+
+The schema is strict: an unknown field rejects the whole document, and the
+last catalog bb validated keeps serving. `name` is the marketplace's identity
+and must be unique on the user's machine; `bb-official` is reserved. `engines`
+may narrow a plugin manifest's ranges and never widen them. Icons are `.svg`,
+`.png`, or `.webp`, either an absolute https URL or a path relative to the
+manifest — bb fetches and validates them server-side and serves them from its
+own origin.
+
+Host it three ways, and users add whichever fits:
+
+```sh
+bb marketplace add https://plugins.acme.dev/marketplace.json
+bb marketplace add git:github.com/acme/bb-marketplace@main
+bb marketplace add path:/work/acme-marketplace
+```
+
+An https marketplace is re-read with a conditional request; a git one is
+cloned into a throwaway checkout each refresh, with `marketplace.json` and any
+relative icons read from the repository root. Prefer git tag ranges over
+pinned refs so a release reaches users without a catalog change. Before
+installing from a marketplace that is not `bb-official`, bb resolves and shows
+the true source — including the exact release tag and commit a range lands
+on — so keep your listed URL, subdirectory, and range honest.
+
+BB's own official plugins are separate: inclusion in the `bb-official`
+marketplace is a BB release decision, not part of the plugin authoring
+workflow, and the bundled official plugins ship inside the app itself and
+install from that local copy with no network fetch.
 
 ## The backend factory
 

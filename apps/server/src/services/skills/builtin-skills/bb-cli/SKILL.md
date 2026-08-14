@@ -741,9 +741,37 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     form (a public GitHub repo is required; submission happens in the browser,
     and there is no status to poll afterwards). Give the link to the user —
     the form asks for details only its author knows, including their email.
+- **Third-party marketplaces** (routes under `/api/v1/marketplaces`):
+  - `bb marketplace add <source>` — add a marketplace from an https manifest
+    URL, `git:<url>[@<ref>]` (bb reads `marketplace.json` from the checkout),
+    or `path:<directory>` on the bb server's machine. bb validates the
+    manifest, caches the catalog, and fetches its icons. **Adding a
+    marketplace installs nothing.** The manifest's own `name` is the
+    marketplace's identity, so a name collision is refused; `bb-official` is
+    reserved and can be neither added nor removed.
+  - `bb marketplace list [--json]` — name, source, entry count, last refresh.
+  - `bb marketplace refresh [name] [--json]` — re-read one catalog or every
+    one of them. Discovery metadata and icons only. A failed refresh keeps the
+    last catalog bb validated and exits non-zero.
+  - `bb marketplace remove <name> [--json]` — forget a marketplace. Its
+    catalog rows and cached icons are deleted; every plugin it listed keeps
+    running as a direct install with its full source intent and exact
+    resolution, so `bb plugin outdated`/`update` keep working from the
+    recorded source.
+  - Install a specific marketplace's entry with
+    `bb plugin install <entry-id>@<marketplace>`. A bare entry id resolves
+    across every marketplace: exactly one match installs, no match falls back
+    to the bundled official plugin of that name, and several matches fail and
+    list the `id@marketplace` choices.
+  - Installing from a marketplace other than `bb-official` first resolves and
+    prints the true source — npm package with its range or dist-tag, or git
+    URL with its ref or semver range, subdirectory, and the exact release tag
+    and commit that range currently lands on — plus the marketplace and the
+    entry's author. `--yes` skips the prompt, not the resolution.
 - Commands:
   - `bb plugin install <src>` — official plugin name (github, docs, memory,
-    tasks), HTTP(S) Git repository URL, local path, `builtin:<name>`,
+    tasks), `<entry-id>@<marketplace>`, HTTP(S) Git repository URL, local
+    path, `builtin:<name>`,
     `git:<url>[@<ref|semver-range>]`, or `npm:<package>[@<version|tag|range>]`
     (npm on PATH required for `npm:`). Repository URLs and prefixes `path:` /
     `npm:` / `git:` / `builtin:` skip official-plugin resolution. To pin or
