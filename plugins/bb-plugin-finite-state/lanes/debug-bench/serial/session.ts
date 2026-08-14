@@ -10,7 +10,12 @@ import {
   subscribeFlashCompleted,
   type FlashCompletedEvent,
 } from "../../authoring/build/flash.js";
-import { claimDevice, refreshClaim, releaseDevice } from "../registry/claims.js";
+import {
+  claimDevice,
+  DeviceClaimError,
+  refreshClaim,
+  releaseDevice,
+} from "../registry/claims.js";
 import type { BenchContext } from "../registry/enumerate.js";
 import type { BenchDeviceRecord } from "../registry/families.js";
 import { getDevice, type RegistryScope } from "../registry/store.js";
@@ -35,7 +40,11 @@ import {
   type SerialTranscriptOptions,
 } from "./transcript.js";
 
-export type SerialSessionState = "connected" | "reconnecting" | "closed" | "unconfigured";
+export type SerialSessionState =
+  | "connected"
+  | "reconnecting"
+  | "closed"
+  | "unconfigured";
 
 export interface SerialSessionRecord extends RegistryScope {
   sessionId: string;
@@ -149,7 +158,10 @@ function stringField(input: object, key: string): string {
   return value;
 }
 
-export function getSerialSession(db: Database.Database, input: object): SerialSessionRecord {
+export function getSerialSession(
+  db: Database.Database,
+  input: object,
+): SerialSessionRecord {
   initializeSerialStore(db);
   const projectId = stringField(input, "projectId");
   const projectVersionValue: unknown = Reflect.get(input, "projectVersionId");
@@ -157,16 +169,17 @@ export function getSerialSession(db: Database.Database, input: object): SerialSe
     throw new Error("INVALID_SERIAL_SESSION_PROJECT_VERSION_ID");
   }
   const sessionId = stringField(input, "sessionId");
-  const row = db.prepare<[string, string, string], SessionRow>(
-    `SELECT * FROM bench_serial_session
+  const row = db
+    .prepare<[string, string, string], SessionRow>(
+      `SELECT * FROM bench_serial_session
       WHERE project_id = ? AND project_version_id = ? AND session_id = ?`,
-  ).get(
-    projectId,
-    toStorageProjectVersionId(projectVersionValue),
-    sessionId,
-  );
+    )
+    .get(projectId, toStorageProjectVersionId(projectVersionValue), sessionId);
   if (!row) throw new Error(`SERIAL_SESSION_NOT_FOUND:${sessionId}`);
-  return sessionRecord(row);
+  const runtime = runtimeByDatabase.get(db);
+  return runtime
+    ? runtime.qualifyPersistedSession(sessionRecord(row))
+    : sessionRecord(row);
 }
 
 function sessionKey(scope: RegistryScope, deviceId: string): string {
@@ -178,9 +191,13 @@ function scopeKey(scope: RegistryScope): string {
 }
 
 function portFromDevice(device: BenchDeviceRecord): SerialPortRef {
-  if (device.kind !== "serial") throw new Error(`DEVICE_NOT_SERIAL:${device.deviceId}`);
+  if (device.kind !== "serial")
+    throw new Error(`DEVICE_NOT_SERIAL:${device.deviceId}`);
   if (device.stale) throw new Error(`SERIAL_DEVICE_STALE:${device.deviceId}`);
-  if (device.transport !== "local-usb" || !device.connection.startsWith("tty:")) {
+  if (
+    device.transport !== "local-usb" ||
+    !device.connection.startsWith("tty:")
+  ) {
     throw new Error(`SERIAL_TRANSPORT_UNSUPPORTED:${device.deviceId}`);
   }
   const portPath = device.connection.slice("tty:".length);
@@ -189,7 +206,9 @@ function portFromDevice(device: BenchDeviceRecord): SerialPortRef {
 }
 
 function boundedMessage(error: unknown): string {
-  return (error instanceof Error ? error.message : "Unknown serial failure").slice(0, 1000);
+  return (
+    error instanceof Error ? error.message : "Unknown serial failure"
+  ).slice(0, 1000);
 }
 
 function waitFor(ms: number, signal: AbortSignal): Promise<void> {
@@ -313,8 +332,9 @@ export class SerialSession {
     this.persistTimer = null;
     this.lastPersistAt = this.runtime.options.now().getTime();
     const record = this.record();
-    this.runtime.options.db.prepare(
-      `INSERT INTO bench_serial_session (
+    this.runtime.options.db
+      .prepare(
+        `INSERT INTO bench_serial_session (
          project_id, project_version_id, session_id, device_id, state, baud,
          latest_cursor, dropped_lines, opened_at, closed_at, message
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -324,19 +344,20 @@ export class SerialSession {
          dropped_lines = excluded.dropped_lines,
          closed_at = excluded.closed_at,
          message = excluded.message`,
-    ).run(
-      record.projectId,
-      toStorageProjectVersionId(record.projectVersionId),
-      record.sessionId,
-      record.deviceId,
-      record.state,
-      record.baud,
-      record.latestCursor,
-      record.droppedLines,
-      record.openedAt,
-      record.closedAt,
-      record.message,
-    );
+      )
+      .run(
+        record.projectId,
+        toStorageProjectVersionId(record.projectVersionId),
+        record.sessionId,
+        record.deviceId,
+        record.state,
+        record.baud,
+        record.latestCursor,
+        record.droppedLines,
+        record.openedAt,
+        record.closedAt,
+        record.message,
+      );
   }
 
   private schedulePersist(): void {
@@ -352,7 +373,10 @@ export class SerialSession {
     );
   }
 
-  private setState(state: SerialSessionState, message: string | null = null): void {
+  private setState(
+    state: SerialSessionState,
+    message: string | null = null,
+  ): void {
     this.stateValue = state;
     this.messageValue = message;
     if (state === "closed" || state === "unconfigured") {
@@ -406,14 +430,22 @@ export class SerialSession {
     const decoded = this.decoder.decode(chunk, { stream: true });
     const parts = `${this.partialLine}${decoded}`.split("\n");
     this.partialLine = parts.pop() ?? "";
-    for (const part of parts) this.appendLine("rx", part.endsWith("\r") ? part.slice(0, -1) : part);
-    while (Buffer.byteLength(this.partialLine, "utf8") > this.runtime.options.partialLineMaxBytes) {
-      let end = Math.min(this.partialLine.length, this.runtime.options.partialLineMaxBytes);
+    for (const part of parts)
+      this.appendLine("rx", part.endsWith("\r") ? part.slice(0, -1) : part);
+    while (
+      Buffer.byteLength(this.partialLine, "utf8") >
+      this.runtime.options.partialLineMaxBytes
+    ) {
+      let end = Math.min(
+        this.partialLine.length,
+        this.runtime.options.partialLineMaxBytes,
+      );
       while (
         end > 0 &&
         Buffer.byteLength(this.partialLine.slice(0, end), "utf8") >
           this.runtime.options.partialLineMaxBytes
-      ) end -= 1;
+      )
+        end -= 1;
       if (end === 0) break;
       this.appendLine("rx", this.partialLine.slice(0, end));
       this.partialLine = this.partialLine.slice(end);
@@ -423,11 +455,17 @@ export class SerialSession {
   private flushPartial(): void {
     const tail = `${this.partialLine}${this.decoder.decode()}`;
     this.partialLine = "";
-    if (tail.length > 0) this.appendLine("rx", tail.endsWith("\r") ? tail.slice(0, -1) : tail);
+    if (tail.length > 0)
+      this.appendLine("rx", tail.endsWith("\r") ? tail.slice(0, -1) : tail);
   }
 
   private beginReconnect(reason: string): void {
-    if (this.explicitClose || this.lifecycle.signal.aborted || this.reconnectTask) return;
+    if (
+      this.explicitClose ||
+      this.lifecycle.signal.aborted ||
+      this.reconnectTask
+    )
+      return;
     this.setState("reconnecting", reason);
     this.reconnectTask = this.reconnectLoop()
       .catch((error: unknown) => this.finishClosed(boundedMessage(error)))
@@ -437,13 +475,19 @@ export class SerialSession {
   }
 
   private async reconnectLoop(): Promise<void> {
-    for (let attempt = 0; attempt < this.runtime.options.reconnectAttempts; attempt += 1) {
+    for (
+      let attempt = 0;
+      attempt < this.runtime.options.reconnectAttempts;
+      attempt += 1
+    ) {
       const exponential = Math.min(
         this.runtime.options.reconnectMaxMs,
-        this.runtime.options.reconnectBaseMs * (2 ** attempt),
+        this.runtime.options.reconnectBaseMs * 2 ** attempt,
       );
-      const jitter = exponential * this.runtime.options.reconnectJitter *
-        ((this.runtime.options.random() * 2) - 1);
+      const jitter =
+        exponential *
+        this.runtime.options.reconnectJitter *
+        (this.runtime.options.random() * 2 - 1);
       const delay = Math.min(
         this.runtime.options.reconnectMaxMs,
         Math.max(0, Math.round(exponential + jitter)),
@@ -451,11 +495,16 @@ export class SerialSession {
       await this.runtime.options.sleep(delay, this.lifecycle.signal);
       if (this.lifecycle.signal.aborted || this.explicitClose) return;
       try {
-        refreshClaim(this.runtime.options.db, this.deviceId, this.holder, { scope: this.scope });
+        refreshClaim(this.runtime.options.db, this.deviceId, this.holder, {
+          scope: this.scope,
+        });
         await this.connectTransport();
         return;
       } catch (error) {
-        if (error instanceof SerialTransportError && error.code === "SERIAL_HELPER_UNCONFIGURED") {
+        if (
+          error instanceof SerialTransportError &&
+          error.code === "SERIAL_HELPER_UNCONFIGURED"
+        ) {
           await this.finishUnconfigured(error.message);
           return;
         }
@@ -470,7 +519,11 @@ export class SerialSession {
   }
 
   private async connectTransport(): Promise<void> {
-    const device = getDevice(this.runtime.options.db, this.scope, this.deviceId);
+    const device = getDevice(
+      this.runtime.options.db,
+      this.scope,
+      this.deviceId,
+    );
     if (!device) throw new Error(`DEVICE_NOT_FOUND:${this.deviceId}`);
     const transport = this.runtime.options.transportFactory();
     this.transport = transport;
@@ -478,9 +531,12 @@ export class SerialSession {
     transport.onClosed((reason) => {
       if (this.transport !== transport) return;
       this.transport = null;
-      void transport.close()
+      void transport
+        .close()
         .catch((error: unknown) => {
-          this.runtime.options.log?.warn(`Serial transport cleanup failed: ${boundedMessage(error)}`);
+          this.runtime.options.log?.warn(
+            `Serial transport cleanup failed: ${boundedMessage(error)}`,
+          );
         })
         .finally(() => this.beginReconnect(reason));
     });
@@ -508,7 +564,9 @@ export class SerialSession {
         );
         if (this.lifecycle.signal.aborted) return;
         try {
-          refreshClaim(this.runtime.options.db, this.deviceId, this.holder, { scope: this.scope });
+          refreshClaim(this.runtime.options.db, this.deviceId, this.holder, {
+            scope: this.scope,
+          });
         } catch (error) {
           this.beginReconnect(boundedMessage(error));
         }
@@ -519,12 +577,17 @@ export class SerialSession {
   }
 
   async open(initialHelper?: SerialHelperStatus): Promise<this> {
-    const helper = initialHelper ?? await this.runtime.options.helperStatus();
+    const helper = initialHelper ?? (await this.runtime.options.helperStatus());
     if (!helper.configured) {
-      this.setState("unconfigured", helper.message ?? "Python with pyserial is required.");
+      this.setState(
+        "unconfigured",
+        helper.message ?? "Python with pyserial is required.",
+      );
       return this;
     }
-    claimDevice(this.runtime.options.db, this.deviceId, this.holder, { scope: this.scope });
+    claimDevice(this.runtime.options.db, this.deviceId, this.holder, {
+      scope: this.scope,
+    });
     this.claimed = true;
     try {
       this.transcript = await openSerialTranscript({
@@ -538,7 +601,10 @@ export class SerialSession {
       this.startClaimRefresh();
       return this;
     } catch (error) {
-      if (error instanceof SerialTransportError && error.code === "SERIAL_HELPER_UNCONFIGURED") {
+      if (
+        error instanceof SerialTransportError &&
+        error.code === "SERIAL_HELPER_UNCONFIGURED"
+      ) {
         await this.finishUnconfigured(error.message);
         return this;
       }
@@ -547,7 +613,11 @@ export class SerialSession {
     }
   }
 
-  async read(input: { cursor?: number; filter?: string; maxLines: number }): Promise<SerialReadResult> {
+  async read(input: {
+    cursor?: number;
+    filter?: string;
+    maxLines: number;
+  }): Promise<SerialReadResult> {
     if (!input.filter) {
       return {
         ...this.buffer.read({ cursor: input.cursor, maxLines: input.maxLines }),
@@ -558,7 +628,10 @@ export class SerialSession {
       cursor: input.cursor,
       maxLines: Math.max(1, this.buffer.lineCount),
     });
-    const matchingIndexes = await filterSerialLines(input.filter, snapshot.lines);
+    const matchingIndexes = await filterSerialLines(
+      input.filter,
+      snapshot.lines,
+    );
     const lines: SerialReadResult["lines"] = [];
     let nextCursor = snapshot.nextCursor;
     for (let index = 0; index < snapshot.lines.length; index += 1) {
@@ -575,7 +648,11 @@ export class SerialSession {
 
   async write(data: string): Promise<{ bytes: number }> {
     if (this.stateValue !== "connected" || !this.transport) {
-      throw new Error(`SERIAL_SESSION_NOT_CONNECTED:${this.deviceId}`);
+      throw new SerialSessionError(
+        "SERIAL_SESSION_NOT_CONNECTED",
+        this.deviceId,
+        "The serial session is not connected. Wait for reconnection or connect a new session before sending.",
+      );
     }
     const encoded = new TextEncoder().encode(data);
     await this.transport.write(encoded);
@@ -587,9 +664,13 @@ export class SerialSession {
     if (!this.claimed) return;
     this.claimed = false;
     try {
-      releaseDevice(this.runtime.options.db, this.deviceId, this.holder, { scope: this.scope });
+      releaseDevice(this.runtime.options.db, this.deviceId, this.holder, {
+        scope: this.scope,
+      });
     } catch (error) {
-      this.runtime.options.log?.warn(`Serial claim release failed: ${boundedMessage(error)}`);
+      this.runtime.options.log?.warn(
+        `Serial claim release failed: ${boundedMessage(error)}`,
+      );
     }
   }
 
@@ -623,7 +704,10 @@ export class SerialSession {
     if (this.persistTimer) clearTimeout(this.persistTimer);
     this.persistTimer = null;
     this.lifecycle.abort();
-    if (this.stateValue === "unconfigured" && reason === "Plugin scope unloaded.") {
+    if (
+      this.stateValue === "unconfigured" &&
+      reason === "Plugin scope unloaded."
+    ) {
       this.persistNow();
       return this.record();
     }
@@ -641,8 +725,12 @@ interface ScopeRow {
   project_version_id: string;
 }
 
-interface PreferenceRow { last_device_id: string }
-interface AssociationRow { serial_device_id: string }
+interface PreferenceRow {
+  last_device_id: string;
+}
+interface AssociationRow {
+  serial_device_id: string;
+}
 interface AutoConnectRow {
   state: SerialSessionState;
   flashed_device_id: string;
@@ -652,6 +740,24 @@ interface AutoConnectRow {
 }
 
 const runtimeByDatabase = new WeakMap<Database.Database, SerialRuntime>();
+const STALE_SESSION_MESSAGE =
+  "The serial session ended when the plugin stopped unexpectedly. Connect to start a new session.";
+
+export type SerialSessionErrorCode =
+  | "SERIAL_SESSION_ALREADY_CLOSED"
+  | "SERIAL_SESSION_NOT_CONNECTED"
+  | "SERIAL_SESSION_NOT_OPEN";
+
+export class SerialSessionError extends Error {
+  constructor(
+    readonly code: SerialSessionErrorCode,
+    readonly deviceId: string,
+    message: string,
+  ) {
+    super(`${code}: ${message}`);
+    this.name = "SerialSessionError";
+  }
+}
 
 export class SerialRuntime {
   readonly options: ResolvedRuntimeOptions;
@@ -663,8 +769,10 @@ export class SerialRuntime {
     initializeSerialStore(options.db);
     this.options = {
       ...options,
-      artifactRoot: options.artifactRoot ?? join(dirname(options.db.name), ".fs-bench"),
-      transportFactory: options.transportFactory ?? (() => createSerialTransport()),
+      artifactRoot:
+        options.artifactRoot ?? join(dirname(options.db.name), ".fs-bench"),
+      transportFactory:
+        options.transportFactory ?? (() => createSerialTransport()),
       helperStatus: options.helperStatus ?? (() => detectSerialHelper()),
       now: options.now ?? (() => new Date()),
       random: options.random ?? Math.random,
@@ -679,9 +787,12 @@ export class SerialRuntime {
       partialLineMaxBytes: options.partialLineMaxBytes ?? 64 * 1024,
     };
     runtimeByDatabase.set(options.db, this);
-    const scopes = options.db.prepare<[], ScopeRow>(
-      `SELECT DISTINCT project_id, project_version_id FROM bench_device`,
-    ).all();
+    const scopes = options.db
+      .prepare<
+        [],
+        ScopeRow
+      >(`SELECT DISTINCT project_id, project_version_id FROM bench_device`)
+      .all();
     for (const row of scopes) {
       this.observeScope({
         projectId: row.project_id,
@@ -692,15 +803,28 @@ export class SerialRuntime {
 
   observeScope(scope: RegistryScope): void {
     if (this.disposed || this.subscriptions.has(scopeKey(scope))) return;
-    const dispose = subscribeFlashCompleted({ db: this.options.db, ...scope }, (event) => {
-      void this.autoConnect(scope, event).catch((error: unknown) => {
-        this.recordAutoConnect(scope, event.device, null, "closed", boundedMessage(error));
-      });
-    });
+    const dispose = subscribeFlashCompleted(
+      { db: this.options.db, ...scope },
+      (event) => {
+        void this.autoConnect(scope, event).catch((error: unknown) => {
+          this.recordAutoConnect(
+            scope,
+            event.device,
+            null,
+            "closed",
+            boundedMessage(error),
+          );
+        });
+      },
+    );
     this.subscriptions.set(scopeKey(scope), dispose);
   }
 
-  async open(scope: RegistryScope, deviceId: string, baud = 115_200): Promise<SerialSession> {
+  async open(
+    scope: RegistryScope,
+    deviceId: string,
+    baud = 115_200,
+  ): Promise<SerialSession> {
     if (this.disposed) throw new Error("SERIAL_RUNTIME_DISPOSED");
     this.observeScope(scope);
     const device = getDevice(this.options.db, scope, deviceId);
@@ -709,25 +833,31 @@ export class SerialRuntime {
     if (helper.configured) portFromDevice(device);
     const key = sessionKey(scope, deviceId);
     const existing = this.sessions.get(key);
-    if (existing && existing.state !== "closed" && existing.state !== "unconfigured") {
+    if (
+      existing &&
+      existing.state !== "closed" &&
+      existing.state !== "unconfigured"
+    ) {
       return existing;
     }
     if (existing) await existing.close("Replaced by a new session.");
     const session = new SerialSession(this, scope, deviceId, baud);
     this.sessions.set(key, session);
-    this.options.db.prepare(
-      `INSERT INTO bench_serial_preference (
+    this.options.db
+      .prepare(
+        `INSERT INTO bench_serial_preference (
          project_id, project_version_id, last_device_id, updated_at
        ) VALUES (?, ?, ?, ?)
        ON CONFLICT(project_id, project_version_id) DO UPDATE SET
          last_device_id = excluded.last_device_id,
          updated_at = excluded.updated_at`,
-    ).run(
-      scope.projectId,
-      toStorageProjectVersionId(scope.projectVersionId),
-      deviceId,
-      this.options.now().toISOString(),
-    );
+      )
+      .run(
+        scope.projectId,
+        toStorageProjectVersionId(scope.projectVersionId),
+        deviceId,
+        this.options.now().toISOString(),
+      );
     await session.open(helper);
     return session;
   }
@@ -735,17 +865,102 @@ export class SerialRuntime {
   current(scope: RegistryScope, deviceId: string): SerialSessionRecord | null {
     const active = this.sessions.get(sessionKey(scope, deviceId));
     if (active) return active.record();
-    const row = this.options.db.prepare<[string, string, string], SessionRow>(
-      `SELECT * FROM bench_serial_session
+    const row = this.options.db
+      .prepare<[string, string, string], SessionRow>(
+        `SELECT * FROM bench_serial_session
         WHERE project_id = ? AND project_version_id = ? AND device_id = ?
         ORDER BY opened_at DESC LIMIT 1`,
-    ).get(scope.projectId, toStorageProjectVersionId(scope.projectVersionId), deviceId);
-    return row ? sessionRecord(row) : null;
+      )
+      .get(
+        scope.projectId,
+        toStorageProjectVersionId(scope.projectVersionId),
+        deviceId,
+      );
+    if (!row) return null;
+    return this.qualifyPersistedSession(sessionRecord(row));
+  }
+
+  qualifyPersistedSession(record: SerialSessionRecord): SerialSessionRecord {
+    const active = this.sessions.get(sessionKey(record, record.deviceId));
+    if (active?.record().sessionId === record.sessionId) return active.record();
+    if (record.state !== "connected" && record.state !== "reconnecting") {
+      return record;
+    }
+
+    const closedAt = this.options.now().toISOString();
+    let transitioned = false;
+    const qualified = this.options.db.transaction((): SerialSessionRecord => {
+      const changed = this.options.db
+        .prepare(
+          `UPDATE bench_serial_session
+            SET state = 'closed', closed_at = ?, message = ?
+          WHERE project_id = ? AND project_version_id = ? AND session_id = ?
+            AND state IN ('connected', 'reconnecting')`,
+        )
+        .run(
+          closedAt,
+          STALE_SESSION_MESSAGE,
+          record.projectId,
+          toStorageProjectVersionId(record.projectVersionId),
+          record.sessionId,
+        ).changes;
+      if (changed === 0) {
+        const latest = this.options.db
+          .prepare<[string, string, string], SessionRow>(
+            `SELECT * FROM bench_serial_session
+            WHERE project_id = ? AND project_version_id = ? AND session_id = ?`,
+          )
+          .get(
+            record.projectId,
+            toStorageProjectVersionId(record.projectVersionId),
+            record.sessionId,
+          );
+        if (!latest)
+          throw new Error(`SERIAL_SESSION_NOT_FOUND:${record.sessionId}`);
+        return sessionRecord(latest);
+      }
+
+      transitioned = true;
+      try {
+        releaseDevice(
+          this.options.db,
+          record.deviceId,
+          `serial-session:${record.sessionId}`,
+          { scope: record },
+        );
+      } catch (error) {
+        if (
+          !(error instanceof DeviceClaimError) ||
+          (error.code !== "DEVICE_NOT_FOUND" &&
+            error.code !== "DEVICE_NOT_HELD")
+        ) {
+          throw error;
+        }
+      }
+      return {
+        ...record,
+        state: "closed",
+        closedAt,
+        message: STALE_SESSION_MESSAGE,
+      };
+    })();
+    if (transitioned) {
+      this.options.publish("serial:changed", {
+        deviceId: record.deviceId,
+        cursor: record.latestCursor,
+      });
+    }
+    return qualified;
   }
 
   async read(
     scope: RegistryScope,
-    request: { device: string; cursor?: number; filter?: string; maxLines: number },
+    request: {
+      device: string;
+      cursor?: number;
+      filter?: string;
+      maxLines: number;
+    },
   ): Promise<SerialReadResult> {
     const session = this.sessions.get(sessionKey(scope, request.device));
     if (!session) {
@@ -759,31 +974,54 @@ export class SerialRuntime {
     return session.read(request);
   }
 
-  async send(scope: RegistryScope, deviceId: string, data: string): Promise<{ bytes: number }> {
+  async send(
+    scope: RegistryScope,
+    deviceId: string,
+    data: string,
+  ): Promise<{ bytes: number }> {
     const session = this.sessions.get(sessionKey(scope, deviceId));
-    if (!session) throw new Error(`SERIAL_SESSION_NOT_OPEN:${deviceId}`);
+    if (!session) {
+      throw new SerialSessionError(
+        "SERIAL_SESSION_NOT_OPEN",
+        deviceId,
+        "The serial session is no longer open. Connect to start a new session before sending.",
+      );
+    }
     return session.write(data);
   }
 
-  async close(scope: RegistryScope, deviceId: string): Promise<SerialSessionRecord> {
+  async close(
+    scope: RegistryScope,
+    deviceId: string,
+  ): Promise<SerialSessionRecord> {
     const session = this.sessions.get(sessionKey(scope, deviceId));
-    if (!session) throw new Error(`SERIAL_SESSION_NOT_OPEN:${deviceId}`);
-    return session.close();
+    if (session) return session.close();
+    const persisted = this.current(scope, deviceId);
+    if (persisted) return persisted;
+    throw new SerialSessionError(
+      "SERIAL_SESSION_ALREADY_CLOSED",
+      deviceId,
+      "The serial session is already closed. Connect to start a new session.",
+    );
   }
 
   autoConnectStatus(scope: RegistryScope): SerialAutoConnectStatus | null {
-    const row = this.options.db.prepare<[string, string], AutoConnectRow>(
-      `SELECT state, flashed_device_id, serial_device_id, message, updated_at
+    const row = this.options.db
+      .prepare<[string, string], AutoConnectRow>(
+        `SELECT state, flashed_device_id, serial_device_id, message, updated_at
          FROM bench_serial_auto_connect
         WHERE project_id = ? AND project_version_id = ?`,
-    ).get(scope.projectId, toStorageProjectVersionId(scope.projectVersionId));
-    return row ? {
-      state: row.state,
-      flashedDeviceId: row.flashed_device_id,
-      serialDeviceId: row.serial_device_id,
-      message: row.message,
-      updatedAt: row.updated_at,
-    } : null;
+      )
+      .get(scope.projectId, toStorageProjectVersionId(scope.projectVersionId));
+    return row
+      ? {
+          state: row.state,
+          flashedDeviceId: row.flashed_device_id,
+          serialDeviceId: row.serial_device_id,
+          message: row.message,
+          updatedAt: row.updated_at,
+        }
+      : null;
   }
 
   private recordAutoConnect(
@@ -793,8 +1031,9 @@ export class SerialRuntime {
     state: SerialSessionState,
     message: string | null,
   ): void {
-    this.options.db.prepare(
-      `INSERT INTO bench_serial_auto_connect (
+    this.options.db
+      .prepare(
+        `INSERT INTO bench_serial_auto_connect (
          project_id, project_version_id, state, flashed_device_id,
          serial_device_id, message, updated_at
        ) VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -804,54 +1043,80 @@ export class SerialRuntime {
          serial_device_id = excluded.serial_device_id,
          message = excluded.message,
          updated_at = excluded.updated_at`,
-    ).run(
-      scope.projectId,
-      toStorageProjectVersionId(scope.projectVersionId),
-      state,
-      flashedDeviceId,
-      serialDeviceId,
-      message,
-      this.options.now().toISOString(),
-    );
-    this.options.publish("serial:changed", { deviceId: serialDeviceId ?? flashedDeviceId, cursor: 0 });
+      )
+      .run(
+        scope.projectId,
+        toStorageProjectVersionId(scope.projectVersionId),
+        state,
+        flashedDeviceId,
+        serialDeviceId,
+        message,
+        this.options.now().toISOString(),
+      );
+    this.options.publish("serial:changed", {
+      deviceId: serialDeviceId ?? flashedDeviceId,
+      cursor: 0,
+    });
   }
 
   private resolveAutoConnectDevice(
     scope: RegistryScope,
     event: FlashCompletedEvent,
   ): BenchDeviceRecord | null {
-    const association = this.options.db.prepare<[string, string, string], AssociationRow>(
-      `SELECT serial_device_id FROM bench_serial_association
+    const association = this.options.db
+      .prepare<[string, string, string], AssociationRow>(
+        `SELECT serial_device_id FROM bench_serial_association
         WHERE project_id = ? AND project_version_id = ? AND flashed_device_id = ?`,
-    ).get(scope.projectId, toStorageProjectVersionId(scope.projectVersionId), event.device);
+      )
+      .get(
+        scope.projectId,
+        toStorageProjectVersionId(scope.projectVersionId),
+        event.device,
+      );
     if (association) {
-      const associated = getDevice(this.options.db, scope, association.serial_device_id);
+      const associated = getDevice(
+        this.options.db,
+        scope,
+        association.serial_device_id,
+      );
       if (associated?.kind === "serial") return associated;
       return null;
     }
-    const serialDevices = this.options.db.prepare<[string, string, string, string], { device_id: string }>(
-      `SELECT device_id FROM bench_device
+    const serialDevices = this.options.db
+      .prepare<[string, string, string, string], { device_id: string }>(
+        `SELECT device_id FROM bench_device
         WHERE project_id = ? AND project_version_id = ? AND kind = 'serial'
           AND (device_id = ? OR connection = ?)
         LIMIT 1`,
-    ).get(
-      scope.projectId,
-      toStorageProjectVersionId(scope.projectVersionId),
-      event.device,
-      event.device,
-    );
-    if (serialDevices) return getDevice(this.options.db, scope, serialDevices.device_id);
-    const preference = this.options.db.prepare<[string, string], PreferenceRow>(
-      `SELECT last_device_id FROM bench_serial_preference
+      )
+      .get(
+        scope.projectId,
+        toStorageProjectVersionId(scope.projectVersionId),
+        event.device,
+        event.device,
+      );
+    if (serialDevices)
+      return getDevice(this.options.db, scope, serialDevices.device_id);
+    const preference = this.options.db
+      .prepare<[string, string], PreferenceRow>(
+        `SELECT last_device_id FROM bench_serial_preference
         WHERE project_id = ? AND project_version_id = ?`,
-    ).get(scope.projectId, toStorageProjectVersionId(scope.projectVersionId));
+      )
+      .get(scope.projectId, toStorageProjectVersionId(scope.projectVersionId));
     if (!preference) return null;
-    const lastUsed = getDevice(this.options.db, scope, preference.last_device_id);
+    const lastUsed = getDevice(
+      this.options.db,
+      scope,
+      preference.last_device_id,
+    );
     if (lastUsed?.kind === "serial" && !lastUsed.stale) return lastUsed;
     return null;
   }
 
-  private async autoConnect(scope: RegistryScope, event: FlashCompletedEvent): Promise<void> {
+  private async autoConnect(
+    scope: RegistryScope,
+    event: FlashCompletedEvent,
+  ): Promise<void> {
     const device = this.resolveAutoConnectDevice(scope, event);
     if (!device) {
       this.recordAutoConnect(
@@ -864,12 +1129,28 @@ export class SerialRuntime {
       return;
     }
     const existing = this.sessions.get(sessionKey(scope, device.deviceId));
-    if (existing && existing.state !== "closed" && existing.state !== "unconfigured") {
-      this.recordAutoConnect(scope, event.device, device.deviceId, existing.state, null);
+    if (
+      existing &&
+      existing.state !== "closed" &&
+      existing.state !== "unconfigured"
+    ) {
+      this.recordAutoConnect(
+        scope,
+        event.device,
+        device.deviceId,
+        existing.state,
+        null,
+      );
       return;
     }
     const session = await this.open(scope, device.deviceId);
-    this.recordAutoConnect(scope, event.device, device.deviceId, session.state, session.record().message);
+    this.recordAutoConnect(
+      scope,
+      event.device,
+      device.deviceId,
+      session.state,
+      session.record().message,
+    );
   }
 
   async dispose(): Promise<void> {
@@ -877,13 +1158,20 @@ export class SerialRuntime {
     this.disposed = true;
     for (const dispose of this.subscriptions.values()) dispose();
     this.subscriptions.clear();
-    await Promise.all([...this.sessions.values()].map((session) => session.close("Plugin scope unloaded.")));
+    await Promise.all(
+      [...this.sessions.values()].map((session) =>
+        session.close("Plugin scope unloaded."),
+      ),
+    );
     this.sessions.clear();
-    if (runtimeByDatabase.get(this.options.db) === this) runtimeByDatabase.delete(this.options.db);
+    if (runtimeByDatabase.get(this.options.db) === this)
+      runtimeByDatabase.delete(this.options.db);
   }
 }
 
-export function createSerialRuntime(options: SerialRuntimeOptions): SerialRuntime {
+export function createSerialRuntime(
+  options: SerialRuntimeOptions,
+): SerialRuntime {
   return new SerialRuntime(options);
 }
 
@@ -913,7 +1201,8 @@ export function associateSerialDevice(
   const flashed = getDevice(db, scope, flashedDeviceId);
   const serial = getDevice(db, scope, serialDeviceId);
   if (!flashed) throw new Error(`DEVICE_NOT_FOUND:${flashedDeviceId}`);
-  if (!serial || serial.kind !== "serial") throw new Error(`DEVICE_NOT_SERIAL:${serialDeviceId}`);
+  if (!serial || serial.kind !== "serial")
+    throw new Error(`DEVICE_NOT_SERIAL:${serialDeviceId}`);
   db.prepare(
     `INSERT INTO bench_serial_association (
        project_id, project_version_id, flashed_device_id, serial_device_id, updated_at

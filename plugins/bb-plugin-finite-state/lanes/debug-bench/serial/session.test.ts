@@ -2,11 +2,18 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
+import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { PluginContext } from "../../../lib/context.js";
 import { MIGRATIONS } from "../../../lib/store/schema.js";
-import { confirmationFixture, createFixture, type AuthoringFixture } from "../../authoring/build/test-fixture.js";
+import {
+  confirmationFixture,
+  createFixture,
+  type AuthoringFixture,
+} from "../../authoring/build/test-fixture.js";
 import { runBuild } from "../../authoring/build/runner.js";
 import { runFlash } from "../../authoring/build/flash.js";
+import { registerDebugBench } from "../register.js";
 import { listClaimEvents } from "../registry/claims.js";
 import { recordFamilyStatus, upsertCandidate } from "../registry/store.js";
 import { associateSerialDevice, createSerialRuntime } from "./session.js";
@@ -14,26 +21,44 @@ import type { SerialPortRef, SerialTransport } from "./transport.js";
 
 class FakeTransport implements SerialTransport {
   constructor(private readonly openFailure: string | null = null) {}
-  readonly open = vi.fn(async (_port: SerialPortRef, _options: { baud: number }) => {
-    if (this.openFailure) throw new Error(this.openFailure);
-  });
+  readonly open = vi.fn(
+    async (_port: SerialPortRef, _options: { baud: number }) => {
+      if (this.openFailure) throw new Error(this.openFailure);
+    },
+  );
   readonly write = vi.fn(async (_data: Uint8Array) => undefined);
   readonly close = vi.fn(async () => undefined);
   private data: (chunk: Uint8Array) => void = () => undefined;
   private closed: (reason: string) => void = () => undefined;
-  onData(handler: (chunk: Uint8Array) => void): void { this.data = handler; }
-  onClosed(handler: (reason: string) => void): void { this.closed = handler; }
-  emit(text: string): void { this.data(new TextEncoder().encode(text)); }
-  disconnect(reason: string): void { this.closed(reason); }
+  onData(handler: (chunk: Uint8Array) => void): void {
+    this.data = handler;
+  }
+  onClosed(handler: (reason: string) => void): void {
+    this.closed = handler;
+  }
+  emit(text: string): void {
+    this.data(new TextEncoder().encode(text));
+  }
+  disconnect(reason: string): void {
+    this.closed(reason);
+  }
 }
 
 const databases: Database.Database[] = [];
 const directories: string[] = [];
 const fixtures: AuthoringFixture[] = [];
+const hosts: Array<ReturnType<typeof createFakePluginHost>> = [];
 
 afterEach(async () => {
+  await Promise.all(
+    hosts.splice(0).map((host) => host.harness.lifecycle.dispose()),
+  );
   for (const db of databases.splice(0)) db.close();
-  await Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true })));
+  await Promise.all(
+    directories
+      .splice(0)
+      .map((path) => rm(path, { recursive: true, force: true })),
+  );
   await Promise.all(fixtures.splice(0).map((fixture) => fixture.cleanup()));
 });
 
@@ -55,13 +80,20 @@ async function root(): Promise<string> {
 const scope = { projectId: "project-a", projectVersionId: "version-a" };
 
 function seedSerial(db: Database.Database, identity = "SERIAL-A"): string {
-  return upsertCandidate(db, scope, "serial-ports", "serial", {
-    stableIdentity: identity,
-    make: "Acme",
-    model: "UART",
-    connection: `/dev/${identity}`.replace("/dev/", "tty:/dev/"),
-    transport: "local-usb",
-  }, "2026-08-13T12:00:00.000Z").deviceId;
+  return upsertCandidate(
+    db,
+    scope,
+    "serial-ports",
+    "serial",
+    {
+      stableIdentity: identity,
+      make: "Acme",
+      model: "UART",
+      connection: `/dev/${identity}`.replace("/dev/", "tty:/dev/"),
+      transport: "local-usb",
+    },
+    "2026-08-13T12:00:00.000Z",
+  ).deviceId;
 }
 
 describe("serial session lifecycle", () => {
@@ -96,7 +128,9 @@ describe("serial session lifecycle", () => {
     });
     const session = await runtime.open(scope, deviceId);
     transports[0]!.emit("one\ntwo\nthree\nfour\n");
-    await expect(session.read({ cursor: 0, maxLines: 10 })).resolves.toMatchObject({
+    await expect(
+      session.read({ cursor: 0, maxLines: 10 }),
+    ).resolves.toMatchObject({
       state: "connected",
       gaps: [{ dropped: 1 }],
       lines: [{ text: "two" }, { text: "three" }, { text: "four" }],
@@ -111,8 +145,11 @@ describe("serial session lifecycle", () => {
     transports[1]!.disconnect("helper died after close");
     await Promise.resolve();
     expect(transports).toHaveLength(2);
-    expect(listClaimEvents(db, deviceId).filter((event) => event.reason === "released"))
-      .toHaveLength(1);
+    expect(
+      listClaimEvents(db, deviceId).filter(
+        (event) => event.reason === "released",
+      ),
+    ).toHaveLength(1);
     await runtime.dispose();
   });
 
@@ -139,25 +176,167 @@ describe("serial session lifecycle", () => {
       db,
       artifactRoot: await root(),
       publish: () => undefined,
-      helperStatus: async () => ({ configured: false, message: "pyserial missing" }),
+      helperStatus: async () => ({
+        configured: false,
+        message: "pyserial missing",
+      }),
       transportFactory,
     });
     const session = await runtime.open(scope, deviceId);
-    expect(session.record()).toMatchObject({ state: "unconfigured", message: "pyserial missing" });
+    expect(session.record()).toMatchObject({
+      state: "unconfigured",
+      message: "pyserial missing",
+    });
     await runtime.dispose();
     const reloaded = createSerialRuntime({
       db,
       artifactRoot: await root(),
       publish: () => undefined,
-      helperStatus: async () => ({ configured: false, message: "pyserial missing" }),
+      helperStatus: async () => ({
+        configured: false,
+        message: "pyserial missing",
+      }),
     });
-    await expect(reloaded.read(scope, { device: deviceId, maxLines: 10 })).resolves.toMatchObject({
+    await expect(
+      reloaded.read(scope, { device: deviceId, maxLines: 10 }),
+    ).resolves.toMatchObject({
       state: "unconfigured",
       lines: [],
     });
     expect(listClaimEvents(db, deviceId)).toEqual([]);
     expect(transportFactory).not.toHaveBeenCalled();
     await reloaded.dispose();
+  });
+
+  it("invalidates a connected row left by an ungraceful runtime exit", async () => {
+    const db = database();
+    const deviceId = seedSerial(db);
+    const firstRuntime = createSerialRuntime({
+      db,
+      artifactRoot: await root(),
+      publish: () => undefined,
+      helperStatus: async () => ({ configured: true, message: null }),
+      transportFactory: () => new FakeTransport(),
+      claimRefreshMs: 1_000_000,
+    });
+    await firstRuntime.open(scope, deviceId);
+    expect(firstRuntime.current(scope, deviceId)?.state).toBe("connected");
+
+    // Deliberately do not dispose the first runtime: this models kill -9, where
+    // SQLite survives but the transport/process and in-memory session do not.
+    const publish = vi.fn();
+    const restartedRuntime = createSerialRuntime({
+      db,
+      artifactRoot: await root(),
+      publish,
+      helperStatus: async () => ({ configured: true, message: null }),
+      transportFactory: () => new FakeTransport(),
+      claimRefreshMs: 1_000_000,
+    });
+
+    const recovered = restartedRuntime.current(scope, deviceId);
+    expect(recovered).toMatchObject({
+      state: "closed",
+      closedAt: expect.any(String),
+      message: expect.stringContaining("Connect to start a new session"),
+    });
+    expect(restartedRuntime.current(scope, deviceId)).toEqual(recovered);
+    expect(publish).toHaveBeenCalledOnce();
+    await expect(restartedRuntime.close(scope, deviceId)).resolves.toEqual(
+      recovered,
+    );
+    expect(
+      db
+        .prepare<
+          [string],
+          { claimed_by: string | null }
+        >(`SELECT claimed_by FROM bench_device WHERE device_id = ?`)
+        .get(deviceId)?.claimed_by,
+    ).toBeNull();
+
+    await expect(restartedRuntime.open(scope, deviceId)).resolves.toMatchObject(
+      {
+        state: "connected",
+      },
+    );
+    expect(restartedRuntime.current(scope, deviceId)).toMatchObject({
+      state: "connected",
+      message: null,
+    });
+
+    await restartedRuntime.dispose();
+    await firstRuntime.dispose();
+  });
+
+  it("returns an actionable typed error when send has no live session", async () => {
+    const db = database();
+    const deviceId = seedSerial(db);
+    const runtime = createSerialRuntime({
+      db,
+      artifactRoot: await root(),
+      publish: () => undefined,
+      helperStatus: async () => ({ configured: true, message: null }),
+    });
+
+    await expect(runtime.send(scope, deviceId, "AT\n")).rejects.toMatchObject({
+      name: "SerialSessionError",
+      code: "SERIAL_SESSION_NOT_OPEN",
+      deviceId,
+      message: expect.stringContaining("Connect to start a new session"),
+    });
+    await runtime.dispose();
+  });
+
+  it("liveness-qualifies the frozen registered session read", async () => {
+    const db = database();
+    const deviceId = seedSerial(db);
+    const firstRuntime = createSerialRuntime({
+      db,
+      artifactRoot: await root(),
+      publish: () => undefined,
+      helperStatus: async () => ({ configured: true, message: null }),
+      transportFactory: () => new FakeTransport(),
+      claimRefreshMs: 1_000_000,
+    });
+    const staleSession = await firstRuntime.open(scope, deviceId);
+
+    const host = createFakePluginHost({
+      pluginId: "fs161-frozen-session-read",
+    });
+    hosts.push(host);
+    const services = new Map<string, unknown>();
+    const context: PluginContext = {
+      bb: host.bb,
+      log: host.bb.log,
+      db: () => db,
+      service<T>(key: string, factory: () => T): T {
+        if (!services.has(key)) services.set(key, factory());
+        return services.get(key) as T;
+      },
+    };
+    registerDebugBench(host.bb, context);
+
+    await expect(
+      host.harness.behavior.callRpc("benchDevSerialSessionGet", {
+        ...scope,
+        sessionId: staleSession.sessionId,
+      }),
+    ).resolves.toMatchObject({
+      sessionId: staleSession.sessionId,
+      state: "closed",
+      closedAt: expect.any(String),
+      message: expect.stringContaining("Connect to start a new session"),
+    });
+    expect(
+      db
+        .prepare<
+          [string],
+          { claimed_by: string | null }
+        >(`SELECT claimed_by FROM bench_device WHERE device_id = ?`)
+        .get(deviceId)?.claimed_by,
+    ).toBeNull();
+
+    await firstRuntime.dispose();
   });
 
   it("caps reconnect backoff, closes after exhaustion, and releases its claim", async () => {
@@ -196,30 +375,55 @@ describe("serial session lifecycle", () => {
     await vi.waitFor(() => expect(session.state).toBe("closed"));
     expect(delays.filter((delay) => delay < 1_000_000)).toEqual([10, 20, 20]);
     expect(session.record().message).toContain("exhausted");
-    expect(listClaimEvents(db, deviceId).filter((event) => event.reason === "released"))
-      .toHaveLength(1);
+    expect(
+      listClaimEvents(db, deviceId).filter(
+        (event) => event.reason === "released",
+      ),
+    ).toHaveLength(1);
     await runtime.dispose();
   });
 
   it("auto-connects only to the identity-associated port after scoped flash and no-ops when open", async () => {
     const fx = await createFixture({ confirmationValid: true });
     fixtures.push(fx);
-    const serialScope = { projectId: fx.ctx.projectId, projectVersionId: fx.ctx.projectVersionId };
-    const flashedDeviceId = upsertCandidate(fx.ctx.db, serialScope, "probe-rs", "probe", {
-      stableIdentity: "probe-a",
-      make: "Acme",
-      model: "Probe",
-      connection: "usb:probe-a",
-      transport: "local-usb",
-    }, "2026-08-13T12:00:00.000Z").deviceId;
-    const serialDeviceId = upsertCandidate(fx.ctx.db, serialScope, "serial-ports", "serial", {
-      stableIdentity: "serial-a",
-      make: "Acme",
-      model: "UART",
-      connection: "tty:/dev/serial-a",
-      transport: "local-usb",
-    }, "2026-08-13T12:00:00.000Z").deviceId;
-    associateSerialDevice(fx.ctx.db, serialScope, flashedDeviceId, serialDeviceId);
+    const serialScope = {
+      projectId: fx.ctx.projectId,
+      projectVersionId: fx.ctx.projectVersionId,
+    };
+    const flashedDeviceId = upsertCandidate(
+      fx.ctx.db,
+      serialScope,
+      "probe-rs",
+      "probe",
+      {
+        stableIdentity: "probe-a",
+        make: "Acme",
+        model: "Probe",
+        connection: "usb:probe-a",
+        transport: "local-usb",
+      },
+      "2026-08-13T12:00:00.000Z",
+    ).deviceId;
+    const serialDeviceId = upsertCandidate(
+      fx.ctx.db,
+      serialScope,
+      "serial-ports",
+      "serial",
+      {
+        stableIdentity: "serial-a",
+        make: "Acme",
+        model: "UART",
+        connection: "tty:/dev/serial-a",
+        transport: "local-usb",
+      },
+      "2026-08-13T12:00:00.000Z",
+    ).deviceId;
+    associateSerialDevice(
+      fx.ctx.db,
+      serialScope,
+      flashedDeviceId,
+      serialDeviceId,
+    );
     const transports: FakeTransport[] = [];
     const runtime = createSerialRuntime({
       db: fx.ctx.db,
@@ -240,14 +444,20 @@ describe("serial session lifecycle", () => {
       device: flashedDeviceId,
       confirmation: confirmationFixture(),
     });
-    await vi.waitFor(() => expect(runtime.current(serialScope, serialDeviceId)?.state).toBe("connected"));
+    await vi.waitFor(() =>
+      expect(runtime.current(serialScope, serialDeviceId)?.state).toBe(
+        "connected",
+      ),
+    );
     expect(transports).toHaveLength(1);
     await runFlash(fx.ctx, {
       runId: build.runId,
       device: flashedDeviceId,
       confirmation: confirmationFixture(),
     });
-    await vi.waitFor(() => expect(runtime.autoConnectStatus(serialScope)?.state).toBe("connected"));
+    await vi.waitFor(() =>
+      expect(runtime.autoConnectStatus(serialScope)?.state).toBe("connected"),
+    );
     expect(transports).toHaveLength(1);
     await runtime.dispose();
   });
@@ -255,15 +465,38 @@ describe("serial session lifecycle", () => {
   it("falls back to the last-used live registry port when no explicit association exists", async () => {
     const fx = await createFixture({ confirmationValid: true });
     fixtures.push(fx);
-    const serialScope = { projectId: fx.ctx.projectId, projectVersionId: fx.ctx.projectVersionId };
-    const flashedDeviceId = upsertCandidate(fx.ctx.db, serialScope, "probe-rs", "probe", {
-      stableIdentity: "probe-fallback", make: "Acme", model: "Probe",
-      connection: "usb:probe-fallback", transport: "local-usb",
-    }, "2026-08-13T12:00:00.000Z").deviceId;
-    const serialDeviceId = upsertCandidate(fx.ctx.db, serialScope, "serial-ports", "serial", {
-      stableIdentity: "serial-fallback", make: "Acme", model: "UART",
-      connection: "tty:/dev/serial-fallback", transport: "local-usb",
-    }, "2026-08-13T12:00:00.000Z").deviceId;
+    const serialScope = {
+      projectId: fx.ctx.projectId,
+      projectVersionId: fx.ctx.projectVersionId,
+    };
+    const flashedDeviceId = upsertCandidate(
+      fx.ctx.db,
+      serialScope,
+      "probe-rs",
+      "probe",
+      {
+        stableIdentity: "probe-fallback",
+        make: "Acme",
+        model: "Probe",
+        connection: "usb:probe-fallback",
+        transport: "local-usb",
+      },
+      "2026-08-13T12:00:00.000Z",
+    ).deviceId;
+    const serialDeviceId = upsertCandidate(
+      fx.ctx.db,
+      serialScope,
+      "serial-ports",
+      "serial",
+      {
+        stableIdentity: "serial-fallback",
+        make: "Acme",
+        model: "UART",
+        connection: "tty:/dev/serial-fallback",
+        transport: "local-usb",
+      },
+      "2026-08-13T12:00:00.000Z",
+    ).deviceId;
     const transports: FakeTransport[] = [];
     const runtime = createSerialRuntime({
       db: fx.ctx.db,
@@ -285,7 +518,11 @@ describe("serial session lifecycle", () => {
       device: flashedDeviceId,
       confirmation: confirmationFixture(),
     });
-    await vi.waitFor(() => expect(runtime.current(serialScope, serialDeviceId)?.state).toBe("connected"));
+    await vi.waitFor(() =>
+      expect(runtime.current(serialScope, serialDeviceId)?.state).toBe(
+        "connected",
+      ),
+    );
     expect(runtime.autoConnectStatus(serialScope)).toMatchObject({
       flashedDeviceId,
       serialDeviceId,
@@ -313,15 +550,18 @@ describe("serial session lifecycle", () => {
     });
     const session = await runtime.open(scope, deviceId);
     const beforeBurst = prepare.mock.calls.filter(
-      ([sql]) => typeof sql === "string" && sql.includes("INSERT INTO bench_serial_session"),
+      ([sql]) =>
+        typeof sql === "string" &&
+        sql.includes("INSERT INTO bench_serial_session"),
     ).length;
     transport.emit("abcdefghijklmnopqrst");
-    expect((await session.read({ maxLines: 10 })).lines.map((line) => line.text)).toEqual([
-      "abcdefgh",
-      "ijklmnop",
-    ]);
+    expect(
+      (await session.read({ maxLines: 10 })).lines.map((line) => line.text),
+    ).toEqual(["abcdefgh", "ijklmnop"]);
     const afterBurst = prepare.mock.calls.filter(
-      ([sql]) => typeof sql === "string" && sql.includes("INSERT INTO bench_serial_session"),
+      ([sql]) =>
+        typeof sql === "string" &&
+        sql.includes("INSERT INTO bench_serial_session"),
     ).length;
     expect(afterBurst - beforeBurst).toBeLessThanOrEqual(1);
     await session.close();
