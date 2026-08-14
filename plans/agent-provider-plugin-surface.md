@@ -260,7 +260,12 @@ bb.agents.experimental_registerProvider({
   // seamlessly" from "will rebuild the provider session" when a user changes
   // model/reasoning mid-thread. Every provider offers the composer switcher
   // today; what differs is underneath — claude applies live, everyone else
-  // gets a silent session rebuild on the next turn.
+  // gets a silent session rebuild on the next turn. The override API's
+  // claude-only 400 was a v1 scoping choice (#75: "codex gated out for
+  // v1"), not an invariant: its callers are the CLI/SDK
+  // (`bb thread update --model`) and agent orchestration, and once rebuilds
+  // are reported it can serve session-scoped providers too instead of
+  // rejecting them.
   // In-place override support derives from it (`model` and `reasoningLevel`
   // both "live") — there is no separate `executionOverride` capability.
   // The conformance kit cross-checks declaration against bridge behavior,
