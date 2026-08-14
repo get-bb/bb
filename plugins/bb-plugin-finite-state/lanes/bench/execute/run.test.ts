@@ -147,6 +147,7 @@ function deps(
     jobQueue: new InMemoryBenchJobQueue(),
     evidence: { persistLog: async () => null },
     assertProjectVersion: async () => ({
+      workspaceProjectId: "workspace-a",
       workspacePath: "/workspace",
       firmwareDigest: DIGEST_A,
     }),
@@ -157,6 +158,7 @@ function deps(
       throw new Error("not used for tier0");
     },
     createRunId: () => "run-execute-a",
+    createEvidenceGenerationId: () => "evidence-execute-a",
     now: () => new Date("2026-08-12T20:00:00.000Z"),
     publish: vi.fn(),
   };

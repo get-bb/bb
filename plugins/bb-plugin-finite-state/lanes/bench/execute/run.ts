@@ -15,7 +15,7 @@ import type {
   ForgeProcessAdapter,
 } from "../../firmware/forge/handshake.js";
 import { storeEvidenceCheckpointWithResult } from "../store/results.js";
-import { getAcceptedBenchGeneration } from "../store/runs.js";
+import { ensureAcceptedBenchGeneration } from "../store/runs.js";
 import type { BenchEvidenceBundle, BenchRunRecord } from "../store/types.js";
 import {
   BENCH_DISPATCH_AMBIGUOUS_CODE,
@@ -70,6 +70,7 @@ export interface PersistedBenchLog {
 }
 
 export interface BenchProjectVersion {
+  workspaceProjectId: string;
   workspacePath: string;
   firmwareDigest: string;
 }
@@ -110,6 +111,7 @@ export interface BenchExecutionDeps {
     signal: AbortSignal,
   ): Promise<Tier1Targets>;
   createRunId(): string;
+  createEvidenceGenerationId(): string;
   now(): Date;
   publish(
     channel: "bench:changed" | "bench:log",
@@ -236,6 +238,23 @@ export function createDefaultBenchExecutionDeps(
   jobQueue: BenchExecutionDeps["jobQueue"],
 ): BenchExecutionDeps {
   const db = ctx.db();
+  const workspaceBindings = db
+    .prepare<[string], { workspace_project_id: string }>(
+      `SELECT workspace_project_id
+         FROM workspace_platform_project_binding
+        WHERE platform_project_id = ?
+        ORDER BY workspace_project_id
+        LIMIT 2`,
+    )
+    .all(request.projectId);
+  if (workspaceBindings.length > 1) {
+    throw new BenchRunError(
+      "BENCH_WORKSPACE_BINDING_UNAVAILABLE",
+      "This Platform project is bound to multiple bb workspaces; open the intended workspace before starting a bench run",
+    );
+  }
+  const workspaceProjectId =
+    workspaceBindings[0]?.workspace_project_id ?? request.projectId;
   return {
     bb: ctx.bb,
     db,
@@ -243,7 +262,7 @@ export function createDefaultBenchExecutionDeps(
       async inspect(hostId, signal) {
         const workspacePath = await projectWorkspacePath(
           ctx.bb,
-          request.projectId,
+          workspaceProjectId,
           hostId,
           signal,
         );
@@ -284,20 +303,21 @@ export function createDefaultBenchExecutionDeps(
         return await persistBenchLog(ctx.bb.storage.kv, runId, job, signal);
       },
     },
-    async assertProjectVersion(projectId, pvId, signal) {
+    async assertProjectVersion(_projectId, pvId, signal) {
       const workspacePath = await projectWorkspacePath(
         ctx.bb,
-        projectId,
+        workspaceProjectId,
         request.hostId,
         signal,
       );
       const digest = db
-        .prepare<[string, string], FirmwareDigestRow>(
+        .prepare<[string, string, string, string], FirmwareDigestRow>(
           `SELECT artifact_hash, input_sha256 FROM firmware_mounts
-           WHERE project_id = ? AND project_version_id = ?
-           ORDER BY pulled_at DESC LIMIT 1`,
+           WHERE project_id IN (?, ?) AND project_version_id = ?
+           ORDER BY CASE WHEN project_id = ? THEN 0 ELSE 1 END,
+                    pulled_at DESC LIMIT 1`,
         )
-        .get(projectId, pvId);
+        .get(workspaceProjectId, _projectId, pvId, workspaceProjectId);
       const firmwareDigest =
         digest?.artifact_hash ?? digest?.input_sha256 ?? null;
       if (!firmwareDigest || !SHA256.test(firmwareDigest)) {
@@ -306,12 +326,12 @@ export function createDefaultBenchExecutionDeps(
           `Project version ${pvId} has no verified firmware digest`,
         );
       }
-      return { workspacePath, firmwareDigest };
+      return { workspaceProjectId, workspacePath, firmwareDigest };
     },
-    async prepareFirmware(projectId, pvId, hostId, signal) {
+    async prepareFirmware(_projectId, pvId, hostId, signal) {
       const worktreeRoot = await projectWorkspacePath(
         ctx.bb,
-        projectId,
+        workspaceProjectId,
         hostId,
         signal,
       );
@@ -359,6 +379,7 @@ export function createDefaultBenchExecutionDeps(
       };
     },
     createRunId: () => `bench-${randomUUID()}`,
+    createEvidenceGenerationId: () => randomUUID(),
     now: () => new Date(),
     publish(channel, payload) {
       ctx.bb.realtime.publish(channel, payload);
@@ -834,7 +855,13 @@ async function executeRunBench(
   // A verification_run is generation-owned. Reject an invalid evidence scope
   // before minting an attempt id; after this boundary every minted attempt can
   // be checkpointed durably, including all later preflight failures.
-  getAcceptedBenchGeneration(deps.db, validated.projectId, validated.pvId);
+  ensureAcceptedBenchGeneration(
+    deps.db,
+    validated.projectId,
+    validated.pvId,
+    deps.createEvidenceGenerationId,
+    deps.now().toISOString(),
+  );
   const runId = requiredText("runId", deps.createRunId());
   const startedAt = deps.now().toISOString();
   let currentRun: BenchRunRecord = {
@@ -907,7 +934,7 @@ async function executeRunBench(
 
     const workspacePath = prepared?.rootfsPath ?? version.workspacePath;
     const threadId = await startBenchThread(deps.bb, {
-      projectId: validated.projectId,
+      projectId: version.workspaceProjectId,
       pvId: validated.pvId,
       tier: request.tier,
       hostId: validated.hostId,

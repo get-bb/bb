@@ -77,6 +77,7 @@ async function launcher(
           onStarted={() => {}}
           projectId="p1"
           projectVersionId="v1"
+          workspaceProjectId="workspace-1"
         />
       ),
     },
@@ -122,6 +123,13 @@ describe("RunLauncher", () => {
     fireEvent.click(startButton);
     fireEvent.click(startButton);
     await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+    expect(slot.rpcCalls).toContainEqual({
+      method: "firmwareMountsList",
+      input: expect.objectContaining({ projectId: "workspace-1" }),
+    });
+    expect(start).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: "p1" }),
+    );
     expect(slot.inspection.navigateCalls).toContainEqual({
       method: "toThread",
       threadId: "thread-1",
@@ -167,6 +175,7 @@ describe("RunLauncher", () => {
             onStarted={() => {}}
             projectId="p1"
             projectVersionId="v1"
+            workspaceProjectId="workspace-1"
           />
         ),
       },

@@ -149,6 +149,7 @@ describe("bench registration", () => {
     ).resolves.toEqual({
       versions: [
         {
+          workspaceProjectId: "workspace-project-a",
           platformProjectId: "project-a",
           projectVersionId: "version-a",
           asOf: "2026-08-12T20:00:00.000Z",

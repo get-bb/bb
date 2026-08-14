@@ -12,6 +12,7 @@ export const benchUiRpcContract = defineRpcContract({
         versions: z.array(
           z
             .object({
+              workspaceProjectId: identifier,
               platformProjectId: identifier,
               projectVersionId: identifier,
               asOf: z.string().nullable(),

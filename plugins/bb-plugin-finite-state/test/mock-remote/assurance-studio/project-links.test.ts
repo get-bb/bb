@@ -112,6 +112,20 @@ describe("Assurance Studio project-link enumeration", () => {
     expect(projectC).toHaveLength(1);
     expect(projectC[0]?.assuranceStudioProjectId).toBe("as-project-c1");
 
+    const servingPath = [];
+    for await (const page of client.listProjectLinks({
+      platformProjectId: "project-4a752600a07a",
+    })) {
+      servingPath.push(...page.items);
+    }
+    expect(servingPath).toEqual([
+      expect.objectContaining({
+        assuranceStudioProjectId: "project-4a752600a07a",
+        platformProjectId: "project-4a752600a07a",
+        platformProjectVersionId: "pv-a481df87dadf",
+      }),
+    ]);
+
     const unlinked = [];
     for await (const page of client.listProjectLinks({
       platformProjectId: "platform-project-unlinked",

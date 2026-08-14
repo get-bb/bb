@@ -1159,7 +1159,7 @@ describe("deterministic-seed-corpus", () => {
       second.files.filter(
         (file, index) => file.sha256 !== first.files[index].sha256,
       ).length,
-    ).toBe(21);
+    ).toBe(22);
   });
 
   test("unknown CLI arguments emit one typed diagnostic without a stack", async () => {

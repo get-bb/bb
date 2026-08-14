@@ -925,37 +925,70 @@ function buildCorpus(seed: string): {
       projects: ["c1"],
     },
   ];
+  // Keep this registered-journey link in the captured fs-links wire shape
+  // documented in docs/Implementation/api-reference/
+  // assurance-studio-fs-links-live-2026-08-14.md. Unlike the selector-only
+  // ambiguity fixtures above, it deliberately shares the Platform mock's
+  // served project/version identity so the real adapters compose end to end.
+  const servingPathProjectLink = {
+    id: "link-eagle-serving-path",
+    project_id: projectId,
+    fs_product_id: projectId,
+    fs_product_name: "Eagle Connected Gateway",
+    is_primary: true,
+    version_strategy: "specific",
+    fs_version_id: projectVersionId,
+    fs_version_name: "2.4.0",
+    last_synced_at: FIXED_NOW,
+    sync_status: "synced",
+    sync_error: null,
+    sbom_component_count: 12,
+    vulnerability_count: 3,
+    critical_vuln_count: 1,
+    created_by: "fixture-user",
+    created_at: FIXED_NOW,
+    updated_at: FIXED_NOW,
+    organization_id: "fixture-organization",
+    source_type: "finite_state",
+    summary: { status: "captured-shape" },
+  };
   const projectLinks = {
-    projects: projectLinkGroups.flatMap((group) =>
-      group.projects.map((suffix) => ({
-        id: `as-project-${suffix}`,
-        name: `AS Project ${suffix.toUpperCase()}`,
-      })),
-    ),
-    links: projectLinkGroups.flatMap((group) =>
-      group.projects.map((suffix) => ({
-        id: `link-${suffix}`,
-        project_id: `as-project-${suffix}`,
-        fs_product_id: group.platformProjectId,
-        fs_product_name: group.platformProjectName,
-        is_primary: true,
-        version_strategy: "specific",
-        fs_version_id: group.platformVersionId,
-        fs_version_name: suffix === "a2" ? null : group.platformVersionName,
-        last_synced_at: suffix === "a2" ? null : FIXED_NOW,
-        sync_status: suffix === "a2" ? "error" : "synced",
-        sync_error: suffix === "a2" ? "fixture sync error" : null,
-        sbom_component_count: suffix === "a2" ? null : 12,
-        vulnerability_count: suffix === "a2" ? null : 3,
-        critical_vuln_count: suffix === "a2" ? null : 1,
-        created_by: "fixture-user",
-        created_at: FIXED_NOW,
-        updated_at: FIXED_NOW,
-        organization_id: "fixture-organization",
-        source_type: "finite_state",
-        summary: { status: "captured-shape" },
-      })),
-    ),
+    projects: [
+      ...projectLinkGroups.flatMap((group) =>
+        group.projects.map((suffix) => ({
+          id: `as-project-${suffix}`,
+          name: `AS Project ${suffix.toUpperCase()}`,
+        })),
+      ),
+      { id: projectId, name: "Eagle Connected Gateway Assurance Studio" },
+    ],
+    links: [
+      ...projectLinkGroups.flatMap((group) =>
+        group.projects.map((suffix) => ({
+          id: `link-${suffix}`,
+          project_id: `as-project-${suffix}`,
+          fs_product_id: group.platformProjectId,
+          fs_product_name: group.platformProjectName,
+          is_primary: true,
+          version_strategy: "specific",
+          fs_version_id: group.platformVersionId,
+          fs_version_name: suffix === "a2" ? null : group.platformVersionName,
+          last_synced_at: suffix === "a2" ? null : FIXED_NOW,
+          sync_status: suffix === "a2" ? "error" : "synced",
+          sync_error: suffix === "a2" ? "fixture sync error" : null,
+          sbom_component_count: suffix === "a2" ? null : 12,
+          vulnerability_count: suffix === "a2" ? null : 3,
+          critical_vuln_count: suffix === "a2" ? null : 1,
+          created_by: "fixture-user",
+          created_at: FIXED_NOW,
+          updated_at: FIXED_NOW,
+          organization_id: "fixture-organization",
+          source_type: "finite_state",
+          summary: { status: "captured-shape" },
+        })),
+      ),
+      servingPathProjectLink,
+    ],
   };
 
   const drafts: FileDraft[] = [

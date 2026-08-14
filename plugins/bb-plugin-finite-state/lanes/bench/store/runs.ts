@@ -1,5 +1,8 @@
 import type Database from "better-sqlite3";
-import { fromStorageProjectVersionId, toStorageProjectVersionId } from "../../../lib/store/index.js";
+import {
+  fromStorageProjectVersionId,
+  toStorageProjectVersionId,
+} from "../../../lib/store/index.js";
 import { matrixTierForBenchTier } from "./mappers.js";
 import type {
   BenchCacheState,
@@ -60,15 +63,22 @@ function decodeCursor(value: string): RunCursor {
 }
 
 function validateRun(run: BenchRunRecord): void {
-  if (!run.runId || !run.projectId) throw new Error("Bench run identifiers must be non-empty");
-  if (run.pvId === "") throw new Error("Bench run pvId must be non-empty or null");
+  if (!run.runId || !run.projectId)
+    throw new Error("Bench run identifiers must be non-empty");
+  if (run.pvId === "")
+    throw new Error("Bench run pvId must be non-empty or null");
   if (run.matrixTier !== matrixTierForBenchTier(run.tier)) {
-    throw new Error(`Bench tier ${run.tier} must use matrix tier ${matrixTierForBenchTier(run.tier)}`);
+    throw new Error(
+      `Bench tier ${run.tier} must use matrix tier ${matrixTierForBenchTier(run.tier)}`,
+    );
   }
   if (run.firmwareDigest !== null && !SHA256.test(run.firmwareDigest)) {
-    throw new Error("Bench run firmwareDigest must be a lowercase sha256 digest");
+    throw new Error(
+      "Bench run firmwareDigest must be a lowercase sha256 digest",
+    );
   }
-  if (run.kind !== undefined && !run.kind) throw new Error("Bench run kind must be non-empty");
+  if (run.kind !== undefined && !run.kind)
+    throw new Error("Bench run kind must be non-empty");
   if (
     run.durationMs !== undefined &&
     run.durationMs !== null &&
@@ -95,7 +105,8 @@ export function serializeBenchRaw(raw: unknown): string {
   } catch {
     throw new Error("Bench raw payload must be JSON-serializable");
   }
-  if (serialized === undefined) throw new Error("Bench raw payload must be JSON-serializable");
+  if (serialized === undefined)
+    throw new Error("Bench raw payload must be JSON-serializable");
   return serialized;
 }
 
@@ -104,7 +115,21 @@ export function getAcceptedBenchGeneration(
   projectId: string,
   projectVersionId: string,
 ): AcceptedGenerationRow {
-  const accepted = db
+  const accepted = findAcceptedBenchGeneration(db, projectId, projectVersionId);
+  if (!accepted) {
+    throw new Error(
+      "Bench evidence requires an accepted verificationRun generation",
+    );
+  }
+  return accepted;
+}
+
+function findAcceptedBenchGeneration(
+  db: Database.Database,
+  projectId: string,
+  projectVersionId: string,
+): AcceptedGenerationRow | undefined {
+  return db
     .prepare<[string, string, string], AcceptedGenerationRow>(
       `SELECT s.accepted_generation_id AS generation_id, s.base_revision
        FROM sync_state s
@@ -117,10 +142,87 @@ export function getAcceptedBenchGeneration(
          AND g.status = 'accepted'`,
     )
     .get(projectId, projectVersionId, BENCH_EVIDENCE_ENTITY_KIND);
-  if (!accepted) {
-    throw new Error("Bench evidence requires an accepted verificationRun generation");
-  }
-  return accepted;
+}
+
+function findAcceptedRequirementGeneration(
+  db: Database.Database,
+  projectId: string,
+  projectVersionId: string,
+): AcceptedGenerationRow | undefined {
+  return db
+    .prepare<[string, string], AcceptedGenerationRow>(
+      `SELECT s.accepted_generation_id AS generation_id, s.base_revision
+       FROM sync_state s
+       JOIN pull_generation g
+         ON g.project_id = s.project_id
+        AND g.project_version_id = s.project_version_id
+        AND g.generation_id = s.accepted_generation_id
+       WHERE s.project_id = ? AND s.project_version_id = ?
+         AND s.entity_kind = 'requirement'
+         AND s.accepted_generation_id IS NOT NULL
+         AND g.status = 'accepted'`,
+    )
+    .get(projectId, projectVersionId);
+}
+
+/**
+ * Opens the local bench evidence generation for a requirement-pulled version.
+ * Remote requirement source remains in its own accepted generation; locally
+ * produced verification evidence gets an independent durable publication
+ * fence before the first attempt id is minted.
+ */
+export function ensureAcceptedBenchGeneration(
+  db: Database.Database,
+  projectId: string,
+  projectVersionId: string,
+  createGenerationId: () => string,
+  now = new Date().toISOString(),
+): AcceptedGenerationRow {
+  const existing = findAcceptedBenchGeneration(db, projectId, projectVersionId);
+  if (existing) return existing;
+
+  const create = db.transaction(() => {
+    const concurrent = findAcceptedBenchGeneration(
+      db,
+      projectId,
+      projectVersionId,
+    );
+    if (concurrent) return concurrent;
+
+    const requirement = findAcceptedRequirementGeneration(
+      db,
+      projectId,
+      projectVersionId,
+    );
+    if (!requirement) {
+      throw new Error(
+        "Bench evidence requires an accepted verificationRun generation; pull requirement through Sync first",
+      );
+    }
+
+    const generationId = `bench-evidence-${createGenerationId()}`;
+    db.prepare(
+      `INSERT INTO pull_generation
+       (project_id, project_version_id, generation_id, status,
+        requested_kinds_json, started_at, completed_at, accepted_at)
+       VALUES (?, ?, ?, 'accepted',
+               '{"source":"local_bench_evidence","kinds":["verificationRun"]}',
+               ?, ?, ?)`,
+    ).run(projectId, projectVersionId, generationId, now, now, now);
+    db.prepare(
+      `INSERT INTO sync_state
+       (project_id, project_version_id, entity_kind, accepted_generation_id,
+        base_revision, last_pull, error)
+       VALUES (?, ?, 'verificationRun', ?, 1, ?, NULL)
+       ON CONFLICT (project_id, project_version_id, entity_kind) DO UPDATE SET
+         accepted_generation_id = excluded.accepted_generation_id,
+         base_revision = sync_state.base_revision + 1,
+         last_pull = excluded.last_pull,
+         error = NULL`,
+    ).run(projectId, projectVersionId, generationId, now);
+    return getAcceptedBenchGeneration(db, projectId, projectVersionId);
+  });
+  return create.immediate();
 }
 
 export function resolveRunLocation(
@@ -129,7 +231,11 @@ export function resolveRunLocation(
 ): StoredRunLocation {
   validateRun(run);
   const projectVersionId = toStorageProjectVersionId(run.pvId);
-  const accepted = getAcceptedBenchGeneration(db, run.projectId, projectVersionId);
+  const accepted = getAcceptedBenchGeneration(
+    db,
+    run.projectId,
+    projectVersionId,
+  );
   const historicalRows = db
     .prepare<[string, string, string], BenchRunRow>(
       `SELECT * FROM verification_runs
@@ -146,13 +252,19 @@ export function resolveRunLocation(
       throw new Error(`Bench run ${run.runId} firmware digest is immutable`);
     }
   }
-  const existing = db
-    .prepare<[string, string, string, string], BenchRunRow>(
-      `SELECT * FROM verification_runs
+  const existing =
+    db
+      .prepare<[string, string, string, string], BenchRunRow>(
+        `SELECT * FROM verification_runs
        WHERE project_id = ? AND project_version_id = ?
          AND generation_id = ? AND run_id = ?`,
-    )
-    .get(run.projectId, projectVersionId, accepted.generation_id, run.runId) ?? null;
+      )
+      .get(
+        run.projectId,
+        projectVersionId,
+        accepted.generation_id,
+        run.runId,
+      ) ?? null;
   return {
     projectId: run.projectId,
     projectVersionId,
@@ -169,7 +281,8 @@ export function upsertBenchRun(
 ): number {
   validateRun(run);
   const raw = serializeBenchRaw(run.raw);
-  const firmwareDigest = run.firmwareDigest ?? location.row?.firmware_digest ?? null;
+  const firmwareDigest =
+    run.firmwareDigest ?? location.row?.firmware_digest ?? null;
   const terminalStatuses = new Set(["completed", "failed", "timeout"]);
   const existingStatus = location.row?.status;
   const status =
@@ -179,9 +292,14 @@ export function upsertBenchRun(
         ? existingStatus
         : run.status;
   const kind = run.kind ?? location.row?.kind ?? "bench";
-  const trigger = run.trigger === undefined ? (location.row?.trigger ?? null) : run.trigger;
-  const hostId = run.hostId === undefined ? (location.row?.host_id ?? null) : run.hostId;
-  const threadId = run.threadId === undefined ? (location.row?.thread_id ?? null) : run.threadId;
+  const trigger =
+    run.trigger === undefined ? (location.row?.trigger ?? null) : run.trigger;
+  const hostId =
+    run.hostId === undefined ? (location.row?.host_id ?? null) : run.hostId;
+  const threadId =
+    run.threadId === undefined
+      ? (location.row?.thread_id ?? null)
+      : run.threadId;
   const config =
     run.config === undefined
       ? (location.row?.config ?? null)
@@ -189,10 +307,17 @@ export function upsertBenchRun(
         ? null
         : serializeBenchRaw(run.config);
   const durationMs =
-    run.durationMs === undefined ? (location.row?.duration_ms ?? null) : run.durationMs;
+    run.durationMs === undefined
+      ? (location.row?.duration_ms ?? null)
+      : run.durationMs;
   const logLocator =
-    run.logLocator === undefined ? (location.row?.log_locator ?? null) : run.logLocator;
-  const logCursor = run.logCursor === undefined ? (location.row?.log_cursor ?? null) : run.logCursor;
+    run.logLocator === undefined
+      ? (location.row?.log_locator ?? null)
+      : run.logLocator;
+  const logCursor =
+    run.logCursor === undefined
+      ? (location.row?.log_cursor ?? null)
+      : run.logCursor;
   const result = db
     .prepare(
       `INSERT INTO verification_runs
@@ -293,7 +418,27 @@ export function getBenchCacheState(
   now = new Date().toISOString(),
 ): BenchCacheState {
   const projectVersionId = toStorageProjectVersionId(pvId);
-  const accepted = getAcceptedBenchGeneration(db, projectId, projectVersionId);
+  const accepted = findAcceptedBenchGeneration(db, projectId, projectVersionId);
+  if (!accepted) {
+    const requirement = findAcceptedRequirementGeneration(
+      db,
+      projectId,
+      projectVersionId,
+    );
+    if (requirement) {
+      return {
+        state: "empty",
+        asOf: null,
+        message:
+          "No bench runs exist yet. Start the first run for this cached requirement version.",
+        acceptedGenerationId: null,
+        baseRevision: requirement.base_revision,
+      };
+    }
+    throw new Error(
+      "Bench evidence requires an accepted verificationRun generation",
+    );
+  }
   const row = db
     .prepare<[string, string, string], CacheRow>(
       `SELECT MAX(r.synced_at) AS synced_at
@@ -316,7 +461,9 @@ export function getBenchCacheState(
   return {
     state: fresh ? "fresh" : "stale",
     asOf,
-    message: fresh ? null : "Bench evidence is older than the freshness window.",
+    message: fresh
+      ? null
+      : "Bench evidence is older than the freshness window.",
     acceptedGenerationId: accepted.generation_id,
     baseRevision: accepted.base_revision,
   };
@@ -326,15 +473,35 @@ export function listBenchRuns(
   db: Database.Database,
   query: BenchRunQuery,
 ): Page<BenchRunSummary> {
-  if (!Number.isInteger(query.pageSize) || query.pageSize < 1 || query.pageSize > 200) {
+  if (
+    !Number.isInteger(query.pageSize) ||
+    query.pageSize < 1 ||
+    query.pageSize > 200
+  ) {
     throw new Error("Bench run pageSize must be between 1 and 200");
   }
   const projectVersionId = toStorageProjectVersionId(query.pvId);
-  const accepted = getAcceptedBenchGeneration(db, query.projectId, projectVersionId);
-  const cursor = query.continuation === null ? null : decodeCursor(query.continuation);
+  const accepted = findAcceptedBenchGeneration(
+    db,
+    query.projectId,
+    projectVersionId,
+  );
+  if (!accepted) {
+    return {
+      items: [],
+      total: 0,
+      next: null,
+      cache: getBenchCacheState(db, query.projectId, query.pvId, query.now),
+    };
+  }
+  const cursor =
+    query.continuation === null ? null : decodeCursor(query.continuation);
   const rows = cursor
     ? db
-        .prepare<[string, string, string, string, string, string, number], BenchRunRow>(
+        .prepare<
+          [string, string, string, string, string, string, number],
+          BenchRunRow
+        >(
           `SELECT * FROM verification_runs
            WHERE project_id = ? AND project_version_id = ? AND generation_id = ?
              AND (COALESCE(started_at, synced_at) < ?
@@ -358,22 +525,32 @@ export function listBenchRuns(
            ORDER BY COALESCE(started_at, synced_at) DESC, run_id DESC
            LIMIT ?`,
         )
-        .all(query.projectId, projectVersionId, accepted.generation_id, query.pageSize + 1);
+        .all(
+          query.projectId,
+          projectVersionId,
+          accepted.generation_id,
+          query.pageSize + 1,
+        );
   const hasMore = rows.length > query.pageSize;
   const visible = rows.slice(0, query.pageSize);
   const last = visible.at(-1);
-  const count = db
-    .prepare<[string, string, string], CountRow>(
-      `SELECT COUNT(*) AS count FROM verification_runs
+  const count =
+    db
+      .prepare<[string, string, string], CountRow>(
+        `SELECT COUNT(*) AS count FROM verification_runs
        WHERE project_id = ? AND project_version_id = ? AND generation_id = ?`,
-    )
-    .get(query.projectId, projectVersionId, accepted.generation_id)?.count ?? 0;
+      )
+      .get(query.projectId, projectVersionId, accepted.generation_id)?.count ??
+    0;
   return {
     items: visible.map(summarizeRun),
     total: count,
     next:
       hasMore && last
-        ? encodeCursor({ at: last.started_at ?? last.synced_at, runId: last.run_id })
+        ? encodeCursor({
+            at: last.started_at ?? last.synced_at,
+            runId: last.run_id,
+          })
         : null,
     cache: getBenchCacheState(db, query.projectId, query.pvId, query.now),
   };
@@ -384,29 +561,50 @@ function getScopedBenchRun(
   lookup: BenchRunLookup,
 ): BenchRunDetail | null {
   const projectVersionId = toStorageProjectVersionId(lookup.pvId);
-  const accepted = getAcceptedBenchGeneration(db, lookup.projectId, projectVersionId);
+  const accepted = getAcceptedBenchGeneration(
+    db,
+    lookup.projectId,
+    projectVersionId,
+  );
   const row = db
     .prepare<[string, string, string, string], BenchRunRow>(
       `SELECT * FROM verification_runs
        WHERE project_id = ? AND project_version_id = ?
          AND generation_id = ? AND run_id = ?`,
     )
-    .get(lookup.projectId, projectVersionId, accepted.generation_id, lookup.runId);
+    .get(
+      lookup.projectId,
+      projectVersionId,
+      accepted.generation_id,
+      lookup.runId,
+    );
   return row
     ? {
         run: summarizeRun(row),
-        cache: getBenchCacheState(db, lookup.projectId, lookup.pvId, lookup.now),
+        cache: getBenchCacheState(
+          db,
+          lookup.projectId,
+          lookup.pvId,
+          lookup.now,
+        ),
       }
     : null;
 }
 
-export function getBenchRun(db: Database.Database, runId: string): BenchRunDetail | null;
-export function getBenchRun(db: Database.Database, lookup: BenchRunLookup): BenchRunDetail | null;
+export function getBenchRun(
+  db: Database.Database,
+  runId: string,
+): BenchRunDetail | null;
+export function getBenchRun(
+  db: Database.Database,
+  lookup: BenchRunLookup,
+): BenchRunDetail | null;
 export function getBenchRun(
   db: Database.Database,
   runIdOrLookup: string | BenchRunLookup,
 ): BenchRunDetail | null {
-  if (typeof runIdOrLookup !== "string") return getScopedBenchRun(db, runIdOrLookup);
+  if (typeof runIdOrLookup !== "string")
+    return getScopedBenchRun(db, runIdOrLookup);
   const rows = db
     .prepare<[string, string], BenchRunRow>(
       `SELECT r.* FROM verification_runs r
@@ -424,7 +622,8 @@ export function getBenchRun(
        ORDER BY r.synced_at DESC LIMIT 2`,
     )
     .all(BENCH_EVIDENCE_ENTITY_KIND, runIdOrLookup);
-  if (rows.length > 1) throw new Error(`Bench run ${runIdOrLookup} is ambiguous without scope`);
+  if (rows.length > 1)
+    throw new Error(`Bench run ${runIdOrLookup} is ambiguous without scope`);
   const row = rows[0];
   if (!row) return null;
   const pvId = fromStorageProjectVersionId(row.project_version_id);

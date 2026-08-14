@@ -171,12 +171,12 @@ export class InvalidAdapterError extends Error {
 }
 
 const adapters = new Map<EntityKind, EntityAdapter>();
+const explicitPullAdapters = new Map<EntityKind, EntityAdapter>();
 const resolvers = new Map<EntityKind, KeyResolver>();
 const pushers = new Map<EntityKind, unknown>();
 const cachePullers = new Map<EntityKind, CachePuller>();
 
-/** Registers one adapter and rejects unknown, mismatched, or duplicate kinds. */
-export function registerAdapter(adapter: EntityAdapter): void {
+function assertAdapterRegistration(adapter: EntityAdapter): void {
   if (!Object.hasOwn(ENTITIES, adapter.kind)) {
     throw new InvalidAdapterError(`Unknown sync adapter kind: ${adapter.kind}`);
   }
@@ -196,8 +196,24 @@ export function registerAdapter(adapter: EntityAdapter): void {
       `${adapter.kind} adapter serializer belongs to ${adapter.serializer.entityKind}`,
     );
   }
-  if (adapters.has(adapter.kind)) throw new DuplicateAdapterError(adapter.kind);
+  if (adapters.has(adapter.kind) || explicitPullAdapters.has(adapter.kind))
+    throw new DuplicateAdapterError(adapter.kind);
+}
+
+/** Registers one adapter and rejects unknown, mismatched, or duplicate kinds. */
+export function registerAdapter(adapter: EntityAdapter): void {
+  assertAdapterRegistration(adapter);
   adapters.set(adapter.kind, adapter);
+}
+
+/**
+ * Registers an adapter that is available only to an explicitly kind-scoped
+ * pull. It is deliberately absent from default pull, status, plan, conflict,
+ * and push surfaces.
+ */
+export function registerExplicitPullAdapter(adapter: EntityAdapter): void {
+  assertAdapterRegistration(adapter);
+  explicitPullAdapters.set(adapter.kind, adapter);
 }
 
 /** Installs or replaces the key resolver for one registered semantic kind. */
@@ -238,6 +254,22 @@ export function registeredAdapters(): readonly EntityAdapter[] {
   return [...adapters.values()].sort((left, right) =>
     left.kind.localeCompare(right.kind),
   );
+}
+
+/** @internal Adds pull-only adapters only when their kinds were explicit. */
+export function registeredPullAdapters(
+  kinds: readonly EntityKind[] | undefined,
+): readonly EntityAdapter[] {
+  const selected = [...adapters.values()];
+  if (kinds !== undefined) {
+    const requested = new Set(kinds);
+    selected.push(
+      ...[...explicitPullAdapters.values()].filter((adapter) =>
+        requested.has(adapter.kind),
+      ),
+    );
+  }
+  return selected.sort((left, right) => left.kind.localeCompare(right.kind));
 }
 
 /** @internal Returns the current resolver for `kind`, when another lane installed one. */

@@ -18,6 +18,7 @@ const TIER_1_REQUIREMENTS = [
 ] as const;
 
 interface RunLauncherProps {
+  workspaceProjectId: string;
   projectId: string;
   projectVersionId: string;
   initialTier?: "tier0" | "tier1";
@@ -35,6 +36,7 @@ function fieldText(
 }
 
 export function RunLauncher({
+  workspaceProjectId,
   projectId,
   projectVersionId,
   initialTier = "tier0",
@@ -88,7 +90,7 @@ export function RunLauncher({
     void refreshHosts();
     void rpc
       .call("firmwareMountsList", {
-        projectId,
+        projectId: workspaceProjectId,
         projectVersionId,
         pageSize: 1,
         continuation: null,
@@ -107,7 +109,7 @@ export function RunLauncher({
         );
         setFirmwareDigest(null);
       });
-  }, [projectId, projectVersionId, refreshHosts, rpc]);
+  }, [projectVersionId, refreshHosts, rpc, workspaceProjectId]);
 
   const selectedHost = hosts.find((host) => host.id === hostId) ?? null;
   const missingCapabilities = useMemo(

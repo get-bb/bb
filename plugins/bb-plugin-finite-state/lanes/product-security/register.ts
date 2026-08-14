@@ -9,7 +9,9 @@ import {
   rpcContract,
 } from "../../shared/contract.js";
 import type { PluginContext } from "../../lib/context.js";
+import type { RemoteServices } from "../../lib/remote/types.js";
 import { toStorageProjectVersionId } from "../../lib/store/index.js";
+import { registerExplicitPullAdapter } from "../sync/engine/adapter.js";
 import { registerCanvasEditingBackend } from "./canvas/editing/backend.js";
 import { registerCanvasLinksBackend } from "./canvas/links/backend.js";
 import { registerCanvasNodesBackend } from "./canvas/nodes/backend.js";
@@ -31,6 +33,7 @@ import {
 import { registerRequirementsCardsBackend } from "./requirements/cards/backend.js";
 import { registerRequirementsConversionBackend } from "./requirements/conversion/backend.js";
 import { registerRequirementsTraceabilityBackend } from "./requirements/traceability/backend.js";
+import { createRequirementAdapter } from "./requirements/sync/adapter.js";
 import { registerVerificationMatrixBackend } from "./verifications/matrix/backend.js";
 import { registerVerificationRunDetailBackend } from "./verifications/run-detail/backend.js";
 
@@ -557,6 +560,22 @@ export function registerProductSecurity(
   bb: BbPluginApi,
   ctx: PluginContext,
 ): void {
+  let remote: RemoteServices | null = null;
+  try {
+    remote = ctx.service<RemoteServices>("remote-services", () => {
+      throw new Error(
+        "Product-security sync registration requires remote services.",
+      );
+    });
+  } catch {
+    // Isolated read-surface harnesses intentionally omit L1. Production
+    // registration always has L1, while local RPCs remain independently usable.
+  }
+  if (remote)
+    registerExplicitPullAdapter(
+      createRequirementAdapter(remote.assuranceStudio),
+    );
+
   bb.rpc.register(productSecurityRpcContract, {
     taraList(input) {
       return listTara(bb, ctx.db(), input);

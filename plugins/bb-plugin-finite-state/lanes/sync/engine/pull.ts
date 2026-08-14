@@ -10,8 +10,8 @@ import { entryFor, type EntityKind } from "../../../lib/sync/registry.js";
 import { canonicalJson } from "../serialize/canonical.js";
 import { BaseSnapshotStore, type BaseRow } from "../store/base-snapshot.js";
 import {
-  registeredAdapters,
   registeredCachePullers,
+  registeredPullAdapters,
   type AdapterAdvisory,
   type CachePuller,
   type EntityAdapter,
@@ -221,7 +221,7 @@ function requestedAdapters(
   kinds: readonly EntityKind[] | undefined,
 ): EntityAdapter[] {
   const requested = kinds === undefined ? null : new Set(kinds);
-  return [...(deps.adapters ?? registeredAdapters())]
+  return [...(deps.adapters ?? registeredPullAdapters(kinds))]
     .filter((adapter) => requested === null || requested.has(adapter.kind))
     .sort((left, right) => left.kind.localeCompare(right.kind));
 }

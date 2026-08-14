@@ -42,6 +42,7 @@ afterEach(() => cleanup());
 
 async function renderBench(
   versions: Array<{
+    workspaceProjectId: string;
     platformProjectId: string;
     projectVersionId: string;
     asOf: string;
@@ -116,6 +117,7 @@ describe("BenchPanel", () => {
     const slot = await renderBench(
       [
         {
+          workspaceProjectId: "project-1",
           platformProjectId: "platform-1",
           projectVersionId: "pv-1",
           asOf: "2026-08-13T12:00:00.000Z",
@@ -147,12 +149,14 @@ describe("BenchPanel", () => {
     const slot = await renderBench(
       [
         {
+          workspaceProjectId: "project-1",
           platformProjectId: "platform-1",
           projectVersionId: "pv-1",
           asOf: "2026-08-13T12:00:00.000Z",
           state: "fresh",
         },
         {
+          workspaceProjectId: "project-1",
           platformProjectId: "platform-1",
           projectVersionId: "pv-2",
           asOf: "2026-08-13T12:00:00.000Z",

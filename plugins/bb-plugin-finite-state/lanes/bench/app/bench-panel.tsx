@@ -39,11 +39,13 @@ export function BenchPanel({
     null,
   );
   const [selectedVersion, setSelectedVersion] = useState<{
+    workspaceProjectId: string;
     platformProjectId: string;
     projectVersionId: string;
   } | null>(null);
   const [versions, setVersions] = useState<
     Array<{
+      workspaceProjectId: string;
       platformProjectId: string;
       projectVersionId: string;
       state: "fresh" | "stale";
@@ -282,6 +284,9 @@ export function BenchPanel({
               }
               projectId={platformProjectId}
               projectVersionId={projectVersionId.trim()}
+              workspaceProjectId={
+                selectedVersion?.workspaceProjectId ?? projectId ?? ""
+              }
             />
           </div>
         ) : null}

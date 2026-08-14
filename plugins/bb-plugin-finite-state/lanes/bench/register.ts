@@ -150,7 +150,8 @@ function acceptedBenchProjectVersionId(
           AND g.project_version_id = s.project_version_id
           AND g.generation_id = s.accepted_generation_id
           AND g.status = 'accepted'
-        WHERE s.project_id = ? AND s.entity_kind = 'verificationRun'
+        WHERE s.project_id = ?
+          AND s.entity_kind IN ('requirement', 'verificationRun')
           AND s.project_version_id <> ?
           AND s.accepted_generation_id IS NOT NULL
         ORDER BY s.last_pull DESC, s.project_version_id DESC
@@ -438,7 +439,7 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
               AND g.generation_id = s.accepted_generation_id
               AND g.status = 'accepted'
             WHERE ${WORKSPACE_PLATFORM_PROJECT_PREDICATE}
-              AND s.entity_kind = 'verificationRun'
+              AND s.entity_kind IN ('requirement', 'verificationRun')
               AND s.project_version_id <> ?
               AND s.accepted_generation_id IS NOT NULL
             GROUP BY s.project_id, s.project_version_id
@@ -446,6 +447,7 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
         )
         .all(input.projectId, PROJECT_LEVEL_VERSION_ID);
       const versions = rows.map((row) => ({
+        workspaceProjectId: input.projectId,
         platformProjectId: row.project_id,
         projectVersionId: row.project_version_id,
         asOf: row.as_of,

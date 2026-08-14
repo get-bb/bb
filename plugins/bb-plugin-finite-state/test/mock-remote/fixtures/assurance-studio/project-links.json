@@ -167,6 +167,30 @@
       "updated_at": "2026-05-12T14:30:00.000Z",
       "version_strategy": "specific",
       "vulnerability_count": 3
+    },
+    {
+      "created_at": "2026-05-12T14:30:00.000Z",
+      "created_by": "fixture-user",
+      "critical_vuln_count": 1,
+      "fs_product_id": "project-4a752600a07a",
+      "fs_product_name": "Eagle Connected Gateway",
+      "fs_version_id": "pv-a481df87dadf",
+      "fs_version_name": "2.4.0",
+      "id": "link-eagle-serving-path",
+      "is_primary": true,
+      "last_synced_at": "2026-05-12T14:30:00.000Z",
+      "organization_id": "fixture-organization",
+      "project_id": "project-4a752600a07a",
+      "sbom_component_count": 12,
+      "source_type": "finite_state",
+      "summary": {
+        "status": "captured-shape"
+      },
+      "sync_error": null,
+      "sync_status": "synced",
+      "updated_at": "2026-05-12T14:30:00.000Z",
+      "version_strategy": "specific",
+      "vulnerability_count": 3
     }
   ],
   "projects": [
@@ -197,6 +221,10 @@
     {
       "id": "as-project-c1",
       "name": "AS Project C1"
+    },
+    {
+      "id": "project-4a752600a07a",
+      "name": "Eagle Connected Gateway Assurance Studio"
     }
   ]
 }
