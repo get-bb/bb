@@ -98,9 +98,9 @@ export interface PluginCatalogService {
   }): Promise<PluginMarketplaceRefreshResult[]>;
   search(query: string): Promise<PluginCatalogSearchResult[]>;
   /** What an install with the same selector would do, resolved beforehand. */
-  installPlan(selector: PluginCatalogEntrySelector): Promise<
-    PluginCatalogInstallPlan
-  >;
+  installPlan(
+    selector: PluginCatalogEntrySelector,
+  ): Promise<PluginCatalogInstallPlan>;
   install(selector: PluginCatalogEntrySelector): Promise<InstalledPlugin>;
   /** Cached bytes behind GET /plugin-catalog/icons/:marketplace/:entryId. */
   icon(marketplace: string, entryId: string): PluginCatalogIcon | undefined;
@@ -120,7 +120,10 @@ export interface PluginCatalogService {
 /** Resolution of an entry id (plus an optional marketplace) to what installs. */
 type ResolvedCatalogEntry =
   | { kind: "marketplace"; row: PluginMarketplaceRow; entry: MarketplaceEntry }
-  | { kind: "bundled"; entry: BundledPluginRegistration & { category: string } };
+  | {
+      kind: "bundled";
+      entry: BundledPluginRegistration & { category: string };
+    };
 
 /**
  * The plugin store over the official plugins bundled with the app plus every
@@ -910,7 +913,8 @@ export function createPluginCatalogService(deps: {
         listInstalledPlugins(deps.db)
           .filter(
             (row): row is typeof row & { catalogEntryId: string } =>
-              row.catalogMarketplaceName !== null && row.catalogEntryId !== null,
+              row.catalogMarketplaceName !== null &&
+              row.catalogEntryId !== null,
           )
           .map((row) => `${row.catalogMarketplaceName} ${row.catalogEntryId}`),
       );
