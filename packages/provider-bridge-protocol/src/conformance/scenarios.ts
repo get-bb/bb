@@ -54,7 +54,7 @@ function defaultOptions(
       permissionMode: "full",
       permissionScope: "full",
       approvalReviewer: null,
-      permissionEscalation: "ask",
+      permissionEscalation: null,
     }
   );
 }

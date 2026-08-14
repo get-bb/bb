@@ -1,4 +1,5 @@
 import type { ThreadEvent } from "@bb/domain";
+import { DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { createBridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
 import type { ProviderExecutionContext } from "./provider-adapter.js";
@@ -32,8 +33,8 @@ const fullModeOptions: ProviderExecutionContext = {
   permissionMode: "full",
   permissionScope: "full",
   approvalReviewer: null,
-  permissionEscalation: "ask",
-  claudeCodeMockCliTraffic: { enabled: false, endpoint: null },
+  permissionEscalation: null,
+  claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   workflowsEnabled: false,
 };
 
@@ -129,7 +130,7 @@ describe("options mapping", () => {
           providerOptions: {
             workflowsEnabled: true,
             memoryEnabled: false,
-            claudeCodeMockCliTraffic: { enabled: false, endpoint: null },
+            claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
           },
         },
       },

@@ -17,14 +17,12 @@ import { handleLine } from "./bridge.js";
  * Calibration, not conformance: drives the UNMODIFIED acp bridge through the
  * canonical protocol suite and pins the result.
  *
- * The first finding is already in the report: the #859 fix gave this bridge
- * request-vs-response discrimination, but the reply-never-drop rule from #853
- * was never implemented here — `handleParsedMessage` silently returns for an
- * unknown method or schema-invalid request, so the hygiene rules FAIL today.
- * That, plus the whole canonical surface, is the phase-2a migration work
- * list: as the acp bridge becomes protocol-pure, expectations below flip to
- * "pass" until this file asserts a fully green report and renames itself the
- * acp conformance test.
+ * Already flipped by phase 2a: the JSON-RPC hygiene rules (reply, never
+ * drop — the calibration's first real finding was that #859 fixed
+ * discrimination here but never implemented #853's reply-never-drop). The
+ * remaining failures are the canonical surface: as the acp bridge becomes
+ * protocol-pure, expectations below flip to "pass" until this file asserts
+ * a fully green report and renames itself the acp conformance test.
  */
 
 let output: CapturedBridgeJsonRpcOutput;
@@ -71,14 +69,10 @@ it("pins the canonical-protocol gap list for the unmodified acp bridge", async (
   );
 
   expect(statusById).toMatchObject({
-    // Reply-never-drop is NOT implemented in this bridge yet: unknown and
-    // schema-invalid requests are silently dropped (handleParsedMessage
-    // returns without answering). Phase 2a implements -32601/-32602 replies.
-    "rpc/unknown-method": "fail",
-    "rpc/invalid-params": "fail",
-    // Aliveness cannot be probed on a bridge that drops unknown methods.
-    "rpc/non-json-ignored": "skipped",
-    "rpc/response-not-request": "skipped",
+    "rpc/unknown-method": "pass",
+    "rpc/invalid-params": "pass",
+    "rpc/non-json-ignored": "pass",
+    "rpc/response-not-request": "pass",
     // The canonical surface is not implemented yet — phase 2a flips these.
     "handshake/initialize": "fail",
     "session/start-identity": "fail",

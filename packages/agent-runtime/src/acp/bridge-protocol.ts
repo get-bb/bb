@@ -211,6 +211,15 @@ export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
     params: acpBridgeThreadIdParamsSchema,
   }),
 ]);
+
+/**
+ * The known-method set, derived from the schema union so it cannot drift
+ * (#853): the bridge answers unknown methods with METHOD_NOT_FOUND and
+ * schema-invalid params with INVALID_PARAMS instead of dropping them.
+ */
+export const acpBridgeCommandMethodValues = acpBridgeCommandSchema.options.map(
+  (option) => option.shape.method.value,
+);
 export type AcpBridgeCommand = z.infer<typeof acpBridgeCommandSchema>;
 
 // ---------------------------------------------------------------------------

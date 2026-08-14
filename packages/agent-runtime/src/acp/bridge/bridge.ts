@@ -25,6 +25,7 @@ import {
   type ReasoningLevel,
 } from "@bb/domain";
 import { buildEditDiff } from "../../shared/adapter-utils.js";
+import { BRIDGE_JSON_RPC_ERRORS } from "@bb/provider-bridge-protocol";
 import {
   createBridgeIo,
   createBridgeLineHandler,
@@ -61,6 +62,7 @@ import {
   type AcpBridgeThreadForkParams,
   type AcpBridgeThreadResumeParams,
   type AcpBridgeThreadStartParams,
+  acpBridgeCommandMethodValues,
 } from "../bridge-protocol.js";
 import {
   ACP_PROTOCOL_VERSION,
@@ -1894,21 +1896,48 @@ function handleAgentNotification(
 // Runtime command handling
 // ---------------------------------------------------------------------------
 
-function decodeAcpBridgeJsonRpcRequest(
-  raw: unknown,
-): (AcpBridgeCommand & { id: string | number }) | null {
+type DecodedAcpBridgeRequest =
+  | { kind: "request"; request: AcpBridgeCommand & { id: string | number } }
+  | { kind: "unknown-method"; id: string | number; method: string }
+  | { kind: "invalid-params"; id: string | number; method: string; issues: string }
+  | { kind: "ignored" };
+
+function decodeAcpBridgeJsonRpcRequest(raw: unknown): DecodedAcpBridgeRequest {
   const envelope = jsonRpcEnvelopeSchema.safeParse(raw);
-  if (!envelope.success) {
-    return null;
+  if (!envelope.success || envelope.data.id === undefined) {
+    return { kind: "ignored" };
   }
   const command = acpBridgeCommandSchema.safeParse({
     method: envelope.data.method,
     params: envelope.data.params ?? {},
   });
-  if (!command.success) {
-    return null;
+  if (command.success) {
+    return {
+      kind: "request",
+      request: { ...command.data, id: envelope.data.id },
+    };
   }
-  return { ...command.data, id: envelope.data.id };
+  // Reply, never drop (#853): a silently dropped request is an undebuggable
+  // 30-second timeout on the runtime side.
+  if (
+    !(acpBridgeCommandMethodValues as readonly string[]).includes(
+      envelope.data.method,
+    )
+  ) {
+    return {
+      kind: "unknown-method",
+      id: envelope.data.id,
+      method: envelope.data.method,
+    };
+  }
+  return {
+    kind: "invalid-params",
+    id: envelope.data.id,
+    method: envelope.data.method,
+    issues: command.error.issues
+      .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+      .join("; "),
+  };
 }
 
 async function handleRequest(
@@ -2071,11 +2100,27 @@ function handleParsedMessage(parsed: unknown): void {
     }
   }
 
-  const request = decodeAcpBridgeJsonRpcRequest(parsed);
-  if (!request) {
+  const decoded = decodeAcpBridgeJsonRpcRequest(parsed);
+  if (decoded.kind === "ignored") {
     return;
   }
-  runBridgeRequest({ request, handleRequest, sendError });
+  if (decoded.kind === "unknown-method") {
+    sendError(
+      decoded.id,
+      BRIDGE_JSON_RPC_ERRORS.METHOD_NOT_FOUND,
+      `Unknown method "${decoded.method}"`,
+    );
+    return;
+  }
+  if (decoded.kind === "invalid-params") {
+    sendError(
+      decoded.id,
+      BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS,
+      `Invalid params for "${decoded.method}": ${decoded.issues}`,
+    );
+    return;
+  }
+  runBridgeRequest({ request: decoded.request, handleRequest, sendError });
 }
 
 export const handleLine = createBridgeLineHandler({ handleParsedMessage });
