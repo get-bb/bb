@@ -66,7 +66,11 @@ degraded approvals/models/reasoning, config-file-only setup, no settings UI.
 (Fork landed 2026-08-14 via `53d193144`: the bridge negotiates the agent's
 unstable `session/fork` capability at initialize and rejects agents that
 don't advertise it — the declare-coarse-then-handshake-narrows pattern this
-plan proposes generally.)
+plan proposes generally. Tip-only: ACP `session/fork` clones the whole
+source session and cannot stop at a checkpoint, so checkpoint forks are
+rejected and edit-message rewind stays unsupported — fork ≠ rewind, which is
+why `supportsNativeFork` and `supportsNativeSessionRewind` are separate
+capabilities here.)
 
 **Plugin backends** run in-process in the server (frontends ship as app
 bundles). The host daemon has **zero**
@@ -78,8 +82,9 @@ management (`managed-plugin-artifacts.ts`), builtin auto-install
 
 **Wire facts**: the DB and thread domain schemas store `providerId` as a free
 string (the closed vocabularies are the catalog enum plus the stray enums in
-item 6); `HOST_DAEMON_PROTOCOL_VERSION` is 121
-and has been bumped by **87 commits since 2026-06-01** (26 → 121) — provider behavior is
+item 6); `HOST_DAEMON_PROTOCOL_VERSION` is 122
+and has been bumped by **88 commits since 2026-06-01** (26 → 122; 121→122
+landed while this plan was being written) — provider behavior is
 tightly coupled to daemon deploys, which this plan explicitly decouples.
 
 ## Lessons from past incidents → design requirements
@@ -261,11 +266,16 @@ bb.agents.experimental_registerProvider({
     permissionModes: ["accept-edits", "auto", "full"],
     reasoningLevels: ["low", "medium", "high", "xhigh", "ultracode", "max"],
     promptModes: ["plan"],
-    sessionPersistence: "resume",       // reap/resume eligibility, declared.
-                                       // First piece already shipped on main
-                                       // as `supportsSessionRestore`
-                                       // (`3bc9ce54b`, session-release
-                                       // experiment); this field absorbs it.
+    sessionPersistence: "resume",       // reap/resume eligibility. Shipped on
+                                       // main as a two-level design this
+                                       // field absorbs: declared default
+                                       // (`supportsSessionRestore`,
+                                       // `3bc9ce54b`) refined per session by
+                                       // the `sessionRestorable` flag on
+                                       // thread-identity results (ACP reads
+                                       // the agent's `loadSession` at
+                                       // initialize; kept fresh across
+                                       // session replacement).
     processScope: "shared",             // "thread" (codex) | "shared"
   },
   composerActions: [...],
@@ -384,7 +394,8 @@ branch. Provider ids never change, so there is no data migration anywhere.
 - Build the **conformance kit**: a black-box test suite that drives any
   bridge binary through the full lifecycle (initialize handshake, start,
   turn, steer, permission request, resume, fork-or-declared-absence, stop
-  with both intents, malformed-message replies, item-id uniqueness across
+  with both intents, fork checkpoint-vs-tip granularity,
+  malformed-message replies, item-id uniqueness across
   resume, item lifecycle ordering — every item opens with `item/started`,
   delta-first openings are non-conformant — and the env allowlist). It
   encodes the incident-derived rules above.
@@ -621,7 +632,8 @@ there — the command→method mapping itself diverges, and phase 1 must pick a
 canonical mapping for each divergence:
 
 - acp gained `thread/fork` only on 2026-08-14 (`53d193144`), gated on the
-  agent advertising the unstable ACP fork capability at initialize; before
+  agent advertising the unstable ACP fork capability at initialize, and
+  tip-only (checkpoint forks rejected — ACP clones whole sessions); before
   that the command threw before reaching the wire.
 - codex maps `thread/stop` → `turn/interrupt`, `thread/discard` →
   `thread/archive`, and compaction → `thread/compact/start`; claude maps
