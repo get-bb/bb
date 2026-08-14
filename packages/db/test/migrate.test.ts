@@ -444,7 +444,7 @@ const namedMarketplaceCatalogMigrationPath = resolve(
   __dirname,
   "..",
   "drizzle",
-  "0094_dazzling_vin_gonzales.sql",
+  "0095_normal_elektra.sql",
 );
 const sidebarOrderingMigrationPath = resolve(
   __dirname,
