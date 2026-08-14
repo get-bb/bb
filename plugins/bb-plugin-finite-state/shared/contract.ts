@@ -9,7 +9,7 @@
 import { defineRpcContract } from "@bb/plugin-sdk";
 import { z } from "zod";
 
-export const CONTRACT_VERSION = 7 as const;
+export const CONTRACT_VERSION = 8 as const;
 
 export type JsonValue =
   | null
@@ -653,6 +653,7 @@ const pullReportSchema = z
         .object({
           fetched: z.number().int().nonnegative(),
           baseRows: z.number().int().nonnegative(),
+          quarantined: z.number().int().nonnegative(),
         })
         .strict(),
     ),

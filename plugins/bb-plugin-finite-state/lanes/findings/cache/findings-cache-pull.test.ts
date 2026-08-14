@@ -389,6 +389,7 @@ describe("findings cache pull", () => {
             ).then((result) => ({
               fetched: result.fetched,
               baseRows: result.published,
+              quarantined: result.quarantined,
             })),
         },
       ],
@@ -403,7 +404,7 @@ describe("findings cache pull", () => {
 
     await expect(pull(deps, scope, ["finding"])).resolves.toMatchObject({
       generationId: "generation-1",
-      kinds: { finding: { fetched: 2, baseRows: 2 } },
+      kinds: { finding: { fetched: 2, baseRows: 2, quarantined: 0 } },
     });
     const result = queryFindings(db, { projectId: scope.projectId, pvId });
     expect(result.items).toHaveLength(2);
@@ -508,7 +509,11 @@ describe("findings cache pull", () => {
               failAfterStaging = false;
               throw new Error("peer kind failed after finding staging");
             }
-            return { fetched: result.fetched, baseRows: result.published };
+            return {
+              fetched: result.fetched,
+              baseRows: result.published,
+              quarantined: result.quarantined,
+            };
           },
         },
       ],
@@ -519,7 +524,7 @@ describe("findings cache pull", () => {
     );
     await expect(pull(deps, scope, ["finding"])).resolves.toMatchObject({
       generationId: "generation-resume",
-      kinds: { finding: { fetched: 0, baseRows: 1 } },
+      kinds: { finding: { fetched: 0, baseRows: 1, quarantined: 0 } },
     });
     expect(remoteCalls).toBe(1);
     expect(
@@ -609,6 +614,7 @@ describe("findings cache pull", () => {
             ).then((result) => ({
               fetched: result.fetched,
               baseRows: result.published,
+              quarantined: result.quarantined,
             })),
         },
       ],

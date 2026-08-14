@@ -268,7 +268,11 @@ export function registerBom(bb: BbPluginApi, ctx: PluginContext): void {
         generationId,
         onProgress: ({ pages }) => onProgress({ page: pages, of: null }),
       });
-      return { fetched: result.fetched, baseRows: result.components };
+      return {
+        fetched: result.fetched,
+        baseRows: result.components,
+        quarantined: 0,
+      };
     },
   );
   bb.rpc.register(bomCachedVersionsContract, {

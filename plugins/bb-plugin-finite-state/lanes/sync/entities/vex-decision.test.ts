@@ -379,7 +379,7 @@ decisions:
         "vexDecision",
       ]),
     ).resolves.toMatchObject({
-      kinds: { vexDecision: { fetched: 1, baseRows: 1 } },
+      kinds: { vexDecision: { fetched: 1, baseRows: 1, quarantined: 0 } },
       workingFastForwarded: false,
       divergence: ["vexDecision/.fs/triage/project/broken.yaml/read-error"],
     });
@@ -641,7 +641,11 @@ decisions:
       },
       ["vexDecision"],
     );
-    expect(report.kinds["vexDecision"]).toEqual({ fetched: 1, baseRows: 1 });
+    expect(report.kinds["vexDecision"]).toEqual({
+      fetched: 1,
+      baseRows: 1,
+      quarantined: 1,
+    });
     expect(report.advisories).toEqual([
       {
         kind: "vexDecision",
@@ -828,7 +832,11 @@ decisions:
               generationId,
               () => undefined,
             );
-            return { fetched: result.fetched, baseRows: result.published };
+            return {
+              fetched: result.fetched,
+              baseRows: result.published,
+              quarantined: result.quarantined,
+            };
           },
         },
       ],

@@ -160,14 +160,22 @@ describe("registered SBOM pull surfaces", () => {
           sbomComponent: {
             fetched: expect.any(Number),
             baseRows: expect.any(Number),
+            quarantined: 0,
           },
         },
       });
       const pullReport = JSON.parse(pulled.stdout) as {
-        kinds: { sbomComponent: { fetched: number; baseRows: number } };
+        kinds: {
+          sbomComponent: {
+            fetched: number;
+            baseRows: number;
+            quarantined: number;
+          };
+        };
       };
       expect(pullReport.kinds.sbomComponent.fetched).toBeGreaterThan(0);
       expect(pullReport.kinds.sbomComponent.baseRows).toBeGreaterThan(0);
+      expect(pullReport.kinds.sbomComponent.quarantined).toBe(0);
       expect(
         host.harness.inspection.realtimeSignals.filter(
           (signal) => signal.channel === "bom:changed",

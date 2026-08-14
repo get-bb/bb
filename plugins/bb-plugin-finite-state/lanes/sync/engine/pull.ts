@@ -81,7 +81,10 @@ export interface EngineDeps {
 export interface PullReport {
   generationId: string;
   acceptedAt: string;
-  kinds: Record<string, { fetched: number; baseRows: number }>;
+  kinds: Record<
+    string,
+    { fetched: number; baseRows: number; quarantined: number }
+  >;
   workingFastForwarded: boolean;
   divergence: string[];
   advisories: Array<{ kind: EntityKind; code: string; count: number }>;
@@ -382,10 +385,10 @@ function kindCheckpoint(
   storageVersionId: string,
   kind: EntityKind,
   generationId: string,
-): { pages: number; rows: number } {
+): { pages: number; rows: number; quarantined: number } {
   const value = db
     .prepare(
-      `SELECT staged_pages, staged_rows
+      `SELECT staged_pages, staged_rows, staged_quarantined
        FROM sync_state
       WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?
         AND staging_generation_id = ?`,
@@ -394,11 +397,16 @@ function kindCheckpoint(
   if (
     !isRecord(value) ||
     typeof value["staged_pages"] !== "number" ||
-    typeof value["staged_rows"] !== "number"
+    typeof value["staged_rows"] !== "number" ||
+    typeof value["staged_quarantined"] !== "number"
   ) {
     throw new Error(`Staging fence moved for ${kind}`);
   }
-  return { pages: value["staged_pages"], rows: value["staged_rows"] };
+  return {
+    pages: value["staged_pages"],
+    rows: value["staged_rows"],
+    quarantined: value["staged_quarantined"],
+  };
 }
 
 function existingStagingRows(
@@ -507,6 +515,7 @@ function writePage(
   generationId: string,
   pageNumber: number,
   entities: readonly ServerEntity[],
+  quarantined: number,
 ): number {
   const existing = existingStagingRows(
     deps.db,
@@ -542,7 +551,8 @@ function writePage(
         .prepare(
           `UPDATE sync_state
             SET staging_continuation = ?, staged_pages = ?,
-                staged_rows = staged_rows + ?, error = NULL
+                staged_rows = staged_rows + ?,
+                staged_quarantined = staged_quarantined + ?, error = NULL
           WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?
             AND staging_generation_id = ? AND staged_pages = ?`,
         )
@@ -550,6 +560,7 @@ function writePage(
           String(pageNumber),
           pageNumber,
           rows.length,
+          quarantined,
           scope.projectId,
           storageVersionId,
           adapter.kind,
@@ -578,8 +589,8 @@ async function pullAdapter(
   storageVersionId: string,
   adapter: EntityAdapter,
   generationId: string,
-  onAdvisory: (advisory: AdapterAdvisory) => void,
-): Promise<{ fetched: number; baseRows: number }> {
+  onAdvisory: (advisory: AdapterAdvisory, count: number) => void,
+): Promise<{ fetched: number; baseRows: number; quarantined: number }> {
   const checkpoint = kindCheckpoint(
     deps.db,
     scope,
@@ -590,6 +601,11 @@ async function pullAdapter(
   let pageNumber = 0;
   let latestOf: number | null = null;
   const fetchedKeys = new Set<string>();
+  let quarantined = checkpoint.quarantined;
+  let pendingAdvisories = new Map<string, number>();
+  if (adapter.kind === "vexDecision" && checkpoint.quarantined > 0) {
+    onAdvisory({ code: "VEX_REMOTE_IDENTITY_MISSING" }, checkpoint.quarantined);
+  }
   const pages = adapter.fetchRemote(
     scope,
     (progress) => {
@@ -602,11 +618,18 @@ async function pullAdapter(
         phase: "fetch",
       });
     },
-    onAdvisory,
+    (advisory) => {
+      pendingAdvisories.set(
+        advisory.code,
+        (pendingAdvisories.get(advisory.code) ?? 0) + 1,
+      );
+    },
   );
   for await (const page of pages) {
     pageNumber += 1;
     for (const entity of page) fetchedKeys.add(entity.key);
+    const pageAdvisories = pendingAdvisories;
+    pendingAdvisories = new Map();
     if (pageNumber <= checkpoint.pages) {
       const unseen = uniquePage(
         adapter,
@@ -629,6 +652,10 @@ async function pullAdapter(
       }
       continue;
     }
+    const pageQuarantined =
+      adapter.kind === "vexDecision"
+        ? (pageAdvisories.get("VEX_REMOTE_IDENTITY_MISSING") ?? 0)
+        : 0;
     writePage(
       deps,
       scope,
@@ -637,7 +664,12 @@ async function pullAdapter(
       generationId,
       pageNumber,
       page,
+      pageQuarantined,
     );
+    quarantined += pageQuarantined;
+    for (const [code, count] of pageAdvisories) {
+      onAdvisory({ code }, count);
+    }
     deps.publish?.("fs-sync-pull", {
       scope,
       generationId,
@@ -650,6 +682,11 @@ async function pullAdapter(
   if (pageNumber < checkpoint.pages) {
     throw new Error(
       `Remote stream for ${adapter.kind} ended before staged page ${checkpoint.pages}`,
+    );
+  }
+  if (pendingAdvisories.size > 0) {
+    throw new Error(
+      `${adapter.kind} reported advisories outside a remote page`,
     );
   }
   const count = deps.db
@@ -671,7 +708,11 @@ async function pullAdapter(
     of: latestOf,
     phase: "done",
   });
-  return { fetched: fetchedKeys.size, baseRows: count["count"] };
+  return {
+    fetched: fetchedKeys.size,
+    baseRows: count["count"],
+    quarantined,
+  };
 }
 
 async function defaultFileClean(root: string, file: string): Promise<boolean> {
@@ -929,13 +970,13 @@ export async function pull(
         storageVersionId,
         adapter,
         generationId,
-        (advisory) => {
+        (advisory, count) => {
           const key = `${adapter.kind}\0${advisory.code}`;
           const current = advisoryCounts.get(key);
           advisoryCounts.set(key, {
             kind: adapter.kind,
             code: advisory.code,
-            count: (current?.count ?? 0) + 1,
+            count: (current?.count ?? 0) + count,
           });
         },
       );
@@ -966,28 +1007,36 @@ export async function pull(
       });
       const staged = deps.db
         .prepare(
-          `SELECT staged_rows
+          `SELECT staged_rows, staged_quarantined
            FROM sync_state
           WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?
             AND staging_generation_id = ?`,
         )
         .get(scope.projectId, storageVersionId, cache.kind, generationId);
-      if (!isRecord(staged) || typeof staged["staged_rows"] !== "number") {
+      if (
+        !isRecord(staged) ||
+        typeof staged["staged_rows"] !== "number" ||
+        typeof staged["staged_quarantined"] !== "number"
+      ) {
         throw new Error(`Could not count staged ${cache.kind} rows`);
       }
-      if (
-        cacheReport !== undefined &&
-        cacheReport.baseRows !== staged["staged_rows"]
-      ) {
+      if (cacheReport.baseRows !== staged["staged_rows"]) {
         throw new Error(
           `Cache puller reported an invalid ${cache.kind} publication count`,
         );
       }
-      // `fetched` is work performed now; `baseRows` is the complete generation
-      // published now, including rows staged by a prior failed invocation.
-      reportKinds[cache.kind] = cacheReport ?? {
-        fetched: 0,
-        baseRows: 0,
+      if (cacheReport.quarantined !== staged["staged_quarantined"]) {
+        throw new Error(
+          `Cache puller reported an invalid ${cache.kind} quarantine count`,
+        );
+      }
+      // `fetched` is work performed now. The generation checkpoint is the
+      // authority for complete publication and quarantine totals across
+      // every invocation that contributed to this generation.
+      reportKinds[cache.kind] = {
+        fetched: cacheReport.fetched,
+        baseRows: staged["staged_rows"],
+        quarantined: staged["staged_quarantined"],
       };
       deps.publish?.("fs-sync-pull", {
         scope,

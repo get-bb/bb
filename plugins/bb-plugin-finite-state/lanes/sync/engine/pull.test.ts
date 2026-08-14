@@ -191,6 +191,7 @@ describe("sync pull", () => {
     expect(report.kinds.vexDecision).toEqual({
       fetched: expected.length,
       baseRows: expected.length,
+      quarantined: 0,
     });
     expect(accepted).toHaveLength(expected.length);
     expect(accepted.map((row) => row.entityKey)).toEqual(
@@ -376,6 +377,64 @@ describe("sync pull", () => {
         .pluck()
         .get(),
     ).toBe(2);
+  });
+
+  it("reports persisted VEX quarantine once across a resumed generation", async () => {
+    const fixture = setupPlatform();
+    const rows = expectedVexRows(
+      fixture.state,
+      fixture.scope.projectVersionId,
+    ).slice(0, 2);
+    if (rows.length !== 2)
+      throw new Error("fixture has fewer than two VEX rows");
+    let attempt = 0;
+    const adapter: EntityAdapter = {
+      kind: "vexDecision",
+      klass: "OVERLAY",
+      serializer: createSerializer("vexDecision"),
+      async *fetchRemote(_scope, onProgress, onAdvisory) {
+        attempt += 1;
+        onProgress({ page: 1, of: 2 });
+        onAdvisory?.({ code: "VEX_REMOTE_IDENTITY_MISSING" });
+        yield [rows[0]!];
+        if (attempt === 1) throw new Error("retry after quarantined page");
+        onProgress({ page: 2, of: 2 });
+        yield [rows[1]!];
+      },
+      async readWorking() {
+        return [];
+      },
+    };
+    const deps = engine(adapter, {
+      createGenerationId: () => "generation-vex-quarantine-resume",
+    });
+
+    await expect(
+      pull(deps, fixture.scope, ["vexDecision"]),
+    ).rejects.toBeInstanceOf(PullFailedError);
+    expect(
+      deps.db
+        .prepare(
+          `SELECT staged_quarantined FROM sync_state
+            WHERE entity_kind = 'vexDecision'`,
+        )
+        .pluck()
+        .get(),
+    ).toBe(1);
+
+    const report = await pull(deps, fixture.scope, ["vexDecision"]);
+    expect(report.kinds.vexDecision).toEqual({
+      fetched: 2,
+      baseRows: 2,
+      quarantined: 1,
+    });
+    expect(report.advisories).toEqual([
+      {
+        kind: "vexDecision",
+        code: "VEX_REMOTE_IDENTITY_MISSING",
+        count: 1,
+      },
+    ]);
   });
 
   it("leaves a dirty authored file alone and reports its stable key as divergent", async () => {

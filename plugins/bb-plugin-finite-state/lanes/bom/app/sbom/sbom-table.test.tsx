@@ -200,7 +200,9 @@ describe("SBOM virtual table", () => {
           generationId: "generation-2",
           acceptedAt: "2026-08-12T21:00:00.000Z",
           baseStateSha256: "a".repeat(64),
-          kinds: { sbomComponent: { fetched: 0, baseRows: 0 } },
+          kinds: {
+            sbomComponent: { fetched: 0, baseRows: 0, quarantined: 0 },
+          },
           workingFastForwarded: true,
           divergence: [],
         };

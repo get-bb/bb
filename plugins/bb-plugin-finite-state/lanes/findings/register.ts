@@ -43,7 +43,11 @@ export function registerFindings(bb: BbPluginApi, ctx: PluginContext): void {
         });
       },
     );
-    return { fetched: result.fetched, baseRows: result.published };
+    return {
+      fetched: result.fetched,
+      baseRows: result.published,
+      quarantined: result.quarantined,
+    };
   });
   ctx.service("findings.hydration", () => ({
     activity: (input: {

@@ -12,9 +12,8 @@ afterEach(cleanup);
 
 describe("authorized cross-surface Sync routes", () => {
   it("opens the live Sync panel from both header actions", async () => {
-    const { ProductSecurityHeader } = await import(
-      "../../product-security/ui/ProductSecurityHeader.js"
-    );
+    const { ProductSecurityHeader } =
+      await import("../../product-security/ui/ProductSecurityHeader.js");
     const slot = renderSlot(
       { component: ProductSecurityHeader },
       { subPath: "tara" },
@@ -42,9 +41,8 @@ describe("authorized cross-surface Sync routes", () => {
   });
 
   it("opens the live Sync panel from the TARA empty-state guidance", async () => {
-    const { CanvasEmptyState } = await import(
-      "../../product-security/ui/states.js"
-    );
+    const { CanvasEmptyState } =
+      await import("../../product-security/ui/states.js");
     const retry = vi.fn();
     const slot = renderSlot(
       { component: CanvasEmptyState },
@@ -64,9 +62,8 @@ describe("authorized cross-surface Sync routes", () => {
   });
 
   it("enables the merged findings header deep link for its selected scope", async () => {
-    const { FindingsHeader } = await import(
-      "../../findings/ui/FindingsHeader.js"
-    );
+    const { FindingsHeader } =
+      await import("../../findings/ui/FindingsHeader.js");
     const slot = renderSlot(
       { component: FindingsHeader },
       {
@@ -84,8 +81,10 @@ describe("authorized cross-surface Sync routes", () => {
         total: 1,
         loaded: 1,
         selection: { mode: "explicit" as const, keys: new Set<string>() },
+        pulling: false,
         onProject: vi.fn(),
         onVersion: vi.fn(),
+        onPull: vi.fn(),
         onSelectPage: vi.fn(),
         onSelectPredicate: vi.fn(),
         onClearSelection: vi.fn(),
@@ -143,8 +142,7 @@ describe("authorized cross-surface Sync routes", () => {
       method: "toPluginPanel",
       path: "sync",
       options: {
-        subPath:
-          "scope/platform-project/version-1/surface/vexDecision",
+        subPath: "scope/platform-project/version-1/surface/vexDecision",
       },
     });
   });

@@ -37,9 +37,9 @@ Entry format — one section per defect:
 
 ### FS-193 — all-quarantined findings pull (sweep #6)
 
-- **Journey**: `bb finite-state pull finding` against a corpus where every row is unkeyable → repair remote → same pull again
+- **Journey**: `bb finite-state pull finding --json` against a partially-degenerate corpus → inspect fetched/quarantined/published counts in CLI and Findings panel → pull an all-unkeyable corpus → repair remote → same pull again
 - **Broke because**: one degenerate row aborted the whole pull; then the failed staging generation resumed forever, never contacting the repaired remote
-- **Beat asserts**: all-quarantined fails loudly with truthful counts and preserves the accepted generation; the next same-kinds pull against a healthy remote succeeds and publishes
+- **Beat asserts**: partial quarantine publishes keyable rows and reports the same truthful per-generation quarantine count in CLI JSON and the Findings panel; all-quarantined fails loudly with truthful counts and preserves the accepted generation; the next same-kinds pull against a healthy remote succeeds and publishes
 
 ### FS-194 — triage single write YAML silent no-op (sweep #6)
 

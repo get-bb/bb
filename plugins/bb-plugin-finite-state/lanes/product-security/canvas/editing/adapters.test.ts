@@ -228,13 +228,14 @@ describe("canvas real-wire adapter contract", () => {
       kinds: Record<string, { fetched: number; baseRows: number }>;
     };
     expect(firstReport.kinds).toMatchObject({
-      vexDecision: { fetched: 308, baseRows: 308 },
+      vexDecision: { fetched: 308, baseRows: 308, quarantined: 0 },
       ...Object.fromEntries(
         TARA_KINDS.map((kind) => [
           kind,
           {
             fetched: expectedCounts[kind],
             baseRows: expectedCounts[kind],
+            quarantined: 0,
           },
         ]),
       ),

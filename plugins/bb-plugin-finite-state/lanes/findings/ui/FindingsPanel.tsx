@@ -7,6 +7,7 @@ import {
   useRealtime,
   useRpc,
 } from "@bb/plugin-sdk/app";
+import { rpcContract } from "../../../shared/contract.js";
 import type { findingsUiRpcContract } from "../rpc.js";
 import { FINDING_COLUMNS } from "./columns.js";
 import { FilterBar } from "./FilterBar.js";
@@ -42,6 +43,14 @@ interface FindingScope {
   projectVersionId: string;
 }
 
+type FindingsPanelRpcContract = typeof findingsUiRpcContract &
+  Pick<typeof rpcContract, "syncPull">;
+interface PullCounts {
+  fetched: number;
+  baseRows: number;
+  quarantined: number;
+}
+
 export function FindingsPanel({
   subPath,
 }: PluginNavPanelProps): React.JSX.Element {
@@ -49,7 +58,7 @@ export function FindingsPanel({
   const navigate = useBbNavigate();
   const context = useBbContext();
   const sidebar = experimental_useSidebarThreads();
-  const rpc = useRpc<typeof findingsUiRpcContract>();
+  const rpc = useRpc<FindingsPanelRpcContract>();
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     null,
   );
@@ -72,6 +81,9 @@ export function FindingsPanel({
   const selectedVersionRef = useRef<FindingScope | null>(null);
   const [versionLoading, setVersionLoading] = useState(Boolean(projectId));
   const [versionRequest, setVersionRequest] = useState(0);
+  const [pulling, setPulling] = useState(false);
+  const [pullError, setPullError] = useState<string | null>(null);
+  const [pullReport, setPullReport] = useState<PullCounts | null>(null);
   const saved = useSavedViews(projectId);
   const activeView =
     route.kind === "view"
@@ -98,6 +110,7 @@ export function FindingsPanel({
     projectVersionId,
     filter,
   );
+  const retryFindings = data.retry;
   const [dismissedStale, setDismissedStale] = useState<string | null>(null);
   const [ui, setUi] = useState<FindingsUiState>({
     route: {},
@@ -113,6 +126,8 @@ export function FindingsPanel({
       return;
     }
     selectedVersionRef.current = next;
+    setPullError(null);
+    setPullReport(null);
     setPlatformProjectId(next?.platformProjectId ?? null);
     setProjectVersionId(next?.projectVersionId ?? null);
     setUi((currentUi) => ({
@@ -162,6 +177,40 @@ export function FindingsPanel({
       active = false;
     };
   }, [projectId, rpc, selectVersion, versionRequest]);
+
+  const pullFindings = useCallback(async () => {
+    if (!projectId || !platformProjectId || !projectVersionId || pulling) {
+      return;
+    }
+    setPulling(true);
+    setPullError(null);
+    try {
+      const report = await rpc.call("syncPull", {
+        workspaceProjectId: projectId,
+        projectId: platformProjectId,
+        projectVersionId,
+        kinds: ["finding"],
+      });
+      const counts = report.kinds.finding;
+      if (!counts) throw new Error("Finding pull returned no finding report");
+      setPullReport(counts);
+      setVersionRequest((value) => value + 1);
+      await retryFindings();
+    } catch (cause) {
+      setPullError(
+        cause instanceof Error ? cause.message : "The findings pull failed.",
+      );
+    } finally {
+      setPulling(false);
+    }
+  }, [
+    platformProjectId,
+    projectId,
+    projectVersionId,
+    pulling,
+    retryFindings,
+    rpc,
+  ]);
 
   useRealtime("findings:changed", (payload) => {
     // Every accepted finding publication can introduce a cached scope, so the
@@ -281,6 +330,7 @@ export function FindingsPanel({
           selectVersion(null);
           setVersionLoading(Boolean(id));
         }}
+        onPull={() => void pullFindings()}
         onSelectPage={selectPage}
         onSelectPredicate={() =>
           setUi((current) => ({
@@ -307,10 +357,28 @@ export function FindingsPanel({
         projectId={projectId}
         projectVersionId={projectVersionId}
         projects={sidebar.projects}
+        pulling={pulling}
         selection={ui.selection}
         total={data.total}
         versions={versions}
       />
+      {pullError ? (
+        <div
+          className="border-b border-destructive/40 bg-muted px-3 py-2 text-sm text-destructive"
+          role="alert"
+        >
+          {pullError}
+        </div>
+      ) : pullReport ? (
+        <div
+          className="border-b border-border bg-muted/60 px-3 py-2 text-sm text-muted-foreground"
+          role="status"
+        >
+          Pull complete · {pullReport.fetched.toLocaleString()} fetched ·{" "}
+          {pullReport.quarantined.toLocaleString()} quarantined ·{" "}
+          {pullReport.baseRows.toLocaleString()} published
+        </div>
+      ) : null}
       <SavedViews
         activeId={route.kind === "view" ? route.view : undefined}
         columns={columns}

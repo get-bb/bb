@@ -234,7 +234,7 @@ describe("sync registration", () => {
         ["requirement"],
       ),
     ).resolves.toMatchObject({
-      kinds: { requirement: { fetched: 1, baseRows: 1 } },
+      kinds: { requirement: { fetched: 1, baseRows: 1, quarantined: 0 } },
     });
     workingRequirements = [
       {
@@ -292,10 +292,11 @@ describe("sync registration", () => {
       generationId: expect.any(String),
       baseStateSha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
       kinds: {
-        requirement: { fetched: 1, baseRows: 1 },
+        requirement: { fetched: 1, baseRows: 1, quarantined: 0 },
         vexDecision: {
           fetched: expect.any(Number),
           baseRows: expect.any(Number),
+          quarantined: expect.any(Number),
         },
       },
     });
@@ -544,6 +545,7 @@ decisions:
         vexDecision: {
           fetched: expect.any(Number),
           baseRows: expect.any(Number),
+          quarantined: 0,
         },
       },
     });
@@ -636,7 +638,9 @@ decisions:
     });
     expect(first.exitCode).toBe(0);
     expect(JSON.parse(first.stdout)).toMatchObject({
-      kinds: { finding: { fetched: 4_001, baseRows: 4_000 } },
+      kinds: {
+        finding: { fetched: 4_001, baseRows: 4_000, quarantined: 0 },
+      },
     });
     const repeated = await host.harness.behavior.runCli(argv, {
       cwd: root,
@@ -645,7 +649,9 @@ decisions:
     });
     expect(repeated.exitCode).toBe(0);
     expect(JSON.parse(repeated.stdout)).toMatchObject({
-      kinds: { finding: { fetched: 4_001, baseRows: 4_000 } },
+      kinds: {
+        finding: { fetched: 4_001, baseRows: 4_000, quarantined: 0 },
+      },
     });
 
     for (const captured of [
@@ -686,7 +692,7 @@ decisions:
       );
       expect(result.exitCode).toBe(0);
       expect(JSON.parse(result.stdout)).toMatchObject({
-        kinds: { finding: { fetched: 1, baseRows: 1 } },
+        kinds: { finding: { fetched: 1, baseRows: 1, quarantined: 0 } },
       });
       const persisted = context
         .db()
@@ -771,7 +777,7 @@ decisions:
         kinds: ["finding"],
       });
       expect(mixed).toMatchObject({
-        kinds: { finding: { fetched: 3, baseRows: 2 } },
+        kinds: { finding: { fetched: 3, baseRows: 2, quarantined: 1 } },
       });
       if (
         typeof mixed !== "object" ||
@@ -807,6 +813,36 @@ decisions:
       expect(JSON.stringify(host.harness.inspection.logEntries)).not.toContain(
         "must-not-reach-diagnostics",
       );
+
+      const mixedCli = await host.harness.behavior.runCli(
+        [
+          "pull",
+          "finding",
+          "--project",
+          scope.projectId,
+          "--version",
+          mixedVersion,
+          "--json",
+        ],
+        {
+          cwd: root,
+          threadId: "thread-sync-cli",
+          projectId: "bb-project-sync",
+        },
+      );
+      expect(mixedCli).toMatchObject({ exitCode: 0, stderr: "" });
+      const mixedCliReport: unknown = JSON.parse(mixedCli.stdout);
+      expect(mixedCliReport).toMatchObject({
+        kinds: { finding: { fetched: 3, baseRows: 2, quarantined: 1 } },
+      });
+      if (
+        typeof mixedCliReport !== "object" ||
+        mixedCliReport === null ||
+        !("generationId" in mixedCliReport) ||
+        typeof mixedCliReport.generationId !== "string"
+      ) {
+        throw new Error("finding CLI returned no mixed-corpus generation id");
+      }
 
       state.findings.clear();
       for (let index = 1; index <= 3; index += 1) {
@@ -853,7 +889,9 @@ decisions:
         | { generationId: string; status: string }
         | undefined;
       expect(failedGeneration).toMatchObject({ status: "failed" });
-      expect(failedGeneration?.generationId).not.toBe(mixed.generationId);
+      expect(failedGeneration?.generationId).not.toBe(
+        mixedCliReport.generationId,
+      );
       const acceptedAfterFailure = context
         .db()
         .prepare(
@@ -870,7 +908,7 @@ decisions:
         )
         .get(scope.projectId, mixedVersion);
       expect(acceptedAfterFailure).toEqual({
-        acceptedGenerationId: mixed.generationId,
+        acceptedGenerationId: mixedCliReport.generationId,
         visibleRows: 2,
       });
       expect(JSON.stringify(host.harness.inspection.logEntries)).not.toContain(
@@ -890,7 +928,7 @@ decisions:
       });
       const recovered = await allQuarantinedPull();
       expect(recovered).toMatchObject({
-        kinds: { finding: { fetched: 1, baseRows: 1 } },
+        kinds: { finding: { fetched: 1, baseRows: 1, quarantined: 0 } },
       });
       if (
         typeof recovered !== "object" ||
@@ -1020,7 +1058,7 @@ decisions:
       state.findings.clear();
       const empty = await allQuarantinedPull();
       expect(empty).toMatchObject({
-        kinds: { finding: { fetched: 0, baseRows: 0 } },
+        kinds: { finding: { fetched: 0, baseRows: 0, quarantined: 0 } },
       });
       if (
         typeof empty !== "object" ||
