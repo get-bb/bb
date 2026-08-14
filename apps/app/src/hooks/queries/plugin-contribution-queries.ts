@@ -1,8 +1,9 @@
-import { useQuery, type QueryKey } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   normalizePluginMentionTriggers,
   type PluginMentionTrigger,
 } from "@/lib/plugin-mention-triggers";
+import { pluginContributionsQueryKey } from "./query-keys";
 
 /**
  * Host-rendered plugin contributions (plugin design §4.9), served by
@@ -70,20 +71,6 @@ async function fetchPluginContributions(
           )
       : [],
   };
-}
-
-export function pluginContributionsQueryKey(): QueryKey {
-  return ["plugin-contributions"];
-}
-
-/**
- * Prefix covering every contributions cache entry. The realtime
- * `plugins-changed` broadcast invalidates it so `bb plugin
- * reload/enable/disable` reaches open pages without waiting out the stale
- * time.
- */
-export function allPluginContributionsQueryKeyPrefix(): QueryKey {
-  return ["plugin-contributions"];
 }
 
 /**

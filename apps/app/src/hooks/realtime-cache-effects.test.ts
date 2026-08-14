@@ -35,7 +35,7 @@ import {
   threadTimelineQueryKey,
   threadTimelineTurnSummaryDetailsQueryKey,
 } from "./queries/query-keys";
-import { pluginContributionsQueryKey } from "./queries/plugin-contribution-queries";
+import { pluginContributionsQueryKey } from "./queries/query-keys";
 import { createRealtimeCacheEffects } from "./realtime-cache-effects";
 import {
   REALTIME_ENVIRONMENT_CHANGE_REGISTRY,

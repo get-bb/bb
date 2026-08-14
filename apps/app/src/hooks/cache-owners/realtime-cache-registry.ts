@@ -62,6 +62,12 @@ import {
 } from "./thread-list-cache-data";
 import {
   allHostQueryKeyPrefix,
+  allPluginCatalogSearchQueryKeyPrefix,
+  allPluginContributionsQueryKeyPrefix,
+  allPluginListQueryKeyPrefix,
+  allPluginSettingsQueryKeyPrefix,
+  allPluginSettingsViewQueryKeyPrefix,
+  allPluginSourceQueryKeyPrefix,
   allProjectCommandsQueryKeyPrefix,
   allThreadStorageFilePreviewQueryKeyPrefix,
   allThreadStorageFilesQueryKeyPrefix,
@@ -87,16 +93,6 @@ import {
   threadStorageFilesForThreadQueryKeyPrefix,
   threadStoragePathsForThreadQueryKeyPrefix,
 } from "../queries/query-keys";
-import { allPluginContributionsQueryKeyPrefix } from "../queries/plugin-contribution-queries";
-import {
-  allPluginListQueryKeyPrefix,
-  allPluginSettingsViewQueryKeyPrefix,
-} from "../queries/plugin-settings-queries";
-import {
-  allPluginCatalogSearchQueryKeyPrefix,
-  allPluginSourceQueryKeyPrefix,
-} from "../queries/plugin-catalog-queries";
-import { allPluginSettingsQueryKeyPrefix } from "../../lib/plugin-sdk-hooks";
 import { schedulePluginFrontendReconcile } from "../../lib/plugin-frontend-lazy";
 import {
   getProjectListInvalidationQueryKeys,

@@ -28,10 +28,8 @@ import {
   pluginDetailBannerKind,
   pluginFrontendDiagnosticRequiresFailureBanner,
 } from "@/components/tools/PluginDetail";
-import {
-  pluginSourceQueryKey,
-  type PluginCatalogSearchEntry,
-} from "@/hooks/queries/plugin-catalog-queries";
+import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
+import { pluginSourceQueryKey } from "@/hooks/queries/query-keys";
 import type { PluginFrontendDiagnostic } from "@/lib/plugin-frontend";
 
 const GITHUB_PLUGIN = {

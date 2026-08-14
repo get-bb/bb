@@ -4,8 +4,9 @@ import type {
   PluginSettingsResponse,
 } from "@bb/server-contract";
 import { pluginSettingsUpdateRequestSchema } from "@bb/server-contract";
-import { useQuery, type QueryKey } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { createPluginsClient } from "./plugin-client";
+import { pluginListQueryKey, pluginSettingsViewQueryKey } from "./query-keys";
 
 type FetchLike = typeof fetch;
 
@@ -186,22 +187,6 @@ export async function removePlugin(
   pluginId: string,
 ): Promise<void> {
   await createPluginsClient(fetchImpl).remove({ pluginId });
-}
-
-export function pluginListQueryKey(enabled: boolean): QueryKey {
-  return ["plugin-list", enabled];
-}
-
-export function allPluginListQueryKeyPrefix(): QueryKey {
-  return ["plugin-list"];
-}
-
-export function pluginSettingsViewQueryKey(pluginId: string): QueryKey {
-  return ["plugin-settings-view", pluginId];
-}
-
-export function allPluginSettingsViewQueryKeyPrefix(): QueryKey {
-  return ["plugin-settings-view"];
 }
 
 export function usePluginList(args: { enabled: boolean }) {

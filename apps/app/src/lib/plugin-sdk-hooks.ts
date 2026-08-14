@@ -6,7 +6,7 @@ import {
   useRef,
   useSyncExternalStore,
 } from "react";
-import { useQuery, type QueryKey } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
 import type { PromptTextMention } from "@bb/domain";
 import type {
@@ -51,6 +51,7 @@ import {
 import { useRouteState } from "@/hooks/useRouteState";
 import { useServerConnectionState } from "@/hooks/useServerConnectionState";
 import { wsManager } from "@/lib/ws";
+import { pluginSdkSettingsQueryKey } from "@/hooks/queries/query-keys";
 
 /**
  * Host implementations of the `@get-bb/plugin-sdk/app` hooks (plugin design
@@ -207,15 +208,6 @@ export async function fetchPluginSdkSettings(
     }
   }
   return values;
-}
-
-export function pluginSdkSettingsQueryKey(pluginId: string): QueryKey {
-  return ["plugin-settings", pluginId];
-}
-
-/** Prefix the realtime `plugins-changed` broadcast invalidates. */
-export function allPluginSettingsQueryKeyPrefix(): QueryKey {
-  return ["plugin-settings"];
 }
 
 export function useRpc<

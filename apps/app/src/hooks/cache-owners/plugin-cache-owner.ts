@@ -1,14 +1,16 @@
 import type { QueryClient } from "@tanstack/react-query";
 import {
-  allPluginListQueryKeyPrefix,
-  pluginListQueryKey,
-  pluginSettingsViewQueryKey,
   toPluginListItem,
   type PluginListResult,
   type PluginSettingsView,
 } from "../queries/plugin-settings-queries";
 import type { InstalledPlugin } from "@bb/server-contract";
-import { allPluginCatalogSearchQueryKeyPrefix } from "../queries/plugin-catalog-queries";
+import {
+  allPluginCatalogSearchQueryKeyPrefix,
+  allPluginListQueryKeyPrefix,
+  pluginListQueryKey,
+  pluginSettingsViewQueryKey,
+} from "../queries/query-keys";
 
 /**
  * Cache owner for plugin management data. The PUT /plugins/:id/settings

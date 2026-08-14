@@ -5,9 +5,10 @@ import type {
   PluginSourceDetail as SdkPluginSourceDetail,
   PluginUpdateCheckEntry,
 } from "@bb/server-contract";
-import { useQuery, type QueryKey } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { createPluginsClient } from "./plugin-client";
 import { toEpochMs } from "./plugin-settings-queries";
+import { pluginCatalogSearchQueryKey, pluginSourceQueryKey } from "./query-keys";
 
 type FetchLike = typeof fetch;
 
@@ -53,14 +54,6 @@ export async function fetchPluginSource(
   } catch {
     return null;
   }
-}
-
-export function pluginSourceQueryKey(pluginId: string): QueryKey {
-  return ["plugin-source", pluginId];
-}
-
-export function allPluginSourceQueryKeyPrefix(): QueryKey {
-  return ["plugin-source"];
 }
 
 export function usePluginSource(
@@ -188,14 +181,6 @@ export async function searchPluginCatalog(
     query,
   });
   return results.map(toPluginCatalogSearchEntry);
-}
-
-export function pluginCatalogSearchQueryKey(query: string): QueryKey {
-  return ["plugin-catalog-search", query];
-}
-
-export function allPluginCatalogSearchQueryKeyPrefix(): QueryKey {
-  return ["plugin-catalog-search"];
 }
 
 const PLUGIN_CATALOG_STALE_TIME_MS = 30 * 60_000;

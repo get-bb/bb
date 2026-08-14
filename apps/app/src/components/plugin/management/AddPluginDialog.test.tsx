@@ -3,11 +3,11 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { pluginCatalogSearchQueryKey } from "@/hooks/queries/plugin-catalog-queries";
+import type { PluginListResult } from "@/hooks/queries/plugin-settings-queries";
 import {
+  pluginCatalogSearchQueryKey,
   pluginListQueryKey,
-  type PluginListResult,
-} from "@/hooks/queries/plugin-settings-queries";
+} from "@/hooks/queries/query-keys";
 import { appToast } from "@/components/ui/app-toast.js";
 import { AddPluginDialog } from "./AddPluginDialog";
 

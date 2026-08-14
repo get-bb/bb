@@ -18,10 +18,8 @@ import {
   AutomationRunStatusIndicator,
 } from "bb-plugin-automations/detail-view";
 import { AUTOMATION_CREATE_TEMPLATES } from "bb-plugin-automations/overview-view";
-import {
-  pluginSourceQueryKey,
-  type PluginCatalogSearchEntry,
-} from "@/hooks/queries/plugin-catalog-queries";
+import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
+import { pluginSourceQueryKey } from "@/hooks/queries/query-keys";
 import {
   EMPTY_PLUGIN_UPDATE_STATE,
   type PluginListItem,
