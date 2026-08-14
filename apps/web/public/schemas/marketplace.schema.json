@@ -124,7 +124,10 @@
           "$comment": "range and tag are mutually exclusive.",
           "not": { "required": ["range", "tag"] },
           "properties": {
-            "package": { "type": "string", "minLength": 1 },
+            "package": {
+              "type": "string",
+              "pattern": "^(?:@[a-z0-9][a-z0-9._~-]*/)?[a-z0-9][a-z0-9._~-]*$"
+            },
             "range": { "type": "string", "minLength": 1 },
             "tag": {
               "type": "string",
@@ -151,7 +154,11 @@
               "$comment": "Repository-relative directory; absolute paths, empty segments, .. and .git are rejected.",
               "pattern": "^(?![A-Za-z]:)(?!/)(?!(?:[^/]+/)*(?:\\.|\\.\\.|\\.git)(?:/|$))[^/\\\\]+(?:/[^/\\\\]+)*$"
             },
-            "ref": { "type": "string", "minLength": 1 }
+            "ref": {
+              "type": "string",
+              "$comment": "Must round-trip through BB's git:<url>@<ref> install syntax.",
+              "pattern": "^(?!-)(?![\\s\\S]*\\.\\.)(?![\\s\\S]*@)[\\s\\S]+$"
+            }
           }
         }
       }
