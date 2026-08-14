@@ -5,7 +5,7 @@ import {
   deletePluginStateSnapshot,
   listExpiredPluginStateSnapshots,
   listGarbageCollectablePluginArtifacts,
-  listPluginArtifactsAtOrUnderPath,
+  listPluginArtifactsInGitCheckout,
   listPluginArtifactsUnderPath,
   type DbConnection,
   type PluginArtifactRow,
@@ -24,16 +24,16 @@ export function pluginArtifactStorageRoot(
   return artifact.path === checkoutRoot ? checkoutRoot : artifact.path;
 }
 
+/**
+ * The recorded checkout root. Path parsing cannot replace it: a nested
+ * directory can carry the same name as the commit, and the derived root would
+ * then exclude the tenants that keep the tree alive.
+ */
 function pluginArtifactGitCheckoutRoot(
   artifact: PluginArtifactRow,
 ): string | null {
-  if (artifact.sourceKind !== "git" || artifact.gitResolvedCommit === null) {
-    return null;
-  }
-  const parts = artifact.path.split(sep);
-  const commitIndex = parts.lastIndexOf(artifact.gitResolvedCommit);
-  if (commitIndex === -1) return null;
-  return parts.slice(0, commitIndex + 1).join(sep) || sep;
+  if (artifact.sourceKind !== "git") return null;
+  return artifact.gitCheckoutRoot;
 }
 
 function isManagedCachePath(dataDir: string, path: string): boolean {
@@ -93,7 +93,7 @@ export async function garbageCollectPluginArtifacts(args: {
     const checkoutTenants =
       checkoutRoot === null
         ? null
-        : listPluginArtifactsAtOrUnderPath(args.db, checkoutRoot, sep);
+        : listPluginArtifactsInGitCheckout(args.db, checkoutRoot);
     const overlappingTenants =
       checkoutTenants ??
       listPluginArtifactsUnderPath(args.db, storageRoot, sep);

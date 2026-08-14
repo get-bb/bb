@@ -7,6 +7,7 @@ import {
   getPluginArtifactByResolution,
   listPluginArtifactsAtOrUnderPath,
   listPluginArtifactsUnderPath,
+  setPluginArtifactGitCheckoutRoot,
   setPluginArtifactValidation,
   type InstalledPluginRow,
   type PluginExactResolution,
@@ -648,6 +649,7 @@ export function createManagedPluginArtifacts(
             sourceKind: "git",
             npmResolvedVersion: null,
             gitResolvedCommit: resolvedCommit,
+            gitCheckoutRoot: targetDir,
             path: stagedTargetRoot,
             integrity: null,
             contentHash,
@@ -655,6 +657,7 @@ export function createManagedPluginArtifacts(
             validatedAt: null,
           });
         if (ownedArtifact !== undefined) {
+          setPluginArtifactGitCheckoutRoot(deps.db, artifact.id, targetDir);
           setPluginArtifactValidation(deps.db, artifact.id, {
             contentHash,
             validationResult: "pending",
@@ -854,6 +857,7 @@ export function createManagedPluginArtifacts(
             sourceKind: "npm",
             npmResolvedVersion: candidate.version,
             gitResolvedCommit: null,
+            gitCheckoutRoot: null,
             path: rootDir,
             integrity: candidate.integrity,
             contentHash,
@@ -1121,6 +1125,7 @@ export function createManagedPluginArtifacts(
             sourceKind: "git",
             npmResolvedVersion: null,
             gitResolvedCommit: args.commit,
+            gitCheckoutRoot: targetDir,
             path: targetRoot,
             integrity: null,
             contentHash,
@@ -1128,6 +1133,11 @@ export function createManagedPluginArtifacts(
             validatedAt: null,
           });
         if (existingArtifact !== undefined) {
+          setPluginArtifactGitCheckoutRoot(
+            deps.db,
+            existingArtifact.id,
+            targetDir,
+          );
           setPluginArtifactValidation(deps.db, existingArtifact.id, {
             contentHash,
             validationResult: "pending",
@@ -1298,6 +1308,7 @@ export function createManagedPluginArtifacts(
             sourceKind: "npm",
             npmResolvedVersion: args.candidate.version,
             gitResolvedCommit: null,
+            gitCheckoutRoot: null,
             path: targetRoot,
             integrity: args.candidate.integrity,
             contentHash,

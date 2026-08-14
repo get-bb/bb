@@ -256,6 +256,7 @@ describe("plugin activation snapshots and garbage collection", () => {
         sourceKind: "git",
         npmResolvedVersion: null,
         gitResolvedCommit: commit,
+        gitCheckoutRoot: checkout,
         path,
         integrity: null,
         contentHash: "hash",
@@ -325,6 +326,7 @@ describe("plugin activation snapshots and garbage collection", () => {
         sourceKind: "git",
         npmResolvedVersion: null,
         gitResolvedCommit: commit,
+        gitCheckoutRoot: checkout,
         path,
         integrity: null,
         contentHash: "hash",
@@ -371,6 +373,76 @@ describe("plugin activation snapshots and garbage collection", () => {
     expect(warnings).toEqual([]);
   });
 
+  it("keeps a nested directory that carries the commit name", async () => {
+    const commit = "d".repeat(40);
+    const checkout = join(
+      dataDir,
+      "plugins",
+      "cache",
+      "git",
+      "host",
+      "repo",
+      commit,
+    );
+    // The repository holds a directory named like the commit. Path parsing
+    // would treat it as the checkout root and miss the active root plugin.
+    const nestedPath = join(checkout, "vendor", commit);
+    await mkdir(nestedPath, { recursive: true });
+    await writeFile(join(nestedPath, "sentinel"), "keep");
+    const makeArtifact = (id: string, pluginId: string, path: string) =>
+      createPluginArtifact(db, {
+        id,
+        pluginId,
+        sourceKind: "git",
+        npmResolvedVersion: null,
+        gitResolvedCommit: commit,
+        gitCheckoutRoot: checkout,
+        path,
+        integrity: null,
+        contentHash: "hash",
+        validationResult: "valid",
+        validatedAt: 1,
+      });
+    makeArtifact("collision-root", "gc-collision-root", checkout);
+    makeArtifact("collision-nested", "gc-collision-nested", nestedPath);
+    upsertInstalledPlugin(db, {
+      id: "gc-collision-root",
+      source: "git:https://example.test/repo.git@main",
+      provenance: { kind: "direct" },
+      sourceIntent: {
+        kind: "git",
+        url: "https://example.test/repo.git",
+        subdirectory: null,
+        requestedRef: "main",
+        refKind: "branch",
+      },
+      exactResolution: { kind: "git", commit },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: "collision-root",
+      rootDir: checkout,
+      version: "1.0.0",
+      enabled: true,
+    });
+
+    const warnings: string[] = [];
+    await garbageCollectPluginArtifacts({
+      db,
+      dataDir,
+      now: Date.now() + 1_000,
+      retentionMs: 0,
+      warn: (message) => warnings.push(message),
+    });
+
+    await stat(join(nestedPath, "sentinel"));
+    expect(listPluginArtifacts(db, "gc-collision-nested")).toHaveLength(1);
+    expect(warnings).toEqual([]);
+  });
+
   it("collects the shared checkout after its last nested plugin", async () => {
     const commit = "b".repeat(40);
     const checkout = join(
@@ -391,6 +463,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       sourceKind: "git",
       npmResolvedVersion: null,
       gitResolvedCommit: commit,
+      gitCheckoutRoot: checkout,
       path: nestedPath,
       integrity: null,
       contentHash: "hash",
@@ -430,6 +503,7 @@ describe("plugin activation snapshots and garbage collection", () => {
         sourceKind: "git",
         npmResolvedVersion: null,
         gitResolvedCommit: commit,
+        gitCheckoutRoot: path,
         path,
         integrity: null,
         contentHash: "hash",

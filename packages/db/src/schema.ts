@@ -268,6 +268,13 @@ export const pluginArtifacts = sqliteTable(
     sourceKind: text("source_kind", { enum: ["npm", "git"] }).notNull(),
     npmResolvedVersion: text("npm_resolved_version"),
     gitResolvedCommit: text("git_resolved_commit"),
+    /**
+     * Directory of the shared checkout that holds this git artifact. A
+     * multi-plugin repository keeps one checkout per commit, so `path` can be
+     * a nested plugin root below this value. Path parsing cannot recover it:
+     * a nested directory can carry the same name as the commit.
+     */
+    gitCheckoutRoot: text("git_checkout_root"),
     path: text("path").notNull(),
     integrity: text("integrity"),
     contentHash: text("content_hash"),
