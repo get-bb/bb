@@ -94,7 +94,7 @@ encodes the testable ones.
 | Idle reaping was Codex-only by accident (#1604); process-key scheme encoded eligibility | Declaration carries explicit `processScope: "thread" \| "shared"` and `sessionPersistence: "none" \| "resume"`; reap eligibility derives from declared data, not string prefixes. |
 | Release vs interrupt conflated (#1584) | Protocol `thread/stop` carries `intent: "interrupt" \| "release"` from day one. |
 | Turn settlement gaps — repeated fixes (#1196, #1234, #1321, #1432), still no watchdog | Runtime (single owner of the turn state machine) keeps the accepted→dispatched→started→completed states; add the missing **turn-start watchdog** (visible failure if no `turn/started` within a bound). |
-| Session replaced as silent side effect of config diff (#1268, #1236) | Execution-option scope (`live` vs `session`) is **declared data** per option per provider, not adapter code; session replacement is an explicit, logged decision. |
+| Session replaced as silent side effect of config diff (#1268, #1236) | No core-side option diffing at all: the bridge owns reconciliation, and session replacement must be **reported** (session-replacement notification + settlement events), never silent. |
 | Provider-minted ids trusted as bb ids froze a host for 30 min (#1320) | Protocol schema forbids the bridge from minting bb turn ids; only caller-vouched ids scope events. Diagnostic events are droppable by construction. |
 | Silently dropped undecodable JSON-RPC → 30s timeouts (#853) | Conformance rule: undecodable → `-32602` reply with issues; unknown method → `-32601`; request/response discriminated on `method`. |
 | Per-session item-id counters collided across resumes → permanent 500 (#1224) | Conformance rule: item ids unique across resume (turn-scoped with per-instance entropy); projection degrades, never throws. |
@@ -208,7 +208,7 @@ Disposition of every current `ProviderAdapter` member:
 | `translateEvent`, `translateAcceptedCommand` | deleted — bridge emits `ThreadEvent`s (accepted-user-message synthesis stays generic in runtime) |
 | `parseModelListResult` | deleted — protocol defines the `model/list` result schema |
 | `decodeToolCallRequest`, `decodeInteractiveRequest`, `buildInteractiveResponse` | deleted — canonical protocol schemas |
-| `classifyExecutionSettingsChange` | deleted — the runtime never diffs options; the bridge reconciles internally (apply live vs rebuild its session) and must report rebuilds explicitly. `executionOptionScopes` survives only as the server/UI cost signal (see Design §3) |
+| `classifyExecutionSettingsChange` | deleted with no replacement — the runtime never diffs options; the bridge reconciles internally, and rebuild visibility is the mandatory session-replacement notification. No declared scope table: #1610 removed its last server-side consumer (see the note in Design §3) |
 | `normalizeExecutionOptions` | deleted — bridge-internal normalization |
 | `buildPostInitializeRequests`, `prepareTurnStart`, `clearActiveTurnState` | deleted — bridge-internal or generic turn-state concerns |
 | `buildThreadDetachedEvents` | generic: runtime reconciles from its own background-work state |
@@ -269,40 +269,27 @@ bb.agents.experimental_registerProvider({
     processScope: "shared",             // "thread" (codex) | "shared"
   },
   composerActions: [...],
-  executionOptionScopes: { model: "live", reasoningLevel: "live", ... },
   approvalRequestPolicy: "provider",
-  // NOTE: `executionOptionScopes` is a *cost signal*, not a mechanism. The
-  // bridge owns the mechanics of applying option changes (reconfigure in
-  // place vs rebuild its provider session), and the runtime never diffs
-  // options — it forwards them on every command. Every provider offers the
-  // composer switcher, and since #1610 the sticky override API
-  // (`bb thread update --model` / `PATCH /threads/:id`; state is a
-  // server-DB override record resolved into each turn's options — bridges
-  // hold no override state) works on every provider too, same-provider
-  // only: #1610 deleted both the claude-only gate (a v1 scoping choice from
-  // commit `1a5620b53`) and the `supportsExecutionOverride` capability.
-  // Per-provider cost of a mid-thread model/reasoning change today, from
-  // the code (not folklore):
-  //   - claude: live — options ride the next turn; nothing else happens.
-  //   - codex: `turn/start` already carries model/serviceTier per turn
-  //     (`codex/adapter.ts:2094`) and codex applies them in-session; bb
-  //     *additionally* issues a session-scoped `thread/resume` on the same
-  //     process (rollout re-open, context preserved) because codex's
-  //     classify marks every change session-scoped. Cheap, and arguably
-  //     redundant — direct evidence for bridge-owned reconciliation, which
-  //     would just send the turn.
-  //   - pi: session-scoped `thread/resume` on the same process, applying
-  //     the new settings (per #1610's own analysis).
-  //   - acp: session-scoped; genuinely lossy only when the agent lacks
-  //     `loadSession` (fresh session — the agent's context is gone).
-  // So the declared scopes exist to tell the user the truth in the cases
-  // where a change is actually lossy (acp without loadSession; claude
-  // session-construction settings, the #1268 class) — not to dramatize
-  // cheap same-process re-opens.
-  // The conformance kit cross-checks declaration against bridge behavior,
-  // and session rebuilds must be reported (session-replacement notification
-  // + background-work settlement events), never silent — the #1268 lesson
-  // as a protocol rule.
+  // NOTE: there is deliberately NO `executionOptionScopes` (or any
+  // live-vs-session cost table). Its would-be consumers are all gone:
+  // #1610 deleted the override gate and `supportsExecutionOverride`; the
+  // runtime never diffs options (the bridge reconciles internally); and
+  // the truth-telling duty is event-sourced where it already works today —
+  // the ACP bridge warns at the moment a resume falls back to a fresh
+  // session ("continuing in a fresh session without in-agent history",
+  // `acp/bridge/bridge.ts:1618`), and this protocol makes the equivalent
+  // universal via the mandatory session-replacement notification. A
+  // declared table with zero consumers would violate the repo's own
+  // contract rules (accepted-but-ignored fields are forbidden). If a
+  // pre-submit "this will rebuild the session" hint is ever wanted, source
+  // the per-option scopes from the bridge's `initialize` result and add
+  // the declaration field when that consumer exists — deleting now
+  // forecloses nothing.
+  // Per-provider reality of a mid-thread model/reasoning change, from the
+  // code: claude applies live; codex takes model/serviceTier per turn
+  // (`codex/adapter.ts:2094`) and bb's extra same-process `thread/resume`
+  // is redundant conservatism; pi resumes same-process with the new
+  // settings; acp is lossy only without `loadSession` — and warns.
   bridge: { entry: "provider-bridge" }, // required for kind "agent"; routers omit it
   // NOTE: no `cli` and no `skillRoots` blocks — CLI lifecycle and skill
   // layout knowledge are bridge protocol methods, not declaration data. See
@@ -693,9 +680,10 @@ per-provider slots — chiefly `buildProviderCommandPlan` and `translateEvent`
    delete rather than port: the runtime stops diffing options entirely and forwards them on
    every command; the bridge reconciles internally (apply live, or rebuild
    its provider session — including restarting its own child process) and
-   must report rebuilds explicitly. The declared `executionOptionScopes`
-   table survives only as the server/UI cost signal for offering sticky
-   overrides — see the declaration note in Design §3.
+   must report rebuilds explicitly. Nothing declared replaces them: #1610
+   removed the last consumer of a live-vs-session table, and rebuild
+   visibility is event-sourced (the mandatory session-replacement
+   notification; ACP already warns on lossy resume today).
 
 Plus the out-of-adapter leakage that gets deleted: codex process keying,
 archived-session regexes, rename-retry, and account-restart tracking in
