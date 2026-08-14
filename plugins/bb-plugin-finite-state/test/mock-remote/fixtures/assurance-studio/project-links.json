@@ -1,0 +1,202 @@
+{
+  "links": [
+    {
+      "created_at": "2026-05-12T14:30:00.000Z",
+      "created_by": "fixture-user",
+      "critical_vuln_count": 1,
+      "fs_product_id": "platform-project-a",
+      "fs_product_name": "Platform Project A",
+      "fs_version_id": "platform-version-a",
+      "fs_version_name": "Version A",
+      "id": "link-a1",
+      "is_primary": true,
+      "last_synced_at": "2026-05-12T14:30:00.000Z",
+      "organization_id": "fixture-organization",
+      "project_id": "as-project-a1",
+      "sbom_component_count": 12,
+      "source_type": "finite_state",
+      "summary": {
+        "status": "captured-shape"
+      },
+      "sync_error": null,
+      "sync_status": "synced",
+      "updated_at": "2026-05-12T14:30:00.000Z",
+      "version_strategy": "specific",
+      "vulnerability_count": 3
+    },
+    {
+      "created_at": "2026-05-12T14:30:00.000Z",
+      "created_by": "fixture-user",
+      "critical_vuln_count": null,
+      "fs_product_id": "platform-project-a",
+      "fs_product_name": "Platform Project A",
+      "fs_version_id": "platform-version-a",
+      "fs_version_name": null,
+      "id": "link-a2",
+      "is_primary": true,
+      "last_synced_at": null,
+      "organization_id": "fixture-organization",
+      "project_id": "as-project-a2",
+      "sbom_component_count": null,
+      "source_type": "finite_state",
+      "summary": {
+        "status": "captured-shape"
+      },
+      "sync_error": "fixture sync error",
+      "sync_status": "error",
+      "updated_at": "2026-05-12T14:30:00.000Z",
+      "version_strategy": "specific",
+      "vulnerability_count": null
+    },
+    {
+      "created_at": "2026-05-12T14:30:00.000Z",
+      "created_by": "fixture-user",
+      "critical_vuln_count": 1,
+      "fs_product_id": "platform-project-a",
+      "fs_product_name": "Platform Project A",
+      "fs_version_id": "platform-version-a",
+      "fs_version_name": "Version A",
+      "id": "link-a3",
+      "is_primary": true,
+      "last_synced_at": "2026-05-12T14:30:00.000Z",
+      "organization_id": "fixture-organization",
+      "project_id": "as-project-a3",
+      "sbom_component_count": 12,
+      "source_type": "finite_state",
+      "summary": {
+        "status": "captured-shape"
+      },
+      "sync_error": null,
+      "sync_status": "synced",
+      "updated_at": "2026-05-12T14:30:00.000Z",
+      "version_strategy": "specific",
+      "vulnerability_count": 3
+    },
+    {
+      "created_at": "2026-05-12T14:30:00.000Z",
+      "created_by": "fixture-user",
+      "critical_vuln_count": 1,
+      "fs_product_id": "platform-project-a",
+      "fs_product_name": "Platform Project A",
+      "fs_version_id": "platform-version-a",
+      "fs_version_name": "Version A",
+      "id": "link-a4",
+      "is_primary": true,
+      "last_synced_at": "2026-05-12T14:30:00.000Z",
+      "organization_id": "fixture-organization",
+      "project_id": "as-project-a4",
+      "sbom_component_count": 12,
+      "source_type": "finite_state",
+      "summary": {
+        "status": "captured-shape"
+      },
+      "sync_error": null,
+      "sync_status": "synced",
+      "updated_at": "2026-05-12T14:30:00.000Z",
+      "version_strategy": "specific",
+      "vulnerability_count": 3
+    },
+    {
+      "created_at": "2026-05-12T14:30:00.000Z",
+      "created_by": "fixture-user",
+      "critical_vuln_count": 1,
+      "fs_product_id": "platform-project-b",
+      "fs_product_name": "Platform Project B",
+      "fs_version_id": "platform-version-b",
+      "fs_version_name": "Version B",
+      "id": "link-b1",
+      "is_primary": true,
+      "last_synced_at": "2026-05-12T14:30:00.000Z",
+      "organization_id": "fixture-organization",
+      "project_id": "as-project-b1",
+      "sbom_component_count": 12,
+      "source_type": "finite_state",
+      "summary": {
+        "status": "captured-shape"
+      },
+      "sync_error": null,
+      "sync_status": "synced",
+      "updated_at": "2026-05-12T14:30:00.000Z",
+      "version_strategy": "specific",
+      "vulnerability_count": 3
+    },
+    {
+      "created_at": "2026-05-12T14:30:00.000Z",
+      "created_by": "fixture-user",
+      "critical_vuln_count": 1,
+      "fs_product_id": "platform-project-b",
+      "fs_product_name": "Platform Project B",
+      "fs_version_id": "platform-version-b",
+      "fs_version_name": "Version B",
+      "id": "link-b2",
+      "is_primary": true,
+      "last_synced_at": "2026-05-12T14:30:00.000Z",
+      "organization_id": "fixture-organization",
+      "project_id": "as-project-b2",
+      "sbom_component_count": 12,
+      "source_type": "finite_state",
+      "summary": {
+        "status": "captured-shape"
+      },
+      "sync_error": null,
+      "sync_status": "synced",
+      "updated_at": "2026-05-12T14:30:00.000Z",
+      "version_strategy": "specific",
+      "vulnerability_count": 3
+    },
+    {
+      "created_at": "2026-05-12T14:30:00.000Z",
+      "created_by": "fixture-user",
+      "critical_vuln_count": 1,
+      "fs_product_id": "platform-project-c",
+      "fs_product_name": "Platform Project C",
+      "fs_version_id": "platform-version-c",
+      "fs_version_name": "Version C",
+      "id": "link-c1",
+      "is_primary": true,
+      "last_synced_at": "2026-05-12T14:30:00.000Z",
+      "organization_id": "fixture-organization",
+      "project_id": "as-project-c1",
+      "sbom_component_count": 12,
+      "source_type": "finite_state",
+      "summary": {
+        "status": "captured-shape"
+      },
+      "sync_error": null,
+      "sync_status": "synced",
+      "updated_at": "2026-05-12T14:30:00.000Z",
+      "version_strategy": "specific",
+      "vulnerability_count": 3
+    }
+  ],
+  "projects": [
+    {
+      "id": "as-project-a1",
+      "name": "AS Project A1"
+    },
+    {
+      "id": "as-project-a2",
+      "name": "AS Project A2"
+    },
+    {
+      "id": "as-project-a3",
+      "name": "AS Project A3"
+    },
+    {
+      "id": "as-project-a4",
+      "name": "AS Project A4"
+    },
+    {
+      "id": "as-project-b1",
+      "name": "AS Project B1"
+    },
+    {
+      "id": "as-project-b2",
+      "name": "AS Project B2"
+    },
+    {
+      "id": "as-project-c1",
+      "name": "AS Project C1"
+    }
+  ]
+}

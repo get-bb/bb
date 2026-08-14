@@ -6,7 +6,7 @@ import type Database from "better-sqlite3";
 
 import { toStorageProjectVersionId } from "../../../lib/store/index.js";
 import { RemoteError } from "../../../lib/remote/types.js";
-import type { EntityKind } from "../../../lib/sync/registry.js";
+import { entryFor, type EntityKind } from "../../../lib/sync/registry.js";
 import { canonicalJson } from "../serialize/canonical.js";
 import { BaseSnapshotStore, type BaseRow } from "../store/base-snapshot.js";
 import {
@@ -88,6 +88,27 @@ export interface PullReport {
   workingFastForwarded: boolean;
   divergence: string[];
   advisories: Array<{ kind: EntityKind; code: string; count: number }>;
+}
+
+export interface PullProjectBinding {
+  assuranceStudioProjectId: string | null;
+}
+
+export function remoteScopeForKind(
+  kind: EntityKind,
+  scope: SyncScope,
+  binding: PullProjectBinding,
+): SyncScope {
+  const entry = entryFor(kind);
+  if (!("server" in entry) || entry.server !== "assurance-studio") {
+    return scope;
+  }
+  if (binding.assuranceStudioProjectId === null) {
+    throw new Error(
+      `AS_PROJECT_SELECTION_REQUIRED: select an Assurance Studio project before reading ${kind}`,
+    );
+  }
+  return { ...scope, projectId: binding.assuranceStudioProjectId };
 }
 
 /** Typed upstream-data failure that prevents raw SQLite constraints escaping. */
@@ -586,6 +607,7 @@ function writePage(
 async function pullAdapter(
   deps: EngineDeps,
   scope: SyncScope,
+  remoteScope: SyncScope,
   storageVersionId: string,
   adapter: EntityAdapter,
   generationId: string,
@@ -607,7 +629,7 @@ async function pullAdapter(
     onAdvisory({ code: "VEX_REMOTE_IDENTITY_MISSING" }, checkpoint.quarantined);
   }
   const pages = adapter.fetchRemote(
-    scope,
+    remoteScope,
     (progress) => {
       latestOf = progress.of;
       deps.publish?.("fs-sync-pull", {
@@ -945,12 +967,14 @@ export async function pull(
   deps: EngineDeps,
   scope: SyncScope,
   kinds?: EntityKind[],
+  binding: PullProjectBinding = { assuranceStudioProjectId: null },
 ): Promise<PullReport> {
   if (scope.projectId.trim().length === 0)
     throw new Error("projectId must not be empty");
   const adapters = requestedAdapters(deps, kinds);
   const cachePullers = requestedCachePullers(deps, kinds);
   const selectedKinds = assertSelection(kinds, adapters, cachePullers);
+  for (const kind of selectedKinds) remoteScopeForKind(kind, scope, binding);
   const storageVersionId = toStorageProjectVersionId(scope.projectVersionId);
   const generationId = beginGeneration(
     deps,
@@ -964,9 +988,11 @@ export async function pull(
 
   for (const adapter of adapters) {
     try {
+      const remoteScope = remoteScopeForKind(adapter.kind, scope, binding);
       reportKinds[adapter.kind] = await pullAdapter(
         deps,
         scope,
+        remoteScope,
         storageVersionId,
         adapter,
         generationId,

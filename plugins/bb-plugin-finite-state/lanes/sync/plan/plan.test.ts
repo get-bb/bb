@@ -1,4 +1,11 @@
-import { readFile, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  readFile,
+  mkdir,
+  mkdtemp,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -9,8 +16,12 @@ import { createPluginContext } from "../../../lib/context.js";
 import { RemoteError } from "../../../lib/remote/types.js";
 import { ENTITIES } from "../../../lib/sync/registry.js";
 import { registerAttributionProvider } from "../conflicts/attribution.js";
-import type { EntityAdapter, ServerEntity, WorkingEntity } from "../engine/adapter.js";
-import { pull, type EngineDeps } from "../engine/pull.js";
+import type {
+  EntityAdapter,
+  ServerEntity,
+  WorkingEntity,
+} from "../engine/adapter.js";
+import { pull as pullEngine, type EngineDeps } from "../engine/pull.js";
 import { intendedPayload } from "../push/read-back.js";
 import { canonicalJson } from "../serialize/canonical.js";
 import { createSerializer } from "../serialize/serializer.js";
@@ -18,23 +29,63 @@ import { BaseSnapshotStore } from "../store/base-snapshot.js";
 import { blastRadius } from "./blast-radius.js";
 import { classifyThreeWay } from "./diff.js";
 import {
-  computePlan,
+  computePlan as computePlanEngine,
   loadPlan,
   loadPlanForDeps,
-  plan as computePagedPlan,
+  plan as computePagedPlanEngine,
 } from "./index.js";
 import { renderPlanCli } from "./render-cli.js";
 
 const hosts: Array<ReturnType<typeof createFakePluginHost>> = [];
 const roots: string[] = [];
+
+function pull(
+  deps: Parameters<typeof pullEngine>[0],
+  scope: Parameters<typeof pullEngine>[1],
+  kinds?: Parameters<typeof pullEngine>[2],
+) {
+  return pullEngine(deps, scope, kinds, {
+    assuranceStudioProjectId: `as-${scope.projectId}`,
+  });
+}
+
+function computePlan(
+  deps: Parameters<typeof computePlanEngine>[0],
+  selectedScope: Parameters<typeof computePlanEngine>[1],
+  kinds?: Parameters<typeof computePlanEngine>[2],
+) {
+  return computePlanEngine(deps, selectedScope, kinds, {
+    assuranceStudioProjectId: `as-${selectedScope.projectId}`,
+  });
+}
+
+function computePagedPlan(
+  deps: Parameters<typeof computePagedPlanEngine>[0],
+  input: Parameters<typeof computePagedPlanEngine>[1],
+) {
+  return computePagedPlanEngine(deps, {
+    ...input,
+    binding: {
+      assuranceStudioProjectId: `as-${input.projectId}`,
+    },
+  });
+}
 const scope = { projectId: "project-plan", projectVersionId: "version-plan" };
 
 afterEach(async () => {
-  await Promise.all(hosts.splice(0).map((host) => host.harness.lifecycle.dispose()));
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(
+    hosts.splice(0).map((host) => host.harness.lifecycle.dispose()),
+  );
+  await Promise.all(
+    roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+  );
 });
 
-function requirement(reqId: string, title: string, fields: Record<string, unknown> = {}): ServerEntity {
+function requirement(
+  reqId: string,
+  title: string,
+  fields: Record<string, unknown> = {},
+): ServerEntity {
   return {
     key: ENTITIES.requirement.key({ reqId }),
     remoteId: `remote-${reqId}`,
@@ -51,7 +102,9 @@ function requirement(reqId: string, title: string, fields: Record<string, unknow
 }
 
 function working(entity: ServerEntity, title?: string): WorkingEntity {
-  const payload = createSerializer("requirement").semanticPayload(entity.payload);
+  const payload = createSerializer("requirement").semanticPayload(
+    entity.payload,
+  );
   return {
     key: entity.key,
     payload: { ...payload, title: title ?? payload["title"] },
@@ -63,7 +116,9 @@ async function fixture(
   remote: () => ServerEntity[],
   authored: () => WorkingEntity[],
 ): Promise<{ adapter: EntityAdapter; deps: EngineDeps; root: string }> {
-  const host = createFakePluginHost({ pluginId: `finite-state-plan-${hosts.length}` });
+  const host = createFakePluginHost({
+    pluginId: `finite-state-plan-${hosts.length}`,
+  });
   hosts.push(host);
   const root = await mkdtemp(join(tmpdir(), "finite-state-plan-"));
   roots.push(root);
@@ -91,10 +146,18 @@ async function fixture(
 
 function databaseSnapshot(deps: EngineDeps): string {
   return canonicalJson({
-    generations: deps.db.prepare("SELECT * FROM pull_generation ORDER BY generation_id").all(),
-    state: deps.db.prepare("SELECT * FROM sync_state ORDER BY entity_kind").all(),
-    base: deps.db.prepare("SELECT * FROM base_snapshot ORDER BY entity_kind, entity_key").all(),
-    ids: deps.db.prepare("SELECT * FROM id_map ORDER BY entity_kind, entity_key").all(),
+    generations: deps.db
+      .prepare("SELECT * FROM pull_generation ORDER BY generation_id")
+      .all(),
+    state: deps.db
+      .prepare("SELECT * FROM sync_state ORDER BY entity_kind")
+      .all(),
+    base: deps.db
+      .prepare("SELECT * FROM base_snapshot ORDER BY entity_kind, entity_key")
+      .all(),
+    ids: deps.db
+      .prepare("SELECT * FROM id_map ORDER BY entity_kind, entity_key")
+      .all(),
   });
 }
 
@@ -107,18 +170,34 @@ describe("three-way plan", () => {
     const created = requirement("REQ-CREATE", "new");
     let remote = [update, deleted, noop, conflict];
     let authored = remote.map((entity) => working(entity));
-    const setup = await fixture(() => remote, () => authored);
+    const setup = await fixture(
+      () => remote,
+      () => authored,
+    );
     await pull(setup.deps, scope, ["requirement"]);
 
-    remote = [update, deleted, noop, requirement("REQ-CONFLICT", "their conflict")];
+    remote = [
+      update,
+      deleted,
+      noop,
+      requirement("REQ-CONFLICT", "their conflict"),
+    ];
     authored = [
       working(created),
       working(update, "our update"),
       working(noop),
       working(conflict, "our conflict"),
     ];
-    const plan = await computePlan({ ...setup.deps, worktreeRoot: setup.root }, scope, ["requirement"]);
-    expect(Object.fromEntries(plan.items.map((item) => [item.label, item.operation]))).toEqual({
+    const plan = await computePlan(
+      { ...setup.deps, worktreeRoot: setup.root },
+      scope,
+      ["requirement"],
+    );
+    expect(
+      Object.fromEntries(
+        plan.items.map((item) => [item.label, item.operation]),
+      ),
+    ).toEqual({
       "REQ-CREATE": "create",
       "REQ-UPDATE": "update",
       "REQ-DELETE": "delete",
@@ -133,7 +212,9 @@ describe("three-way plan", () => {
       conflicts: 1,
       orphans: 0,
     });
-    expect(plan.items.find((item) => item.label === "REQ-NOOP")?.fields).toEqual([]);
+    expect(
+      plan.items.find((item) => item.label === "REQ-NOOP")?.fields,
+    ).toEqual([]);
   });
 
   it("delegates live plan conflicts to pointer refinement and audit attribution", async () => {
@@ -142,20 +223,27 @@ describe("three-way plan", () => {
     });
     let remote = [base];
     let authored = [working(base)];
-    const setup = await fixture(() => remote, () => authored);
+    const setup = await fixture(
+      () => remote,
+      () => authored,
+    );
     await pull(setup.deps, scope, ["requirement"]);
 
-    remote = [requirement("REQ-FIELD-CONFLICT", "same", {
-      metadata: { owner: "theirs", stable: true },
-    })];
+    remote = [
+      requirement("REQ-FIELD-CONFLICT", "same", {
+        metadata: { owner: "theirs", stable: true },
+      }),
+    ];
     const ours = working(base);
-    authored = [{
-      ...ours,
-      payload: {
-        ...ours.payload,
-        metadata: { owner: "ours", stable: true },
+    authored = [
+      {
+        ...ours,
+        payload: {
+          ...ours.payload,
+          metadata: { owner: "ours", stable: true },
+        },
       },
-    }];
+    ];
     let attributionCalls = 0;
     registerAttributionProvider("requirement", async (_kind, key, paths) => {
       if (key !== base.key) {
@@ -180,19 +268,21 @@ describe("three-way plan", () => {
     expect(attributionCalls).toBe(1);
     expect(plan.items.find((item) => item.key === base.key)).toMatchObject({
       operation: "conflict",
-      conflicts: [{
-        field: "/metadata/owner",
-        base: { present: true, value: "base" },
-        ours: { present: true, value: "ours" },
-        theirs: { present: true, value: "theirs" },
-        attribution: {
-          actor: "reviewer@example.com",
-          at: "2026-08-13T01:00:00.000Z",
-          source: "human",
+      conflicts: [
+        {
+          field: "/metadata/owner",
+          base: { present: true, value: "base" },
+          ours: { present: true, value: "ours" },
+          theirs: { present: true, value: "theirs" },
+          attribution: {
+            actor: "reviewer@example.com",
+            at: "2026-08-13T01:00:00.000Z",
+            source: "human",
+          },
+          suggestion: null,
+          resolution: null,
         },
-        suggestion: null,
-        resolution: null,
-      }],
+      ],
     });
   });
 
@@ -202,16 +292,22 @@ describe("three-way plan", () => {
     });
     let remote = [base];
     let authored = [working(base)];
-    const setup = await fixture(() => remote, () => authored);
+    const setup = await fixture(
+      () => remote,
+      () => authored,
+    );
     await pull(setup.deps, scope, ["requirement"]);
 
-    remote = [requirement("REQ-DISJOINT", "base title", {
-      metadata: { owner: "remote-owner", stable: true },
-    })];
+    remote = [
+      requirement("REQ-DISJOINT", "base title", {
+        metadata: { owner: "remote-owner", stable: true },
+      }),
+    ];
     authored = [working(base, "local title")];
     const authoredFile = join(setup.root, authored[0]?.file ?? "missing");
     await mkdir(dirname(authoredFile), { recursive: true });
-    const authoredYaml = "reqId: REQ-DISJOINT\ntitle: local title\nmetadata:\n  owner: base-owner\n  stable: true\n";
+    const authoredYaml =
+      "reqId: REQ-DISJOINT\ntitle: local title\nmetadata:\n  owner: base-owner\n  stable: true\n";
     await writeFile(authoredFile, authoredYaml, "utf8");
     const databaseBefore = databaseSnapshot(setup.deps);
     const remoteBefore = canonicalJson(remote);
@@ -223,15 +319,22 @@ describe("three-way plan", () => {
     );
     const item = cliPlan.items.find((candidate) => candidate.key === base.key);
     expect(item).toMatchObject({ operation: "update", conflicts: [] });
-    expect(item?.fields.map((field) => field.field)).toEqual(["metadata", "title"]);
-    expect(item?.fields.find((field) => field.field === "metadata")?.ours).toEqual({
+    expect(item?.fields.map((field) => field.field)).toEqual([
+      "metadata",
+      "title",
+    ]);
+    expect(
+      item?.fields.find((field) => field.field === "metadata")?.ours,
+    ).toEqual({
       present: true,
       value: { owner: "remote-owner", stable: true },
     });
-    expect(item?.fields.find((field) => field.field === "title")?.ours).toEqual({
-      present: true,
-      value: "local title",
-    });
+    expect(item?.fields.find((field) => field.field === "title")?.ours).toEqual(
+      {
+        present: true,
+        value: "local title",
+      },
+    );
     expect(cliPlan.summary).toMatchObject({ updates: 1, conflicts: 0 });
     const baseRow = new BaseSnapshotStore(setup.deps.db).getAccepted(
       scope.projectId,
@@ -252,7 +355,9 @@ describe("three-way plan", () => {
       ...scope,
       kinds: ["requirement"],
     });
-    const rpcItem = rpcPlan.items.find((candidate) => candidate.key === base.key);
+    const rpcItem = rpcPlan.items.find(
+      (candidate) => candidate.key === base.key,
+    );
     expect(rpcItem).toMatchObject({ operation: "update", conflicts: [] });
     expect(rpcItem?.operation).toBe(item?.operation);
     expect(rpcPlan.summary).toMatchObject({ updates: 1, conflicts: 0 });
@@ -261,19 +366,32 @@ describe("three-way plan", () => {
   });
 
   it("computes the SPEC summary and blocks its referenced delete", async () => {
-    const updates = Array.from({ length: 3 }, (_, index) => requirement(`REQ-UPDATE-${index + 1}`, "base"));
-    const conflicts = Array.from({ length: 2 }, (_, index) => requirement(`REQ-CONFLICT-${index + 1}`, "base"));
+    const updates = Array.from({ length: 3 }, (_, index) =>
+      requirement(`REQ-UPDATE-${index + 1}`, "base"),
+    );
+    const conflicts = Array.from({ length: 2 }, (_, index) =>
+      requirement(`REQ-CONFLICT-${index + 1}`, "base"),
+    );
     const deleted = requirement("REQ-DELETE-1", "base delete");
-    const referrer = requirement("REQ-REFERRER", "referrer", { dependsOn: ["REQ-DELETE-1"] });
-    const creates = Array.from({ length: 6 }, (_, index) => requirement(`REQ-CREATE-${index + 1}`, "new"));
+    const referrer = requirement("REQ-REFERRER", "referrer", {
+      dependsOn: ["REQ-DELETE-1"],
+    });
+    const creates = Array.from({ length: 6 }, (_, index) =>
+      requirement(`REQ-CREATE-${index + 1}`, "new"),
+    );
     let remote = [...updates, ...conflicts, deleted, referrer];
     let authored = remote.map((entity) => working(entity));
-    const setup = await fixture(() => remote, () => authored);
+    const setup = await fixture(
+      () => remote,
+      () => authored,
+    );
     await pull(setup.deps, scope, ["requirement"]);
 
     remote = [
       ...updates,
-      ...conflicts.map((entity, index) => requirement(`REQ-CONFLICT-${index + 1}`, "theirs")),
+      ...conflicts.map((entity, index) =>
+        requirement(`REQ-CONFLICT-${index + 1}`, "theirs"),
+      ),
       deleted,
       referrer,
     ];
@@ -284,14 +402,23 @@ describe("three-way plan", () => {
       working(referrer),
     ];
 
-    const plan = await computePlan({ ...setup.deps, worktreeRoot: setup.root }, scope, ["requirement"]);
+    const plan = await computePlan(
+      { ...setup.deps, worktreeRoot: setup.root },
+      scope,
+      ["requirement"],
+    );
     expect(renderPlanCli(plan).split("\n", 1)[0]).toBe(
       "Plan: 6 to create, 3 to update, 1 to delete, 2 conflicts",
     );
-    expect(plan.items.find((entry) => entry.label === "REQ-DELETE-1")).toMatchObject({
+    expect(
+      plan.items.find((entry) => entry.label === "REQ-DELETE-1"),
+    ).toMatchObject({
       operation: "delete",
       referrers: [{ label: "REQ-REFERRER" }],
-      error: { code: "REFERENTIAL_INTEGRITY", message: "referenced by REQ-REFERRER" },
+      error: {
+        code: "REFERENTIAL_INTEGRITY",
+        message: "referenced by REQ-REFERRER",
+      },
     });
   });
 
@@ -300,15 +427,27 @@ describe("three-way plan", () => {
     const referrer = requirement("REQ-UPSTREAM-REF", "referrer");
     let remote = [target, referrer];
     let authored = remote.map((entity) => working(entity));
-    const setup = await fixture(() => remote, () => authored);
+    const setup = await fixture(
+      () => remote,
+      () => authored,
+    );
     await pull(setup.deps, scope, ["requirement"]);
 
-    remote = [target, requirement("REQ-UPSTREAM-REF", "referrer", {
-      dependsOn: ["REQ-UPSTREAM-TARGET"],
-    })];
+    remote = [
+      target,
+      requirement("REQ-UPSTREAM-REF", "referrer", {
+        dependsOn: ["REQ-UPSTREAM-TARGET"],
+      }),
+    ];
     authored = [working(referrer)];
-    const plan = await computePlan({ ...setup.deps, worktreeRoot: setup.root }, scope, ["requirement"]);
-    expect(plan.items.find((entry) => entry.label === "REQ-UPSTREAM-TARGET")).toMatchObject({
+    const plan = await computePlan(
+      { ...setup.deps, worktreeRoot: setup.root },
+      scope,
+      ["requirement"],
+    );
+    expect(
+      plan.items.find((entry) => entry.label === "REQ-UPSTREAM-TARGET"),
+    ).toMatchObject({
       operation: "delete",
       referrers: [{ label: "REQ-UPSTREAM-REF" }],
       error: { code: "REFERENTIAL_INTEGRITY" },
@@ -317,26 +456,37 @@ describe("three-way plan", () => {
 
   it("derives create ordering from real payload references", async () => {
     const parent = requirement("REQ-PARENT", "parent");
-    const child = requirement("REQ-CHILD", "child", { dependsOn: ["REQ-PARENT"] });
-    const setup = await fixture(() => [], () => [working(child), working(parent)]);
+    const child = requirement("REQ-CHILD", "child", {
+      dependsOn: ["REQ-PARENT"],
+    });
+    const setup = await fixture(
+      () => [],
+      () => [working(child), working(parent)],
+    );
 
     const computed = await computePlan(
       { ...setup.deps, worktreeRoot: setup.root },
       scope,
       ["requirement"],
     );
-    expect(computed.items
-      .filter((item) => item.operation === "create")
-      .map((item) => item.label))
-      .toEqual(["REQ-PARENT", "REQ-CHILD"]);
+    expect(
+      computed.items
+        .filter((item) => item.operation === "create")
+        .map((item) => item.label),
+    ).toEqual(["REQ-PARENT", "REQ-CHILD"]);
   });
 
   it("derives reverse delete ordering from real payload references", async () => {
     const parent = requirement("REQ-PARENT", "parent");
-    const child = requirement("REQ-CHILD", "child", { dependsOn: ["REQ-PARENT"] });
+    const child = requirement("REQ-CHILD", "child", {
+      dependsOn: ["REQ-PARENT"],
+    });
     let remote = [parent, child];
     let authored = remote.map((entity) => working(entity));
-    const setup = await fixture(() => remote, () => authored);
+    const setup = await fixture(
+      () => remote,
+      () => authored,
+    );
     await pull(setup.deps, scope, ["requirement"]);
     remote = [parent, child];
     authored = [];
@@ -346,16 +496,20 @@ describe("three-way plan", () => {
       scope,
       ["requirement"],
     );
-    expect(computed.items
-      .filter((item) => item.operation === "delete")
-      .map((item) => item.label))
-      .toEqual(["REQ-CHILD", "REQ-PARENT"]);
+    expect(
+      computed.items
+        .filter((item) => item.operation === "delete")
+        .map((item) => item.label),
+    ).toEqual(["REQ-CHILD", "REQ-PARENT"]);
   });
 
   it("signals RPC worktree blindness while retaining upstream drift", async () => {
     const entity = requirement("REQ-RPC-DRIFT", "base");
     let remote = [entity];
-    const setup = await fixture(() => remote, () => [working(entity)]);
+    const setup = await fixture(
+      () => remote,
+      () => [working(entity)],
+    );
     await pull(setup.deps, scope, ["requirement"]);
     remote = [requirement("REQ-RPC-DRIFT", "upstream edit")];
 
@@ -367,7 +521,8 @@ describe("three-way plan", () => {
       staleness: { degraded: true },
       cache: {
         state: "stale",
-        message: "Working tree unavailable; plan includes upstream changes only",
+        message:
+          "Working tree unavailable; plan includes upstream changes only",
       },
       summary: { updates: 1, conflicts: 0, noops: 0 },
       items: [{ label: "REQ-RPC-DRIFT", operation: "update", conflicts: [] }],
@@ -376,36 +531,43 @@ describe("three-way plan", () => {
   });
 
   it("serves every RPC page from one persisted plan identity", async () => {
-    const base = Array.from({ length: 4 }, (_, index) => requirement(`REQ-H${index}`, "base"));
+    const base = Array.from({ length: 4 }, (_, index) =>
+      requirement(`REQ-H${index}`, "base"),
+    );
     let remote = [...base];
-    const setup = await fixture(() => remote, () => base.map((entity) => working(entity)));
+    const setup = await fixture(
+      () => remote,
+      () => base.map((entity) => working(entity)),
+    );
     await pull(setup.deps, scope, ["requirement"]);
-    remote = base.map((_, index) => requirement(`REQ-H${index}`, "upstream edit"));
+    remote = base.map((_, index) =>
+      requirement(`REQ-H${index}`, "upstream edit"),
+    );
 
     const first = await computePagedPlan(setup.deps, {
       ...scope,
       kinds: ["requirement"],
       pageSize: 2,
     });
-    expect(first.items.map((item) => `${item.operation}:${item.label}`)).toEqual([
-      "update:REQ-H0",
-      "update:REQ-H1",
-    ]);
+    expect(
+      first.items.map((item) => `${item.operation}:${item.label}`),
+    ).toEqual(["update:REQ-H0", "update:REQ-H1"]);
     expect(first.next).toBe(`fsp1:${first.planId}:2`);
 
     remote = [
       base[0]!,
-      ...base.slice(1).map((_, index) => requirement(`REQ-H${index + 1}`, "second refresh")),
+      ...base
+        .slice(1)
+        .map((_, index) => requirement(`REQ-H${index + 1}`, "second refresh")),
     ];
     const second = await computePagedPlan(setup.deps, {
       ...scope,
       pageSize: 2,
       continuation: first.next,
     });
-    expect(second.items.map((item) => `${item.operation}:${item.label}`)).toEqual([
-      "update:REQ-H2",
-      "update:REQ-H3",
-    ]);
+    expect(
+      second.items.map((item) => `${item.operation}:${item.label}`),
+    ).toEqual(["update:REQ-H2", "update:REQ-H3"]);
     expect(second).toMatchObject({
       planId: first.planId,
       planSha256: first.planSha256,
@@ -424,40 +586,58 @@ describe("three-way plan", () => {
       ],
     });
     const sidecarDirectory = join(dirname(setup.deps.db.name), ".fs-sync");
-    expect(await readdir(sidecarDirectory))
-      .toEqual([`plan-${first.planId}.json`]);
-    await expect(computePagedPlan(setup.deps, {
-      projectId: "another-project",
-      projectVersionId: scope.projectVersionId,
-      continuation: `fsp1:${first.planId}:2`,
-    })).rejects.toThrow("PLAN_CONTINUATION_SCOPE_MISMATCH");
+    expect(await readdir(sidecarDirectory)).toEqual([
+      `plan-${first.planId}.json`,
+    ]);
+    await expect(
+      computePagedPlan(setup.deps, {
+        projectId: "another-project",
+        projectVersionId: scope.projectVersionId,
+        continuation: `fsp1:${first.planId}:2`,
+      }),
+    ).rejects.toThrow("PLAN_CONTINUATION_SCOPE_MISMATCH");
     const sidecar = join(sidecarDirectory, `plan-${first.planId}.json`);
     const persisted = await readFile(sidecar, "utf8");
     await writeFile(sidecar, persisted.replace("REQ-H2", "REQ-HX"), "utf8");
-    await expect(computePagedPlan(setup.deps, {
-      ...scope,
-      continuation: `fsp1:${first.planId}:2`,
-    })).rejects.toThrow("PLAN_CONTINUATION_STALE");
-    await expect(computePagedPlan(setup.deps, {
-      ...scope,
-      continuation: `fsp1:${"0".repeat(26)}:2`,
-    })).rejects.toThrow("PLAN_CONTINUATION_STALE");
+    await expect(
+      computePagedPlan(setup.deps, {
+        ...scope,
+        continuation: `fsp1:${first.planId}:2`,
+      }),
+    ).rejects.toThrow("PLAN_CONTINUATION_STALE");
+    await expect(
+      computePagedPlan(setup.deps, {
+        ...scope,
+        continuation: `fsp1:${"0".repeat(26)}:2`,
+      }),
+    ).rejects.toThrow("PLAN_CONTINUATION_STALE");
   });
 
   it("is read-only across accepted base, authored YAML, and remote state while persisting its sidecar", async () => {
     const entity = requirement("REQ-READ-ONLY", "base");
     let remote = [entity];
     let authored = [working(entity)];
-    const setup = await fixture(() => remote, () => authored);
+    const setup = await fixture(
+      () => remote,
+      () => authored,
+    );
     await pull(setup.deps, scope, ["requirement"]);
     authored = [working(entity, "local edit")];
     const yamlFile = join(setup.root, "requirement.yaml");
-    await writeFile(yamlFile, "reqId: REQ-READ-ONLY\ntitle: local edit\n", "utf8");
+    await writeFile(
+      yamlFile,
+      "reqId: REQ-READ-ONLY\ntitle: local edit\n",
+      "utf8",
+    );
     const beforeDb = databaseSnapshot(setup.deps);
     const beforeYaml = await readFile(yamlFile, "utf8");
     const beforeRemote = canonicalJson(remote);
 
-    const plan = await computePlan({ ...setup.deps, worktreeRoot: setup.root }, scope, ["requirement"]);
+    const plan = await computePlan(
+      { ...setup.deps, worktreeRoot: setup.root },
+      scope,
+      ["requirement"],
+    );
 
     expect(databaseSnapshot(setup.deps)).toBe(beforeDb);
     expect(await readFile(yamlFile, "utf8")).toBe(beforeYaml);
@@ -465,7 +645,11 @@ describe("three-way plan", () => {
     expect(loadPlan(setup.root, plan.planId)).toEqual(plan);
     const sidecar = join(setup.root, ".fs-sync", `plan-${plan.planId}.json`);
     const persisted = await readFile(sidecar, "utf8");
-    await writeFile(sidecar, persisted.replace("local edit", "tampered edit"), "utf8");
+    await writeFile(
+      sidecar,
+      persisted.replace("local edit", "tampered edit"),
+      "utf8",
+    );
     expect(loadPlan(setup.root, plan.planId)).toBeNull();
   });
 
@@ -473,25 +657,35 @@ describe("three-way plan", () => {
     const entity = requirement("REQ-RATE", "base");
     let failing = false;
     let authored = [working(entity)];
-    const setup = await fixture(() => {
-      if (failing) {
-        throw new RemoteError("rate limited", {
-          service: "assurance-studio",
-          code: "REMOTE_RATE_LIMITED",
-          status: 429,
-          retryable: true,
-          retryAfterMs: 0,
-          details: null,
-        });
-      }
-      return [entity];
-    }, () => authored);
+    const setup = await fixture(
+      () => {
+        if (failing) {
+          throw new RemoteError("rate limited", {
+            service: "assurance-studio",
+            code: "REMOTE_RATE_LIMITED",
+            status: 429,
+            retryable: true,
+            retryAfterMs: 0,
+            details: null,
+          });
+        }
+        return [entity];
+      },
+      () => authored,
+    );
     await pull(setup.deps, scope, ["requirement"]);
     failing = true;
     authored = [working(entity, "local edit")];
 
-    const plan = await computePlan({ ...setup.deps, worktreeRoot: setup.root }, scope, ["requirement"]);
-    expect(plan.staleness).toEqual({ asOf: "2026-08-12T20:00:00.000Z", degraded: true });
+    const plan = await computePlan(
+      { ...setup.deps, worktreeRoot: setup.root },
+      scope,
+      ["requirement"],
+    );
+    expect(plan.staleness).toEqual({
+      asOf: "2026-08-12T20:00:00.000Z",
+      degraded: true,
+    });
     expect(plan.items).toEqual([
       expect.objectContaining({ label: "REQ-RATE", operation: "update" }),
     ]);
@@ -502,7 +696,10 @@ describe("three-way plan", () => {
     const second = requirement("REQ-SECOND", "base second");
     let reset = false;
     let authored = [working(first), working(second)];
-    const setup = await fixture(() => [first, second], () => authored);
+    const setup = await fixture(
+      () => [first, second],
+      () => authored,
+    );
     await pull(setup.deps, scope, ["requirement"]);
     setup.adapter.fetchRemote = async function* (_scope, progress) {
       progress({ page: 1, of: 2 });
@@ -513,27 +710,39 @@ describe("three-way plan", () => {
     reset = true;
     authored = [working(first, "local first"), working(second)];
 
-    const plan = await computePlan({ ...setup.deps, worktreeRoot: setup.root }, scope, ["requirement"]);
+    const plan = await computePlan(
+      { ...setup.deps, worktreeRoot: setup.root },
+      scope,
+      ["requirement"],
+    );
     expect(plan.staleness.degraded).toBe(true);
-    expect(plan.items.find((item) => item.label === "REQ-FIRST")?.operation).toBe("update");
+    expect(
+      plan.items.find((item) => item.label === "REQ-FIRST")?.operation,
+    ).toBe("update");
     expect(plan.summary.conflicts).toBe(0);
   });
 
   it("reports the exact aggregate YAML block for an incomplete NOT_AFFECTED decision", async () => {
-    const host = createFakePluginHost({ pluginId: `finite-state-plan-vex-${hosts.length}` });
+    const host = createFakePluginHost({
+      pluginId: `finite-state-plan-vex-${hosts.length}`,
+    });
     hosts.push(host);
     const root = await mkdtemp(join(tmpdir(), "finite-state-plan-vex-"));
     roots.push(root);
     const file = ".fs/triage/aggregate.yaml";
     await mkdir(join(root, ".fs/triage"), { recursive: true });
-    await writeFile(join(root, file), `component:
+    await writeFile(
+      join(root, file),
+      `component:
   name: busybox
   version: "1.36.1"
 decisions:
   CVE-2026-3200:
     status: NOT_AFFECTED
     justification: null
-`, "utf8");
+`,
+      "utf8",
+    );
     const key = ENTITIES.vexDecision.key({
       cve: "CVE-2026-3200",
       name: "busybox",
@@ -543,26 +752,34 @@ decisions:
       kind: "vexDecision",
       klass: "OVERLAY",
       serializer: createSerializer("vexDecision"),
-      async *fetchRemote() { yield []; },
+      async *fetchRemote() {
+        yield [];
+      },
       async readWorking() {
-        return [{
-          key,
-          file,
-          payload: {
-            status: "NOT_AFFECTED",
-            justification: null,
-            response: null,
-            reason: null,
+        return [
+          {
+            key,
+            file,
+            payload: {
+              status: "NOT_AFFECTED",
+              justification: null,
+              response: null,
+              reason: null,
+            },
           },
-        }];
+        ];
       },
     };
-    const plan = await computePlan({
-      db: createPluginContext(host.bb).db(),
-      worktreeRoot: root,
-      adapters: [adapter],
-      now: () => new Date("2026-08-12T20:00:00.000Z"),
-    }, scope, ["vexDecision"]);
+    const plan = await computePlan(
+      {
+        db: createPluginContext(host.bb).db(),
+        worktreeRoot: root,
+        adapters: [adapter],
+        now: () => new Date("2026-08-12T20:00:00.000Z"),
+      },
+      scope,
+      ["vexDecision"],
+    );
     expect(plan.validationErrors).toEqual([
       expect.objectContaining({
         code: "VEX_JUSTIFICATION_REQUIRED",
@@ -586,10 +803,16 @@ decisions:
       referrers: [],
       error: null,
     });
-    expect(blastRadius(Array.from({ length: 20 }, (_, index) => item(index, "create"))).requiresHumanReview)
-      .toBe(false);
-    expect(blastRadius(Array.from({ length: 21 }, (_, index) => item(index, "create"))).requiresHumanReview)
-      .toBe(true);
+    expect(
+      blastRadius(
+        Array.from({ length: 20 }, (_, index) => item(index, "create")),
+      ).requiresHumanReview,
+    ).toBe(false);
+    expect(
+      blastRadius(
+        Array.from({ length: 21 }, (_, index) => item(index, "create")),
+      ).requiresHumanReview,
+    ).toBe(true);
     expect(blastRadius([item(1, "delete")]).requiresHumanReview).toBe(true);
     const conflicts = Array.from({ length: 21 }, (_, index) => ({
       ...item(index, "create"),

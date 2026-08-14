@@ -16,10 +16,7 @@ export type Json =
   | Json[]
   | { [key: string]: Json };
 
-export type RemoteService =
-  | "platform"
-  | "assurance-studio"
-  | "forge-compute";
+export type RemoteService = "platform" | "assurance-studio" | "forge-compute";
 
 export interface RemoteCallContext {
   signal?: AbortSignal;
@@ -205,7 +202,11 @@ export async function* iterateRemotePages<T>(
       maxPageSize: options.maxPageSize,
     });
   }
-  if (decoded && page?.pageSize !== undefined && page.pageSize !== decoded.pageSize) {
+  if (
+    decoded &&
+    page?.pageSize !== undefined &&
+    page.pageSize !== decoded.pageSize
+  ) {
     throw invalidPagingError(
       options.service,
       "REMOTE_CONTINUATION_PAGE_SIZE_MISMATCH",
@@ -588,10 +589,7 @@ export interface PlatformClient {
     projectVersionId: string,
     ctx?: RemoteCallContext,
   ): Promise<Record<string, Json>>;
-  setVexStatus(
-    input: VexInput,
-    ctx?: RemoteCallContext,
-  ): Promise<void>;
+  setVexStatus(input: VexInput, ctx?: RemoteCallContext): Promise<void>;
   batchSetVexStatus(
     input: { projectVersionId: string; findings: VexDecisionInput[] },
     ctx?: RemoteCallContext,
@@ -690,8 +688,7 @@ export const SECURITY_ASSESSMENT_TOOLS = [
   "stp_crypto",
 ] as const;
 
-export type SecurityAssessmentTool =
-  (typeof SECURITY_ASSESSMENT_TOOLS)[number];
+export type SecurityAssessmentTool = (typeof SECURITY_ASSESSMENT_TOOLS)[number];
 
 export interface SecurityAssessmentRequest {
   tool: SecurityAssessmentTool;
@@ -760,8 +757,27 @@ export interface TaraState {
   workingHash: string | null;
 }
 
+/** Sanitized product-owned AS-to-Platform link available for explicit selection. */
+export interface AssuranceStudioProjectLinkCandidate {
+  linkId: string;
+  assuranceStudioProjectId: string;
+  assuranceStudioProjectName: string;
+  platformProjectId: string;
+  platformProjectName: string;
+  platformProjectVersionId: string;
+  platformProjectVersionName: string | null;
+  isPrimary: boolean;
+  syncStatus: string;
+  lastSyncedAt: string | null;
+  versionStrategy: string;
+}
+
 export interface AssuranceStudioClient {
   health(ctx?: RemoteCallContext): Promise<RemoteHealth>;
+  listProjectLinks(
+    input: { platformProjectId: string; page?: RemotePageRequest },
+    ctx?: RemoteCallContext,
+  ): AsyncIterable<RemotePage<AssuranceStudioProjectLinkCandidate>>;
   listEntities(
     kind: AsEntityKind,
     input: {
@@ -800,9 +816,7 @@ export interface AssuranceStudioClient {
       force?: boolean;
     },
     ctx?: RemoteCallContext,
-  ): Promise<
-    { success: true } | { success: false; impact: AsDeleteImpact }
-  >;
+  ): Promise<{ success: true } | { success: false; impact: AsDeleteImpact }>;
   listProjectSbomPackages(
     input: {
       projectId: string;
@@ -859,8 +873,7 @@ export const FORGE_COMPUTE_INVOCATIONS = [
 export type ForgeJobStatus = (typeof FORGE_JOB_STATUSES)[number];
 export type ForgeJobTerminalStatus =
   (typeof FORGE_JOB_TERMINAL_STATUSES)[number];
-export type ForgeComputeInvocation =
-  (typeof FORGE_COMPUTE_INVOCATIONS)[number];
+export type ForgeComputeInvocation = (typeof FORGE_COMPUTE_INVOCATIONS)[number];
 
 export interface ForgeJobError {
   code: string;
@@ -885,8 +898,10 @@ export interface ForgeJobSnapshot {
   error: ForgeJobError | null;
 }
 
-export interface ForgeJobCandidate
-  extends Omit<ForgeJobSnapshot, "status" | "error"> {
+export interface ForgeJobCandidate extends Omit<
+  ForgeJobSnapshot,
+  "status" | "error"
+> {
   status: ForgeJobStatus | "CANCELLED";
   error?: ForgeJobError | null;
 }

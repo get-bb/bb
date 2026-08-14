@@ -1142,4 +1142,8 @@ export const MIGRATIONS: string[] = [
   // AMD-0021: retain finding quarantine accounting across resumed pull
   // invocations in the generation-owned staging checkpoint.
   `ALTER TABLE sync_state ADD COLUMN staged_quarantined INTEGER NOT NULL DEFAULT 0 CHECK (staged_quarantined >= 0)`,
+
+  // AMD-0022: record the operator-selected AS sibling beside the existing
+  // bb-to-Platform binding. Existing rows remain explicitly unselected.
+  `ALTER TABLE workspace_platform_project_binding ADD COLUMN assurance_studio_project_id TEXT CHECK (assurance_studio_project_id IS NULL OR length(assurance_studio_project_id) > 0)`,
 ];

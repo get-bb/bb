@@ -41,7 +41,7 @@ import {
 import type { EntityAdapter, ServerEntity, WorkingEntity } from "./adapter.js";
 import {
   PullFailedError,
-  pull,
+  pull as pullEngine,
   type EngineDeps,
   type PullProgress,
 } from "./pull.js";
@@ -56,6 +56,16 @@ const hosts: Array<ReturnType<typeof createFakePluginHost>> = [];
 const harnesses: MockRemoteHarness[] = [];
 const clients: PlatformClient[] = [];
 const roots: string[] = [];
+
+function pull(
+  deps: Parameters<typeof pullEngine>[0],
+  scope: Parameters<typeof pullEngine>[1],
+  kinds?: Parameters<typeof pullEngine>[2],
+) {
+  return pullEngine(deps, scope, kinds, {
+    assuranceStudioProjectId: `as-${scope.projectId}`,
+  });
+}
 
 afterEach(async () => {
   clients.splice(0).forEach((client) => client.close());
@@ -171,6 +181,63 @@ function expectedVexRows(
 }
 
 describe("sync pull", () => {
+  it("fails before remote contact without an explicit AS selection and stores mapped reads under Platform scope", async () => {
+    const remoteScopes: string[] = [];
+    const key = ENTITIES.requirement.key({ reqId: "REQ-MAPPED" });
+    const adapter: EntityAdapter = {
+      kind: "requirement",
+      klass: "VERSIONED",
+      serializer: createSerializer("requirement"),
+      async *fetchRemote(scope, progress) {
+        remoteScopes.push(scope.projectId);
+        progress({ page: 1, of: 1 });
+        yield [
+          {
+            key,
+            remoteId: "remote-mapped",
+            payload: {
+              id: "remote-mapped",
+              projectId: scope.projectId,
+              kind: "requirement",
+              fields: { reqId: "REQ-MAPPED", title: "Mapped" },
+              humanEdited: null,
+              reviewStatus: null,
+              reviewVersion: null,
+            },
+          },
+        ];
+      },
+      async readWorking() {
+        return [];
+      },
+    };
+    const deps = engine(adapter);
+    const scope = {
+      projectId: "platform-project-mapped",
+      projectVersionId: "platform-version-mapped",
+    };
+
+    await expect(pullEngine(deps, scope, ["requirement"])).rejects.toThrow(
+      "AS_PROJECT_SELECTION_REQUIRED",
+    );
+    expect(remoteScopes).toEqual([]);
+    expect(
+      deps.db.prepare("SELECT COUNT(*) FROM pull_generation").pluck().get(),
+    ).toBe(0);
+
+    await pullEngine(deps, scope, ["requirement"], {
+      assuranceStudioProjectId: "as-project-selected",
+    });
+    expect(remoteScopes).toEqual(["as-project-selected"]);
+    expect(
+      new BaseSnapshotStore(deps.db).listAccepted(
+        scope.projectId,
+        scope.projectVersionId,
+        "requirement",
+      ),
+    ).toHaveLength(1);
+  });
+
   it("populates accepted base rows from the direct Platform fixtures and publishes tiny progress hints", async () => {
     const fixture = setupPlatform();
     const progress: PullProgress[] = [];
@@ -835,7 +902,11 @@ decisions:
         remote_id: "remote-shared",
       },
     ]);
-    await expect(status(deps, scopes[3]!, ["requirement"])).resolves.toEqual({
+    await expect(
+      status(deps, scopes[3]!, ["requirement"], {
+        assuranceStudioProjectId: `as-${scopes[3]!.projectId}`,
+      }),
+    ).resolves.toEqual({
       local: [],
       upstream: [],
       conflicts: [],

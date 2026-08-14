@@ -1,5 +1,6 @@
 import type { BbPluginApi } from "@bb/plugin-sdk";
 
+import type { AssuranceStudioClient } from "../../lib/remote/types.js";
 import { bindWorkspacePlatformProject } from "../../lib/store/project-scope.js";
 import { ENTITIES, type EntityKind } from "../../lib/sync/registry.js";
 import { rpcContract } from "../../shared/contract.js";
@@ -8,9 +9,17 @@ import { pull, type EngineDeps } from "./engine/pull.js";
 import { status, syncMetadata } from "./engine/status.js";
 import { plan } from "./plan/index.js";
 import { pushAuthorizationUnavailable } from "./push/index.js";
+import {
+  assuranceStudioProjectCandidateState,
+  enumerateAssuranceStudioProjectCandidates,
+  selectedAssuranceStudioProject,
+  selectAssuranceStudioProject,
+} from "./as-project-binding.js";
 
 const syncContract = {
   syncPull: rpcContract.syncPull,
+  syncAsProjectCandidates: rpcContract.syncAsProjectCandidates,
+  syncAsProjectSelect: rpcContract.syncAsProjectSelect,
   syncStatus: rpcContract.syncStatus,
   syncPlan: rpcContract.syncPlan,
   syncConflictResolve: rpcContract.syncConflictResolve,
@@ -41,8 +50,39 @@ function cacheState(metadata: ReturnType<typeof syncMetadata>) {
 }
 
 /** Registers the four WP-17 sync RPC surfaces through one frozen sub-contract. */
-export function registerSyncRpc(bb: BbPluginApi, deps: EngineDeps): void {
+export function registerSyncRpc(
+  bb: BbPluginApi,
+  deps: EngineDeps,
+  assuranceStudio: AssuranceStudioClient | null = null,
+): void {
   bb.rpc.register(syncContract, {
+    async syncAsProjectCandidates(input) {
+      if (!assuranceStudio) throw new Error("Assurance Studio is unavailable");
+      await bb.sdk.projects.get({ projectId: input.workspaceProjectId });
+      const items = await enumerateAssuranceStudioProjectCandidates(
+        assuranceStudio,
+        input.projectId,
+      );
+      return {
+        platformProjectId: input.projectId,
+        candidateState: assuranceStudioProjectCandidateState(items),
+        selectedAssuranceStudioProjectId: selectedAssuranceStudioProject(
+          deps,
+          input.workspaceProjectId,
+          input.projectId,
+        ),
+        items,
+      };
+    },
+    async syncAsProjectSelect(input) {
+      if (!assuranceStudio) throw new Error("Assurance Studio is unavailable");
+      await bb.sdk.projects.get({ projectId: input.workspaceProjectId });
+      return await selectAssuranceStudioProject(deps, assuranceStudio, {
+        workspaceProjectId: input.workspaceProjectId,
+        platformProjectId: input.projectId,
+        assuranceStudioProjectId: input.assuranceStudioProjectId,
+      });
+    },
     async syncPull(input) {
       await bb.sdk.projects.get({ projectId: input.workspaceProjectId });
       const kinds = entityKinds(input.kinds);
@@ -50,7 +90,13 @@ export function registerSyncRpc(bb: BbPluginApi, deps: EngineDeps): void {
         projectId: input.projectId,
         projectVersionId: input.projectVersionId,
       };
-      const report = await pull(deps, scope, kinds);
+      const report = await pull(deps, scope, kinds, {
+        assuranceStudioProjectId: selectedAssuranceStudioProject(
+          deps,
+          input.workspaceProjectId,
+          scope.projectId,
+        ),
+      });
       bindWorkspacePlatformProject(
         deps.db,
         input.workspaceProjectId,
@@ -68,12 +114,23 @@ export function registerSyncRpc(bb: BbPluginApi, deps: EngineDeps): void {
       };
     },
     async syncStatus(input) {
+      if (input.workspaceProjectId) {
+        await bb.sdk.projects.get({ projectId: input.workspaceProjectId });
+      }
       const kinds = entityKinds(input.kinds);
       const scope = {
         projectId: input.projectId,
         projectVersionId: input.projectVersionId,
       };
-      const report = await status(deps, scope, kinds);
+      const report = await status(deps, scope, kinds, {
+        assuranceStudioProjectId: input.workspaceProjectId
+          ? selectedAssuranceStudioProject(
+              deps,
+              input.workspaceProjectId,
+              scope.projectId,
+            )
+          : null,
+      });
       const metadata = syncMetadata(deps, scope, kinds);
       const scopedChange = (
         change: { kind: EntityKind; key: string; fields: string[] },
@@ -102,14 +159,27 @@ export function registerSyncRpc(bb: BbPluginApi, deps: EngineDeps): void {
         cache: cacheState(metadata),
       };
     },
-    syncPlan: (input) =>
-      plan(deps, {
+    async syncPlan(input) {
+      if (input.workspaceProjectId) {
+        await bb.sdk.projects.get({ projectId: input.workspaceProjectId });
+      }
+      return plan(deps, {
         projectId: input.projectId,
         projectVersionId: input.projectVersionId,
         kinds: entityKinds(input.kinds),
         pageSize: input.pageSize,
         continuation: input.continuation,
-      }),
+        binding: {
+          assuranceStudioProjectId: input.workspaceProjectId
+            ? selectedAssuranceStudioProject(
+                deps,
+                input.workspaceProjectId,
+                input.projectId,
+              )
+            : null,
+        },
+      });
+    },
     syncConflictResolve: (input) => resolveConflictRpc(deps, input),
     syncPush: (input) =>
       pushAuthorizationUnavailable(deps, input.humanApprovalCapability),

@@ -19,16 +19,40 @@ import {
   verificationListHandler,
   verificationRunHandler,
 } from "./verification.js";
+import { projectLinksHandler, projectListHandler } from "./project-links.js";
 
 const LIST_KINDS = [
-  "threat", "risk", "mitigation", "asset", "zone", "dataflow", "component", "requirement", "attack-path",
+  "threat",
+  "risk",
+  "mitigation",
+  "asset",
+  "zone",
+  "dataflow",
+  "component",
+  "requirement",
+  "attack-path",
 ] as const satisfies readonly AsEntityKind[];
 const ITEM_GET_KINDS = [
-  "threat", "risk", "mitigation", "asset", "zone", "dataflow", "component", "requirement", "attack-path",
+  "threat",
+  "risk",
+  "mitigation",
+  "asset",
+  "zone",
+  "dataflow",
+  "component",
+  "requirement",
+  "attack-path",
 ] as const satisfies readonly AsEntityKind[];
 const UPDATE_KINDS = ITEM_GET_KINDS;
 const DELETE_KINDS = [
-  "threat", "mitigation", "asset", "zone", "dataflow", "component", "requirement", "attack-path",
+  "threat",
+  "mitigation",
+  "asset",
+  "zone",
+  "dataflow",
+  "component",
+  "requirement",
+  "attack-path",
 ] as const satisfies readonly AsEntityKind[];
 
 export function registerMockAssuranceStudio(
@@ -37,11 +61,27 @@ export function registerMockAssuranceStudio(
   clock?: MockAssuranceStudioClock,
 ) {
   const state = createMockAssuranceStudioState(fixtureRoot, clock);
-  for (const kind of LIST_KINDS) registry.register(routeId(kind, "GET", false), listHandler(state, kind));
-  for (const kind of ITEM_GET_KINDS) registry.register(routeId(kind, "GET", true), getHandler(state, kind));
-  for (const kind of AS_CREATABLE_KINDS) registry.register(routeId(kind, "POST", false), createHandler(state, kind));
-  for (const kind of UPDATE_KINDS) registry.register(routeId(kind, "PATCH", true), updateHandler(state, kind));
-  for (const kind of DELETE_KINDS) registry.register(routeId(kind, "DELETE", true), deleteHandler(state, kind));
+  registry.register(
+    "assurance-studio:GET:/api/projects",
+    projectListHandler(fixtureRoot),
+  );
+  registry.register(
+    "assurance-studio:GET:/api/projects/{projectId}/fs-links",
+    projectLinksHandler(fixtureRoot),
+  );
+  for (const kind of LIST_KINDS)
+    registry.register(routeId(kind, "GET", false), listHandler(state, kind));
+  for (const kind of ITEM_GET_KINDS)
+    registry.register(routeId(kind, "GET", true), getHandler(state, kind));
+  for (const kind of AS_CREATABLE_KINDS)
+    registry.register(routeId(kind, "POST", false), createHandler(state, kind));
+  for (const kind of UPDATE_KINDS)
+    registry.register(routeId(kind, "PATCH", true), updateHandler(state, kind));
+  for (const kind of DELETE_KINDS)
+    registry.register(
+      routeId(kind, "DELETE", true),
+      deleteHandler(state, kind),
+    );
   registry.register(
     "assurance-studio:GET:/api/projects/{id}/sbom",
     projectSbomListHandler(state, fixtureRoot),

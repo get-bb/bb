@@ -156,7 +156,9 @@ async function* emptyItems<T>(): AsyncIterable<T> {}
 
 const streamedJson = new TextEncoder().encode('{"ok":true}');
 const streamedJsonChunks = [streamedJson.slice(0, 5), streamedJson.slice(5)];
-const streamedJsonSha256 = createHash("sha256").update(streamedJson).digest("hex");
+const streamedJsonSha256 = createHash("sha256")
+  .update(streamedJson)
+  .digest("hex");
 
 function jsonArtifact(overrides?: {
   size?: number | null;
@@ -308,6 +310,9 @@ const assuranceStudioFake = {
   async health() {
     return { configured: true, reachable: true, detail: null };
   },
+  listProjectLinks() {
+    return emptyPages();
+  },
   listEntities() {
     return emptyPages<AsEntity>();
   },
@@ -388,6 +393,8 @@ const PLATFORM_METHOD_EVIDENCE = {
 
 const ASSURANCE_STUDIO_METHOD_EVIDENCE = {
   health: "client-local configured/reachable probe",
+  listProjectLinks:
+    "live 2026-08-14 GET /api/projects plus GET /api/projects/{id}/fs-links capture",
   listEntities:
     "AS OpenAPI plus assurance-studio-api-gaps.md §2 handler-backed CRUD matrix",
   getEntity:
@@ -425,7 +432,9 @@ async function collectPages<T>(
   return collected;
 }
 
-function pagingOptions(service: RemotePageAdapterOptions["service"]): RemotePageAdapterOptions {
+function pagingOptions(
+  service: RemotePageAdapterOptions["service"],
+): RemotePageAdapterOptions {
   return { service, defaultPageSize: 2, maxPageSize: 100 };
 }
 
@@ -520,7 +529,11 @@ describe("remote-service-contract-freeze", () => {
   });
 
   it("structurally binds VEX vocabulary and 204 wire semantics to OpenAPI", () => {
-    const paths = objectProperty(platformAuthority, "paths", "Platform OpenAPI");
+    const paths = objectProperty(
+      platformAuthority,
+      "paths",
+      "Platform OpenAPI",
+    );
     const singlePut = objectProperty(
       objectProperty(
         paths,
@@ -555,9 +568,9 @@ describe("remote-service-contract-freeze", () => {
       "UpdateFindingStatusV0Request",
     );
 
-    expect(objectProperty(singlePut, "responses", "single status route")).toHaveProperty(
-      "204",
-    );
+    expect(
+      objectProperty(singlePut, "responses", "single status route"),
+    ).toHaveProperty("204");
     expect(
       objectProperty(
         objectProperty(singlePut, "responses", "single status route"),
@@ -565,14 +578,22 @@ describe("remote-service-contract-freeze", () => {
         "single status responses",
       ),
     ).not.toHaveProperty("content");
-    expect(objectProperty(clearPut, "responses", "bulk clear route")).toHaveProperty(
-      "204",
-    );
+    expect(
+      objectProperty(clearPut, "responses", "bulk clear route"),
+    ).toHaveProperty("204");
     expect(requestProperties).not.toHaveProperty("dryRun");
     expect(requestProperties).not.toHaveProperty("dry_run");
 
-    const statusSchema = objectProperty(requestProperties, "status", "VEX request");
-    const responseSchema = objectProperty(requestProperties, "response", "VEX request");
+    const statusSchema = objectProperty(
+      requestProperties,
+      "status",
+      "VEX request",
+    );
+    const responseSchema = objectProperty(
+      requestProperties,
+      "response",
+      "VEX request",
+    );
     const justificationSchema = objectProperty(
       requestProperties,
       "justification",
@@ -584,9 +605,9 @@ describe("remote-service-contract-freeze", () => {
     expect(new Set(asArray(responseSchema.enum, "response enum"))).toEqual(
       new Set(VEX_RESPONSES),
     );
-    expect(new Set(asArray(justificationSchema.enum, "justification enum"))).toEqual(
-      new Set(VEX_JUSTIFICATIONS),
-    );
+    expect(
+      new Set(asArray(justificationSchema.enum, "justification enum")),
+    ).toEqual(new Set(VEX_JUSTIFICATIONS));
     expect(VEX_STATUSES).toHaveLength(6);
     expect(VEX_RESPONSES).toHaveLength(5);
     expect(VEX_JUSTIFICATIONS).toHaveLength(9);
@@ -606,8 +627,13 @@ describe("remote-service-contract-freeze", () => {
       status: "NOT_AFFECTED",
     });
     expect(() =>
-      normalizeVexDecisionInput({ findingId: "finding-1", status: "EXPLOITABLE" }),
-    ).toThrowError(expect.objectContaining({ code: "PLATFORM_INVALID_FINDING_ID" }));
+      normalizeVexDecisionInput({
+        findingId: "finding-1",
+        status: "EXPLOITABLE",
+      }),
+    ).toThrowError(
+      expect.objectContaining({ code: "PLATFORM_INVALID_FINDING_ID" }),
+    );
     await expect(
       platformFake.setVexStatus({
         projectVersionId: "version-1",
@@ -628,7 +654,9 @@ describe("remote-service-contract-freeze", () => {
         status: 200,
         bodyBytes: 16,
       }),
-    ).toThrowError(expect.objectContaining({ code: "REMOTE_EXPECTED_NO_CONTENT" }));
+    ).toThrowError(
+      expect.objectContaining({ code: "REMOTE_EXPECTED_NO_CONTENT" }),
+    );
     expect(() =>
       assertRemoteNoContent({
         service: "platform",
@@ -636,7 +664,9 @@ describe("remote-service-contract-freeze", () => {
         status: 204,
         bodyBytes: 2,
       }),
-    ).toThrowError(expect.objectContaining({ code: "REMOTE_EXPECTED_NO_CONTENT" }));
+    ).toThrowError(
+      expect.objectContaining({ code: "REMOTE_EXPECTED_NO_CONTENT" }),
+    );
   });
 
   it("structurally binds bulk VEX numeric ids, order, and limits to OpenAPI", async () => {
@@ -655,7 +685,11 @@ describe("remote-service-contract-freeze", () => {
       "findings",
       "bulk request properties",
     );
-    const bulkItem = objectProperty(schemas, "BulkSetFindingStatusV0Item", "schemas");
+    const bulkItem = objectProperty(
+      schemas,
+      "BulkSetFindingStatusV0Item",
+      "schemas",
+    );
     const findingId = objectProperty(
       objectProperty(bulkItem, "properties", "bulk item"),
       "findingId",
@@ -691,7 +725,10 @@ describe("remote-service-contract-freeze", () => {
         },
       ],
     });
-    expect(result.results.map((item) => item.findingId)).toEqual(["101", "202"]);
+    expect(result.results.map((item) => item.findingId)).toEqual([
+      "101",
+      "202",
+    ]);
   });
 
   it("normalizes offset-, page-, and Forge-backed paging identically", async () => {
@@ -772,7 +809,10 @@ describe("remote-service-contract-freeze", () => {
     );
 
     expect(platformRest).toEqual(assuranceStudioRest);
-    expect(platformRest.flatMap((entry) => entry.items)).toEqual(["three", "four"]);
+    expect(platformRest.flatMap((entry) => entry.items)).toEqual([
+      "three",
+      "four",
+    ]);
     expect(platformCalls).toEqual([2]);
     expect(assuranceStudioCalls).toEqual([2]);
   });
@@ -900,7 +940,9 @@ describe("remote-service-contract-freeze", () => {
     const operations = asArray(
       property(forgeAuthority, "operations", "Forge compute manifest"),
       "Forge operations",
-    ).map((operation, index) => asRecord(operation, `Forge operation ${index}`));
+    ).map((operation, index) =>
+      asRecord(operation, `Forge operation ${index}`),
+    );
     const invocations = operations
       .map((operation) => operation.mcpTool)
       .filter((tool): tool is string => typeof tool === "string");
@@ -943,12 +985,12 @@ describe("remote-service-contract-freeze", () => {
     expect(paths).toHaveProperty(
       "/api/projects/{projectId}/verification/checks/{checkId}",
     );
-    expect(paths).toHaveProperty(
-      "/api/projects/{projectId}/verification/run",
-    );
+    expect(paths).toHaveProperty("/api/projects/{projectId}/verification/run");
 
     const attackPathRow = parseMarkdownTableRows(assuranceStudioGaps).find(
-      (row) => row[0] === "AttackPath item (`/api/projects/{projectId}/attack-paths/{pathId}`)",
+      (row) =>
+        row[0] ===
+        "AttackPath item (`/api/projects/{projectId}/attack-paths/{pathId}`)",
     );
     expect(attackPathRow?.[1]).toBe("GET, PATCH, DELETE");
     const sbomSection = parseLevelTwoSections(assuranceStudioGaps).get("6");
@@ -956,7 +998,9 @@ describe("remote-service-contract-freeze", () => {
   });
 
   it("keeps method evidence complete and the named route surface closed", () => {
-    expect(Object.keys(PLATFORM_METHOD_EVIDENCE)).toEqual(Object.keys(platformFake));
+    expect(Object.keys(PLATFORM_METHOD_EVIDENCE)).toEqual(
+      Object.keys(platformFake),
+    );
     expect(Object.keys(ASSURANCE_STUDIO_METHOD_EVIDENCE)).toEqual(
       Object.keys(assuranceStudioFake),
     );

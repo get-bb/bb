@@ -3,2282 +3,1635 @@ import type { MockRoute } from "../types.js";
 
 export const ASSURANCE_STUDIO_REFERENCE_ROUTES = [
   {
-    "routeId": "assurance-studio:DELETE:/api/clause-control-mappings",
-    "service": "assurance-studio",
-    "method": "DELETE",
-    "pathTemplate": "/api/clause-control-mappings",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      204,
-      400,
-      401,
-      403,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/clause-control-mappings",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/clause-control-mappings",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/clause-control-mappings",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/clause-control-mappings",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      201,
-      400,
-      401,
-      403,
-      409,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:DELETE:/api/clause-control-mappings/{mappingId}",
-    "service": "assurance-studio",
-    "method": "DELETE",
-    "pathTemplate": "/api/clause-control-mappings/{mappingId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      403,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/clause-control-mappings/{mappingId}",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/clause-control-mappings/{mappingId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:DELETE:/api/clause-control-mappings/bulk",
-    "service": "assurance-studio",
-    "method": "DELETE",
-    "pathTemplate": "/api/clause-control-mappings/bulk",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      403,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/clause-control-mappings/bulk",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/clause-control-mappings/bulk",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      201,
-      400,
-      401,
-      403,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/compliance-packs",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/compliance-packs",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/compliance-packs",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/compliance-packs",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      201,
-      400,
-      401,
-      403,
-      409,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/compliance-packs/{packId}",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/compliance-packs/{packId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:PATCH:/api/compliance-packs/{packId}",
-    "service": "assurance-studio",
-    "method": "PATCH",
-    "pathTemplate": "/api/compliance-packs/{packId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      403,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/control-objectives",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/control-objectives",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/control-objectives",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/control-objectives",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      201,
-      400,
-      401,
-      403,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:DELETE:/api/control-objectives/{controlId}",
-    "service": "assurance-studio",
-    "method": "DELETE",
-    "pathTemplate": "/api/control-objectives/{controlId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      204,
-      401,
-      403,
-      404,
-      409,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/control-objectives/{controlId}",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/control-objectives/{controlId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:PUT:/api/control-objectives/{controlId}",
-    "service": "assurance-studio",
-    "method": "PUT",
-    "pathTemplate": "/api/control-objectives/{controlId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      403,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      201,
-      400,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{id}/sbom",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{id}/sbom",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [],
-    "source": "handler-audit",
-    "evidence": "assurance-studio-api-gaps.md §6"
-  },
-  {
-    "routeId": "assurance-studio:DELETE:/api/projects/{projectId}",
-    "service": "assurance-studio",
-    "method": "DELETE",
-    "pathTemplate": "/api/projects/{projectId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:PATCH:/api/projects/{projectId}",
-    "service": "assurance-studio",
-    "method": "PATCH",
-    "pathTemplate": "/api/projects/{projectId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/architecture",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/architecture",
-    "operationId": "getFullArchitecture",
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/assets",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/assets",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [],
-    "source": "client-contract",
-    "evidence": "FS-153 seeded-mock-only asset list; production route unverified"
-  },
-  {
-    "routeId": "assurance-studio:DELETE:/api/projects/{projectId}/assets/{assetId}",
-    "service": "assurance-studio",
-    "method": "DELETE",
-    "pathTemplate": "/api/projects/{projectId}/assets/{assetId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [],
-    "source": "handler-audit",
-    "evidence": "assurance-studio-api-gaps.md §2"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/assets/{assetId}",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/assets/{assetId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [],
-    "source": "handler-audit",
-    "evidence": "assurance-studio-api-gaps.md §2"
-  },
-  {
-    "routeId": "assurance-studio:PATCH:/api/projects/{projectId}/assets/{assetId}",
-    "service": "assurance-studio",
-    "method": "PATCH",
-    "pathTemplate": "/api/projects/{projectId}/assets/{assetId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [],
-    "source": "handler-audit",
-    "evidence": "assurance-studio-api-gaps.md §2"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/assets/{assetId}/threats",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/assets/{assetId}/threats",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [],
-    "source": "handler-audit",
-    "evidence": "assurance-studio-api-gaps.md §2"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/{projectId}/assets/{assetId}/threats",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/{projectId}/assets/{assetId}/threats",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [],
-    "source": "handler-audit",
-    "evidence": "assurance-studio-api-gaps.md §2"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/assets/export",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/assets/export",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      403,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/attack-paths",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/attack-paths",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [],
-    "source": "handler-audit",
-    "evidence": "assurance-studio-api-gaps.md §2"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/{projectId}/attack-paths",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/{projectId}/attack-paths",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [],
-    "source": "handler-audit",
-    "evidence": "assurance-studio-api-gaps.md §2"
-  },
-  {
-    "routeId": "assurance-studio:DELETE:/api/projects/{projectId}/attack-paths/{pathId}",
-    "service": "assurance-studio",
-    "method": "DELETE",
-    "pathTemplate": "/api/projects/{projectId}/attack-paths/{pathId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [],
-    "source": "handler-audit",
-    "evidence": "assurance-studio-api-gaps.md §2"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/attack-paths/{pathId}",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/attack-paths/{pathId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [],
-    "source": "handler-audit",
-    "evidence": "assurance-studio-api-gaps.md §2"
-  },
-  {
-    "routeId": "assurance-studio:PATCH:/api/projects/{projectId}/attack-paths/{pathId}",
-    "service": "assurance-studio",
-    "method": "PATCH",
-    "pathTemplate": "/api/projects/{projectId}/attack-paths/{pathId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [],
-    "source": "handler-audit",
-    "evidence": "assurance-studio-api-gaps.md §2"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/attack-paths/export",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/attack-paths/export",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      403,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/compliance",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/compliance",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/{projectId}/compliance/apply-pack",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/{projectId}/compliance/apply-pack",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      409,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/compliance/coverage",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/compliance/coverage",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/compliance/standards/{standardId}",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/compliance/standards/{standardId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      409,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/components",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/components",
-    "operationId": "listComponents",
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/{projectId}/components",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/{projectId}/components",
-    "operationId": "createComponent",
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      201,
-      400,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:DELETE:/api/projects/{projectId}/components/{componentId}",
-    "service": "assurance-studio",
-    "method": "DELETE",
-    "pathTemplate": "/api/projects/{projectId}/components/{componentId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [],
-    "source": "handler-audit",
-    "evidence": "assurance-studio-api-gaps.md §2"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/components/{componentId}",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/components/{componentId}",
-    "operationId": "getComponent",
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:PATCH:/api/projects/{projectId}/components/{componentId}",
-    "service": "assurance-studio",
-    "method": "PATCH",
-    "pathTemplate": "/api/projects/{projectId}/components/{componentId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [],
-    "source": "handler-audit",
-    "evidence": "assurance-studio-api-gaps.md §2"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/data-flows",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/data-flows",
-    "operationId": "listDataFlows",
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/{projectId}/data-flows",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/{projectId}/data-flows",
-    "operationId": "createDataFlow",
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      201,
-      400,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:DELETE:/api/projects/{projectId}/data-flows/{dataFlowId}",
-    "service": "assurance-studio",
-    "method": "DELETE",
-    "pathTemplate": "/api/projects/{projectId}/data-flows/{dataFlowId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [],
-    "source": "handler-audit",
-    "evidence": "assurance-studio-api-gaps.md §2"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/data-flows/{dataFlowId}",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/data-flows/{dataFlowId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [],
-    "source": "handler-audit",
-    "evidence": "assurance-studio-api-gaps.md §2"
-  },
-  {
-    "routeId": "assurance-studio:PATCH:/api/projects/{projectId}/data-flows/{dataFlowId}",
-    "service": "assurance-studio",
-    "method": "PATCH",
-    "pathTemplate": "/api/projects/{projectId}/data-flows/{dataFlowId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [],
-    "source": "handler-audit",
-    "evidence": "assurance-studio-api-gaps.md §2"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/deletion/impact",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/deletion/impact",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/documents",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/documents",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:DELETE:/api/projects/{projectId}/documents/{documentId}",
-    "service": "assurance-studio",
-    "method": "DELETE",
-    "pathTemplate": "/api/projects/{projectId}/documents/{documentId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/documents/{documentId}",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/documents/{documentId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/{projectId}/documents/{documentId}/analyze",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/{projectId}/documents/{documentId}/analyze",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/{projectId}/documents/finalize",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/{projectId}/documents/finalize",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/{projectId}/documents/upload-url",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/{projectId}/documents/upload-url",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/evidence/{evidenceId}/analyze",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/evidence/{evidenceId}/analyze",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/{projectId}/evidence/{evidenceId}/analyze",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/{projectId}/evidence/{evidenceId}/analyze",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/mitigations",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/mitigations",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/{projectId}/mitigations",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/{projectId}/mitigations",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      201,
-      400,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:DELETE:/api/projects/{projectId}/mitigations/{mitigationId}",
-    "service": "assurance-studio",
-    "method": "DELETE",
-    "pathTemplate": "/api/projects/{projectId}/mitigations/{mitigationId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/mitigations/{mitigationId}",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/mitigations/{mitigationId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:PATCH:/api/projects/{projectId}/mitigations/{mitigationId}",
-    "service": "assurance-studio",
-    "method": "PATCH",
-    "pathTemplate": "/api/projects/{projectId}/mitigations/{mitigationId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/{projectId}/mitigations/{mitigationId}/link-risks",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/{projectId}/mitigations/{mitigationId}/link-risks",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/mitigations/export",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/mitigations/export",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      403,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/reports",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/reports",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/reports/{reportId}",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/reports/{reportId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/reports/{reportId}/download",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/reports/{reportId}/download",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/reports/diagrams/{diagramType}",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/reports/diagrams/{diagramType}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/{projectId}/reports/prepare/{reportType}",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/{projectId}/reports/prepare/{reportType}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/reports/preview",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/reports/preview",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/reports/readiness",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/reports/readiness",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/requirements",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/requirements",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/{projectId}/requirements",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/{projectId}/requirements",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      201,
-      400,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:DELETE:/api/projects/{projectId}/requirements/{requirementId}",
-    "service": "assurance-studio",
-    "method": "DELETE",
-    "pathTemplate": "/api/projects/{projectId}/requirements/{requirementId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [],
-    "source": "handler-audit",
-    "evidence": "assurance-studio-api-gaps.md §2"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/requirements/{requirementId}",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/requirements/{requirementId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:PATCH:/api/projects/{projectId}/requirements/{requirementId}",
-    "service": "assurance-studio",
-    "method": "PATCH",
-    "pathTemplate": "/api/projects/{projectId}/requirements/{requirementId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/requirements/export",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/requirements/export",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      403,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/requirements/gap-analysis",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/requirements/gap-analysis",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/{projectId}/requirements/generate",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/{projectId}/requirements/generate",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/requirements/traceability",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/requirements/traceability",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/requirements/verification-status",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/requirements/verification-status",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/risks",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/risks",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/{projectId}/risks",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/{projectId}/risks",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      201,
-      400,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/risks/{riskId}",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/risks/{riskId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:PATCH:/api/projects/{projectId}/risks/{riskId}",
-    "service": "assurance-studio",
-    "method": "PATCH",
-    "pathTemplate": "/api/projects/{projectId}/risks/{riskId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/{projectId}/risks/{riskId}/accept",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/{projectId}/risks/{riskId}/accept",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/risks/{riskId}/attack-paths",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/risks/{riskId}/attack-paths",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/risks/{riskId}/mitigations",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/risks/{riskId}/mitigations",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/risks/{riskId}/threats",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/risks/{riskId}/threats",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/risks/export",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/risks/export",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      403,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/threats",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/threats",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/{projectId}/threats",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/{projectId}/threats",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      201,
-      400,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:DELETE:/api/projects/{projectId}/threats/{threatId}",
-    "service": "assurance-studio",
-    "method": "DELETE",
-    "pathTemplate": "/api/projects/{projectId}/threats/{threatId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/threats/{threatId}",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/threats/{threatId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:PATCH:/api/projects/{projectId}/threats/{threatId}",
-    "service": "assurance-studio",
-    "method": "PATCH",
-    "pathTemplate": "/api/projects/{projectId}/threats/{threatId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/{projectId}/threats/{threatId}/review",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/{projectId}/threats/{threatId}/review",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/threats/export",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/threats/export",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      403,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/verification",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/verification",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/verification/checks",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/verification/checks",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/{projectId}/verification/checks",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/{projectId}/verification/checks",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      201,
-      400,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/verification/checks/{checkId}",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/verification/checks/{checkId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/{projectId}/verification/checks/{checkId}/run",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/{projectId}/verification/checks/{checkId}/run",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/verification/checks/export",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/verification/checks/export",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      403,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/verification/mappings",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/verification/mappings",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/{projectId}/verification/run",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/{projectId}/verification/run",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/zones",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/zones",
-    "operationId": "listZones",
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/{projectId}/zones",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/{projectId}/zones",
-    "operationId": "createZone",
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      201,
-      400,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:DELETE:/api/projects/{projectId}/zones/{zoneId}",
-    "service": "assurance-studio",
-    "method": "DELETE",
-    "pathTemplate": "/api/projects/{projectId}/zones/{zoneId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [],
-    "source": "handler-audit",
-    "evidence": "assurance-studio-api-gaps.md §2"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/{projectId}/zones/{zoneId}",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/{projectId}/zones/{zoneId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [],
-    "source": "handler-audit",
-    "evidence": "assurance-studio-api-gaps.md §2"
-  },
-  {
-    "routeId": "assurance-studio:PATCH:/api/projects/{projectId}/zones/{zoneId}",
-    "service": "assurance-studio",
-    "method": "PATCH",
-    "pathTemplate": "/api/projects/{projectId}/zones/{zoneId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [],
-    "source": "handler-audit",
-    "evidence": "assurance-studio-api-gaps.md §2"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/projects/organization/invitations/accept",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/projects/organization/invitations/accept",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      403,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/organization/invitations/verify",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/organization/invitations/verify",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      400,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:DELETE:/api/projects/organization/members",
-    "service": "assurance-studio",
-    "method": "DELETE",
-    "pathTemplate": "/api/projects/organization/members",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      403,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/projects/organization/members",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/projects/organization/members",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      403,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:PATCH:/api/projects/organization/members",
-    "service": "assurance-studio",
-    "method": "PATCH",
-    "pathTemplate": "/api/projects/organization/members",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      403,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/reports/themes",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/reports/themes",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/reports/themes",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/reports/themes",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      201,
-      400,
-      401,
-      403,
-      409,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:DELETE:/api/reports/themes/{themeId}",
-    "service": "assurance-studio",
-    "method": "DELETE",
-    "pathTemplate": "/api/reports/themes/{themeId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      403,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/reports/themes/{themeId}",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/reports/themes/{themeId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:PUT:/api/reports/themes/{themeId}",
-    "service": "assurance-studio",
-    "method": "PUT",
-    "pathTemplate": "/api/reports/themes/{themeId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      401,
-      403,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/standards",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/standards",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:DELETE:/api/standards/{standardId}",
-    "service": "assurance-studio",
-    "method": "DELETE",
-    "pathTemplate": "/api/standards/{standardId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      403,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/standards/{standardId}",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/standards/{standardId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/standards/{standardId}/clauses",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/standards/{standardId}/clauses",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/standards/{standardId}/clauses",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/standards/{standardId}/clauses",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      201,
-      400,
-      401,
-      403,
-      404,
-      409,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:DELETE:/api/standards/{standardId}/clauses/{clauseId}",
-    "service": "assurance-studio",
-    "method": "DELETE",
-    "pathTemplate": "/api/standards/{standardId}/clauses/{clauseId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      403,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/standards/{standardId}/clauses/{clauseId}",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/standards/{standardId}/clauses/{clauseId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:PUT:/api/standards/{standardId}/clauses/{clauseId}",
-    "service": "assurance-studio",
-    "method": "PUT",
-    "pathTemplate": "/api/standards/{standardId}/clauses/{clauseId}",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      403,
-      404,
-      409,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/standards/{standardId}/process",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/standards/{standardId}/process",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      202,
-      400,
-      401,
-      403,
-      404,
-      500,
-      502
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/standards/{standardId}/status",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/standards/{standardId}/status",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/standards/imports/upload",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/standards/imports/upload",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "multipart/form-data"
-    ],
-    "responseStatuses": [
-      202,
-      400,
-      401,
-      403,
-      413,
-      415,
-      500,
-      502
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/standards/imports/url",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/standards/imports/url",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      202,
-      400,
-      401,
-      403,
-      413,
-      415,
-      502,
-      504
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/standards/runs/{runId}/stream",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/standards/runs/{runId}/stream",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:POST:/api/tara/workflows/projects/{projectId}/stages/{stageName}/rerun",
-    "service": "assurance-studio",
-    "method": "POST",
-    "pathTemplate": "/api/tara/workflows/projects/{projectId}/stages/{stageName}/rerun",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/tara/workflows/projects/{projectId}/stale-summary",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/tara/workflows/projects/{projectId}/stale-summary",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      404,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:GET:/api/user/settings/billing",
-    "service": "assurance-studio",
-    "method": "GET",
-    "pathTemplate": "/api/user/settings/billing",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [],
-    "responseStatuses": [
-      200,
-      401,
-      500
-    ],
-    "source": "openapi"
-  },
-  {
-    "routeId": "assurance-studio:PATCH:/api/user/settings/billing",
-    "service": "assurance-studio",
-    "method": "PATCH",
-    "pathTemplate": "/api/user/settings/billing",
-    "operationId": null,
-    "auth": "X-API-Key",
-    "requestMediaTypes": [
-      "application/json"
-    ],
-    "responseStatuses": [
-      200,
-      400,
-      401,
-      500
-    ],
-    "source": "openapi"
-  }
+    routeId: "assurance-studio:DELETE:/api/clause-control-mappings",
+    service: "assurance-studio",
+    method: "DELETE",
+    pathTemplate: "/api/clause-control-mappings",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [204, 400, 401, 403, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/clause-control-mappings",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/clause-control-mappings",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:POST:/api/clause-control-mappings",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/clause-control-mappings",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [201, 400, 401, 403, 409, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:DELETE:/api/clause-control-mappings/{mappingId}",
+    service: "assurance-studio",
+    method: "DELETE",
+    pathTemplate: "/api/clause-control-mappings/{mappingId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 403, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/clause-control-mappings/{mappingId}",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/clause-control-mappings/{mappingId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:DELETE:/api/clause-control-mappings/bulk",
+    service: "assurance-studio",
+    method: "DELETE",
+    pathTemplate: "/api/clause-control-mappings/bulk",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 400, 401, 403, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:POST:/api/clause-control-mappings/bulk",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/clause-control-mappings/bulk",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [201, 400, 401, 403, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/compliance-packs",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/compliance-packs",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:POST:/api/compliance-packs",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/compliance-packs",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [201, 400, 401, 403, 409, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/compliance-packs/{packId}",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/compliance-packs/{packId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:PATCH:/api/compliance-packs/{packId}",
+    service: "assurance-studio",
+    method: "PATCH",
+    pathTemplate: "/api/compliance-packs/{packId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 400, 401, 403, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/control-objectives",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/control-objectives",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:POST:/api/control-objectives",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/control-objectives",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [201, 400, 401, 403, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:DELETE:/api/control-objectives/{controlId}",
+    service: "assurance-studio",
+    method: "DELETE",
+    pathTemplate: "/api/control-objectives/{controlId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [204, 401, 403, 404, 409, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/control-objectives/{controlId}",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/control-objectives/{controlId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:PUT:/api/control-objectives/{controlId}",
+    service: "assurance-studio",
+    method: "PUT",
+    pathTemplate: "/api/control-objectives/{controlId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 400, 401, 403, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:POST:/api/projects",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [201, 400, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{id}/sbom",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{id}/sbom",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [],
+    source: "handler-audit",
+    evidence: "assurance-studio-api-gaps.md §6",
+  },
+  {
+    routeId: "assurance-studio:DELETE:/api/projects/{projectId}",
+    service: "assurance-studio",
+    method: "DELETE",
+    pathTemplate: "/api/projects/{projectId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:PATCH:/api/projects/{projectId}",
+    service: "assurance-studio",
+    method: "PATCH",
+    pathTemplate: "/api/projects/{projectId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 400, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/architecture",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/architecture",
+    operationId: "getFullArchitecture",
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/assets",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/assets",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [],
+    source: "client-contract",
+    evidence: "FS-153 seeded-mock-only asset list; production route unverified",
+  },
+  {
+    routeId:
+      "assurance-studio:DELETE:/api/projects/{projectId}/assets/{assetId}",
+    service: "assurance-studio",
+    method: "DELETE",
+    pathTemplate: "/api/projects/{projectId}/assets/{assetId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [],
+    source: "handler-audit",
+    evidence: "assurance-studio-api-gaps.md §2",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/assets/{assetId}",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/assets/{assetId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [],
+    source: "handler-audit",
+    evidence: "assurance-studio-api-gaps.md §2",
+  },
+  {
+    routeId:
+      "assurance-studio:PATCH:/api/projects/{projectId}/assets/{assetId}",
+    service: "assurance-studio",
+    method: "PATCH",
+    pathTemplate: "/api/projects/{projectId}/assets/{assetId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [],
+    source: "handler-audit",
+    evidence: "assurance-studio-api-gaps.md §2",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/assets/{assetId}/threats",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/assets/{assetId}/threats",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [],
+    source: "handler-audit",
+    evidence: "assurance-studio-api-gaps.md §2",
+  },
+  {
+    routeId:
+      "assurance-studio:POST:/api/projects/{projectId}/assets/{assetId}/threats",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/assets/{assetId}/threats",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [],
+    source: "handler-audit",
+    evidence: "assurance-studio-api-gaps.md §2",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/assets/export",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/assets/export",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 403, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/attack-paths",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/attack-paths",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [],
+    source: "handler-audit",
+    evidence: "assurance-studio-api-gaps.md §2",
+  },
+  {
+    routeId: "assurance-studio:POST:/api/projects/{projectId}/attack-paths",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/attack-paths",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [],
+    source: "handler-audit",
+    evidence: "assurance-studio-api-gaps.md §2",
+  },
+  {
+    routeId:
+      "assurance-studio:DELETE:/api/projects/{projectId}/attack-paths/{pathId}",
+    service: "assurance-studio",
+    method: "DELETE",
+    pathTemplate: "/api/projects/{projectId}/attack-paths/{pathId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [],
+    source: "handler-audit",
+    evidence: "assurance-studio-api-gaps.md §2",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/attack-paths/{pathId}",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/attack-paths/{pathId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [],
+    source: "handler-audit",
+    evidence: "assurance-studio-api-gaps.md §2",
+  },
+  {
+    routeId:
+      "assurance-studio:PATCH:/api/projects/{projectId}/attack-paths/{pathId}",
+    service: "assurance-studio",
+    method: "PATCH",
+    pathTemplate: "/api/projects/{projectId}/attack-paths/{pathId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [],
+    source: "handler-audit",
+    evidence: "assurance-studio-api-gaps.md §2",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/attack-paths/export",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/attack-paths/export",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 403, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/compliance",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/compliance",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:POST:/api/projects/{projectId}/compliance/apply-pack",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/compliance/apply-pack",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 400, 401, 409, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/compliance/coverage",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/compliance/coverage",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/compliance/standards/{standardId}",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/compliance/standards/{standardId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 409, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/components",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/components",
+    operationId: "listComponents",
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:POST:/api/projects/{projectId}/components",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/components",
+    operationId: "createComponent",
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [201, 400, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:DELETE:/api/projects/{projectId}/components/{componentId}",
+    service: "assurance-studio",
+    method: "DELETE",
+    pathTemplate: "/api/projects/{projectId}/components/{componentId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [],
+    source: "handler-audit",
+    evidence: "assurance-studio-api-gaps.md §2",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/components/{componentId}",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/components/{componentId}",
+    operationId: "getComponent",
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:PATCH:/api/projects/{projectId}/components/{componentId}",
+    service: "assurance-studio",
+    method: "PATCH",
+    pathTemplate: "/api/projects/{projectId}/components/{componentId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [],
+    source: "handler-audit",
+    evidence: "assurance-studio-api-gaps.md §2",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/data-flows",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/data-flows",
+    operationId: "listDataFlows",
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:POST:/api/projects/{projectId}/data-flows",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/data-flows",
+    operationId: "createDataFlow",
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [201, 400, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:DELETE:/api/projects/{projectId}/data-flows/{dataFlowId}",
+    service: "assurance-studio",
+    method: "DELETE",
+    pathTemplate: "/api/projects/{projectId}/data-flows/{dataFlowId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [],
+    source: "handler-audit",
+    evidence: "assurance-studio-api-gaps.md §2",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/data-flows/{dataFlowId}",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/data-flows/{dataFlowId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [],
+    source: "handler-audit",
+    evidence: "assurance-studio-api-gaps.md §2",
+  },
+  {
+    routeId:
+      "assurance-studio:PATCH:/api/projects/{projectId}/data-flows/{dataFlowId}",
+    service: "assurance-studio",
+    method: "PATCH",
+    pathTemplate: "/api/projects/{projectId}/data-flows/{dataFlowId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [],
+    source: "handler-audit",
+    evidence: "assurance-studio-api-gaps.md §2",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/deletion/impact",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/deletion/impact",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 400, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/documents",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/documents",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:DELETE:/api/projects/{projectId}/documents/{documentId}",
+    service: "assurance-studio",
+    method: "DELETE",
+    pathTemplate: "/api/projects/{projectId}/documents/{documentId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/documents/{documentId}",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/documents/{documentId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:POST:/api/projects/{projectId}/documents/{documentId}/analyze",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/documents/{documentId}/analyze",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 400, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:POST:/api/projects/{projectId}/documents/finalize",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/documents/finalize",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 400, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:POST:/api/projects/{projectId}/documents/upload-url",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/documents/upload-url",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 400, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/evidence/{evidenceId}/analyze",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/evidence/{evidenceId}/analyze",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:POST:/api/projects/{projectId}/evidence/{evidenceId}/analyze",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/evidence/{evidenceId}/analyze",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 400, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/fs-links",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/fs-links",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200],
+    source: "handler-audit",
+    evidence: "assurance-studio-fs-links-live-2026-08-14.md §1",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/mitigations",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/mitigations",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:POST:/api/projects/{projectId}/mitigations",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/mitigations",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [201, 400, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:DELETE:/api/projects/{projectId}/mitigations/{mitigationId}",
+    service: "assurance-studio",
+    method: "DELETE",
+    pathTemplate: "/api/projects/{projectId}/mitigations/{mitigationId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/mitigations/{mitigationId}",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/mitigations/{mitigationId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:PATCH:/api/projects/{projectId}/mitigations/{mitigationId}",
+    service: "assurance-studio",
+    method: "PATCH",
+    pathTemplate: "/api/projects/{projectId}/mitigations/{mitigationId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 400, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:POST:/api/projects/{projectId}/mitigations/{mitigationId}/link-risks",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate:
+      "/api/projects/{projectId}/mitigations/{mitigationId}/link-risks",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 400, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/mitigations/export",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/mitigations/export",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 403, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/reports",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/reports",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/reports/{reportId}",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/reports/{reportId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/reports/{reportId}/download",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/reports/{reportId}/download",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/reports/diagrams/{diagramType}",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/reports/diagrams/{diagramType}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:POST:/api/projects/{projectId}/reports/prepare/{reportType}",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/reports/prepare/{reportType}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 400, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/reports/preview",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/reports/preview",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/reports/readiness",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/reports/readiness",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/requirements",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/requirements",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:POST:/api/projects/{projectId}/requirements",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/requirements",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [201, 400, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:DELETE:/api/projects/{projectId}/requirements/{requirementId}",
+    service: "assurance-studio",
+    method: "DELETE",
+    pathTemplate: "/api/projects/{projectId}/requirements/{requirementId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [],
+    source: "handler-audit",
+    evidence: "assurance-studio-api-gaps.md §2",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/requirements/{requirementId}",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/requirements/{requirementId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:PATCH:/api/projects/{projectId}/requirements/{requirementId}",
+    service: "assurance-studio",
+    method: "PATCH",
+    pathTemplate: "/api/projects/{projectId}/requirements/{requirementId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 400, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/requirements/export",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/requirements/export",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 403, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/requirements/gap-analysis",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/requirements/gap-analysis",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:POST:/api/projects/{projectId}/requirements/generate",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/requirements/generate",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/requirements/traceability",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/requirements/traceability",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/requirements/verification-status",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/requirements/verification-status",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/risks",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/risks",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:POST:/api/projects/{projectId}/risks",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/risks",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [201, 400, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/risks/{riskId}",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/risks/{riskId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:PATCH:/api/projects/{projectId}/risks/{riskId}",
+    service: "assurance-studio",
+    method: "PATCH",
+    pathTemplate: "/api/projects/{projectId}/risks/{riskId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 400, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:POST:/api/projects/{projectId}/risks/{riskId}/accept",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/risks/{riskId}/accept",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 400, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/risks/{riskId}/attack-paths",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/risks/{riskId}/attack-paths",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/risks/{riskId}/mitigations",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/risks/{riskId}/mitigations",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/risks/{riskId}/threats",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/risks/{riskId}/threats",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/risks/export",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/risks/export",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 403, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/threats",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/threats",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:POST:/api/projects/{projectId}/threats",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/threats",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [201, 400, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:DELETE:/api/projects/{projectId}/threats/{threatId}",
+    service: "assurance-studio",
+    method: "DELETE",
+    pathTemplate: "/api/projects/{projectId}/threats/{threatId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/threats/{threatId}",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/threats/{threatId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:PATCH:/api/projects/{projectId}/threats/{threatId}",
+    service: "assurance-studio",
+    method: "PATCH",
+    pathTemplate: "/api/projects/{projectId}/threats/{threatId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 400, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:POST:/api/projects/{projectId}/threats/{threatId}/review",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/threats/{threatId}/review",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 400, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/threats/export",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/threats/export",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 403, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/verification",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/verification",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/verification/checks",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/verification/checks",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:POST:/api/projects/{projectId}/verification/checks",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/verification/checks",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [201, 400, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/verification/checks/{checkId}",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/verification/checks/{checkId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:POST:/api/projects/{projectId}/verification/checks/{checkId}/run",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/verification/checks/{checkId}/run",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 400, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/verification/checks/export",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/verification/checks/export",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 403, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/{projectId}/verification/mappings",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/verification/mappings",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:POST:/api/projects/{projectId}/verification/run",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/verification/run",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/zones",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/zones",
+    operationId: "listZones",
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:POST:/api/projects/{projectId}/zones",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/zones",
+    operationId: "createZone",
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [201, 400, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:DELETE:/api/projects/{projectId}/zones/{zoneId}",
+    service: "assurance-studio",
+    method: "DELETE",
+    pathTemplate: "/api/projects/{projectId}/zones/{zoneId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [],
+    source: "handler-audit",
+    evidence: "assurance-studio-api-gaps.md §2",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/{projectId}/zones/{zoneId}",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/zones/{zoneId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [],
+    source: "handler-audit",
+    evidence: "assurance-studio-api-gaps.md §2",
+  },
+  {
+    routeId: "assurance-studio:PATCH:/api/projects/{projectId}/zones/{zoneId}",
+    service: "assurance-studio",
+    method: "PATCH",
+    pathTemplate: "/api/projects/{projectId}/zones/{zoneId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [],
+    source: "handler-audit",
+    evidence: "assurance-studio-api-gaps.md §2",
+  },
+  {
+    routeId:
+      "assurance-studio:POST:/api/projects/organization/invitations/accept",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/projects/organization/invitations/accept",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 400, 401, 403, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/projects/organization/invitations/verify",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/organization/invitations/verify",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 400, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:DELETE:/api/projects/organization/members",
+    service: "assurance-studio",
+    method: "DELETE",
+    pathTemplate: "/api/projects/organization/members",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 400, 401, 403, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/projects/organization/members",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/projects/organization/members",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 403, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:PATCH:/api/projects/organization/members",
+    service: "assurance-studio",
+    method: "PATCH",
+    pathTemplate: "/api/projects/organization/members",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 400, 401, 403, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/reports/themes",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/reports/themes",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:POST:/api/reports/themes",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/reports/themes",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [201, 400, 401, 403, 409, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:DELETE:/api/reports/themes/{themeId}",
+    service: "assurance-studio",
+    method: "DELETE",
+    pathTemplate: "/api/reports/themes/{themeId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 403, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/reports/themes/{themeId}",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/reports/themes/{themeId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:PUT:/api/reports/themes/{themeId}",
+    service: "assurance-studio",
+    method: "PUT",
+    pathTemplate: "/api/reports/themes/{themeId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 401, 403, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/standards",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/standards",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:DELETE:/api/standards/{standardId}",
+    service: "assurance-studio",
+    method: "DELETE",
+    pathTemplate: "/api/standards/{standardId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 403, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/standards/{standardId}",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/standards/{standardId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/standards/{standardId}/clauses",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/standards/{standardId}/clauses",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:POST:/api/standards/{standardId}/clauses",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/standards/{standardId}/clauses",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [201, 400, 401, 403, 404, 409, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:DELETE:/api/standards/{standardId}/clauses/{clauseId}",
+    service: "assurance-studio",
+    method: "DELETE",
+    pathTemplate: "/api/standards/{standardId}/clauses/{clauseId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 403, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/standards/{standardId}/clauses/{clauseId}",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/standards/{standardId}/clauses/{clauseId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:PUT:/api/standards/{standardId}/clauses/{clauseId}",
+    service: "assurance-studio",
+    method: "PUT",
+    pathTemplate: "/api/standards/{standardId}/clauses/{clauseId}",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 400, 401, 403, 404, 409, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:POST:/api/standards/{standardId}/process",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/standards/{standardId}/process",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [202, 400, 401, 403, 404, 500, 502],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/standards/{standardId}/status",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/standards/{standardId}/status",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:POST:/api/standards/imports/upload",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/standards/imports/upload",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["multipart/form-data"],
+    responseStatuses: [202, 400, 401, 403, 413, 415, 500, 502],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:POST:/api/standards/imports/url",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate: "/api/standards/imports/url",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [202, 400, 401, 403, 413, 415, 502, 504],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/standards/runs/{runId}/stream",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/standards/runs/{runId}/stream",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:POST:/api/tara/workflows/projects/{projectId}/stages/{stageName}/rerun",
+    service: "assurance-studio",
+    method: "POST",
+    pathTemplate:
+      "/api/tara/workflows/projects/{projectId}/stages/{stageName}/rerun",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 400, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId:
+      "assurance-studio:GET:/api/tara/workflows/projects/{projectId}/stale-summary",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/tara/workflows/projects/{projectId}/stale-summary",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 404, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:GET:/api/user/settings/billing",
+    service: "assurance-studio",
+    method: "GET",
+    pathTemplate: "/api/user/settings/billing",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: [],
+    responseStatuses: [200, 401, 500],
+    source: "openapi",
+  },
+  {
+    routeId: "assurance-studio:PATCH:/api/user/settings/billing",
+    service: "assurance-studio",
+    method: "PATCH",
+    pathTemplate: "/api/user/settings/billing",
+    operationId: null,
+    auth: "X-API-Key",
+    requestMediaTypes: ["application/json"],
+    responseStatuses: [200, 400, 401, 500],
+    source: "openapi",
+  },
 ] as const satisfies readonly MockRoute[];
 
 export const ASSURANCE_STUDIO_CALLABLE_ROUTE_IDS = [
+  "assurance-studio:GET:/api/projects",
   "assurance-studio:GET:/api/projects/{id}/sbom",
   "assurance-studio:GET:/api/projects/{projectId}/assets",
   "assurance-studio:DELETE:/api/projects/{projectId}/assets/{assetId}",
@@ -2298,6 +1651,7 @@ export const ASSURANCE_STUDIO_CALLABLE_ROUTE_IDS = [
   "assurance-studio:DELETE:/api/projects/{projectId}/data-flows/{dataFlowId}",
   "assurance-studio:GET:/api/projects/{projectId}/data-flows/{dataFlowId}",
   "assurance-studio:PATCH:/api/projects/{projectId}/data-flows/{dataFlowId}",
+  "assurance-studio:GET:/api/projects/{projectId}/fs-links",
   "assurance-studio:GET:/api/projects/{projectId}/mitigations",
   "assurance-studio:POST:/api/projects/{projectId}/mitigations",
   "assurance-studio:DELETE:/api/projects/{projectId}/mitigations/{mitigationId}",
@@ -2324,8 +1678,11 @@ export const ASSURANCE_STUDIO_CALLABLE_ROUTE_IDS = [
   "assurance-studio:POST:/api/projects/{projectId}/zones",
   "assurance-studio:DELETE:/api/projects/{projectId}/zones/{zoneId}",
   "assurance-studio:GET:/api/projects/{projectId}/zones/{zoneId}",
-  "assurance-studio:PATCH:/api/projects/{projectId}/zones/{zoneId}"
+  "assurance-studio:PATCH:/api/projects/{projectId}/zones/{zoneId}",
 ] as const;
 
 const callableRouteIds = new Set<string>(ASSURANCE_STUDIO_CALLABLE_ROUTE_IDS);
-export const ASSURANCE_STUDIO_ROUTES: readonly MockRoute[] = ASSURANCE_STUDIO_REFERENCE_ROUTES.filter((route) => callableRouteIds.has(route.routeId));
+export const ASSURANCE_STUDIO_ROUTES: readonly MockRoute[] =
+  ASSURANCE_STUDIO_REFERENCE_ROUTES.filter((route) =>
+    callableRouteIds.has(route.routeId),
+  );

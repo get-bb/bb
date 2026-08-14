@@ -93,11 +93,12 @@ export function registerSync(bb: BbPluginApi, ctx: PluginContext): void {
       }
     },
   };
-  registerSyncRpc(bb, deps);
+  registerSyncRpc(bb, deps, remote.assuranceStudio);
   registerSyncCli(
     bb,
     deps,
     remote.platform,
+    remote.assuranceStudio,
     (cliContext) => resolveSyncWorktreeRoot(ctx, cliContext),
     {
       firmware: (argv, cliContext) =>

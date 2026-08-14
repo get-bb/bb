@@ -6,8 +6,10 @@ export interface AssuranceStudioRoutePatch {
   readonly operationId: null;
   readonly requestMediaTypes: readonly string[];
   readonly responseStatuses: readonly number[];
-  readonly evidenceFile: "assurance-studio-api-gaps.md";
-  readonly evidenceSection: "2" | "6";
+  readonly evidenceFile:
+    | "assurance-studio-api-gaps.md"
+    | "assurance-studio-fs-links-live-2026-08-14.md";
+  readonly evidenceSection: "1" | "2" | "6";
 }
 
 export interface AssuranceStudioClientContractRoute {
@@ -21,9 +23,7 @@ export interface AssuranceStudioClientContractRoute {
 
 const JSON_BODY = ["application/json"] as const;
 
-function itemCrud(
-  pathTemplate: string,
-): readonly AssuranceStudioRoutePatch[] {
+function itemCrud(pathTemplate: string): readonly AssuranceStudioRoutePatch[] {
   return [
     {
       method: "GET",
@@ -57,6 +57,15 @@ function itemCrud(
 
 /** Only routes explicitly listed by the vendored, handler-backed audit. */
 export const ASSURANCE_STUDIO_ROUTE_PATCHES = [
+  {
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/fs-links",
+    operationId: null,
+    requestMediaTypes: [],
+    responseStatuses: [200],
+    evidenceFile: "assurance-studio-fs-links-live-2026-08-14.md",
+    evidenceSection: "1",
+  },
   ...itemCrud("/api/projects/{projectId}/assets/{assetId}"),
   {
     method: "GET",
@@ -147,9 +156,7 @@ export const ASSURANCE_STUDIO_CLIENT_CONTRACT_ROUTES = [
   },
 ] as const satisfies readonly AssuranceStudioClientContractRoute[];
 
-export function handlerAuditRoute(
-  patch: AssuranceStudioRoutePatch,
-): MockRoute {
+export function handlerAuditRoute(patch: AssuranceStudioRoutePatch): MockRoute {
   return {
     routeId: `assurance-studio:${patch.method}:${patch.pathTemplate}`,
     service: "assurance-studio",

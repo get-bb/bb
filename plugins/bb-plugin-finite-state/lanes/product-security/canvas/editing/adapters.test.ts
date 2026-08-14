@@ -21,6 +21,10 @@ import type {
   Json,
   RemoteServices,
 } from "../../../../lib/remote/types.js";
+import {
+  bindWorkspacePlatformProject,
+  selectAssuranceStudioProjectBinding,
+} from "../../../../lib/store/project-scope.js";
 import { registerMockAssuranceStudio } from "../../../../test/mock-remote/assurance-studio/register.js";
 import { registerPlatformHandlers } from "../../../../test/mock-remote/platform/register.js";
 import { createMockPlatformState } from "../../../../test/mock-remote/platform/state.js";
@@ -188,6 +192,13 @@ describe("canvas real-wire adapter contract", () => {
     }));
     registerSync(host.bb, context);
     registerProductSecurity(host.bb, context);
+    bindWorkspacePlatformProject(context.db(), "bb-project-fs166", PROJECT_ID);
+    selectAssuranceStudioProjectBinding(
+      context.db(),
+      "bb-project-fs166",
+      PROJECT_ID,
+      PROJECT_ID,
+    );
 
     worktreeRoot = await mkdtemp(join(tmpdir(), "fs166-registered-pull-"));
     host.harness.sdk.stub("threads.get", async () =>

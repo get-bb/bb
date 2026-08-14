@@ -558,3 +558,30 @@ specs: `docs/Product Specs/SPEC 07` and `SPEC 08`._
 - Approval provenance: owner Matt Wyckhouse ratified the complete AMD-0021 contract content at 08:28 ET; coordinator `thr_hg37weivk7` authorized this phase-2 packaging record in comment `01M005A04GXJEHVHDP4H4M7PP2` after the schema phase merged. No new constraint or scope is introduced.
 - Affected WPs and gates: identical to AMD-0021's held B2 contract phase; FS-193, registered sync RPC, CLI JSON, Findings panel pull report, shared contract tests, and frozen-artifact guard.
 - Evidence: FS-193 task comments `01M0056XCEP510AAQRSAQ2JZ20`, `01M0058X1KDWYERSN5BFBEAG9M`, and `01M005A04GXJEHVHDP4H4M7PP2`.
+
+### AMD-0022 — Persist an explicit Assurance Studio sibling project selection
+
+- Status: approved
+- Approved: 2026-08-14 08:28 ET, product owner Matt Wyckhouse, relayed by coordinator thread `thr_hg37weivk7` and directly to implementing thread `thr_ch5pkdvbrb`
+- Artifacts:
+  - `plugins/bb-plugin-finite-state/lib/store/schema.ts`
+  - `plugins/bb-plugin-finite-state/shared/contract.ts`
+  - `plugins/bb-plugin-finite-state/lib/remote/types.ts`
+- Contract version: 9
+- Dependency satisfied: FS-193 B2 merged to `origin/finite-state/integration` at `848427858`, recording the AMD-0023 shared-contract version-8 hash below.
+- Prior artifact hashes:
+  - `lib/store/schema.ts`: `3241e26c1a71702b3cdb7b9be90a45cdbfff592e13d038a6ab13876304906642`
+  - `shared/contract.ts`: `041dc7dec66ac92d33b48e947412a2eedff4e7e6bdb54122f5623c9aebd0c466`
+  - `lib/remote/types.ts`: `933bf1672ff816879cd246d1e3e9a562c9e1da7bedf16e326d5f75fd12f8ba08`
+- New artifact hashes:
+  - `lib/store/schema.ts`: `d52bab53565b770e9d62edf50d0a39f52653a015eea968677d6091e0508cdc3a`
+  - `shared/contract.ts`: `2b4ecfdfc335188f3165b9acee680da755731cd6661f33f7c2678f6b84621403`
+  - `lib/remote/types.ts`: `f3ee23f0fe1750bc567ae558c8e8f0644c0a4e669f40399c2076e534e48d44c5`
+- Reason: Assurance Studio and Platform project identifiers are disjoint. The product-owned `project_finite_state_links` relation can map one Platform project to multiple AS projects, including verified four-way and two-way groups where every candidate reports `is_primary = true`; therefore name, primary, version, and sync-state tie-breaks are forbidden. The plugin must persist an operator's explicit AS project choice beside AMD-0020's bb-to-Platform binding and consume only that choice for connected AS reads.
+- Exact DDL: append `ALTER TABLE workspace_platform_project_binding ADD COLUMN assurance_studio_project_id TEXT CHECK (assurance_studio_project_id IS NULL OR length(assurance_studio_project_id) > 0)`. The column is nullable because `NULL` has the real semantic meaning “not selected.” Existing AMD-0020 rows migrate to `NULL` and connected AS pulls fail before remote contact until a choice is recorded. No index is added because reads already target the table's `(workspace_project_id, platform_project_id)` primary key.
+- Contract: add `sync.asProject.candidates`/`syncAsProjectCandidates` as a read and `sync.asProject.select`/`syncAsProjectSelect` as a local write; both carry explicit bb workspace and Platform coordinates, and neither calls an AS write route. Add an optional bb workspace coordinate to sync status and plan so Platform-only reads remain available without project context while AS-backed reads can resolve and enforce the persisted selection. Add the verified read-only project-link candidate and `listProjectLinks` member to the remote contract. Increment the landed shared contract from version 8 to 9.
+- Selection semantics: enumeration preserves every candidate and reports `none`, `unambiguous`, or `ambiguous` without ranking. Selection re-enumerates the exact Platform project's live links and rejects any AS id absent from that set before the local transaction binds bb-to-Platform and records the selected AS sibling. Even an unambiguous candidate requires explicit selection. Pull generation and cache identity remain Platform-scoped; only the remote scope passed to AS-backed adapters and resolvers is replaced with the persisted AS id.
+- Migration and compatibility: existing binding rows remain readable and explicitly unselected. Platform-only pulls continue without an AS selection. AS-backed pulls reject missing selection with `AS_PROJECT_SELECTION_REQUIRED` before opening a generation or contacting a remote adapter. No Assurance Studio `POST`, `PATCH`, or `DELETE` route is in scope.
+- Affected WPs and gates: FS-198; all connected TARA/requirements/verifications sync adapters and resolvers; Sync Review panel; registered sync RPC and CLI; shared-store migration; remote-client contract; mock route and fixture fidelity gates; frozen baseline; Node 22.19 typecheck/test/lint/build and changed-file Prettier ratchet.
+- Approval provenance: owner ruling initially selected the product linkage, then approved Option A after the live read showed product-owned linkage ambiguity. The 08:28 ET ruling explicitly authorized a small additive sibling-binding schema amendment, separate AMD-0022, end-to-end selection surfaces, persisted-only reverse mapping, and fixtures reproducing the four-way and two-way groups.
+- Evidence: sanitized live route capture attached to FS-198 as attachment `01M0032QR3V6MF2G2BB35MH82Y`; checked-in authority `docs/Implementation/api-reference/assurance-studio-fs-links-live-2026-08-14.md`; registered adversarial RPC/CLI and engine tests.

@@ -247,6 +247,9 @@ const remoteClient = {
   async health() {
     return { configured: true, reachable: true, detail: null };
   },
+  listProjectLinks() {
+    return emptyPages();
+  },
   listEntities() {
     return emptyPages<AsEntity>();
   },
@@ -499,6 +502,7 @@ describe("WP-35 plan ordering and adapter projections", () => {
       },
       scope,
       ["component", "zone", "asset", "dataflow", "threat"],
+      { assuranceStudioProjectId: "as-project-explicit" },
     );
     const creates = plan.items.filter((item) => item.operation === "create");
     expect(new Set(creates.map((item) => item.kind))).toEqual(
@@ -632,6 +636,7 @@ describe("WP-35 plan ordering and adapter projections", () => {
       { db, worktreeRoot: root, adapters: [componentAdapter] },
       scope,
       ["component"],
+      { assuranceStudioProjectId: "as-project-explicit" },
     );
     const movedEntityChanges = plan.items.filter(
       (item) =>

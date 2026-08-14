@@ -88,6 +88,8 @@ const EXPECTED_LOGICAL_METHODS = [
   "requirements.write",
   "review.transition",
   "sync.conflict.resolve",
+  "sync.asProject.candidates",
+  "sync.asProject.select",
   "sync.plan",
   "sync.pull",
   "sync.push",
@@ -178,15 +180,15 @@ function objectField(
 }
 
 describe("rpc-contract-freeze", () => {
-  it("exports version eight and all 86 bijective logical-to-wire names", () => {
-    expect(CONTRACT_VERSION).toBe(8);
+  it("exports version nine and all 88 bijective logical-to-wire names", () => {
+    expect(CONTRACT_VERSION).toBe(9);
     expect(Object.keys(RPC_WIRE_METHODS).sort()).toEqual(
       [...EXPECTED_LOGICAL_METHODS].sort(),
     );
-    expect(Object.keys(RPC_WIRE_METHODS)).toHaveLength(86);
+    expect(Object.keys(RPC_WIRE_METHODS)).toHaveLength(88);
 
     const wireNames = Object.values(RPC_WIRE_METHODS);
-    expect(new Set(wireNames).size).toBe(86);
+    expect(new Set(wireNames).size).toBe(88);
     expect(Object.keys(rpcContract).sort()).toEqual([...wireNames].sort());
     for (const [logicalName, wireName] of Object.entries(RPC_WIRE_METHODS)) {
       expect(wireName).toBe(lowerCamelWireName(logicalName));
@@ -562,6 +564,12 @@ describe("rpc-contract-freeze", () => {
       pullKinds.safeParse({ finding: { fetched: 3, baseRows: 2 } }).success,
     ).toBe(false);
     expect(rpcContract.syncPull.input.shape).toHaveProperty(
+      "workspaceProjectId",
+    );
+    expect(rpcContract.syncStatus.input.shape).toHaveProperty(
+      "workspaceProjectId",
+    );
+    expect(rpcContract.syncPlan.input.shape).toHaveProperty(
       "workspaceProjectId",
     );
     expect(rpcContract.syncStatus.output.shape).toHaveProperty(

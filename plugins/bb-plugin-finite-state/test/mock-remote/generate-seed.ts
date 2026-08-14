@@ -863,6 +863,61 @@ function buildCorpus(seed: string): {
         ",",
       ),
     );
+  const projectLinkGroups = [
+    {
+      platformProjectId: "platform-project-a",
+      platformProjectName: "Platform Project A",
+      platformVersionId: "platform-version-a",
+      platformVersionName: "Version A",
+      projects: ["a1", "a2", "a3", "a4"],
+    },
+    {
+      platformProjectId: "platform-project-b",
+      platformProjectName: "Platform Project B",
+      platformVersionId: "platform-version-b",
+      platformVersionName: "Version B",
+      projects: ["b1", "b2"],
+    },
+    {
+      platformProjectId: "platform-project-c",
+      platformProjectName: "Platform Project C",
+      platformVersionId: "platform-version-c",
+      platformVersionName: "Version C",
+      projects: ["c1"],
+    },
+  ];
+  const projectLinks = {
+    projects: projectLinkGroups.flatMap((group) =>
+      group.projects.map((suffix) => ({
+        id: `as-project-${suffix}`,
+        name: `AS Project ${suffix.toUpperCase()}`,
+      })),
+    ),
+    links: projectLinkGroups.flatMap((group) =>
+      group.projects.map((suffix) => ({
+        id: `link-${suffix}`,
+        project_id: `as-project-${suffix}`,
+        fs_product_id: group.platformProjectId,
+        fs_product_name: group.platformProjectName,
+        is_primary: true,
+        version_strategy: "specific",
+        fs_version_id: group.platformVersionId,
+        fs_version_name: suffix === "a2" ? null : group.platformVersionName,
+        last_synced_at: suffix === "a2" ? null : FIXED_NOW,
+        sync_status: suffix === "a2" ? "error" : "synced",
+        sync_error: suffix === "a2" ? "fixture sync error" : null,
+        sbom_component_count: suffix === "a2" ? null : 12,
+        vulnerability_count: suffix === "a2" ? null : 3,
+        critical_vuln_count: suffix === "a2" ? null : 1,
+        created_by: "fixture-user",
+        created_at: FIXED_NOW,
+        updated_at: FIXED_NOW,
+        organization_id: "fixture-organization",
+        source_type: "finite_state",
+        summary: { status: "captured-shape" },
+      })),
+    ),
+  };
 
   const drafts: FileDraft[] = [
     { path: ".gitattributes", bytes: text("*.bin binary\n") },
@@ -969,6 +1024,10 @@ function buildCorpus(seed: string): {
           hasMore: true,
         },
       }),
+    },
+    {
+      path: "assurance-studio/project-links.json",
+      bytes: json(projectLinks),
     },
     {
       path: "assurance-studio/requirements.jsonl",

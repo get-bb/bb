@@ -9,7 +9,7 @@
 import { defineRpcContract } from "@bb/plugin-sdk";
 import { z } from "zod";
 
-export const CONTRACT_VERSION = 8 as const;
+export const CONTRACT_VERSION = 9 as const;
 
 export type JsonValue =
   | null
@@ -34,6 +34,8 @@ export const RPC_WIRE_METHODS = {
   "connections.status": "connectionsStatus",
   "workspace.summary": "workspaceSummary",
   "sync.pull": "syncPull",
+  "sync.asProject.candidates": "syncAsProjectCandidates",
+  "sync.asProject.select": "syncAsProjectSelect",
   "sync.status": "syncStatus",
   "sync.plan": "syncPlan",
   "sync.conflict.resolve": "syncConflictResolve",
@@ -129,6 +131,8 @@ export const RPC_METHOD_CLASSIFICATIONS = {
   connectionsStatus: "read",
   workspaceSummary: "read",
   syncPull: "local-write",
+  syncAsProjectCandidates: "read",
+  syncAsProjectSelect: "local-write",
   syncStatus: "read",
   syncPlan: "read",
   syncConflictResolve: "human-only",
@@ -639,6 +643,29 @@ const workspaceSummarySchema = z
         })
         .strict(),
     ),
+  })
+  .strict();
+const assuranceStudioProjectCandidateSchema = z
+  .object({
+    linkId: identifierSchema,
+    assuranceStudioProjectId: identifierSchema,
+    assuranceStudioProjectName: safeDetailSchema,
+    platformProjectId: identifierSchema,
+    platformProjectName: safeDetailSchema,
+    platformProjectVersionId: identifierSchema,
+    platformProjectVersionName: safeDetailSchema.nullable(),
+    isPrimary: z.boolean(),
+    syncStatus: identifierSchema,
+    lastSyncedAt: timestampSchema.nullable(),
+    versionStrategy: identifierSchema,
+  })
+  .strict();
+const assuranceStudioProjectCandidatesSchema = z
+  .object({
+    platformProjectId: identifierSchema,
+    candidateState: z.enum(["none", "unambiguous", "ambiguous"]),
+    selectedAssuranceStudioProjectId: identifierSchema.nullable(),
+    items: z.array(assuranceStudioProjectCandidateSchema).max(1_000),
   })
   .strict();
 const pullReportSchema = z
@@ -1404,10 +1431,32 @@ export const rpcContract = defineRpcContract({
       .strict(),
     output: pullReportSchema,
   },
+  syncAsProjectCandidates: {
+    input: z
+      .object({
+        workspaceProjectId: identifierSchema,
+        projectId: identifierSchema,
+        projectVersionId: z.null(),
+      })
+      .strict(),
+    output: assuranceStudioProjectCandidatesSchema,
+  },
+  syncAsProjectSelect: {
+    input: z
+      .object({
+        workspaceProjectId: identifierSchema,
+        projectId: identifierSchema,
+        projectVersionId: z.null(),
+        assuranceStudioProjectId: identifierSchema,
+      })
+      .strict(),
+    output: assuranceStudioProjectCandidateSchema,
+  },
   syncStatus: {
     input: z
       .object({
         ...projectScopeFields,
+        workspaceProjectId: identifierSchema.optional(),
         kinds: z.array(identifierSchema).max(200).optional(),
       })
       .strict(),
@@ -1417,6 +1466,7 @@ export const rpcContract = defineRpcContract({
     input: z
       .object({
         ...projectScopeFields,
+        workspaceProjectId: identifierSchema.optional(),
         ...pageRequestFields,
         kinds: z.array(identifierSchema).max(200).optional(),
       })

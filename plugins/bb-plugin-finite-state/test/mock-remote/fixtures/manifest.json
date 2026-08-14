@@ -119,6 +119,11 @@
       "sha256": "e8ac953253588d7928efdebc35d63572b2eb44bfd2f1cbb02fa6026cbb993519"
     },
     {
+      "bytes": 6131,
+      "path": "assurance-studio/project-links.json",
+      "sha256": "1bd27a004aaa7e6041c6edc8c93fd0ad29dc8c3fbda72d821257576433bb99a8"
+    },
+    {
       "bytes": 13587,
       "path": "assurance-studio/project-sbom-page-1.json",
       "sha256": "8a6abb664a61d81ee5981cd500ae802285e158942cdf91d68894fee221f04060"

@@ -200,6 +200,11 @@ export function registerResolver(
   kind: EntityKind,
   resolver: KeyResolver,
 ): void {
+  if (ENTITIES[kind].class !== "OVERLAY") {
+    throw new InvalidAdapterError(
+      `${kind} cannot have a key resolver because it is not an OVERLAY entity`,
+    );
+  }
   resolvers.set(kind, resolver);
 }
 

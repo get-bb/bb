@@ -30,6 +30,10 @@
     {
       "name": "assurance-studio-api-gaps.md",
       "sha256": "eca05c1016635bbfe3d1e3c77a47d1e4873d32fba49d9eeed6add74e9de9106f"
+    },
+    {
+      "name": "assurance-studio-fs-links-live-2026-08-14.md",
+      "sha256": "980d9b87ca7bc2ed675f20a66502dd18a9e9567a96d270b9926eda7797c88a01"
     }
   ],
   "outputs": [
@@ -39,7 +43,7 @@
     },
     {
       "name": "assurance-studio-routes.ts",
-      "sha256": "257064c3156f6ca77e45266b2743c1ee3aa5d152c49280f8a3f1b07279292da7"
+      "sha256": "3b80167e984edffc9002251f39100e8094f930c1b2b5be54e8b39a2a210a0868"
     }
   ]
 }

@@ -15,23 +15,24 @@ For Assurance Studio specifically, the OpenAPI generator is materially incomplet
 
 ## Files
 
-| File | Original source | SHA-256 | Purpose |
-|---|---|---|---|
-| `finite-state-api-v0.3.0.openapi.yaml` | `.claude/skills/finite-state-api/openapi.yaml` | `49eb706db94caf7a124a438722912e19b95932ed73677cedf2e4b3186a5523c5` | Complete customer API OpenAPI 3.0.3 snapshot |
-| `finite-state-api-v0.3.0.reference.md` | `.claude/skills/finite-state-api/SKILL.md` | `362778457ba6902a32dcccf13ac1e472bb60c706a6c01d986c40ef09486cbdb1` | Human-readable endpoints, auth, filters, quirks, and examples |
-| `finite-state-api-v0.3.0.endpoint-audit.md` | `docs/2026-06-17-fs-api-v0.3.0-endpoint-audit.md` | `95498ab52f5242edf77c70241ba66f1f2e7b3669476877d2cfa2981496de0e57` | Spec-to-source drift audit and implementation corrections |
-| `assurance-studio-openapi-2026-05-12.json` | `docs/as-reference/as-openapi-2026-05-12.json` | `8b684395f3bc7545c41c24ebe3ac1a18e0e15a20c606198f7ba20b40c246a251` | AS OpenAPI 3.0.3 snapshot |
-| `assurance-studio-openapi-notes.md` | `docs/as-reference/README.md` | `375f0378f6440f95fc9f4454f28569cdec9d3d64e54a3f0fa6bc29081159c324` | Snapshot provenance and incompleteness warning |
-| `assurance-studio-api-gaps.md` | `docs/as-api-gaps-for-forge.md` | `eca05c1016635bbfe3d1e3c77a47d1e4873d32fba49d9eeed6add74e9de9106f` | Handler-backed gaps and required workarounds |
-| `forge-compute-manifest-5083a9d7.json` | reviewed subset of the six Forge source/test files checksummed inside the manifest | `0a997e1a4d728a3dfe717e727042550b2b39437e9aac0300248ee9de9b5c5f21` | Closed compute/job MCP allowlist, exact request/response normalization, and non-freezeable root-preparation gap |
+| File                                           | Original source                                                                    | SHA-256                                                            | Purpose                                                                                                         |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `finite-state-api-v0.3.0.openapi.yaml`         | `.claude/skills/finite-state-api/openapi.yaml`                                     | `49eb706db94caf7a124a438722912e19b95932ed73677cedf2e4b3186a5523c5` | Complete customer API OpenAPI 3.0.3 snapshot                                                                    |
+| `finite-state-api-v0.3.0.reference.md`         | `.claude/skills/finite-state-api/SKILL.md`                                         | `362778457ba6902a32dcccf13ac1e472bb60c706a6c01d986c40ef09486cbdb1` | Human-readable endpoints, auth, filters, quirks, and examples                                                   |
+| `finite-state-api-v0.3.0.endpoint-audit.md`    | `docs/2026-06-17-fs-api-v0.3.0-endpoint-audit.md`                                  | `95498ab52f5242edf77c70241ba66f1f2e7b3669476877d2cfa2981496de0e57` | Spec-to-source drift audit and implementation corrections                                                       |
+| `assurance-studio-openapi-2026-05-12.json`     | `docs/as-reference/as-openapi-2026-05-12.json`                                     | `8b684395f3bc7545c41c24ebe3ac1a18e0e15a20c606198f7ba20b40c246a251` | AS OpenAPI 3.0.3 snapshot                                                                                       |
+| `assurance-studio-openapi-notes.md`            | `docs/as-reference/README.md`                                                      | `375f0378f6440f95fc9f4454f28569cdec9d3d64e54a3f0fa6bc29081159c324` | Snapshot provenance and incompleteness warning                                                                  |
+| `assurance-studio-api-gaps.md`                 | `docs/as-api-gaps-for-forge.md`                                                    | `eca05c1016635bbfe3d1e3c77a47d1e4873d32fba49d9eeed6add74e9de9106f` | Handler-backed gaps and required workarounds                                                                    |
+| `assurance-studio-fs-links-live-2026-08-14.md` | FS-198 sanitized production read capture                                           | `980d9b87ca7bc2ed675f20a66502dd18a9e9567a96d270b9926eda7797c88a01` | API-key reachability, exact link shape, ambiguous reverse cardinality, and timestamp-offset validation          |
+| `forge-compute-manifest-5083a9d7.json`         | reviewed subset of the six Forge source/test files checksummed inside the manifest | `0a997e1a4d728a3dfe717e727042550b2b39437e9aac0300248ee9de9b5c5f21` | Closed compute/job MCP allowlist, exact request/response normalization, and non-freezeable root-preparation gap |
 
 ## Client ownership
 
-| Remote system | Authentication | Plugin client | Required for |
-|---|---|---|---|
-| Finite State customer API | `X-Authorization` raw token | `PlatformClient` | Projects, findings, VEX, SBOM, components, firmware, public STP relays |
-| Assurance Studio API | `X-API-Key` | `AssuranceStudioClient` | Architecture, threats, risks, mitigations, requirements, verification model |
-| Forge runtime | MCP transport bearer when remote; no extra bearer for explicitly configured stdio | `ForgeComputeClient` | Optional QEMU verification, autonomous pen tests, Forge-owned job telemetry |
+| Remote system             | Authentication                                                                    | Plugin client           | Required for                                                                |
+| ------------------------- | --------------------------------------------------------------------------------- | ----------------------- | --------------------------------------------------------------------------- |
+| Finite State customer API | `X-Authorization` raw token                                                       | `PlatformClient`        | Projects, findings, VEX, SBOM, components, firmware, public STP relays      |
+| Assurance Studio API      | `X-API-Key`                                                                       | `AssuranceStudioClient` | Architecture, threats, risks, mitigations, requirements, verification model |
+| Forge runtime             | MCP transport bearer when remote; no extra bearer for explicitly configured stdio | `ForgeComputeClient`    | Optional QEMU verification, autonomous pen tests, Forge-owned job telemetry |
 
 The frontend never calls any of these systems. Direct means the bb plugin backend calls the upstream REST API; panels and directives still read bounded data through typed `bb.rpc` from SQLite or tracked files.
 

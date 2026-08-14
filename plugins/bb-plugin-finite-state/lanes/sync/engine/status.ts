@@ -11,7 +11,11 @@ import {
   type SyncScope,
   type WorkingEntity,
 } from "./adapter.js";
-import type { EngineDeps } from "./pull.js";
+import {
+  remoteScopeForKind,
+  type EngineDeps,
+  type PullProjectBinding,
+} from "./pull.js";
 
 /** Ordered local/upstream/conflict/orphan view of authored sync state. */
 export interface StatusReport {
@@ -40,23 +44,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isWorkingEntity(value: unknown): value is WorkingEntity {
-  return isRecord(value)
-    && typeof value["key"] === "string"
-    && isRecord(value["payload"])
-    && typeof value["file"] === "string";
+  return (
+    isRecord(value) &&
+    typeof value["key"] === "string" &&
+    isRecord(value["payload"]) &&
+    typeof value["file"] === "string"
+  );
 }
 
 function partialWorkingRead(error: unknown): WorkingEntity[] | null {
   if (!isRecord(error)) return null;
   const working = error["partialWorking"];
-  return Array.isArray(working) && working.every(isWorkingEntity) ? working : null;
+  return Array.isArray(working) && working.every(isWorkingEntity)
+    ? working
+    : null;
 }
 
 function compareChange(
   left: Readonly<{ kind: EntityKind; key: string }>,
   right: Readonly<{ kind: EntityKind; key: string }>,
 ): number {
-  return left.kind.localeCompare(right.kind) || left.key.localeCompare(right.key);
+  return (
+    left.kind.localeCompare(right.kind) || left.key.localeCompare(right.key)
+  );
 }
 
 function sameValue(left: unknown, right: unknown): boolean {
@@ -81,7 +91,10 @@ function changedFields(
     .sort((a, b) => a.localeCompare(b));
 }
 
-function selectedAdapters(deps: EngineDeps, kinds: readonly EntityKind[] | undefined): EntityAdapter[] {
+function selectedAdapters(
+  deps: EngineDeps,
+  kinds: readonly EntityKind[] | undefined,
+): EntityAdapter[] {
   const requested = kinds === undefined ? null : new Set(kinds);
   const adapters = [...(deps.adapters ?? registeredAdapters())]
     .filter((adapter) => requested === null || requested.has(adapter.kind))
@@ -89,7 +102,8 @@ function selectedAdapters(deps: EngineDeps, kinds: readonly EntityKind[] | undef
   if (kinds !== undefined) {
     const available = new Set(adapters.map((adapter) => adapter.kind));
     const missing = kinds.find((kind) => !available.has(kind));
-    if (missing !== undefined) throw new Error(`No status adapter is registered for ${missing}`);
+    if (missing !== undefined)
+      throw new Error(`No status adapter is registered for ${missing}`);
   }
   if (adapters.length === 0) throw new Error("No sync adapters are registered");
   return adapters;
@@ -101,7 +115,9 @@ function comparablePayload(
   remoteEnvelope: boolean,
   idToSlug: (remoteId: string) => string | null,
 ): Record<string, unknown> {
-  const normalized = remoteEnvelope ? adapter.serializer.semanticPayload(payload) : payload;
+  const normalized = remoteEnvelope
+    ? adapter.serializer.semanticPayload(payload)
+    : payload;
   const yaml = adapter.serializer.toYaml(normalized, {
     idToSlug,
     onWarning: () => undefined,
@@ -121,11 +137,16 @@ function acceptedIdResolver(
   storageVersionId: string,
 ): (remoteId: string) => string | null {
   const resolved = new Map<string, string>();
-  for (const entry of new IdMapStore(deps.db).dumpAccepted(scope.projectId, storageVersionId)) {
+  for (const entry of new IdMapStore(deps.db).dumpAccepted(
+    scope.projectId,
+    storageVersionId,
+  )) {
     const identity = stableIdentity(entry.entityKey);
     const prior = resolved.get(entry.remoteId);
     if (prior !== undefined && prior !== identity) {
-      throw new Error(`Accepted id map contains ambiguous remote id ${entry.remoteId}`);
+      throw new Error(
+        `Accepted id map contains ambiguous remote id ${entry.remoteId}`,
+      );
     }
     resolved.set(entry.remoteId, identity);
   }
@@ -141,11 +162,13 @@ async function remoteEntities(
     for (const entity of page) {
       const prior = result.get(entity.key);
       if (
-        prior !== undefined
-        && (prior.remoteId !== entity.remoteId
-          || canonicalJson(prior.payload) !== canonicalJson(entity.payload))
+        prior !== undefined &&
+        (prior.remoteId !== entity.remoteId ||
+          canonicalJson(prior.payload) !== canonicalJson(entity.payload))
       ) {
-        throw new Error(`${adapter.kind}/${entity.key} has conflicting remote duplicates`);
+        throw new Error(
+          `${adapter.kind}/${entity.key} has conflicting remote duplicates`,
+        );
       }
       result.set(entity.key, entity);
     }
@@ -174,12 +197,17 @@ function localCandidates(
 async function statusAdapter(
   deps: EngineDeps,
   scope: SyncScope,
+  remoteScope: SyncScope,
   storageVersionId: string,
   adapter: EntityAdapter,
 ): Promise<StatusReport> {
   const store = new BaseSnapshotStore(deps.db);
-  const baseRows = store.listAccepted(scope.projectId, storageVersionId, adapter.kind);
-  const remoteRows = await remoteEntities(adapter, scope);
+  const baseRows = store.listAccepted(
+    scope.projectId,
+    storageVersionId,
+    adapter.kind,
+  );
+  const remoteRows = await remoteEntities(adapter, remoteScope);
   const worktreeRoot = deps.worktreeRoot;
   const workingAvailable = worktreeRoot !== undefined && worktreeRoot !== null;
   let workingRows: WorkingEntity[] = [];
@@ -194,12 +222,16 @@ async function statusAdapter(
   }
   const idToSlug = acceptedIdResolver(deps, scope, storageVersionId);
 
-  const base = mapComparable(baseRows.map((row) => ({ key: row.entityKey, payload: row.payload })),
-    (row) => comparablePayload(adapter, row.payload, false, idToSlug));
-  const remote = mapComparable([...remoteRows.values()],
-    (row) => comparablePayload(adapter, row.payload, true, idToSlug));
-  const working = mapComparable(workingRows,
-    (row) => comparablePayload(adapter, row.payload, false, idToSlug));
+  const base = mapComparable(
+    baseRows.map((row) => ({ key: row.entityKey, payload: row.payload })),
+    (row) => comparablePayload(adapter, row.payload, false, idToSlug),
+  );
+  const remote = mapComparable([...remoteRows.values()], (row) =>
+    comparablePayload(adapter, row.payload, true, idToSlug),
+  );
+  const working = mapComparable(workingRows, (row) =>
+    comparablePayload(adapter, row.payload, false, idToSlug),
+  );
   const localChanges = localCandidates(adapter, base, working, workingAvailable)
     .map((key) => ({
       kind: adapter.kind,
@@ -221,16 +253,20 @@ async function statusAdapter(
     .map((key) => ({ kind: adapter.kind, key }));
   const conflictKeys = new Set(conflicts.map((change) => change.key));
   const local = localChanges.filter((change) => !conflictKeys.has(change.key));
-  const upstream = upstreamChanges.filter((change) => !conflictKeys.has(change.key));
+  const upstream = upstreamChanges.filter(
+    (change) => !conflictKeys.has(change.key),
+  );
 
   const orphans: StatusReport["orphans"] = [];
   if (adapter.klass === "OVERLAY") {
     const resolver = registeredResolver(adapter.kind);
     for (const row of workingRows) {
-      const resolved = resolver === undefined
-        ? remote.has(row.key)
-        : (await resolver(row.key, scope)).resolved;
-      if (!resolved) orphans.push({ kind: adapter.kind, key: row.key, file: row.file });
+      const resolved =
+        resolver === undefined
+          ? remote.has(row.key)
+          : (await resolver(row.key, remoteScope)).resolved;
+      if (!resolved)
+        orphans.push({ kind: adapter.kind, key: row.key, file: row.file });
     }
   }
   return { local, upstream, conflicts, orphans };
@@ -244,12 +280,34 @@ export async function status(
   deps: EngineDeps,
   scope: SyncScope,
   kinds?: EntityKind[],
+  binding: PullProjectBinding = { assuranceStudioProjectId: null },
 ): Promise<StatusReport> {
-  if (scope.projectId.trim().length === 0) throw new Error("projectId must not be empty");
-  const report: StatusReport = { local: [], upstream: [], conflicts: [], orphans: [] };
+  if (scope.projectId.trim().length === 0)
+    throw new Error("projectId must not be empty");
+  const report: StatusReport = {
+    local: [],
+    upstream: [],
+    conflicts: [],
+    orphans: [],
+  };
   const storageVersionId = toStorageProjectVersionId(scope.projectVersionId);
-  for (const adapter of selectedAdapters(deps, kinds)) {
-    const next = await statusAdapter(deps, scope, storageVersionId, adapter);
+  const adapters = selectedAdapters(deps, kinds);
+  const remoteScopes = new Map(
+    adapters.map((adapter) => [
+      adapter.kind,
+      remoteScopeForKind(adapter.kind, scope, binding),
+    ]),
+  );
+  for (const adapter of adapters) {
+    const remoteScope = remoteScopes.get(adapter.kind);
+    if (!remoteScope) throw new Error(`No remote scope for ${adapter.kind}`);
+    const next = await statusAdapter(
+      deps,
+      scope,
+      remoteScope,
+      storageVersionId,
+      adapter,
+    );
     report.local.push(...next.local);
     report.upstream.push(...next.upstream);
     report.conflicts.push(...next.conflicts);
@@ -268,28 +326,34 @@ export function syncMetadata(
   scope: SyncScope,
   kinds?: readonly EntityKind[],
 ): SyncMetadata {
-  if (scope.projectId.trim().length === 0) throw new Error("projectId must not be empty");
+  if (scope.projectId.trim().length === 0)
+    throw new Error("projectId must not be empty");
   const storageVersionId = toStorageProjectVersionId(scope.projectVersionId);
-  const requested: ReadonlySet<string> | null = kinds === undefined ? null : new Set(kinds);
-  const rows = deps.db.prepare(
-    `SELECT entity_kind, accepted_generation_id, staging_generation_id,
+  const requested: ReadonlySet<string> | null =
+    kinds === undefined ? null : new Set(kinds);
+  const rows = deps.db
+    .prepare(
+      `SELECT entity_kind, accepted_generation_id, staging_generation_id,
             base_revision, last_pull
        FROM sync_state
       WHERE project_id = ? AND project_version_id = ?
       ORDER BY entity_kind`,
-  ).all(scope.projectId, storageVersionId);
+    )
+    .all(scope.projectId, storageVersionId);
   const acceptedGenerationIds: Record<string, string> = {};
   const stagingGenerationIds: Record<string, string> = {};
   const baseRevisions: Record<string, number> = {};
   let lastPull: string | null = null;
   for (const row of rows) {
     if (
-      !isRecord(row)
-      || typeof row["entity_kind"] !== "string"
-      || (row["accepted_generation_id"] !== null && typeof row["accepted_generation_id"] !== "string")
-      || (row["staging_generation_id"] !== null && typeof row["staging_generation_id"] !== "string")
-      || typeof row["base_revision"] !== "number"
-      || (row["last_pull"] !== null && typeof row["last_pull"] !== "string")
+      !isRecord(row) ||
+      typeof row["entity_kind"] !== "string" ||
+      (row["accepted_generation_id"] !== null &&
+        typeof row["accepted_generation_id"] !== "string") ||
+      (row["staging_generation_id"] !== null &&
+        typeof row["staging_generation_id"] !== "string") ||
+      typeof row["base_revision"] !== "number" ||
+      (row["last_pull"] !== null && typeof row["last_pull"] !== "string")
     ) {
       throw new Error("sync_state contains a corrupt metadata row");
     }
@@ -302,7 +366,10 @@ export function syncMetadata(
       stagingGenerationIds[kind] = row["staging_generation_id"];
     }
     baseRevisions[kind] = row["base_revision"];
-    if (row["last_pull"] !== null && (lastPull === null || row["last_pull"] > lastPull)) {
+    if (
+      row["last_pull"] !== null &&
+      (lastPull === null || row["last_pull"] > lastPull)
+    ) {
       lastPull = row["last_pull"];
     }
   }

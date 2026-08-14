@@ -1,11 +1,8 @@
 import { useEffect, useState } from "react";
 import { Badge } from "@bb/shared-ui/badge";
 import { Icon } from "@bb/shared-ui/icon";
-import { useBbNavigate, useRpc } from "@bb/plugin-sdk/app";
-import {
-  ENTITIES,
-  type EntityKind,
-} from "../../../lib/sync/registry.js";
+import { useBbContext, useBbNavigate, useRpc } from "@bb/plugin-sdk/app";
+import { ENTITIES, type EntityKind } from "../../../lib/sync/registry.js";
 import type { rpcContract } from "../../../shared/contract.js";
 
 export interface PendingChangesChipProps {
@@ -55,6 +52,7 @@ export function PendingChangesChip({
 }: PendingChangesChipProps): React.JSX.Element {
   const rpc = useRpc<typeof rpcContract>();
   const navigate = useBbNavigate();
+  const { projectId: workspaceProjectId } = useBbContext();
   const [result, setResult] = useState<PendingResult | null>(null);
   const validScope =
     isSyncRouteIdentifier(scope.projectId) &&
@@ -69,6 +67,7 @@ export function PendingChangesChip({
       .call("syncStatus", {
         projectId: scope.projectId,
         projectVersionId: scope.pvId,
+        ...(workspaceProjectId ? { workspaceProjectId } : {}),
         ...(surface === "all" ? {} : { kinds: [surface] }),
       })
       .then((status) => {
@@ -89,7 +88,15 @@ export function PendingChangesChip({
     return () => {
       cancelled = true;
     };
-  }, [requestKey, rpc, scope.projectId, scope.pvId, surface, validScope]);
+  }, [
+    requestKey,
+    rpc,
+    scope.projectId,
+    scope.pvId,
+    surface,
+    validScope,
+    workspaceProjectId,
+  ]);
 
   const currentResult = result?.requestKey === requestKey ? result : null;
   const counts = currentResult?.counts ?? null;
@@ -121,7 +128,9 @@ export function PendingChangesChip({
       <Icon
         aria-hidden="true"
         className={counts === null && !unavailable ? "animate-spin" : undefined}
-        name={unavailable ? "AlertCircle" : counts === null ? "Loading" : "FileDiff"}
+        name={
+          unavailable ? "AlertCircle" : counts === null ? "Loading" : "FileDiff"
+        }
       />
       <span>{label}</span>
       {counts && counts.conflicts > 0 ? (

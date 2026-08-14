@@ -5,7 +5,11 @@ import { dirname, join, resolve, sep } from "node:path";
 
 import { RemoteError } from "../../../lib/remote/types.js";
 import { toStorageProjectVersionId } from "../../../lib/store/index.js";
-import { ENTITIES, parseKey, type EntityKind } from "../../../lib/sync/registry.js";
+import {
+  ENTITIES,
+  parseKey,
+  type EntityKind,
+} from "../../../lib/sync/registry.js";
 import type { JsonValue } from "../../../shared/contract.js";
 import { planSchema } from "../../../shared/contract.js";
 import {
@@ -16,18 +20,18 @@ import {
   type SyncScope,
   type WorkingEntity,
 } from "../engine/adapter.js";
-import type { EngineDeps } from "../engine/pull.js";
+import {
+  remoteScopeForKind,
+  type EngineDeps,
+  type PullProjectBinding,
+} from "../engine/pull.js";
 import { syncMetadata } from "../engine/status.js";
 import { refinePlanCandidate } from "../conflicts/attribution.js";
 import { canonicalJson, contentHash } from "../serialize/canonical.js";
 import { BaseSnapshotStore, type BaseRow } from "../store/base-snapshot.js";
 import { IdMapStore } from "../store/id-map.js";
 import { blastRadius } from "./blast-radius.js";
-import {
-  classifyThreeWay,
-  sameEntity,
-  threeWayDiff,
-} from "./diff.js";
+import { classifyThreeWay, sameEntity, threeWayDiff } from "./diff.js";
 import { orderPlanItems, planItemId, type ReferenceGraph } from "./order.js";
 import {
   validatePlanItems,
@@ -35,7 +39,13 @@ import {
   type ValidateCtx,
 } from "./validate.js";
 
-export type PlanOp = "create" | "update" | "delete" | "noop" | "conflict" | "orphan";
+export type PlanOp =
+  | "create"
+  | "update"
+  | "delete"
+  | "noop"
+  | "conflict"
+  | "orphan";
 
 export interface FieldValue {
   present: boolean;
@@ -54,7 +64,11 @@ export interface Conflict {
   base: FieldValue;
   ours: FieldValue;
   theirs: FieldValue;
-  attribution: { actor: string | null; at: string | null; source: string | null } | null;
+  attribution: {
+    actor: string | null;
+    at: string | null;
+    source: string | null;
+  } | null;
   suggestion: "take-ours" | "take-theirs" | null;
   resolution:
     | { choice: "take-ours" }
@@ -134,6 +148,7 @@ export interface PlanRequest extends SyncScope {
   kinds?: EntityKind[];
   pageSize?: number;
   continuation?: string | null;
+  binding?: PullProjectBinding;
 }
 
 interface AdapterState {
@@ -168,10 +183,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isWorkingEntity(value: unknown): value is WorkingEntity {
-  return isRecord(value)
-    && typeof value["key"] === "string"
-    && isRecord(value["payload"])
-    && typeof value["file"] === "string";
+  return (
+    isRecord(value) &&
+    typeof value["key"] === "string" &&
+    isRecord(value["payload"]) &&
+    typeof value["file"] === "string"
+  );
 }
 
 function issueFromUnknown(value: unknown): WorkingIssue | null {
@@ -179,19 +196,27 @@ function issueFromUnknown(value: unknown): WorkingIssue | null {
   const line = value["line"];
   return {
     file: value["file"],
-    line: typeof line === "number" && Number.isInteger(line) && line > 0 ? line : null,
-    message: value instanceof Error ? value.message : "Working artifact could not be parsed",
+    line:
+      typeof line === "number" && Number.isInteger(line) && line > 0
+        ? line
+        : null,
+    message:
+      value instanceof Error
+        ? value.message
+        : "Working artifact could not be parsed",
   };
 }
 
-function partialWorkingRead(error: unknown): { rows: WorkingEntity[]; issues: WorkingIssue[] } | null {
+function partialWorkingRead(
+  error: unknown,
+): { rows: WorkingEntity[]; issues: WorkingIssue[] } | null {
   if (!isRecord(error)) return null;
   const working = error["partialWorking"];
   const issues = error["issues"];
   if (
-    !Array.isArray(working)
-    || !working.every(isWorkingEntity)
-    || !Array.isArray(issues)
+    !Array.isArray(working) ||
+    !working.every(isWorkingEntity) ||
+    !Array.isArray(issues)
   ) {
     return null;
   }
@@ -199,7 +224,9 @@ function partialWorkingRead(error: unknown): { rows: WorkingEntity[]; issues: Wo
   if (parsedIssues.some((issue) => issue === null)) return null;
   return {
     rows: working,
-    issues: parsedIssues.filter((issue): issue is WorkingIssue => issue !== null),
+    issues: parsedIssues.filter(
+      (issue): issue is WorkingIssue => issue !== null,
+    ),
   };
 }
 
@@ -218,11 +245,17 @@ function createUlid(date: Date): string {
   if (timestamp < 0n || timestamp > 281_474_976_710_655n) {
     throw new RangeError("Plan timestamp is outside the ULID range");
   }
-  const entropy = randomBytes(10).reduce((value, byte) => (value << 8n) | BigInt(byte), 0n);
+  const entropy = randomBytes(10).reduce(
+    (value, byte) => (value << 8n) | BigInt(byte),
+    0n,
+  );
   return `${encodeBase32(timestamp, 10)}${encodeBase32(entropy, 16)}`;
 }
 
-function selectedAdapters(deps: EngineDeps, kinds: readonly EntityKind[] | undefined): EntityAdapter[] {
+function selectedAdapters(
+  deps: EngineDeps,
+  kinds: readonly EntityKind[] | undefined,
+): EntityAdapter[] {
   const requested = kinds === undefined ? null : new Set(kinds);
   const adapters = [...(deps.adapters ?? registeredAdapters())]
     .filter((adapter) => requested === null || requested.has(adapter.kind))
@@ -230,7 +263,8 @@ function selectedAdapters(deps: EngineDeps, kinds: readonly EntityKind[] | undef
   if (kinds !== undefined) {
     const available = new Set(adapters.map((adapter) => adapter.kind));
     const missing = kinds.find((kind) => !available.has(kind));
-    if (missing !== undefined) throw new Error(`No plan adapter is registered for ${missing}`);
+    if (missing !== undefined)
+      throw new Error(`No plan adapter is registered for ${missing}`);
   }
   if (adapters.length === 0) throw new Error("No sync adapters are registered");
   return adapters;
@@ -251,11 +285,16 @@ function acceptedIdResolver(
   storageVersionId: string,
 ): (remoteId: string) => string | null {
   const resolved = new Map<string, string>();
-  for (const entry of new IdMapStore(deps.db).dumpAccepted(scope.projectId, storageVersionId)) {
+  for (const entry of new IdMapStore(deps.db).dumpAccepted(
+    scope.projectId,
+    storageVersionId,
+  )) {
     const identity = stableIdentity(entry.entityKey);
     const prior = resolved.get(entry.remoteId);
     if (prior !== undefined && prior !== identity) {
-      throw new Error(`Accepted id map contains ambiguous remote id ${entry.remoteId}`);
+      throw new Error(
+        `Accepted id map contains ambiguous remote id ${entry.remoteId}`,
+      );
     }
     resolved.set(entry.remoteId, identity);
   }
@@ -268,7 +307,9 @@ function comparablePayload(
   remoteEnvelope: boolean,
   idToSlug: (remoteId: string) => string | null,
 ): Record<string, unknown> {
-  const normalized = remoteEnvelope ? adapter.serializer.semanticPayload(payload) : payload;
+  const normalized = remoteEnvelope
+    ? adapter.serializer.semanticPayload(payload)
+    : payload;
   const yaml = adapter.serializer.toYaml(normalized, {
     idToSlug,
     onWarning: () => undefined,
@@ -276,7 +317,9 @@ function comparablePayload(
   return adapter.serializer.fromYaml(yaml, `<plan:${adapter.kind}>`);
 }
 
-function mapComparable<T extends { key: string; payload: Record<string, unknown> }>(
+function mapComparable<
+  T extends { key: string; payload: Record<string, unknown> },
+>(
   values: readonly T[],
   normalize: (value: T) => Record<string, unknown>,
   kind: EntityKind,
@@ -285,8 +328,13 @@ function mapComparable<T extends { key: string; payload: Record<string, unknown>
   for (const value of values) {
     const normalized = normalize(value);
     const prior = result.get(value.key);
-    if (prior !== undefined && canonicalJson(prior) !== canonicalJson(normalized)) {
-      throw new PlanRemoteDataError(`${kind}/${value.key} has conflicting duplicate entities`);
+    if (
+      prior !== undefined &&
+      canonicalJson(prior) !== canonicalJson(normalized)
+    ) {
+      throw new PlanRemoteDataError(
+        `${kind}/${value.key} has conflicting duplicate entities`,
+      );
     }
     result.set(value.key, normalized);
   }
@@ -353,18 +401,28 @@ async function fetchRemoteState(
   states: readonly AdapterState[],
   deps: EngineDeps,
   storageVersionId: string,
+  binding: PullProjectBinding,
 ): Promise<Map<EntityKind, Map<string, Record<string, unknown>>>> {
   const result = new Map<EntityKind, Map<string, Record<string, unknown>>>();
   for (const state of states) {
     const rows: ServerEntity[] = [];
-    for await (const page of state.adapter.fetchRemote(scope, () => undefined)) rows.push(...page);
+    const remoteScope = remoteScopeForKind(state.adapter.kind, scope, binding);
+    for await (const page of state.adapter.fetchRemote(
+      remoteScope,
+      () => undefined,
+    ))
+      rows.push(...page);
     const idToSlug = acceptedIdResolver(deps, scope, storageVersionId);
     try {
-      result.set(state.adapter.kind, mapComparable(
-        rows,
-        (row) => comparablePayload(state.adapter, row.payload, true, idToSlug),
+      result.set(
         state.adapter.kind,
-      ));
+        mapComparable(
+          rows,
+          (row) =>
+            comparablePayload(state.adapter, row.payload, true, idToSlug),
+          state.adapter.kind,
+        ),
+      );
     } catch (error: unknown) {
       if (error instanceof PlanRemoteDataError) throw error;
       throw new PlanRemoteDataError(
@@ -375,20 +433,39 @@ async function fetchRemoteState(
   return result;
 }
 
-function degradedRemote(states: readonly AdapterState[]): Map<EntityKind, Map<string, Record<string, unknown>>> {
-  return new Map(states.map((state) => [state.adapter.kind, new Map(state.base)]));
+function degradedRemote(
+  states: readonly AdapterState[],
+): Map<EntityKind, Map<string, Record<string, unknown>>> {
+  return new Map(
+    states.map((state) => [state.adapter.kind, new Map(state.base)]),
+  );
 }
 
-function labelFor(key: string, payload: Readonly<Record<string, unknown>> | undefined): string {
-  for (const field of ["reqId", "slug", "code", "componentSlug", "routeSignature", "id", "cve", "name"]) {
+function labelFor(
+  key: string,
+  payload: Readonly<Record<string, unknown>> | undefined,
+): string {
+  for (const field of [
+    "reqId",
+    "slug",
+    "code",
+    "componentSlug",
+    "routeSignature",
+    "id",
+    "cve",
+    "name",
+  ]) {
     const value = payload?.[field];
-    if (typeof value === "string" && value.trim().length > 0) return value.trim();
+    if (typeof value === "string" && value.trim().length > 0)
+      return value.trim();
   }
   try {
     const segments = parseKey(key);
     if (segments[0] === "finding" && segments[2] !== undefined) {
       const component = segments.at(-1);
-      return component === undefined ? segments[2] : `${component} / ${segments[2]}`;
+      return component === undefined
+        ? segments[2]
+        : `${component} / ${segments[2]}`;
     }
     return segments.at(-1) ?? key;
   } catch {
@@ -396,12 +473,22 @@ function labelFor(key: string, payload: Readonly<Record<string, unknown>> | unde
   }
 }
 
-function candidateKeys(state: AdapterState, remote: ReadonlyMap<string, Record<string, unknown>>): string[] {
+function candidateKeys(
+  state: AdapterState,
+  remote: ReadonlyMap<string, Record<string, unknown>>,
+): string[] {
   if (state.adapter.klass === "OVERLAY" && state.workingAvailable) {
-    return [...state.working.keys()].sort((left, right) => left.localeCompare(right));
+    return [...state.working.keys()].sort((left, right) =>
+      left.localeCompare(right),
+    );
   }
-  return [...new Set([...state.base.keys(), ...state.working.keys(), ...remote.keys()])]
-    .sort((left, right) => left.localeCompare(right));
+  return [
+    ...new Set([
+      ...state.base.keys(),
+      ...state.working.keys(),
+      ...remote.keys(),
+    ]),
+  ].sort((left, right) => left.localeCompare(right));
 }
 
 async function resolveOrphans(
@@ -409,17 +496,27 @@ async function resolveOrphans(
   states: readonly AdapterState[],
   remote: ReadonlyMap<EntityKind, ReadonlyMap<string, Record<string, unknown>>>,
   degraded: boolean,
+  binding: PullProjectBinding,
 ): Promise<Map<string, boolean>> {
   const result = new Map<string, boolean>();
   if (degraded) return result;
   const registered = new Set(registeredAdapters());
   for (const state of states) {
     if (state.adapter.klass !== "OVERLAY" || !state.workingAvailable) continue;
-    const resolver = registered.has(state.adapter) ? registeredResolver(state.adapter.kind) : undefined;
+    const resolver = registered.has(state.adapter)
+      ? registeredResolver(state.adapter.kind)
+      : undefined;
+    const resolverScope = remoteScopeForKind(
+      state.adapter.kind,
+      scope,
+      binding,
+    );
     for (const row of state.workingRows) {
-      const resolved = resolver === undefined
-        ? (remote.get(state.adapter.kind)?.has(row.key) === true || state.base.has(row.key))
-        : (await resolver(row.key, scope)).resolved;
+      const resolved =
+        resolver === undefined
+          ? remote.get(state.adapter.kind)?.has(row.key) === true ||
+            state.base.has(row.key)
+          : (await resolver(row.key, resolverScope)).resolved;
       result.set(`${state.adapter.kind}\0${row.key}`, !resolved);
     }
   }
@@ -438,12 +535,17 @@ async function itemFromEntity(
   const theirs = remote.get(key);
   const semanticFields = orphan ? [] : threeWayDiff(base, working, theirs);
   let operation: PlanOp = orphan
-    ? "orphan" as const
+    ? ("orphan" as const)
     : !state.workingAvailable && !sameEntity(base, theirs)
-      // Without authored state, start conservatively; semantic refinement
-      // below can still prove a zero-conflict payload for the planned apply.
-      ? "conflict" as const
-      : classifyThreeWay(base, working, theirs, state.adapter.klass !== "OVERLAY");
+      ? // Without authored state, start conservatively; semantic refinement
+        // below can still prove a zero-conflict payload for the planned apply.
+        ("conflict" as const)
+      : classifyThreeWay(
+          base,
+          working,
+          theirs,
+          state.adapter.klass !== "OVERLAY",
+        );
   let fields = operation === "noop" ? [] : semanticFields;
   let conflicts: Conflict[] = [];
   if (operation === "conflict") {
@@ -455,10 +557,7 @@ async function itemFromEntity(
       theirs,
     });
     conflicts = refinement.conflicts;
-    if (
-      conflicts.length === 0
-      && isRecord(refinement.merged)
-    ) {
+    if (conflicts.length === 0 && isRecord(refinement.merged)) {
       const merged = structuredClone(refinement.merged);
       // Invariant: worktree-blind planned-ours is display-only. Such plans stay
       // degraded and push rejects them with PLAN_STALE; this reclassification
@@ -484,7 +583,10 @@ async function itemFromEntity(
   };
 }
 
-function invalidWorkingItems(scope: SyncScope, state: AdapterState): PlanItem[] {
+function invalidWorkingItems(
+  scope: SyncScope,
+  state: AdapterState,
+): PlanItem[] {
   return state.issues.map((issue, index) => ({
     ...scope,
     kind: state.adapter.kind,
@@ -510,7 +612,10 @@ function effectivePayload(
   remote: ReadonlyMap<string, Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> | undefined {
   if (item.operation === "delete") return state.base.get(item.key);
-  if (!state.workingAvailable && !sameEntity(state.base.get(item.key), remote.get(item.key))) {
+  if (
+    !state.workingAvailable &&
+    !sameEntity(state.base.get(item.key), remote.get(item.key))
+  ) {
     return remote.get(item.key) ?? state.base.get(item.key);
   }
   if (item.operation === "noop") {
@@ -518,20 +623,37 @@ function effectivePayload(
     const theirs = remote.get(item.key);
     if (!sameEntity(base, theirs)) return theirs;
   }
-  return state.working.get(item.key) ?? state.base.get(item.key) ?? remote.get(item.key);
+  return (
+    state.working.get(item.key) ??
+    state.base.get(item.key) ??
+    remote.get(item.key)
+  );
 }
 
-function aliases(item: PlanItem, payload: Readonly<Record<string, unknown>>): string[] {
+function aliases(
+  item: PlanItem,
+  payload: Readonly<Record<string, unknown>>,
+): string[] {
   const values = new Set([item.key, item.label]);
   try {
     const segments = parseKey(item.key);
     const tail = segments.at(-1);
     if (tail !== undefined) values.add(tail);
-    if (segments[0] === "finding" && segments[2] !== undefined) values.add(segments[2]);
+    if (segments[0] === "finding" && segments[2] !== undefined)
+      values.add(segments[2]);
   } catch {
     // A typed working-file error item may intentionally use a diagnostic key.
   }
-  for (const field of ["reqId", "slug", "code", "componentSlug", "routeSignature", "id", "cve", "name"]) {
+  for (const field of [
+    "reqId",
+    "slug",
+    "code",
+    "componentSlug",
+    "routeSignature",
+    "id",
+    "cve",
+    "name",
+  ]) {
     const value = payload[field];
     if (typeof value === "string") values.add(value);
   }
@@ -582,13 +704,17 @@ function referenceGraph(
         }
       }
     }
-    result.set(id, [...references].sort((left, right) => left.localeCompare(right)));
+    result.set(
+      id,
+      [...references].sort((left, right) => left.localeCompare(right)),
+    );
   }
   return result;
 }
 
 function summary(items: readonly PlanItem[]): Plan["summary"] {
-  const count = (operation: PlanOp): number => items.filter((item) => item.operation === operation).length;
+  const count = (operation: PlanOp): number =>
+    items.filter((item) => item.operation === operation).length;
   return {
     creates: count("create"),
     updates: count("update"),
@@ -599,9 +725,13 @@ function summary(items: readonly PlanItem[]): Plan["summary"] {
   };
 }
 
-function acceptedGenerationId(values: Readonly<Record<string, string>>): string | null {
+function acceptedGenerationId(
+  values: Readonly<Record<string, string>>,
+): string | null {
   const generations = new Set(Object.values(values));
-  return generations.size === 1 ? generations.values().next().value ?? null : null;
+  return generations.size === 1
+    ? (generations.values().next().value ?? null)
+    : null;
 }
 
 function cacheState(
@@ -611,15 +741,20 @@ function cacheState(
 ): Plan["cache"] {
   const revisions = Object.values(metadata.baseRevisions);
   const degraded = remoteDegraded || workingUnavailable;
-  const message = remoteDegraded && workingUnavailable
-    ? "Working tree and upstream refresh unavailable; plan uses the accepted base only"
-    : remoteDegraded
-      ? "Upstream refresh unavailable; plan uses the accepted base"
-      : workingUnavailable
-        ? "Working tree unavailable; plan includes upstream changes only"
-        : null;
+  const message =
+    remoteDegraded && workingUnavailable
+      ? "Working tree and upstream refresh unavailable; plan uses the accepted base only"
+      : remoteDegraded
+        ? "Upstream refresh unavailable; plan uses the accepted base"
+        : workingUnavailable
+          ? "Working tree unavailable; plan includes upstream changes only"
+          : null;
   return {
-    state: degraded ? (metadata.lastPull === null ? "empty" : "stale") : "fresh",
+    state: degraded
+      ? metadata.lastPull === null
+        ? "empty"
+        : "stale"
+      : "fresh",
     asOf: metadata.lastPull,
     message,
     acceptedGenerationId: acceptedGenerationId(metadata.acceptedGenerationIds),
@@ -628,10 +763,7 @@ function cacheState(
 }
 
 function withoutPlanSha(plan: Plan): Omit<Plan, "planSha256"> {
-  const {
-    planSha256: _planSha256,
-    ...unsigned
-  } = plan;
+  const { planSha256: _planSha256, ...unsigned } = plan;
   return unsigned;
 }
 
@@ -639,13 +771,19 @@ function fullPlanSha256(plan: Plan): string {
   return contentHash(withoutPlanSha(plan));
 }
 
-async function persistPlan(worktreeRoot: string, planValue: Plan): Promise<void> {
+async function persistPlan(
+  worktreeRoot: string,
+  planValue: Plan,
+): Promise<void> {
   const directory = join(worktreeRoot, ".fs-sync");
   const destination = join(directory, `plan-${planValue.planId}.json`);
   const temporary = `${destination}.${process.pid}.${randomUUID()}.tmp`;
   await mkdir(directory, { recursive: true });
   try {
-    await writeFile(temporary, `${JSON.stringify(planValue, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+    await writeFile(temporary, `${JSON.stringify(planValue, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
     await rename(temporary, destination);
   } catch (error: unknown) {
     await rm(temporary, { force: true }).catch(() => undefined);
@@ -672,14 +810,19 @@ function sourceBlockLine(kind: EntityKind, key: string, text: string): number {
       const segments = parseKey(key);
       const cve = segments[0] === "finding" ? segments[2] : undefined;
       if (cve !== undefined) {
-        const aggregate = new RegExp(`^\\s+${regexLiteral(cve)}:\\s*(?:#.*)?$`, "u");
+        const aggregate = new RegExp(
+          `^\\s+${regexLiteral(cve)}:\\s*(?:#.*)?$`,
+          "u",
+        );
         const aggregateLine = lines.findIndex((line) => aggregate.test(line));
         if (aggregateLine >= 0) return aggregateLine + 1;
       }
     } catch {
       // Fall through to the first authored decision field.
     }
-    const decisionLine = lines.findIndex((line) => /^(?:status|justification|needs_completion|drift_state):/u.test(line));
+    const decisionLine = lines.findIndex((line) =>
+      /^(?:status|justification|needs_completion|drift_state):/u.test(line),
+    );
     if (decisionLine >= 0) return decisionLine + 1;
   }
   return 1;
@@ -710,7 +853,10 @@ function parsePersistedPlan(value: unknown): Plan | null {
   if (!parsed.success) return null;
   for (const item of parsed.data.items) {
     if (!Object.hasOwn(ENTITIES, item.kind)) return null;
-    if (item.referrers.some((referrer) => !Object.hasOwn(ENTITIES, referrer.kind))) return null;
+    if (
+      item.referrers.some((referrer) => !Object.hasOwn(ENTITIES, referrer.kind))
+    )
+      return null;
   }
   // planSchema is the external boundary; the registry checks above narrow its
   // free-form identifier fields to the frozen EntityKind union used internally.
@@ -722,23 +868,37 @@ export async function computePlan(
   deps: EngineDeps,
   scope: SyncScope,
   kinds?: EntityKind[],
+  binding: PullProjectBinding = { assuranceStudioProjectId: null },
 ): Promise<Plan> {
-  if (scope.projectId.trim().length === 0) throw new Error("projectId must not be empty");
+  if (scope.projectId.trim().length === 0)
+    throw new Error("projectId must not be empty");
   const adapters = selectedAdapters(deps, kinds);
+  for (const adapter of adapters) {
+    remoteScopeForKind(adapter.kind, scope, binding);
+  }
   const selectedKinds = adapters.map((adapter) => adapter.kind);
   const storageVersionId = toStorageProjectVersionId(scope.projectVersionId);
   const before = syncMetadata(deps, scope, selectedKinds);
-  const states = await Promise.all(adapters.map((adapter) => (
-    readAdapterState(deps, scope, storageVersionId, adapter)
-  )));
+  const states = await Promise.all(
+    adapters.map((adapter) =>
+      readAdapterState(deps, scope, storageVersionId, adapter),
+    ),
+  );
 
   let remoteDegraded = false;
   let remote: Map<EntityKind, Map<string, Record<string, unknown>>>;
   try {
-    remote = await fetchRemoteState(scope, states, deps, storageVersionId);
+    remote = await fetchRemoteState(
+      scope,
+      states,
+      deps,
+      storageVersionId,
+      binding,
+    );
   } catch (error: unknown) {
     if (error instanceof PlanRemoteDataError) throw error;
-    if (error instanceof RemoteError && error.code === "REMOTE_ABORTED") throw error;
+    if (error instanceof RemoteError && error.code === "REMOTE_ABORTED")
+      throw error;
     remoteDegraded = true;
     remote = degradedRemote(states);
   }
@@ -746,9 +906,10 @@ export async function computePlan(
   let orphans = new Map<string, boolean>();
   if (!remoteDegraded) {
     try {
-      orphans = await resolveOrphans(scope, states, remote, false);
+      orphans = await resolveOrphans(scope, states, remote, false, binding);
     } catch (error: unknown) {
-      if (error instanceof RemoteError && error.code === "REMOTE_ABORTED") throw error;
+      if (error instanceof RemoteError && error.code === "REMOTE_ABORTED")
+        throw error;
       remoteDegraded = true;
       remote = degradedRemote(states);
       orphans = new Map();
@@ -772,10 +933,18 @@ export async function computePlan(
       const payload = effectivePayload(item, state, remoteRows);
       if (payload !== undefined) payloads.set(planItemId(item), payload);
       const working = state.workingRows.find((row) => row.key === key);
-      if (working !== undefined && deps.worktreeRoot !== undefined && deps.worktreeRoot !== null) {
+      if (
+        working !== undefined &&
+        deps.worktreeRoot !== undefined &&
+        deps.worktreeRoot !== null
+      ) {
         sources.set(
           planItemId(item),
-          await sourceLocationFor(deps.worktreeRoot, state.adapter.kind, working),
+          await sourceLocationFor(
+            deps.worktreeRoot,
+            state.adapter.kind,
+            working,
+          ),
         );
       }
     }
@@ -795,13 +964,15 @@ export async function computePlan(
   const validated = validatePlanItems(ordered, validationContext);
   const after = syncMetadata(deps, scope, selectedKinds);
   if (before.baseStateSha256 !== after.baseStateSha256) {
-    throw new Error("PLAN_BASE_MOVED_DURING_COMPUTE: accepted base changed while planning");
+    throw new Error(
+      "PLAN_BASE_MOVED_DURING_COMPUTE: accepted base changed while planning",
+    );
   }
 
   const createdAt = (deps.now?.() ?? new Date()).toISOString();
   const workingUnavailable = states.some((state) => !state.workingAvailable);
   const degraded = remoteDegraded || workingUnavailable;
-  const asOf = remoteDegraded ? before.lastPull ?? createdAt : createdAt;
+  const asOf = remoteDegraded ? (before.lastPull ?? createdAt) : createdAt;
   const unsignedPlan: Plan = {
     ...scope,
     planId: createUlid(new Date(createdAt)),
@@ -814,12 +985,17 @@ export async function computePlan(
     items: validated,
     summary: summary(validated),
     blastRadius: blastRadius(validated),
-    validationErrors: validated.flatMap((item) => item.error === null ? [] : [item.error]),
+    validationErrors: validated.flatMap((item) =>
+      item.error === null ? [] : [item.error],
+    ),
     total: validated.length,
     next: null,
     cache: cacheState(before, remoteDegraded, workingUnavailable),
   };
-  const computed: Plan = { ...unsignedPlan, planSha256: contentHash(withoutPlanSha(unsignedPlan)) };
+  const computed: Plan = {
+    ...unsignedPlan,
+    planSha256: contentHash(withoutPlanSha(unsignedPlan)),
+  };
   planSchema.parse(computed);
   const root = persistenceRoot(deps);
   if (root !== null) await persistPlan(root, computed);
@@ -830,11 +1006,18 @@ export async function computePlan(
 export function loadPlan(worktreeRoot: string, planId: string): Plan | null {
   if (!PLAN_ID.test(planId)) return null;
   try {
-    const planValue = parsePersistedPlan(JSON.parse(
-      readFileSync(join(worktreeRoot, ".fs-sync", `plan-${planId}.json`), "utf8"),
-    ));
+    const planValue = parsePersistedPlan(
+      JSON.parse(
+        readFileSync(
+          join(worktreeRoot, ".fs-sync", `plan-${planId}.json`),
+          "utf8",
+        ),
+      ),
+    );
     if (planValue === null || planValue.planId !== planId) return null;
-    return fullPlanSha256(planValue) === planValue.planSha256 ? planValue : null;
+    return fullPlanSha256(planValue) === planValue.planSha256
+      ? planValue
+      : null;
   } catch {
     return null;
   }
@@ -848,22 +1031,36 @@ export function loadPlanForDeps(deps: EngineDeps, planId: string): Plan | null {
 
 function pageCursor(continuation: string): { planId: string; offset: number } {
   const matched = PLAN_PAGE.exec(continuation);
-  if (matched === null) throw new Error("PLAN_CONTINUATION_INVALID: malformed plan continuation token");
+  if (matched === null)
+    throw new Error(
+      "PLAN_CONTINUATION_INVALID: malformed plan continuation token",
+    );
   const planId = matched[1];
   const offset = Number(matched[2]);
-  if (planId === undefined || !PLAN_ID.test(planId) || !Number.isSafeInteger(offset)) {
-    throw new Error("PLAN_CONTINUATION_INVALID: malformed plan continuation token");
+  if (
+    planId === undefined ||
+    !PLAN_ID.test(planId) ||
+    !Number.isSafeInteger(offset)
+  ) {
+    throw new Error(
+      "PLAN_CONTINUATION_INVALID: malformed plan continuation token",
+    );
   }
   return { planId, offset };
 }
 
 function sameScope(planValue: Plan, input: PlanRequest): boolean {
-  return planValue.projectId === input.projectId
-    && planValue.projectVersionId === input.projectVersionId;
+  return (
+    planValue.projectId === input.projectId &&
+    planValue.projectVersionId === input.projectVersionId
+  );
 }
 
 /** Frozen-RPC facade: computes and persists once, then pages that exact plan by id. */
-export async function plan(deps: EngineDeps, input: PlanRequest): Promise<Plan> {
+export async function plan(
+  deps: EngineDeps,
+  input: PlanRequest,
+): Promise<Plan> {
   const pageSize = input.pageSize ?? 50;
   if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200) {
     throw new Error("Invalid plan page request");
@@ -871,33 +1068,46 @@ export async function plan(deps: EngineDeps, input: PlanRequest): Promise<Plan> 
   let computed: Plan;
   let offset = 0;
   if (input.continuation === null || input.continuation === undefined) {
-    computed = await computePlan(deps, {
-      projectId: input.projectId,
-      projectVersionId: input.projectVersionId,
-    }, input.kinds);
+    computed = await computePlan(
+      deps,
+      {
+        projectId: input.projectId,
+        projectVersionId: input.projectVersionId,
+      },
+      input.kinds,
+      input.binding,
+    );
     if (persistenceRoot(deps) === null) {
-      throw new Error("PLAN_PERSISTENCE_UNAVAILABLE: plan paging requires a durable sidecar root");
+      throw new Error(
+        "PLAN_PERSISTENCE_UNAVAILABLE: plan paging requires a durable sidecar root",
+      );
     }
   } else {
     if (input.kinds !== undefined) {
-      throw new Error("PLAN_CONTINUATION_INVALID: kinds are bound by the persisted plan token");
+      throw new Error(
+        "PLAN_CONTINUATION_INVALID: kinds are bound by the persisted plan token",
+      );
     }
     const cursor = pageCursor(input.continuation);
     offset = cursor.offset;
     const loaded = loadPlanForDeps(deps, cursor.planId);
     if (loaded === null) {
-      throw new Error("PLAN_CONTINUATION_STALE: persisted plan is missing or failed integrity validation");
+      throw new Error(
+        "PLAN_CONTINUATION_STALE: persisted plan is missing or failed integrity validation",
+      );
     }
     if (!sameScope(loaded, input)) {
-      throw new Error("PLAN_CONTINUATION_SCOPE_MISMATCH: persisted plan belongs to another scope");
+      throw new Error(
+        "PLAN_CONTINUATION_SCOPE_MISMATCH: persisted plan belongs to another scope",
+      );
     }
     computed = loaded;
   }
   if (
-    offset > computed.items.length
-    || (input.continuation !== null
-      && input.continuation !== undefined
-      && offset === computed.items.length)
+    offset > computed.items.length ||
+    (input.continuation !== null &&
+      input.continuation !== undefined &&
+      offset === computed.items.length)
   ) {
     throw new Error("Invalid plan page request");
   }
@@ -906,8 +1116,13 @@ export async function plan(deps: EngineDeps, input: PlanRequest): Promise<Plan> 
   return {
     ...computed,
     items,
-    validationErrors: items.flatMap((item) => item.error === null ? [] : [item.error]),
+    validationErrors: items.flatMap((item) =>
+      item.error === null ? [] : [item.error],
+    ),
     total: computed.items.length,
-    next: nextOffset < computed.items.length ? `fsp1:${computed.planId}:${nextOffset}` : null,
+    next:
+      nextOffset < computed.items.length
+        ? `fsp1:${computed.planId}:${nextOffset}`
+        : null,
   };
 }

@@ -21,6 +21,7 @@ function assertFrontendInference(client: PluginRpcClient<RpcContract>) {
     findingId: "789",
   });
   const plan = client.call("syncPlan", {
+    workspaceProjectId: "workspace-project",
     projectId: "123",
     projectVersionId: null,
     kinds: ["findings"],

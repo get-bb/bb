@@ -17,13 +17,19 @@ import type {
   RemotePage,
   RemoteServices,
 } from "../../lib/remote/types.js";
+import {
+  bindWorkspacePlatformProject,
+  selectAssuranceStudioProjectBinding,
+} from "../../lib/store/project-scope.js";
 import { ENTITIES, parseFindingStableKey } from "../../lib/sync/registry.js";
+import { rpcContract } from "../../shared/contract.js";
 import { registerFindings } from "../findings/register.js";
 import {
   createMockRemote,
   type MockRemoteHarness,
 } from "../../test/mock-remote/server.js";
 import { registerPlatformHandlers } from "../../test/mock-remote/platform/register.js";
+import { registerMockAssuranceStudio } from "../../test/mock-remote/assurance-studio/register.js";
 import {
   createMockPlatformState,
   type MockPlatformState,
@@ -76,12 +82,14 @@ let workingRequirements: WorkingEntity[] = [
   },
 ];
 let remoteRequirementError: Error | null = null;
+let remoteRequirementScopes: string[] = [];
 
 const foreignAdapter: EntityAdapter = {
   kind: "requirement",
   klass: "VERSIONED",
   serializer: createSerializer("requirement"),
-  async *fetchRemote(_scope, progress) {
+  async *fetchRemote(scope, progress) {
+    remoteRequirementScopes.push(scope.projectId);
     if (remoteRequirementError) throw remoteRequirementError;
     progress({ page: 1, of: 1 });
     yield remoteRequirements;
@@ -99,6 +107,7 @@ beforeAll(async () => {
     fixtureRoot: FIXTURE_ROOT,
     register(service, registry) {
       if (service === "platform") registerPlatformHandlers(registry, state);
+      else registerMockAssuranceStudio(registry, FIXTURE_ROOT);
     },
   });
   platform = new PlatformClient({
@@ -232,6 +241,7 @@ describe("sync registration", () => {
         deps,
         { projectId: "project-seam", projectVersionId: "version-seam" },
         ["requirement"],
+        { assuranceStudioProjectId: "as-project-seam" },
       ),
     ).resolves.toMatchObject({
       kinds: { requirement: { fetched: 1, baseRows: 1, quarantined: 0 } },
@@ -247,6 +257,7 @@ describe("sync registration", () => {
         deps,
         { projectId: "project-seam", projectVersionId: "version-seam" },
         ["requirement"],
+        { assuranceStudioProjectId: "as-project-seam" },
       ),
     ).resolves.toMatchObject({
       local: [{ kind: "requirement", key: requirementKey, fields: ["title"] }],
@@ -262,6 +273,7 @@ describe("sync registration", () => {
   });
 
   it("serves frozen sync RPCs and fails push closed when human authorization is unavailable", async () => {
+    remoteRequirementScopes = [];
     const scope = platformScope();
     await expect(
       host.harness.behavior.callRpc("syncPull", {
@@ -281,6 +293,25 @@ describe("sync registration", () => {
         .pluck()
         .get("junk-workspace-project"),
     ).toBe(0);
+
+    await expect(
+      host.harness.behavior.callRpc("syncPull", {
+        ...scope,
+        workspaceProjectId: "bb-project-sync",
+        kinds: ["requirement"],
+      }),
+    ).rejects.toThrow("AS_PROJECT_SELECTION_REQUIRED");
+    bindWorkspacePlatformProject(
+      context.db(),
+      "bb-project-sync",
+      scope.projectId,
+    );
+    selectAssuranceStudioProjectBinding(
+      context.db(),
+      "bb-project-sync",
+      scope.projectId,
+      "as-project-explicit",
+    );
 
     const pulled = await host.harness.behavior.callRpc("syncPull", {
       ...scope,
@@ -321,6 +352,17 @@ describe("sync registration", () => {
         .all("bb-project-sync"),
     ).toEqual([scope.projectId]);
 
+    bindWorkspacePlatformProject(
+      context.db(),
+      "bb-project-failed-sync",
+      scope.projectId,
+    );
+    selectAssuranceStudioProjectBinding(
+      context.db(),
+      "bb-project-failed-sync",
+      scope.projectId,
+      "as-project-explicit",
+    );
     remoteRequirementError = new Error("registered RPC pull failed");
     try {
       await expect(
@@ -337,15 +379,20 @@ describe("sync registration", () => {
       context
         .db()
         .prepare(
-          `SELECT COUNT(*)
+          `SELECT platform_project_id, assurance_studio_project_id
              FROM workspace_platform_project_binding
             WHERE workspace_project_id = ?`,
         )
-        .pluck()
-        .get("bb-project-failed-sync"),
-    ).toBe(0);
+        .all("bb-project-failed-sync"),
+    ).toEqual([
+      {
+        platform_project_id: scope.projectId,
+        assurance_studio_project_id: "as-project-explicit",
+      },
+    ]);
     const statusReport = await host.harness.behavior.callRpc("syncStatus", {
       ...scope,
+      workspaceProjectId: "bb-project-sync",
     });
     // Frozen RPC inputs carry no thread or worktree capability, so working
     // local/orphan state is intentionally unavailable on this surface.
@@ -362,7 +409,10 @@ describe("sync registration", () => {
       cache: { acceptedGenerationId: pulledGenerationId },
     });
     await expect(
-      host.harness.behavior.callRpc("syncPlan", scope),
+      host.harness.behavior.callRpc("syncPlan", {
+        ...scope,
+        workspaceProjectId: "bb-project-sync",
+      }),
     ).resolves.toMatchObject({
       ...scope,
       planId: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{26}$/u),
@@ -383,6 +433,7 @@ describe("sync registration", () => {
     });
     const firstFilteredPage = await host.harness.behavior.callRpc("syncPlan", {
       ...scope,
+      workspaceProjectId: "bb-project-sync",
       kinds: ["vexDecision"],
       pageSize: 1,
       continuation: null,
@@ -403,6 +454,7 @@ describe("sync registration", () => {
       "syncPlan",
       {
         ...scope,
+        workspaceProjectId: "bb-project-sync",
         pageSize: 1,
         continuation: firstFilteredPage.next,
       },
@@ -415,6 +467,7 @@ describe("sync registration", () => {
     await expect(
       host.harness.behavior.callRpc("syncPlan", {
         ...scope,
+        workspaceProjectId: "bb-project-sync",
         kinds: ["vexDecision"],
         pageSize: 1,
         continuation: firstFilteredPage.next,
@@ -425,6 +478,10 @@ describe("sync registration", () => {
         "PLAN_CONTINUATION_INVALID: kinds are bound by the persisted plan token",
       ),
     });
+    expect(remoteRequirementScopes.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(remoteRequirementScopes)).toEqual(
+      new Set(["as-project-explicit"]),
+    );
     const pushInput = {
       ...scope,
       planId: "plan-wp17",
@@ -457,6 +514,124 @@ describe("sync registration", () => {
         "syncPushRetry",
       ]),
     );
+  });
+
+  it("enumerates every ambiguous AS link and persists only the explicit RPC selection", async () => {
+    const listed = rpcContract.syncAsProjectCandidates.output.parse(
+      await host.harness.behavior.callRpc("syncAsProjectCandidates", {
+        workspaceProjectId: "bb-project-sync",
+        projectId: "platform-project-a",
+        projectVersionId: null,
+      }),
+    );
+    expect(listed).toMatchObject({
+      platformProjectId: "platform-project-a",
+      candidateState: "ambiguous",
+      selectedAssuranceStudioProjectId: null,
+    });
+    expect(listed.items).toHaveLength(4);
+
+    await expect(
+      host.harness.behavior.callRpc("syncAsProjectCandidates", {
+        workspaceProjectId: "bb-project-sync",
+        projectId: "platform-project-c",
+        projectVersionId: null,
+      }),
+    ).resolves.toMatchObject({
+      platformProjectId: "platform-project-c",
+      candidateState: "unambiguous",
+      selectedAssuranceStudioProjectId: null,
+      items: [
+        expect.objectContaining({
+          assuranceStudioProjectId: "as-project-c1",
+        }),
+      ],
+    });
+    await expect(
+      host.harness.behavior.callRpc("syncAsProjectCandidates", {
+        workspaceProjectId: "bb-project-sync",
+        projectId: "platform-project-unlinked",
+        projectVersionId: null,
+      }),
+    ).resolves.toMatchObject({
+      platformProjectId: "platform-project-unlinked",
+      candidateState: "none",
+      selectedAssuranceStudioProjectId: null,
+      items: [],
+    });
+
+    await host.harness.behavior.callRpc("syncAsProjectSelect", {
+      workspaceProjectId: "bb-project-sync",
+      projectId: "platform-project-a",
+      projectVersionId: null,
+      assuranceStudioProjectId: "as-project-a3",
+    });
+    expect(
+      context
+        .db()
+        .prepare(
+          `SELECT assurance_studio_project_id
+             FROM workspace_platform_project_binding
+            WHERE workspace_project_id = ? AND platform_project_id = ?`,
+        )
+        .pluck()
+        .get("bb-project-sync", "platform-project-a"),
+    ).toBe("as-project-a3");
+    await expect(
+      host.harness.behavior.callRpc("syncAsProjectSelect", {
+        workspaceProjectId: "bb-project-sync",
+        projectId: "platform-project-a",
+        projectVersionId: null,
+        assuranceStudioProjectId: "as-project-b1",
+      }),
+    ).rejects.toThrow("AS_PROJECT_SELECTION_NOT_LINKED");
+  });
+
+  it("exposes explicit AS project enumeration and selection through the registered CLI", async () => {
+    const contextInput = {
+      cwd: "/untrusted-cwd",
+      threadId: "thread-sync-cli",
+      projectId: "bb-project-sync",
+    };
+    const listed = await host.harness.behavior.runCli(
+      [
+        "finite-state",
+        "as-projects",
+        "--project",
+        "platform-project-b",
+        "--json",
+      ],
+      contextInput,
+    );
+    expect(listed).toMatchObject({ exitCode: 0, stderr: "" });
+    expect(JSON.parse(listed.stdout)).toMatchObject({
+      platformProjectId: "platform-project-b",
+      candidateState: "ambiguous",
+      selectedAssuranceStudioProjectId: null,
+      items: expect.arrayContaining([
+        expect.objectContaining({
+          assuranceStudioProjectId: "as-project-b2",
+        }),
+      ]),
+    });
+
+    const selected = await host.harness.behavior.runCli(
+      [
+        "finite-state",
+        "as-project-select",
+        "--project",
+        "platform-project-b",
+        "--as-project",
+        "as-project-b2",
+        "--json",
+      ],
+      contextInput,
+    );
+    expect(selected).toMatchObject({ exitCode: 0, stderr: "" });
+    expect(JSON.parse(selected.stdout)).toMatchObject({
+      platformProjectId: "platform-project-b",
+      selected: { assuranceStudioProjectId: "as-project-b2" },
+    });
   });
 
   it("partitions direct-Platform local, upstream, and both-side VEX edits exactly", async () => {
@@ -529,6 +704,9 @@ decisions:
   });
 
   it("runs the verb-first triage CLI with the documented leading command tolerance", async () => {
+    const priorThreadCalls = host.harness.sdk.callsTo("threads.get").length;
+    const priorEnvironmentCalls =
+      host.harness.sdk.callsTo("environments.get").length;
     await rm(join(root, ".fs"), { recursive: true, force: true });
     const result = await host.harness.behavior.runCli(
       ["finite-state", "pull", "triage"],
@@ -568,8 +746,12 @@ decisions:
         (signal) => signal.channel === "fs-sync-pull",
       ),
     ).toBe(true);
-    expect(host.harness.sdk.callsTo("threads.get")).toHaveLength(2);
-    expect(host.harness.sdk.callsTo("environments.get")).toHaveLength(2);
+    expect(host.harness.sdk.callsTo("threads.get")).toHaveLength(
+      priorThreadCalls + 2,
+    );
+    expect(host.harness.sdk.callsTo("environments.get")).toHaveLength(
+      priorEnvironmentCalls + 2,
+    );
   });
 
   it("logs isolated VEX rows and reports their lane advisory count through the registered CLI", async () => {

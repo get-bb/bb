@@ -4,21 +4,32 @@ import type {
   PluginCliResult,
 } from "@bb/plugin-sdk";
 
-import type { Json, PlatformClient } from "../../lib/remote/types.js";
+import type {
+  AssuranceStudioClient,
+  Json,
+  PlatformClient,
+} from "../../lib/remote/types.js";
 import { bindWorkspacePlatformProject } from "../../lib/store/project-scope.js";
 import { ENTITIES, type EntityKind } from "../../lib/sync/registry.js";
 import { pull, type EngineDeps } from "./engine/pull.js";
 import { status } from "./engine/status.js";
 import { computePlan } from "./plan/index.js";
 import { renderPlanCli } from "./plan/render-cli.js";
+import {
+  assuranceStudioProjectCandidateState,
+  enumerateAssuranceStudioProjectCandidates,
+  selectedAssuranceStudioProject,
+  selectAssuranceStudioProject,
+} from "./as-project-binding.js";
 
 interface CliInput {
-  verb: "plan" | "pull" | "status";
+  verb: "as-projects" | "as-project-select" | "plan" | "pull" | "status";
   surface: string | null;
   json: boolean;
   projectId: string | null;
   projectVersionId: string | null;
   projectLevel: boolean;
+  assuranceStudioProjectId: string | null;
 }
 
 interface WorkspaceContext {
@@ -65,9 +76,15 @@ function optionValue(
 function parseArgs(argv: string[]): CliInput {
   const args = argv[0] === "finite-state" ? argv.slice(1) : [...argv];
   const verb = args.shift();
-  if (verb !== "plan" && verb !== "pull" && verb !== "status") {
+  if (
+    verb !== "as-projects" &&
+    verb !== "as-project-select" &&
+    verb !== "plan" &&
+    verb !== "pull" &&
+    verb !== "status"
+  ) {
     throw new Error(
-      "usage: bb finite-state <plan|pull|status> [surface] [--project ID] [--version ID] [--json]",
+      "usage: bb finite-state <as-projects|as-project-select|plan|pull|status> [surface] [--project ID] [--version ID] [--as-project ID] [--json]",
     );
   }
   let surface: string | null = null;
@@ -75,6 +92,7 @@ function parseArgs(argv: string[]): CliInput {
   let projectId: string | null = null;
   let projectVersionId: string | null = null;
   let projectLevel = false;
+  let assuranceStudioProjectId: string | null = null;
   for (let index = 0; index < args.length; ) {
     const arg = args[index] ?? "";
     if (arg === "--json") {
@@ -91,6 +109,10 @@ function parseArgs(argv: string[]): CliInput {
       const option = optionValue(args, index, "--version");
       projectVersionId = option.value;
       index += option.consumed;
+    } else if (arg === "--as-project" || arg.startsWith("--as-project=")) {
+      const option = optionValue(args, index, "--as-project");
+      assuranceStudioProjectId = option.value;
+      index += option.consumed;
     } else if (arg.startsWith("--")) {
       throw new Error(`unknown option ${arg}`);
     } else if (surface === null) {
@@ -103,7 +125,27 @@ function parseArgs(argv: string[]): CliInput {
   if (projectLevel && projectVersionId !== null) {
     throw new Error("--project-level and --version are mutually exclusive");
   }
-  return { verb, surface, json, projectId, projectVersionId, projectLevel };
+  if (verb === "as-project-select" && assuranceStudioProjectId === null) {
+    throw new Error("as-project-select requires --as-project ID");
+  }
+  if (verb === "as-projects" && assuranceStudioProjectId !== null) {
+    throw new Error("as-projects does not accept --as-project");
+  }
+  if (
+    (verb === "as-projects" || verb === "as-project-select") &&
+    (surface !== null || projectVersionId !== null || projectLevel)
+  ) {
+    throw new Error(`${verb} accepts only --project, --as-project, and --json`);
+  }
+  return {
+    verb,
+    surface,
+    json,
+    projectId,
+    projectVersionId,
+    projectLevel,
+    assuranceStudioProjectId,
+  };
 }
 
 async function collectRecords(
@@ -114,7 +156,7 @@ async function collectRecords(
   return result;
 }
 
-async function resolveScope(client: PlatformClient, input: CliInput) {
+async function resolveProjectId(client: PlatformClient, input: CliInput) {
   let projectId = input.projectId;
   if (projectId === null) {
     const projects = (
@@ -127,6 +169,11 @@ async function resolveScope(client: PlatformClient, input: CliInput) {
     }
     projectId = nonEmptyString(projects[0]?.["id"], "Platform project");
   }
+  return projectId;
+}
+
+async function resolveScope(client: PlatformClient, input: CliInput) {
+  const projectId = await resolveProjectId(client, input);
   if (input.projectLevel) return { projectId, projectVersionId: null };
   if (input.projectVersionId !== null)
     return { projectId, projectVersionId: input.projectVersionId };
@@ -174,6 +221,7 @@ function output(value: unknown, json: boolean): string {
 async function run(
   deps: EngineDeps,
   platform: PlatformClient,
+  assuranceStudio: AssuranceStudioClient,
   resolveWorktreeRoot: WorktreeRootResolver,
   argv: string[],
   context: PluginCliContext,
@@ -186,14 +234,57 @@ async function run(
   }
   const input = parseArgs(argv);
   const workspace = await resolveWorktreeRoot(context);
+  if (input.verb === "as-projects" || input.verb === "as-project-select") {
+    const platformProjectId = await resolveProjectId(platform, input);
+    if (input.verb === "as-projects") {
+      const items = await enumerateAssuranceStudioProjectCandidates(
+        assuranceStudio,
+        platformProjectId,
+      );
+      return {
+        exitCode: 0,
+        stdout: output(
+          {
+            platformProjectId,
+            selectedAssuranceStudioProjectId: selectedAssuranceStudioProject(
+              deps,
+              workspace.workspaceProjectId,
+              platformProjectId,
+            ),
+            candidateState: assuranceStudioProjectCandidateState(items),
+            items,
+          },
+          input.json,
+        ),
+        stderr: "",
+      };
+    }
+    const selected = await selectAssuranceStudioProject(deps, assuranceStudio, {
+      workspaceProjectId: workspace.workspaceProjectId,
+      platformProjectId,
+      assuranceStudioProjectId: input.assuranceStudioProjectId!,
+    });
+    return {
+      exitCode: 0,
+      stdout: output({ platformProjectId, selected }, input.json),
+      stderr: "",
+    };
+  }
   const scope = await resolveScope(platform, input);
   const kinds = surfaceKinds(input.surface);
   const cliDeps: EngineDeps = {
     ...deps,
     worktreeRoot: workspace.worktreeRoot,
   };
+  const binding = {
+    assuranceStudioProjectId: selectedAssuranceStudioProject(
+      deps,
+      workspace.workspaceProjectId,
+      scope.projectId,
+    ),
+  };
   if (input.verb === "pull") {
-    const report = await pull(cliDeps, scope, kinds);
+    const report = await pull(cliDeps, scope, kinds, binding);
     bindWorkspacePlatformProject(
       deps.db,
       workspace.workspaceProjectId,
@@ -202,10 +293,10 @@ async function run(
     return { exitCode: 0, stdout: output(report, input.json), stderr: "" };
   }
   if (input.verb === "status") {
-    const report = await status(cliDeps, scope, kinds);
+    const report = await status(cliDeps, scope, kinds, binding);
     return { exitCode: 0, stdout: output(report, input.json), stderr: "" };
   }
-  const report = await computePlan(cliDeps, scope, kinds);
+  const report = await computePlan(cliDeps, scope, kinds, binding);
   return {
     exitCode: 0,
     stdout: input.json ? output(report, true) : renderPlanCli(report),
@@ -218,6 +309,7 @@ export function registerSyncCli(
   bb: BbPluginApi,
   deps: EngineDeps,
   platform: PlatformClient,
+  assuranceStudio: AssuranceStudioClient,
   resolveWorktreeRoot: WorktreeRootResolver,
   namespaceRunners: Readonly<Record<string, NamespacedCliRunner>> = {},
 ): void {
@@ -225,6 +317,17 @@ export function registerSyncCli(
     name: "finite-state",
     summary: "Synchronize Finite State authored entities",
     commands: [
+      {
+        name: "as-projects",
+        summary:
+          "List linked Assurance Studio projects and the current selection",
+        usage: "as-projects [--project ID] [--json]",
+      },
+      {
+        name: "as-project-select",
+        summary: "Select the Assurance Studio project for a Platform project",
+        usage: "as-project-select --as-project ID [--project ID] [--json]",
+      },
       {
         name: "pull",
         summary: "Pull remote entity state",
@@ -252,6 +355,14 @@ export function registerSyncCli(
       },
     ],
     run: (argv, context) =>
-      run(deps, platform, resolveWorktreeRoot, argv, context, namespaceRunners),
+      run(
+        deps,
+        platform,
+        assuranceStudio,
+        resolveWorktreeRoot,
+        argv,
+        context,
+        namespaceRunners,
+      ),
   });
 }

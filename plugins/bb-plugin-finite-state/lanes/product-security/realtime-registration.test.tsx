@@ -22,6 +22,10 @@ import { createPluginContext } from "../../lib/context.js";
 import { AssuranceStudioClient } from "../../lib/remote/assurance-studio/client.js";
 import { PlatformClient } from "../../lib/remote/platform/client.js";
 import type { RemoteServices } from "../../lib/remote/types.js";
+import {
+  bindWorkspacePlatformProject,
+  selectAssuranceStudioProjectBinding,
+} from "../../lib/store/project-scope.js";
 import { connectedRemoteStatus } from "../../test/app-connections.js";
 import { registerPlatformHandlers } from "../../test/mock-remote/platform/register.js";
 import { createMockPlatformState } from "../../test/mock-remote/platform/state.js";
@@ -314,6 +318,28 @@ describe("registered product-security realtime boundary", () => {
         registerAdapter(adapter("requirement"));
         registerAdapter(adapter("threat"));
         registerSync(host.bb, ctx);
+        bindWorkspacePlatformProject(
+          ctx.db(),
+          WORKSPACE_PROJECT_ID,
+          PROJECT_ID,
+        );
+        selectAssuranceStudioProjectBinding(
+          ctx.db(),
+          WORKSPACE_PROJECT_ID,
+          PROJECT_ID,
+          "as-project-realtime",
+        );
+        bindWorkspacePlatformProject(
+          ctx.db(),
+          WORKSPACE_PROJECT_ID,
+          "project-foreign",
+        );
+        selectAssuranceStudioProjectBinding(
+          ctx.db(),
+          WORKSPACE_PROJECT_ID,
+          "project-foreign",
+          "as-project-foreign",
+        );
 
         const app = await loadPluginApp(() => import("../../app.js"));
         const panel = app.navPanels.find(

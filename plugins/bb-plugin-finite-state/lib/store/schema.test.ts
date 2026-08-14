@@ -78,6 +78,7 @@ const ROW_COLUMNS = {
   workspace_platform_project_binding: [
     "workspace_project_id",
     "platform_project_id",
+    "assurance_studio_project_id",
   ],
   push_log: defineColumns<PushLogRow>()([
     "project_id",
@@ -754,6 +755,7 @@ const AMD_0017_BACKFILL_STATEMENT_COUNT = 2;
 const AMD_0018_HARDWARE_SEMANTIC_STATEMENT_COUNT = 2;
 const AMD_0020_PROJECT_BINDING_STATEMENT_COUNT = 2;
 const AMD_0021_QUARANTINE_COUNTER_STATEMENT_COUNT = 1;
+const AMD_0022_AS_PROJECT_BINDING_STATEMENT_COUNT = 1;
 
 function insertGeneration(
   db: Database.Database,
@@ -802,7 +804,8 @@ describe("shared-store-freeze", () => {
         SCHEMA_VIEWS.length +
         AMD_0010_REBUILD_STATEMENT_COUNT +
         AMD_0017_BACKFILL_STATEMENT_COUNT +
-        AMD_0021_QUARANTINE_COUNTER_STATEMENT_COUNT,
+        AMD_0021_QUARANTINE_COUNTER_STATEMENT_COUNT +
+        AMD_0022_AS_PROJECT_BINDING_STATEMENT_COUNT,
     );
     expect(
       MIGRATIONS.filter((statement) =>
@@ -1005,7 +1008,8 @@ describe("shared-store-freeze", () => {
           AMD_0017_BACKFILL_STATEMENT_COUNT +
           AMD_0018_HARDWARE_SEMANTIC_STATEMENT_COUNT +
           AMD_0020_PROJECT_BINDING_STATEMENT_COUNT +
-          AMD_0021_QUARANTINE_COUNTER_STATEMENT_COUNT
+          AMD_0021_QUARANTINE_COUNTER_STATEMENT_COUNT +
+          AMD_0022_AS_PROJECT_BINDING_STATEMENT_COUNT
         ),
       ),
     );
@@ -1061,7 +1065,8 @@ describe("shared-store-freeze", () => {
         0,
         -(
           AMD_0020_PROJECT_BINDING_STATEMENT_COUNT +
-          AMD_0021_QUARANTINE_COUNTER_STATEMENT_COUNT
+          AMD_0021_QUARANTINE_COUNTER_STATEMENT_COUNT +
+          AMD_0022_AS_PROJECT_BINDING_STATEMENT_COUNT
         ),
       ),
     );
@@ -1103,7 +1108,13 @@ describe("shared-store-freeze", () => {
     const db = host.bb.storage.database();
     host.bb.storage.migrate(
       db,
-      MIGRATIONS.slice(0, -AMD_0021_QUARANTINE_COUNTER_STATEMENT_COUNT),
+      MIGRATIONS.slice(
+        0,
+        -(
+          AMD_0021_QUARANTINE_COUNTER_STATEMENT_COUNT +
+          AMD_0022_AS_PROJECT_BINDING_STATEMENT_COUNT
+        ),
+      ),
     );
     insertGeneration(db, "platform-project", "version-1", "generation-1");
     db.prepare(
@@ -1133,6 +1144,39 @@ describe("shared-store-freeze", () => {
     await host.harness.lifecycle.dispose();
   });
 
+  it("keeps existing Platform bindings explicitly unselected during AMD-0022 migration", async () => {
+    const host = createFakePluginHost({
+      pluginId: "finite-state-schema-amd-0022",
+    });
+    const db = host.bb.storage.database();
+    host.bb.storage.migrate(
+      db,
+      MIGRATIONS.slice(0, -AMD_0022_AS_PROJECT_BINDING_STATEMENT_COUNT),
+    );
+    db.prepare(
+      `INSERT INTO workspace_platform_project_binding
+         (workspace_project_id, platform_project_id)
+       VALUES ('workspace-project', 'platform-project')`,
+    ).run();
+
+    host.bb.storage.migrate(db, MIGRATIONS);
+
+    expect(
+      db
+        .prepare(
+          `SELECT workspace_project_id, platform_project_id,
+                  assurance_studio_project_id
+             FROM workspace_platform_project_binding`,
+        )
+        .get(),
+    ).toEqual({
+      workspace_project_id: "workspace-project",
+      platform_project_id: "platform-project",
+      assurance_studio_project_id: null,
+    });
+    await host.harness.lifecycle.dispose();
+  });
+
   it("keeps exact snake-case row interfaces in mechanical PRAGMA parity", () => {
     const db = createDb();
     for (const [name, expected] of Object.entries(ROW_COLUMNS)) {
@@ -1156,11 +1200,15 @@ describe("shared-store-freeze", () => {
         expect(
           columns.map(({ name }) => name),
           table,
-        ).toEqual(["workspace_project_id", "platform_project_id"]);
+        ).toEqual([
+          "workspace_project_id",
+          "platform_project_id",
+          "assurance_studio_project_id",
+        ]);
         expect(
           columns.map(({ notnull }) => notnull),
           table,
-        ).toEqual([1, 1]);
+        ).toEqual([1, 1, 0]);
         expect(
           columns
             .filter(({ pk }) => pk > 0)

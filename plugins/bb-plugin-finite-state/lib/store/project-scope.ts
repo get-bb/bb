@@ -33,6 +33,45 @@ export function bindWorkspacePlatformProject(
   ).run(workspaceProjectId, platformProjectId);
 }
 
+interface AssuranceStudioProjectBindingRow {
+  assurance_studio_project_id: string | null;
+}
+
+/** Reads the explicit AS selection for one exact bb-to-Platform binding. */
+export function assuranceStudioProjectBinding(
+  db: Database.Database,
+  workspaceProjectId: string,
+  platformProjectId: string,
+): string | null {
+  const row = db
+    .prepare<[string, string], AssuranceStudioProjectBindingRow>(
+      `SELECT assurance_studio_project_id
+         FROM workspace_platform_project_binding
+        WHERE workspace_project_id = ? AND platform_project_id = ?`,
+    )
+    .get(workspaceProjectId, platformProjectId);
+  return row?.assurance_studio_project_id ?? null;
+}
+
+/** Persists a human-selected AS project beside the existing Platform binding. */
+export function selectAssuranceStudioProjectBinding(
+  db: Database.Database,
+  workspaceProjectId: string,
+  platformProjectId: string,
+  assuranceStudioProjectId: string,
+): void {
+  const result = db
+    .prepare<[string, string, string]>(
+      `UPDATE workspace_platform_project_binding
+          SET assurance_studio_project_id = ?
+        WHERE workspace_project_id = ? AND platform_project_id = ?`,
+    )
+    .run(assuranceStudioProjectId, workspaceProjectId, platformProjectId);
+  if (result.changes !== 1) {
+    throw new Error("PLATFORM_PROJECT_BINDING_REQUIRED");
+  }
+}
+
 /**
  * A legacy store with exactly one Platform project has an unambiguous owner:
  * the first validated workspace that opens its catalog. Multi-project legacy

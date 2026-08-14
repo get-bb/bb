@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { format } from "prettier";
 import { parse as parseYaml } from "yaml";
 
 import {
@@ -36,6 +37,7 @@ const REQUIRED_SOURCES = [
   "assurance-studio-openapi-2026-05-12.json",
   "assurance-studio-openapi-notes.md",
   "assurance-studio-api-gaps.md",
+  "assurance-studio-fs-links-live-2026-08-14.md",
 ] as const;
 
 type FrozenOperationRouteMap<Client> = {
@@ -81,9 +83,15 @@ const WP06_PLATFORM_ROUTES_BY_OPERATION = {
     "GET /public/v0/project/version/{projectVersionId}/findings/category/counts",
     "GET /public/v0/project/version/{projectVersionId}/findings/severities/counts",
   ],
-  setVexStatus: ["PUT /public/v0/findings/{projectVersionId}/{findingId}/status"],
-  batchSetVexStatus: ["PUT /public/v0/findings/{projectVersionId}/status/set/bulk"],
-  clearVexStatus: ["PUT /public/v0/findings/{projectVersionId}/status/clear/bulk"],
+  setVexStatus: [
+    "PUT /public/v0/findings/{projectVersionId}/{findingId}/status",
+  ],
+  batchSetVexStatus: [
+    "PUT /public/v0/findings/{projectVersionId}/status/set/bulk",
+  ],
+  clearVexStatus: [
+    "PUT /public/v0/findings/{projectVersionId}/status/clear/bulk",
+  ],
   downloadSbom: [
     "GET /public/v0/sboms/cyclonedx/{projectVersionId}",
     "GET /public/v0/sboms/spdx/{projectVersionId}",
@@ -123,17 +131,23 @@ const AS_ITEM_ROUTES = [
   ["attack-paths", "pathId"],
 ] as const;
 const asItemKeys = (method: "GET" | "PATCH" | "DELETE") =>
-  AS_ITEM_ROUTES
-    .filter(([collection]) => method !== "DELETE" || collection !== "risks")
-    .map(
-      ([collection, id]) =>
-        `${method} /api/projects/{projectId}/${collection}/{${id}}`,
-    );
+  AS_ITEM_ROUTES.filter(
+    ([collection]) => method !== "DELETE" || collection !== "risks",
+  ).map(
+    ([collection, id]) =>
+      `${method} /api/projects/{projectId}/${collection}/{${id}}`,
+  );
 
 /** Deliberate HTTP mappings for the supported named AS methods frozen by WP-06. */
 const WP06_ASSURANCE_STUDIO_ROUTES_BY_OPERATION = {
+  listProjectLinks: [
+    "GET /api/projects",
+    "GET /api/projects/{projectId}/fs-links",
+  ],
   listEntities: [
-    ...AS_LIST_COLLECTIONS.map((collection) => `GET /api/projects/{projectId}/${collection}`),
+    ...AS_LIST_COLLECTIONS.map(
+      (collection) => `GET /api/projects/{projectId}/${collection}`,
+    ),
     "GET /api/projects/{projectId}/attack-paths",
   ],
   getEntity: asItemKeys("GET"),
@@ -210,7 +224,9 @@ function requestMediaTypes(operation: Record<string, unknown>): string[] {
   if (operation.requestBody === undefined) return [];
   const requestBody = record(operation.requestBody, "operation.requestBody");
   if (requestBody.content === undefined) return [];
-  return Object.keys(record(requestBody.content, "operation.requestBody.content")).sort();
+  return Object.keys(
+    record(requestBody.content, "operation.requestBody.content"),
+  ).sort();
 }
 
 function normalizeOpenApi(
@@ -232,7 +248,9 @@ function normalizeOpenApi(
       );
       const operationId = operation.operationId;
       if (operationId !== undefined && typeof operationId !== "string") {
-        throw new Error(`${service} ${method} ${pathTemplate} has invalid operationId`);
+        throw new Error(
+          `${service} ${method} ${pathTemplate} has invalid operationId`,
+        );
       }
       routes.push({
         routeId: `${service}:${method}:${pathTemplate}`,
@@ -259,13 +277,15 @@ function normalizeOpenApi(
 function indexHashes(index: string): Map<string, string> {
   const hashes = new Map<string, string>();
   for (const line of index.split(/\r?\n/)) {
-    const match = /^\| `([^`]+)` \| .* \| `([0-9a-f]{64})` \|/.exec(line);
+    const match = /^\|\s*`([^`]+)`\s*\|.*\|\s*`([0-9a-f]{64})`\s*\|/.exec(line);
     if (match) hashes.set(match[1], match[2]);
   }
   return hashes;
 }
 
-async function verifiedSources(referenceRoot: string): Promise<Map<string, string>> {
+async function verifiedSources(
+  referenceRoot: string,
+): Promise<Map<string, string>> {
   const index = await readFile(resolve(referenceRoot, "README.md"), "utf8");
   const expected = indexHashes(index);
   const sources = new Map<string, string>();
@@ -273,7 +293,9 @@ async function verifiedSources(referenceRoot: string): Promise<Map<string, strin
   for (const name of REQUIRED_SOURCES) {
     const expectedHash = expected.get(name);
     if (expectedHash === undefined) {
-      throw new Error(`Vendored source is missing from API-reference index: ${name}`);
+      throw new Error(
+        `Vendored source is missing from API-reference index: ${name}`,
+      );
     }
     const contents = await readFile(resolve(referenceRoot, name), "utf8");
     const actualHash = sha256(contents);
@@ -291,7 +313,9 @@ function markdownSection(markdown: string, section: string): string | null {
   const lines = markdown.split(/\r?\n/);
   const start = lines.findIndex((line) => line.startsWith(`## ${section}.`));
   if (start < 0) return null;
-  const endOffset = lines.slice(start + 1).findIndex((line) => line.startsWith("## "));
+  const endOffset = lines
+    .slice(start + 1)
+    .findIndex((line) => line.startsWith("## "));
   const end = endOffset < 0 ? lines.length : start + 1 + endOffset;
   return lines.slice(start, end).join("\n");
 }
@@ -304,10 +328,13 @@ export function validateAssuranceStudioRoutePatches(
   const seen = new Set<string>();
   for (const patch of patches) {
     if (!patch.evidenceFile || !patch.evidenceSection) {
-      throw new Error(`Handler-audit patch lacks evidence: ${patch.method} ${patch.pathTemplate}`);
+      throw new Error(
+        `Handler-audit patch lacks evidence: ${patch.method} ${patch.pathTemplate}`,
+      );
     }
     const markdown = evidenceFiles.get(patch.evidenceFile);
-    const section = markdown && markdownSection(markdown, patch.evidenceSection);
+    const section =
+      markdown && markdownSection(markdown, patch.evidenceSection);
     const evidenceLine = section
       ?.split(/\r?\n/)
       .find((line) => line.includes(patch.pathTemplate));
@@ -333,9 +360,12 @@ export function validateAssuranceStudioClientContractRoutes(
     if (route.method !== "GET") {
       throw new Error(`Client-contract route must be read-only: ${key}`);
     }
-    if (seen.has(key)) throw new Error(`Duplicate client-contract route: ${key}`);
+    if (seen.has(key))
+      throw new Error(`Duplicate client-contract route: ${key}`);
     if (occupied.has(key)) {
-      throw new Error(`Client-contract route overlaps a verified route: ${key}`);
+      throw new Error(
+        `Client-contract route overlaps a verified route: ${key}`,
+      );
     }
     seen.add(key);
   }
@@ -346,15 +376,16 @@ function mergeAssuranceStudioRoutes(
   patches: readonly AssuranceStudioRoutePatch[],
   clientContractRoutes: readonly AssuranceStudioClientContractRoute[],
 ): MockRoute[] {
-  const routes = new Map(openApiRoutes.map((route) => [routeKey(route), route]));
+  const routes = new Map(
+    openApiRoutes.map((route) => [routeKey(route), route]),
+  );
   for (const patch of patches) {
     const route = handlerAuditRoute(patch);
     routes.set(routeKey(route), route);
   }
-  validateAssuranceStudioClientContractRoutes(
-    clientContractRoutes,
-    [...routes.values()],
-  );
+  validateAssuranceStudioClientContractRoutes(clientContractRoutes, [
+    ...routes.values(),
+  ]);
   for (const patch of clientContractRoutes) {
     const route = clientContractRoute(patch);
     routes.set(routeKey(route), route);
@@ -378,17 +409,17 @@ export function assertCallableKeysResolved(
   }
 }
 
-function renderRoutes(
+async function renderRoutes(
   service: MockService,
   referenceRoutes: readonly MockRoute[],
   callableKeys: ReadonlySet<string>,
-): string {
+): Promise<string> {
   assertCallableKeysResolved(service, referenceRoutes, callableKeys);
   const prefix = service === "platform" ? "PLATFORM" : "ASSURANCE_STUDIO";
   const callableRouteIds = referenceRoutes
     .filter((route) => callableKeys.has(routeKey(route)))
     .map((route) => route.routeId);
-  return [
+  const output = [
     "// Generated by generate-routes.ts. Do not edit.",
     'import type { MockRoute } from "../types.js";',
     "",
@@ -400,6 +431,11 @@ function renderRoutes(
     `export const ${prefix}_ROUTES: readonly MockRoute[] = ${prefix}_REFERENCE_ROUTES.filter((route) => callableRouteIds.has(route.routeId));`,
     "",
   ].join("\n");
+  // The AS generated file is now inside the changed-file formatting ratchet.
+  // Keep regeneration byte-stable with the same repository formatter.
+  return service === "assurance-studio"
+    ? await format(output, { parser: "typescript" })
+    : output;
 }
 
 function requiredSource(
@@ -407,7 +443,8 @@ function requiredSource(
   name: string,
 ): string {
   const source = sources.get(name);
-  if (source === undefined) throw new Error(`Verified source unavailable: ${name}`);
+  if (source === undefined)
+    throw new Error(`Verified source unavailable: ${name}`);
   return source;
 }
 
@@ -437,12 +474,12 @@ export async function generateRouteArtifacts(
     ASSURANCE_STUDIO_ROUTE_PATCHES,
     ASSURANCE_STUDIO_CLIENT_CONTRACT_ROUTES,
   );
-  const platformOutput = renderRoutes(
+  const platformOutput = await renderRoutes(
     "platform",
     platform.routes,
     WP06_PLATFORM_CALLABLE_KEYS,
   );
-  const assuranceStudioOutput = renderRoutes(
+  const assuranceStudioOutput = await renderRoutes(
     "assurance-studio",
     assuranceStudioReferenceRoutes,
     WP06_ASSURANCE_STUDIO_CALLABLE_KEYS,
@@ -466,6 +503,7 @@ export async function generateRouteArtifacts(
     "finite-state-api-v0.3.0.endpoint-audit.md",
     "assurance-studio-openapi-notes.md",
     "assurance-studio-api-gaps.md",
+    "assurance-studio-fs-links-live-2026-08-14.md",
   ].map((name) => ({ name, sha256: sha256(requiredSource(sources, name)) }));
   const manifest = `${JSON.stringify(
     {
@@ -544,9 +582,14 @@ async function main(): Promise<void> {
   await runRouteGeneration({ check: args.includes("--check") });
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (
+  process.argv[1] &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
   main().catch((error: unknown) => {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.stderr.write(
+      `${error instanceof Error ? error.message : String(error)}\n`,
+    );
     process.exitCode = 1;
   });
 }

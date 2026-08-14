@@ -5,18 +5,42 @@ import { createPluginContext } from "../../../lib/context.js";
 import { ENTITIES } from "../../../lib/sync/registry.js";
 import { createSerializer } from "../serialize/serializer.js";
 import type { EntityAdapter, ServerEntity, WorkingEntity } from "./adapter.js";
-import { pull, type EngineDeps } from "./pull.js";
-import { status } from "./status.js";
+import { pull as pullEngine, type EngineDeps } from "./pull.js";
+import { status as statusEngine } from "./status.js";
+
+function pull(
+  deps: Parameters<typeof pullEngine>[0],
+  scope: Parameters<typeof pullEngine>[1],
+  kinds?: Parameters<typeof pullEngine>[2],
+) {
+  return pullEngine(deps, scope, kinds, {
+    assuranceStudioProjectId: `as-${scope.projectId}`,
+  });
+}
+
+function status(
+  deps: Parameters<typeof statusEngine>[0],
+  scope: Parameters<typeof statusEngine>[1],
+  kinds?: Parameters<typeof statusEngine>[2],
+) {
+  return statusEngine(deps, scope, kinds, {
+    assuranceStudioProjectId: `as-${scope.projectId}`,
+  });
+}
 
 const hosts: Array<ReturnType<typeof createFakePluginHost>> = [];
 const scope = { projectId: "project-wp17", projectVersionId: "version-wp17" };
 
 afterEach(async () => {
-  await Promise.all(hosts.splice(0).map((host) => host.harness.lifecycle.dispose()));
+  await Promise.all(
+    hosts.splice(0).map((host) => host.harness.lifecycle.dispose()),
+  );
 });
 
 function deps(adapter: EntityAdapter): EngineDeps {
-  const host = createFakePluginHost({ pluginId: `finite-state-status-${hosts.length}` });
+  const host = createFakePluginHost({
+    pluginId: `finite-state-status-${hosts.length}`,
+  });
   hosts.push(host);
   return {
     db: createPluginContext(host.bb).db(),
@@ -40,7 +64,9 @@ function requirementAdapter(
       progress({ page: 1, of: 1 });
       yield remote();
     },
-    async readWorking() { return working(); },
+    async readWorking() {
+      return working();
+    },
   };
 }
 
@@ -61,7 +87,9 @@ function requirement(reqId: string, title: string): ServerEntity {
 }
 
 function authored(entity: ServerEntity, title?: string): WorkingEntity {
-  const payload = createSerializer("requirement").semanticPayload(entity.payload);
+  const payload = createSerializer("requirement").semanticPayload(
+    entity.payload,
+  );
   return {
     key: entity.key,
     payload: { ...payload, title: title ?? String(payload["title"]) },
@@ -76,32 +104,69 @@ describe("sync status", () => {
     const conflict = requirement("REQ-CONFLICT", "base conflict");
     let remote = [local, upstream, conflict];
     let working = remote.map((entity) => authored(entity));
-    const adapter = requirementAdapter(() => remote, () => working);
+    const adapter = requirementAdapter(
+      () => remote,
+      () => working,
+    );
     const engine = deps(adapter);
     await pull(engine, scope, ["requirement"]);
 
-    remote = [local, requirement("REQ-UPSTREAM", "remote edit"), requirement("REQ-CONFLICT", "remote conflict")];
-    working = [authored(local, "local edit"), authored(upstream), authored(conflict, "local conflict")];
+    remote = [
+      local,
+      requirement("REQ-UPSTREAM", "remote edit"),
+      requirement("REQ-CONFLICT", "remote conflict"),
+    ];
+    working = [
+      authored(local, "local edit"),
+      authored(upstream),
+      authored(conflict, "local conflict"),
+    ];
     const report = await status(engine, scope, ["requirement"]);
 
-    expect(Object.keys(report)).toEqual(["local", "upstream", "conflicts", "orphans"]);
-    expect(report.local).toEqual([expect.objectContaining({ key: local.key, fields: ["title"] })]);
-    expect(report.upstream).toEqual([expect.objectContaining({ key: upstream.key, fields: ["title"] })]);
-    expect(report.conflicts).toEqual([{ kind: "requirement", key: conflict.key }]);
+    expect(Object.keys(report)).toEqual([
+      "local",
+      "upstream",
+      "conflicts",
+      "orphans",
+    ]);
+    expect(report.local).toEqual([
+      expect.objectContaining({ key: local.key, fields: ["title"] }),
+    ]);
+    expect(report.upstream).toEqual([
+      expect.objectContaining({ key: upstream.key, fields: ["title"] }),
+    ]);
+    expect(report.conflicts).toEqual([
+      { kind: "requirement", key: conflict.key },
+    ]);
     expect(report.orphans).toEqual([]);
   });
 
   it("reports an overlay key absent from the current server key set as an orphan", async () => {
     const presentKey = ENTITIES.vexDecision.key({
-      cve: "CVE-2026-1", purl: "pkg:generic/present@1", name: "present", version: "1",
+      cve: "CVE-2026-1",
+      purl: "pkg:generic/present@1",
+      name: "present",
+      version: "1",
     });
     const orphanKey = ENTITIES.vexDecision.key({
-      cve: "CVE-2026-2", purl: "pkg:generic/missing@1", name: "missing", version: "1",
+      cve: "CVE-2026-2",
+      purl: "pkg:generic/missing@1",
+      name: "missing",
+      version: "1",
     });
-    const present = { key: presentKey, remoteId: "finding-present", payload: {
-      status: "IN_TRIAGE", justification: null, response: null, reason: null,
-    } } satisfies ServerEntity;
-    let working: WorkingEntity[] = [{ ...present, file: ".fs/triage/present.yaml" }];
+    const present = {
+      key: presentKey,
+      remoteId: "finding-present",
+      payload: {
+        status: "IN_TRIAGE",
+        justification: null,
+        response: null,
+        reason: null,
+      },
+    } satisfies ServerEntity;
+    let working: WorkingEntity[] = [
+      { ...present, file: ".fs/triage/present.yaml" },
+    ];
     const adapter: EntityAdapter = {
       kind: "vexDecision",
       klass: "OVERLAY",
@@ -110,7 +175,9 @@ describe("sync status", () => {
         progress({ page: 1, of: 1 });
         yield [present];
       },
-      async readWorking() { return working; },
+      async readWorking() {
+        return working;
+      },
     };
     const engine = deps(adapter);
     await pull(engine, scope, ["vexDecision"]);
@@ -119,21 +186,34 @@ describe("sync status", () => {
       {
         key: orphanKey,
         file: ".fs/triage/missing.yaml",
-        payload: { status: "NOT_AFFECTED", justification: null, response: null, reason: "local" },
+        payload: {
+          status: "NOT_AFFECTED",
+          justification: null,
+          response: null,
+          reason: "local",
+        },
       },
     ];
 
     const report = await status(engine, scope, ["vexDecision"]);
-    expect(report.orphans).toEqual([{ kind: "vexDecision", key: orphanKey, file: ".fs/triage/missing.yaml" }]);
+    expect(report.orphans).toEqual([
+      { kind: "vexDecision", key: orphanKey, file: ".fs/triage/missing.yaml" },
+    ]);
   });
 
   it("returns four empty lists when working, base, and remote are equal", async () => {
     const entity = requirement("REQ-CLEAN", "same");
-    const adapter = requirementAdapter(() => [entity], () => [authored(entity)]);
+    const adapter = requirementAdapter(
+      () => [entity],
+      () => [authored(entity)],
+    );
     const engine = deps(adapter);
     await pull(engine, scope, ["requirement"]);
     await expect(status(engine, scope, ["requirement"])).resolves.toEqual({
-      local: [], upstream: [], conflicts: [], orphans: [],
+      local: [],
+      upstream: [],
+      conflicts: [],
+      orphans: [],
     });
   });
 
@@ -146,22 +226,30 @@ describe("sync status", () => {
       serializer: createSerializer("component"),
       async *fetchRemote(_scope, progress) {
         progress({ page: 1, of: 1 });
-        yield [{
-          key: componentKey,
-          remoteId: "00000000-0000-4000-8000-000000000001",
-          payload: {
-            id: "00000000-0000-4000-8000-000000000001", projectId: scope.projectId,
-            kind: "component", fields: { slug: "component-one", name: "Component One" },
-            humanEdited: null, reviewStatus: null, reviewVersion: null,
+        yield [
+          {
+            key: componentKey,
+            remoteId: "00000000-0000-4000-8000-000000000001",
+            payload: {
+              id: "00000000-0000-4000-8000-000000000001",
+              projectId: scope.projectId,
+              kind: "component",
+              fields: { slug: "component-one", name: "Component One" },
+              humanEdited: null,
+              reviewStatus: null,
+              reviewVersion: null,
+            },
           },
-        }];
+        ];
       },
       async readWorking() {
-        return [{
-          key: componentKey,
-          payload: { slug: "component-one", name: "Component One" },
-          file: "product-security/architecture/components/component-one.yaml",
-        }];
+        return [
+          {
+            key: componentKey,
+            payload: { slug: "component-one", name: "Component One" },
+            file: "product-security/architecture/components/component-one.yaml",
+          },
+        ];
       },
     };
     const requirement: EntityAdapter = {
@@ -170,29 +258,42 @@ describe("sync status", () => {
       serializer: createSerializer("requirement"),
       async *fetchRemote(_scope, progress) {
         progress({ page: 1, of: 1 });
-        yield [{
-          key: requirementKey,
-          remoteId: "00000000-0000-4000-8000-000000000002",
-          payload: {
-            id: "00000000-0000-4000-8000-000000000002", projectId: scope.projectId,
-            kind: "requirement",
-            fields: { reqId: "REQ-REF", componentId: "00000000-0000-4000-8000-000000000001" },
-            humanEdited: null, reviewStatus: null, reviewVersion: null,
+        yield [
+          {
+            key: requirementKey,
+            remoteId: "00000000-0000-4000-8000-000000000002",
+            payload: {
+              id: "00000000-0000-4000-8000-000000000002",
+              projectId: scope.projectId,
+              kind: "requirement",
+              fields: {
+                reqId: "REQ-REF",
+                componentId: "00000000-0000-4000-8000-000000000001",
+              },
+              humanEdited: null,
+              reviewStatus: null,
+              reviewVersion: null,
+            },
           },
-        }];
+        ];
       },
       async readWorking() {
-        return [{
-          key: requirementKey,
-          payload: { reqId: "REQ-REF", componentId: "component-one" },
-          file: "product-security/requirements/REQ-REF.yaml",
-        }];
+        return [
+          {
+            key: requirementKey,
+            payload: { reqId: "REQ-REF", componentId: "component-one" },
+            file: "product-security/requirements/REQ-REF.yaml",
+          },
+        ];
       },
     };
     const engine = { ...deps(requirement), adapters: [component, requirement] };
     await pull(engine, scope, ["component", "requirement"]);
     await expect(status(engine, scope, ["requirement"])).resolves.toEqual({
-      local: [], upstream: [], conflicts: [], orphans: [],
+      local: [],
+      upstream: [],
+      conflicts: [],
+      orphans: [],
     });
   });
 });
