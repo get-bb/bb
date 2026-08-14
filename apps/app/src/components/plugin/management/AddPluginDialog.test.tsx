@@ -266,41 +266,6 @@ describe("AddPluginDialog", () => {
     ).not.toBeNull();
   });
 
-  it("warns that BB did not build anything it does not bundle", () => {
-    stubFetch();
-    // A bundled plugin ships inside the app, so its authorship needs no
-    // warning; every other install does, whatever listed it.
-    const bundled = renderDialog({
-      entryId: "linear",
-      marketplace: "bb-community",
-      publisherLabel: "BB Community",
-      displayName: "Linear",
-      icon: "Github",
-      iconUrl: null,
-      source: "builtin:linear",
-    });
-    expect(screen.queryByTestId("not-built-by-bb-warning")).toBeNull();
-    bundled.unmount();
-
-    // Reviewed by BB, but not written by BB — the catalog listing it is not
-    // evidence of authorship.
-    const community = renderDialog({
-      entryId: "thread-hover-cards",
-      marketplace: "bb-community",
-      publisherLabel: "BB Community",
-      displayName: "Thread Hover Cards",
-      icon: "Github",
-      iconUrl: null,
-      source: "git:https://github.com/brsbl/bb-plugins@b173b67",
-    });
-    expect(screen.getByTestId("not-built-by-bb-warning")).toBeTruthy();
-    community.unmount();
-
-    // A pasted source has no listing at all.
-    renderDialog(null);
-    expect(screen.getByTestId("not-built-by-bb-warning")).toBeTruthy();
-  });
-
   it("shows the exact source, including a pinned npm registry", () => {
     stubFetch();
     // A listing can send BB to another registry. The confirmation names it,

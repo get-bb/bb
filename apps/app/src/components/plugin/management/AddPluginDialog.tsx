@@ -29,11 +29,7 @@ import {
   installPlugin,
   useCatalogInstallPlan,
 } from "@/hooks/queries/plugin-catalog-queries";
-import {
-  CatalogEntryIcon,
-  FullTrustWarning,
-  NotBuiltByBbWarning,
-} from "./plugin-ui";
+import { CatalogEntryIcon, FullTrustWarning } from "./plugin-ui";
 
 /**
  * Pre-fill for Browse-tab installs: the dialog shows the catalog entry instead
@@ -262,10 +258,6 @@ function AddPluginDialogContent({
   const thirdParty =
     initial !== null &&
     initial.marketplace !== CURATED_PLUGIN_MARKETPLACE_NAME;
-  // Anything that does not ship inside the app was written by someone else,
-  // whether it comes from a marketplace listing or a pasted source.
-  const installSource = initial !== null ? initial.source : sourceText.trim();
-  const bundled = installSource.startsWith("builtin:");
   const planQuery = useCatalogInstallPlan(
     thirdParty && initial !== null
       ? { entryId: initial.entryId, marketplace: initial.marketplace }
@@ -330,8 +322,11 @@ function AddPluginDialogContent({
               </span>
             </div>
             {/* The exact source, including a pinned npm registry: a listing
-                must not send BB somewhere the confirmation never named. */}
-            <p className="break-all font-mono text-2xs text-subtle-foreground">
+                must not send BB somewhere the confirmation never named. It
+                scrolls on one line rather than wrapping: a long git ref broken
+                across three lines pushes the buttons around and reads as
+                damage rather than as an address. */}
+            <p className="overflow-x-auto whitespace-nowrap font-mono text-2xs text-subtle-foreground">
               {initial.source}
             </p>
           </div>
@@ -368,10 +363,7 @@ function AddPluginDialogContent({
             <div className="h-full w-1/3 animate-plugin-install-progress rounded-full bg-muted-foreground" />
           </div>
         ) : (
-          <>
-            {bundled ? null : <NotBuiltByBbWarning />}
-            <FullTrustWarning />
-          </>
+          <FullTrustWarning />
         )}
       </div>
       <DialogFooter>
