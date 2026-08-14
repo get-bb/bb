@@ -11,6 +11,7 @@ import {
   pluginMarketplaceAddRequestSchema,
   pluginMarketplaceListResponseSchema,
   pluginMarketplaceMutationResponseSchema,
+  pluginMarketplaceNameSchema,
   pluginMarketplaceRefreshRequestSchema,
   pluginMarketplaceRefreshResponseSchema,
   pluginMarketplaceRemoveResponseSchema,
@@ -355,7 +356,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       return response.results;
     },
     async remove(input) {
-      const name = z.string().min(1).parse(input.name);
+      const name = pluginMarketplaceNameSchema.parse(input.name);
       const response = await requestParsed(
         `/api/v1/marketplaces/${encodeURIComponent(name)}`,
         pluginMarketplaceRemoveResponseSchema,

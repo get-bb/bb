@@ -255,7 +255,7 @@ export const PLUGIN_MARKETPLACE_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
  */
 export const OFFICIAL_PLUGIN_MARKETPLACE_NAME = "bb-official";
 
-const marketplaceNameSchema = z
+export const pluginMarketplaceNameSchema = z
   .string()
   .min(1)
   .max(64)
@@ -269,7 +269,7 @@ export const pluginCatalogInstallRequestSchema = z
      * marketplace: exactly one match installs, none falls back to the bundled
      * official plugin of that name, and several are refused as ambiguous.
      */
-    marketplace: marketplaceNameSchema.optional(),
+    marketplace: pluginMarketplaceNameSchema.optional(),
   })
   .strict();
 export type PluginCatalogInstallRequest = z.infer<
@@ -576,7 +576,7 @@ export type PluginMarketplaceRemoveResponse = z.infer<
 export const pluginMarketplaceRefreshRequestSchema = z
   .object({
     /** One marketplace to refresh; omitted refreshes every one of them. */
-    name: marketplaceNameSchema.optional(),
+    name: pluginMarketplaceNameSchema.optional(),
   })
   .strict();
 export type PluginMarketplaceRefreshRequest = z.infer<

@@ -1,8 +1,8 @@
 import {
   pluginCatalogInstallRequestSchema,
   pluginMarketplaceAddRequestSchema,
+  pluginMarketplaceNameSchema,
   pluginMarketplaceRefreshRequestSchema,
-  PLUGIN_MARKETPLACE_NAME_PATTERN,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
 import type {
@@ -19,10 +19,11 @@ function entrySelector(
   entryId: string | undefined,
   marketplace: string | undefined,
 ): PluginCatalogEntrySelector | null {
-  if (entryId === undefined || entryId.length === 0) return null;
-  if (marketplace === undefined) return { entryId };
-  if (!PLUGIN_MARKETPLACE_NAME_PATTERN.test(marketplace)) return null;
-  return { entryId, marketplace };
+  const parsed = pluginCatalogInstallRequestSchema.safeParse({
+    entryId,
+    ...(marketplace === undefined ? {} : { marketplace }),
+  });
+  return parsed.success ? parsed.data : null;
 }
 
 export function registerPluginCatalogRoutes(
@@ -141,12 +142,17 @@ export function registerPluginCatalogRoutes(
   });
 
   app.delete("/marketplaces/:name", async (context) => {
-    const name = context.req.param("name");
-    if (!PLUGIN_MARKETPLACE_NAME_PATTERN.test(name)) {
-      return context.json({ error: `invalid marketplace name "${name}"` }, 422);
+    const parsedName = pluginMarketplaceNameSchema.safeParse(
+      context.req.param("name"),
+    );
+    if (!parsedName.success) {
+      return context.json(
+        { error: `invalid marketplace name "${context.req.param("name")}"` },
+        422,
+      );
     }
     try {
-      const removed = await catalog.removeMarketplace(name);
+      const removed = await catalog.removeMarketplace(parsedName.data);
       return context.json({
         ok: true as const,
         convertedPluginIds: removed.convertedPluginIds,

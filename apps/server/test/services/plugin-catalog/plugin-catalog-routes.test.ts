@@ -246,6 +246,17 @@ describe("plugin catalog routes", () => {
       });
       expect(badRefresh.status).toBe(422);
 
+      const longName = "a".repeat(65);
+      const longRemoval = await app.request(`/marketplaces/${longName}`, {
+        method: "DELETE",
+      });
+      expect(longRemoval.status).toBe(422);
+
+      const longPlan = await app.request(
+        `/plugin-catalog/install-plan?entryId=notes&marketplace=${longName}`,
+      );
+      expect(longPlan.status).toBe(422);
+
       const reserved = await app.request("/marketplaces/bb-official", {
         method: "DELETE",
       });
