@@ -30,6 +30,7 @@ export const THREAD_TABS_QUERY_KEY = "threadTabs";
 export const THREAD_DETAIL_BOOTSTRAP_QUERY_KEY = "threadDetailBootstrap";
 export const THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
   "threadDefaultExecutionOptions";
+export const THREAD_HANDOFF_QUERY_KEY = "threadHandoff";
 export const THREAD_QUEUED_MESSAGES_QUERY_KEY = "threadQueuedMessages";
 export const THREAD_PROMPT_HISTORY_QUERY_KEY = "threadPromptHistory";
 export const THREAD_PENDING_INTERACTIONS_QUERY_KEY =
@@ -199,6 +200,10 @@ export type ThreadDefaultExecutionOptionsQueryKeyPrefix = readonly [
 ];
 export type ThreadDefaultExecutionOptionsQueryKey = readonly [
   typeof THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY,
+  string,
+];
+export type ThreadHandoffQueryKey = readonly [
+  typeof THREAD_HANDOFF_QUERY_KEY,
   string,
 ];
 export type ThreadQueuedMessagesQueryKeyPrefix = readonly [
@@ -683,6 +688,12 @@ export function threadDefaultExecutionOptionsQueryKey(
   threadId: string,
 ): ThreadDefaultExecutionOptionsQueryKey {
   return [THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY, threadId];
+}
+
+export function threadHandoffQueryKey(
+  replacementThreadId: string,
+): ThreadHandoffQueryKey {
+  return [THREAD_HANDOFF_QUERY_KEY, replacementThreadId];
 }
 
 export function allThreadDefaultExecutionOptionsQueryKeyPrefix(): ThreadDefaultExecutionOptionsQueryKeyPrefix {

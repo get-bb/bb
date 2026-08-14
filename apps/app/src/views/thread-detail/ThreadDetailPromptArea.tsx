@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import type { IconName } from "@bb/shared-ui/icon";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import {
@@ -87,9 +87,7 @@ import {
 import { useThreadDefaultExecutionOptions } from "@/hooks/queries/thread-default-execution-options-query";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
-import { getProjectComposeRoutePath } from "@/lib/route-paths";
-import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { buildThreadHandoffLocationState } from "@/lib/thread-handoff-request";
+import { BringInModelDrawer } from "@/components/thread/BringInModelDrawer";
 import { appToast } from "@/components/ui/app-toast";
 import {
   promptDraftToInput,
@@ -346,7 +344,6 @@ export function ThreadDetailPromptArea({
   composerFocusRequestNonce,
   thread,
 }: ThreadDetailPromptAreaProps) {
-  const navigate = useNavigate();
   const defaultExecutionOptionsQuery = useThreadDefaultExecutionOptions(
     thread.id,
     {
@@ -912,27 +909,10 @@ export function ThreadDetailPromptArea({
   const handleUnarchiveCurrentThread = useCallback(() => {
     unarchiveThread.mutate({ id: thread.id });
   }, [thread.id, unarchiveThread]);
-  const sourceThreadDisplayTitle = getThreadDisplayTitle({
-    id: thread.id,
-    title: thread.title,
-    titleFallback: thread.titleFallback,
-  });
-  const handleHandoffToNewThread = useCallback(() => {
-    navigate(getProjectComposeRoutePath(thread.projectId), {
-      state: buildThreadHandoffLocationState({
-        environmentId: thread.environmentId,
-        projectId: thread.projectId,
-        sourceThreadId: thread.id,
-        sourceThreadTitle: sourceThreadDisplayTitle,
-      }),
-    });
-  }, [
-    navigate,
-    sourceThreadDisplayTitle,
-    thread.environmentId,
-    thread.id,
-    thread.projectId,
-  ]);
+  const [bringInModelOpen, setBringInModelOpen] = useState(false);
+  const handleBringInAnotherModel = useCallback(() => {
+    setBringInModelOpen(true);
+  }, []);
 
   const bottomAttachmentsConfig = useMemo(
     () => ({
@@ -1076,15 +1056,15 @@ export function ThreadDetailPromptArea({
         onChange: setReasoningLevel,
       },
       footerAction: {
-        label: "Handoff to new thread",
-        onClick: handleHandoffToNewThread,
+        label: "Bring in another model",
+        onClick: handleBringInAnotherModel,
       },
     }),
     [
       effectiveSelectedModel,
       executionOptionsRouting,
       hasMultipleProviders,
-      handleHandoffToNewThread,
+      handleBringInAnotherModel,
       handleModelChange,
       isLoadingModels,
       modelLoadFailed,
@@ -1632,6 +1612,11 @@ export function ThreadDetailPromptArea({
     <>
       {sentMessageEditorPortal}
       {bottomContent}
+      <BringInModelDrawer
+        open={bringInModelOpen}
+        onOpenChange={setBringInModelOpen}
+        thread={thread}
+      />
     </>
   );
 }

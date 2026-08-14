@@ -478,31 +478,31 @@ git commit -m "feat(cli): expose thread takeover"
 - Modify test: `apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx`
 - Test: `apps/app/src/views/thread-detail/thread-takeover.integration.test.tsx`
 
-- [ ] **Step 1: Write failing interaction tests**
+- [x] **Step 1: Write failing interaction tests**
 
 Cover opening **Bring in another model**, choosing **Take over this thread**, provider/model/reasoning/service-tier/permission selection, `Continue with {model}`, stable idempotency across retries, immediate navigation to replacement, provisioning banner, failed banner with return/retry, started banner with source link, restore source, and retained old location-state fallback.
 
 For compact layout, assert the shared `PersistentResponsiveDrawerShell` is used and content is deferred by its existing two-frame contract. Add a screenshot test/canary later; DOM-only coverage is not sufficient for the shipped UI.
 
-- [ ] **Step 2: Run app tests and prove the UI is absent**
+- [x] **Step 2: Run app tests and prove the UI is absent**
 
 Run: `pnpm exec turbo run test --filter=@bb/app --force`
 
 Expected: FAIL because the drawer and mutations do not exist.
 
-- [ ] **Step 3: Implement the mutation/query adapters**
+- [x] **Step 3: Implement the mutation/query adapters**
 
 The mutation calls `sdk.threads.handoff`, invalidates source/replacement/sidebar caches, and returns the replacement ID. The status query polls only while `state === "provisioning"`. Generate one idempotency key when the drawer submission begins and retain it for retrying that submission.
 
-- [ ] **Step 4: Build the shared persistent drawer flow**
+- [x] **Step 4: Build the shared persistent drawer flow**
 
 Use BB's native execution controls and sanctioned typography/theme tokens. Do not introduce a modal drawer. The first screen contains the two intent cards; in this plan only **Take over** is live. **Review this work** becomes live when the separate Quick Review plan lands.
 
-- [ ] **Step 5: Wire truthful navigation and recovery banners**
+- [x] **Step 5: Wire truthful navigation and recovery banners**
 
 Navigate to the replacement as soon as the POST succeeds. Render status from the persisted server record. “Restore source thread” calls the existing unarchive mutation and updates both thread caches. Never archive from React code.
 
-- [ ] **Step 6: Run app checks**
+- [x] **Step 6: Run app checks**
 
 Run:
 

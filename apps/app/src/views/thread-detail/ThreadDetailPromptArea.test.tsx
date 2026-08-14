@@ -22,7 +22,6 @@ import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
-import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-handoff-request";
 import { BbHttpError } from "@/lib/sdk";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
@@ -239,6 +238,13 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       ) : null}
     </div>
   ),
+}));
+
+vi.mock("@/components/thread/BringInModelDrawer", () => ({
+  BringInModelDrawer: ({ open }: { open: boolean }) =>
+    open ? (
+      <div data-testid="bring-in-model-drawer">Bring in model drawer</div>
+    ) : null,
 }));
 
 vi.mock("@/components/promptbox/ThreadEnvironmentSummary", () => ({
@@ -1252,7 +1258,7 @@ describe("ThreadDetailPromptArea", () => {
       "true",
     );
     expect(
-      inlineEditor.queryByRole("button", { name: "Handoff to new thread" }),
+      inlineEditor.queryByRole("button", { name: "Bring in another model" }),
     ).toBeNull();
   });
 
@@ -1622,7 +1628,7 @@ describe("ThreadDetailPromptArea", () => {
     expect(screen.getByText("Model fallback")).toBeTruthy();
   });
 
-  it("opens root compose with a handoff seed for the current thread", () => {
+  it("opens the bring-in-another-model drawer for the current thread", () => {
     renderPromptArea({
       thread: makeThread({
         environmentId: "env_1",
@@ -1634,20 +1640,10 @@ describe("ThreadDetailPromptArea", () => {
     });
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Handoff to new thread" }),
+      screen.getByRole("button", { name: "Bring in another model" }),
     );
 
-    expect(mocks.navigate).toHaveBeenCalledWith("/projects/proj_source", {
-      state: {
-        focusPrompt: true,
-        reuseEnvironmentId: "env_1",
-        [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]: {
-          environmentId: "env_1",
-          projectId: "proj_source",
-          sourceThreadId: "thr_source",
-          sourceThreadTitle: "Source thread",
-        },
-      },
-    });
+    expect(screen.getByTestId("bring-in-model-drawer")).toBeTruthy();
+    expect(mocks.navigate).not.toHaveBeenCalled();
   });
 });

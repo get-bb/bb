@@ -37,6 +37,7 @@ import { isThreadForkable } from "@/lib/fork-thread-request";
 import { useRequestEnvironmentAction } from "../../hooks/mutations/environment-mutations";
 import {
   useMarkThreadRead,
+  useUnarchiveThread,
   useUpdateThread,
 } from "../../hooks/mutations/thread-state-mutations";
 import {
@@ -65,6 +66,7 @@ import {
   useThreadQueuedMessages,
   type ProjectThreadSubsetFilters,
 } from "../../hooks/queries/thread-queries";
+import { useThreadHandoffStatus } from "../../hooks/queries/thread-handoff-query";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
@@ -76,6 +78,7 @@ import {
   type ThreadActionsMenuResponsiveAction,
 } from "@/components/thread/ThreadActionsMenu";
 import { PluginThreadHeaderActions } from "@/components/plugin/PluginThreadHeaderActions";
+import { ThreadTakeoverBanner } from "@/components/thread/ThreadTakeoverBanner";
 import { ThreadWorkspaceOpenButton } from "@/components/thread/ThreadWorkspaceOpenButton";
 import {
   formatEnvironmentDisplay,
@@ -598,6 +601,10 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     (thread && threadOriginKind ? thread.parentThreadId : null);
   const { data: parentThread } = useThread(thread?.parentThreadId ?? "");
   const { data: sourceThread } = useThread(threadSourceThreadId ?? "");
+  const handoffStatusQuery = useThreadHandoffStatus(thread?.id ?? "", {
+    enabled: threadQueryState.status === "ready" && Boolean(thread?.id),
+  });
+  const unarchiveSourceThread = useUnarchiveThread();
   const pendingInteractionsQuery = useThreadPendingInteractions(
     thread?.id ?? "",
     {
@@ -2544,7 +2551,37 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         }}
       />
     ) : undefined;
+  const handoffStatus = handoffStatusQuery.data;
+  const takeoverBanner = handoffStatus ? (
+    <ThreadTakeoverBanner
+      projectId={thread.projectId}
+      sourceTitle={
+        sourceThread
+          ? getThreadDisplayTitle(sourceThread)
+          : handoffStatus.sourceThreadId
+      }
+      status={handoffStatus}
+      restorePending={
+        unarchiveSourceThread.isPending &&
+        unarchiveSourceThread.variables?.id === handoffStatus.sourceThreadId
+      }
+      onRestoreSource={() => {
+        unarchiveSourceThread.mutate({
+          id: handoffStatus.sourceThreadId,
+        });
+      }}
+      onReturnToSource={() => {
+        navigate(
+          getThreadRoutePath({
+            projectId: thread.projectId,
+            threadId: handoffStatus.sourceThreadId,
+          }),
+        );
+      }}
+    />
+  ) : null;
   const timelineHeader = (
+    <>
     <ThreadDetailHeader
       actionsMenu={(includeResponsiveActions) => (
         <ThreadActionsMenu
@@ -2574,6 +2611,8 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       threadTitle={threadTitle}
       workspaceOpenButton={workspaceOpenButton}
     />
+    {takeoverBanner}
+    </>
   );
   const composerFooter = (
     <ThreadDetailPromptArea
