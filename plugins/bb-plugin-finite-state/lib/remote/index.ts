@@ -8,7 +8,13 @@ import {
   type RemoteConfig,
   type RemoteSettingValues,
 } from "./config.js";
-import { unavailableError } from "./errors.js";
+import {
+  connectionStatusMessage,
+  diagnoseRemoteFailure,
+  settingsFailureDiagnostic,
+  unavailableError,
+  type RemoteFailureDiagnostic,
+} from "./errors.js";
 import { ForgeComputeClient } from "./forge-compute/client.js";
 import { createForgeMcpTransport } from "./forge-compute/mcp-transport.js";
 import { PlatformClient } from "./platform/client.js";
@@ -48,6 +54,11 @@ export interface RemoteConnectionStatus {
   assuranceStudio: ConnectionStatus;
   forgeCompute: ConnectionStatus;
 }
+export interface RemoteConnectionDiagnostics {
+  platform: RemoteFailureDiagnostic | null;
+  assuranceStudio: RemoteFailureDiagnostic | null;
+  forgeCompute: RemoteFailureDiagnostic | null;
+}
 
 export interface RemoteServiceController {
   readonly services: RemoteServices;
@@ -56,6 +67,7 @@ export interface RemoteServiceController {
     prev: RemoteSettingValues,
   ): Promise<void>;
   connectionStatus(): RemoteConnectionStatus;
+  connectionDiagnostics(): RemoteConnectionDiagnostics;
   dispose(): Promise<void>;
 }
 
@@ -64,6 +76,7 @@ interface Slot<Client> {
   close: () => void | Promise<void>;
   abort: AbortController;
   status: ConnectionStatus;
+  diagnostic: RemoteFailureDiagnostic | null;
   generation: number;
 }
 
@@ -364,12 +377,25 @@ function originLabel(value: string | null): string | null {
   }
 }
 
+function isAbsoluteHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      url.host.length > 0
+    );
+  } catch {
+    return false;
+  }
+}
+
 function emptySlot<Client>(status: ConnectionStatus): Slot<Client> {
   return {
     client: null,
     close: () => undefined,
     abort: new AbortController(),
     status,
+    diagnostic: null,
     generation: 0,
   };
 }
@@ -425,6 +451,7 @@ export function createRemoteServiceController(
     const generation = slot.generation;
     try {
       await slot.client?.health({ signal: slot.abort.signal });
+      if (!disposed && slot.generation === generation) slot.diagnostic = null;
       if (!disposed && slot.generation === generation)
         slot.status = {
           state: "connected",
@@ -434,20 +461,20 @@ export function createRemoteServiceController(
               : `${service} at ${label} is connected`,
           checkedAt: new Date().toISOString(),
         };
-    } catch {
+    } catch (error: unknown) {
       if (
         !disposed &&
         slot.generation === generation &&
         !slot.abort.signal.aborted
-      )
+      ) {
+        const diagnostic = diagnoseRemoteFailure(error);
+        slot.diagnostic = diagnostic;
         slot.status = {
           state: "unreachable",
-          message:
-            label === null
-              ? `${service} is unreachable`
-              : `${service} at ${label} is unreachable`,
+          message: connectionStatusMessage(diagnostic),
           checkedAt: new Date().toISOString(),
         };
+      }
     }
   };
 
@@ -463,11 +490,27 @@ export function createRemoteServiceController(
       });
       return;
     }
-    const client = new PlatformClient({
-      baseUrl: next.platformBaseUrl,
-      token: next.platformToken,
-      concurrency: next.platformConcurrency,
-    });
+    let client: PlatformClient;
+    try {
+      if (!isAbsoluteHttpUrl(next.platformBaseUrl))
+        throw new TypeError("invalid URL");
+      client = new PlatformClient({
+        baseUrl: next.platformBaseUrl,
+        token: next.platformToken,
+        concurrency: next.platformConcurrency,
+      });
+    } catch {
+      const message =
+        "Platform URL (platformBaseUrl) is malformed. Enter an absolute HTTP(S) URL in connection settings.";
+      platform = emptySlot({
+        state: "needs-configuration",
+        message,
+        checkedAt: new Date().toISOString(),
+      });
+      platform.diagnostic = settingsFailureDiagnostic("platform", message);
+      platform.generation = old.generation + 1;
+      return;
+    }
     platform = {
       client,
       close: () => client.close(),
@@ -477,6 +520,7 @@ export function createRemoteServiceController(
         message: `Platform at ${originLabel(next.platformBaseUrl) ?? "configured origin"} is configured`,
         checkedAt: null,
       },
+      diagnostic: null,
       generation: old.generation + 1,
     };
     void probe(platform, "Platform", originLabel(next.platformBaseUrl));
@@ -494,11 +538,30 @@ export function createRemoteServiceController(
       });
       return;
     }
-    const client = new AssuranceStudioClient({
-      baseUrl: next.asBaseUrl,
-      apiKey: next.asApiKey,
-      concurrency: next.asConcurrency,
-    });
+    let client: AssuranceStudioClient;
+    try {
+      if (!isAbsoluteHttpUrl(next.asBaseUrl))
+        throw new TypeError("invalid URL");
+      client = new AssuranceStudioClient({
+        baseUrl: next.asBaseUrl,
+        apiKey: next.asApiKey,
+        concurrency: next.asConcurrency,
+      });
+    } catch {
+      const message =
+        "Assurance Studio URL (asBaseUrl) is malformed. Enter an absolute HTTP(S) URL in connection settings.";
+      assuranceStudio = emptySlot({
+        state: "needs-configuration",
+        message,
+        checkedAt: new Date().toISOString(),
+      });
+      assuranceStudio.diagnostic = settingsFailureDiagnostic(
+        "assurance-studio",
+        message,
+      );
+      assuranceStudio.generation = old.generation + 1;
+      return;
+    }
     assuranceStudio = {
       client,
       close: () => client.close(),
@@ -508,6 +571,7 @@ export function createRemoteServiceController(
         message: `Assurance Studio at ${originLabel(next.asBaseUrl) ?? "configured origin"} is configured`,
         checkedAt: null,
       },
+      diagnostic: null,
       generation: old.generation + 1,
     };
     void probe(
@@ -581,6 +645,13 @@ export function createRemoteServiceController(
         platform: { ...platform.status },
         assuranceStudio: { ...assuranceStudio.status },
         forgeCompute: { ...forge.status },
+      };
+    },
+    connectionDiagnostics() {
+      return {
+        platform: platform.diagnostic,
+        assuranceStudio: assuranceStudio.diagnostic,
+        forgeCompute: forge.diagnostic,
       };
     },
     async dispose() {

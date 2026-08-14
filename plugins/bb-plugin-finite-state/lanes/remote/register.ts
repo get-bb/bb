@@ -8,8 +8,11 @@ import {
 import { createRemoteServiceController } from "../../lib/remote/index.js";
 import { rpcContract } from "../../shared/contract.js";
 import { REMOTE_CONNECTIONS_CHANGED_CHANNEL } from "./connection-state.js";
+import { remoteDiagnosticsRpcContract } from "./diagnostics-contract.js";
 
-const connectionsContract = { connectionsStatus: rpcContract.connectionsStatus };
+const connectionsContract = {
+  connectionsStatus: rpcContract.connectionsStatus,
+};
 
 export async function registerRemoteServices(
   bb: BbPluginApi,
@@ -21,16 +24,27 @@ export async function registerRemoteServices(
   const controller = createRemoteServiceController(ctx, initial);
   ctx.service("remote-services", () => controller.services);
   settings.onChange((next, prev) => {
-    if (standaloneUnpackConfigChanged(next, prev)) publishRemoteSettings(ctx, next);
-    void controller.reconfigure(next, prev).then(() => {
-      bb.realtime.publish(REMOTE_CONNECTIONS_CHANGED_CHANNEL, null);
-    }).catch(() => {
-      bb.log.warn("Finite State remote service reconfiguration failed.");
-      bb.realtime.publish(REMOTE_CONNECTIONS_CHANGED_CHANNEL, null);
-    });
+    if (standaloneUnpackConfigChanged(next, prev))
+      publishRemoteSettings(ctx, next);
+    void controller
+      .reconfigure(next, prev)
+      .then(() => {
+        bb.realtime.publish(REMOTE_CONNECTIONS_CHANGED_CHANNEL, null);
+      })
+      .catch(() => {
+        bb.log.warn("Finite State remote service reconfiguration failed.");
+        bb.realtime.publish(REMOTE_CONNECTIONS_CHANGED_CHANNEL, null);
+      });
   });
   bb.rpc.register(connectionsContract, {
-    connectionsStatus() { return controller.connectionStatus(); },
+    connectionsStatus() {
+      return controller.connectionStatus();
+    },
+  });
+  bb.rpc.register(remoteDiagnosticsRpcContract, {
+    remoteConnectionDiagnostics() {
+      return controller.connectionDiagnostics();
+    },
   });
   bb.onDispose(() => controller.dispose());
 }

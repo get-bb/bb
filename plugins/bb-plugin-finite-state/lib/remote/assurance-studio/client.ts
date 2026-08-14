@@ -1,4 +1,8 @@
-import { responseError, transportError } from "../errors.js";
+import {
+  responseError,
+  transportError,
+  withRemoteRequestTimeout,
+} from "../errors.js";
 import { RemoteLimiter, systemScheduler } from "../rate-limit.js";
 import {
   AS_ENTITY_SEGMENTS,
@@ -483,27 +487,39 @@ export class AssuranceStudioClient implements AssuranceStudioClientContract {
     for (const [key, value] of Object.entries(query)) {
       if (value !== undefined) url.searchParams.set(key, queryValue(value));
     }
+    const request = {
+      method: route.method,
+      url: url.toString(),
+      phase: `request headers for ${route.path}`,
+    };
     return await this.#limiter.run(
       async () => {
         let response: Response;
         try {
-          response = await this.#fetch(url, {
-            method: route.method,
-            headers: {
-              "X-API-Key": this.#apiKey,
-              ...(body === undefined
-                ? {}
-                : { "Content-Type": "application/json" }),
-            },
-            ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-            ...(ctx?.signal ? { signal: ctx.signal } : {}),
-          });
+          response = await withRemoteRequestTimeout(
+            "assurance-studio",
+            request,
+            ctx?.signal,
+            (signal) =>
+              this.#fetch(url, {
+                method: route.method,
+                headers: {
+                  "X-API-Key": this.#apiKey,
+                  ...(body === undefined
+                    ? {}
+                    : { "Content-Type": "application/json" }),
+                },
+                ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+                signal,
+              }),
+          );
         } catch (error: unknown) {
           throw transportError(
             "assurance-studio",
             route.path,
             route.retry !== "write-once",
             error,
+            request,
           );
         }
         if (!response.ok && !accepted.includes(response.status)) {
@@ -511,6 +527,7 @@ export class AssuranceStudioClient implements AssuranceStudioClientContract {
             "assurance-studio",
             response,
             Date.now(),
+            request,
           );
           if (route.retry === "write-once" && error.retryable) {
             throw new RemoteError(error.message, {

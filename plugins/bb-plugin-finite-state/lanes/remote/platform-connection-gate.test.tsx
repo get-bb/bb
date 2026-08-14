@@ -19,15 +19,24 @@ function connection(
   return { state, message, checkedAt: null };
 }
 
-function status(platformState: ReturnType<typeof connection>["state"]) {
+function status(
+  platformState: ReturnType<typeof connection>["state"],
+  platformMessage?: string | null,
+  assuranceStudio = connection(
+    "disabled",
+    "Assurance Studio is not configured",
+  ),
+) {
   return {
     platform: connection(
       platformState,
-      platformState === "needs-configuration"
-        ? "Connect your Finite State account to load projects"
-        : null,
+      platformMessage === undefined
+        ? platformState === "needs-configuration"
+          ? "Connect your Finite State account to load projects"
+          : null
+        : platformMessage,
     ),
-    assuranceStudio: connection("disabled", "Assurance Studio is not configured"),
+    assuranceStudio,
     forgeCompute: connection("disabled", "Forge Compute is disabled"),
   };
 }
@@ -38,29 +47,61 @@ function panel(id: string) {
   return registration;
 }
 
+function authDiagnostic(
+  service: "platform" | "assurance-studio",
+  status: 401 | 403,
+  request: { method: string; url: string; phase: string },
+) {
+  const platform = service === "platform";
+  return {
+    kind: "authentication" as const,
+    message: "contract-safe fallback",
+    retryable: false,
+    service,
+    status,
+    request,
+    credential: platform
+      ? {
+          header: "X-Authorization",
+          label: "Platform token",
+          setting: "platformToken",
+        }
+      : {
+          header: "X-API-Key",
+          label: "Assurance Studio API key",
+          setting: "asApiKey",
+        },
+  };
+}
+
 afterEach(() => cleanup());
 
 describe("Platform connection panel gate", () => {
   it.each([
     ["product-security", "tara"],
     ["bill-of-materials", "software"],
-  ])("renders a live configuration path in the %s panel", async (id, subPath) => {
-    const slot = renderSlot(
-      panel(id),
-      { subPath },
-      { rpc: { connectionsStatus: () => status("needs-configuration") } },
-    );
+  ])(
+    "renders a live configuration path in the %s panel",
+    async (id, subPath) => {
+      const slot = renderSlot(
+        panel(id),
+        { subPath },
+        { rpc: { connectionsStatus: () => status("needs-configuration") } },
+      );
 
-    expect(await slot.findByText("Connect Finite State Platform")).toBeTruthy();
-    expect(
-      slot.getByText("Connect your Finite State account to load projects"),
-    ).toBeTruthy();
-    expect(
-      slot
-        .getByRole("link", { name: /Open connection settings/u })
-        .getAttribute("href"),
-    ).toBe("/settings/plugins/finite-state");
-  });
+      expect(
+        await slot.findByText("Connect Finite State Platform"),
+      ).toBeTruthy();
+      expect(
+        slot.getByText("Connect your Finite State account to load projects"),
+      ).toBeTruthy();
+      expect(
+        slot
+          .getByRole("link", { name: /Open connection settings/u })
+          .getAttribute("href"),
+      ).toBe("/settings/plugins/finite-state");
+    },
+  );
 
   it("transitions in place after settings change without remounting the panel", async () => {
     let platformState: ReturnType<typeof connection>["state"] =
@@ -106,10 +147,92 @@ describe("Platform connection panel gate", () => {
         sidebarThreads: { status: "ready", projects: [] },
       },
     );
-    expect(await failed.findByText("Panel data remains accessible.", { exact: false })).toBeTruthy();
+    expect(
+      await failed.findByText("Panel data remains accessible.", {
+        exact: false,
+      }),
+    ).toBeTruthy();
     expect(failed.getByText("Choose a project")).toBeTruthy();
     fireEvent.click(failed.getByRole("button", { name: "Retry" }));
     expect(await failed.findByText("Choose a project")).toBeTruthy();
     expect(connectionsStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps panel data visible while naming both remotes' credential failures", async () => {
+    const slot = renderSlot(
+      panel("product-security"),
+      { subPath: "tara" },
+      {
+        rpc: {
+          connectionsStatus: () =>
+            status(
+              "unreachable",
+              "Platform credentials were rejected (HTTP 401).",
+              connection(
+                "unreachable",
+                "Assurance Studio credentials were rejected (HTTP 403).",
+              ),
+            ),
+          remoteConnectionDiagnostics: () => ({
+            platform: authDiagnostic("platform", 401, {
+              method: "GET",
+              url: "https://platform.example/api/public/v0/projects?offset=0&limit=1",
+              phase: "request headers for getProjectsV0",
+            }),
+            assuranceStudio: authDiagnostic("assurance-studio", 403, {
+              method: "GET",
+              url: "https://fs-alpha.finitestate.io/api/projects?page=1&limit=1",
+              phase: "request headers for /api/projects",
+            }),
+            forgeCompute: null,
+          }),
+        },
+        sidebarThreads: { status: "ready", projects: [] },
+      },
+    );
+
+    expect(await slot.findByText("Choose a project")).toBeTruthy();
+    expect(slot.getByText(/Platform authentication failed/u)).toBeTruthy();
+    expect(
+      slot.getByText(/Assurance Studio authorization failed/u),
+    ).toBeTruthy();
+    expect(
+      slot.getByText(/public\/v0\/projects\?offset=0&limit=1/u),
+    ).toBeTruthy();
+    expect(slot.getByText(/\/api\/projects\?page=1&limit=1/u)).toBeTruthy();
+    expect(slot.getAllByRole("link", { name: "Open settings" })).toHaveLength(
+      2,
+    );
+  });
+
+  it("uses the settings taxonomy kind instead of parsing diagnostic prose", async () => {
+    const message = "The configured Platform endpoint needs attention.";
+    const slot = renderSlot(
+      panel("product-security"),
+      { subPath: "tara" },
+      {
+        rpc: {
+          connectionsStatus: () => status("needs-configuration", message),
+          remoteConnectionDiagnostics: () => ({
+            platform: {
+              kind: "settings",
+              message,
+              retryable: false,
+              service: "platform",
+              status: null,
+              request: null,
+              credential: null,
+            },
+            assuranceStudio: null,
+            forgeCompute: null,
+          }),
+        },
+        sidebarThreads: { status: "ready", projects: [] },
+      },
+    );
+
+    expect(await slot.findByText("Choose a project")).toBeTruthy();
+    expect(slot.getByText(message)).toBeTruthy();
+    expect(slot.queryByText("Connect Finite State Platform")).toBeNull();
   });
 });

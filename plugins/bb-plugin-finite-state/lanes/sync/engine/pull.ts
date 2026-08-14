@@ -19,6 +19,7 @@ import {
   type SyncScope,
   type WorkingEntity,
 } from "./adapter.js";
+import { diagnoseRemoteFailure } from "../../../lib/remote/errors.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -139,6 +140,16 @@ export class PullFailedError extends Error {
     );
     this.name = "PullFailedError";
   }
+
+  /** Safe presentation for frozen RPC error channels; CLI keeps the rich message. */
+  get contractSafeMessage(): string {
+    return `Pull generation ${this.generationId} did not publish: ${this.failures
+      .map((item) => {
+        const remoteCode = /\b(REMOTE_[A-Z0-9_]+):/u.exec(item.message)?.[1];
+        return `${item.kind}: ${remoteCode === undefined ? item.message : `${remoteCode}: remote request failed`}`;
+      })
+      .join("; ")}`;
+  }
 }
 
 /** A kind failure whose staged generation must not be resumed. */
@@ -200,8 +211,15 @@ function partialWorkingRead(error: unknown): {
 }
 
 function errorMessage(error: unknown): string {
-  if (error instanceof RemoteError) return `${error.code}: ${error.message}`;
+  if (error instanceof RemoteError)
+    return `${error.code}: ${diagnoseRemoteFailure(error).message}`;
   return error instanceof Error ? error.message : String(error);
+}
+
+function storedErrorMessage(error: unknown): string {
+  return error instanceof RemoteError
+    ? `${error.code}: remote request failed`
+    : errorMessage(error);
 }
 
 function sqliteConstraint(error: unknown): boolean {
@@ -1015,7 +1033,7 @@ export async function pull(
         storageVersionId,
         generationId,
         adapter.kind,
-        message,
+        storedErrorMessage(error),
         error instanceof TerminalPullError,
       );
     }
@@ -1099,7 +1117,7 @@ export async function pull(
         storageVersionId,
         generationId,
         cache.kind,
-        message,
+        storedErrorMessage(error),
         error instanceof TerminalPullError,
       );
     }

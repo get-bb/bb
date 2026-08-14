@@ -3,31 +3,59 @@ import { describe, expect, it, vi } from "vitest";
 import { PlatformClient } from "./client.js";
 
 describe("PlatformClient review regressions", () => {
+  it("surfaces Platform 401 immediately with its X-Authorization setting", async () => {
+    const fetch = vi.fn(async () =>
+      Response.json({ error: "unauthorized" }, { status: 401 }),
+    );
+    const client = new PlatformClient({
+      baseUrl: "https://platform.example/api",
+      token: "stale-platform-secret",
+      fetch,
+    });
+
+    await expect(client.health()).rejects.toMatchObject({
+      code: "REMOTE_HTTP_401",
+      retryable: false,
+      message:
+        "Platform authentication failed for GET https://platform.example/api/public/v0/projects?offset=0&limit=1 with HTTP 401 using X-Authorization. Refresh Platform token (platformToken).",
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects injected RSQL scalars before transport and pages embedded comments", async () => {
-    const fetch = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => Response.json({
-      items: [{
-        id: "f1",
-        comments: [{ text: "one" }, { text: "two" }, { text: "three" }],
-      }],
-      total: 1,
-    }));
+    const fetch = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        Response.json({
+          items: [
+            {
+              id: "f1",
+              comments: [{ text: "one" }, { text: "two" }, { text: "three" }],
+            },
+          ],
+          total: 1,
+        }),
+    );
     const client = new PlatformClient({
       baseUrl: "https://platform.example",
       token: "platform-secret",
       fetch,
     });
 
-    await expect(client.getFindingDetail({
-      projectVersionId: "pv1",
-      findingId: "1,projectVersion==OTHER",
-    })).rejects.toMatchObject({ code: "PLATFORM_INVALID_RSQL" });
+    await expect(
+      client.getFindingDetail({
+        projectVersionId: "pv1",
+        findingId: "1,projectVersion==OTHER",
+      }),
+    ).rejects.toMatchObject({ code: "PLATFORM_INVALID_RSQL" });
     expect(fetch).not.toHaveBeenCalled();
 
-    const firstIterator = client.listFindingComments({
-      projectVersionId: "pv1",
-      findingId: "CVE-2026-1",
-      page: { pageSize: 2 },
-    })[Symbol.asyncIterator]();
+    const firstIterator = client
+      .listFindingComments({
+        projectVersionId: "pv1",
+        findingId: "CVE-2026-1",
+        page: { pageSize: 2 },
+      })
+      [Symbol.asyncIterator]();
     const first = await firstIterator.next();
     expect(first.value).toEqual({
       items: [{ text: "one" }, { text: "two" }],
@@ -35,11 +63,13 @@ describe("PlatformClient review regressions", () => {
       next: expect.any(String),
     });
 
-    const resumed = client.listFindingComments({
-      projectVersionId: "pv1",
-      findingId: "CVE-2026-1",
-      page: { continuation: first.value?.next ?? undefined },
-    })[Symbol.asyncIterator]();
+    const resumed = client
+      .listFindingComments({
+        projectVersionId: "pv1",
+        findingId: "CVE-2026-1",
+        page: { continuation: first.value?.next ?? undefined },
+      })
+      [Symbol.asyncIterator]();
     expect((await resumed.next()).value).toEqual({
       items: [{ text: "three" }],
       total: 3,
@@ -53,27 +83,37 @@ describe("PlatformClient review regressions", () => {
   });
 
   it("preserves ordered per-item partial VEX outcomes", async () => {
-    const fetch = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => Response.json({
-      status: "partial_success",
-      summary: { total: 2, succeeded: 1, failed: 1 },
-      results: [
-        { findingId: "101", success: true, status: "IN_TRIAGE" },
-        { findingId: "202", success: false, status: null, error: "not found" },
-      ],
-    }));
+    const fetch = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        Response.json({
+          status: "partial_success",
+          summary: { total: 2, succeeded: 1, failed: 1 },
+          results: [
+            { findingId: "101", success: true, status: "IN_TRIAGE" },
+            {
+              findingId: "202",
+              success: false,
+              status: null,
+              error: "not found",
+            },
+          ],
+        }),
+    );
     const client = new PlatformClient({
       baseUrl: "https://platform.example",
       token: "platform-secret",
       fetch,
     });
 
-    await expect(client.batchSetVexStatus({
-      projectVersionId: "pv1",
-      findings: [
-        { findingId: "101", status: "IN_TRIAGE" },
-        { findingId: "202", status: "NOT_AFFECTED" },
-      ],
-    })).resolves.toEqual({
+    await expect(
+      client.batchSetVexStatus({
+        projectVersionId: "pv1",
+        findings: [
+          { findingId: "101", status: "IN_TRIAGE" },
+          { findingId: "202", status: "NOT_AFFECTED" },
+        ],
+      }),
+    ).resolves.toEqual({
       status: "partial_success",
       summary: { total: 2, succeeded: 1, failed: 1 },
       results: [
@@ -96,11 +136,13 @@ describe("PlatformClient review regressions", () => {
       token: "platform-secret",
       fetch,
     });
-    await expect(client.getFirmwareFile({
-      fromScanId: "scan-1",
-      fileHash: "a".repeat(64),
-      mode: "full",
-    })).rejects.toMatchObject({
+    await expect(
+      client.getFirmwareFile({
+        fromScanId: "scan-1",
+        fileHash: "a".repeat(64),
+        mode: "full",
+      }),
+    ).rejects.toMatchObject({
       code: "PLATFORM_FIRMWARE_PROJECT_VERSION_REQUIRED",
     });
     expect(fetch).not.toHaveBeenCalled();

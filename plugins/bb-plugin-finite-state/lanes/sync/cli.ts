@@ -9,6 +9,8 @@ import type {
   Json,
   PlatformClient,
 } from "../../lib/remote/types.js";
+import { diagnoseRemoteFailure } from "../../lib/remote/errors.js";
+import { RemoteError } from "../../lib/remote/types.js";
 import { bindWorkspacePlatformProject } from "../../lib/store/project-scope.js";
 import { ENTITIES, type EntityKind } from "../../lib/sync/registry.js";
 import { pull, type EngineDeps } from "./engine/pull.js";
@@ -362,15 +364,26 @@ export function registerSyncCli(
         usage: "bench verdict <pv-id> [--digest <sha256>] [--json]",
       },
     ],
-    run: (argv, context) =>
-      run(
-        deps,
-        platform,
-        assuranceStudio,
-        resolveWorktreeRoot,
-        argv,
-        context,
-        namespaceRunners,
-      ),
+    async run(argv, context) {
+      try {
+        return await run(
+          deps,
+          platform,
+          assuranceStudio,
+          resolveWorktreeRoot,
+          argv,
+          context,
+          namespaceRunners,
+        );
+      } catch (error: unknown) {
+        if (!(error instanceof RemoteError)) throw error;
+        const diagnostic = diagnoseRemoteFailure(error);
+        return {
+          exitCode: 1,
+          stdout: "",
+          stderr: `${diagnostic.message}\n`,
+        };
+      }
+    },
   });
 }

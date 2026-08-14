@@ -16,6 +16,10 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import type { rpcContract } from "../../shared/contract.js";
 import { REMOTE_CONNECTIONS_CHANGED_CHANNEL } from "./connection-state.js";
+import {
+  remoteDiagnosticsRpcContract,
+  type RemoteFailureDiagnosticView,
+} from "./diagnostics-contract.js";
 
 interface PlatformConnection {
   state:
@@ -25,11 +29,17 @@ interface PlatformConnection {
     | "connected"
     | "unreachable";
   message: string | null;
+  diagnostic: RemoteFailureDiagnosticView | null;
+}
+
+interface RemoteConnections {
+  platform: PlatformConnection;
+  assuranceStudio: PlatformConnection;
 }
 
 type ConnectionGateState =
   | { kind: "loading" }
-  | { kind: "ready"; platform: PlatformConnection }
+  | { kind: "ready"; connections: RemoteConnections }
   | { kind: "error" };
 
 const SETTINGS_PATH = "/settings/plugins/finite-state";
@@ -52,7 +62,11 @@ function LoadingState(): React.JSX.Element {
   );
 }
 
-function UnconfiguredState({ message }: { message: string | null }): React.JSX.Element {
+function UnconfiguredState({
+  message,
+}: {
+  message: string | null;
+}): React.JSX.Element {
   return (
     <div className="flex h-full items-center justify-center bg-background p-6 text-foreground">
       <section
@@ -83,7 +97,8 @@ function UnconfiguredState({ message }: { message: string | null }): React.JSX.E
               "Configure the Platform URL and API token to load Finite State data in this panel."}
           </p>
           <p className="mt-2 text-xs leading-5 text-muted-foreground">
-            Optional Assurance Studio and Forge Compute connections remain independent.
+            Optional Assurance Studio and Forge Compute connections remain
+            independent.
           </p>
           <Button asChild className="mt-5">
             <a href={SETTINGS_PATH}>
@@ -98,12 +113,72 @@ function UnconfiguredState({ message }: { message: string | null }): React.JSX.E
   );
 }
 
+function ConnectionIssue({
+  connection,
+  name,
+}: {
+  connection: PlatformConnection;
+  name: string;
+}): React.JSX.Element | null {
+  if (!hasConnectionIssue(connection)) return null;
+  return (
+    <Alert className="m-3 w-auto shrink-0" variant="destructive">
+      <Icon name="AlertCircle" />
+      <AlertDescription className="flex items-center gap-3">
+        <span>
+          <span className="font-medium text-foreground">{name}: </span>
+          {connection.diagnostic === null
+            ? (connection.message ?? `${name} connection failed.`)
+            : formatDiagnostic(connection.diagnostic, name)}
+        </span>
+        <Button asChild className="ml-auto" size="sm" variant="outline">
+          <a href={SETTINGS_PATH}>Open settings</a>
+        </Button>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+function hasConnectionIssue(connection: PlatformConnection): boolean {
+  return (
+    connection.state === "unreachable" ||
+    connection.diagnostic?.kind === "settings"
+  );
+}
+
+function formatDiagnostic(
+  diagnostic: RemoteFailureDiagnosticView,
+  name: string,
+): string {
+  const request = diagnostic.request;
+  if (
+    diagnostic.kind === "authentication" &&
+    diagnostic.status !== null &&
+    request !== null &&
+    diagnostic.credential !== null
+  ) {
+    const failure =
+      diagnostic.status === 403 ? "authorization" : "authentication";
+    return `${name} ${failure} failed for ${request.method} ${request.url} with HTTP ${diagnostic.status} using ${diagnostic.credential.header}. Refresh ${diagnostic.credential.label} (${diagnostic.credential.setting}).`;
+  }
+  if (
+    diagnostic.kind === "http" &&
+    diagnostic.status !== null &&
+    request !== null
+  ) {
+    return `${name} rejected ${request.method} ${request.url} with HTTP ${diagnostic.status}.`;
+  }
+  return diagnostic.message;
+}
+
 export function PlatformConnectionGate({
   children,
 }: {
   children: ReactNode;
 }): React.JSX.Element {
-  const rpc = useRpc<typeof rpcContract>();
+  const rpc = useRpc<
+    typeof rpcContract & typeof remoteDiagnosticsRpcContract
+  >();
   const realtimeConnection = useRealtimeConnectionState();
   const connectedOnce = useRef(false);
   const [state, setState] = useState<ConnectionGateState>({ kind: "loading" });
@@ -111,7 +186,32 @@ export function PlatformConnectionGate({
   const refresh = useCallback(async () => {
     try {
       const status = await rpc.call("connectionsStatus", null);
-      setState({ kind: "ready", platform: status.platform });
+      const needsDiagnostics = [status.platform, status.assuranceStudio].some(
+        (connection) =>
+          connection.state === "unreachable" ||
+          connection.state === "needs-configuration",
+      );
+      const diagnostics = needsDiagnostics
+        ? await rpc.call("remoteConnectionDiagnostics", null).catch(() => ({
+            platform: null,
+            assuranceStudio: null,
+            forgeCompute: null,
+          }))
+        : {
+            platform: null,
+            assuranceStudio: null,
+            forgeCompute: null,
+          };
+      setState({
+        kind: "ready",
+        connections: {
+          platform: { ...status.platform, diagnostic: diagnostics.platform },
+          assuranceStudio: {
+            ...status.assuranceStudio,
+            diagnostic: diagnostics.assuranceStudio,
+          },
+        },
+      });
     } catch {
       setState({ kind: "error" });
     }
@@ -132,9 +232,10 @@ export function PlatformConnectionGate({
   if (state.kind === "loading") return <LoadingState />;
   if (
     state.kind === "ready" &&
-    state.platform.state === "needs-configuration"
+    state.connections.platform.state === "needs-configuration" &&
+    state.connections.platform.diagnostic?.kind !== "settings"
   ) {
-    return <UnconfiguredState message={state.platform.message} />;
+    return <UnconfiguredState message={state.connections.platform.message} />;
   }
   if (state.kind === "error") {
     return (
@@ -145,7 +246,12 @@ export function PlatformConnectionGate({
             <span>
               Connection status is unavailable. Panel data remains accessible.
             </span>
-            <Button className="ml-auto" onClick={() => void refresh()} size="sm" variant="outline">
+            <Button
+              className="ml-auto"
+              onClick={() => void refresh()}
+              size="sm"
+              variant="outline"
+            >
               Retry
             </Button>
           </AlertDescription>
@@ -154,5 +260,28 @@ export function PlatformConnectionGate({
       </div>
     );
   }
-  return <>{children}</>;
+  if (
+    state.kind === "ready" &&
+    !hasConnectionIssue(state.connections.platform) &&
+    !hasConnectionIssue(state.connections.assuranceStudio)
+  ) {
+    return <>{children}</>;
+  }
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      {state.kind === "ready" ? (
+        <>
+          <ConnectionIssue
+            connection={state.connections.platform}
+            name="Platform"
+          />
+          <ConnectionIssue
+            connection={state.connections.assuranceStudio}
+            name="Assurance Studio"
+          />
+        </>
+      ) : null}
+      <div className="min-h-0 flex-1">{children}</div>
+    </div>
+  );
 }

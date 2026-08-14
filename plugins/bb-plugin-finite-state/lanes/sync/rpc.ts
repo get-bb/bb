@@ -5,7 +5,7 @@ import { bindWorkspacePlatformProject } from "../../lib/store/project-scope.js";
 import { ENTITIES, type EntityKind } from "../../lib/sync/registry.js";
 import { rpcContract } from "../../shared/contract.js";
 import { resolveConflictRpc } from "./conflicts/index.js";
-import { pull, type EngineDeps } from "./engine/pull.js";
+import { PullFailedError, pull, type EngineDeps } from "./engine/pull.js";
 import { status, syncMetadata } from "./engine/status.js";
 import { plan } from "./plan/index.js";
 import { pushAuthorizationUnavailable } from "./push/index.js";
@@ -90,13 +90,20 @@ export function registerSyncRpc(
         projectId: input.projectId,
         projectVersionId: input.projectVersionId,
       };
-      const report = await pull(deps, scope, kinds, {
-        assuranceStudioProjectId: selectedAssuranceStudioProject(
-          deps,
-          input.workspaceProjectId,
-          scope.projectId,
-        ),
-      });
+      let report: Awaited<ReturnType<typeof pull>>;
+      try {
+        report = await pull(deps, scope, kinds, {
+          assuranceStudioProjectId: selectedAssuranceStudioProject(
+            deps,
+            input.workspaceProjectId,
+            scope.projectId,
+          ),
+        });
+      } catch (error: unknown) {
+        if (error instanceof PullFailedError)
+          throw new Error(error.contractSafeMessage);
+        throw error;
+      }
       bindWorkspacePlatformProject(
         deps.db,
         input.workspaceProjectId,
