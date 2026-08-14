@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@bb/shared-ui/alert";
 import { Badge } from "@bb/shared-ui/badge";
 import { Button } from "@bb/shared-ui/button";
@@ -95,9 +89,7 @@ export interface SyncReviewRoute {
   runId: string | null;
 }
 
-type ParsedRoute =
-  | { valid: true; route: SyncReviewRoute }
-  | { valid: false };
+type ParsedRoute = { valid: true; route: SyncReviewRoute } | { valid: false };
 
 interface ReadyState {
   kind: "ready";
@@ -106,11 +98,63 @@ interface ReadyState {
   connections: Connections;
 }
 
+type ReviewFailureSource = "connections" | "status" | "plan" | "route";
+
+interface ReviewFailure {
+  source: ReviewFailureSource;
+  code: string;
+  message: string;
+  retryable: boolean;
+}
+
 type ReviewState =
   | { kind: "loading" }
   | { kind: "unconfigured"; message: string | null }
-  | { kind: "error" }
+  | { kind: "error"; failure: ReviewFailure }
   | ReadyState;
+
+const NON_RETRYABLE_RPC_CODES = new Set([
+  "invalid_input",
+  "invalid_output",
+  "non_json_result",
+  "unknown_method",
+]);
+const NON_RETRYABLE_SYNC_CODES = new Set([
+  "PLAN_CONTINUATION_INVALID",
+  "PLAN_CONTINUATION_SCOPE_MISMATCH",
+  "PLAN_PERSISTENCE_UNAVAILABLE",
+  "PLAN_ROUTE_MISMATCH",
+  "SYNC_PLAN_CHANGED_DURING_READ",
+  "SYNC_PLAN_PAGE_LIMIT",
+]);
+
+function failureCode(message: string, fallback: string): string {
+  return /^([A-Z][A-Z0-9_]+)(?::|$)/u.exec(message)?.[1] ?? fallback;
+}
+
+function reviewFailure(
+  source: ReviewFailureSource,
+  error: unknown,
+): ReviewFailure {
+  const fallbackCode = `SYNC_${source.toUpperCase()}_FAILED`;
+  const message =
+    error instanceof Error && error.message.length > 0
+      ? error.message.slice(0, 400)
+      : `${source} request failed without error detail`;
+  const rpcCode =
+    error instanceof Error && typeof Reflect.get(error, "code") === "string"
+      ? String(Reflect.get(error, "code"))
+      : null;
+  const code = failureCode(message, fallbackCode);
+  return {
+    source,
+    code,
+    message,
+    retryable:
+      !NON_RETRYABLE_SYNC_CODES.has(code) &&
+      (rpcCode === null || !NON_RETRYABLE_RPC_CODES.has(rpcCode)),
+  };
+}
 
 function validIdentifier(value: string): boolean {
   return isSyncRouteIdentifier(value) && !CONTROL_CHARACTER.test(value);
@@ -126,11 +170,7 @@ function decodeRouteSegment(segment: string): string | null {
 }
 
 function parseSurface(value: string): SyncSurfaceFilter | null {
-  if (
-    value === "all" ||
-    value === "product-security" ||
-    value === "triage"
-  ) {
+  if (value === "all" || value === "product-security" || value === "triage") {
     return value;
   }
   return isEntityKind(value) ? value : null;
@@ -149,7 +189,9 @@ export function parseSyncReviewSubPath(subPath: string): ParsedRoute {
   }
   const decoded = rawSegments.map(decodeRouteSegment);
   if (decoded.some((segment) => segment === null)) return { valid: false };
-  const segments = decoded.filter((segment): segment is string => segment !== null);
+  const segments = decoded.filter(
+    (segment): segment is string => segment !== null,
+  );
   if (segments.length === 1) {
     const surface = parseSurface(segments[0]!);
     return surface
@@ -225,7 +267,9 @@ function buildReviewSubPath(
 ): string {
   let subPath = syncScopeSubPath(
     { projectId: scope.projectId, pvId: scope.projectVersionId },
-    route.surface === "all" || route.surface === "product-security" || route.surface === "triage"
+    route.surface === "all" ||
+      route.surface === "product-security" ||
+      route.surface === "triage"
       ? "all"
       : route.surface,
   );
@@ -416,7 +460,11 @@ function ScopeToolbar({
 
 function LoadingState(): React.JSX.Element {
   return (
-    <div aria-label="Loading Sync review plan" className="space-y-4 p-4" role="status">
+    <div
+      aria-label="Loading Sync review plan"
+      className="space-y-4 p-4"
+      role="status"
+    >
       <div className="grid grid-cols-3 gap-3">
         <Skeleton className="h-20" />
         <Skeleton className="h-20" />
@@ -439,7 +487,9 @@ function UnconfiguredState({
     <div className="flex min-h-80 items-center justify-center p-6">
       <section className="w-full max-w-lg rounded-lg border border-border bg-card p-6 shadow-sm">
         <Icon className="size-6 text-muted-foreground" name="ElectricPlugs" />
-        <h2 className="mt-4 text-lg font-semibold">Connect Finite State Platform</h2>
+        <h2 className="mt-4 text-lg font-semibold">
+          Connect Finite State Platform
+        </h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           {message ??
             "Configure the Platform URL and API token before loading a review plan."}
@@ -530,20 +580,55 @@ function SurfaceUnavailableState({
   );
 }
 
-function ErrorState({ onRetry }: { onRetry(): void }): React.JSX.Element {
+function ErrorState({
+  failure,
+  onOpenCurrentPlan,
+  onRetry,
+}: {
+  failure: ReviewFailure;
+  onOpenCurrentPlan(): void;
+  onRetry(): void;
+}): React.JSX.Element {
+  const title =
+    failure.source === "connections"
+      ? "Connection state could not be loaded"
+      : failure.source === "status"
+        ? "Sync status could not be loaded"
+        : failure.source === "route"
+          ? "The requested plan is no longer current"
+          : "Sync plan could not be loaded";
   return (
     <div className="flex min-h-80 items-center justify-center p-6">
       <section className="w-full max-w-lg rounded-lg border border-destructive/40 bg-card p-6 shadow-sm">
         <Icon className="size-6 text-destructive" name="AlertCircle" />
-        <h2 className="mt-4 text-lg font-semibold">Sync review unavailable</h2>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          The authoritative status or plan could not be loaded. No remote write
-          was attempted, and the URL was not used as plan data.
+        <p className="mt-4 font-mono text-xs uppercase tracking-wide text-destructive">
+          {failure.code}
         </p>
-        <Button className="mt-5" onClick={onRetry} variant="outline">
-          <Icon aria-hidden="true" name="RotateCcw" />
-          Retry current scope
-        </Button>
+        <h2 className="mt-2 text-lg font-semibold">{title}</h2>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          {failure.message}
+        </p>
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">
+          {failure.source === "route"
+            ? "This link names a superseded plan. Open the current plan for this scope to continue."
+            : failure.retryable
+              ? "No remote write was attempted. Retry starts again with a fresh plan."
+              : "This failure is not retryable from the panel. The request or installed RPC contract must be corrected before review can continue."}
+        </p>
+        {failure.source === "route" ? (
+          <Button
+            className="mt-5"
+            onClick={onOpenCurrentPlan}
+            variant="outline"
+          >
+            Open current plan
+          </Button>
+        ) : failure.retryable ? (
+          <Button className="mt-5" onClick={onRetry} variant="outline">
+            <Icon aria-hidden="true" name="RotateCcw" />
+            Retry with fresh plan
+          </Button>
+        ) : null}
       </section>
     </div>
   );
@@ -556,7 +641,9 @@ function BadRouteState({ onReset }: { onReset(): void }): React.JSX.Element {
         <p className="font-mono text-xs uppercase tracking-wide text-destructive">
           BAD_SYNC_ROUTE
         </p>
-        <h2 className="mt-2 text-lg font-semibold">This Sync route is invalid</h2>
+        <h2 className="mt-2 text-lg font-semibold">
+          This Sync route is invalid
+        </h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           Scope, surface, plan, and run identifiers must use bounded canonical
           route segments. No RPC request was sent.
@@ -649,12 +736,19 @@ export function SyncReviewPanel({
     let continuation = first.next;
     let pageCount = 1;
     while (continuation !== null) {
-      if (pageCount >= 100) throw new Error("SYNC_PLAN_PAGE_LIMIT");
+      if (pageCount >= 100) {
+        throw new Error(
+          "SYNC_PLAN_PAGE_LIMIT: plan exceeds 100 pages (20,000 items); narrow the surface filter",
+        );
+      }
       const next = await rpc.call("syncPlan", {
-        ...baseInput,
+        projectId: activeScope.projectId,
+        projectVersionId: activeScope.projectVersionId,
+        pageSize: 200,
         continuation,
       });
-      if (!samePlan(first, next)) throw new Error("SYNC_PLAN_CHANGED_DURING_READ");
+      if (!samePlan(first, next))
+        throw new Error("SYNC_PLAN_CHANGED_DURING_READ");
       items.push(...next.items);
       continuation = next.next;
       pageCount += 1;
@@ -710,11 +804,28 @@ export function SyncReviewPanel({
         statusResult.status !== "fulfilled" ||
         planResult.status !== "fulfilled"
       ) {
-        setState({ kind: "error" });
+        const failure =
+          connectionsResult.status === "rejected"
+            ? reviewFailure("connections", connectionsResult.reason)
+            : statusResult.status === "rejected"
+              ? reviewFailure("status", statusResult.reason)
+              : reviewFailure(
+                  "plan",
+                  planResult.status === "rejected" ? planResult.reason : null,
+                );
+        setState({ kind: "error", failure });
         return;
       }
       if (route.planId && route.planId !== planResult.value.planId) {
-        setState({ kind: "error" });
+        setState({
+          kind: "error",
+          failure: reviewFailure(
+            "route",
+            new Error(
+              `PLAN_ROUTE_MISMATCH: requested ${route.planId}, current plan is ${planResult.value.planId}`,
+            ),
+          ),
+        });
         return;
       }
       setState({
@@ -774,11 +885,7 @@ export function SyncReviewPanel({
   }, [realtimeState, scheduleAuthoritativeRefresh]);
 
   const resolveConflict = useCallback(
-    async (
-      item: SyncPlanItem,
-      field: string,
-      resolution: ConflictChoice,
-    ) => {
+    async (item: SyncPlanItem, field: string, resolution: ConflictChoice) => {
       if (!humanApprovalCapability || state.kind !== "ready") return;
       const id = planItemId(item);
       setResolutionState((current) => ({
@@ -811,7 +918,8 @@ export function SyncReviewPanel({
           [id]: {
             submittingField: null,
             errorField: field,
-            error: "The plan fence changed or this decision could not be applied. The current plan was refetched.",
+            error:
+              "The plan fence changed or this decision could not be applied. The current plan was refetched.",
           },
         }));
       }
@@ -974,7 +1082,20 @@ export function SyncReviewPanel({
         </div>
       ) : state.kind === "error" ? (
         <div className="min-h-0 flex-1 overflow-auto">
-          <ErrorState onRetry={() => void refresh(false)} />
+          <ErrorState
+            failure={state.failure}
+            onOpenCurrentPlan={() => {
+              navigate.toPluginPanel("sync", {
+                subPath: buildReviewSubPath(activeScope, {
+                  surface,
+                  planId: null,
+                  runId: null,
+                }),
+                replace: true,
+              });
+            }}
+            onRetry={() => void refresh(false)}
+          />
         </div>
       ) : (
         <>
@@ -986,7 +1107,9 @@ export function SyncReviewPanel({
                     PLAN {state.plan.planId}
                   </p>
                   <p className="mt-1 text-sm text-foreground">
-                    {routeSurfaceLabel(surface)} · {changeCount.toLocaleString()} proposed {changeCount === 1 ? "change" : "changes"}
+                    {routeSurfaceLabel(surface)} ·{" "}
+                    {changeCount.toLocaleString()} proposed{" "}
+                    {changeCount === 1 ? "change" : "changes"}
                   </p>
                 </div>
                 <PendingChangesChip
@@ -995,7 +1118,9 @@ export function SyncReviewPanel({
                     pvId: activeScope.projectVersionId,
                   }}
                   surface={
-                    surface === "all" || surface === "product-security" || surface === "triage"
+                    surface === "all" ||
+                    surface === "product-security" ||
+                    surface === "triage"
                       ? "all"
                       : surface
                   }
@@ -1015,22 +1140,35 @@ export function SyncReviewPanel({
                 </Button>
               </div>
               <div className="mt-3 flex flex-wrap gap-1.5 text-xs">
-                <Badge variant="outline">{state.status.local.length} local</Badge>
-                <Badge variant={state.status.conflicts.length > 0 ? "destructive" : "outline"}>
+                <Badge variant="outline">
+                  {state.status.local.length} local
+                </Badge>
+                <Badge
+                  variant={
+                    state.status.conflicts.length > 0
+                      ? "destructive"
+                      : "outline"
+                  }
+                >
                   {state.status.conflicts.length} conflicts
                 </Badge>
-                <Badge variant="outline">{state.status.upstream.length} upstream</Badge>
-                <Badge variant="outline">{state.status.orphans.length} orphans</Badge>
+                <Badge variant="outline">
+                  {state.status.upstream.length} upstream
+                </Badge>
+                <Badge variant="outline">
+                  {state.status.orphans.length} orphans
+                </Badge>
               </div>
             </div>
 
-            {state.plan.staleness.degraded || state.plan.cache.state !== "fresh" ? (
+            {state.plan.staleness.degraded ||
+            state.plan.cache.state !== "fresh" ? (
               <Alert className="m-3">
                 <Icon aria-hidden="true" name="AlertTriangle" />
                 <AlertTitle>View-only degraded plan</AlertTitle>
                 <AlertDescription>
-                  The browser RPC cannot observe authored worktree files, or
-                  its accepted cache is stale. The semantic plan remains
+                  The browser RPC cannot observe authored worktree files, or its
+                  accepted cache is stale. The semantic plan remains
                   inspectable, but its fence is insufficient for push.
                 </AlertDescription>
               </Alert>
@@ -1063,7 +1201,8 @@ export function SyncReviewPanel({
                 <AlertDescription>{pushError}</AlertDescription>
               </Alert>
             ) : null}
-            {pushReport && (!route?.runId || route.runId === pushReport.runId) ? (
+            {pushReport &&
+            (!route?.runId || route.runId === pushReport.runId) ? (
               <PushResults
                 authorizationAvailable={humanApprovalCapability !== null}
                 onRetry={retryPush}

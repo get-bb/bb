@@ -290,6 +290,50 @@ describe("sync registration", () => {
         acceptedGenerationId: pulledGenerationId,
       },
     });
+    const firstFilteredPage = await host.harness.behavior.callRpc("syncPlan", {
+      ...scope,
+      kinds: ["vexDecision"],
+      pageSize: 1,
+      continuation: null,
+    });
+    if (
+      typeof firstFilteredPage !== "object" ||
+      firstFilteredPage === null ||
+      !("next" in firstFilteredPage) ||
+      typeof firstFilteredPage.next !== "string" ||
+      !("planId" in firstFilteredPage) ||
+      typeof firstFilteredPage.planId !== "string"
+    ) {
+      throw new Error(
+        "registered filtered syncPlan fixture did not produce a continuation",
+      );
+    }
+    const continuedFilteredPage = await host.harness.behavior.callRpc(
+      "syncPlan",
+      {
+        ...scope,
+        pageSize: 1,
+        continuation: firstFilteredPage.next,
+      },
+    );
+    expect(continuedFilteredPage).toMatchObject({
+      ...scope,
+      planId: firstFilteredPage.planId,
+      items: [expect.objectContaining({ kind: "vexDecision" })],
+    });
+    await expect(
+      host.harness.behavior.callRpc("syncPlan", {
+        ...scope,
+        kinds: ["vexDecision"],
+        pageSize: 1,
+        continuation: firstFilteredPage.next,
+      }),
+    ).rejects.toMatchObject({
+      code: "handler_error",
+      message: expect.stringContaining(
+        "PLAN_CONTINUATION_INVALID: kinds are bound by the persisted plan token",
+      ),
+    });
     const pushInput = {
       ...scope,
       planId: "plan-wp17",

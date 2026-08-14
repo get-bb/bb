@@ -1,19 +1,7 @@
 // @vitest-environment jsdom
 
-import {
-  cleanup,
-  configure,
-  fireEvent,
-  waitFor,
-} from "@testing-library/react";
-import {
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { cleanup, configure, fireEvent, waitFor } from "@testing-library/react";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   installTestPluginRuntime,
   loadPluginApp,
@@ -39,9 +27,7 @@ class PanelResizeObserver implements ResizeObserver {
             contentRect: new DOMRectReadOnly(0, 0, 1200, 640),
             borderBoxSize: [{ blockSize: 640, inlineSize: 1200 }],
             contentBoxSize: [{ blockSize: 640, inlineSize: 1200 }],
-            devicePixelContentBoxSize: [
-              { blockSize: 640, inlineSize: 1200 },
-            ],
+            devicePixelContentBoxSize: [{ blockSize: 640, inlineSize: 1200 }],
           },
         ],
         this,
@@ -313,7 +299,9 @@ describe("Sync review panel", () => {
           "No status or plan request was sent for this project-level route.",
         ),
       ).toBeTruthy();
-      expect(slot.queryByRole("button", { name: "Retry current scope" })).toBeNull();
+      expect(
+        slot.queryByRole("button", { name: "Retry with fresh plan" }),
+      ).toBeNull();
       expect(slot.inspection.rpcCalls).toEqual([]);
     },
   );
@@ -340,7 +328,9 @@ describe("Sync review panel", () => {
           "The plan adapters for this surface have not shipped in this build. Changing remote settings or retrying cannot enable it.",
         ),
       ).toBeTruthy();
-      expect(slot.queryByRole("button", { name: "Retry current scope" })).toBeNull();
+      expect(
+        slot.queryByRole("button", { name: "Retry with fresh plan" }),
+      ).toBeNull();
       expect(slot.inspection.rpcCalls).toEqual([]);
 
       fireEvent.click(
@@ -357,7 +347,8 @@ describe("Sync review panel", () => {
   );
 
   it("keeps only registered Sync surfaces loadable", async () => {
-    const { isSyncReviewSurfaceAvailable } = await import("./SyncReviewPanel.js");
+    const { isSyncReviewSurfaceAvailable } =
+      await import("./SyncReviewPanel.js");
 
     expect(isSyncReviewSurfaceAvailable("all")).toBe(true);
     expect(isSyncReviewSurfaceAvailable("triage")).toBe(true);
@@ -371,6 +362,14 @@ describe("Sync review panel", () => {
     const allItems = Array.from({ length: 5_000 }, (_, index) => item(index));
     const syncPlan = vi.fn((input: unknown) => {
       const continuation = inputField(input, "continuation");
+      if (
+        typeof continuation === "string" &&
+        inputField(input, "kinds") !== undefined
+      ) {
+        throw new Error(
+          "PLAN_CONTINUATION_INVALID: kinds are bound by the persisted plan token",
+        );
+      }
       const start =
         typeof continuation === "string"
           ? Number(continuation.replace("page-", ""))
@@ -385,14 +384,16 @@ describe("Sync review panel", () => {
         next: end < allItems.length ? `page-${end}` : null,
       };
     });
-    const slot = renderSlot(await syncPanel(), { subPath: SCOPE_PATH }, {
-      rpc: handlers(syncPlan),
-    });
+    const slot = renderSlot(
+      await syncPanel(),
+      { subPath: `${SCOPE_PATH}/surface/vexDecision` },
+      { rpc: handlers(syncPlan) },
+    );
 
     await slot.findByText(
       (_content, element) =>
         element?.tagName === "P" &&
-        element.textContent === "All authored surfaces · 5,000 proposed changes",
+        element.textContent === "vexDecision · 5,000 proposed changes",
     );
     const groups = Array.from(
       slot.container.querySelectorAll<HTMLElement>("[data-plan-group]"),
@@ -411,25 +412,45 @@ describe("Sync review panel", () => {
       slot.container.querySelectorAll("[data-plan-row]").length,
     ).toBeLessThan(80);
     await waitFor(() => expect(syncPlan).toHaveBeenCalledTimes(25));
+    expect(syncPlan.mock.calls[0]?.[0]).toMatchObject({
+      kinds: ["vexDecision"],
+      continuation: null,
+    });
+    for (const [input] of syncPlan.mock.calls.slice(1)) {
+      expect(inputField(input, "kinds")).toBeUndefined();
+      expect(inputField(input, "continuation")).toEqual(expect.any(String));
+    }
     expect(
-      slot.getByRole("button", { name: "Push reviewed plan" }).hasAttribute("disabled"),
+      slot
+        .getByRole("button", { name: "Push reviewed plan" })
+        .hasAttribute("disabled"),
     ).toBe(true);
     expect(
-      slot.getByText("Human push approval is unavailable in the web panel in v1"),
+      slot.getByText(
+        "Human push approval is unavailable in the web panel in v1",
+      ),
     ).toBeTruthy();
   });
 
   it("component-tests loading, empty, error, unconfigured, and stale/offline states", async () => {
     const pending = new Promise(() => undefined);
-    const loading = renderSlot(await syncPanel(), { subPath: SCOPE_PATH }, {
-      rpc: handlers(() => pending),
-    });
+    const loading = renderSlot(
+      await syncPanel(),
+      { subPath: SCOPE_PATH },
+      {
+        rpc: handlers(() => pending),
+      },
+    );
     expect(loading.getByLabelText("Loading Sync review plan")).toBeTruthy();
     loading.lifecycle.unmount();
 
-    const empty = renderSlot(await syncPanel(), { subPath: SCOPE_PATH }, {
-      rpc: handlers(() => plan([])),
-    });
+    const empty = renderSlot(
+      await syncPanel(),
+      { subPath: SCOPE_PATH },
+      {
+        rpc: handlers(() => plan([])),
+      },
+    );
     expect(await empty.findByText("No local changes")).toBeTruthy();
     const emptySnapshot = {
       heading: empty.getByText("No local changes").textContent,
@@ -443,28 +464,61 @@ describe("Sync review panel", () => {
     `);
     empty.lifecycle.unmount();
 
-    const failed = renderSlot(await syncPanel(), { subPath: SCOPE_PATH }, {
-      rpc: handlers(() => Promise.reject(new Error("plan failed"))),
-    });
-    expect(await failed.findByText("Sync review unavailable")).toBeTruthy();
+    const retryablePlan = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("plan failed"))
+      .mockResolvedValue(plan());
+    const failed = renderSlot(
+      await syncPanel(),
+      { subPath: SCOPE_PATH },
+      {
+        rpc: handlers(retryablePlan),
+      },
+    );
+    expect(
+      await failed.findByText("Sync plan could not be loaded"),
+    ).toBeTruthy();
     expect({
-      heading: failed.getByText("Sync review unavailable").textContent,
-      retry: failed.getByRole("button", { name: "Retry current scope" }).textContent,
+      code: failed.getByText("SYNC_PLAN_FAILED").textContent,
+      detail: failed.getByText("plan failed").textContent,
+      heading: failed.getByText("Sync plan could not be loaded").textContent,
+      retry: failed.getByRole("button", { name: "Retry with fresh plan" })
+        .textContent,
     }).toMatchInlineSnapshot(`
       {
-        "heading": "Sync review unavailable",
-        "retry": "Retry current scope",
+        "code": "SYNC_PLAN_FAILED",
+        "detail": "plan failed",
+        "heading": "Sync plan could not be loaded",
+        "retry": "Retry with fresh plan",
       }
     `);
+    fireEvent.click(
+      failed.getByRole("button", { name: "Retry with fresh plan" }),
+    );
+    expect(await failed.findByText("VEX decision 1")).toBeTruthy();
+    expect(retryablePlan).toHaveBeenCalledTimes(2);
     failed.lifecycle.unmount();
 
-    const unconfigured = renderSlot(await syncPanel(), { subPath: SCOPE_PATH }, {
-      rpc: handlers(() => plan(), () => connections("needs-configuration")),
-    });
-    expect(await unconfigured.findByText("Connect Finite State Platform")).toBeTruthy();
+    const unconfigured = renderSlot(
+      await syncPanel(),
+      { subPath: SCOPE_PATH },
+      {
+        rpc: handlers(
+          () => plan(),
+          () => connections("needs-configuration"),
+        ),
+      },
+    );
+    expect(
+      await unconfigured.findByText("Connect Finite State Platform"),
+    ).toBeTruthy();
     expect({
-      guidance: unconfigured.getByText("Connect Platform before reviewing changes").textContent,
-      href: unconfigured.getByRole("link", { name: "Open connection settings" }).getAttribute("href"),
+      guidance: unconfigured.getByText(
+        "Connect Platform before reviewing changes",
+      ).textContent,
+      href: unconfigured
+        .getByRole("link", { name: "Open connection settings" })
+        .getAttribute("href"),
     }).toMatchInlineSnapshot(`
       {
         "guidance": "Connect Platform before reviewing changes",
@@ -473,22 +527,182 @@ describe("Sync review panel", () => {
     `);
     unconfigured.lifecycle.unmount();
 
-    const stale = renderSlot(await syncPanel(), { subPath: SCOPE_PATH }, {
-      realtimeConnectionState: "reconnecting",
-      rpc: handlers(() => plan([item(1)], { degraded: true, cacheState: "stale" })),
-    });
+    const stale = renderSlot(
+      await syncPanel(),
+      { subPath: SCOPE_PATH },
+      {
+        realtimeConnectionState: "reconnecting",
+        rpc: handlers(() =>
+          plan([item(1)], { degraded: true, cacheState: "stale" }),
+        ),
+      },
+    );
     expect(await stale.findByText("View-only degraded plan")).toBeTruthy();
     expect(stale.getByText("Offline view")).toBeTruthy();
     expect(
-      stale.getByText("Human push approval is unavailable in the web panel in v1"),
+      stale.getByText(
+        "Human push approval is unavailable in the web panel in v1",
+      ),
     ).toBeTruthy();
+  });
+
+  it("surfaces a typed non-retryable plan failure without offering a retry loop", async () => {
+    const continuationError = Object.assign(
+      new Error(
+        "PLAN_CONTINUATION_INVALID: kinds are bound by the persisted plan token",
+      ),
+      { code: "handler_error" },
+    );
+    const syncPlan = vi.fn(() => Promise.reject(continuationError));
+    const slot = renderSlot(
+      await syncPanel(),
+      { subPath: `${SCOPE_PATH}/surface/vexDecision` },
+      { rpc: handlers(syncPlan) },
+    );
+
+    expect(await slot.findByText("PLAN_CONTINUATION_INVALID")).toBeTruthy();
+    expect(
+      slot.getByText(
+        "PLAN_CONTINUATION_INVALID: kinds are bound by the persisted plan token",
+      ),
+    ).toBeTruthy();
+    expect(
+      slot.getByText(
+        "This failure is not retryable from the panel. The request or installed RPC contract must be corrected before review can continue.",
+      ),
+    ).toBeTruthy();
+    expect(
+      slot.queryByRole("button", { name: "Retry with fresh plan" }),
+    ).toBeNull();
+    expect(syncPlan).toHaveBeenCalledTimes(1);
+  });
+
+  it("classifies bare and detailed internal plan sentinels as non-retryable", async () => {
+    let page = 0;
+    const endlessPlan = vi.fn(() => {
+      page += 1;
+      return {
+        ...plan([item(page)]),
+        total: 100_000,
+        next: `page-${page * 200}`,
+      };
+    });
+    const pageLimit = renderSlot(
+      await syncPanel(),
+      { subPath: `${SCOPE_PATH}/surface/vexDecision` },
+      { rpc: handlers(endlessPlan) },
+    );
+
+    expect(await pageLimit.findByText("SYNC_PLAN_PAGE_LIMIT")).toBeTruthy();
+    expect(
+      pageLimit.getByText(
+        "SYNC_PLAN_PAGE_LIMIT: plan exceeds 100 pages (20,000 items); narrow the surface filter",
+      ),
+    ).toBeTruthy();
+    expect(
+      pageLimit.queryByRole("button", { name: "Retry with fresh plan" }),
+    ).toBeNull();
+    expect(endlessPlan).toHaveBeenCalledTimes(100);
+    pageLimit.lifecycle.unmount();
+
+    let planPage = 0;
+    const changingPlan = vi.fn(() => {
+      planPage += 1;
+      return planPage === 1
+        ? { ...plan([item(1)]), next: "page-200" }
+        : { ...plan([item(2)]), planSha256: "d".repeat(64) };
+    });
+    const changedDuringRead = renderSlot(
+      await syncPanel(),
+      { subPath: `${SCOPE_PATH}/surface/vexDecision` },
+      { rpc: handlers(changingPlan) },
+    );
+
+    expect(
+      await changedDuringRead.findAllByText("SYNC_PLAN_CHANGED_DURING_READ"),
+    ).toHaveLength(2);
+    expect(
+      changedDuringRead.queryByRole("button", {
+        name: "Retry with fresh plan",
+      }),
+    ).toBeNull();
+    expect(changingPlan).toHaveBeenCalledTimes(2);
+  });
+
+  it("offers a truthful escape from a superseded plan deep link", async () => {
+    const slot = renderSlot(
+      await syncPanel(),
+      {
+        subPath: `${SCOPE_PATH}/surface/vexDecision/plan/superseded-plan`,
+      },
+      { rpc: handlers() },
+    );
+
+    expect(await slot.findByText("PLAN_ROUTE_MISMATCH")).toBeTruthy();
+    expect(
+      slot.getByText(
+        "This link names a superseded plan. Open the current plan for this scope to continue.",
+      ),
+    ).toBeTruthy();
+    expect(
+      slot.queryByRole("button", { name: "Retry with fresh plan" }),
+    ).toBeNull();
+    fireEvent.click(slot.getByRole("button", { name: "Open current plan" }));
+    expect(slot.inspection.navigateCalls).toContainEqual({
+      method: "toPluginPanel",
+      path: "sync",
+      options: {
+        subPath: `${SCOPE_PATH}/surface/vexDecision`,
+        replace: true,
+      },
+    });
+  });
+
+  it("distinguishes connection and status failures from plan failures", async () => {
+    const connectionFailure = renderSlot(
+      await syncPanel(),
+      { subPath: SCOPE_PATH },
+      {
+        rpc: {
+          ...handlers(),
+          connectionsStatus: () =>
+            Promise.reject(new Error("connection lookup failed")),
+        },
+      },
+    );
+    expect(
+      await connectionFailure.findByText(
+        "Connection state could not be loaded",
+      ),
+    ).toBeTruthy();
+    expect(connectionFailure.getByText("SYNC_CONNECTIONS_FAILED")).toBeTruthy();
+    connectionFailure.lifecycle.unmount();
+
+    const statusFailure = renderSlot(
+      await syncPanel(),
+      { subPath: SCOPE_PATH },
+      {
+        rpc: {
+          ...handlers(),
+          syncStatus: () => Promise.reject(new Error("status lookup failed")),
+        },
+      },
+    );
+    expect(
+      await statusFailure.findByText("Sync status could not be loaded"),
+    ).toBeTruthy();
+    expect(statusFailure.getByText("SYNC_STATUS_FAILED")).toBeTruthy();
   });
 
   it("treats realtime payloads as hints and performs one debounced authoritative refetch", async () => {
     const syncPlan = vi.fn(() => plan());
-    const slot = renderSlot(await syncPanel(), { subPath: SCOPE_PATH }, {
-      rpc: handlers(syncPlan),
-    });
+    const slot = renderSlot(
+      await syncPanel(),
+      { subPath: SCOPE_PATH },
+      {
+        rpc: handlers(syncPlan),
+      },
+    );
     await slot.findByText("VEX decision 1");
     expect(syncPlan).toHaveBeenCalledTimes(1);
 
@@ -509,12 +723,16 @@ describe("Sync review panel", () => {
     const syncConflictResolve = vi.fn(() =>
       Promise.reject(new Error("PLAN_FENCE_MISMATCH")),
     );
-    const slot = renderSlot(await panelWithCapability(), { subPath: SCOPE_PATH }, {
-      rpc: {
-        ...handlers(syncPlan),
-        syncConflictResolve,
+    const slot = renderSlot(
+      await panelWithCapability(),
+      { subPath: SCOPE_PATH },
+      {
+        rpc: {
+          ...handlers(syncPlan),
+          syncConflictResolve,
+        },
       },
-    });
+    );
 
     fireEvent.click(
       await slot.findByRole("button", { name: "Expand VEX decision 1" }),
@@ -533,21 +751,23 @@ describe("Sync review panel", () => {
     expect(
       await slot.findByText(/The plan fence changed or this decision/u),
     ).toBeTruthy();
-    await waitFor(() => expect(syncConflictResolve).toHaveBeenCalledWith({
-      projectId: PROJECT,
-      projectVersionId: VERSION,
-      planId: PLAN_ID,
-      expectedPlanSha256: PLAN_SHA,
-      expectedBaseStateSha256: BASE_SHA,
-      pageSize: 200,
-      continuation: null,
-      humanApprovalCapability: "trusted-human-capability-for-tests-only",
-      kind: "vexDecision",
-      key: "vex-1",
-      field: "status",
-      expectedBaseContentHash: CONTENT_SHA,
-      resolution: { choice: "take-ours" },
-    }));
+    await waitFor(() =>
+      expect(syncConflictResolve).toHaveBeenCalledWith({
+        projectId: PROJECT,
+        projectVersionId: VERSION,
+        planId: PLAN_ID,
+        expectedPlanSha256: PLAN_SHA,
+        expectedBaseStateSha256: BASE_SHA,
+        pageSize: 200,
+        continuation: null,
+        humanApprovalCapability: "trusted-human-capability-for-tests-only",
+        kind: "vexDecision",
+        key: "vex-1",
+        field: "status",
+        expectedBaseContentHash: CONTENT_SHA,
+        resolution: { choice: "take-ours" },
+      }),
+    );
     await waitFor(() => expect(syncPlan).toHaveBeenCalledTimes(2));
   });
 
@@ -615,20 +835,32 @@ describe("Sync review panel", () => {
       summary: { total: 1, applied: 1, failed: 0, skipped: 0 },
       items: [{ ...report.items[1]!, status: "applied" as const, error: null }],
     }));
-    const slot = renderSlot(await panelWithCapability(), { subPath: SCOPE_PATH }, {
-      rpc: {
-        ...handlers(),
-        syncPush,
-        syncPushRetry,
+    const slot = renderSlot(
+      await panelWithCapability(),
+      { subPath: SCOPE_PATH },
+      {
+        rpc: {
+          ...handlers(),
+          syncPush,
+          syncPushRetry,
+        },
       },
-    });
+    );
 
     fireEvent.click(
       await slot.findByRole("button", { name: "Push reviewed plan" }),
     );
-    expect(await slot.findByText("Push completed with partial results")).toBeTruthy();
-    expect(slot.getByText("REMOTE_TIMEOUT: Remote timed out · Retryable")).toBeTruthy();
-    expect(slot.getByText("VALIDATION_FAILED: Remote rejected the value · Not retryable")).toBeTruthy();
+    expect(
+      await slot.findByText("Push completed with partial results"),
+    ).toBeTruthy();
+    expect(
+      slot.getByText("REMOTE_TIMEOUT: Remote timed out · Retryable"),
+    ).toBeTruthy();
+    expect(
+      slot.getByText(
+        "VALIDATION_FAILED: Remote rejected the value · Not retryable",
+      ),
+    ).toBeTruthy();
     fireEvent.click(
       slot.getByRole("button", { name: "Retry 1 eligible failure" }),
     );
