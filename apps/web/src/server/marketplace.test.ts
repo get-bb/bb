@@ -59,6 +59,9 @@ describe("marketplaceObjectKey", () => {
     expect(marketplaceObjectKey("/marketplace/v1/../secrets")).toBe(null);
     expect(marketplaceObjectKey("/marketplace/v1/icons//a.svg")).toBe(null);
     expect(marketplaceObjectKey("/marketplace/v1/%2e%2e/secrets")).toBe(null);
+    expect(marketplaceObjectKey("/marketplace/v1/icons/%broken.svg")).toBe(
+      null,
+    );
     expect(marketplaceObjectKey("/dashboard")).toBe(null);
   });
 });

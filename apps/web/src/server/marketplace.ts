@@ -29,9 +29,12 @@ const CONTENT_TYPES: Record<string, string> = {
  */
 export function marketplaceObjectKey(pathname: string): string | null {
   if (!pathname.startsWith(MARKETPLACE_PATH_PREFIX)) return null;
-  const key = decodeURIComponent(
-    pathname.slice(MARKETPLACE_PATH_PREFIX.length),
-  );
+  let key: string;
+  try {
+    key = decodeURIComponent(pathname.slice(MARKETPLACE_PATH_PREFIX.length));
+  } catch {
+    return null;
+  }
   if (key.length === 0 || key.length > 512) return null;
   if (key.includes("\\") || key.includes("\0")) return null;
   const segments = key.split("/");
