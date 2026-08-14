@@ -350,6 +350,34 @@ describe("git semver tag resolution", () => {
     );
   });
 
+  it("asks the remote for release tags only, so unrelated tags cost nothing", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "bb-git-many-tags-"));
+    cleanup.push(repo);
+    await run("git", ["init", "-q", "-b", "main"], { cwd: repo });
+    await run("git", ["config", "user.email", "test@example.com"], {
+      cwd: repo,
+    });
+    await run("git", ["config", "user.name", "Test"], { cwd: repo });
+    await writeFile(join(repo, "file.txt"), "release");
+    await run("git", ["add", "."], { cwd: repo });
+    await run("git", ["commit", "-qm", "release"], { cwd: repo });
+    const commit = (
+      await run("git", ["rev-parse", "HEAD"], { cwd: repo })
+    ).stdout.trim();
+    // One release plus enough unrelated tags to pass the 8 MiB ls-remote cap.
+    // A listing that does not filter on the remote reads all of them and
+    // fails, so a valid plugin range would become unresolvable.
+    const lines = ["# pack-refs with: peeled fully-peeled sorted \n"];
+    lines.push(`${commit} refs/tags/notes/v1.0.0\n`);
+    for (let index = 0; index < 150_000; index += 1) {
+      lines.push(`${commit} refs/tags/unrelated-${String(index)}\n`);
+    }
+    await writeFile(join(repo, ".git", "packed-refs"), lines.join(""));
+
+    const tags = await listGitSemverTags({ url: repo, tagPrefix: "notes/" });
+    expect(tags.map((tag) => tag.tag)).toEqual(["notes/v1.0.0"]);
+  });
+
   it("selects the highest satisfying release and excludes prereleases", async () => {
     const { repo } = await tagRepo();
     const tags = await listGitSemverTags({ url: repo, tagPrefix: "" });

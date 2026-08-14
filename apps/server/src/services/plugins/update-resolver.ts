@@ -548,9 +548,20 @@ export async function listGitSemverTags(args: {
   url: string;
   tagPrefix: string;
 }): Promise<GitSemverTag[]> {
+  // The remote does the filtering. A repository can carry thousands of tags
+  // bb would discard, and downloading them wastes the byte cap that keeps a
+  // truncated listing from resolving a range to the wrong release. The prefix
+  // pattern rejects glob characters, so this expands to exactly the release
+  // tags and their peeled "^{}" refs.
   const output = await runInstallCommand(
     "git",
-    ["ls-remote", "--tags", args.url],
+    [
+      "ls-remote",
+      "--tags",
+      args.url,
+      `refs/tags/${args.tagPrefix}v*`,
+      `refs/tags/${args.tagPrefix}v*^{}`,
+    ],
     {
       notFoundHint: GIT_NOT_FOUND_HINT,
       maxStdoutBytes: MAX_LS_REMOTE_TAG_BYTES,
