@@ -300,9 +300,7 @@ function createRunningExecutionBase({
     ...(incoming.parentToolCallId
       ? { parentToolCallId: incoming.parentToolCallId }
       : {}),
-    ...(incoming.presentation
-      ? { presentation: incoming.presentation }
-      : {}),
+    ...(incoming.presentation ? { presentation: incoming.presentation } : {}),
     output: getVisibleTextBufferText(outputBuffer) ?? "",
     completedAt: incoming.completedAt ?? null,
     status: incoming.status ?? "pending",
@@ -827,6 +825,16 @@ function mergeExecutionSummary(
     mergeCallStatus(target.status, incoming.status) ?? target.status;
 }
 
+function mergeFinalizedCrossKindError(
+  target: ExecutionMergeTarget,
+  incoming: RunningExecCall,
+): void {
+  mergeExecutionOutput(target, incoming, { visibleOutput: incoming.output });
+  mergeExecutionCompletion(target, incoming);
+  target.status =
+    mergeCallStatus(target.status, incoming.status) ?? target.status;
+}
+
 function syncProjectedCallOutput(
   state: ToolActivityProjectionState,
   call: RunningExecCall,
@@ -1153,14 +1161,25 @@ export function onExecEnd(
     }
   }
 
-  if (
-    state.toolActivity.finalizedExecCallIds.has(incoming.callId) &&
-    merged.status !== "error"
-  ) {
-    return;
+  const historyMatch = findExecMessageInHistoryCells(state, incoming.callId);
+  if (state.toolActivity.finalizedExecCallIds.has(incoming.callId)) {
+    if (merged.status !== "error") {
+      return;
+    }
+    if (historyMatch && historyMatch.call.kind !== merged.kind) {
+      mergeFinalizedCrossKindError(historyMatch.call, merged);
+      historyMatch.cell.sourceSeqEnd = Math.max(
+        historyMatch.cell.sourceSeqEnd,
+        merged.sourceSeqEnd,
+      );
+      historyMatch.cell.createdAt = Math.max(
+        historyMatch.cell.createdAt,
+        merged.createdAt,
+      );
+      return;
+    }
   }
 
-  const historyMatch = findExecMessageInHistoryCells(state, incoming.callId);
   if (historyMatch) {
     mergeExecutionSummary(historyMatch.call, merged, {
       visibleOutput: merged.output,

@@ -4,11 +4,13 @@ import type {
   CommandExecutionUpdate,
   DelegationExecutionUpdate,
   ExecutionOutputUpdate,
+  ToolCallExecutionUpdate,
 } from "../src/exec-lifecycle.js";
 import type {
   EventProjectionCommandMessage,
   EventProjectionDelegationMessage,
   EventProjectionMessage,
+  EventProjectionToolCallMessage,
   EventProjectionToolParsedIntent,
 } from "../src/event-projection-types.js";
 import {
@@ -38,6 +40,13 @@ interface ApplyCommandOutputArgs extends CommandOutputArgs {
   appendOutput: boolean;
   replaceOutput: boolean;
   seq: number;
+}
+
+interface ToolCallUpdateArgs {
+  callId?: string;
+  completedAt?: number | null;
+  output?: string;
+  status: NonNullable<ToolCallExecutionUpdate["status"]>;
 }
 
 interface DelegationUpdateArgs {
@@ -81,6 +90,23 @@ function commandUpdate({
   };
 }
 
+function toolCallUpdate({
+  callId = "tool-1",
+  completedAt = null,
+  output,
+  status,
+}: ToolCallUpdateArgs): ToolCallExecutionUpdate {
+  return {
+    kind: "tool-call",
+    callId,
+    toolName: "Read",
+    toolArgs: null,
+    status,
+    completedAt,
+    ...(output !== undefined ? { output } : {}),
+  };
+}
+
 function delegationUpdate({
   completedAt = null,
   output,
@@ -118,6 +144,12 @@ function isDelegationMessage(
   return message.kind === "delegation";
 }
 
+function isToolCallMessage(
+  message: EventProjectionMessage,
+): message is EventProjectionToolCallMessage {
+  return message.kind === "tool-call";
+}
+
 function activeCommandMessage(
   state: ToolActivityProjectionState,
 ): EventProjectionCommandMessage | null {
@@ -142,6 +174,12 @@ function delegationMessages(
   state: ToolActivityProjectionState,
 ): EventProjectionDelegationMessage[] {
   return state.messages.filter(isDelegationMessage);
+}
+
+function toolCallMessages(
+  state: ToolActivityProjectionState,
+): EventProjectionToolCallMessage[] {
+  return state.messages.filter(isToolCallMessage);
 }
 
 function beginCommand(state: ToolActivityProjectionState): void {
@@ -207,13 +245,7 @@ function outputBeforeCommandBegin(
   state: ToolActivityProjectionState,
   output: string,
 ): void {
-  onExecOutput(
-    state,
-    eventMeta(1),
-    commandOutput({ output }),
-    true,
-    false,
-  );
+  onExecOutput(state, eventMeta(1), commandOutput({ output }), true, false);
 }
 
 function applyCommandOutput(
@@ -269,6 +301,123 @@ describe("tool activity projection", () => {
       {
         command: latestCommand,
         parsedIntents: [],
+      },
+    ]);
+  });
+
+  it("merges a late failed tool completion into a finalized command row", () => {
+    const state = createProjectionState();
+
+    onExecBegin(
+      state,
+      eventMeta(1),
+      "thread-1",
+      "turn-1",
+      commandUpdate({
+        command: "pnpm test",
+        output: "started\n",
+        status: "pending",
+      }),
+    );
+    onExecEnd(
+      state,
+      eventMeta(2),
+      "thread-1",
+      "turn-1",
+      commandUpdate({
+        completedAt: 2,
+        output: "backgrounded\n",
+        status: "completed",
+      }),
+    );
+
+    expect(() =>
+      onExecEnd(
+        state,
+        eventMeta(3),
+        "thread-1",
+        "turn-1",
+        toolCallUpdate({
+          callId: "command-1",
+          completedAt: 3,
+          output: "failed\n",
+          status: "error",
+        }),
+      ),
+    ).not.toThrow();
+
+    expect(commandMessages(state)).toMatchObject([
+      {
+        kind: "command",
+        command: "pnpm test",
+        cwd: "/repo",
+        completedAt: 3,
+        output: "failed\n",
+        status: "error",
+      },
+    ]);
+    expect(toolCallMessages(state)).toEqual([]);
+  });
+
+  it("rejects a cross-kind update for a non-finalized command row", () => {
+    const state = createProjectionState();
+
+    onExecBegin(
+      state,
+      eventMeta(1),
+      "thread-1",
+      "turn-1",
+      commandUpdate({ status: "pending" }),
+    );
+    interruptPendingToolActivity(state, {
+      completedAt: 2,
+      turnIds: new Set(["turn-1"]),
+    });
+
+    expect(() =>
+      onExecEnd(
+        state,
+        eventMeta(3),
+        "thread-1",
+        "turn-1",
+        toolCallUpdate({ callId: "command-1", status: "completed" }),
+      ),
+    ).toThrow("Cannot merge command with tool-call for call command-1");
+  });
+
+  it("ignores a late non-error cross-kind update for a finalized command row", () => {
+    const state = createProjectionState();
+
+    beginCommand(state);
+    onExecEnd(
+      state,
+      eventMeta(2),
+      "thread-1",
+      "turn-1",
+      commandUpdate({
+        completedAt: 2,
+        output: "completed\n",
+        status: "completed",
+      }),
+    );
+    onExecEnd(
+      state,
+      eventMeta(3),
+      "thread-1",
+      "turn-1",
+      toolCallUpdate({
+        callId: "command-1",
+        completedAt: 3,
+        output: "duplicate\n",
+        status: "completed",
+      }),
+    );
+
+    expect(commandMessages(state)).toMatchObject([
+      {
+        completedAt: 2,
+        output: "completed\n",
+        status: "completed",
       },
     ]);
   });

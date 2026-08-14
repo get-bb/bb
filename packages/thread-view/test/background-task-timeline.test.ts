@@ -4,7 +4,11 @@ import type {
   ThreadEventBackgroundTaskItem,
   WorkflowProgressSnapshot,
 } from "@bb/domain";
-import type { TimelineRow, TimelineWorkflowWorkRow } from "@bb/server-contract";
+import type {
+  TimelineCommandWorkRow,
+  TimelineRow,
+  TimelineWorkflowWorkRow,
+} from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
   buildThreadTimelineFromEvents,
@@ -59,6 +63,19 @@ function findWorkflowRows(rows: TimelineRow[]): TimelineWorkflowWorkRow[] {
     }
     if (row.kind === "turn" && row.children) {
       found.push(...findWorkflowRows(row.children));
+    }
+  }
+  return found;
+}
+
+function findCommandRows(rows: TimelineRow[]): TimelineCommandWorkRow[] {
+  const found: TimelineCommandWorkRow[] = [];
+  for (const row of rows) {
+    if (row.kind === "work" && row.workKind === "command") {
+      found.push(row);
+    }
+    if (row.kind === "turn" && row.children) {
+      found.push(...findCommandRows(row.children));
     }
   }
   return found;
@@ -750,6 +767,79 @@ describe("background task timeline projection", () => {
       "task:agent-latest",
       "task:cmd-late",
       "task:cmd-early",
+    ]);
+  });
+
+  it("merges a late failed tool completion into a finalized command row", () => {
+    const timeline = buildTimeline(
+      [
+        turnStarted("turn-1", 1),
+        withMeta(
+          {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: {
+              type: "commandExecution",
+              id: "toolu-bash",
+              command: "sleep 10",
+              cwd: "/tmp",
+              status: "pending",
+              approvalStatus: null,
+            },
+          },
+          2,
+        ),
+        withMeta(
+          {
+            type: "item/completed",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: {
+              type: "commandExecution",
+              id: "toolu-bash",
+              command: "sleep 10",
+              cwd: "/tmp",
+              status: "completed",
+              aggregatedOutput: "initial completion",
+              exitCode: 0,
+              approvalStatus: null,
+            },
+          },
+          3,
+        ),
+        withMeta(
+          {
+            type: "item/completed",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: {
+              type: "toolCall",
+              id: "toolu-bash",
+              tool: "tool",
+              status: "failed",
+              result: "final failure",
+            },
+          },
+          4,
+        ),
+        turnCompleted("turn-1", 5),
+      ],
+      { includeNestedRows: true, turnMessageDetail: "full" },
+    );
+
+    expect(findCommandRows(timeline.rows)).toMatchObject([
+      {
+        callId: "toolu-bash",
+        command: "sleep 10",
+        completedAt: 4_000,
+        cwd: "/tmp",
+        output: "final failure",
+        status: "error",
+      },
     ]);
   });
 
