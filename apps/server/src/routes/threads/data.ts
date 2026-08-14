@@ -1,8 +1,4 @@
 import path from "node:path";
-import {
-  getBuiltInAgentProviderInfo,
-  isAgentProviderId,
-} from "@bb/agent-providers";
 import { formatCustomAcpAgentProviderId } from "@bb/config/bb-app-managed-config";
 import {
   getAppSettings,
@@ -81,7 +77,7 @@ import { parseFileListLimit } from "../file-list-query.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 
 function resolveThreadProviderDisplayName(
-  deps: Pick<AppDeps, "config">,
+  deps: Pick<AppDeps, "config" | "providerRegistry">,
   providerId: string,
 ): string | undefined {
   const customAcpAgent = deps.config.customAcpAgents.find(
@@ -94,9 +90,7 @@ function resolveThreadProviderDisplayName(
   if (knownAcpAgent) {
     return knownAcpAgent.displayName;
   }
-  return isAgentProviderId(providerId)
-    ? getBuiltInAgentProviderInfo(providerId).displayName
-    : undefined;
+  return deps.providerRegistry.get(providerId)?.info.displayName;
 }
 
 function validateFilePath(filePath: string): void {

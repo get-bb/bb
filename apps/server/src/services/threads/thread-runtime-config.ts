@@ -39,7 +39,6 @@ import {
   readDataDirAgentInstructions,
   readWorkspaceAgentInstructions,
 } from "./workspace-agent-instructions.js";
-export { getSupportedReasoningLevelsForProvider } from "./thread-reasoning-policy.js";
 
 const STANDARD_AGENT_INSTRUCTIONS = renderTemplate(
   "standardAgentAppendInstructions",
@@ -147,7 +146,7 @@ export function resolvePermissionEscalation(
 }
 
 export async function resolveExecutionOptions(
-  deps: Pick<AppDeps, "db">,
+  deps: Pick<AppDeps, "db" | "providerRegistry">,
   args: ResolveExecutionOptionsArgs,
 ): Promise<ResolvedThreadExecutionOptions> {
   const plan = await resolveExistingThreadExecutionPlan(deps, {

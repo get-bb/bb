@@ -20,6 +20,7 @@ import {
   getBuiltInAgentProviderServerCapabilities,
   isAcpProviderId,
   listBuiltInAgentProviderInfos,
+  supportsManualCompaction as supportsCatalogManualCompaction,
   type ProviderServerCapabilities,
 } from "@bb/agent-providers";
 import type { PermissionMode, ProviderInfo } from "@bb/domain";
@@ -36,8 +37,9 @@ export interface ProviderRegistration {
   /**
    * The plugin's full declaration — present only for plugin-sourced entries.
    * Retained so declared facts without a registry consumer yet (`kind`,
-   * `bridge`, `supportsNativeSessionRewind`, `supportsManualCompaction`) are
-   * not dropped by the info/serverCapabilities mapping.
+   * `bridge`, `supportsNativeSessionRewind`) are not dropped by the
+   * info/serverCapabilities mapping; `supportsManualCompaction` is read from
+   * it by the compaction accessor below.
    */
   declaration?: PluginProviderDeclaration;
 }
@@ -57,6 +59,13 @@ export interface ProviderRegistryService {
     providerId: string,
   ): readonly PermissionMode[] | null;
   supportsNativeFork(providerId: string): boolean;
+  /**
+   * Whether BB can explicitly request context compaction. Plugin providers
+   * answer from their declaration; every other id falls back to the catalog
+   * helper, which keeps its acp-opencode quirk until the phase-6
+   * capability + `thread/compact` protocol method replace the string list.
+   */
+  supportsManualCompaction(providerId: string): boolean;
   /**
    * Adds a plugin-registered provider. Rejects id collisions with any live
    * registration — a plugin cannot shadow a core provider or another plugin.
@@ -144,6 +153,17 @@ export function createProviderRegistryService(): ProviderRegistryService {
         }).capabilities.supportsFork;
       }
       return false;
+    },
+
+    supportsManualCompaction(providerId) {
+      const registration = getRegistration(providerId);
+      if (registration?.source.kind === "plugin") {
+        return (
+          registration.declaration?.capabilities.supportsManualCompaction ??
+          false
+        );
+      }
+      return supportsCatalogManualCompaction(providerId);
     },
 
     register(registration) {

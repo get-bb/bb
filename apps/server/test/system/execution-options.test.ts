@@ -12,6 +12,9 @@ import {
 } from "../helpers/host-rpc.js";
 import { seedHostSession } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
+
+const registry = createProviderRegistryService();
 
 describe("appendCustomModels", () => {
   it("appends custom models for the requested provider after the catalog", () => {
@@ -20,7 +23,7 @@ describe("appendCustomModels", () => {
       isDefault: true,
     });
 
-    const { models, selectedOnlyModels } = appendCustomModels({
+    const { models, selectedOnlyModels } = appendCustomModels(registry, {
       customModels: [
         {
           providerId: "claude-code",
@@ -48,7 +51,7 @@ describe("appendCustomModels", () => {
   });
 
   it("advertises the full reasoning ladder for claude-code custom models", () => {
-    const { models } = appendCustomModels({
+    const { models } = appendCustomModels(registry, {
       customModels: [
         { providerId: "claude-code", model: "claude-example-preview" },
       ],
@@ -65,7 +68,7 @@ describe("appendCustomModels", () => {
   });
 
   it("uses the provider reasoning ladder for codex and pi custom models", () => {
-    const { models: codexModels } = appendCustomModels({
+    const { models: codexModels } = appendCustomModels(registry, {
       customModels: [{ providerId: "codex", model: "custom-model" }],
       models: [],
       providerId: "codex",
@@ -77,7 +80,7 @@ describe("appendCustomModels", () => {
       ),
     ).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
 
-    const { models: piModels } = appendCustomModels({
+    const { models: piModels } = appendCustomModels(registry, {
       customModels: [{ providerId: "pi", model: "custom-model" }],
       models: [],
       providerId: "pi",
@@ -92,7 +95,7 @@ describe("appendCustomModels", () => {
   });
 
   it("appends dynamic ACP custom models with the agent-managed effort", () => {
-    const { models } = appendCustomModels({
+    const { models } = appendCustomModels(registry, {
       customModels: [
         {
           providerId: "acp-opencode",
@@ -122,7 +125,7 @@ describe("appendCustomModels", () => {
   });
 
   it("falls back to the model id when displayName is omitted", () => {
-    const { models } = appendCustomModels({
+    const { models } = appendCustomModels(registry, {
       customModels: [
         { providerId: "claude-code", model: "claude-example-preview" },
       ],
@@ -138,7 +141,7 @@ describe("appendCustomModels", () => {
   it("keeps the catalog entry when a custom model id collides", () => {
     const catalogModel = availableModelFixture({ model: "claude-opus-4-8" });
 
-    const { models } = appendCustomModels({
+    const { models } = appendCustomModels(registry, {
       customModels: [
         {
           providerId: "claude-code",
@@ -160,7 +163,7 @@ describe("appendCustomModels", () => {
       reasoningLevels: ["low", "medium"],
     });
 
-    const { models, selectedOnlyModels } = appendCustomModels({
+    const { models, selectedOnlyModels } = appendCustomModels(registry, {
       customModels: [
         {
           providerId: "claude-code",
@@ -180,7 +183,7 @@ describe("appendCustomModels", () => {
   });
 
   it("ignores duplicate custom entries for the same model id", () => {
-    const { models } = appendCustomModels({
+    const { models } = appendCustomModels(registry, {
       customModels: [
         {
           providerId: "claude-code",
@@ -206,7 +209,7 @@ describe("appendCustomModels", () => {
     const catalogModel = availableModelFixture({ model: "claude-opus-4-8" });
     const retiredModel = availableModelFixture({ model: "claude-opus-4-6" });
 
-    const { models, selectedOnlyModels } = appendCustomModels({
+    const { models, selectedOnlyModels } = appendCustomModels(registry, {
       customModels: [
         { providerId: "pi", model: "anthropic/claude-example-preview" },
       ],

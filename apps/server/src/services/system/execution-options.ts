@@ -26,6 +26,7 @@ import { ApiError } from "../../errors.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { getHostPermissionCeiling } from "../hosts/permission-ceiling.js";
 import { requireEnvironment } from "../lib/entity-lookup.js";
+import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import { getSupportedReasoningLevelsForProvider } from "../threads/thread-reasoning-policy.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
 import {
@@ -310,12 +311,15 @@ export async function resolveSystemProviderModels(
     hostId: args.hostId,
     provider,
   });
-  const { models, selectedOnlyModels } = appendCustomModels({
-    customModels: deps.config.customModels,
-    models: result.models,
-    providerId: provider.id,
-    selectedOnlyModels: result.selectedOnlyModels,
-  });
+  const { models, selectedOnlyModels } = appendCustomModels(
+    deps.providerRegistry,
+    {
+      customModels: deps.config.customModels,
+      models: result.models,
+      providerId: provider.id,
+      selectedOnlyModels: result.selectedOnlyModels,
+    },
+  );
   return {
     models,
     selectedOnlyModels,
@@ -323,7 +327,10 @@ export async function resolveSystemProviderModels(
   };
 }
 
-function buildCustomModel(customModel: CustomProviderModel): AvailableModel {
+function buildCustomModel(
+  registry: ProviderRegistryService,
+  customModel: CustomProviderModel,
+): AvailableModel {
   return {
     id: customModel.model,
     model: customModel.model,
@@ -335,7 +342,7 @@ function buildCustomModel(customModel: CustomProviderModel): AvailableModel {
     // ladder comes from the same per-provider policy table that validates
     // reasoning overrides, so the picker and validation cannot drift apart.
     supportedReasoningEfforts: reasoningEffortsForLevels(
-      getSupportedReasoningLevelsForProvider(customModel.providerId),
+      getSupportedReasoningLevelsForProvider(registry, customModel.providerId),
     ),
     defaultReasoningEffort: "medium",
     isDefault: false,
@@ -349,12 +356,15 @@ function buildCustomModel(customModel: CustomProviderModel): AvailableModel {
 // describes accurately but no longer offers) are promoted into the active
 // list instead of being shadowed by a synthesized entry. This also runs when
 // the provider model list failed to load so custom models stay selectable.
-export function appendCustomModels({
-  customModels,
-  models,
-  providerId,
-  selectedOnlyModels,
-}: AppendCustomModelsArgs): AppendCustomModelsResult {
+export function appendCustomModels(
+  registry: ProviderRegistryService,
+  {
+    customModels,
+    models,
+    providerId,
+    selectedOnlyModels,
+  }: AppendCustomModelsArgs,
+): AppendCustomModelsResult {
   const providerCustomModels = customModels.filter(
     (customModel) => customModel.providerId === providerId,
   );
@@ -379,7 +389,7 @@ export function appendCustomModels({
       appendedModels.push(selectedOnlyMatch);
       continue;
     }
-    appendedModels.push(buildCustomModel(customModel));
+    appendedModels.push(buildCustomModel(registry, customModel));
   }
 
   return {
@@ -445,12 +455,15 @@ export async function resolveSystemExecutionOptions(
   }
 
   if (hostId === null) {
-    const { models, selectedOnlyModels } = appendCustomModels({
-      customModels: deps.config.customModels,
-      models: [],
-      providerId: modelsProvider.id,
-      selectedOnlyModels: [],
-    });
+    const { models, selectedOnlyModels } = appendCustomModels(
+      deps.providerRegistry,
+      {
+        customModels: deps.config.customModels,
+        models: [],
+        providerId: modelsProvider.id,
+        selectedOnlyModels: [],
+      },
+    );
     return {
       providers,
       permissionCeiling,
@@ -475,12 +488,15 @@ export async function resolveSystemExecutionOptions(
           provider: modelsProvider,
         });
 
-  const { models, selectedOnlyModels } = appendCustomModels({
-    customModels: deps.config.customModels,
-    models: modelResult.models,
-    providerId: modelsProvider.id,
-    selectedOnlyModels: modelResult.selectedOnlyModels,
-  });
+  const { models, selectedOnlyModels } = appendCustomModels(
+    deps.providerRegistry,
+    {
+      customModels: deps.config.customModels,
+      models: modelResult.models,
+      providerId: modelsProvider.id,
+      selectedOnlyModels: modelResult.selectedOnlyModels,
+    },
+  );
 
   return {
     providers,

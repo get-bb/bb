@@ -31,7 +31,6 @@ import {
   type PublicApiSchema,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
-import { supportsManualCompaction } from "@bb/agent-providers";
 import type { AppDeps } from "../types.js";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
@@ -240,9 +239,12 @@ function buildProjectsWithThreadsResponseFromRows(
   return projects.map((project) => ({
     ...project,
     threads: threadsByProjectId.get(project.id) ?? [],
-    defaultExecutionOptions: resolveCreateThreadExecutionDefaults({
-      storedDefaults: defaultsByProjectId.get(project.id) ?? null,
-    }).executionDefaults,
+    defaultExecutionOptions: resolveCreateThreadExecutionDefaults(
+      deps.providerRegistry,
+      {
+        storedDefaults: defaultsByProjectId.get(project.id) ?? null,
+      },
+    ).executionDefaults,
   }));
 }
 
@@ -687,7 +689,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
     // Providers without a skills composer action have no typeahead entries,
     // so skip the daemon roundtrip entirely.
-    if (!providerHasCommandSurface(query.provider)) {
+    if (!providerHasCommandSurface(deps.providerRegistry, query.provider)) {
       return context.json({ commands: [] });
     }
 
@@ -733,7 +735,9 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     return context.json(
       buildCommandListResponse({
         commands: result.commands,
-        includeBuiltinCompact: supportsManualCompaction(query.provider),
+        includeBuiltinCompact: deps.providerRegistry.supportsManualCompaction(
+          query.provider,
+        ),
         skillCatalog,
       }),
     );

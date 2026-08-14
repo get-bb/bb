@@ -6,9 +6,10 @@
  * packages/agent-providers/src/catalog.ts exactly, so plugin providers ride
  * every existing consumer unchanged.
  *
- * Declared facts with no registry consumer yet (`kind`, `bridge`,
+ * Declared facts outside these shapes (`kind`, `bridge`,
  * `supportsNativeSessionRewind`, `supportsManualCompaction`) are not dropped:
- * the full declaration rides the registration record.
+ * the full declaration rides the registration record, where the registry's
+ * compaction accessor reads `supportsManualCompaction`.
  */
 import type { ProviderServerCapabilities } from "@bb/agent-providers";
 import type { ProviderComposerAction, ProviderInfo } from "@bb/domain";

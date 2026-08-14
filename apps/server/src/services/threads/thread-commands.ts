@@ -7,10 +7,6 @@ import {
 } from "@bb/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import {
-  getBuiltInAgentProviderInfo,
-  isAgentProviderId,
-} from "@bb/agent-providers";
-import {
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
   type ClaudeCodeMockCliTrafficConfig,
   PromptInput,
@@ -50,6 +46,7 @@ import {
   type ExistingThreadExecutionInputRequest,
 } from "./thread-execution-plan.js";
 import { clampPermissionModeToHost } from "../hosts/permission-ceiling.js";
+import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import { workspaceContextFromPath } from "../environments/workspace-command-target.js";
 import { resolveAcpLaunchSpecForProviderId } from "../system/acp-launch-spec.js";
 
@@ -99,7 +96,7 @@ export interface ThreadStartCommandArgs {
 
 interface PreparedTurnSubmitCommandBuildArgs {
   claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
-  deps: Pick<AppDeps, "config" | "db">;
+  deps: Pick<AppDeps, "config" | "db" | "providerRegistry">;
   environmentId: string;
   hostId: string;
   execution: ResolvedThreadExecutionOptions;
@@ -135,7 +132,7 @@ export type PreparedTurnSubmitCommandPayload = Omit<
 
 interface RuntimeExecutionOptionsArgs {
   claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
-  deps: Pick<AppDeps, "db">;
+  deps: Pick<AppDeps, "db" | "providerRegistry">;
   execution: ResolvedThreadExecutionOptions;
   hostId: string;
   input: PromptInput[];
@@ -175,20 +172,28 @@ interface DispatchArchivedThreadProviderArchiveCommandArgs {
   threadId: string;
 }
 
-function providerSupportsThreadRename(providerId: string): boolean {
-  if (!isAgentProviderId(providerId)) {
+function providerSupportsThreadRename(
+  registry: ProviderRegistryService,
+  providerId: string,
+): boolean {
+  const registration = registry.get(providerId);
+  if (!registration) {
+    // Unregistered ids (dynamic/custom ACP agents) keep receiving renames,
+    // exactly as they did before the registry.
     return true;
   }
-
-  return getBuiltInAgentProviderInfo(providerId).capabilities.supportsRename;
+  return registration.info.capabilities.supportsRename;
 }
 
-function providerSupportsThreadArchiveForwarding(providerId: string): boolean {
-  if (!isAgentProviderId(providerId)) {
+function providerSupportsThreadArchiveForwarding(
+  registry: ProviderRegistryService,
+  providerId: string,
+): boolean {
+  const registration = registry.get(providerId);
+  if (!registration) {
     return false;
   }
-
-  return getBuiltInAgentProviderInfo(providerId).capabilities.supportsArchive;
+  return registration.info.capabilities.supportsArchive;
 }
 
 function resolveClaudeCodeMockCliTrafficConfig(
@@ -223,10 +228,12 @@ function resolveProviderSubagentsEnabled(
 }
 
 function resolveProviderWorkflowsEnabled(
-  deps: Pick<AppDeps, "db">,
+  deps: Pick<AppDeps, "db" | "providerRegistry">,
   providerId: string,
 ): boolean {
-  if (!resolveWorkflowsEnabledPolicy(providerId)) return false;
+  if (!resolveWorkflowsEnabledPolicy(deps.providerRegistry, providerId)) {
+    return false;
+  }
   return !getAppSettings(deps.db).claudeCodeWorkflowsDisabled;
 }
 
@@ -288,7 +295,7 @@ function toRuntimeExecutionOptions(
 }
 
 export async function buildExecutionOptions(
-  deps: Pick<AppDeps, "db" | "hub">,
+  deps: Pick<AppDeps, "db" | "hub" | "providerRegistry">,
   request: ExecutionOptionsRequest,
   args: BuildExecutionOptionsArgs,
   source: BuildExecutionOptionsSource,
@@ -505,7 +512,7 @@ export function dispatchThreadRenameCommand(
   deps: CommandResultSideEffectsDeps,
   args: DispatchThreadRenameCommandArgs,
 ): void {
-  if (!providerSupportsThreadRename(args.providerId)) {
+  if (!providerSupportsThreadRename(deps.providerRegistry, args.providerId)) {
     return;
   }
 
@@ -557,7 +564,12 @@ export function dispatchArchivedThreadProviderArchiveCommand(
     return false;
   }
 
-  if (!providerSupportsThreadArchiveForwarding(thread.providerId)) {
+  if (
+    !providerSupportsThreadArchiveForwarding(
+      deps.providerRegistry,
+      thread.providerId,
+    )
+  ) {
     return false;
   }
 
@@ -601,7 +613,12 @@ export function dispatchThreadUnarchiveCommand(
   deps: CommandResultSideEffectsDeps,
   args: DispatchThreadUnarchiveCommandArgs,
 ): boolean {
-  if (!providerSupportsThreadArchiveForwarding(args.thread.providerId)) {
+  if (
+    !providerSupportsThreadArchiveForwarding(
+      deps.providerRegistry,
+      args.thread.providerId,
+    )
+  ) {
     return false;
   }
   if (args.environment.status !== "ready") {

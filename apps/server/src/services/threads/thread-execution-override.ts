@@ -13,6 +13,7 @@ import {
 } from "@bb/domain";
 import { ApiError } from "../../errors.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
+import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import { resolveSystemExecutionOptions } from "../system/execution-options.js";
 import { getLastExecutionOptions } from "./thread-events.js";
 import { getSupportedReasoningLevelsForProvider } from "./thread-reasoning-policy.js";
@@ -61,6 +62,7 @@ export interface RecoverThreadModelOverrideArgs {
  * changes. Throws `ApiError(400)` for incompatible input. No IO.
  */
 export function resolveThreadExecutionOverrideUpdate(
+  registry: ProviderRegistryService,
   args: ResolveThreadExecutionOverrideUpdateArgs,
 ): ThreadExecutionOverride {
   const { existing, patch, models, providerId, fallbackModel } = args;
@@ -95,7 +97,7 @@ export function resolveThreadExecutionOverrideUpdate(
     ? effectiveModelEntry.supportedReasoningEfforts.map(
         (effort) => effort.reasoningEffort,
       )
-    : getSupportedReasoningLevelsForProvider(providerId);
+    : getSupportedReasoningLevelsForProvider(registry, providerId);
 
   let nextReasoning = existing.reasoningLevelOverride;
   if ("reasoningLevel" in patch) {
@@ -152,7 +154,7 @@ export async function applyThreadExecutionOverride(
     reasoningLevelOverride: null,
   };
 
-  const next = resolveThreadExecutionOverrideUpdate({
+  const next = resolveThreadExecutionOverrideUpdate(deps.providerRegistry, {
     existing,
     patch,
     models,

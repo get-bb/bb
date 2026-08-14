@@ -11,7 +11,6 @@ import type {
   ThreadOriginKind,
   ThreadVisibility,
 } from "@bb/domain";
-import { supportsNativeFork } from "@bb/agent-providers";
 import type { BaseBranchSpec, UnmanagedBranchSpec } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
@@ -157,7 +156,7 @@ async function resolveCatalogExecutionDefaults(
       true,
     );
   }
-  return buildProviderThreadExecutionDefaults({
+  return buildProviderThreadExecutionDefaults(deps.providerRegistry, {
     providerId: args.providerId,
     model: defaultModel.model,
   });
@@ -177,13 +176,13 @@ async function resolveCatalogExecutionDefaults(
  * thread as an unforkable error rather than a silent fresh start.
  */
 function resolveForkDescriptor(
-  deps: Pick<ThreadCreateDeps, "db">,
+  deps: Pick<ThreadCreateDeps, "db" | "providerRegistry">,
   args: ResolveForkDescriptorArgs,
 ): ThreadForkDescriptor | null {
   if (args.originKind === null || args.sourceThread === null) {
     return null;
   }
-  if (!supportsNativeFork(args.providerId)) {
+  if (!deps.providerRegistry.supportsNativeFork(args.providerId)) {
     return null;
   }
   // A provider session ID is opaque to every other provider, so a fork is

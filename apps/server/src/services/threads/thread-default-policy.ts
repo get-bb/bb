@@ -1,8 +1,3 @@
-import {
-  getAgentProviderServerCapabilities,
-  getSupportedPermissionModes,
-  listBuiltInAgentProviderInfos,
-} from "@bb/agent-providers";
 import type {
   PermissionMode,
   ProjectExecutionDefaults,
@@ -15,6 +10,7 @@ import { PERSONAL_PROJECT_ID, clampPermissionModeToCeiling } from "@bb/domain";
 import type { EnvironmentArgs } from "@bb/server-contract";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import type { WorkSessionDeps } from "../../types.js";
+import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { requireConnectedPrimaryHostId } from "../hosts/primary-host.js";
 import { resolveProjectWorkspaceTarget } from "../projects/project-workspace.js";
@@ -32,24 +28,27 @@ export const DEFAULT_REASONING_LEVEL: ReasoningLevel = "medium";
  * providers without the concept. Host-level user/org disables still win inside
  * the CLI.
  */
-export function resolveWorkflowsEnabledPolicy(providerId: string): boolean {
-  return (
-    getAgentProviderServerCapabilities(providerId)?.supportsWorkflows ?? false
-  );
+export function resolveWorkflowsEnabledPolicy(
+  registry: ProviderRegistryService,
+  providerId: string,
+): boolean {
+  return registry.getServerCapabilities(providerId)?.supportsWorkflows ?? false;
 }
 const DEFAULT_PERMISSION_MODE: PermissionMode = "auto";
 
-/** Catalog order is the single source for both the model picker and the
- * product fallback used when no caller or project has chosen a provider. */
-function requireProductDefaultProviderId(): string {
-  const providerId = listBuiltInAgentProviderInfos()[0]?.id;
+/** Registry order is the single source for both the model picker and the
+ * product fallback used when no caller or project has chosen a provider. The
+ * core seed is first by construction (plugins append after it), so this is
+ * the first built-in catalog provider. */
+function requireProductDefaultProviderId(
+  registry: ProviderRegistryService,
+): string {
+  const providerId = registry.list()[0]?.info.id;
   if (providerId === undefined) {
-    throw new Error("Built-in agent provider catalog is empty");
+    throw new Error("Provider registry is empty");
   }
   return providerId;
 }
-
-const PRODUCT_DEFAULT_PROVIDER_ID = requireProductDefaultProviderId();
 
 export interface ResolveCreateThreadExecutionDefaultsArgs {
   requestedProviderId?: string;
@@ -146,13 +145,16 @@ function isManagedChildThread(args: IsManagedChildThreadArgs): boolean {
 }
 
 function resolveSupportedPermissionMode(
+  registry: ProviderRegistryService,
   args: ResolveSupportedPermissionModeArgs,
 ): PermissionMode {
   if (!args.providerId) {
     return args.preferredPermissionMode;
   }
 
-  const supportedPermissionModes = getSupportedPermissionModes(args.providerId);
+  const supportedPermissionModes = registry.getSupportedPermissionModes(
+    args.providerId,
+  );
   if (!supportedPermissionModes) {
     return args.preferredPermissionMode;
   }
@@ -170,12 +172,13 @@ function resolveSupportedPermissionMode(
 }
 
 export function resolveCreateThreadExecutionDefaults(
+  registry: ProviderRegistryService,
   args: ResolveCreateThreadExecutionDefaultsArgs,
 ): CreateThreadExecutionDefaultsResolved {
   const providerId =
     args.requestedProviderId ??
     args.storedDefaults?.providerId ??
-    PRODUCT_DEFAULT_PROVIDER_ID;
+    requireProductDefaultProviderId(registry);
 
   const storedDefaults =
     args.storedDefaults?.providerId === providerId ? args.storedDefaults : null;
@@ -192,15 +195,18 @@ export function resolveCreateThreadExecutionDefaults(
   };
 }
 
-export function buildProviderThreadExecutionDefaults(args: {
-  model: string;
-  providerId: string;
-}): ProjectExecutionDefaults {
+export function buildProviderThreadExecutionDefaults(
+  registry: ProviderRegistryService,
+  args: {
+    model: string;
+    providerId: string;
+  },
+): ProjectExecutionDefaults {
   return {
     providerId: args.providerId,
     model: args.model,
     reasoningLevel: DEFAULT_REASONING_LEVEL,
-    permissionMode: resolveSupportedPermissionMode({
+    permissionMode: resolveSupportedPermissionMode(registry, {
       providerId: args.providerId,
       preferredPermissionMode: DEFAULT_PERMISSION_MODE,
     }),
@@ -301,15 +307,17 @@ export function resolveCreateThreadEnvironment(
 }
 
 export function resolveThreadDefaultPermissionMode(
+  registry: ProviderRegistryService,
   args: ResolveThreadDefaultPermissionModeArgs,
 ): PermissionMode {
-  return resolveSupportedPermissionMode({
+  return resolveSupportedPermissionMode(registry, {
     providerId: args.thread.providerId,
     preferredPermissionMode: DEFAULT_PERMISSION_MODE,
   });
 }
 
 export function resolveThreadExecutionPermissionMode(
+  registry: ProviderRegistryService,
   args: ResolveThreadExecutionPermissionModeArgs,
 ): PermissionMode {
   const permissionMode = resolvePreferredThreadExecutionPermissionMode(args);
@@ -351,7 +359,7 @@ function resolvePreferredThreadExecutionPermissionMode(
     isManagedChildThread(args) &&
     args.parentThreadExecutionPermissionMode !== undefined
   ) {
-    return resolveSupportedPermissionMode({
+    return resolveSupportedPermissionMode(registry, {
       providerId: args.thread.providerId,
       preferredPermissionMode: normalizeRecordedPermissionMode(
         args.parentThreadExecutionPermissionMode,
@@ -359,7 +367,7 @@ function resolvePreferredThreadExecutionPermissionMode(
     });
   }
 
-  const defaultPermissionMode = resolveThreadDefaultPermissionMode({
+  const defaultPermissionMode = resolveThreadDefaultPermissionMode(registry, {
     thread: args.thread,
   });
   return args.projectExecutionPermissionMode ?? defaultPermissionMode;

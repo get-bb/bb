@@ -3,6 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { listSystemProviderInfos } from "../../../src/services/system/execution-options.js";
+import {
+  resolveCreateThreadExecutionDefaults,
+  resolveWorkflowsEnabledPolicy,
+} from "../../../src/services/threads/thread-default-policy.js";
 import { withTestHarness } from "../../helpers/test-app.js";
 
 async function writePlugin(
@@ -127,6 +131,37 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
       expect(afterDisable.map((provider) => provider.id)).not.toContain(
         "my-remote-agent",
       );
+    });
+  });
+
+  it("makes the registered provider usable by thread policy end to end", async () => {
+    await withTestHarness(async (harness) => {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-policy-agent",
+        serverSource: REGISTER_PROVIDER_SOURCE("policy-agent"),
+      });
+      const entry = await harness.pluginService.installPath(rootDir);
+      expect(entry.status).toBe("running");
+      const registry = harness.deps.providerRegistry;
+
+      // The policy layer answers from the plugin declaration: create-thread
+      // default resolution accepts the plugin provider id, the permission
+      // modes come from the declaration, and the workflows policy reads the
+      // mapped server capabilities (always false for plugin providers today).
+      const resolved = resolveCreateThreadExecutionDefaults(registry, {
+        requestedProviderId: "policy-agent",
+        storedDefaults: null,
+      });
+      expect(resolved.providerId).toBe("policy-agent");
+      expect(
+        registry.getSupportedPermissionModes("policy-agent"),
+      ).not.toBeNull();
+      expect(resolveWorkflowsEnabledPolicy(registry, "policy-agent")).toBe(
+        false,
+      );
+      // A fuller proof (POST /threads through the route) needs a faked
+      // daemon host session; these policy calls are the slice that gated
+      // plugin providers before the repoint.
     });
   });
 
