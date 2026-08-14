@@ -262,7 +262,10 @@ async function readOneLocalIcon(args: {
     marketplaceName: args.marketplaceName,
     entryId: args.entryId,
     sourceUrl: iconSourceUrl(args.icon),
-    contentType: marketplaceIconContentTypeForPath(args.icon.relativePath, bytes),
+    contentType: marketplaceIconContentTypeForPath(
+      args.icon.relativePath,
+      bytes,
+    ),
     etag: null,
     contentHash: createHash("sha256").update(bytes).digest("hex").slice(0, 16),
     bytes: Buffer.from(bytes),

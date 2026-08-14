@@ -774,7 +774,7 @@ function installPlanSummary(plan: PluginCatalogInstallPlan): string {
     return `Installing ${plan.displayName}, bundled with BB (${plan.source})`;
   }
   if (plan.official) {
-    return `Installing ${plan.displayName} from its listed source (${plan.source})`;
+    return `Installing ${plan.displayName} from the BB Official marketplace, reviewed by BB (${plan.source})`;
   }
   const author =
     plan.author.url === null
@@ -897,7 +897,7 @@ export function registerPluginCommands(
   plugin
     .command("search <query>")
     .description(
-      "Search BB's official plugins: the plugins bundled with the app plus the BB Official marketplace catalog",
+      "Search every plugin the store lists: the plugins bundled with the app, the BB Official marketplace catalog BB reviews, and any third-party marketplace added on this host. The Marketplace column names the source; only bb-official is reviewed by BB",
     )
     .option("--json", "Output JSON")
     .action(
@@ -1033,7 +1033,7 @@ export function registerPluginCommands(
   plugin
     .command("install <source>")
     .description(
-      "Install a bundled official plugin by name, Git repository URL, local path, builtin:<name>, git:<url>[@<ref|semver-range>], or npm:<name>@<version> (managed sources validate engines ranges and build artifacts; bundled plugin ids are reserved)",
+      "Install a catalog entry by name or <entry>@<marketplace>, a Git repository URL, a local path, builtin:<name>, git:<url>[@<ref|semver-range>], or npm:<name>@<version>. A catalog entry from a third-party marketplace is not reviewed by BB, so its confirmation names the marketplace, the author, and the exact resolved source (managed sources validate engines ranges and build artifacts; bundled plugin ids are reserved)",
     )
     .option(
       "--subdirectory <path>",
@@ -1072,7 +1072,7 @@ export function registerPluginCommands(
           const intent = await resolveInstallIntent(getUrl(), requested);
           if (intent.kind === "catalog" && opts.tagPrefix !== undefined) {
             throw new Error(
-              `"${source}" is an official plugin entry; --tag-prefix applies to git: sources only.`,
+              `"${source}" is a catalog entry; --tag-prefix applies to git: sources only.`,
             );
           }
           if (
@@ -1080,7 +1080,7 @@ export function registerPluginCommands(
             (opts.subdirectory !== undefined || opts.plugin !== undefined)
           ) {
             throw new Error(
-              `"${source}" is an official plugin entry; --subdirectory and --plugin apply to git: and path: repositories only.`,
+              `"${source}" is a catalog entry; --subdirectory and --plugin apply to git: and path: repositories only.`,
             );
           }
           // Catalog entries split by source kind: `builtin:` plugins ship
