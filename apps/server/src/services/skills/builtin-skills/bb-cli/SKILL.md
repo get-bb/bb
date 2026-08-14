@@ -184,6 +184,15 @@ message agents, or inspect projects, providers, and environments.
   creates an idle fork by default; add `--prompt`, select `--workspace
 isolated|reuse`, or anchor with `--source-seq-end`. Permission mode inherits
   the source thread unless explicitly overridden.
+- Use `bb thread handoff <source-id> --provider <id> --model <id>` to move an
+  existing thread to another provider or model. It creates a replacement
+  thread in the same environment, waits until that replacement starts or
+  fails, then prints both thread IDs and whether the source was archived.
+  The source is archived only after the replacement turn starts. Pass
+  `--self` to use `BB_THREAD_ID`, `--no-archive-source` to keep the source
+  live, and `--continuation <text>` for an opening instruction. Defaults are
+  reasoning `medium`, permission `auto`, and archive the source. A timeout
+  reports that the handoff is still provisioning and does not mark it failed.
 - Pass `--visibility hidden` for background/plugin workers that should remain
   out of sidebar organization without contributing unread/pending favicon
   attention. `bb thread list` excludes them by

@@ -8099,6 +8099,70 @@ interface TimelineTurnRow extends TimelineRowBase {
 type TimelineSourceRow = TimelineConversationRow | TimelineWorkRow | TimelineSystemRow;
 type TimelineRow = TimelineSourceRow | TimelineTurnRow;
 
+declare const threadHandoffRequestSchema: z$1.ZodObject<{
+    sourceThreadId: z$1.ZodString;
+    providerId: z$1.ZodString;
+    model: z$1.ZodString;
+    reasoningLevel: z$1.ZodEnum<{
+        none: "none";
+        low: "low";
+        medium: "medium";
+        high: "high";
+        xhigh: "xhigh";
+        ultracode: "ultracode";
+        max: "max";
+        ultra: "ultra";
+    }>;
+    serviceTier: z$1.ZodOptional<z$1.ZodEnum<{
+        default: "default";
+        fast: "fast";
+    }>>;
+    permissionMode: z$1.ZodPipe<z$1.ZodUnion<readonly [z$1.ZodEnum<{
+        auto: "auto";
+        "accept-edits": "accept-edits";
+        full: "full";
+    }>, z$1.ZodLiteral<"workspace-write">]>, z$1.ZodTransform<"auto" | "accept-edits" | "full", "auto" | "accept-edits" | "full" | "workspace-write">>;
+    continuationText: z$1.ZodOptional<z$1.ZodString>;
+    archiveSource: z$1.ZodBoolean;
+    idempotencyKey: z$1.ZodString;
+    origin: z$1.ZodEnum<{
+        plugin: "plugin";
+        app: "app";
+        cli: "cli";
+        sdk: "sdk";
+    }>;
+}, z$1.core.$strict>;
+type ThreadHandoffRequest = z$1.infer<typeof threadHandoffRequestSchema>;
+declare const threadHandoffStatusSchema: z$1.ZodObject<{
+    sourceThreadId: z$1.ZodString;
+    replacementThreadId: z$1.ZodString;
+    state: z$1.ZodEnum<{
+        provisioning: "provisioning";
+        failed: "failed";
+        started: "started";
+    }>;
+    sourceArchived: z$1.ZodBoolean;
+    failure: z$1.ZodNullable<z$1.ZodObject<{
+        code: z$1.ZodString;
+        message: z$1.ZodString;
+    }, z$1.core.$strict>>;
+}, z$1.core.$strict>;
+type ThreadHandoffStatus = z$1.infer<typeof threadHandoffStatusSchema>;
+declare const threadHandoffResponseSchema: z$1.ZodObject<{
+    sourceThreadId: z$1.ZodString;
+    replacementThreadId: z$1.ZodString;
+    state: z$1.ZodEnum<{
+        provisioning: "provisioning";
+        failed: "failed";
+        started: "started";
+    }>;
+    sourceArchived: z$1.ZodBoolean;
+    failure: z$1.ZodNullable<z$1.ZodObject<{
+        code: z$1.ZodString;
+        message: z$1.ZodString;
+    }, z$1.core.$strict>>;
+}, z$1.core.$strict>;
+type ThreadHandoffResponse = z$1.infer<typeof threadHandoffResponseSchema>;
 declare const createExecutionInputSourcesSchema: z$1.ZodObject<{
     providerId: z$1.ZodOptional<z$1.ZodEnum<{
         explicit: "explicit";
@@ -12730,6 +12794,9 @@ interface ThreadOutputResponse {
 type ThreadMutationResult = ThreadResponse;
 type ThreadSpawnResult = ThreadResponse;
 type ThreadForkResult = ThreadResponse;
+type ThreadHandoffArgs = ThreadHandoffRequest;
+type ThreadHandoffResult = ThreadHandoffResponse;
+type ThreadHandoffStatusResult = ThreadHandoffStatus;
 type ThreadInteractionGetResult = PendingInteraction;
 type ThreadInteractionListResult = ThreadPendingInteractionsResponse;
 type ThreadInteractionResolveResult = PendingInteraction;
@@ -12820,6 +12887,10 @@ interface ThreadContinueAfterRateLimitArgs extends ThreadActionArgs {
     mode: NonNullable<ContinueAfterProviderRateLimitRequest["mode"]>;
 }
 interface ThreadStatusArgs extends ThreadActionArgs {
+    signal?: AbortSignal;
+}
+interface ThreadHandoffStatusArgs {
+    replacementThreadId: string;
     signal?: AbortSignal;
 }
 interface ThreadPromptHistoryArgs extends PromptHistoryQuery {
@@ -12980,6 +13051,8 @@ interface ThreadsArea {
     events: ThreadEventsArea;
     fork(args: ThreadForkArgs): Promise<ThreadForkResult>;
     get(args: ThreadGetArgs): Promise<ThreadGetResult>;
+    handoff(args: ThreadHandoffArgs): Promise<ThreadHandoffResult>;
+    handoffStatus(args: ThreadHandoffStatusArgs): Promise<ThreadHandoffStatusResult>;
     interactions: ThreadInteractionsArea;
     list(args?: ThreadListArgs): Promise<ThreadListResult>;
     markRead(args: ThreadActionArgs): Promise<ThreadReadStateResult>;

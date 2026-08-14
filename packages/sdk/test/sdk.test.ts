@@ -1029,6 +1029,85 @@ describe("@bb/sdk", () => {
     });
   });
 
+  it("creates a thread handoff through the durable takeover route", async () => {
+    const response = {
+      sourceThreadId: "thr_source",
+      replacementThreadId: "thr_replacement",
+      state: "provisioning",
+      sourceArchived: false,
+      failure: null,
+    } as const;
+    const queue = createFetchQueue([{ body: response, status: 201 }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.handoff({
+        sourceThreadId: "thr_source",
+        providerId: "claudeCode",
+        model: "claude-opus-5",
+        reasoningLevel: "high",
+        serviceTier: "fast",
+        permissionMode: "auto",
+        continuationText: "Continue the implementation.",
+        archiveSource: true,
+        idempotencyKey: "takeover-1234567890",
+        origin: "sdk",
+      }),
+    ).resolves.toEqual(response);
+
+    expect(queue.requests[0]).toMatchObject({
+      method: "POST",
+      url: "http://bb.test/api/v1/threads/handoff",
+    });
+    expect(JSON.parse(queue.requests[0]?.bodyText ?? "{}")).toEqual({
+      sourceThreadId: "thr_source",
+      providerId: "claudeCode",
+      model: "claude-opus-5",
+      reasoningLevel: "high",
+      serviceTier: "fast",
+      permissionMode: "auto",
+      continuationText: "Continue the implementation.",
+      archiveSource: true,
+      idempotencyKey: "takeover-1234567890",
+      origin: "sdk",
+    });
+  });
+
+  it("gets durable handoff status with an encoded replacement thread id", async () => {
+    const response = {
+      sourceThreadId: "thr_source",
+      replacementThreadId: "thr/replacement value",
+      state: "started",
+      sourceArchived: true,
+      failure: null,
+    } as const;
+    const queue = createFetchQueue([{ body: response }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.handoffStatus({
+        replacementThreadId: "thr/replacement value",
+      }),
+    ).resolves.toEqual(response);
+
+    expect(queue.requests[0]).toMatchObject({
+      method: "GET",
+      url: "http://bb.test/api/v1/threads/handoffs/thr%2Freplacement%20value",
+    });
+  });
+
   it("forwards includeHidden list filtering and visibility updates", async () => {
     const queue = createFetchQueue([
       { body: [] },

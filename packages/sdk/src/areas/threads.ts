@@ -9,7 +9,12 @@ import {
   type ThreadQueuedMessage,
   type ThreadStatus,
 } from "@bb/domain";
-import { threadTabsResponseSchema } from "@bb/server-contract";
+import {
+  threadHandoffRequestSchema,
+  threadHandoffResponseSchema,
+  threadHandoffStatusSchema,
+  threadTabsResponseSchema,
+} from "@bb/server-contract";
 import type {
   CreateQueuedMessageRequest,
   ContinueAfterProviderRateLimitRequest,
@@ -52,6 +57,9 @@ import type {
   ThreadEventsQuery,
   ThreadEventWaitQuery,
   ThreadGetQuery,
+  ThreadHandoffRequest,
+  ThreadHandoffResponse,
+  ThreadHandoffStatus,
   ThreadListQuery,
   ThreadSearchQuery,
   ThreadStorageFilesQuery,
@@ -107,6 +115,9 @@ export interface ThreadOutputResponse {
 export type ThreadMutationResult = ThreadResponse;
 export type ThreadSpawnResult = ThreadResponse;
 export type ThreadForkResult = ThreadResponse;
+export type ThreadHandoffArgs = ThreadHandoffRequest;
+export type ThreadHandoffResult = ThreadHandoffResponse;
+export type ThreadHandoffStatusResult = ThreadHandoffStatus;
 export type ThreadInteractionGetResult = PendingInteraction;
 export type ThreadInteractionListResult = ThreadPendingInteractionsResponse;
 export type ThreadInteractionResolveResult = PendingInteraction;
@@ -207,6 +218,11 @@ export interface ThreadContinueAfterRateLimitArgs extends ThreadActionArgs {
 }
 
 export interface ThreadStatusArgs extends ThreadActionArgs {
+  signal?: AbortSignal;
+}
+
+export interface ThreadHandoffStatusArgs {
+  replacementThreadId: string;
   signal?: AbortSignal;
 }
 
@@ -450,6 +466,10 @@ export interface ThreadsArea {
   events: ThreadEventsArea;
   fork(args: ThreadForkArgs): Promise<ThreadForkResult>;
   get(args: ThreadGetArgs): Promise<ThreadGetResult>;
+  handoff(args: ThreadHandoffArgs): Promise<ThreadHandoffResult>;
+  handoffStatus(
+    args: ThreadHandoffStatusArgs,
+  ): Promise<ThreadHandoffStatusResult>;
   interactions: ThreadInteractionsArea;
   list(args?: ThreadListArgs): Promise<ThreadListResult>;
   markRead(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
@@ -957,6 +977,23 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     get: getThread,
+    async handoff(input) {
+      const body = await transport.readJson(
+        transport.api.v1.threads.handoff.$post({
+          json: threadHandoffRequestSchema.parse(input),
+        }),
+      );
+      return threadHandoffResponseSchema.parse(body);
+    },
+    async handoffStatus(input) {
+      const body = await transport.readJson(
+        transport.api.v1.threads.handoffs[":id"].$get(
+          { param: { id: encodeURIComponent(input.replacementThreadId) } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+      return threadHandoffStatusSchema.parse(body);
+    },
     interactions,
     async list(input) {
       return transport.readJson(

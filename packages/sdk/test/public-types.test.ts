@@ -25,6 +25,10 @@ import type {
   TerminalListResult as RootTerminalListResult,
   ThemeCatalogResult as RootThemeCatalog,
   ThemeSetInput as RootThemeSetInput,
+  ThreadHandoffArgs as RootThreadHandoffArgs,
+  ThreadHandoffResult as RootThreadHandoffResult,
+  ThreadHandoffStatusArgs as RootThreadHandoffStatusArgs,
+  ThreadHandoffStatusResult as RootThreadHandoffStatusResult,
   ThreadSectionListResult as RootThreadSectionList,
   ThreadSpawnResult as RootThreadSpawn,
 } from "@bb/sdk";
@@ -52,6 +56,10 @@ import type {
   TerminalListResult as BrowserTerminalListResult,
   ThemeCatalogResult as BrowserThemeCatalog,
   ThemeSetInput as BrowserThemeSetInput,
+  ThreadHandoffArgs as BrowserThreadHandoffArgs,
+  ThreadHandoffResult as BrowserThreadHandoffResult,
+  ThreadHandoffStatusArgs as BrowserThreadHandoffStatusArgs,
+  ThreadHandoffStatusResult as BrowserThreadHandoffStatusResult,
   ThreadSectionListResult as BrowserThreadSectionList,
   ThreadSpawnResult as BrowserThreadSpawn,
 } from "@bb/sdk/browser";
@@ -79,6 +87,10 @@ import type {
   TerminalListResult as CoreTerminalListResult,
   ThemeCatalogResult as CoreThemeCatalog,
   ThemeSetInput as CoreThemeSetInput,
+  ThreadHandoffArgs as CoreThreadHandoffArgs,
+  ThreadHandoffResult as CoreThreadHandoffResult,
+  ThreadHandoffStatusArgs as CoreThreadHandoffStatusArgs,
+  ThreadHandoffStatusResult as CoreThreadHandoffStatusResult,
   ThreadSectionListResult as CoreThreadSectionList,
   ThreadSpawnResult as CoreThreadSpawn,
 } from "@bb/sdk/core";
@@ -106,6 +118,10 @@ import type {
   TerminalListResult as NodeTerminalListResult,
   ThemeCatalogResult as NodeThemeCatalog,
   ThemeSetInput as NodeThemeSetInput,
+  ThreadHandoffArgs as NodeThreadHandoffArgs,
+  ThreadHandoffResult as NodeThreadHandoffResult,
+  ThreadHandoffStatusArgs as NodeThreadHandoffStatusArgs,
+  ThreadHandoffStatusResult as NodeThreadHandoffStatusResult,
   ThreadSectionListResult as NodeThreadSectionList,
   ThreadSpawnResult as NodeThreadSpawn,
 } from "@bb/sdk/node";
@@ -133,6 +149,10 @@ interface RootSurface {
   terminalList: RootTerminalListResult;
   themeCatalog: RootThemeCatalog;
   themeSetInput: RootThemeSetInput;
+  threadHandoffArgs: RootThreadHandoffArgs;
+  threadHandoffResult: RootThreadHandoffResult;
+  threadHandoffStatusArgs: RootThreadHandoffStatusArgs;
+  threadHandoffStatusResult: RootThreadHandoffStatusResult;
   threadSectionList: RootThreadSectionList;
   threadSpawn: RootThreadSpawn;
 }
@@ -160,6 +180,10 @@ interface BrowserSurface {
   terminalList: BrowserTerminalListResult;
   themeCatalog: BrowserThemeCatalog;
   themeSetInput: BrowserThemeSetInput;
+  threadHandoffArgs: BrowserThreadHandoffArgs;
+  threadHandoffResult: BrowserThreadHandoffResult;
+  threadHandoffStatusArgs: BrowserThreadHandoffStatusArgs;
+  threadHandoffStatusResult: BrowserThreadHandoffStatusResult;
   threadSectionList: BrowserThreadSectionList;
   threadSpawn: BrowserThreadSpawn;
 }
@@ -187,6 +211,10 @@ interface CoreSurface {
   terminalList: CoreTerminalListResult;
   themeCatalog: CoreThemeCatalog;
   themeSetInput: CoreThemeSetInput;
+  threadHandoffArgs: CoreThreadHandoffArgs;
+  threadHandoffResult: CoreThreadHandoffResult;
+  threadHandoffStatusArgs: CoreThreadHandoffStatusArgs;
+  threadHandoffStatusResult: CoreThreadHandoffStatusResult;
   threadSectionList: CoreThreadSectionList;
   threadSpawn: CoreThreadSpawn;
 }
@@ -214,6 +242,10 @@ interface NodeSurface {
   terminalList: NodeTerminalListResult;
   themeCatalog: NodeThemeCatalog;
   themeSetInput: NodeThemeSetInput;
+  threadHandoffArgs: NodeThreadHandoffArgs;
+  threadHandoffResult: NodeThreadHandoffResult;
+  threadHandoffStatusArgs: NodeThreadHandoffStatusArgs;
+  threadHandoffStatusResult: NodeThreadHandoffStatusResult;
   threadSectionList: NodeThreadSectionList;
   threadSpawn: NodeThreadSpawn;
 }
@@ -360,6 +392,8 @@ type ExpectedThreadsKey =
   | "events"
   | "fork"
   | "get"
+  | "handoff"
+  | "handoffStatus"
   | "interactions"
   | "list"
   | "markRead"

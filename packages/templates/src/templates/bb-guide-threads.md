@@ -77,6 +77,26 @@ Forking:
   create a fresh managed worktree (or personal workspace for personal threads);
   reuse attaches the source environment. Omit --prompt to create an idle fork.
 
+Handoff (cross-provider takeover):
+
+  bb thread handoff <source-id> --provider <id> --model <id> [options]
+    --self                         Target the current thread (BB_THREAD_ID)
+    --provider <id>                Replacement provider (required)
+    --model <id>                   Replacement model (required)
+    --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max
+    --service-tier <tier>          Service tier: fast or default
+    --permission-mode <mode>       Permission mode: accept-edits, auto, or full
+    --continuation <text>          Optional opening continuation for the replacement
+    --no-archive-source            Keep the source thread live
+    --idempotency-key <key>        Reuse an explicit takeover key
+
+  Creates a replacement thread in the same environment, waits until the
+  replacement turn starts or fails, then prints both thread IDs and whether
+  the source was archived. The source is archived only after the replacement
+  actually starts. A timeout reports that the handoff is still provisioning
+  and does not mark it failed. Defaults: reasoning medium, permission auto,
+  archive the source.
+
 Editing a sent message (requires the default-on `editMessages` experiment):
 
   bb thread edit-message <id> --message "Replacement text"

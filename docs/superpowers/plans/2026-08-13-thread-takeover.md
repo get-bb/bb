@@ -369,7 +369,7 @@ git commit -m "feat(threads): settle takeover lifecycle"
 - Modify: `docs/cli-guide-and-skill.md`
 - Generated: `packages/templates/src/generated/templates.generated.ts`
 
-- [ ] **Step 1: Write failing SDK transport tests**
+- [x] **Step 1: Write failing SDK transport tests**
 
 ```ts
 await sdk.threads.handoff({
@@ -391,11 +391,11 @@ expect(request).toMatchObject({
 
 Also test `handoffStatus({ replacementThreadId })` and public type exports.
 
-- [ ] **Step 2: Write failing CLI tests**
+- [x] **Step 2: Write failing CLI tests**
 
 Cover required source/provider/model flags, execution flags, `--no-archive-source`, generated idempotency key, waiting through `turn/started` or failure, human output, JSON output, and source defaulting from `BB_THREAD_ID` when `--self` is used.
 
-- [ ] **Step 3: Run SDK/CLI tests and prove the adapters are absent**
+- [x] **Step 3: Run SDK/CLI tests and prove the adapters are absent**
 
 Run:
 
@@ -406,7 +406,7 @@ pnpm exec turbo run test --filter=@bb/cli --force
 
 Expected: FAIL with missing methods/command.
 
-- [ ] **Step 4: Add SDK methods as thin route adapters**
+- [x] **Step 4: Add SDK methods as thin route adapters**
 
 ```ts
 export interface ThreadsArea {
@@ -419,7 +419,7 @@ export interface ThreadsArea {
 
 Parse request/response through the server-contract schemas; do not reimplement validation or lifecycle policy.
 
-- [ ] **Step 5: Add `bb thread handoff`**
+- [x] **Step 5: Add `bb thread handoff`**
 
 Usage:
 
@@ -432,7 +432,7 @@ bb thread handoff <source-id> --provider <id> --model <id>
 
 The command submits once, then polls `handoffStatus` until `started` or `failed`. Its terminal output always includes both thread IDs, lifecycle state, and whether the source is archived. A CLI process timeout reports “still provisioning”; it must not mark the handoff failed itself.
 
-- [ ] **Step 6: Update discoverable documentation and generated templates**
+- [x] **Step 6: Update discoverable documentation and generated templates**
 
 Update the source guide and builtin skill, then run:
 
@@ -440,7 +440,7 @@ Update the source guide and builtin skill, then run:
 node packages/templates/scripts/generate-templates.mjs
 ```
 
-- [ ] **Step 7: Verify SDK, CLI, and docs**
+- [x] **Step 7: Verify SDK, CLI, and docs**
 
 Run:
 

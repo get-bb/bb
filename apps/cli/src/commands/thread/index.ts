@@ -8,6 +8,7 @@ import { registerOrganizationCommands } from "./organization.js";
 import { registerShowCommand } from "./show.js";
 import { registerSpawnCommand } from "./spawn.js";
 import { registerForkCommand } from "./fork.js";
+import { registerHandoffCommand } from "./handoff.js";
 import { registerWaitCommand } from "./wait.js";
 
 export function registerThreadCommands(
@@ -18,6 +19,7 @@ export function registerThreadCommands(
   registerWaitCommand(thread, getUrl);
   registerSpawnCommand(thread, getUrl);
   registerForkCommand(thread, getUrl);
+  registerHandoffCommand(thread, getUrl);
   registerListCommand(thread, getUrl);
   registerShowCommand(thread, getUrl);
   registerOpenCommand(thread, getUrl);
