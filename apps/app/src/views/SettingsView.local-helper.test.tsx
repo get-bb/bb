@@ -9,7 +9,10 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LocalOpenTargetSettingsSection } from "./SettingsView";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 function renderSection({
   accessState,
@@ -58,7 +61,7 @@ describe("LocalOpenTargetSettingsSection", () => {
       screen.getByRole<HTMLButtonElement>("button", { name: "Blocked" })
         .disabled,
     ).toBe(true);
-    expect(screen.queryByText(/allow it for this site/i)).not.toBeNull();
+    expect(screen.queryByText(/allow local network access/i)).not.toBeNull();
     expect(onRequestAccess).not.toHaveBeenCalled();
   });
 
@@ -67,7 +70,22 @@ describe("LocalOpenTargetSettingsSection", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(onRequestAccess).toHaveBeenCalledTimes(1));
-    expect(screen.queryByText(/start bb locally, then retry/i)).not.toBeNull();
+    expect(
+      screen.queryByText(/couldn’t connect to its local editor helper/i),
+    ).not.toBeNull();
+  });
+
+  it("opens the remote-browser setup guide", () => {
+    const openWindow = vi.spyOn(window, "open").mockImplementation(() => null);
+    renderSection({ accessState: "available" });
+
+    fireEvent.click(screen.getByRole("link", { name: "Setup guide" }));
+
+    expect(openWindow).toHaveBeenCalledExactlyOnceWith(
+      "https://github.com/get-bb/bb/blob/main/docs/multiple-devices.md#open-bb-from-another-browser",
+      "_blank",
+      "noopener,noreferrer",
+    );
   });
 
   it("shows editor preferences when the helper is reachable", () => {

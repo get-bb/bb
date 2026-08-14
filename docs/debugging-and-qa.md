@@ -20,6 +20,19 @@ Use `scripts/bb-dev-app` when validating changes in the desktop dev app or helpi
 
 By default the launcher starts only the dev server (web frontend, server, host daemon) and prints the URL without opening a browser. Pass `--open` to open the browser after startup. Pass `--desktop` (e.g. `scripts/bb-dev-app current --desktop`) to also launch the Electron desktop shell — only do this when the user is testing a desktop-only change.
 
+A bb connect shared-port URL is a different browser origin from localhost. If
+QA through that URL needs the browser-local host daemon, restart the dev app
+with the share origin configured after exposing its app port:
+
+```bash
+BB_APP_URL=https://<handle>--<app-port>.getbb.app scripts/bb-dev-app current
+```
+
+The port remains stable for the checkout, so the existing share continues to
+work after the restart. The host daemon intentionally rejects remote origins
+that are not configured; otherwise any webpage could drive its local editor
+API.
+
 Branch switches intentionally keep dirty work in this checkout; git will stop if a local file would be overwritten. Set `BB_DEV_APP_STASH_DIRTY=1` for a one-off launch that stashes first.
 
 For CLI QA against the dev instance, run `eval "$(scripts/bb-dev-app env)"` first. This sets `BB_SERVER_URL`, `BB_HOST_DAEMON_PORT`, and `BB_PROJECT_ID=proj_personal` so `pnpm bb:dev ...` does not accidentally target the packaged app.

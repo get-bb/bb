@@ -80,6 +80,10 @@ import {
 } from "@/lib/workspace-open-target-preference";
 import { getWorkspaceOpenTargetFallbackLabel } from "@/components/workspace-open-target/workspace-open-target-display";
 import type { LocalHostDaemonAccessState } from "@/lib/local-host-daemon-access";
+import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
+
+const LOCAL_EDITOR_INTEGRATION_DOCS_URL =
+  "https://github.com/get-bb/bb/blob/main/docs/multiple-devices.md#open-bb-from-another-browser";
 
 interface ThemePreferenceOption {
   label: string;
@@ -477,11 +481,11 @@ export function LocalOpenTargetSettingsSection({
   if (!hasDaemon) {
     const accessDenied = accessState === "denied";
     const accessAvailable = accessState === "available";
-    const description = accessDenied
-      ? "Loopback access is blocked. Allow it for this site in your browser settings, then reload bb."
+    const descriptionText = accessDenied
+      ? "Your browser blocked access to bb on this device. Allow local network access for this site in browser settings, then reload bb."
       : accessAvailable
-        ? "No local bb helper is reachable on this device. Start bb locally, then retry to discover installed editors."
-        : "Allow bb to discover editors on this device. Your browser may ask for access to apps and services on this computer.";
+        ? "bb couldn’t connect to its local editor helper. Make sure the bb desktop app or CLI is running on this device, then retry. If it is already running, a remote browser origin may need to be configured."
+        : "Connect this browser to bb on this device so it can discover installed editors. bb only contacts the local helper after you choose Enable; your browser may ask for local network access.";
     const buttonLabel = accessRequestPending
       ? accessAvailable
         ? "Retrying…"
@@ -496,9 +500,26 @@ export function LocalOpenTargetSettingsSection({
       <SettingsSection title="File Preferences">
         <SettingsWithControl
           label="Local editor integration"
-          description={description}
+          description={
+            <>
+              {descriptionText}{" "}
+              <a
+                href={LOCAL_EDITOR_INTEGRATION_DOCS_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                onClick={(event) => {
+                  event.preventDefault();
+                  openUrlInExternalBrowser(LOCAL_EDITOR_INTEGRATION_DOCS_URL);
+                }}
+              >
+                Setup guide
+              </a>
+            </>
+          }
         >
           <Button
+            type="button"
             variant="outline"
             size="sm"
             disabled={accessRequestPending || accessDenied}

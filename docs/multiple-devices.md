@@ -45,9 +45,16 @@ container runtime must still publish that port to the host (for example,
 `docker run -p 3000:3000 ...`). Host firewall and upstream network rules also
 remain separate from bb's bind setting.
 
-If a browser on another computer should open work-host files in its local
-editor, run bb's local helper there, verify `ssh <work-host>` succeeds, and map
-the server/work-host to that SSH target:
+### Use editors installed on the browser device
+
+Local editor integration is optional. It connects the remote bb page to the
+loopback-only helper started by the bb desktop app or `npx bb-app` on the
+computer running the browser. The helper discovers installed editors and opens
+paths without exposing its API to the network.
+
+If that browser should open work-host files in its local editor, first make
+sure bb is running on the browser device. Verify `ssh <work-host>` succeeds
+there, then map the server/work-host to that SSH target:
 
 ```bash
 npx bb-app client ssh-target set <bb-server-origin> <ssh-target>
@@ -57,6 +64,14 @@ Then open Settings → Files in that browser and enable **Local editor
 integration**. The browser may ask once for permission to connect to software
 on the computer. bb does not request that permission during normal remote page
 loads; it is only needed for discovering and launching local editors.
+
+If Settings reports that it cannot connect to the helper:
+
+1. Confirm the bb desktop app or `npx bb-app` is running on the browser device.
+2. Confirm the browser allows local network access for the bb page.
+3. For a custom HTTPS or Tailscale origin, configure that exact origin with
+   `npx bb-app config set BB_APP_URL <origin>` and restart bb.
+4. Return to Settings → Files and choose **Retry**.
 
 Phones and tablets need no helper; editor-launch actions are simply unavailable.
 
