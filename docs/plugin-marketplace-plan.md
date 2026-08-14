@@ -400,4 +400,22 @@ payload changes.
    build in CI improves review but executes third-party code; if added, it
    needs an isolated runner with no secrets.
 
+## Implementation notes
+
+- A marketplace entry ID is also the installed plugin ID. The package
+  manifest must use the same ID.
+- The official fallback uses a typed TypeScript seed. This stack does not add
+  a checked-in registry snapshot.
+- A Git marketplace source follows one literal ref. It does not accept a tag
+  range.
+- A bare Git version such as `v1.2.3` stays a literal ref. The `semver:` prefix
+  selects a tag range.
+- Browse categories come from entry tags. The marketplace manifest has no
+  category field.
+- Published schemas use `https://getbb.app/schemas/` URLs.
+- This stack adds the R2 reader and its binding. The registry repository,
+  publication credentials, and publication workflow remain future work.
+- The existing intake-form link remains. This stack adds no hosted submission
+  service or in-app submission dialog.
+
 > AGENT GENERATED: by Claude Fable 5
