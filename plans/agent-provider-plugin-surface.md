@@ -137,6 +137,29 @@ exists, not an invention:
   encoding install strategies as a declarative mini-DSL
   (`npmGlobal` / `downloadedShellScript` / …) that would grow provider
   variants inside core again.
+- **Skills live in the bridge too, in both directions.** *Injection*
+  (bb skills → provider): `skills/configure` carries one canonical payload —
+  the staged catalog root plus skill descriptors — and each bridge
+  transforms it into its provider's native shape (claude-code writes its
+  plugin directory + generated manifest, codex/pi point at the skills
+  directory, acp builds its prompt listing). This deletes today's
+  three-layer per-provider switch in core: `injected-skills.ts::buildSkillRoots`
+  (four hardcoded shapes), the `runtime-skill-roots.ts` normalize/filter
+  switch, and the four-variant skill-root union in `agent-runtime/types.ts`.
+  The daemon keeps only the generic content-addressed staging (symlink-safe
+  copy, hashing), which is genuinely host infrastructure. *Discovery*
+  (provider-native skills → composer typeahead): an optional
+  `skills/scanRoots {cwd}` method returns the provider's resolved scan
+  roots; the daemon keeps the generic scanner/parser. The
+  `PROVIDER_SKILL_SPECS` table this replaces is not actually stable data —
+  its `userLocations` are functions of resolved config dirs (`CODEX_HOME`,
+  Claude config-dir override, `OPENCODE_CONFIG_DIR`), acp-grok has compat
+  rules read from grok's own config file plus env toggles, root ordering
+  differs per provider, and claude-code appends `.claude/commands` roots
+  with a different shape — i.e. it is code, which is exactly what belongs
+  behind the bridge. Composer typeahead stays fast via a daemon cache keyed
+  by (bridge artifact hash, cwd), answered by a resident session's bridge
+  when one exists and a one-shot spawn otherwise.
 
 The key semantic change vs today: **all translation moves into the bridge**.
 The bridge emits bb `ThreadEvent`s; the runtime never sees provider-native
@@ -207,9 +230,9 @@ bb.agents.experimental_registerProvider({
   executionOptionScopes: { model: "live", reasoningLevel: "live", ... },
   approvalRequestPolicy: "provider",
   bridge: { entry: "provider-bridge" }, // required for kind "agent"; routers omit it
-  skillRoots: {...},                    // replaces PROVIDER_SKILL_SPECS rows
-  // NOTE: no `cli` block — CLI detection/install/update are bridge protocol
-  // methods, not declaration data. See "CLI lifecycle lives in the bridge".
+  // NOTE: no `cli` and no `skillRoots` blocks — CLI lifecycle and skill
+  // layout knowledge are bridge protocol methods, not declaration data. See
+  // "CLI lifecycle lives in the bridge" and "Skills live in the bridge".
 });
 ```
 
@@ -379,6 +402,13 @@ protocol method:
   `known_acp_agents.status`) → the optional `provider/health` /
   `provider/install` / `provider/update` bridge methods. The existing daemon
   tables keep working untouched through phases 1–5 and are deleted here.
+- `PROVIDER_SKILL_SPECS` + `resolveProviderExtraRoots` → the optional
+  `skills/scanRoots` bridge method with daemon-side caching. (The injection
+  side is not deferred to this phase: the canonical `skills/configure`
+  payload is part of the phase-1 protocol, and each bridge's native
+  transformation moves in with the rest of its translation in phase 2,
+  deleting `buildSkillRoots`, the runtime skill-root filter, and the
+  skill-root union then.)
 - `providerCliKeyValues` / fixed-key `providerUsageResponseSchema` → generic
   per-provider-id map backed by an optional `provider/usage` bridge method;
   usage-limits and CLI-install UI become registry-driven.
