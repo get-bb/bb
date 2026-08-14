@@ -8,7 +8,26 @@ import type { InstalledPluginRow, PluginGitSelector } from "@bb/db";
 export function gitSelectorForRow(
   row: InstalledPluginRow,
 ): PluginGitSelector | null {
-  if (row.sourceGitRequestedRef !== null && row.sourceGitRefKind !== null) {
+  const hasAnyRef =
+    row.sourceGitRequestedRef !== null || row.sourceGitRefKind !== null;
+  const hasAnyRange =
+    row.sourceGitRange !== null ||
+    row.sourceGitTagPrefix !== null ||
+    row.sourceGitResolvedTag !== null;
+
+  if (row.sourceKind !== "git") {
+    if (hasAnyRef || hasAnyRange) {
+      throw new Error(
+        `plugin "${row.id}" has git selector columns on a ${row.sourceKind} row`,
+      );
+    }
+    return null;
+  }
+  if (
+    row.sourceGitRequestedRef !== null &&
+    row.sourceGitRefKind !== null &&
+    !hasAnyRange
+  ) {
     return {
       kind: "ref",
       ref: row.sourceGitRequestedRef,
@@ -18,7 +37,8 @@ export function gitSelectorForRow(
   if (
     row.sourceGitRange !== null &&
     row.sourceGitTagPrefix !== null &&
-    row.sourceGitResolvedTag !== null
+    row.sourceGitResolvedTag !== null &&
+    !hasAnyRef
   ) {
     return {
       kind: "range",
@@ -27,7 +47,15 @@ export function gitSelectorForRow(
       resolvedTag: row.sourceGitResolvedTag,
     };
   }
-  return null;
+  // Phase 1 rows can have a requested ref but no network classification yet.
+  if (
+    row.sourceGitRequestedRef !== null &&
+    row.sourceGitRefKind === null &&
+    !hasAnyRange
+  ) {
+    return null;
+  }
+  throw new Error(`plugin "${row.id}" has corrupt normalized git selector`);
 }
 
 /**
