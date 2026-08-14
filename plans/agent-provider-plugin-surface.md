@@ -16,6 +16,33 @@ Built-in providers (codex, claude-code, pi, cursor/ACP) are re-shipped as
 first-party plugins. The core becomes provider-agnostic; new providers get a
 first-class path that is not constrained by ACP.
 
+## Implementation status (2026-08-14, end of day)
+
+Landed on this branch, every commit green:
+
+- **Phase 1 complete**: `@bb/provider-bridge-protocol` (schemas, versioned
+  capability handshake, `docs/provider-bridge-protocol.md` with the event
+  grammar), the conformance kit (`@bb/provider-bridge-protocol/conformance`),
+  the generic `BridgeProviderAdapter`, and the turn-start watchdog
+  (`provider_turn_start_timeout` system/error; no wire change).
+- **Phase 2a and 2b complete**: the acp and pi bridges are protocol-pure —
+  11/11 conformance each, per-session dialects, shared (not duplicated)
+  translators, honest stop intents, reply-never-drop hygiene (which fixed a
+  real latent bug: #859 never implemented #853's replies in the acp bridge;
+  same finding in pi). The `providerBridgeAcp` experiment is wired end to
+  end via a new additive `/provider-bridge-policy` endpoint — zero wire
+  schema changes, no protocol bump. Pi capabilities verified with evidence:
+  sessionRestore true, fork "checkpoint".
+- **Phase 3 complete (server-side)**: `ProviderRegistryService`
+  (catalog-equality pinned), `bb.agents.experimental_registerProvider`
+  (contract + host-policy + fake host + api_to_audit entry), and the full
+  policy-consumer repoint — plugin-registered providers appear in listings
+  and are accepted by thread policy end to end. UI decoupling (icon maps,
+  app catalog imports) intentionally trails until phase-4 icon assets exist.
+- **In flight**: phase 2c (claude-code migration). **Not started**: phase 2d
+  (codex bridge), phase 4+ (first-party provider plugins, artifact
+  delivery, consolidation sweep).
+
 ## Current State (2026-08-14)
 
 The provider "contract" today is six scattered surfaces:
