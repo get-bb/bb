@@ -157,7 +157,7 @@ tag:
 
 | Platform | Artifacts               | electron-updater metadata | Version feed                 |
 | -------- | ----------------------- | ------------------------- | ---------------------------- |
-| macOS    | `.dmg`, `.zip` (2 arch) | `latest-mac.yml`          | `desktop-version.json`       |
+| macOS    | `.dmg`, `.zip` (arm64)  | `latest-mac.yml`          | `desktop-version.json`       |
 | Linux    | `.AppImage` (x64)       | `latest-linux.yml`        | `desktop-version-linux.json` |
 
 macOS keeps the unsuffixed feed name because released macOS builds already
