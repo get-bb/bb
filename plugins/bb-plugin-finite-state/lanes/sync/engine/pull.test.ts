@@ -872,6 +872,71 @@ decisions:
     });
   });
 
+  it("does not notify when the publication fence moves", async () => {
+    const scope = {
+      projectId: "project-fenced",
+      projectVersionId: "version-fenced",
+    };
+    let deps: EngineDeps;
+    let publications = 0;
+    const adapter: EntityAdapter = {
+      kind: "requirement",
+      klass: "VERSIONED",
+      serializer: createSerializer("requirement"),
+      async *fetchRemote(_scope, progress) {
+        progress({ page: 1, of: 1 });
+        yield [
+          {
+            key: ENTITIES.requirement.key({ reqId: "REQ-FENCED" }),
+            remoteId: "remote-fenced",
+            payload: {
+              id: "remote-fenced",
+              projectId: scope.projectId,
+              kind: "requirement",
+              fields: { reqId: "REQ-FENCED", title: "Fenced" },
+              humanEdited: null,
+              reviewStatus: null,
+              reviewVersion: null,
+            },
+          },
+        ];
+      },
+      async readWorking() {
+        deps.db
+          .prepare(
+            `UPDATE sync_state
+              SET staging_generation_id = NULL
+            WHERE project_id = ? AND project_version_id = ?
+              AND entity_kind = 'requirement'`,
+          )
+          .run(scope.projectId, scope.projectVersionId);
+        return [];
+      },
+    };
+    deps = engine(adapter, {
+      worktreeRoot: "/worktree",
+      published: () => {
+        publications += 1;
+      },
+    });
+
+    await expect(pull(deps, scope, ["requirement"])).rejects.toThrow(
+      "Publication fence moved for requirement",
+    );
+    expect(publications).toBe(0);
+    expect(
+      deps.db
+        .prepare(
+          `SELECT accepted_generation_id
+         FROM sync_state
+        WHERE project_id = ? AND project_version_id = ?
+          AND entity_kind = 'requirement'`,
+        )
+        .pluck()
+        .get(scope.projectId, scope.projectVersionId),
+    ).toBeNull();
+  });
+
   it("isolates a failed kind, keeps prior accepted readers stable, and flips all kinds once on retry", async () => {
     let requirementTitle = "requirement-v1";
     let threatTitle = "threat-v1";
@@ -932,15 +997,53 @@ decisions:
       },
     };
     let generation = 0;
+    const publications: Array<{
+      generationId: string;
+      acceptedKinds: Array<{
+        entity_kind: string;
+        accepted_generation_id: string;
+      }>;
+    }> = [];
     const deps = engine(requirement, {
       adapters: [requirement, threat],
       createGenerationId: () => `generation-multi-${++generation}`,
+      published(publication) {
+        publications.push({
+          generationId: publication.generationId,
+          acceptedKinds: deps.db
+            .prepare<
+              [string, string | null],
+              { entity_kind: string; accepted_generation_id: string }
+            >(
+              `SELECT entity_kind, accepted_generation_id
+               FROM sync_state
+              WHERE project_id = ? AND project_version_id = ?
+              ORDER BY entity_kind`,
+            )
+            .all(
+              publication.scope.projectId,
+              publication.scope.projectVersionId,
+            ),
+        });
+      },
     });
     const selectedScope = {
       projectId: "project-multi",
       projectVersionId: "version-multi",
     };
     const first = await pull(deps, selectedScope, ["requirement", "threat"]);
+    expect(publications).toEqual([
+      {
+        generationId: first.generationId,
+        acceptedKinds: [
+          {
+            entity_kind: "requirement",
+            accepted_generation_id: first.generationId,
+          },
+          { entity_kind: "threat", accepted_generation_id: first.generationId },
+        ],
+      },
+    ]);
     const acceptedBefore = new BaseSnapshotStore(deps.db).listAccepted(
       selectedScope.projectId,
       selectedScope.projectVersionId,
@@ -954,6 +1057,7 @@ decisions:
     ).rejects.toMatchObject({
       failures: [{ kind: "threat", message: "mock threat reset" }],
     });
+    expect(publications).toHaveLength(1);
     const staged = deps.db
       .prepare(
         `SELECT entity_kind, accepted_generation_id, staging_generation_id, staged_rows
@@ -986,6 +1090,16 @@ decisions:
     await expect(
       pull(deps, selectedScope, ["requirement", "threat"]),
     ).resolves.toMatchObject({ generationId: "generation-multi-2" });
+    expect(publications.at(-1)).toEqual({
+      generationId: "generation-multi-2",
+      acceptedKinds: [
+        {
+          entity_kind: "requirement",
+          accepted_generation_id: "generation-multi-2",
+        },
+        { entity_kind: "threat", accepted_generation_id: "generation-multi-2" },
+      ],
+    });
     expect(
       deps.db
         .prepare(

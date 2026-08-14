@@ -2,7 +2,10 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import { createFakePluginHost } from "@bb/plugin-sdk/testing";
+import {
+  createFakePluginHost,
+  makeThreadResponse,
+} from "@bb/plugin-sdk/testing";
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 
@@ -13,7 +16,7 @@ import type { RemoteServices } from "../../lib/remote/types.js";
 import { createMockPlatformState } from "../../test/mock-remote/platform/state.js";
 import { registerPlatformHandlers } from "../../test/mock-remote/platform/register.js";
 import { createMockRemote } from "../../test/mock-remote/server.js";
-import { registerSyncCli } from "../sync/cli.js";
+import { registerSync } from "../sync/register.js";
 import { bomAppRpcContract } from "./rpc.js";
 import { registerBom } from "./register.js";
 
@@ -58,6 +61,21 @@ describe("registered SBOM pull surfaces", () => {
                 updatedAt: 1,
               },
             ],
+          }),
+        },
+        threads: {
+          get: async () =>
+            makeThreadResponse({
+              id: "thread-fs172",
+              projectId: "bb-project-fs172",
+              environmentId: "environment-fs172",
+            }),
+        },
+        environments: {
+          get: async () => ({
+            id: "environment-fs172",
+            projectId: "bb-project-fs172",
+            path: root,
           }),
         },
       },
@@ -112,12 +130,7 @@ describe("registered SBOM pull surfaces", () => {
       };
       ctx.service<RemoteServices>("remote-services", () => services);
       registerBom(host.bb, ctx);
-      registerSyncCli(
-        host.bb,
-        { db: ctx.db(), worktreeRoot: null },
-        platform,
-        async () => root,
-      );
+      registerSync(host.bb, ctx);
 
       const projectId = requiredId(
         [...state.projects.values()][0],
@@ -145,6 +158,16 @@ describe("registered SBOM pull surfaces", () => {
       expect(JSON.parse(pulled.stdout)).toMatchObject({
         kinds: { sbomComponent: { fetched: 0, baseRows: 0 } },
       });
+      expect(
+        host.harness.inspection.realtimeSignals.filter(
+          (signal) => signal.channel === "bom:changed",
+        ),
+      ).toEqual([
+        {
+          channel: "bom:changed",
+          payload: { projectVersionId },
+        },
+      ]);
       expect(
         ctx
           .db()
@@ -233,6 +256,11 @@ describe("registered SBOM pull surfaces", () => {
         { projectId: "bb-project-fs172", threadId: "thread-fs172" },
       );
       expect(failed.exitCode).toBe(1);
+      expect(
+        host.harness.inspection.realtimeSignals.filter(
+          (signal) => signal.channel === "bom:changed",
+        ),
+      ).toHaveLength(1);
 
       const stageDirectory = join(dirname(ctx.db().name), ".fs-sync", "bom");
       const [stageName] = await readdir(stageDirectory);
@@ -258,6 +286,14 @@ describe("registered SBOM pull surfaces", () => {
         { projectId: "bb-project-fs172", threadId: "thread-fs172" },
       );
       expect(recovered).toMatchObject({ exitCode: 0, stderr: "" });
+      expect(
+        host.harness.inspection.realtimeSignals.filter(
+          (signal) => signal.channel === "bom:changed",
+        ),
+      ).toEqual([
+        { channel: "bom:changed", payload: { projectVersionId } },
+        { channel: "bom:changed", payload: { projectVersionId } },
+      ]);
       expect(
         ctx
           .db()

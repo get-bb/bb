@@ -60,6 +60,15 @@ export function registerSync(bb: BbPluginApi, ctx: PluginContext): void {
     db: ctx.db(),
     worktreeRoot: null,
     publish: (channel, progress) => ctx.bb.realtime.publish(channel, progress),
+    // Keep the established kind-specific channel: only SBOM consumers need
+    // this invalidation, and the sync engine invokes it after atomic publish.
+    published: ({ scope, kinds }) => {
+      if (scope.projectVersionId !== null && kinds.includes("sbomComponent")) {
+        ctx.bb.realtime.publish("bom:changed", {
+          projectVersionId: scope.projectVersionId,
+        });
+      }
+    },
     fastForwardWorking: async ({ adapter, baseRows, files, worktreeRoot }) => {
       if (adapter.kind === "vexDecision") {
         await fastForwardVexWorking(worktreeRoot, files, baseRows);

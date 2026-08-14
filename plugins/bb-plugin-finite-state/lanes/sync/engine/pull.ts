@@ -31,6 +31,14 @@ export interface PullProgress {
   phase: "fetch" | "write" | "done";
 }
 
+/** Accepted generation metadata exposed only after the atomic pointer flip commits. */
+export interface PullPublication {
+  scope: SyncScope;
+  generationId: string;
+  acceptedAt: string;
+  kinds: readonly EntityKind[];
+}
+
 /** Dependencies owned by the server registration root and injected into the engine. */
 export interface EngineDeps {
   /** Migrated plugin SQLite database. */
@@ -39,6 +47,8 @@ export interface EngineDeps {
   worktreeRoot?: string | null;
   /** Optional realtime publisher. */
   publish?(channel: "fs-sync-pull", progress: PullProgress): void;
+  /** Optional post-commit invalidation seam owned by sync registration. */
+  published?(publication: PullPublication): void;
   /** Clock seam for deterministic tests. */
   now?(): Date;
   /** Generation-id seam for deterministic tests. */
@@ -983,6 +993,12 @@ export async function pull(
     generationId,
     selectedKinds,
   );
+  deps.published?.({
+    scope,
+    generationId,
+    acceptedAt,
+    kinds: selectedKinds,
+  });
   const fastForward = await fastForwardWorking(
     deps,
     scope,
