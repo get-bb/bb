@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import type { DbConnection } from "../connection.js";
+import type { DbConnection, DbQueryConnection } from "../connection.js";
 import { pluginMarketplaceIcons, pluginMarketplaces } from "../schema.js";
 
 export interface PluginMarketplaceRow {
@@ -43,7 +43,7 @@ export type UpsertPluginMarketplaceIconInput = Omit<
 >;
 
 export function getPluginMarketplace(
-  db: DbConnection,
+  db: DbQueryConnection,
   name: string,
 ): PluginMarketplaceRow | undefined {
   return db
@@ -54,7 +54,7 @@ export function getPluginMarketplace(
 }
 
 export function upsertPluginMarketplace(
-  db: DbConnection,
+  db: DbQueryConnection,
   input: UpsertPluginMarketplaceInput,
 ): PluginMarketplaceRow {
   const now = Date.now();
@@ -95,7 +95,7 @@ export function recordPluginMarketplaceRefreshFailure(
 }
 
 export function listPluginMarketplaceIcons(
-  db: DbConnection,
+  db: DbQueryConnection,
   marketplaceName: string,
 ): PluginMarketplaceIconRow[] {
   return db
@@ -106,7 +106,7 @@ export function listPluginMarketplaceIcons(
 }
 
 export function getPluginMarketplaceIcon(
-  db: DbConnection,
+  db: DbQueryConnection,
   marketplaceName: string,
   entryId: string,
 ): PluginMarketplaceIconRow | undefined {
@@ -123,7 +123,7 @@ export function getPluginMarketplaceIcon(
 }
 
 export function upsertPluginMarketplaceIcon(
-  db: DbConnection,
+  db: DbQueryConnection,
   input: UpsertPluginMarketplaceIconInput,
 ): void {
   const now = Date.now();
@@ -147,7 +147,7 @@ export function upsertPluginMarketplaceIcon(
 }
 
 export function deletePluginMarketplaceIcon(
-  db: DbConnection,
+  db: DbQueryConnection,
   marketplaceName: string,
   entryId: string,
 ): boolean {
@@ -162,4 +162,16 @@ export function deletePluginMarketplaceIcon(
       )
       .run().changes > 0
   );
+}
+
+/** Replace one marketplace's complete icon set inside the caller's commit. */
+export function replacePluginMarketplaceIcons(
+  db: DbQueryConnection,
+  marketplaceName: string,
+  icons: readonly UpsertPluginMarketplaceIconInput[],
+): void {
+  db.delete(pluginMarketplaceIcons)
+    .where(eq(pluginMarketplaceIcons.marketplaceName, marketplaceName))
+    .run();
+  for (const icon of icons) upsertPluginMarketplaceIcon(db, icon);
 }

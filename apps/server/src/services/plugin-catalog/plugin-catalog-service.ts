@@ -4,6 +4,7 @@ import {
   getPluginMarketplaceIcon,
   listInstalledPlugins,
   recordPluginMarketplaceRefreshFailure,
+  replacePluginMarketplaceIcons,
   upsertPluginMarketplace,
   type DbConnection,
   type PluginMarketplaceRow,
@@ -25,7 +26,7 @@ import {
 } from "../plugins/manifest.js";
 import type { PluginService } from "../plugins/plugin-service.js";
 import { evaluateCompatibility } from "../plugins/update-resolver.js";
-import { refreshMarketplaceIcons } from "./marketplace-icons.js";
+import { fetchMarketplaceIcons } from "./marketplace-icons.js";
 import {
   boundedResponseBytes,
   marketplaceErrorMessage,
@@ -324,21 +325,9 @@ export function createPluginCatalogService(deps: {
         }
         manifestJson = JSON.stringify(catalog);
       }
-      upsertPluginMarketplace(deps.db, {
-        name: OFFICIAL_MARKETPLACE_NAME,
-        manifestUrl: before.manifestUrl,
-        manifestJson,
-        etag: response.headers.get("etag") ?? (unchanged ? before.etag : null),
-        lastModified:
-          response.headers.get("last-modified") ??
-          (unchanged ? before.lastModified : null),
-        lastSuccessfulRefreshAt: attemptedAt,
-        lastAttemptedRefreshAt: attemptedAt,
-        lastError: null,
-      });
       // An unchanged manifest still retries entries whose icon never cached,
       // so one bad icon fetch is not permanent.
-      await refreshMarketplaceIcons({
+      const icons = await fetchMarketplaceIcons({
         db: deps.db,
         marketplaceName: OFFICIAL_MARKETPLACE_NAME,
         manifestUrl: before.manifestUrl,
@@ -346,6 +335,24 @@ export function createPluginCatalogService(deps: {
         onlyMissing: unchanged,
         fetch: fetchMarketplace,
         ...(deps.warn === undefined ? {} : { warn: deps.warn }),
+      });
+      // The catalog and all icon rows form one snapshot. Network work happens
+      // first, then SQLite publishes the complete snapshot in one commit.
+      deps.db.transaction((tx) => {
+        upsertPluginMarketplace(tx, {
+          name: OFFICIAL_MARKETPLACE_NAME,
+          manifestUrl: before.manifestUrl,
+          manifestJson,
+          etag:
+            response.headers.get("etag") ?? (unchanged ? before.etag : null),
+          lastModified:
+            response.headers.get("last-modified") ??
+            (unchanged ? before.lastModified : null),
+          lastSuccessfulRefreshAt: attemptedAt,
+          lastAttemptedRefreshAt: attemptedAt,
+          lastError: null,
+        });
+        replacePluginMarketplaceIcons(tx, OFFICIAL_MARKETPLACE_NAME, icons);
       });
       deps.notifyCatalogChanged?.();
     } catch (error) {

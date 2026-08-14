@@ -468,6 +468,54 @@ describe("plugin catalog service", () => {
       await catalog.refresh(2_000);
       expect(catalog.icon("bb-official", "widgets")).toBeUndefined();
     });
+
+    it("drops a cached icon when its replacement URL fails", async () => {
+      let iconUrl = "./icons/widgets.svg";
+      const catalog = service({
+        warn: () => {},
+        fetch: async (url) => {
+          if (url === MANIFEST_URL) {
+            return jsonResponse(
+              manifest([remoteEntry({ icon: { url: iconUrl } })]),
+            );
+          }
+          return url.endsWith("widgets.svg")
+            ? new Response(VALID_SVG, { status: 200 })
+            : new Response("nope", { status: 503 });
+        },
+      });
+      await catalog.refresh(1_000);
+      expect(catalog.icon("bb-official", "widgets")).toBeDefined();
+
+      iconUrl = "./icons/replacement.svg";
+      await catalog.refresh(2_000);
+      expect(catalog.icon("bb-official", "widgets")).toBeUndefined();
+    });
+
+    it("keeps the prior snapshot when an icon-table commit fails", async () => {
+      db.$client.exec(`
+        CREATE TRIGGER reject_marketplace_icon
+        BEFORE INSERT ON plugin_marketplace_icons
+        BEGIN
+          SELECT RAISE(ABORT, 'icon write failed');
+        END;
+      `);
+      const catalog = service({
+        fetch: async (url) =>
+          url === MANIFEST_URL
+            ? jsonResponse(manifest([remoteEntry()]))
+            : new Response(VALID_SVG, { status: 200 }),
+      });
+
+      await expect(catalog.refresh(3_000)).rejects.toThrow("icon write failed");
+      expect(await catalog.search("widgets")).toEqual([]);
+      expect(await catalog.search("thread-hover-cards")).toHaveLength(1);
+      expect(getPluginMarketplace(db, "bb-official")).toMatchObject({
+        lastSuccessfulRefreshAt: null,
+        lastAttemptedRefreshAt: 3_000,
+        lastError: expect.stringContaining("icon write failed"),
+      });
+    });
   });
 
   describe("catalog installs", () => {

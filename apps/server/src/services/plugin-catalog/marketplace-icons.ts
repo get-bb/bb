@@ -1,10 +1,9 @@
 import { createHash } from "node:crypto";
 import {
-  deletePluginMarketplaceIcon,
-  getPluginMarketplaceIcon,
   listPluginMarketplaceIcons,
-  upsertPluginMarketplaceIcon,
   type DbConnection,
+  type PluginMarketplaceIconRow,
+  type UpsertPluginMarketplaceIconInput,
 } from "@bb/db";
 import { assertValidPluginCompactIconSvg } from "@bb/plugin-build";
 import {
@@ -83,7 +82,7 @@ export function marketplaceIconContentType(
  * are dropped. `onlyMissing` (an unchanged manifest) retries entries with no
  * cached icon without re-reading the ones already cached.
  */
-export async function refreshMarketplaceIcons(args: {
+export async function fetchMarketplaceIcons(args: {
   db: DbConnection;
   marketplaceName: string;
   manifestUrl: string;
@@ -91,7 +90,7 @@ export async function refreshMarketplaceIcons(args: {
   onlyMissing: boolean;
   fetch: MarketplaceFetch;
   warn?: (message: string) => void;
-}): Promise<void> {
+}): Promise<UpsertPluginMarketplaceIconInput[]> {
   const wanted = new Map<string, string>();
   for (const entry of args.entries) {
     let iconUrl: string | null;
@@ -106,49 +105,62 @@ export async function refreshMarketplaceIcons(args: {
     if (iconUrl !== null) wanted.set(entry.id, iconUrl);
   }
 
-  for (const cached of listPluginMarketplaceIcons(
-    args.db,
-    args.marketplaceName,
-  )) {
-    if (!wanted.has(cached.entryId)) {
-      deletePluginMarketplaceIcon(
-        args.db,
-        args.marketplaceName,
-        cached.entryId,
-      );
-    }
-  }
+  const cachedByEntryId = new Map(
+    listPluginMarketplaceIcons(args.db, args.marketplaceName).map((icon) => [
+      icon.entryId,
+      icon,
+    ]),
+  );
+  const nextIcons: UpsertPluginMarketplaceIconInput[] = [];
 
   for (const [entryId, iconUrl] of wanted) {
-    if (
-      args.onlyMissing &&
-      getPluginMarketplaceIcon(args.db, args.marketplaceName, entryId) !==
-        undefined
-    ) {
+    const cached = cachedByEntryId.get(entryId);
+    const unchangedUrl = cached?.sourceUrl === iconUrl;
+    if (args.onlyMissing && cached !== undefined && unchangedUrl) {
+      nextIcons.push(iconInputFromRow(cached));
       continue;
     }
     try {
-      await refreshOneIcon({ ...args, entryId, iconUrl });
+      const refreshed = await fetchOneIcon({
+        ...args,
+        entryId,
+        iconUrl,
+        cached,
+      });
+      if (refreshed !== null) {
+        nextIcons.push(refreshed);
+      } else if (cached !== undefined && unchangedUrl) {
+        nextIcons.push(iconInputFromRow(cached));
+      }
     } catch (error) {
       args.warn?.(
         `marketplace ${args.marketplaceName} entry "${entryId}" icon ${iconUrl} was rejected: ${marketplaceErrorMessage(error)}`,
       );
+      // A failed revalidation keeps the matching last-known-good asset. An
+      // asset from a previous URL does not describe the new catalog.
+      if (cached !== undefined && unchangedUrl) {
+        nextIcons.push(iconInputFromRow(cached));
+      }
     }
   }
+  return nextIcons;
 }
 
-async function refreshOneIcon(args: {
-  db: DbConnection;
+function iconInputFromRow(
+  row: PluginMarketplaceIconRow,
+): UpsertPluginMarketplaceIconInput {
+  const { updatedAt: _updatedAt, ...input } = row;
+  return input;
+}
+
+async function fetchOneIcon(args: {
   marketplaceName: string;
   entryId: string;
   iconUrl: string;
+  cached: PluginMarketplaceIconRow | undefined;
   fetch: MarketplaceFetch;
-}): Promise<void> {
-  const cached = getPluginMarketplaceIcon(
-    args.db,
-    args.marketplaceName,
-    args.entryId,
-  );
+}): Promise<UpsertPluginMarketplaceIconInput | null> {
+  const cached = args.cached;
   const unchangedUrl =
     cached !== undefined && cached.sourceUrl === args.iconUrl;
   const headers = new Headers({ accept: "image/*" });
@@ -163,7 +175,7 @@ async function refreshOneIcon(args: {
   });
   if (response.status === 304 && unchangedUrl) {
     await response.body?.cancel();
-    return;
+    return null;
   }
   if (!response.ok) {
     await response.body?.cancel();
@@ -175,7 +187,7 @@ async function refreshOneIcon(args: {
     "icon",
   );
   const contentType = marketplaceIconContentType(args.iconUrl, bytes);
-  upsertPluginMarketplaceIcon(args.db, {
+  return {
     marketplaceName: args.marketplaceName,
     entryId: args.entryId,
     sourceUrl: args.iconUrl,
@@ -183,5 +195,5 @@ async function refreshOneIcon(args: {
     etag: response.headers.get("etag"),
     contentHash: createHash("sha256").update(bytes).digest("hex").slice(0, 16),
     bytes: Buffer.from(bytes),
-  });
+  };
 }
