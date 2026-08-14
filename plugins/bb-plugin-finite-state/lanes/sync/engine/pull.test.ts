@@ -7,17 +7,29 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createPluginContext } from "../../../lib/context.js";
 import { PlatformClient } from "../../../lib/remote/platform/client.js";
-import { RemoteLimiter, type Scheduler } from "../../../lib/remote/rate-limit.js";
+import {
+  RemoteLimiter,
+  type Scheduler,
+} from "../../../lib/remote/rate-limit.js";
 import { RemoteError, type Json } from "../../../lib/remote/types.js";
 import { ENTITIES } from "../../../lib/sync/registry.js";
 import { createSerializer } from "../serialize/serializer.js";
 import { BaseSnapshotStore } from "../store/base-snapshot.js";
-import { createMockRemote, type MockRemoteHarness } from "../../../test/mock-remote/server.js";
-import { createFaultController, type FaultControllerRuntime } from "../../../test/mock-remote/faults/controller.js";
+import {
+  createMockRemote,
+  type MockRemoteHarness,
+} from "../../../test/mock-remote/server.js";
+import {
+  createFaultController,
+  type FaultControllerRuntime,
+} from "../../../test/mock-remote/faults/controller.js";
 import { withFaultMiddleware } from "../../../test/mock-remote/faults/middleware.js";
 import { PLATFORM_FINDINGS_ROUTE } from "../../../test/mock-remote/faults/scenarios.js";
 import { registerPlatformHandlers } from "../../../test/mock-remote/platform/register.js";
-import { createMockPlatformState, type MockPlatformState } from "../../../test/mock-remote/platform/state.js";
+import {
+  createMockPlatformState,
+  type MockPlatformState,
+} from "../../../test/mock-remote/platform/state.js";
 import {
   createVexDecisionAdapter,
   createVexDecisionResolver,
@@ -27,10 +39,18 @@ import {
   readVexWorking,
 } from "../entities/vex-decision.js";
 import type { EntityAdapter, ServerEntity, WorkingEntity } from "./adapter.js";
-import { PullFailedError, pull, type EngineDeps, type PullProgress } from "./pull.js";
+import {
+  PullFailedError,
+  pull,
+  type EngineDeps,
+  type PullProgress,
+} from "./pull.js";
 import { status } from "./status.js";
 
-const FIXTURE_ROOT = new URL("../../../test/mock-remote/fixtures/", import.meta.url).pathname;
+const FIXTURE_ROOT = new URL(
+  "../../../test/mock-remote/fixtures/",
+  import.meta.url,
+).pathname;
 const TOKEN = "wp17-platform-token";
 const hosts: Array<ReturnType<typeof createFakePluginHost>> = [];
 const harnesses: MockRemoteHarness[] = [];
@@ -40,8 +60,12 @@ const roots: string[] = [];
 afterEach(async () => {
   clients.splice(0).forEach((client) => client.close());
   await Promise.all(harnesses.splice(0).map((harness) => harness.close()));
-  await Promise.all(hosts.splice(0).map((host) => host.harness.lifecycle.dispose()));
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(
+    hosts.splice(0).map((host) => host.harness.lifecycle.dispose()),
+  );
+  await Promise.all(
+    roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+  );
 });
 
 interface PlatformFixture {
@@ -52,11 +76,13 @@ interface PlatformFixture {
   scope: { projectId: string; projectVersionId: string };
 }
 
-function setupPlatform(options: {
-  fault?: boolean;
-  fetch?: (base: typeof globalThis.fetch) => typeof globalThis.fetch;
-  limiter?: RemoteLimiter;
-} = {}): PlatformFixture {
+function setupPlatform(
+  options: {
+    fault?: boolean;
+    fetch?: (base: typeof globalThis.fetch) => typeof globalThis.fetch;
+    limiter?: RemoteLimiter;
+  } = {},
+): PlatformFixture {
   const state = createMockPlatformState(FIXTURE_ROOT);
   const controller = createFaultController();
   if (options.fault) {
@@ -74,12 +100,16 @@ function setupPlatform(options: {
     fixtureRoot: FIXTURE_ROOT,
     register(service, registry) {
       if (service === "platform") {
-        registerPlatformHandlers(withFaultMiddleware("platform", registry, controller), state);
+        registerPlatformHandlers(
+          withFaultMiddleware("platform", registry, controller),
+          state,
+        );
       }
     },
   });
   harnesses.push(harness);
-  const fetch = options.fetch?.(harness.platform.fetch) ?? harness.platform.fetch;
+  const fetch =
+    options.fetch?.(harness.platform.fetch) ?? harness.platform.fetch;
   const client = new PlatformClient({
     baseUrl: "http://platform.mock",
     token: TOKEN,
@@ -88,8 +118,13 @@ function setupPlatform(options: {
   });
   clients.push(client);
   const project = [...state.projects.values()][0];
-  const finding = [...state.findings.values()].find((row) => row["vexStatus"] !== null);
-  if (typeof project?.["id"] !== "string" || typeof finding?.["projectVersionId"] !== "string") {
+  const finding = [...state.findings.values()].find(
+    (row) => row["vexStatus"] !== null,
+  );
+  if (
+    typeof project?.["id"] !== "string" ||
+    typeof finding?.["projectVersionId"] !== "string"
+  ) {
     throw new Error("fixture has no project or VEX finding");
   }
   return {
@@ -97,12 +132,20 @@ function setupPlatform(options: {
     controller,
     harness,
     client,
-    scope: { projectId: project["id"], projectVersionId: finding["projectVersionId"] },
+    scope: {
+      projectId: project["id"],
+      projectVersionId: finding["projectVersionId"],
+    },
   };
 }
 
-function engine(adapter: EntityAdapter, extras: Partial<EngineDeps> = {}): EngineDeps {
-  const host = createFakePluginHost({ pluginId: `finite-state-pull-${hosts.length}` });
+function engine(
+  adapter: EntityAdapter,
+  extras: Partial<EngineDeps> = {},
+): EngineDeps {
+  const host = createFakePluginHost({
+    pluginId: `finite-state-pull-${hosts.length}`,
+  });
   hosts.push(host);
   return {
     db: createPluginContext(host.bb).db(),
@@ -114,7 +157,10 @@ function engine(adapter: EntityAdapter, extras: Partial<EngineDeps> = {}): Engin
   };
 }
 
-function expectedVexRows(state: MockPlatformState, projectVersionId: string): ServerEntity[] {
+function expectedVexRows(
+  state: MockPlatformState,
+  projectVersionId: string,
+): ServerEntity[] {
   const rows = new Map<string, ServerEntity>();
   for (const value of state.findings.values()) {
     if (value["projectVersionId"] !== projectVersionId) continue;
@@ -133,20 +179,36 @@ describe("sync pull", () => {
     });
 
     const report = await pull(deps, fixture.scope, ["vexDecision"]);
-    const expected = expectedVexRows(fixture.state, fixture.scope.projectVersionId);
+    const expected = expectedVexRows(
+      fixture.state,
+      fixture.scope.projectVersionId,
+    );
     const accepted = new BaseSnapshotStore(deps.db).listAccepted(
       fixture.scope.projectId,
       fixture.scope.projectVersionId,
       "vexDecision",
     );
-    expect(report.kinds.vexDecision).toEqual({ fetched: expected.length, baseRows: expected.length });
+    expect(report.kinds.vexDecision).toEqual({
+      fetched: expected.length,
+      baseRows: expected.length,
+    });
     expect(accepted).toHaveLength(expected.length);
-    expect(accepted.map((row) => row.entityKey)).toEqual(expected.map((row) => row.key).sort());
+    expect(accepted.map((row) => row.entityKey)).toEqual(
+      expected.map((row) => row.key).sort(),
+    );
     expect(progress.some((hint) => hint.phase === "fetch")).toBe(true);
     expect(progress.some((hint) => hint.phase === "write")).toBe(true);
-    expect(progress.at(-1)).toMatchObject({ kind: "vexDecision", phase: "done" });
+    expect(progress.at(-1)).toMatchObject({
+      kind: "vexDecision",
+      phase: "done",
+    });
     expect(Object.keys(progress[0] ?? {}).sort()).toEqual([
-      "generationId", "kind", "of", "page", "phase", "scope",
+      "generationId",
+      "kind",
+      "of",
+      "page",
+      "phase",
+      "scope",
     ]);
   });
 
@@ -154,7 +216,9 @@ describe("sync pull", () => {
     const sleeps: number[] = [];
     const scheduler: Scheduler = {
       now: () => 0,
-      sleep: async (ms) => { sleeps.push(ms); },
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
     };
     const limiter = new RemoteLimiter({
       concurrency: 1,
@@ -166,32 +230,49 @@ describe("sync pull", () => {
     const fixture = setupPlatform({ fault: true, limiter });
     const deps = engine(createVexDecisionAdapter(fixture.client));
 
-    await expect(pull(deps, fixture.scope, ["vexDecision"])).resolves.toMatchObject({
-      kinds: { vexDecision: { fetched: expectedVexRows(fixture.state, fixture.scope.projectVersionId).length } },
+    await expect(
+      pull(deps, fixture.scope, ["vexDecision"]),
+    ).resolves.toMatchObject({
+      kinds: {
+        vexDecision: {
+          fetched: expectedVexRows(
+            fixture.state,
+            fixture.scope.projectVersionId,
+          ).length,
+        },
+      },
     });
     expect(sleeps).toEqual([0]);
     const effects = fixture.controller.log().map((entry) => entry.effect);
     expect(effects[0]).toBe("rate-limited");
-    expect(effects.slice(1).every((effect) => effect === "succeeded-after-rate-limit")).toBe(true);
+    expect(
+      effects
+        .slice(1)
+        .every((effect) => effect === "succeeded-after-rate-limit"),
+    ).toBe(true);
   });
 
   it("resolves exact overlay keys against findings that have no server VEX tuple", async () => {
     const fixture = setupPlatform();
-    const undecided = [...fixture.state.findings.values()].find((row) =>
-      row["projectVersionId"] === fixture.scope.projectVersionId
-      && row["vexStatus"] === null
-      && row["vexJustification"] === undefined
-      && row["vexResponse"] === undefined
-      && row["vexReason"] === undefined,
+    const undecided = [...fixture.state.findings.values()].find(
+      (row) =>
+        row["projectVersionId"] === fixture.scope.projectVersionId &&
+        row["vexStatus"] === null &&
+        row["vexJustification"] === undefined &&
+        row["vexResponse"] === undefined &&
+        row["vexReason"] === undefined,
     );
-    if (undecided === undefined) throw new Error("fixture has no undecided finding");
+    if (undecided === undefined)
+      throw new Error("fixture has no undecided finding");
     const key = projectVexDecisionKey(undecided as Record<string, Json>);
     const resolver = createVexDecisionResolver(fixture.client);
     await expect(resolver(key, fixture.scope)).resolves.toEqual({
       resolved: true,
       detail: { match: "exact" },
     });
-    await expect(resolver("fs1.ZmluZGluZw.bWlzc2luZw", fixture.scope)).resolves.toEqual({ resolved: false });
+    await expect(
+      resolver("fs1.ZmluZGluZw.bWlzc2luZw", fixture.scope),
+    ).resolves.toEqual({ resolved: false });
   });
 
   it("keeps whole staged pages after a connection reset and resumes without replaying inserts", async () => {
@@ -208,7 +289,10 @@ describe("sync pull", () => {
       limiter,
       fetch: (base) => async (input, init) => {
         const request = new Request(input, init);
-        if (reset && new URL(request.url).searchParams.get("offset") === "1000") {
+        if (
+          reset &&
+          new URL(request.url).searchParams.get("offset") === "1000"
+        ) {
           failedOffsetAttempts += 1;
           throw new TypeError("mock mid-pull connection reset");
         }
@@ -228,37 +312,70 @@ describe("sync pull", () => {
     );
     reset = true;
 
-    await expect(pull(deps, fixture.scope, ["vexDecision"])).rejects.toBeInstanceOf(PullFailedError);
+    await expect(
+      pull(deps, fixture.scope, ["vexDecision"]),
+    ).rejects.toBeInstanceOf(PullFailedError);
     expect(failedOffsetAttempts).toBe(1);
-    const staging = deps.db.prepare(
-      `SELECT staged_pages, staged_rows, accepted_generation_id, staging_generation_id
+    const staging = deps.db
+      .prepare(
+        `SELECT staged_pages, staged_rows, accepted_generation_id, staging_generation_id
          FROM sync_state WHERE entity_kind = 'vexDecision'`,
-    ).get() as { staged_pages: number; staged_rows: number; accepted_generation_id: string | null; staging_generation_id: string };
-    expect(staging).toMatchObject({ staged_pages: 1, accepted_generation_id: first.generationId });
+      )
+      .get() as {
+      staged_pages: number;
+      staged_rows: number;
+      accepted_generation_id: string | null;
+      staging_generation_id: string;
+    };
+    expect(staging).toMatchObject({
+      staged_pages: 1,
+      accepted_generation_id: first.generationId,
+    });
     expect(staging.staged_rows).toBeGreaterThan(0);
-    const stagedCount = deps.db.prepare(
-      "SELECT COUNT(*) FROM base_snapshot WHERE generation_id = ?",
-    ).pluck().get(staging.staging_generation_id);
+    const stagedCount = deps.db
+      .prepare("SELECT COUNT(*) FROM base_snapshot WHERE generation_id = ?")
+      .pluck()
+      .get(staging.staging_generation_id);
     expect(stagedCount).toBe(staging.staged_rows);
-    expect(new BaseSnapshotStore(deps.db).listAccepted(
-      fixture.scope.projectId,
-      fixture.scope.projectVersionId,
-      "vexDecision",
-    )).toEqual(acceptedBefore);
+    expect(
+      new BaseSnapshotStore(deps.db).listAccepted(
+        fixture.scope.projectId,
+        fixture.scope.projectVersionId,
+        "vexDecision",
+      ),
+    ).toEqual(acceptedBefore);
 
     reset = false;
-    await expect(pull(deps, fixture.scope, ["vexDecision"])).resolves.toMatchObject({
+    await expect(
+      pull(deps, fixture.scope, ["vexDecision"]),
+    ).resolves.toMatchObject({
       generationId: staging.staging_generation_id,
-      kinds: { vexDecision: { baseRows: expectedVexRows(fixture.state, fixture.scope.projectVersionId).length } },
+      kinds: {
+        vexDecision: {
+          baseRows: expectedVexRows(
+            fixture.state,
+            fixture.scope.projectVersionId,
+          ).length,
+        },
+      },
     });
-    expect(new BaseSnapshotStore(deps.db).listAccepted(
-      fixture.scope.projectId,
-      fixture.scope.projectVersionId,
-      "vexDecision",
-    )).toHaveLength(expectedVexRows(fixture.state, fixture.scope.projectVersionId).length);
-    expect(deps.db.prepare(
-      "SELECT base_revision FROM sync_state WHERE entity_kind = 'vexDecision'",
-    ).pluck().get()).toBe(2);
+    expect(
+      new BaseSnapshotStore(deps.db).listAccepted(
+        fixture.scope.projectId,
+        fixture.scope.projectVersionId,
+        "vexDecision",
+      ),
+    ).toHaveLength(
+      expectedVexRows(fixture.state, fixture.scope.projectVersionId).length,
+    );
+    expect(
+      deps.db
+        .prepare(
+          "SELECT base_revision FROM sync_state WHERE entity_kind = 'vexDecision'",
+        )
+        .pluck()
+        .get(),
+    ).toBe(2);
   });
 
   it("leaves a dirty authored file alone and reports its stable key as divergent", async () => {
@@ -275,11 +392,13 @@ describe("sync pull", () => {
         reviewVersion: null,
       },
     } satisfies ServerEntity;
-    const working = [{
-      key: server.key,
-      payload: { reqId: "REQ-DIRTY", title: "unchanged" },
-      file: "product-security/requirements/REQ-DIRTY.yaml",
-    }] satisfies WorkingEntity[];
+    const working = [
+      {
+        key: server.key,
+        payload: { reqId: "REQ-DIRTY", title: "unchanged" },
+        file: "product-security/requirements/REQ-DIRTY.yaml",
+      },
+    ] satisfies WorkingEntity[];
     const before = structuredClone(working);
     const adapter: EntityAdapter = {
       kind: "requirement",
@@ -289,13 +408,19 @@ describe("sync pull", () => {
         progress({ page: 1, of: 1 });
         yield [server];
       },
-      async readWorking() { return working; },
+      async readWorking() {
+        return working;
+      },
     };
     const deps = engine(adapter, {
       worktreeRoot: "/worktree",
       isFileClean: async () => false,
     });
-    const report = await pull(deps, { projectId: "project", projectVersionId: "version" }, ["requirement"]);
+    const report = await pull(
+      deps,
+      { projectId: "project", projectVersionId: "version" },
+      ["requirement"],
+    );
     expect(report.workingFastForwarded).toBe(false);
     expect(report.divergence).toEqual([`requirement/${server.key}`]);
     expect(working).toEqual(before);
@@ -306,7 +431,9 @@ describe("sync pull", () => {
     roots.push(root);
     await mkdir(join(root, ".fs", "triage", "project"), { recursive: true });
     const file = join(root, ".fs", "triage", "project", "component.yaml");
-    await writeFile(file, `schema: fs-triage/v1
+    await writeFile(
+      file,
+      `schema: fs-triage/v1
 project: project
 component:
   purl: pkg:generic/component@1
@@ -321,7 +448,9 @@ decisions:
     sync:
       base: {status: null, justification: null, response: null, reason: null}
       pushed_at: null
-`, "utf8");
+`,
+      "utf8",
+    );
     const key = ENTITIES.vexDecision.key({
       cve: "CVE-2026-99",
       purl: "pkg:generic/component@1",
@@ -331,7 +460,12 @@ decisions:
     const server = {
       key,
       remoteId: "finding-fast-forward",
-      payload: { status: "IN_TRIAGE", justification: null, response: null, reason: "server" },
+      payload: {
+        status: "IN_TRIAGE",
+        justification: null,
+        response: null,
+        reason: "server",
+      },
     } satisfies ServerEntity;
     const adapter: EntityAdapter = {
       kind: "vexDecision",
@@ -350,8 +484,11 @@ decisions:
         fastForwardVexWorking(worktreeRoot, files, baseRows),
     });
 
-    await expect(pull(deps, { projectId: "project", projectVersionId: "version" }, ["vexDecision"]))
-      .resolves.toMatchObject({ workingFastForwarded: true, divergence: [] });
+    await expect(
+      pull(deps, { projectId: "project", projectVersionId: "version" }, [
+        "vexDecision",
+      ]),
+    ).resolves.toMatchObject({ workingFastForwarded: true, divergence: [] });
     const written = await readFile(file, "utf8");
     expect(written).toContain("status: NOT_AFFECTED");
     expect(written).toContain("reason: local evidence");
@@ -368,40 +505,61 @@ decisions:
       serializer: createSerializer("requirement"),
       async *fetchRemote(scope, progress) {
         progress({ page: 1, of: 1 });
-        yield [{
-          key,
-          remoteId: "remote-retention",
-          payload: {
-            id: "remote-retention",
-            projectId: scope.projectId,
-            kind: "requirement",
-            fields: { reqId: "REQ-RETENTION", title },
-            humanEdited: null,
-            reviewStatus: null,
-            reviewVersion: null,
+        yield [
+          {
+            key,
+            remoteId: "remote-retention",
+            payload: {
+              id: "remote-retention",
+              projectId: scope.projectId,
+              kind: "requirement",
+              fields: { reqId: "REQ-RETENTION", title },
+              humanEdited: null,
+              reviewStatus: null,
+              reviewVersion: null,
+            },
           },
-        }];
+        ];
       },
-      async readWorking() { return []; },
+      async readWorking() {
+        return [];
+      },
     };
     let generation = 0;
     const deps = engine(adapter, {
       createGenerationId: () => `generation-retention-${++generation}`,
     });
-    const selectedScope = { projectId: "project-retention", projectVersionId: "version-retention" };
+    const selectedScope = {
+      projectId: "project-retention",
+      projectVersionId: "version-retention",
+    };
     for (let revision = 1; revision <= 4; revision += 1) {
       title = `revision-${revision}`;
       await pull(deps, selectedScope, ["requirement"]);
     }
-    expect(deps.db.prepare(
-      "SELECT COUNT(*) FROM base_snapshot WHERE project_id = ? AND project_version_id = ?",
-    ).pluck().get(selectedScope.projectId, selectedScope.projectVersionId)).toBe(1);
-    expect(deps.db.prepare(
-      "SELECT generation_id FROM base_snapshot WHERE project_id = ? AND project_version_id = ?",
-    ).pluck().get(selectedScope.projectId, selectedScope.projectVersionId)).toBe("generation-retention-4");
-    expect(deps.db.prepare(
-      "SELECT status, COUNT(*) AS count FROM pull_generation GROUP BY status ORDER BY status",
-    ).all()).toEqual([
+    expect(
+      deps.db
+        .prepare(
+          "SELECT COUNT(*) FROM base_snapshot WHERE project_id = ? AND project_version_id = ?",
+        )
+        .pluck()
+        .get(selectedScope.projectId, selectedScope.projectVersionId),
+    ).toBe(1);
+    expect(
+      deps.db
+        .prepare(
+          "SELECT generation_id FROM base_snapshot WHERE project_id = ? AND project_version_id = ?",
+        )
+        .pluck()
+        .get(selectedScope.projectId, selectedScope.projectVersionId),
+    ).toBe("generation-retention-4");
+    expect(
+      deps.db
+        .prepare(
+          "SELECT status, COUNT(*) AS count FROM pull_generation GROUP BY status ORDER BY status",
+        )
+        .all(),
+    ).toEqual([
       { status: "accepted", count: 1 },
       { status: "superseded", count: 3 },
     ]);
@@ -417,22 +575,26 @@ decisions:
       serializer: createSerializer("requirement"),
       async *fetchRemote(scope, progress) {
         progress({ page: 1, of: 1 });
-        yield [{
-          key: requirementKey,
-          remoteId: "remote-requirement-stranded",
-          payload: {
-            id: "remote-requirement-stranded",
-            projectId: scope.projectId,
-            kind: "requirement",
-            fields: { reqId: "REQ-STRANDED", title: "Requirement" },
-            humanEdited: null,
-            reviewStatus: null,
-            reviewVersion: null,
+        yield [
+          {
+            key: requirementKey,
+            remoteId: "remote-requirement-stranded",
+            payload: {
+              id: "remote-requirement-stranded",
+              projectId: scope.projectId,
+              kind: "requirement",
+              fields: { reqId: "REQ-STRANDED", title: "Requirement" },
+              humanEdited: null,
+              reviewStatus: null,
+              reviewVersion: null,
+            },
           },
-        }];
+        ];
         if (resetAfterPage) throw new TypeError("mock reset after whole page");
       },
-      async readWorking() { return []; },
+      async readWorking() {
+        return [];
+      },
     };
     const threat: EntityAdapter = {
       kind: "threat",
@@ -440,65 +602,100 @@ decisions:
       serializer: createSerializer("threat"),
       async *fetchRemote(scope, progress) {
         progress({ page: 1, of: 1 });
-        yield [{
-          key: threatKey,
-          remoteId: "remote-threat-stranded",
-          payload: {
-            id: "remote-threat-stranded",
-            projectId: scope.projectId,
-            kind: "threat",
-            fields: { slug: "THREAT-STRANDED", title: "Threat" },
-            humanEdited: null,
-            reviewStatus: null,
-            reviewVersion: null,
+        yield [
+          {
+            key: threatKey,
+            remoteId: "remote-threat-stranded",
+            payload: {
+              id: "remote-threat-stranded",
+              projectId: scope.projectId,
+              kind: "threat",
+              fields: { slug: "THREAT-STRANDED", title: "Threat" },
+              humanEdited: null,
+              reviewStatus: null,
+              reviewVersion: null,
+            },
           },
-        }];
+        ];
       },
-      async readWorking() { return []; },
+      async readWorking() {
+        return [];
+      },
     };
     let generation = 0;
     const deps = engine(requirement, {
       adapters: [requirement, threat],
       createGenerationId: () => `generation-stranded-${++generation}`,
     });
-    const selectedScope = { projectId: "project-stranded", projectVersionId: "version-stranded" };
-    deps.db.prepare(
-      `INSERT INTO build_run
+    const selectedScope = {
+      projectId: "project-stranded",
+      projectVersionId: "version-stranded",
+    };
+    deps.db
+      .prepare(
+        `INSERT INTO build_run
          (project_id, project_version_id, run_id, kind, target, toolchain,
           status, artifact, digest, log_path, started_at)
        VALUES (?, ?, 'build-local-evidence', 'build', 'firmware', 'cmake',
                'completed', '/artifacts/firmware.bin', ?, '/logs/build.log', ?)`,
-    ).run(
-      selectedScope.projectId,
-      selectedScope.projectVersionId,
-      "a".repeat(64),
-      "2026-08-12T19:00:00.000Z",
-    );
-    await expect(pull(deps, selectedScope, ["requirement"]))
-      .rejects.toBeInstanceOf(PullFailedError);
-    expect(deps.db.prepare(
-      "SELECT COUNT(*) FROM base_snapshot WHERE generation_id = 'generation-stranded-1'",
-    ).pluck().get()).toBe(1);
+      )
+      .run(
+        selectedScope.projectId,
+        selectedScope.projectVersionId,
+        "a".repeat(64),
+        "2026-08-12T19:00:00.000Z",
+      );
+    await expect(
+      pull(deps, selectedScope, ["requirement"]),
+    ).rejects.toBeInstanceOf(PullFailedError);
+    expect(
+      deps.db
+        .prepare(
+          "SELECT COUNT(*) FROM base_snapshot WHERE generation_id = 'generation-stranded-1'",
+        )
+        .pluck()
+        .get(),
+    ).toBe(1);
 
     resetAfterPage = false;
-    await expect(pull(deps, selectedScope, ["requirement", "threat"]))
-      .resolves.toMatchObject({ generationId: "generation-stranded-2" });
-    expect(deps.db.prepare(
-      "SELECT COUNT(*) FROM base_snapshot WHERE generation_id = 'generation-stranded-1'",
-    ).pluck().get()).toBe(0);
-    expect(deps.db.prepare(
-      "SELECT generation_id, COUNT(*) AS count FROM base_snapshot GROUP BY generation_id",
-    ).all()).toEqual([{ generation_id: "generation-stranded-2", count: 2 }]);
-    expect(deps.db.prepare(
-      "SELECT status FROM pull_generation WHERE generation_id = 'generation-stranded-1'",
-    ).pluck().get()).toBe("superseded");
-    await expect(pull(deps, selectedScope, ["buildRun"]))
-      .rejects.toThrow("No puller is registered for buildRun");
+    await expect(
+      pull(deps, selectedScope, ["requirement", "threat"]),
+    ).resolves.toMatchObject({ generationId: "generation-stranded-2" });
+    expect(
+      deps.db
+        .prepare(
+          "SELECT COUNT(*) FROM base_snapshot WHERE generation_id = 'generation-stranded-1'",
+        )
+        .pluck()
+        .get(),
+    ).toBe(0);
+    expect(
+      deps.db
+        .prepare(
+          "SELECT generation_id, COUNT(*) AS count FROM base_snapshot GROUP BY generation_id",
+        )
+        .all(),
+    ).toEqual([{ generation_id: "generation-stranded-2", count: 2 }]);
+    expect(
+      deps.db
+        .prepare(
+          "SELECT status FROM pull_generation WHERE generation_id = 'generation-stranded-1'",
+        )
+        .pluck()
+        .get(),
+    ).toBe("superseded");
+    await expect(pull(deps, selectedScope, ["buildRun"])).rejects.toThrow(
+      "No puller is registered for buildRun",
+    );
     // FS-144: CACHED is not a reset allowlist; local run evidence survives generation cleanup.
-    expect(deps.db.prepare(
-      `SELECT run_id, status, artifact, digest, log_path
+    expect(
+      deps.db
+        .prepare(
+          `SELECT run_id, status, artifact, digest, log_path
          FROM build_run WHERE project_id = ? AND project_version_id = ?`,
-    ).get(selectedScope.projectId, selectedScope.projectVersionId)).toEqual({
+        )
+        .get(selectedScope.projectId, selectedScope.projectVersionId),
+    ).toEqual({
       run_id: "build-local-evidence",
       status: "completed",
       artifact: "/artifacts/firmware.bin",
@@ -515,23 +712,29 @@ decisions:
       serializer: createSerializer("requirement"),
       async *fetchRemote(scope, progress) {
         progress({ page: 1, of: 1 });
-        yield [{
-          key,
-          remoteId: "remote-shared",
-          payload: {
-            id: "remote-shared",
-            projectId: scope.projectId,
-            kind: "requirement",
-            fields: { reqId: "REQ-SCOPED", title: "same" },
-            humanEdited: null,
-            reviewStatus: null,
-            reviewVersion: null,
+        yield [
+          {
+            key,
+            remoteId: "remote-shared",
+            payload: {
+              id: "remote-shared",
+              projectId: scope.projectId,
+              kind: "requirement",
+              fields: { reqId: "REQ-SCOPED", title: "same" },
+              humanEdited: null,
+              reviewStatus: null,
+              reviewVersion: null,
+            },
           },
-        }];
+        ];
       },
-      async readWorking() { return []; },
+      async readWorking() {
+        return [];
+      },
     };
-    const deps = engine(adapter, { createGenerationId: () => "generation-shared" });
+    const deps = engine(adapter, {
+      createGenerationId: () => "generation-shared",
+    });
     const scopes = [
       { projectId: "project-a", projectVersionId: "version-a" },
       { projectId: "project-a", projectVersionId: "version-b" },
@@ -541,16 +744,43 @@ decisions:
     for (const selectedScope of scopes) {
       await pull(deps, selectedScope, ["requirement"]);
     }
-    expect(deps.db.prepare(
-      "SELECT project_id, project_version_id, entity_key, remote_id FROM id_map ORDER BY project_id, project_version_id",
-    ).all()).toEqual([
-      { project_id: "project-a", project_version_id: "@project", entity_key: key, remote_id: "remote-shared" },
-      { project_id: "project-a", project_version_id: "version-a", entity_key: key, remote_id: "remote-shared" },
-      { project_id: "project-a", project_version_id: "version-b", entity_key: key, remote_id: "remote-shared" },
-      { project_id: "project-b", project_version_id: "version-a", entity_key: key, remote_id: "remote-shared" },
+    expect(
+      deps.db
+        .prepare(
+          "SELECT project_id, project_version_id, entity_key, remote_id FROM id_map ORDER BY project_id, project_version_id",
+        )
+        .all(),
+    ).toEqual([
+      {
+        project_id: "project-a",
+        project_version_id: "@project",
+        entity_key: key,
+        remote_id: "remote-shared",
+      },
+      {
+        project_id: "project-a",
+        project_version_id: "version-a",
+        entity_key: key,
+        remote_id: "remote-shared",
+      },
+      {
+        project_id: "project-a",
+        project_version_id: "version-b",
+        entity_key: key,
+        remote_id: "remote-shared",
+      },
+      {
+        project_id: "project-b",
+        project_version_id: "version-a",
+        entity_key: key,
+        remote_id: "remote-shared",
+      },
     ]);
     await expect(status(deps, scopes[3]!, ["requirement"])).resolves.toEqual({
-      local: [], upstream: [], conflicts: [], orphans: [],
+      local: [],
+      upstream: [],
+      conflicts: [],
+      orphans: [],
     });
   });
 
@@ -563,25 +793,42 @@ decisions:
         progress({ page: 1, of: 1 });
         yield ["CVE-2026-701", "CVE-2026-702"].map((cve) => ({
           key: ENTITIES.vexDecision.key({
-            cve, purl: `pkg:generic/collision@${cve}`, name: "collision", version: cve,
+            cve,
+            purl: `pkg:generic/collision@${cve}`,
+            name: "collision",
+            version: cve,
           }),
           remoteId: "remote-id-collision",
-          payload: { status: "IN_TRIAGE", justification: null, response: null, reason: null },
+          payload: {
+            status: "IN_TRIAGE",
+            justification: null,
+            response: null,
+            reason: null,
+          },
         }));
       },
-      async readWorking() { return []; },
+      async readWorking() {
+        return [];
+      },
     };
     const deps = engine(adapter);
-    await expect(pull(
-      deps,
-      { projectId: "project-collision", projectVersionId: "version-collision" },
-      ["vexDecision"],
-    )).rejects.toMatchObject({
+    await expect(
+      pull(
+        deps,
+        {
+          projectId: "project-collision",
+          projectVersionId: "version-collision",
+        },
+        ["vexDecision"],
+      ),
+    ).rejects.toMatchObject({
       name: "PullFailedError",
-      failures: [{
-        kind: "vexDecision",
-        message: expect.stringContaining("remote id is already claimed"),
-      }],
+      failures: [
+        {
+          kind: "vexDecision",
+          message: expect.stringContaining("remote id is already claimed"),
+        },
+      ],
     });
   });
 
@@ -600,19 +847,25 @@ decisions:
           details: { pageSize: 1_000, maxPageSize: 200 },
         });
       },
-      async readWorking() { return []; },
+      async readWorking() {
+        return [];
+      },
     };
 
-    await expect(pull(
-      engine(adapter),
-      { projectId: "project", projectVersionId: "version" },
-      ["threat"],
-    )).rejects.toMatchObject({
+    await expect(
+      pull(
+        engine(adapter),
+        { projectId: "project", projectVersionId: "version" },
+        ["threat"],
+      ),
+    ).rejects.toMatchObject({
       name: "PullFailedError",
-      failures: [{
-        kind: "threat",
-        message: "REMOTE_INVALID_PAGE_SIZE: Invalid remote paging state",
-      }],
+      failures: [
+        {
+          kind: "threat",
+          message: "REMOTE_INVALID_PAGE_SIZE: Invalid remote paging state",
+        },
+      ],
       message: expect.stringContaining(
         "threat: REMOTE_INVALID_PAGE_SIZE: Invalid remote paging state",
       ),
@@ -631,17 +884,25 @@ decisions:
       serializer: createSerializer("requirement"),
       async *fetchRemote(scope, progress) {
         progress({ page: 1, of: 1 });
-        yield [{
-          key: requirementKey,
-          remoteId: "remote-requirement",
-          payload: {
-            id: "remote-requirement", projectId: scope.projectId, kind: "requirement",
-            fields: { reqId: "REQ-MULTI", title: requirementTitle }, humanEdited: null,
-            reviewStatus: null, reviewVersion: null,
+        yield [
+          {
+            key: requirementKey,
+            remoteId: "remote-requirement",
+            payload: {
+              id: "remote-requirement",
+              projectId: scope.projectId,
+              kind: "requirement",
+              fields: { reqId: "REQ-MULTI", title: requirementTitle },
+              humanEdited: null,
+              reviewStatus: null,
+              reviewVersion: null,
+            },
           },
-        }];
+        ];
       },
-      async readWorking() { return []; },
+      async readWorking() {
+        return [];
+      },
     };
     const threat: EntityAdapter = {
       kind: "threat",
@@ -650,24 +911,35 @@ decisions:
       async *fetchRemote(scope, progress) {
         if (failThreat) throw new TypeError("mock threat reset");
         progress({ page: 1, of: 1 });
-        yield [{
-          key: threatKey,
-          remoteId: "remote-threat",
-          payload: {
-            id: "remote-threat", projectId: scope.projectId, kind: "threat",
-            fields: { slug: "THREAT-MULTI", title: threatTitle }, humanEdited: null,
-            reviewStatus: null, reviewVersion: null,
+        yield [
+          {
+            key: threatKey,
+            remoteId: "remote-threat",
+            payload: {
+              id: "remote-threat",
+              projectId: scope.projectId,
+              kind: "threat",
+              fields: { slug: "THREAT-MULTI", title: threatTitle },
+              humanEdited: null,
+              reviewStatus: null,
+              reviewVersion: null,
+            },
           },
-        }];
+        ];
       },
-      async readWorking() { return []; },
+      async readWorking() {
+        return [];
+      },
     };
     let generation = 0;
     const deps = engine(requirement, {
       adapters: [requirement, threat],
       createGenerationId: () => `generation-multi-${++generation}`,
     });
-    const selectedScope = { projectId: "project-multi", projectVersionId: "version-multi" };
+    const selectedScope = {
+      projectId: "project-multi",
+      projectVersionId: "version-multi",
+    };
     const first = await pull(deps, selectedScope, ["requirement", "threat"]);
     const acceptedBefore = new BaseSnapshotStore(deps.db).listAccepted(
       selectedScope.projectId,
@@ -677,28 +949,50 @@ decisions:
     requirementTitle = "requirement-v2";
     threatTitle = "threat-v2";
     failThreat = true;
-    await expect(pull(deps, selectedScope, ["requirement", "threat"]))
-      .rejects.toMatchObject({ failures: [{ kind: "threat", message: "mock threat reset" }] });
-    const staged = deps.db.prepare(
-      `SELECT entity_kind, accepted_generation_id, staging_generation_id, staged_rows
+    await expect(
+      pull(deps, selectedScope, ["requirement", "threat"]),
+    ).rejects.toMatchObject({
+      failures: [{ kind: "threat", message: "mock threat reset" }],
+    });
+    const staged = deps.db
+      .prepare(
+        `SELECT entity_kind, accepted_generation_id, staging_generation_id, staged_rows
          FROM sync_state ORDER BY entity_kind`,
-    ).all();
+      )
+      .all();
     expect(staged).toEqual([
-      { entity_kind: "requirement", accepted_generation_id: first.generationId, staging_generation_id: "generation-multi-2", staged_rows: 1 },
-      { entity_kind: "threat", accepted_generation_id: first.generationId, staging_generation_id: "generation-multi-2", staged_rows: 0 },
+      {
+        entity_kind: "requirement",
+        accepted_generation_id: first.generationId,
+        staging_generation_id: "generation-multi-2",
+        staged_rows: 1,
+      },
+      {
+        entity_kind: "threat",
+        accepted_generation_id: first.generationId,
+        staging_generation_id: "generation-multi-2",
+        staged_rows: 0,
+      },
     ]);
-    expect(new BaseSnapshotStore(deps.db).listAccepted(
-      selectedScope.projectId,
-      selectedScope.projectVersionId,
-      "requirement",
-    )).toEqual(acceptedBefore);
+    expect(
+      new BaseSnapshotStore(deps.db).listAccepted(
+        selectedScope.projectId,
+        selectedScope.projectVersionId,
+        "requirement",
+      ),
+    ).toEqual(acceptedBefore);
 
     failThreat = false;
-    await expect(pull(deps, selectedScope, ["requirement", "threat"]))
-      .resolves.toMatchObject({ generationId: "generation-multi-2" });
-    expect(deps.db.prepare(
-      "SELECT entity_kind, base_revision FROM sync_state ORDER BY entity_kind",
-    ).all()).toEqual([
+    await expect(
+      pull(deps, selectedScope, ["requirement", "threat"]),
+    ).resolves.toMatchObject({ generationId: "generation-multi-2" });
+    expect(
+      deps.db
+        .prepare(
+          "SELECT entity_kind, base_revision FROM sync_state ORDER BY entity_kind",
+        )
+        .all(),
+    ).toEqual([
       { entity_kind: "requirement", base_revision: 2 },
       { entity_kind: "threat", base_revision: 2 },
     ]);

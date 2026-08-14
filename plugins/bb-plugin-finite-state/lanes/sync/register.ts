@@ -21,16 +21,25 @@ async function resolveSyncWorktreeRoot(
       "SYNC_EXECUTION_CONTEXT_REQUIRED: invoke from a bb thread; cwd is not trusted as a worktree identity",
     );
   }
-  const thread = await ctx.bb.sdk.threads.get({ threadId: cliContext.threadId });
+  const thread = await ctx.bb.sdk.threads.get({
+    threadId: cliContext.threadId,
+  });
   if (
-    !thread.environmentId
-    || (cliContext.projectId !== undefined && thread.projectId !== cliContext.projectId)
+    !thread.environmentId ||
+    (cliContext.projectId !== undefined &&
+      thread.projectId !== cliContext.projectId)
   ) {
-    throw new Error("SYNC_EXECUTION_CONTEXT_INVALID: thread project/environment mismatch");
+    throw new Error(
+      "SYNC_EXECUTION_CONTEXT_INVALID: thread project/environment mismatch",
+    );
   }
-  const environment = await ctx.bb.sdk.environments.get({ environmentId: thread.environmentId });
+  const environment = await ctx.bb.sdk.environments.get({
+    environmentId: thread.environmentId,
+  });
   if (environment.projectId !== thread.projectId || !environment.path) {
-    throw new Error("SYNC_EXECUTION_CONTEXT_INVALID: environment has no verified workspace path");
+    throw new Error(
+      "SYNC_EXECUTION_CONTEXT_INVALID: environment has no verified workspace path",
+    );
   }
   return environment.path;
 }
@@ -39,7 +48,13 @@ export function registerSync(bb: BbPluginApi, ctx: PluginContext): void {
   const remote = ctx.service<RemoteServices>("remote-services", () => {
     throw new Error("Sync registration requires remote services");
   });
-  registerAdapter(createVexDecisionAdapter(remote.platform));
+  registerAdapter(
+    createVexDecisionAdapter(remote.platform, ctx.db(), (advisory) => {
+      ctx.log.warn(
+        `VEX remote row isolated: ${advisory.code}; finding=${advisory.findingId ?? "unknown"}`,
+      );
+    }),
+  );
   registerResolver("vexDecision", createVexDecisionResolver(remote.platform));
   const deps: EngineDeps = {
     db: ctx.db(),
@@ -58,14 +73,18 @@ export function registerSync(bb: BbPluginApi, ctx: PluginContext): void {
     remote.platform,
     (cliContext) => resolveSyncWorktreeRoot(ctx, cliContext),
     {
-      firmware: (argv, cliContext) => ctx.service<{ run: NamespacedCliRunner }>(
-        "firmware.cli",
-        () => { throw new Error("Firmware CLI services are unavailable"); },
-      ).run(argv, cliContext),
-      bench: (argv, cliContext) => ctx.service<{ run: NamespacedCliRunner }>(
-        "bench.cli",
-        () => { throw new Error("Bench CLI services are unavailable"); },
-      ).run(argv, cliContext),
+      firmware: (argv, cliContext) =>
+        ctx
+          .service<{ run: NamespacedCliRunner }>("firmware.cli", () => {
+            throw new Error("Firmware CLI services are unavailable");
+          })
+          .run(argv, cliContext),
+      bench: (argv, cliContext) =>
+        ctx
+          .service<{ run: NamespacedCliRunner }>("bench.cli", () => {
+            throw new Error("Bench CLI services are unavailable");
+          })
+          .run(argv, cliContext),
     },
   );
 }

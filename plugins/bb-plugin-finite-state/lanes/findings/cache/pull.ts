@@ -11,10 +11,7 @@ import {
   canonicalizeFindingIdentity,
   selectFindingCve,
 } from "../stable-key/canonical.js";
-import {
-  loadComponentIdentities,
-  type ComponentIdentity,
-} from "../stable-key/wire-identity.js";
+import { purlIdentity } from "../stable-key/wire-identity.js";
 
 const ENTITY_KIND = "finding";
 const DEFAULT_PAGE_SIZE = 200;
@@ -169,10 +166,7 @@ function payloadKeyDetail(
   return `payload keys [${topLevelKeys}]; component keys [${componentKeys}]`;
 }
 
-export function normalizeFinding(
-  value: Json,
-  identities: ReadonlyMap<string, ComponentIdentity>,
-): NormalizedFinding {
+export function normalizeFinding(value: Json): NormalizedFinding {
   const row = record(value);
   if (!row)
     throw new FindingsCacheError(
@@ -192,27 +186,25 @@ export function normalizeFinding(
       `Finding ${findingId} CVE is missing`,
     );
   const component = record(row["component"] ?? null);
-  const componentId =
-    stringValue(row, ["componentId", "componentUuid"]) ??
-    (component ? stringValue(component, ["id"]) : null);
-  const joined = componentId ? identities.get(componentId) : undefined;
-  const componentPurl =
-    stringValue(row, ["componentPurl", "purl", "packageUrl"]) ??
-    joined?.purl ??
-    null;
+  const componentPurl = stringValue(row, [
+    "componentPurl",
+    "purl",
+    "packageUrl",
+  ]);
+  const parsedPurl = purlIdentity(componentPurl);
   const componentName =
     stringValue(row, ["componentName", "name"]) ??
     (component ? stringValue(component, ["name"]) : null) ??
-    joined?.name ??
+    parsedPurl?.name ??
     null;
   const componentGroup =
     stringValue(row, ["componentGroup", "group", "namespace"]) ??
-    joined?.group ??
+    parsedPurl?.group ??
     null;
   const componentVersion =
     stringValue(row, ["componentVersion", "version"]) ??
     (component ? stringValue(component, ["version"]) : null) ??
-    joined?.version ??
+    parsedPurl?.version ??
     null;
   if (!componentName) {
     throw new FindingsCacheError(
@@ -335,12 +327,9 @@ function writePage(
   generationId: string,
   pageNumber: number,
   page: RemotePage<Record<string, Json>>,
-  identities: ReadonlyMap<string, ComponentIdentity>,
   pulledAt: string,
 ): { inserted: number; deduplicated: number } {
-  const normalized = page.items.map((item) =>
-    normalizeFinding(item, identities),
-  );
+  const normalized = page.items.map((item) => normalizeFinding(item));
   const unique = new Map<string, NormalizedFinding>();
   let deduplicated = 0;
   for (const item of normalized) {
@@ -481,10 +470,6 @@ export async function pullFindings(
         deduplicated,
       };
     }
-    const identities = await loadComponentIdentities(
-      deps.platform,
-      deps.pageSize ?? DEFAULT_PAGE_SIZE,
-    );
     const iterable = deps.platform.getFindings({
       projectVersionId: scope.projectVersionId,
       page: {
@@ -505,7 +490,6 @@ export async function pullFindings(
         generationId,
         pages,
         page,
-        identities,
         pulledAt,
       );
       fetched += written.inserted;

@@ -10,6 +10,7 @@ import {
 import { basename, join, relative, resolve, sep } from "node:path";
 
 import type { Json, PlatformClient } from "../../../lib/remote/types.js";
+import type Database from "better-sqlite3";
 import { stripVexProvenance } from "../../findings/bulk/readback.js";
 import {
   canonicalFindingStableKey,
@@ -19,7 +20,10 @@ import {
   type CanonicalFindingIdentity,
   type FindingIdentityInput,
 } from "../../findings/stable-key/canonical.js";
-import { currentFindingIdentity } from "../../findings/stable-key/wire-identity.js";
+import {
+  currentFindingIdentity,
+  purlIdentity,
+} from "../../findings/stable-key/wire-identity.js";
 import { createSerializer } from "../serialize/serializer.js";
 import { SerializeError } from "../serialize/yaml.js";
 import type {
@@ -77,38 +81,6 @@ function nestedComponent(
   return isJsonRecord(value) ? value : null;
 }
 
-function purlIdentity(purl: string | null): {
-  name: string;
-  group: string | null;
-  version: string | null;
-} | null {
-  if (purl === null || !purl.startsWith("pkg:")) return null;
-  const withoutSuffix = purl.slice(4).split(/[?#]/u, 1)[0] ?? "";
-  const slash = withoutSuffix.indexOf("/");
-  if (slash < 0) return null;
-  const segments = withoutSuffix.slice(slash + 1).split("/");
-  const last = segments.pop();
-  if (last === undefined || last.length === 0) return null;
-  const at = last.lastIndexOf("@");
-  const encodedName = at < 0 ? last : last.slice(0, at);
-  const encodedVersion = at < 0 ? null : last.slice(at + 1);
-  try {
-    return {
-      name: decodeURIComponent(encodedName),
-      group:
-        segments.length === 0
-          ? null
-          : segments.map(decodeURIComponent).join("/"),
-      version:
-        encodedVersion === null || encodedVersion.length === 0
-          ? null
-          : decodeURIComponent(encodedVersion),
-    };
-  } catch {
-    return null;
-  }
-}
-
 function vexPayload(
   row: Readonly<Record<string, Json>>,
 ): Record<string, unknown> | null {
@@ -128,7 +100,12 @@ function legacyVexIdentity(
   const componentId =
     optionalString(row, "componentId") ??
     (component === null ? null : optionalString(component, "id"));
-  const cve = optionalString(row, "cve");
+  const cve = selectFindingCve({
+    cve: optionalString(row, "cve"),
+    findingIdentifier: optionalString(row, "findingIdentifier"),
+    findingId: optionalString(row, "findingId"),
+    vulnerabilityId: optionalString(row, "vulnerabilityId"),
+  });
   if (componentId === null || cve === null) return null;
   const purl = optionalString(row, "componentPurl");
   const parsed = purlIdentity(purl);
@@ -143,38 +120,30 @@ function legacyVexIdentity(
   };
 }
 
+export class VexRemoteIdentityError extends TypeError {
+  readonly code = "VEX_REMOTE_IDENTITY_MISSING";
+
+  constructor(readonly findingId: string | null) {
+    super("Platform finding is missing canonical identity");
+    this.name = "VexRemoteIdentityError";
+  }
+}
+
+export interface VexRemoteRowAdvisory {
+  code: VexRemoteIdentityError["code"];
+  findingId: string | null;
+  message: string;
+}
+
 function findingIdentity(
   row: Readonly<Record<string, Json>>,
 ): CanonicalFindingIdentity {
-  const identity = currentFindingIdentity(row, new Map());
-  if (identity !== null) return canonicalizeFindingIdentity(identity);
-  const component = nestedComponent(row);
-  const cve = selectFindingCve({
-    cve: optionalString(row, "cve"),
-    findingIdentifier: optionalString(row, "findingIdentifier"),
-    findingId: optionalString(row, "findingId"),
-    vulnerabilityId: optionalString(row, "vulnerabilityId"),
-  });
-  const purl =
-    optionalString(row, "componentPurl") ?? optionalString(row, "purl");
-  const parsed = purlIdentity(purl);
-  const componentId =
-    optionalString(row, "componentId") ??
-    (component === null ? null : optionalString(component, "id"));
-  const name =
-    parsed?.name ??
-    optionalString(row, "componentFallbackIdentity") ??
-    componentId;
-  if (cve === null || name === null) {
-    throw new TypeError("Platform finding is missing canonical identity");
-  }
-  return canonicalizeFindingIdentity({
-    cve,
-    purl,
-    name,
-    group: parsed?.group ?? null,
-    version: parsed?.version ?? null,
-  });
+  const identity = currentFindingIdentity(row);
+  if (identity === null)
+    throw new VexRemoteIdentityError(
+      typeof row["id"] === "string" ? row["id"] : null,
+    );
+  return canonicalizeFindingIdentity(identity);
 }
 
 /** Computes the frozen exact canonical key for any normalized Platform finding. */
@@ -201,7 +170,9 @@ export function projectVexDecision(
  * Creates WP-17's exact-key orphan resolver over the complete finding corpus,
  * including findings that do not currently carry a VEX tuple.
  */
-export function createVexDecisionResolver(client: PlatformClient): KeyResolver {
+export function createVexDecisionResolver(
+  client: Pick<PlatformClient, "getFindings">,
+): KeyResolver {
   const pending = new Map<string, Promise<ReadonlySet<string>>>();
   const serverKeys = (
     projectId: string,
@@ -513,6 +484,50 @@ function rememberMigration(
   migrations.set(legacyKey, { key: canonicalKey, identity: canonical });
 }
 
+function rememberPersistedKeyMigration(
+  migrations: Map<string, VexKeyMigration>,
+  legacyKey: string | undefined,
+  canonical: CanonicalFindingIdentity,
+): void {
+  if (legacyKey === undefined) return;
+  const canonicalKey = canonicalFindingStableKey(canonical);
+  if (legacyKey === canonicalKey) return;
+  const prior = migrations.get(legacyKey);
+  if (prior !== undefined && prior.key !== canonicalKey) {
+    throw new TypeError(
+      `Persisted finding key maps to multiple canonical identities`,
+    );
+  }
+  migrations.set(legacyKey, { key: canonicalKey, identity: canonical });
+}
+
+function persistedFindingKeys(
+  db: Database.Database | undefined,
+  scope: SyncScope,
+  rows: readonly Record<string, Json>[],
+): ReadonlyMap<string, string> {
+  if (db === undefined || rows.length === 0) return new Map();
+  const ids = rows.map((row) => requiredString(row, "id"));
+  const placeholders = ids.map(() => "?").join(", ");
+  const persisted = db
+    .prepare(
+      `SELECT finding.finding_id AS findingId, finding.stable_key AS stableKey
+         FROM findings AS finding
+         JOIN sync_state AS state
+           ON state.project_id = finding.project_id
+          AND state.project_version_id = finding.project_version_id
+          AND state.entity_kind = 'finding'
+          AND state.accepted_generation_id = finding.generation_id
+        WHERE finding.project_id = ? AND finding.project_version_id = ?
+          AND finding.finding_id IN (${placeholders})`,
+    )
+    .all(scope.projectId, scope.projectVersionId, ...ids) as Array<{
+    findingId: string;
+    stableKey: string;
+  }>;
+  return new Map(persisted.map((row) => [row.findingId, row.stableKey]));
+}
+
 function writeCanonicalComponent(
   target: Record<string, unknown>,
   identity: CanonicalFindingIdentity,
@@ -684,6 +699,8 @@ export async function fastForwardVexWorking(
 /** Creates the VEX adapter while closing over only its owning Platform client. */
 export function createVexDecisionAdapter(
   client: Pick<PlatformClient, "getFindings">,
+  db?: Database.Database,
+  onAdvisory: (advisory: VexRemoteRowAdvisory) => void = () => undefined,
 ): EntityAdapter {
   const migrationsByScope = new Map<string, Map<string, VexKeyMigration>>();
   return {
@@ -708,14 +725,31 @@ export function createVexDecisionAdapter(
           page: pageNumber,
           of: page.total === null ? null : Math.ceil(page.total / PAGE_SIZE),
         });
+        const persistedKeys = persistedFindingKeys(db, scope, page.items);
         yield page.items.flatMap((row) => {
-          const projected = projectVexDecision(row);
+          let projected: ServerEntity | null;
+          try {
+            projected = projectVexDecision(row);
+          } catch (error: unknown) {
+            if (!(error instanceof VexRemoteIdentityError)) throw error;
+            onAdvisory({
+              code: error.code,
+              findingId: error.findingId,
+              message: error.message,
+            });
+            return [];
+          }
           if (projected === null) {
             // Migration is best-effort for undecided rows: they are not VEX
             // entities and therefore must never make this pull key-dependent.
             try {
               const canonical = findingIdentity(row);
               rememberMigration(migrations, legacyVexIdentity(row), canonical);
+              rememberPersistedKeyMigration(
+                migrations,
+                persistedKeys.get(requiredString(row, "id")),
+                canonical,
+              );
             } catch {
               // Deliberately ignored for a row that cannot produce an entity.
             }
@@ -723,6 +757,11 @@ export function createVexDecisionAdapter(
           }
           const canonical = findingIdentity(row);
           rememberMigration(migrations, legacyVexIdentity(row), canonical);
+          rememberPersistedKeyMigration(
+            migrations,
+            persistedKeys.get(requiredString(row, "id")),
+            canonical,
+          );
           return [projected];
         });
       }

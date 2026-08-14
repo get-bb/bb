@@ -166,9 +166,12 @@ function platformScope() {
   };
 }
 
-function findingComponentIdentity(
-  finding: Record<string, unknown>,
-): { name: string; version: string } | null {
+function findingComponentIdentity(finding: Record<string, unknown>): {
+  purl: string | null;
+  name: string;
+  group: string | null;
+  version: string;
+} | null {
   const component = finding["component"];
   if (
     component === null ||
@@ -180,7 +183,24 @@ function findingComponentIdentity(
     typeof component.version !== "string"
   )
     return null;
-  return { name: component.name, version: component.version };
+  return {
+    purl:
+      typeof finding["componentPurl"] === "string"
+        ? finding["componentPurl"]
+        : null,
+    name:
+      typeof finding["componentName"] === "string"
+        ? finding["componentName"]
+        : component.name,
+    group:
+      typeof finding["componentGroup"] === "string"
+        ? finding["componentGroup"]
+        : null,
+    version:
+      typeof finding["componentVersion"] === "string"
+        ? finding["componentVersion"]
+        : component.version,
+  };
 }
 
 describe("sync registration", () => {
@@ -405,9 +425,9 @@ describe("sync registration", () => {
         `schema: fs-triage/v1
 project: ${JSON.stringify(scope.projectId)}
 component:
-  purl: null
+  purl: ${JSON.stringify(component.purl)}
   name: ${JSON.stringify(component.name)}
-  group: null
+  group: ${JSON.stringify(component.group)}
   version: ${JSON.stringify(component.version)}
 decisions:
   ${String(row["cve"])}:

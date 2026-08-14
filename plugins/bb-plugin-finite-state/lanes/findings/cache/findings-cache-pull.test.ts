@@ -42,7 +42,7 @@ describe("findings cache pull", () => {
         ),
       ) as Record<string, Json>;
     const distroWire = fixture("fs174-i491nax-distro-specimen.json");
-    const distro = normalizeFinding(distroWire, new Map());
+    const distro = normalizeFinding(distroWire);
     expect(distro).toMatchObject({
       findingId: "0b529d2b-9da8-556e-81e4-f0f57a59956a",
       cve: "CVE-2016-4658",
@@ -61,7 +61,7 @@ describe("findings cache pull", () => {
     });
 
     const cveWire = fixture("fs174-cve-uuid-mapping-specimen.json");
-    const cve = normalizeFinding(cveWire, new Map());
+    const cve = normalizeFinding(cveWire);
     expect(cve.cve).toBe("CVE-2026-34877");
     expect(parseFindingStableKey(cve.stableKey).cve).toBe("CVE-2026-34877");
     expect(cve.stableKey).not.toBe(
@@ -79,45 +79,33 @@ describe("findings cache pull", () => {
   });
 
   it("preserves malformed escaping and keeps encoded and literal versions collision-free", () => {
-    const malformed = normalizeFinding(
-      {
-        id: "finding-bad-version",
-        findingId: "CVE-2026-12345",
-        component: { name: "debian/package", version: "1.0%2" },
-      },
-      new Map(),
-    );
-    const encoded = normalizeFinding(
-      {
-        id: "finding-encoded-version",
-        findingId: "CVE-2026-12345",
-        component: { name: "debian/package", version: "1.0%2B2" },
-      },
-      new Map(),
-    );
-    const literal = normalizeFinding(
-      {
-        id: "finding-literal-version",
-        findingId: "CVE-2026-12345",
-        component: { name: "debian/package", version: "1.0+2" },
-      },
-      new Map(),
-    );
+    const malformed = normalizeFinding({
+      id: "finding-bad-version",
+      findingId: "CVE-2026-12345",
+      component: { name: "debian/package", version: "1.0%2" },
+    });
+    const encoded = normalizeFinding({
+      id: "finding-encoded-version",
+      findingId: "CVE-2026-12345",
+      component: { name: "debian/package", version: "1.0%2B2" },
+    });
+    const literal = normalizeFinding({
+      id: "finding-literal-version",
+      findingId: "CVE-2026-12345",
+      component: { name: "debian/package", version: "1.0+2" },
+    });
     expect(malformed.componentVersion).toBe("1.0%2");
     expect(encoded.componentVersion).toBe("1.0+2");
     expect(encoded.stableKey).not.toBe(literal.stableKey);
   });
 
   it("keeps a non-CVE findingId ahead of an opaque vulnerability UUID", () => {
-    const finding = normalizeFinding(
-      {
-        id: "finding-ghsa",
-        findingId: "GHSA-abcd-1234-5678",
-        vulnerabilityId: "cbdc8dc1-66ad-5264-b81b-67b2eaf1257e",
-        component: { name: "package", version: "1.0.0" },
-      },
-      new Map(),
-    );
+    const finding = normalizeFinding({
+      id: "finding-ghsa",
+      findingId: "GHSA-abcd-1234-5678",
+      vulnerabilityId: "cbdc8dc1-66ad-5264-b81b-67b2eaf1257e",
+      component: { name: "package", version: "1.0.0" },
+    });
     expect(finding.cve).toBe("GHSA-abcd-1234-5678");
     expect(parseFindingStableKey(finding.stableKey).cve).toBe(
       "GHSA-abcd-1234-5678",
@@ -138,15 +126,12 @@ describe("findings cache pull", () => {
   ])(
     "canonicalizes namespace shape %s deterministically",
     (name, group, expectedGroup, expectedName) => {
-      const finding = normalizeFinding(
-        {
-          id: `finding-${name}`,
-          findingId: "CVE-2026-12345",
-          component: { name, version: "100%" },
-          ...(group === null ? {} : { componentGroup: group }),
-        },
-        new Map(),
-      );
+      const finding = normalizeFinding({
+        id: `finding-${name}`,
+        findingId: "CVE-2026-12345",
+        component: { name, version: "100%" },
+        ...(group === null ? {} : { componentGroup: group }),
+      });
       expect(parseFindingStableKey(finding.stableKey).component).toMatchObject({
         group: expectedGroup,
         name: expectedName,
@@ -156,63 +141,42 @@ describe("findings cache pull", () => {
   );
 
   it("keeps stable keys byte-identical for equivalent flat and nested component identities", () => {
-    const identities = new Map([
-      [
-        "component-1",
-        {
-          name: "Mbed TLS",
-          group: "Arm",
-          version: "3.0.0",
-          purl: "pkg:generic/mbed-tls@3.0.0",
-        },
-      ],
-    ]);
     const finding = {
       id: "finding-1",
       cve: "CVE-2026-34877",
       title: "CVE-2026-34877 - Mbed TLS@3.0.0",
       type: "cve",
     } satisfies Record<string, Json>;
-    const flat = normalizeFinding(
-      {
-        ...finding,
-        componentId: "component-1",
-        componentName: "Mbed TLS",
-        componentGroup: "Arm",
-        componentVersion: "3.0.0",
-        componentPurl: "pkg:generic/mbed-tls@3.0.0",
+    const flat = normalizeFinding({
+      ...finding,
+      componentId: "component-1",
+      componentName: "Mbed TLS",
+      componentGroup: "Arm",
+      componentVersion: "3.0.0",
+      componentPurl: "pkg:generic/mbed-tls@3.0.0",
+    });
+    const nested = normalizeFinding({
+      ...finding,
+      component: {
+        appId: "app-component-1",
+        id: "component-1",
+        name: "Mbed TLS",
+        vcId: "vc-component-1",
+        version: "3.0.0",
       },
-      identities,
-    );
-    const nested = normalizeFinding(
-      {
-        ...finding,
-        component: {
-          appId: "app-component-1",
-          id: "component-1",
-          name: "Mbed TLS",
-          vcId: "vc-component-1",
-          version: "3.0.0",
-        },
+    });
+    const missingJoin = normalizeFinding({
+      ...finding,
+      component: {
+        appId: "app-component-1",
+        id: "component-1",
+        name: "Mbed TLS",
+        vcId: "vc-component-1",
+        version: "3.0.0",
       },
-      identities,
-    );
-    const missingJoin = normalizeFinding(
-      {
-        ...finding,
-        component: {
-          appId: "app-component-1",
-          id: "component-1",
-          name: "Mbed TLS",
-          vcId: "vc-component-1",
-          version: "3.0.0",
-        },
-      },
-      new Map(),
-    );
+    });
 
-    expect(nested.stableKey).toBe(flat.stableKey);
-    expect(nested.stableKey).toBe(
+    expect(flat.stableKey).toBe(
       findingStableKey(
         {
           cve: "CVE-2026-34877",
@@ -224,7 +188,7 @@ describe("findings cache pull", () => {
         "purl",
       ),
     );
-    expect(missingJoin.stableKey).toBe(
+    expect(nested.stableKey).toBe(
       findingStableKey(
         {
           cve: "CVE-2026-34877",
@@ -236,20 +200,17 @@ describe("findings cache pull", () => {
         "name-group-version",
       ),
     );
-    expect(missingJoin.stableKey).not.toBe(nested.stableKey);
+    expect(missingJoin.stableKey).toBe(nested.stableKey);
   });
 
   it("reports payload keys when component identity is genuinely missing", () => {
     expect(() =>
-      normalizeFinding(
-        {
-          id: "finding-without-component-name",
-          cve: "CVE-2026-0001",
-          component: { id: "component-1", version: "1.0.0" },
-          severity: "high",
-        },
-        new Map(),
-      ),
+      normalizeFinding({
+        id: "finding-without-component-name",
+        cve: "CVE-2026-0001",
+        component: { id: "component-1", version: "1.0.0" },
+        severity: "high",
+      }),
     ).toThrow(
       "Finding finding-without-component-name has no component name for canonical identity; " +
         "payload keys [component, cve, id, severity]; component keys [id, version]",
@@ -257,17 +218,6 @@ describe("findings cache pull", () => {
   });
 
   it("treats null, absent, and empty primary aliases identically across stable identity inputs", () => {
-    const identities = new Map([
-      [
-        "component-1",
-        {
-          name: "Library",
-          group: "Acme",
-          version: "1.0.0",
-          purl: "pkg:npm/library@1.0.0",
-        },
-      ],
-    ]);
     const fallbackRow: Record<string, Json> = {
       uuid: "finding-1",
       vulnerabilityId: "CVE-2026-0001",
@@ -310,7 +260,7 @@ describe("findings cache pull", () => {
       for (const state of primaryStates) {
         const row = { ...fallbackRow };
         if (state.value !== undefined) row[primaryAlias] = state.value;
-        const normalized = normalizeFinding(row, identities);
+        const normalized = normalizeFinding(row);
         expect(
           { findingId: normalized.findingId, stableKey: normalized.stableKey },
           `${primaryAlias} ${state.label}`,
@@ -325,27 +275,14 @@ describe("findings cache pull", () => {
     const db = createPluginContext(host.bb).db();
     const pvId = "pv-1";
     const scope: SyncScope = { projectId: "project-1", projectVersionId: pvId };
-    const componentRows: Array<Record<string, Json>> = [
-      {
-        id: "component-1",
-        name: "Library",
-        group: "Acme",
-        version: "1.0.0",
-        purl: "pkg:npm/library@1.0.0",
-      },
-      {
-        id: "component-2",
-        name: "Fallback",
-        group: "Acme",
-        version: "2.0.0",
-        purl: null,
-      },
-    ];
     const first: Record<string, Json> = {
       id: "finding-1",
       projectVersionId: "pv-1",
       componentId: "component-1",
       componentPurl: "pkg:npm/library@1.0.0",
+      componentName: "Library",
+      componentGroup: "Acme",
+      componentVersion: "1.0.0",
       cve: "CVE-2026-0001",
       severity: "high",
       riskScore: 9,
@@ -357,6 +294,9 @@ describe("findings cache pull", () => {
       projectVersionId: "pv-1",
       componentId: "component-2",
       componentPurl: null,
+      componentName: "Fallback",
+      componentGroup: "Acme",
+      componentVersion: "2.0.0",
       cve: "CVE-2026-0002",
       severity: "medium",
       riskScore: 5,
@@ -367,7 +307,7 @@ describe("findings cache pull", () => {
     const progress: unknown[] = [];
     const platform = {
       listComponents() {
-        return pages([{ items: componentRows, total: 2, next: null }]);
+        throw new Error("component index must not participate in identity");
       },
       getFindings(input: { page?: { continuation?: string } }) {
         findingsCalls += 1;

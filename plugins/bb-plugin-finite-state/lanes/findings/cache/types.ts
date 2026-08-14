@@ -76,7 +76,7 @@ export interface CachedComment {
 
 export interface FindingsDeps {
   db: Database.Database;
-  platform: Pick<PlatformClient, "getFindings" | "listComponents">;
+  platform: Pick<PlatformClient, "getFindings">;
   pageSize?: number;
   warn?: (
     message: string,

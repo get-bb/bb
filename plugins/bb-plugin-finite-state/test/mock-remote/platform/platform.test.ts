@@ -176,11 +176,6 @@ describe("mock-direct-platform-data", () => {
     ) {
       throw new Error("Mock Platform finding component is not an object");
     }
-    const joined = state.components.get(String(component.id));
-    if (joined === undefined)
-      throw new Error(
-        "Mock Platform finding component did not join by ComponentV0.id",
-      );
     if (typeof project?.id !== "string")
       throw new Error("Mock Platform returned no project");
     const host = createFakePluginHost({
@@ -223,12 +218,12 @@ describe("mock-direct-platform-data", () => {
       findingStableKey(
         {
           cve: String(finding.cve),
-          purl: typeof joined.purl === "string" ? joined.purl : null,
-          name: String(joined.name),
-          group: typeof joined.group === "string" ? joined.group : null,
-          version: typeof joined.version === "string" ? joined.version : null,
+          purl: null,
+          name: String(component.name),
+          group: null,
+          version: String(component.version),
         },
-        "purl",
+        "name-group-version",
       ),
     );
   });

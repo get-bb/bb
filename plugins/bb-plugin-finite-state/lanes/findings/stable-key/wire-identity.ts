@@ -1,12 +1,5 @@
-import type { Json, PlatformClient } from "../../../lib/remote/types.js";
+import type { Json } from "../../../lib/remote/types.js";
 import { selectFindingCve, type FindingIdentityInput } from "./canonical.js";
-
-export interface ComponentIdentity {
-  name: string;
-  group: string | null;
-  version: string | null;
-  purl: string | null;
-}
 
 export function jsonRecord(
   value: Json | undefined,
@@ -30,83 +23,70 @@ export function wireString(
   return null;
 }
 
-function componentFromRow(
-  row: Readonly<Record<string, Json>>,
-): ComponentIdentity | null {
-  const name = wireString(row, ["name", "componentName"]);
-  if (name === null) return null;
-  return {
-    name,
-    group: wireString(row, ["group", "namespace", "componentGroup"]),
-    version: wireString(row, ["version", "componentVersion"]),
-    purl: wireString(row, ["purl", "packageUrl", "componentPurl"]),
-  };
-}
-
-export async function loadComponentIdentities(
-  platform: Pick<PlatformClient, "listComponents">,
-  pageSize: number,
-): Promise<Map<string, ComponentIdentity>> {
-  const result = new Map<string, ComponentIdentity>();
-  for await (const page of platform.listComponents({ page: { pageSize } })) {
-    for (const value of page.items) {
-      const row = jsonRecord(value);
-      const id =
-        row === null ? null : wireString(row, ["id", "componentId", "uuid"]);
-      const identity = row === null ? null : componentFromRow(row);
-      if (id !== null && identity !== null) result.set(id, identity);
-    }
+export function purlIdentity(purl: string | null): {
+  name: string;
+  group: string | null;
+  version: string | null;
+} | null {
+  if (purl === null || !purl.startsWith("pkg:")) return null;
+  const withoutSuffix = purl.slice(4).split(/[?#]/u, 1)[0] ?? "";
+  const slash = withoutSuffix.indexOf("/");
+  if (slash < 0) return null;
+  const segments = withoutSuffix.slice(slash + 1).split("/");
+  const last = segments.pop();
+  if (last === undefined || last.length === 0) return null;
+  const at = last.lastIndexOf("@");
+  const encodedName = at < 0 ? last : last.slice(0, at);
+  const encodedVersion = at < 0 ? null : last.slice(at + 1);
+  try {
+    return {
+      name: decodeURIComponent(encodedName),
+      group:
+        segments.length === 0
+          ? null
+          : segments.map(decodeURIComponent).join("/"),
+      version:
+        encodedVersion === null || encodedVersion.length === 0
+          ? null
+          : decodeURIComponent(encodedVersion),
+    };
+  } catch {
+    return null;
   }
-  return result;
 }
 
-function joinedComponent(
+function wireComponentIdentity(
   row: Readonly<Record<string, Json>>,
-  identities: ReadonlyMap<string, ComponentIdentity>,
-): ComponentIdentity | undefined {
-  const component = jsonRecord(row["component"]);
-  const componentId =
-    wireString(row, ["componentId", "componentUuid"]) ??
-    (component === null ? null : wireString(component, ["id"]));
-  return componentId === null ? undefined : identities.get(componentId);
-}
-
-function cacheComponentIdentity(
-  row: Readonly<Record<string, Json>>,
-  identities: ReadonlyMap<string, ComponentIdentity>,
 ): Omit<FindingIdentityInput, "cve"> | null {
   const component = jsonRecord(row["component"]);
-  const joined = joinedComponent(row, identities);
+  const declaredPurl = wireString(row, ["componentPurl", "purl", "packageUrl"]);
+  const parsed = purlIdentity(declaredPurl);
   const name =
     wireString(row, ["componentName", "name"]) ??
     (component === null ? null : wireString(component, ["name"])) ??
-    joined?.name ??
+    parsed?.name ??
     null;
   if (name === null) return null;
   return {
-    purl:
-      wireString(row, ["componentPurl", "purl", "packageUrl"]) ??
-      joined?.purl ??
-      null,
+    purl: declaredPurl,
     name,
     group:
       wireString(row, ["componentGroup", "group", "namespace"]) ??
-      joined?.group ??
+      parsed?.group ??
       null,
     version:
       wireString(row, ["componentVersion", "version"]) ??
       (component === null ? null : wireString(component, ["version"])) ??
-      joined?.version ??
+      parsed?.version ??
       null,
   };
 }
 
-/** Reads the current canonical identity through the same aliases and index join as the cache. */
+/** Derives SPEC 02 section 4.3 identity exclusively from one wire finding row. */
 export function currentFindingIdentity(
   row: Readonly<Record<string, Json>>,
-  identities: ReadonlyMap<string, ComponentIdentity>,
 ): FindingIdentityInput | null {
-  const componentIdentity = cacheComponentIdentity(row, identities);
+  const componentIdentity = wireComponentIdentity(row);
   const cve = selectFindingCve({
     cve: wireString(row, ["cve"]),
     findingIdentifier: wireString(row, ["findingIdentifier"]),

@@ -59,8 +59,17 @@ function canonicalNamespace(
   group: string | null;
   name: string;
 } {
+  let decodedGroup = group;
+  if (group !== null) {
+    try {
+      decodedGroup = decodeURIComponent(group);
+    } catch {
+      // Preserve malformed wire values. Encoding below makes the result
+      // canonical and a subsequent pass decodes it back to the same value.
+    }
+  }
   const segments = [
-    ...(group === null ? [] : group.split("/")),
+    ...(decodedGroup === null ? [] : decodedGroup.split("/")),
     ...name.split("/"),
   ]
     .map((segment) => segment.normalize("NFC").trim())
