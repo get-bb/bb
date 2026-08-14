@@ -450,4 +450,27 @@ describe("git semver tag resolution", () => {
       });
     }
   });
+
+  it("refuses to downgrade when the recorded range tag disappeared", async () => {
+    const { repo, commitOf } = await tagRepo();
+    await run("git", ["tag", "-d", "v1.1.0"], { cwd: repo });
+
+    expect(
+      await resolveGitUpdate({
+        url: repo,
+        intent: {
+          kind: "range",
+          range: "^1.0.0",
+          tagPrefix: "",
+          resolvedTag: "v1.1.0",
+        },
+        currentCommit: commitOf.get("v1.1.0") ?? "",
+      }),
+    ).toMatchObject({
+      outcome: "unavailable",
+      detail: expect.stringContaining(
+        'recorded git tag "v1.1.0" no longer exists',
+      ),
+    });
+  });
 });

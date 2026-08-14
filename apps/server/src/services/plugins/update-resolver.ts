@@ -636,15 +636,21 @@ async function resolveGitRangeUpdate(args: {
     tagPrefix: args.intent.tagPrefix,
   });
   const recorded = tags.find((tag) => tag.tag === args.intent.resolvedTag);
-  if (recorded !== undefined) {
-    const moved = movedGitTagDetail({
-      url: args.url,
-      tag: recorded.tag,
-      recordedCommit: args.currentCommit,
-      currentCommit: recorded.commit,
-    });
-    if (moved !== null) return { outcome: "unavailable", detail: moved };
+  if (recorded === undefined) {
+    return {
+      outcome: "unavailable",
+      detail:
+        `security check failed: recorded git tag "${args.intent.resolvedTag}" no longer exists in ${args.url}; ` +
+        "bb will not re-resolve a missing release tag. Restore the tag, or remove and install the plugin again",
+    };
   }
+  const moved = movedGitTagDetail({
+    url: args.url,
+    tag: recorded.tag,
+    recordedCommit: args.currentCommit,
+    currentCommit: recorded.commit,
+  });
+  if (moved !== null) return { outcome: "unavailable", detail: moved };
   const selected = selectGitSemverTag({ tags, range: args.intent.range });
   if (selected === null) {
     return {
