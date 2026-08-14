@@ -1175,7 +1175,7 @@ describe("in-turn windows and items that only stream", () => {
     expect(matches[0]).toContain('"status":"completed"');
   });
 
-  it("keeps an unfinished assistant message whole as its deltas cross the cut", () => {
+  it("keeps a delta-only unfinished assistant message whole across the cut", () => {
     const { db, thread } = setup();
     const itemId = "assistant-1";
     const turnId = "turn-1";
@@ -1183,26 +1183,14 @@ describe("in-turn windows and items that only stream", () => {
       completeLastTurn: false,
       itemsPerTurn: [100],
     });
-    const events: EventInput[] = [
-      {
-        threadId: thread.id,
-        sequence: 204,
-        type: "item/started",
-        scope: turnScope(turnId),
-        providerThreadId,
-        itemId,
-        itemKind: "agentMessage",
-        data: JSON.stringify({
-          item: { type: "agentMessage", id: itemId, text: "" },
-          providerThreadId,
-        }),
-      },
-    ];
+    // Pi, Claude, and ACP can begin an assistant item with its first delta;
+    // there is no item/started row for whole-item closure to classify.
+    const events: EventInput[] = [];
     const chunks = Array.from({ length: 200 }, (_, index) => `[${index}]\n`);
     chunks.forEach((delta, index) => {
       events.push({
         threadId: thread.id,
-        sequence: index + 205,
+        sequence: index + 204,
         type: "item/agentMessage/delta",
         scope: turnScope(turnId),
         providerThreadId,
@@ -1233,7 +1221,7 @@ describe("in-turn windows and items that only stream", () => {
       noopNotifier,
       laterChunks.map((delta, index) => ({
         threadId: thread.id,
-        sequence: index + 405,
+        sequence: index + 404,
         type: "item/agentMessage/delta",
         scope: turnScope(turnId),
         providerThreadId,

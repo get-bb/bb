@@ -793,6 +793,22 @@ interface SequenceWindowItemRowsArgs extends TimelineWindowRowsArgs {
   sequenceStart: number;
 }
 
+function rowIdentifiesBufferedTextItem(row: StoredEventRow): boolean {
+  if (row.type === "item/started") {
+    return (
+      row.itemKind === "agentMessage" ||
+      row.itemKind === "plan" ||
+      row.itemKind === "reasoning"
+    );
+  }
+  return (
+    row.type === "item/agentMessage/delta" ||
+    row.type === "item/plan/delta" ||
+    row.type === "item/reasoning/summaryTextDelta" ||
+    row.type === "item/reasoning/textDelta"
+  );
+}
+
 /**
  * Makes a sequence-cut window own whole items rather than halves of them.
  *
@@ -893,23 +909,19 @@ function ensureSequenceWindowWholeItemRows(
       completedItemKeys.add(scopedItemRefKey(storedEventRowItemRef(row)));
     }
   }
-  // Delta rows are stored with a null itemKind, and an item that started below
-  // the cut has only delta rows inside the window — so the kind must be read
-  // from the backfilled item/started row, never from the in-window rows.
+  // Delta rows are stored with a null itemKind, and providers may begin an
+  // assistant, plan, or reasoning item with its first delta rather than an
+  // item/started event. Classify from either the backfilled lifecycle row or
+  // the in-window delta type so those delta-only items keep their prefix too.
   const bufferedTextItems = new Map<string, ScopedItemRef>();
-  for (const row of backfillRows) {
-    if (row.type !== "item/started" || row.itemId === null) {
+  for (const row of [...backfillRows, ...rows]) {
+    if (row.itemId === null || !rowIdentifiesBufferedTextItem(row)) {
       continue;
     }
     const ref = storedEventRowItemRef(row);
     const key = scopedItemRefKey(ref);
-    if (
-      !completedItemKeys.has(key) &&
-      (row.itemKind === "agentMessage" ||
-        row.itemKind === "plan" ||
-        row.itemKind === "reasoning")
-    ) {
-      bufferedTextItems.set(key, ref);
+    if (!completedItemKeys.has(key) && itemsStartingBeforeWindow.has(key)) {
+      bufferedTextItems.set(key, itemsStartingBeforeWindow.get(key) ?? ref);
     }
   }
   const bufferedTextRows = listStoredBufferedTextDeltaRowsByItems(db, {
