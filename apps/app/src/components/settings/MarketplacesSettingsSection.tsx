@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { PluginMarketplace } from "@bb/server-contract";
+import { Badge } from "@bb/shared-ui/badge";
 import { Button } from "@bb/shared-ui/button";
 import { Input } from "@bb/shared-ui/input";
 import { SettingsSection } from "@/components/ui/settings-section";
@@ -98,49 +99,50 @@ export function MarketplacesSettingsSection() {
   });
 
   return (
-    <SettingsSection title="Plugin marketplaces">
-      <p className="text-xs text-muted-foreground">
-        bb reads plugin catalogs from these marketplaces. Adding one validates
-        and caches its catalog; it never installs, updates, or runs plugin code.
-      </p>
-      <div className="flex items-start gap-2">
-        <Input
-          value={source}
-          aria-label="Marketplace source"
-          placeholder={SOURCE_PLACEHOLDER}
-          className="h-8 font-mono text-xs"
-          onChange={(event) => setSource(event.target.value)}
-        />
-        <Button
-          type="button"
-          size="sm"
-          disabled={source.trim().length === 0 || add.isPending}
-          onClick={() => add.mutate(source.trim())}
-        >
-          {add.isPending ? "Adding…" : "Add"}
-        </Button>
+    <SettingsSection
+      title="Plugin marketplaces"
+      description="bb reads plugin catalogs from these marketplaces. Adding one validates and caches its catalog; it never installs, updates, or runs plugin code."
+    >
+      <div className="space-y-1.5">
+        <div className="flex items-start gap-2">
+          <Input
+            value={source}
+            aria-label="Marketplace source"
+            placeholder={SOURCE_PLACEHOLDER}
+            className="h-8 font-mono text-xs"
+            onChange={(event) => setSource(event.target.value)}
+          />
+          <Button
+            type="button"
+            size="sm"
+            disabled={source.trim().length === 0 || add.isPending}
+            onClick={() => add.mutate(source.trim())}
+          >
+            {add.isPending ? "Adding…" : "Add"}
+          </Button>
+        </div>
+        <p className="text-2xs text-subtle-foreground">
+          An https manifest URL, <code>git:&lt;url&gt;[@&lt;ref&gt;]</code>, or{" "}
+          <code>path:&lt;directory&gt;</code> on the bb server&rsquo;s machine.
+        </p>
       </div>
-      <p className="text-2xs text-subtle-foreground">
-        An https manifest URL, <code>git:&lt;url&gt;[@&lt;ref&gt;]</code>, or{" "}
-        <code>path:&lt;directory&gt;</code> on the bb server&rsquo;s machine.
-      </p>
 
-      <ul className="space-y-2">
+      <ul className="space-y-2 pt-1">
         {marketplaces.map((marketplace) => (
           <li
             key={marketplace.name}
-            className="flex items-start gap-3 rounded-md border border-border px-3 py-2"
+            className="flex items-start gap-3 rounded-md border border-border p-3"
           >
-            <div className="min-w-0 flex-1">
-              <p className="flex items-baseline gap-2 text-sm text-foreground">
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="flex items-center gap-2 text-sm text-foreground">
                 {marketplace.displayName}
                 <span className="font-mono text-2xs text-subtle-foreground">
                   {marketplace.name}
                 </span>
                 {marketplace.official ? (
-                  <span className="text-2xs text-subtle-foreground">
-                    official
-                  </span>
+                  <Badge variant="outline" className="text-2xs font-normal">
+                    Official
+                  </Badge>
                 ) : null}
               </p>
               <p className="truncate font-mono text-2xs text-subtle-foreground">

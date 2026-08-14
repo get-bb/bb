@@ -218,8 +218,8 @@ describe("BrowsePluginsTab", () => {
     expect(screen.getByText("BB Official")).toBeTruthy();
     expect(screen.getAllByText("Acme Plugins").length).toBeGreaterThan(0);
     expect(screen.getByText("third-party marketplace")).toBeTruthy();
-    // Cards carry the author.
-    expect(screen.getByText("Acme")).toBeTruthy();
+    // Cards carry the author with the "By:" prefix.
+    expect(screen.getByText("By: Acme")).toBeTruthy();
   });
 
   it("renders every catalog entry once and filters the grid by category", async () => {

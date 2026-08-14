@@ -383,7 +383,7 @@ function BrowseCard({
     !entry.compatible && entry.incompatibleReason !== null ? (
       <span className="text-warning-text">{entry.incompatibleReason}</span>
     ) : entry.author !== null ? (
-      <span>{entry.author.name}</span>
+      <span>By: {entry.author.name}</span>
     ) : undefined;
   const footerMeta = entry.official ? undefined : (
     <span className="text-2xs text-subtle-foreground">

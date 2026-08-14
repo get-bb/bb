@@ -370,7 +370,8 @@ export function createPluginCatalogService(deps: {
       marketplace: OFFICIAL_MARKETPLACE_NAME,
       marketplaceDisplayName: BUNDLED_OFFICIAL_MARKETPLACE.displayName,
       official: true,
-      author: null,
+      // Bundled plugins are BB's own; attribute them like the seed entries.
+      author: { name: "BB Team", url: "https://getbb.app" },
       installed: getInstalledPlugin(deps.db, entry.pluginId) !== undefined,
       compatible: problem === null,
       incompatibleReason: problem,
