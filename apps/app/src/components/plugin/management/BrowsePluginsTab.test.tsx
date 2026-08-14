@@ -497,10 +497,12 @@ describe("BrowsePluginsTab", () => {
     expect(installed.className).toContain("w-7");
     fireEvent.pointerMove(installed);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Uninstall Memory",
+      "Installed — uninstall Memory",
     );
-    expect(installed.querySelector('[data-icon="Download"]')).not.toBeNull();
-    expect(installed.querySelector('[data-icon="Check"]')).toBeNull();
+    // A check, not a download arrow: the corner glyph must read as state
+    // ("installed"), never as an available install action.
+    expect(installed.querySelector('[data-icon="Check"]')).not.toBeNull();
+    expect(installed.querySelector('[data-icon="Download"]')).toBeNull();
     // The installed state reads as a plain success-tinted glyph: no outline,
     // no fill, at rest or on hover/focus.
     // Tokenize: `toContain` also matches inside the hover:/focus-visible:

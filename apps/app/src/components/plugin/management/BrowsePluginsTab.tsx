@@ -394,9 +394,10 @@ function BrowseCard({
     installedPluginId !== null ? (
       <ResourceInstallControl
         accessibleLabel={`Uninstall ${entry.displayName}`}
+        icon="Check"
         pending={uninstall.isPending}
         presentation="icon"
-        tooltip={`Uninstall ${entry.displayName}`}
+        tooltip={`Installed — uninstall ${entry.displayName}`}
         className="border-transparent bg-transparent text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))] shadow-none hover:border-transparent hover:bg-transparent hover:text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))] focus-visible:border-transparent focus-visible:bg-transparent focus-visible:text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]"
         onAction={() => setConfirmingUninstall(true)}
       />
