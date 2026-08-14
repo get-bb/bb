@@ -96,7 +96,7 @@ encodes the testable ones.
 | Lesson (incident) | Design requirement |
 | --- | --- |
 | 87 protocol bumps in ~14 months (26 → 121); translation fixes require daemon deploys | Bridges version independently of the daemon. `initialize` negotiates `{protocolVersion, capabilities}` both ways; unknown methods/fields degrade, never crash. |
-| Idle reaping was Codex-only by accident (#1604); process-key scheme encoded eligibility | Declaration carries explicit `processScope: "thread" \| "shared"` and `sessionPersistence: "none" \| "resume"`; reap eligibility derives from declared data, not string prefixes. |
+| Idle reaping was Codex-only by accident (#1604); process-key scheme encoded eligibility | Process cardinality stops being a bb concept: one bridge process per (provider, environment), sessions multiplexed within. Release is uniform — `thread/stop {intent: "release"}` per session, restorability from the handshake/session report — and any internal child topology is the bridge's own business. |
 | Release vs interrupt conflated (#1584) | Protocol `thread/stop` carries `intent: "interrupt" \| "release"` from day one. |
 | Turn settlement gaps — repeated fixes (#1196, #1234, #1321, #1432), still no watchdog | Runtime (single owner of the turn state machine) keeps the accepted→dispatched→started→completed states; add the missing **turn-start watchdog** (visible failure if no `turn/started` within a bound). |
 | Session replaced as silent side effect of config diff (#1268, #1236) | No core-side option diffing at all: the bridge owns reconciliation, and session replacement must be **reported** (session-replacement notification + settlement events), never silent. |
@@ -295,13 +295,19 @@ the bridge, conformance-checked, drift-proof by construction):
   session report refines it.
 - **`approvalRequestPolicy`**: a runtime branch consulted only when a
   session exists.
-- **process scope — provisionally deleted entirely**: if the codex bridge
-  owns its app-server children internally (one shared bridge process
-  managing per-thread app-servers), every bridge is shared-scope, the
-  runtime's release/reap machinery targets sessions uniformly via
-  `thread/stop {intent: "release"}`, and the field has no reason to exist.
-  Settle this in the codex phase-2 design; if codex genuinely needs
-  bridge-process-per-thread, the field returns as a handshake fact.
+- **process scope — deleted, decided (Michael, 2026-08-14)**: a bridge's
+  process topology is an implementation detail of that provider's plugin —
+  it can use subprocesses or not. Every bridge presents to the runtime as
+  one shared process per (provider, environment); the codex bridge spawns
+  and manages per-thread app-server children itself. The runtime's process
+  model collapses to a single shape, release/reap targets sessions
+  uniformly via `thread/stop {intent: "release"}`, and memory reclamation
+  for codex means the bridge kills that thread's app-server child.
+  Precedent: the claude bridge already multiplexes threads in one process.
+  Consequence: the bridge becomes a small process supervisor, so the
+  child-process exit races the runtime learned to handle (#1402: finalize
+  on `close` not `exit`, verify currency in stream callbacks) become
+  conformance-kit material for bridges that spawn children.
 
 **Deleted outright**: `promptModes` (duplicated `composerActions` — "has a
 plan action" is the same fact), `executionOptionScopes`,
@@ -445,10 +451,12 @@ richest evidence base rather than assembling it late.
 3. **claude-code** — bridge exists; `translate-message.ts`,
    `task-translation.ts`, `interactive-contract.ts`, model list move into it.
 4. **codex** — new bridge wrapping `codex app-server` (the current adapter's
-   `event-translation.ts` + `schemas.ts` move largely verbatim). Codex's
-   thread-scoped process behavior and archived-session error handling become
-   declared data / protocol errors, deleting the codex-specific code in
-   `runtime.ts`.
+   `event-translation.ts` + `schemas.ts` move largely verbatim). Its
+   archived-session error handling becomes typed protocol errors, and its
+   thread-scoped process topology becomes bridge-internal: one codex bridge
+   per environment, spawning and supervising per-thread app-server children
+   itself. `runtime.ts` loses every codex special case and the runtime's
+   process model collapses to a single shape.
 
 No server↔daemon wire change in this phase; bridges stay daemon-bundled.
 
@@ -628,6 +636,10 @@ window, not a steady state.
 4. **`customAcpAgents`** (default stands, not explicitly decided): keep
    config.json compatibility under the acp plugin; add the settings UI on
    top.
+5. **Process scope** (2026-08-14): deleted from the contract entirely — a
+   bridge's process topology (subprocesses or not) is an implementation
+   detail of that provider's plugin. The runtime always sees one bridge
+   process per (provider, environment).
 
 ## Appendix: Phase 2 anatomy — what the four adapters share and where the code moves
 
