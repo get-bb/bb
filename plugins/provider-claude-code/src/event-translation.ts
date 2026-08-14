@@ -367,6 +367,8 @@ export interface ClaudeTurnState {
     | undefined;
   scopedItemCounter: number;
   selectedModelContextWindow: number | null;
+  /** Blocks unaccepted provider-only turn starts after a terminal failure. */
+  suppressUnacceptedTurnStart: boolean;
   /**
    * Open context-compaction item for the turn it started in; status: null
    * (compaction finished) completes it. Cleared on use and guarded by turn id
@@ -787,6 +789,7 @@ export function createClaudeEventTranslator(
       pendingHardRateLimitRejection: undefined,
       scopedItemCounter: 0,
       selectedModelContextWindow: null,
+      suppressUnacceptedTurnStart: false,
       tasksById: new Map(),
       toolItemsByCallId: new Map(),
     }),
@@ -796,6 +799,7 @@ export function createClaudeEventTranslator(
       !hasOpenClaudeBackgroundTasks(state.tasksById) &&
       state.opaqueTaskIds.size === 0,
     onTurnStart: ({ state }) => {
+      state.suppressUnacceptedTurnStart = false;
       state.latestRequestContextTokens = undefined;
       state.latestProviderCheckpointId = undefined;
       state.pendingHardRateLimitRejection = undefined;
@@ -837,6 +841,16 @@ export function createClaudeEventTranslator(
       return undefined;
     }
     return turnState.get({ threadId: context.threadId })?.currentTurnId;
+  }
+
+  function isClaudeProviderTurnStartSuppressed(
+    state: ClaudeTurnState,
+  ): boolean {
+    return (
+      state.suppressUnacceptedTurnStart &&
+      state.currentTurnId === undefined &&
+      state.pendingAcceptedUserMessages.length === 0
+    );
   }
 
   function buildUnexpectedClaudeSdkEvent(
@@ -890,6 +904,9 @@ export function createClaudeEventTranslator(
             turnId: fallbackTurnId,
           });
         }
+        if (isClaudeProviderTurnStartSuppressed(state)) {
+          return [];
+        }
         const turnId = args.ensureTurnStarted({
           events,
           state,
@@ -917,13 +934,17 @@ export function createClaudeEventTranslator(
           args.event,
         );
         if (apiRetryMessage.success) {
+          const turnStartSuppressed =
+            isClaudeProviderTurnStartSuppressed(state);
           const turnId =
             state.currentTurnId ??
-            args.ensureTurnStarted({
-              events,
-              state,
-              threadId,
-            });
+            (turnStartSuppressed
+              ? null
+              : args.ensureTurnStarted({
+                  events,
+                  state,
+                  threadId,
+                }));
           events.push(
             buildClaudeProviderErrorEvent({
               detail: buildClaudeApiRetryDetail(apiRetryMessage.data),
@@ -945,6 +966,9 @@ export function createClaudeEventTranslator(
           statusMessage.success &&
           statusMessage.data.status === "compacting"
         ) {
+          if (isClaudeProviderTurnStartSuppressed(state)) {
+            return [];
+          }
           const turnId = args.ensureTurnStarted({
             events,
             state,
@@ -1077,7 +1101,9 @@ export function createClaudeEventTranslator(
 
         const taskEvents = translateClaudeTaskMessage({
           ensureTurnStarted: () =>
-            args.ensureTurnStarted({ events, state, threadId }),
+            isClaudeProviderTurnStartSuppressed(state)
+              ? undefined
+              : args.ensureTurnStarted({ events, state, threadId }),
           event: args.event,
           now: Date.now(),
           opaqueTaskIds: state.opaqueTaskIds,
@@ -1104,6 +1130,9 @@ export function createClaudeEventTranslator(
           });
         }
         const message = parsedMessage.data;
+        if (isClaudeProviderTurnStartSuppressed(state)) {
+          return [];
+        }
         // Sidechain assistant messages belong to subagents/tools, not the root
         // conversation lineage that thread/fork can retain through.
         const providerCheckpointId =
@@ -1261,6 +1290,9 @@ export function createClaudeEventTranslator(
           });
         }
         const message = parsedMessage.data;
+        if (isClaudeProviderTurnStartSuppressed(state)) {
+          return [];
+        }
         const reasoningDelta = extractStreamThinkingDelta(message);
         if (reasoningDelta) {
           const turnId = args.ensureTurnStarted({
@@ -1485,6 +1517,7 @@ export function createClaudeEventTranslator(
                 }
               : {}),
           });
+          state.suppressUnacceptedTurnStart = failed;
           args.turnState.finishTurn({ state, threadId: stateKey });
         }
         break;
@@ -1515,6 +1548,10 @@ export function createClaudeEventTranslator(
           ) {
             state.pendingHardRateLimitRejection = undefined;
           }
+          return events;
+        }
+        if (isClaudeProviderTurnStartSuppressed(state)) {
+          events.push(rateLimitsEvent);
           return events;
         }
         const turnId = args.ensureTurnStarted({ events, state, threadId });
@@ -1580,6 +1617,12 @@ export function createClaudeEventTranslator(
 
     const errorEnvelope = errorEnvelopeSchema.safeParse(event);
     if (errorEnvelope.success) {
+      const state = context?.threadId
+        ? turnState.get({ threadId: context.threadId })
+        : null;
+      if (state && isClaudeProviderTurnStartSuppressed(state)) {
+        return [];
+      }
       return turnState.buildErrorEvents({
         contextThreadId: context?.threadId,
         detail: errorEnvelope.data.params?.message ?? "unknown error",

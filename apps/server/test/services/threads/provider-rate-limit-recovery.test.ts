@@ -46,6 +46,7 @@ function seedFailedRateLimitedTurn(
   harness: TestAppHarness,
   options: {
     environmentStatus?: "ready" | "retiring";
+    manualStopBeforeCompletion?: boolean;
     rateLimitBeforeTurn?: boolean;
     rateLimits?: ProviderRateLimitState;
     steeredAfterOutput?: boolean;
@@ -238,6 +239,16 @@ function seedFailedRateLimitedTurn(
     });
     nextSequence += 1;
   }
+  if (options.manualStopBeforeCompletion) {
+    seedEvent(harness.deps, {
+      threadId: thread.id,
+      sequence: nextSequence,
+      type: "system/thread/interrupted",
+      scope: threadScope(),
+      data: { reason: "manual-stop" },
+    });
+    nextSequence += 1;
+  }
   seedEvent(harness.deps, {
     threadId: thread.id,
     environmentId: environment.id,
@@ -272,6 +283,192 @@ describe("provider rate-limit recovery", () => {
           rateLimits: RATE_LIMITS,
         },
       });
+    });
+  });
+
+  it("keeps the accepted failure when a later provider-only turn fails", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedFailedRateLimitedTurn(harness);
+      const syntheticTurnId = "turn-provider-drain";
+      seedEvent(harness.deps, {
+        threadId: fixture.thread.id,
+        environmentId: fixture.environment.id,
+        providerThreadId: "provider-thread-rate-limited",
+        sequence: 8,
+        type: "turn/started",
+        scope: turnScope(syntheticTurnId),
+        data: { providerThreadId: "provider-thread-rate-limited" },
+      });
+      seedEvent(harness.deps, {
+        threadId: fixture.thread.id,
+        environmentId: fixture.environment.id,
+        providerThreadId: "provider-thread-rate-limited",
+        sequence: 9,
+        type: "provider/error",
+        scope: turnScope(syntheticTurnId),
+        data: {
+          providerThreadId: "provider-thread-rate-limited",
+          message: "Usage limit reached",
+          errorInfo: {
+            category: "rate-limit",
+            providerCode: "usage_limit_reached",
+            httpStatusCode: 429,
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: fixture.thread.id,
+        environmentId: fixture.environment.id,
+        providerThreadId: "provider-thread-rate-limited",
+        sequence: 10,
+        type: "turn/completed",
+        scope: turnScope(syntheticTurnId),
+        data: {
+          providerThreadId: "provider-thread-rate-limited",
+          status: "failed",
+        },
+      });
+
+      expect(
+        getProviderRateLimitRecoveryStatus(harness.deps, {
+          environment: fixture.environment,
+          thread: fixture.thread,
+        }),
+      ).toMatchObject({
+        reason: "eligible",
+        candidate: {
+          failedRequestId: FAILED_REQUEST_ID,
+          turnId: fixture.turnId,
+        },
+      });
+    });
+  });
+
+  it("supersedes the accepted failure when the user requests a newer turn", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedFailedRateLimitedTurn(harness);
+      seedEvent(harness.deps, {
+        threadId: fixture.thread.id,
+        environmentId: fixture.environment.id,
+        sequence: 8,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        data: {
+          direction: "outbound",
+          requestId: STEER_REQUEST_ID,
+          source: "tell",
+          initiator: "user",
+          senderThreadId: null,
+          input: [{ type: "text", text: "Try again now", mentions: [] }],
+          target: { kind: "new-turn" },
+          request: { method: "turn/start", params: {} },
+          execution: {
+            model: "gpt-5",
+            serviceTier: "default",
+            reasoningLevel: "medium",
+            permissionMode: "full",
+            source: "client/turn/requested",
+          },
+        },
+      });
+
+      expect(
+        getProviderRateLimitRecoveryStatus(harness.deps, {
+          environment: fixture.environment,
+          thread: fixture.thread,
+        }),
+      ).toMatchObject({ reason: "superseded", candidate: null });
+    });
+  });
+
+  it("supersedes the accepted failure after provider-only drain and a newer user request", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedFailedRateLimitedTurn(harness);
+      const syntheticTurnId = "turn-provider-drain-before-user-request";
+      seedEvent(harness.deps, {
+        threadId: fixture.thread.id,
+        environmentId: fixture.environment.id,
+        providerThreadId: "provider-thread-rate-limited",
+        sequence: 8,
+        type: "turn/started",
+        scope: turnScope(syntheticTurnId),
+        data: { providerThreadId: "provider-thread-rate-limited" },
+      });
+      seedEvent(harness.deps, {
+        threadId: fixture.thread.id,
+        environmentId: fixture.environment.id,
+        providerThreadId: "provider-thread-rate-limited",
+        sequence: 9,
+        type: "provider/error",
+        scope: turnScope(syntheticTurnId),
+        data: {
+          providerThreadId: "provider-thread-rate-limited",
+          message: "Usage limit reached",
+          errorInfo: {
+            category: "rate-limit",
+            providerCode: "usage_limit_reached",
+            httpStatusCode: 429,
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: fixture.thread.id,
+        environmentId: fixture.environment.id,
+        providerThreadId: "provider-thread-rate-limited",
+        sequence: 10,
+        type: "turn/completed",
+        scope: turnScope(syntheticTurnId),
+        data: {
+          providerThreadId: "provider-thread-rate-limited",
+          status: "failed",
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: fixture.thread.id,
+        environmentId: fixture.environment.id,
+        sequence: 11,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        data: {
+          direction: "outbound",
+          requestId: STEER_REQUEST_ID,
+          source: "tell",
+          initiator: "user",
+          senderThreadId: null,
+          input: [{ type: "text", text: "Try again now", mentions: [] }],
+          target: { kind: "new-turn" },
+          request: { method: "turn/start", params: {} },
+          execution: {
+            model: "gpt-5",
+            serviceTier: "default",
+            reasoningLevel: "medium",
+            permissionMode: "full",
+            source: "client/turn/requested",
+          },
+        },
+      });
+
+      expect(
+        getProviderRateLimitRecoveryStatus(harness.deps, {
+          environment: fixture.environment,
+          thread: { ...fixture.thread, status: "active" },
+        }),
+      ).toMatchObject({ reason: "superseded", candidate: null });
+    });
+  });
+
+  it("supersedes the accepted failure after an explicit user interruption", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedFailedRateLimitedTurn(harness, {
+        manualStopBeforeCompletion: true,
+      });
+
+      expect(
+        getProviderRateLimitRecoveryStatus(harness.deps, {
+          environment: fixture.environment,
+          thread: { ...fixture.thread, status: "idle" },
+        }),
+      ).toMatchObject({ reason: "superseded", candidate: null });
     });
   });
 

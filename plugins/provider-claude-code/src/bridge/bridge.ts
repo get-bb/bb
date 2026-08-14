@@ -795,6 +795,7 @@ function emitCanonicalTurnInputAccepted(
     return;
   }
   const state = threadSession.translator.resolveState({ threadId });
+  state.suppressUnacceptedTurnStart = false;
   if (state.currentTurnId !== undefined) {
     sendThreadEvents(
       threadId,

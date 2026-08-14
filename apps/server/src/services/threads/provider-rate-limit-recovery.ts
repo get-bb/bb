@@ -2,6 +2,7 @@ import {
   getEnvironment,
   getLastStoredTurnRequestEvent,
   getLatestStoredEventRowByType,
+  getLatestStoredTurnCompletedRowWithAcceptedInput,
   getRootStoredTurnStartedSequence,
   getStoredTurnRequestEventForTurn,
   getThread,
@@ -140,16 +141,23 @@ function eventBelongsToTurn(event: ThreadEvent, turnId: string): boolean {
 
 function inspectRecovery(args: InspectRecoveryArgs): RecoveryInspection {
   const observedRateLimits = latestRateLimitState(args.db, args.thread);
-  if (args.thread.status !== "error") {
-    return emptyInspection(args, "thread-not-failed", observedRateLimits);
-  }
-
-  const completedRow = getLatestStoredEventRowByType(args.db, {
+  const latestCompletedRow = getLatestStoredEventRowByType(args.db, {
     threadId: args.thread.id,
     type: "turn/completed",
   });
-  if (!completedRow || completedRow.turnId === null) {
-    return emptyInspection(args, "no-failed-turn", observedRateLimits);
+  if (!latestCompletedRow || latestCompletedRow.turnId === null) {
+    return emptyInspection(
+      args,
+      args.thread.status === "error" ? "no-failed-turn" : "thread-not-failed",
+      observedRateLimits,
+    );
+  }
+  const completedRow = getLatestStoredTurnCompletedRowWithAcceptedInput(
+    args.db,
+    { threadId: args.thread.id },
+  );
+  if (!completedRow) {
+    return emptyInspection(args, "input-not-accepted", observedRateLimits);
   }
   const completedEvent = parseStoredEvent(completedRow);
   if (
@@ -159,7 +167,9 @@ function inspectRecovery(args: InspectRecoveryArgs): RecoveryInspection {
     return emptyInspection(args, "no-failed-turn", observedRateLimits);
   }
   const turnId = completedRow.turnId;
-
+  if (turnId === null) {
+    return emptyInspection(args, "input-not-accepted", observedRateLimits);
+  }
   const requestRow = getStoredTurnRequestEventForTurn(args.db, {
     threadId: args.thread.id,
     turnId,
@@ -174,6 +184,22 @@ function inspectRecovery(args: InspectRecoveryArgs): RecoveryInspection {
   );
   if (!latestRequestRow || latestRequestRow.sequence !== requestRow.sequence) {
     return emptyInspection(args, "superseded", observedRateLimits);
+  }
+  const latestInterruptionRow = getLatestStoredEventRowByType(args.db, {
+    threadId: args.thread.id,
+    type: "system/thread/interrupted",
+  });
+  if (
+    latestInterruptionRow &&
+    latestInterruptionRow.sequence > requestRow.sequence
+  ) {
+    const latestInterruption = parseStoredEvent(latestInterruptionRow);
+    if (
+      latestInterruption.type === "system/thread/interrupted" &&
+      latestInterruption.reason === "manual-stop"
+    ) {
+      return emptyInspection(args, "superseded", observedRateLimits);
+    }
   }
 
   const turnStartedSequence = getRootStoredTurnStartedSequence(args.db, {

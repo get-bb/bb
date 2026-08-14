@@ -66,7 +66,7 @@ export type ClaudeTaskMap = Map<string, ClaudeTrackedTask>;
 
 export interface TranslateClaudeTaskMessageArgs {
   /** Lazily opens the spawning turn and returns its id. */
-  ensureTurnStarted: () => string;
+  ensureTurnStarted: () => string | undefined;
   event: unknown;
   now: number;
   opaqueTaskIds: Set<string>;
@@ -335,6 +335,9 @@ export function translateClaudeTaskMessage(
     }
     const generation = existing ? existing.generation + 1 : 1;
     const turnId = args.ensureTurnStarted();
+    if (turnId === undefined) {
+      return [];
+    }
     const task: ClaudeTrackedTask = {
       taskId: message.task_id,
       itemId: buildClaudeTaskItemId(message.task_id, generation),
