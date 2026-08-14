@@ -1901,6 +1901,7 @@ describe("acp bridge", () => {
     const response = await waitForResponse(resumeId);
     expect(response.result).toEqual({
       providerThreadId: first.providerThreadId,
+      sessionRestorable: true,
     });
     expect(notifications("acp/warning")).toHaveLength(0);
     startedProviderThreadIds.push(first.providerThreadId);
@@ -1929,6 +1930,7 @@ describe("acp bridge", () => {
     const response = await waitForResponse(resumeId);
     expect(response.result).toEqual({
       providerThreadId: first.providerThreadId,
+      sessionRestorable: true,
     });
     expect(notifications("acp/update").at(-1)?.params).toEqual({
       threadId: first.bbThreadId,
@@ -1965,6 +1967,7 @@ describe("acp bridge", () => {
     const response = await waitForResponse(resumeId);
     expect(response.result).toEqual({
       providerThreadId: first.providerThreadId,
+      sessionRestorable: true,
     });
     expect(notifications("acp/update")).toEqual([]);
     startedProviderThreadIds.push(first.providerThreadId);
@@ -2037,6 +2040,7 @@ describe("acp bridge", () => {
     const response = await waitForResponse(resumeId);
     expect(response.result).toEqual({
       providerThreadId: first.providerThreadId,
+      sessionRestorable: true,
     });
     startedProviderThreadIds.push(first.providerThreadId);
 

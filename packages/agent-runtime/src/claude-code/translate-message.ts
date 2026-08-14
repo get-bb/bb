@@ -76,6 +76,8 @@ export interface ClaudeTurnState {
     | undefined;
   openAssistantMessageIdsByScope: Map<string, string>;
   openReasoningItemIdsByScope: Map<string, string>;
+  /** Live monitor and future task types that do not create timeline rows. */
+  opaqueTaskIds: Set<string>;
   pendingAcceptedUserMessages: AcceptedUserMessageState["pendingAcceptedUserMessages"];
   pendingHardRateLimitRejection:
     | {
@@ -655,6 +657,7 @@ export function translateClaudeSdkMessage(
           args.ensureTurnStarted({ events, state, threadId }),
         event: args.event,
         now: Date.now(),
+        opaqueTaskIds: state.opaqueTaskIds,
         tasks: state.tasksById,
         threadId,
       });

@@ -127,6 +127,7 @@ interface AcpThreadSession {
   connection: AcpAgentConnection;
   agentLabel: string;
   supportsImageInput: boolean;
+  supportsLoadSession: boolean;
   policy: AcpSessionPolicy;
   cwd: string;
   pendingInstructions: string | undefined;
@@ -1478,6 +1479,7 @@ async function startAgentSession(
     connection,
     agentLabel,
     supportsImageInput: false,
+    supportsLoadSession: false,
     policy: {
       permissionMode: params.permissionMode,
       permissionEscalation: params.permissionEscalation,
@@ -1537,6 +1539,7 @@ async function startAgentSession(
         `ACP agent "${agentLabel}" does not support a session/fork checkpoint.`,
       );
     }
+    session.supportsLoadSession = supportsLoadSession;
     const mcpServers = await buildSessionMcpServers(params);
 
     let sessionId: string | undefined;
@@ -1964,7 +1967,10 @@ async function handleRequest(
         kind: "start",
         params: request.params,
       });
-      sendResult(request.id, { providerThreadId: session.providerThreadId });
+      sendResult(request.id, {
+        providerThreadId: session.providerThreadId,
+        sessionRestorable: session.supportsLoadSession,
+      });
       return;
     }
 
@@ -1973,7 +1979,10 @@ async function handleRequest(
         kind: "resume",
         params: request.params,
       });
-      sendResult(request.id, { providerThreadId: session.providerThreadId });
+      sendResult(request.id, {
+        providerThreadId: session.providerThreadId,
+        sessionRestorable: session.supportsLoadSession,
+      });
       return;
     }
 

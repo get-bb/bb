@@ -1,6 +1,9 @@
 import path from "node:path";
 import { z } from "zod";
-import { isAcpProviderId } from "@bb/agent-providers";
+import {
+  getAgentProviderServerCapabilities,
+  isAcpProviderId,
+} from "@bb/agent-providers";
 import {
   normalizeProviderThreadNameEvent,
   toProviderExternalThreadName,
@@ -127,6 +130,7 @@ interface ReapIdleProviderSessionCandidate {
 interface FindReapableIdleProviderSessionArgs {
   idleForMs: number;
   nowMs: number;
+  providerSessionReapingEnabled: boolean;
   threadId: string;
 }
 
@@ -205,6 +209,7 @@ interface ThreadRuntimeConfig {
   processKey: string;
   projectId?: string;
   providerId: string;
+  sessionRestorable: boolean;
   skillRoots: readonly AgentRuntimeSkillRoot[];
   workspacePath: string;
 }
@@ -567,6 +572,19 @@ function createAgentRuntimeInternal(
     threadRuntimeConfigs.set(threadId, config);
   }
 
+  function updateSessionRestoreCapability(
+    threadId: string,
+    sessionRestorable: boolean | undefined,
+  ): void {
+    if (sessionRestorable === undefined) {
+      return;
+    }
+    const current = threadRuntimeConfigs.get(threadId);
+    if (current) {
+      threadRuntimeConfigs.set(threadId, { ...current, sessionRestorable });
+    }
+  }
+
   function clearThreadRuntimeConfig(threadId: string): void {
     codexThreadsRequiringAccountRestart.delete(threadId);
     idleProviderSessionSinceMsByThreadId.delete(threadId);
@@ -704,7 +722,12 @@ function createAgentRuntimeInternal(
     }
 
     const runtimeConfig = threadRuntimeConfigs.get(args.threadId);
-    if (runtimeConfig?.providerId !== CODEX_PROVIDER_ID) {
+    if (
+      !runtimeConfig ||
+      (args.providerSessionReapingEnabled
+        ? !runtimeConfig.sessionRestorable
+        : runtimeConfig.providerId !== CODEX_PROVIDER_ID)
+    ) {
       return null;
     }
 
@@ -1363,6 +1386,9 @@ function createAgentRuntimeInternal(
             processKey,
             projectId,
             providerId,
+            sessionRestorable:
+              getAgentProviderServerCapabilities(providerId)
+                ?.supportsSessionRestore ?? false,
             skillRoots: providerSkillRoots,
             workspacePath: options.workspacePath,
           });
@@ -1432,6 +1458,7 @@ function createAgentRuntimeInternal(
             result,
             threadId,
           });
+          updateSessionRestoreCapability(threadId, result.sessionRestorable);
           if (providerThreadId) {
             recordProviderThreadIdentity(proc, threadId, providerThreadId);
           }
@@ -1713,6 +1740,9 @@ function createAgentRuntimeInternal(
             processKey,
             projectId,
             providerId,
+            sessionRestorable:
+              getAgentProviderServerCapabilities(providerId)
+                ?.supportsSessionRestore ?? false,
             skillRoots: providerSkillRoots,
             workspacePath: options.workspacePath,
           });
@@ -1782,6 +1812,7 @@ function createAgentRuntimeInternal(
             );
           }
           recordProviderThreadIdentity(proc, threadId, resolvedId);
+          updateSessionRestoreCapability(threadId, result.sessionRestorable);
           emitAcceptedCommandEvents({
             command: adapterCommand,
             proc,
@@ -2181,39 +2212,57 @@ function createAgentRuntimeInternal(
       return threadIdentityRegistry.getProviderSession(threadId);
     },
 
-    async reapIdleProviderSessions({ idleForMs, nowMs }) {
+    async reapIdleProviderSessions({
+      idleForMs,
+      nowMs,
+      providerSessionReapingEnabled,
+      runThreadExclusive,
+    }) {
       const reapedSessions: ReapedIdleProviderSession[] = [];
       for (const threadId of [...threadRuntimeConfigs.keys()]) {
-        const candidate = findReapableIdleProviderSession({
-          idleForMs,
-          nowMs,
-          threadId,
-        });
-        if (!candidate) {
-          continue;
-        }
-
-        let proc: ProviderProcess;
-        try {
-          proc = requireProviderProcess({
-            processKey: candidate.runtimeConfig.processKey,
-            providerId: candidate.runtimeConfig.providerId,
+        const release = async (): Promise<ReapedIdleProviderSession | null> => {
+          const candidate = findReapableIdleProviderSession({
+            idleForMs,
+            nowMs,
+            providerSessionReapingEnabled,
+            threadId,
           });
-        } catch {
-          continue;
-        }
-        if (!isThreadScopedCodexProcess(proc)) {
-          continue;
-        }
+          if (!candidate) {
+            return null;
+          }
 
-        forgetThreadRuntimeState(proc, candidate.threadId);
-        await shutdownThreadScopedCodexProcessIfIdle(proc);
-        reapedSessions.push({
-          idleForMs: Math.max(0, nowMs - candidate.idleSinceMs),
-          providerId: candidate.runtimeConfig.providerId,
-          providerThreadId: candidate.providerThreadId,
-          threadId: candidate.threadId,
-        });
+          let proc: ProviderProcess;
+          try {
+            proc = requireProviderProcess({
+              processKey: candidate.runtimeConfig.processKey,
+              providerId: candidate.runtimeConfig.providerId,
+            });
+          } catch {
+            return null;
+          }
+          if (
+            providerSessionReapingEnabled
+              ? backgroundWorkState.hasOpenThreadWork(candidate.threadId) ||
+                (proc.adapter.hasOpenThreadWork?.(candidate.threadId) ?? false)
+              : !isThreadScopedCodexProcess(proc)
+          ) {
+            return null;
+          }
+
+          await runtime.stopThread({ threadId: candidate.threadId });
+          return {
+            idleForMs: Math.max(0, nowMs - candidate.idleSinceMs),
+            providerId: candidate.runtimeConfig.providerId,
+            providerThreadId: candidate.providerThreadId,
+            threadId: candidate.threadId,
+          };
+        };
+        const reaped = runThreadExclusive
+          ? await runThreadExclusive(threadId, release)
+          : await release();
+        if (reaped) {
+          reapedSessions.push(reaped);
+        }
       }
 
       return { reapedSessions };

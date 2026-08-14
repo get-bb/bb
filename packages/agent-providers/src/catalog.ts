@@ -44,6 +44,8 @@ export function isAcpProviderId(value: string): boolean {
  * `BUILT_IN_AGENT_PROVIDER_CATALOG`.
  */
 export interface ProviderServerCapabilities {
+  /** Whether a stopped provider session can resume from its persisted id. */
+  supportsSessionRestore: boolean;
   /**
    * Whether sessions get the Workflows feature (dynamic multi-agent
    * orchestration). The Workflow tool's own opt-in rules govern actual use.
@@ -164,6 +166,7 @@ const ACP_CAPABILITIES: ProviderCapabilities = {
 };
 
 const CODEX_SERVER_CAPABILITIES: ProviderServerCapabilities = {
+  supportsSessionRestore: true,
   supportsWorkflows: false,
   supportsExecutionOverride: false,
   backsHostDaemonAiServices: true,
@@ -173,6 +176,7 @@ const CODEX_SERVER_CAPABILITIES: ProviderServerCapabilities = {
 };
 
 const CLAUDE_SERVER_CAPABILITIES: ProviderServerCapabilities = {
+  supportsSessionRestore: true,
   supportsWorkflows: true,
   supportsExecutionOverride: true,
   backsHostDaemonAiServices: false,
@@ -180,6 +184,7 @@ const CLAUDE_SERVER_CAPABILITIES: ProviderServerCapabilities = {
 };
 
 const PI_SERVER_CAPABILITIES: ProviderServerCapabilities = {
+  supportsSessionRestore: true,
   supportsWorkflows: false,
   supportsExecutionOverride: false,
   backsHostDaemonAiServices: false,
@@ -196,6 +201,8 @@ const PI_SERVER_CAPABILITIES: ProviderServerCapabilities = {
 // ACP agents manage reasoning effort internally; "medium" is the single
 // synthetic level so execution-option resolution has a valid value to carry.
 const ACP_SERVER_CAPABILITIES: ProviderServerCapabilities = {
+  // The ACP initialize result supplies the precise loadSession capability.
+  supportsSessionRestore: false,
   supportsWorkflows: false,
   supportsExecutionOverride: false,
   backsHostDaemonAiServices: false,

@@ -1076,6 +1076,7 @@ rl.on("line", (line) => {
       const result = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now(),
+        providerSessionReapingEnabled: false,
       });
 
       expect(result.reapedSessions).toEqual([
@@ -1156,6 +1157,7 @@ rl.on("line", (line) => {
       const belowThresholdResult = await runtime.reapIdleProviderSessions({
         idleForMs: 30 * 60 * 1000,
         nowMs: Date.now() + 29 * 60 * 1000,
+        providerSessionReapingEnabled: false,
       });
       expect(belowThresholdResult.reapedSessions).toEqual([]);
       expect(runtime.hasThread("t1")).toBe(true);
@@ -1166,6 +1168,7 @@ rl.on("line", (line) => {
       const result = await runtime.reapIdleProviderSessions({
         idleForMs: 30 * 60 * 1000,
         nowMs: Date.now() + 31 * 60 * 1000,
+        providerSessionReapingEnabled: false,
       });
       const reapedSession = result.reapedSessions[0];
       if (!reapedSession) {
@@ -1281,10 +1284,12 @@ rl.on("line", (line) => {
       const firstResult = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now() + 60 * 60 * 1000,
+        providerSessionReapingEnabled: false,
       });
       const secondResult = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now() + 60 * 60 * 1000,
+        providerSessionReapingEnabled: false,
       });
 
       expect(firstResult.reapedSessions).toEqual([]);
@@ -1294,6 +1299,61 @@ rl.on("line", (line) => {
         readLogLines(processLogPath).filter((line) => line.startsWith("exit:")),
       ).toHaveLength(0);
       await runtime.stopThread({ threadId: "t1" });
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("reaps a restorable non-Codex session only when the experiment is on", async () => {
+    const providerScript = join(tmpDir, "claude-idle-reaper-provider.cjs");
+    writeThreadScopedProviderScript({
+      logPath: join(tmpDir, "claude-idle-reaper-provider.log"),
+      scriptPath: providerScript,
+    });
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: () => {},
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: () => ({
+        ...createFakeAdapter(providerScript),
+        displayName: "Claude Code",
+        id: "claude-code",
+      }),
+    });
+
+    try {
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "claude-code",
+        options: fullRuntimeOptions,
+      });
+
+      await expect(
+        runtime.reapIdleProviderSessions({
+          idleForMs: 0,
+          nowMs: Date.now(),
+          providerSessionReapingEnabled: false,
+        }),
+      ).resolves.toEqual({ reapedSessions: [] });
+      expect(runtime.hasThread("t1")).toBe(true);
+
+      const result = await runtime.reapIdleProviderSessions({
+        idleForMs: 0,
+        nowMs: Date.now(),
+        providerSessionReapingEnabled: true,
+      });
+      expect(result.reapedSessions).toEqual([
+        expect.objectContaining({
+          providerId: "claude-code",
+          threadId: "t1",
+        }),
+      ]);
+      expect(runtime.hasThread("t1")).toBe(false);
     } finally {
       await runtime.shutdown();
     }

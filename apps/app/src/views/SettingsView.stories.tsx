@@ -343,6 +343,7 @@ function ExperimentsStory() {
       disabled={false}
       editMessagesEnabled={state.experiments.editMessages}
       newOnboardingEnabled={state.experiments.newOnboarding}
+      providerSessionReapingEnabled={state.experiments.providerSessionReaping}
       onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
         state.setExperiments((current) => ({
           ...current,
@@ -359,6 +360,12 @@ function ExperimentsStory() {
         state.setExperiments((current) => ({
           ...current,
           newOnboarding: enabled,
+        }))
+      }
+      onProviderSessionReapingEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          providerSessionReaping: enabled,
         }))
       }
     />

@@ -100,6 +100,7 @@ interface IdleProviderSessionReaperRuntimeManager {
 interface StartIdleProviderSessionReaperArgs {
   logger: HostDaemonLogger;
   nowMs: () => number;
+  resolveProviderSessionReapingEnabled: () => Promise<boolean>;
   runtimeManager: IdleProviderSessionReaperRuntimeManager;
   setIntervalFn: IdleProviderSessionReaperIntervalFn;
 }
@@ -166,11 +167,22 @@ export function startIdleProviderSessionReaper(
       return;
     }
     running = true;
-    void args.runtimeManager
-      .reapIdleProviderSessions({
-        idleForMs: IDLE_PROVIDER_SESSION_REAP_AFTER_MS,
-        nowMs: args.nowMs(),
+    void args
+      .resolveProviderSessionReapingEnabled()
+      .catch((error) => {
+        args.logger.warn(
+          { ...runtimeErrorLogFields(error) },
+          "Failed to read idle provider session experiment policy",
+        );
+        return false;
       })
+      .then((providerSessionReapingEnabled) =>
+        args.runtimeManager.reapIdleProviderSessions({
+          idleForMs: IDLE_PROVIDER_SESSION_REAP_AFTER_MS,
+          nowMs: args.nowMs(),
+          providerSessionReapingEnabled,
+        }),
+      )
       .then((result) => {
         if (result.reapedSessions.length === 0) {
           return;
@@ -708,6 +720,8 @@ export async function createHostDaemonApp(
   const idleProviderSessionReaper = startIdleProviderSessionReaper({
     logger: options.logger,
     nowMs: Date.now,
+    resolveProviderSessionReapingEnabled: async () =>
+      (await serverClient.getRuntimePolicy()).providerSessionReaping,
     runtimeManager,
     setIntervalFn: (callback, intervalMs) => {
       const timer = setInterval(callback, intervalMs);

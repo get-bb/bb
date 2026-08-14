@@ -62,6 +62,7 @@ describe("agent provider catalog", () => {
     });
 
     expect(getAcpProviderServerCapabilities("acp-my-agent")).toEqual({
+      supportsSessionRestore: false,
       supportsWorkflows: false,
       supportsExecutionOverride: false,
       backsHostDaemonAiServices: false,

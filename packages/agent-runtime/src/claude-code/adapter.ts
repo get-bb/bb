@@ -682,6 +682,7 @@ export function createClaudeCodeProviderAdapter(
       openAssistantMessageIdsByScope: new Map(),
       openCompaction: undefined,
       openReasoningItemIdsByScope: new Map(),
+      opaqueTaskIds: new Set(),
       pendingAcceptedUserMessages: [],
       pendingHardRateLimitRejection: undefined,
       reasoningItemCounter: 0,
@@ -691,7 +692,9 @@ export function createClaudeCodeProviderAdapter(
     }),
     // An idle thread with a running workflow must keep its task state — LRU
     // eviction would orphan the open backgroundTask items.
-    isEvictable: (state) => !hasOpenClaudeBackgroundTasks(state.tasksById),
+    isEvictable: (state) =>
+      !hasOpenClaudeBackgroundTasks(state.tasksById) &&
+      state.opaqueTaskIds.size === 0,
     onTurnStart: ({ events, state, threadId, turnId }) => {
       state.latestRequestContextTokens = undefined;
       state.latestProviderCheckpointId = undefined;
@@ -854,10 +857,12 @@ export function createClaudeCodeProviderAdapter(
       translateEvent: translateClaudeEvent,
       onSessionReplace: ({ command, state }) => {
         // Replacing the CLI session kills background tasks with it.
-        return buildInterruptedClaudeTaskEvents({
+        const events = buildInterruptedClaudeTaskEvents({
           tasks: state.tasksById,
           threadId: command.threadId,
         });
+        state.opaqueTaskIds.clear();
+        return events;
       },
       buildProviderCommandPlan(command) {
         switch (command.type) {
@@ -1196,10 +1201,21 @@ export function createClaudeCodeProviderAdapter(
       if (!state) {
         return [];
       }
-      return buildInterruptedClaudeTaskEvents({
+      const events = buildInterruptedClaudeTaskEvents({
         tasks: state.tasksById,
         threadId,
       });
+      state.opaqueTaskIds.clear();
+      return events;
+    },
+
+    hasOpenThreadWork(threadId) {
+      const state = turnState.get({ threadId });
+      return (
+        state !== null &&
+        (hasOpenClaudeBackgroundTasks(state.tasksById) ||
+          state.opaqueTaskIds.size > 0)
+      );
     },
 
     decodeInteractiveRequest(

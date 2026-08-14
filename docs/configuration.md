@@ -605,6 +605,11 @@ history; if the thread is running, submission stops the current turn and waits
 for it to settle before atomically replacing that message and every later turn
 while keeping workspace changes.
 
+The `providerSessionReaping` experiment releases restorable provider sessions
+after 30 idle minutes. The daemon reads the setting before each five-minute
+maintenance pass. Active turns, commands, agents, workflows, and monitors keep
+their sessions loaded.
+
 ## Thread Timeline Window
 
 A thread-timeline window is bounded by segment (user-message) count _and_ by

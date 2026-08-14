@@ -39,6 +39,7 @@ describe("experiments", () => {
         "editMessages",
         "futureExperiment",
         "newOnboarding",
+        "providerSessionReaping",
       ]);
     } finally {
       db.$client.close();

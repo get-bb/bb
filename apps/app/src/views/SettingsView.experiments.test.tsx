@@ -7,6 +7,7 @@ afterEach(cleanup);
 
 function renderSection(overrides?: {
   onNewOnboardingEnabledChange?: (enabled: boolean) => void;
+  onProviderSessionReapingEnabledChange?: (enabled: boolean) => void;
 }) {
   return render(
     <ExperimentsSettingsSection
@@ -14,10 +15,14 @@ function renderSection(overrides?: {
       disabled={false}
       editMessagesEnabled={false}
       newOnboardingEnabled={false}
+      providerSessionReapingEnabled={false}
       onClaudeCodeMockCliTrafficEnabledChange={vi.fn()}
       onEditMessagesEnabledChange={vi.fn()}
       onNewOnboardingEnabledChange={
         overrides?.onNewOnboardingEnabledChange ?? vi.fn()
+      }
+      onProviderSessionReapingEnabledChange={
+        overrides?.onProviderSessionReapingEnabledChange ?? vi.fn()
       }
     />,
   );
@@ -28,6 +33,13 @@ describe("ExperimentsSettingsSection", () => {
     const onChange = vi.fn();
     renderSection({ onNewOnboardingEnabledChange: onChange });
     fireEvent.click(screen.getByLabelText("New onboarding"));
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+
+  it("reports idle provider session release changes", () => {
+    const onChange = vi.fn();
+    renderSection({ onProviderSessionReapingEnabledChange: onChange });
+    fireEvent.click(screen.getByLabelText("Idle provider session release"));
     expect(onChange).toHaveBeenCalledWith(true);
   });
 });

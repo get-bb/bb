@@ -111,6 +111,11 @@ client-local; submitting stops and settles a running thread, then replaces the
 selected turn and all later conversation history while retaining workspace side
 effects. Grouped multi-message requests are not yet editable.
 
+The default-off `providerSessionReaping` experiment releases restorable
+provider sessions after 30 idle minutes. The daemon applies a changed value
+within five minutes. Active turns, commands, agents, workflows, and monitors
+keep their sessions loaded.
+
 Thread timeline windows are bounded by event count as well as user-message
 count (`BB_FF_TIMELINE_WINDOW_EVENT_BUDGET`, default 1500), so a long thread
 stops reprojecting its whole history — and blocking the server event loop — on

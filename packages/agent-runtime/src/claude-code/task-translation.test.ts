@@ -336,6 +336,44 @@ describe("claude-code background task translation", () => {
     expect(events).toHaveLength(0);
   });
 
+  it("tracks monitors as open work without timeline rows", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const context = { threadId: "bb-thread-monitor" };
+
+    const started = adapter.translateEvent(
+      {
+        type: "system",
+        subtype: "task_started",
+        task_id: "monitor-1",
+        description: "Watch the build",
+        task_type: "monitor",
+        uuid: "u-monitor-1",
+        session_id: "s-monitor-1",
+      },
+      context,
+    );
+
+    expect(started).toEqual([]);
+    expect(adapter.hasOpenThreadWork?.(context.threadId)).toBe(true);
+
+    const completed = adapter.translateEvent(
+      {
+        type: "system",
+        subtype: "task_notification",
+        task_id: "monitor-1",
+        status: "completed",
+        output_file: "",
+        summary: "Build complete",
+        uuid: "u-monitor-2",
+        session_id: "s-monitor-1",
+      },
+      context,
+    );
+
+    expect(completed).toEqual([]);
+    expect(adapter.hasOpenThreadWork?.(context.threadId)).toBe(false);
+  });
+
   it("preserves skip_transcript on the item", () => {
     const adapter = createClaudeCodeProviderAdapter();
     const started = adapter.translateEvent(
