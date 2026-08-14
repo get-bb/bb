@@ -175,7 +175,10 @@ payloads. `buildCommandPlan`, `translateEvent`, `parseModelListResult`,
 - the turn state machine + new turn-start watchdog
 - thread/session/process identity registries
 - permission policy enforcement (auto-deny, escalation clamping)
-- skill-root filtering, event queueing to the server
+- skill catalog hand-off (`skills/configure`), event queueing to the server
+- execution-option forwarding: the runtime never diffs options or
+  orchestrates session rebuilds — options ride every command, the bridge
+  reconciles internally, and rebuilds surface as explicit notifications
 
 Disposition of every current `ProviderAdapter` member:
 
@@ -188,8 +191,8 @@ Disposition of every current `ProviderAdapter` member:
 | `translateEvent`, `translateAcceptedCommand` | deleted — bridge emits `ThreadEvent`s (accepted-user-message synthesis stays generic in runtime) |
 | `parseModelListResult` | deleted — protocol defines the `model/list` result schema |
 | `decodeToolCallRequest`, `decodeInteractiveRequest`, `buildInteractiveResponse` | deleted — canonical protocol schemas |
-| `classifyExecutionSettingsChange` | declared per-option scope table (`live` / `session`) in the declaration |
-| `normalizeExecutionOptions` | audit the four impls: fold data-shaped cases into declared option metadata; anything genuinely code-shaped moves into the bridge's own command handling |
+| `classifyExecutionSettingsChange` | deleted — the runtime never diffs options; the bridge reconciles internally (apply live vs rebuild its session) and must report rebuilds explicitly. `executionOptionScopes` survives only as the server/UI cost signal (see Design §3) |
+| `normalizeExecutionOptions` | deleted — bridge-internal normalization |
 | `buildPostInitializeRequests`, `prepareTurnStart`, `clearActiveTurnState` | deleted — bridge-internal or generic turn-state concerns |
 | `buildThreadDetachedEvents` | generic: runtime reconciles from its own background-work state |
 | per-provider `visibility.ts` | deleted — bridge classifies before emitting `provider/raw` |
@@ -246,12 +249,19 @@ bb.agents.experimental_registerProvider({
   composerActions: [...],
   executionOptionScopes: { model: "live", reasoningLevel: "live", ... },
   approvalRequestPolicy: "provider",
-  // NOTE: no `executionOverride` capability. Today the server
-  // (`supportsExecutionOverride`) and the runtime
-  // (`classifyExecutionSettingsChange`) answer the same question in two
-  // unrelated code paths. Both derive from `executionOptionScopes`:
-  // in-place override is supported iff `model` and `reasoningLevel` are
-  // both "live". One source of truth; the two layers cannot disagree.
+  // NOTE: `executionOptionScopes` is a *cost signal*, not a mechanism. The
+  // bridge owns the mechanics of applying option changes (reconfigure in
+  // place vs rebuild its provider session), and the runtime never diffs
+  // options — it forwards them on every command. The declaration exists for
+  // the consumers that need the answer before anything executes and without
+  // a host round trip: offering the sticky mid-thread override picker,
+  // validating the override PATCH, and warning before a disruptive change.
+  // In-place override support derives from it (`model` and `reasoningLevel`
+  // both "live") — there is no separate `executionOverride` capability.
+  // The conformance kit cross-checks declaration against bridge behavior,
+  // and session rebuilds must be reported (session-replacement notification
+  // + background-work settlement events), never silent — the #1268 lesson
+  // as a protocol rule.
   bridge: { entry: "provider-bridge" }, // required for kind "agent"; routers omit it
   // NOTE: no `cli` and no `skillRoots` blocks — CLI lifecycle and skill
   // layout knowledge are bridge protocol methods, not declaration data. See
@@ -556,9 +566,13 @@ slots (`buildProviderCommandPlan`, `translateEvent`) turned into constants.
    runtime already supports both modes).
 4. **Execution-settings behavior.** `classifyExecutionSettingsChange` /
    `normalizeExecutionOptions` differ per provider (claude supports live
-   model swap; others require session rebuild). These become the declared
-   per-option scope table — not a bridge round-trip, because the server and
-   runtime need the answer before deciding whether to reconfigure.
+   model swap; others require session rebuild). Both delete rather than
+   port: the runtime stops diffing options entirely and forwards them on
+   every command; the bridge reconciles internally (apply live, or rebuild
+   its provider session — including restarting its own child process) and
+   must report rebuilds explicitly. The declared `executionOptionScopes`
+   table survives only as the server/UI cost signal for offering sticky
+   overrides — see the declaration note in Design §3.
 
 Plus the out-of-adapter leakage that gets deleted: codex process keying,
 archived-session regexes, and rename-retry in `runtime.ts` become declared
