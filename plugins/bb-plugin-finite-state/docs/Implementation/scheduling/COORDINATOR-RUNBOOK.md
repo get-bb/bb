@@ -122,6 +122,8 @@ bb plugin install ./plugins/bb-plugin-finite-state
 
 Open the affected surface with `agent-browser`, exercise the reviewed behavior, and attach both a screenshot and a one-line observed-behavior note to the review evidence. Component tests alone do not satisfy UI-surface review. Do not add Playwright or visual-regression infrastructure for this requirement.
 
+Before posting the final verdict, stop your disposable dev instance: run `scripts/bb-dev-app stop` (and stop any mock remote you started). Orphaned dev stacks — server, vite, watchers — keep running from deleted inodes after the worktree is GC'd (~1 GiB each; three zombies fed the 2026-08-14 memory exhaustion). The resource watchdog auto-reaps sessions whose worktree is gone, but it is a 6-hour backstop, not the primary mechanism.
+
 When a round-1 verdict lands, classify its blockers against [REVIEW-KILL-LIST.md](../REVIEW-KILL-LIST.md) and add or prune classes so the list tracks what round-1 reviews actually find.
 
 Among the unstarted work packages, this recurring cost applies to 21 UI-owning WPs: WP-21, WP-24, WP-25, WP-26, WP-31, WP-32, WP-33, WP-34, WP-35, WP-36, WP-37, WP-38, WP-39, WP-40, WP-42, WP-45, WP-51, WP-54, WP-55, WP-56, and WP-61. The recurring cost is one live-browser evidence pass per UI WP review.
@@ -140,14 +142,14 @@ Cross-thread findings live in the bb Memory plugin at project scope. The memory 
 
 Entry conventions (binding):
 
-| Field | Convention |
-|---|---|
-| `--name` | `<TYPE>-<scope>-<slug>`, TYPE one of `FACT`, `FAIL`, `CONSTRAINT`, `PATCH` |
-| `--kind` | fixed plugin vocabulary — map `FACT`/`FAIL` → `fact`, `CONSTRAINT` → `decision`, `PATCH` → `episode` |
-| `--tag` | at least one of `wp:WPxx`, `cluster:C-...`, or a file path; reviewers add `commit:<sha>` |
-| `--summary` | one claim, ~100 tokens max — this is what other threads see in their index |
+| Field       | Convention                                                                                                                                                          |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--name`    | `<TYPE>-<scope>-<slug>`, TYPE one of `FACT`, `FAIL`, `CONSTRAINT`, `PATCH`                                                                                          |
+| `--kind`    | fixed plugin vocabulary — map `FACT`/`FAIL` → `fact`, `CONSTRAINT` → `decision`, `PATCH` → `episode`                                                                |
+| `--tag`     | at least one of `wp:WPxx`, `cluster:C-...`, or a file path; reviewers add `commit:<sha>`                                                                            |
+| `--summary` | one claim, ~100 tokens max — this is what other threads see in their index                                                                                          |
 | `--details` | **evidence required**: file:line, the command and its output, or a commit SHA. An entry without concrete evidence is not binding and must be rejected or superseded |
-| `--reason` | what happened that makes this durable |
+| `--reason`  | what happened that makes this durable                                                                                                                               |
 
 Admission and hygiene:
 
