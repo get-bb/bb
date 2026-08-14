@@ -21,8 +21,6 @@ jobs:
     name: Offline Golden Loop (Node 22.19.0)
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      GOLDEN_LOOP_EVIDENCE_DIR: ${{ runner.temp }}/finite-state-golden-loop
 
     steps:
       - name: Checkout repository with worktree seed history
@@ -38,6 +36,10 @@ jobs:
           cache-prefix: finite-state-golden-loop
 
       - name: Run the offline Golden Loop twice
+        # runner.temp is not a valid named-value in job-level `env` (the whole
+        # workflow fails to parse with 0 jobs); it is only available in steps.
+        env:
+          GOLDEN_LOOP_EVIDENCE_DIR: ${{ runner.temp }}/finite-state-golden-loop
         run: pnpm exec turbo run test --filter=bb-plugin-finite-state --force -- test/e2e/golden-loop/harness.test.ts test/e2e/golden-loop/golden-loop.e2e.test.ts
 
       - name: Upload Golden Loop evidence
