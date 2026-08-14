@@ -19,7 +19,10 @@ import {
   createDefaultBenchExecutionDeps,
   readPersistedBenchLog,
   runBench,
+  type BenchRunRequest,
+  type BenchRunStarted,
 } from "./execute/run.js";
+import { startBenchRunAttempt } from "./execute/start-attempt.js";
 import { listBenchArtifacts } from "./store/artifacts.js";
 import { listBenchAttestations } from "./store/attestations.js";
 import {
@@ -108,6 +111,22 @@ interface BenchProjectVersionRow extends ProjectVersionRow {
   project_id: string;
   as_of: string | null;
   stale: number;
+}
+
+function benchRunRpcResult(
+  projectId: string,
+  projectVersionId: string,
+  started: BenchRunStarted,
+) {
+  return {
+    projectId,
+    projectVersionId,
+    runId: started.runId,
+    threadId: started.threadId,
+    jobIds: started.jobIds,
+    firmwareSha256: started.firmwareDigest,
+    status: started.status,
+  };
 }
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,511}$/u;
@@ -358,6 +377,48 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
   );
   ctx.service("bench.cli", () => ({ run: createBenchVerdictCliRunner(db) }));
 
+  async function startRegisteredBenchRun(input: {
+    projectId: string;
+    projectVersionId: string | null;
+    tier: "tier0" | "tier1";
+    hostId: string;
+    requirementId?: string;
+    target?: string;
+    deploymentContext?: BenchRunRequest["deploymentContext"];
+  }) {
+    if (input.projectVersionId === null) {
+      throw new Error("BENCH_PROJECT_VERSION_REQUIRED");
+    }
+    const request: BenchRunRequest = {
+      projectId: input.projectId,
+      pvId: input.projectVersionId,
+      tier: input.tier,
+      hostId: input.hostId,
+      ...(input.requirementId ? { requirementId: input.requirementId } : {}),
+      ...(input.target ? { target: input.target } : {}),
+      ...(input.deploymentContext
+        ? { deploymentContext: input.deploymentContext }
+        : {}),
+    };
+    const remote = ctx.service<RemoteServices>("remote-services", () => {
+      throw new Error("REMOTE_SERVICES_NOT_REGISTERED");
+    });
+    const attempt = await startBenchRunAttempt(
+      createDefaultBenchExecutionDeps(ctx, request, remote, jobQueue),
+      request,
+      new AbortController().signal,
+    );
+    if (!attempt.success) return attempt;
+    return {
+      success: true as const,
+      run: benchRunRpcResult(
+        input.projectId,
+        input.projectVersionId,
+        attempt.run,
+      ),
+    };
+  }
+
   bb.rpc.register(benchUiRpcContract, {
     async benchProjectVersions(input) {
       await bb.sdk.projects.get({ projectId: input.projectId });
@@ -391,52 +452,7 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
       };
     },
     async benchRunAttemptStart(input) {
-      if (input.projectVersionId === null) {
-        throw new Error("BENCH_PROJECT_VERSION_REQUIRED");
-      }
-      const request = {
-        projectId: input.projectId,
-        pvId: input.projectVersionId,
-        tier: input.tier,
-        hostId: input.hostId,
-        ...(input.requirementId ? { requirementId: input.requirementId } : {}),
-        ...(input.target ? { target: input.target } : {}),
-        ...(input.deploymentContext
-          ? { deploymentContext: input.deploymentContext }
-          : {}),
-      };
-      const remote = ctx.service<RemoteServices>("remote-services", () => {
-        throw new Error("REMOTE_SERVICES_NOT_REGISTERED");
-      });
-      try {
-        const started = await runBench(
-          createDefaultBenchExecutionDeps(ctx, request, remote, jobQueue),
-          request,
-          new AbortController().signal,
-        );
-        return {
-          success: true as const,
-          run: {
-            projectId: input.projectId,
-            projectVersionId: input.projectVersionId,
-            runId: started.runId,
-            threadId: started.threadId,
-            jobIds: started.jobIds,
-            firmwareSha256: started.firmwareDigest,
-            status: started.status,
-          },
-        };
-      } catch (error) {
-        if (error instanceof BenchRunError && error.runId) {
-          return {
-            success: false as const,
-            runId: error.runId,
-            code: error.code,
-            message: error.message,
-          };
-        }
-        throw error;
-      }
+      return await startRegisteredBenchRun(input);
     },
   });
 
@@ -648,37 +664,11 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
       );
     },
     async benchRunStart(input) {
-      if (input.projectVersionId === null) {
-        throw new Error("BENCH_PROJECT_VERSION_REQUIRED");
+      const attempt = await startRegisteredBenchRun(input);
+      if (!attempt.success) {
+        throw new BenchRunError(attempt.code, attempt.message, attempt.runId);
       }
-      const request = {
-        projectId: input.projectId,
-        pvId: input.projectVersionId,
-        tier: input.tier,
-        hostId: input.hostId,
-        ...(input.requirementId ? { requirementId: input.requirementId } : {}),
-        ...(input.target ? { target: input.target } : {}),
-        ...(input.deploymentContext
-          ? { deploymentContext: input.deploymentContext }
-          : {}),
-      };
-      const remote = ctx.service<RemoteServices>("remote-services", () => {
-        throw new Error("REMOTE_SERVICES_NOT_REGISTERED");
-      });
-      const started = await runBench(
-        createDefaultBenchExecutionDeps(ctx, request, remote, jobQueue),
-        request,
-        new AbortController().signal,
-      );
-      return {
-        projectId: input.projectId,
-        projectVersionId: input.projectVersionId,
-        runId: started.runId,
-        threadId: started.threadId,
-        jobIds: started.jobIds,
-        firmwareSha256: started.firmwareDigest,
-        status: started.status,
-      };
+      return attempt.run;
     },
     async benchHostsList(input) {
       const hosts = await listBenchHosts(bb);
