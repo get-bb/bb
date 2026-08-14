@@ -338,6 +338,7 @@ describe("BrowsePluginsTab", () => {
       entryId: "memory",
       displayName: "Memory",
       icon: "Brain",
+      iconUrl: null,
       source: "builtin:memory",
     });
     fireEvent.click(

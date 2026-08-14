@@ -188,6 +188,7 @@ describe("AddPluginDialog", () => {
       entryId: "linear",
       displayName: "Linear",
       icon: "Github",
+      iconUrl: null,
       source: "builtin:linear",
     });
     expect(
@@ -201,6 +202,7 @@ describe("AddPluginDialog", () => {
       entryId: "thread-hover-cards",
       displayName: "Thread Hover Cards",
       icon: "Github",
+      iconUrl: null,
       source: "git:https://github.com/brsbl/bb-plugins@b173b67",
     });
     expect(
@@ -215,6 +217,7 @@ describe("AddPluginDialog", () => {
       entryId: "widgets",
       displayName: "Widgets",
       icon: "Zap",
+      iconUrl: null,
       source: "npm:bb-plugin-widgets@^1.0.0",
     });
     expect(
@@ -230,6 +233,7 @@ describe("AddPluginDialog", () => {
       entryId: "linear",
       displayName: "Linear",
       icon: "Github",
+      iconUrl: null,
       source: "builtin:linear",
     });
 
@@ -249,6 +253,21 @@ describe("AddPluginDialog", () => {
     });
   });
 
+  it("shows the cached marketplace icon in the confirmation", () => {
+    stubFetch();
+    const iconUrl =
+      "/api/v1/plugin-catalog/icons/bb-official/widgets?h=icon-hash";
+    renderDialog({
+      entryId: "widgets",
+      displayName: "Widgets",
+      icon: null,
+      iconUrl,
+      source: "npm:bb-plugin-widgets@1.0.0",
+    });
+
+    expect(document.querySelector(`img[src="${iconUrl}"]`)).not.toBeNull();
+  });
+
   it("returns the installed plugin so the caller can open canonical details", async () => {
     stubFetch();
     const onInstalled = vi.fn();
@@ -264,6 +283,7 @@ describe("AddPluginDialog", () => {
           entryId: "linear",
           displayName: "Linear",
           icon: "Github",
+          iconUrl: null,
           source: "builtin:linear",
         }}
         onInstalled={(plugin) => {
