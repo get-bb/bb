@@ -55,7 +55,6 @@ export function createPluginArtifact(
       (typeof artifact.npmResolvedVersion !== "string" ||
         artifact.npmResolvedVersion.length === 0 ||
         typeof artifact.integrity !== "string" ||
-        artifact.integrity.length === 0 ||
         artifact.gitResolvedCommit !== null ||
         artifact.gitCheckoutRoot !== null)) ||
     (artifact.sourceKind === "git" &&

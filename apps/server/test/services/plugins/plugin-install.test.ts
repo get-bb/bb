@@ -496,6 +496,17 @@ describe("plugin install flows", () => {
       ).toBeUndefined();
     });
 
+    it("guards a listed npm registry while it resolves an install plan", async () => {
+      await expect(
+        service.resolveCatalogNpmSource({
+          packageName: "bb-plugin-registry",
+          registry: "https://localhost/registry",
+          requestedSpec: "latest",
+          specKind: "tag",
+        }),
+      ).rejects.toThrow(/not public/u);
+    });
+
     it("refuses a git catalog install whose manifest id differs from the entry", async () => {
       const repoDir = join(workDir, "repo-catalog-mismatch");
       await writePluginFixture(repoDir, { name: "bb-plugin-imposter" });

@@ -195,6 +195,28 @@ describe("npm update candidate selection", () => {
       current: { version: "1.0.0", display: "bb-plugin-matrix@1.0.0" },
     });
   });
+
+  it("binds a registry version when the registry omits integrity", async () => {
+    const resolution = await resolveNpmUpdate({
+      intent: npmIntent("next", "tag"),
+      current: { version: "1.0.0", display: "bb-plugin-matrix@1.0.0" },
+      appVersion: "1.0.0",
+      run: createNpmResolverRun({
+        fetch: async () =>
+          new Response(
+            JSON.stringify({
+              versions: { "2.0.0": { version: "2.0.0", dist: {} } },
+              "dist-tags": { next: "2.0.0" },
+            }),
+          ),
+      }),
+    });
+
+    expect(resolution).toMatchObject({
+      outcome: "update-available",
+      candidate: { version: "2.0.0", integrity: "" },
+    });
+  });
 });
 
 describe("git update resolution", () => {

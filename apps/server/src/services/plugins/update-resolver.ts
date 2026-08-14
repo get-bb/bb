@@ -357,11 +357,6 @@ export async function selectNpmCandidate(args: {
       blocked ??= { candidate, reasons: problems.effective };
       continue;
     }
-    if (candidate.integrity.length === 0) {
-      throw new Error(
-        `registry metadata has no dist.integrity for ${candidate.display}`,
-      );
-    }
     return {
       outcome: "selected",
       candidate,

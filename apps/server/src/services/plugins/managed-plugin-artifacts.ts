@@ -238,6 +238,26 @@ export function createManagedPluginArtifacts(
       : { marketplaceEngines: context.marketplaceEngines };
   }
 
+  /** Use the guarded network and byte policy only for a listing's registry. */
+  function npmResolverRun(listedRegistry: string | undefined) {
+    if (listedRegistry === undefined) return createNpmResolverRun();
+    assertPublicMarketplaceUrl(listedRegistry);
+    return createNpmResolverRun({
+      fetch: (input, init) =>
+        publicMarketplaceFetch(input, {
+          ...init,
+          redirect: "error",
+          signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
+        }),
+      readJson: (response) =>
+        boundedResponseJson(
+          response,
+          MARKETPLACE_PACKUMENT_MAX_BYTES,
+          "npm registry metadata",
+        ),
+    });
+  }
+
   function assertExpectedPluginId(
     context: InstallContext,
     manifestId: string,
@@ -953,7 +973,7 @@ export function createManagedPluginArtifacts(
         specKind: args.specKind,
       },
       appVersion: deps.appVersion,
-      run: createNpmResolverRun(),
+      run: npmResolverRun(args.registry),
     });
     if (selected.outcome === "selected") {
       return {
@@ -984,9 +1004,6 @@ export function createManagedPluginArtifacts(
     // listing is untrusted input: it gets the marketplace network policy, so
     // it cannot aim BB at an internal service.
     const listedRegistry = context.npmRegistry;
-    if (listedRegistry !== undefined) {
-      assertPublicMarketplaceUrl(listedRegistry);
-    }
     const registry =
       listedRegistry ?? (await resolveNpmRegistry(registryProbe, parsed.name));
     const intent: NpmSourceIntentForResolution = {
@@ -1013,24 +1030,7 @@ export function createManagedPluginArtifacts(
       appVersion: deps.appVersion,
       // A listed registry is contacted through the guarded socket, so a
       // hostile DNS answer cannot reach a private host either.
-      run: createNpmResolverRun(
-        listedRegistry === undefined
-          ? {}
-          : {
-              fetch: (input, init) =>
-                publicMarketplaceFetch(input, {
-                  ...init,
-                  redirect: "error",
-                  signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
-                }),
-              readJson: (response) =>
-                boundedResponseJson(
-                  response,
-                  MARKETPLACE_PACKUMENT_MAX_BYTES,
-                  "npm registry metadata",
-                ),
-            },
-      ),
+      run: npmResolverRun(listedRegistry),
     });
     if (selected.outcome === "unavailable") {
       throw new Error(`install failed: ${selected.detail}`);
@@ -1136,6 +1136,7 @@ export function createManagedPluginArtifacts(
           parsed.name,
         );
         if (
+          candidate.integrity.length > 0 &&
           installedIntegrity !== null &&
           installedIntegrity !== candidate.integrity
         ) {
@@ -1596,6 +1597,7 @@ export function createManagedPluginArtifacts(
           args.selectionIntent.packageName,
         );
         if (
+          args.candidate.integrity.length > 0 &&
           installedIntegrity !== null &&
           installedIntegrity !== args.candidate.integrity
         ) {
