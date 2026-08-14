@@ -36,6 +36,7 @@ import {
   hashInstallDir,
   npmArtifactCacheDir,
   parsePluginSource,
+  runInstallCommand,
 } from "../../../src/services/plugins/install-sources.js";
 import {
   createPluginService,
@@ -286,6 +287,16 @@ describe("plugin install sources", () => {
       kind: "path",
       path: "/tmp/my-plugin",
     });
+  });
+
+  it("enforces parsed command output limits in UTF-8 bytes", async () => {
+    await expect(
+      runInstallCommand(
+        process.execPath,
+        ["-e", "process.stdout.write('é'.repeat(3))"],
+        { maxStdoutBytes: 5 },
+      ),
+    ).rejects.toThrow(/more than 5 bytes/);
   });
 
   it("keeps scoped npm and nested git cache paths inside their roots", () => {

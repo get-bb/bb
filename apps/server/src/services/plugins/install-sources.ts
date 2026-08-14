@@ -690,20 +690,22 @@ export async function runInstallCommand(
      * whose full stdout is parsed. Without it only the last 8 KB survives,
      * which is enough to explain a failure but not to read a tag listing.
      */
-    maxStdoutChars?: number;
+    maxStdoutBytes?: number;
   },
 ): Promise<string> {
   const timeoutMs = options?.timeoutMs ?? INSTALL_COMMAND_TIMEOUT_MS;
   const child = spawnPortableOutputProcess({ command, args });
   let stderr = "";
   let stdout = "";
+  let stdoutBytes = 0;
   let overflowed = false;
   child.stdout.on("data", (chunk: Buffer) => {
     stdout += chunk.toString("utf8");
-    const limit = options?.maxStdoutChars;
+    stdoutBytes += chunk.byteLength;
+    const limit = options?.maxStdoutBytes;
     if (limit === undefined) {
       if (stdout.length > 8192) stdout = stdout.slice(-8192);
-    } else if (stdout.length > limit && !overflowed) {
+    } else if (stdoutBytes > limit && !overflowed) {
       overflowed = true;
       child.kill("SIGKILL");
     }
@@ -735,7 +737,7 @@ export async function runInstallCommand(
       if (overflowed) {
         reject(
           new Error(
-            `${command} ${args[0]} produced more than ${options?.maxStdoutChars} bytes of output`,
+            `${command} ${args[0]} produced more than ${options?.maxStdoutBytes} bytes of output`,
           ),
         );
         return;

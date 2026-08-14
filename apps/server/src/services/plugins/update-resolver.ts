@@ -553,7 +553,7 @@ export async function listGitSemverTags(args: {
     ["ls-remote", "--tags", args.url],
     {
       notFoundHint: GIT_NOT_FOUND_HINT,
-      maxStdoutChars: MAX_LS_REMOTE_TAG_BYTES,
+      maxStdoutBytes: MAX_LS_REMOTE_TAG_BYTES,
     },
   );
   const refs = parseLsRemote(output);
