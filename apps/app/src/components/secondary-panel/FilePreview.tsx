@@ -1139,6 +1139,41 @@ function findPreviewTargetLine(
   return null;
 }
 
+function findPreviewScrollViewport(container: HTMLElement): HTMLElement | null {
+  const view = container.ownerDocument.defaultView;
+  if (view === null) return null;
+
+  let candidate = container.parentElement;
+  while (candidate !== null) {
+    const overflowY = view.getComputedStyle(candidate).overflowY;
+    if (
+      overflowY === "auto" ||
+      overflowY === "scroll" ||
+      overflowY === "overlay"
+    ) {
+      return candidate;
+    }
+    candidate = candidate.parentElement;
+  }
+  return null;
+}
+
+function scrollPreviewTargetLine(
+  container: HTMLElement,
+  line: HTMLElement,
+) {
+  const viewport = findPreviewScrollViewport(container);
+  if (viewport === null) return;
+
+  const lineRect = line.getBoundingClientRect();
+  const viewportRect = viewport.getBoundingClientRect();
+  const lineCenter = lineRect.top + lineRect.height / 2;
+  const viewportCenter = viewportRect.top + viewportRect.height / 2;
+  // Adjust only the vertical scroll offset. `scrollIntoView()` can also move
+  // the horizontal axis when a long source line extends beyond the viewport.
+  viewport.scrollTop += lineCenter - viewportCenter;
+}
+
 function formatLineRange(startLineNumber: number, endLineNumber: number) {
   return startLineNumber === endLineNumber
     ? String(startLineNumber)
@@ -1328,7 +1363,7 @@ function FilePreviewCode({
       if (line) {
         line.setAttribute("data-file-preview-target-line", "");
         line.setAttribute("data-selected-line", "single");
-        line.scrollIntoView?.({ block: "center" });
+        scrollPreviewTargetLine(container, line);
         return;
       }
 

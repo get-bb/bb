@@ -64,7 +64,6 @@ const pierreMock = vi.hoisted(() => {
     lastFile: null as MockPierreFileProps["file"] | null,
     mountCount: 0,
     renderCount: 0,
-    scrollIntoView: vi.fn(),
     statsCallback: null as StatsCallback | null,
     unsubscribe: vi.fn(),
   };
@@ -104,14 +103,33 @@ vi.mock("@pierre/diffs/react", async () => {
         const host = hostRef.current;
         if (host === null) return;
         const shadowRoot = host.shadowRoot ?? host.attachShadow({ mode: "open" });
-        shadowRoot.replaceChildren(
+        const code = document.createElement("code");
+        code.dataset.code = "";
+        code.scrollLeft = 240;
+        code.replaceChildren(
           ...file.contents.split("\n").map((lineContents, index) => {
             const lineNumber = index + 1;
             const line = document.createElement("div");
             line.dataset.line = String(lineNumber);
             line.dataset.lineIndex = String(index);
             line.textContent = lineContents;
-            line.scrollIntoView = pierreMock.state.scrollIntoView;
+            line.getBoundingClientRect = () => ({
+              bottom: 718 + index * 18,
+              height: 18,
+              left: 0,
+              right: 800,
+              top: 700 + index * 18,
+              width: 800,
+              x: 0,
+              y: 700 + index * 18,
+              toJSON: () => ({}),
+            });
+            // Model the native behavior that caused the regression: asking a
+            // long line to scroll into view can also move Pierre's horizontal
+            // code scroller.
+            line.scrollIntoView = () => {
+              code.scrollLeft = 0;
+            };
             if (
               selectedLines !== null &&
               lineNumber >= selectedLines.start &&
@@ -122,6 +140,7 @@ vi.mock("@pierre/diffs/react", async () => {
             return line;
           }),
         );
+        shadowRoot.replaceChildren(code);
       }, [file.contents, selectedLines]);
 
       return React.createElement(
@@ -145,7 +164,6 @@ describe("FilePreview", () => {
     pierreMock.state.lastFile = null;
     pierreMock.state.mountCount = 0;
     pierreMock.state.renderCount = 0;
-    pierreMock.state.scrollIntoView.mockClear();
     pierreMock.state.statsCallback = null;
     pierreMock.state.unsubscribe.mockClear();
     pierreMock.workerPool.subscribeToStatChanges.mockClear();
@@ -273,7 +291,23 @@ describe("FilePreview", () => {
     await screen.findByTestId("pierre-file");
   });
 
-  it("scrolls to a target line inside Pierre's shadow root after the worker is ready", async () => {
+  it("scrolls vertically to a target line without changing the horizontal offset", async () => {
+    const scrollViewport = document.createElement("div");
+    scrollViewport.style.overflowY = "auto";
+    scrollViewport.scrollTop = 100;
+    scrollViewport.getBoundingClientRect = () => ({
+      bottom: 450,
+      height: 400,
+      left: 0,
+      right: 500,
+      top: 50,
+      width: 500,
+      x: 0,
+      y: 50,
+      toJSON: () => ({}),
+    });
+    document.body.append(scrollViewport);
+
     render(
       <FilePreview
         headerMode="none"
@@ -288,14 +322,17 @@ describe("FilePreview", () => {
           textPreviewKind: null,
         }}
       />,
+      { container: scrollViewport },
     );
 
     const pierreFile = await screen.findByTestId("pierre-file");
     await waitFor(() => {
-      expect(pierreMock.state.scrollIntoView).toHaveBeenCalledWith({
-        block: "center",
-      });
+      expect(scrollViewport.scrollTop).toBe(577);
     });
+    expect(
+      pierreFile.shadowRoot?.querySelector<HTMLElement>("[data-code]")
+        ?.scrollLeft,
+    ).toBe(240);
     expect(
       pierreFile.shadowRoot
         ?.querySelector('[data-line="2"]')
