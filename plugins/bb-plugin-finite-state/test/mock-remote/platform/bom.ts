@@ -20,12 +20,24 @@ function rsqlFilter(
   const clauses = expression.split(";");
   let filtered = [...values];
   for (const clause of clauses) {
-    const match = /^(name|version|purl|fallbackIdentity)==(.+)$/u.exec(clause);
+    const match =
+      /^(name|version|purl|fallbackIdentity|project|projectVersion)==(.+)$/u.exec(
+        clause,
+      );
     if (match === null) return null;
     const [, key, expected] = match;
     filtered = filtered.filter((component) => {
-      if (expected === "null") return component[key] === null;
-      return component[key] === expected;
+      const raw = component[key];
+      const value =
+        (key === "project" || key === "projectVersion") &&
+        raw !== null &&
+        typeof raw === "object" &&
+        !Array.isArray(raw) &&
+        "id" in raw
+          ? raw.id
+          : raw;
+      if (expected === "null") return value === null;
+      return value === expected;
     });
   }
   return filtered;
@@ -148,7 +160,28 @@ export function registerBomHandlers(
         "Component filter is invalid",
       );
     }
-    const byState = [...state.components.values()].filter((component) => {
+    const project = [...state.projects.values()][0];
+    const currentVersion = [...state.versions.values()].find(
+      (version) => version.priorVersionId !== null,
+    );
+    const componentRows: Record<string, unknown>[] = [
+      ...state.components.values(),
+    ].map((component) => ({
+      ...component,
+      project:
+        component.project ??
+        (project === undefined ? null : { id: project.id, name: project.name }),
+      projectVersion:
+        component.projectVersion ??
+        (currentVersion === undefined
+          ? null
+          : {
+              id: currentVersion.id,
+              version: currentVersion.name,
+              created: currentVersion.createdAt,
+            }),
+    }));
+    const byState = componentRows.filter((component) => {
       const excludedMatches = component.excluded === (excluded === "true");
       const editedMatches =
         editStatus === "any" || component.edited === (editStatus === "edited");

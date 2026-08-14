@@ -469,6 +469,10 @@ interface AcceptedGenerationRow {
   accepted_generation_id: string | null;
 }
 
+interface ComponentAliasRow {
+  fallback_key: string | null;
+}
+
 function ensureFindingKeyProjection(
   db: Database.Database,
   projectId: string,
@@ -545,8 +549,25 @@ export function queryComponentFindings(
     projectVersionId,
   );
   if (generationId === null) return [];
+  const component = db
+    .prepare<[string, string, string], ComponentAliasRow>(
+      `SELECT fs_sbom_component_key(
+                NULL, c.name, c.component_group, c.version
+              ) AS fallback_key
+         FROM sbom_components c
+         JOIN sync_state s
+           ON s.project_id = c.project_id
+          AND s.project_version_id = c.project_version_id
+          AND s.entity_kind = 'sbomComponent'
+          AND s.accepted_generation_id = c.generation_id
+        WHERE c.project_id = ? AND c.project_version_id = ?
+          AND c.component_key = ?
+        LIMIT 1`,
+    )
+    .get(projectId, projectVersionId, componentKey);
+  const fallbackKey = component?.fallback_key ?? componentKey;
   return db
-    .prepare<[string, string, string, string], FindingRow>(
+    .prepare<[string, string, string, string, string], FindingRow>(
       `SELECT f.stable_key, f.cve, f.title, f.severity, f.epss_score,
             f.in_kev, f.in_vc_kev, f.reachability_verdict, f.vex_status,
             oi.vex_status AS local_status,
@@ -564,13 +585,13 @@ export function queryComponentFindings(
         AND oi.entity_kind = 'vexDecision'
         AND oi.stable_key = f.stable_key
       WHERE f.project_id = ? AND f.project_version_id = ?
-        AND f.generation_id = ? AND k.component_key = ?
+        AND f.generation_id = ? AND k.component_key IN (?, ?)
       ORDER BY CASE lower(COALESCE(f.severity, ''))
                  WHEN 'critical' THEN 0 WHEN 'high' THEN 1
                  WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END,
                f.cve, f.stable_key`,
     )
-    .all(projectId, projectVersionId, generationId, componentKey)
+    .all(projectId, projectVersionId, generationId, componentKey, fallbackKey)
     .map((row) => ({
       stableKey: row.stable_key,
       cve: row.cve,

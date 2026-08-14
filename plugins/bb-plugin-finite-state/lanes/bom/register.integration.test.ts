@@ -81,6 +81,22 @@ describe("registered SBOM pull surfaces", () => {
       },
     });
     const state = createMockPlatformState(FIXTURE_ROOT);
+    // Sanitized sweep-6 shape: Platform component names are firmware paths.
+    // The malformed neighbor binds FS-193-style per-row isolation through the
+    // registered CLI without retaining remote text in diagnostics.
+    state.components.set("fs195-path-only", {
+      id: "fs195-path-only",
+      name: "/apps/M9205ACFNAAMZA1234.elf",
+      version: "",
+      purl: null,
+      excluded: false,
+      edited: false,
+    });
+    state.components.set("fs195-unkeyable", {
+      id: "fs195-unkeyable",
+      excluded: false,
+      edited: false,
+    });
     const mock = createMockRemote({
       platformToken: "fs172-token",
       assuranceStudioKey: "unused",
@@ -137,7 +153,9 @@ describe("registered SBOM pull surfaces", () => {
         "project fixture",
       );
       const projectVersionId = requiredId(
-        [...state.versions.values()][0],
+        [...state.versions.values()].find(
+          (version) => version.priorVersionId !== null,
+        ),
         "version fixture",
       );
       const pulled = await host.harness.behavior.runCli(
@@ -154,13 +172,15 @@ describe("registered SBOM pull surfaces", () => {
         { projectId: "bb-project-fs172", threadId: "thread-fs172" },
       );
 
+      // The sync engine rejects before acceptance unless the puller's
+      // quarantined count equals sync_state.staged_quarantined.
       expect(pulled).toMatchObject({ exitCode: 0, stderr: "" });
       expect(JSON.parse(pulled.stdout)).toMatchObject({
         kinds: {
           sbomComponent: {
             fetched: expect.any(Number),
             baseRows: expect.any(Number),
-            quarantined: 0,
+            quarantined: 1,
           },
         },
       });
@@ -175,7 +195,7 @@ describe("registered SBOM pull surfaces", () => {
       };
       expect(pullReport.kinds.sbomComponent.fetched).toBeGreaterThan(0);
       expect(pullReport.kinds.sbomComponent.baseRows).toBeGreaterThan(0);
-      expect(pullReport.kinds.sbomComponent.quarantined).toBe(0);
+      expect(pullReport.kinds.sbomComponent.quarantined).toBe(1);
       expect(
         host.harness.inspection.realtimeSignals.filter(
           (signal) => signal.channel === "bom:changed",
@@ -199,6 +219,17 @@ describe("registered SBOM pull surfaces", () => {
       expect(pullReport.kinds.sbomComponent.baseRows).toBe(
         acceptedComponentCount,
       );
+      expect(
+        ctx
+          .db()
+          .prepare(
+            `SELECT COUNT(*) FROM sbom_components
+              WHERE project_id = ? AND project_version_id = ?
+                AND name = '/apps/M9205ACFNAAMZA1234.elf'`,
+          )
+          .pluck()
+          .get(projectId, projectVersionId),
+      ).toBe(1);
 
       const sbomAsOf = ctx
         .db()

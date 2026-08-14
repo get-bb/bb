@@ -16,6 +16,7 @@ interface SyncRow {
   staging_continuation: string | null;
   staged_pages: number;
   staged_rows: number;
+  staged_quarantined: number;
 }
 
 interface StageMeta {
@@ -25,6 +26,12 @@ interface StageMeta {
   continuation: string | null;
   pages: number;
   rows: number;
+  quarantined: number;
+}
+
+interface NormalizedPage {
+  components: NormalizedComponent[];
+  quarantineReasons: ReadonlyMap<string, number>;
 }
 
 interface NormalizedComponent {
@@ -46,6 +53,23 @@ interface NormalizedComponent {
 interface PullPhase {
   excluded: boolean;
   remoteContinuation: string | null;
+}
+
+const SAFE_RSQL_SCOPE = /^[A-Za-z0-9_.:+\-/]+$/u;
+
+function componentScopeFilter(input: SbomPullInput): string {
+  if (
+    !SAFE_RSQL_SCOPE.test(input.projectId) ||
+    !SAFE_RSQL_SCOPE.test(input.projectVersionId)
+  ) {
+    throw new SbomPullError(
+      "SBOM_SCOPE_INVALID",
+      "Project and project version must be safe Platform filter values",
+    );
+  }
+  // Vendored Platform OpenAPI 0.3.0, GET /public/v0/components:
+  // `project` and `projectVersion` are documented RSQL filter attributes.
+  return `project==${input.projectId};projectVersion==${input.projectVersionId}`;
 }
 
 function encodePhase(phase: PullPhase): string {
@@ -160,16 +184,24 @@ export function normalizeComponent(value: Json): NormalizedComponent {
   const row = record(value);
   if (!row)
     throw new SbomPullError(
-      "SBOM_INVALID_COMPONENT",
+      "SBOM_COMPONENT_ROW_INVALID",
       "Component row must be an object",
     );
-  const componentId = requiredString(row, ["id", "componentId", "uuid"], "id");
+  let componentId: string;
+  try {
+    componentId = requiredString(row, ["id", "componentId", "uuid"], "id");
+  } catch {
+    throw new SbomPullError(
+      "SBOM_COMPONENT_ID_MISSING",
+      "Component row has no valid id",
+    );
+  }
   let name: string;
   try {
     name = requiredString(row, ["name"], "name");
   } catch {
     throw new SbomPullError(
-      "SBOM_INVALID_COMPONENT",
+      "SBOM_COMPONENT_NAME_MISSING",
       `Component ${componentId} has no valid name`,
     );
   }
@@ -181,7 +213,7 @@ export function normalizeComponent(value: Json): NormalizedComponent {
     componentKey = componentKeyFromIdentity({ purl, name, group, version });
   } catch {
     throw new SbomPullError(
-      "SBOM_INVALID_COMPONENT",
+      "SBOM_COMPONENT_IDENTITY_INVALID",
       `Component ${componentId} has an invalid stable identity`,
     );
   }
@@ -200,6 +232,35 @@ export function normalizeComponent(value: Json): NormalizedComponent {
     isStale: row.isStale === true ? 1 : 0,
     raw: JSON.stringify(row),
   };
+}
+
+function normalizePage(items: readonly Json[]): NormalizedPage {
+  const components: NormalizedComponent[] = [];
+  const quarantineReasons = new Map<string, number>();
+  for (const item of items) {
+    try {
+      components.push(normalizeComponent(item));
+    } catch (error: unknown) {
+      if (
+        !(error instanceof SbomPullError) ||
+        !error.code.startsWith("SBOM_COMPONENT_")
+      ) {
+        throw error;
+      }
+      quarantineReasons.set(
+        error.code,
+        (quarantineReasons.get(error.code) ?? 0) + 1,
+      );
+    }
+  }
+  return { components, quarantineReasons };
+}
+
+function quarantineSummary(reasons: ReadonlyMap<string, number>): string {
+  return [...reasons]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([reason, count]) => `${reason}=${count}`)
+    .join(", ");
 }
 
 function stagingPath(stagingRoot: string, input: SbomPullInput): string {
@@ -233,7 +294,8 @@ function openStage(path: string): Database.Database {
       generation_id TEXT NOT NULL,
       continuation TEXT,
       pages INTEGER NOT NULL,
-      rows INTEGER NOT NULL
+      rows INTEGER NOT NULL,
+      quarantined INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS components (
       component_id TEXT PRIMARY KEY,
@@ -250,7 +312,20 @@ function openStage(path: string): Database.Database {
       is_stale INTEGER NOT NULL,
       raw TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS quarantine_reasons (
+      reason TEXT PRIMARY KEY,
+      count INTEGER NOT NULL CHECK (count > 0)
+    ) WITHOUT ROWID;
   `);
+  const hasQuarantined = stage
+    .prepare<[], { name: string }>("PRAGMA table_info(meta)")
+    .all()
+    .some((column) => column.name === "quarantined");
+  if (!hasQuarantined) {
+    stage.exec(
+      "ALTER TABLE meta ADD COLUMN quarantined INTEGER NOT NULL DEFAULT 0",
+    );
+  }
   return stage;
 }
 
@@ -265,12 +340,14 @@ function initializeStage(
 ): void {
   stage.transaction(() => {
     stage.prepare("DELETE FROM components").run();
+    stage.prepare("DELETE FROM quarantine_reasons").run();
     stage.prepare("DELETE FROM meta").run();
     stage
       .prepare(
         `INSERT INTO meta
-         (project_id, project_version_id, generation_id, continuation, pages, rows)
-       VALUES (?, ?, ?, NULL, 0, 0)`,
+         (project_id, project_version_id, generation_id, continuation, pages,
+          rows, quarantined)
+       VALUES (?, ?, ?, NULL, 0, 0, 0)`,
       )
       .run(input.projectId, input.projectVersionId, generationId);
   })();
@@ -283,7 +360,8 @@ function syncRow(
   return db
     .prepare<[string, string, string], SyncRow>(
       `SELECT accepted_generation_id, staging_generation_id,
-            staging_continuation, staged_pages, staged_rows
+            staging_continuation, staged_pages, staged_rows,
+            staged_quarantined
        FROM sync_state
       WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?`,
     )
@@ -292,7 +370,7 @@ function syncRow(
 
 function stagePage(
   stage: Database.Database,
-  components: NormalizedComponent[],
+  page: NormalizedPage,
   continuation: string | null,
 ): StageMeta {
   return stage.transaction(() => {
@@ -315,7 +393,7 @@ function stagePage(
          is_stale = excluded.is_stale,
          raw = excluded.raw`,
     );
-    for (const component of components) {
+    for (const component of page.components) {
       insert.run(
         component.componentId,
         component.componentKey,
@@ -332,6 +410,15 @@ function stagePage(
         component.raw,
       );
     }
+    const recordReason = stage.prepare(
+      `INSERT INTO quarantine_reasons (reason, count) VALUES (?, ?)
+       ON CONFLICT(reason) DO UPDATE SET count = count + excluded.count`,
+    );
+    let quarantined = 0;
+    for (const [reason, count] of page.quarantineReasons) {
+      recordReason.run(reason, count);
+      quarantined += count;
+    }
     const rows = stage
       .prepare<
         [],
@@ -339,8 +426,12 @@ function stagePage(
       >("SELECT COUNT(*) AS count FROM components")
       .get()!.count;
     stage
-      .prepare(`UPDATE meta SET continuation = ?, pages = pages + 1, rows = ?`)
-      .run(continuation, rows);
+      .prepare(
+        `UPDATE meta
+            SET continuation = ?, pages = pages + 1, rows = ?,
+                quarantined = quarantined + ?`,
+      )
+      .run(continuation, rows, quarantined);
     return meta(stage)!;
   })();
 }
@@ -353,13 +444,15 @@ function advanceSharedCursor(
 ): void {
   db.prepare(
     `UPDATE sync_state
-        SET staging_continuation = ?, staged_pages = ?, staged_rows = ?
+        SET staging_continuation = ?, staged_pages = ?, staged_rows = ?,
+            staged_quarantined = ?
       WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?
         AND staging_generation_id = ?`,
   ).run(
     state.continuation,
     state.pages,
     state.rows,
+    state.quarantined,
     input.projectId,
     input.projectVersionId,
     ENTITY_KIND,
@@ -375,7 +468,8 @@ function resetSharedCursor(
   const reset = db
     .prepare(
       `UPDATE sync_state
-        SET staging_continuation = NULL, staged_pages = 0, staged_rows = 0
+        SET staging_continuation = NULL, staged_pages = 0, staged_rows = 0,
+            staged_quarantined = 0
       WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?
         AND staging_generation_id = ?`,
     )
@@ -440,6 +534,19 @@ function recordFailure(
       ENTITY_KIND,
     );
   })();
+}
+
+function stagedQuarantineReasons(
+  stage: Database.Database,
+): ReadonlyMap<string, number> {
+  return new Map(
+    stage
+      .prepare<[], { reason: string; count: number }>(
+        "SELECT reason, count FROM quarantine_reasons ORDER BY reason",
+      )
+      .all()
+      .map((row) => [row.reason, row.count] as const),
+  );
 }
 
 function publishStage(
@@ -515,6 +622,7 @@ export async function pullSbom(
       "Project and project version are required",
     );
   }
+  const filter = componentScopeFilter(input);
   const pageSize = deps.pageSize ?? DEFAULT_PAGE_SIZE;
   if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 200) {
     throw new SbomPullError(
@@ -545,14 +653,16 @@ export async function pullSbom(
       sameScope &&
       saved.continuation === current.staging_continuation &&
       saved.pages === current.staged_pages &&
-      saved.rows === current.staged_rows;
+      saved.rows === current.staged_rows &&
+      saved.quarantined === current.staged_quarantined;
     // A crash may occur after the staging page commits but before its shared
     // cursor advances. A stage exactly one page ahead is authoritative and can
     // safely heal that bounded window without re-fetching or discarding it.
     const recoverableCursor =
       sameScope &&
       saved.pages === current.staged_pages + 1 &&
-      saved.rows >= current.staged_rows;
+      saved.rows >= current.staged_rows &&
+      saved.quarantined >= current.staged_quarantined;
     if (saved && (exactCursor || recoverableCursor)) {
       if (recoverableCursor) {
         advanceSharedCursor(deps.db, input, saved.generation_id, saved);
@@ -583,6 +693,7 @@ export async function pullSbom(
           : null;
       const pages = deps.platform.listComponents(
         {
+          filter,
           excluded,
           page: {
             pageSize,
@@ -599,7 +710,7 @@ export async function pullSbom(
           );
         }
         fetched += page.items.length;
-        const normalized = page.items.map(normalizeComponent);
+        const normalized = normalizePage(page.items);
         const next =
           page.next === null
             ? excluded
@@ -621,6 +732,24 @@ export async function pullSbom(
         "Platform component stream ended before its final page",
       );
     }
+    const quarantineReasons = stagedQuarantineReasons(stage);
+    if (state.rows === 0 && state.quarantined > 0) {
+      // Preserve the failed generation's shared count for diagnostics, but do
+      // not retain a completed all-degenerate stage: the next pull must
+      // contact the repaired remote instead of inheriting stale quarantines.
+      stage.close();
+      removeStage(path);
+      throw new SbomPullError(
+        "SBOM_ALL_ROWS_QUARANTINED",
+        `Quarantined ${state.quarantined} fetched component rows; reasons [${quarantineSummary(quarantineReasons)}]`,
+      );
+    }
+    for (const [reason, count] of quarantineReasons) {
+      deps.warn?.(`SBOM component rows quarantined (${reason})`, {
+        count,
+        projectVersionId: input.projectVersionId,
+      });
+    }
     stage.close();
     const pulledAt = (deps.now?.() ?? new Date()).toISOString();
     const rollups = publishStage(
@@ -636,6 +765,8 @@ export async function pullSbom(
       projectVersionId: input.projectVersionId,
       fetched,
       components: state.rows,
+      quarantined: state.quarantined,
+      quarantineReasons: Object.fromEntries(quarantineReasons),
       pages: state.pages,
       rollups,
       pulledAt,

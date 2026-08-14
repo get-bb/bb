@@ -22,6 +22,10 @@ export interface SbomPullResult {
   /** Remote component rows fetched during this invocation. */
   fetched: number;
   components: number;
+  /** Generation-total rows isolated because no stable identity could be derived. */
+  quarantined: number;
+  /** Generation-total quarantine counts keyed only by safe reason code. */
+  quarantineReasons: Readonly<Record<string, number>>;
   pages: number;
   rollups: number;
   pulledAt: string;

@@ -271,7 +271,7 @@ describe("cached SBOM query", () => {
          component_purl, severity, epss_score, in_kev, reachability_verdict,
          raw, pulled_at)
       VALUES ('p', 'v', 'g', 'finding-1', 'stable-finding-1', 'CVE-2026-1',
-        'Gateway issue', 'Gateway', 'group', '1', 'pkg:generic/gateway@1',
+        'Gateway issue', 'Gateway', 'group', '1', NULL,
         'critical', 0.91, 1, 'reachable', '{}',
         '2026-08-12T20:00:00.000Z');
       INSERT INTO overlay_index

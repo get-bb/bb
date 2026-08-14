@@ -65,6 +65,12 @@ Entry format — one section per defect:
 - **Broke because**: the five-key seed projection hid unmapped warning/violation counts, and string-valued EPSS was silently discarded
 - **Beat asserts**: `FS-500-006`, `ca-certificates.crt`, EPSS `0.4%`, two warnings, and one violation render after the real-shape pull; invalid/null enrichment publishes as null with value-free advisory reason counts while identity-invalid rows alone increment quarantine
 
+### FS-195 — scoped SBOM pull and file-path component identity (sweep #6)
+
+- **Journey**: bound workspace → SBOM panel → select the bound Platform project/version → Pull SBOM → inspect path-named components → open a component whose purl matches an accepted finding
+- **Broke because**: the component request omitted the documented project/projectVersion filter and pulled the tenant-global portfolio; fallback identity rejected file paths, while one odd row aborted the complete corpus
+- **Beat asserts**: every included/excluded component request carries the exact selected Platform project/version filter; the panel renders only that scope including `/apps/*.elf` and purl-less path rows; the component detail shows the joined finding; odd unkeyable rows are isolated and the CLI reports their truthful generation-total quarantine count
+
 ### FS-201 — bench requirement puller dead-end loop (sweep #7, pending fix)
 
 - **Pending — not Harnessed**: `golden-loop.e2e.test.ts` — beat 7, `FS-201 requirement-to-bench loop`, pinned to `No puller is registered for requirement`

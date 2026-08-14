@@ -39,7 +39,12 @@ function seedGeneration(db: Database.Database): void {
 
 function insertComponent(db: Database.Database, name: string): string {
   const purl = `pkg:generic/${name}@1`;
-  const key = componentKeyFromIdentity({ purl, name, group: null, version: "1" });
+  const key = componentKeyFromIdentity({
+    purl,
+    name,
+    group: null,
+    version: "1",
+  });
   db.prepare(
     `INSERT INTO sbom_components
        (project_id, project_version_id, generation_id, component_id,
@@ -65,7 +70,17 @@ function insertFinding(
         component_name, component_version, component_purl, severity, epss_score,
         in_kev, reachability_score, reachability_verdict, raw, pulled_at)
      VALUES ('p', 'v', 'finding-g', ?, ?, ?, '1', ?, ?, ?, ?, ?, ?, '{}', 'now')`,
-  ).run(id, `finding-${id}`, name, `pkg:generic/${name}@1`, severity, epss, kev, score, verdict);
+  ).run(
+    id,
+    `finding-${id}`,
+    name,
+    `pkg:generic/${name}@1`,
+    severity,
+    epss,
+    kev,
+    score,
+    verdict,
+  );
 }
 
 describe("SBOM vulnerability rollup", () => {
@@ -73,8 +88,14 @@ describe("SBOM vulnerability rollup", () => {
     const db = createDb();
     seedGeneration(db);
     const keys = Object.fromEntries(
-      ["reachable", "unreachable", "mixed", "unknown", "null-unknown", "empty"]
-        .map((name) => [name, insertComponent(db, name)]),
+      [
+        "reachable",
+        "unreachable",
+        "mixed",
+        "unknown",
+        "null-unknown",
+        "empty",
+      ].map((name) => [name, insertComponent(db, name)]),
     );
     insertFinding(db, "r1", "reachable", "critical", 0.8, 0.91, 1);
     insertFinding(db, "r2", "reachable", "high", 0.2, 0.34);
@@ -86,26 +107,124 @@ describe("SBOM vulnerability rollup", () => {
     insertFinding(db, "n2", "null-unknown", "low", null, null);
 
     expect(recomputeVulnRollup(db, "v")).toBe(6);
-    const rows = db.prepare<[], RollupRow>(
-      `SELECT component_key, critical, high, medium, low, kev_count,
+    const rows = db
+      .prepare<[], RollupRow>(
+        `SELECT component_key, critical, high, medium, low, kev_count,
               max_epss, reachability_verdict
          FROM sbom_vuln_rollup ORDER BY component_key`,
-    ).all();
+      )
+      .all();
     const byKey = new Map(rows.map((row) => [row.component_key, row]));
     expect(byKey.get(keys.reachable)).toMatchObject({
-      critical: 1, high: 1, medium: 0, low: 0, kev_count: 1,
-      max_epss: 0.91, reachability_verdict: "reachable",
+      critical: 1,
+      high: 1,
+      medium: 0,
+      low: 0,
+      kev_count: 1,
+      max_epss: 0.91,
+      reachability_verdict: "reachable",
     });
-    expect(byKey.get(keys.unreachable)).toMatchObject({ reachability_verdict: "unreachable" });
-    expect(byKey.get(keys.mixed)).toMatchObject({ reachability_verdict: "mixed" });
-    expect(byKey.get(keys.unknown)).toMatchObject({ reachability_verdict: "unknown" });
+    expect(byKey.get(keys.unreachable)).toMatchObject({
+      reachability_verdict: "unreachable",
+    });
+    expect(byKey.get(keys.mixed)).toMatchObject({
+      reachability_verdict: "mixed",
+    });
+    expect(byKey.get(keys.unknown)).toMatchObject({
+      reachability_verdict: "unknown",
+    });
     expect(byKey.get(keys["null-unknown"])).toMatchObject({
-      medium: 1, low: 1, reachability_verdict: "unknown",
+      medium: 1,
+      low: 1,
+      reachability_verdict: "unknown",
     });
     expect(byKey.get(keys.empty)).toMatchObject({
-      critical: 0, high: 0, medium: 0, low: 0, kev_count: 0,
-      max_epss: null, reachability_verdict: "unknown",
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      kev_count: 0,
+      max_epss: null,
+      reachability_verdict: "unknown",
     });
+    db.close();
+  });
+
+  it("joins a wire-only path finding through the scoped component fallback alias", () => {
+    const db = createDb();
+    seedGeneration(db);
+    const name = "/apps/M9205ACFNAAMZA1234.elf";
+    const purl = "pkg:generic/%2Fapps%2FM9205ACFNAAMZA1234.elf@1";
+    const componentKey = componentKeyFromIdentity({
+      purl,
+      name,
+      group: null,
+      version: "1",
+    });
+    db.prepare(
+      `INSERT INTO sbom_components
+        (project_id, project_version_id, generation_id, component_id,
+         component_key, purl, name, version, raw, pulled_at)
+       VALUES ('p', 'v', 'sbom-g', 'path-component', ?, ?, ?, '1', '{}', 'now')`,
+    ).run(componentKey, purl, name);
+    db.prepare(
+      `INSERT INTO findings
+        (project_id, project_version_id, generation_id, finding_id, stable_key,
+         component_name, component_version, component_purl, severity,
+         reachability_score, raw, pulled_at)
+       VALUES ('p', 'v', 'finding-g', 'path-finding', 'stable-path-finding',
+               ?, '1', NULL, 'high', -1, '{}', 'now')`,
+    ).run(name);
+
+    recomputeVulnRollup(db, "v");
+    expect(
+      db
+        .prepare(
+          "SELECT high, reachability_verdict FROM sbom_vuln_rollup WHERE component_key = ?",
+        )
+        .get(componentKey),
+    ).toEqual({ high: 1, reachability_verdict: "unreachable" });
+    db.close();
+  });
+
+  it("attributes one purl-less finding to every accepted-slice alias claimant", () => {
+    const db = createDb();
+    seedGeneration(db);
+    const name = "zlib";
+    const keys = ["pkg:npm/zlib@1", "pkg:generic/zlib@1"].map((purl) =>
+      componentKeyFromIdentity({ purl, name, group: null, version: "1" }),
+    );
+    const insert = db.prepare(
+      `INSERT INTO sbom_components
+        (project_id, project_version_id, generation_id, component_id,
+         component_key, purl, name, version, raw, pulled_at)
+       VALUES ('p', 'v', 'sbom-g', ?, ?, ?, ?, '1', '{}', 'now')`,
+    );
+    insert.run("npm-zlib", keys[0], "pkg:npm/zlib@1", name);
+    insert.run("generic-zlib", keys[1], "pkg:generic/zlib@1", name);
+    db.prepare(
+      `INSERT INTO findings
+        (project_id, project_version_id, generation_id, finding_id, stable_key,
+         component_name, component_version, component_purl, severity,
+         reachability_score, raw, pulled_at)
+       VALUES ('p', 'v', 'finding-g', 'shared-finding', 'stable-shared',
+               ?, '1', NULL, 'critical', -1, '{}', 'now')`,
+    ).run(name);
+
+    expect(recomputeVulnRollup(db, "v")).toBe(2);
+    expect(
+      db
+        .prepare<[], { component_key: string; critical: number }>(
+          `SELECT component_key, critical
+             FROM sbom_vuln_rollup
+            ORDER BY component_key`,
+        )
+        .all(),
+    ).toEqual(
+      [...keys]
+        .sort()
+        .map((componentKey) => ({ component_key: componentKey, critical: 1 })),
+    );
     db.close();
   });
 
@@ -136,7 +255,12 @@ describe("SBOM vulnerability rollup", () => {
           name,
         );
         if (index < 4_000) {
-          insertFindingRow.run(`finding-${index}`, `stable-${index}`, name, purl);
+          insertFindingRow.run(
+            `finding-${index}`,
+            `stable-${index}`,
+            name,
+            purl,
+          );
         }
       }
     })();
@@ -145,27 +269,45 @@ describe("SBOM vulnerability rollup", () => {
     expect(recomputeVulnRollup(db, "v")).toBe(10_000);
     const cpu = process.cpuUsage(started);
     expect((cpu.user + cpu.system) / 1_000).toBeLessThan(5_000);
-    expect(db.prepare("SELECT SUM(high) FROM sbom_vuln_rollup").pluck().get()).toBe(4_000);
+    expect(
+      db.prepare("SELECT SUM(high) FROM sbom_vuln_rollup").pluck().get(),
+    ).toBe(4_000);
     db.close();
   });
 
   it("uses folded NVG identity without UUIDs and reports unresolved findings once", () => {
     const db = createDb();
     seedGeneration(db);
-    const key = componentKeyFromIdentity({ purl: null, name: "OpenSSL", group: "Core", version: "3.0" });
-    expect(key).toBe(componentKeyFromIdentity({ purl: null, name: "openssl", group: "core", version: "3.0" }));
+    const key = componentKeyFromIdentity({
+      purl: null,
+      name: "OpenSSL",
+      group: "Core",
+      version: "3.0",
+    });
+    expect(key).toBe(
+      componentKeyFromIdentity({
+        purl: null,
+        name: "openssl",
+        group: "core",
+        version: "3.0",
+      }),
+    );
     expect(key).not.toContain("component-uuid");
-    expect(componentKeyFromIdentity({
-      purl: "pkg:generic/openssl@3.0",
-      name: "ignored-a",
-      group: null,
-      version: null,
-    })).toBe(componentKeyFromIdentity({
-      purl: "pkg:generic/openssl@3.0",
-      name: "ignored-b",
-      group: "different",
-      version: "different",
-    }));
+    expect(
+      componentKeyFromIdentity({
+        purl: "pkg:generic/openssl@3.0",
+        name: "ignored-a",
+        group: null,
+        version: null,
+      }),
+    ).toBe(
+      componentKeyFromIdentity({
+        purl: "pkg:generic/openssl@3.0",
+        name: "ignored-b",
+        group: "different",
+        version: "different",
+      }),
+    );
     db.prepare(
       `INSERT INTO sbom_components
        (project_id, project_version_id, generation_id, component_id,
@@ -183,7 +325,11 @@ describe("SBOM vulnerability rollup", () => {
     ).run();
     const warn = vi.fn();
     recomputeVulnRollup(db, "v", { warn });
-    expect(db.prepare("SELECT high, reachability_verdict FROM sbom_vuln_rollup").get()).toEqual({
+    expect(
+      db
+        .prepare("SELECT high, reachability_verdict FROM sbom_vuln_rollup")
+        .get(),
+    ).toEqual({
       high: 1,
       reachability_verdict: "unreachable",
     });

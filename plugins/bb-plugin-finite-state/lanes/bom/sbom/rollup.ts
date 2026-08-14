@@ -1,5 +1,8 @@
 import type Database from "better-sqlite3";
-import { findingStableKey } from "../../../lib/sync/registry.js";
+import {
+  canonicalFindingStableKey,
+  canonicalizeFindingIdentity,
+} from "../../findings/stable-key/canonical.js";
 
 const SBOM_COMPONENT_DISCRIMINATOR = "SBOM-COMPONENT";
 
@@ -9,34 +12,46 @@ function normalizeNonEmpty(value: string, label: string): string {
   return normalized;
 }
 
-/** The frozen finding wrapper is the sole codec that permits exact purl segments. */
+/**
+ * Uses the shared wire-only canonicalizer so file paths and package namespaces
+ * join the same finding identity without consulting the tenant-wide index.
+ */
 export function componentKeyFromIdentity(identity: {
   purl: string | null;
   name: string;
   group: string | null;
   version: string | null;
 }): string {
-  const purl = identity.purl === null ? null : normalizeNonEmpty(identity.purl, "component purl");
-  // findingStableKey validates every fallback segment before selecting its purl
-  // tier. Use an inert valid fallback for purl identities so ordinary firmware
-  // names containing path separators cannot invalidate an otherwise exact purl.
-  const name = purl === null
-    ? normalizeNonEmpty(identity.name, "component name")
-    : "purl-identified-component";
-  return findingStableKey({
-    cve: SBOM_COMPONENT_DISCRIMINATOR,
-    purl,
-    name,
-    group: purl === null ? identity.group : null,
-    version: purl === null ? identity.version : null,
-  });
+  const purl =
+    identity.purl === null
+      ? null
+      : normalizeNonEmpty(identity.purl, "component purl");
+  // The shared canonicalizer validates every fallback segment before selecting
+  // its purl tier. Use an inert fallback for purl identities so ordinary
+  // firmware paths cannot invalidate an otherwise exact purl.
+  const name =
+    purl === null
+      ? normalizeNonEmpty(identity.name, "component name")
+      : "purl-identified-component";
+  return canonicalFindingStableKey(
+    canonicalizeFindingIdentity({
+      cve: SBOM_COMPONENT_DISCRIMINATOR,
+      purl,
+      name,
+      group: purl === null ? identity.group : null,
+      version: purl === null ? identity.version : null,
+    }),
+  );
 }
 
 interface RollupOptions {
   projectId?: string;
   generationId?: string;
   computedAt?: string;
-  warn?: (message: string, details: { count: number; projectVersionId: string }) => void;
+  warn?: (
+    message: string,
+    details: { count: number; projectVersionId: string },
+  ) => void;
 }
 
 interface ScopeRow {
@@ -88,7 +103,11 @@ function installComponentKeyFunction(db: Database.Database): void {
   );
 }
 
-/** Rebuilds one accepted SBOM generation from the separately accepted findings cache. */
+/**
+ * Rebuilds one accepted SBOM generation from the separately accepted findings
+ * cache. A purl-less finding is intentionally attributed to every component
+ * in the accepted slice that claims its fallback alias.
+ */
 export function recomputeVulnRollup(
   db: Database.Database,
   projectVersionId: string,
@@ -110,7 +129,15 @@ export function recomputeVulnRollup(
     ) WITHOUT ROWID;
     CREATE INDEX IF NOT EXISTS fs_sbom_finding_keys_component
       ON fs_sbom_finding_keys(component_key);
+    CREATE TEMP TABLE IF NOT EXISTS fs_sbom_component_aliases (
+      component_key TEXT NOT NULL,
+      alias_key TEXT NOT NULL,
+      PRIMARY KEY (component_key, alias_key)
+    ) WITHOUT ROWID;
+    CREATE INDEX IF NOT EXISTS fs_sbom_component_aliases_key
+      ON fs_sbom_component_aliases(alias_key, component_key);
     DELETE FROM fs_sbom_finding_keys;
+    DELETE FROM fs_sbom_component_aliases;
   `);
   db.prepare(
     `INSERT INTO fs_sbom_finding_keys (finding_id, component_key)
@@ -127,14 +154,30 @@ export function recomputeVulnRollup(
         AND s.accepted_generation_id = f.generation_id
       WHERE f.project_id = ? AND f.project_version_id = ?`,
   ).run(projectId, projectVersionId);
+  db.prepare(
+    `INSERT INTO fs_sbom_component_aliases (component_key, alias_key)
+     SELECT DISTINCT component_key, component_key
+       FROM sbom_components
+      WHERE project_id = ? AND project_version_id = ? AND generation_id = ?`,
+  ).run(projectId, projectVersionId, generationId);
+  db.prepare(
+    `INSERT OR IGNORE INTO fs_sbom_component_aliases
+       (component_key, alias_key)
+     SELECT DISTINCT component_key,
+            fs_sbom_component_key(NULL, name, component_group, version)
+       FROM sbom_components
+      WHERE project_id = ? AND project_version_id = ? AND generation_id = ?
+        AND purl IS NOT NULL`,
+  ).run(projectId, projectVersionId, generationId);
 
   db.prepare(
     `DELETE FROM sbom_vuln_rollup
       WHERE project_id = ? AND project_version_id = ? AND generation_id = ?`,
   ).run(projectId, projectVersionId, generationId);
 
-  const result = db.prepare(
-    `INSERT INTO sbom_vuln_rollup (
+  const result = db
+    .prepare(
+      `INSERT INTO sbom_vuln_rollup (
        project_id, project_version_id, generation_id, component_key,
        critical, high, medium, low, kev_count, max_epss,
        reachability_verdict, computed_at
@@ -171,8 +214,10 @@ export function recomputeVulnRollup(
                          )
                    THEN 1 ELSE 0 END AS inconclusive
          FROM sbom_components c
+         JOIN fs_sbom_component_aliases a
+           ON a.component_key = c.component_key
          LEFT JOIN accepted_findings f
-           ON f.component_key = c.component_key
+           ON f.component_key = a.alias_key
         WHERE c.project_id = ? AND c.project_version_id = ?
           AND c.generation_id = ?
      )
@@ -192,28 +237,28 @@ export function recomputeVulnRollup(
             ?
        FROM joined
       GROUP BY component_key`,
-  ).run(
-    projectId,
-    projectVersionId,
-    projectId,
-    projectVersionId,
-    generationId,
-    projectId,
-    projectVersionId,
-    generationId,
-    computedAt,
-  );
+    )
+    .run(
+      projectId,
+      projectVersionId,
+      projectId,
+      projectVersionId,
+      generationId,
+      projectId,
+      projectVersionId,
+      generationId,
+      computedAt,
+    );
 
-  const ignored = db.prepare<[string, string, string], { count: number }>(
-    `SELECT COUNT(*) AS count
+  const ignored = db
+    .prepare<[], { count: number }>(
+      `SELECT COUNT(*) AS count
        FROM fs_sbom_finding_keys k
-       LEFT JOIN sbom_components c
-         ON c.project_id = ?
-        AND c.project_version_id = ?
-        AND c.generation_id = ?
-        AND c.component_key = k.component_key
-      WHERE c.component_key IS NULL`,
-  ).get(projectId, projectVersionId, generationId)!;
+       LEFT JOIN fs_sbom_component_aliases a
+         ON a.alias_key = k.component_key
+      WHERE a.component_key IS NULL`,
+    )
+    .get()!;
   if (ignored.count > 0) {
     options.warn?.("Ignored findings without a resolvable SBOM component", {
       count: ignored.count,
