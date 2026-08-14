@@ -18,6 +18,7 @@ import {
 import type { CanvasFoundationFeatures } from "../canvas/foundation/CanvasShell.js";
 import type { CanvasModel } from "../canvas/foundation/types.js";
 import { useArchitectureData } from "../canvas/nodes/useNodeData.js";
+import { architectureCacheSignals } from "../canvas/nodes/cacheMessage.js";
 import { toFoundationCanvasModel } from "../canvas/nodes/index.js";
 import type {
   ArchitectureAdjacency,
@@ -37,9 +38,11 @@ import {
 } from "./route.js";
 import {
   CanvasCacheBanner,
+  CanvasDiagnosticsState,
   CanvasEmptyState,
   CanvasErrorState,
   CanvasLoadingState,
+  CanvasRefreshFailureState,
   CanvasUnconfiguredState,
 } from "./states.js";
 import { isVerificationTier } from "../verifications/matrix/status.js";
@@ -199,9 +202,22 @@ function TaraPanel({
   }
   if (data.model.nodes.length === 0) {
     const EditingLayer = features.EditingLayer;
+    const cacheSignals = architectureCacheSignals(data.model.cache.message);
     return (
       <div className="relative h-full min-h-0">
-        <CanvasEmptyState onRetry={data.retry} />
+        {data.error ? (
+          <CanvasErrorState onRetry={data.retry} />
+        ) : cacheSignals.fileDiagnostics ? (
+          <CanvasDiagnosticsState
+            message={cacheSignals.fileDiagnostics}
+            onRetry={data.retry}
+            refreshFailed={cacheSignals.refreshFailed}
+          />
+        ) : cacheSignals.refreshFailed ? (
+          <CanvasRefreshFailureState onRetry={data.retry} />
+        ) : (
+          <CanvasEmptyState onRetry={data.retry} />
+        )}
         <EditingLayer />
       </div>
     );

@@ -1,4 +1,5 @@
-import { basename } from "node:path";
+import { createHash } from "node:crypto";
+import { basename, extname } from "node:path";
 import type { BbPluginApi } from "@bb/plugin-sdk";
 import type Database from "better-sqlite3";
 import type { JsonValue } from "../../shared/contract.js";
@@ -156,7 +157,7 @@ const CACHE_MESSAGE_MAX_LENGTH = 500;
 const CACHE_MESSAGE_BASE_MAX_LENGTH = 100;
 const DIAGNOSTIC_ENTRY_MAX_LENGTH = 110;
 const UNSAFE_CACHE_DETAIL_PATTERN =
-  /(?:authorization|bearer\s|api[_-]?key|token=|https?:\/\/[^\s]*[?@])/giu;
+  /(?:https?:\/\/[^\s"'<>]*[?@][^\s"'<>]*|authorization(?:\s*[:=]\s*|\s+)(?:bearer\s+)?[^\s"'<>]+|bearer\s+[^\s"'<>]+|(?:api[_-]?key|token)(?:\s*[:=]\s*|\s+)[^\s"'<>]+|authorization|api[_-]?key|token=)/giu;
 
 function sanitizeCacheDetail(value: string): string {
   return value
@@ -179,6 +180,17 @@ function compactDetail(value: string, maxLength: number): string {
 function diagnosticFileLabel(file: string, maxLength: number): string {
   const normalized = file.replaceAll("\\", "/");
   const name = basename(normalized) || "unknown.yaml";
+  if (sanitizeCacheDetail(name) !== name) {
+    const extension = sanitizeCacheDetail(extname(name));
+    const fingerprint = createHash("sha256")
+      .update(name)
+      .digest("hex")
+      .slice(0, 8);
+    return compactDetail(
+      `[redacted]-${fingerprint}${extension === extname(name) ? extension : ""}`,
+      maxLength,
+    );
+  }
   return compactDetail(name, maxLength);
 }
 
@@ -491,9 +503,6 @@ export async function listTara(
     diagnostics,
   );
   const total = acceptedTotal + visibleWorking.length;
-  if (diagnostics.length > 0 && total === 0) {
-    throw new Error(`INVALID_WORKING_TARA: ${cacheMessage}`);
-  }
 
   return {
     items: visibleRows.map(([slug, fields]) => {

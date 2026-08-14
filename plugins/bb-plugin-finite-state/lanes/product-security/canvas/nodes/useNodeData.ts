@@ -13,6 +13,10 @@ import {
   type ArchitectureNodeData,
   type CanvasArchitectureGraph,
 } from "./adapters.js";
+import {
+  architectureCacheSignals,
+  REFRESH_FAILURE_CACHE_MESSAGE,
+} from "./cacheMessage.js";
 
 type TaraListInput = z.input<(typeof rpcContract)["taraList"]["input"]>;
 type TaraListPage = z.output<(typeof rpcContract)["taraList"]["output"]>;
@@ -265,15 +269,23 @@ export function createRpcArchitectureDataSource(
       const dataflows = new Map<string, ArchitectureEdgeData>();
       const revisions: string[] = [];
       const cacheMessages = new Set<string>();
+      const fileDiagnosticMessages = new Set<string>();
       let pulledAt: string | null = null;
       let stale = false;
+      let refreshFailed = false;
       for (let kindIndex = 0; kindIndex < pageGroups.length; kindIndex += 1) {
         const kind = TARA_KINDS[kindIndex];
         const pages = pageGroups[kindIndex] ?? [];
         for (const page of pages) {
           stale ||= page.cache.state === "stale";
           if (page.cache.state === "stale" && page.cache.message) {
-            cacheMessages.add(page.cache.message);
+            const signals = architectureCacheSignals(page.cache.message);
+            refreshFailed ||= signals.refreshFailed;
+            if (signals.fileDiagnostics) {
+              fileDiagnosticMessages.add(signals.fileDiagnostics);
+            } else if (!signals.refreshFailed) {
+              cacheMessages.add(page.cache.message);
+            }
           }
           if (page.cache.asOf && (!pulledAt || page.cache.asOf > pulledAt)) {
             pulledAt = page.cache.asOf;
@@ -297,8 +309,16 @@ export function createRpcArchitectureDataSource(
           pulledAt,
           stale,
           message:
+            refreshFailed ||
+            fileDiagnosticMessages.size > 0 ||
             cacheMessages.size > 0
-              ? [...cacheMessages].join(" ").slice(0, 4_000)
+              ? [
+                  ...(refreshFailed ? [REFRESH_FAILURE_CACHE_MESSAGE] : []),
+                  ...fileDiagnosticMessages,
+                  ...cacheMessages,
+                ]
+                  .join(" ")
+                  .slice(0, 4_000)
               : null,
         },
       };

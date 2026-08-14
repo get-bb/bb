@@ -88,6 +88,92 @@ export function CanvasErrorState({
   );
 }
 
+interface CanvasDiagnosticsStateProps extends RetryStateProps {
+  message: string;
+  refreshFailed: boolean;
+}
+
+export function CanvasDiagnosticsState({
+  message,
+  onRetry,
+  refreshFailed,
+}: CanvasDiagnosticsStateProps): React.JSX.Element {
+  const navigate = useBbNavigate();
+  return (
+    <div className="flex h-full min-h-80 items-center justify-center bg-background p-6 text-foreground">
+      <div className="max-w-xl rounded-lg border border-destructive/40 bg-card p-6 text-card-foreground">
+        <p className="text-base font-medium">
+          Architecture files need attention
+        </p>
+        <p className="mt-2 text-sm text-muted-foreground">{message}</p>
+        {refreshFailed ? (
+          <p className="mt-2 text-sm text-muted-foreground">
+            The last product-security refresh also failed; the accepted cache
+            remains available.
+          </p>
+        ) : null}
+        <div className="mt-4 flex flex-wrap justify-center gap-2">
+          {refreshFailed ? (
+            <button
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() =>
+                navigate.toPluginPanel("sync", {
+                  subPath: "product-security",
+                })
+              }
+              type="button"
+            >
+              Open Sync
+            </button>
+          ) : null}
+          <button
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onRetry}
+            type="button"
+          >
+            Retry local read
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function CanvasRefreshFailureState({
+  onRetry,
+}: RetryStateProps): React.JSX.Element {
+  const navigate = useBbNavigate();
+  return (
+    <div className="flex h-full min-h-80 items-center justify-center bg-background p-6 text-foreground">
+      <div className="max-w-md rounded-lg border border-destructive/40 bg-card p-6 text-center text-card-foreground">
+        <p className="text-base font-medium">Product-security refresh failed</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          The accepted cache remains available. Open Sync to retry the pull, or
+          retry the local canvas read.
+        </p>
+        <div className="mt-4 flex flex-wrap justify-center gap-2">
+          <button
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() =>
+              navigate.toPluginPanel("sync", { subPath: "product-security" })
+            }
+            type="button"
+          >
+            Open Sync
+          </button>
+          <button
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onRetry}
+            type="button"
+          >
+            Retry local read
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function CanvasUnconfiguredState(): React.JSX.Element {
   return (
     <div className="flex h-full min-h-80 items-center justify-center bg-background p-6 text-foreground">

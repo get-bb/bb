@@ -299,7 +299,7 @@ describe("WP-35 taraList working overlay", () => {
     ]);
   });
 
-  it("surfaces a designed error when quarantine leaves no readable entity", async () => {
+  it("returns the designed diagnostic when quarantine leaves no readable entity", async () => {
     const host = createFakePluginHost({
       pluginId: "finite-state-overlay-invalid",
       sdk: {
@@ -326,9 +326,17 @@ describe("WP-35 taraList working overlay", () => {
     hosts.push(host);
     const context = createPluginContext(host.bb);
     seedBase(context);
-    await expect(listTara(host.bb, context.db(), input())).rejects.toThrow(
-      /INVALID_WORKING_TARA:.*gateway\.yaml.*verification_status.*cannot be authored/iu,
-    );
+    const page = await listTara(host.bb, context.db(), input());
+    expect(page).toMatchObject({
+      items: [],
+      total: 0,
+      cache: {
+        state: "stale",
+        message: expect.stringMatching(
+          /gateway\.yaml.*verification_status.*cannot be authored/iu,
+        ),
+      },
+    });
   });
 
   it("quarantines one invalid file while retaining other readable entities", async () => {
