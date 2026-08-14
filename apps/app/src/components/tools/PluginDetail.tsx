@@ -139,6 +139,7 @@ export function CatalogPluginDetail({
           <span>{entry.category}</span>
           {entry.author === null ? null : (
             <span>
+              {" · By: "}
               {entry.author.url === null ? (
                 entry.author.name
               ) : (
