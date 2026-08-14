@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import Database from "better-sqlite3";
@@ -49,23 +49,34 @@ interface PullPhase {
 }
 
 function encodePhase(phase: PullPhase): string {
-  const continuation = phase.remoteContinuation === null
-    ? "-"
-    : Buffer.from(phase.remoteContinuation, "utf8").toString("base64url");
+  const continuation =
+    phase.remoteContinuation === null
+      ? "-"
+      : Buffer.from(phase.remoteContinuation, "utf8").toString("base64url");
   return `bp1.${phase.excluded ? "excluded" : "included"}.${continuation}`;
 }
 
 function decodePhase(continuation: string | null): PullPhase {
-  if (continuation === null) return { excluded: false, remoteContinuation: null };
+  if (continuation === null)
+    return { excluded: false, remoteContinuation: null };
   const [prefix, phase, payload, extra] = continuation.split(".");
-  if (prefix !== "bp1" || (phase !== "included" && phase !== "excluded") || !payload || extra !== undefined) {
-    throw new SbomPullError("SBOM_RESUME_CURSOR_INVALID", "Stored SBOM resume cursor is invalid");
+  if (
+    prefix !== "bp1" ||
+    (phase !== "included" && phase !== "excluded") ||
+    !payload ||
+    extra !== undefined
+  ) {
+    throw new SbomPullError(
+      "SBOM_RESUME_CURSOR_INVALID",
+      "Stored SBOM resume cursor is invalid",
+    );
   }
   return {
     excluded: phase === "excluded",
-    remoteContinuation: payload === "-"
-      ? null
-      : Buffer.from(payload, "base64url").toString("utf8"),
+    remoteContinuation:
+      payload === "-"
+        ? null
+        : Buffer.from(payload, "base64url").toString("utf8"),
   };
 }
 
@@ -75,17 +86,27 @@ function record(value: Json): Record<string, Json> | null {
     : null;
 }
 
-function requiredString(row: Record<string, Json>, keys: string[], label: string): string {
+function requiredString(
+  row: Record<string, Json>,
+  keys: string[],
+  label: string,
+): string {
   for (const key of keys) {
     const value = row[key];
     if (typeof value === "string" && value.normalize("NFC").trim()) {
       return value.normalize("NFC").trim();
     }
   }
-  throw new SbomPullError("SBOM_INVALID_COMPONENT", `Component ${label} is missing`);
+  throw new SbomPullError(
+    "SBOM_INVALID_COMPONENT",
+    `Component ${label} is missing`,
+  );
 }
 
-function optionalString(row: Record<string, Json>, keys: string[]): string | null {
+function optionalString(
+  row: Record<string, Json>,
+  keys: string[],
+): string | null {
   for (const key of keys) {
     const value = row[key];
     if (value === null) return null;
@@ -110,7 +131,8 @@ function readLicense(row: Record<string, Json>): string | null {
   const licenses = row.licenses;
   if (!Array.isArray(licenses)) return null;
   for (const item of licenses) {
-    if (typeof item === "string" && item.trim()) return item.normalize("NFC").trim();
+    if (typeof item === "string" && item.trim())
+      return item.normalize("NFC").trim();
     const entry = record(item);
     if (!entry) continue;
     const value = optionalString(entry, ["id", "name", "license"]);
@@ -123,21 +145,33 @@ function readFiles(row: Record<string, Json>): string[] {
   for (const key of ["files", "fileLocations", "locations"]) {
     const value = row[key];
     if (!Array.isArray(value)) continue;
-    return [...new Set(value.filter((item): item is string => typeof item === "string" && item.length > 0))]
-      .sort((left, right) => left.localeCompare(right));
+    return [
+      ...new Set(
+        value.filter(
+          (item): item is string => typeof item === "string" && item.length > 0,
+        ),
+      ),
+    ].sort((left, right) => left.localeCompare(right));
   }
   return [];
 }
 
 export function normalizeComponent(value: Json): NormalizedComponent {
   const row = record(value);
-  if (!row) throw new SbomPullError("SBOM_INVALID_COMPONENT", "Component row must be an object");
+  if (!row)
+    throw new SbomPullError(
+      "SBOM_INVALID_COMPONENT",
+      "Component row must be an object",
+    );
   const componentId = requiredString(row, ["id", "componentId", "uuid"], "id");
   let name: string;
   try {
     name = requiredString(row, ["name"], "name");
   } catch {
-    throw new SbomPullError("SBOM_INVALID_COMPONENT", `Component ${componentId} has no valid name`);
+    throw new SbomPullError(
+      "SBOM_INVALID_COMPONENT",
+      `Component ${componentId} has no valid name`,
+    );
   }
   const purl = optionalString(row, ["purl", "packageUrl"]);
   const group = optionalString(row, ["group", "namespace"]);
@@ -168,11 +202,14 @@ export function normalizeComponent(value: Json): NormalizedComponent {
   };
 }
 
-function stagingPath(worktreeRoot: string, input: SbomPullInput): string {
-  if (!isAbsolute(worktreeRoot)) {
-    throw new SbomPullError("SBOM_WORKTREE_REQUIRED", "SBOM staging requires an absolute worktree root");
+function stagingPath(stagingRoot: string, input: SbomPullInput): string {
+  if (!isAbsolute(stagingRoot)) {
+    throw new SbomPullError(
+      "SBOM_STAGING_ROOT_REQUIRED",
+      "SBOM staging requires an absolute plugin-data root",
+    );
   }
-  const directory = join(worktreeRoot, ".fs-sync", "bom");
+  const directory = join(stagingRoot, ".fs-sync", "bom");
   mkdirSync(directory, { recursive: true });
   const digest = createHash("sha256")
     .update(`${input.projectId}\u0000${input.projectVersionId}`)
@@ -229,66 +266,28 @@ function initializeStage(
   stage.transaction(() => {
     stage.prepare("DELETE FROM components").run();
     stage.prepare("DELETE FROM meta").run();
-    stage.prepare(
-      `INSERT INTO meta
+    stage
+      .prepare(
+        `INSERT INTO meta
          (project_id, project_version_id, generation_id, continuation, pages, rows)
        VALUES (?, ?, ?, NULL, 0, 0)`,
-    ).run(input.projectId, input.projectVersionId, generationId);
+      )
+      .run(input.projectId, input.projectVersionId, generationId);
   })();
 }
 
-function syncRow(db: Database.Database, input: SbomPullInput): SyncRow | undefined {
-  return db.prepare<[string, string, string], SyncRow>(
-    `SELECT accepted_generation_id, staging_generation_id,
+function syncRow(
+  db: Database.Database,
+  input: SbomPullInput,
+): SyncRow | undefined {
+  return db
+    .prepare<[string, string, string], SyncRow>(
+      `SELECT accepted_generation_id, staging_generation_id,
             staging_continuation, staged_pages, staged_rows
        FROM sync_state
       WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?`,
-  ).get(input.projectId, input.projectVersionId, ENTITY_KIND);
-}
-
-function startGeneration(
-  db: Database.Database,
-  input: SbomPullInput,
-  generationId: string,
-  startedAt: string,
-): void {
-  db.transaction(() => {
-    db.prepare(
-      `UPDATE pull_generation
-          SET status = 'cancelled', completed_at = ?,
-              error = 'Replaced by a fresh SBOM pull'
-        WHERE project_id = ? AND project_version_id = ? AND status = 'staging'
-          AND generation_id = (
-            SELECT staging_generation_id FROM sync_state
-             WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?
-          )`,
-    ).run(
-      startedAt,
-      input.projectId,
-      input.projectVersionId,
-      input.projectId,
-      input.projectVersionId,
-      ENTITY_KIND,
-    );
-    db.prepare(
-      `INSERT INTO pull_generation
-         (project_id, project_version_id, generation_id, status,
-          requested_kinds_json, started_at)
-       VALUES (?, ?, ?, 'staging', '["sbomComponent"]', ?)`,
-    ).run(input.projectId, input.projectVersionId, generationId, startedAt);
-    db.prepare(
-      `INSERT INTO sync_state
-         (project_id, project_version_id, entity_kind, staging_generation_id,
-          staging_continuation, staged_pages, staged_rows, error)
-       VALUES (?, ?, ?, ?, NULL, 0, 0, NULL)
-       ON CONFLICT(project_id, project_version_id, entity_kind) DO UPDATE SET
-         staging_generation_id = excluded.staging_generation_id,
-         staging_continuation = NULL,
-         staged_pages = 0,
-         staged_rows = 0,
-         error = NULL`,
-    ).run(input.projectId, input.projectVersionId, ENTITY_KIND, generationId);
-  })();
+    )
+    .get(input.projectId, input.projectVersionId, ENTITY_KIND);
 }
 
 function stagePage(
@@ -333,12 +332,15 @@ function stagePage(
         component.raw,
       );
     }
-    const rows = stage.prepare<[], { count: number }>(
-      "SELECT COUNT(*) AS count FROM components",
-    ).get()!.count;
-    stage.prepare(
-      `UPDATE meta SET continuation = ?, pages = pages + 1, rows = ?`,
-    ).run(continuation, rows);
+    const rows = stage
+      .prepare<
+        [],
+        { count: number }
+      >("SELECT COUNT(*) AS count FROM components")
+      .get()!.count;
+    stage
+      .prepare(`UPDATE meta SET continuation = ?, pages = pages + 1, rows = ?`)
+      .run(continuation, rows);
     return meta(stage)!;
   })();
 }
@@ -365,15 +367,43 @@ function advanceSharedCursor(
   );
 }
 
+function resetSharedCursor(
+  db: Database.Database,
+  input: SbomPullInput,
+  generationId: string,
+): void {
+  const reset = db
+    .prepare(
+      `UPDATE sync_state
+        SET staging_continuation = NULL, staged_pages = 0, staged_rows = 0
+      WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?
+        AND staging_generation_id = ?`,
+    )
+    .run(input.projectId, input.projectVersionId, ENTITY_KIND, generationId);
+  if (reset.changes !== 1) {
+    throw new SbomPullError(
+      "SBOM_GENERATION_FENCE_MISMATCH",
+      "The sync generation no longer owns this SBOM staging scope",
+    );
+  }
+}
+
 function safeFailure(error: unknown): { service: string; reason: string } {
-  if (error instanceof RemoteError) return { service: error.service, reason: error.code };
-  if (error instanceof SbomPullError) return { service: error.service, reason: error.code };
+  if (error instanceof RemoteError)
+    return { service: error.service, reason: error.code };
+  if (error instanceof SbomPullError)
+    return { service: error.service, reason: error.code };
   return { service: "platform", reason: "SBOM_REFRESH_FAILED" };
 }
 
-function recordFailure(db: Database.Database, input: SbomPullInput, error: unknown): void {
+function recordFailure(
+  db: Database.Database,
+  input: SbomPullInput,
+  error: unknown,
+): void {
   const failure = safeFailure(error);
-  const service = failure.service === "assurance-studio" ? "Assurance Studio" : "Platform";
+  const service =
+    failure.service === "assurance-studio" ? "Assurance Studio" : "Platform";
   const message = `${service} refresh failed (${failure.reason})`;
   db.transaction(() => {
     db.prepare(
@@ -424,33 +454,34 @@ function publishStage(
   deps.db.prepare(`ATTACH DATABASE ? AS ${alias}`).run(path);
   try {
     return deps.db.transaction(() => {
-      deps.db.prepare(
-        `UPDATE pull_generation
-            SET status = 'superseded'
-          WHERE project_id = ? AND project_version_id = ?
-            AND status = 'accepted' AND generation_id <> ?
-            AND generation_id = (
-              SELECT accepted_generation_id FROM sync_state
-               WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?
-            )`,
-      ).run(
-        input.projectId,
-        input.projectVersionId,
-        generationId,
-        input.projectId,
-        input.projectVersionId,
-        ENTITY_KIND,
-      );
-      deps.db.prepare(
-        `DELETE FROM sbom_vuln_rollup
-          WHERE project_id = ? AND project_version_id = ?`,
-      ).run(input.projectId, input.projectVersionId);
-      deps.db.prepare(
-        `DELETE FROM sbom_components
-          WHERE project_id = ? AND project_version_id = ?`,
-      ).run(input.projectId, input.projectVersionId);
-      deps.db.prepare(
-        `INSERT INTO sbom_components (
+      // Keep the currently accepted generation queryable until sync flips
+      // its generation fence. Rows from older, already-superseded pulls are
+      // safe to prune before staging the new generation.
+      const cleanup = (table: "sbom_components" | "sbom_vuln_rollup") =>
+        deps.db
+          .prepare(
+            `DELETE FROM ${table}
+            WHERE project_id = ? AND project_version_id = ?
+              AND generation_id <> ?
+              AND generation_id <> COALESCE((
+                SELECT accepted_generation_id FROM sync_state
+                 WHERE project_id = ? AND project_version_id = ?
+                   AND entity_kind = ?
+              ), '')`,
+          )
+          .run(
+            input.projectId,
+            input.projectVersionId,
+            generationId,
+            input.projectId,
+            input.projectVersionId,
+            ENTITY_KIND,
+          );
+      cleanup("sbom_vuln_rollup");
+      cleanup("sbom_components");
+      deps.db
+        .prepare(
+          `INSERT INTO sbom_components (
            project_id, project_version_id, generation_id, component_id,
            component_key, purl, name, component_group, version, cpe, license,
            supplier, source, file_locations, is_stale, raw, pulled_at
@@ -459,34 +490,14 @@ function publishStage(
                 component_group, version, cpe, license, supplier, source,
                 file_locations, is_stale, raw, ?
            FROM ${alias}.components`,
-      ).run(input.projectId, input.projectVersionId, generationId, pulledAt);
+        )
+        .run(input.projectId, input.projectVersionId, generationId, pulledAt);
       const rollups = recomputeVulnRollup(deps.db, input.projectVersionId, {
         projectId: input.projectId,
         generationId,
         computedAt: pulledAt,
         warn: deps.warn,
       });
-      deps.db.prepare(
-        `UPDATE sync_state
-            SET accepted_generation_id = ?, staging_generation_id = NULL,
-                base_revision = base_revision + 1,
-                staging_continuation = NULL, staged_pages = 0, staged_rows = 0,
-                last_pull = ?, error = NULL
-          WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?
-            AND staging_generation_id = ?`,
-      ).run(
-        generationId,
-        pulledAt,
-        input.projectId,
-        input.projectVersionId,
-        ENTITY_KIND,
-        generationId,
-      );
-      deps.db.prepare(
-        `UPDATE pull_generation
-            SET status = 'accepted', completed_at = ?, accepted_at = ?, error = NULL
-          WHERE project_id = ? AND project_version_id = ? AND generation_id = ?`,
-      ).run(pulledAt, pulledAt, input.projectId, input.projectVersionId, generationId);
       return rollups;
     })();
   } finally {
@@ -499,59 +510,76 @@ export async function pullSbom(
   input: SbomPullInput,
 ): Promise<SbomPullResult> {
   if (!input.projectId || !input.projectVersionId) {
-    throw new SbomPullError("SBOM_SCOPE_REQUIRED", "Project and project version are required");
+    throw new SbomPullError(
+      "SBOM_SCOPE_REQUIRED",
+      "Project and project version are required",
+    );
   }
   const pageSize = deps.pageSize ?? DEFAULT_PAGE_SIZE;
   if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 200) {
-    throw new SbomPullError("SBOM_PAGE_SIZE_INVALID", "SBOM page size must be between 1 and 200");
+    throw new SbomPullError(
+      "SBOM_PAGE_SIZE_INVALID",
+      "SBOM page size must be between 1 and 200",
+    );
   }
-  const path = stagingPath(deps.worktreeRoot, input);
+  const path = stagingPath(deps.stagingRoot, input);
   let resumed = false;
-  let generationId: string;
+  const generationId = deps.generationId;
   let stage: Database.Database;
   const current = syncRow(deps.db, input);
+  if (current?.staging_generation_id !== generationId) {
+    throw new SbomPullError(
+      "SBOM_GENERATION_FENCE_MISMATCH",
+      "The sync generation no longer owns this SBOM staging scope",
+    );
+  }
 
   if (input.resume && current?.staging_generation_id && existsSync(path)) {
     stage = openStage(path);
     const saved = meta(stage);
-    const sameScope = saved?.project_id === input.projectId &&
+    const sameScope =
+      saved?.project_id === input.projectId &&
       saved.project_version_id === input.projectVersionId &&
       saved.generation_id === current.staging_generation_id;
-    const exactCursor = sameScope &&
+    const exactCursor =
+      sameScope &&
       saved.continuation === current.staging_continuation &&
       saved.pages === current.staged_pages &&
       saved.rows === current.staged_rows;
     // A crash may occur after the staging page commits but before its shared
     // cursor advances. A stage exactly one page ahead is authoritative and can
     // safely heal that bounded window without re-fetching or discarding it.
-    const recoverableCursor = sameScope &&
+    const recoverableCursor =
+      sameScope &&
       saved.pages === current.staged_pages + 1 &&
       saved.rows >= current.staged_rows;
     if (saved && (exactCursor || recoverableCursor)) {
       if (recoverableCursor) {
         advanceSharedCursor(deps.db, input, saved.generation_id, saved);
       }
-      generationId = saved.generation_id;
       resumed = true;
     } else {
       stage.close();
-      throw new SbomPullError("SBOM_RESUME_STATE_MISMATCH", "Stored SBOM resume state is inconsistent");
+      removeStage(path);
+      stage = openStage(path);
+      initializeStage(stage, input, generationId);
+      resetSharedCursor(deps.db, input, generationId);
     }
   } else {
     removeStage(path);
     stage = openStage(path);
-    generationId = deps.generationId?.() ?? randomUUID();
     initializeStage(stage, input, generationId);
-    startGeneration(deps.db, input, generationId, (deps.now?.() ?? new Date()).toISOString());
+    resetSharedCursor(deps.db, input, generationId);
   }
 
   try {
     let state = meta(stage)!;
     const initialPhase = decodePhase(state.continuation);
     for (const excluded of initialPhase.excluded ? [true] : [false, true]) {
-      const remoteContinuation = excluded === initialPhase.excluded
-        ? initialPhase.remoteContinuation
-        : null;
+      const remoteContinuation =
+        excluded === initialPhase.excluded
+          ? initialPhase.remoteContinuation
+          : null;
       const pages = deps.platform.listComponents(
         {
           excluded,
@@ -564,12 +592,18 @@ export async function pullSbom(
       );
       for await (const page of pages) {
         if (deps.signal?.aborted) {
-          throw new SbomPullError("SBOM_PULL_CANCELLED", "SBOM refresh was cancelled");
+          throw new SbomPullError(
+            "SBOM_PULL_CANCELLED",
+            "SBOM refresh was cancelled",
+          );
         }
         const normalized = page.items.map(normalizeComponent);
-        const next = page.next === null
-          ? excluded ? null : encodePhase({ excluded: true, remoteContinuation: null })
-          : encodePhase({ excluded, remoteContinuation: page.next });
+        const next =
+          page.next === null
+            ? excluded
+              ? null
+              : encodePhase({ excluded: true, remoteContinuation: null })
+            : encodePhase({ excluded, remoteContinuation: page.next });
         state = stagePage(stage, normalized, next);
         advanceSharedCursor(deps.db, input, generationId, state);
         deps.publishProgress?.({
@@ -580,13 +614,22 @@ export async function pullSbom(
       }
     }
     if (state.continuation !== null) {
-      throw new SbomPullError("SBOM_STREAM_INCOMPLETE", "Platform component stream ended before its final page");
+      throw new SbomPullError(
+        "SBOM_STREAM_INCOMPLETE",
+        "Platform component stream ended before its final page",
+      );
     }
     stage.close();
     const pulledAt = (deps.now?.() ?? new Date()).toISOString();
-    const rollups = publishStage(deps, input, path, generationId, state, pulledAt);
+    const rollups = publishStage(
+      deps,
+      input,
+      path,
+      generationId,
+      state,
+      pulledAt,
+    );
     removeStage(path);
-    deps.publishChanged?.({ projectVersionId: input.projectVersionId });
     return {
       projectVersionId: input.projectVersionId,
       components: state.rows,

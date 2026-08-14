@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, configure, fireEvent, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  configure,
+  fireEvent,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 import { connectedRemoteStatus } from "../../../../test/app-connections.js";
 import type { JsonValue } from "../../../../shared/contract.js";
@@ -123,6 +129,8 @@ async function renderBom(
   subPath = "software",
   detailHandler: (input: unknown) => unknown | Promise<unknown> = () =>
     Promise.reject(new Error("unused")),
+  pullHandler: (input: unknown) => unknown | Promise<unknown> = () =>
+    Promise.reject(new Error("unused")),
 ) {
   const app = await loadPluginApp(() => import("../../../../app.js"));
   const panel = app.navPanels.find((candidate) => candidate.path === "bom");
@@ -138,19 +146,102 @@ async function renderBom(
       },
       rpc: {
         connectionsStatus: connectedRemoteStatus,
+        bomCachedProjectVersions: () => ({
+          versions: [
+            {
+              platformProjectId: "project-1",
+              projectVersionId: "version-1",
+              asOf: "2026-08-12T20:00:00.000Z",
+              state: "fresh",
+            },
+          ],
+          selectedPlatformProjectId: "project-1",
+          selectedProjectVersionId: "version-1",
+        }),
         bomSoftwareList: handler,
         bomComponentGet: detailHandler,
+        syncPull: pullHandler,
         firmwareMountsList: () => ({ items: [], total: 0, next: null, cache }),
       },
     },
   );
-  fireEvent.change(await slot.findByLabelText("Finite State project version ID"), {
-    target: { value: "version-1" },
-  });
+  await slot.findByLabelText("Finite State project version");
   return slot;
 }
 
 describe("SBOM virtual table", () => {
+  it("pulls an empty scoped cache through sync and renders the resulting rows", async () => {
+    let pulled = false;
+    const emptyCache = {
+      ...cache,
+      state: "empty" as const,
+      asOf: null,
+      acceptedGenerationId: null,
+      baseRevision: 0,
+    };
+    const slot = await renderBom(
+      () =>
+        pulled
+          ? { items: [component(0)], total: 1, next: null, cache }
+          : { items: [], total: 0, next: null, cache: emptyCache },
+      "software",
+      undefined,
+      () => {
+        pulled = true;
+        return {
+          projectId: "project-1",
+          projectVersionId: "version-1",
+          generationId: "generation-2",
+          acceptedAt: "2026-08-12T21:00:00.000Z",
+          baseStateSha256: "a".repeat(64),
+          kinds: { sbomComponent: { fetched: 0, baseRows: 0 } },
+          workingFastForwarded: true,
+          divergence: [],
+        };
+      },
+    );
+    fireEvent.click(await slot.findByRole("button", { name: "Pull SBOM" }));
+    expect(await slot.findByText("Component 0")).toBeTruthy();
+    expect(slot.inspection.rpcCalls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: "syncPull",
+          input: {
+            projectId: "project-1",
+            projectVersionId: "version-1",
+            kinds: ["sbomComponent"],
+          },
+        }),
+      ]),
+    );
+  });
+
+  it("shows a failed stale-cache pull beside the retained rows", async () => {
+    const staleCache = {
+      ...cache,
+      state: "stale" as const,
+      message: "Platform refresh failed (SBOM_REFRESH_FAILED)",
+    };
+    const slot = await renderBom(
+      () => ({
+        items: [component(0)],
+        total: 1,
+        next: null,
+        cache: staleCache,
+      }),
+      "software",
+      undefined,
+      () =>
+        Promise.reject(new Error("Stored SBOM resume state is inconsistent")),
+    );
+    await slot.findByText("Component 0");
+    fireEvent.click(slot.getByRole("button", { name: "Pull again" }));
+    expect((await slot.findByRole("alert")).textContent).toContain(
+      "Stored SBOM resume state is inconsistent",
+    );
+    expect(slot.getByText("Component 0")).toBeTruthy();
+  });
+
   it("bounds mounted rows for 10,000 items and expands from the keyboard", async () => {
     const items = Array.from({ length: 10_000 }, (_, index) =>
       component(index),
@@ -183,14 +274,16 @@ describe("SBOM virtual table", () => {
         .closest('[role="row"]')
         ?.parentElement?.getAttribute("role"),
     ).toBe("presentation");
-    await waitFor(() => expect(slot.inspection.rpcCalls).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          method: "bomComponentGet",
-          input: expect.objectContaining({ componentId: "component-key-0" }),
-        }),
-      ]),
-    ));
+    await waitFor(() =>
+      expect(slot.inspection.rpcCalls).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            method: "bomComponentGet",
+            input: expect.objectContaining({ componentId: "component-key-0" }),
+          }),
+        ]),
+      ),
+    );
   });
 
   it("restores a shipped view through server filters", async () => {

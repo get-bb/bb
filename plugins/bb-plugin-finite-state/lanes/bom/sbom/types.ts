@@ -1,5 +1,8 @@
 import type Database from "better-sqlite3";
-import type { PlatformClient, RemoteService } from "../../../lib/remote/types.js";
+import type {
+  PlatformClient,
+  RemoteService,
+} from "../../../lib/remote/types.js";
 
 export type SbomSeverity = "critical" | "high" | "medium" | "low";
 export type SbomReachability =
@@ -78,19 +81,22 @@ export interface SbomPage<T> {
 export interface BomDeps {
   db: Database.Database;
   platform: Pick<PlatformClient, "listComponents">;
-  /** Verified worktree root. Staging is confined to .fs-sync/bom below it. */
-  worktreeRoot: string;
+  /** Verified plugin-data root. Staging is confined to .fs-sync/bom below it. */
+  stagingRoot: string;
+  /** Existing sync-engine generation whose final publication fence is external. */
+  generationId: string;
   signal?: AbortSignal;
   pageSize?: number;
   now?: () => Date;
-  generationId?: () => string;
   publishProgress?: (hint: {
     projectVersionId: string;
     components: number;
     pages: number;
   }) => void;
-  publishChanged?: (hint: { projectVersionId: string }) => void;
-  warn?: (message: string, details: { count: number; projectVersionId: string }) => void;
+  warn?: (
+    message: string,
+    details: { count: number; projectVersionId: string },
+  ) => void;
 }
 
 export class SbomPullError extends Error {
@@ -105,7 +111,10 @@ export class SbomPullError extends Error {
 }
 
 export class SbomQueryError extends Error {
-  constructor(readonly code: "BAD_CURSOR", message: string) {
+  constructor(
+    readonly code: "BAD_CURSOR",
+    message: string,
+  ) {
     super(message);
     this.name = "SbomQueryError";
   }

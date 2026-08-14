@@ -5,7 +5,8 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { useBbNavigate, useRealtime, useRpc } from "@bb/plugin-sdk/app";
 import type { z } from "zod";
-import type { JsonValue, rpcContract } from "../../../../shared/contract.js";
+import type { JsonValue } from "../../../../shared/contract.js";
+import { bomAppRpcContract } from "../../rpc.js";
 import type { SbomFiltersValue } from "./filters.js";
 import { encodeComponentRouteKey } from "./routes.js";
 import { SbomRow, type FindingRowView, type SbomRowView } from "./sbom-row.js";
@@ -21,7 +22,7 @@ interface FindingDetailState {
   message: string | null;
 }
 type BomSoftwarePage = z.output<
-  (typeof rpcContract)["bomSoftwareList"]["output"]
+  (typeof bomAppRpcContract)["bomSoftwareList"]["output"]
 >;
 type BomSoftwareItem = BomSoftwarePage["items"][number];
 
@@ -163,7 +164,7 @@ export function SbomTable({
   filters,
   onOpen,
 }: SbomTableProps): React.JSX.Element {
-  const rpc = useRpc<typeof rpcContract>();
+  const rpc = useRpc<typeof bomAppRpcContract>();
   const navigate = useBbNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
   const requestGeneration = useRef(0);
@@ -175,6 +176,8 @@ export function SbomTable({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
+  const [pulling, setPulling] = useState(false);
+  const [pullError, setPullError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -265,6 +268,26 @@ export function SbomTable({
       setLoadingMore(false);
     }
   }, [loadingMore, next, readPage]);
+
+  const pullInventory = useCallback(async () => {
+    if (pulling) return;
+    setPulling(true);
+    setPullError(null);
+    try {
+      await rpc.call("syncPull", {
+        projectId,
+        projectVersionId,
+        kinds: ["sbomComponent"],
+      });
+      await refresh();
+    } catch (cause) {
+      setPullError(
+        cause instanceof Error ? cause.message : "The SBOM pull failed.",
+      );
+    } finally {
+      setPulling(false);
+    }
+  }, [projectId, projectVersionId, pulling, refresh, rpc]);
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -381,15 +404,27 @@ export function SbomTable({
           <h3 className="mt-3 font-semibold">No components in this view</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             {cache?.state === "empty"
-              ? "Pull this project version’s SBOM, then retry."
+              ? "Pull this project version’s SBOM to load its components."
               : "Adjust the server-backed filters or choose another shipped view."}
           </p>
+          {pullError ? (
+            <p className="mt-2 text-sm text-destructive" role="alert">
+              {pullError}
+            </p>
+          ) : null}
           <Button
             className="mt-4"
-            onClick={() => void refresh()}
+            disabled={pulling}
+            onClick={() =>
+              cache?.state === "empty" ? void pullInventory() : void refresh()
+            }
             variant="outline"
           >
-            Retry query
+            {cache?.state === "empty"
+              ? pulling
+                ? "Pulling SBOM…"
+                : "Pull SBOM"
+              : "Retry query"}
           </Button>
         </div>
       </div>
@@ -398,10 +433,10 @@ export function SbomTable({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {cache?.state === "stale" || error ? (
+      {cache?.state === "stale" || error || pullError ? (
         <div
           className="flex items-center gap-2 border-b border-destructive/40 bg-muted px-3 py-2 text-sm"
-          role="status"
+          role={pullError ? "alert" : "status"}
         >
           <Icon
             aria-hidden="true"
@@ -409,15 +444,29 @@ export function SbomTable({
             name="AlertTriangle"
           />
           <span className="min-w-0 flex-1 truncate">
-            {error ?? cache?.message ?? "Showing the last complete SBOM cache."}
+            {pullError ??
+              error ??
+              cache?.message ??
+              "Showing the last complete SBOM cache."}
           </span>
-          <Button
-            onClick={() => void refresh(true)}
-            size="sm"
-            variant="outline"
-          >
-            Retry
-          </Button>
+          {cache?.state === "stale" ? (
+            <Button
+              disabled={pulling}
+              onClick={() => void pullInventory()}
+              size="sm"
+              variant="outline"
+            >
+              {pulling ? "Pulling…" : "Pull again"}
+            </Button>
+          ) : (
+            <Button
+              onClick={() => void refresh(true)}
+              size="sm"
+              variant="outline"
+            >
+              Retry query
+            </Button>
+          )}
         </div>
       ) : null}
       <div

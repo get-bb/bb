@@ -1,9 +1,11 @@
 import type { BbPluginApi } from "@bb/plugin-sdk";
 import type { PluginContext } from "../../lib/context.js";
 import type Database from "better-sqlite3";
+import { dirname, isAbsolute } from "node:path";
 import type { PlatformClient, RemoteServices } from "../../lib/remote/types.js";
 import type { JsonValue } from "../../shared/contract.js";
 import { rpcContract } from "../../shared/contract.js";
+import { registerCachePuller } from "../sync/engine/adapter.js";
 import { applyHbomExtraction } from "./hbom/extract.js";
 import {
   handleHbomCycloneDxExport,
@@ -30,6 +32,7 @@ import type {
   SbomPullInput,
   SbomPullResult,
 } from "./sbom/types.js";
+import { bomCachedVersionsContract } from "./rpc.js";
 
 const bomRpcContract = {
   bomSoftwareList: rpcContract.bomSoftwareList,
@@ -41,7 +44,12 @@ const bomRpcContract = {
 
 export interface BomCommandServices {
   pull(
-    input: SbomPullInput & { worktreeRoot: string; signal?: AbortSignal },
+    input: SbomPullInput & {
+      stagingRoot: string;
+      signal?: AbortSignal;
+      generationId: string;
+      onProgress?: (progress: { pages: number }) => void;
+    },
   ): Promise<SbomPullResult>;
 }
 
@@ -51,18 +59,17 @@ export function createBomCommandServices(
   platform: () => Pick<PlatformClient, "listComponents">,
 ): BomCommandServices {
   return {
-    pull({ worktreeRoot, signal, ...input }) {
+    pull({ stagingRoot, signal, generationId, onProgress, ...input }) {
       return pullSbom(
         {
           db,
           platform: platform(),
-          worktreeRoot,
+          stagingRoot,
+          generationId,
           ...(signal ? { signal } : {}),
           publishProgress(hint) {
             bb.realtime.publish("bom:progress", hint);
-          },
-          publishChanged(hint) {
-            bb.realtime.publish("bom:changed", hint);
+            onProgress?.({ pages: hint.pages });
           },
           warn(message, details) {
             bb.log.warn(
@@ -228,7 +235,7 @@ function softwareQuery(input: {
 
 export function registerBom(bb: BbPluginApi, ctx: PluginContext): void {
   const db = ctx.db();
-  ctx.service("bom.command-services", () =>
+  const commands = ctx.service("bom.command-services", () =>
     createBomCommandServices(
       bb,
       db,
@@ -238,6 +245,69 @@ export function registerBom(bb: BbPluginApi, ctx: PluginContext): void {
         }).platform,
     ),
   );
+  registerCachePuller(
+    "sbomComponent",
+    async (scope, generationId, onProgress) => {
+      if (scope.projectVersionId === null) {
+        throw new Error(
+          "SBOM_PROJECT_VERSION_REQUIRED: software inventory is version-scoped",
+        );
+      }
+      if (db.memory || !isAbsolute(db.name)) {
+        throw new Error("SBOM_STAGING_ROOT_UNAVAILABLE");
+      }
+      await commands.pull({
+        projectId: scope.projectId,
+        projectVersionId: scope.projectVersionId,
+        stagingRoot: dirname(db.name),
+        resume: true,
+        generationId,
+        onProgress: ({ pages }) => onProgress({ page: pages, of: null }),
+      });
+    },
+  );
+  bb.rpc.register(bomCachedVersionsContract, {
+    async bomCachedProjectVersions(input) {
+      const project = await bb.sdk.projects.get({ projectId: input.projectId });
+      if (project.sources.length === 0) {
+        throw new Error("BOM_PROJECT_SOURCE_REQUIRED");
+      }
+      const rows = db
+        .prepare<
+          [],
+          {
+            project_id: string;
+            project_version_id: string;
+            as_of: string | null;
+            stale: number;
+          }
+        >(
+          `SELECT project_id, project_version_id,
+                MAX(CASE WHEN entity_kind = 'sbomComponent' THEN last_pull END) AS as_of,
+                MAX(CASE
+                      WHEN entity_kind = 'sbomComponent' AND error IS NOT NULL THEN 1
+                      ELSE 0
+                    END) AS stale
+           FROM sync_state
+          WHERE entity_kind IN ('finding', 'sbomComponent')
+            AND accepted_generation_id IS NOT NULL
+          GROUP BY project_id, project_version_id
+          ORDER BY MAX(last_pull) DESC, project_id ASC, project_version_id ASC`,
+        )
+        .all();
+      const versions = rows.map((row) => ({
+        platformProjectId: row.project_id,
+        projectVersionId: row.project_version_id,
+        asOf: row.as_of,
+        state: row.stale === 1 ? ("stale" as const) : ("fresh" as const),
+      }));
+      return {
+        versions,
+        selectedPlatformProjectId: versions[0]?.platformProjectId ?? null,
+        selectedProjectVersionId: versions[0]?.projectVersionId ?? null,
+      };
+    },
+  });
   bb.rpc.register(bomRpcContract, {
     bomSoftwareList(input) {
       const page = querySbomForProject(
@@ -344,13 +414,17 @@ export function registerBom(bb: BbPluginApi, ctx: PluginContext): void {
     },
   });
 
-  bb.http.route("GET", "/sbom/export", createSbomHttpHandler({
-    get platform() {
-      return ctx.service<RemoteServices>("remote-services", () => {
-        throw new Error("REMOTE_SERVICES_NOT_REGISTERED");
-      }).platform;
-    },
-  }));
+  bb.http.route(
+    "GET",
+    "/sbom/export",
+    createSbomHttpHandler({
+      get platform() {
+        return ctx.service<RemoteServices>("remote-services", () => {
+          throw new Error("REMOTE_SERVICES_NOT_REGISTERED");
+        }).platform;
+      },
+    }),
+  );
   bb.http.route("GET", "/hbom/export.xlsx", handleHbomXlsxExport);
   bb.http.route("GET", "/hbom/export.cdx.json", handleHbomCycloneDxExport);
 }
