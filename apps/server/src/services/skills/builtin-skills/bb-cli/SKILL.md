@@ -729,7 +729,8 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - The store also lists the **BB Official marketplace** catalog: a manifest
     the server re-reads at startup and every six hours from
     `https://getbb.app/marketplace/v1/marketplace.json`
-    (override with `BB_MARKETPLACE_URL`). Its entries install from their listed
+    (override with `BB_MARKETPLACE_URL`, which the server reads only at
+    startup). Its entries install from their listed
     git or npm source through the normal install pipeline. A refresh only
     updates discovery metadata and icons; it never installs, updates, or runs
     plugin code, and a failed refresh keeps the last catalog bb validated.
