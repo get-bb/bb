@@ -10,10 +10,9 @@ import {
   ConfirmDeleteDialogContent,
 } from "@/components/dialogs/ConfirmDeleteDialog";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
-import { invalidatePluginCatalogSearch } from "@/hooks/cache-owners/plugin-cache-owner";
+import { invalidatePluginMarketplaces } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   addPluginMarketplace,
-  pluginMarketplacesQueryKey,
   refreshPluginMarketplaces,
   removePluginMarketplace,
   usePluginMarketplaces,
@@ -41,12 +40,7 @@ export function MarketplacesSettingsSection() {
   const marketplacesQuery = usePluginMarketplaces({ enabled: true });
   const marketplaces = marketplacesQuery.data ?? [];
 
-  const invalidate = () => {
-    void queryClient.invalidateQueries({
-      queryKey: pluginMarketplacesQueryKey(),
-    });
-    invalidatePluginCatalogSearch({ queryClient });
-  };
+  const invalidate = () => invalidatePluginMarketplaces({ queryClient });
 
   const add = useMutation({
     mutationFn: (value: string) => addPluginMarketplace(fetch, value),

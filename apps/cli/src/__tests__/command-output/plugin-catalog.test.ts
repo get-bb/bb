@@ -18,7 +18,45 @@ const searchResult = {
   iconUrl: null,
   category: "Developer tools",
   source: "builtin:linear",
+  marketplace: "bb-official",
+  marketplaceDisplayName: "BB Official",
+  official: true,
+  author: null,
   installed: false,
+  compatible: true,
+  incompatibleReason: null,
+};
+
+const bundledPlan = {
+  kind: "bundled",
+  entryId: "linear",
+  pluginId: "linear",
+  displayName: "Linear",
+  source: "builtin:linear",
+  compatible: true,
+  incompatibleReason: null,
+};
+
+/** A third-party listing that ranges over the repository's release tags. */
+const thirdPartyPlan = {
+  kind: "marketplace",
+  entryId: "notes",
+  pluginId: "notes",
+  displayName: "Acme Notes",
+  marketplace: "acme-plugins",
+  marketplaceDisplayName: "Acme Plugins",
+  official: false,
+  author: { name: "Acme", url: "https://github.com/acme" },
+  source: "git:https://github.com/acme/plugins.git@semver:notes/:^1.0.0",
+  resolvedSource: {
+    kind: "git",
+    url: "https://github.com/acme/plugins.git",
+    subdir: "plugins/notes",
+    range: "^1.0.0",
+    tagPrefix: "notes/",
+    resolvedTag: "notes/v1.2.0",
+    resolvedCommit: "b".repeat(40),
+  },
   compatible: true,
   incompatibleReason: null,
 };
@@ -237,6 +275,7 @@ describe("bb plugin catalog", () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
       .mockResolvedValueOnce(json({ results: [searchResult] }))
+      .mockResolvedValueOnce(json({ plan: bundledPlan }))
       .mockResolvedValueOnce(json({ ok: true, plugin: installedPlugin }));
 
     await runCommand(["plugin", "install", "linear", "--yes"], register);
@@ -244,10 +283,15 @@ describe("bb plugin catalog", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       "http://server/api/v1/plugin-catalog/search?q=linear",
     );
+    // The plan is the routing authority: the confirmation describes what the
+    // server would install, not what the CLI guessed.
     expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      "http://server/api/v1/plugin-catalog/install-plan?entryId=linear",
+    );
+    expect(fetchMock.mock.calls[2]?.[0]).toBe(
       "http://server/api/v1/plugin-catalog/install",
     );
-    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+    expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toEqual({
       entryId: "linear",
     });
     expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
@@ -255,10 +299,89 @@ describe("bb plugin catalog", () => {
     );
   });
 
+  it("shows a third-party listing's true resolved source before installing", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(json({ plan: thirdPartyPlan }))
+      .mockResolvedValueOnce(json({ ok: true, plugin: installedPlugin }));
+
+    await runCommand(["plugin", "install", "notes@acme-plugins", "--yes"], register);
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "http://server/api/v1/plugin-catalog/install-plan?entryId=notes&marketplace=acme-plugins",
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+      entryId: "notes",
+      marketplace: "acme-plugins",
+    });
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("Acme Plugins — a third-party marketplace");
+    expect(output).toContain("author: Acme (https://github.com/acme)");
+    expect(output).toContain(
+      "git repository: https://github.com/acme/plugins.git",
+    );
+    expect(output).toContain("subdirectory: plugins/notes");
+    expect(output).toContain("semver range: ^1.0.0 (tags notes/vX.Y.Z)");
+    expect(output).toContain("resolves to tag: notes/v1.2.0");
+    expect(output).toContain(`resolves to commit: ${"b".repeat(40)}`);
+  });
+
+  it("reports an npm listing by package and range", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(
+        json({
+          plan: {
+            ...thirdPartyPlan,
+            source: "npm:bb-plugin-notes@beta",
+            resolvedSource: {
+              kind: "npm",
+              package: "bb-plugin-notes",
+              tag: "beta",
+              registry: "https://npm.acme.test",
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(json({ ok: true, plugin: installedPlugin }));
+
+    await runCommand(["plugin", "install", "notes@acme-plugins", "--yes"], register);
+
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("npm package: bb-plugin-notes@beta");
+    expect(output).toContain("registry: https://npm.acme.test");
+  });
+
+  it("says so when a listed git source does not resolve right now", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(
+        json({
+          plan: {
+            ...thirdPartyPlan,
+            resolvedSource: {
+              kind: "git",
+              url: "https://github.com/acme/plugins.git",
+              range: "^1.0.0",
+              unresolvedReason: "no release tag matches ^1.0.0",
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(json({ ok: true, plugin: installedPlugin }));
+
+    await runCommand(["plugin", "install", "notes@acme-plugins", "--yes"], register);
+
+    expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
+      "not resolved right now: no release tag matches ^1.0.0",
+    );
+  });
+
   it("preserves full-trust confirmation for catalog installs", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
       .mockResolvedValueOnce(json({ results: [searchResult] }))
+      .mockResolvedValueOnce(json({ plan: bundledPlan }))
       .mockResolvedValueOnce(json({ ok: true, plugin: installedPlugin }));
     readlineMocks.question.mockResolvedValue("yes");
 
@@ -267,17 +390,19 @@ describe("bb plugin catalog", () => {
     expect(readlineMocks.question).toHaveBeenCalledWith("Install? [y/N] ");
   });
 
-  it("does not resolve the removed entry@marketplace syntax", async () => {
-    await expect(
-      runCommand(
-        ["plugin", "install", "linear@bb-official", "--yes"],
-        register,
-      ),
-    ).rejects.toThrow("process.exit:1");
+  it("routes entry@marketplace to that marketplace without a search", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(json({ plan: bundledPlan }))
+      .mockResolvedValueOnce(json({ ok: true, plugin: installedPlugin }));
 
-    expect(fetch).not.toHaveBeenCalled();
-    expect(collectLogPayloads(vi.mocked(console.error)).join("\n")).toContain(
-      "either a catalog plugin or a path on disk",
+    await runCommand(
+      ["plugin", "install", "linear@bb-official", "--yes"],
+      register,
+    );
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "http://server/api/v1/plugin-catalog/install-plan?entryId=linear&marketplace=bb-official",
     );
   });
 

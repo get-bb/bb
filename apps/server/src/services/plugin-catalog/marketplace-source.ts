@@ -57,7 +57,9 @@ export function parseMarketplaceSource(raw: string): MarketplaceSource {
     if (parsed.kind !== "git") {
       throw new Error(`invalid marketplace git source "${source}"`);
     }
-    if (parsed.selector.kind === "range") {
+    // A marketplace has no release tags to range over, and a spec that could
+    // read as either is refused rather than guessed.
+    if (parsed.selector.kind !== "ref") {
       throw new Error(
         `invalid marketplace git source "${source}": a marketplace ref names one branch, tag, or commit`,
       );

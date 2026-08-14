@@ -5,6 +5,7 @@ import {
   type PluginSettingsView,
 } from "../queries/plugin-settings-queries";
 import type { InstalledPlugin } from "@bb/server-contract";
+import { pluginMarketplacesQueryKey } from "../queries/plugin-catalog-queries";
 import {
   allPluginCatalogSearchQueryKeyPrefix,
   allPluginListQueryKeyPrefix,
@@ -82,4 +83,17 @@ export function invalidatePluginCatalogSearch(args: {
   void args.queryClient.invalidateQueries({
     queryKey: allPluginCatalogSearchQueryKeyPrefix(),
   });
+}
+
+/**
+ * Refetch the marketplace list after an add, refresh, or remove. The catalog
+ * the store reads changes with it, so both prefixes go together.
+ */
+export function invalidatePluginMarketplaces(args: {
+  queryClient: QueryClient;
+}): void {
+  void args.queryClient.invalidateQueries({
+    queryKey: pluginMarketplacesQueryKey(),
+  });
+  invalidatePluginCatalogSearch(args);
 }

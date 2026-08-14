@@ -151,4 +151,163 @@ describe("plugin catalog routes", () => {
     );
     expect(missing.status).toBe(404);
   });
+
+  describe("marketplace routes", () => {
+    const ACME_URL = "https://acme.test/marketplace.json";
+
+    function acmeCatalog(): unknown {
+      return {
+        schemaVersion: 1,
+        name: "acme-plugins",
+        displayName: "Acme Plugins",
+        plugins: [
+          {
+            id: "notes",
+            displayName: "Acme Notes",
+            description: "Notes beside a thread.",
+            icon: "Zap",
+            author: { name: "Acme" },
+            source: {
+              npm: { package: "bb-plugin-notes", range: "^1.0.0" },
+            },
+          },
+        ],
+      };
+    }
+
+    function acmeApp() {
+      return catalogApp(async (url) =>
+        url === ACME_URL
+          ? new Response(JSON.stringify(acmeCatalog()), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            })
+          : new Response("not found", { status: 404 }),
+      );
+    }
+
+    async function postJson(
+      app: ReturnType<typeof catalogApp>["app"],
+      path: string,
+      body: unknown,
+    ): Promise<Response> {
+      return app.request(path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    }
+
+    it("adds, lists, refreshes, and removes through the routes", async () => {
+      const { app } = acmeApp();
+
+      const added = await postJson(app, "/marketplaces", { source: ACME_URL });
+      expect(added.status).toBe(200);
+      await expect(added.json()).resolves.toMatchObject({
+        ok: true,
+        marketplace: { name: "acme-plugins", official: false, entryCount: 1 },
+      });
+
+      const listed = await app.request("/marketplaces");
+      await expect(listed.json()).resolves.toMatchObject({
+        marketplaces: [{ name: "bb-official" }, { name: "acme-plugins" }],
+      });
+
+      const refreshed = await postJson(app, "/marketplaces/refresh", {
+        name: "acme-plugins",
+      });
+      await expect(refreshed.json()).resolves.toMatchObject({
+        results: [{ name: "acme-plugins", ok: true, error: null }],
+      });
+
+      const removed = await app.request("/marketplaces/acme-plugins", {
+        method: "DELETE",
+      });
+      expect(removed.status).toBe(200);
+      await expect(removed.json()).resolves.toEqual({
+        ok: true,
+        convertedPluginIds: [],
+      });
+    });
+
+    it("validates request bodies and marketplace names at the boundary", async () => {
+      const { app } = acmeApp();
+
+      const badBody = await postJson(app, "/marketplaces", { url: ACME_URL });
+      expect(badBody.status).toBe(422);
+
+      const badName = await app.request("/marketplaces/Not%20A%20Name", {
+        method: "DELETE",
+      });
+      expect(badName.status).toBe(422);
+
+      const badRefresh = await postJson(app, "/marketplaces/refresh", {
+        name: "Not A Name",
+      });
+      expect(badRefresh.status).toBe(422);
+
+      const reserved = await app.request("/marketplaces/bb-official", {
+        method: "DELETE",
+      });
+      expect(reserved.status).toBe(422);
+      await expect(reserved.json()).resolves.toMatchObject({
+        error: expect.stringContaining("cannot be removed"),
+      });
+    });
+
+    it("serves an install plan and refuses an unknown selector", async () => {
+      const { app } = acmeApp();
+      await postJson(app, "/marketplaces", { source: ACME_URL });
+
+      const plan = await app.request(
+        "/plugin-catalog/install-plan?entryId=notes&marketplace=acme-plugins",
+      );
+      expect(plan.status).toBe(200);
+      await expect(plan.json()).resolves.toMatchObject({
+        plan: {
+          kind: "marketplace",
+          marketplace: "acme-plugins",
+          official: false,
+          source: "npm:bb-plugin-notes@^1.0.0",
+          resolvedSource: {
+            kind: "npm",
+            package: "bb-plugin-notes",
+            range: "^1.0.0",
+          },
+        },
+      });
+
+      const missingEntry = await app.request(
+        "/plugin-catalog/install-plan?entryId=nope",
+      );
+      expect(missingEntry.status).toBe(422);
+
+      const missingArgs = await app.request("/plugin-catalog/install-plan");
+      expect(missingArgs.status).toBe(422);
+    });
+
+    it("routes an install to the named marketplace", async () => {
+      const { app } = acmeApp();
+      await postJson(app, "/marketplaces", { source: ACME_URL });
+
+      const install = await postJson(app, "/plugin-catalog/install", {
+        entryId: "notes",
+        marketplace: "acme-plugins",
+      });
+      expect(install.status).toBe(422);
+      await expect(install.json()).resolves.toMatchObject({
+        error: expect.stringContaining("unexpected catalog install"),
+      });
+
+      const unknownMarketplace = await postJson(
+        app,
+        "/plugin-catalog/install",
+        { entryId: "notes", marketplace: "nope" },
+      );
+      expect(unknownMarketplace.status).toBe(422);
+      await expect(unknownMarketplace.json()).resolves.toMatchObject({
+        error: expect.stringContaining('unknown marketplace "nope"'),
+      });
+    });
+  });
 });

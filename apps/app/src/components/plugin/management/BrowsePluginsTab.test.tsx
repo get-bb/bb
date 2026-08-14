@@ -170,6 +170,59 @@ describe("BrowsePluginsTab", () => {
     expect(screen.getByText("Developer tools")).toBeTruthy();
   });
 
+  it("groups entries by marketplace and names third-party origins on cards", async () => {
+    const entries = [
+      { ...MEMORY_ENTRY, displayName: "Memory" },
+      {
+        ...MEMORY_ENTRY,
+        entryId: "notes",
+        pluginId: "notes",
+        displayName: "Acme Notes",
+        category: "Git Tools",
+        marketplace: "acme-plugins",
+        marketplaceDisplayName: "Acme Plugins",
+        official: false,
+        author: { name: "Acme", url: "https://github.com/acme" },
+      },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugin-catalog") {
+          return jsonResponse({ catalog: CATALOG_STATUS });
+        }
+        if (url === "/api/v1/plugin-catalog/search?q=") {
+          return jsonResponse({ results: entries });
+        }
+        if (url === "/api/v1/plugins") {
+          return jsonResponse({ enabled: true, plugins: [] });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <BrowsePluginsTab
+          onInstall={() => {}}
+          onOpenPlugin={() => {}}
+          onInstallFromSource={() => {}}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    await screen.findByText("Acme Notes");
+    // Two marketplaces, so each group names itself and the third-party one
+    // says what it is.
+    expect(screen.getByText("BB Official")).toBeTruthy();
+    expect(screen.getAllByText("Acme Plugins").length).toBeGreaterThan(0);
+    expect(screen.getByText("third-party marketplace")).toBeTruthy();
+    // Cards carry the author.
+    expect(screen.getByText("Acme")).toBeTruthy();
+  });
+
   it("renders every catalog entry once and filters the grid by category", async () => {
     const entries = Array.from(
       { length: CATALOG_STATUS.pluginCount },

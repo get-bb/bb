@@ -388,6 +388,71 @@ describe("AddPluginDialog", () => {
     });
   });
 
+  it("shows a third-party listing's resolved source before confirming", async () => {
+    const requests = stubFetch();
+    renderDialog({
+      entryId: "notes",
+      marketplace: "acme-plugins",
+      displayName: "Acme Notes",
+      icon: "Zap",
+      iconUrl: null,
+      source: "git:https://github.com/acme/plugins.git@semver:^1.0.0",
+    });
+
+    // The resolved tag and commit are the point: the listing's own copy is not
+    // evidence of what the install fetches.
+    await vi.waitFor(() => {
+      expect(screen.getByText("v1.2.3")).toBeTruthy();
+    });
+    expect(screen.getByText("a".repeat(40))).toBeTruthy();
+    expect(screen.getByText("https://github.com/acme/plugins.git")).toBeTruthy();
+    expect(screen.getByText("^1.0.0")).toBeTruthy();
+    expect(screen.getByText(/third-party marketplace/)).toBeTruthy();
+    expect(screen.getByText("Acme Plugins")).toBeTruthy();
+    expect(
+      requests.some((request) =>
+        request.url.startsWith("/api/v1/plugin-catalog/install-plan"),
+      ),
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: /install acme notes/i }));
+    await vi.waitFor(() => {
+      const post = requests.find(
+        (request) => request.url === "/api/v1/plugin-catalog/install",
+      );
+      expect(JSON.parse(String(post?.init?.body))).toEqual({
+        entryId: "notes",
+        marketplace: "acme-plugins",
+      });
+    });
+  });
+
+  it("does not resolve a plan for an official catalog entry", async () => {
+    const requests = stubFetch();
+    renderDialog({
+      entryId: "linear",
+      marketplace: "bb-official",
+      displayName: "Linear",
+      icon: "Github",
+      iconUrl: null,
+      source: "builtin:linear",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /install linear/i }));
+    await vi.waitFor(() => {
+      expect(
+        requests.some(
+          (request) => request.url === "/api/v1/plugin-catalog/install",
+        ),
+      ).toBe(true);
+    });
+    expect(
+      requests.some((request) =>
+        request.url.startsWith("/api/v1/plugin-catalog/install-plan"),
+      ),
+    ).toBe(false);
+  });
+
   it("invalidates catalog-search queries after a successful install", async () => {
     stubFetch();
     const { wrapper, queryClient } = createQueryClientTestHarness();
