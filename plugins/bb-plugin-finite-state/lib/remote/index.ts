@@ -59,6 +59,25 @@ export interface RemoteConnectionDiagnostics {
   assuranceStudio: RemoteFailureDiagnostic | null;
   forgeCompute: RemoteFailureDiagnostic | null;
 }
+export type RemoteSelfDiagnosisState =
+  | "checking"
+  | "ok"
+  | "auth-failed"
+  | "unreachable"
+  | "timed-out"
+  | "not-configured"
+  | "invalid-settings"
+  | "request-failed";
+export interface RemoteSelfDiagnosis {
+  state: RemoteSelfDiagnosisState;
+  message: string;
+  checkedAt: string | null;
+  durationMs: number | null;
+}
+export interface RemoteConnectionSelfDiagnosis {
+  platform: RemoteSelfDiagnosis;
+  assuranceStudio: RemoteSelfDiagnosis;
+}
 
 export interface RemoteServiceController {
   readonly services: RemoteServices;
@@ -68,6 +87,7 @@ export interface RemoteServiceController {
   ): Promise<void>;
   connectionStatus(): RemoteConnectionStatus;
   connectionDiagnostics(): RemoteConnectionDiagnostics;
+  connectionSelfDiagnosis(): RemoteConnectionSelfDiagnosis;
   dispose(): Promise<void>;
 }
 
@@ -77,6 +97,7 @@ interface Slot<Client> {
   abort: AbortController;
   status: ConnectionStatus;
   diagnostic: RemoteFailureDiagnostic | null;
+  probeDurationMs: number | null;
   generation: number;
 }
 
@@ -377,16 +398,107 @@ function originLabel(value: string | null): string | null {
   }
 }
 
-function isAbsoluteHttpUrl(value: string): boolean {
+function remoteBaseUrlError(
+  service: "platform" | "assurance-studio",
+  value: string,
+): string | null {
+  let url: URL;
   try {
-    const url = new URL(value);
-    return (
-      (url.protocol === "http:" || url.protocol === "https:") &&
-      url.host.length > 0
-    );
+    url = new URL(value);
   } catch {
-    return false;
+    const name = service === "platform" ? "Platform" : "Assurance Studio";
+    const setting = service === "platform" ? "platformBaseUrl" : "asBaseUrl";
+    return `${name} URL (${setting}) is malformed. Enter an absolute HTTP(S) URL in connection settings.`;
   }
+  if (
+    (url.protocol !== "http:" && url.protocol !== "https:") ||
+    url.host.length === 0
+  ) {
+    const name = service === "platform" ? "Platform" : "Assurance Studio";
+    const setting = service === "platform" ? "platformBaseUrl" : "asBaseUrl";
+    return `${name} URL (${setting}) is malformed. Enter an absolute HTTP(S) URL in connection settings.`;
+  }
+  const path = url.pathname.replace(/\/+$/u, "");
+  if (service === "platform" && !path.endsWith("/api")) {
+    return "Platform URL (platformBaseUrl) must end with /api because Platform routes omit that prefix.";
+  }
+  if (service === "assurance-studio" && path.endsWith("/api")) {
+    return "Assurance Studio URL (asBaseUrl) must not end with /api because Assurance Studio routes already include that prefix.";
+  }
+  return null;
+}
+
+function missingSettingsMessage(
+  service: "platform" | "assurance-studio",
+  baseUrl: string | null,
+  credential: string | null,
+): string {
+  const missing =
+    service === "platform"
+      ? [
+          ...(baseUrl === null ? ["Platform URL (platformBaseUrl)"] : []),
+          ...(credential === null ? ["Platform token (platformToken)"] : []),
+        ]
+      : [
+          ...(baseUrl === null ? ["Assurance Studio URL (asBaseUrl)"] : []),
+          ...(credential === null
+            ? ["Assurance Studio API key (asApiKey)"]
+            : []),
+        ];
+  return `${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} not configured.`;
+}
+
+function selfDiagnosis(
+  slot: Slot<unknown>,
+  notConfiguredMessage: string,
+): RemoteSelfDiagnosis {
+  const diagnostic = slot.diagnostic;
+  let state: RemoteSelfDiagnosisState;
+  if (diagnostic !== null) {
+    switch (diagnostic.kind) {
+      case "authentication":
+        state = "auth-failed";
+        break;
+      case "network-unreachable":
+        state = "unreachable";
+        break;
+      case "timeout":
+        state = "timed-out";
+        break;
+      case "settings":
+        state = "invalid-settings";
+        break;
+      case "http":
+      case "unknown":
+        state = "request-failed";
+        break;
+    }
+  } else if (slot.status.state === "connected") {
+    state = "ok";
+  } else if (slot.status.state === "configured") {
+    state = "checking";
+  } else {
+    state = "not-configured";
+  }
+  const duration = slot.probeDurationMs;
+  const message =
+    state === "ok"
+      ? duration !== null && duration >= 10_000
+        ? `Authenticated read succeeded in ${(duration / 1_000).toFixed(1)}s (slow response).`
+        : `Authenticated read succeeded${duration === null ? "." : ` in ${duration}ms.`}`
+      : state === "checking"
+        ? "Authenticated read is in progress."
+        : state === "not-configured"
+          ? notConfiguredMessage
+          : (diagnostic?.message ??
+            slot.status.message ??
+            "Remote is not configured.");
+  return {
+    state,
+    message,
+    checkedAt: slot.status.checkedAt,
+    durationMs: duration,
+  };
 }
 
 function emptySlot<Client>(status: ConnectionStatus): Slot<Client> {
@@ -396,6 +508,7 @@ function emptySlot<Client>(status: ConnectionStatus): Slot<Client> {
     abort: new AbortController(),
     status,
     diagnostic: null,
+    probeDurationMs: null,
     generation: 0,
   };
 }
@@ -403,6 +516,7 @@ function emptySlot<Client>(status: ConnectionStatus): Slot<Client> {
 export function createRemoteServiceController(
   ctx: PluginContext,
   initial: RemoteSettingValues,
+  onConnectionStatusChange: () => void = () => undefined,
 ): RemoteServiceController {
   let disposed = false;
   let publishForgeHint:
@@ -449,8 +563,11 @@ export function createRemoteServiceController(
     label: string | null,
   ) => {
     const generation = slot.generation;
+    const startedAt = Date.now();
     try {
       await slot.client?.health({ signal: slot.abort.signal });
+      if (!disposed && slot.generation === generation)
+        slot.probeDurationMs = Math.max(0, Date.now() - startedAt);
       if (!disposed && slot.generation === generation) slot.diagnostic = null;
       if (!disposed && slot.generation === generation)
         slot.status = {
@@ -468,6 +585,7 @@ export function createRemoteServiceController(
         !slot.abort.signal.aborted
       ) {
         const diagnostic = diagnoseRemoteFailure(error);
+        slot.probeDurationMs = Math.max(0, Date.now() - startedAt);
         slot.diagnostic = diagnostic;
         slot.status = {
           state: "unreachable",
@@ -475,6 +593,9 @@ export function createRemoteServiceController(
           checkedAt: new Date().toISOString(),
         };
       }
+    } finally {
+      if (!disposed && slot.generation === generation)
+        onConnectionStatusChange();
     }
   };
 
@@ -492,16 +613,18 @@ export function createRemoteServiceController(
     }
     let client: PlatformClient;
     try {
-      if (!isAbsoluteHttpUrl(next.platformBaseUrl))
-        throw new TypeError("invalid URL");
+      const baseUrlError = remoteBaseUrlError("platform", next.platformBaseUrl);
+      if (baseUrlError !== null) throw new TypeError(baseUrlError);
       client = new PlatformClient({
         baseUrl: next.platformBaseUrl,
         token: next.platformToken,
         concurrency: next.platformConcurrency,
       });
-    } catch {
+    } catch (error: unknown) {
       const message =
-        "Platform URL (platformBaseUrl) is malformed. Enter an absolute HTTP(S) URL in connection settings.";
+        error instanceof TypeError
+          ? error.message
+          : "Platform URL (platformBaseUrl) is malformed. Enter an absolute HTTP(S) URL in connection settings.";
       platform = emptySlot({
         state: "needs-configuration",
         message,
@@ -521,6 +644,7 @@ export function createRemoteServiceController(
         checkedAt: null,
       },
       diagnostic: null,
+      probeDurationMs: null,
       generation: old.generation + 1,
     };
     void probe(platform, "Platform", originLabel(next.platformBaseUrl));
@@ -540,16 +664,21 @@ export function createRemoteServiceController(
     }
     let client: AssuranceStudioClient;
     try {
-      if (!isAbsoluteHttpUrl(next.asBaseUrl))
-        throw new TypeError("invalid URL");
+      const baseUrlError = remoteBaseUrlError(
+        "assurance-studio",
+        next.asBaseUrl,
+      );
+      if (baseUrlError !== null) throw new TypeError(baseUrlError);
       client = new AssuranceStudioClient({
         baseUrl: next.asBaseUrl,
         apiKey: next.asApiKey,
         concurrency: next.asConcurrency,
       });
-    } catch {
+    } catch (error: unknown) {
       const message =
-        "Assurance Studio URL (asBaseUrl) is malformed. Enter an absolute HTTP(S) URL in connection settings.";
+        error instanceof TypeError
+          ? error.message
+          : "Assurance Studio URL (asBaseUrl) is malformed. Enter an absolute HTTP(S) URL in connection settings.";
       assuranceStudio = emptySlot({
         state: "needs-configuration",
         message,
@@ -572,6 +701,7 @@ export function createRemoteServiceController(
         checkedAt: null,
       },
       diagnostic: null,
+      probeDurationMs: null,
       generation: old.generation + 1,
     };
     void probe(
@@ -652,6 +782,26 @@ export function createRemoteServiceController(
         platform: platform.diagnostic,
         assuranceStudio: assuranceStudio.diagnostic,
         forgeCompute: forge.diagnostic,
+      };
+    },
+    connectionSelfDiagnosis() {
+      return {
+        platform: selfDiagnosis(
+          platform,
+          missingSettingsMessage(
+            "platform",
+            config.platformBaseUrl,
+            config.platformToken,
+          ),
+        ),
+        assuranceStudio: selfDiagnosis(
+          assuranceStudio,
+          missingSettingsMessage(
+            "assurance-studio",
+            config.asBaseUrl,
+            config.asApiKey,
+          ),
+        ),
       };
     },
     async dispose() {

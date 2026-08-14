@@ -21,7 +21,14 @@ export async function registerRemoteServices(
   const settings = bb.settings.define(REMOTE_SETTING_DESCRIPTORS);
   const initial = await settings.get();
   publishRemoteSettings(ctx, initial);
-  const controller = createRemoteServiceController(ctx, initial);
+  const publishConnectionChange = () => {
+    bb.realtime.publish(REMOTE_CONNECTIONS_CHANGED_CHANNEL, null);
+  };
+  const controller = createRemoteServiceController(
+    ctx,
+    initial,
+    publishConnectionChange,
+  );
   ctx.service("remote-services", () => controller.services);
   settings.onChange((next, prev) => {
     if (standaloneUnpackConfigChanged(next, prev))
@@ -29,11 +36,11 @@ export async function registerRemoteServices(
     void controller
       .reconfigure(next, prev)
       .then(() => {
-        bb.realtime.publish(REMOTE_CONNECTIONS_CHANGED_CHANNEL, null);
+        publishConnectionChange();
       })
       .catch(() => {
         bb.log.warn("Finite State remote service reconfiguration failed.");
-        bb.realtime.publish(REMOTE_CONNECTIONS_CHANGED_CHANNEL, null);
+        publishConnectionChange();
       });
   });
   bb.rpc.register(connectionsContract, {
@@ -44,6 +51,9 @@ export async function registerRemoteServices(
   bb.rpc.register(remoteDiagnosticsRpcContract, {
     remoteConnectionDiagnostics() {
       return controller.connectionDiagnostics();
+    },
+    remoteConnectionSelfDiagnosis() {
+      return controller.connectionSelfDiagnosis();
     },
   });
   bb.onDispose(() => controller.dispose());

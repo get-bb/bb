@@ -223,6 +223,7 @@ export class PlatformClient implements PlatformClientContract {
     query: Readonly<Record<string, string | number | boolean | undefined>>,
     body: Json | undefined,
     ctx?: RemoteCallContext,
+    singleAttempt = false,
   ): Promise<Response> {
     const url = new URL(
       path(route, parameters).replace(/^\/+/u, ""),
@@ -234,7 +235,7 @@ export class PlatformClient implements PlatformClientContract {
       url: url.toString(),
       phase: `request headers for ${route.operationId}`,
     };
-    return await this.#limiter.run(async () => {
+    const operation = async () => {
       let response: Response;
       try {
         response = await withRemoteRequestTimeout(
@@ -276,7 +277,10 @@ export class PlatformClient implements PlatformClientContract {
         throw error;
       }
       return response;
-    }, ctx?.signal);
+    };
+    return singleAttempt
+      ? await this.#limiter.runOnce(operation, ctx?.signal)
+      : await this.#limiter.run(operation, ctx?.signal);
   }
 
   async #json(
@@ -285,8 +289,16 @@ export class PlatformClient implements PlatformClientContract {
     query: Readonly<Record<string, string | number | boolean | undefined>> = {},
     body?: Json,
     ctx?: RemoteCallContext,
+    singleAttempt = false,
   ): Promise<unknown> {
-    const response = await this.#send(route, parameters, query, body, ctx);
+    const response = await this.#send(
+      route,
+      parameters,
+      query,
+      body,
+      ctx,
+      singleAttempt,
+    );
     const mediaType = response.headers
       .get("content-type")
       ?.split(";", 1)[0]
@@ -321,6 +333,7 @@ export class PlatformClient implements PlatformClientContract {
       { offset: 0, limit: 1 },
       undefined,
       ctx,
+      true,
     );
     return { configured: true, reachable: true, detail: null };
   }

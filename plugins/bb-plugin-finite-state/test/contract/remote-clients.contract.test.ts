@@ -145,7 +145,7 @@ describe("direct remote and compute contract", () => {
 
   it("reconfigures only the changed service while stable delegates retain identity", async () => {
     const values: RemoteSettingValues = {
-      platformBaseUrl: "https://platform-one.example",
+      platformBaseUrl: "https://platform-one.example/api",
       platformToken: "p",
       platformConcurrency: "8",
       asBaseUrl: "https://as.example",
@@ -170,7 +170,10 @@ describe("direct remote and compute contract", () => {
     const platformDelegate = controller.services.platform;
     const asDelegate = controller.services.assuranceStudio;
     await Promise.resolve();
-    const next = { ...values, platformBaseUrl: "https://platform-two.example" };
+    const next = {
+      ...values,
+      platformBaseUrl: "https://platform-two.example/api",
+    };
     await controller.reconfigure(next, values);
     await Promise.resolve();
     expect(controller.services.platform).toBe(platformDelegate);
@@ -369,7 +372,7 @@ describe("direct remote and compute contract", () => {
 
   it("keeps a configured-but-unreachable Platform client loaded", async () => {
     const values: RemoteSettingValues = {
-      platformBaseUrl: "https://platform.example",
+      platformBaseUrl: "https://platform.example/api",
       platformToken: "p",
       platformConcurrency: "8",
       asBaseUrl: "",
@@ -431,7 +434,12 @@ describe("direct remote and compute contract", () => {
       );
     const host = createFakePluginHost({ pluginId: "finite-state-auth-status" });
     await registerRemoteServices(host.bb, createPluginContext(host.bb));
-    await host.harness.setSettings({ ...values });
+    await host.harness.setSettings({
+      platformBaseUrl: values.platformBaseUrl,
+      platformToken: values.platformToken ?? "",
+      asBaseUrl: values.asBaseUrl,
+      asApiKey: values.asApiKey ?? "",
+    });
 
     await vi.waitFor(async () => {
       expect(await host.harness.callRpc("connectionsStatus")).toMatchObject({
@@ -489,6 +497,20 @@ describe("direct remote and compute contract", () => {
         },
       },
     });
+    await expect(
+      host.harness.callRpc("remoteConnectionSelfDiagnosis"),
+    ).resolves.toMatchObject({
+      platform: {
+        state: "auth-failed",
+        message: expect.stringContaining("Platform authentication failed"),
+      },
+      assuranceStudio: {
+        state: "auth-failed",
+        message: expect.stringContaining(
+          "Assurance Studio authentication failed",
+        ),
+      },
+    });
     await host.harness.lifecycle.dispose();
     fetchMock.mockRestore();
   });
@@ -533,4 +555,128 @@ describe("direct remote and compute contract", () => {
     });
     await controller.dispose();
   });
+
+  it("reports base-URL convention failures as settings errors without probing", async () => {
+    const values: RemoteSettingValues = {
+      platformBaseUrl: "https://platform.example",
+      platformToken: "p",
+      platformConcurrency: "8",
+      asBaseUrl: "https://fs-alpha.finitestate.io/api",
+      asApiKey: "a",
+      asConcurrency: "8",
+      forgeTransport: "disabled",
+      forgeUrl: "",
+      forgeCommand: "",
+      forgeAuthToken: undefined,
+      forgeConcurrency: "4",
+      standaloneUnpackExecutablePath: "",
+      standaloneUnpackImage: "localhost:5000/services-unpack:latest",
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const host = createFakePluginHost({ pluginId: "finite-state-base-shape" });
+    await registerRemoteServices(host.bb, createPluginContext(host.bb));
+    await host.harness.setSettings({
+      platformBaseUrl: values.platformBaseUrl,
+      platformToken: values.platformToken ?? "",
+      asBaseUrl: values.asBaseUrl,
+      asApiKey: values.asApiKey ?? "",
+    });
+
+    await expect(
+      host.harness.callRpc("remoteConnectionSelfDiagnosis"),
+    ).resolves.toMatchObject({
+      platform: {
+        state: "invalid-settings",
+        message:
+          "Platform URL (platformBaseUrl) must end with /api because Platform routes omit that prefix.",
+      },
+      assuranceStudio: {
+        state: "invalid-settings",
+        message:
+          "Assurance Studio URL (asBaseUrl) must not end with /api because Assurance Studio routes already include that prefix.",
+      },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    await host.harness.lifecycle.dispose();
+    fetchMock.mockRestore();
+  });
+
+  it.each([
+    {
+      name: "valid both",
+      asConfigured: true,
+      platformResult: "ok" as const,
+      expected: { platform: "ok", assuranceStudio: "ok" },
+    },
+    {
+      name: "one 401",
+      asConfigured: true,
+      platformResult: "401" as const,
+      expected: { platform: "auth-failed", assuranceStudio: "ok" },
+    },
+    {
+      name: "one unreachable",
+      asConfigured: true,
+      platformResult: "unreachable" as const,
+      expected: { platform: "unreachable", assuranceStudio: "ok" },
+    },
+    {
+      name: "one unconfigured",
+      asConfigured: false,
+      platformResult: "ok" as const,
+      expected: { platform: "ok", assuranceStudio: "not-configured" },
+    },
+  ])(
+    "publishes registered self-diagnosis for $name",
+    async ({ name, asConfigured, expected, platformResult }) => {
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockImplementation(async (input) => {
+          const url = new URL(String(input));
+          if (url.hostname === "platform.example") {
+            if (platformResult === "401")
+              return Response.json({ error: "unauthorized" }, { status: 401 });
+            if (platformResult === "unreachable")
+              throw new TypeError("connection refused");
+          }
+          return Response.json({ items: [], total: 0 });
+        });
+      const host = createFakePluginHost({
+        pluginId: `finite-state-${platformResult}-${asConfigured}`,
+      });
+      await registerRemoteServices(host.bb, createPluginContext(host.bb));
+      await host.harness.setSettings({
+        platformBaseUrl: "https://platform.example/api",
+        platformToken: "platform-secret-never-surface",
+        asBaseUrl: asConfigured ? "https://fs-alpha.finitestate.io" : "",
+        asApiKey: asConfigured ? "as-secret-never-surface" : "",
+      });
+
+      await vi.waitFor(
+        async () => {
+          expect(
+            await host.harness.callRpc("remoteConnectionSelfDiagnosis"),
+          ).toMatchObject({
+            platform: { state: expected.platform },
+            assuranceStudio: { state: expected.assuranceStudio },
+          });
+        },
+        { timeout: platformResult === "unreachable" ? 10_000 : 1_000 },
+      );
+      const serialized = JSON.stringify(
+        await host.harness.callRpc("remoteConnectionSelfDiagnosis"),
+      );
+      expect(serialized).not.toContain("platform-secret-never-surface");
+      expect(serialized).not.toContain("as-secret-never-surface");
+      if (name === "valid both") {
+        expect(
+          host.harness.realtimeSignals.filter(
+            (signal) => signal.channel === "finite-state:connections-changed",
+          ),
+        ).toHaveLength(3);
+      }
+      await host.harness.lifecycle.dispose();
+      fetchMock.mockRestore();
+    },
+  );
 });

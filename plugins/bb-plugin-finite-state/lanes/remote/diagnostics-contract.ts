@@ -36,6 +36,26 @@ export type RemoteFailureDiagnosticView = z.infer<
   typeof remoteFailureDiagnosticSchema
 >;
 
+export const remoteSelfDiagnosisSchema = z
+  .object({
+    state: z.enum([
+      "checking",
+      "ok",
+      "auth-failed",
+      "unreachable",
+      "timed-out",
+      "not-configured",
+      "invalid-settings",
+      "request-failed",
+    ]),
+    message: z.string().min(1).max(4_000),
+    checkedAt: z.iso.datetime().nullable(),
+    durationMs: z.number().int().nonnegative().nullable(),
+  })
+  .strict();
+
+export type RemoteSelfDiagnosisView = z.infer<typeof remoteSelfDiagnosisSchema>;
+
 export const remoteDiagnosticsRpcContract = defineRpcContract({
   remoteConnectionDiagnostics: {
     input: z.null(),
@@ -44,6 +64,15 @@ export const remoteDiagnosticsRpcContract = defineRpcContract({
         platform: remoteFailureDiagnosticSchema.nullable(),
         assuranceStudio: remoteFailureDiagnosticSchema.nullable(),
         forgeCompute: remoteFailureDiagnosticSchema.nullable(),
+      })
+      .strict(),
+  },
+  remoteConnectionSelfDiagnosis: {
+    input: z.null(),
+    output: z
+      .object({
+        platform: remoteSelfDiagnosisSchema,
+        assuranceStudio: remoteSelfDiagnosisSchema,
       })
       .strict(),
   },

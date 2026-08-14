@@ -479,6 +479,7 @@ export class AssuranceStudioClient implements AssuranceStudioClientContract {
     body: Json | undefined,
     ctx?: RemoteCallContext,
     accepted: readonly number[] = [],
+    singleAttempt = false,
   ): Promise<Response> {
     const url = new URL(
       routePath(route, parameters).replace(/^\/+/u, ""),
@@ -492,56 +493,55 @@ export class AssuranceStudioClient implements AssuranceStudioClientContract {
       url: url.toString(),
       phase: `request headers for ${route.path}`,
     };
-    return await this.#limiter.run(
-      async () => {
-        let response: Response;
-        try {
-          response = await withRemoteRequestTimeout(
-            "assurance-studio",
-            request,
-            ctx?.signal,
-            (signal) =>
-              this.#fetch(url, {
-                method: route.method,
-                headers: {
-                  "X-API-Key": this.#apiKey,
-                  ...(body === undefined
-                    ? {}
-                    : { "Content-Type": "application/json" }),
-                },
-                ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-                signal,
-              }),
-          );
-        } catch (error: unknown) {
-          throw transportError(
-            "assurance-studio",
-            route.path,
-            route.retry !== "write-once",
-            error,
-            request,
-          );
+    const operation = async () => {
+      let response: Response;
+      try {
+        response = await withRemoteRequestTimeout(
+          "assurance-studio",
+          request,
+          ctx?.signal,
+          (signal) =>
+            this.#fetch(url, {
+              method: route.method,
+              headers: {
+                "X-API-Key": this.#apiKey,
+                ...(body === undefined
+                  ? {}
+                  : { "Content-Type": "application/json" }),
+              },
+              ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+              signal,
+            }),
+        );
+      } catch (error: unknown) {
+        throw transportError(
+          "assurance-studio",
+          route.path,
+          route.retry !== "write-once",
+          error,
+          request,
+        );
+      }
+      if (!response.ok && !accepted.includes(response.status)) {
+        const error = await responseError(
+          "assurance-studio",
+          response,
+          Date.now(),
+          request,
+        );
+        if (route.retry === "write-once" && error.retryable) {
+          throw new RemoteError(error.message, {
+            ...error,
+            retryable: false,
+          });
         }
-        if (!response.ok && !accepted.includes(response.status)) {
-          const error = await responseError(
-            "assurance-studio",
-            response,
-            Date.now(),
-            request,
-          );
-          if (route.retry === "write-once" && error.retryable) {
-            throw new RemoteError(error.message, {
-              ...error,
-              retryable: false,
-            });
-          }
-          throw error;
-        }
-        return response;
-      },
-      ctx?.signal,
-      "assurance-studio",
-    );
+        throw error;
+      }
+      return response;
+    };
+    return singleAttempt
+      ? await this.#limiter.runOnce(operation, ctx?.signal, "assurance-studio")
+      : await this.#limiter.run(operation, ctx?.signal, "assurance-studio");
   }
 
   async #json(
@@ -550,8 +550,17 @@ export class AssuranceStudioClient implements AssuranceStudioClientContract {
     query: Readonly<Record<string, Json | undefined>>,
     body: Json | undefined,
     ctx?: RemoteCallContext,
+    singleAttempt = false,
   ): Promise<unknown> {
-    const response = await this.#send(route, parameters, query, body, ctx);
+    const response = await this.#send(
+      route,
+      parameters,
+      query,
+      body,
+      ctx,
+      [],
+      singleAttempt,
+    );
     try {
       return await response.json();
     } catch {
@@ -573,6 +582,7 @@ export class AssuranceStudioClient implements AssuranceStudioClientContract {
       { page: 1, limit: 1 },
       undefined,
       ctx,
+      true,
     );
     return { configured: true, reachable: true, detail: null };
   }
