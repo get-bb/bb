@@ -209,26 +209,44 @@ stops importing `@bb/agent-providers` entirely (the speculative
 execution-options placeholder switches to last-known server data).
 
 **Routers.** A provider entry is ultimately a picker option that resolves
-into thread execution params at submit time. A `kind: "router"` provider is a
-provider that makes that resolution *dynamic*: it appears in the
-model/reasoning pickers like any other provider, but it never executes
-anything itself — at submit it resolves the submission into another
-registered provider's (model, reasoning) pair, and the thread runs on that
-delegate's bridge. Motivating future example (not built in this change): an
-"Auto" plugin whose settings page holds a user-authored routing prompt, e.g.
-"frontend work → Claude Code Opus, everything else → Codex 5.6-sol".
+into thread execution params at submit time. A `kind: "router"` provider
+makes that resolution *indirect*: it appears in the model/reasoning pickers
+like any other provider, but it never executes anything itself — its
+selection resolves to another registered provider's (model, reasoning) pair,
+and the thread runs on that delegate's bridge. Two future archetypes
+(neither built in this change):
+
+- **Auto router**: a single "Auto" picker entry; a user-authored routing
+  prompt in the plugin's settings resolves each submission dynamically
+  ("frontend work → Claude Code Opus, everything else → Codex 5.6-sol").
+- **Preset router**: the user's few favorite (provider, model, reasoning)
+  pairs as a compact picker list — e.g. just "Codex xhigh" and "Opus 5
+  xhigh" — so the existing cycle-model keyboard shortcuts flip between
+  complete pairs without opening the picker and re-selecting provider →
+  model → reasoning. Entries come from the plugin's settings; each pair
+  models naturally as a "model" with a single supported reasoning effort,
+  so existing picker and cycling mechanics work unchanged.
 
 Consequences for this change:
 
 - `kind: "agent"` **requires** `bridge`; `kind: "router"` **omits** it
   (declaration validation enforces both directions). Every regular provider
   ships a bridge that runs on the host and implements the protocol.
-- Routing resolution is server-side product policy (plugins run in the
-  server; the daemon only ever sees the resolved delegate provider), which is
-  where a future `resolveExecution(submission) → {providerId, model,
-  reasoningLevel}` plugin hook slots in. That hook is **not** part of this
-  change — this change only guarantees the declaration shape, `ProviderInfo`
-  `kind`, and the bridge-optional rule leave room for it.
+- Router picker entries are **server-supplied** (declaration data, refreshed
+  on plugin settings change): with no bridge there is no host-side
+  `model/list`. The provider registry / execution-options path must support
+  server-supplied entries rather than assuming every model list arrives from
+  a daemon probe.
+- Resolution is server-side product policy (plugins run in the server; the
+  daemon only ever sees the resolved delegate). Preset entries resolve
+  statically from entry data; the auto router additionally needs a
+  `resolveExecution(submission) → {providerId, model, reasoningLevel}` hook.
+  Neither ships in this change — the declaration shape, `ProviderInfo`
+  `kind`, and the bridge-optional rule just leave room for both.
+- When the hooks ship, the thread executes and persists as the *delegate*
+  provider; the router id lives in the composer's sticky selection, not in
+  thread execution state. Noted here so the registry design doesn't
+  preclude that split.
 
 ### 4. Bridge delivery to hosts
 
@@ -397,13 +415,14 @@ protocol method:
    step. Matches plugins and `customAcpAgents` today.
 2. **Disable-ability**: first-party provider plugins are individually
    disable-able; the "provider unavailable" absence path must be correct.
-3. **Routers**: the motivating case is a future "Auto" router plugin that
-   dynamically resolves each submission to another provider's
-   (model, reasoning) pair via a user-authored routing prompt in its settings
-   page. Not built now; this change ships `kind`, the bridge-required-for-
-   agents / bridge-absent-for-routers declaration rule, and leaves the
-   server-side resolution hook as future work. Every regular provider
-   registers a host-run bridge implementing the protocol.
+3. **Routers**: two motivating archetypes — a dynamic "Auto" router (a
+   user-authored routing prompt resolves each submission) and a preset
+   router (a user's few favorite provider/model/reasoning pairs as one
+   compact picker list for keyboard switching). Neither is built now; this
+   change ships `kind`, the bridge-required-for-agents /
+   bridge-absent-for-routers declaration rule, and server-supplied picker
+   entries, leaving the resolution hooks as future work. Every regular
+   provider registers a host-run bridge implementing the protocol.
 4. **`customAcpAgents`** (default stands, not explicitly decided): keep
    config.json compatibility under the acp plugin; add the settings UI on
    top.
