@@ -1368,6 +1368,7 @@ describe("@bb/sdk", () => {
               source: "npm:@bb/notes@^1",
               marketplace: "acme-plugins",
               marketplaceDisplayName: "Acme Plugins",
+              publisherKey: "acme-plugins",
               publisherLabel: "Acme Plugins",
               official: false,
               author: { name: "Acme", url: null },

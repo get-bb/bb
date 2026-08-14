@@ -414,10 +414,17 @@ export const pluginCatalogSearchResultSchema = z.object({
   marketplace: z.string(),
   marketplaceDisplayName: z.string(),
   /**
+   * Stable identity of the publisher, for grouping. A marketplace names itself,
+   * so grouping on the label alone let a third-party marketplace merge its
+   * entries into another publisher's group by copying its display name.
+   * `builtin` for plugins bundled with the app; otherwise the marketplace name.
+   */
+  publisherKey: z.string(),
+  /**
    * Publisher badge for the entry: the listing marketplace's display name, or
    * `BB Official` for plugins bundled with the app. It is separate from
    * `marketplaceDisplayName` because bundled plugins are grouped under the
-   * official marketplace but are not published through it.
+   * curated marketplace but are not published through it.
    */
   publisherLabel: z.string(),
   /** Whether the listing marketplace is the reserved `bb-community` one. */

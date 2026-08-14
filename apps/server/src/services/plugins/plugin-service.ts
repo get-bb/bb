@@ -1252,8 +1252,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   function list(): PluginListEntry[] {
     const scheduleRows = listPluginSchedules(deps.db);
-    const publisherLabels = marketplacePublisherLabels(deps.db);
-    return listInstalledPlugins(deps.db)
+    const rows = listInstalledPlugins(deps.db);
+    // Resolving labels parses every marketplace's stored manifest, so it only
+    // runs when a plugin actually traces back to one. The common case — every
+    // plugin bundled or added from a source — reads no manifest at all.
+    const publisherLabels = rows.some((row) => row.provenance === "catalog")
+      ? marketplacePublisherLabels(deps.db)
+      : new Map<string, string>();
+    return rows
       .sort((a, b) => a.id.localeCompare(b.id))
       .map((row) => {
         const runtime = statuses.get(row.id);
@@ -1278,6 +1284,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             ? {}
             : { catalogMarketplaceName: row.catalogMarketplaceName }),
           publisherLabel: pluginPublisherLabel({
+            sourceKind: row.sourceKind,
             provenance: row.provenance,
             catalogMarketplaceName: row.catalogMarketplaceName,
             labels: publisherLabels,

@@ -50,6 +50,7 @@ import {
   type MarketplaceFetch,
 } from "./marketplace-http.js";
 import {
+  BUILTIN_PUBLISHER_KEY,
   BUILTIN_PUBLISHER_LABEL,
   entryIconName,
   entrySourceDisplay,
@@ -67,6 +68,7 @@ import {
   parseMarketplaceSource,
 } from "./marketplace-source.js";
 import { BUNDLED_CURATED_MARKETPLACE } from "./curated-marketplace.js";
+import { marketplacePublisherLabel } from "./marketplace-publishers.js";
 
 const MARKETPLACE_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1_000;
 
@@ -376,8 +378,9 @@ export function createPluginCatalogService(deps: {
       // with the official marketplace rather than inventing a fourth origin.
       marketplace: CURATED_MARKETPLACE_NAME,
       marketplaceDisplayName: BUNDLED_CURATED_MARKETPLACE.displayName,
-      // Grouped with the official marketplace, but published by the build:
-      // the badge says so even though the section heading does not.
+      // Listed under the curated marketplace, but published by the build, so
+      // it groups and badges as its own publisher.
+      publisherKey: BUILTIN_PUBLISHER_KEY,
       publisherLabel: BUILTIN_PUBLISHER_LABEL,
       official: true,
       // Bundled plugins are BB's own; attribute them like the seed entries.
@@ -434,7 +437,11 @@ export function createPluginCatalogService(deps: {
       source: entrySourceDisplay(entry),
       marketplace: row.name,
       marketplaceDisplayName: catalog.displayName,
-      publisherLabel: catalog.displayName,
+      publisherKey: row.name,
+      publisherLabel: marketplacePublisherLabel({
+        marketplaceName: row.name,
+        displayName: catalog.displayName,
+      }),
       official,
       author: entryAuthor(entry),
       installed:

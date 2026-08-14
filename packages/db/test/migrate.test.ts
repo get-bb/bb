@@ -4607,7 +4607,11 @@ describe("migrate", () => {
     const db = createConnection(":memory:");
     try {
       db.$client.exec(`
-        CREATE TABLE plugin_marketplaces (name text PRIMARY KEY NOT NULL);
+        CREATE TABLE plugin_marketplaces (
+          name text PRIMARY KEY NOT NULL,
+          etag text,
+          last_modified text
+        );
         CREATE TABLE plugin_marketplace_icons (
           marketplace_name text NOT NULL,
           entry_id text NOT NULL,
@@ -4617,7 +4621,9 @@ describe("migrate", () => {
           id text PRIMARY KEY NOT NULL,
           catalog_marketplace_name text
         );
-        INSERT INTO plugin_marketplaces VALUES ('bb-official'), ('acme');
+        INSERT INTO plugin_marketplaces VALUES
+          ('bb-official', 'W/\"abc\"', 'Wed, 01 Jan 2025 00:00:00 GMT'),
+          ('acme', 'W/\"xyz\"', 'Thu, 02 Jan 2025 00:00:00 GMT');
         INSERT INTO plugin_marketplace_icons VALUES
           ('bb-official', 'notes'),
           ('acme', 'tasks');
@@ -4661,6 +4667,25 @@ describe("migrate", () => {
         { id: "local", catalogMarketplaceName: null },
         { id: "notes", catalogMarketplaceName: "bb-community" },
         { id: "tasks", catalogMarketplaceName: "acme" },
+      ]);
+
+      // The stored manifest still declares the old name. A conditional refresh
+      // that answers 304 parses that document and checks its name against the
+      // row, so the renamed row must not carry validators that can produce a
+      // 304. Other marketplaces keep theirs.
+      expect(
+        db.$client
+          .prepare<[], { name: string; etag: string | null; lastModified: string | null }>(
+            "SELECT name, etag, last_modified AS lastModified FROM plugin_marketplaces ORDER BY name",
+          )
+          .all(),
+      ).toEqual([
+        {
+          name: "acme",
+          etag: 'W/"xyz"',
+          lastModified: "Thu, 02 Jan 2025 00:00:00 GMT",
+        },
+        { name: "bb-community", etag: null, lastModified: null },
       ]);
     } finally {
       closeConnection(db);

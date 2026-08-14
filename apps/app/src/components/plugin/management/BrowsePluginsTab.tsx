@@ -261,10 +261,10 @@ export function BrowsePluginsTab({
                     />
                   ) : (
                     groups.map((group) => (
-                      <section key={group.publisher} className="space-y-3">
+                      <section key={group.key} className="space-y-3">
                         {showPublisherHeadings ? (
                           <h2 className="flex items-baseline gap-2 text-sm font-medium text-foreground">
-                            {group.publisher}
+                            {group.label}
                             {group.thirdParty ? (
                               <span className="text-2xs font-normal text-subtle-foreground">
                                 third-party marketplace
@@ -299,7 +299,8 @@ export function BrowsePluginsTab({
 }
 
 interface PublisherGroup {
-  publisher: string;
+  key: string;
+  label: string;
   thirdParty: boolean;
   entries: PluginCatalogSearchEntry[];
 }
@@ -313,6 +314,11 @@ interface PublisherGroup {
  * under the marketplace bb curates, so grouping by marketplace filed all of
  * them under that marketplace's name and told the user BB Community wrote
  * plugins that ship in the build.
+ *
+ * Groups key on `publisherKey`, never on the label. A marketplace names itself,
+ * so grouping on the label let a third-party marketplace merge its entries into
+ * another publisher's group — and inherit that group's heading, including the
+ * absence of the third-party note.
  */
 function groupByPublisher(
   entries: readonly PluginCatalogSearchEntry[],
@@ -320,10 +326,11 @@ function groupByPublisher(
 ): PublisherGroup[] {
   const groups: PublisherGroup[] = [];
   for (const entry of entries) {
-    let group = groups.find((item) => item.publisher === entry.publisherLabel);
+    let group = groups.find((item) => item.key === entry.publisherKey);
     if (group === undefined) {
       group = {
-        publisher: entry.publisherLabel,
+        key: entry.publisherKey,
+        label: entry.publisherLabel,
         thirdParty: !entry.official,
         entries: [],
       };
@@ -387,9 +394,12 @@ function BrowseCard({
     ) : entry.author !== null ? (
       <span>By: {entry.author.name}</span>
     ) : undefined;
+  // The publisher label, not the marketplace's raw display name: a third-party
+  // manifest names itself, and the raw name would print a reserved BB label on
+  // the card that the server already refused to grant.
   const footerMeta = entry.official ? undefined : (
     <span className="text-2xs text-subtle-foreground">
-      {entry.marketplaceDisplayName}
+      {entry.publisherLabel}
     </span>
   );
   const headerAction =

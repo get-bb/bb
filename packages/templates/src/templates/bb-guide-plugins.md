@@ -149,9 +149,9 @@ never appear in command arguments, model-visible output, or persisted
 interaction data; success prints only the path, variable names, and
 added/updated/unchanged counts.
 
-  bb plugin search <query>       Search BB's official plugins: the plugins
-                                 bundled with the app plus the BB Official
-                                 marketplace catalog
+  bb plugin search <query>       Search the store: the plugins bundled with
+                                 the app plus every registered marketplace
+                                 catalog
   bb plugin install <entry>      Install a bundled official plugin by name
                                  (github, docs, memory, tasks),
                                  <entry-id>@<marketplace>, a Git repository
@@ -297,8 +297,8 @@ download, no separate release. Install from the CLI by bare name
 memory`, or `bb plugin install tasks`). Installed official plugins are pinned
 to the bundled copy and update automatically when the BB app updates.
 
-The BB Official marketplace lists the official plugins that live outside the
-app bundle. bb reads its manifest from
+The BB Community marketplace (reserved name `bb-community`) lists reviewed
+plugins that live outside the app bundle. bb reads its manifest from
 https://getbb.app/marketplace/v1/marketplace.json (override the URL with
 BB_MARKETPLACE_URL) at startup and every six hours, with a conditional
 request. bb stores the last catalog it validated: an unreachable server or an
@@ -354,9 +354,12 @@ becomes a direct install that keeps its full source intent and exact
 resolution, so `bb plugin outdated` and `bb plugin update` keep working from
 the recorded source. Only the catalog rows and the cached icons are deleted.
 
-The Browse tab groups entries by marketplace with BB Official first, and by
-tag-derived sections inside each marketplace. Entry cards show the author, and
-entries from a marketplace other than bb-community name it.
+The Browse tab groups entries by publisher: BB Official for the plugins
+bundled with the app, BB Community for the curated marketplace's listings, and
+each third-party marketplace under its own display name. Grouping keys on the
+marketplace identity, not on the display name, so a marketplace cannot join
+another publisher's group by copying its name — and only bb-community may
+present the BB Official or BB Community labels. Entry cards show the author.
 
 For direct git:/npm: installs, updates are manual: `bb plugin outdated`
 checks tracking sources and `bb plugin update` applies compatible candidates.
@@ -394,9 +397,9 @@ it has both, the install fails and asks you to choose. Write
 version tags such as `v1` and `v1.2.3` are always the literal tag.
 
 `bb plugin search <query>` matches id, display name, description, category,
-and tags across the bundled official plugins and the BB Official marketplace
-catalog (status: installed / compatible / requires newer bb). Entries carry
-tags; the Browse tab groups them by the curated category vocabulary. Install an official plugin by its bare name. Direct
+and tags across the bundled plugins and every registered marketplace catalog
+(status: installed / compatible / requires newer bb). Entries carry tags,
+which feed the category filter. Install a bundled plugin by its bare name. Direct
 HTTP(S) Git repository URLs, `path:`, `npm:`, `git:`, and `builtin:`
 sources—and path-like syntax—continue to bypass official-plugin resolution.
 
@@ -640,5 +643,5 @@ builtins and the store-only BB Official GitHub, Docs, Memory, and Tasks
 plugins. The `examples/plugins/` reference plugins cover slack-bot (webhook
 bot), agent-enrichment (agent surfaces), composer-customization (all composer
 regions), and t3sidebar (a replacement sidebar thread list). Thread Hover
-Cards installs from the BB Official marketplace (source: the bb-plugins
+Cards installs from the BB Community marketplace (source: the bb-plugins
 repo).

@@ -30,6 +30,12 @@ export const CURATED_MARKETPLACE_NAME = CURATED_PLUGIN_MARKETPLACE_NAME;
 export const BUILTIN_PUBLISHER_LABEL = "BB Official";
 
 /**
+ * Grouping identity of those plugins. It is not a marketplace name, and a
+ * marketplace cannot be called this: names are lowercase kebab-case.
+ */
+export const BUILTIN_PUBLISHER_KEY = "builtin";
+
+/**
  * Entries one manifest may list. The 1 MiB document limit alone still allows
  * thousands of entries, and each entry costs an icon request and an icon row.
  */

@@ -34,6 +34,7 @@ const MEMORY_ENTRY: PluginCatalogSearchEntry = {
   category: "Context & knowledge",
   source: "builtin:memory",
   marketplaceDisplayName: "BB Community",
+  publisherKey: "builtin",
   publisherLabel: "BB Official",
   official: true,
   author: null,
@@ -79,6 +80,7 @@ const INSTALLED_MEMORY_PLUGIN = {
   provenance: "catalog",
   isOrphanedBuiltin: false,
   catalogEntryId: "memory",
+  publisherKey: "bb-community",
   publisherLabel: "BB Community",
   sourceDisplay: "BB Official · Memory",
   updateState: {},
@@ -182,6 +184,7 @@ describe("BrowsePluginsTab", () => {
         category: "Git Tools",
         marketplace: "acme-plugins",
         marketplaceDisplayName: "Acme Plugins",
+        publisherKey: "acme-plugins",
         publisherLabel: "Acme Plugins",
         official: false,
         author: { name: "Acme", url: "https://github.com/acme" },
@@ -223,6 +226,60 @@ describe("BrowsePluginsTab", () => {
     expect(screen.getByText("third-party marketplace")).toBeTruthy();
     // Cards carry the author with the "By:" prefix.
     expect(screen.getByText("By: Acme")).toBeTruthy();
+  });
+
+  it("keeps a marketplace that copies a publisher label in its own group", async () => {
+    const entries = [
+      { ...MEMORY_ENTRY, displayName: "Memory" },
+      {
+        ...MEMORY_ENTRY,
+        entryId: "notes",
+        pluginId: "notes",
+        displayName: "Acme Notes",
+        marketplace: "acme-plugins",
+        marketplaceDisplayName: "BB Official",
+        // The manifest names itself, so a third-party marketplace can claim a
+        // BB label. The server refuses it; grouping must not restore it by
+        // keying on the label the entry carries.
+        publisherKey: "acme-plugins",
+        publisherLabel: "acme-plugins",
+        official: false,
+        author: { name: "Acme", url: "https://github.com/acme" },
+      },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugin-catalog") {
+          return jsonResponse({ catalog: CATALOG_STATUS });
+        }
+        if (url === "/api/v1/plugin-catalog/search?q=") {
+          return jsonResponse({ results: entries });
+        }
+        if (url === "/api/v1/plugins") {
+          return jsonResponse({ enabled: true, plugins: [] });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <BrowsePluginsTab
+          onInstall={() => {}}
+          onOpenPlugin={() => {}}
+          onInstallFromSource={() => {}}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    await screen.findByText("Acme Notes");
+    // Two groups, and the third-party one keeps its note. Merging would have
+    // hidden that note and lent the entry BB's badge.
+    expect(screen.getByText("BB Official")).toBeTruthy();
+    expect(screen.getByText("third-party marketplace")).toBeTruthy();
   });
 
   it("renders every catalog entry once and filters the grid by category", async () => {

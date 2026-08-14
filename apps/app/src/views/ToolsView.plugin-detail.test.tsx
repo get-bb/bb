@@ -72,6 +72,7 @@ const GITHUB_CATALOG_ENTRY = {
   category: "Developer tools",
   source: "builtin:github",
   marketplaceDisplayName: "BB Official",
+  publisherKey: "builtin",
   publisherLabel: "BB Official",
   official: true,
   author: null,
@@ -512,6 +513,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       source: "builtin:automations",
       provenance: "builtin" as const,
       catalogEntryId: null,
+      publisherKey: "builtin",
       publisherLabel: "BB Official",
     };
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
@@ -751,6 +753,7 @@ describe("PluginDetail runtime health", () => {
       source: "builtin:github",
       provenance: "builtin" as const,
       catalogEntryId: null,
+      publisherKey: "builtin",
       publisherLabel: "BB Official",
       status,
       statusDetail: "The runtime reported a problem.",

@@ -1,11 +1,11 @@
 ---
 name: submit-a-plugin
-description: Submit a bb plugin to the BB Official marketplace. Use this whenever a user asks to submit, list, publish, or add a plugin to the BB marketplace, or asks for a marketplace pull request. This skill checks the plugin, prepares a Git tag or npm release, creates a complete entry and icon, validates the marketplace, and opens the pull request.
+description: Submit a bb plugin to the BB Community marketplace. Use this whenever a user asks to submit, list, publish, or add a plugin to the BB marketplace, or asks for a marketplace pull request. This skill checks the plugin, prepares a Git tag or npm release, creates a complete entry and icon, validates the marketplace, and opens the pull request.
 ---
 
 # Submit a plugin
 
-Submit a public plugin to the BB Official marketplace through a pull request.
+Submit a public plugin to the BB Community marketplace through a pull request.
 
 The marketplace lists plugin data only. The plugin code stays in its Git repository or npm package.
 

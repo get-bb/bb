@@ -726,7 +726,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - BB's official plugins (GitHub, Docs, Memory, and Tasks) ship
     bundled inside the app and install from the local copy — no network. Installed official
     plugins are pinned to the bundled copy and update with BB app releases.
-  - The store also lists the **BB Official marketplace** catalog: a manifest
+  - The store also lists the **BB Community marketplace** catalog: a manifest
     the server re-reads at startup and every six hours from
     `https://getbb.app/marketplace/v1/marketplace.json`
     (override with `BB_MARKETPLACE_URL`, which the server reads only at

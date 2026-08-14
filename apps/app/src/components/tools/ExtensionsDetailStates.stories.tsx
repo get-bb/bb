@@ -568,6 +568,7 @@ const UNINSTALLED_CATALOG_PLUGIN = {
   category: "Developer tools",
   source: "builtin:github",
   marketplaceDisplayName: "BB Community",
+  publisherKey: "builtin",
   publisherLabel: "BB Official",
   official: true,
   author: null,

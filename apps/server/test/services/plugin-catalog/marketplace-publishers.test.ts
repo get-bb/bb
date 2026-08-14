@@ -1,6 +1,7 @@
 import { createConnection, migrate, upsertPluginMarketplace } from "@bb/db";
 import { describe, expect, it } from "vitest";
 import {
+  marketplacePublisherLabel,
   marketplacePublisherLabels,
   pluginPublisherLabel,
 } from "../../../src/services/plugin-catalog/marketplace-publishers.js";
@@ -59,6 +60,7 @@ describe("marketplace publisher labels", () => {
 
     expect(
       pluginPublisherLabel({
+        sourceKind: "git",
         provenance: "catalog",
         catalogMarketplaceName: "bb-community",
         labels,
@@ -66,11 +68,51 @@ describe("marketplace publisher labels", () => {
     ).toBe("BB Community");
     expect(
       pluginPublisherLabel({
+        sourceKind: "npm",
         provenance: "catalog",
         catalogMarketplaceName: "acme",
         labels,
       }),
     ).toBe("Acme Plugins");
+  });
+
+  it("refuses a reserved label to a marketplace that is not BB's", () => {
+    const db = connect();
+    register(
+      db,
+      "acme",
+      JSON.stringify({
+        schemaVersion: 1,
+        name: "acme",
+        displayName: "BB Official",
+        plugins: [],
+      }),
+    );
+    const labels = marketplacePublisherLabels(db);
+
+    // A marketplace names itself, so without this a third-party manifest wears
+    // the badge that means "ships inside the app".
+    expect(
+      pluginPublisherLabel({
+        sourceKind: "git",
+        provenance: "catalog",
+        catalogMarketplaceName: "acme",
+        labels,
+      }),
+    ).toBe("acme");
+    expect(
+      marketplacePublisherLabel({
+        marketplaceName: "acme",
+        displayName: "BB Community",
+      }),
+    ).toBe("acme");
+    // The curated marketplace keeps its own name.
+    expect(
+      marketplacePublisherLabel({
+        marketplaceName: "bb-community",
+        displayName: "BB Community",
+      }),
+    ).toBe("BB Community");
   });
 
   it("keeps a badge when the stored manifest no longer parses", () => {
@@ -82,6 +124,7 @@ describe("marketplace publisher labels", () => {
     // it just falls back to the name bb keys the marketplace on.
     expect(
       pluginPublisherLabel({
+        sourceKind: "git",
         provenance: "catalog",
         catalogMarketplaceName: "acme",
         labels,
@@ -89,11 +132,38 @@ describe("marketplace publisher labels", () => {
     ).toBe("acme");
   });
 
+  it("keeps a store-installed bundled plugin on BB Official", () => {
+    const db = connect();
+    register(
+      db,
+      "bb-community",
+      JSON.stringify({
+        schemaVersion: 1,
+        name: "bb-community",
+        displayName: "BB Community",
+        plugins: [],
+      }),
+    );
+    const labels = marketplacePublisherLabels(db);
+
+    // An opt-in bundled plugin records a catalog install of the bundled entry,
+    // so reading provenance alone flipped its badge the moment it installed.
+    expect(
+      pluginPublisherLabel({
+        sourceKind: "builtin",
+        provenance: "catalog",
+        catalogMarketplaceName: "bb-community",
+        labels,
+      }),
+    ).toBe("BB Official");
+  });
+
   it("badges bundled plugins BB Official and user installs not at all", () => {
     const labels = marketplacePublisherLabels(connect());
 
     expect(
       pluginPublisherLabel({
+        sourceKind: "builtin",
         provenance: "builtin",
         catalogMarketplaceName: null,
         labels,
@@ -101,6 +171,7 @@ describe("marketplace publisher labels", () => {
     ).toBe("BB Official");
     expect(
       pluginPublisherLabel({
+        sourceKind: "git",
         provenance: "direct",
         catalogMarketplaceName: null,
         labels,

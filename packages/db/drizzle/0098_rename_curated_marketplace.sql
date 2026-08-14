@@ -12,6 +12,13 @@ WHERE `marketplace_name` = 'bb-official';--> statement-breakpoint
 UPDATE `plugins`
 SET `catalog_marketplace_name` = 'bb-community'
 WHERE `catalog_marketplace_name` = 'bb-official';--> statement-breakpoint
+-- The stored manifest still declares the old name and label. A refresh that
+-- answers 304 parses that stored document and checks its name against the row,
+-- so it would fail against the renamed row. Dropping the cache validators makes
+-- the next refresh unconditional, which replaces the document rather than
+-- rewriting JSON in SQL.
 UPDATE `plugin_marketplaces`
-SET `name` = 'bb-community'
+SET `name` = 'bb-community',
+	`etag` = NULL,
+	`last_modified` = NULL
 WHERE `name` = 'bb-official';
