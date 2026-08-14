@@ -1,7 +1,19 @@
 {
-  "name": "@bb/plugin-sdk",
+  "name": "@get-bb/plugin-sdk",
   "version": "0.4.3",
+  "homepage": "https://github.com/get-bb/bb#readme",
+  "bugs": {
+    "url": "https://github.com/get-bb/bb/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/get-bb/bb.git",
+    "directory": "packages/plugin-sdk"
+  },
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "bundled-types",
     "dist",

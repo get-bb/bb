@@ -8,7 +8,10 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import type { NewThreadComposerProps, NewThreadRequest } from "@bb/plugin-sdk";
+import type {
+  NewThreadComposerProps,
+  NewThreadRequest,
+} from "@get-bb/plugin-sdk";
 import type { CreateExecutionInputSources } from "@bb/server-contract";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { NewThreadPromptBox } from "@/components/promptbox/NewThreadPromptBox";

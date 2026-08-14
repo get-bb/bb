@@ -1,4 +1,4 @@
-import type { BbPluginApi, PluginAgentToolResult } from "@bb/plugin-sdk";
+import type { BbPluginApi, PluginAgentToolResult } from "@get-bb/plugin-sdk";
 import { interactionResponseSchema, toolInputSchema } from "./contracts.js";
 import {
   TOOL_DESCRIPTION,

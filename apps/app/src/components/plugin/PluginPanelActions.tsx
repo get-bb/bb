@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { JsonValue } from "@bb/plugin-sdk";
+import type { JsonValue } from "@get-bb/plugin-sdk";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import {
   usePluginSlots,

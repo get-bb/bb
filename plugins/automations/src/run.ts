@@ -1,4 +1,4 @@
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   closeAutomationRun,
@@ -18,9 +18,15 @@ import type { AutomationExecution } from "./rpc-types.js";
 
 export type RunFailureHandler = (error: unknown) => void;
 type AgentThreadsSdk = {
-  get(args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0]): Promise<unknown>;
-  send(args: Parameters<BbPluginApi["sdk"]["threads"]["send"]>[0]): Promise<unknown>;
-  spawn(args: Parameters<BbPluginApi["sdk"]["threads"]["spawn"]>[0]): Promise<unknown>;
+  get(
+    args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0],
+  ): Promise<unknown>;
+  send(
+    args: Parameters<BbPluginApi["sdk"]["threads"]["send"]>[0],
+  ): Promise<unknown>;
+  spawn(
+    args: Parameters<BbPluginApi["sdk"]["threads"]["spawn"]>[0],
+  ): Promise<unknown>;
 };
 type AgentRunApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: { threads: AgentThreadsSdk };

@@ -13,7 +13,7 @@ const BASE = "http://127.0.0.1:3334";
 const EVIL_ORIGIN = "https://evil.example";
 
 const WIRE_SOURCE = `
-  import { defineRpcContract } from "@bb/plugin-sdk";
+  import { defineRpcContract } from "@get-bb/plugin-sdk";
   import { z } from "zod";
   const rpcContract = defineRpcContract({
     echo: {
@@ -581,7 +581,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     const genDir = await writePlugin(join(harness.config.dataDir, "fixtures"), {
       name: "bb-plugin-gen",
       serverSource: `
-        import { defineRpcContract } from "@bb/plugin-sdk";
+        import { defineRpcContract } from "@get-bb/plugin-sdk";
         import { z } from "zod";
         const rpcContract = defineRpcContract({ gen: { input: z.record(z.string(), z.unknown()), output: z.object({ gen: z.number() }) } });
         export default function plugin(bb: any) {

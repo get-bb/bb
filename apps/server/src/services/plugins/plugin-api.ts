@@ -50,7 +50,7 @@ import type {
   PluginThreadEventName,
   PluginUi,
   StandardSchemaV1,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 import {
   AGENT_TOOL_NAME_PATTERN,
   BACKGROUND_NAME_PATTERN,
@@ -68,7 +68,7 @@ import {
   RESERVED_BB_CLI_COMMANDS,
   RPC_METHOD_PATTERN,
   summarizeParseIssues,
-} from "@bb/plugin-sdk/internal/host-policy";
+} from "@get-bb/plugin-sdk/internal/host-policy";
 import type { BbSdk, ThreadForkArgs, ThreadSpawnArgs } from "@bb/sdk";
 import type { ServerLogger } from "../../types.js";
 import type { PluginInteractionResult } from "../interactions/pending-interactions.js";
@@ -78,7 +78,7 @@ import {
   registerSettingDescriptors,
 } from "./plugin-settings.js";
 
-// The backend plugin API contract lives in @bb/plugin-sdk (plugin authors
+// The backend plugin API contract lives in @get-bb/plugin-sdk (plugin authors
 // compile against it); this module implements it. Re-exported so server code
 // keeps one import site for plugin API types.
 export type {
@@ -127,7 +127,7 @@ export type {
   PluginThreadEventPayloads,
   PluginUi,
   StandardSchemaV1,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 
 /**
  * Thrown when a plugin calls into an API handle that has been invalidated by

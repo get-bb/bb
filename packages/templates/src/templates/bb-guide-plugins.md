@@ -196,7 +196,7 @@ added/updated/unchanged counts.
                                  dependencies (no server required; --app adds
                                  a frontend entry, app.tsx, plus a
                                  typecheck-only tsconfig.json)
-  bb plugin types [path]         Write this bb's @bb/plugin-sdk declarations
+  bb plugin types [path]         Write this bb's @get-bb/plugin-sdk declarations
                                  into the plugin's types/ (default: cwd);
                                  --check reports staleness and writes nothing
   bb plugin build [path]         Compile the plugin into dist/ — the backend
@@ -289,7 +289,7 @@ frontend bundles re-import and their UI slots remount without a page
 refresh.
 
 Frontend entries (app.tsx) default-export `definePluginApp` from
-`@bb/plugin-sdk/app` and register UI slots: homepageSection (root compose),
+`@get-bb/plugin-sdk/app` and register UI slots: homepageSection (root compose),
 settingsSection (per-plugin settings page below the host-rendered settings
 form; no props in V1, optional host-rendered title),
 navPanel (own sidebar entry + /plugins/<id>/<path>/* route; the remainder
@@ -354,7 +354,7 @@ commands; core command names always win. Inside agent threads the generated
 Settings changes do not auto-reload a plugin — run `bb plugin reload <id>`
 after configuring. Add --json to plugin commands for machine-readable output.
 Plugin CLI stdout plus stderr is capped at 1,048,576 UTF-8 bytes from the
-shared `@bb/plugin-sdk` constant. Results above the ceiling are rejected in
+shared `@get-bb/plugin-sdk` constant. Results above the ceiling are rejected in
 full with a structured `plugin_cli_output_too_large` error; output is never
 silently clipped. Page growing collections and use file/streaming commands for
 large content.
@@ -404,11 +404,11 @@ the plugin to pick up branding changes.
 
 The backend entry default-exports a factory receiving the full plugin API:
 
-  import type { BbPluginApi } from "@bb/plugin-sdk";
+  import type { BbPluginApi } from "@get-bb/plugin-sdk";
   export default async function plugin(bb: BbPluginApi) { ... }
 
 The import is type-only and erased at load; the scaffold ships the full API
-as bundled .d.ts in types/ (tsconfig maps @bb/plugin-sdk to them), so
+as bundled .d.ts in types/ (tsconfig maps @get-bb/plugin-sdk to them), so
 `npm install && npx tsc --noEmit` typechecks anywhere — no bb checkout
 needed. Those files are ordinary readable declarations, not a minified
 bundle: read them for an exact signature. The SDK surface grows every

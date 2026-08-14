@@ -1,4 +1,4 @@
-import { definePluginApp } from "@bb/plugin-sdk/app";
+import { definePluginApp } from "@get-bb/plugin-sdk/app";
 import "./app.css";
 
 const EDITABLE_SELECTOR = 'input, textarea, [contenteditable="true"]';

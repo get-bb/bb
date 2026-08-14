@@ -16,7 +16,7 @@ import type {
   PluginComposerApi,
   PluginNewThreadPanelProps,
   PluginThreadPanelProps,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 import { createPluginPanelFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import {
   resetPluginSlotStoreForTest,

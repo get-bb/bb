@@ -20,7 +20,7 @@
     "bb-plugin"
   ],
   "devDependencies": {
-    "@bb/plugin-sdk": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
     "@types/react": "^19.0.0",
     "react": "^19.0.0",
     "typescript": "^5.7.0"

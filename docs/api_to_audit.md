@@ -80,7 +80,7 @@ Each label is capped at 80 characters and rendered as a truncating segment.
    only for non-MCP native plugin tools. Confirm that distinction stays sound
    as provider adapters and dynamic-tool provenance evolve.
 
-## `experimental_NewThreadComposer` (`@bb/plugin-sdk/app`)
+## `experimental_NewThreadComposer` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** The host-owned new-thread compose surface, the create-side
 counterpart to `ThreadChat`. It renders bb's full control set — prompt editor
@@ -161,7 +161,7 @@ bound in `apps/app/src/lib/plugin-sdk-app-impl.tsx`.
    `PluginNewThreadComposer.test.tsx` guard this) and re-decide whether the
    re-seed-on-change rule should instead be an explicit reset nonce.
 
-## `app.slots.experimental_newThreadPanelAction` (`@bb/plugin-sdk/app`)
+## `app.slots.experimental_newThreadPanelAction` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Adds a plugin row to the root New thread screen's
 right-panel Actions list. Activating it can open a closable panel tab whose
@@ -190,7 +190,7 @@ Before stabilization, audit:
    preferable to a unified discriminated context after external plugins have
    had time to adopt the root surface deliberately.
 
-## `app.slots.experimental_threadList` (`@bb/plugin-sdk/app`)
+## `app.slots.experimental_threadList` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Replaces the sidebar's scrolling thread list with a plugin
 component. Unlike every other `app.slots.*` member this slot is **exclusive**:
@@ -224,7 +224,7 @@ and a disabled or uninstalled plugin gets its list back when it returns.
    focus order, and the mobile close behavior when a plugin owns the markup —
    `onNavigate` is currently the plugin's responsibility to call.
 
-## `experimental_useSidebarThreads` / `experimental_useSidebarThreadActions` (`@bb/plugin-sdk/app`)
+## `experimental_useSidebarThreads` / `experimental_useSidebarThreadActions` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Gives a plugin component the sidebar's live thread view and
 the actions that mutate it. The read hook wraps the host's own
@@ -290,7 +290,7 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    exposing the full `panes` array does not leak more layout state than a row
    needs.
 
-## `app.slots.experimental_threadHeaderAction` (`@bb/plugin-sdk/app`)
+## `app.slots.experimental_threadHeaderAction` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Renders a plugin component in the thread header's action row.
 The frontend sibling of the backend `bb.ui.registerThreadAction`, which renders

@@ -778,7 +778,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     git/npm installs over source) and, when `bb.app` is declared, `app.js` +
     `app.css` + `app.meta.json`. Neither needs the server.
   - `bb plugin types [path]` — rewrite the plugin's `types/*.d.ts` from the
-    running bb's `@bb/plugin-sdk` declarations, creating `types/` when absent.
+    running bb's `@get-bb/plugin-sdk` declarations, creating `types/` when absent.
     Run it in a cloned or older plugin: the scaffold seeds those files once and
     the SDK surface grows every release. `--check` reports staleness and exits
     non-zero without writing (for CI). `bb plugin build` and `bb plugin dev`
@@ -788,7 +788,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     declared) and reloads the plugin; open app pages pick the new UI up live.
     Build/reload failures print and keep watching; Ctrl+C stops.
   - Frontend entries default-export `definePluginApp` from
-    `@bb/plugin-sdk/app` and register UI slots (homepageSection,
+    `@get-bb/plugin-sdk/app` and register UI slots (homepageSection,
     settingsSection, navPanel, threadPanelAction, fileOpener) with hooks
     (useRpc, useRealtime, useRealtimeConnectionState,
     useSettings, useBbContext,
@@ -808,5 +808,5 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   authoring reference for the backend `BbPluginApi` (settings, storage, sdk,
   http/rpc/realtime, background services and schedules, CLI commands, agent
   tools and context, host-rendered UI, lifecycle) and the frontend
-  `@bb/plugin-sdk/app` contract (slots, hooks, UI kit), with working patterns
+  `@get-bb/plugin-sdk/app` contract (slots, hooks, UI kit), with working patterns
   and gotchas. `bb guide plugins` has the short walkthrough.

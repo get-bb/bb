@@ -21,7 +21,7 @@
     "@bb/host-daemon-contract": "workspace:*",
     "@bb/logger": "workspace:*",
     "@bb/plugin-build": "workspace:*",
-    "@bb/plugin-sdk": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
     "@bb/process-utils": "workspace:*",
     "@bb/sdk": "workspace:*",
     "@bb/secret-storage": "workspace:*",

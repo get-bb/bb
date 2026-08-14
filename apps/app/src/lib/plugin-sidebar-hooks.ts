@@ -9,7 +9,7 @@ import type {
   PluginSidebarThreadActions,
   PluginSidebarThreadPullRequestState,
   PluginSidebarThreadsState,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import {
   getEnvironmentPullRequestFromResponse,

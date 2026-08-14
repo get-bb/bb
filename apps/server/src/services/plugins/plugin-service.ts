@@ -19,14 +19,14 @@ import {
   type StandardSchemaV1,
   type StandardSchemaV1Issue,
   type StandardSchemaV1Result,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 import {
   enforcePluginCliOutputLimit,
   PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
   PLUGIN_AGENT_SELECTION_MAX_IDS,
   PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES,
   RESERVED_AGENT_TOOL_NAMES,
-} from "@bb/plugin-sdk/internal/host-policy";
+} from "@get-bb/plugin-sdk/internal/host-policy";
 // The build engine's natives (esbuild, Tailwind oxide) are dynamically
 // imported inside buildPluginApp — importing this loads nothing heavy.
 import { buildPluginApp, createPluginDevLoop } from "@bb/plugin-build";

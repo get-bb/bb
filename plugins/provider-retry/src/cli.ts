@@ -1,4 +1,4 @@
-import type { BbPluginApi, PluginCliContext } from "@bb/plugin-sdk";
+import type { BbPluginApi, PluginCliContext } from "@get-bb/plugin-sdk";
 import type { ProviderRetryView } from "./contract.js";
 import type { ProviderRetryService } from "./service.js";
 

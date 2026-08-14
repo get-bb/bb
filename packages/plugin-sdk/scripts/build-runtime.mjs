@@ -69,5 +69,5 @@ for (const entry of entries) {
 }
 
 process.stdout.write(
-  `Built ${entries.length} @bb/plugin-sdk runtime entries.\n`,
+  `Built ${entries.length} @get-bb/plugin-sdk runtime entries.\n`,
 );

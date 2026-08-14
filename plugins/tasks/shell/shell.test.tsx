@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
 // jsdom lacks matchMedia; the vendored Dialog's responsive root needs it.
 if (!window.matchMedia) {
@@ -659,9 +659,13 @@ describe("tasks app shell", () => {
   });
 
   it("shows the empty state and opens the New project dialog", async () => {
-    const slot = renderSlot(app.navPanels[0]!, { subPath: "" }, {
-      rpc: emptyRpc,
-    });
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "" },
+      {
+        rpc: emptyRpc,
+      },
+    );
     await slot.findByText("No projects yet");
     fireEvent.click(slot.getByRole("button", { name: /New project/ }));
     await slot.findByText("Projects group tasks under a shared key prefix.");
@@ -697,18 +701,26 @@ describe("tasks app shell", () => {
   });
 
   it("routes 'manage' to the manage panel via the sidebar footer", async () => {
-    const slot = renderSlot(app.navPanels[0]!, { subPath: "manage" }, {
-      rpc: seededRpc({ listLabels: () => ({ labels: [] }) }),
-    });
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "manage" },
+      {
+        rpc: seededRpc({ listLabels: () => ({ labels: [] }) }),
+      },
+    );
     await slot.findByText("Labels, agent presets, and folders.");
     // The sidebar footer row is highlighted and present on every route.
     expect(slot.getByRole("button", { name: "Manage" })).toBeDefined();
   });
 
   it("opens quick-create on bare 'c' but not from editable targets or dialogs", async () => {
-    const slot = renderSlot(app.navPanels[0]!, { subPath: "all" }, {
-      rpc: seededRpc(),
-    });
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "all" },
+      {
+        rpc: seededRpc(),
+      },
+    );
     await slot.findByText("Tasks Plugin");
     fireEvent.keyDown(window, { key: "c" });
     // The New task dialog mounts (project select defaults to the only project).
@@ -734,22 +746,26 @@ describe("tasks app shell", () => {
       builtin: false,
       createdAt: "2026-07-15T00:00:00.000Z",
     };
-    const slot = renderSlot(app.navPanels[0]!, { subPath: "all" }, {
-      rpc: seededRpc({
-        listPresets: () => ({
-          presets: [
-            basePreset,
-            {
-              ...basePreset,
-              id: "01HZZZZZZZZZZZZZZZZZZZZZE2",
-              name: "Worktree env",
-              environmentKind: "new-worktree",
-              baseBranch: "main",
-            },
-          ],
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "all" },
+      {
+        rpc: seededRpc({
+          listPresets: () => ({
+            presets: [
+              basePreset,
+              {
+                ...basePreset,
+                id: "01HZZZZZZZZZZZZZZZZZZZZZE2",
+                name: "Worktree env",
+                environmentKind: "new-worktree",
+                baseBranch: "main",
+              },
+            ],
+          }),
         }),
-      }),
-    });
+      },
+    );
     await slot.findByText("Worktree env");
     expect(slot.getByText("Default env")).toBeDefined();
     expect(slot.getAllByLabelText("Spawns a new worktree")).toHaveLength(1);
@@ -757,14 +773,18 @@ describe("tasks app shell", () => {
 
   it("refetches sidebar data when invalidation channels fire", async () => {
     let projectCalls = 0;
-    const slot = renderSlot(app.navPanels[0]!, { subPath: "all" }, {
-      rpc: seededRpc({
-        listProjects: () => {
-          projectCalls += 1;
-          return { projects: [project] };
-        },
-      }),
-    });
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "all" },
+      {
+        rpc: seededRpc({
+          listProjects: () => {
+            projectCalls += 1;
+            return { projects: [project] };
+          },
+        }),
+      },
+    );
     await slot.findByText("Tasks Plugin");
     const before = projectCalls;
     await slot.emitRealtime("projects:changed", { projectId: null });

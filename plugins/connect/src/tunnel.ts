@@ -17,7 +17,7 @@ import {
   TunnelSession,
   type StreamOriginResult,
 } from "@bb/tunnel-client";
-import type { PluginLogger } from "@bb/plugin-sdk";
+import type { PluginLogger } from "@get-bb/plugin-sdk";
 import {
   ConnectListError,
   deriveConnectBaseUrl,

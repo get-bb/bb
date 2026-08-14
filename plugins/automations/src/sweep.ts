@@ -1,4 +1,4 @@
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   claimAutomationScheduledRun,
@@ -24,8 +24,12 @@ type SweepApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: {
     hosts: { list(): Promise<unknown> };
     threads: {
-      get(args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0]): Promise<unknown>;
-      send(args: Parameters<BbPluginApi["sdk"]["threads"]["send"]>[0]): Promise<unknown>;
+      get(
+        args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0],
+      ): Promise<unknown>;
+      send(
+        args: Parameters<BbPluginApi["sdk"]["threads"]["send"]>[0],
+      ): Promise<unknown>;
       spawn(
         args: Parameters<BbPluginApi["sdk"]["threads"]["spawn"]>[0],
       ): Promise<unknown>;

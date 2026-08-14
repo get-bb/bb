@@ -1,5 +1,5 @@
 /**
- * Version of the BB plugin SDK surface (`@bb/plugin-sdk`). Single source of
+ * Version of the BB plugin SDK surface (`@get-bb/plugin-sdk`). Single source of
  * truth shared by the CLI and the server: `bb plugin build` stamps it into a
  * plugin's `dist/app.meta.json` sidecar, and the host compares majors before
  * loading a bundle (design §7 — a stale bundle is skipped legibly, never a

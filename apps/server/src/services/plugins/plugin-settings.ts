@@ -9,11 +9,11 @@ import type {
   PluginSettingDescriptor,
   PluginSettingDescriptors,
   PluginSettingValue,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 import {
   registerSettingDescriptors,
   validateSettingsUpdate,
-} from "@bb/plugin-sdk/internal/host-policy";
+} from "@get-bb/plugin-sdk/internal/host-policy";
 import { deleteSecretFile, writeSecretFile } from "@bb/secret-storage";
 
 export {
@@ -22,12 +22,12 @@ export {
 };
 
 // The descriptor types are part of the backend plugin contract in
-// @bb/plugin-sdk; re-exported so server code keeps one import site.
+// @get-bb/plugin-sdk; re-exported so server code keeps one import site.
 export type {
   PluginSettingDescriptor,
   PluginSettingDescriptors,
   PluginSettingValue,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 
 /** A settings update the routes rejected: unknown key or wrong value type. */
 export class PluginSettingsValidationError extends Error {

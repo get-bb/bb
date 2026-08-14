@@ -1,6 +1,6 @@
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { Attachment, TasksStore } from "../db";
 
 export const MAX_ATTACHMENT_SIZE_BYTES = 25 * 1024 * 1024;
@@ -549,16 +549,11 @@ export function registerAttachments(
     const attachmentId = context.req.query("attachmentId")?.trim();
     try {
       const attachment = attachmentId
-        ? await deleteAttachmentById(
-            bb,
-            store,
-            attachmentId,
-            {
-              removeBlobs: options.removeBlobs,
-              removeDescriptionReferences:
-                context.req.query("removeDescriptionReferences") === "true",
-            },
-          )
+        ? await deleteAttachmentById(bb, store, attachmentId, {
+            removeBlobs: options.removeBlobs,
+            removeDescriptionReferences:
+              context.req.query("removeDescriptionReferences") === "true",
+          })
         : null;
       if (!attachment)
         return context.json({ error: "attachment not found" }, 404);

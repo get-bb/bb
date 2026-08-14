@@ -1,6 +1,6 @@
 # Plugin API: replace the sidebar thread list
 
-Status: **implemented**. The members below ship in `@bb/plugin-sdk/app`.
+Status: **implemented**. The members below ship in `@get-bb/plugin-sdk/app`.
 
 This document specifies one exclusive slot and the data surface it needs.
 A plugin uses them to replace bb's thread list with its own. The reference
@@ -401,7 +401,7 @@ import {
   useBbNavigate,
   experimental_useSidebarThreads as useSidebarThreads,
   type PluginThreadHeaderActionProps,
-} from "@bb/plugin-sdk/app";
+} from "@get-bb/plugin-sdk/app";
 import {
   Popover,
   PopoverContent,
@@ -512,7 +512,7 @@ import {
   experimental_useSidebarThreads as useSidebarThreads,
   type PluginSidebarThread,
   type PluginThreadListProps,
-} from "@bb/plugin-sdk/app";
+} from "@get-bb/plugin-sdk/app";
 import { Loader2Icon, MessageCircleQuestionIcon } from "lucide-react";
 
 function Row({
@@ -626,7 +626,7 @@ thread shortcuts, and right-click still opens bb's full menu.
 
 Add these when the API lands.
 
-### `app.slots.experimental_threadList` (`@bb/plugin-sdk/app`)
+### `app.slots.experimental_threadList` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Replaces the sidebar's scrolling thread list with a plugin
 component. Exclusive: the user picks one provider in Settings, stored client-

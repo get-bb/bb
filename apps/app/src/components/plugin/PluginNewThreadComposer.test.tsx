@@ -12,7 +12,7 @@
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { NewThreadRequest } from "@bb/plugin-sdk";
+import type { NewThreadRequest } from "@get-bb/plugin-sdk";
 import { PluginNewThreadComposer } from "./PluginNewThreadComposer";
 
 const mocks = vi.hoisted(() => ({
