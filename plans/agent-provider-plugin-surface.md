@@ -120,7 +120,23 @@ exists, not an invention:
 - **Handshake**: `initialize` exchanges `{protocolVersion, capabilities}` in
   both directions. Optional capabilities cover the long tail: usage reporting,
   compaction, host AI services (voice transcription / structured inference —
-  today's codex-only daemon commands), fork, archive.
+  today's codex-only daemon commands), fork, archive, CLI lifecycle.
+- **CLI lifecycle lives in the bridge, not the declaration**: optional
+  `provider/health` (installed?, version, auth state, login command),
+  `provider/install`, and `provider/update` methods replace the daemon's
+  per-provider CLI tables (`provider-cli-health.ts`,
+  `known_acp_agents.status`). No chicken-and-egg: the bridge is bb-authored
+  code that runs whether or not the provider CLI is installed, so the daemon
+  can spawn it one-shot for probes and cache the result (invalidated on
+  install/update — the #945 lesson). Probing from inside the bridge means
+  detection uses the exact environment and executable resolution that
+  launching uses, making the status-disagrees-with-launch bug class
+  (#1388 PATH asymmetry, #1231 same-named wrong CLI) unrepresentable, and it
+  keeps version-compatibility knowledge (minimum supported CLI version) next
+  to the translation code that actually depends on it. It also avoids
+  encoding install strategies as a declarative mini-DSL
+  (`npmGlobal` / `downloadedShellScript` / …) that would grow provider
+  variants inside core again.
 
 The key semantic change vs today: **all translation moves into the bridge**.
 The bridge emits bb `ThreadEvent`s; the runtime never sees provider-native
@@ -191,11 +207,9 @@ bb.agents.experimental_registerProvider({
   executionOptionScopes: { model: "live", reasoningLevel: "live", ... },
   approvalRequestPolicy: "provider",
   bridge: { entry: "provider-bridge" }, // required for kind "agent"; routers omit it
-  cli: {                                // drives generic daemon health/install
-    executable: "claude", npmPackage: "@anthropic-ai/claude-code",
-    minVersion: "...", install: {...}, update: {...},
-  },
   skillRoots: {...},                    // replaces PROVIDER_SKILL_SPECS rows
+  // NOTE: no `cli` block — CLI detection/install/update are bridge protocol
+  // methods, not declaration data. See "CLI lifecycle lives in the bridge".
 });
 ```
 
@@ -361,9 +375,13 @@ protocol method:
 - `supportsManualCompaction` string list → capability + `thread/compact`
   protocol method.
 - `skillProviderSchema` closed enum → open provider id.
+- Daemon per-provider CLI tables (`provider-cli-health.ts`,
+  `known_acp_agents.status`) → the optional `provider/health` /
+  `provider/install` / `provider/update` bridge methods. The existing daemon
+  tables keep working untouched through phases 1–5 and are deleted here.
 - `providerCliKeyValues` / fixed-key `providerUsageResponseSchema` → generic
   per-provider-id map backed by an optional `provider/usage` bridge method;
-  usage-limits UI becomes registry-driven.
+  usage-limits and CLI-install UI become registry-driven.
 - Host-daemon AI services (voice/inference, codex-only daemon commands) →
   optional protocol capability on the bridge.
 - `thread-timeline-active-prompt-mode` enum + `thread-view` provider
