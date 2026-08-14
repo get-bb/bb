@@ -111,7 +111,7 @@ function BannerShell({
   sourceThread,
 }: BannerShellProps) {
   return (
-    <div className="mb-2 rounded-lg border border-border bg-surface-recessed px-4 py-3 text-xs text-muted-foreground">
+    <div className="mb-2 min-w-0 max-w-full overflow-hidden rounded-lg border border-border bg-surface-recessed px-4 py-3 text-xs text-muted-foreground">
       {sourceThread ? (
         <NavLink
           to={sourceThread.href}
@@ -305,17 +305,17 @@ function buildApprovalSubject({
       return {
         title: payload.reason ?? "Do you want to run this command?",
         body: command ? (
-          <div className="overflow-hidden rounded-lg border border-border bg-card">
+          <div className="min-w-0 max-w-full overflow-hidden rounded-lg border border-border bg-card">
             <pre
               className={cn(
                 getDetailScrollMaxHeightClass("base"),
-                "overflow-auto whitespace-pre px-3 py-2 font-mono text-xs leading-relaxed text-foreground",
+                "max-w-full overflow-auto whitespace-pre px-3 py-2 font-mono text-xs leading-relaxed text-foreground",
               )}
             >
               $ {command}
             </pre>
             {detailLines.length > 0 ? (
-              <ul className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
+              <ul className="min-w-0 border-t border-border px-3 py-2 text-xs text-muted-foreground [overflow-wrap:anywhere]">
                 {detailLines.map((line) => (
                   <li key={line}>{line}</li>
                 ))}
