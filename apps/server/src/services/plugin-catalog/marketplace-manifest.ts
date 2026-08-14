@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import {
   OFFICIAL_PLUGIN_MARKETPLACE_NAME,
+  pluginMarketplaceNameSchema,
   ROOT_PLUGIN_SOURCE_SELECTION,
   type PluginSourceSelection,
 } from "@bb/server-contract";
@@ -28,6 +29,12 @@ export const OFFICIAL_MARKETPLACE_NAME = OFFICIAL_PLUGIN_MARKETPLACE_NAME;
 export const MARKETPLACE_MAX_ENTRIES = 256;
 
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
+/**
+ * A marketplace's own name is the handle every route and command addresses it
+ * by, so the manifest must accept exactly what those contracts accept. A name
+ * bb stored but could not refresh or remove by name would be unmanageable.
+ */
+const manifestNameSchema = pluginMarketplaceNameSchema;
 /** Lowercase kebab-case, the store's grouping vocabulary. */
 const TAG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 /** A GitHub login or organization, as GitHub itself accepts them. */
@@ -251,7 +258,7 @@ const marketplaceManifestSchema = z
   .object({
     $schema: z.literal(MARKETPLACE_SCHEMA_URL).optional(),
     schemaVersion: z.literal(1),
-    name: z.string().regex(NAME_PATTERN),
+    name: manifestNameSchema,
     displayName: z.string().min(1),
     description: z.string().min(1).optional(),
     plugins: z

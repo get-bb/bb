@@ -15,6 +15,8 @@
     },
     "name": {
       "type": "string",
+      "$comment": "The handle every bb route and command addresses the marketplace by.",
+      "maxLength": 64,
       "pattern": "^[a-z0-9][a-z0-9-]*$"
     },
     "displayName": {
