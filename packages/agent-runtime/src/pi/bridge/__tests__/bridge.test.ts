@@ -639,9 +639,13 @@ describe("pi bridge", () => {
         baseInstructions: "Replacement prompt",
         appendSystemPrompt: "Append prompt",
       });
-      await bridge.flushWork();
 
-      expect(bridge.hasResponse(3)).toBe(false);
+      // Reply, never drop (#853): schema-invalid params answer INVALID_PARAMS
+      // instead of leaving the runtime to time out.
+      await expect(bridge.waitForResponse(3)).resolves.toMatchObject({
+        id: 3,
+        error: { code: -32602 },
+      });
       expect(mockCreateAgentSession).not.toHaveBeenCalled();
       expect(mockResourceLoaders).toHaveLength(0);
     } finally {

@@ -78,9 +78,10 @@ const builtInProvidersById = new Map(
 /**
  * Experiment-gated canonical path: providers whose id matches an enabled
  * bridge-protocol prefix run on the generic adapter speaking the canonical
- * Provider Bridge Protocol. Only ACP providers participate today; the
- * ACP launch spec travels opaquely via staticProviderOptions. Transitional
- * wiring — phase 3 provider declarations replace this table.
+ * Provider Bridge Protocol. ACP providers and pi participate today; the
+ * ACP launch spec travels opaquely via staticProviderOptions (pi needs no
+ * launch spec). Transitional wiring — phase 3 provider declarations replace
+ * this table.
  */
 function createBridgeProtocolAdapterForId(
   providerId: string,
@@ -89,6 +90,26 @@ function createBridgeProtocolAdapterForId(
   const prefixes = options.bridgeProtocolProviderPrefixes ?? [];
   if (!prefixes.some((prefix) => providerId.startsWith(prefix))) {
     return null;
+  }
+  if (providerId === "pi") {
+    const info = getBuiltInAgentProviderInfo("pi");
+    return createBridgeProtocolAdapter({
+      id: providerId,
+      displayName: info.displayName,
+      capabilities: info.capabilities,
+      process: {
+        command: options.bridgeNodeExecutablePath ?? "node",
+        args: resolveBridgeProcessArgs({
+          bridgeBundleDir: options.bridgeBundleDir,
+          bundleFileName: "bb-pi-bridge.mjs",
+          importMetaUrl: import.meta.url,
+          bridgeRelativePath: "pi/bridge/bridge.js",
+        }),
+        ...(options.bridgeNodeEnv !== undefined
+          ? { env: options.bridgeNodeEnv }
+          : {}),
+      },
+    });
   }
   if (!isAcpProviderId(providerId)) {
     return null;
