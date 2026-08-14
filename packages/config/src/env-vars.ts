@@ -215,7 +215,7 @@ export const BB_EXTERNAL_URL_ENV = defineEnvVar<string>({
 
 export const BB_MARKETPLACE_URL_ENV = defineEnvVar<string>({
   description:
-    "Manifest URL of the reserved bb-official plugin marketplace, which lists as BB Community. Point it at a local file server to test catalog refreshes.",
+    "Manifest URL of the reserved bb-community plugin marketplace, which lists as BB Community. Point it at a local file server to test catalog refreshes.",
   name: "BB_MARKETPLACE_URL",
   parse: parseOptionalUrlEnvValue,
 });

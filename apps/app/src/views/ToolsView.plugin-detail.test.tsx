@@ -63,7 +63,7 @@ const GITHUB_PLUGIN = {
 
 const GITHUB_CATALOG_ENTRY = {
   entryId: "github",
-  marketplace: "bb-official",
+  marketplace: "bb-community",
   pluginId: "github",
   displayName: "GitHub",
   description: "Browse GitHub issues and pull requests in BB.",

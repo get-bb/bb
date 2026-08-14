@@ -40,7 +40,7 @@ export interface ServerRuntimeConfig {
    * {@link MANAGED_ENVIRONMENT_RETIRE_GRACE_MS}; set to 0 to destroy immediately.
    */
   managedEnvironmentRetireGraceMs: number;
-  /** Manifest URL of the reserved `bb-official` plugin marketplace. */
+  /** Manifest URL of the reserved `bb-community` plugin marketplace. */
   marketplaceUrl: string;
   openAiApiKey: string;
   serverPort: number;

@@ -274,7 +274,7 @@ installing an entry runs the same install pipeline a direct install runs.
 
 The schema is strict: an unknown field rejects the whole document, and the
 last catalog bb validated keeps serving. `name` is the marketplace's identity
-and must be unique on the user's machine; `bb-official` is reserved. `engines`
+and must be unique on the user's machine; `bb-community` is reserved. `engines`
 may narrow a plugin manifest's ranges and never widen them. Icons are `.svg`,
 `.png`, or `.webp`, either an absolute https URL or a path relative to the
 manifest — bb fetches and validates them server-side and serves them from its
@@ -292,11 +292,11 @@ An https marketplace is re-read with a conditional request; a git one is
 cloned into a throwaway checkout each refresh, with `marketplace.json` and any
 relative icons read from the repository root. Prefer git tag ranges over
 pinned refs so a release reaches users without a catalog change. Before
-installing from a marketplace that is not `bb-official`, bb resolves and shows
+installing from a marketplace that is not `bb-community`, bb resolves and shows
 the true source — including the exact release tag and commit a range lands
 on — so keep your listed URL, subdirectory, and range honest.
 
-BB's own official plugins are separate: inclusion in the `bb-official`
+BB's own official plugins are separate: inclusion in the `bb-community`
 marketplace is a BB release decision, not part of the plugin authoring
 workflow, and the bundled official plugins ship inside the app itself and
 install from that local copy with no network fetch.

@@ -19,7 +19,7 @@ import {
   builtinPluginSource,
   type BundledPluginRegistration,
 } from "./builtin-registry.js";
-import { OFFICIAL_MARKETPLACE_NAME } from "../plugin-catalog/marketplace-manifest.js";
+import { CURATED_MARKETPLACE_NAME } from "../plugin-catalog/marketplace-manifest.js";
 import type { PluginSourceSelection } from "@bb/server-contract";
 import { resolveSelectedSubdirectory } from "./collection-manifest.js";
 import {
@@ -424,10 +424,10 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
 
   /**
    * Rows written before marketplaces were named all came from the official
-   * catalog, so a missing name reads as `bb-official` rather than as corrupt.
+   * catalog, so a missing name reads as `bb-community` rather than as corrupt.
    */
   function catalogMarketplaceOf(row: InstalledPluginRow): string {
-    return row.catalogMarketplaceName ?? OFFICIAL_MARKETPLACE_NAME;
+    return row.catalogMarketplaceName ?? CURATED_MARKETPLACE_NAME;
   }
 
   function provenanceForRow(row: InstalledPluginRow): PluginProvenance {
@@ -523,7 +523,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       ? { kind: "builtin" }
       : {
           kind: "catalog",
-          marketplace: OFFICIAL_MARKETPLACE_NAME,
+          marketplace: CURATED_MARKETPLACE_NAME,
           entryId: plugin.name,
         };
   }

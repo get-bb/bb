@@ -4,7 +4,7 @@ import {
   marketplacePublisherLabels,
   pluginPublisherLabel,
 } from "../../../src/services/plugin-catalog/marketplace-publishers.js";
-import { BUNDLED_OFFICIAL_MARKETPLACE } from "../../../src/services/plugin-catalog/official-marketplace.js";
+import { BUNDLED_CURATED_MARKETPLACE } from "../../../src/services/plugin-catalog/curated-marketplace.js";
 
 function connect() {
   const db = createConnection(":memory:");
@@ -37,10 +37,10 @@ describe("marketplace publisher labels", () => {
     const db = connect();
     register(
       db,
-      "bb-official",
+      "bb-community",
       JSON.stringify({
         schemaVersion: 1,
-        name: "bb-official",
+        name: "bb-community",
         displayName: "BB Community",
         plugins: [],
       }),
@@ -60,7 +60,7 @@ describe("marketplace publisher labels", () => {
     expect(
       pluginPublisherLabel({
         provenance: "catalog",
-        catalogMarketplaceName: "bb-official",
+        catalogMarketplaceName: "bb-community",
         labels,
       }),
     ).toBe("BB Community");
@@ -111,6 +111,6 @@ describe("marketplace publisher labels", () => {
   it("does not reuse BB Official for the marketplace bb curates", () => {
     // The two labels are the whole point of the split: a bundled plugin and a
     // registry listing must not badge the same.
-    expect(BUNDLED_OFFICIAL_MARKETPLACE.displayName).toBe("BB Community");
+    expect(BUNDLED_CURATED_MARKETPLACE.displayName).toBe("BB Community");
   });
 });

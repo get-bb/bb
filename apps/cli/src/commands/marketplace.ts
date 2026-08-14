@@ -85,7 +85,7 @@ export function registerMarketplaceCommands(
           renderBorderlessTable(
             {
               head: ["Name", "Source", "Entries", "Refreshed"],
-              colWidths: [22, 58, 9, 26],
+              colWidths: [24, 58, 9, 26],
               trimTrailingWhitespace: true,
             },
             marketplaces.map((entry) => [

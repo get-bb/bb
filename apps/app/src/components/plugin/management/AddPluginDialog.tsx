@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  OFFICIAL_PLUGIN_MARKETPLACE_NAME,
+  CURATED_PLUGIN_MARKETPLACE_NAME,
   type InstalledPlugin,
   type PluginCatalogInstallPlan,
   type PluginCatalogResolvedSource,
@@ -248,7 +248,7 @@ function AddPluginDialogContent({
   // the official catalog is BB's own and installs without a round trip.
   const thirdParty =
     initial !== null &&
-    initial.marketplace !== OFFICIAL_PLUGIN_MARKETPLACE_NAME;
+    initial.marketplace !== CURATED_PLUGIN_MARKETPLACE_NAME;
   const planQuery = useCatalogInstallPlan(
     thirdParty && initial !== null
       ? { entryId: initial.entryId, marketplace: initial.marketplace }

@@ -18,7 +18,7 @@ const searchResult = {
   iconUrl: null,
   category: "Developer tools",
   source: "builtin:linear",
-  marketplace: "bb-official",
+  marketplace: "bb-community",
   marketplaceDisplayName: "BB Official",
   publisherLabel: "BB Official",
   official: true,
@@ -429,12 +429,12 @@ describe("bb plugin catalog", () => {
       .mockResolvedValueOnce(json({ ok: true, plugin: installedPlugin }));
 
     await runCommand(
-      ["plugin", "install", "linear@bb-official", "--yes"],
+      ["plugin", "install", "linear@bb-community", "--yes"],
       register,
     );
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      "http://server/api/v1/plugin-catalog/install-plan?entryId=linear&marketplace=bb-official",
+      "http://server/api/v1/plugin-catalog/install-plan?entryId=linear&marketplace=bb-community",
     );
   });
 

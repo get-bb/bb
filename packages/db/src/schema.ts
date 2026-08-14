@@ -300,7 +300,7 @@ export const pluginArtifacts = sqliteTable(
 );
 
 // Last-known-good marketplace catalogs, one row per marketplace name
-// ("bb-official" is reserved). The row holds the validated manifest document
+// ("bb-community" is reserved). The row holds the validated manifest document
 // plus the conditional-request validators the refresh loop replays. A failed
 // refresh updates only the attempt/error columns, so the stored manifest keeps
 // serving the store offline.

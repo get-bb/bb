@@ -234,7 +234,7 @@ describe("plugin update service and routes", () => {
       source: "npm:bb-plugin-legacy-marketplace@^0.2.0",
       provenance: {
         kind: "catalog",
-        marketplace: "bb-official",
+        marketplace: "bb-community",
         entryId: "legacy-marketplace",
       },
       sourceIntent: {

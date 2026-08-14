@@ -743,7 +743,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     or `path:<directory>` on the bb server's machine. bb validates the
     manifest, caches the catalog, and fetches its icons. **Adding a
     marketplace installs nothing.** The manifest's own `name` is the
-    marketplace's identity, so a name collision is refused; `bb-official` is
+    marketplace's identity, so a name collision is refused; `bb-community` is
     reserved and can be neither added nor removed.
   - `bb marketplace list [--json]` — name, source, entry count, last refresh.
   - `bb marketplace refresh [name] [--json]` — re-read one catalog or every
@@ -759,7 +759,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     across every marketplace: exactly one match installs, no match falls back
     to the bundled official plugin of that name, and several matches fail and
     list the `id@marketplace` choices.
-  - Installing from a marketplace other than `bb-official` first resolves and
+  - Installing from a marketplace other than `bb-community` first resolves and
     prints the true source — npm package with its range or dist-tag, or git
     URL with its ref or semver range, subdirectory, and the exact release tag
     and commit that range currently lands on — plus the marketplace and the

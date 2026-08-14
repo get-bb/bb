@@ -559,7 +559,7 @@ const BUNDLED_PLUGIN: PluginListItem = {
 
 const UNINSTALLED_CATALOG_PLUGIN = {
   entryId: "github",
-  marketplace: "bb-official",
+  marketplace: "bb-community",
   pluginId: "github",
   displayName: "GitHub",
   description: "Browse GitHub issues and pull requests without leaving bb.",
@@ -694,7 +694,7 @@ function CatalogPlugin({
         open={installOpen}
         initial={{
           entryId: entry.entryId,
-          marketplace: "bb-official",
+          marketplace: "bb-community",
           displayName: entry.displayName,
           icon: entry.icon,
           iconUrl: entry.iconUrl,

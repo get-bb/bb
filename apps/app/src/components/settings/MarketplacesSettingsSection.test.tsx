@@ -13,8 +13,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 const OFFICIAL = {
-  name: "bb-official",
-  displayName: "BB Official",
+  name: "bb-community",
+  displayName: "BB Community",
   description: null,
   official: true,
   sourceKind: "https",
@@ -90,7 +90,7 @@ describe("MarketplacesSettingsSection", () => {
     });
   });
 
-  it("offers Remove only for marketplaces other than bb-official", async () => {
+  it("offers Remove only for marketplaces other than bb-community", async () => {
     stubFetch([OFFICIAL, ACME]);
     const { wrapper } = createQueryClientTestHarness();
     render(<MarketplacesSettingsSection />, { wrapper });

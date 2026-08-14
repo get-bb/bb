@@ -136,7 +136,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       source: "npm:bb-plugin-legacy@^1.0.0",
       provenance: {
         kind: "catalog",
-        marketplace: "bb-official",
+        marketplace: "bb-community",
         entryId: "legacy-entry",
       },
       sourceIntent: {
@@ -205,7 +205,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       JSON.stringify({
         ...legacyRegistration,
         provenance: "marketplace",
-        marketplaceId: "bb-official",
+        marketplaceId: "bb-community",
         marketplaceEntryId: "legacy-entry",
       }),
     );
@@ -246,7 +246,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       JSON.stringify({
         ...legacyRegistration,
         provenance: "marketplace",
-        marketplaceId: "bb-official",
+        marketplaceId: "bb-community",
         marketplaceEntryId: "legacy-entry",
       }),
     );

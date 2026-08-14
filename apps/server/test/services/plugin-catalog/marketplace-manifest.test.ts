@@ -8,7 +8,7 @@ import {
   resolvedEntrySource,
   type MarketplaceEntry,
 } from "../../../src/services/plugin-catalog/marketplace-manifest.js";
-import { BUNDLED_OFFICIAL_MARKETPLACE } from "../../../src/services/plugin-catalog/official-marketplace.js";
+import { BUNDLED_CURATED_MARKETPLACE } from "../../../src/services/plugin-catalog/curated-marketplace.js";
 
 const MANIFEST_URL = "https://getbb.app/marketplace/v1/marketplace.json";
 
@@ -58,8 +58,8 @@ function entry(overrides: Record<string, unknown> = {}): unknown {
 function manifest(plugins: unknown[]): unknown {
   return {
     schemaVersion: 1,
-    name: "bb-official",
-    displayName: "BB Official",
+    name: "bb-community",
+    displayName: "BB Community",
     plugins,
   };
 }
@@ -394,7 +394,7 @@ describe("marketplace manifest schema", () => {
   it("validates the bundled seed snapshot", () => {
     expect(() =>
       parseMarketplaceManifest(
-        BUNDLED_OFFICIAL_MARKETPLACE,
+        BUNDLED_CURATED_MARKETPLACE,
         "bundled snapshot",
       ),
     ).not.toThrow();

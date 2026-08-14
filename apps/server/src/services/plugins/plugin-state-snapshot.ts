@@ -11,7 +11,7 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { OFFICIAL_MARKETPLACE_NAME } from "../plugin-catalog/marketplace-manifest.js";
+import { CURATED_MARKETPLACE_NAME } from "../plugin-catalog/marketplace-manifest.js";
 import {
   createPluginStateSnapshot,
   getInstalledPlugin,
@@ -275,7 +275,7 @@ export async function readPluginSnapshotRegistration(args: {
   const installed = getInstalledPlugin(args.db, legacy.id);
   if (
     legacy.provenance === "marketplace" &&
-    marketplaceId === OFFICIAL_MARKETPLACE_NAME &&
+    marketplaceId === CURATED_MARKETPLACE_NAME &&
     marketplaceEntryId !== null &&
     installed?.provenance === "catalog" &&
     installed.catalogEntryId === marketplaceEntryId
@@ -284,7 +284,7 @@ export async function readPluginSnapshotRegistration(args: {
       ...registration,
       provenance: "catalog",
       catalogEntryId: marketplaceEntryId,
-      catalogMarketplaceName: OFFICIAL_MARKETPLACE_NAME,
+      catalogMarketplaceName: CURATED_MARKETPLACE_NAME,
     };
   }
   return {

@@ -250,7 +250,7 @@ added/updated/unchanged counts.
                                  cached icons are deleted; plugins installed
                                  from it keep running as direct installs and
                                  keep checking for updates from their recorded
-                                 source. bb-official cannot be removed
+                                 source. bb-community cannot be removed
 
 Multi-plugin repositories
 
@@ -320,7 +320,7 @@ path:<directory> on the bb server's machine:
   bb marketplace add path:/work/acme-marketplace
 
 The manifest's own `name` is the marketplace's identity, so adding refuses a
-name another marketplace already uses. `bb-official` is reserved: it cannot be
+name another marketplace already uses. `bb-community` is reserved: it cannot be
 added and cannot be removed. A git or path marketplace reads its icons from
 the checkout beside the manifest; an https one resolves relative icon URLs
 against the manifest URL. Either way the bb server fetches, validates, and
@@ -338,7 +338,7 @@ matches fail and list the id@marketplace choices. Every other source
 form — Git repository URLs, path:, npm:, git:, builtin:, and path-like
 syntax — is unchanged and still bypasses catalog resolution.
 
-Before an install from a marketplace other than bb-official, bb resolves and
+Before an install from a marketplace other than bb-community, bb resolves and
 shows the true source: the npm package with its range or dist-tag, or the git
 URL with its ref or semver range, its subdirectory, and the exact release tag
 and commit that range currently lands on. The confirmation names the
@@ -356,7 +356,7 @@ the recorded source. Only the catalog rows and the cached icons are deleted.
 
 The Browse tab groups entries by marketplace with BB Official first, and by
 tag-derived sections inside each marketplace. Entry cards show the author, and
-entries from a marketplace other than bb-official name it.
+entries from a marketplace other than bb-community name it.
 
 For direct git:/npm: installs, updates are manual: `bb plugin outdated`
 checks tracking sources and `bb plugin update` applies compatible candidates.

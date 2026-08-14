@@ -446,6 +446,12 @@ const namedMarketplaceCatalogMigrationPath = resolve(
   "drizzle",
   "0095_normal_elektra.sql",
 );
+const curatedMarketplaceRenameMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0098_rename_curated_marketplace.sql",
+);
 const sidebarOrderingMigrationPath = resolve(
   __dirname,
   "..",
@@ -4592,6 +4598,70 @@ describe("migrate", () => {
           >("SELECT COUNT(*) AS count FROM plugin_catalog")
           .get(),
       ).toEqual({ count: 0 });
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("moves the curated marketplace, its icons, and its installs together", () => {
+    const db = createConnection(":memory:");
+    try {
+      db.$client.exec(`
+        CREATE TABLE plugin_marketplaces (name text PRIMARY KEY NOT NULL);
+        CREATE TABLE plugin_marketplace_icons (
+          marketplace_name text NOT NULL,
+          entry_id text NOT NULL,
+          PRIMARY KEY (marketplace_name, entry_id)
+        );
+        CREATE TABLE plugins (
+          id text PRIMARY KEY NOT NULL,
+          catalog_marketplace_name text
+        );
+        INSERT INTO plugin_marketplaces VALUES ('bb-official'), ('acme');
+        INSERT INTO plugin_marketplace_icons VALUES
+          ('bb-official', 'notes'),
+          ('acme', 'tasks');
+        INSERT INTO plugins VALUES
+          ('notes', 'bb-official'),
+          ('tasks', 'acme'),
+          ('local', NULL);
+      `);
+
+      runMigrationFile({
+        db,
+        migrationPath: curatedMarketplaceRenameMigrationPath,
+      });
+
+      // A dangling reference is the failure that matters: a renamed row whose
+      // installs still name the old key would list every entry twice.
+      expect(
+        db.$client
+          .prepare<[], { name: string }>(
+            "SELECT name FROM plugin_marketplaces ORDER BY name",
+          )
+          .all(),
+      ).toEqual([{ name: "acme" }, { name: "bb-community" }]);
+      expect(
+        db.$client
+          .prepare<[], { marketplaceName: string }>(
+            "SELECT marketplace_name AS marketplaceName FROM plugin_marketplace_icons ORDER BY marketplace_name",
+          )
+          .all(),
+      ).toEqual([
+        { marketplaceName: "acme" },
+        { marketplaceName: "bb-community" },
+      ]);
+      expect(
+        db.$client
+          .prepare<[], { id: string; catalogMarketplaceName: string | null }>(
+            "SELECT id, catalog_marketplace_name AS catalogMarketplaceName FROM plugins ORDER BY id",
+          )
+          .all(),
+      ).toEqual([
+        { id: "local", catalogMarketplaceName: null },
+        { id: "notes", catalogMarketplaceName: "bb-community" },
+        { id: "tasks", catalogMarketplaceName: "acme" },
+      ]);
     } finally {
       closeConnection(db);
     }

@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import {
-  OFFICIAL_PLUGIN_MARKETPLACE_NAME,
+  CURATED_PLUGIN_MARKETPLACE_NAME,
   pluginMarketplaceNameSchema,
   ROOT_PLUGIN_SOURCE_SELECTION,
   type PluginSourceSelection,
@@ -20,7 +20,7 @@ const MARKETPLACE_SCHEMA_URL =
   "https://getbb.app/schemas/marketplace.schema.json";
 
 /** Reserved name of the marketplace BB itself curates. */
-export const OFFICIAL_MARKETPLACE_NAME = OFFICIAL_PLUGIN_MARKETPLACE_NAME;
+export const CURATED_MARKETPLACE_NAME = CURATED_PLUGIN_MARKETPLACE_NAME;
 
 /**
  * Publisher shown for plugins that ship inside the app. They come from the

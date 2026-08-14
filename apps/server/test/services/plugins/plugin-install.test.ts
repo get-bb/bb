@@ -404,7 +404,7 @@ describe("plugin install flows", () => {
 
       const source = `git:${repoDir}@plugin/catalog-git`;
       const entry = await service.installCatalogPlugin({
-        marketplace: "bb-official",
+        marketplace: "bb-community",
         entryId: "catalog-git-entry",
         pluginId: "catalog-git",
         source,
@@ -416,13 +416,13 @@ describe("plugin install flows", () => {
         source,
         provenance: "catalog",
         catalogEntryId: "catalog-git-entry",
-        catalogMarketplaceName: "bb-official",
+        catalogMarketplaceName: "bb-community",
         status: "running",
       });
       expect(getInstalledPluginRegistration(db, "catalog-git")).toMatchObject({
         provenance: "catalog",
         catalogEntryId: "catalog-git-entry",
-        catalogMarketplaceName: "bb-official",
+        catalogMarketplaceName: "bb-community",
         sourceKind: "git",
         sourceGitUrl: repoDir,
         sourceGitRequestedRef: "plugin/catalog-git",
@@ -465,7 +465,7 @@ describe("plugin install flows", () => {
 
       await expect(
         service.installCatalogPlugin({
-          marketplace: "bb-official",
+          marketplace: "bb-community",
           entryId: "sdk-listed",
           pluginId: "sdk-listed",
           source: `git:${repoDir}@plugin/listed`,
@@ -489,7 +489,7 @@ describe("plugin install flows", () => {
       ]) {
         await expect(
           service.installCatalogPlugin({
-            marketplace: "bb-official",
+            marketplace: "bb-community",
             entryId: "catalog-npm-entry",
             pluginId: "registry",
             source: "npm:bb-plugin-registry@^1.0.0",
@@ -523,7 +523,7 @@ describe("plugin install flows", () => {
 
       await expect(
         service.installCatalogPlugin({
-          marketplace: "bb-official",
+          marketplace: "bb-community",
           entryId: "catalog-git-entry",
           pluginId: "expected-id",
           source: `git:${repoDir}@plugin/imposter`,
@@ -670,7 +670,7 @@ describe("plugin install flows", () => {
       await git(repoDir, ["tag", "v1.3.0"]);
 
       const entry = await service.installCatalogPlugin({
-        marketplace: "bb-official",
+        marketplace: "bb-community",
         entryId: "catalog-range",
         pluginId: "catalog-range",
         source: `git:${repoDir}@semver:^1.0.0`,

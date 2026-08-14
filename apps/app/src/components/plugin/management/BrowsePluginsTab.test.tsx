@@ -25,7 +25,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 const MEMORY_ENTRY: PluginCatalogSearchEntry = {
   entryId: "memory",
-  marketplace: "bb-official",
+  marketplace: "bb-community",
   pluginId: "memory",
   displayName: "Memory",
   description: "Provider-independent durable memory for agents.",
@@ -51,7 +51,7 @@ const CATALOG_STATUS = {
 const INCOMPATIBLE_ENTRY: PluginCatalogSearchEntry = {
   ...MEMORY_ENTRY,
   entryId: "future-memory",
-  marketplace: "bb-official",
+  marketplace: "bb-community",
   pluginId: "future-memory",
   displayName: "Future Memory",
   compatible: false,
@@ -61,7 +61,7 @@ const INCOMPATIBLE_ENTRY: PluginCatalogSearchEntry = {
 const GITHUB_ENTRY: PluginCatalogSearchEntry = {
   ...MEMORY_ENTRY,
   entryId: "github",
-  marketplace: "bb-official",
+  marketplace: "bb-community",
   pluginId: "github",
   displayName: "GitHub",
   description: "Browse GitHub issues and pull requests in BB.",
@@ -403,7 +403,7 @@ describe("BrowsePluginsTab", () => {
     fireEvent.click(install);
     expect(onInstall).toHaveBeenCalledWith({
       entryId: "memory",
-      marketplace: "bb-official",
+      marketplace: "bb-community",
       displayName: "Memory",
       icon: "Brain",
       iconUrl: null,
@@ -558,7 +558,7 @@ describe("BrowsePluginsTab", () => {
               {
                 ...MEMORY_ENTRY,
                 entryId: "docs",
-                marketplace: "bb-official",
+                marketplace: "bb-community",
                 pluginId: "simple-notes",
                 displayName: "Docs",
                 source: "builtin:docs",

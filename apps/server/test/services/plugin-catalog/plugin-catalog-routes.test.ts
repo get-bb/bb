@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerPluginCatalogRoutes } from "../../../src/routes/plugin-catalog.js";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
-import { BUNDLED_OFFICIAL_MARKETPLACE } from "../../../src/services/plugin-catalog/official-marketplace.js";
+import { BUNDLED_CURATED_MARKETPLACE } from "../../../src/services/plugin-catalog/curated-marketplace.js";
 import {
   BUILTIN_PLUGINS,
   BUNDLED_PLUGINS,
@@ -14,7 +14,7 @@ import {
 } from "../../../src/services/plugins/builtin-registry.js";
 
 const MANIFEST_URL = "https://marketplace.test/marketplace/v1/marketplace.json";
-const SEED_ENTRY_COUNT = BUNDLED_OFFICIAL_MARKETPLACE.plugins.length;
+const SEED_ENTRY_COUNT = BUNDLED_CURATED_MARKETPLACE.plugins.length;
 const VALID_SVG = Buffer.from(
   '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h16v16H0z"/></svg>',
 );
@@ -111,8 +111,8 @@ describe("plugin catalog routes", () => {
         ? new Response(
             JSON.stringify({
               schemaVersion: 1,
-              name: "bb-official",
-              displayName: "BB Official",
+              name: "bb-community",
+              displayName: "BB Community",
               plugins: [
                 {
                   id: "widgets",
@@ -134,11 +134,11 @@ describe("plugin catalog routes", () => {
         : new Response(VALID_SVG, { status: 200 }),
     );
     await catalog.refresh(1_000);
-    const hash = catalog.icon("bb-official", "widgets")?.hash;
+    const hash = catalog.icon("bb-community", "widgets")?.hash;
     expect(hash).toBeDefined();
 
     const hashed = await app.request(
-      `/plugin-catalog/icons/bb-official/widgets?h=${hash}`,
+      `/plugin-catalog/icons/bb-community/widgets?h=${hash}`,
     );
     expect(hashed.status).toBe(200);
     expect(hashed.headers.get("content-type")).toBe("image/svg+xml");
@@ -146,12 +146,12 @@ describe("plugin catalog routes", () => {
     expect(await hashed.text()).toBe(VALID_SVG.toString());
 
     const stale = await app.request(
-      "/plugin-catalog/icons/bb-official/widgets?h=stale",
+      "/plugin-catalog/icons/bb-community/widgets?h=stale",
     );
     expect(stale.headers.get("cache-control")).toBe("no-store");
 
     const missing = await app.request(
-      "/plugin-catalog/icons/bb-official/nothing",
+      "/plugin-catalog/icons/bb-community/nothing",
     );
     expect(missing.status).toBe(404);
   });
@@ -214,7 +214,7 @@ describe("plugin catalog routes", () => {
 
       const listed = await app.request("/marketplaces");
       await expect(listed.json()).resolves.toMatchObject({
-        marketplaces: [{ name: "bb-official" }, { name: "acme-plugins" }],
+        marketplaces: [{ name: "bb-community" }, { name: "acme-plugins" }],
       });
 
       const refreshed = await postJson(app, "/marketplaces/refresh", {
@@ -261,7 +261,7 @@ describe("plugin catalog routes", () => {
       );
       expect(longPlan.status).toBe(422);
 
-      const reserved = await app.request("/marketplaces/bb-official", {
+      const reserved = await app.request("/marketplaces/bb-community", {
         method: "DELETE",
       });
       expect(reserved.status).toBe(422);

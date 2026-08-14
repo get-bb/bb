@@ -259,7 +259,7 @@ export const PLUGIN_MARKETPLACE_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
  * Reserved name of the marketplace BB curates. It cannot be added, cannot be
  * removed, and is the only marketplace whose listings BB reviews.
  */
-export const OFFICIAL_PLUGIN_MARKETPLACE_NAME = "bb-official";
+export const CURATED_PLUGIN_MARKETPLACE_NAME = "bb-community";
 
 export const pluginMarketplaceNameSchema = z
   .string()
@@ -410,7 +410,7 @@ export const pluginCatalogSearchResultSchema = z.object({
   iconUrl: z.string().nullable(),
   category: z.string(),
   source: z.string(),
-  /** Marketplace that lists the entry; plugins bundled with the app use `bb-official`. */
+  /** Marketplace that lists the entry; plugins bundled with the app use `bb-community`. */
   marketplace: z.string(),
   marketplaceDisplayName: z.string(),
   /**
@@ -420,7 +420,7 @@ export const pluginCatalogSearchResultSchema = z.object({
    * official marketplace but are not published through it.
    */
   publisherLabel: z.string(),
-  /** Whether the listing marketplace is the reserved `bb-official` one. */
+  /** Whether the listing marketplace is the reserved `bb-community` one. */
   official: z.boolean(),
   /** Null for plugins bundled with the app, which list no separate author. */
   author: pluginCatalogAuthorSchema.nullable(),
@@ -547,7 +547,7 @@ export const pluginMarketplaceSchema = z.object({
   name: z.string(),
   displayName: z.string(),
   description: z.string().nullable(),
-  /** The reserved `bb-official` marketplace, which cannot be removed. */
+  /** The reserved `bb-community` marketplace, which cannot be removed. */
   official: z.boolean(),
   sourceKind: pluginMarketplaceSourceKindSchema,
   /** Canonical spec that re-adds this marketplace. */

@@ -248,7 +248,7 @@ describe("third-party marketplaces", () => {
       getPluginMarketplaceIcon(db, "acme-plugins", "notes"),
     ).toBeUndefined();
     expect(catalog.listMarketplaces().map((row) => row.name)).toEqual([
-      "bb-official",
+      "bb-community",
     ]);
 
     const readded = await catalog.addMarketplace(`git:${repo}@main`);
@@ -308,11 +308,11 @@ describe("third-party marketplaces", () => {
     expect(getPluginMarketplaceIcon(db, "acme-plugins", "notes")).toBeDefined();
   });
 
-  it("refuses a name collision and the reserved bb-official name", async () => {
+  it("refuses a name collision and the reserved bb-community name", async () => {
     const catalog = service({
       fetch: marketplaceFetch({
         [ACME_URL]: manifest("acme-plugins", [entry()]),
-        "https://impostor.test/marketplace.json": manifest("bb-official", [
+        "https://impostor.test/marketplace.json": manifest("bb-community", [
           entry(),
         ]),
         "https://other.test/marketplace.json": manifest("acme-plugins", [
@@ -327,13 +327,13 @@ describe("third-party marketplaces", () => {
     ).rejects.toThrow('marketplace "acme-plugins" is already added');
     await expect(
       catalog.addMarketplace("https://impostor.test/marketplace.json"),
-    ).rejects.toThrow(/"bb-official" is reserved/);
-    await expect(catalog.removeMarketplace("bb-official")).rejects.toThrow(
+    ).rejects.toThrow(/"bb-community" is reserved/);
+    await expect(catalog.removeMarketplace("bb-community")).rejects.toThrow(
       /cannot be removed/,
     );
-    // The impostor never became a row, and bb-official kept its own catalog.
+    // The impostor never became a row, and bb-community kept its own catalog.
     expect(catalog.listMarketplaces().map((row) => row.name)).toEqual([
-      "bb-official",
+      "bb-community",
       "acme-plugins",
     ]);
   });
@@ -341,7 +341,7 @@ describe("third-party marketplaces", () => {
   it("refuses an ambiguous bare install and installs the qualified one", async () => {
     const catalog = service({
       fetch: marketplaceFetch({
-        [OFFICIAL_URL]: manifest("bb-official", [
+        [OFFICIAL_URL]: manifest("bb-community", [
           entry({
             id: "notes",
             displayName: "Official Notes",
@@ -357,7 +357,7 @@ describe("third-party marketplaces", () => {
     await catalog.addMarketplace(ACME_URL);
 
     await expect(catalog.install({ entryId: "notes" })).rejects.toThrow(
-      "notes@bb-official, notes@acme-plugins",
+      "notes@bb-community, notes@acme-plugins",
     );
     expect(installedCatalogEntries).toEqual([]);
 
@@ -388,7 +388,7 @@ describe("third-party marketplaces", () => {
     ]);
   });
 
-  it("names a bundled official plugin with <id>@bb-official", async () => {
+  it("names a bundled official plugin with <id>@bb-community", async () => {
     const catalog = createPluginCatalogService({
       db,
       appVersion: "1.0.0",
@@ -417,13 +417,13 @@ describe("third-party marketplaces", () => {
           detail: "no registry in this test",
         }),
       },
-      fetch: marketplaceFetch({ [OFFICIAL_URL]: manifest("bb-official", []) }),
+      fetch: marketplaceFetch({ [OFFICIAL_URL]: manifest("bb-community", []) }),
     });
 
-    // The store lists bundled plugins under bb-official, so the qualified form
+    // The store lists bundled plugins under bb-community, so the qualified form
     // the Browse card sends must resolve to the bundled copy.
     await expect(
-      catalog.install({ entryId: "docs", marketplace: "bb-official" }),
+      catalog.install({ entryId: "docs", marketplace: "bb-community" }),
     ).rejects.toThrow(/bundled installation stopped by test|unavailable/u);
     await expect(
       catalog.install({ entryId: "docs", marketplace: "acme-plugins" }),
@@ -433,7 +433,7 @@ describe("third-party marketplaces", () => {
   it("installs a single marketplace match from a bare entry id", async () => {
     const catalog = service({
       fetch: marketplaceFetch({
-        [OFFICIAL_URL]: manifest("bb-official", []),
+        [OFFICIAL_URL]: manifest("bb-community", []),
         [ACME_URL]: manifest("acme-plugins", [
           entry({ source: { npm: { package: "bb-plugin-notes" } } }),
         ]),
@@ -556,7 +556,7 @@ describe("third-party marketplaces", () => {
     const catalog = service({
       fetch: marketplaceFetch(
         {
-          [OFFICIAL_URL]: manifest("bb-official", [
+          [OFFICIAL_URL]: manifest("bb-community", [
             entry({
               id: "official-notes",
               icon: { url: "https://marketplace.test/marketplace/v1/a.svg" },
@@ -577,14 +577,14 @@ describe("third-party marketplaces", () => {
 
     const official = getPluginMarketplaceIcon(
       db,
-      "bb-official",
+      "bb-community",
       "official-notes",
     );
     const acme = getPluginMarketplaceIcon(db, "acme-plugins", "notes");
     expect(official?.contentHash).not.toBe(acme?.contentHash);
     // Neither marketplace can read the other's rows.
     expect(
-      getPluginMarketplaceIcon(db, "bb-official", "notes"),
+      getPluginMarketplaceIcon(db, "bb-community", "notes"),
     ).toBeUndefined();
     expect(
       getPluginMarketplaceIcon(db, "acme-plugins", "official-notes"),
@@ -593,14 +593,14 @@ describe("third-party marketplaces", () => {
     // Removing one marketplace drops only its icons.
     await catalog.removeMarketplace("acme-plugins");
     expect(
-      getPluginMarketplaceIcon(db, "bb-official", "official-notes"),
+      getPluginMarketplaceIcon(db, "bb-community", "official-notes"),
     ).toBeDefined();
     expect(
       getPluginMarketplaceIcon(db, "acme-plugins", "notes"),
     ).toBeUndefined();
   });
 
-  it("leaves bb-official serving when a third-party refresh fails", async () => {
+  it("leaves bb-community serving when a third-party refresh fails", async () => {
     const warnings: string[] = [];
     let acmeFails = false;
     const catalog = service({
@@ -608,7 +608,7 @@ describe("third-party marketplaces", () => {
       fetch: async (url) => {
         if (url === OFFICIAL_URL) {
           return jsonResponse(
-            manifest("bb-official", [entry({ id: "official-notes" })]),
+            manifest("bb-community", [entry({ id: "official-notes" })]),
           );
         }
         if (url === ACME_URL) {
@@ -624,7 +624,7 @@ describe("third-party marketplaces", () => {
 
     const results = await catalog.refreshMarketplaces({ attemptedAt: 2_000 });
     expect(results).toMatchObject([
-      { name: "bb-official", ok: true },
+      { name: "bb-community", ok: true },
       { name: "acme-plugins", ok: false },
     ]);
     expect(results[1]?.error).toContain("503");
@@ -633,7 +633,7 @@ describe("third-party marketplaces", () => {
     // serving its last-known-good catalog.
     const marketplaces = catalog.listMarketplaces();
     expect(marketplaces[0]).toMatchObject({
-      name: "bb-official",
+      name: "bb-community",
       lastRefreshAt: 2_000,
       lastError: null,
     });
@@ -652,7 +652,7 @@ describe("third-party marketplaces", () => {
   it("groups search results by marketplace with the official one first", async () => {
     const catalog = service({
       fetch: marketplaceFetch({
-        [OFFICIAL_URL]: manifest("bb-official", [
+        [OFFICIAL_URL]: manifest("bb-community", [
           entry({ id: "official-notes", tags: ["interface"] }),
         ]),
         [ACME_URL]: manifest("acme-plugins", [
@@ -672,7 +672,7 @@ describe("third-party marketplaces", () => {
         result.entryId,
       ]),
     ).toEqual([
-      ["bb-official", "Interface", "official-notes"],
+      ["bb-community", "Interface", "official-notes"],
       // A third-party marketplace has no curated vocabulary, so its first tag
       // becomes the section label.
       ["acme-plugins", "Git Tools", "notes"],
@@ -828,7 +828,7 @@ describe("third-party marketplaces", () => {
     it("names the official catalog without a network round trip", async () => {
       const catalog = service({
         fetch: marketplaceFetch({
-          [OFFICIAL_URL]: manifest("bb-official", [
+          [OFFICIAL_URL]: manifest("bb-community", [
             entry({
               id: "official-notes",
               source: {
@@ -847,7 +847,7 @@ describe("third-party marketplaces", () => {
       const plan = await catalog.installPlan({ entryId: "official-notes" });
       expect(plan).toMatchObject({
         kind: "marketplace",
-        marketplace: "bb-official",
+        marketplace: "bb-community",
         official: true,
         resolvedSource: {
           kind: "git",
@@ -889,7 +889,7 @@ describe("third-party marketplaces", () => {
     let resolvedVersion = "1.4.2";
     const catalog = service({
       fetch: marketplaceFetch({
-        [OFFICIAL_URL]: manifest("bb-official", []),
+        [OFFICIAL_URL]: manifest("bb-community", []),
         [ACME_URL]: manifest("acme-plugins", [npmEntry]),
       }),
       resolveNpm: async () => ({
@@ -958,7 +958,7 @@ describe("third-party marketplaces", () => {
     });
     const catalog = service({
       fetch: marketplaceFetch({
-        [OFFICIAL_URL]: manifest("bb-official", []),
+        [OFFICIAL_URL]: manifest("bb-community", []),
         [ACME_URL]: manifest("acme-plugins", [npmEntry]),
       }),
       resolveNpm: async () => ({
@@ -992,7 +992,7 @@ describe("third-party marketplaces", () => {
     let resolveCalls = 0;
     const catalog = service({
       fetch: marketplaceFetch({
-        [OFFICIAL_URL]: manifest("bb-official", []),
+        [OFFICIAL_URL]: manifest("bb-community", []),
         [ACME_URL]: manifest("acme-plugins", [
           entry({
             source: { npm: { package: "bb-plugin-notes", range: "^1.0.0" } },
@@ -1050,7 +1050,7 @@ describe("third-party marketplaces", () => {
   it("refuses a manifest name that later routes cannot address", async () => {
     const catalog = service({
       fetch: marketplaceFetch({
-        [OFFICIAL_URL]: manifest("bb-official", []),
+        [OFFICIAL_URL]: manifest("bb-community", []),
         [ACME_URL]: manifest("a".repeat(65), [entry()]),
       }),
     });

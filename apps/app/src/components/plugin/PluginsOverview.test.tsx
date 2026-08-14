@@ -119,7 +119,7 @@ const GITHUB_CATALOG_ENTRY = {
   iconUrl: null,
   category: "Developer tools",
   source: "github-release:ymichael/bb/bb-plugin-github-{version}.tgz@^0.1.0",
-  marketplace: "bb-official",
+  marketplace: "bb-community",
   marketplaceDisplayName: "BB Official",
   publisherLabel: "BB Official",
   official: true,

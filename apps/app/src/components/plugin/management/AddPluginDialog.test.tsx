@@ -20,8 +20,8 @@ interface RecordedRequest {
 function installPlanFor(url: string): unknown {
   const params = new URL(url, "https://bb.test").searchParams;
   const entryId = params.get("entryId") ?? "";
-  const marketplace = params.get("marketplace") ?? "bb-official";
-  const official = marketplace === "bb-official";
+  const marketplace = params.get("marketplace") ?? "bb-community";
+  const official = marketplace === "bb-community";
   return {
     kind: "marketplace",
     entryId,
@@ -219,7 +219,7 @@ describe("AddPluginDialog", () => {
     stubFetch();
     const { unmount } = renderDialog({
       entryId: "linear",
-      marketplace: "bb-official",
+      marketplace: "bb-community",
       displayName: "Linear",
       icon: "Github",
       iconUrl: null,
@@ -234,7 +234,7 @@ describe("AddPluginDialog", () => {
     // bundle. A ref can be a branch, so the dialog must not call it pinned.
     const git = renderDialog({
       entryId: "thread-hover-cards",
-      marketplace: "bb-official",
+      marketplace: "bb-community",
       displayName: "Thread Hover Cards",
       icon: "Github",
       iconUrl: null,
@@ -250,7 +250,7 @@ describe("AddPluginDialog", () => {
 
     renderDialog({
       entryId: "widgets",
-      marketplace: "bb-official",
+      marketplace: "bb-community",
       displayName: "Widgets",
       icon: "Zap",
       iconUrl: null,
@@ -272,7 +272,7 @@ describe("AddPluginDialog", () => {
       displayName: "Widgets",
       icon: "Zap",
       iconUrl: null,
-      marketplace: "bb-official",
+      marketplace: "bb-community",
       source: "npm:bb-plugin-widgets@^1.0.0 (registry https://npm.acme.test)",
     });
 
@@ -287,7 +287,7 @@ describe("AddPluginDialog", () => {
     const requests = stubFetch();
     renderDialog({
       entryId: "linear",
-      marketplace: "bb-official",
+      marketplace: "bb-community",
       displayName: "Linear",
       icon: "Github",
       iconUrl: null,
@@ -306,7 +306,7 @@ describe("AddPluginDialog", () => {
       expect(post).toBeDefined();
       expect(JSON.parse(String(post?.init?.body))).toEqual({
         entryId: "linear",
-        marketplace: "bb-official",
+        marketplace: "bb-community",
       });
     });
   });
@@ -314,10 +314,10 @@ describe("AddPluginDialog", () => {
   it("shows the cached marketplace icon in the confirmation", () => {
     stubFetch();
     const iconUrl =
-      "/api/v1/plugin-catalog/icons/bb-official/widgets?h=icon-hash";
+      "/api/v1/plugin-catalog/icons/bb-community/widgets?h=icon-hash";
     renderDialog({
       entryId: "widgets",
-      marketplace: "bb-official",
+      marketplace: "bb-community",
       displayName: "Widgets",
       icon: null,
       iconUrl,
@@ -340,7 +340,7 @@ describe("AddPluginDialog", () => {
         onOpenChange={() => {}}
         initial={{
           entryId: "linear",
-          marketplace: "bb-official",
+          marketplace: "bb-community",
           displayName: "Linear",
           icon: "Github",
           iconUrl: null,
@@ -440,7 +440,7 @@ describe("AddPluginDialog", () => {
     const requests = stubFetch();
     renderDialog({
       entryId: "linear",
-      marketplace: "bb-official",
+      marketplace: "bb-community",
       displayName: "Linear",
       icon: "Github",
       iconUrl: null,

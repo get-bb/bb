@@ -130,11 +130,11 @@ export function BrowsePluginsTab({
     categories.length === 0
       ? entries
       : entries.filter((entry) => categories.includes(entry.category));
-  const groups = groupByMarketplace(visibleEntries, sortDirection);
-  // One group is the ordinary case (only BB Official is registered): naming it
-  // would add page chrome that tells the user nothing. A second marketplace is
-  // exactly when the origin of an entry starts to matter.
-  const showMarketplaceHeadings = groups.length > 1;
+  const groups = groupByPublisher(visibleEntries, sortDirection);
+  // A single group needs no heading — with nothing to contrast against, naming
+  // it would add page chrome that tells the user nothing. Bundled plugins and
+  // the curated marketplace are two publishers, so in practice headings show.
+  const showPublisherHeadings = groups.length > 1;
 
   return (
     <ResourceCollectionViewport scrollId="plugins-browse-results">
@@ -261,15 +261,15 @@ export function BrowsePluginsTab({
                     />
                   ) : (
                     groups.map((group) => (
-                      <section key={group.marketplace} className="space-y-3">
-                        {showMarketplaceHeadings ? (
+                      <section key={group.publisher} className="space-y-3">
+                        {showPublisherHeadings ? (
                           <h2 className="flex items-baseline gap-2 text-sm font-medium text-foreground">
-                            {group.displayName}
-                            {group.official ? null : (
+                            {group.publisher}
+                            {group.thirdParty ? (
                               <span className="text-2xs font-normal text-subtle-foreground">
                                 third-party marketplace
                               </span>
-                            )}
+                            ) : null}
                           </h2>
                         ) : null}
                         <ResourceBrowseGrid className="grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-2">
@@ -298,31 +298,33 @@ export function BrowsePluginsTab({
   );
 }
 
-interface MarketplaceGroup {
-  marketplace: string;
-  displayName: string;
-  official: boolean;
+interface PublisherGroup {
+  publisher: string;
+  thirdParty: boolean;
   entries: PluginCatalogSearchEntry[];
 }
 
 /**
- * Group the catalog the way the store reads it: by marketplace (the server
- * returns the official one first), as a flat grid within each one. Category
+ * Group the catalog by publisher, as a flat grid within each one. Category
  * stays a filter, not a layout. Encounter order is the server's order, so
  * grouping never reshuffles it.
+ *
+ * Publisher, not marketplace: the plugins bundled with the app are listed
+ * under the marketplace bb curates, so grouping by marketplace filed all of
+ * them under that marketplace's name and told the user BB Community wrote
+ * plugins that ship in the build.
  */
-function groupByMarketplace(
+function groupByPublisher(
   entries: readonly PluginCatalogSearchEntry[],
   sortDirection: "asc" | "desc",
-): MarketplaceGroup[] {
-  const groups: MarketplaceGroup[] = [];
+): PublisherGroup[] {
+  const groups: PublisherGroup[] = [];
   for (const entry of entries) {
-    let group = groups.find((item) => item.marketplace === entry.marketplace);
+    let group = groups.find((item) => item.publisher === entry.publisherLabel);
     if (group === undefined) {
       group = {
-        marketplace: entry.marketplace,
-        displayName: entry.marketplaceDisplayName,
-        official: entry.official,
+        publisher: entry.publisherLabel,
+        thirdParty: !entry.official,
         entries: [],
       };
       groups.push(group);

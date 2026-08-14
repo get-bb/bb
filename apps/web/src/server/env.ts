@@ -19,7 +19,7 @@ export interface Env {
   RESEND_API_KEY?: string;
   RESEND_AUDIENCE_ID?: string;
   /**
-   * bb-marketplace R2 bucket holding the bb-official plugin catalog. Optional:
+   * bb-marketplace R2 bucket holding the bb-community plugin catalog. Optional:
    * the bucket is provisioned outside this deploy, and /marketplace/v1/*
    * answers 404 until it exists.
    */

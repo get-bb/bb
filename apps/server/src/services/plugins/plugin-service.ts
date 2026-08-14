@@ -200,7 +200,7 @@ export interface PluginService {
    * provenance, so the plugin traces back to the marketplace that listed it.
    */
   installCatalogPlugin(args: {
-    /** Marketplace that listed the entry, e.g. `bb-official`. */
+    /** Marketplace that listed the entry, e.g. `bb-community`. */
     marketplace: string;
     entryId: string;
     /** Manifest id the catalog entry promises; the install aborts on mismatch. */

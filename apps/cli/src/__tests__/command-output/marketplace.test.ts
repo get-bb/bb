@@ -23,8 +23,8 @@ const acme = {
 
 const official = {
   ...acme,
-  name: "bb-official",
-  displayName: "BB Official",
+  name: "bb-community",
+  displayName: "BB Community",
   official: true,
   source: "https://getbb.app/marketplace/v1/marketplace.json",
   entryCount: 5,
@@ -86,7 +86,7 @@ describe("bb marketplace", () => {
     await runCommand(["marketplace", "list"], register);
 
     const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
-    expect(output).toContain("bb-official (official)");
+    expect(output).toContain("bb-community (official)");
     expect(output).toContain("acme-plugins");
     expect(output).toContain("https://acme.test/marketplace.json");
   });
@@ -95,7 +95,7 @@ describe("bb marketplace", () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       json({
         results: [
-          { name: "bb-official", ok: true, error: null, marketplace: official },
+          { name: "bb-community", ok: true, error: null, marketplace: official },
           {
             name: "acme-plugins",
             ok: false,
@@ -111,7 +111,7 @@ describe("bb marketplace", () => {
     );
 
     const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
-    expect(output).toContain("bb-official: 5 entries");
+    expect(output).toContain("bb-community: 5 entries");
     expect(output).toContain("acme-plugins: refresh failed");
     expect(output).toContain("keeping the last catalog");
   });
