@@ -1003,6 +1003,46 @@ describe("plugin update service and routes", () => {
     });
   });
 
+  it("protects an unclassified Phase 1 exact-tag row in a full update sweep", async () => {
+    const tagged = await taggedRepo();
+    const source = `git:${tagged}@v1.0.0`;
+    await service.install(source, { kind: "root" });
+    await expect(service.install(source, { kind: "root" })).rejects.toThrow(
+      /already installed/,
+    );
+    const installed = getInstalledPluginRegistration(db, "tagged");
+    db.$client
+      .prepare("UPDATE plugins SET source_git_ref_kind = NULL WHERE id = ?")
+      .run("tagged");
+
+    await writeFile(join(tagged, "release.txt"), "rewritten exact tag");
+    await git(tagged, ["add", "-A"]);
+    await git(tagged, ["commit", "-qm", "rewrite exact tag"]);
+    await git(tagged, ["tag", "-f", "v1.0.0", "HEAD"]);
+
+    const checked = await service.checkForUpdates();
+    expect(checked).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "updater" }),
+        expect.objectContaining({
+          id: "tagged",
+          outcome: "unavailable",
+          detail: expect.stringContaining(
+            `moved from ${installed?.gitResolvedCommit ?? ""}`,
+          ),
+        }),
+      ]),
+    );
+    expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
+      sourceGitRefKind: "tag",
+      gitResolvedCommit: installed?.gitResolvedCommit,
+    });
+    await expect(service.applyUpdate("tagged")).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining("security check failed"),
+    });
+  });
+
   it("refuses an exact-tag install whose tag moved", async () => {
     const tagged = await taggedRepo();
     await service.install(`git:${tagged}@v1.0.0`, { kind: "root" });
