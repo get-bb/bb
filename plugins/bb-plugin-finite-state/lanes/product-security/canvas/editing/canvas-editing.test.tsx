@@ -438,7 +438,7 @@ describe("WP-35 plan ordering and adapter projections", () => {
     const credentials = parseArchitectureEntity("asset", {
       slug: "credentials",
       name: "Credentials",
-      asset_type: "credential",
+      asset_type: "identity",
       criticality: "critical",
       zone: "edge-zone",
     });
@@ -697,7 +697,7 @@ describe("WP-35 plan ordering and adapter projections", () => {
     const asset = parseArchitectureEntity("asset", {
       slug: "credentials",
       name: "Credentials",
-      asset_type: "credential",
+      asset_type: "identity",
       criticality: "critical",
     });
     if (asset.kind !== "asset") throw new Error("expected asset fixture");
@@ -734,7 +734,7 @@ describe("WP-35 plan ordering and adapter projections", () => {
     }
   });
 
-  it("round-trips every vendored Assurance Studio component type through remote projection and YAML", () => {
+  it("round-trips every known Assurance Studio component type through remote projection and YAML", () => {
     for (const componentType of ASSURANCE_STUDIO_COMPONENT_TYPES) {
       const entity = parseArchitectureEntity("component", {
         slug: `component-${componentType.replaceAll("_", "-")}`,

@@ -12,7 +12,7 @@ import type {
 import { bindWorkspacePlatformProject } from "../../lib/store/project-scope.js";
 import { ENTITIES, type EntityKind } from "../../lib/sync/registry.js";
 import { pull, type EngineDeps } from "./engine/pull.js";
-import { status } from "./engine/status.js";
+import { statusPerKind } from "./engine/status.js";
 import { computePlan } from "./plan/index.js";
 import { renderPlanCli } from "./plan/render-cli.js";
 import {
@@ -293,8 +293,16 @@ async function run(
     return { exitCode: 0, stdout: output(report, input.json), stderr: "" };
   }
   if (input.verb === "status") {
-    const report = await status(cliDeps, scope, kinds, binding);
-    return { exitCode: 0, stdout: output(report, input.json), stderr: "" };
+    const statusResult = await statusPerKind(cliDeps, scope, kinds, binding);
+    const report =
+      statusResult.unavailable.length === 0
+        ? statusResult.report
+        : { ...statusResult.report, unavailable: statusResult.unavailable };
+    return {
+      exitCode: statusResult.unavailable.length === 0 ? 0 : 1,
+      stdout: output(report, input.json),
+      stderr: "",
+    };
   }
   const report = await computePlan(cliDeps, scope, kinds, binding);
   return {

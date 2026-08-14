@@ -72,6 +72,34 @@ function componentScopeFilter(input: SbomPullInput): string {
   return `project==${input.projectId};projectVersion==${input.projectVersionId}`;
 }
 
+async function assertVersionScope(
+  deps: BomDeps,
+  input: SbomPullInput,
+): Promise<void> {
+  for await (const page of deps.platform.listVersions(
+    input.projectId,
+    { pageSize: 200 },
+    deps.signal ? { signal: deps.signal } : undefined,
+  )) {
+    if (
+      page.items.some((version) => version["id"] === input.projectVersionId)
+    ) {
+      return;
+    }
+  }
+  throw new RemoteError("Platform project version was not found", {
+    service: "platform",
+    code: "REMOTE_HTTP_404",
+    status: 404,
+    retryable: false,
+    retryAfterMs: null,
+    details: {
+      projectId: input.projectId,
+      projectVersionId: input.projectVersionId,
+    },
+  });
+}
+
 function encodePhase(phase: PullPhase): string {
   const continuation =
     phase.remoteContinuation === null
@@ -630,10 +658,8 @@ export async function pullSbom(
       "SBOM page size must be between 1 and 200",
     );
   }
-  const path = stagingPath(deps.stagingRoot, input);
   let resumed = false;
   const generationId = deps.generationId;
-  let stage: Database.Database;
   const current = syncRow(deps.db, input);
   if (current?.staging_generation_id !== generationId) {
     throw new SbomPullError(
@@ -641,6 +667,9 @@ export async function pullSbom(
       "The sync generation no longer owns this SBOM staging scope",
     );
   }
+  await assertVersionScope(deps, input);
+  const path = stagingPath(deps.stagingRoot, input);
+  let stage: Database.Database;
 
   if (input.resume && current?.staging_generation_id && existsSync(path)) {
     stage = openStage(path);

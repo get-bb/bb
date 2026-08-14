@@ -60,7 +60,7 @@ export interface BomCommandServices {
 export function createBomCommandServices(
   bb: BbPluginApi,
   db: Database.Database,
-  platform: () => Pick<PlatformClient, "listComponents">,
+  platform: () => Pick<PlatformClient, "listComponents" | "listVersions">,
 ): BomCommandServices {
   return {
     pull({ stagingRoot, signal, generationId, onProgress, ...input }) {

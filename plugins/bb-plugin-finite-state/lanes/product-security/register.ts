@@ -206,6 +206,17 @@ function diagnosticEntry(
   diagnostic: CanvasFileDiagnostic,
   maxLength: number,
 ): string {
+  if (diagnostic.code === "UNSUPPORTED_ASSET_TYPE") {
+    const prefix = "Unsupported asset type in authored file ";
+    const file = diagnosticFileLabel(
+      diagnostic.file,
+      Math.max(12, Math.min(56, maxLength - prefix.length - 1)),
+    );
+    const withoutValue = `${prefix}${file}.`;
+    const value = compactDetail(diagnostic.value ?? "unknown", 24);
+    const withValue = `Unsupported asset type “${value}” in authored file ${file}.`;
+    return withValue.length <= maxLength ? withValue : withoutValue;
+  }
   if (diagnostic.code === "UNSUPPORTED_COMPONENT_TYPE") {
     const prefix = "Unsupported component type in authored file ";
     const file = diagnosticFileLabel(
@@ -277,6 +288,7 @@ function workingDiagnosticMessage(
   diagnostics: readonly CanvasFileDiagnostic[],
 ): string | null {
   const diagnosticCodes: readonly CanvasFileDiagnostic["code"][] = [
+    "UNSUPPORTED_ASSET_TYPE",
     "UNSUPPORTED_COMPONENT_TYPE",
     "RETIRED_COMPONENT_TYPE",
     "INVALID_AUTHORED_YAML",
@@ -321,6 +333,9 @@ function workingDiagnosticMessage(
       (diagnostic) => diagnostic.code === code,
     ).length;
     if (count === 0) return [];
+    if (code === "UNSUPPORTED_ASSET_TYPE") {
+      return [`Unsupported asset types: ${count}.`];
+    }
     if (code === "UNSUPPORTED_COMPONENT_TYPE") {
       return [`Unsupported component types: ${count}.`];
     }

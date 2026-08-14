@@ -56,6 +56,7 @@ const COMPONENT_ICONS: Record<string, ComponentIconDefinition> &
   sensor: { icon: ViewIcon, name: "View" },
   actuator: { icon: ElectricPlugsIcon, name: "ElectricPlugs" },
   communication: { icon: ConnectIcon, name: "Connect" },
+  external_service: { icon: CloudIcon, name: "Cloud" },
   other: { icon: QuestionIcon, name: "Question" },
 };
 

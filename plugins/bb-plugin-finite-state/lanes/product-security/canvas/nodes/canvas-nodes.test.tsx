@@ -59,6 +59,7 @@ const componentIconNames = {
   sensor: "View",
   actuator: "ElectricPlugs",
   communication: "Connect",
+  external_service: "Cloud",
   other: "Question",
 } as const satisfies Record<(typeof componentTypes)[number], string>;
 

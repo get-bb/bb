@@ -684,9 +684,13 @@ describe("deterministic-seed-corpus", () => {
     const taraComponents = entities.filter(
       (entity) => entity.kind === "component",
     );
-    expect(ASSURANCE_STUDIO_COMPONENT_TYPES).toEqual(
-      openApi.components.schemas.ComponentType.enum,
-    );
+    expect(ASSURANCE_STUDIO_COMPONENT_TYPES).toEqual([
+      ...openApi.components.schemas.ComponentType.enum,
+      // Connected Assurance Studio exposes this value even though the
+      // vendored specification has not caught up yet. See the FS-206 live
+      // vocabulary reference in docs/Implementation/api-reference/.
+      "external_service",
+    ]);
     expect(
       taraComponents.map((entity) => entity.fields.component_type),
     ).toContain("firmware");

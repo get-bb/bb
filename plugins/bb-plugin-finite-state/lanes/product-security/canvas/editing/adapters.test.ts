@@ -41,6 +41,10 @@ import {
   type AdapterSlugResolver,
   type TaraRemoteFieldRead,
 } from "./adapters.js";
+import {
+  ASSURANCE_STUDIO_ASSET_TYPES,
+  ASSURANCE_STUDIO_COMPONENT_TYPES,
+} from "./schema.js";
 
 const FIXTURE_ROOT = fileURLToPath(
   new URL("../../../../test/mock-remote/fixtures", import.meta.url),
@@ -114,6 +118,25 @@ async function corruptRequiredField(
   return Response.json(body, { status: response.status });
 }
 
+async function replaceRemoteField(
+  request: Request,
+  response: Response,
+  kind: (typeof TARA_KINDS)[number],
+  field: string,
+  value: Json,
+): Promise<Response> {
+  const requestKind =
+    request.method === "GET"
+      ? collectionKind(new URL(request.url).pathname)
+      : null;
+  if (requestKind !== kind || !response.ok) return response;
+  const body = (await response.json()) as {
+    data?: { items?: Array<Record<string, Json>> };
+  };
+  for (const item of body.data?.items ?? []) item[field] = value;
+  return Response.json(body, { status: response.status });
+}
+
 async function listAll(
   client: AssuranceStudioClient,
   kind: AsEntityKind,
@@ -139,6 +162,7 @@ const derivedResolver: AdapterSlugResolver = {
 describe("canvas real-wire adapter contract", () => {
   it("publishes the default registered pull from committed fixtures atomically without identity drift", async () => {
     let corrupt = false;
+    let invalidTrustLevel = false;
     const requestedPageSizes: number[] = [];
     const platformState = createMockPlatformState(FIXTURE_ROOT);
     harness = createMockRemote({
@@ -166,7 +190,16 @@ describe("canvas real-wire adapter contract", () => {
           if (pageSize !== null) requestedPageSizes.push(Number(pageSize));
         }
         const response = await harness!.assuranceStudio.fetch(request);
-        return corrupt ? corruptRequiredField(request, response) : response;
+        if (corrupt) return corruptRequiredField(request, response);
+        return invalidTrustLevel
+          ? replaceRemoteField(
+              request,
+              response,
+              "zone",
+              "trust_level",
+              "tenant_future_trust",
+            )
+          : response;
       },
     });
     const platform = new PlatformClient({
@@ -381,6 +414,38 @@ describe("canvas real-wire adapter contract", () => {
     const recovered = await runDefaultPull();
     expect(recovered.exitCode).toBe(0);
     expect(taraMappings()).toEqual(firstMappings);
+
+    invalidTrustLevel = true;
+    const degradedStatus = await host.harness.behavior.runCli(
+      [
+        "finite-state",
+        "status",
+        "--project",
+        PROJECT_ID,
+        "--version",
+        VERSION_ID,
+        "--json",
+      ],
+      {
+        cwd: "/untrusted-cwd",
+        threadId: "thread-fs166",
+        projectId: "bb-project-fs166",
+      },
+    );
+    expect(degradedStatus).toMatchObject({ exitCode: 1, stderr: "" });
+    expect(degradedStatus.stdout).not.toContain('"issues"');
+    expect(JSON.parse(degradedStatus.stdout)).toMatchObject({
+      unavailable: [
+        {
+          kind: "zone",
+          code: "AS_INVALID_RESPONSE",
+          message: expect.stringMatching(
+            /zone\.trust_level.*tenant_future_trust/iu,
+          ),
+        },
+      ],
+    });
+    invalidTrustLevel = false;
     expect(host.harness.registrations.rpcMethods).toContain("syncPull");
     expect(
       host.harness.realtimeSignals.some(
@@ -390,6 +455,86 @@ describe("canvas real-wire adapter contract", () => {
 
     assuranceStudio.close();
     platform.close();
+  });
+
+  it("retains connected and future remote vocabulary values without changing stable keys", () => {
+    const scope = { projectId: PROJECT_ID, projectVersionId: VERSION_ID };
+    const assetKeys = new Set(
+      [...ASSURANCE_STUDIO_ASSET_TYPES, "tenant_future_asset"].map(
+        (assetType) => {
+          const projected = projectRemoteEntity(
+            "asset",
+            {
+              id: "asset-live-vocabulary",
+              projectId: PROJECT_ID,
+              kind: "asset",
+              reviewVersion: null,
+              reviewStatus: null,
+              humanEdited: null,
+              fields: { name: "Live asset", asset_type: assetType },
+            },
+            scope,
+            derivedResolver,
+          );
+          expect(projected.payload["fields"]).toMatchObject({
+            asset_type: assetType,
+          });
+          return projected.key;
+        },
+      ),
+    );
+    const componentKeys = new Set(
+      [...ASSURANCE_STUDIO_COMPONENT_TYPES, "tenant_future_component"].map(
+        (componentType) => {
+          const projected = projectRemoteEntity(
+            "component",
+            {
+              id: "component-live-vocabulary",
+              projectId: PROJECT_ID,
+              kind: "component",
+              reviewVersion: null,
+              reviewStatus: null,
+              humanEdited: null,
+              fields: {
+                name: "Live component",
+                component_type: componentType,
+              },
+            },
+            scope,
+            derivedResolver,
+          );
+          expect(projected.payload["fields"]).toMatchObject({
+            component_type: componentType,
+          });
+          return projected.key;
+        },
+      ),
+    );
+
+    expect(assetKeys.size).toBe(1);
+    expect(componentKeys.size).toBe(1);
+  });
+
+  it("reports the actual value at a nested remote validation path", () => {
+    expect(() =>
+      projectRemoteEntity(
+        "component",
+        {
+          id: "component-invalid-interface",
+          projectId: PROJECT_ID,
+          kind: "component",
+          reviewVersion: null,
+          reviewStatus: null,
+          humanEdited: null,
+          fields: {
+            name: "Invalid interface component",
+            interfaces: [""],
+          },
+        },
+        { projectId: PROJECT_ID, projectVersionId: VERSION_ID },
+        derivedResolver,
+      ),
+    ).toThrow(/component\.interfaces\.0\.name rejected value ""/u);
   });
 
   it("pins and adversarially exercises the field reads emitted by production projection", async () => {

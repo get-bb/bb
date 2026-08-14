@@ -11,6 +11,7 @@ import { planItemId } from "../../../sync/plan/order.js";
 import type { PlanItem, ValidationError } from "../../../sync/plan/index.js";
 import {
   CANVAS_ENTITY_KINDS,
+  assetTypeSchema,
   componentTypeSchema,
   entityReferences,
   parseArchitectureEntity,
@@ -80,7 +81,7 @@ export class RetiredComponentTypeValidationAdvisory extends CanvasEntityValidati
   constructor(readonly entity: RetiredAuthoredComponentYamlEntity) {
     super(
       "RETIRED_COMPONENT_TYPE",
-      `component_type “${entity.component_type}” was valid in an earlier canvas vocabulary but cannot be authored to Assurance Studio. Update it to one of the current vendored component types before editing or syncing this component.`,
+      `component_type “${entity.component_type}” was valid in an earlier canvas vocabulary but cannot be authored to Assurance Studio. Update it to one of the current known component types before editing or syncing this component.`,
       "component_type",
     );
     this.name = "RetiredComponentTypeValidationAdvisory";
@@ -95,6 +96,17 @@ export class UnsupportedComponentTypeValidationAdvisory extends CanvasEntityVali
       "component_type",
     );
     this.name = "UnsupportedComponentTypeValidationAdvisory";
+  }
+}
+
+export class UnsupportedAssetTypeValidationAdvisory extends CanvasEntityValidationError {
+  constructor(readonly value: string) {
+    super(
+      "UNSUPPORTED_ASSET_TYPE",
+      `asset_type “${value}” is not recognized by the current canvas vocabulary. Choose one of: ${assetTypeSchema.options.join(", ")}.`,
+      "asset_type",
+    );
+    this.name = "UnsupportedAssetTypeValidationAdvisory";
   }
 }
 
@@ -147,6 +159,13 @@ export function validateArchitecturePayload(
     ) {
       throw new UnsupportedComponentTypeValidationAdvisory(componentType);
     }
+  }
+  if (
+    kind === "asset" &&
+    typeof payload["asset_type"] === "string" &&
+    !assetTypeSchema.safeParse(payload["asset_type"]).success
+  ) {
+    throw new UnsupportedAssetTypeValidationAdvisory(payload["asset_type"]);
   }
   if (
     kind === "threat" &&

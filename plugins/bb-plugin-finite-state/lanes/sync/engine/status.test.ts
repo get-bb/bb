@@ -6,7 +6,7 @@ import { ENTITIES } from "../../../lib/sync/registry.js";
 import { createSerializer } from "../serialize/serializer.js";
 import type { EntityAdapter, ServerEntity, WorkingEntity } from "./adapter.js";
 import { pull as pullEngine, type EngineDeps } from "./pull.js";
-import { status as statusEngine } from "./status.js";
+import { status as statusEngine, statusPerKind } from "./status.js";
 
 function pull(
   deps: Parameters<typeof pullEngine>[0],
@@ -215,6 +215,21 @@ describe("sync status", () => {
       conflicts: [],
       orphans: [],
     });
+  });
+
+  it("rethrows local working-tree faults instead of classifying the kind as remotely unavailable", async () => {
+    const adapter = requirementAdapter(
+      () => [],
+      () => {
+        throw new Error("local working tree failed");
+      },
+    );
+
+    await expect(
+      statusPerKind(deps(adapter), scope, ["requirement"], {
+        assuranceStudioProjectId: `as-${scope.projectId}`,
+      }),
+    ).rejects.toThrow("local working tree failed");
   });
 
   it("inverts UUID-shaped base references through accepted id_map before comparing YAML slugs", async () => {

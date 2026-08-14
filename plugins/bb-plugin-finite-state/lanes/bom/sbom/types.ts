@@ -86,7 +86,7 @@ export interface SbomPage<T> {
 
 export interface BomDeps {
   db: Database.Database;
-  platform: Pick<PlatformClient, "listComponents">;
+  platform: Pick<PlatformClient, "listComponents" | "listVersions">;
   /** Verified plugin-data root. Staging is confined to .fs-sync/bom below it. */
   stagingRoot: string;
   /** Existing sync-engine generation whose final publication fence is external. */

@@ -3,6 +3,7 @@ import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   architectureEntityPayload,
+  assetTypeSchema,
   componentTypeSchema,
   criticalitySchema,
   parseArchitectureEntity,
@@ -483,16 +484,7 @@ export function EntityForm({
                   onChange={(event) => setAssetType(event.target.value)}
                   value={assetType}
                 >
-                  {(
-                    [
-                      "data",
-                      "credential",
-                      "cryptographic_key",
-                      "configuration",
-                      "service",
-                      "device",
-                    ] as const
-                  ).map((value) => (
+                  {assetTypeSchema.options.map((value) => (
                     <option key={value} value={value}>
                       {value.replaceAll("_", " ")}
                     </option>

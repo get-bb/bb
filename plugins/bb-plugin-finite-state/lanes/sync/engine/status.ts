@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { RemoteError } from "../../../lib/remote/types.js";
 import { parseKey, type EntityKind } from "../../../lib/sync/registry.js";
 import { toStorageProjectVersionId } from "../../../lib/store/index.js";
 import { canonicalJson, contentHash } from "../serialize/canonical.js";
@@ -23,6 +25,19 @@ export interface StatusReport {
   upstream: { kind: EntityKind; key: string; fields: string[] }[];
   conflicts: { kind: EntityKind; key: string }[];
   orphans: { kind: EntityKind; key: string; file: string }[];
+}
+
+/** One adapter that could not produce remote status without invalidating other kinds. */
+export interface StatusKindUnavailable {
+  kind: EntityKind;
+  code: string;
+  message: string;
+}
+
+/** CLI-only tolerant status result; the frozen sync.status RPC remains unchanged. */
+export interface StatusPerKindReport {
+  report: StatusReport;
+  unavailable: StatusKindUnavailable[];
 }
 
 /** Accepted/staging generation metadata used by frozen RPC result fences. */
@@ -67,6 +82,40 @@ function compareChange(
   return (
     left.kind.localeCompare(right.kind) || left.key.localeCompare(right.key)
   );
+}
+
+function emptyStatusReport(): StatusReport {
+  return { local: [], upstream: [], conflicts: [], orphans: [] };
+}
+
+function appendStatus(report: StatusReport, next: StatusReport): void {
+  report.local.push(...next.local);
+  report.upstream.push(...next.upstream);
+  report.conflicts.push(...next.conflicts);
+  report.orphans.push(...next.orphans);
+}
+
+function sortStatus(report: StatusReport): void {
+  report.local.sort(compareChange);
+  report.upstream.sort(compareChange);
+  report.conflicts.sort(compareChange);
+  report.orphans.sort(compareChange);
+}
+
+function unavailableStatus(
+  kind: EntityKind,
+  error: RemoteError | z.ZodError,
+): StatusKindUnavailable {
+  if (error instanceof RemoteError) {
+    return { kind, code: error.code, message: error.message };
+  }
+  const issue = error.issues[0];
+  const field = issue?.path.map(String).join(".") || "payload";
+  return {
+    kind,
+    code: "REMOTE_VALIDATION_FAILED",
+    message: `${kind}.${field} failed remote validation: ${issue?.message ?? "invalid remote data"}`,
+  };
 }
 
 function sameValue(left: unknown, right: unknown): boolean {
@@ -284,12 +333,7 @@ export async function status(
 ): Promise<StatusReport> {
   if (scope.projectId.trim().length === 0)
     throw new Error("projectId must not be empty");
-  const report: StatusReport = {
-    local: [],
-    upstream: [],
-    conflicts: [],
-    orphans: [],
-  };
+  const report = emptyStatusReport();
   const storageVersionId = toStorageProjectVersionId(scope.projectVersionId);
   const adapters = selectedAdapters(deps, kinds);
   const remoteScopes = new Map(
@@ -308,16 +352,50 @@ export async function status(
       storageVersionId,
       adapter,
     );
-    report.local.push(...next.local);
-    report.upstream.push(...next.upstream);
-    report.conflicts.push(...next.conflicts);
-    report.orphans.push(...next.orphans);
+    appendStatus(report, next);
   }
-  report.local.sort(compareChange);
-  report.upstream.sort(compareChange);
-  report.conflicts.sort(compareChange);
-  report.orphans.sort(compareChange);
+  sortStatus(report);
   return report;
+}
+
+/**
+ * Computes status independently per adapter for the CLI so one malformed
+ * remote kind is named and isolated instead of aborting every other kind.
+ */
+export async function statusPerKind(
+  deps: EngineDeps,
+  scope: SyncScope,
+  kinds?: EntityKind[],
+  binding: PullProjectBinding = { assuranceStudioProjectId: null },
+): Promise<StatusPerKindReport> {
+  if (scope.projectId.trim().length === 0)
+    throw new Error("projectId must not be empty");
+  const report = emptyStatusReport();
+  const unavailable: StatusKindUnavailable[] = [];
+  const storageVersionId = toStorageProjectVersionId(scope.projectVersionId);
+  for (const adapter of selectedAdapters(deps, kinds)) {
+    try {
+      const remoteScope = remoteScopeForKind(adapter.kind, scope, binding);
+      appendStatus(
+        report,
+        await statusAdapter(
+          deps,
+          scope,
+          remoteScope,
+          storageVersionId,
+          adapter,
+        ),
+      );
+    } catch (error: unknown) {
+      if (!(error instanceof RemoteError) && !(error instanceof z.ZodError)) {
+        throw error;
+      }
+      unavailable.push(unavailableStatus(adapter.kind, error));
+    }
+  }
+  sortStatus(report);
+  unavailable.sort((left, right) => left.kind.localeCompare(right.kind));
+  return { report, unavailable };
 }
 
 /** Reads generation/revision fences and computes the frozen base-state digest. */

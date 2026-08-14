@@ -155,6 +155,21 @@ const rowA = {
 };
 const rowB = { id: "b", name: "Beta", purl: null, group: "Core", version: "2" };
 
+function scopedPlatform(
+  components: Pick<PlatformClientContract, "listComponents">,
+  projectId = "p",
+  projectVersionId = "v",
+): Pick<PlatformClientContract, "listComponents" | "listVersions"> {
+  return {
+    ...components,
+    async *listVersions(candidateProjectId: string) {
+      const items =
+        candidateProjectId === projectId ? [{ id: projectVersionId }] : [];
+      yield { items, total: items.length, next: null };
+    },
+  };
+}
+
 describe("resumable SBOM pull", () => {
   it("derives captured path keys and pins the legacy compatibility boundary", () => {
     const normalized = normalizeComponent({
@@ -344,7 +359,7 @@ describe("resumable SBOM pull", () => {
     const result = await pullSbom(
       {
         db,
-        platform: malformed,
+        platform: scopedPlatform(malformed),
         stagingRoot: worktreeRoot,
         generationId: "generation-next",
         now: () => new Date("2026-08-12T20:00:00.000Z"),
@@ -419,7 +434,7 @@ describe("resumable SBOM pull", () => {
       pullSbom(
         {
           db,
-          platform,
+          platform: scopedPlatform(platform),
           stagingRoot: worktreeRoot,
           generationId: "all-quarantined-generation",
         },
@@ -445,7 +460,7 @@ describe("resumable SBOM pull", () => {
       pullSbom(
         {
           db,
-          platform,
+          platform: scopedPlatform(platform),
           stagingRoot: worktreeRoot,
           generationId: "all-quarantined-generation",
         },
@@ -470,7 +485,7 @@ describe("resumable SBOM pull", () => {
       pullSbom(
         {
           db,
-          platform: { listComponents },
+          platform: scopedPlatform({ listComponents }),
           stagingRoot: worktreeRoot,
           generationId: "invalid-scope",
         },
@@ -478,6 +493,41 @@ describe("resumable SBOM pull", () => {
       ),
     ).rejects.toMatchObject({ code: "SBOM_SCOPE_INVALID" });
     expect(listComponents).not.toHaveBeenCalled();
+    db.close();
+  });
+
+  it("refuses a nonexistent project version before listing components", async () => {
+    const db = createDb();
+    seedStaging(db, "missing-version-generation", "p", "missing-version");
+    const worktreeRoot = await root();
+    const listComponents = vi.fn(async function* () {
+      yield { items: [], total: 0, next: null };
+    });
+
+    await expect(
+      pullSbom(
+        {
+          db,
+          platform: scopedPlatform({ listComponents }, "p", "real-version"),
+          stagingRoot: worktreeRoot,
+          generationId: "missing-version-generation",
+        },
+        { projectId: "p", projectVersionId: "missing-version" },
+      ),
+    ).rejects.toMatchObject({
+      code: "REMOTE_HTTP_404",
+      status: 404,
+      message: "Platform project version was not found",
+    });
+    expect(listComponents).not.toHaveBeenCalled();
+    expect(
+      db
+        .prepare(
+          "SELECT accepted_generation_id FROM sync_state WHERE entity_kind = 'sbomComponent'",
+        )
+        .pluck()
+        .get(),
+    ).toBeNull();
     db.close();
   });
 
@@ -511,7 +561,7 @@ describe("resumable SBOM pull", () => {
       pullSbom(
         {
           db,
-          platform: rateLimited,
+          platform: scopedPlatform(rateLimited),
           stagingRoot: worktreeRoot,
           generationId: "rate-limited-generation",
         },
@@ -570,7 +620,7 @@ describe("resumable SBOM pull", () => {
     const result = await pullSbom(
       {
         db,
-        platform: recovered,
+        platform: scopedPlatform(recovered),
         stagingRoot: worktreeRoot,
         generationId: "rate-limited-generation",
       },
@@ -618,7 +668,9 @@ describe("resumable SBOM pull", () => {
             };
       },
     } satisfies Pick<PlatformClientContract, "listComponents">;
-    const service = createBomCommandServices(host.bb, db, () => platform);
+    const service = createBomCommandServices(host.bb, db, () =>
+      scopedPlatform(platform),
+    );
     seedStaging(db, "service-generation");
     await service.pull({
       projectId: "p",

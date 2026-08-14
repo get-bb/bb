@@ -64,6 +64,15 @@ function dataflow(
   });
 }
 
+function asset(slug: string): ArchitectureYamlEntity {
+  return parseArchitectureEntity("asset", {
+    slug,
+    name: slug,
+    asset_type: "identity",
+    criticality: "high",
+  });
+}
+
 function seedAccepted(
   context: ReturnType<typeof createPluginContext>,
   entities: readonly ArchitectureYamlEntity[],
@@ -125,14 +134,42 @@ function seedAccepted(
   }
 }
 
+function replaceAcceptedVocabulary(
+  context: ReturnType<typeof createPluginContext>,
+  entity: ArchitectureYamlEntity,
+  field: "asset_type" | "component_type",
+  value: string,
+): void {
+  const payload = { ...architectureEntityPayload(entity), [field]: value };
+  const encoded = JSON.stringify(payload);
+  context
+    .db()
+    .prepare(
+      `UPDATE base_snapshot
+          SET payload = ?, content_hash = ?
+        WHERE project_id = ? AND project_version_id = ?
+          AND entity_kind = ? AND entity_key = ?`,
+    )
+    .run(
+      encoded,
+      hash(encoded),
+      PROJECT,
+      VERSION,
+      entity.kind,
+      ENTITIES[entity.kind].key(architectureEntityPayload(entity)),
+    );
+}
+
 async function registeredComponentPage(
   files: ReadonlyMap<string, string>,
   options: {
     acceptedEntities?: readonly ArchitectureYamlEntity[];
     acceptedEmpty?: boolean;
+    kind?: CanvasEntityKind;
     syncError?: string;
   } = {},
 ) {
+  const kind = options.kind ?? "component";
   const host = createFakePluginHost({
     pluginId: "finite-state-component-diagnostics",
     sdk: {
@@ -170,11 +207,13 @@ async function registeredComponentPage(
   });
   hosts.push(host);
   const context = createPluginContext(host.bb);
-  const acceptedEntities = options.acceptedEntities ?? [
-    component("accepted-controller"),
-  ];
+  const acceptedEntities =
+    options.acceptedEntities ??
+    (kind === "asset"
+      ? [asset("accepted-asset")]
+      : [component("accepted-controller")]);
   if (options.acceptedEmpty) {
-    seedAccepted(context, [], ["component"]);
+    seedAccepted(context, [], [kind]);
   } else if (acceptedEntities.length > 0) {
     seedAccepted(context, acceptedEntities);
   }
@@ -185,16 +224,16 @@ async function registeredComponentPage(
         `UPDATE sync_state
             SET error = ?
           WHERE project_id = ? AND project_version_id = ?
-            AND entity_kind = 'component'`,
+            AND entity_kind = ?`,
       )
-      .run(options.syncError, PROJECT, VERSION);
+      .run(options.syncError, PROJECT, VERSION, kind);
   }
   registerProductSecurity(host.bb, context);
   return rpcContract.taraList.output.parse(
     await host.harness.callRpc("taraList", {
       projectId: PROJECT,
       projectVersionId: null,
-      kind: "component",
+      kind,
       filters: {},
       pageSize: 50,
       continuation: null,
@@ -254,6 +293,36 @@ describe("WP-35 read-classified editing RPCs", () => {
         state: "stale",
         message: expect.stringMatching(
           /Unsupported component type.*mystery_controller.*unknown-controller\.yaml/iu,
+        ),
+      },
+    });
+    expect(
+      cacheStateSchema.shape.message.safeParse(page.cache.message).success,
+    ).toBe(true);
+  });
+
+  it("returns the matching advisory when authored asset vocabulary is unsupported", async () => {
+    const directory = "/workspace/product-security/architecture/assets";
+    const page = await registeredComponentPage(
+      new Map([
+        [
+          `${directory}/unknown-asset.yaml`,
+          serializeCanvasEntity(asset("unknown-asset")).replace(
+            "asset_type: identity",
+            "asset_type: tenant_future_asset",
+          ),
+        ],
+      ]),
+      { acceptedEntities: [], kind: "asset" },
+    );
+
+    expect(page).toMatchObject({
+      items: [],
+      total: 0,
+      cache: {
+        state: "stale",
+        message: expect.stringMatching(
+          /Unsupported asset type.*tenant_future_asset.*unknown-asset\.yaml/iu,
         ),
       },
     });
@@ -808,6 +877,7 @@ describe("WP-35 read-classified editing RPCs", () => {
       "actuator",
       "communication",
       "other",
+      "external_service",
     ]);
     expect(() => parseArchitectureEntity("component", loaded.fields)).toThrow();
   });
@@ -885,6 +955,163 @@ describe("WP-35 read-classified editing RPCs", () => {
     expect(writes).not.toHaveBeenCalled();
     expect(moves).not.toHaveBeenCalled();
     expect(removes).not.toHaveBeenCalled();
+  });
+
+  it("isolates unsupported accepted vocabulary rows while materializing valid peers", async () => {
+    const files = new Map<string, string>();
+    const host = createFakePluginHost({
+      pluginId: "finite-state-editing-future-accepted-vocabulary",
+      sdk: {
+        projects: {
+          get: ({ projectId }) => ({
+            id: projectId,
+            sources: [
+              { hostId: "host-1", path: "/workspace", isDefault: true },
+            ],
+          }),
+        },
+        files: {
+          list: ({ path }) => ({
+            files: [...files.keys()]
+              .filter((candidate) => candidate.startsWith(`${path}/`))
+              .map((path) => ({
+                path,
+                name: path.slice(path.lastIndexOf("/") + 1),
+              })),
+            truncated: false,
+          }),
+          read: ({ path }) => {
+            const content = files.get(path);
+            if (content === undefined) {
+              throw Object.assign(new Error(`ENOENT: ${path}`), {
+                code: "ENOENT",
+              });
+            }
+            return {
+              content,
+              contentEncoding: "utf8" as const,
+              sha256: hash(content),
+            };
+          },
+          write: ({ path, content, expectedSha256 }) => {
+            const current = files.get(path);
+            const currentSha256 = current === undefined ? null : hash(current);
+            if (currentSha256 !== expectedSha256) {
+              return { outcome: "conflict" as const, currentSha256 };
+            }
+            files.set(path, content);
+            return {
+              outcome: "written" as const,
+              sha256: hash(content),
+              sizeBytes: content.length,
+            };
+          },
+        },
+      },
+    });
+    hosts.push(host);
+    const context = createPluginContext(host.bb);
+    const futureComponent = component("a-future-component");
+    const knownComponent = component("z-known-component");
+    const futureAsset = asset("a-future-asset");
+    const knownAsset = asset("z-known-asset");
+    seedAccepted(context, [
+      futureComponent,
+      knownComponent,
+      futureAsset,
+      knownAsset,
+    ]);
+    replaceAcceptedVocabulary(
+      context,
+      futureComponent,
+      "component_type",
+      "tenant_future_component",
+    );
+    replaceAcceptedVocabulary(
+      context,
+      futureAsset,
+      "asset_type",
+      "tenant_future_asset",
+    );
+    registerCanvasEditingBackend(host.bb, context);
+
+    const componentError = await host.harness
+      .callRpc("canvasEditingLoad", {
+        projectId: PROJECT,
+        projectVersionId: null,
+        kind: "component",
+        slug: futureComponent.slug,
+      })
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+    if (!(componentError instanceof Error)) {
+      throw new Error("expected a component vocabulary advisory");
+    }
+    expect(componentError.message).toContain("tenant_future_component");
+    expect(componentError.message).not.toContain('[{"code"');
+
+    const assetError = await host.harness
+      .callRpc("canvasEditingLoad", {
+        projectId: PROJECT,
+        projectVersionId: null,
+        kind: "asset",
+        slug: futureAsset.slug,
+      })
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+    if (!(assetError instanceof Error)) {
+      throw new Error("expected an asset vocabulary advisory");
+    }
+    expect(assetError.message).toContain("tenant_future_asset");
+    expect(assetError.message).not.toContain('[{"code"');
+
+    for (const entity of [knownComponent, knownAsset]) {
+      const loaded = canvasEditingLoadOutputSchema.parse(
+        await host.harness.callRpc("canvasEditingLoad", {
+          projectId: PROJECT,
+          projectVersionId: null,
+          kind: entity.kind,
+          slug: entity.slug,
+        }),
+      );
+      if (loaded.state !== "ready") {
+        throw new Error(`expected ${entity.kind} accepted entity`);
+      }
+      await host.harness.callRpc("taraCommandApply", {
+        projectId: PROJECT,
+        projectVersionId: null,
+        operation: "update",
+        kind: entity.kind,
+        stableKey: entity.slug,
+        fields: { name: `Edited ${entity.name}` },
+        expectedContentSha256: loaded.sha256,
+      });
+    }
+
+    expect(
+      files.get(
+        "/workspace/product-security/architecture/components/z-known-component.yaml",
+      ),
+    ).toContain("name: Edited z-known-component");
+    expect(
+      files.get(
+        "/workspace/product-security/architecture/assets/z-known-asset.yaml",
+      ),
+    ).toContain("name: Edited z-known-asset");
+    expect(
+      files.has(
+        "/workspace/product-security/architecture/components/a-future-component.yaml",
+      ),
+    ).toBe(false);
+    expect(
+      files.has(
+        "/workspace/product-security/architecture/assets/a-future-asset.yaml",
+      ),
+    ).toBe(false);
   });
 
   it("edits a pulled firmware component through the registered RPC path and preserves its YAML type", async () => {

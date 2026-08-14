@@ -10,6 +10,7 @@ import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 
 import { createPluginContext } from "../../lib/context.js";
+import { RemoteLimiter } from "../../lib/remote/rate-limit.js";
 import { AssuranceStudioClient } from "../../lib/remote/assurance-studio/client.js";
 import { PlatformClient } from "../../lib/remote/platform/client.js";
 import type { RemoteServices } from "../../lib/remote/types.js";
@@ -106,14 +107,28 @@ describe("registered SBOM pull surfaces", () => {
       },
     });
     let componentRequests = 0;
+    let versionRequests = 0;
     let failComponentRequest: number | null = null;
     const platform = new PlatformClient({
       baseUrl: "http://platform.mock",
       token: "fs172-token",
+      limiter: new RemoteLimiter({
+        concurrency: 8,
+        maxAttempts: 6,
+        maxBackoffMs: 64_000,
+        scheduler: {
+          now: () => 0,
+          sleep: async () => {},
+        },
+        random: () => 0,
+      }),
       async fetch(input, init) {
         const url = new URL(
           input instanceof Request ? input.url : input.toString(),
         );
+        if (/\/public\/v0\/projects\/[^/]+\/versions$/u.test(url.pathname)) {
+          versionRequests += 1;
+        }
         if (url.pathname.includes("component")) {
           componentRequests += 1;
           if (
@@ -175,6 +190,7 @@ describe("registered SBOM pull surfaces", () => {
       // The sync engine rejects before acceptance unless the puller's
       // quarantined count equals sync_state.staged_quarantined.
       expect(pulled).toMatchObject({ exitCode: 0, stderr: "" });
+      expect(versionRequests).toBe(1);
       expect(JSON.parse(pulled.stdout)).toMatchObject({
         kinds: {
           sbomComponent: {
@@ -380,6 +396,8 @@ describe("registered SBOM pull surfaces", () => {
         { projectId: "bb-project-fs172", threadId: "thread-fs172" },
       );
       expect(failed.exitCode).toBe(1);
+      expect(versionRequests).toBe(2);
+      expect(componentRequests).toBe(7);
       expect(
         host.harness.inspection.realtimeSignals.filter(
           (signal) => signal.channel === "bom:changed",
@@ -410,6 +428,7 @@ describe("registered SBOM pull surfaces", () => {
         { projectId: "bb-project-fs172", threadId: "thread-fs172" },
       );
       expect(recovered).toMatchObject({ exitCode: 0, stderr: "" });
+      expect(versionRequests).toBe(3);
       expect(
         host.harness.inspection.realtimeSignals.filter(
           (signal) => signal.channel === "bom:changed",

@@ -17,6 +17,7 @@ import {
 import {
   CanvasEntityValidationError,
   RetiredComponentTypeValidationAdvisory,
+  UnsupportedAssetTypeValidationAdvisory,
   UnsupportedComponentTypeValidationAdvisory,
   validateArchitecturePayload,
   validateEntityReferences,
@@ -46,6 +47,7 @@ export class RetiredComponentTypeReadAdvisory extends Error {
 
 export interface CanvasFileDiagnostic {
   code:
+    | "UNSUPPORTED_ASSET_TYPE"
     | "UNSUPPORTED_COMPONENT_TYPE"
     | "RETIRED_COMPONENT_TYPE"
     | "INVALID_AUTHORED_YAML";
@@ -63,6 +65,9 @@ export interface CanvasFileListing {
 function canvasFileDiagnosticCode(
   error: unknown,
 ): CanvasFileDiagnostic["code"] {
+  if (error instanceof UnsupportedAssetTypeValidationAdvisory) {
+    return "UNSUPPORTED_ASSET_TYPE";
+  }
   if (error instanceof UnsupportedComponentTypeValidationAdvisory) {
     return "UNSUPPORTED_COMPONENT_TYPE";
   }
@@ -531,6 +536,7 @@ export function createSdkCanvasFileStore(
               file,
               slug: name,
               value:
+                error instanceof UnsupportedAssetTypeValidationAdvisory ||
                 error instanceof UnsupportedComponentTypeValidationAdvisory
                   ? error.value
                   : error instanceof RetiredComponentTypeReadAdvisory

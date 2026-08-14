@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type {
-  AsEntity,
-  AssuranceStudioClient,
-  Json,
+import { z } from "zod";
+import {
+  RemoteError,
+  type AsEntity,
+  type AssuranceStudioClient,
+  type Json,
 } from "../../../../lib/remote/types.js";
 import { ASSURANCE_STUDIO_MAX_PAGE_SIZE } from "../../../../lib/remote/assurance-studio/client.js";
 import { ENTITIES } from "../../../../lib/sync/registry.js";
@@ -16,7 +18,6 @@ import {
 } from "../../../sync/engine/adapter.js";
 import { createSerializer } from "../../../sync/serialize/serializer.js";
 import {
-  assuranceStudioComponentTypeSchema,
   assetEntitySchema,
   architectureEntityPayload,
   componentEntitySchema,
@@ -102,13 +103,17 @@ const remoteComponentEntitySchema = componentEntitySchema
     criticality: true,
   })
   .extend({
-    component_type: assuranceStudioComponentTypeSchema.optional(),
+    component_type: z.string().trim().min(1).max(200).optional(),
   });
 const remoteZoneEntitySchema = zoneEntitySchema.partial({ trust_level: true });
-const remoteAssetEntitySchema = assetEntitySchema.partial({
-  asset_type: true,
-  criticality: true,
-});
+const remoteAssetEntitySchema = assetEntitySchema
+  .partial({
+    asset_type: true,
+    criticality: true,
+  })
+  .extend({
+    asset_type: z.string().trim().min(1).max(200).optional(),
+  });
 const remoteThreatEntitySchema = threatEntitySchema.partial({ severity: true });
 
 function optional<T extends Json>(
@@ -683,42 +688,63 @@ function canonicalRemotePayload(
   kind: CanvasEntityKind,
   payload: Record<string, unknown>,
 ): Record<string, unknown> {
-  switch (kind) {
-    case "component": {
-      const { kind: _kind, ...fields } = remoteComponentEntitySchema.parse({
-        kind,
-        ...payload,
-      });
-      return fields;
+  const candidate = { kind, ...payload };
+  try {
+    switch (kind) {
+      case "component": {
+        const { kind: _kind, ...fields } =
+          remoteComponentEntitySchema.parse(candidate);
+        return fields;
+      }
+      case "zone": {
+        const { kind: _kind, ...fields } =
+          remoteZoneEntitySchema.parse(candidate);
+        return fields;
+      }
+      case "asset": {
+        const { kind: _kind, ...fields } =
+          remoteAssetEntitySchema.parse(candidate);
+        return fields;
+      }
+      case "dataflow": {
+        const { kind: _kind, ...fields } =
+          dataflowEntitySchema.parse(candidate);
+        return fields;
+      }
+      case "threat": {
+        const { kind: _kind, ...fields } =
+          remoteThreatEntitySchema.parse(candidate);
+        return fields;
+      }
     }
-    case "zone": {
-      const { kind: _kind, ...fields } = remoteZoneEntitySchema.parse({
-        kind,
-        ...payload,
-      });
-      return fields;
+  } catch (error: unknown) {
+    if (!(error instanceof z.ZodError)) throw error;
+    const issue = error.issues[0];
+    const field = issue?.path.map(String).join(".") || "payload";
+    let value: unknown = candidate;
+    for (const segment of issue?.path ?? []) {
+      if (typeof value !== "object" || value === null) {
+        value = undefined;
+        break;
+      }
+      if (!Object.hasOwn(value, segment)) {
+        value = undefined;
+        break;
+      }
+      value = Reflect.get(value, segment);
     }
-    case "asset": {
-      const { kind: _kind, ...fields } = remoteAssetEntitySchema.parse({
-        kind,
-        ...payload,
-      });
-      return fields;
-    }
-    case "dataflow": {
-      const { kind: _kind, ...fields } = dataflowEntitySchema.parse({
-        kind,
-        ...payload,
-      });
-      return fields;
-    }
-    case "threat": {
-      const { kind: _kind, ...fields } = remoteThreatEntitySchema.parse({
-        kind,
-        ...payload,
-      });
-      return fields;
-    }
+    const rendered = JSON.stringify(value) ?? String(value);
+    throw new RemoteError(
+      `Assurance Studio ${kind}.${field} rejected value ${rendered.slice(0, 200)}: ${issue?.message ?? "invalid remote data"}`,
+      {
+        service: "assurance-studio",
+        code: "AS_INVALID_RESPONSE",
+        status: null,
+        retryable: false,
+        retryAfterMs: null,
+        details: { kind, field, value: rendered.slice(0, 200) },
+      },
+    );
   }
 }
 

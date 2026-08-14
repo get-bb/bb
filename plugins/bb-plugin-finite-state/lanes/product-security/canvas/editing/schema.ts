@@ -47,8 +47,8 @@ const stringListSchema = z
   .default([]);
 
 export const criticalitySchema = z.enum(["low", "medium", "high", "critical"]);
-// Authoritative enum: docs/Implementation/api-reference/
-// assurance-studio-openapi-2026-05-12.json#/components/schemas/ComponentType.
+// Known authored values: the vendored ComponentType enum plus the connected
+// FS-206 capture documented in assurance-studio-tara-vocabulary-live-2026-08-14.md.
 export const ASSURANCE_STUDIO_COMPONENT_TYPES = [
   "firmware",
   "software",
@@ -63,13 +63,24 @@ export const ASSURANCE_STUDIO_COMPONENT_TYPES = [
   "actuator",
   "communication",
   "other",
+  // Connected FS-206 capture; absent from the older vendored OpenAPI enum.
+  "external_service",
 ] as const;
 
-export const assuranceStudioComponentTypeSchema = z.enum(
-  ASSURANCE_STUDIO_COMPONENT_TYPES,
-);
-
-export const componentTypeSchema = assuranceStudioComponentTypeSchema;
+export const componentTypeSchema = z.enum(ASSURANCE_STUDIO_COMPONENT_TYPES);
+// Connected AS capture: docs/Implementation/api-reference/
+// assurance-studio-tara-vocabulary-live-2026-08-14.md.
+export const ASSURANCE_STUDIO_ASSET_TYPES = [
+  "function",
+  "integrity",
+  "identity",
+  "software",
+  "data",
+  "availability",
+  "hardware",
+  "communication",
+] as const;
+export const assetTypeSchema = z.enum(ASSURANCE_STUDIO_ASSET_TYPES);
 export const RETIRED_AUTHORED_COMPONENT_TYPES = [
   "ecu",
   "hsm",
@@ -147,14 +158,7 @@ export const assetEntitySchema = z
     slug: stableSlugSchema,
     name: nameSchema,
     description: descriptionSchema.optional(),
-    asset_type: z.enum([
-      "data",
-      "credential",
-      "cryptographic_key",
-      "configuration",
-      "service",
-      "device",
-    ]),
+    asset_type: assetTypeSchema,
     criticality: criticalitySchema,
     zone: stableSlugSchema.optional(),
     data_classification: z

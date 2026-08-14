@@ -39,6 +39,9 @@ import {
 import {
   computeDeletionImpact,
   registerCanvasValidators,
+  UnsupportedAssetTypeValidationAdvisory,
+  UnsupportedComponentTypeValidationAdvisory,
+  validateArchitecturePayload,
 } from "./validators.js";
 import {
   applyCanvasCommand,
@@ -358,7 +361,7 @@ function parseAcceptedCanvasWritableEntity(
       `INVALID_ACCEPTED_TARA: ${kind}/${row.entity_key} must be a mapping.`,
     );
   }
-  const entity = parseArchitectureEntity(kind, value);
+  const entity = validateArchitecturePayload(kind, value);
   if (ENTITIES[kind].key({ slug: entity.slug }) !== row.entity_key) {
     throw new Error(
       `INVALID_ACCEPTED_TARA: ${kind}/${entity.slug} has a mismatched stable key.`,
@@ -416,7 +419,18 @@ async function materializeAcceptedCanvasKind(
     ...listing.diagnostics.map((diagnostic) => diagnostic.slug),
   ]);
   for (const row of acceptedCanvasRows(db, input, kind)) {
-    const entity = parseAcceptedCanvasWritableEntity(kind, row);
+    let entity: ReturnType<typeof parseAcceptedCanvasWritableEntity>;
+    try {
+      entity = parseAcceptedCanvasWritableEntity(kind, row);
+    } catch (error: unknown) {
+      if (
+        error instanceof UnsupportedAssetTypeValidationAdvisory ||
+        error instanceof UnsupportedComponentTypeValidationAdvisory
+      ) {
+        continue;
+      }
+      throw error;
+    }
     if (deleted.has(encodeURIComponent(entity.slug))) continue;
     const file = canvasEntityFile(kind, entity.slug);
     if (existing.has(entity.slug)) continue;
