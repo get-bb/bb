@@ -5,7 +5,12 @@
   "description": "A catalog of plugin listings with store branding. Entries point at npm packages or git repositories; BB's install pipeline stays authoritative for identity and compatibility.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "name", "displayName", "plugins"],
+  "required": [
+    "schemaVersion",
+    "name",
+    "displayName",
+    "plugins"
+  ],
   "properties": {
     "$schema": {
       "const": "https://getbb.app/schemas/marketplace.schema.json"
@@ -28,7 +33,10 @@
     "plugins": {
       "type": "array",
       "$comment": "Entry ids must also be unique within one manifest.",
-      "items": { "$ref": "#/$defs/entry" }
+      "items": {
+        "$ref": "#/$defs/entry"
+      },
+      "maxItems": 256
     }
   },
   "$defs": {
@@ -49,8 +57,14 @@
           "$comment": "The plugin id this entry installs; BB refuses an install whose manifest declares another id.",
           "pattern": "^[a-z0-9][a-z0-9-]*$"
         },
-        "displayName": { "type": "string", "minLength": 1 },
-        "description": { "type": "string", "minLength": 1 },
+        "displayName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
         "icon": {
           "oneOf": [
             {
@@ -61,12 +75,15 @@
             {
               "type": "object",
               "additionalProperties": false,
-              "required": ["url"],
+              "required": [
+                "url"
+              ],
               "properties": {
                 "url": {
                   "type": "string",
-                  "$comment": "Absolute https URL, or a URL relative to this manifest. Must end in .svg, .png, or .webp.",
-                  "pattern": "^(?!http:)(?:https://)?[^\\s]+\\.(?:svg|png|webp)$"
+                  "minLength": 1,
+                  "$comment": "Absolute https URL, or a URL relative to this manifest. The path must end in .svg, .png, or .webp.",
+                  "pattern": "^(?:(?![A-Za-z][A-Za-z0-9+.-]*:)|(?=[Hh][Tt][Tt][Pp][Ss]:))[^\\s]*\\.(?:[Ss][Vv][Gg]|[Pp][Nn][Gg]|[Ww][Ee][Bb][Pp])(?:[?#][^\\s]*)?$"
                 }
               }
             }
@@ -84,15 +101,23 @@
         "author": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["name"],
+          "required": [
+            "name"
+          ],
           "$comment": "Never put an email address here: the manifest is public and mirrored.",
           "properties": {
-            "name": { "type": "string", "minLength": 1 },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
             "github": {
               "type": "string",
               "pattern": "^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$"
             },
-            "url": { "type": "string", "pattern": "^https://" }
+            "url": {
+              "type": "string",
+              "pattern": "^https://"
+            }
           }
         },
         "engines": {
@@ -100,14 +125,22 @@
           "additionalProperties": false,
           "$comment": "May narrow the plugin manifest's ranges; BB refuses an install that widens them.",
           "properties": {
-            "bb": { "type": "string", "minLength": 1 },
-            "bbPluginSdk": { "type": "string", "minLength": 1 }
+            "bb": {
+              "$ref": "#/$defs/semverRange"
+            },
+            "bbPluginSdk": {
+              "$ref": "#/$defs/semverRange"
+            }
           }
         },
         "source": {
           "oneOf": [
-            { "$ref": "#/$defs/npmSource" },
-            { "$ref": "#/$defs/gitSource" }
+            {
+              "$ref": "#/$defs/npmSource"
+            },
+            {
+              "$ref": "#/$defs/gitSource"
+            }
           ]
         }
       }
@@ -115,25 +148,39 @@
     "npmSource": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["npm"],
+      "required": [
+        "npm"
+      ],
       "properties": {
         "npm": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["package"],
+          "required": [
+            "package"
+          ],
           "$comment": "range and tag are mutually exclusive.",
-          "not": { "required": ["range", "tag"] },
+          "not": {
+            "required": [
+              "range",
+              "tag"
+            ]
+          },
           "properties": {
             "package": {
               "type": "string",
               "pattern": "^(?:@[a-z0-9][a-z0-9._~-]*/)?[a-z0-9][a-z0-9._~-]*$"
             },
-            "range": { "type": "string", "minLength": 1 },
+            "range": {
+              "$ref": "#/$defs/semverRange"
+            },
             "tag": {
               "type": "string",
               "pattern": "^[A-Za-z][A-Za-z0-9._-]*$"
             },
-            "registry": { "type": "string", "pattern": "^https://" }
+            "registry": {
+              "type": "string",
+              "pattern": "^https://"
+            }
           }
         }
       }
@@ -141,14 +188,22 @@
     "gitSource": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["git"],
+      "required": [
+        "git"
+      ],
       "properties": {
         "git": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["url", "ref"],
+          "required": [
+            "url",
+            "ref"
+          ],
           "properties": {
-            "url": { "type": "string", "pattern": "^https://" },
+            "url": {
+              "type": "string",
+              "pattern": "^https://"
+            },
             "subdir": {
               "type": "string",
               "$comment": "Repository-relative directory; absolute paths, empty segments, .. and .git are rejected.",
@@ -162,6 +217,12 @@
           }
         }
       }
+    },
+    "semverRange": {
+      "type": "string",
+      "minLength": 1,
+      "$comment": "An npm semver range. Mirrors semver.validRange, which BB's parser applies at refresh time.",
+      "pattern": "^\\s*(?:\\*|v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?\\s+-\\s+v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?|(?:[<>]=?|=|~>?|\\^)?\\s*v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\s+(?:[<>]=?|=|~>?|\\^)?\\s*v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?)*|)(?:\\s*\\|\\|\\s*(?:\\*|v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?\\s+-\\s+v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?|(?:[<>]=?|=|~>?|\\^)?\\s*v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\s+(?:[<>]=?|=|~>?|\\^)?\\s*v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?)*|))*\\s*$"
     }
   }
 }
