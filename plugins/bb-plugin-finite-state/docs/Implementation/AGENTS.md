@@ -228,6 +228,7 @@ bb auto-generates a `plugin-commands` skill from the `commands` metadata. **Keep
 - Every list endpoint is paged: `{items, total, cursor}`.
 - Chunk and rate-limit every bulk operation; make it resumable.
 - Secrets live in plugin secret settings (0600 file). Never in the worktree, never in a diff, never in a log line.
+- **INTERIM (until get-bb/bb#1621 is fixed): all `bb secret request` text fields (`--purpose`, `--describe`) must be ASCII-only.** Non-Latin-1 characters — including the em dash `U+2014`, default agent punctuation — crash the server with a ByteString TypeError and the caller sees only `fetch failed` after a minutes-long hang. Ledger: `fail-secrets-workflow-vault-fetch-broken-2026-08-14`. Fallback if the workflow still fails: ask the coordinator to request supervisor-captured read-only specimens (agents get captured responses, never credentials).
 
 ---
 
