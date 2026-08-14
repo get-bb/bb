@@ -372,10 +372,10 @@ function baseRun(
   input: ReturnType<typeof validateRequest>,
   tier: BenchRunRequest["tier"],
   runId: string,
-  firmwareDigest: string,
+  firmwareDigest: string | null,
   now: string,
 ): BenchRunRecord {
-  if (!SHA256.test(firmwareDigest)) {
+  if (firmwareDigest !== null && !SHA256.test(firmwareDigest)) {
     throw new BenchRunError("INVALID_FIRMWARE_DIGEST", "Firmware digest must be lowercase sha256");
   }
   return {
@@ -481,6 +481,17 @@ async function executeRunBench(
 ): Promise<BenchRunStarted> {
   signal.throwIfAborted();
   const validated = validateRequest(request);
+  const runId = requiredText("runId", deps.createRunId());
+  const startedAt = deps.now().toISOString();
+  let currentRun: BenchRunRecord = {
+    ...baseRun(validated, request.tier, runId, null, startedAt),
+    kind: "bench",
+    trigger: "manual",
+    raw: { stage: "preflight", jobIds: [] },
+  };
+  checkpoint(deps, { run: currentRun, results: [], artifacts: [] });
+
+  try {
   const version = await deps.assertProjectVersion(validated.projectId, validated.pvId, signal);
   const tier1 = request.tier === "tier1";
   const deploymentContext = tier1
@@ -507,17 +518,17 @@ async function executeRunBench(
   const targets = tier1 ? await deps.resolveTier1Targets(request, signal) : null;
   const prepared = preparedExecution?.prepared ?? null;
   const firmwareDigest = prepared?.artifactHash ?? version.firmwareDigest;
-  const runId = requiredText("runId", deps.createRunId());
   const queued: BenchRunRecord = {
     ...baseRun(
       validated,
       request.tier,
       runId,
       firmwareDigest,
-      deps.now().toISOString(),
+      startedAt,
     ),
     ...(deploymentContext ? { config: deploymentContext } : {}),
   };
+  currentRun = queued;
   checkpoint(deps, { run: queued, results: [], artifacts: [] });
 
   const workspacePath = prepared?.rootfsPath ?? version.workspacePath;
@@ -530,6 +541,7 @@ async function executeRunBench(
     firmwareDigest,
   });
   const linked: BenchRunRecord = { ...queued, threadId };
+  currentRun = linked;
   checkpoint(deps, { run: linked, results: [], artifacts: [] });
 
   if (!tier1) {
@@ -613,6 +625,33 @@ async function executeRunBench(
     validated.requirementId ?? "unmapped:tier1",
   );
   return { runId, threadId, jobIds, firmwareDigest, status: "running" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Bench run preflight failed";
+    const code = error instanceof BenchRunError ? error.code : "BENCH_RUN_FAILED";
+    const finishedAt = deps.now().toISOString();
+    checkpoint(deps, {
+      run: {
+        ...currentRun,
+        status: "failed",
+        finishedAt,
+        durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt)),
+        raw: {
+          stage: currentRun.threadId ? "execution" : "preflight",
+          failureCode: code,
+          failureReason: message.slice(0, 20_000),
+          jobIds: [],
+        },
+      },
+      results: [{
+        requirementId: validated.requirementId ?? "unmapped:bench-run",
+        checkId: currentRun.threadId ? "bench-execution" : "bench-preflight",
+        outcome: "error",
+        evidenceSummary: message.slice(0, 20_000),
+      }],
+      artifacts: [],
+    });
+    throw new BenchRunError(code, `${message} [runId: ${runId}]`);
+  }
 }
 
 export function runBench(

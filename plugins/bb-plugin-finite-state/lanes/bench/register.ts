@@ -176,6 +176,14 @@ function object(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function runFailure(row: RunSurfaceRow | null): { code: string | null; reason: string | null } {
+  const raw = object(parseJson(row?.raw ?? null));
+  return {
+    code: typeof raw?.failureCode === "string" ? raw.failureCode : null,
+    reason: typeof raw?.failureReason === "string" ? raw.failureReason : null,
+  };
+}
+
 function runSurfaceRows(
   db: Database.Database,
   projectId: string,
@@ -351,6 +359,7 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
       return {
         items: page.items.map((run) => {
           const stored = surface.get(run.runId) ?? null;
+          const failure = runFailure(stored);
           return {
             projectId: run.projectId,
             projectVersionId: run.pvId,
@@ -377,6 +386,8 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
                 stored !== null &&
                 (stored.log_locator !== null || cachedLogLines(stored).length > 0),
               logCursor: stored?.log_cursor ?? null,
+              failureCode: failure.code,
+              failureReason: failure.reason,
             },
           };
         }),
@@ -415,6 +426,7 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
         projectVersionId,
         input.runId,
       );
+      const failure = runFailure(stored);
       return {
         projectId: detail.run.projectId,
         projectVersionId: detail.run.pvId,
@@ -440,6 +452,8 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
             stored !== null &&
             (stored.log_locator !== null || cachedLogLines(stored).length > 0),
           logCursor: stored?.log_cursor ?? null,
+          failureCode: failure.code,
+          failureReason: failure.reason,
           results: results.items,
           resultsTotal: results.total,
           resultsNext: results.next,

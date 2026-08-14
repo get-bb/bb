@@ -178,7 +178,7 @@ describe("runBench", () => {
     });
   });
 
-  it("fails closed before creating a run or thread when prepared-root registration is unavailable", async () => {
+  it("records a failed attempt without creating a thread when prepared-root registration is unavailable", async () => {
     const fixture = createBenchTestStore("execute-run-tier1-lifecycle-unavailable");
     fixtures.push(fixture);
     const execution = deps(fixture);
@@ -253,7 +253,19 @@ describe("runBench", () => {
         new AbortController().signal,
       ),
     ).rejects.toMatchObject({ code: "FIRMWARE_REGISTRATION_UNAVAILABLE" });
-    expect(fixture.db.prepare("SELECT COUNT(*) FROM verification_runs").pluck().get()).toBe(0);
+    expect(fixture.db.prepare(
+      `SELECT status, thread_id, firmware_digest, raw
+         FROM verification_runs WHERE run_id = 'run-execute-a'`,
+    ).get()).toMatchObject({
+      status: "failed",
+      thread_id: null,
+      firmware_digest: null,
+      raw: expect.stringContaining('"failureCode":"FIRMWARE_REGISTRATION_UNAVAILABLE"'),
+    });
+    expect(fixture.db.prepare(
+      `SELECT outcome, evidence_summary
+         FROM verification_results WHERE run_id = 'run-execute-a'`,
+    ).get()).toEqual({ outcome: "error", evidence_summary: "no prepared-root registration" });
     expect(fixture.host.harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(0);
     expect(verifyDynamic).not.toHaveBeenCalled();
     expect(penTestRun).not.toHaveBeenCalled();

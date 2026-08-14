@@ -21,6 +21,7 @@ interface RunLauncherProps {
   projectVersionId: string;
   initialTier?: "tier0" | "tier1";
   onClose(): void;
+  onFailed?(runId: string, message: string): void;
   onStarted(runId: string): void;
 }
 
@@ -34,6 +35,7 @@ export function RunLauncher({
   projectVersionId,
   initialTier = "tier0",
   onClose,
+  onFailed,
   onStarted,
 }: RunLauncherProps): React.JSX.Element {
   const rpc = useRpc<RpcContract>();
@@ -108,6 +110,18 @@ export function RunLauncher({
     if (missingCapabilities.length > 0) return `Missing Tier 1 prerequisites: ${missingCapabilities.join(", ")}.`;
     return "Host prerequisites passed.";
   }, [hosts.length, loadingHosts, missingCapabilities, selectedHost]);
+  const runDisabledReason = useMemo(() => {
+    if (submitting) return "The run attempt is being recorded.";
+    if (!firmwareDigest) return "A verified firmware digest is required.";
+    if (!selectedHost) return "Select an enrolled host.";
+    if (selectedHost.status !== "connected") return "The selected host-daemon is disconnected.";
+    if (tier === "tier1" && missingCapabilities.length > 0) return `Missing Tier 1 prerequisites: ${missingCapabilities.join(", ")}.`;
+    if (tier === "tier1" && !deploymentComplete) return "Complete every Tier 1 deployment field.";
+    if (tier === "tier1" && !requirementId.trim()) return "Tier 1 requires a requirement or verdict target.";
+    if (tier === "tier1" && !target.trim()) return "Tier 1 requires a CVE and component target.";
+    if (!confirmed) return "Confirm the selected version, host, firmware, and scope.";
+    return null;
+  }, [confirmed, deploymentComplete, firmwareDigest, missingCapabilities, requirementId, selectedHost, submitting, target, tier]);
 
   const submit = useCallback(async () => {
     if (!ready || submitRef.current) return;
@@ -127,11 +141,14 @@ export function RunLauncher({
       onStarted(result.runId);
       navigate.toThread(result.threadId);
     } catch (cause) {
-      setPreflightError(cause instanceof Error ? cause.message : "The bench run could not be started.");
+      const message = cause instanceof Error ? cause.message : "The bench run could not be started.";
+      const failedRunId = /\[runId: ([A-Za-z0-9][A-Za-z0-9._:-]{0,511})\]$/u.exec(message)?.[1];
+      setPreflightError(message);
+      if (failedRunId) onFailed?.(failedRunId, message);
       submitRef.current = false;
       setSubmitting(false);
     }
-  }, [deployment, hostId, navigate, onStarted, projectId, projectVersionId, ready, requirementId, rpc, target, tier]);
+  }, [deployment, hostId, navigate, onFailed, onStarted, projectId, projectVersionId, ready, requirementId, rpc, target, tier]);
 
   return (
     <div aria-label="Run launcher" className="h-full overflow-auto bg-background p-4 text-foreground">
@@ -159,7 +176,8 @@ export function RunLauncher({
           <h3 className="text-sm font-semibold">Preflight</h3>
           <div className="mt-3 flex flex-wrap gap-2"><Badge variant={firmwareDigest ? "secondary" : "outline"}><Icon name={firmwareDigest ? "CircleCheck" : "AlertTriangle"} />Firmware {firmwareDigest ? firmwareDigest.slice(0, 12) : "unavailable"}</Badge><Badge variant={selectedHost?.status === "connected" ? "secondary" : "outline"}><Icon name={selectedHost?.status === "connected" ? "CircleCheck" : "AlertTriangle"} />host-daemon</Badge>{tier === "tier1" ? <Badge variant={missingCapabilities.length === 0 && selectedHost ? "secondary" : "outline"}><Icon name={missingCapabilities.length === 0 && selectedHost ? "CircleCheck" : "AlertTriangle"} />Forge prerequisites</Badge> : null}</div>
           <label className="mt-4 flex items-start gap-2 text-sm"><input checked={confirmed} className="mt-0.5 size-4 accent-primary" onChange={(event) => setConfirmed(event.target.checked)} type="checkbox" /><span>I confirm this version, host, firmware digest, and deployment scope are intended for this run.</span></label>
-          <Button className="mt-4" disabled={!ready || submitting} onClick={() => void submit()}><Icon name="Workflow" />{submitting ? "Starting…" : `Start ${tier === "tier0" ? "Tier 0" : "Tier 1"}`}</Button>
+          <Button aria-describedby={runDisabledReason ? "bench-run-disabled-reason" : undefined} className="mt-4" disabled={!ready || submitting} onClick={() => void submit()}><Icon name="Workflow" />{submitting ? "Starting…" : `Start ${tier === "tier0" ? "Tier 0" : "Tier 1"}`}</Button>
+          {runDisabledReason ? <p className="mt-2 text-xs text-muted-foreground" id="bench-run-disabled-reason">Run unavailable: {runDisabledReason}</p> : null}
         </section>
         {hosts.length === 0 || !selectedHost ? <HostEnrollment hosts={hosts} loadingHosts={loadingHosts} onRefreshHosts={refreshHosts} /> : null}
       </div>

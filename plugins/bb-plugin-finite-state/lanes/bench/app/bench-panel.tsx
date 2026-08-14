@@ -1,16 +1,19 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   experimental_useSidebarThreads,
   useBbContext,
   useBbNavigate,
+  useRpc,
   type PluginNavPanelProps,
 } from "@bb/plugin-sdk/app";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
-import { Input } from "@bb/shared-ui/input";
+import type { RpcContract } from "../../../shared/contract.js";
+import type { findingsUiRpcContract } from "../../findings/rpc.js";
 import { RunDetail } from "./run-detail.js";
 import { RunLauncher } from "./run-launcher.js";
 import { RunTimeline, type BenchRunListItem } from "./run-timeline.js";
+import { VerdictCard } from "./verdict-card.js";
 
 const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,511}$/u;
 
@@ -29,28 +32,72 @@ export function BenchPanel({ subPath }: PluginNavPanelProps): React.JSX.Element 
   const { projectId: routeProjectId } = useBbContext();
   const sidebar = experimental_useSidebarThreads();
   const navigate = useBbNavigate();
+  const rpc = useRpc<RpcContract & typeof findingsUiRpcContract>();
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [projectVersionId, setProjectVersionId] = useState("");
+  const [versions, setVersions] = useState<Array<{ platformProjectId: string; projectVersionId: string; state: "fresh" | "stale" }>>([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [versionsError, setVersionsError] = useState<string | null>(null);
   const [launcherTier, setLauncherTier] = useState<"tier0" | "tier1" | null>(null);
   const projectId = routeProjectId ?? selectedProjectId;
   const runId = routeRunId(subPath);
   const invalidRoute = subPath.length > 0 && runId === null;
+  const runDisabledReason = !projectId
+    ? "Select a project."
+    : versionsLoading
+      ? "Cached versions are loading."
+      : !projectVersionId
+        ? versions.length === 0
+          ? "No accepted cached version is available. Pull a version through Sync first."
+          : "Select a cached version."
+        : null;
+
+  useEffect(() => {
+    if (!projectId) {
+      setVersions([]);
+      setProjectVersionId("");
+      setVersionsError(null);
+      return;
+    }
+    let active = true;
+    setVersionsLoading(true);
+    setVersionsError(null);
+    void rpc.call("cachedProjectVersions", { projectId }).then((result) => {
+      if (!active) return;
+      setVersions(result.versions);
+      const selected = result.versions.find((version) => version.projectVersionId === result.selectedProjectVersionId) ?? result.versions[0];
+      setProjectVersionId(selected?.projectVersionId ?? "");
+    }).catch((cause: unknown) => {
+      if (!active) return;
+      setVersions([]);
+      setProjectVersionId("");
+      setVersionsError(cause instanceof Error ? cause.message : "Cached versions could not be loaded.");
+    }).finally(() => { if (active) setVersionsLoading(false); });
+    return () => { active = false; };
+  }, [projectId, rpc]);
 
   const openRun = (run: BenchRunListItem) => {
     navigate.toPluginPanel("bench", { subPath: encodeURIComponent(run.id) });
+  };
+  const clearRunRoute = () => {
+    if (runId) navigate.toPluginPanel("bench", { subPath: "", replace: true });
   };
   const header = (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-card px-3">
       <Icon className="text-muted-foreground" name="ChartColumn" />
       <h1 className="text-sm font-semibold">Verification Bench</h1>
       <label className="ml-auto text-xs font-medium text-muted-foreground" htmlFor="bench-project">Project</label>
-      <select className="h-8 max-w-52 rounded-md border border-input bg-background px-2 text-xs" disabled={Boolean(routeProjectId) || sidebar.status === "loading"} id="bench-project" onChange={(event) => setSelectedProjectId(event.target.value || null)} value={projectId ?? ""}>
+      <select className="h-8 max-w-52 rounded-md border border-input bg-background px-2 text-xs" disabled={Boolean(routeProjectId) || sidebar.status === "loading"} id="bench-project" onChange={(event) => { clearRunRoute(); setSelectedProjectId(event.target.value || null); setProjectVersionId(""); setVersions([]); }} value={projectId ?? ""}>
         <option value="">Select project</option>
         {sidebar.projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
       </select>
       <label className="text-xs font-medium text-muted-foreground" htmlFor="bench-project-version">Version</label>
-      <Input aria-label="Bench project version ID" className="h-8 w-48 font-mono text-xs" id="bench-project-version" onChange={(event) => setProjectVersionId(event.target.value)} placeholder="Latest accepted" value={projectVersionId} />
-      <Button disabled={!projectId || projectVersionId.trim().length === 0} onClick={() => setLauncherTier("tier0")} size="sm"><Icon name="Workflow" />Run</Button>
+      <select aria-label="Bench project version" className="h-8 max-w-64 rounded-md border border-input bg-background px-2 font-mono text-xs" disabled={!projectId || versionsLoading} id="bench-project-version" onChange={(event) => { clearRunRoute(); setProjectVersionId(event.target.value); }} value={projectVersionId}>
+        <option value="">{versionsLoading ? "Loading cached versions…" : "Select cached version"}</option>
+        {versions.map((version) => <option key={`${version.platformProjectId}/${version.projectVersionId}`} value={version.projectVersionId}>{version.platformProjectId} / {version.projectVersionId}{version.state === "stale" ? " · stale" : ""}</option>)}
+      </select>
+      <Button aria-describedby={runDisabledReason ? "bench-header-run-reason" : undefined} disabled={runDisabledReason !== null} onClick={() => setLauncherTier("tier0")} size="sm"><Icon name="Workflow" />Run</Button>
+      {runDisabledReason ? <span className="max-w-56 text-xs text-muted-foreground" id="bench-header-run-reason">{runDisabledReason}</span> : null}
     </header>
   );
 
@@ -69,17 +116,18 @@ export function BenchPanel({ subPath }: PluginNavPanelProps): React.JSX.Element 
   }
   if (launcherTier) {
     return (
-      <section className="flex h-full min-h-0 flex-col">{header}{projectVersionId.trim() ? <div className="min-h-0 flex-1"><RunLauncher initialTier={launcherTier} onClose={() => setLauncherTier(null)} onStarted={(startedRunId) => navigate.toPluginPanel("bench", { subPath: encodeURIComponent(startedRunId) })} projectId={projectId} projectVersionId={projectVersionId.trim()} /></div> : null}</section>
+      <section className="flex h-full min-h-0 flex-col">{header}{projectVersionId.trim() ? <div className="min-h-0 flex-1"><RunLauncher initialTier={launcherTier} onClose={() => setLauncherTier(null)} onFailed={(failedRunId) => { setLauncherTier(null); navigate.toPluginPanel("bench", { subPath: encodeURIComponent(failedRunId) }); }} onStarted={(startedRunId) => navigate.toPluginPanel("bench", { subPath: encodeURIComponent(startedRunId) })} projectId={projectId} projectVersionId={projectVersionId.trim()} /></div> : null}</section>
     );
   }
   return (
     <section className="flex h-full min-h-0 flex-col bg-background text-foreground">
       {header}
-      <div className={`grid min-h-0 flex-1 ${runId ? "grid-cols-12" : "grid-cols-1"}`}>
-        <div className={runId ? "col-span-5 min-h-0 border-r border-border" : "min-h-0"}>
-          <RunTimeline onOpen={openRun} onRunTier0={() => setLauncherTier("tier0")} projectId={projectId} projectVersionId={projectVersionId.trim() || null} selectedRunId={runId} />
+      {versionsError ? <div className="flex items-center gap-2 border-b border-border bg-muted/50 px-3 py-2 text-xs" role="status"><Icon name="AlertTriangle" />Cached versions unavailable: {versionsError}</div> : null}
+      <div className="grid min-h-0 flex-1 grid-cols-12">
+        <div className={`${runId ? "col-span-5" : "col-span-7"} min-h-0 border-r border-border`}>
+          <RunTimeline onOpen={openRun} onRunTier0={() => setLauncherTier("tier0")} projectId={projectId} projectVersionId={projectVersionId.trim() || null} runDisabledReason={runDisabledReason} selectedRunId={runId} />
         </div>
-        {runId ? <div className="col-span-7 min-h-0"><RunDetail projectId={projectId} projectVersionId={projectVersionId.trim() || null} runId={runId} /></div> : null}
+        {runId ? <div className="col-span-7 min-h-0"><RunDetail projectId={projectId} projectVersionId={projectVersionId.trim() || null} runId={runId} /></div> : <aside aria-label="Bench verdict summary" className="col-span-5 min-h-0 overflow-auto p-4"><VerdictCard id={projectVersionId || undefined} projectId={projectId} /></aside>}
       </div>
     </section>
   );

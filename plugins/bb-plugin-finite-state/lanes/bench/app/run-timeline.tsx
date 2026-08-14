@@ -43,6 +43,7 @@ interface RunTimelineProps {
   selectedRunId?: string | null;
   onOpen(run: BenchRunListItem): void;
   onRunTier0(): void;
+  runDisabledReason: string | null;
 }
 
 function text(fields: Record<string, JsonValue>, key: string): string | null {
@@ -157,6 +158,7 @@ export function RunTimeline({
   selectedRunId,
   onOpen,
   onRunTier0,
+  runDisabledReason,
 }: RunTimelineProps): React.JSX.Element {
   const rpc = useRpc<RpcContract>();
   const navigate = useBbNavigate();
@@ -200,7 +202,7 @@ export function RunTimeline({
       setNext(page.next);
       setTotal(page.total);
       setStale(page.cache.state === "stale");
-      setError(page.cache.message);
+      setError(page.cache.state === "stale" ? page.cache.message : null);
     } catch (cause) {
       if (requestEpoch.current !== epoch) return;
       setError(cause instanceof Error ? cause.message : "Bench runs could not be loaded.");
@@ -257,7 +259,8 @@ export function RunTimeline({
           <Icon className="mx-auto size-6 text-muted-foreground" name="ChartColumn" />
           <h2 className="mt-3 text-lg font-semibold">No bench runs yet</h2>
           <p className="mt-2 text-sm text-muted-foreground">Start with a bounded static Tier 0 verification.</p>
-          <Button className="mt-4" onClick={onRunTier0}><Icon name="Workflow" />Run Tier 0</Button>
+          <Button aria-describedby={runDisabledReason ? "empty-bench-run-reason" : undefined} className="mt-4" disabled={runDisabledReason !== null} onClick={onRunTier0}><Icon name="Workflow" />Run Tier 0</Button>
+          {runDisabledReason ? <p className="mt-2 text-xs text-muted-foreground" id="empty-bench-run-reason">Run unavailable: {runDisabledReason}</p> : null}
         </section>
       </div>
     );
@@ -324,7 +327,7 @@ export function RunTimeline({
                   {run.threadId ? (
                     <Button aria-label={`Open native thread for ${run.id}`} onClick={() => navigate.toThread(run.threadId!)} size="sm" variant="outline"><Icon name="BubbleChatQuestion" />Thread</Button>
                   ) : (
-                    <Badge aria-label="Native run thread unavailable" variant="outline">Thread unavailable</Badge>
+                    <Badge variant="outline">Thread unavailable</Badge>
                   )}
                 </div>
               </article>

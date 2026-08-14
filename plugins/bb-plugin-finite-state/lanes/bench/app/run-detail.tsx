@@ -60,6 +60,8 @@ interface DetailModel {
   attestations: DetailAttestation[];
   stale: boolean;
   cacheMessage: string | null;
+  failureCode: string | null;
+  failureReason: string | null;
 }
 
 function isRecord(value: JsonValue | undefined): value is Record<string, JsonValue> {
@@ -114,6 +116,8 @@ function detailModel(detail: {
     })),
     stale: detail.cache.state === "stale",
     cacheMessage: detail.cache.message,
+    failureCode: text(fields.failureCode),
+    failureReason: text(fields.failureReason),
   };
 }
 
@@ -163,8 +167,9 @@ export function RunDetail({
         <header className="rounded-lg border border-border bg-card p-4">
           <div className="flex flex-wrap items-center gap-2"><h2 className="mr-auto font-mono text-lg font-semibold">{detail.id}</h2><Badge variant="outline">{detail.tier}</Badge><Badge variant="secondary">{detail.status}</Badge></div>
           <p className="mt-2 font-mono text-xs text-muted-foreground">Firmware {detail.firmwareDigest ?? "unavailable"}</p>
-          <div className="mt-3 flex flex-wrap gap-2">{detail.threadId ? <Button onClick={() => navigate.toThread(detail.threadId!)} size="sm"><Icon name="BubbleChatQuestion" />Open native run thread</Button> : <Badge aria-label="Native run thread unavailable" variant="outline">Native thread unavailable</Badge>}</div>
+          <div className="mt-3 flex flex-wrap gap-2">{detail.threadId ? <Button onClick={() => navigate.toThread(detail.threadId!)} size="sm"><Icon name="BubbleChatQuestion" />Open native run thread</Button> : <Badge variant="outline">Native thread unavailable</Badge>}</div>
         </header>
+        {detail.status === "failed" ? <Alert variant="destructive"><Icon name="CircleX" /><AlertDescription><span className="font-medium">Run attempt failed{detail.failureCode ? ` · ${detail.failureCode}` : ""}</span><p className="mt-1">{detail.failureReason ?? "The run stopped before check evidence was produced."}</p></AlertDescription></Alert> : null}
         {detail.stale || error || detail.cacheMessage ? <Alert><Icon name="AlertTriangle" /><AlertDescription className="flex items-center gap-3"><span>{error ? `Showing cached detail. ${error}` : detail.cacheMessage ?? "Showing stale cached detail."}</span><Button className="ml-auto" onClick={() => setRevision((value) => value + 1)} size="sm" variant="outline">Retry</Button></AlertDescription></Alert> : null}
         <section className="rounded-lg border border-border bg-card p-4"><h3 className="text-sm font-semibold">Configuration</h3><dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2"><div><dt className="text-xs text-muted-foreground">Project version</dt><dd className="mt-1 font-mono">{detail.projectVersionId ?? "project latest"}</dd></div><div><dt className="text-xs text-muted-foreground">Target</dt><dd className="mt-1">{detail.target ?? "All configured checks"}</dd></div></dl>{detail.config !== null ? <pre className="mt-3 max-h-48 overflow-auto rounded-md bg-muted p-3 text-xs">{JSON.stringify(detail.config, null, 2)}</pre> : <p className="mt-3 text-xs text-muted-foreground">No deployment configuration was recorded.</p>}</section>
         <section className="rounded-lg border border-border bg-card p-4"><h3 className="text-sm font-semibold">Requirement and check results</h3>{detail.results.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">No check results have arrived.</p> : <div className="mt-3 space-y-2">{detail.results.map((result, index) => <div className="rounded-md border border-border bg-background p-3" key={`${result.requirementId}-${result.checkId}-${index}`}><div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{result.outcome}</Badge><span className="text-sm font-medium">{result.requirementId}</span><span className="font-mono text-xs text-muted-foreground">{result.checkId}</span></div>{result.evidenceSummary ? <p className="mt-2 text-xs text-muted-foreground">{result.evidenceSummary}</p> : null}</div>)}</div>}</section>

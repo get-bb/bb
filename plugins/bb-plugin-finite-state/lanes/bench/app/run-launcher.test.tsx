@@ -10,9 +10,9 @@ const host = { id: "host-1", name: "Bench One", status: "connected", capabilitie
 beforeAll(() => installTestPluginRuntime());
 afterEach(() => cleanup());
 
-async function launcher(tier: "tier0" | "tier1", start = vi.fn(async () => ({ projectId: "p1", projectVersionId: "v1", runId: "run-1", threadId: "thread-1", jobIds: [], firmwareSha256: "a".repeat(64), status: "running" as const }))) {
+async function launcher(tier: "tier0" | "tier1", start = vi.fn(async () => ({ projectId: "p1", projectVersionId: "v1", runId: "run-1", threadId: "thread-1", jobIds: [], firmwareSha256: "a".repeat(64), status: "running" as const })), onFailed = vi.fn()) {
   const { RunLauncher } = await import("./run-launcher.js");
-  const slot = renderSlot({ component: () => <RunLauncher initialTier={tier} onClose={() => {}} onStarted={() => {}} projectId="p1" projectVersionId="v1" /> }, {}, {
+  const slot = renderSlot({ component: () => <RunLauncher initialTier={tier} onClose={() => {}} onFailed={onFailed} onStarted={() => {}} projectId="p1" projectVersionId="v1" /> }, {}, {
     rpc: {
       benchHostsList: () => ({ items: [host], total: 1, next: null, cache }),
       firmwareMountsList: () => ({ items: [{ projectId: "p1", projectVersionId: "v1", kind: "firmwareMount", key: "fw", label: "fw", fields: { artifactHash: "a".repeat(64) } }], total: 1, next: null, cache }),
@@ -21,7 +21,7 @@ async function launcher(tier: "tier0" | "tier1", start = vi.fn(async () => ({ pr
   });
   await slot.findByRole("option", { name: /Bench One/u });
   fireEvent.change(slot.getByLabelText("Host"), { target: { value: "host-1" } });
-  return { slot, start };
+  return { onFailed, slot, start };
 }
 
 describe("RunLauncher", () => {
@@ -56,5 +56,13 @@ describe("RunLauncher", () => {
     fireEvent.change(slot.getByLabelText("Host"), { target: { value: "host-1" } });
     expect(slot.getByText(/Missing Tier 1 prerequisites/u)).toBeTruthy();
     expect(slot.getByRole("button", { name: "Start Tier 1" }).getAttribute("disabled")).not.toBeNull();
+  });
+
+  it("opens the durable failed attempt returned by the registered action error", async () => {
+    const start = vi.fn(async () => { throw new Error("Forge registration is unavailable [runId: bench-failed-1]"); });
+    const { onFailed, slot } = await launcher("tier0", start);
+    fireEvent.click(slot.getByText(/I confirm/u));
+    fireEvent.click(await slot.findByRole("button", { name: "Start Tier 0" }));
+    await waitFor(() => expect(onFailed).toHaveBeenCalledWith("bench-failed-1", "Forge registration is unavailable [runId: bench-failed-1]"));
   });
 });

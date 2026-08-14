@@ -26,10 +26,19 @@ function run(index: number) {
 }
 
 describe("RunTimeline", () => {
+  it("renders an honest empty state when the accepted cache has no runs", async () => {
+    const { RunTimeline } = await import("./run-timeline.js");
+    const slot = renderSlot({ component: () => <RunTimeline onOpen={() => {}} onRunTier0={() => {}} projectId="p1" projectVersionId="v1" runDisabledReason={null} /> }, {}, {
+      rpc: { benchRunsList: () => ({ items: [], total: 0, next: null, cache: { ...cache, state: "empty", message: "No bench evidence is cached for this scope." } }) },
+    });
+    expect(await slot.findByText("No bench runs yet")).toBeTruthy();
+    expect(slot.queryByText("Bench timeline unavailable")).toBeNull();
+  });
+
   it("virtualizes, filters, pages stably, links the native thread, and refetches late status", async () => {
     const { RunTimeline } = await import("./run-timeline.js");
     let reads = 0;
-    const slot = renderSlot({ component: () => <RunTimeline onOpen={() => {}} onRunTier0={() => {}} projectId="p1" projectVersionId="v1" /> }, {}, {
+    const slot = renderSlot({ component: () => <RunTimeline onOpen={() => {}} onRunTier0={() => {}} projectId="p1" projectVersionId="v1" runDisabledReason={null} /> }, {}, {
       rpc: { benchRunsList: (input: unknown) => { reads += 1; const continuation = typeof input === "object" && input !== null ? Reflect.get(input, "continuation") : null; return continuation ? { items: [run(1000)], total: 1001, next: null, cache } : { items: Array.from({ length: 1000 }, (_, index) => run(index)), total: 1001, next: "older", cache }; } },
     });
     expect(await slot.findByText("run-0")).toBeTruthy();
