@@ -44,10 +44,10 @@ import {
 } from "./marketplace-manifest.js";
 import { BUNDLED_OFFICIAL_MARKETPLACE } from "./official-marketplace.js";
 
-export const MARKETPLACE_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1_000;
-export const MARKETPLACE_MANIFEST_MAX_BYTES = 1_048_576;
+const MARKETPLACE_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1_000;
+const MARKETPLACE_MANIFEST_MAX_BYTES = 1_048_576;
 
-export interface PluginCatalogIcon {
+interface PluginCatalogIcon {
   bytes: Buffer;
   contentType: string;
   hash: string;

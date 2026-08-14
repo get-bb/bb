@@ -10,7 +10,7 @@ import {
 } from "../plugins/install-sources.js";
 
 /** Published contract, consumed by the registry repository's CI. */
-export const MARKETPLACE_SCHEMA_URL =
+const MARKETPLACE_SCHEMA_URL =
   "https://getbb.app/schemas/marketplace.schema.json";
 
 /** Reserved name of the marketplace BB itself curates. */
@@ -24,8 +24,6 @@ const GITHUB_LOGIN_PATTERN = /^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$/u;
 /** A host icon name such as `ZoomIn`; never a path or a URL. */
 const ICON_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/u;
 const ICON_EXTENSIONS = [".svg", ".png", ".webp"] as const;
-
-export type MarketplaceIconExtension = (typeof ICON_EXTENSIONS)[number];
 
 const semverRange = z
   .string()
@@ -197,7 +195,7 @@ const entrySchema = z
   })
   .strict();
 
-export const marketplaceManifestSchema = z
+const marketplaceManifestSchema = z
   .object({
     $schema: z.literal(MARKETPLACE_SCHEMA_URL).optional(),
     schemaVersion: z.literal(1),
@@ -333,7 +331,7 @@ export function entrySourceDisplay(entry: MarketplaceEntry): string {
   return `git:${entry.source.git.url}@${entry.source.git.ref}${subdir}`;
 }
 
-export interface ResolvedEntrySource {
+interface ResolvedEntrySource {
   /** Install-pipeline source spec. */
   source: string;
   /** Which plugin of the source the entry lists. */
