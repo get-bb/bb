@@ -281,6 +281,27 @@ function approvalResolutionDecision(
   return resolution.decision;
 }
 
+function ApprovalDetailList({
+  className,
+  lines,
+}: {
+  className: string;
+  lines: readonly string[];
+}) {
+  return (
+    <ul
+      className={cn(
+        "min-w-0 max-w-full text-xs text-muted-foreground [overflow-wrap:anywhere]",
+        className,
+      )}
+    >
+      {lines.map((line) => (
+        <li key={line}>{line}</li>
+      ))}
+    </ul>
+  );
+}
+
 function buildApprovalSubject({
   interaction,
   payload,
@@ -315,11 +336,10 @@ function buildApprovalSubject({
               $ {command}
             </pre>
             {detailLines.length > 0 ? (
-              <ul className="min-w-0 border-t border-border px-3 py-2 text-xs text-muted-foreground [overflow-wrap:anywhere]">
-                {detailLines.map((line) => (
-                  <li key={line}>{line}</li>
-                ))}
-              </ul>
+              <ApprovalDetailList
+                className="border-t border-border px-3 py-2"
+                lines={detailLines}
+              />
             ) : null}
           </div>
         ) : null,
@@ -332,11 +352,10 @@ function buildApprovalSubject({
         title: payload.reason ?? "Do you want to make these changes?",
         body:
           detailLines.length > 0 ? (
-            <ul className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
-              {detailLines.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
+            <ApprovalDetailList
+              className="rounded-lg border border-border bg-card px-3 py-2"
+              lines={detailLines}
+            />
           ) : null,
       };
     }
@@ -347,11 +366,10 @@ function buildApprovalSubject({
         title: payload.reason ?? "Do you want to grant this permission?",
         body:
           detailLines.length > 0 ? (
-            <ul className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
-              {detailLines.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
+            <ApprovalDetailList
+              className="rounded-lg border border-border bg-card px-3 py-2"
+              lines={detailLines}
+            />
           ) : null,
       };
     }
