@@ -38,6 +38,7 @@ const FIXTURE_ROOT = resolve(
 const PROJECT_ID = "project-realtime";
 const ACTIVE_VERSION_ID = "version-active";
 const OTHER_VERSION_ID = "version-other";
+const pendingAnimationFrames = new Set<number>();
 
 const cache = {
   state: "fresh" as const,
@@ -70,6 +71,11 @@ class SurfaceResizeObserver implements ResizeObserver {
   disconnect(): void {}
 }
 
+function cancelPendingAnimationFrames(): void {
+  for (const handle of pendingAnimationFrames) window.clearTimeout(handle);
+  pendingAnimationFrames.clear();
+}
+
 beforeAll(() => {
   configure({ asyncUtilTimeout: 10_000 });
   vi.stubGlobal("ResizeObserver", SurfaceResizeObserver);
@@ -94,10 +100,17 @@ beforeAll(() => {
   );
   vi.stubGlobal(
     "requestAnimationFrame",
-    (callback: FrameRequestCallback): number =>
-      window.setTimeout(() => callback(performance.now()), 0),
+    (callback: FrameRequestCallback): number => {
+      const handle = window.setTimeout(() => {
+        pendingAnimationFrames.delete(handle);
+        callback(performance.now());
+      }, 0);
+      pendingAnimationFrames.add(handle);
+      return handle;
+    },
   );
   vi.stubGlobal("cancelAnimationFrame", (handle: number) => {
+    pendingAnimationFrames.delete(handle);
     window.clearTimeout(handle);
   });
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue(
@@ -114,12 +127,14 @@ beforeAll(() => {
 });
 
 afterAll(() => {
+  cancelPendingAnimationFrames();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
 afterEach(() => {
   cleanup();
+  cancelPendingAnimationFrames();
   window.localStorage.clear();
 });
 
