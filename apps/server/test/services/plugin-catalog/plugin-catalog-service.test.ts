@@ -187,7 +187,9 @@ describe("plugin catalog service", () => {
       source:
         "git:https://github.com/brsbl/bb-plugins.git@30f91fd977ba1ce60532af27a68534464fb62516",
       installed: false,
-      compatible: true,
+      compatible: false,
+      incompatibleReason:
+        "requires bb plugin SDK ^0.5.0, running SDK is 0.4.3",
     });
   });
 
