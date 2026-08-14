@@ -33,16 +33,19 @@ export interface SidebarThreadShortcutTarget {
   projectId: string | null;
 }
 
-export type SidebarThreadShortcutPresentation = AppShortcutPresentation;
+export interface SidebarThreadShortcutAssignment {
+  number: string | null;
+  shortcut: AppShortcutPresentation | null;
+}
 
-export const EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS: ReadonlyMap<
+export const EMPTY_SIDEBAR_THREAD_SHORTCUT_ASSIGNMENTS: ReadonlyMap<
   string,
-  SidebarThreadShortcutPresentation
+  SidebarThreadShortcutAssignment
 > = new Map();
 
-export const SidebarThreadShortcutKeysContext = createContext<
-  ReadonlyMap<string, SidebarThreadShortcutPresentation>
->(EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS);
+export const SidebarThreadShortcutAssignmentsContext = createContext<
+  ReadonlyMap<string, SidebarThreadShortcutAssignment>
+>(EMPTY_SIDEBAR_THREAD_SHORTCUT_ASSIGNMENTS);
 
 function collectSidebarThreadTargets(
   root: HTMLElement | null,
@@ -122,8 +125,24 @@ export function getSidebarThreadNavigationTargets(
   return collectSidebarThreadTargets(root, Number.POSITIVE_INFINITY, true);
 }
 
-export function useSidebarThreadShortcut(
+export function observeSidebarThreadShortcutTargets(
+  root: HTMLElement,
+  enabled: boolean,
+  onChange: (targets: readonly SidebarThreadShortcutTarget[]) => void,
+): () => void {
+  if (!enabled) return () => {};
+
+  const refresh = () => onChange(getSidebarThreadShortcutTargets(root));
+  const observer = new MutationObserver(refresh);
+
+  refresh();
+  observer.observe(root, { childList: true, subtree: true });
+
+  return () => observer.disconnect();
+}
+
+export function useSidebarThreadShortcutAssignment(
   threadId: string,
-): SidebarThreadShortcutPresentation | undefined {
-  return useContext(SidebarThreadShortcutKeysContext).get(threadId);
+): SidebarThreadShortcutAssignment | undefined {
+  return useContext(SidebarThreadShortcutAssignmentsContext).get(threadId);
 }

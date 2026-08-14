@@ -18,6 +18,8 @@ const SIDEBAR_MACHINE_SECTION_ORDER_STORAGE_KEY =
 export const SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY =
   "bb.sidebar.organizationMode";
 const CHRONOLOGICAL_SORT_STORAGE_KEY = "bb.sidebar.chronologicalSort";
+export const SIDEBAR_SHOW_THREAD_NUMBERS_STORAGE_KEY =
+  "bb.sidebar.showThreadNumbers";
 const COLLAPSED_THREAD_SECTIONS_STORAGE_KEY =
   "bb.sidebar.collapsedThreadSections";
 const LEGACY_COLLAPSED_FOLDERS_STORAGE_KEY = "bb.sidebar.collapsedFolders";
@@ -174,6 +176,13 @@ export const sidebarChronologicalSortAtom =
     createJsonLocalStorage<SidebarChronologicalSort>(),
     { getOnInit: true },
   );
+
+export const sidebarShowThreadNumbersAtom = atomWithStorage<boolean>(
+  SIDEBAR_SHOW_THREAD_NUMBERS_STORAGE_KEY,
+  false,
+  createJsonLocalStorage<boolean>(),
+  { getOnInit: true },
+);
 
 // Collapsed section keys (see buildSectionKey in sectionKeys.ts). A plain string[],
 // matching collapsedThreadIds / collapsedProjectIds.

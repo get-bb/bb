@@ -108,6 +108,7 @@ import {
   sidebarCollapsedThreadSectionsAtom,
   sidebarCollapsedMachinesAtom,
   sidebarOrganizationModeAtom,
+  sidebarShowThreadNumbersAtom,
   type SidebarChronologicalSort,
   type CollapsibleSidebarSectionId,
   type SidebarOrganizationMode,
@@ -670,9 +671,8 @@ function SidebarDisplayMenuTrigger({
   );
 }
 
-// Single combined display-options menu (organize + sort) rendered on every
-// section header. Both the organization mode and the sort field are
-// global, so any header's menu drives the whole sidebar.
+// Single combined display-options menu rendered on every section header.
+// Its choices are global, so any header's menu drives the whole sidebar.
 export function SidebarDisplayOptionsMenu({
   open,
   onOpenChange,
@@ -682,6 +682,9 @@ export function SidebarDisplayOptionsMenu({
   );
   const [chronologicalSort, setChronologicalSort] = useAtom(
     sidebarChronologicalSortAtom,
+  );
+  const [showThreadNumbers, setShowThreadNumbers] = useAtom(
+    sidebarShowThreadNumbersAtom,
   );
   const selectedSort: SidebarChronologicalSort =
     chronologicalSort === "none" ? "updated" : chronologicalSort;
@@ -727,6 +730,18 @@ export function SidebarDisplayOptionsMenu({
               {option.label}
             </DropdownMenuCheckboxItem>
           ))}
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className={CHROME_SECTION_LABEL_CLASS}>
+          Show
+        </DropdownMenuLabel>
+        <DropdownMenuGroup aria-label="Show">
+          <DropdownMenuCheckboxItem
+            checked={showThreadNumbers}
+            onCheckedChange={setShowThreadNumbers}
+          >
+            Thread numbers
+          </DropdownMenuCheckboxItem>
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
