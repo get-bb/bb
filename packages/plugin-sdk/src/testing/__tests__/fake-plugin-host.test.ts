@@ -398,15 +398,24 @@ describe("cli", () => {
     expect(JSON.parse(machine.stdout)).toEqual({ error: machine.error });
   });
 
-  it("rejects reserved names", () => {
-    const { bb } = createFakePluginHost();
+  it("uses the production host's reserved CLI names", () => {
+    const reservedHost = createFakePluginHost();
     expect(() =>
-      bb.cli.register({
-        name: "thread",
+      reservedHost.bb.cli.register({
+        name: "skill",
         summary: "nope",
         run: () => ({ exitCode: 0 }),
       }),
-    ).toThrow('cli command name "thread" is reserved by the bb CLI');
+    ).toThrow('cli command name "skill" is reserved by the bb CLI');
+
+    const availableHost = createFakePluginHost();
+    expect(() =>
+      availableHost.bb.cli.register({
+        name: "ui",
+        summary: "UI tools",
+        run: () => ({ exitCode: 0 }),
+      }),
+    ).not.toThrow();
   });
 
   it("rejects a duplicate registration like the production host", () => {

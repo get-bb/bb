@@ -1,6 +1,6 @@
 ---
 name: bb-plugin-authoring
-description: Write, build, and install bb plugins. Use whenever the task is to create a bb plugin, extend bb itself, or add a bb CLI command, agent tool, background service, settings, panel, mention provider, or other bb surface via a plugin. Covers the entire backend BbPluginApi and the frontend @bb/plugin-sdk/app contract with working patterns.
+description: Write, build, and install bb plugins. Use whenever the task is to create a bb plugin, extend bb itself, or add a bb CLI command, agent tool, background service, settings, panel, mention provider, or other bb surface via a plugin. Covers the entire backend BbPluginApi and the frontend @get-bb/plugin-sdk/app contract with working patterns.
 ---
 
 # Authoring bb plugins
@@ -29,7 +29,7 @@ The manifest is `package.json`:
   "name": "bb-plugin-hello",
   "version": "0.1.0",
   "type": "module",
-  "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.4.2" },
+  "engines": { "bb": ">=0.9", "bbPluginSdk": ">=0.4.3" },
   "bb": {
     "name": "Hello",
     "description": "A friendly example plugin.",
@@ -100,9 +100,12 @@ The manifest is `package.json`:
   different branded artwork and provide a dark variant when needed.
 - `engines.bb` — optional semver range checked against the bb app version.
 - `engines.bbPluginSdk` — optional semver range for the plugin SDK surface
-  (currently `0.4.2`; the scaffold writes `"^0.4.2"`). Absent means a legacy
-  manifest. Managed (`git:`/`npm:`) installs **refuse** a mismatch against
-  the running SDK; path installs surface it as `incompatible` at load.
+  (currently `0.4.3`; the scaffold writes `">=0.4.3"`). bb reads it as a floor,
+  not a ceiling: a later SDK in the same major still loads the plugin, so a
+  caret range keeps working after the SDK moves forward. Absent means a legacy
+  manifest. Managed (`git:`/`npm:`) installs **refuse** a plugin that needs a
+  newer SDK than the host provides, or one pinned to a different major; path
+  installs surface it as `incompatible` at load.
   Compatible updates (`bb plugin outdated` / `bb plugin update`) only select
   candidates that satisfy these ranges; newer incompatible releases are
   reported as blocked rather than applied. Dev builds (bb `0.0.0`) skip
@@ -131,7 +134,7 @@ Backend API imports normally stay type-only;
 the root runtime exports are `defineRpcContract`, supplied by BB for shared
 schema contracts, and the numeric `PLUGIN_CLI_OUTPUT_MAX_BYTES` ceiling:
 `import { defineRpcContract, type BbPluginApi } from
-"@bb/plugin-sdk"`. Validator imports such as Zod are normal plugin runtime
+"@get-bb/plugin-sdk"`. Validator imports such as Zod are normal plugin runtime
 dependencies (and are bundled by `bb plugin build`).
 
 On-disk state per plugin: `<dataDir>/plugins/<id>/data.db` (its SQLite),
@@ -145,13 +148,26 @@ This skill is a guide, not the contract. For an exact signature or a symbol it
 does not cover:
 
 1. **`bb plugin types`**, run in the plugin directory (or given its path),
-   rewrites that plugin's `types/*.d.ts` from the running bb — no server
-   needed. The scaffold seeds them once, so a cloned or older plugin can be
-   thousands of lines behind. `--check` reports staleness without writing;
-   `bb plugin build` and `bb plugin dev` refresh them too.
-2. **Read `types/bb-plugin-sdk.d.ts`** (`-app.d.ts` for frontend symbols) —
-   the authoritative surface, ~13,000 lines of readable declarations with doc
-   comments, and what the scaffold `tsconfig.json` maps `@bb/plugin-sdk` to.
+   syncs that plugin's SDK surface to the running bb — no server needed. For a
+   plugin that depends on the npm package it repins the exact
+   `@get-bb/plugin-sdk` devDependency to this bb's SDK version (run
+   `npm install` after); for an older plugin that still vendors `types/*.d.ts`
+   it rewrites those declarations. Either way a cloned or older plugin can be
+   thousands of lines behind. `--check` reports a mismatch without writing;
+   `bb plugin build` and `bb plugin dev` keep things in step too.
+2. **Read the bundled declarations** — the authoritative surface, ~13,000
+   lines of readable declarations with doc comments:
+   - plugins scaffolded by a current bb depend on the npm package, so after
+     `npm install` read
+     `node_modules/@get-bb/plugin-sdk/bundled-types/bb-plugin-sdk.d.ts`
+     (`bb-plugin-sdk-app.d.ts` for frontend symbols);
+   - plugins scaffolded before that still carry the same declarations in
+     `types/bb-plugin-sdk.d.ts` (`types/bb-plugin-sdk-app.d.ts`), which the
+     plugin's `tsconfig.json` maps `@get-bb/plugin-sdk` onto. Read whichever
+     the plugin in front of you has. That layout still works; `bb plugin
+     migrate` converts such a plugin to the npm package (it prints the plan
+     and asks first, and needs `--yes` when stdin is not a terminal). Never
+     migrate a plugin the user did not ask you to migrate.
 3. **`git clone --depth 1 https://github.com/get-bb/bb`** for host behavior or
    a reference implementation: `packages/plugin-sdk/src/`,
    `apps/server/src/services/plugins/`, `plugins/`.
@@ -184,7 +200,7 @@ pipeline.
 ## The backend factory
 
 ```ts
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 
 export default async function plugin(bb: BbPluginApi) {
   // Register surfaces here. Load-safe: settings, storage, http, rpc,
@@ -307,25 +323,25 @@ that need the singleton personal project use
 `bb.sdk.projects.list({ includePersonal: true })`.
 
 **Area map.** Every area below is reachable from `bb.sdk`. This lists the
-methods, not their arguments — read `types/bb-plugin-sdk.d.ts` for exact
-signatures.
+methods, not their arguments — read the bundled `bb-plugin-sdk.d.ts` for exact
+signatures (see "Looking up the exact API").
 
-| Area | Methods |
-| --- | --- |
-| `threads` | `list` `get` `search` `spawn` `fork` `send` `update` `delete` `stop` `compact` `wait` `open` `output` `timeline` `conversationOutline` `promptHistory` `archive` `archiveAll` `unarchive` `pin` `unpin` `reorderPinned` `markRead` `markUnread` `childSummary` `paneAction` `timelineTurnSummaryDetails` `storageFiles` `storagePaths` `cancelPlan` `clearGoal` `continueAfterRateLimit` `rateLimitRecovery` `defaultExecutionOptions`; sub-areas `events` (`list` `wait`), `interactions` (`get` `list` `cancel` `resolve` `respond`), `queuedMessages` (`create` `list` `update` `delete` `send` `reorder` `setGroupBoundary`), `tabs` (`get` `update`) |
-| `threadSections` | `list` `create` `update` `delete` |
-| `projects` | `list` `get` `create` `update` `delete` `reorder` `paths` `files` `fileContent` `branches` `commands` `defaultExecutionOptions` `promptHistory`; sub-areas `attachments` (`upload` `read` `copy`), `sources` (`add` `update` `delete`) |
-| `environments` | `get` `update` `status` `paths` `commit` `archiveThreads` `diff` `diffFile` `diffFiles` `diffBranches` `diffPatch` `pullRequest` `markPullRequestDraft` `markPullRequestReady` `mergePullRequest` `squashMerge` |
-| `hosts` | `list` `get` `update` `delete` `directory` `pathsExist` `pickFolder` `cloneDefaultPath` `createJoinCode` `retryUpdate` `providerCliStatus` `installProviderCli` |
-| `files` | `read` `write` `list` `listPaths` `mkdir` `move` `remove` `createPreview` |
-| `terminals` | `list` `create` `get` `input` `output` `resize` `rename` `restart` `close` |
-| `providers` | `list` `models` |
-| `skills` | `list` `listFiles` `getContent` `update` `remove`; sub-area `registry` (`search` `get` `detail` `install` `repositoryStars`) |
-| `plugins` | `list` `install` `remove` `enable` `disable` `reload` `token` `callRpc` `getSource` `getSettings` `updateSettings` `checkUpdates` `listUpdateResults` `applyUpdate`; sub-area `catalog` (`search` `status` `install`) |
-| `theme` | `get` `catalog` `set` |
-| `status` | `get` |
-| `system` | `version` `config` `reloadConfig` `attention` `usageLimits` `executionOptions` `transcribeVoice` `updateGeneralSettings` `updateKeyboardSettings` `updateExperiments` `cliSkillsStatus` `installCliSkills` `onboardingAgents` `onboardingRepos` `onboardingEvent` |
-| `guide` | `render` (the `bb guide` text; local, no request) |
+| Area             | Methods                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `threads`        | `list` `get` `search` `spawn` `fork` `send` `update` `delete` `stop` `compact` `wait` `open` `output` `timeline` `conversationOutline` `promptHistory` `archive` `archiveAll` `unarchive` `pin` `unpin` `reorderPinned` `markRead` `markUnread` `childSummary` `paneAction` `timelineTurnSummaryDetails` `storageFiles` `storagePaths` `cancelPlan` `clearGoal` `continueAfterRateLimit` `rateLimitRecovery` `defaultExecutionOptions`; sub-areas `events` (`list` `wait`), `interactions` (`get` `list` `cancel` `resolve` `respond`), `queuedMessages` (`create` `list` `update` `delete` `send` `reorder` `setGroupBoundary`), `tabs` (`get` `update`) |
+| `threadSections` | `list` `create` `update` `delete`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `projects`       | `list` `get` `create` `update` `delete` `reorder` `paths` `files` `fileContent` `branches` `commands` `defaultExecutionOptions` `promptHistory`; sub-areas `attachments` (`upload` `read` `copy`), `sources` (`add` `update` `delete`)                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `environments`   | `get` `update` `status` `paths` `commit` `archiveThreads` `diff` `diffFile` `diffFiles` `diffBranches` `diffPatch` `pullRequest` `markPullRequestDraft` `markPullRequestReady` `mergePullRequest` `squashMerge`                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `hosts`          | `list` `get` `update` `delete` `directory` `pathsExist` `pickFolder` `cloneDefaultPath` `createJoinCode` `retryUpdate` `providerCliStatus` `installProviderCli`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `files`          | `read` `write` `list` `listPaths` `mkdir` `move` `remove` `createPreview`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `terminals`      | `list` `create` `get` `input` `output` `resize` `rename` `restart` `close`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `providers`      | `list` `models`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `skills`         | `list` `listFiles` `getContent` `update` `remove`; sub-area `registry` (`search` `get` `detail` `install` `repositoryStars`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `plugins`        | `list` `install` `remove` `enable` `disable` `reload` `token` `callRpc` `getSource` `getSettings` `updateSettings` `checkUpdates` `listUpdateResults` `applyUpdate`; sub-area `catalog` (`search` `status` `install`)                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `theme`          | `get` `catalog` `set`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `status`         | `get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `system`         | `version` `config` `reloadConfig` `attention` `usageLimits` `executionOptions` `transcribeVoice` `updateGeneralSettings` `updateKeyboardSettings` `updateExperiments` `cliSkillsStatus` `installCliSkills` `onboardingAgents` `onboardingRepos` `onboardingEvent`                                                                                                                                                                                                                                                                                                                                                                                         |
+| `guide`          | `render` (the `bb guide` text; local, no request)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 Prefer your own `bb.settings` and `bb.storage` over `sdk.system` and
 `sdk.plugins` for your plugin's own configuration. The `system` and `plugins`
@@ -492,7 +508,7 @@ the handler and output before serialization; handler parameters and return
 values are inferred from the schemas.
 
 ```ts
-import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
+import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 export const rpcContract = defineRpcContract({
@@ -522,7 +538,7 @@ In `app.tsx`, import only the backend contract's type. The backend module and
 its dependencies are erased from the frontend bundle:
 
 ```tsx
-import { useRpc } from "@bb/plugin-sdk/app";
+import { useRpc } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "./server";
 
 function IssuesButton() {
@@ -625,7 +641,7 @@ bb.cli.register({
 Agents discover plugin commands through the server-generated
 `plugin-commands` skill, which lists each command's `summary` and the
 `commands` usage lines — fill both in. Combined stdout and stderr must fit
-`PLUGIN_CLI_OUTPUT_MAX_BYTES` from `@bb/plugin-sdk` (1,048,576 UTF-8 bytes).
+`PLUGIN_CLI_OUTPUT_MAX_BYTES` from `@get-bb/plugin-sdk` (1,048,576 UTF-8 bytes).
 The host rejects a larger result atomically as `plugin_cli_output_too_large`;
 it never clips it. Page growing collections, cap verbose fields, and use
 file/streaming commands for large content. Caveat: under the workspace
@@ -800,7 +816,7 @@ captured `bb` from a previous load throws `PluginContextStaleError` on use
 
 ## Frontend (`bb.app` entry)
 
-`app.tsx` default-exports `definePluginApp` from `@bb/plugin-sdk/app`.
+`app.tsx` default-exports `definePluginApp` from `@get-bb/plugin-sdk/app`.
 React and the SDK are **never bundled** — `bb plugin build` shims them to
 the host's shared runtime, so the bundle only works inside bb.
 
@@ -815,7 +831,7 @@ import {
   useBbNavigate,
   useComposer,
   useComposerView,
-} from "@bb/plugin-sdk/app";
+} from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner"; // shimmed to the host toaster
 import { Button } from "@/components/ui/button"; // vendored source YOU own
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -1003,7 +1019,7 @@ Destructive actions deliberately route through the host's own flow, so there
 is no silent `delete`: deletion is recursive, and only bb can show the
 confirmation that counts the child threads.
 
-Unit-test a list with `renderSlot(...)` from `@bb/plugin-sdk/testing/app`:
+Unit-test a list with `renderSlot(...)` from `@get-bb/plugin-sdk/testing/app`:
 seed rows with the `sidebarThreads` option and assert against
 `inspection.sidebarActionCalls`.
 
@@ -1140,7 +1156,7 @@ Slot props contracts (versioned, additive-only):
   rendering `component` with `{ threadId: string, params: JsonValue | null }`.
   Omitting `run` opens a tab immediately with defaults. Write parameters are
   typed as the recursively JSON-safe `JsonValue` exported by both
-  `@bb/plugin-sdk` and `@bb/plugin-sdk/app`; they persist with the tab across reloads (null when
+  `@get-bb/plugin-sdk` and `@get-bb/plugin-sdk/app`; they persist with the tab across reloads (null when
   none was passed); identical action+params re-opens focus the existing
   tab (title refreshed), different params open sibling tabs. The tab pill
   shows your compact plugin icon + the tab title. Errors thrown from `run`
@@ -1328,7 +1344,7 @@ serviceTier?, executionInputSources, environment, input }`. Forward it
 
   ```tsx
   // app.tsx
-  import { experimental_NewThreadComposer as NewThreadComposer } from "@bb/plugin-sdk/app";
+  import { experimental_NewThreadComposer as NewThreadComposer } from "@get-bb/plugin-sdk/app";
 
   <NewThreadComposer
     defaultProjectId={projectId}
@@ -1429,7 +1445,7 @@ banners?, richText? })`. Omitted `scopes` means all thread, queued-message,
   reference: `examples/plugins/composer-customization`.
 
 UI components — **vendored shadcn source you own** (the shadcn model; the
-old host-provided component kit is REMOVED — `@bb/plugin-sdk/app` exports
+old host-provided component kit is REMOVED — `@get-bb/plugin-sdk/app` exports
 only `definePluginApp` + the hooks):
 
 - Builtin plugins in this repo import shared UI from `@bb/shared-ui` (the
@@ -1464,7 +1480,7 @@ only `definePluginApp` + the hooks):
   React context on every plugin surface; add `@pierre/diffs` to
   devDependencies for types). Pass
   `theme: { dark: document.documentElement.dataset.bbCodeThemeDark,
-  light: document.documentElement.dataset.bbCodeThemeLight }` so a custom
+light: document.documentElement.dataset.bbCodeThemeLight }` so a custom
   UI theme's Pierre JSON applies. Synthesize a `diff --git a/<p> b/<p>`
   header when your patch source (e.g. the GitHub REST API) omits it — see
   `plugins/github/app.tsx`.
@@ -1506,14 +1522,16 @@ hardcoded colors break custom palettes.
 
 ## Testing a plugin
 
-### Unit tests with `@bb/plugin-sdk/testing`
+### Unit tests with `@get-bb/plugin-sdk/testing`
 
-`@bb/plugin-sdk/testing` is the official vitest harness for workspace and
+`@get-bb/plugin-sdk/testing` is the official vitest harness for workspace and
 standalone plugins. The packed package ships runtime JavaScript and portable
-declarations for both testing subpaths. A scaffold still vendors the root/app
-types, so add `@bb/plugin-sdk` as a devDependency when tests import the
-testing harness (plus its optional peers: `better-sqlite3` for backend tests;
-React, React DOM, Testing Library, and jsdom for frontend tests).
+declarations for both testing subpaths. A current scaffold already declares
+`@get-bb/plugin-sdk` as an exact devDependency, so the harness is on disk after
+`npm install`; an older plugin that still vendors `types/` must add that
+devDependency (or run `bb plugin migrate`) before tests can import the harness.
+Either way, install its optional peers too: `better-sqlite3` for backend tests;
+React, React DOM, Testing Library, and jsdom for frontend tests.
 
 The fake plugin host's `bb` satisfies `BbPluginApi` with host-faithful
 semantics: real better-sqlite3 temporary storage (never mock the db), the kv
@@ -1527,7 +1545,7 @@ Backend (`server.ts`) — `createFakePluginHost()`:
 import {
   createFakePluginHost,
   makeThreadResponse,
-} from "@bb/plugin-sdk/testing";
+} from "@get-bb/plugin-sdk/testing";
 import plugin from "./server";
 
 const { bb, harness } = createFakePluginHost({
@@ -1568,7 +1586,7 @@ agent tools/configure provider, mention providers). Pass
 `agentSkillIds` to `createFakePluginHost` to declare the manifest skill names
 available to the configure driver.
 
-Frontend (`app.tsx`) — `@bb/plugin-sdk/testing/app` (vitest + jsdom):
+Frontend (`app.tsx`) — `@get-bb/plugin-sdk/testing/app` (vitest + jsdom):
 
 ```tsx
 // @vitest-environment jsdom
@@ -1576,7 +1594,7 @@ import {
   loadPluginApp,
   mountPluginContentScripts,
   renderSlot,
-} from "@bb/plugin-sdk/testing/app";
+} from "@get-bb/plugin-sdk/testing/app";
 
 // The thunk matters: app.tsx binds the plugin runtime at module load, so
 // loadPluginApp installs the test runtime BEFORE importing it. (For static
@@ -1717,6 +1735,10 @@ Remaining reference examples in `examples/plugins/`:
   `defineRpcContract` plus `PLUGIN_CLI_OUTPUT_MAX_BYTES`; validator imports are
   plugin dependencies. The
   scaffold tsconfig typechecks both `server.ts` and `app.tsx`.
-- `types/*.d.ts` is a per-plugin copy, not a live view of the SDK: run
-  `bb plugin types` before trusting it, and never fall back to a minified
-  `dist/` bundle — see "Looking up the exact API".
+- The declarations you read are pinned to one SDK version, not a live view:
+  new plugins get them from the exact `@get-bb/plugin-sdk` devDependency, older
+  ones from a vendored `types/*.d.ts` copy. Run `bb plugin types` before
+  trusting either — it repins the devDependency or rewrites `types/` as
+  appropriate — and never fall back to a minified `dist/` bundle — see
+  "Looking up the exact API". `bb plugin migrate` moves an older plugin off the
+  vendored copy, but only when the user asks for it.

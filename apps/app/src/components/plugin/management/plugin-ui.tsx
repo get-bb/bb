@@ -17,12 +17,32 @@ import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
  * derivations, where both poles are achromatic and there is no hue to lose.)
  */
 
-/** Green "Update X.Y.Z" tint (sketch v2 `.pill.update`). */
-export const UPDATE_TINT_STYLE = {
-  background: "color-mix(in oklab, var(--success) 14%, var(--canvas))",
-  borderColor: "color-mix(in oklab, var(--success) 35%, var(--canvas))",
-  color: "color-mix(in oklab, var(--success) 80%, var(--ink))",
+/**
+ * The update control's icon accent: a quiet neutral button whose up-arrow
+ * carries the "improvement available" tone, instead of a full green pill
+ * shouting over the row.
+ */
+export const UPDATE_ICON_STYLE = {
+  color: "color-mix(in oklab, var(--success) 72%, var(--ink))",
 } as const;
+
+/**
+ * Whether a plugin version reads as a version to a person. Git-sourced
+ * plugins report resolved commit hashes as their available version, and a
+ * hash in a control's label reads as debug output rather than an offer.
+ */
+export function isReadablePluginVersion(version: string): boolean {
+  return /^v?\d+\.\d+/u.test(version);
+}
+
+/**
+ * Human-facing version text: readable versions pass through, long hex commit
+ * hashes shorten to the conventional 7 characters. Detail grids that exist
+ * for precision should keep the full value instead of this.
+ */
+export function displayPluginVersion(version: string): string {
+  return /^[0-9a-f]{12,}$/iu.test(version) ? version.slice(0, 7) : version;
+}
 
 /** Success verdict banner tint (sketch v2 `.banner`). */
 export const SUCCESS_BANNER_STYLE = {

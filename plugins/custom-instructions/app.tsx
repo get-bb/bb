@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { definePluginApp, useRpc } from "@bb/plugin-sdk/app";
+import { definePluginApp, useRpc } from "@get-bb/plugin-sdk/app";
 import type { customInstructionsRpcContract } from "./server.js";
 import { Textarea } from "@bb/shared-ui/textarea";
 

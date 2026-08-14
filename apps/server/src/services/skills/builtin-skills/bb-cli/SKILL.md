@@ -100,10 +100,8 @@ message agents, or inspect projects, providers, and environments.
   inspect or change these server-backed values from agents. Pass
   `bb settings usage --machine <id-or-name>` to read provider limits from a
   specific connected machine instead of the primary machine.
-- The default-off `toolsHub` experiment exposes the unified Skills, Plugins,
-  and Automations management UI. Change it with
-  `bb settings experiment toolsHub <true|false>`. It does not load or unload
-  tools.
+- Extensions provides the unified Skills and Plugins management UI, while
+  Automations stays in the Plugins section beside threads.
 - The default-off `newOnboarding` experiment exposes the first-run agent and
   project setup guide. Change it with
   `bb settings experiment newOnboarding <true|false>`. Use
@@ -148,8 +146,17 @@ message agents, or inspect projects, providers, and environments.
 - `bb skill show <skill-id> --json` returns the revision. Pass that revision,
   plus `--file`, to `bb skill update <skill-id>`. Use update or delete only when
   the list says editable.
-- Use `bb skill search [query]` for live skills.sh results. Inspect metadata and
-  the bounded file preview with `bb skill registry detail <registry-skill-id>`.
+- Use `bb skill search [query]` for live skills.sh results. With no query it
+  lists what is trending; `ranking` in the response says which leaderboard you
+  got. Install counts match the Skills browse page — lifetime totals, resolved
+  per skill on the trending ranking, where the leaderboard's own number counts
+  only a 24h window. Resolution is capped at 48 rows per page and a detail page
+  can fail to fetch, so read the two surfaces differently: the `INSTALLS`
+  column prints `—` for a row it could not resolve, while `--json` lists those
+  ids in `unresolvedInstallIds` and leaves their `installs` holding the 24h
+  figure. Every other row's `installs` is the lifetime total. Use
+  `--per-page 48` or less to avoid unresolved rows. Inspect metadata and the
+  bounded file preview with `bb skill registry detail <registry-skill-id>`.
   Install with `bb skill install <registry-skill-id>`; never infer an install
   source from a display name.
 - `bb skill install-cli-skills` copies bb's built-in CLI skills into a machine's
@@ -396,12 +403,10 @@ For review or fix pipelines, get the environment ID from
   target thread workspace.
 - Absolute paths under `BB_THREAD_STORAGE` open as thread-storage files for the
   current thread.
-- Use `bb thread pane maximize|restore|toggle|spotlight|clear-spotlight
-[thread-id]` to change a matching already-open pane in every connected BB app
-  window. `spotlight` focuses that pane and dims the others; `clear-spotlight`
-  focuses it and removes split dimming. Inside a BB thread, omit the id to use
-  `BB_THREAD_ID`. The command reports how many connected clients received the
-  ephemeral action. The SDK equivalent is
+- Use `bb thread pane maximize|restore|toggle [thread-id]` to change a matching
+  already-open pane in every connected BB app window. Inside a BB thread, omit
+  the id to use `BB_THREAD_ID`. The command reports how many connected clients
+  received the ephemeral action. The SDK equivalent is
   `sdk.threads.paneAction({ threadId, action })`.
 - Users can also toggle the focused pane from its header or with the configurable
   `pane.maximize.toggle` app command (default `Mod+Shift+E`).
@@ -719,6 +724,10 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - `bb plugin search <query> [--json]` — search the official plugins by id,
     name, description, or category; status shows installed / compatible /
     requires newer bb.
+  - `bb plugin submit [--json]` — print the link to BB's plugin marketplace intake
+    form (a public GitHub repo is required; submission happens in the browser,
+    and there is no status to poll afterwards). Give the link to the user —
+    the form asks for details only its author knows, including their email.
 - Commands:
   - `bb plugin install <src>` — official plugin name (github, docs, memory,
     tasks), HTTP(S) Git repository URL, local path, `builtin:<name>`,
@@ -760,7 +769,12 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - `bb plugin run <id> [args...]` — explicit form of a plugin's CLI command.
   - `bb plugin new <name> [--app]` — scaffold a plugin and install its npm
     dependencies (`--app` adds a frontend entry plus a typecheck-only
-    `tsconfig.json`; scaffold sets `engines.bbPluginSdk` to `^0.4.2`). The
+    `tsconfig.json`; scaffold sets `engines.bbPluginSdk` to `>=0.4.3`). The
+    scaffold depends on `@get-bb/plugin-sdk`, pinned to this bb's exact SDK
+    version in `devDependencies`, so the API declarations arrive with
+    `npm install` at `node_modules/@get-bb/plugin-sdk/bundled-types/*.d.ts`
+    (no vendored `types/`). If that version is not on npm yet, it warns and
+    still scaffolds. The
     install is best-effort and verified: if npm is missing or leaves a package
     out, it says so and prints the manual `npm install --include=dev` step
     rather than reporting success; `bb plugin build [path]` —
@@ -768,18 +782,42 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     `server.meta.json` stamped with SDK/identity metadata; preferred by
     git/npm installs over source) and, when `bb.app` is declared, `app.js` +
     `app.css` + `app.meta.json`. Neither needs the server.
-  - `bb plugin types [path]` — rewrite the plugin's `types/*.d.ts` from the
-    running bb's `@bb/plugin-sdk` declarations, creating `types/` when absent.
-    Run it in a cloned or older plugin: the scaffold seeds those files once and
-    the SDK surface grows every release. `--check` reports staleness and exits
-    non-zero without writing (for CI). `bb plugin build` and `bb plugin dev`
-    refresh them automatically. Needs no server.
+  - `bb plugin types [path]` — sync the plugin's `@get-bb/plugin-sdk` surface
+    to the running bb (default: cwd). For a plugin that depends on the npm
+    package it rewrites the exact `devDependencies` pin to this bb's SDK
+    version (reporting old → new, and reminding you to `npm install`); for a
+    plugin that still vendors declarations it rewrites `types/*.d.ts`, creating
+    `types/` when absent. Run it in a cloned or older plugin: the SDK surface
+    grows every release. `--check` writes nothing and exits non-zero on a
+    mismatch (for CI). `bb plugin build` and `bb plugin dev` refresh vendored
+    declarations automatically and leave npm-package plugins alone. Needs no
+    server.
+  - `bb plugin migrate [path] [--yes]` — convert a plugin that still vendors
+    `types/` to the `@get-bb/plugin-sdk` npm package (default: cwd): add the
+    exact `devDependencies` pin, raise `engines.bbPluginSdk` when this bb's SDK
+    is newer than the declared floor, move an SDK entry declared in
+    `dependencies` into `devDependencies`, drop the `@get-bb/plugin-sdk` (and
+    pre-rename `@bb/plugin-sdk`) entries from `compilerOptions.paths` (other
+    paths like `@/*` are untouched), and delete `types/bb-plugin-sdk*.d.ts`
+    plus `types/` if that empties it — a `types/` still holding your own
+    declarations is kept, along with the `include` entries that compile it. It
+    also rewrites quoted `@bb/plugin-sdk` import/export specifiers (and their
+    subpaths) in the plugin's own `.ts`/`.tsx` sources to `@get-bb/plugin-sdk`,
+    skipping `node_modules/`, `dist/`, and `types/`; the path map was what made
+    the old name resolve, so the imports move with it. A
+    half-migrated plugin that has no vendored artifacts left but never gained
+    the pin is completed the same way. It
+    prints the exact plan and asks before touching anything; `--yes` is
+    required when stdin is not a terminal, where it otherwise prints the plan
+    and exits non-zero having changed nothing. Run `npm install` afterwards.
+    The vendored layout keeps working, so nothing migrates unless you ask.
+    Re-running on a migrated plugin is a no-op. Needs no server.
   - `bb plugin dev [path]` — watch loop for an installed plugin (default:
     cwd): on every change it rebuilds the frontend bundle (when `bb.app` is
     declared) and reloads the plugin; open app pages pick the new UI up live.
     Build/reload failures print and keep watching; Ctrl+C stops.
   - Frontend entries default-export `definePluginApp` from
-    `@bb/plugin-sdk/app` and register UI slots (homepageSection,
+    `@get-bb/plugin-sdk/app` and register UI slots (homepageSection,
     settingsSection, navPanel, threadPanelAction, fileOpener) with hooks
     (useRpc, useRealtime, useRealtimeConnectionState,
     useSettings, useBbContext,
@@ -799,5 +837,5 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   authoring reference for the backend `BbPluginApi` (settings, storage, sdk,
   http/rpc/realtime, background services and schedules, CLI commands, agent
   tools and context, host-rendered UI, lifecycle) and the frontend
-  `@bb/plugin-sdk/app` contract (slots, hooks, UI kit), with working patterns
+  `@get-bb/plugin-sdk/app` contract (slots, hooks, UI kit), with working patterns
   and gotchas. `bb guide plugins` has the short walkthrough.

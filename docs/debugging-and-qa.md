@@ -60,7 +60,7 @@ worktree-specific local origin serves the dashboard at `bb.localhost` and
 routes `<handle>.bb.localhost` through the Connect worker. Email/password auth
 is enabled only for this loopback workflow; production remains GitHub-only.
 `pnpm dev` automatically sets `BB_DEV_CONNECT_BASE_URL` to that worktree's
-local Cloud origin. While the bb is unpaired, Settings → Plugins → Connect
+local Cloud origin. While the bb is unpaired, Extensions → Plugins → Connect
 therefore opens the local dashboard and a pasted code redeems locally. An
 explicit `bb connect --server ...` or `--base-url ...` still wins, so the dev bb
 can still pair with getbb.app.

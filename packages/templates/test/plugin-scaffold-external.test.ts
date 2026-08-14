@@ -14,7 +14,16 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { execFile } from "node:child_process";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
+import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import { scaffoldPlugin } from "../src/plugin-scaffold.js";
 
 const execFileAsync = promisify(execFile);
@@ -47,7 +56,7 @@ const EXTERNAL_DEPENDENCIES = [
 
 const BACKEND_TEST = `
 import { describe, expect, it } from "vitest";
-import { createFakePluginHost } from "@bb/plugin-sdk/testing";
+import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import plugin from "./server";
 
 describe("scaffold backend", () => {
@@ -74,7 +83,7 @@ const FRONTEND_TEST = `
 // @vitest-environment jsdom
 import { fireEvent } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
 describe("scaffold frontend", () => {
   it("loads and renders a slot through the packed harness", async () => {
@@ -106,7 +115,7 @@ export default defineConfig({
 `;
 
 const REPRESENTATIVE_SERVER = `
-import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
+import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 export const rpcContract = defineRpcContract({
@@ -160,7 +169,7 @@ export default function plugin(bb: BbPluginApi) {
 `;
 
 const REPRESENTATIVE_APP = `
-import { definePluginApp, useRpc } from "@bb/plugin-sdk/app";
+import { definePluginApp, useRpc } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "./server";
 
 function Panel() {
@@ -211,6 +220,61 @@ async function linkExternalDependencies(targetDir: string): Promise<void> {
   }
 }
 
+/**
+ * `npm pack` the workspace SDK — the exact artifact the scaffold's pin will
+ * resolve to once it is published.
+ */
+async function packPluginSdk(packDir: string): Promise<string> {
+  await mkdir(packDir, { recursive: true });
+  await execFileAsync(
+    "npm",
+    ["pack", "--silent", "--pack-destination", packDir],
+    {
+      cwd: pluginSdkRoot,
+    },
+  );
+  const tarballs = (await readdir(packDir)).filter((name) =>
+    name.endsWith(".tgz"),
+  );
+  expect(tarballs).toHaveLength(1);
+  return join(packDir, tarballs[0]!);
+}
+
+/**
+ * Install the packed tarball as the plugin's `@get-bb/plugin-sdk` — the
+ * scaffold's own devDependency, resolved from a real npm install rather than a
+ * tsconfig path map.
+ *
+ * Dev dependencies stay in: the pin lives there, and `--omit=dev` would prune
+ * the very package being installed. The explicit tarball argument outranks the
+ * manifest's version spec, so this works before the version is published.
+ */
+async function installPackedSdk(
+  targetDir: string,
+  tarball: string,
+): Promise<void> {
+  await execFileAsync(
+    "npm",
+    [
+      "install",
+      "--ignore-scripts",
+      "--legacy-peer-deps",
+      "--no-package-lock",
+      "--no-save",
+      tarball,
+    ],
+    { cwd: targetDir },
+  );
+}
+
+/** The `@get-bb/plugin-sdk` version a scaffold pins in devDependencies. */
+async function scaffoldSdkPin(targetDir: string): Promise<string | undefined> {
+  const manifest = JSON.parse(
+    await readFile(join(targetDir, "package.json"), "utf8"),
+  ) as { devDependencies?: Record<string, string> };
+  return manifest.devDependencies?.["@get-bb/plugin-sdk"];
+}
+
 async function includeTestsInTypecheck(targetDir: string): Promise<void> {
   const tsconfigPath = join(targetDir, "tsconfig.json");
   const tsconfig = JSON.parse(await readFile(tsconfigPath, "utf8")) as {
@@ -254,6 +318,17 @@ async function runVitest(targetDir: string): Promise<void> {
 
 describe("external plugin scaffold types", () => {
   let workDir: string;
+  let packRoot: string;
+  let tarball: string;
+
+  beforeAll(async () => {
+    packRoot = await mkdtemp(join(tmpdir(), "bb-external-pack-"));
+    tarball = await packPluginSdk(join(packRoot, "pack"));
+  }, 180_000);
+
+  afterAll(async () => {
+    await rm(packRoot, { recursive: true, force: true });
+  });
 
   beforeEach(async () => {
     workDir = await mkdtemp(join(tmpdir(), "bb-external-scaffold-"));
@@ -263,7 +338,7 @@ describe("external plugin scaffold types", () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
-  it("typechecks full SDK results without workspace packages and with library checks enabled", async () => {
+  it("typechecks full SDK results against the installed package, with library checks enabled", async () => {
     const targetDir = join(workDir, "bb-plugin-external");
     await scaffoldPlugin({
       targetDir,
@@ -273,32 +348,43 @@ describe("external plugin scaffold types", () => {
     });
     await writeFile(join(targetDir, "server.ts"), REPRESENTATIVE_SERVER);
     await writeFile(join(targetDir, "app.tsx"), REPRESENTATIVE_APP);
+    // The scaffold's own pin, satisfied by the packed artifact.
+    expect(await scaffoldSdkPin(targetDir)).toBe(PLUGIN_SDK_VERSION);
+    await installPackedSdk(targetDir, tarball);
     await linkExternalDependencies(targetDir);
 
     const tsconfig = JSON.parse(
       await readFile(join(targetDir, "tsconfig.json"), "utf8"),
-    ) as { compilerOptions: { skipLibCheck: boolean } };
+    ) as {
+      compilerOptions: {
+        skipLibCheck: boolean;
+        paths?: Record<string, string[]>;
+      };
+    };
     expect(tsconfig.compilerOptions.skipLibCheck).toBe(false);
+    // Nothing redirects @get-bb/plugin-sdk: what typechecks below is exactly
+    // what an editor resolves from node_modules.
+    expect(Object.keys(tsconfig.compilerOptions.paths ?? {})).toEqual(["@/*"]);
     await expect(
-      access(join(targetDir, "node_modules", "@bb")),
+      access(join(targetDir, "types", "bb-plugin-sdk.d.ts")),
     ).rejects.toThrow();
+    await expect(
+      access(
+        join(
+          targetDir,
+          "node_modules",
+          "@get-bb",
+          "plugin-sdk",
+          "bundled-types",
+          "bb-plugin-sdk.d.ts",
+        ),
+      ),
+    ).resolves.toBeUndefined();
 
     await runTypecheck(targetDir);
-  }, 120_000);
+  }, 300_000);
 
   it("installs the packed testing runtimes and executes scaffold backend and frontend tests", async () => {
-    const packDir = join(workDir, "pack");
-    await mkdir(packDir);
-    await execFileAsync(
-      "npm",
-      ["pack", "--silent", "--pack-destination", packDir],
-      { cwd: pluginSdkRoot },
-    );
-    const tarballs = (await readdir(packDir)).filter((name) =>
-      name.endsWith(".tgz"),
-    );
-    expect(tarballs).toHaveLength(1);
-    const tarball = join(packDir, tarballs[0]!);
     const packedListing = (
       await execFileAsync("tar", ["-tzf", tarball])
     ).stdout.split("\n");
@@ -323,27 +409,20 @@ describe("external plugin scaffold types", () => {
       packageName: "bb-plugin-external-backend",
       bbVersion: "0.9.0",
     });
-    await execFileAsync(
-      "npm",
-      [
-        "install",
-        "--ignore-scripts",
-        "--legacy-peer-deps",
-        "--no-package-lock",
-        "--no-save",
-        "--omit=dev",
-        tarball,
-      ],
-      { cwd: backendDir },
-    );
+    await installPackedSdk(backendDir, tarball);
     await linkExternalDependencies(backendDir);
     await writeFile(join(backendDir, "server.test.ts"), BACKEND_TEST);
     await includeTestsInTypecheck(backendDir);
 
-    expect(await readdir(join(backendDir, "node_modules", "@bb"))).toEqual([
+    expect(await readdir(join(backendDir, "node_modules", "@get-bb"))).toEqual([
       "plugin-sdk",
     ]);
-    const installedSdk = join(backendDir, "node_modules", "@bb", "plugin-sdk");
+    const installedSdk = join(
+      backendDir,
+      "node_modules",
+      "@get-bb",
+      "plugin-sdk",
+    );
     const installedManifest = JSON.parse(
       await readFile(join(installedSdk, "package.json"), "utf8"),
     ) as {
@@ -354,7 +433,10 @@ describe("external plugin scaffold types", () => {
       peerDependencies?: Record<string, string>;
       exports: Record<string, { import: string; types: string }>;
     };
-    expect(installedManifest.version).toBe("0.4.2");
+    // The packed package and the domain constant are two copies of one
+    // version; a plugin that resolves them differently loads against an SDK it
+    // did not declare.
+    expect(installedManifest.version).toBe(PLUGIN_SDK_VERSION);
     expect(installedManifest.private).not.toBe(true);
     expect(JSON.stringify(installedManifest.dependencies ?? {})).not.toContain(
       "workspace:",
@@ -375,9 +457,9 @@ describe("external plugin scaffold types", () => {
         "utf8",
       );
       const bbImports = [
-        ...declarations.matchAll(/from ['"](@bb\/[^'"]+)['"]/gu),
+        ...declarations.matchAll(/from ['"](@(?:get-)?bb\/[^'"]+)['"]/gu),
       ].map((match) => match[1]);
-      expect(new Set(bbImports)).toEqual(new Set(["@bb/plugin-sdk"]));
+      expect(new Set(bbImports)).toEqual(new Set(["@get-bb/plugin-sdk"]));
       expect(declarations).not.toContain("@bb/sdk");
       expect(declarations).not.toContain("@bb/server-contract");
     }
@@ -389,26 +471,18 @@ describe("external plugin scaffold types", () => {
       expect(runtime).not.toMatch(/from ['"]@bb\//u);
     }
     await expect(access(join(installedSdk, "src"))).rejects.toThrow();
-    const backendTsconfigPath = join(backendDir, "tsconfig.json");
     const backendTsconfig = JSON.parse(
-      await readFile(backendTsconfigPath, "utf8"),
+      await readFile(join(backendDir, "tsconfig.json"), "utf8"),
     ) as {
       compilerOptions: {
         skipLibCheck: boolean;
-        paths: Record<string, string[]>;
+        paths?: Record<string, string[]>;
       };
     };
     expect(backendTsconfig.compilerOptions.skipLibCheck).toBe(false);
-    await runTypecheck(backendDir);
-
-    // Also prove package self-reference works without the scaffold's vendored
-    // root declaration mapping. The testing declarations intentionally import
-    // the installed package root instead of flattening the full SDK again.
-    delete backendTsconfig.compilerOptions.paths["@bb/plugin-sdk"];
-    await writeFile(
-      backendTsconfigPath,
-      `${JSON.stringify(backendTsconfig, null, 2)}\n`,
-    );
+    // No mapping to fall back on: the testing declarations import the package
+    // root, which has to resolve through the install alone.
+    expect(backendTsconfig.compilerOptions.paths).toBeUndefined();
     await runTypecheck(backendDir);
     await runVitest(backendDir);
 
@@ -419,7 +493,12 @@ describe("external plugin scaffold types", () => {
       bbVersion: "0.9.0",
       app: true,
     });
-    const frontendSdk = join(frontendDir, "node_modules", "@bb", "plugin-sdk");
+    const frontendSdk = join(
+      frontendDir,
+      "node_modules",
+      "@get-bb",
+      "plugin-sdk",
+    );
     await mkdir(dirname(frontendSdk), { recursive: true });
     await symlink(installedSdk, frontendSdk, "dir");
     await linkExternalDependencies(frontendDir);

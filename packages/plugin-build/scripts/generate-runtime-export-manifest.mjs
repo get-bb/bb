@@ -143,7 +143,7 @@ async function pluginSdkAppExports() {
 const reactVersion = appRequire("react/package.json").version;
 const entryChunks = [];
 entryChunks.push(
-  `  "@bb/plugin-sdk/app": [\n${(await pluginSdkAppExports())
+  `  "@get-bb/plugin-sdk/app": [\n${(await pluginSdkAppExports())
     .map((name) => `    ${JSON.stringify(name)},`)
     .join("\n")}\n  ],`,
 );

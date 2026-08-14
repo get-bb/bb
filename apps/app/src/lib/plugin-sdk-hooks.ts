@@ -19,7 +19,7 @@ import type {
   PluginRpcContract,
   PluginRpcClient,
   PluginSettingsState,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 import {
   PluginSlotOwnershipContext,
   usePluginId,
@@ -53,7 +53,7 @@ import { useServerConnectionState } from "@/hooks/useServerConnectionState";
 import { wsManager } from "@/lib/ws";
 
 /**
- * Host implementations of the `@bb/plugin-sdk/app` hooks (plugin design
+ * Host implementations of the `@get-bb/plugin-sdk/app` hooks (plugin design
  * §5.2). Every hook requires the PluginContext provider that PluginSlotMount
  * wraps around mounted slot components; the fetch-backed parts are split
  * into pure functions taking an injected `fetch` so tests can exercise the

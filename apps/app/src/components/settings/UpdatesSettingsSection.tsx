@@ -17,7 +17,11 @@ import {
   type ProviderCliActionableIssue,
   type ProviderCliIssue,
 } from "@/components/provider-cli/provider-cli-install";
-import { providerCliJobKey } from "@/components/provider-cli/provider-cli-install-store";
+import {
+  openProviderCliInstallLog,
+  providerCliJobKey,
+  type ProviderCliInstallFailure,
+} from "@/components/provider-cli/provider-cli-install-store";
 import {
   getAppUpdateCheckSnapshot,
   startAppUpdateCheck,
@@ -34,12 +38,17 @@ import {
   type UpdateInventoryMachine,
 } from "@/hooks/useUpdateInventory";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
+import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { formatHostUpdateStatus } from "@/lib/host-update-status";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import { sdk } from "@/lib/sdk";
 
 const CHANGELOG_URL = "https://github.com/get-bb/bb/blob/main/CHANGELOG.md";
+const EMPTY_PROVIDER_CLI_FAILURES: ReadonlyMap<
+  string,
+  ProviderCliInstallFailure
+> = new Map();
 
 /**
  * The rows and the machine bands above them share one text edge: names start
@@ -359,12 +368,10 @@ export function BbAppUpdateRows({
           </code>
           <RowButton
             onClick={() => {
-              void navigator.clipboard
-                .writeText(systemVersion.upgradeCommand)
-                .then(() => appToast.success("Upgrade command copied"))
-                .catch(() => {
-                  appToast.error("Couldn't copy upgrade command");
-                });
+              void copyToClipboardWithToast(systemVersion.upgradeCommand, {
+                successMessage: "Upgrade command copied",
+                errorMessage: "Couldn't copy upgrade command",
+              });
             }}
           >
             Copy
@@ -381,6 +388,7 @@ export interface MachineUpdatesRowsProps {
   machine: UpdateInventoryMachine;
   runningJobKey: string | null;
   queuedJobKeys: ReadonlySet<string>;
+  failuresByJobKey?: ReadonlyMap<string, ProviderCliInstallFailure>;
   retryUpdatePending: boolean;
   onStartInstall: (hostId: string, issue: ProviderCliActionableIssue) => void;
   onRetryDaemonUpdate: (hostId: string) => void;
@@ -489,6 +497,7 @@ export function MachineUpdatesRows({
   machine,
   runningJobKey,
   queuedJobKeys,
+  failuresByJobKey = EMPTY_PROVIDER_CLI_FAILURES,
   retryUpdatePending,
   onStartInstall,
   onRetryDaemonUpdate,
@@ -586,6 +595,12 @@ export function MachineUpdatesRows({
           const jobKey = providerCliJobKey(host.id, provider);
           const running = runningJobKey === jobKey;
           const queued = queuedJobKeys.has(jobKey);
+          const storedFailure = failuresByJobKey.get(jobKey) ?? null;
+          const failure =
+            issue !== null &&
+            storedFailure?.issueFingerprint === issue.fingerprint
+              ? storedFailure
+              : null;
           const actionable =
             issue !== null &&
             hasProviderCliAction(issue) &&
@@ -596,7 +611,11 @@ export function MachineUpdatesRows({
               key={provider}
               indent
               tone={
-                running || queued ? "default" : (state?.rowTone ?? "default")
+                running || queued
+                  ? "default"
+                  : failure !== null
+                    ? "destructive"
+                    : (state?.rowTone ?? "default")
               }
             >
               <RowName
@@ -605,7 +624,9 @@ export function MachineUpdatesRows({
                 latest={issue !== null ? status.latestVersion : null}
               />
               <RowActions>
-                {running ? (
+                {failure !== null ? (
+                  <RowStatus tone="destructive">Failed</RowStatus>
+                ) : running ? (
                   <RowStatus live tone="attention">
                     <span className="inline-flex items-center gap-1.5">
                       <Icon name="Spinner" className="size-3 animate-spin" />
@@ -617,12 +638,29 @@ export function MachineUpdatesRows({
                 ) : state === null ? null : (
                   <RowStatus tone={state.statusTone}>{state.label}</RowStatus>
                 )}
+                {failure !== null ? (
+                  <RowButton
+                    onClick={() =>
+                      openProviderCliInstallLog(failure.logDialogState)
+                    }
+                  >
+                    View log
+                  </RowButton>
+                ) : null}
                 {actionable ? (
                   <RowButton onClick={() => onStartInstall(host.id, issue)}>
-                    {issue.action.label}
+                    {failure === null ? issue.action.label : "Retry"}
                   </RowButton>
                 ) : null}
               </RowActions>
+              {failure !== null ? (
+                <p
+                  role="alert"
+                  className="basis-full text-xs text-destructive-text"
+                >
+                  {failure.logDialogState.message}
+                </p>
+              ) : null}
             </UpdatesRow>
           );
         })
@@ -655,7 +693,7 @@ export function UpdatesSettingsSection() {
     getAppUpdateCheckSnapshot,
   );
   const now = useNow(30_000);
-  const { queuedJobKeys, runningJobKey, startInstall } =
+  const { failuresByJobKey, queuedJobKeys, runningJobKey, startInstall } =
     useProviderCliInstallRunner();
 
   const allActionableIssues: {
@@ -861,6 +899,7 @@ export function UpdatesSettingsSection() {
                 machine={machine}
                 runningJobKey={runningJobKey}
                 queuedJobKeys={queuedJobKeys}
+                failuresByJobKey={failuresByJobKey}
                 retryUpdatePending={
                   retryHostUpdate.isPending &&
                   retryHostUpdate.variables === machine.host.id

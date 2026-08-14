@@ -51,7 +51,7 @@ resolves.
 Import it aliased — JSX reads a lowercase-initial name as an intrinsic element:
 
 ```tsx
-import { experimental_NewThreadComposer as NewThreadComposer } from "@bb/plugin-sdk/app";
+import { experimental_NewThreadComposer as NewThreadComposer } from "@get-bb/plugin-sdk/app";
 ```
 
 **`ThreadChat` at scale.** Every column is a `<ThreadChat variant="compact" />`.

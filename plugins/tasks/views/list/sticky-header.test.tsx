@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type { Task } from "../../shared/contract.js";
 
@@ -45,10 +45,7 @@ const project = {
   createdAt: "2026-07-15T00:00:00.000Z",
 };
 
-function task(
-  number: number,
-  status: Task["status"],
-): Task {
+function task(number: number, status: Task["status"]): Task {
   return {
     id: `01HZZZZZZZZZZZZZZZZZZZZZT${number}`,
     projectId: PROJECT_ID,
@@ -101,7 +98,9 @@ describe("status-group sticky headers", () => {
     await slot.findByText("TSK-1");
 
     const headers = Array.from(
-      slot.container.querySelectorAll<HTMLElement>("[data-status-group-header]"),
+      slot.container.querySelectorAll<HTMLElement>(
+        "[data-status-group-header]",
+      ),
     );
     expect(headers.map((header) => header.dataset.statusGroupHeader)).toEqual([
       "todo",
@@ -128,8 +127,8 @@ describe("status-group sticky headers", () => {
     expect(slot.getByText("Todo")).toBeTruthy();
     expect(slot.getByText("Done")).toBeTruthy();
     expect(
-      headers.map((header) =>
-        header.querySelector(".tabular-nums")?.textContent,
+      headers.map(
+        (header) => header.querySelector(".tabular-nums")?.textContent,
       ),
     ).toEqual(["2", "2"]);
 

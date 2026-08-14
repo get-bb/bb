@@ -1,5 +1,6 @@
 import { useLocation, useMatch } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { isToolsRoutePath, TOOLS_SKILLS_ROUTE_PATH } from "@/lib/route-paths";
 
 export interface RouteState {
   /** ID of the project in view (any project-scoped route), else undefined. */
@@ -40,8 +41,12 @@ export function useRouteState(): RouteState {
   const projectlessArchivedMatch = useMatch("/archived");
   const projectArchivedMatch = useMatch("/projects/:projectId/archived");
   const projectSettingsMatch = useMatch("/projects/:projectId/settings");
+  // Legacy /tools URLs count too: they redirect to /extensions, and treating
+  // them as tools views keeps the chrome stable for the redirect frame.
   const isToolsPath =
-    location.pathname === "/tools" || location.pathname.startsWith("/tools/");
+    isToolsRoutePath(location.pathname) ||
+    location.pathname === "/tools" ||
+    location.pathname.startsWith("/tools/");
   const isRootView = location.pathname === "/";
   const isUnsupportedPersonalProjectThread =
     projectThreadMatch?.params.projectId === PERSONAL_PROJECT_ID;
@@ -73,7 +78,8 @@ export function useRouteState(): RouteState {
       location.pathname === "/skills" ||
       location.pathname === "/automations",
     isSkillsView:
-      location.pathname === "/tools/skills" || location.pathname === "/skills",
+      location.pathname === TOOLS_SKILLS_ROUTE_PATH ||
+      location.pathname === "/skills",
     isRootView,
     isProjectlessView:
       isRootView ||

@@ -15,7 +15,6 @@ function testToolchain() {
   return resolvePluginBuildToolchain(join(tmpdir(), "bb-toolchain-unused"));
 }
 
-
 const TEST_BB_VERSION = "0.9.0-test";
 
 const FIXTURE_PACKAGE_JSON = JSON.stringify(
@@ -35,10 +34,10 @@ const FIXTURE_PACKAGE_JSON = JSON.stringify(
 );
 
 // A local import that must be inlined, and a type-only SDK import that must
-// be fully erased (no runtime `@bb/plugin-sdk` import in the bundle).
+// be fully erased (no runtime `@get-bb/plugin-sdk` import in the bundle).
 const FIXTURE_LIB_TS = `export const greeting = "PREBUILT_LIB_MARKER";\n`;
 const FIXTURE_SERVER_TS = `
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { greeting } from "./lib.ts";
 
 export default function plugin(bb: BbPluginApi): void {
@@ -65,7 +64,11 @@ describe("buildPluginServer", () => {
 
   it("bundles the server entry into a self-contained ESM dist/server.js with a meta sidecar", async () => {
     await writeFixture();
-    const result = await buildPluginServer(root, TEST_BB_VERSION, await testToolchain());
+    const result = await buildPluginServer(
+      root,
+      TEST_BB_VERSION,
+      await testToolchain(),
+    );
 
     expect(result.jsPath).toBe(join(root, "dist", "server.js"));
     const js = await readFile(result.jsPath, "utf8");
@@ -73,7 +76,7 @@ describe("buildPluginServer", () => {
     expect(js).toMatch(/export\s*\{|export default/);
     expect(js).toContain("PREBUILT_LIB_MARKER");
     // The SDK import was type-only — nothing of it may survive at runtime.
-    expect(js).not.toContain("@bb/plugin-sdk");
+    expect(js).not.toContain("@get-bb/plugin-sdk");
     // CJS-dep shim banner (createRequire) is present.
     expect(js).toContain("createRequire");
 
@@ -94,22 +97,26 @@ describe("buildPluginServer", () => {
     });
   });
 
-  it("keeps a runtime @bb/plugin-sdk import external (bare specifier survives)", async () => {
+  it("keeps a runtime @get-bb/plugin-sdk import external (bare specifier survives)", async () => {
     await writeFixture();
     await writeFile(
       join(root, "server.ts"),
       `
       import { greeting } from "./lib.ts";
-      import * as sdk from "@bb/plugin-sdk";
+      import * as sdk from "@get-bb/plugin-sdk";
 
       export default function plugin(bb: { log: { info(msg: string): void } }): void {
         bb.log.info(greeting + Object.keys(sdk).length);
       }
       `,
     );
-    const result = await buildPluginServer(root, TEST_BB_VERSION, await testToolchain());
+    const result = await buildPluginServer(
+      root,
+      TEST_BB_VERSION,
+      await testToolchain(),
+    );
     const js = await readFile(result.jsPath, "utf8");
-    expect(js).toMatch(/from\s*"@bb\/plugin-sdk"/);
+    expect(js).toMatch(/from\s*"@get-bb\/plugin-sdk"/);
   });
 
   it("errors clearly when package.json has no bb.server entry", async () => {
@@ -117,9 +124,9 @@ describe("buildPluginServer", () => {
       join(root, "package.json"),
       JSON.stringify({ name: "bb-plugin-headless", version: "0.1.0" }),
     );
-    await expect(buildPluginServer(root, TEST_BB_VERSION, await testToolchain())).rejects.toThrowError(
-      /no server entry/,
-    );
+    await expect(
+      buildPluginServer(root, TEST_BB_VERSION, await testToolchain()),
+    ).rejects.toThrowError(/no server entry/);
   });
 
   it("rejects a legacy manifest without required identity and branding", async () => {
@@ -132,14 +139,18 @@ describe("buildPluginServer", () => {
         bb: { server: "./server.ts" },
       }),
     );
-    await expect(buildPluginServer(root, TEST_BB_VERSION, await testToolchain())).rejects.toThrowError(
-      /bb\.name/,
-    );
+    await expect(
+      buildPluginServer(root, TEST_BB_VERSION, await testToolchain()),
+    ).rejects.toThrowError(/bb\.name/);
   });
 
   it("preserves the previous dist/server.js when a rebuild fails", async () => {
     await writeFixture();
-    const first = await buildPluginServer(root, TEST_BB_VERSION, await testToolchain());
+    const first = await buildPluginServer(
+      root,
+      TEST_BB_VERSION,
+      await testToolchain(),
+    );
     const before = await readFile(first.jsPath, "utf8");
     const metaBefore = await readFile(first.metaPath, "utf8");
 

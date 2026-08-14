@@ -3,7 +3,7 @@ import type {
   ComposerCustomization,
   ComposerPlusMenuItem,
   ComposerView,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import {

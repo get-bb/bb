@@ -596,10 +596,6 @@ Experimental surfaces are changed in Settings → Experiments or with
 `bb settings experiment <key> <true|false>`. Most start off; `editMessages`
 starts on and its toggle is the opt-out. The `newOnboarding` experiment exposes
 the first-run agent and project setup guide.
-The `toolsHub` experiment exposes Extensions for managing skills and plugins,
-while Automations stays in the Plugins section beside threads. The `toolsHub`
-gate only controls the UI. Installed skills, automation execution, plugin
-runtimes, CLI commands, and backend APIs keep working while it is off.
 The `editMessages` experiment is on by default and enables replacing an
 eligible, accepted root user message in a Codex, Claude Code, or Pi thread,
 including failed or incomplete turns. Turn it off to hide the editor. Grouped
@@ -751,6 +747,13 @@ do not match the running bb/SDK, or whose `dist/*.meta.json` plugin identity
 does not match the package manifest; installing a non-builtin source whose
 derived id collides with a builtin name (automations, connect,
 custom-instructions, inline-vis, secrets, workflows) is also refused.
+
+`engines.bbPluginSdk` is a floor, not a ceiling. bb reads the lowest version
+the range allows and runs the plugin on any SDK at or above it within the same
+major, so a caret range such as `^0.4.1` keeps working after the SDK moves to
+`0.4.3` or a later `0.x`. Only a plugin that asks for a newer SDK than this bb
+provides, or one pinned to a different major, is incompatible. Declare the
+oldest SDK you need (`>=0.4.3`); a breaking plugin API change bumps the major.
 
 The same tracking intent drives updates: `bb plugin outdated` checks for
 compatible candidates (and reports blocked incompatible newer releases);

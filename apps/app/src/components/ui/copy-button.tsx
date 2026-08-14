@@ -1,51 +1,16 @@
 import {
   forwardRef,
-  useCallback,
-  useEffect,
-  useState,
   type ComponentPropsWithoutRef,
   type ReactNode,
 } from "react";
-import { copyToClipboardWithToast } from "@/lib/clipboard";
+import { useClipboardCopy, type ClipboardCopyOptions } from "@/lib/clipboard";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { CONTROL_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 
-interface ClipboardCopyOptions {
-  text: string;
-  successMessage?: string | null;
-  errorMessage?: string | null;
-}
-
-function useClipboardCopy({
-  text,
-  successMessage = null,
-  errorMessage = "Failed to copy",
-}: ClipboardCopyOptions) {
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    if (!copied) return;
-    const timeoutId = window.setTimeout(() => {
-      setCopied(false);
-    }, 2000);
-    return () => window.clearTimeout(timeoutId);
-  }, [copied]);
-
-  const copy = useCallback(async () => {
-    if (!text || copied) return;
-    const success = await copyToClipboardWithToast(text, {
-      successMessage,
-      errorMessage,
-    });
-    if (success) setCopied(true);
-  }, [text, copied, successMessage, errorMessage]);
-
-  return { copied, copy };
-}
-
 interface CopyButtonProps
-  extends ClipboardCopyOptions,
+  extends
+    ClipboardCopyOptions,
     Omit<ComponentPropsWithoutRef<"button">, "type" | "onClick" | "title"> {
   iconClassName?: string;
   label?: string;

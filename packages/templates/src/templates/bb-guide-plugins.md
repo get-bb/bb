@@ -151,6 +151,8 @@ added/updated/unchanged counts.
 
   bb plugin search <query>       Search BB's official plugins (bundled with
                                  the app)
+  bb plugin submit               Print the intake form link for submitting a
+                                 plugin to BB's marketplace
   bb plugin install <entry>      Install a bundled official plugin by name
                                  (github, docs, memory, tasks), a Git repository
                                  URL, local path, builtin:<name>,
@@ -191,12 +193,24 @@ added/updated/unchanged counts.
   bb plugin remove <id>          Uninstall (managed git:/npm: files deleted;
                                  builtin removals are remembered)
   bb plugin new <name> [--app]   Scaffold a new plugin and install its npm
-                                 dependencies (no server required; --app adds
-                                 a frontend entry, app.tsx, plus a
-                                 typecheck-only tsconfig.json)
-  bb plugin types [path]         Write this bb's @bb/plugin-sdk declarations
-                                 into the plugin's types/ (default: cwd);
-                                 --check reports staleness and writes nothing
+                                 dependencies, including @get-bb/plugin-sdk
+                                 pinned to this bb's exact SDK version (no
+                                 server required; --app adds a frontend entry,
+                                 app.tsx, plus a typecheck-only tsconfig.json)
+  bb plugin types [path]         Sync a plugin's @get-bb/plugin-sdk surface to
+                                 this bb (default: cwd): repin the npm
+                                 devDependency to this bb's SDK version, or
+                                 rewrite the vendored types/ of a plugin that
+                                 still carries them; --check writes nothing
+                                 and exits non-zero on a mismatch
+  bb plugin migrate [path]       Switch a plugin that still vendors types/ to
+                                 the @get-bb/plugin-sdk npm package (default:
+                                 cwd): pin the devDependency, drop the tsconfig
+                                 path map, delete the vendored declarations.
+                                 Prints the plan and asks first; --yes skips
+                                 the prompt (required when stdin is not a
+                                 terminal). The old layout keeps working, so
+                                 nothing migrates unless you ask
   bb plugin build [path]         Compile the plugin into dist/ — the backend
                                  bundle (server.js, server.meta.json) and,
                                  when bb.app is declared, the frontend bundle
@@ -234,6 +248,10 @@ category across the bundled official plugins (status: installed / compatible
 / requires newer bb). Install an official plugin by its bare name. Direct
 HTTP(S) Git repository URLs, `path:`, `npm:`, `git:`, and `builtin:`
 sources—and path-like syntax—continue to bypass official-plugin resolution.
+SDK clients can retrieve the same canonical browser form without a server
+request through `sdk.plugins.catalog.submission()`. It returns `{ url }`;
+submission itself remains browser-owned because the form asks the author for
+their repository, description, rationale, and email.
 
 Builds are automatic once installed. Git installs run `npm install`
 (lifecycle scripts disabled), then compile both bundles — so a git plugin may
@@ -283,7 +301,7 @@ frontend bundles re-import and their UI slots remount without a page
 refresh.
 
 Frontend entries (app.tsx) default-export `definePluginApp` from
-`@bb/plugin-sdk/app` and register UI slots: homepageSection (root compose),
+`@get-bb/plugin-sdk/app` and register UI slots: homepageSection (root compose),
 settingsSection (per-plugin settings page below the host-rendered settings
 form; no props in V1, optional host-rendered title),
 navPanel (own sidebar entry + /plugins/<id>/<path>/* route; the remainder
@@ -348,7 +366,7 @@ commands; core command names always win. Inside agent threads the generated
 Settings changes do not auto-reload a plugin — run `bb plugin reload <id>`
 after configuring. Add --json to plugin commands for machine-readable output.
 Plugin CLI stdout plus stderr is capped at 1,048,576 UTF-8 bytes from the
-shared `@bb/plugin-sdk` constant. Results above the ceiling are rejected in
+shared `@get-bb/plugin-sdk` constant. Results above the ceiling are rejected in
 full with a structured `plugin_cli_output_too_large` error; output is never
 silently clipped. Page growing collections and use file/streaming commands for
 large content.
@@ -364,8 +382,9 @@ least `icon` or `logo.light`, `bb.server`
 (frontend entry), optional `bb.skills` (static skill directories auto-imported
 into agent threads unless filtered by `bb.agents.configure`; default
 `skills/`), `engines.bb` (supported bb range),
-and optional `engines.bbPluginSdk` (supported plugin SDK range; scaffold
-writes `"^0.4.2"` for SDK 0.4.2). Use `bb-plugin-hello` for the package name by
+and optional `engines.bbPluginSdk` (the lowest plugin SDK you need, read as a
+floor rather than a ceiling; scaffold writes `">=0.4.3"` for SDK 0.4.3). Use
+`bb-plugin-hello` for the package name by
 default. Scoped names such as `@acme/bb-plugin-hello` are also supported. The
 plugin id is the final package-name component minus `bb-plugin-`, so both forms
 use `hello`.
@@ -397,17 +416,24 @@ the plugin to pick up branding changes.
 
 The backend entry default-exports a factory receiving the full plugin API:
 
-  import type { BbPluginApi } from "@bb/plugin-sdk";
+  import type { BbPluginApi } from "@get-bb/plugin-sdk";
   export default async function plugin(bb: BbPluginApi) { ... }
 
-The import is type-only and erased at load; the scaffold ships the full API
-as bundled .d.ts in types/ (tsconfig maps @bb/plugin-sdk to them), so
+The import is type-only and erased at load; the scaffold depends on the npm
+package @get-bb/plugin-sdk, pinned to this bb's exact SDK version, so
 `npm install && npx tsc --noEmit` typechecks anywhere — no bb checkout
-needed. Those files are ordinary readable declarations, not a minified
-bundle: read them for an exact signature. The SDK surface grows every
-release, so `bb plugin types` rewrites them from the running bb — run it in a
-cloned or older plugin, and `bb plugin types --check` in CI. `bb plugin
-build` and `bb plugin dev` refresh them for you. Need a symbol the types
+needed. The full API lands at
+node_modules/@get-bb/plugin-sdk/bundled-types/bb-plugin-sdk.d.ts (and
+-app.d.ts): ordinary readable declarations, not a minified bundle — read them
+for an exact signature. Plugins scaffolded before this switch instead vendor
+the same declarations in types/, mapped through tsconfig; that layout still
+works, and `bb plugin migrate` converts one to the npm package after showing
+you every change and asking.
+The SDK surface grows every release, so `bb plugin types` syncs a plugin to
+the running bb — repinning the devDependency, or rewriting types/ for a
+plugin that still vendors them. Run it in a cloned or older plugin, and `bb
+plugin types --check` in CI. `bb plugin build` and `bb plugin dev` keep a
+vendored plugin in step for you. Need a symbol the types
 don't explain? Clone the repo: https://github.com/get-bb/bb. The API in
 one line each — bb.log (plugin-scoped logger behind `bb plugin logs`);
 bb.settings.define (declarative settings incl. secrets, editable via
@@ -464,4 +490,5 @@ The `plugins/` directory contains every bundled plugin: the auto-installed
 builtins and the store-only BB Official GitHub, Docs, Memory, and Tasks
 plugins. The `examples/plugins/` reference plugins cover slack-bot (webhook
 bot), agent-enrichment (agent surfaces), composer-customization (all composer
-regions), and t3sidebar (a replacement sidebar thread list).
+regions), and t3sidebar (a replacement sidebar thread list). Thread Hover
+Cards installs from the BB Official catalog (source: the bb-plugins repo).

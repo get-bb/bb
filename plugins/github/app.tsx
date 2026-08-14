@@ -24,7 +24,7 @@ import {
   useRpc,
   type PluginNavPanelProps,
   type PluginThreadPanelProps,
-} from "@bb/plugin-sdk/app";
+} from "@get-bb/plugin-sdk/app";
 import type { githubRpcContract } from "./server.js";
 // Shimmed to the host's copy at build time (shared worker-pool context +
 // shiki stays out of the plugin bundle) — diffs render with the same syntax

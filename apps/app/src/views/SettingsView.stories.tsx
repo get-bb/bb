@@ -361,13 +361,6 @@ function ExperimentsStory() {
           newOnboarding: enabled,
         }))
       }
-      onToolsHubEnabledChange={(enabled) =>
-        state.setExperiments((current) => ({
-          ...current,
-          toolsHub: enabled,
-        }))
-      }
-      toolsHubEnabled={state.experiments.toolsHub}
     />
   );
 }

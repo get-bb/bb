@@ -16,7 +16,7 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { TasksEditor } from "../../editor/tasks-editor.js";
-import { useBbNavigate } from "@bb/plugin-sdk/app";
+import { useBbNavigate } from "@get-bb/plugin-sdk/app";
 import {
   useMentionItems,
   useTasksQuery,
@@ -277,7 +277,10 @@ function CommentCard({ entry, nowMs }: { entry: FeedEntry; nowMs: number }) {
           onOpenThread={(threadId) => navigate.toThread(threadId)}
         />
         {attachments.length > 0 ? (
-          <AttachmentTracks attachments={attachments} onOpenImage={setLightbox} />
+          <AttachmentTracks
+            attachments={attachments}
+            onOpenImage={setLightbox}
+          />
         ) : null}
         {lightbox ? (
           <Lightbox attachment={lightbox} onClose={() => setLightbox(null)} />

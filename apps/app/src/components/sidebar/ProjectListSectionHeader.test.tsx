@@ -66,6 +66,36 @@ describe("ProjectListSectionIconButton", () => {
 });
 
 describe("TopLevelSidebarSection", () => {
+  it("exposes stable identity only for persisted sections", () => {
+    const result = render(
+      <>
+        <TopLevelSidebarSection
+          label="Design"
+          sectionId="sec_design"
+          collapseControl={{ isCollapsed: false, onToggleCollapsed: vi.fn() }}
+        >
+          <div>Design thread</div>
+        </TopLevelSidebarSection>
+        <TopLevelSidebarSection
+          label="Pinned"
+          collapseControl={{ isCollapsed: false, onToggleCollapsed: vi.fn() }}
+        >
+          <div>Pinned thread</div>
+        </TopLevelSidebarSection>
+      </>,
+    );
+
+    expect(
+      result.container.querySelector('[data-sidebar-section-id="sec_design"]'),
+    ).not.toBeNull();
+    expect(
+      screen
+        .getByTitle("Pinned")
+        .closest("[data-sidebar-sticky-group]")
+        ?.hasAttribute("data-sidebar-section-id"),
+    ).toBe(false);
+  });
+
   it("hides the section body and exposes an expand action when collapsed", () => {
     render(
       <TopLevelSidebarSection

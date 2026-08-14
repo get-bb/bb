@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { SkillProvider, SkillSummary } from "@bb/server-contract";
 import bbLogoUrl from "../../../../../assets/bb-logo.svg";
 import {
-  ResourcePagination,
-  useResourcePagination,
+  ResourceInfiniteScrollSentinel,
+  useResourceInfiniteItems,
   useResourceViewportPageSize,
 } from "@bb/shared-ui/resource-pagination";
 import {
@@ -20,7 +20,6 @@ import {
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { TOOLS_OWNED_COLLECTION_LABEL } from "@/components/tools/tools-navigation";
 import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
@@ -28,6 +27,7 @@ import {
 import { CreateWithTemplatesButton } from "@/components/create-via-prompt-examples";
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import { SkillDetailView } from "@/components/tools/SkillDetailView";
+import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
 import { SKILL_SCOPE_LABELS } from "@/components/tools/skill-taxonomy";
 import {
   getProviderIconColorClass,
@@ -56,7 +56,8 @@ const RESOURCE_PROVIDER_FILTERS: readonly ResourceProviderFilter[] = (
   Object.keys(RESOURCE_PROVIDER_FILTER_ORDER) as ResourceProviderFilter[]
 ).sort(
   (left, right) =>
-    RESOURCE_PROVIDER_FILTER_ORDER[left] - RESOURCE_PROVIDER_FILTER_ORDER[right],
+    RESOURCE_PROVIDER_FILTER_ORDER[left] -
+    RESOURCE_PROVIDER_FILTER_ORDER[right],
 );
 
 const RESOURCE_SKILL_SOURCE_FILTERS: readonly ResourceSkillSourceFilter[] = [
@@ -204,39 +205,94 @@ function skillMutationDisabledReason(skill: SkillSummary): string {
   return `Bundled with ${skill.provider === "claude-code" ? "Claude Code" : "Codex"}`;
 }
 
+/**
+ * Each Skills page describes its own purpose: Browse speaks to discovery from
+ * the open ecosystem, the library to managing what this host already has.
+ */
+const SKILLS_BROWSE_DESCRIPTION = (
+  <>
+    Trending agent skills from{" "}
+    <a
+      href="https://skills.sh"
+      target="_blank"
+      rel="noreferrer"
+      className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    >
+      skills.sh
+    </a>
+    . Install one and every agent you use in bb can run it.
+  </>
+);
+const SKILLS_LIBRARY_DESCRIPTION =
+  "The skills on this bb host — yours, your providers', and those bundled with plugins. They work with every agent you use in bb.";
+
+/**
+ * How long the pointer (or focus) must rest on a row before its detail
+ * queries warm. Raw enter events would turn one sweep of the cursor down the
+ * list into a prefetch per row — two requests each — for rows the user never
+ * meant to open.
+ */
+const PREFETCH_HOVER_INTENT_MS = 150;
+
 function SkillRow({
   skill,
   onSelect,
+  onPrefetch,
 }: {
   skill: SkillSummary;
   onSelect: () => void;
+  /** Warms the detail queries on intent; the connected layer supplies it. */
+  onPrefetch?: (skill: SkillSummary) => void;
 }) {
   const description = skillDescription(skill);
+  const prefetchTimer = useRef<number | null>(null);
+  const cancelScheduledPrefetch = () => {
+    if (prefetchTimer.current === null) return;
+    window.clearTimeout(prefetchTimer.current);
+    prefetchTimer.current = null;
+  };
+  const schedulePrefetch = () => {
+    if (prefetchTimer.current !== null) return;
+    prefetchTimer.current = window.setTimeout(() => {
+      prefetchTimer.current = null;
+      onPrefetch?.(skill);
+    }, PREFETCH_HOVER_INTENT_MS);
+  };
+  useEffect(() => cancelScheduledPrefetch, []);
   return (
-    <ResourceRow
-      leading={<SkillLeading skill={skill} />}
-      title={skill.name}
-      titleMeta={
-        skill.scope === "bb-builtin" ? (
-          <ProvenancePill label="BB Official" />
-        ) : skill.scope === "plugin" ? (
-          <ProvenancePill
-            label="Included"
-            tooltip={
-              <SkillProvenanceTooltip
-                prefix="Included with"
-                providerId={skill.provider}
-                name={`${providerPluginDisplayName(skill)} plugin.`}
-              />
-            }
-            accessibleLabel={`${skill.name} is included with ${includedPluginDescription(skill)}`}
-          />
-        ) : undefined
-      }
-      description={description}
-      onOpen={onSelect}
-      trailingVisual={<ResourceRowDetailChevron />}
-    />
+    // ResourceRow keeps its narrow prop surface; the intent listeners live on
+    // a wrapper (React delegates these events, so this covers the whole row).
+    <div
+      onPointerEnter={schedulePrefetch}
+      onPointerLeave={cancelScheduledPrefetch}
+      onFocus={schedulePrefetch}
+      onBlur={cancelScheduledPrefetch}
+    >
+      <ResourceRow
+        leading={<SkillLeading skill={skill} />}
+        title={skill.name}
+        titleMeta={
+          skill.scope === "bb-builtin" ? (
+            <ProvenancePill label="BB Official" />
+          ) : skill.scope === "plugin" ? (
+            <ProvenancePill
+              label="Included"
+              tooltip={
+                <SkillProvenanceTooltip
+                  prefix="Included with"
+                  providerId={skill.provider}
+                  name={`${providerPluginDisplayName(skill)} plugin.`}
+                />
+              }
+              accessibleLabel={`${skill.name} is included with ${includedPluginDescription(skill)}`}
+            />
+          ) : undefined
+        }
+        description={description}
+        onOpen={onSelect}
+        trailingVisual={<ResourceRowDetailChevron />}
+      />
+    </div>
   );
 }
 
@@ -247,10 +303,13 @@ export interface SkillsOverviewProps {
   query?: string;
   activeMode?: SkillsCollectionMode;
   browseContent?: ReactNode;
+  /** Unused since the mode tabs moved to the Extensions top nav. */
   onModeChange?: (mode: SkillsCollectionMode) => void;
   /** Opens the composer to create a skill, optionally seeded with a full prompt. */
   onCreateSkill: (prompt?: string) => void;
   onSelectSkill: (skill: SkillSummary) => void;
+  /** Warms a skill's detail queries from row hover/focus. */
+  onPrefetchSkill?: (skill: SkillSummary) => void;
   onQueryChange?: (query: string) => void;
   /** Refetch after a load failure — gives the error state a way out. */
   onRetry?: () => void;
@@ -269,9 +328,9 @@ export function SkillsOverview({
   query = "",
   activeMode = "library",
   browseContent,
-  onModeChange = () => {},
   onCreateSkill,
   onSelectSkill,
+  onPrefetchSkill,
   onQueryChange = () => {},
   onRetry,
 }: SkillsOverviewProps) {
@@ -288,8 +347,19 @@ export function SkillsOverview({
   const [libraryViewport, setLibraryViewport] = useState<HTMLDivElement | null>(
     null,
   );
-  const libraryPageSize = useResourceViewportPageSize(libraryViewport);
   const normalizedQuery = query.trim().toLowerCase();
+  // One projection identity for both the page selection and the row heights
+  // the page size is measured from.
+  const libraryResetKey = [
+    normalizedQuery,
+    providerFilters.join(","),
+    sourceFilters.join(","),
+    sortMode,
+    sortDirection,
+  ].join("\u0000");
+  const libraryPageSize = useResourceViewportPageSize(libraryViewport, {
+    resetKey: libraryResetKey,
+  });
   const providerCounts = useMemo(() => {
     const counts = new Map<ResourceProviderFilter, number>();
     for (const skill of skills) {
@@ -376,20 +446,12 @@ export function SkillsOverview({
     sortMode,
     sourceFilters,
   ]);
-  const libraryPagination = useResourcePagination(visibleSkills, {
+  // Rows accumulate as the sentinel scrolls into view; the page machinery
+  // (viewport-fit chunk size, projection reset keys) stays underneath.
+  const libraryList = useResourceInfiniteItems(visibleSkills, {
     pageSize: libraryPageSize,
-    resetKey: [
-      normalizedQuery,
-      providerFilters.join(","),
-      sourceFilters.join(","),
-      sortMode,
-      sortDirection,
-    ].join("\u0000"),
+    resetKey: libraryResetKey,
   });
-  const hasLibraryPagination =
-    !hasError &&
-    !isLoading &&
-    libraryPagination.total > libraryPagination.pageSize;
   const handleSortChange = useCallback(
     (nextSort: string) => {
       if (nextSort !== "provider" && nextSort !== "alpha") return;
@@ -428,38 +490,36 @@ export function SkillsOverview({
       }
     />
   ) : (
-    <ResourceListPanel>
-      {libraryPagination.items.map((skill) => (
-        <SkillRow
-          key={`${skill.scope}-${skill.provider ?? "bb"}-${skill.name}-${skill.filePath}`}
-          skill={skill}
-          onSelect={() => onSelectSkill(skill)}
-        />
-      ))}
-    </ResourceListPanel>
+    <>
+      <ResourceListPanel>
+        {libraryList.items.map((skill) => (
+          <SkillRow
+            key={`${skill.scope}-${skill.provider ?? "bb"}-${skill.name}-${skill.filePath}`}
+            skill={skill}
+            onSelect={() => onSelectSkill(skill)}
+            onPrefetch={onPrefetchSkill}
+          />
+        ))}
+      </ResourceListPanel>
+      <ResourceInfiniteScrollSentinel
+        hasMore={libraryList.hasMore}
+        onLoadMore={libraryList.loadMore}
+      />
+    </>
   );
 
   return (
+    // Browse and Library are separate top-nav destinations; the page renders
+    // whichever the URL selects and carries no tab layer of its own. Each
+    // describes its own purpose — discovery vs. managing what you have.
     <ResourceCollectionPage
       id="skills-collection"
-      description="Create and manage agent skills. bb skills work across every agent you use in bb."
-      modes={[
-        { id: "browse", label: "Browse" },
-        {
-          id: "library",
-          label: TOOLS_OWNED_COLLECTION_LABEL.skills,
-          count: skills.length,
-        },
-      ]}
-      activeMode={activeMode}
-      onModeChange={onModeChange}
-      actions={
-        <CreateWithTemplatesButton
-          kind="skill"
-          label="New bb skill"
-          onCreate={onCreateSkill}
-        />
+      description={
+        activeMode === "browse"
+          ? SKILLS_BROWSE_DESCRIPTION
+          : SKILLS_LIBRARY_DESCRIPTION
       }
+      bandClassName={TOOLS_PAGE_BAND_CLASSES}
     >
       {activeMode === "browse" ? (
         browseContent
@@ -467,11 +527,19 @@ export function SkillsOverview({
         <ResourceCollectionViewport
           scrollId="skills-library-results"
           viewportRef={setLibraryViewport}
+          bandClassName={TOOLS_PAGE_BAND_CLASSES}
           toolbar={
             <ResourceToolbar
               searchValue={query}
               searchPlaceholder="Search skills"
               onSearchChange={onQueryChange}
+              action={
+                <CreateWithTemplatesButton
+                  kind="skill"
+                  label="New bb skill"
+                  onCreate={onCreateSkill}
+                />
+              }
               controls={
                 <>
                   <ResourceFilterMenu
@@ -517,20 +585,8 @@ export function SkillsOverview({
               }
             />
           }
-          footer={
-            hasLibraryPagination ? (
-              <ResourcePagination
-                page={libraryPagination.page}
-                pageSize={libraryPagination.pageSize}
-                total={libraryPagination.total}
-                visibleCount={libraryPagination.visibleCount}
-                onPageChange={libraryPagination.setPage}
-                scrollTargetId="skills-library-results"
-              />
-            ) : undefined
-          }
         >
-          {libraryBody}
+          <div className={TOOLS_PAGE_BAND_CLASSES}>{libraryBody}</div>
         </ResourceCollectionViewport>
       )}
     </ResourceCollectionPage>

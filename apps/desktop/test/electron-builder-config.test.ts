@@ -52,7 +52,7 @@ const macConfigSchema = z
 const linuxConfigSchema = z
   .object({
     category: z.literal("Development"),
-    executableName: z.literal("bb"),
+    executableName: z.enum(["bb", "bb-nightly"]),
     icon: z.string().min(1),
     target: z.tuple([
       z
@@ -272,10 +272,7 @@ describe("electron-builder signing config", () => {
     );
 
     expect(Object.keys(packageJson.optionalDependencies ?? {})).not.toEqual(
-      expect.arrayContaining([
-        "@esbuild/darwin-arm64",
-        "@esbuild/darwin-x64",
-      ]),
+      expect.arrayContaining(["@esbuild/darwin-arm64", "@esbuild/darwin-x64"]),
     );
   });
 
@@ -539,6 +536,9 @@ describe("electron-builder signing config", () => {
     expect(config.productName).toBe("bb Nightly");
     expect(config.artifactName).toBe("bb-nightly-${version}-${arch}.${ext}");
     expect(config.linux.icon).toBe("assets/icon-nightly.png");
+    // A shared Linux binary name would let one channel shadow the other on
+    // PATH, and the two channels are meant to be installed side by side.
+    expect(config.linux.executableName).toBe("bb-nightly");
     expect(config.mac.icon).toBe("assets/icon-nightly.icns");
     await expect(
       access(resolve(desktopPackageRoot, config.mac.icon)),

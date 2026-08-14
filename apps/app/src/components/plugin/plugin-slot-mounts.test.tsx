@@ -16,7 +16,7 @@ import type {
   PluginComposerApi,
   PluginNewThreadPanelProps,
   PluginThreadPanelProps,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 import { createPluginPanelFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import {
   resetPluginSlotStoreForTest,
@@ -29,7 +29,6 @@ import {
   PLUGIN_PANEL_ROUTE_PATH,
   AUTOMATIONS_PLUGIN_PANEL_PATH,
 } from "@/lib/route-paths";
-import { ToolsHubExperimentProvider } from "@/components/tools/tools-experiment-context";
 import { PluginPanelView } from "@/views/PluginPanelView";
 import {
   PluginPanelHeaderActions,
@@ -1263,22 +1262,17 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     );
   }
 
-  it.each([true, false])(
-    "keeps the Automations row in the nav list when Extensions is enabled=%s",
-    (enabled) => {
-      registerAutomationsPanel();
+  it("keeps the Automations row in the nav list", () => {
+    registerAutomationsPanel();
 
-      render(
-        <ToolsHubExperimentProvider enabled={enabled}>
-          <MemoryRouter>
-            <PluginNavSidebarItems />
-          </MemoryRouter>
-        </ToolsHubExperimentProvider>,
-      );
+    render(
+      <MemoryRouter>
+        <PluginNavSidebarItems />
+      </MemoryRouter>,
+    );
 
-      expect(screen.getByRole("button", { name: "Automations" })).toBeDefined();
-    },
-  );
+    expect(screen.getByRole("button", { name: "Automations" })).toBeDefined();
+  });
 
   it("renders a sidebar entry that routes to the plugin panel", () => {
     setPluginSlotRegistrations(

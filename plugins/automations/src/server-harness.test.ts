@@ -4,7 +4,7 @@ import {
   makeThreadResponse,
   PluginContextStaleError,
   type FakePluginHost,
-} from "@bb/plugin-sdk/testing";
+} from "@get-bb/plugin-sdk/testing";
 import plugin from "./server.js";
 import {
   automationListResponseSchema,
@@ -749,10 +749,7 @@ describe("automations server plugin harness", () => {
   });
 
   it("validates permission updates against the automation target environment", async () => {
-    const { harness } = await bootAutomationsPlugin(
-      ["accept-edits"],
-      ["full"],
-    );
+    const { harness } = await bootAutomationsPlugin(["accept-edits"], ["full"]);
     const created = await createAgentAutomation(harness);
 
     await expect(

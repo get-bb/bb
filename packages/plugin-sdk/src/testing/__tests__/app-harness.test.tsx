@@ -17,7 +17,7 @@ import {
 } from "../app.js";
 import { defineRpcContract } from "../../rpc-contract.js";
 
-// Install before touching @bb/plugin-sdk/app — it binds the runtime global
+// Install before touching @get-bb/plugin-sdk/app — it binds the runtime global
 // at import time (same constraint real plugin app.tsx files have).
 installTestPluginRuntime();
 const {

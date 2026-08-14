@@ -204,6 +204,11 @@
       "types": "./src/components/ui/resource-list.tsx",
       "default": "./src/components/ui/resource-list.tsx"
     },
+    "./resource-detail": {
+      "source": "./src/components/ui/resource-detail.ts",
+      "types": "./src/components/ui/resource-detail.ts",
+      "default": "./src/components/ui/resource-detail.ts"
+    },
     "./resource-edit-prompt": {
       "source": "./src/components/ui/resource-edit-prompt.ts",
       "types": "./src/components/ui/resource-edit-prompt.ts",

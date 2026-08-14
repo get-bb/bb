@@ -61,6 +61,12 @@ export interface RegisterInstalledArgs extends InstallRegistrationIdentity {
 
 export interface InstallContext {
   provenance: PluginProvenance;
+  /**
+   * Manifest id the caller expects (catalog installs). Present means the
+   * install must abort before build or load when the fetched manifest
+   * declares any other id; absent means direct installs with no expectation.
+   */
+  expectedPluginId?: string;
 }
 
 interface ActivateManagedUpdateArgs {
@@ -180,6 +186,21 @@ export function createManagedPluginArtifacts(
   const directInstallContext: InstallContext = {
     provenance: { kind: "direct" },
   };
+
+  function assertExpectedPluginId(
+    context: InstallContext,
+    manifestId: string,
+    source: string,
+  ): void {
+    if (
+      context.expectedPluginId !== undefined &&
+      context.expectedPluginId !== manifestId
+    ) {
+      throw new Error(
+        `install refused: ${source} declares plugin id "${manifestId}" but the catalog entry expects "${context.expectedPluginId}"`,
+      );
+    }
+  }
 
   /**
    * Manifest and engine checks only — no npm, no bundling, no plugin code and
@@ -421,6 +442,7 @@ export function createManagedPluginArtifacts(
           ? null
           : await readPluginManifest(cachedRealRoot).catch(() => null);
       if (cachedManifest !== null) {
+        assertExpectedPluginId(context, cachedManifest.id, source);
         assertInstallRegistrationAvailable(
           getInstalledPlugin(deps.db, cachedManifest.id),
           registrationIdentity,
@@ -486,6 +508,7 @@ export function createManagedPluginArtifacts(
           "git plugin subdirectory",
         );
         const stagedManifest = await readPluginManifest(stagedRealRoot);
+        assertExpectedPluginId(context, stagedManifest.id, source);
         assertInstallRegistrationAvailable(
           getInstalledPlugin(deps.db, stagedManifest.id),
           registrationIdentity,

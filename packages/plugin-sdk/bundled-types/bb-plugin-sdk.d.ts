@@ -1,4 +1,4 @@
-// Portable type declarations for `@bb/plugin-sdk`. Unpublished BB
+// Portable type declarations for `@get-bb/plugin-sdk`. Unpublished BB
 // workspace contracts are flattened; public subpaths may reuse the
 // package root without requiring any other @bb/* package.
 //
@@ -256,7 +256,6 @@ declare const experimentsSchema: z$1.ZodRecord<z$1.ZodEnum<{
     claudeCodeMockCliTraffic: "claudeCodeMockCliTraffic";
     editMessages: "editMessages";
     newOnboarding: "newOnboarding";
-    toolsHub: "toolsHub";
 }>, z$1.ZodBoolean>;
 type Experiments = z$1.infer<typeof experimentsSchema>;
 
@@ -2558,8 +2557,8 @@ declare const skillListResponseSchema: z$1.ZodObject<{
         name: z$1.ZodString;
         description: z$1.ZodNullable<z$1.ZodString>;
         provider: z$1.ZodNullable<z$1.ZodEnum<{
-            "claude-code": "claude-code";
             codex: "codex";
+            "claude-code": "claude-code";
             "acp-cursor": "acp-cursor";
         }>>;
         scope: z$1.ZodEnum<{
@@ -2772,6 +2771,10 @@ declare const registrySkillsPageSchema: z$1.ZodObject<{
         total: z$1.ZodNumber;
         hasMore: z$1.ZodBoolean;
     }, z$1.core.$strip>;
+    ranking: z$1.ZodEnum<{
+        trending: "trending";
+        "all-time": "all-time";
+    }>;
 }, z$1.core.$strip>;
 type RegistrySkillsPage = z$1.infer<typeof registrySkillsPageSchema>;
 declare const registryRepositoryStarsSchema: z$1.ZodObject<{
@@ -2789,6 +2792,26 @@ declare const registrySkillDetailSchema: z$1.ZodObject<{
     }, z$1.core.$strip>>>;
 }, z$1.core.$strip>;
 type RegistrySkillDetail = z$1.infer<typeof registrySkillDetailSchema>;
+/**
+ * Entries that could not be resolved (dead detail page, malformed id) are
+ * omitted rather than failing the batch: each entry is independent upstream,
+ * and callers already treat a missing entry as "unknown" per card.
+ */
+declare const registrySkillEntriesResponseSchema: z$1.ZodObject<{
+    entries: z$1.ZodArray<z$1.ZodObject<{
+        id: z$1.ZodString;
+        source: z$1.ZodString;
+        skillId: z$1.ZodString;
+        name: z$1.ZodString;
+        installs: z$1.ZodNumber;
+        stars: z$1.ZodNullable<z$1.ZodNumber>;
+        installUrl: z$1.ZodNullable<z$1.ZodString>;
+        url: z$1.ZodString;
+        topic: z$1.ZodNullable<z$1.ZodString>;
+        summary: z$1.ZodNullable<z$1.ZodString>;
+    }, z$1.core.$strip>>;
+}, z$1.core.$strip>;
+type RegistrySkillEntriesResponse = z$1.infer<typeof registrySkillEntriesResponseSchema>;
 declare const registrySkillInstallResponseSchema: z$1.ZodObject<{
     ok: z$1.ZodLiteral<true>;
     filePath: z$1.ZodString;
@@ -2920,8 +2943,8 @@ declare const environmentArchiveThreadsResponseSchema: z$1.ZodObject<{
 type EnvironmentArchiveThreadsResponse = z$1.infer<typeof environmentArchiveThreadsResponseSchema>;
 declare const pullRequestMergeMethodSchema: z$1.ZodEnum<{
     merge: "merge";
-    rebase: "rebase";
     squash: "squash";
+    rebase: "rebase";
 }>;
 type PullRequestMergeMethod = z$1.infer<typeof pullRequestMergeMethodSchema>;
 declare const commitActionResponseSchema: z$1.ZodObject<{
@@ -2952,8 +2975,8 @@ declare const pullRequestMergeActionResponseSchema: z$1.ZodObject<{
     action: z$1.ZodLiteral<"pull_request_merge">;
     method: z$1.ZodEnum<{
         merge: "merge";
-        rebase: "rebase";
         squash: "squash";
+        rebase: "rebase";
     }>;
     message: z$1.ZodString;
 }, z$1.core.$strip>;
@@ -2970,6 +2993,7 @@ declare const environmentStatusResponseSchema: z$1.ZodDiscriminatedUnion<[z$1.Zo
         workingTree: z$1.ZodObject<{
             insertions: z$1.ZodNumber;
             deletions: z$1.ZodNumber;
+            lineStatsComplete: z$1.ZodBoolean;
             files: z$1.ZodArray<z$1.ZodObject<{
                 path: z$1.ZodString;
                 status: z$1.ZodEnum<{
@@ -3015,6 +3039,7 @@ declare const environmentStatusResponseSchema: z$1.ZodDiscriminatedUnion<[z$1.Zo
         mergeBase: z$1.ZodNullable<z$1.ZodObject<{
             insertions: z$1.ZodNumber;
             deletions: z$1.ZodNumber;
+            lineStatsComplete: z$1.ZodBoolean;
             files: z$1.ZodArray<z$1.ZodObject<{
                 path: z$1.ZodString;
                 status: z$1.ZodEnum<{
@@ -5744,6 +5769,7 @@ declare const hostDaemonCommandRegistry: {
             workingTree: z$1.ZodObject<{
                 insertions: z$1.ZodNumber;
                 deletions: z$1.ZodNumber;
+                lineStatsComplete: z$1.ZodBoolean;
                 files: z$1.ZodArray<z$1.ZodObject<{
                     path: z$1.ZodString;
                     status: z$1.ZodEnum<{
@@ -5789,6 +5815,7 @@ declare const hostDaemonCommandRegistry: {
             mergeBase: z$1.ZodNullable<z$1.ZodObject<{
                 insertions: z$1.ZodNumber;
                 deletions: z$1.ZodNumber;
+                lineStatsComplete: z$1.ZodBoolean;
                 files: z$1.ZodArray<z$1.ZodObject<{
                     path: z$1.ZodString;
                     status: z$1.ZodEnum<{
@@ -5859,6 +5886,7 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strip>], "type">;
         maxDiffBytes: z$1.ZodNumber;
         maxFileListBytes: z$1.ZodNumber;
+        maxUntrackedFiles: z$1.ZodNumber;
     }, z$1.core.$strict>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         outcome: z$1.ZodLiteral<"available">;
         diff: z$1.ZodObject<{
@@ -5907,6 +5935,7 @@ declare const hostDaemonCommandRegistry: {
             type: z$1.ZodLiteral<"commit">;
             sha: z$1.ZodString;
         }, z$1.core.$strip>], "type">;
+        maxFiles: z$1.ZodNumber;
     }, z$1.core.$strict>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         outcome: z$1.ZodLiteral<"available">;
         files: z$1.ZodArray<z$1.ZodObject<{
@@ -7181,7 +7210,6 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
         claudeCodeMockCliTraffic: "claudeCodeMockCliTraffic";
         editMessages: "editMessages";
         newOnboarding: "newOnboarding";
-        toolsHub: "toolsHub";
     }>, z$1.ZodBoolean>;
     appearance: z$1.ZodObject<{
         themeId: z$1.ZodString;
@@ -10010,8 +10038,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
     activePromptMode: z$1.ZodNullable<z$1.ZodObject<{
         mode: z$1.ZodLiteral<"plan">;
         providerId: z$1.ZodEnum<{
-            "claude-code": "claude-code";
             codex: "codex";
+            "claude-code": "claude-code";
         }>;
         prompt: z$1.ZodString;
     }, z$1.core.$strict>>;
@@ -10500,10 +10528,10 @@ type PluginRpcCallArgs<Method extends PluginRpcMethodContract> = null extends Pl
 type PluginRpcResult<Method extends PluginRpcMethodContract> = StandardSchemaV1InferOutput<Method["output"]>;
 
 /**
- * The `@bb/plugin-sdk/app` contract (plugin design §5.2) — pure types with no
+ * The `@get-bb/plugin-sdk/app` contract (plugin design §5.2) — pure types with no
  * side effects. The BB app imports these to keep its real implementation in
  * sync (`satisfies PluginSdkApp`). Plugin authors import the same shapes through
- * `@bb/plugin-sdk/app`.
+ * `@get-bb/plugin-sdk/app`.
  *
  * Per-slot props are versioned contracts: additive-only within an SDK major.
  */
@@ -11690,7 +11718,7 @@ interface BbNavigate {
     }): boolean;
 }
 /**
- * Everything `@bb/plugin-sdk/app` resolves to at runtime. The BB app builds
+ * Everything `@get-bb/plugin-sdk/app` resolves to at runtime. The BB app builds
  * the real implementation and `satisfies` this interface; `bb plugin build`
  * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
  */
@@ -12257,10 +12285,16 @@ type PluginCheckUpdatesResult = PluginUpdateCheckEntry[];
 type PluginApplyUpdateResult = PluginApplyUpdateResult$1;
 type PluginCatalogStatusResult = PluginCatalogStatus;
 type PluginCatalogSearchResult = PluginCatalogSearchResult$1[];
+interface PluginCatalogSubmissionResult {
+    /** BB's canonical browser form for proposing a plugin to the marketplace. */
+    url: string;
+}
 interface PluginCatalogArea {
     install(args: PluginCatalogInstallArgs): Promise<PluginInstallResult>;
     search(args: PluginCatalogSearchArgs): Promise<PluginCatalogSearchResult>;
     status(args?: PluginCatalogStatusArgs): Promise<PluginCatalogStatusResult>;
+    /** Return the canonical marketplace submission form; submitting stays browser-owned. */
+    submission(): PluginCatalogSubmissionResult;
 }
 interface PluginsArea {
     applyUpdate(args: PluginIdArgs): Promise<PluginApplyUpdateResult>;
@@ -12427,6 +12461,9 @@ interface RegistrySkillsSearchArgs extends AbortableArgs {
 interface RegistrySkillIdArgs extends AbortableArgs {
     registrySkillId: string;
 }
+interface RegistrySkillEntriesArgs extends AbortableArgs {
+    registrySkillIds: readonly string[];
+}
 interface RegistrySkillSourceArgs extends AbortableArgs {
     source: string;
     skillId: string;
@@ -12443,6 +12480,7 @@ interface RegistrySkillInstallArgs {
 }
 interface SkillsRegistryArea {
     detail(args: RegistrySkillSourceArgs): Promise<RegistrySkillDetail>;
+    entries(args: RegistrySkillEntriesArgs): Promise<RegistrySkillEntriesResponse>;
     get(args: RegistrySkillIdArgs): Promise<RegistrySkill>;
     install(args: RegistrySkillInstallArgs): Promise<RegistrySkillInstallResponse>;
     repositoryStars(args: RegistryRepositoryArgs): Promise<RegistryRepositoryStars>;
@@ -13013,7 +13051,7 @@ interface BbSdk extends BbRealtime {
  * (apps/server/src/services/plugins/plugin-api.ts), which imports these
  * shapes so the contract and the implementation cannot drift. Plugin authors
  * import them type-only (`import type { BbPluginApi } from
- * "@bb/plugin-sdk"`); the import is erased when BB loads the file.
+ * "@get-bb/plugin-sdk"`); the import is erased when BB loads the file.
  *
  * Runtime classes stay host-side. NeedsConfigurationError in particular is
  * matched by NAME, so plugin code needs no runtime import:

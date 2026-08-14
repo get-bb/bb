@@ -104,14 +104,15 @@ export type WorkspaceCommitSummary = z.infer<
 >;
 
 /**
- * Fields shared by any surface that reports a set of changed files plus the
- * line-level totals across them. Both `workspaceWorkingTreeSchema` and
- * `workspaceMergeBaseSchema` embed these so their file list and stats stay
- * in lockstep.
+ * Fields shared by any surface that reports changed files plus the line totals
+ * Git computed for them. `lineStatsComplete` distinguishes exact totals from
+ * tracked-only totals that intentionally omit untracked file contents.
  */
 export const workspaceChangeStatsSchema = z.object({
   insertions: z.number(),
   deletions: z.number(),
+  /** False when line totals omit files whose contents were intentionally not read. */
+  lineStatsComplete: z.boolean(),
   files: z.array(workspaceFileStatusSchema),
 });
 export type WorkspaceChangeStats = z.infer<typeof workspaceChangeStatsSchema>;

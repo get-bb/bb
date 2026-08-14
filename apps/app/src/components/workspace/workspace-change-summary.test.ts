@@ -1,7 +1,4 @@
-import type {
-  WorkspaceCommitSummary,
-  WorkspaceFileStatus,
-} from "@bb/domain";
+import type { WorkspaceCommitSummary, WorkspaceFileStatus } from "@bb/domain";
 import {
   makeWorkspaceMergeBase,
   makeWorkspaceStatus,
@@ -44,6 +41,7 @@ describe("workspace-change-summary", () => {
         filesCount: 3,
         insertions: 9,
         deletions: 4,
+        lineStatsComplete: true,
       }),
     ).toBe("3 files, +9 -4");
     expect(
@@ -51,8 +49,17 @@ describe("workspace-change-summary", () => {
         filesCount: 1,
         insertions: 0,
         deletions: 0,
+        lineStatsComplete: true,
       }),
     ).toBe("1 file");
+    expect(
+      formatChangeSummary({
+        filesCount: 2,
+        insertions: 7,
+        deletions: 1,
+        lineStatsComplete: false,
+      }),
+    ).toBe("2 files");
     expect(formatWorkspaceFileStatus("??")).toBe("A?");
     expect(formatWorkspaceFileStatus("XY")).toBe("XY");
   });

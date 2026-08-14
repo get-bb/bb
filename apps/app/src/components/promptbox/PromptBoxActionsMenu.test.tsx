@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { ComposerView } from "@bb/plugin-sdk";
+import type { ComposerView } from "@get-bb/plugin-sdk";
 import {
   cleanup,
   fireEvent,

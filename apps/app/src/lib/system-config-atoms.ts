@@ -17,7 +17,6 @@ const unavailableSystemConfig: SystemConfigResponse = {
     claudeCodeMockCliTraffic: false,
     editMessages: false,
     newOnboarding: false,
-    toolsHub: false,
   },
   appearance: defaultAppTheme,
   customThemes: [],

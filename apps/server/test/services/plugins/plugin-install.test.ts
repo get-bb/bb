@@ -325,6 +325,54 @@ describe("plugin install flows", () => {
       });
     });
 
+    it("stamps catalog provenance for a git official catalog entry", async () => {
+      const repoDir = join(workDir, "repo-catalog");
+      await writePluginFixture(repoDir, { name: "bb-plugin-catalog-git" });
+      await initGitRepo(repoDir);
+      const commit = await commitAll(repoDir, "init");
+      await git(repoDir, ["branch", "plugin/catalog-git"]);
+
+      const source = `git:${repoDir}@plugin/catalog-git`;
+      const entry = await service.installGitCatalogPlugin({
+        entryId: "catalog-git-entry",
+        pluginId: "catalog-git",
+        source,
+      });
+
+      expect(entry).toMatchObject({
+        id: "catalog-git",
+        source,
+        provenance: "catalog",
+        catalogEntryId: "catalog-git-entry",
+        status: "running",
+      });
+      expect(getInstalledPluginRegistration(db, "catalog-git")).toMatchObject({
+        provenance: "catalog",
+        catalogEntryId: "catalog-git-entry",
+        sourceKind: "git",
+        sourceGitUrl: repoDir,
+        sourceGitRequestedRef: "plugin/catalog-git",
+        sourceGitRefKind: "branch",
+        gitResolvedCommit: commit,
+      });
+    });
+
+    it("refuses a git catalog install whose manifest id differs from the entry", async () => {
+      const repoDir = join(workDir, "repo-catalog-mismatch");
+      await writePluginFixture(repoDir, { name: "bb-plugin-imposter" });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "init");
+      await git(repoDir, ["branch", "plugin/imposter"]);
+
+      await expect(
+        service.installGitCatalogPlugin({
+          entryId: "catalog-git-entry",
+          pluginId: "expected-id",
+          source: `git:${repoDir}@plugin/imposter`,
+        }),
+      ).rejects.toThrow(/expects "expected-id"/);
+    });
+
     it("clones a pinned tag into its exact immutable cache dir and loads it", async () => {
       const repoDir = join(workDir, "repo");
       await writePluginFixture(repoDir, { name: "bb-plugin-gitty" });
@@ -552,10 +600,7 @@ describe("plugin install flows", () => {
       const entry = await service.install(`git:${identityRepo}@main`);
       expect(entry.status).toBe("running");
       const meta: unknown = JSON.parse(
-        await readFile(
-          join(entry.rootDir, "dist", "server.meta.json"),
-          "utf8",
-        ),
+        await readFile(join(entry.rootDir, "dist", "server.meta.json"), "utf8"),
       );
       expect(meta).toMatchObject({
         pluginId: "artifact-identity",

@@ -867,6 +867,62 @@ describe("in-turn timeline windows", () => {
     expect(matches[0]).toContain("late output 0");
   });
 
+  it("gives a straddling item to exactly one byte page's details, completed", () => {
+    const { db, thread } = setup();
+    // Item 0 starts at the top of the finished turn and completes at its very
+    // end, so it straddles every byte cut inside the turn.
+    seedTurns(db, thread, {
+      commandChars: 25_000,
+      completeLastTurn: true,
+      itemsPerTurn: [650],
+      longRunningItemIndexes: [0],
+    });
+
+    const straddlingCallId = "turn-1-item-0";
+    const straddlingDetailRows: TimelineRow[] = [];
+    let cursor: TimelinePaginationCursor | null = null;
+    let pages = 0;
+    for (;;) {
+      const page = buildNestedPage(db, thread, LARGE_BUDGET, cursor);
+      pages += 1;
+      for (const row of page.response.rows) {
+        if (row.kind !== "turn") {
+          continue;
+        }
+        const details = buildTimelineTurnSummaryDetails(db, thread, {
+          includeProviderUnhandledOperations: false,
+          sourceSeqEnd: row.sourceSeqEnd,
+          sourceSeqStart: row.sourceSeqStart,
+          turnId: row.turnId,
+        });
+        for (const detailRow of details.rows) {
+          if (
+            detailRow.kind === "work" &&
+            detailRow.workKind === "command" &&
+            detailRow.callId === straddlingCallId
+          ) {
+            straddlingDetailRows.push(detailRow);
+          }
+        }
+      }
+      if (!page.response.timelinePage.hasOlderRows) {
+        break;
+      }
+      cursor = page.response.timelinePage.olderCursor;
+      expect(cursor).not.toBeNull();
+      expect(pages).toBeLessThan(10);
+    }
+
+    expect(pages).toBeGreaterThan(1);
+    expect(straddlingDetailRows).toHaveLength(1);
+    expect(straddlingDetailRows[0]).toEqual(
+      expect.objectContaining({
+        output: expect.stringContaining("late output 0"),
+        status: "completed",
+      }),
+    );
+  }, 15_000);
+
   it("rejects a sequence cursor whose id and sequence disagree", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, { completeLastTurn: false, itemsPerTurn: [300] });

@@ -6,6 +6,7 @@ import { createPluginCatalogService } from "../../../src/services/plugin-catalog
 import {
   BUILTIN_PLUGINS,
   BUNDLED_PLUGINS,
+  GIT_OFFICIAL_PLUGINS,
   OFFICIAL_PLUGINS,
 } from "../../../src/services/plugins/builtin-registry.js";
 
@@ -27,6 +28,9 @@ describe("plugin catalog routes", () => {
         installOfficialPlugin: async () => {
           throw new Error("unexpected install");
         },
+        installGitCatalogPlugin: async () => {
+          throw new Error("unexpected git install");
+        },
       },
     });
     const app = new Hono();
@@ -35,9 +39,10 @@ describe("plugin catalog routes", () => {
     const status = await app.request("/plugin-catalog");
     await expect(status.json()).resolves.toMatchObject({
       catalog: {
-        pluginCount: BUNDLED_PLUGINS.length,
+        pluginCount: BUNDLED_PLUGINS.length + GIT_OFFICIAL_PLUGINS.length,
         includedPluginCount: BUILTIN_PLUGINS.length,
-        optionalPluginCount: OFFICIAL_PLUGINS.length,
+        optionalPluginCount:
+          OFFICIAL_PLUGINS.length + GIT_OFFICIAL_PLUGINS.length,
       },
     });
     const search = await app.request("/plugin-catalog/search?q=memory");

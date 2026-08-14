@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Command } from "commander";
+import { RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
 
 import { registerEnvironmentCommands } from "../commands/environment.js";
 import { registerGuideCommand } from "../commands/guide.js";
@@ -20,23 +21,6 @@ import {
   runPluginCliCommand,
   type PluginCliContributionEntry,
 } from "../plugin-cli-proxy.js";
-
-// Mirror of RESERVED_BB_CLI_COMMANDS in
-// apps/server/src/services/plugins/plugin-api.ts — the server rejects plugin
-// CLI commands shadowing core bb commands. Update both together.
-const RESERVED_BB_CLI_COMMANDS = [
-  "environment",
-  "guide",
-  "help",
-  "manager",
-  "plugin",
-  "project",
-  "provider",
-  "skill",
-  "status",
-  "theme",
-  "thread",
-];
 
 function buildProgram(): Command {
   const program = new Command();

@@ -9,7 +9,13 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { focusManager } from "@tanstack/react-query";
 import type { SkillSummary } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -97,11 +103,11 @@ function renderLibrarySkillRoute() {
   vi.stubGlobal("fetch", fetchMock);
   const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
   renderDom(
-    <MemoryRouter initialEntries={["/tools/skills/library/skill_missing"]}>
+    <MemoryRouter initialEntries={["/extensions/skills/library/skill_missing"]}>
       <QueryClientWrapper>
         <Routes>
           <Route
-            path="/tools/skills/library/:skillId"
+            path="/extensions/skills/library/:skillId"
             element={<SkillsLibrary />}
           />
         </Routes>
@@ -157,12 +163,14 @@ function renderRegistryBrowse(
     <RegistrySkillsBrowsePage
       skills={[makeRegistrySkill()]}
       pendingSkillIds={new Set()}
-      pagination={{ page: 0, perPage: 24, total: 1, hasMore: false }}
+      unknownInstallSkillIds={new Set()}
       isLoading={false}
+      loadingMore={false}
+      hasMore={false}
       hasError={false}
       query=""
       onQueryChange={() => {}}
-      onPageChange={() => {}}
+      onLoadMore={() => {}}
       onFork={() => {}}
       onSelect={() => {}}
       {...overrides}
@@ -175,6 +183,11 @@ function stubRegistryFetch(
   options: {
     detail?: boolean;
     list?: boolean;
+    /** Lets a test give the per-skill entry different data than the list. */
+    entry?: RegistrySkill;
+    /** Fails every per-skill entry request, as a dead detail page would. */
+    entryFails?: boolean;
+    ranking?: "trending" | "all-time";
   } = {},
 ) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -189,12 +202,22 @@ function stubRegistryFetch(
             total: options.list ? 1 : 0,
             hasMore: false,
           },
+          ranking: options.ranking ?? "trending",
         }),
         { status: 200 },
       );
     }
     if (url.startsWith("/api/v1/skills-registry/entry?")) {
-      return new Response(JSON.stringify(registrySkill), { status: 200 });
+      if (options.entryFails) return new Response(null, { status: 404 });
+      return new Response(JSON.stringify(options.entry ?? registrySkill), {
+        status: 200,
+      });
+    }
+    if (url === "/api/v1/skills-registry/entries") {
+      // The batch route omits unresolved ids instead of failing the request.
+      return Response.json({
+        entries: options.entryFails ? [] : [options.entry ?? registrySkill],
+      });
     }
     if (
       url.startsWith("/api/v1/skills-registry/detail?") &&
@@ -221,17 +244,28 @@ function renderRegistrySkillRoute() {
   const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
   return renderDom(
     <MemoryRouter
-      initialEntries={["/tools/skills/registry/owner%2Frepo%2Fuseful-skill"]}
+      initialEntries={[
+        "/extensions/skills/registry/owner%2Frepo%2Fuseful-skill",
+      ]}
     >
       <QueryClientWrapper>
         <Routes>
           <Route
-            path="/tools/skills/registry/:registrySkillId"
+            path="/extensions/skills/registry/:registrySkillId"
             element={<SkillsLibrary />}
           />
         </Routes>
       </QueryClientWrapper>
     </MemoryRouter>,
+  );
+}
+
+function NavigateButton({ to, label }: { to: string; label: string }) {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate(to)}>
+      {label}
+    </button>
   );
 }
 
@@ -258,15 +292,12 @@ describe("SkillsOverview", () => {
     expect(markup).toContain('aria-label="Filters: Provider: bb"');
     expect(markup).not.toContain("Provider: 1 selected");
     expect(markup).toContain("Sort");
-    expect(markup).toContain('role="tab"');
-    expect(markup).toContain("Library");
-    expect(markup).toContain("Browse");
+    // Browse and Library are top-nav destinations now; the page renders no
+    // tab layer of its own.
+    expect(markup).not.toContain('role="tab"');
     expect(markup).toContain("BB Official");
     expect(markup).toContain("New bb skill");
     expect(markup).not.toContain('aria-label="Open zz-official-skill"');
-    expect(markup.indexOf("Library")).toBeLessThan(
-      markup.indexOf('placeholder="Search skills"'),
-    );
     expect(markup.indexOf("zz-official-skill")).toBeLessThan(
       markup.indexOf("aa-user-skill"),
     );
@@ -503,12 +534,14 @@ describe("SkillsOverview", () => {
           <RegistrySkillsBrowsePage
             skills={[registrySkill]}
             pendingSkillIds={new Set()}
-            pagination={{ page: 0, perPage: 24, total: 1, hasMore: false }}
+            unknownInstallSkillIds={new Set()}
             isLoading={false}
+            loadingMore={false}
+            hasMore={false}
             hasError={false}
             query=""
             onQueryChange={() => {}}
-            onPageChange={() => {}}
+            onLoadMore={() => {}}
             onFork={() => {}}
             onSelect={() => {}}
           />
@@ -705,6 +738,38 @@ describe("SkillsOverview", () => {
     expect(markup).not.toContain('aria-label="Delete provider-skill"');
   });
 
+  it("waits for hover intent before warming a row's detail queries", () => {
+    vi.useFakeTimers();
+    try {
+      const onPrefetchSkill = vi.fn();
+      renderDom(
+        <SkillsOverview
+          skills={[makeSkill({ provider: null, scope: "bb-user" })]}
+          isLoading={false}
+          hasError={false}
+          onCreateSkill={() => {}}
+          onSelectSkill={() => {}}
+          onPrefetchSkill={onPrefetchSkill}
+        />,
+      );
+      const row = screen.getByRole("button", { name: "code-review" });
+      // A sweep across the row — in and out inside the intent delay — must not
+      // fire the prefetch; that sweep is what used to cost two requests per
+      // row crossed.
+      fireEvent.focus(row);
+      vi.advanceTimersByTime(100);
+      fireEvent.blur(row);
+      vi.advanceTimersByTime(1_000);
+      expect(onPrefetchSkill).not.toHaveBeenCalled();
+
+      fireEvent.focus(row);
+      vi.advanceTimersByTime(150);
+      expect(onPrefetchSkill).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("shows a loading skeleton", () => {
     const markup = render({ skills: [], isLoading: true });
     expect(markup).toContain('role="status"');
@@ -787,12 +852,17 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     const fetchMock = stubRegistryFetch(registrySkill, { list: true });
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     renderDom(
-      <MemoryRouter initialEntries={["/tools/skills"]}>
+      <MemoryRouter initialEntries={["/extensions/skills"]}>
         <QueryClientWrapper>
           <Routes>
-            <Route path="/tools/skills" element={<SkillsLibrary />} />
+            <Route path="/extensions/skills" element={<SkillsLibrary />} />
             <Route path="/" element={<LocationStateProbe />} />
           </Routes>
+          <NavigateButton
+            to="/extensions/skills?view=library"
+            label="go-library"
+          />
+          <NavigateButton to="/extensions/skills" label="go-browse" />
         </QueryClientWrapper>
       </MemoryRouter>,
     );
@@ -800,10 +870,8 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     let forkButton = await screen.findByRole("button", {
       name: "Fork Useful skill into a new bb skill",
     });
-    const tabs = screen.getAllByRole("tab");
-    expect(tabs[0]).toBe(screen.getByRole("tab", { name: "Browse" }));
-    expect(tabs[1]).toBe(screen.getByRole("tab", { name: /Library/ }));
-    expect(tabs[0]?.className).toContain("bg-accent");
+    // Browse and Library are top-nav destinations; the page has no tab row.
+    expect(screen.queryByRole("tab")).toBeNull();
     const registryListRequests = () =>
       fetchMock.mock.calls.filter(([input]) =>
         requestPath(input).startsWith("/api/v1/skills-registry?"),
@@ -814,8 +882,13 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     focusManager.setFocused(true);
     await waitFor(() => expect(registryListRequests()).toHaveLength(1));
 
-    fireEvent.click(screen.getByRole("tab", { name: /Library/ }));
-    fireEvent.click(screen.getByRole("tab", { name: "Browse" }));
+    // A Browse → My skills → Browse round trip (the sidebar's URL-driven mode
+    // switch) must serve the cached registry list, not refetch it.
+    fireEvent.click(screen.getByText("go-library"));
+    expect(
+      await screen.findByRole("textbox", { name: "Search skills" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByText("go-browse"));
     forkButton = await screen.findByRole("button", {
       name: "Fork Useful skill into a new bb skill",
     });
@@ -837,6 +910,102 @@ describe("SkillsLibrary registry detail lifecycle", () => {
         ([input]) => requestPath(input) === "/api/v1/skills-registry/install",
       ),
     ).toBe(false);
+  });
+
+  it("shows the lifetime install count, not the trending window the list ranks by", async () => {
+    // Browsing ranks by the trending leaderboard, whose `installs` only counts
+    // the ranking window. The card has to report the registry's lifetime count.
+    const trendingEntry = makeRegistrySkill({ installs: 42, summary: null });
+    vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
+    stubRegistryFetch(trendingEntry, {
+      list: true,
+      entry: makeRegistrySkill({ installs: 9_000 }),
+    });
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    renderDom(
+      <MemoryRouter initialEntries={["/extensions/skills?view=browse"]}>
+        <QueryClientWrapper>
+          <Routes>
+            <Route path="/extensions/skills" element={<SkillsLibrary />} />
+          </Routes>
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByLabelText("9.0K installs")).toBeTruthy();
+    expect(screen.queryByLabelText("42 installs")).toBeNull();
+  });
+
+  it("shows no install count rather than the window count when the entry lookup fails", async () => {
+    // The detail page 404s for skills whose source was renamed. Falling back to
+    // the list value would print a 24h figure formatted exactly like its
+    // neighbours' lifetime totals, understating by orders of magnitude.
+    const trendingEntry = makeRegistrySkill({ installs: 42, summary: null });
+    vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
+    stubRegistryFetch(trendingEntry, { list: true, entryFails: true });
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    renderDom(
+      <MemoryRouter initialEntries={["/extensions/skills?view=browse"]}>
+        <QueryClientWrapper>
+          <Routes>
+            <Route path="/extensions/skills" element={<SkillsLibrary />} />
+          </Routes>
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    // The card still resolves out of its skeleton — it just carries no count.
+    expect(
+      await screen.findByRole("button", {
+        name: "View details for Useful skill",
+      }),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText("42 installs")).toBeNull();
+    expect(screen.queryByLabelText(/installs$/)).toBeNull();
+  });
+
+  it("keeps the enriched star count when the entry supplies the install total", async () => {
+    // The merge deliberately takes only some entry fields; entries always carry
+    // stars: null, so spreading the whole entry would erase the repo's stars.
+    const listed = makeRegistrySkill({
+      installs: 42,
+      summary: null,
+      stars: null,
+    });
+    vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestPath(input);
+      if (url.startsWith("/api/v1/skills-registry?")) {
+        return Response.json({
+          skills: [listed],
+          pagination: { page: 0, perPage: 24, total: 1, hasMore: false },
+          ranking: "trending",
+        });
+      }
+      if (url === "/api/v1/skills-registry/entries") {
+        return Response.json({
+          entries: [makeRegistrySkill({ installs: 9_000 })],
+        });
+      }
+      if (url.startsWith("/api/v1/skills-registry/repository-stars?")) {
+        return Response.json({ stars: 654 });
+      }
+      return new Response(null, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    renderDom(
+      <MemoryRouter initialEntries={["/extensions/skills?view=browse"]}>
+        <QueryClientWrapper>
+          <Routes>
+            <Route path="/extensions/skills" element={<SkillsLibrary />} />
+          </Routes>
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByLabelText("9.0K installs")).toBeTruthy();
+    expect(await screen.findByLabelText("654 stars")).toBeTruthy();
   });
 
   it("reveals registry cards only after repository stars finish loading", async () => {
@@ -871,6 +1040,7 @@ describe("SkillsLibrary registry detail lifecycle", () => {
               total: 2,
               hasMore: false,
             },
+            ranking: "trending",
           }),
         );
       }
@@ -885,10 +1055,10 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     vi.stubGlobal("fetch", fetchMock);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     renderDom(
-      <MemoryRouter initialEntries={["/tools/skills?view=browse"]}>
+      <MemoryRouter initialEntries={["/extensions/skills?view=browse"]}>
         <QueryClientWrapper>
           <Routes>
-            <Route path="/tools/skills" element={<SkillsLibrary />} />
+            <Route path="/extensions/skills" element={<SkillsLibrary />} />
           </Routes>
         </QueryClientWrapper>
       </MemoryRouter>,
@@ -919,7 +1089,9 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     expect(await screen.findAllByLabelText("27.1K stars")).toHaveLength(2);
   });
 
-  it("reveals each registry card as soon as that card is complete", async () => {
+  it("resolves every card's entry through one batch request", async () => {
+    // 24 cards used to mean 24 per-card entry requests; the page now sends the
+    // loaded set's ids as one batch and keeps skeletons up until it lands.
     const firstSkill = makeRegistrySkill({
       id: "owner/repo/first-skill",
       skillId: "first-skill",
@@ -932,15 +1104,10 @@ describe("SkillsLibrary registry detail lifecycle", () => {
       name: "Second skill",
       summary: null,
     });
-    const entryResolvers = new Map<string, (response: Response) => void>();
-    const entryResponses = new Map(
-      [firstSkill, secondSkill].map((skill) => [
-        skill.id,
-        new Promise<Response>((resolve) => {
-          entryResolvers.set(skill.id, resolve);
-        }),
-      ]),
-    );
+    let resolveEntries: ((response: Response) => void) | undefined;
+    const entriesResponse = new Promise<Response>((resolve) => {
+      resolveEntries = resolve;
+    });
     vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = requestPath(input);
@@ -954,25 +1121,22 @@ describe("SkillsLibrary registry detail lifecycle", () => {
               total: 2,
               hasMore: false,
             },
+            ranking: "trending",
           }),
         );
       }
-      const entryId = new URL(url, "http://localhost").searchParams.get("id");
-      if (url.startsWith("/api/v1/skills-registry/entry?") && entryId) {
-        return (
-          entryResponses.get(entryId) ??
-          Promise.resolve(new Response(null, { status: 404 }))
-        );
+      if (url === "/api/v1/skills-registry/entries") {
+        return entriesResponse;
       }
       return Promise.resolve(new Response(null, { status: 404 }));
     });
     vi.stubGlobal("fetch", fetchMock);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     renderDom(
-      <MemoryRouter initialEntries={["/tools/skills?view=browse"]}>
+      <MemoryRouter initialEntries={["/extensions/skills?view=browse"]}>
         <QueryClientWrapper>
           <Routes>
-            <Route path="/tools/skills" element={<SkillsLibrary />} />
+            <Route path="/extensions/skills" element={<SkillsLibrary />} />
           </Routes>
         </QueryClientWrapper>
       </MemoryRouter>,
@@ -980,36 +1144,34 @@ describe("SkillsLibrary registry detail lifecycle", () => {
 
     await waitFor(() => {
       expect(
-        fetchMock.mock.calls.filter(([input]) =>
-          requestPath(input).startsWith("/api/v1/skills-registry/entry?"),
+        fetchMock.mock.calls.filter(
+          ([input]) => requestPath(input) === "/api/v1/skills-registry/entries",
         ),
-      ).toHaveLength(2);
+      ).toHaveLength(1);
     });
+    // No per-card fan-out alongside the batch.
+    expect(
+      fetchMock.mock.calls.filter(([input]) =>
+        requestPath(input).startsWith("/api/v1/skills-registry/entry?"),
+      ),
+    ).toHaveLength(0);
     expect(screen.queryByText("First skill")).toBeNull();
-    expect(screen.queryByText("Second skill")).toBeNull();
+    expect(
+      screen.getByRole("status", { name: "Loading Second skill" }),
+    ).toBeTruthy();
 
-    entryResolvers.get(firstSkill.id)?.(
+    resolveEntries?.(
       Response.json({
-        ...firstSkill,
-        summary: "First description",
+        entries: [
+          { ...firstSkill, summary: "First description" },
+          { ...secondSkill, summary: "Second description" },
+        ],
       }),
     );
 
     expect(await screen.findByText("First skill")).toBeTruthy();
     expect(screen.getByText("First description")).toBeTruthy();
-    expect(screen.queryByText("Second skill")).toBeNull();
-    expect(
-      screen.getByRole("status", { name: "Loading Second skill" }),
-    ).toBeTruthy();
-
-    entryResolvers.get(secondSkill.id)?.(
-      Response.json({
-        ...secondSkill,
-        summary: "Second description",
-      }),
-    );
-
-    expect(await screen.findByText("Second skill")).toBeTruthy();
+    expect(screen.getByText("Second skill")).toBeTruthy();
     expect(screen.getByText("Second description")).toBeTruthy();
   });
 });
@@ -1019,7 +1181,6 @@ describe("RegistrySkillsBrowsePage", () => {
     const onRetry = vi.fn();
     renderRegistryBrowse({
       skills: [],
-      pagination: { page: 0, perPage: 24, total: 0, hasMore: false },
       hasError: true,
       onRetry,
     });
@@ -1031,8 +1192,7 @@ describe("RegistrySkillsBrowsePage", () => {
     expect(onRetry).toHaveBeenCalledOnce();
   });
 
-  it("renders the authoritative page order, exposes social proof, and pages forward", () => {
-    const onPageChange = vi.fn();
+  it("renders the authoritative page order, exposes social proof, and loads more on scroll", () => {
     const alpha = makeRegistrySkill({
       id: "owner/repo/alpha",
       skillId: "alpha",
@@ -1049,10 +1209,9 @@ describe("RegistrySkillsBrowsePage", () => {
     });
     const onSelect = vi.fn();
     const onFork = vi.fn();
-    renderRegistryBrowse({
+    const { container } = renderRegistryBrowse({
       skills: [alpha, zulu],
-      pagination: { page: 0, perPage: 24, total: 48, hasMore: true },
-      onPageChange,
+      hasMore: true,
       onFork,
       onSelect,
     });
@@ -1060,10 +1219,8 @@ describe("RegistrySkillsBrowsePage", () => {
       screen.getByRole("button", { name: "View details for Alpha" }),
     );
     expect(onSelect).toHaveBeenCalledWith(alpha);
-    expect(screen.getByText("1–2 of 48")).toBeTruthy();
     expect(screen.getByRole("textbox", { name: "Search skills" })).toBeTruthy();
     expect(screen.getByLabelText("10 installs")).toBeTruthy();
-    expect(screen.getByLabelText("100 stars")).toBeTruthy();
     for (const byline of screen.getAllByText("by owner/repo")) {
       expect(byline.className).toContain("truncate");
       expect(byline.parentElement?.className).toContain("items-center");
@@ -1092,8 +1249,179 @@ describe("RegistrySkillsBrowsePage", () => {
       alphaTitle.compareDocumentPosition(zuluTitle) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(onPageChange).toHaveBeenCalledWith(1);
+    // Paging is scroll-driven now: the sentinel is present while more pages
+    // exist, and there are no page buttons left to mis-click.
+    expect(
+      container.querySelector("[data-resource-infinite-sentinel]"),
+    ).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Next" })).toBeNull();
+  });
+
+  it("keeps the list's own count on the all-time ranking", async () => {
+    // Searching returns lifetime counts already, so the per-skill entry must
+    // not override them — one grid should not mix scraped detail-page numbers
+    // with the list's authoritative ones.
+    const listed = makeRegistrySkill({ installs: 42, summary: null });
+    vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
+    stubRegistryFetch(listed, {
+      list: true,
+      ranking: "all-time",
+      entry: makeRegistrySkill({ installs: 9_000 }),
+    });
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    renderDom(
+      <MemoryRouter initialEntries={["/extensions/skills?view=browse"]}>
+        <QueryClientWrapper>
+          <Routes>
+            <Route path="/extensions/skills" element={<SkillsLibrary />} />
+          </Routes>
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByLabelText("42 installs")).toBeTruthy();
+    expect(screen.queryByLabelText("9.0K installs")).toBeNull();
+  });
+});
+
+/**
+ * jsdom has no IntersectionObserver, so the infinite-scroll sentinel never
+ * self-arms in tests. This stub records observer callbacks and lets a test
+ * fire "the sentinel became visible" directly.
+ */
+function stubIntersectionObserver() {
+  const callbacks: IntersectionObserverCallback[] = [];
+  class StubIntersectionObserver {
+    constructor(callback: IntersectionObserverCallback) {
+      callbacks.push(callback);
+    }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  vi.stubGlobal("IntersectionObserver", StubIntersectionObserver);
+  return () => {
+    for (const callback of [...callbacks]) {
+      callback(
+        [{ isIntersecting: true }] as IntersectionObserverEntry[],
+        {} as IntersectionObserver,
+      );
+    }
+  };
+}
+
+describe("SkillsLibrary registry browse paging", () => {
+  function renderBrowse() {
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    return renderDom(
+      <MemoryRouter initialEntries={["/extensions/skills?view=browse"]}>
+        <QueryClientWrapper>
+          <Routes>
+            <Route path="/extensions/skills" element={<SkillsLibrary />} />
+          </Routes>
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+  }
+
+  it("keeps loaded cards and offers an inline retry when a later page fails", async () => {
+    const alpha = makeRegistrySkill({
+      id: "owner/repo/alpha",
+      skillId: "alpha",
+      name: "Alpha",
+    });
+    vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestPath(input);
+      if (url.startsWith("/api/v1/skills-registry?")) {
+        const page = new URL(url, window.location.origin).searchParams.get(
+          "page",
+        );
+        if (page === "0") {
+          return Response.json({
+            skills: [alpha],
+            pagination: { page: 0, perPage: 24, total: 48, hasMore: true },
+            ranking: "trending",
+          });
+        }
+        return new Response(null, { status: 503 });
+      }
+      if (url === "/api/v1/skills-registry/entries") {
+        return Response.json({ entries: [alpha] });
+      }
+      return new Response(null, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const fireSentinel = stubIntersectionObserver();
+    renderBrowse();
+
+    expect(await screen.findByText("Alpha")).toBeTruthy();
+    fireSentinel();
+
+    // The failed second page must not blank the grid: the loaded cards stay,
+    // and the error confines itself to an inline retry row below them.
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Couldn't load more from skills.sh.");
+    expect(screen.getByText("Alpha")).toBeTruthy();
+
+    const pageTwoCalls = () =>
+      fetchMock.mock.calls.filter(([input]) =>
+        requestPath(input).includes("page=1"),
+      ).length;
+    expect(pageTwoCalls()).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(pageTwoCalls()).toBe(2));
+    expect(screen.getByText("Alpha")).toBeTruthy();
+  });
+
+  it("restarts accumulation instead of mixing rankings when the server falls back", async () => {
+    // Page 0 arrives from the trending ranking; the next page degrades to
+    // all-time. Their `installs` count different windows, so the grid must
+    // never present rows from both at once.
+    const alpha = makeRegistrySkill({
+      id: "owner/repo/alpha",
+      skillId: "alpha",
+      name: "Alpha",
+    });
+    const bravo = makeRegistrySkill({
+      id: "owner/repo/bravo",
+      skillId: "bravo",
+      name: "Bravo",
+    });
+    vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestPath(input);
+      if (url.startsWith("/api/v1/skills-registry?")) {
+        const page = new URL(url, window.location.origin).searchParams.get(
+          "page",
+        );
+        if (page === "0") {
+          return Response.json({
+            skills: [alpha],
+            pagination: { page: 0, perPage: 24, total: 48, hasMore: true },
+            ranking: "trending",
+          });
+        }
+        return Response.json({
+          skills: [bravo],
+          pagination: { page: 1, perPage: 24, total: 48, hasMore: false },
+          ranking: "all-time",
+        });
+      }
+      if (url === "/api/v1/skills-registry/entries") {
+        return Response.json({ entries: [alpha, bravo] });
+      }
+      return new Response(null, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const fireSentinel = stubIntersectionObserver();
+    renderBrowse();
+
+    expect(await screen.findByText("Alpha")).toBeTruthy();
+    fireSentinel();
+
+    expect(await screen.findByText("Bravo")).toBeTruthy();
+    expect(screen.queryByText("Alpha")).toBeNull();
   });
 });
 

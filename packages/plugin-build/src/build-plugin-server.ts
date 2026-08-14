@@ -18,7 +18,7 @@ import { type PluginBuildToolchain } from "./toolchain.js";
  *
  * - `dist/server.js` (+ `.map`) — single node-platform ESM file with the
  *   plugin's npm deps inlined, so git:/npm: consumers never need npm or
- *   node_modules. `@bb/plugin-sdk` stays external — plugin authors only ever
+ *   node_modules. `@get-bb/plugin-sdk` stays external — plugin authors only ever
  *   have its `.d.ts` types, so the specifier must survive to load time, where
  *   the server's loader aliases it to the SDK runtime bundle shipped next to
  *   the server (workspace resolution covers source checkouts). better-sqlite3
@@ -40,13 +40,24 @@ const NODE_ESM_REQUIRE_BANNER = [
   "var __dirname = __pathDirname(__filename);",
 ].join("\n");
 
+/** The SDK package plugin server sources import. */
+const PLUGIN_SDK_SPECIFIER = "@get-bb/plugin-sdk";
+
+/**
+ * Legacy alias for {@link PLUGIN_SDK_SPECIFIER}, kept so pre-rename plugin
+ * sources still build. The server loader aliases both specifiers to the same
+ * SDK runtime bundle; a later change removes it.
+ */
+const LEGACY_PLUGIN_SDK_SPECIFIER = "@bb/plugin-sdk";
+
 /**
  * Specifiers the backend bundle leaves unresolved. Everything else a plugin's
  * server source imports is inlined from its node_modules, so it has to be a
  * real `dependency` — `packages/templates` scaffolds against this list.
  */
 export const PLUGIN_SERVER_EXTERNALS: readonly string[] = [
-  "@bb/plugin-sdk",
+  PLUGIN_SDK_SPECIFIER,
+  LEGACY_PLUGIN_SDK_SPECIFIER,
   "better-sqlite3",
 ];
 

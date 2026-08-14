@@ -2,7 +2,7 @@ import type { ThreadListEntry } from "@bb/domain";
 import type {
   PluginSidebarThread,
   PluginSidebarThreadIndicator,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 import {
   getThreadListIndicatorLabel,
   hasActiveBackgroundAgentActivity,

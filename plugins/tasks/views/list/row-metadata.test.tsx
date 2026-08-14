@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { Label, Task, TaskThread } from "../../shared/contract.js";
 
 // jsdom lacks matchMedia/ResizeObserver; the list shell touches both.
@@ -184,7 +184,9 @@ describe("list-row metadata rail", () => {
     const { slot, calls } = renderList({ tasks: [task(1), task(2)] });
     await slot.findByText("TSK-1");
     // Give the meta query a tick to settle before asserting on RPC traffic.
-    await waitFor(() => expect(slot.getAllByRole("button").length > 0).toBe(true));
+    await waitFor(() =>
+      expect(slot.getAllByRole("button").length > 0).toBe(true),
+    );
     expect(calls.listComments).toBe(0);
     expect(calls.listAttachments).toBe(0);
     expect(slot.queryByTitle("Comments")).toBeNull();
@@ -202,7 +204,10 @@ describe("list-row metadata rail", () => {
       tasks: [
         task(1),
         task(2, [labels[0]!.id]),
-        task(3, labels.map((entry) => entry.id)),
+        task(
+          3,
+          labels.map((entry) => entry.id),
+        ),
       ],
       labels,
     });

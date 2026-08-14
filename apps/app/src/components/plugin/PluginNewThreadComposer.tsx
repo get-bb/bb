@@ -1,7 +1,17 @@
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import type { NewThreadComposerProps, NewThreadRequest } from "@bb/plugin-sdk";
+import type {
+  NewThreadComposerProps,
+  NewThreadRequest,
+} from "@get-bb/plugin-sdk";
 import type { CreateExecutionInputSources } from "@bb/server-contract";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { NewThreadPromptBox } from "@/components/promptbox/NewThreadPromptBox";
@@ -104,9 +114,8 @@ export function PluginNewThreadComposer({
   const [pickedProjectId, setPickedProjectId] = useState<string | null>(
     defaultProjectId ?? null,
   );
-  const [seededDefaultProjectId, setSeededDefaultProjectId] = useState(
-    defaultProjectId,
-  );
+  const [seededDefaultProjectId, setSeededDefaultProjectId] =
+    useState(defaultProjectId);
   // Re-seed during render (not in an effect) so a new `defaultProjectId` never
   // paints one frame of the previous project's environment options.
   if (seededDefaultProjectId !== defaultProjectId) {
@@ -174,8 +183,10 @@ export function PluginNewThreadComposer({
   const hostsQuery = useHosts();
   const systemConfigQuery = useSystemConfig();
   const primaryHostId =
-    selectPrimaryHost(hostsQuery.data, systemConfigQuery.data?.primaryHostId ?? null)
-      ?.id ?? null;
+    selectPrimaryHost(
+      hostsQuery.data,
+      systemConfigQuery.data?.primaryHostId ?? null,
+    )?.id ?? null;
   const knownHostIds = useMemo(
     () => new Set((hostsQuery.data ?? []).map((host) => host.id)),
     [hostsQuery.data],

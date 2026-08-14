@@ -68,9 +68,6 @@ importers:
       '@bb/host-daemon-contract':
         specifier: workspace:*
         version: link:../../packages/host-daemon-contract
-      '@bb/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../packages/plugin-sdk
       '@bb/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -98,6 +95,9 @@ importers:
       '@fontsource-variable/inter':
         specifier: ^5.2.8
         version: 5.2.8
+      '@get-bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
       '@hookform/resolvers':
         specifier: ^5.4.0
         version: 5.4.0(react-hook-form@7.80.0(react@19.2.4))
@@ -781,9 +781,6 @@ importers:
       '@bb/plugin-build':
         specifier: workspace:*
         version: link:../../packages/plugin-build
-      '@bb/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../packages/plugin-sdk
       '@bb/process-utils':
         specifier: workspace:*
         version: link:../../packages/process-utils
@@ -814,6 +811,9 @@ importers:
       '@earendil-works/pi-ai':
         specifier: 0.84.0
         version: 0.84.0(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.21.0)(zod@4.3.6)
+      '@get-bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
       '@hono/node-server':
         specifier: ^1.19.11
         version: 1.19.14(hono@4.11.9)
@@ -1018,7 +1018,7 @@ importers:
         specifier: ^3.4.0
         version: 3.4.0
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../../packages/plugin-sdk
       '@types/react':
@@ -1039,7 +1039,7 @@ importers:
 
   examples/plugins/composer-customization:
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../../packages/plugin-sdk
       '@types/react':
@@ -1054,19 +1054,19 @@ importers:
 
   examples/plugins/content-script:
     devDependencies:
-      '@bb/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../../packages/plugin-sdk
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../../../packages/tsconfig
+      '@get-bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../../packages/plugin-sdk
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
 
   examples/plugins/slack-bot:
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../../packages/plugin-sdk
       '@types/node':
@@ -1100,7 +1100,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../../packages/plugin-sdk
       '@radix-ui/react-context-menu':
@@ -1145,7 +1145,7 @@ importers:
 
   examples/plugins/thread-chat-demo:
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../../packages/plugin-sdk
       '@types/react':
@@ -1663,7 +1663,7 @@ importers:
       '@bb/domain':
         specifier: workspace:*
         version: link:../domain
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../plugin-sdk
       saxes:
@@ -2349,7 +2349,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@testing-library/react':
@@ -2395,7 +2395,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@radix-ui/react-dialog':
@@ -2471,7 +2471,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@radix-ui/react-dialog':
@@ -2529,7 +2529,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@testing-library/react':
@@ -2626,7 +2626,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@radix-ui/react-dropdown-menu':
@@ -2678,7 +2678,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@pierre/diffs':
@@ -2730,7 +2730,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@testing-library/react':
@@ -2773,7 +2773,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@radix-ui/react-dialog':
@@ -2825,7 +2825,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@testing-library/react':
@@ -2871,7 +2871,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@types/node':
@@ -2902,7 +2902,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@testing-library/react':
@@ -3002,7 +3002,7 @@ importers:
       '@bb/plugin-build':
         specifier: workspace:*
         version: link:../../packages/plugin-build
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@testing-library/react':
@@ -3057,7 +3057,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@testing-library/react':

@@ -144,6 +144,68 @@ export const BUNDLED_PLUGINS: readonly BundledPluginDefinition[] = [
   ...OFFICIAL_PLUGINS,
 ];
 
+/**
+ * An official catalog entry that installs from an external git repository
+ * instead of a bundled copy. There is no local rootDir to read a manifest
+ * from, so display metadata and engine ranges are declared statically.
+ */
+export interface GitOfficialPluginDefinition {
+  /** Catalog entry id; installs stamp `{kind:"catalog", entryId: name}`. */
+  name: string;
+  /** derivePluginId(packageName) of the plugin at the git source. */
+  pluginId: string;
+  /** Browse-tab grouping; one of {@link PLUGIN_CATALOG_CATEGORIES}. */
+  category: string;
+  /** Full install source, `git:<url>@<ref>`. */
+  gitSource: string;
+  displayName: string;
+  description: string;
+  /** Declared icon name (the plugin's `bb.branding.icon`). */
+  icon: string;
+  /** `engines.bb` range mirrored from the plugin's package.json. */
+  bbEngineRange: string;
+  /** `engines.bbPluginSdk` range mirrored from the plugin's package.json. */
+  bbPluginSdkRange: string;
+}
+
+/**
+ * Official plugins that live in github.com/brsbl/bb-plugins rather than this
+ * repo. That repo is the source of truth: when a plugin's package.json changes
+ * (bb.name, bb.description, bb.branding.icon, engines), mirror the new values
+ * here — the store renders these static fields, not the remote manifest.
+ * Install refs are the repo's published per-plugin branches.
+ */
+export const GIT_OFFICIAL_PLUGINS: readonly GitOfficialPluginDefinition[] = [
+  {
+    name: "thread-hover-cards",
+    pluginId: "thread-hover-cards",
+    category: "Interface",
+    gitSource:
+      // Pinned to a reviewed commit of bb-plugins plugin/thread-hover-cards.
+      "git:https://github.com/brsbl/bb-plugins.git@30f91fd977ba1ce60532af27a68534464fb62516",
+    displayName: "Thread Hover Cards",
+    description:
+      "Preview thread status, the latest agent update, and repository or PR context from the sidebar.",
+    icon: "ZoomIn",
+    bbEngineRange: ">=0.0.34",
+    bbPluginSdkRange: "^0.5.0",
+  },
+  {
+    name: "improve-prompt",
+    pluginId: "prompt-shaper",
+    category: "Agent interaction",
+    gitSource:
+      // Pinned to a reviewed commit of bb-plugins plugin/improve-prompt.
+      "git:https://github.com/brsbl/bb-plugins.git@1c6bb2e8ad3551466981e7eb027cc4b1f3428cac",
+    displayName: "Prompt Improver",
+    description:
+      "Adds an Improve prompt action to the composer that sends your rough draft to a hidden helper agent, which applies the prompt-shaper skill to rewrite it into a clear, complete prompt and returns it in place for review before you send.",
+    icon: "AiContentGenerator01",
+    bbEngineRange: ">=0.0.34",
+    bbPluginSdkRange: "^0.5.0",
+  },
+];
+
 export const BUILTIN_PLUGIN_NAMES = BUILTIN_PLUGINS.map(
   (plugin) => plugin.name,
 );

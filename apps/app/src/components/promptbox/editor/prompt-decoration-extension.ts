@@ -2,7 +2,7 @@ import type {
   ComposerRichTextSpec,
   ComposerStructuredDraft,
   ComposerView,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 import { Extension, type Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";

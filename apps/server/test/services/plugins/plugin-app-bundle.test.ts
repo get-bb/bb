@@ -266,7 +266,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     await writeAppPluginFixture(rootDir, {
       name: "bb-plugin-typed-rpc",
       serverSource: `
-        import { defineRpcContract } from "@bb/plugin-sdk";
+        import { defineRpcContract } from "@get-bb/plugin-sdk";
         import { z } from "zod";
         const BACKEND_ONLY_SENTINEL = "backend-contract-must-not-bundle";
         export const rpcContract = defineRpcContract({
@@ -281,7 +281,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
         }
       `,
       appSource: `
-        import { definePluginApp, useRpc } from "@bb/plugin-sdk/app";
+        import { definePluginApp, useRpc } from "@get-bb/plugin-sdk/app";
         import type { rpcContract } from "./server";
         function Panel() {
           const rpc = useRpc<typeof rpcContract>();

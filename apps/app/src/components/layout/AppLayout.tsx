@@ -18,9 +18,9 @@ import {
 } from "@/components/ui/sidebar.js";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
-import { ToolsHubExperimentProvider } from "@/components/tools/tools-experiment-context";
 import {
   resolveAutomationBreadcrumbs,
+  resolveToolsAreaHeaderMeta,
   resolveToolsBreadcrumbs,
 } from "@/components/tools/tools-navigation";
 import { AppBreadcrumbs } from "./AppBreadcrumbs";
@@ -93,7 +93,6 @@ import { applyThreadOpenToLayout } from "@/views/thread-detail/splitThreadNaviga
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useSplitWorkspaceActive } from "@/hooks/useSplitWorkspaceActive";
 import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
-import { useSystemConfig } from "@/hooks/queries/system-queries";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -513,10 +512,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   // Global settings routes swap the app sidebar for the settings sidebar.
   const isGlobalSettingsView =
     matchPath(`${SETTINGS_ROUTE_PATH}/*`, location.pathname) !== null;
-  const systemConfigQuery = useSystemConfig();
-  const toolsHubEnabled = systemConfigQuery.data?.experiments.toolsHub === true;
-  const isGlobalToolsView =
-    toolsHubEnabled && isToolsRoutePath(location.pathname);
+  const isGlobalToolsView = isToolsRoutePath(location.pathname);
   const pluginPanelMatch = matchPath(
     PLUGIN_PANEL_ROUTE_PATH,
     location.pathname,
@@ -619,75 +615,81 @@ export function AppLayout({ children }: AppLayoutProps) {
     : threadId
       ? `Thread ${threadId.slice(0, 8)}`
       : "Thread";
-  // Gated with the rest of the Tools surface: ROOT_ROUTE_ALIASES maps /skills
-  // into Tools crumbs, so a gate-off user following an old link would otherwise
-  // see Tools chrome for the whole config fetch before ToolsExperimentGate
-  // redirects them away.
-  const toolsBreadcrumbs = toolsHubEnabled
-    ? resolveToolsBreadcrumbs(
-        location.pathname,
-        location.search,
-        resourceRouteLabel,
-      )
-    : null;
+  const toolsBreadcrumbs = resolveToolsBreadcrumbs(
+    location.pathname,
+    location.search,
+    resourceRouteLabel,
+  );
   const automationBreadcrumbs = resolveAutomationBreadcrumbs(
     location.pathname,
     resourceRouteLabel,
   );
-  const routeBreadcrumbs = toolsBreadcrumbs ?? automationBreadcrumbs;
+  // Tools breadcrumbs feed only the document title now; the header's choice
+  // between the Extensions title and automation breadcrumbs lives in the pure
+  // (and tested) resolveToolsAreaHeaderMeta.
+  const documentTitleBreadcrumbs = toolsBreadcrumbs ?? automationBreadcrumbs;
+  const toolsAreaHeaderMeta = resolveToolsAreaHeaderMeta(
+    location.pathname,
+    // Extensions graduated from experiments (#1360): the hub is always on.
+    true,
+    resourceRouteLabel,
+    location.search,
+  );
   const meta = isThreadView
     ? {
         title: thread ? getThreadDisplayTitle(thread) : "Thread",
         subtitle: undefined,
       }
-    : routeBreadcrumbs
-      ? {
-          title: "",
-          subtitle: undefined,
-          breadcrumbs: routeBreadcrumbs,
-        }
-      : isArchivedView && projectId
-        ? isProjectlessProjectId(projectId)
-          ? {
-              title: "",
-              subtitle: undefined,
-              breadcrumbs: [
-                { label: "Threads", to: getRootComposeRoutePath() },
-                ...(archivedSectionName
-                  ? [{ label: archivedSectionName }]
-                  : []),
-                { label: "Archived" },
-              ],
-            }
-          : {
-              title: "",
-              subtitle: undefined,
-              breadcrumbs: [
-                {
-                  label: projectLabel ?? projectId,
-                  to: getLegacyProjectComposeRoutePath(projectId),
-                },
-                { label: "Archived" },
-              ],
-            }
-        : isSettingsView && projectId
-          ? {
-              title: "",
-              subtitle: undefined,
-              breadcrumbs: [
-                {
-                  label: projectLabel ?? projectId,
-                  to: getLegacyProjectComposeRoutePath(projectId),
-                },
-                { label: "Settings" },
-              ],
-            }
-          : projectId
+    : toolsAreaHeaderMeta?.kind === "extensions-title"
+      ? { title: toolsAreaHeaderMeta.title, subtitle: undefined }
+      : toolsAreaHeaderMeta?.kind === "breadcrumbs"
+        ? {
+            title: "",
+            subtitle: undefined,
+            breadcrumbs: toolsAreaHeaderMeta.breadcrumbs,
+          }
+        : isArchivedView && projectId
+          ? isProjectlessProjectId(projectId)
             ? {
-                title: projectLabel ?? projectId,
+                title: "",
                 subtitle: undefined,
+                breadcrumbs: [
+                  { label: "Threads", to: getRootComposeRoutePath() },
+                  ...(archivedSectionName
+                    ? [{ label: archivedSectionName }]
+                    : []),
+                  { label: "Archived" },
+                ],
               }
-            : (resolveRouteTitle(location.pathname) ?? { title: "" });
+            : {
+                title: "",
+                subtitle: undefined,
+                breadcrumbs: [
+                  {
+                    label: projectLabel ?? projectId,
+                    to: getLegacyProjectComposeRoutePath(projectId),
+                  },
+                  { label: "Archived" },
+                ],
+              }
+          : isSettingsView && projectId
+            ? {
+                title: "",
+                subtitle: undefined,
+                breadcrumbs: [
+                  {
+                    label: projectLabel ?? projectId,
+                    to: getLegacyProjectComposeRoutePath(projectId),
+                  },
+                  { label: "Settings" },
+                ],
+              }
+            : projectId
+              ? {
+                  title: projectLabel ?? projectId,
+                  subtitle: undefined,
+                }
+              : (resolveRouteTitle(location.pathname) ?? { title: "" });
 
   const documentTitle = (() => {
     if (isThreadView) {
@@ -696,9 +698,9 @@ export function AppLayout({ children }: AppLayoutProps) {
     if (pluginPanel) {
       return pluginPanel.title;
     }
-    if (routeBreadcrumbs) {
-      const sectionLabel = routeBreadcrumbs[0]?.label ?? "BB";
-      const pageLabel = routeBreadcrumbs.at(-1)?.label ?? sectionLabel;
+    if (documentTitleBreadcrumbs) {
+      const sectionLabel = documentTitleBreadcrumbs[0]?.label ?? "BB";
+      const pageLabel = documentTitleBreadcrumbs.at(-1)?.label ?? sectionLabel;
       return pageLabel === sectionLabel
         ? sectionLabel
         : `${pageLabel} · ${sectionLabel}`;
@@ -825,7 +827,6 @@ export function AppLayout({ children }: AppLayoutProps) {
   }, [documentTitle]);
 
   return (
-    <ToolsHubExperimentProvider enabled={toolsHubEnabled}>
       <ProjectActionsProvider>
         <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
           <ThreadActionsProvider>
@@ -847,7 +848,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 appRoutePath={appRoutePath}
                 settingsRoutePath={settingsRoutePath}
                 toolsBackRoutePath={toolsBackRoutePath}
-                toolsRoutePath={toolsHubEnabled ? toolsRoutePath : undefined}
+                toolsRoutePath={toolsRoutePath}
               />
               <SidebarInset>
                 <div
@@ -879,19 +880,18 @@ export function AppLayout({ children }: AppLayoutProps) {
                 usesDesktopChrome={usesDesktopChrome}
               />
             </SidebarStateBridge>
-            <ProjectPathDialog
-              target={quickCreateProject.projectPathDialog.target}
-              pending={quickCreateProject.isCreating}
-              platform={quickCreateProject.platform}
-              hostId={quickCreateProject.hostId}
-              hostName={quickCreateProject.hostName}
-              hosts={quickCreateProject.hosts}
-              onOpenChange={quickCreateProject.projectPathDialog.onOpenChange}
-              onSubmit={quickCreateProject.submitProjectPath}
-            />
-          </ThreadActionsProvider>
-        </ThreadTitleMentionResourcesProvider>
-      </ProjectActionsProvider>
-    </ToolsHubExperimentProvider>
+          <ProjectPathDialog
+            target={quickCreateProject.projectPathDialog.target}
+            pending={quickCreateProject.isCreating}
+            platform={quickCreateProject.platform}
+            hostId={quickCreateProject.hostId}
+            hostName={quickCreateProject.hostName}
+            hosts={quickCreateProject.hosts}
+            onOpenChange={quickCreateProject.projectPathDialog.onOpenChange}
+            onSubmit={quickCreateProject.submitProjectPath}
+          />
+        </ThreadActionsProvider>
+      </ThreadTitleMentionResourcesProvider>
+    </ProjectActionsProvider>
   );
 }

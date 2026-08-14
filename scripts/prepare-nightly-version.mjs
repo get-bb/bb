@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { bumpVersion, compareSemver } from "./bump-version.mjs";
+import { bumpVersion } from "./bump-version.mjs";
+import { compareSemver } from "./lib/semver.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const defaultRepoRoot = resolve(dirname(scriptPath), "..");

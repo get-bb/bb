@@ -335,7 +335,9 @@ function createRunningExecCall(
         kind: "tool-call",
         toolName: incoming.toolName ?? null,
         toolArgs: incoming.toolArgs ?? null,
-        ...(incoming.statusLabels ? { statusLabels: incoming.statusLabels } : {}),
+        ...(incoming.statusLabels
+          ? { statusLabels: incoming.statusLabels }
+          : {}),
         parsedIntents: incoming.parsedIntents ?? [],
         approvalStatus: incoming.approvalStatus ?? null,
       };

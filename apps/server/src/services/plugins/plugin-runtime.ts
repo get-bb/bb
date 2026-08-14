@@ -30,6 +30,10 @@ import {
 import { parsePluginSource } from "./install-sources.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import {
+  isPluginSdkRangeSatisfied,
+  pluginSdkRangeProblem,
+} from "./sdk-compat.js";
+import {
   createPluginApi,
   isNeedsConfigurationError,
   type BbPluginApi,
@@ -47,7 +51,7 @@ import type {
 import { runEventLoopWork } from "../system/event-loop-work.js";
 
 /**
- * Plugin server bundles keep `@bb/plugin-sdk` external (see @bb/plugin-build),
+ * Plugin server bundles keep `@get-bb/plugin-sdk` external (see @bb/plugin-build),
  * and plugin authors never have it installed — the scaffold maps the specifier
  * to bundled `.d.ts` files only. Source-checkout servers resolve the workspace
  * package naturally, but built and packaged servers have no node_modules copy,
@@ -58,10 +62,30 @@ const pluginSdkRuntimePath = join(
   dirname(fileURLToPath(import.meta.url)),
   "plugin-sdk-runtime.js",
 );
+const PLUGIN_SDK_SPECIFIER = "@get-bb/plugin-sdk";
+
+/**
+ * Legacy alias for {@link PLUGIN_SDK_SPECIFIER}, kept so plugin server
+ * artifacts built before the rename — and pre-rename plugin sources — still
+ * resolve the SDK. It maps to the same runtime bundle; removed when the
+ * migration window closes.
+ */
+const LEGACY_PLUGIN_SDK_SPECIFIER = "@bb/plugin-sdk";
+
+/** Internal export for focused tests; not part of the service surface. */
+export function pluginSdkAliasFor(
+  runtimePath: string,
+): Record<string, string> {
+  return {
+    [PLUGIN_SDK_SPECIFIER]: runtimePath,
+    [LEGACY_PLUGIN_SDK_SPECIFIER]: runtimePath,
+  };
+}
+
 const pluginSdkAlias: Record<string, string> | undefined = existsSync(
   pluginSdkRuntimePath,
 )
-  ? { "@bb/plugin-sdk": pluginSdkRuntimePath }
+  ? pluginSdkAliasFor(pluginSdkRuntimePath)
   : undefined;
 
 /**
@@ -705,8 +729,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
 
   function checkPluginSdkRange(manifest: PluginManifest): string | undefined {
     if (!manifest.bbPluginSdkRange) return undefined;
-    if (!semver.satisfies(PLUGIN_SDK_VERSION, manifest.bbPluginSdkRange)) {
-      return `requires bb plugin SDK ${manifest.bbPluginSdkRange}, running SDK is ${PLUGIN_SDK_VERSION}`;
+    if (!isPluginSdkRangeSatisfied(manifest.bbPluginSdkRange)) {
+      return pluginSdkRangeProblem(manifest.bbPluginSdkRange);
     }
     return undefined;
   }
@@ -1085,7 +1109,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         ...(pluginSdkAlias === undefined ? {} : { alias: pluginSdkAlias }),
       });
       // Same jiti instance for source and prebuilt dist/server.js, so the
-      // @bb/plugin-sdk resolution applies identically to both.
+      // @get-bb/plugin-sdk resolution (and its legacy @bb/plugin-sdk alias)
+      // applies identically to both.
       const mod = (await jiti.import(
         await resolveServerEntry(row, manifest),
       )) as {

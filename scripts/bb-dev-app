@@ -325,7 +325,7 @@ ensure_dependencies() {
   # Official catalog installs execute the packaged plugin SDK at runtime.
   # Build it before source dev starts so a clean worktree can install a plugin.
   log "Building plugin SDK runtime"
-  pnpm -C "${REPO_ROOT}" exec turbo run build --filter=@bb/plugin-sdk
+  pnpm -C "${REPO_ROOT}" exec turbo run build --filter=@get-bb/plugin-sdk
 
   if ! (cd "${REPO_ROOT}/apps/desktop" && node -e "require('electron')" >/dev/null 2>&1); then
     local electron_install

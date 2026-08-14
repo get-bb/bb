@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { PluginMessageDirectiveProps } from "@bb/plugin-sdk";
+import type { PluginMessageDirectiveProps } from "@get-bb/plugin-sdk";
 import {
   buildMessageDirectiveRegistry,
   normalizeDirectiveAttributes,

@@ -17,8 +17,8 @@ import {
   ThreadChat,
   useRealtime,
   useRpc,
-} from "@bb/plugin-sdk/app";
-import type { NewThreadRequest } from "@bb/plugin-sdk/app";
+} from "@get-bb/plugin-sdk/app";
+import type { NewThreadRequest } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import type { rpcContract } from "./server";
 import {
@@ -105,8 +105,7 @@ function scrollableUnder(
     const content = axis === "y" ? node.scrollHeight : node.scrollWidth;
     if (content <= size + 1) continue;
     const position = axis === "y" ? node.scrollTop : node.scrollLeft;
-    const room =
-      delta < 0 ? position > 0 : position + size < content - 1;
+    const room = delta < 0 ? position > 0 : position + size < content - 1;
     if (room) return true;
   }
   return false;
@@ -687,11 +686,14 @@ function CascadePanel({ subPath }: { subPath: string }) {
         if (key === "Escape") return setPalette(null);
         if (key === "Enter") return void commitPalette();
         if (key === "j" || key === "ArrowDown")
-          return setPaletteIdx((i) => (i + 1) % Math.max(1, paletteTargets.length));
+          return setPaletteIdx(
+            (i) => (i + 1) % Math.max(1, paletteTargets.length),
+          );
         if (key === "k" || key === "ArrowUp")
           return setPaletteIdx(
             (i) =>
-              (i - 1 + paletteTargets.length) % Math.max(1, paletteTargets.length),
+              (i - 1 + paletteTargets.length) %
+              Math.max(1, paletteTargets.length),
           );
         return;
       }
@@ -702,7 +704,8 @@ function CascadePanel({ subPath }: { subPath: string }) {
         // user's prompt just because they backed out of the model menu, so
         // Escape only cancels the draft when no popover is open.
         const popoverOpen =
-          document.querySelector("[data-radix-popper-content-wrapper]") !== null;
+          document.querySelector("[data-radix-popper-content-wrapper]") !==
+          null;
         if (key === "Escape" && !popoverOpen) setDraftOpen(false);
         return;
       }
@@ -895,7 +898,12 @@ function CascadePanel({ subPath }: { subPath: string }) {
       const pips = railRef.current?.querySelectorAll("[data-row-pip]") ?? [];
       for (let i = 0; i < pips.length; i += 1) {
         const box = pips[i]!.getBoundingClientRect();
-        if (x >= box.left && x <= box.right && y >= box.top && y <= box.bottom) {
+        if (
+          x >= box.left &&
+          x <= box.right &&
+          y >= box.top &&
+          y <= box.bottom
+        ) {
           return { overRow: i, insertAt: null };
         }
       }
@@ -955,7 +963,8 @@ function CascadePanel({ subPath }: { subPath: string }) {
           const target = rows[overRow];
           if (target) {
             if (overRow === fromRow) {
-              if (insertAt !== null) void applyReorder(target, column, insertAt);
+              if (insertAt !== null)
+                void applyReorder(target, column, insertAt);
             } else {
               void applyDrop(column, target).then((moved) => {
                 if (moved) setRowIdx(overRow);
@@ -1253,7 +1262,9 @@ function CascadePanel({ subPath }: { subPath: string }) {
                             : "border-input/70 opacity-75",
                         )}
                       >
-                        {current && focus === row.columns.length && draftOpen ? (
+                        {current &&
+                        focus === row.columns.length &&
+                        draftOpen ? (
                           // `data-draft-form` marks this composer as one the
                           // user asked for, so the panel's focus guard leaves
                           // it alone (see the focusin handler above).

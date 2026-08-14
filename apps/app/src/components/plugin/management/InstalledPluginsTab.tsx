@@ -62,7 +62,6 @@ export function InstalledPluginsTab({
       </ResourceListPanel>
       {updateTarget !== null ? (
         <UpdatePluginDialog
-          failureStateLabel="Update failed"
           plugin={updateTarget}
           open
           onOpenChange={(open) => {
@@ -104,7 +103,9 @@ export function InstalledPluginRow({
   const updateSignal = signal?.kind === "update" ? signal : null;
 
   const openDetail = () =>
-    navigate(getPluginDetailRoutePath({ pluginId: plugin.id }));
+    navigate(
+      getPluginDetailRoutePath({ pluginId: plugin.id, view: "installed" }),
+    );
   return (
     <div data-testid={`plugin-row-${plugin.id}`}>
       <ResourceRow

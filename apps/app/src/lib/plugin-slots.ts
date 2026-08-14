@@ -13,7 +13,7 @@ import type {
   PluginThreadHeaderActionRegistration,
   PluginThreadListRegistration,
   PluginThreadPanelActionRegistration,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 
 /**
  * Client-side slot store (plugin design §5.2): the interpreted `app.slots.*`

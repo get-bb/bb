@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { Task } from "../../shared/contract.js";
 
 // jsdom lacks ResizeObserver; cmdk's list observes its size on mount.
@@ -212,13 +212,23 @@ describe("NewTaskDialog", () => {
           // no-labels-at-all fallback) when the query matches nothing.
           listLabels: () => ({
             labels: [
-              { id: "01HLABELDOCS0000000000000", projectId: PROJECT_ID, name: "docs", color: "#888" },
+              {
+                id: "01HLABELDOCS0000000000000",
+                projectId: PROJECT_ID,
+                name: "docs",
+                color: "#888",
+              },
             ],
           }),
           createLabel: (input: Record<string, unknown>) => {
             createLabelCalls.push(input);
             return {
-              label: { id: "01HLABELNEW00000000000000", projectId: PROJECT_ID, name: input.name, color: input.color },
+              label: {
+                id: "01HLABELNEW00000000000000",
+                projectId: PROJECT_ID,
+                name: input.name,
+                color: input.color,
+              },
             };
           },
         },
@@ -229,7 +239,9 @@ describe("NewTaskDialog", () => {
     const search = await slot.findByPlaceholderText("Add labels…");
     fireEvent.change(search, { target: { value: "  dank  " } });
 
-    const createBtn = await slot.findByRole("button", { name: /Create .*dank/ });
+    const createBtn = await slot.findByRole("button", {
+      name: /Create .*dank/,
+    });
     // Regression guard (BB-11): the actionable create row must not inherit the
     // empty-state's tall centered padding — that produced the "insane" gap.
     const emptyContainer = createBtn.closest("[cmdk-empty]");
@@ -239,7 +251,10 @@ describe("NewTaskDialog", () => {
 
     fireEvent.click(createBtn);
     await waitFor(() => expect(createLabelCalls).toHaveLength(1));
-    expect(createLabelCalls[0]).toMatchObject({ projectId: PROJECT_ID, name: "dank" });
+    expect(createLabelCalls[0]).toMatchObject({
+      projectId: PROJECT_ID,
+      name: "dank",
+    });
   });
 });
 
@@ -254,7 +269,10 @@ describe("NewTaskDialog attachments", () => {
     fetchCalls.length = 0;
     failFileNames.clear();
     uploadGate = null;
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
       const url = String(input);
       if (url.includes("/plugins/tasks/token")) {
         return new Response(JSON.stringify({ token: "test-token" }), {
@@ -316,16 +334,12 @@ describe("NewTaskDialog attachments", () => {
       { rpc: dialogRpc() },
     );
     const titleInput = await openDialogWithTitle(slot, "With files");
-    pasteFile(
-      titleInput,
-      new File(["png"], "shot.png", { type: "image/png" }),
-    );
+    pasteFile(titleInput, new File(["png"], "shot.png", { type: "image/png" }));
     await slot.findByText("shot.png");
 
     // Picker path: stage a second file, then remove it before creating.
-    const picker = document.querySelector<HTMLInputElement>(
-      'input[type="file"]',
-    )!;
+    const picker =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
     fireEvent.change(picker, {
       target: {
         files: [new File(["doc"], "notes.txt", { type: "text/plain" })],
@@ -403,9 +417,9 @@ describe("NewTaskDialog attachments", () => {
     Object.defineProperty(big, "size", { value: 25 * 1024 * 1024 + 1 });
     pasteFile(titleInput, big);
     const chip = await slot.findByText("big.bin");
-    expect(chip.closest("span")?.parentElement?.getAttribute("title")).toContain(
-      "Over the 25 MB attachment limit",
-    );
+    expect(
+      chip.closest("span")?.parentElement?.getAttribute("title"),
+    ).toContain("Over the 25 MB attachment limit");
 
     // The rejected chip blocks creation instead of being silently dropped.
     await slot.findByText(/Remove attachments over the 25 MB limit/);
@@ -653,7 +667,11 @@ describe("savePresetDraft", () => {
 
   it("maps empty worktree targets to nulls (defaults)", async () => {
     const { calls, rpc } = captureRpc();
-    await savePresetDraft(rpc, null, { ...draft, baseBranch: "", machineId: "" });
+    await savePresetDraft(rpc, null, {
+      ...draft,
+      baseBranch: "",
+      machineId: "",
+    });
     expect(calls[0]!.input).toMatchObject({
       environmentKind: "new-worktree",
       baseBranch: null,
@@ -680,11 +698,7 @@ describe("PresetDialog environment section", () => {
               {
                 id: "claude-code",
                 name: "Claude Code",
-                supportedPermissionModes: [
-                  "accept-edits",
-                  "auto",
-                  "full",
-                ],
+                supportedPermissionModes: ["accept-edits", "auto", "full"],
               },
             ],
           }),

@@ -1,4 +1,7 @@
-import type { PluginFileOpenerProps, PluginFileOpenerSource } from "@bb/plugin-sdk";
+import type {
+  PluginFileOpenerProps,
+  PluginFileOpenerSource,
+} from "@get-bb/plugin-sdk";
 import {
   createPluginPanelFixedPanelTab,
   type PluginPanelFixedPanelTab,
@@ -134,9 +137,10 @@ function fileForOpenRequest({
   request,
   resolvedEnvironmentId,
   threadId,
-}: Omit<CreateFileOpenerTabForRequestArgs, "fileOpeners" | "preference">):
-  | PluginFileOpenerProps
-  | null {
+}: Omit<
+  CreateFileOpenerTabForRequestArgs,
+  "fileOpeners" | "preference"
+>): PluginFileOpenerProps | null {
   switch (request.kind) {
     case "workspace-file-preview": {
       // Same guard as the built-in path, plus live-content-only rules.

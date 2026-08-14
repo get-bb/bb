@@ -32,7 +32,11 @@ describe("PluginSlotMount", () => {
   it("collapses a throwing slot to a crash chip and keeps siblings alive", () => {
     render(
       <>
-        <PluginSlotMount pluginId="broken" slotKind="homepageSection" slotId="a">
+        <PluginSlotMount
+          pluginId="broken"
+          slotKind="homepageSection"
+          slotId="a"
+        >
           <Bomb />
         </PluginSlotMount>
         <PluginSlotMount pluginId="fine" slotKind="homepageSection" slotId="b">

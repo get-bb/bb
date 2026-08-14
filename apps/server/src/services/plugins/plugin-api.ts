@@ -39,7 +39,6 @@ import type {
   PluginMentionTrigger,
   PluginRealtime,
   PluginRpc,
-  PluginRpcMethodContract,
   PluginServerApi,
   PluginSettingDescriptors,
   PluginSettingValue,
@@ -51,7 +50,25 @@ import type {
   PluginThreadEventName,
   PluginUi,
   StandardSchemaV1,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
+import {
+  AGENT_TOOL_NAME_PATTERN,
+  BACKGROUND_NAME_PATTERN,
+  CLI_COMMAND_NAME_PATTERN,
+  isZodSchemaLike,
+  KV_VALUE_MAX_BYTES,
+  MENTION_PROVIDER_ID_PATTERN,
+  normalizeMentionProviderTriggers,
+  PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS,
+  PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS,
+  PLUGIN_HTTP_METHODS,
+  PLUGIN_MENTION_TRIGGER_VALUES,
+  readRpcMethodContract,
+  RESERVED_AGENT_TOOL_NAMES,
+  RESERVED_BB_CLI_COMMANDS,
+  RPC_METHOD_PATTERN,
+  summarizeParseIssues,
+} from "@get-bb/plugin-sdk/internal/host-policy";
 import type { BbSdk, ThreadForkArgs, ThreadSpawnArgs } from "@bb/sdk";
 import type { ServerLogger } from "../../types.js";
 import type { PluginInteractionResult } from "../interactions/pending-interactions.js";
@@ -61,7 +78,7 @@ import {
   registerSettingDescriptors,
 } from "./plugin-settings.js";
 
-// The backend plugin API contract lives in @bb/plugin-sdk (plugin authors
+// The backend plugin API contract lives in @get-bb/plugin-sdk (plugin authors
 // compile against it); this module implements it. Re-exported so server code
 // keeps one import site for plugin API types.
 export type {
@@ -110,7 +127,7 @@ export type {
   PluginThreadEventPayloads,
   PluginUi,
   StandardSchemaV1,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 
 /**
  * Thrown when a plugin calls into an API handle that has been invalidated by
@@ -144,45 +161,6 @@ export class NeedsConfigurationError extends Error {
 
 export function isNeedsConfigurationError(error: unknown): error is Error {
   return error instanceof Error && error.name === "NeedsConfigurationError";
-}
-
-/** JSON values ≤256KB; larger writes are rejected with a clear error. */
-const KV_VALUE_MAX_BYTES = 256 * 1024;
-
-function isStandardSchema(value: unknown): value is StandardSchemaV1 {
-  if (typeof value !== "object" || value === null) return false;
-  const standard = Reflect.get(value, "~standard");
-  return (
-    typeof standard === "object" &&
-    standard !== null &&
-    Reflect.get(standard, "version") === 1 &&
-    typeof Reflect.get(standard, "vendor") === "string" &&
-    typeof Reflect.get(standard, "validate") === "function"
-  );
-}
-
-function readRpcMethodContract(
-  method: string,
-  value: unknown,
-): PluginRpcMethodContract {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(
-      `rpc method "${method}" contract must provide input and output Standard Schemas`,
-    );
-  }
-  const input = Reflect.get(value, "input");
-  const output = Reflect.get(value, "output");
-  if (!isStandardSchema(input)) {
-    throw new Error(
-      `rpc method "${method}" input must be a Standard Schema v1 validator`,
-    );
-  }
-  if (!isStandardSchema(output)) {
-    throw new Error(
-      `rpc method "${method}" output must be a Standard Schema v1 validator`,
-    );
-  }
-  return { input, output };
 }
 
 /** Per-event handler lists recorded by `bb.events.on`; dropped with the handle. */
@@ -234,36 +212,11 @@ export interface PluginAgentToolRecord {
   ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
 }
 
-/**
- * Core `bb` CLI top-level command names (plus commander's built-in help).
- * Plugin CLI commands may not shadow these. Maintained by hand — kept in
- * sync with apps/cli/src/index.ts by
- * apps/cli/src/__tests__/plugin-cli-proxy.test.ts.
- */
-export const RESERVED_BB_CLI_COMMANDS: readonly string[] = [
-  // "automation" is intentionally absent: the builtin automations plugin owns it.
-  "environment",
-  "guide",
-  "help",
-  "manager",
-  "plugin",
-  "project",
-  "provider",
-  "skill",
-  "status",
-  "theme",
-  "thread",
-];
-
-/**
- * Built-in dynamic tool names plugins may not shadow. Maintained by hand —
- * kept in sync with the built-in tools in
- * services/threads/thread-runtime-config.ts by
- * test/services/plugins/plugin-agent-tools.test.ts.
- */
-export const RESERVED_AGENT_TOOL_NAMES: readonly string[] = [
-  "update_environment_directory",
-];
+export {
+  PLUGIN_MENTION_TRIGGER_VALUES,
+  RESERVED_AGENT_TOOL_NAMES,
+  RESERVED_BB_CLI_COMMANDS,
+};
 
 /** Runtime record of a registered mention provider. */
 export interface PluginMentionProviderRecord {
@@ -277,7 +230,6 @@ export interface PluginMentionProviderRecord {
     itemId: string,
   ) => { context: string } | Promise<{ context: string }>;
 }
-
 
 /** Runtime record of a registered background service. */
 export interface PluginBackgroundServiceRecord {
@@ -301,90 +253,6 @@ export interface PluginCliRegistrationRecord {
     argv: string[],
     ctx: PluginCliContext,
   ) => PluginCliResult | Promise<PluginCliResult>;
-}
-
-const PLUGIN_HTTP_METHODS = new Set([
-  "GET",
-  "POST",
-  "PUT",
-  "PATCH",
-  "DELETE",
-  "HEAD",
-  "OPTIONS",
-]);
-
-// Rpc method names become URL path segments.
-const RPC_METHOD_PATTERN = /^[a-zA-Z0-9_-]+$/;
-
-// Service/schedule names appear in status text and plugin_schedules rows.
-const BACKGROUND_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
-
-// CLI command names become `bb <name>` invocations.
-const CLI_COMMAND_NAME_PATTERN = /^[a-z0-9-]+$/;
-
-// Agent tool names are shown to (and called by) the model.
-const AGENT_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
-const PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS = 4096;
-/** Status labels ride on every tool-call event and share one timeline row. */
-const PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS = 80;
-
-// Thread action ids become URL path segments.
-
-// Mention provider ids prefix wire item ids ("<providerId>:<itemId>"), so
-// ":" is excluded to keep the split unambiguous.
-const MENTION_PROVIDER_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
-export const PLUGIN_MENTION_TRIGGER_VALUES = [
-  "@",
-  "#",
-  "$",
-  "!",
-  "~",
-] as const satisfies readonly PluginMentionTrigger[];
-const DEFAULT_PLUGIN_MENTION_TRIGGERS = [
-  "@",
-] as const satisfies readonly PluginMentionTrigger[];
-
-function isPluginMentionTrigger(value: unknown): value is PluginMentionTrigger {
-  return (
-    typeof value === "string" &&
-    (PLUGIN_MENTION_TRIGGER_VALUES as readonly string[]).includes(value)
-  );
-}
-
-function normalizeMentionProviderTriggers(
-  providerId: string,
-  triggers: unknown,
-): readonly PluginMentionTrigger[] {
-  if (triggers === undefined) {
-    return DEFAULT_PLUGIN_MENTION_TRIGGERS;
-  }
-  if (!Array.isArray(triggers)) {
-    throw new Error(
-      `mention provider "${providerId}" triggers must be an array`,
-    );
-  }
-  if (triggers.length === 0) {
-    throw new Error(
-      `mention provider "${providerId}" triggers must include at least one trigger`,
-    );
-  }
-  const seen = new Set<PluginMentionTrigger>();
-  const normalized: PluginMentionTrigger[] = [];
-  for (const trigger of triggers) {
-    if (!isPluginMentionTrigger(trigger)) {
-      throw new Error(
-        `mention provider "${providerId}" trigger ${JSON.stringify(trigger)} is invalid; use one of ${PLUGIN_MENTION_TRIGGER_VALUES.join(" ")}`,
-      );
-    }
-    if (seen.has(trigger)) {
-      throw new Error(
-        `mention provider "${providerId}" trigger ${JSON.stringify(trigger)} is duplicated`,
-      );
-    }
-    seen.add(trigger);
-    normalized.push(trigger);
-  }
-  return normalized;
 }
 
 export type PluginSettingsListener = (
@@ -442,35 +310,6 @@ export type PluginInstructionProvider = (ctx: {
 export type PluginAgentConfigurationProvider = (
   context: PluginAgentConfigurationContext,
 ) => PluginAgentConfiguration;
-
-/** Duck-typed zod detection: plugin sources may carry their own zod copy,
- * so instanceof is useless — anything with safeParse is treated as zod. */
-function isZodSchemaLike(value: unknown): boolean {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { safeParse?: unknown }).safeParse === "function"
-  );
-}
-
-/** Compact issue summary from a (possibly foreign-instance) zod error. */
-function summarizeParseIssues(error: unknown): string {
-  const issues = (
-    error as { issues?: Array<{ path?: PropertyKey[]; message?: string }> }
-  )?.issues;
-  if (Array.isArray(issues) && issues.length > 0) {
-    return issues
-      .map((issue) => {
-        const path =
-          Array.isArray(issue.path) && issue.path.length > 0
-            ? issue.path.join(".")
-            : "(input)";
-        return `${path}: ${issue.message ?? "invalid"}`;
-      })
-      .join("; ");
-  }
-  return error instanceof Error ? error.message : String(error);
-}
 
 /**
  * Wrap the shared server-bound SDK for one plugin: thread creation gets

@@ -1948,7 +1948,6 @@ export function buildTimelineTurnSummaryDetails(
     maxDataBytes: THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
     maxInlineOutputChars: null,
   });
-  let detailsEventDataBytes = fullDetailsFloor.eventDataBytes;
   let detailsInlineOutputLimit: InlineOutputCharLimit = null;
   if (fullDetailsFloor.kind !== "fits") {
     detailsInlineOutputLimit = DEFAULT_MAX_INLINE_OUTPUT_CHARS;
@@ -1964,7 +1963,6 @@ export function buildTimelineTurnSummaryDetails(
         "Timeline turn details exceed the safe response limit",
       );
     }
-    detailsEventDataBytes = cappedDetailsFloor.eventDataBytes;
   }
   const exactEventRows = listStoredTimelineWindowEventRows(db, {
     ...detailsWindow,
@@ -2044,6 +2042,25 @@ export function buildTimelineTurnSummaryDetails(
     },
     useExactEventRowBounds: exactEventRowsForRequestedTurn.removedRows,
   });
+  // The same whole-item ownership rule the timeline window applies, for the
+  // same reason. A byte cut can fall between an item's `item/started` and its
+  // `item/completed`, and the timeline gives such an item to the newest slice.
+  // Without the rule here, the older slice's details project the item from its
+  // `item/started` row alone and render it "pending" after the turn finished.
+  const wholeItemEventRows = ensureSequenceWindowWholeItemRows(db, {
+    beforeSequence: detailsWindow.beforeSequence,
+    maxInlineOutputChars: detailsInlineOutputLimit,
+    rows: mergeStoredEventRowsById([...requestedTurnStartedRows, ...eventRows]),
+    sequenceStart: detailsWindow.sequenceStart,
+    threadId: thread.id,
+  });
+  // The floor queries measured the slice before closure, and closure backfills
+  // the earlier lifecycle rows of the items this slice owns. Measure what the
+  // route actually holds, so the parent expansion spends what is left rather
+  // than a pre-closure estimate of it. The subtraction may go negative, which
+  // is the safe direction: the parent fetch then stays inside its bounds.
+  const detailsEventDataBytes =
+    byteLengthOfStoredEventRows(wholeItemEventRows);
   const eventRowsWithParentedChildren = ensureTimelineWindowParentedRows(db, {
     maxInlineOutputChars: detailsInlineOutputLimit,
     outOfBoundsChildDataByteLimit:
@@ -2053,7 +2070,7 @@ export function buildTimelineTurnSummaryDetails(
       sequenceStart: detailsWindow.sequenceStart,
     },
     threadId: thread.id,
-    rows: mergeStoredEventRowsById([...requestedTurnStartedRows, ...eventRows]),
+    rows: wholeItemEventRows,
   }).rows;
   const eventRowsWithTurnStarts = ensureTimelineWindowTurnStartedRows(db, {
     threadId: thread.id,

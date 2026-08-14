@@ -1405,6 +1405,9 @@ describe("@bb/sdk", () => {
     ).resolves.toMatchObject([
       { entryId: "notes", pluginId: "notes", compatible: true },
     ]);
+    expect(sdk.plugins.catalog.submission()).toEqual({
+      url: "https://docs.google.com/forms/d/e/1FAIpQLScRTABhHwCjuZWYn0lJJd0aZT2cYvGk2KaZ2GF-1GsXoLMLSQ/viewform",
+    });
 
     expect(queue.requests).toEqual([
       {
@@ -1589,6 +1592,7 @@ describe("@bb/sdk", () => {
         body: {
           skills: [registrySkill],
           pagination: { page: 0, perPage: 24, total: 1, hasMore: false },
+          ranking: "trending",
         },
       },
       { body: { stars: 27_053 } },

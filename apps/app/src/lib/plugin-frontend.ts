@@ -28,8 +28,8 @@ import type {
   PluginContentScriptDisposer,
   PluginContentScriptRegistration,
   PluginSdkApp,
-} from "@bb/plugin-sdk";
-import { normalizePluginThreadRowStatus } from "@bb/plugin-sdk/internal/composer-customization-validation";
+} from "@get-bb/plugin-sdk";
+import { normalizePluginThreadRowStatus } from "@get-bb/plugin-sdk/internal/composer-customization-validation";
 import { resetCrashedPluginSlots } from "@/components/plugin/PluginSlotMount";
 import { runWithPluginDomIsolationAsync } from "./foreign-dom-mutation-guard";
 import {
@@ -237,7 +237,7 @@ export function installPluginRuntime(): void {
     reactDomClient,
     jsxRuntime,
     jsxDevRuntime,
-    // The real `@bb/plugin-sdk/app` surface: definePluginApp, the hooks, and
+    // The real `@get-bb/plugin-sdk/app` surface: definePluginApp, the hooks, and
     // the curated UI kit. Kept in type-sync with the facade package via
     // `satisfies PluginSdkApp` in plugin-sdk-app-impl.
     pluginSdkApp: pluginSdkAppImplementation,
@@ -728,7 +728,7 @@ export async function reconcilePluginFrontends(
         const definition = record.module.default;
         if (!isPluginAppDefinition(definition)) {
           throw new Error(
-            "the bundle's default export is not definePluginApp(...) from @bb/plugin-sdk/app",
+            "the bundle's default export is not definePluginApp(...) from @get-bb/plugin-sdk/app",
           );
         }
         collected = collectPluginAppRegistrations(definition, (reason) => {

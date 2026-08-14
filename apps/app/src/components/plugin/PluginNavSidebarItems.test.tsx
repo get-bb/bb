@@ -337,7 +337,7 @@ describe("PluginNavSidebarItems", () => {
   it("hides the built-in Extensions row like a plugin row", async () => {
     registerPanel("docs", "Docs");
 
-    renderSidebarItems({ toolsRoutePath: "/tools/skills" });
+    renderSidebarItems({ toolsRoutePath: "/extensions/skills" });
 
     // Extensions leads the list, above the plugin rows.
     expect(panelRowNames()).toEqual(["Extensions", "Docs"]);
@@ -366,7 +366,7 @@ describe("PluginNavSidebarItems", () => {
     registerPanel("github", "GitHub");
 
     renderSidebarItems({
-      toolsRoutePath: "/tools/skills",
+      toolsRoutePath: "/extensions/skills",
       storedOrder: ["github/main", "docs/main"],
     });
 
@@ -377,7 +377,7 @@ describe("PluginNavSidebarItems", () => {
     // The Extensions row makes this list mount before any plugin has registered.
     // The order effect must not save that empty snapshot over the user's rows.
     renderSidebarItems({
-      toolsRoutePath: "/tools/skills",
+      toolsRoutePath: "/extensions/skills",
       storedOrder: ["github/main", "__builtin__/tools", "docs/main"],
     });
 
@@ -394,8 +394,8 @@ describe("PluginNavSidebarItems", () => {
   it("saves no Extensions key while the row is absent", async () => {
     registerPanel("docs", "Docs");
 
-    // Extensions is off, so nothing should reserve a slot for a row that never
-    // renders here.
+    // This isolated host renders plugin rows without the Extensions route, so
+    // nothing should reserve a slot for a row that never renders here.
     renderSidebarItems({ storedOrder: ["docs/main"] });
 
     await waitFor(() => {
@@ -404,5 +404,28 @@ describe("PluginNavSidebarItems", () => {
     expect(
       window.localStorage.getItem("bb.sidebar.pluginPanelOrder") ?? "",
     ).not.toContain("__builtin__/tools");
+  });
+
+  it("carries both Extensions glyphs so hover swaps without reflow", () => {
+    renderSidebarItems({ toolsRoutePath: "/extensions/plugins" });
+
+    const extensionsRow = screen
+      .getAllByRole("button")
+      .find((button) => button.textContent?.trim() === "Extensions");
+    expect(extensionsRow).toBeTruthy();
+
+    // The swap is CSS on the row's :hover, which jsdom cannot evaluate. What is
+    // testable — and what the CSS depends on — is that BOTH glyphs are rendered
+    // into the one swap container: a regression to a single icon, or to React
+    // hover state, breaks this and would also reintroduce the layout shift the
+    // shared grid cell exists to prevent.
+    const swap = extensionsRow?.querySelector(".bb-sidebar-row-icon-swap");
+    expect(swap).toBeTruthy();
+    expect(
+      swap?.querySelector('.bb-sidebar-row-icon-rest[data-icon="Toolbox"]'),
+    ).toBeTruthy();
+    expect(
+      swap?.querySelector('.bb-sidebar-row-icon-hover[data-icon="ToolCase"]'),
+    ).toBeTruthy();
   });
 });

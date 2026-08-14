@@ -5,7 +5,30 @@ import Database from "better-sqlite3";
 import { CronExpressionParser } from "cron-parser";
 import { Hono } from "hono";
 import { z } from "zod";
-import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "../backend-contract.js";
+import { PLUGIN_INTERACTION_MAX_TITLE_LENGTH } from "@bb/domain/plugin-interaction-limits";
+import {
+  AGENT_TOOL_NAME_PATTERN,
+  BACKGROUND_NAME_PATTERN,
+  CLI_COMMAND_NAME_PATTERN,
+  enforcePluginCliOutputLimit,
+  isZodSchemaLike,
+  KV_VALUE_MAX_BYTES,
+  MENTION_PROVIDER_ID_PATTERN,
+  normalizeMentionProviderTriggers,
+  PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
+  PLUGIN_AGENT_SELECTION_MAX_IDS,
+  PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS,
+  PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS,
+  PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES,
+  PLUGIN_HTTP_METHODS,
+  readRpcMethodContract,
+  registerSettingDescriptors,
+  RESERVED_AGENT_TOOL_NAMES,
+  RESERVED_BB_CLI_COMMANDS,
+  RPC_METHOD_PATTERN,
+  summarizeParseIssues,
+  validateSettingsUpdate,
+} from "../internal/host-policy.js";
 import type {
   BbPluginApi,
   PluginAgentConfiguration,
@@ -19,7 +42,6 @@ import type {
   PluginCliCommandInfo,
   PluginCliContext,
   PluginCliExecutionResult,
-  PluginCliOutputLimitError,
   PluginCliResult,
   PluginEvents,
   PluginHttp,
@@ -37,7 +59,6 @@ import type {
   PluginRealtime,
   PluginRpc,
   PluginServerApi,
-  PluginSettingDescriptor,
   PluginSettingDescriptors,
   PluginSettingValue,
   PluginSettings,
@@ -49,13 +70,12 @@ import type {
   PluginThreadEventPayloads,
   PluginUi,
   PluginRpcError,
-  PluginRpcMethodContract,
   PluginRpcValidationIssue,
   StandardSchemaV1,
   StandardSchemaV1Issue,
   StandardSchemaV1Result,
   JsonValue,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 import {
   createFakeSdk,
   type FakeSdkHarness,
@@ -99,138 +119,6 @@ export class PluginContextStaleError extends Error {
     this.name = "PluginContextStaleError";
   }
 }
-
-/** JSON values ≤256KB; larger writes are rejected with a clear error. */
-const KV_VALUE_MAX_BYTES = 256 * 1024;
-/** Mirrors the server's pending-interaction title schema. */
-const PLUGIN_INTERACTION_MAX_TITLE_LENGTH = 160;
-
-const PLUGIN_HTTP_METHODS = new Set([
-  "GET",
-  "POST",
-  "PUT",
-  "PATCH",
-  "DELETE",
-  "HEAD",
-  "OPTIONS",
-]);
-
-const RPC_METHOD_PATTERN = /^[a-zA-Z0-9_-]+$/;
-const BACKGROUND_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
-const CLI_COMMAND_NAME_PATTERN = /^[a-z0-9-]+$/;
-const AGENT_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
-const PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS = 4096;
-/** Status labels ride on every tool-call event and share one timeline row. */
-const PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS = 80;
-const PLUGIN_AGENT_SELECTION_MAX_IDS = 256;
-const PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS = 4096;
-
-function enforcePluginCliOutputLimit(
-  result: Omit<PluginCliExecutionResult, "error">,
-  jsonOutput: boolean,
-): PluginCliExecutionResult {
-  const stdoutBytes = Buffer.byteLength(result.stdout, "utf8");
-  const stderrBytes = Buffer.byteLength(result.stderr, "utf8");
-  const totalBytes = stdoutBytes + stderrBytes;
-  if (totalBytes <= PLUGIN_CLI_OUTPUT_MAX_BYTES) return result;
-
-  const error: PluginCliOutputLimitError = {
-    code: "plugin_cli_output_too_large",
-    message:
-      `Plugin CLI output is ${totalBytes} bytes (${stdoutBytes} stdout + ${stderrBytes} stderr), ` +
-      `exceeding the ${PLUGIN_CLI_OUTPUT_MAX_BYTES}-byte limit. Narrow the query, request a smaller page, or use a file/streaming command.`,
-    maxBytes: PLUGIN_CLI_OUTPUT_MAX_BYTES,
-    stdoutBytes,
-    stderrBytes,
-    totalBytes,
-  };
-  return jsonOutput
-    ? {
-        exitCode: 1,
-        stdout: JSON.stringify({ error }),
-        stderr: "",
-        error,
-      }
-    : { exitCode: 1, stdout: "", stderr: error.message, error };
-}
-const MENTION_PROVIDER_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
-const PLUGIN_MENTION_TRIGGER_VALUES = [
-  "@",
-  "#",
-  "$",
-  "!",
-  "~",
-] as const satisfies readonly PluginMentionTrigger[];
-const DEFAULT_PLUGIN_MENTION_TRIGGERS = [
-  "@",
-] as const satisfies readonly PluginMentionTrigger[];
-const SETTING_KEY_PATTERN = /^[a-zA-Z0-9_-]+$/;
-
-function isPluginMentionTrigger(value: unknown): value is PluginMentionTrigger {
-  return (
-    typeof value === "string" &&
-    (PLUGIN_MENTION_TRIGGER_VALUES as readonly string[]).includes(value)
-  );
-}
-
-function normalizeMentionProviderTriggers(
-  providerId: string,
-  triggers: unknown,
-): readonly PluginMentionTrigger[] {
-  if (triggers === undefined) {
-    return DEFAULT_PLUGIN_MENTION_TRIGGERS;
-  }
-  if (!Array.isArray(triggers)) {
-    throw new Error(
-      `mention provider "${providerId}" triggers must be an array`,
-    );
-  }
-  if (triggers.length === 0) {
-    throw new Error(
-      `mention provider "${providerId}" triggers must include at least one trigger`,
-    );
-  }
-  const seen = new Set<PluginMentionTrigger>();
-  const normalized: PluginMentionTrigger[] = [];
-  for (const trigger of triggers) {
-    if (!isPluginMentionTrigger(trigger)) {
-      throw new Error(
-        `mention provider "${providerId}" trigger ${JSON.stringify(trigger)} is invalid — use one of ${PLUGIN_MENTION_TRIGGER_VALUES.join(" ")}`,
-      );
-    }
-    if (seen.has(trigger)) {
-      throw new Error(
-        `mention provider "${providerId}" trigger ${JSON.stringify(trigger)} is duplicated`,
-      );
-    }
-    seen.add(trigger);
-    normalized.push(trigger);
-  }
-  return normalized;
-}
-
-/**
- * Copies of the server's hand-maintained reserved-name lists
- * (RESERVED_BB_CLI_COMMANDS / RESERVED_AGENT_TOOL_NAMES in
- * apps/server/src/services/plugins/plugin-api.ts) so registrations fail here
- * the same way they fail there. Update alongside the server lists.
- */
-const RESERVED_BB_CLI_COMMANDS: readonly string[] = [
-  "environment",
-  "guide",
-  "help",
-  "manager",
-  "plugin",
-  "project",
-  "provider",
-  "status",
-  "theme",
-  "thread",
-  "ui",
-];
-const RESERVED_AGENT_TOOL_NAMES: readonly string[] = [
-  "update_environment_directory",
-];
 
 export type FakeLogLevel = "debug" | "info" | "warn" | "error";
 
@@ -282,7 +170,6 @@ export interface FakeAgentToolRecord {
     ctx: PluginAgentToolContext,
   ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
 }
-
 
 export interface FakeMentionProviderRecord {
   id: string;
@@ -485,87 +372,6 @@ export interface FakePluginHost {
   harness: FakePluginHarness;
 }
 
-// ---------------------------------------------------------------------------
-// Settings descriptor validation — ported from the server's
-// plugin-settings.ts so plugins trip over the same errors here.
-// ---------------------------------------------------------------------------
-
-const settingsBaseFields = {
-  label: z.string().min(1),
-  description: z.string().min(1).optional(),
-};
-
-const settingDescriptorSchema = z.discriminatedUnion("type", [
-  z
-    .object({
-      type: z.literal("string"),
-      ...settingsBaseFields,
-      secret: z.literal(true).optional(),
-      default: z.string().optional(),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("boolean"),
-      ...settingsBaseFields,
-      default: z.boolean().optional(),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("select"),
-      ...settingsBaseFields,
-      options: z.array(z.string().min(1)).min(1),
-      default: z.string().optional(),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("project"),
-      ...settingsBaseFields,
-      default: z.string().optional(),
-    })
-    .strict(),
-]);
-
-function registerSettingDescriptors(
-  target: PluginSettingDescriptors,
-  added: Record<string, unknown>,
-): PluginSettingDescriptors {
-  const validated: PluginSettingDescriptors = {};
-  for (const [key, raw] of Object.entries(added)) {
-    if (!SETTING_KEY_PATTERN.test(key)) {
-      throw new Error(
-        `invalid setting key "${key}" — use letters, digits, "-" and "_"`,
-      );
-    }
-    if (key in target) {
-      throw new Error(`setting "${key}" is already defined`);
-    }
-    const parsed = settingDescriptorSchema.safeParse(raw);
-    if (!parsed.success) {
-      const issue = parsed.error.issues[0];
-      const path = issue?.path.join(".") ?? "";
-      throw new Error(
-        `invalid descriptor for setting "${key}"${path ? ` (${path})` : ""}: ${issue?.message ?? "unknown error"}`,
-      );
-    }
-    const descriptor = parsed.data;
-    if (
-      descriptor.type === "select" &&
-      descriptor.default !== undefined &&
-      !descriptor.options.includes(descriptor.default)
-    ) {
-      throw new Error(
-        `default for setting "${key}" must be one of its options`,
-      );
-    }
-    validated[key] = descriptor;
-  }
-  Object.assign(target, validated);
-  return validated;
-}
-
 /** Effective typed values: stored value when valid, else the default, else undefined. */
 function readSettingsValues(
   descriptors: PluginSettingDescriptors,
@@ -588,68 +394,10 @@ function readSettingsValues(
   return values;
 }
 
-function validateSettingsUpdate(
-  descriptors: PluginSettingDescriptors,
-  values: Record<string, unknown>,
-): string[] {
-  const errors: string[] = [];
-  for (const [key, value] of Object.entries(values)) {
-    const descriptor: PluginSettingDescriptor | undefined = descriptors[key];
-    if (!descriptor) {
-      errors.push(`unknown setting "${key}"`);
-      continue;
-    }
-    if (value === null) continue; // unset
-    if (descriptor.type === "boolean") {
-      if (typeof value !== "boolean") {
-        errors.push(`setting "${key}" expects a boolean`);
-      }
-      continue;
-    }
-    if (typeof value !== "string") {
-      errors.push(`setting "${key}" expects a string`);
-      continue;
-    }
-    if (descriptor.type === "select" && !descriptor.options.includes(value)) {
-      errors.push(
-        `setting "${key}" must be one of: ${descriptor.options.join(", ")}`,
-      );
-    }
-  }
-  return errors;
-}
-
 // ---------------------------------------------------------------------------
 
 function isNeedsConfigurationError(error: unknown): error is Error {
   return error instanceof Error && error.name === "NeedsConfigurationError";
-}
-
-/** Duck-typed zod detection, same as the host (plugins may carry their own zod). */
-function isZodSchemaLike(value: unknown): boolean {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { safeParse?: unknown }).safeParse === "function"
-  );
-}
-
-function summarizeParseIssues(error: unknown): string {
-  const issues = (
-    error as { issues?: Array<{ path?: PropertyKey[]; message?: string }> }
-  )?.issues;
-  if (Array.isArray(issues) && issues.length > 0) {
-    return issues
-      .map((issue) => {
-        const path =
-          Array.isArray(issue.path) && issue.path.length > 0
-            ? issue.path.join(".")
-            : "(input)";
-        return `${path}: ${issue.message ?? "invalid"}`;
-      })
-      .join("; ");
-  }
-  return error instanceof Error ? error.message : String(error);
 }
 
 function errorMessage(error: unknown): string {
@@ -674,42 +422,6 @@ interface FakeRpcRecord {
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
   handler: (input: never) => unknown;
-}
-
-function isStandardSchema(value: unknown): value is StandardSchemaV1 {
-  if (typeof value !== "object" || value === null) return false;
-  const standard = Reflect.get(value, "~standard");
-  return (
-    typeof standard === "object" &&
-    standard !== null &&
-    Reflect.get(standard, "version") === 1 &&
-    typeof Reflect.get(standard, "vendor") === "string" &&
-    typeof Reflect.get(standard, "validate") === "function"
-  );
-}
-
-function readRpcMethodContract(
-  method: string,
-  value: unknown,
-): PluginRpcMethodContract {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(
-      `rpc method "${method}" contract must provide input and output Standard Schemas`,
-    );
-  }
-  const input = Reflect.get(value, "input");
-  const output = Reflect.get(value, "output");
-  if (!isStandardSchema(input)) {
-    throw new Error(
-      `rpc method "${method}" input must be a Standard Schema v1 validator`,
-    );
-  }
-  if (!isStandardSchema(output)) {
-    throw new Error(
-      `rpc method "${method}" output must be a Standard Schema v1 validator`,
-    );
-  }
-  return { input, output };
 }
 
 function normalizeRpcIssues(
@@ -827,8 +539,6 @@ function normalizeRpcJsonResult(value: unknown): JsonValue {
   return visit(value, "$result");
 }
 
-const AGENT_TOOL_PARAMETERS_MAX_BYTES = 128 * 1024;
-
 function normalizeAgentToolSelections(args: {
   knownIds: ReadonlySet<string>;
   pluginId: string;
@@ -923,9 +633,12 @@ function normalizeAgentToolParameters(args: {
       `configure() output.tools[${index}].parameters is not JSON-serializable`,
     );
   }
-  if (Buffer.byteLength(serialized, "utf8") > AGENT_TOOL_PARAMETERS_MAX_BYTES) {
+  if (
+    Buffer.byteLength(serialized, "utf8") >
+    PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES
+  ) {
     throw new Error(
-      `configure() output.tools[${index}].parameters exceeds the ${AGENT_TOOL_PARAMETERS_MAX_BYTES}-byte limit`,
+      `configure() output.tools[${index}].parameters exceeds the ${PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES}-byte limit`,
     );
   }
   const parameters = JSON.parse(serialized) as Record<string, unknown>;

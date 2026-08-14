@@ -181,6 +181,7 @@ export function resolveElectronBuilderConfig(baseConfig, env) {
   config.mac = mac;
   config.linux = {
     ...config.linux,
+    executableName: releaseConfig.linuxExecutableName,
     icon: "assets/" + releaseConfig.iconFileName,
   };
   config.appId = releaseConfig.appId;

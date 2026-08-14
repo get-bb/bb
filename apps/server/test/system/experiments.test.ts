@@ -15,7 +15,6 @@ describe("experiments settings", () => {
         claudeCodeMockCliTraffic: false,
         editMessages: true,
         newOnboarding: false,
-        toolsHub: false,
       });
     });
   });
@@ -29,7 +28,6 @@ describe("experiments settings", () => {
           claudeCodeMockCliTraffic: true,
           editMessages: true,
           newOnboarding: true,
-          toolsHub: true,
         }),
       });
       expect(put.status).toBe(200);
@@ -37,13 +35,11 @@ describe("experiments settings", () => {
         claudeCodeMockCliTraffic: true,
         editMessages: true,
         newOnboarding: true,
-        toolsHub: true,
       });
       expect(getExperiments(harness.db)).toEqual({
         claudeCodeMockCliTraffic: true,
         editMessages: true,
         newOnboarding: true,
-        toolsHub: true,
       });
 
       const config = await harness.app.request("/api/v1/system/config");
@@ -53,7 +49,6 @@ describe("experiments settings", () => {
         claudeCodeMockCliTraffic: true,
         editMessages: true,
         newOnboarding: true,
-        toolsHub: true,
       });
     });
   });
@@ -70,7 +65,6 @@ describe("experiments settings", () => {
           claudeCodeMockCliTraffic: false,
           editMessages: false,
           newOnboarding: false,
-          toolsHub: false,
         }),
       });
       expect(put.status).toBe(200);

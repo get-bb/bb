@@ -28,10 +28,7 @@ import {
 import {
   evaluatePopupRate,
   isAllowedBrowserUrl,
-  localRequestOriginKey,
-  resolveRequestingFrameLocalOriginKey,
   resolveWindowOpenAction,
-  shouldBlockBrowserRequest,
 } from "./desktop-browser-policy.js";
 
 // At most this many popup → in-panel tabs may be spawned per view in a sliding
@@ -47,6 +44,8 @@ const POPUP_RATE_MAX_IN_WINDOW = 3;
 const RESIZE_SNAPSHOT_HIDE_CAP_MS = 80;
 /** Placeholder quality: transient, stretched during the drag — favor size. */
 const RESIZE_SNAPSHOT_JPEG_QUALITY = 70;
+const RENDERER_RECOVERY_DELAY_MS = 250;
+const RENDERER_RECOVERY_MAX_ATTEMPTS = 2;
 
 function truncate(value: string, max: number): string {
   return value.length > max ? value.slice(0, max) : value;
@@ -68,7 +67,6 @@ interface BrowserViewEntry {
   view: WebContentsView;
   lastErrorText: string | null;
   lastFind: { requestId: number; text: string } | null;
-  currentMainFrameLocalOriginKey: string | null;
   /**
    * The last renderer-measured panel rect. The renderer is the placement
    * authority — it re-measures and pushes whenever its layout actually moves
@@ -79,6 +77,9 @@ interface BrowserViewEntry {
    */
   desiredBounds: BbDesktopBrowserViewBounds;
   popupTimestamps: number[];
+  rendererRecoveryAttempts: number;
+  rendererRecoveryState: "healthy" | "pending" | "blocked";
+  rendererRecoveryTimer: ReturnType<typeof setTimeout> | null;
   visible: boolean;
 }
 
@@ -251,39 +252,6 @@ function setEntryDesiredBounds(args: SetEntryDesiredBoundsArgs): void {
   applyEntryDesiredBounds(args.entry, args.hostWindow);
 }
 
-function clearEntryLocalOriginState(entry: BrowserViewEntry): void {
-  entry.currentMainFrameLocalOriginKey = null;
-}
-
-function commitEntryMainFrameUrl(entry: BrowserViewEntry, url: string): void {
-  const committedOriginKey = localRequestOriginKey(url);
-  if (committedOriginKey !== null) {
-    entry.currentMainFrameLocalOriginKey = committedOriginKey;
-    return;
-  }
-  clearEntryLocalOriginState(entry);
-}
-
-function shouldBlockEntryTopLevelRequest(
-  entry: BrowserViewEntry,
-  url: string,
-): boolean {
-  if (!isAllowedBrowserUrl(url)) {
-    return true;
-  }
-  const webContentsId = entry.view.webContents.id;
-  return shouldBlockBrowserRequest({
-    url,
-    method: "GET",
-    resourceType: "mainFrame",
-    isMainFrame: true,
-    targetWebContentsId: webContentsId,
-    entryWebContentsId: webContentsId,
-    currentMainFrameLocalOriginKey: entry.currentMainFrameLocalOriginKey,
-    requestingFrameOriginKey: null,
-  });
-}
-
 function buildBrowserState(
   tabId: string,
   entry: BrowserViewEntry,
@@ -344,7 +312,60 @@ export function createDesktopBrowserViewManager(
     if (entry.view.webContents.isDestroyed()) {
       return;
     }
-    entry.view.setVisible(entry.visible && !isHostResizing(hostWindow));
+    entry.view.setVisible(
+      entry.visible &&
+        entry.rendererRecoveryState === "healthy" &&
+        !isHostResizing(hostWindow),
+    );
+  }
+
+  function clearEntryRendererRecoveryTimer(entry: BrowserViewEntry): void {
+    if (entry.rendererRecoveryTimer !== null) {
+      clearTimeout(entry.rendererRecoveryTimer);
+      entry.rendererRecoveryTimer = null;
+    }
+  }
+
+  function resetEntryRendererRecovery(entry: BrowserViewEntry): void {
+    clearEntryRendererRecoveryTimer(entry);
+    entry.rendererRecoveryAttempts = 0;
+    entry.rendererRecoveryState = "healthy";
+  }
+
+  function scheduleEntryRendererRecovery(
+    entry: BrowserViewEntry,
+    hostWindow: DesktopBrowserHostWindow,
+    tabId: string,
+  ): void {
+    if (
+      entry.rendererRecoveryState !== "pending" ||
+      !entry.visible ||
+      entry.rendererRecoveryTimer !== null
+    ) {
+      return;
+    }
+    if (entry.rendererRecoveryAttempts >= RENDERER_RECOVERY_MAX_ATTEMPTS) {
+      entry.rendererRecoveryState = "blocked";
+      entry.lastErrorText = "The page renderer stopped repeatedly";
+      pushState(hostWindow, tabId);
+      return;
+    }
+    entry.rendererRecoveryTimer = setTimeout(() => {
+      entry.rendererRecoveryTimer = null;
+      const webContents = entry.view.webContents;
+      if (
+        webContents.isDestroyed() ||
+        entry.rendererRecoveryState !== "pending" ||
+        !entry.visible
+      ) {
+        return;
+      }
+      entry.rendererRecoveryAttempts += 1;
+      entry.rendererRecoveryState = "healthy";
+      entry.lastErrorText = null;
+      webContents.reload();
+      applyEntryVisibility(entry, hostWindow);
+    }, RENDERER_RECOVERY_DELAY_MS);
   }
 
   /**
@@ -404,39 +425,6 @@ export function createDesktopBrowserViewManager(
     // Downloads are denied in v1 (lowest file-surface risk).
     browserSession.on("will-download", (event) => {
       event.preventDefault();
-    });
-    // Network firewall: untrusted pages must not invisibly reach bb's loopback
-    // services or the user's LAN. Top-level http(s) navigation remains allowed;
-    // subresources, fetch/XHR, iframes, and WebSockets are guarded here.
-    browserSession.webRequest.onBeforeRequest((details, callback) => {
-      const targetWebContentsId = details.webContentsId ?? null;
-      const entry =
-        targetWebContentsId === null
-          ? null
-          : (entriesByWebContentsId.get(targetWebContentsId) ?? null);
-      const attributedEntry =
-        entry === null || entry.view.webContents.isDestroyed() ? null : entry;
-      const isMainFrameRequest = details.resourceType === "mainFrame";
-      callback({
-        cancel: shouldBlockBrowserRequest({
-          url: details.url,
-          method: details.method,
-          resourceType: details.resourceType,
-          isMainFrame: isMainFrameRequest,
-          targetWebContentsId,
-          entryWebContentsId: attributedEntry?.view.webContents.id ?? null,
-          currentMainFrameLocalOriginKey:
-            attributedEntry?.currentMainFrameLocalOriginKey ?? null,
-          requestingFrameOriginKey: resolveRequestingFrameLocalOriginKey({
-            origin: details.frame?.origin,
-            url: details.frame?.url,
-            // Electron blanks `frame.origin` for a document's initial
-            // subresources; fall back to the top frame's URL so a same-origin
-            // SPA dev server (Vite, etc.) is not blocked into a blank page.
-            isTopFrame: details.frame?.parent === null,
-          }),
-        }),
-      });
     });
     hardenedSession = browserSession;
     return browserSession;
@@ -505,12 +493,12 @@ export function createDesktopBrowserViewManager(
       if (!event.isMainFrame) {
         return;
       }
-      if (shouldBlockEntryTopLevelRequest(entry, event.url)) {
+      if (!isAllowedBrowserUrl(event.url)) {
         event.preventDefault();
       }
     });
     webContents.on("will-navigate", (event, url) => {
-      if (shouldBlockEntryTopLevelRequest(entry, url)) {
+      if (!isAllowedBrowserUrl(url)) {
         event.preventDefault();
       }
     });
@@ -518,7 +506,7 @@ export function createDesktopBrowserViewManager(
       if (!isMainFrame) {
         return;
       }
-      if (shouldBlockEntryTopLevelRequest(entry, url)) {
+      if (!isAllowedBrowserUrl(url)) {
         event.preventDefault();
       }
     });
@@ -578,18 +566,43 @@ export function createDesktopBrowserViewManager(
       menu.popup();
     });
 
+    webContents.on("render-process-gone", (_event, details) => {
+      if (webContents.isDestroyed() || webContents.getURL().length === 0) {
+        return;
+      }
+      clearEntryRendererRecoveryTimer(entry);
+      entry.rendererRecoveryState = "blocked";
+      if (
+        details.reason === "launch-failed" ||
+        details.reason === "integrity-failure"
+      ) {
+        entry.lastErrorText = "The page renderer could not start";
+        applyEntryVisibility(entry, hostWindow);
+        pushState(hostWindow, tabId);
+        return;
+      }
+      entry.rendererRecoveryState = "pending";
+      entry.lastErrorText = null;
+      applyEntryVisibility(entry, hostWindow);
+      // Hidden views wait until the panel opens. This keeps memory eviction
+      // effective. Visible views retry after a short delay and stop after the
+      // bounded attempt count, so a crash loop cannot restart indefinitely.
+      scheduleEntryRendererRecovery(entry, hostWindow, tabId);
+    });
+
     const refresh = () => pushState(hostWindow, tabId);
+    webContents.on("did-finish-load", () => {
+      resetEntryRendererRecovery(entry);
+      applyEntryVisibility(entry, hostWindow);
+      refresh();
+    });
     webContents.on("did-start-loading", refresh);
     webContents.on("did-stop-loading", refresh);
-    webContents.on("did-navigate", (_event, url) => {
-      commitEntryMainFrameUrl(entry, url);
+    webContents.on("did-navigate", () => {
       entry.lastErrorText = null;
       refresh();
     });
-    webContents.on("did-navigate-in-page", (_event, url, isMainFrame) => {
-      if (isMainFrame) {
-        commitEntryMainFrameUrl(entry, url);
-      }
+    webContents.on("did-navigate-in-page", () => {
       refresh();
     });
     webContents.on("did-start-navigation", () => {
@@ -633,9 +646,11 @@ export function createDesktopBrowserViewManager(
       view,
       lastErrorText: null,
       lastFind: null,
-      currentMainFrameLocalOriginKey: null,
       desiredBounds: args.desiredBounds,
       popupTimestamps: [],
+      rendererRecoveryAttempts: 0,
+      rendererRecoveryState: "healthy",
+      rendererRecoveryTimer: null,
       visible: false,
     };
     wireWebContents(args.hostWindow, args.tabId, entry);
@@ -671,7 +686,7 @@ export function createDesktopBrowserViewManager(
     }
     entries.delete(key);
     entriesByWebContentsId.delete(entry.view.webContents.id);
-    clearEntryLocalOriginState(entry);
+    clearEntryRendererRecoveryTimer(entry);
     if (!hostWindow.isDestroyed()) {
       hostWindow.contentView.removeChildView(entry.view);
     }
@@ -737,12 +752,16 @@ export function createDesktopBrowserViewManager(
     },
     navigate({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
+        resetEntryRendererRecovery(entry);
+        applyEntryVisibility(entry, hostWindow);
         loadIfNeeded(entry, request.url);
       });
     },
     goBack({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
         if (entry.view.webContents.navigationHistory.canGoBack()) {
+          resetEntryRendererRecovery(entry);
+          applyEntryVisibility(entry, hostWindow);
           entry.view.webContents.navigationHistory.goBack();
         }
       });
@@ -750,13 +769,17 @@ export function createDesktopBrowserViewManager(
     goForward({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
         if (entry.view.webContents.navigationHistory.canGoForward()) {
+          resetEntryRendererRecovery(entry);
+          applyEntryVisibility(entry, hostWindow);
           entry.view.webContents.navigationHistory.goForward();
         }
       });
     },
     reload({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
+        resetEntryRendererRecovery(entry);
         entry.view.webContents.reload();
+        applyEntryVisibility(entry, hostWindow);
       });
     },
     stop({ hostWindow, tabId }) {
@@ -785,6 +808,7 @@ export function createDesktopBrowserViewManager(
         const wasVisible = entry.visible;
         entry.visible = request.visible;
         applyEntryVisibility(entry, hostWindow);
+        scheduleEntryRendererRecovery(entry, hostWindow, request.tabId);
         // Focus the view only on a real not-visible → visible transition so the
         // Edit-menu copy/cut/paste roles and Cmd+C target this view's
         // webContents (the focused one). Skip redundant re-syncs so we never
@@ -842,7 +866,7 @@ export function createDesktopBrowserViewManager(
         }
         entries.delete(key);
         entriesByWebContentsId.delete(entry.view.webContents.id);
-        clearEntryLocalOriginState(entry);
+        clearEntryRendererRecoveryTimer(entry);
         if (!entry.view.webContents.isDestroyed()) {
           entry.view.webContents.close();
         }
@@ -853,7 +877,7 @@ export function createDesktopBrowserViewManager(
       for (const [key, entry] of [...entries.entries()]) {
         entries.delete(key);
         entriesByWebContentsId.delete(entry.view.webContents.id);
-        clearEntryLocalOriginState(entry);
+        clearEntryRendererRecoveryTimer(entry);
         if (!entry.view.webContents.isDestroyed()) {
           entry.view.webContents.close();
         }

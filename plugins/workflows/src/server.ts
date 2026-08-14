@@ -1,4 +1,4 @@
-import type { BbPluginApi, PluginAgentToolResult } from "@bb/plugin-sdk";
+import type { BbPluginApi, PluginAgentToolResult } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { registerWorkflowCli } from "./cli.js";
 import { migrations } from "./data.js";
