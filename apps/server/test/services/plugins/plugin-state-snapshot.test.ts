@@ -436,8 +436,7 @@ describe("plugin activation snapshots and garbage collection", () => {
         kind: "git",
         url: "https://example.test/repo.git",
         subdirectory: null,
-        requestedRef: "main",
-        refKind: "branch",
+        selector: { kind: "ref", ref: "main", refKind: "branch" },
       },
       exactResolution: { kind: "git", commit },
       updateState: {
