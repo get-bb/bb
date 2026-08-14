@@ -340,6 +340,7 @@ describe("bb plugin catalog", () => {
     expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
       entryId: "notes",
       marketplace: "acme-plugins",
+      confirmedSource: thirdPartyPlan.resolvedSource,
     });
     const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
     expect(output).toContain("Acme Plugins — a third-party marketplace");

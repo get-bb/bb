@@ -89,6 +89,8 @@ export interface InstallContext {
    * declares any other id; absent means direct installs with no expectation.
    */
   expectedPluginId?: string;
+  /** Git commit shown in the third-party install confirmation. */
+  expectedGitCommit?: string;
   /**
    * Engine ranges a marketplace listing declared. They may narrow the plugin
    * manifest's own ranges; {@link RegisterInstalledArgs} refuses widening.
@@ -673,6 +675,14 @@ export function createManagedPluginArtifacts(
       context,
     );
     const resolvedCommit = resolution.commit;
+    if (
+      context.expectedGitCommit !== undefined &&
+      resolvedCommit !== context.expectedGitCommit
+    ) {
+      throw new Error(
+        `install refused: the git source changed after confirmation; expected ${context.expectedGitCommit}, resolved ${resolvedCommit}`,
+      );
+    }
     const resolvedSelector = resolution.selector;
     const checkoutRef = gitSelectorRefName(resolvedSelector);
     function identityFor(

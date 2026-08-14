@@ -323,9 +323,15 @@ describe("third-party marketplaces", () => {
     const catalog = service({
       fetch: marketplaceFetch({
         [OFFICIAL_URL]: manifest("bb-official", [
-          entry({ id: "notes", displayName: "Official Notes" }),
+          entry({
+            id: "notes",
+            displayName: "Official Notes",
+            source: { npm: { package: "bb-plugin-notes" } },
+          }),
         ]),
-        [ACME_URL]: manifest("acme-plugins", [entry()]),
+        [ACME_URL]: manifest("acme-plugins", [
+          entry({ source: { npm: { package: "bb-plugin-notes" } } }),
+        ]),
       }),
     });
     await catalog.refresh(1_000);
@@ -337,14 +343,18 @@ describe("third-party marketplaces", () => {
     expect(installedCatalogEntries).toEqual([]);
 
     await expect(
-      catalog.install({ entryId: "notes", marketplace: "acme-plugins" }),
+      catalog.install({
+        entryId: "notes",
+        marketplace: "acme-plugins",
+        confirmedSource: { kind: "npm", package: "bb-plugin-notes" },
+      }),
     ).rejects.toThrow("catalog installation stopped by test");
     expect(installedCatalogEntries).toEqual([
       {
         marketplace: "acme-plugins",
         entryId: "notes",
         pluginId: "notes",
-        source: "git:https://github.com/acme/plugins.git@v1.0.0",
+        source: "npm:bb-plugin-notes",
         selection: { kind: "root" },
       },
     ]);
@@ -392,19 +402,56 @@ describe("third-party marketplaces", () => {
     const catalog = service({
       fetch: marketplaceFetch({
         [OFFICIAL_URL]: manifest("bb-official", []),
-        [ACME_URL]: manifest("acme-plugins", [entry()]),
+        [ACME_URL]: manifest("acme-plugins", [
+          entry({ source: { npm: { package: "bb-plugin-notes" } } }),
+        ]),
       }),
     });
     await catalog.refresh(1_000);
     await catalog.addMarketplace(ACME_URL);
 
-    await expect(catalog.install({ entryId: "notes" })).rejects.toThrow(
-      "catalog installation stopped by test",
-    );
+    await expect(
+      catalog.install({
+        entryId: "notes",
+        confirmedSource: { kind: "npm", package: "bb-plugin-notes" },
+      }),
+    ).rejects.toThrow("catalog installation stopped by test");
     expect(installedCatalogEntries).toHaveLength(1);
     await expect(catalog.install({ entryId: "missing" })).rejects.toThrow(
       'unknown plugin catalog entry "missing"',
     );
+  });
+
+  it("refuses a third-party source that changed after confirmation", async () => {
+    let packageName = "bb-plugin-notes";
+    const catalog = service({
+      fetch: async (url) =>
+        url === ACME_URL
+          ? jsonResponse(
+              manifest("acme-plugins", [
+                entry({ source: { npm: { package: packageName } } }),
+              ]),
+            )
+          : new Response("not found", { status: 404 }),
+    });
+    await catalog.addMarketplace(ACME_URL);
+    const plan = await catalog.installPlan({
+      entryId: "notes",
+      marketplace: "acme-plugins",
+    });
+    if (plan.kind !== "marketplace") throw new Error("expected a listing");
+
+    packageName = "bb-plugin-notes-impostor";
+    await catalog.refreshMarketplaces({ name: "acme-plugins" });
+
+    await expect(
+      catalog.install({
+        entryId: "notes",
+        marketplace: "acme-plugins",
+        confirmedSource: plan.resolvedSource,
+      }),
+    ).rejects.toThrow(/source changed after confirmation/u);
+    expect(installedCatalogEntries).toEqual([]);
   });
 
   it("keeps installed plugins updatable after their marketplace is removed", async () => {

@@ -304,6 +304,11 @@ describe("plugin catalog routes", () => {
       const install = await postJson(app, "/plugin-catalog/install", {
         entryId: "notes",
         marketplace: "acme-plugins",
+        confirmedSource: {
+          kind: "npm",
+          package: "bb-plugin-notes",
+          range: "^1.0.0",
+        },
       });
       expect(install.status).toBe(422);
       await expect(install.json()).resolves.toMatchObject({

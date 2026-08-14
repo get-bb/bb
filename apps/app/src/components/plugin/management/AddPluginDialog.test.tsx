@@ -423,6 +423,13 @@ describe("AddPluginDialog", () => {
       expect(JSON.parse(String(post?.init?.body))).toEqual({
         entryId: "notes",
         marketplace: "acme-plugins",
+        confirmedSource: {
+          kind: "git",
+          url: "https://github.com/acme/plugins.git",
+          range: "^1.0.0",
+          resolvedTag: "v1.2.3",
+          resolvedCommit: "a".repeat(40),
+        },
       });
     });
   });

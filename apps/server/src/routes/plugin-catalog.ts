@@ -92,7 +92,10 @@ export function registerPluginCatalogRoutes(
     const body = pluginCatalogInstallRequestSchema.safeParse(json);
     if (!body.success) {
       return context.json(
-        { error: 'expected { "entryId": string, "marketplace"?: string }' },
+        {
+          error:
+            'expected { "entryId": string, "marketplace"?: string, "confirmedSource"?: object }',
+        },
         422,
       );
     }

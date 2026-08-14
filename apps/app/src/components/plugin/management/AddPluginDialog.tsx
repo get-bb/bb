@@ -133,9 +133,7 @@ function resolvedSourceRows(
     ...(source.subdir === undefined
       ? []
       : [{ label: "subdirectory", value: source.subdir }]),
-    ...(source.ref === undefined
-      ? []
-      : [{ label: "ref", value: source.ref }]),
+    ...(source.ref === undefined ? [] : [{ label: "ref", value: source.ref }]),
     ...(source.range === undefined
       ? []
       : [
@@ -206,7 +204,8 @@ function ThirdPartySourceDisclosure({
   return (
     <div className="space-y-1.5 rounded-md border border-border bg-muted/30 px-3 py-2">
       <p className="text-2xs text-subtle-foreground">
-        Listed by <span className="text-foreground">{plan.marketplaceDisplayName}</span>,
+        Listed by{" "}
+        <span className="text-foreground">{plan.marketplaceDisplayName}</span>,
         a third-party marketplace that BB does not review.
       </p>
       <dl className="space-y-0.5">
@@ -263,6 +262,9 @@ function AddPluginDialogContent({
         ? installCatalogPlugin(fetch, {
             entryId: body.entryId,
             marketplace: body.marketplace,
+            ...(thirdParty && plan?.kind === "marketplace"
+              ? { confirmedSource: plan.resolvedSource }
+              : {}),
           })
         : installPlugin(fetch, body.source),
     onSuccess: (plugin) => {
@@ -364,7 +366,8 @@ function AddPluginDialogContent({
             install.isPending ||
             // A third-party install is confirmed against its resolved source,
             // so the button waits for that resolution to arrive.
-            (thirdParty && planQuery.isPending)
+            (thirdParty && planQuery.isPending) ||
+            (thirdParty && plan === undefined)
           }
           aria-busy={install.isPending}
           onClick={() => {

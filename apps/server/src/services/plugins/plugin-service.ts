@@ -209,6 +209,8 @@ export interface PluginService {
     engines?: MarketplaceEngines;
     /** npm registry the listing pins. */
     npmRegistry?: string;
+    /** Git commit the user confirmed before a third-party install. */
+    expectedGitCommit?: string;
   }): Promise<PluginListEntry>;
   installPath(path: string): Promise<PluginListEntry>;
   checkForUpdates(id?: string): Promise<PluginUpdateCheckEntry[]>;
@@ -1540,6 +1542,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           ...(entry.npmRegistry === undefined
             ? {}
             : { npmRegistry: entry.npmRegistry }),
+          ...(entry.expectedGitCommit === undefined
+            ? {}
+            : { expectedGitCommit: entry.expectedGitCommit }),
         };
         if (parsed.kind === "git") {
           return installGitSource(

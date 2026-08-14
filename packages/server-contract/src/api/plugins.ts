@@ -270,6 +270,8 @@ export const pluginCatalogInstallRequestSchema = z
      * official plugin of that name, and several are refused as ambiguous.
      */
     marketplace: pluginMarketplaceNameSchema.optional(),
+    /** Source facts the user confirmed for a third-party marketplace entry. */
+    confirmedSource: z.lazy(() => pluginCatalogResolvedSourceSchema).optional(),
   })
   .strict();
 export type PluginCatalogInstallRequest = z.infer<

@@ -31,6 +31,7 @@ import {
   pluginUpdateCheckResponseSchema,
   type InstalledPlugin,
   type PluginCatalogInstallPlan as PluginCatalogInstallPlanContract,
+  type PluginCatalogResolvedSource,
   type PluginCatalogSearchResult as PluginCatalogSearchContract,
   type PluginMarketplace as PluginMarketplaceContract,
   type PluginMarketplaceRefreshResult as PluginMarketplaceRefreshContract,
@@ -85,6 +86,11 @@ export interface PluginCatalogInstallArgs {
    * official plugin of that name, and several are refused as ambiguous.
    */
   marketplace?: string;
+  /**
+   * Source facts returned by installPlan for a third-party entry. The server
+   * refuses the install when the listing or its git commit changed afterward.
+   */
+  confirmedSource?: PluginCatalogResolvedSource;
 }
 
 /** Ask what an install would do before confirming it. */

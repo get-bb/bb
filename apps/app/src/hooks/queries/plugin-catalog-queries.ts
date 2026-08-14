@@ -3,6 +3,7 @@ import type {
   PluginApplyUpdateResult as SdkPluginApplyUpdateResult,
   PluginCatalogAuthor,
   PluginCatalogInstallPlan,
+  PluginCatalogResolvedSource,
   PluginCatalogSearchResult as SdkPluginCatalogSearchResult,
   PluginMarketplace,
   PluginMarketplaceRefreshResult,
@@ -81,7 +82,11 @@ export async function installPlugin(
 
 export async function installCatalogPlugin(
   fetchImpl: FetchLike,
-  args: { entryId: string; marketplace?: string },
+  args: {
+    entryId: string;
+    marketplace?: string;
+    confirmedSource?: PluginCatalogResolvedSource;
+  },
 ): Promise<InstalledPlugin> {
   return createPluginsClient(fetchImpl).catalog.install(args);
 }

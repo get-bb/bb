@@ -348,6 +348,8 @@ marketplace and the entry's author. `--yes` skips the prompt, not the
 resolution. The same disclosure appears in the app's install dialog, and
 Settings → Plugin marketplaces adds, refreshes, and removes marketplaces with
 the same server routes the CLI uses.
+The install must still match these confirmed source facts. bb refuses the
+install when the listing or its resolved git commit changes after confirmation.
 
 Removing a marketplace never disturbs installed code. Each plugin it listed
 becomes a direct install that keeps its full source intent and exact

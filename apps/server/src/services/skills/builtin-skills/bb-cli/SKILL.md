@@ -767,7 +767,8 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     prints the true source — npm package with its range or dist-tag, or git
     URL with its ref or semver range, subdirectory, and the exact release tag
     and commit that range currently lands on — plus the marketplace and the
-    entry's author. `--yes` skips the prompt, not the resolution.
+    entry's author. `--yes` skips the prompt, not the resolution. The install
+    fails if the listing or its resolved git commit changes after confirmation.
 - Commands:
   - `bb plugin install <src>` — official plugin name (github, docs, memory,
     tasks), `<entry-id>@<marketplace>`, HTTP(S) Git repository URL, local

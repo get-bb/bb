@@ -1,5 +1,6 @@
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import {
   deletePluginMarketplace,
   getInstalledPlugin,
@@ -80,6 +81,11 @@ export interface PluginCatalogEntrySelector {
   marketplace?: string;
 }
 
+export interface PluginCatalogInstallInput extends PluginCatalogEntrySelector {
+  /** Source facts shown in a third-party marketplace confirmation. */
+  confirmedSource?: PluginCatalogResolvedSource;
+}
+
 export interface PluginCatalogService {
   status(): PluginCatalogStatus;
   /**
@@ -102,7 +108,7 @@ export interface PluginCatalogService {
   installPlan(
     selector: PluginCatalogEntrySelector,
   ): Promise<PluginCatalogInstallPlan>;
-  install(selector: PluginCatalogEntrySelector): Promise<InstalledPlugin>;
+  install(input: PluginCatalogInstallInput): Promise<InstalledPlugin>;
   /** Cached bytes behind GET /plugin-catalog/icons/:marketplace/:entryId. */
   icon(marketplace: string, entryId: string): PluginCatalogIcon | undefined;
   listMarketplaces(): PluginMarketplace[];
@@ -765,6 +771,7 @@ export function createPluginCatalogService(deps: {
   async function installMarketplaceEntry(
     row: PluginMarketplaceRow,
     entry: MarketplaceEntry,
+    expectedGitCommit?: string,
   ): Promise<InstalledPlugin> {
     // The UI disables incompatible entries, but the server owns the policy:
     // refuse direct installs the store would not offer.
@@ -781,7 +788,32 @@ export function createPluginCatalogService(deps: {
       ...(resolved.npmRegistry === undefined
         ? {}
         : { npmRegistry: resolved.npmRegistry }),
+      ...(expectedGitCommit === undefined ? {} : { expectedGitCommit }),
     });
+  }
+
+  async function confirmedThirdPartySource(args: {
+    entry: MarketplaceEntry;
+    confirmed: PluginCatalogResolvedSource | undefined;
+  }): Promise<string | undefined> {
+    if (args.confirmed === undefined) {
+      throw new Error(
+        "install refused: confirm the third-party marketplace source first",
+      );
+    }
+    const current = await resolvedEntrySourceView(args.entry, false);
+    if (!isDeepStrictEqual(current, args.confirmed)) {
+      throw new Error(
+        "install refused: the marketplace source changed after confirmation; review it again",
+      );
+    }
+    if (current.kind === "npm") return undefined;
+    if (current.resolvedCommit === undefined) {
+      throw new Error(
+        `install refused: the git source could not be resolved (${current.unresolvedReason ?? "no commit"})`,
+      );
+    }
+    return current.resolvedCommit;
   }
 
   return {
@@ -1026,10 +1058,31 @@ export function createPluginCatalogService(deps: {
       };
     },
 
-    async install(selector) {
-      const resolved = resolveEntry(selector);
+    async install(input) {
+      const resolved = resolveEntry(input);
       if (resolved.kind === "marketplace") {
-        return installMarketplaceEntry(resolved.row, resolved.entry);
+        const thirdParty = resolved.row.name !== OFFICIAL_MARKETPLACE_NAME;
+        if (!thirdParty && input.confirmedSource !== undefined) {
+          throw new Error(
+            "install refused: confirmedSource applies only to third-party marketplaces",
+          );
+        }
+        const expectedGitCommit = thirdParty
+          ? await confirmedThirdPartySource({
+              entry: resolved.entry,
+              confirmed: input.confirmedSource,
+            })
+          : undefined;
+        return installMarketplaceEntry(
+          resolved.row,
+          resolved.entry,
+          expectedGitCommit,
+        );
+      }
+      if (input.confirmedSource !== undefined) {
+        throw new Error(
+          "install refused: confirmedSource applies only to third-party marketplaces",
+        );
       }
       const manifest = await entryManifest(resolved.entry);
       if (manifest === null) {
