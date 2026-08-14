@@ -1453,4 +1453,418 @@ decisions:
       { entity_kind: "threat", base_revision: 2 },
     ]);
   });
+
+  it("FS-208: shared-generation resume wraps UNIQUE as typed terminal failure then recovers on a fresh generationId", async () => {
+    const scope = {
+      projectId: "project-fs208-shared",
+      projectVersionId: "v1",
+    };
+    const requirement: EntityAdapter = {
+      kind: "requirement",
+      klass: "VERSIONED",
+      serializer: createSerializer("requirement"),
+      async *fetchRemote() {
+        throw new Error("AS_INVALID_RESPONSE: asset enum rejected");
+      },
+      async readWorking() {
+        return [];
+      },
+    };
+    let generation = 0;
+    const deps = engine(requirement, {
+      adapters: [requirement],
+      createGenerationId: () => `fs208-shared-${++generation}`,
+      cachePullers: [
+        {
+          kind: "sbomComponent",
+          async pull(pullScope, generationId) {
+            deps.db
+              .prepare(
+                `INSERT INTO sbom_components
+                 (project_id, project_version_id, generation_id, component_id,
+                  component_key, purl, name, component_group, version, cpe,
+                  license, supplier, source, file_locations, is_stale, raw,
+                  pulled_at)
+                 VALUES (?, ?, ?, 'comp-1', 'comp-1', NULL, 'lib', NULL, '1',
+                         NULL, NULL, NULL, NULL, NULL, 0, '{}', ?)`,
+              )
+              .run(
+                pullScope.projectId,
+                pullScope.projectVersionId,
+                generationId,
+                "2026-08-12T19:00:00.000Z",
+              );
+            deps.db
+              .prepare(
+                `UPDATE sync_state
+                    SET staged_pages = 1, staged_rows = 1, staged_quarantined = 0
+                  WHERE project_id = ? AND project_version_id = ?
+                    AND entity_kind = 'sbomComponent'
+                    AND staging_generation_id = ?`,
+              )
+              .run(
+                pullScope.projectId,
+                pullScope.projectVersionId,
+                generationId,
+              );
+            return {
+              fetched: 1,
+              baseRows: 1,
+              quarantined: 0,
+              advisories: [],
+            };
+          },
+        },
+      ],
+    });
+
+    await expect(
+      pull(deps, scope, ["requirement", "sbomComponent"]),
+    ).rejects.toMatchObject({
+      name: "PullFailedError",
+      generationId: "fs208-shared-1",
+    });
+    expect(
+      deps.db
+        .prepare(`SELECT status FROM pull_generation WHERE generation_id = ?`)
+        .pluck()
+        .get("fs208-shared-1"),
+    ).toBe("staging");
+
+    const collision = await pull(deps, scope, [
+      "requirement",
+      "sbomComponent",
+    ]).catch((error: unknown) => error);
+    expect(collision).toMatchObject({
+      name: "PullFailedError",
+      generationId: "fs208-shared-1",
+      failures: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "sbomComponent",
+          message: expect.stringContaining("PULL_STORE_CONSTRAINT"),
+          reasonCode: "PULL_STORE_CONSTRAINT",
+        }),
+      ]),
+    });
+    expect(JSON.stringify(collision)).not.toMatch(/UNIQUE constraint failed/iu);
+    expect(
+      deps.db
+        .prepare(`SELECT status FROM pull_generation WHERE generation_id = ?`)
+        .pluck()
+        .get("fs208-shared-1"),
+    ).toBe("failed");
+
+    const recovered = await pull(deps, scope, [
+      "requirement",
+      "sbomComponent",
+    ]).catch((error: unknown) => error);
+    expect(recovered).toMatchObject({
+      name: "PullFailedError",
+      generationId: "fs208-shared-2",
+      failures: [
+        {
+          kind: "requirement",
+          message: "AS_INVALID_RESPONSE: asset enum rejected",
+          reasonCode: "AS_INVALID_RESPONSE",
+        },
+      ],
+    });
+    expect(JSON.stringify(recovered)).not.toMatch(/UNIQUE constraint failed/iu);
+  });
+
+  it("FS-208: pullIsolated keeps sibling kinds on distinct generations and never surfaces UNIQUE", async () => {
+    const scope = {
+      projectId: "project-fs208-isolated",
+      projectVersionId: "v1",
+    };
+    let failRequirement = true;
+    const requirement: EntityAdapter = {
+      kind: "requirement",
+      klass: "VERSIONED",
+      serializer: createSerializer("requirement"),
+      async *fetchRemote(_scope, progress) {
+        if (failRequirement) {
+          throw new Error("AS_INVALID_RESPONSE: asset enum rejected");
+        }
+        progress({ page: 1, of: 1 });
+        yield [];
+      },
+      async readWorking() {
+        return [];
+      },
+    };
+    const insertsByGeneration = new Map<string, number>();
+    let generation = 0;
+    const deps = engine(requirement, {
+      adapters: [requirement],
+      createGenerationId: () => `fs208-isolated-${++generation}`,
+      cachePullers: [
+        {
+          kind: "sbomComponent",
+          async pull(pullScope, generationId) {
+            const prior = insertsByGeneration.get(generationId) ?? 0;
+            insertsByGeneration.set(generationId, prior + 1);
+            deps.db
+              .prepare(
+                `INSERT INTO sbom_components
+                 (project_id, project_version_id, generation_id, component_id,
+                  component_key, purl, name, component_group, version, cpe,
+                  license, supplier, source, file_locations, is_stale, raw,
+                  pulled_at)
+                 VALUES (?, ?, ?, 'comp-1', 'comp-1', NULL, 'lib', NULL, '1',
+                         NULL, NULL, NULL, NULL, NULL, 0, '{}', ?)`,
+              )
+              .run(
+                pullScope.projectId,
+                pullScope.projectVersionId,
+                generationId,
+                "2026-08-12T19:00:00.000Z",
+              );
+            deps.db
+              .prepare(
+                `UPDATE sync_state
+                    SET staged_pages = 1, staged_rows = 1, staged_quarantined = 0
+                  WHERE project_id = ? AND project_version_id = ?
+                    AND entity_kind = 'sbomComponent'
+                    AND staging_generation_id = ?`,
+              )
+              .run(
+                pullScope.projectId,
+                pullScope.projectVersionId,
+                generationId,
+              );
+            return {
+              fetched: 1,
+              baseRows: 1,
+              quarantined: 0,
+              advisories: [],
+            };
+          },
+        },
+      ],
+    });
+
+    const first = await pullIsolated(
+      deps,
+      scope,
+      ["requirement", "sbomComponent"],
+      { assuranceStudioProjectId: "as-selected" },
+    );
+    expect(first.kinds.requirement).toMatchObject({
+      status: "failed",
+      generationId: "fs208-isolated-1",
+      reasons: [{ code: "AS_INVALID_RESPONSE", count: 1 }],
+    });
+    expect(first.kinds.sbomComponent).toMatchObject({
+      status: "published",
+      generationId: "fs208-isolated-2",
+    });
+    expect(JSON.stringify(first)).not.toMatch(/UNIQUE constraint failed/iu);
+
+    failRequirement = false;
+    const second = await pullIsolated(
+      deps,
+      scope,
+      ["requirement", "sbomComponent"],
+      { assuranceStudioProjectId: "as-selected" },
+    );
+    expect(second.kinds.requirement).toMatchObject({
+      status: "published",
+      generationId: "fs208-isolated-1",
+    });
+    expect(second.kinds.sbomComponent).toMatchObject({
+      status: "published",
+      generationId: "fs208-isolated-3",
+    });
+    expect(insertsByGeneration.get("fs208-isolated-2")).toBe(1);
+    expect(insertsByGeneration.get("fs208-isolated-3")).toBe(1);
+    expect(JSON.stringify(second)).not.toMatch(/UNIQUE constraint failed/iu);
+  });
+
+  it("FS-208: non-idempotent cache republish becomes typed terminal UNIQUE then recovers fresh", async () => {
+    const scope = {
+      projectId: "project-fs208-sticky",
+      projectVersionId: "v1",
+    };
+    let failAfterPublish = true;
+    let generation = 0;
+    const deps = engine(
+      {
+        kind: "requirement",
+        klass: "VERSIONED",
+        serializer: createSerializer("requirement"),
+        async *fetchRemote() {
+          throw new Error("unused");
+        },
+        async readWorking() {
+          return [];
+        },
+      },
+      {
+        adapters: [],
+        createGenerationId: () => `fs208-sticky-${++generation}`,
+        cachePullers: [
+          {
+            kind: "sbomComponent",
+            async pull(pullScope, generationId) {
+              deps.db
+                .prepare(
+                  `INSERT INTO sbom_components
+                   (project_id, project_version_id, generation_id, component_id,
+                    component_key, purl, name, component_group, version, cpe,
+                    license, supplier, source, file_locations, is_stale, raw,
+                    pulled_at)
+                   VALUES (?, ?, ?, 'comp-1', 'comp-1', NULL, 'lib', NULL, '1',
+                           NULL, NULL, NULL, NULL, NULL, 0, '{}', ?)`,
+                )
+                .run(
+                  pullScope.projectId,
+                  pullScope.projectVersionId,
+                  generationId,
+                  "2026-08-12T19:00:00.000Z",
+                );
+              deps.db
+                .prepare(
+                  `UPDATE sync_state
+                      SET staged_pages = 1, staged_rows = 1
+                    WHERE project_id = ? AND project_version_id = ?
+                      AND entity_kind = 'sbomComponent'
+                      AND staging_generation_id = ?`,
+                )
+                .run(
+                  pullScope.projectId,
+                  pullScope.projectVersionId,
+                  generationId,
+                );
+              if (failAfterPublish) {
+                throw new Error("post-publish validation boom");
+              }
+              return {
+                fetched: 1,
+                baseRows: 1,
+                quarantined: 0,
+                advisories: [],
+              };
+            },
+          },
+        ],
+      },
+    );
+
+    const first = await pullIsolated(deps, scope, ["sbomComponent"]);
+    expect(first.kinds.sbomComponent).toMatchObject({
+      status: "failed",
+      generationId: "fs208-sticky-1",
+      reasons: [{ code: "PULL_KIND_FAILED", count: 1 }],
+    });
+    expect(
+      deps.db
+        .prepare(`SELECT status FROM pull_generation WHERE generation_id = ?`)
+        .pluck()
+        .get("fs208-sticky-1"),
+    ).toBe("staging");
+
+    const collision = await pullIsolated(deps, scope, ["sbomComponent"]);
+    expect(collision.kinds.sbomComponent).toMatchObject({
+      status: "failed",
+      generationId: "fs208-sticky-1",
+      reasons: [{ code: "PULL_STORE_CONSTRAINT", count: 1 }],
+    });
+    expect(JSON.stringify(collision)).not.toMatch(/UNIQUE constraint failed/iu);
+    expect(
+      deps.db
+        .prepare(
+          `SELECT error FROM sync_state
+            WHERE project_id = ? AND project_version_id = ?
+              AND entity_kind = 'sbomComponent'`,
+        )
+        .pluck()
+        .get(scope.projectId, scope.projectVersionId),
+    ).toBe(
+      "PULL_STORE_CONSTRAINT: durable store rejected a conflicting row identity",
+    );
+    expect(
+      deps.db
+        .prepare(`SELECT status FROM pull_generation WHERE generation_id = ?`)
+        .pluck()
+        .get("fs208-sticky-1"),
+    ).toBe("failed");
+
+    failAfterPublish = false;
+    const recovered = await pullIsolated(deps, scope, ["sbomComponent"]);
+    expect(recovered.kinds.sbomComponent).toMatchObject({
+      status: "published",
+      generationId: "fs208-sticky-2",
+    });
+  });
+
+  it("FS-208: raw SQLite UNIQUE from a cache puller is typed and terminal", async () => {
+    const scope = {
+      projectId: "project-fs208-sqlite",
+      projectVersionId: "v1",
+    };
+    let generation = 0;
+    const deps = engine(
+      {
+        kind: "requirement",
+        klass: "VERSIONED",
+        serializer: createSerializer("requirement"),
+        async *fetchRemote() {
+          throw new Error("unused");
+        },
+        async readWorking() {
+          return [];
+        },
+      },
+      {
+        adapters: [],
+        createGenerationId: () => `fs208-sqlite-${++generation}`,
+        cachePullers: [
+          {
+            kind: "sbomComponent",
+            async pull() {
+              const err = new Error(
+                "UNIQUE constraint failed: sbom_components.project_id, sbom_components.project_version_id, sbom_components.generation_id, sbom_components.component_id",
+              );
+              Object.assign(err, { code: "SQLITE_CONSTRAINT_PRIMARYKEY" });
+              throw err;
+            },
+          },
+        ],
+      },
+    );
+
+    const first = await pullIsolated(deps, scope, ["sbomComponent"]);
+    expect(first.kinds.sbomComponent).toMatchObject({
+      status: "failed",
+      generationId: "fs208-sqlite-1",
+      reasons: [{ code: "PULL_STORE_CONSTRAINT", count: 1 }],
+    });
+    expect(JSON.stringify(first)).not.toMatch(/UNIQUE constraint failed/iu);
+    expect(
+      deps.db
+        .prepare(
+          `SELECT status, error FROM pull_generation WHERE generation_id = ?`,
+        )
+        .get("fs208-sqlite-1"),
+    ).toEqual({
+      status: "failed",
+      error: expect.stringContaining("PULL_STORE_CONSTRAINT"),
+    });
+    expect(
+      deps.db
+        .prepare(
+          `SELECT error FROM sync_state
+            WHERE project_id = ? AND project_version_id = ?
+              AND entity_kind = 'sbomComponent'`,
+        )
+        .pluck()
+        .get(scope.projectId, scope.projectVersionId),
+    ).toBe(
+      "PULL_STORE_CONSTRAINT: durable store rejected a conflicting row identity",
+    );
+
+    const second = await pullIsolated(deps, scope, ["sbomComponent"]);
+    expect(second.kinds.sbomComponent?.generationId).toBe("fs208-sqlite-2");
+  });
 });

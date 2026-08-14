@@ -218,13 +218,30 @@ function partialWorkingRead(error: unknown): {
   };
 }
 
+const STORE_CONSTRAINT_MESSAGE =
+  "PULL_STORE_CONSTRAINT: durable store rejected a conflicting row identity";
+
+function sqliteConstraint(error: unknown): boolean {
+  if (
+    isRecord(error) &&
+    typeof error["code"] === "string" &&
+    error["code"].startsWith("SQLITE_CONSTRAINT")
+  ) {
+    return true;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return /UNIQUE constraint failed/iu.test(message);
+}
+
 function errorMessage(error: unknown): string {
+  if (sqliteConstraint(error)) return STORE_CONSTRAINT_MESSAGE;
   if (error instanceof RemoteError)
     return `${error.code}: ${diagnoseRemoteFailure(error).message}`;
   return error instanceof Error ? error.message : String(error);
 }
 
 function storedErrorMessage(error: unknown): string {
+  if (sqliteConstraint(error)) return STORE_CONSTRAINT_MESSAGE;
   return error instanceof RemoteError
     ? `${error.code}: remote request failed`
     : errorMessage(error);
@@ -239,18 +256,15 @@ function remoteFailure(error: unknown): RemoteError | null {
 }
 
 function failureReasonCode(error: unknown): string {
+  if (sqliteConstraint(error)) return "PULL_STORE_CONSTRAINT";
   const remote = remoteFailure(error);
   return remote === null
     ? pullFailureCode(errorMessage(error))
     : diagnoseRemoteFailure(remote).kind;
 }
 
-function sqliteConstraint(error: unknown): boolean {
-  return (
-    isRecord(error) &&
-    typeof error["code"] === "string" &&
-    error["code"].startsWith("SQLITE_CONSTRAINT")
-  );
+function isTerminalKindFailure(error: unknown): boolean {
+  return error instanceof TerminalPullError || sqliteConstraint(error);
 }
 
 function nowIso(deps: EngineDeps): string {
@@ -1089,7 +1103,8 @@ function publishGeneration(
  * Pulls every selected adapter page into staging, then atomically publishes
  * the generation. A failed kind is recorded and isolated; no partial
  * generation becomes visible. Retryable failures resume after whole pages,
- * while terminal failures start a fresh generation on the next call.
+ * while terminal failures and SQLite store constraints start a fresh
+ * generation on the next call.
  */
 export async function pull(
   deps: EngineDeps,
@@ -1152,7 +1167,7 @@ export async function pull(
         generationId,
         adapter.kind,
         storedErrorMessage(error),
-        error instanceof TerminalPullError,
+        isTerminalKindFailure(error),
       );
     }
   }
@@ -1240,7 +1255,7 @@ export async function pull(
         generationId,
         cache.kind,
         storedErrorMessage(error),
-        error instanceof TerminalPullError,
+        isTerminalKindFailure(error),
       );
     }
   }
