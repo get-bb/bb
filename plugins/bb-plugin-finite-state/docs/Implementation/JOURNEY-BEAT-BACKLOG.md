@@ -91,3 +91,10 @@ Entry format — one section per defect:
 - **Journey**: Sync Review or `bb finite-state pull` → a kind fails after durable cache rows are written under a staging generation → retry the same kind pull → inspect the per-kind outcome and sync_state.error
 - **Broke because**: under v9 shared generations a sibling failure left completed SBOM rows under a still-staging generationId; resume reused that id and leaked raw `UNIQUE constraint failed: sbom_components...`. Under v10 `pullIsolated` the multi-kind collision is gone, but a non-idempotent cache republish under the same staging generationId still collided and leaked raw SQLite into store/error channels
 - **Beat asserts**: SQLite store constraints surface as typed `PULL_STORE_CONSTRAINT` (never raw UNIQUE/SqliteError) in RPC/CLI/store error channels and terminalize the generation; the next same-kind pull mints a fresh generationId and can publish; findings fully-staged resume with fetched=0 remains intact
+
+### FS-212 — unbounded vendor-document triage_runs staging (FS-147 R3 MEDIUM-1)
+
+- **Source**: FS-212 / FS-147 round-3 MEDIUM-1 (evidence R3-8)
+- **Journey**: Findings drift → upload vendor VEX document (`POST /findings/vendor-vex/document`) → `triageVendorVexPreview` → `triageVendorVexApply` → re-upload the same document after apply; also preview many docs without applying and return days later for another vendor-VEX op
+- **Broke because**: `persistVendorDocument` base64-staged up to ~6.7 MiB per distinct sha into `triage_runs` with no DELETE path, so preview-only sessions permanently grew `data.db`
+- **Beat asserts**: successful apply removes the `vendor-document-*` (and spent import) staging row; a later vendor-VEX operation ages out `vendor_import` rows older than the staging TTL; re-upload of the same document after prune re-stages under the same sha key and preview→apply still works

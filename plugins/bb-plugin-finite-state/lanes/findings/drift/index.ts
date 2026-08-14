@@ -8,8 +8,11 @@ import { orphanBaseState, pruneOrphans } from "./orphans.js";
 import { importVendorVexBytes, vendorImportId } from "./vendor/import.js";
 import { parseVendorVexBytes } from "./vendor/parse.js";
 import {
+  deleteVendorDocumentStaging,
+  deleteVendorImportStaging,
   persistVendorDocument,
   persistVendorImport,
+  pruneStaleVendorStaging,
   readVendorDocument,
   readVendorImport,
 } from "./vendor/staging.js";
@@ -135,6 +138,7 @@ export function registerFindingsDrift(ctx: PluginContext): void {
       return { baseStateSha256: state.sha256, total: state.rows.length };
     },
     stageVendorDocument(input) {
+      pruneStaleVendorStaging(db);
       const parsed = parseVendorVexBytes(input.file, input.bytes);
       persistVendorDocument(db, {
         projectId: input.projectId,
@@ -146,6 +150,7 @@ export function registerFindingsDrift(ctx: PluginContext): void {
       return { documentSha256: parsed.digest };
     },
     async previewVendorVex(input) {
+      pruneStaleVendorStaging(db);
       const document = readVendorDocument(db, input);
       if (!document) throw new Error("VENDOR_DOCUMENT_NOT_STAGED");
       const result = await importVendorVexBytes(
@@ -165,6 +170,7 @@ export function registerFindingsDrift(ctx: PluginContext): void {
       return { ...result, importId: id };
     },
     async applyVendorVex(input) {
+      pruneStaleVendorStaging(db);
       const staged = readVendorImport(db, input);
       if (!staged) throw new Error("VENDOR_IMPORT_NOT_PREVIEWED");
       if (staged.documentSha256 !== input.expectedDocumentSha256) {
@@ -186,6 +192,18 @@ export function registerFindingsDrift(ctx: PluginContext): void {
           dryRun: false,
         },
       );
+      // Successful apply: durable overlay/proposal records own the outcome;
+      // the staged base64 blob (and spent import handle) are dead weight.
+      deleteVendorDocumentStaging(db, {
+        projectId: input.projectId,
+        pvId: input.pvId,
+        documentSha256: staged.documentSha256,
+      });
+      deleteVendorImportStaging(db, {
+        projectId: input.projectId,
+        pvId: input.pvId,
+        importId: input.importId,
+      });
       if (result.written > 0) {
         classifyDrift(
           { db, root: input.root, projectId: input.projectId },
