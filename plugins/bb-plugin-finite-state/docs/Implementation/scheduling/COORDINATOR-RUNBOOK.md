@@ -15,11 +15,11 @@ This is the authoritative, versioned stopping rule. Versioned artifacts are auth
 
 ## 0b. Authority stop-list: Git SoR, Platform facts, AS seed (owner ruling 2026-08-14)
 
-Binding before any dispatch. Canonical text: finite-studio main `52f89b7`, `docs/Implementation/AUTHORITY — Git SoR, Platform Graph & AS Seed.md` (+ SPEC 00 §14, SPEC 01 §3/§5, ADR addendum). Mirrored for implementers in this repo's `docs/Implementation/AGENTS.md` §6.
+Binding before any dispatch. Canonical text: finite-studio main `577843c`, `docs/Implementation/AUTHORITY — Git SoR, Platform Graph & AS Seed.md` (+ SPEC 00 §14, SPEC 01 §3/§5, ADR addendum). Mirrored for implementers in this repo's `docs/Implementation/AGENTS.md` §6.
 
 - Git holds the contract; Platform holds facts (and later the published Graph); AS is import/seed only. Never two systems of record.
 - **Do not dispatch** new work on: TARA head tokens, `stale_tara_state`, trial-apply gates, new AS write routes, bidirectional requirements push, AS write-route archaeology (unless required for `seed`).
-- Already-built AS push surfaces (`lanes/sync/push/*`, `syncPush`/`syncPushRetry`, Sync Review wiring) are kept-frozen (owner, 2026-08-14 20:53Z): dispatch defect repair, refuse new investment.
+- Already-built AS push surfaces (`lanes/sync/push/*`, `syncPush`/`syncPushRetry`, Sync Review wiring) are kept-frozen (owner, 2026-08-14, canonical in AUTHORITY): dispatch defect repair, refuse new investment, do not dispatch removal. Unbuilt requirement-push WPs park; new work is import/`seed` only.
 - Acceptance rewrite rule: any acceptance that says "round-trips to Assurance Studio" becomes "round-trips to `.fs/` YAML; AS import optional" — or the task parks. Bench/requirements surfaces must light up from `.fs/requirements` with AS unconfigured. G5 = real Platform facts + seeded/in-repo contract, not live AS.
 - FS-198's AS project picker is frozen as seed UX. A `GraphClient` facade arrives only via amendment; no drive-by `RemoteServices` rewrites.
 
