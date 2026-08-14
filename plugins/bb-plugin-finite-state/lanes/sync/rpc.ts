@@ -20,7 +20,8 @@ const syncContract = {
 function entityKinds(values: string[] | undefined): EntityKind[] | undefined {
   if (values === undefined) return undefined;
   return values.map((value) => {
-    if (!Object.hasOwn(ENTITIES, value)) throw new Error(`Unknown Finite State entity kind: ${value}`);
+    if (!Object.hasOwn(ENTITIES, value))
+      throw new Error(`Unknown Finite State entity kind: ${value}`);
     return value as EntityKind;
   });
 }
@@ -29,10 +30,11 @@ function cacheState(metadata: ReturnType<typeof syncMetadata>) {
   const accepted = new Set(Object.values(metadata.acceptedGenerationIds));
   const revisions = Object.values(metadata.baseRevisions);
   return {
-    state: metadata.lastPull === null ? "empty" as const : "fresh" as const,
+    state: metadata.lastPull === null ? ("empty" as const) : ("fresh" as const),
     asOf: metadata.lastPull,
     message: null,
-    acceptedGenerationId: accepted.size === 1 ? accepted.values().next().value ?? null : null,
+    acceptedGenerationId:
+      accepted.size === 1 ? (accepted.values().next().value ?? null) : null,
     baseRevision: revisions.length === 0 ? 0 : Math.max(...revisions),
   };
 }
@@ -50,7 +52,11 @@ export function registerSyncRpc(bb: BbPluginApi, deps: EngineDeps): void {
       const metadata = syncMetadata(deps, scope, kinds);
       return {
         ...scope,
-        ...report,
+        generationId: report.generationId,
+        acceptedAt: report.acceptedAt,
+        kinds: report.kinds,
+        workingFastForwarded: report.workingFastForwarded,
+        divergence: report.divergence,
         baseStateSha256: metadata.baseStateSha256,
       };
     },
@@ -80,23 +86,27 @@ export function registerSyncRpc(bb: BbPluginApi, deps: EngineDeps): void {
         baseStateSha256: metadata.baseStateSha256,
         local: report.local.map((change) => scopedChange(change, null)),
         upstream: report.upstream.map((change) => scopedChange(change, null)),
-        conflicts: report.conflicts.map((change) => scopedChange(
-          { ...change, fields: [] },
-          null,
-        )),
-        orphans: report.orphans.map((change) => scopedChange({ ...change, fields: [] }, change.file)),
+        conflicts: report.conflicts.map((change) =>
+          scopedChange({ ...change, fields: [] }, null),
+        ),
+        orphans: report.orphans.map((change) =>
+          scopedChange({ ...change, fields: [] }, change.file),
+        ),
         cache: cacheState(metadata),
       };
     },
-    syncPlan: (input) => plan(deps, {
-      projectId: input.projectId,
-      projectVersionId: input.projectVersionId,
-      kinds: entityKinds(input.kinds),
-      pageSize: input.pageSize,
-      continuation: input.continuation,
-    }),
+    syncPlan: (input) =>
+      plan(deps, {
+        projectId: input.projectId,
+        projectVersionId: input.projectVersionId,
+        kinds: entityKinds(input.kinds),
+        pageSize: input.pageSize,
+        continuation: input.continuation,
+      }),
     syncConflictResolve: (input) => resolveConflictRpc(deps, input),
-    syncPush: (input) => pushAuthorizationUnavailable(deps, input.humanApprovalCapability),
-    syncPushRetry: (input) => pushAuthorizationUnavailable(deps, input.humanApprovalCapability),
+    syncPush: (input) =>
+      pushAuthorizationUnavailable(deps, input.humanApprovalCapability),
+    syncPushRetry: (input) =>
+      pushAuthorizationUnavailable(deps, input.humanApprovalCapability),
   });
 }

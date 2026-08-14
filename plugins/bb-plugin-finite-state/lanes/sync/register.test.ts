@@ -469,6 +469,7 @@ decisions:
     );
     expect(result).toMatchObject({ exitCode: 0, stderr: "" });
     expect(JSON.parse(result.stdout)).toMatchObject({
+      advisories: [],
       kinds: {
         vexDecision: {
           fetched: expect.any(Number),
@@ -497,6 +498,53 @@ decisions:
     ).toBe(true);
     expect(host.harness.sdk.callsTo("threads.get")).toHaveLength(2);
     expect(host.harness.sdk.callsTo("environments.get")).toHaveLength(2);
+  });
+
+  it("logs isolated VEX rows and reports their lane advisory count through the registered CLI", async () => {
+    const scope = platformScope();
+    const findingId = "synthetic-register-advisory";
+    state.findings.set(findingId, {
+      id: findingId,
+      projectVersionId: scope.projectVersionId,
+      findingId: "CVE-2026-18000",
+      component: { id: "opaque-only", version: "1.0" },
+      vexStatus: "NOT_AFFECTED",
+    });
+    try {
+      const result = await host.harness.behavior.runCli(
+        [
+          "pull",
+          "triage",
+          "--project",
+          scope.projectId,
+          "--version",
+          scope.projectVersionId,
+          "--json",
+        ],
+        {
+          cwd: "/untrusted-cwd-must-not-be-used",
+          threadId: "thread-sync-cli",
+          projectId: "bb-project-sync",
+        },
+      );
+      expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        advisories: [
+          {
+            kind: "vexDecision",
+            code: "VEX_REMOTE_IDENTITY_MISSING",
+            count: 1,
+          },
+        ],
+      });
+      expect(host.harness.inspection.logEntries).toContainEqual({
+        level: "warn",
+        message:
+          "VEX remote row isolated: VEX_REMOTE_IDENTITY_MISSING; finding=synthetic-register-advisory",
+      });
+    } finally {
+      state.findings.delete(findingId);
+    }
   });
 
   it("reports truthful counts and persists captured real findings through the registered CLI", async () => {

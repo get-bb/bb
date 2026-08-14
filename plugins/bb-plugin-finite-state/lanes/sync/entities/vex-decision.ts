@@ -707,7 +707,7 @@ export function createVexDecisionAdapter(
     kind: "vexDecision",
     klass: "OVERLAY",
     serializer: createSerializer("vexDecision"),
-    async *fetchRemote(scope, onProgress) {
+    async *fetchRemote(scope, onProgress, reportAdvisory) {
       if (scope.projectVersionId === null) {
         throw new TypeError("vexDecision requires a project version");
       }
@@ -737,6 +737,7 @@ export function createVexDecisionAdapter(
               findingId: error.findingId,
               message: error.message,
             });
+            reportAdvisory?.({ code: error.code });
             return [];
           }
           if (projected === null) {

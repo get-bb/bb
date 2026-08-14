@@ -642,6 +642,13 @@ decisions:
       ["vexDecision"],
     );
     expect(report.kinds["vexDecision"]).toEqual({ fetched: 1, baseRows: 1 });
+    expect(report.advisories).toEqual([
+      {
+        kind: "vexDecision",
+        code: "VEX_REMOTE_IDENTITY_MISSING",
+        count: 1,
+      },
+    ]);
     expect(advisories).toEqual([
       {
         code: "VEX_REMOTE_IDENTITY_MISSING",

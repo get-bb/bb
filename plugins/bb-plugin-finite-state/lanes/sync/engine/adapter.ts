@@ -80,6 +80,11 @@ export interface AdapterProgress {
   of: number | null;
 }
 
+/** Lane-scoped non-fatal issue retained in a successful pull report. */
+export interface AdapterAdvisory {
+  code: string;
+}
+
 /**
  * Complete transport-neutral contract for a VERSIONED or OVERLAY entity.
  *
@@ -97,6 +102,7 @@ export interface EntityAdapter {
   fetchRemote(
     scope: SyncScope,
     onProgress: (progress: AdapterProgress) => void,
+    onAdvisory?: (advisory: AdapterAdvisory) => void,
   ): AsyncIterable<ServerEntity[]>;
   /** Read authored entities from `worktreeRoot`; malformed files reject with their typed parse error. */
   readWorking(
