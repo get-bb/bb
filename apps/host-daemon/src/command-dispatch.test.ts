@@ -722,6 +722,45 @@ describe("dispatchCommand", () => {
     });
   });
 
+  it("skips a release when a turn started after the server read the thread", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace("/tmp/bb-release-race"),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-release-race",
+      workspacePath: "/tmp/bb-release-race",
+    });
+    // The server chose a release from an idle read. A send won the race and
+    // started a turn before this command reached the daemon.
+    runtime.setActiveTurn("thread-1", "turn-new");
+
+    const result = await dispatchCommand(
+      {
+        type: "thread.stop",
+        intent: "release",
+        environmentId: "env-release-race",
+        threadId: "thread-1",
+      },
+      {
+        dataDir: "/tmp/bb-data",
+        eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        runtimeManager: manager,
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      },
+    );
+
+    // Stopping here would end accepted work and leave the server holding an
+    // active thread with no runtime.
+    expect(runtime.stopThread).not.toHaveBeenCalled();
+    expect(runtime.getActiveTurnId("thread-1")).toBe("turn-new");
+    expect(result).toEqual({ providerCheckpointId: null });
+  });
+
   it("treats thread.stop as successful when no runtime holds the thread", async () => {
     const manager = new RuntimeManager({
       createRuntime: () => createRuntime(),

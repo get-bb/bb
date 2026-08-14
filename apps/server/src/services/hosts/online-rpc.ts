@@ -122,7 +122,12 @@ async function waitForRetryableHostRpcTransport(
   await ensureHostSessionReadyForWork(deps, { hostId });
 }
 
-function isHostUnavailableApiError(error: unknown): boolean {
+/**
+ * True when the host never received the command because it is offline or
+ * unenrolled. A caller that only needs host-local state gone can treat this as
+ * a success; any other error means the host answered and failed.
+ */
+export function isHostUnavailableApiError(error: unknown): boolean {
   return (
     error instanceof ApiError &&
     error.status === 502 &&

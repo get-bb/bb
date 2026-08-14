@@ -81,6 +81,7 @@ import {
   type ThreadStopCommandArgs,
 } from "./thread-commands.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
+import { isHostUnavailableApiError } from "../hosts/online-rpc.js";
 import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   runLiveHostCommand,
@@ -141,6 +142,9 @@ export interface PrepareReadyThreadTurnDispatchArgs {
 }
 
 const threadStartRequestDeduper = createAsyncDeduper<string, void>();
+// Concurrent awaited stops for one thread share a single RPC and a single
+// result, so no caller returns before the runtime release it asked for ends.
+const threadStopRequestDeduper = createAsyncDeduper<string, void>();
 
 type InFlightThreadRpcKind =
   | "thread.start"
@@ -1544,11 +1548,15 @@ async function releaseIdleThreadRuntime(
 }
 
 /**
- * Runs one awaited stop RPC under the in-flight guard. A caller that races a
- * second stop waits for nothing rather than sending a duplicate RPC. A failed
- * or timed-out stop resolves instead of throwing: the caller's stop intent is
- * already durable in the thread row, and the reconcile backstops settle a
- * thread whose stop never reached its host.
+ * Runs one awaited stop RPC per thread. A caller that races a second stop
+ * awaits the first stop's result rather than sending a duplicate RPC, so every
+ * caller's request ends only when the runtime release ends.
+ *
+ * An interrupt swallows a failure: its `stopping` status is durable, and the
+ * documented backstops settle a thread whose stop never reached its host. A
+ * release has no durable record, so it reports its failure to the caller. An
+ * unreachable host is the one exception — it holds no runtime to release, so
+ * the release already reached its goal.
  */
 async function runAwaitedThreadStopCommand(
   deps: RequestThreadStopForCurrentStateDeps,
@@ -1558,23 +1566,29 @@ async function runAwaitedThreadStopCommand(
     threadId: string;
   },
 ): Promise<void> {
-  if (!inFlightThreadRpcGuard.claim(args.threadId, "thread.stop")) {
-    return;
-  }
-  try {
-    await runLiveHostCommand(deps, {
-      command: args.command,
-      hostId: args.hostId,
-      timeoutMs: AWAITED_THREAD_STOP_TIMEOUT_MS,
-    });
-  } catch (error) {
-    deps.logger.warn(
-      { err: error, intent: args.command.intent, threadId: args.threadId },
-      "Awaited thread stop command failed",
-    );
-  } finally {
-    inFlightThreadRpcGuard.release(args.threadId, "thread.stop");
-  }
+  await threadStopRequestDeduper.run(args.threadId, async () => {
+    inFlightThreadRpcGuard.claim(args.threadId, "thread.stop");
+    try {
+      await runLiveHostCommand(deps, {
+        command: args.command,
+        hostId: args.hostId,
+        timeoutMs: AWAITED_THREAD_STOP_TIMEOUT_MS,
+      });
+    } catch (error) {
+      deps.logger.warn(
+        { err: error, intent: args.command.intent, threadId: args.threadId },
+        "Awaited thread stop command failed",
+      );
+      if (
+        args.command.intent === "release" &&
+        !isHostUnavailableApiError(error)
+      ) {
+        throw error;
+      }
+    } finally {
+      inFlightThreadRpcGuard.release(args.threadId, "thread.stop");
+    }
+  });
 }
 
 /**
