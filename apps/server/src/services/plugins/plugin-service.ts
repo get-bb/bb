@@ -1159,6 +1159,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         : undefined;
     return {
       ...(persisted === undefined ? {} : { outcome: persisted.outcome }),
+      ...(persisted?.outcome === "unavailable"
+        ? { detail: persisted.detail }
+        : {}),
       ...(row.availableCompatibleVersion === null
         ? {}
         : { availableVersion: row.availableCompatibleVersion }),

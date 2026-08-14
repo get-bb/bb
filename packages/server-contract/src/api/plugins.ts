@@ -104,6 +104,8 @@ export type PluginSourceDetail = z.infer<typeof pluginSourceDetailSchema>;
 
 export const pluginUpdateStateSchema = z.object({
   outcome: pluginUpdateOutcomeSchema.optional(),
+  /** Actionable reason when bb could not verify the update source. */
+  detail: z.string().optional(),
   availableVersion: z.string().optional(),
   blockedVersion: z.string().optional(),
   blockedReasons: z.array(z.string()).optional(),

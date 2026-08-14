@@ -151,6 +151,15 @@ export function pluginRowSignal(
       detail: plugin.statusDetail,
     };
   }
+  if (state.outcome === "unavailable") {
+    return {
+      kind: "status",
+      icon: "AlertTriangle",
+      label: "Needs attention",
+      tone: "warning",
+      detail: state.detail,
+    };
+  }
   if (state.availableVersion !== null) {
     return { kind: "update", version: state.availableVersion };
   }

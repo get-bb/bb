@@ -20,6 +20,7 @@ export interface PluginUpdateFailure {
 
 export interface PluginUpdateState {
   outcome: InstalledPlugin["updateState"]["outcome"] | null;
+  detail: string | null;
   availableVersion: string | null;
   blockedVersion: string | null;
   blockedReasons: string[];
@@ -72,6 +73,7 @@ export function toEpochMs(
 
 export const EMPTY_PLUGIN_UPDATE_STATE: PluginUpdateState = {
   outcome: null,
+  detail: null,
   availableVersion: null,
   blockedVersion: null,
   blockedReasons: [],
@@ -108,6 +110,7 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
     sourceDisplay: plugin.sourceDisplay,
     updateState: {
       outcome: state.outcome ?? null,
+      detail: state.detail ?? null,
       availableVersion: state.availableVersion ?? null,
       blockedVersion: state.blockedVersion ?? null,
       blockedReasons: state.blockedReasons ?? [],

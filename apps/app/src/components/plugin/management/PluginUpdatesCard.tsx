@@ -224,6 +224,28 @@ export function PluginDetailReleaseStatus({
     );
   }
 
+  if (
+    plugin.updateState.outcome === "unavailable" &&
+    plugin.updateState.detail !== null
+  ) {
+    return (
+      <div
+        role="status"
+        aria-label="Update needs attention"
+        className="flex min-w-0 items-start gap-2.5"
+      >
+        <Icon
+          name="AlertTriangle"
+          className="mt-0.5 size-4 shrink-0 text-warning"
+          aria-hidden
+        />
+        <p className="min-w-0 text-xs leading-relaxed text-muted-foreground">
+          {plugin.updateState.detail}
+        </p>
+      </div>
+    );
+  }
+
   if (plugin.updateState.availableVersion !== null) {
     return (
       <div role="status" className="flex min-w-0 items-baseline gap-2">

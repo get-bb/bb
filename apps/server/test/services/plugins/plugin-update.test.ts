@@ -1072,6 +1072,17 @@ describe("plugin update service and routes", () => {
       sourceGitRefKind: null,
       gitResolvedCommit: installed?.gitResolvedCommit,
     });
+    expect(service.list()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "tagged",
+          updateState: expect.objectContaining({
+            outcome: "unavailable",
+            detail: expect.stringContaining("security check failed"),
+          }),
+        }),
+      ]),
+    );
     await expect(service.applyUpdate("tagged")).resolves.toMatchObject({
       ok: false,
       error: expect.stringContaining('publishes "v1.0.0" as a branch'),
