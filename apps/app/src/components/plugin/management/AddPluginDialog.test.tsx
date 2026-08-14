@@ -195,9 +195,9 @@ describe("AddPluginDialog", () => {
     ).not.toBeNull();
     unmount();
 
-    // Git catalog entries install from their pinned commit, not the app
-    // bundle — the dialog must not claim otherwise.
-    renderDialog({
+    // Git catalog entries install from their listed repository, not the app
+    // bundle. A ref can be a branch, so the dialog must not call it pinned.
+    const git = renderDialog({
       entryId: "thread-hover-cards",
       displayName: "Thread Hover Cards",
       icon: "Github",
@@ -205,10 +205,23 @@ describe("AddPluginDialog", () => {
     });
     expect(
       screen.getByText(
-        "Install this official plugin from its pinned source repository.",
+        "Install this official plugin from its listed source repository.",
       ),
     ).not.toBeNull();
     expect(screen.queryByText(/bundled with BB/)).toBeNull();
+    git.unmount();
+
+    renderDialog({
+      entryId: "widgets",
+      displayName: "Widgets",
+      icon: "Zap",
+      source: "npm:bb-plugin-widgets@^1.0.0",
+    });
+    expect(
+      screen.getByText(
+        "Install this official plugin from its listed npm package.",
+      ),
+    ).not.toBeNull();
   });
 
   it("installs official catalog entries through the catalog endpoint", async () => {

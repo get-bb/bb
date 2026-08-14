@@ -44,9 +44,13 @@ export type AddPluginInitial = {
  * while git-catalog entries are fetched from their pinned, reviewed commit.
  */
 function catalogInstallDescription(source: string): string {
-  return source.startsWith("builtin:")
-    ? "Install this official plugin, bundled with BB."
-    : "Install this official plugin from its pinned source repository.";
+  if (source.startsWith("builtin:")) {
+    return "Install this official plugin, bundled with BB.";
+  }
+  if (source.startsWith("npm:")) {
+    return "Install this official plugin from its listed npm package.";
+  }
+  return "Install this official plugin from its listed source repository.";
 }
 
 export interface AddPluginDialogProps {
