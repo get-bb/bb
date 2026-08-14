@@ -373,6 +373,33 @@ describe("provider retry scheduler", () => {
     await host.harness.dispose();
   });
 
+  it("does not inspect active or idle threads without scheduled retries", async () => {
+    const rateLimitRecovery = vi.fn(async ({ threadId }) =>
+      eligibleStatus(threadId),
+    );
+    const host = createFakePluginHost({
+      pluginId: "provider-retry",
+      sdk: {
+        threads: {
+          rateLimitRecovery,
+          continueAfterRateLimit: vi.fn(),
+        },
+      },
+    });
+    await plugin(host.bb);
+
+    await host.harness.emitThreadEvent("thread.active", {
+      thread: makeThreadResponse({ id: "thread-untracked", status: "active" }),
+    });
+    await host.harness.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: "thread-untracked", status: "idle" }),
+      lastAssistantText: null,
+    });
+
+    expect(rateLimitRecovery).not.toHaveBeenCalled();
+    await host.harness.dispose();
+  });
+
   it("keeps the accepted failure scheduled while trailing Claude activity drains", async () => {
     const threadId = "thread-claude-drain";
     const acceptedFailure = eligibleStatus(threadId, "claude-code");

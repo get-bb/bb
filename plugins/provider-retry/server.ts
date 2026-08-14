@@ -68,9 +68,14 @@ export default async function plugin(bb: BbPluginApi) {
   });
   registerProviderRetryCli(bb, service);
 
-  async function reconcile(threadId: string): Promise<void> {
+  async function reconcile(
+    threadId: string,
+    trackedOnly = false,
+  ): Promise<void> {
     try {
-      await service.reconcile(threadId);
+      await (trackedOnly
+        ? service.reconcileTracked(threadId)
+        : service.reconcile(threadId));
     } catch (error) {
       logFailure(bb, `Could not inspect provider retry for ${threadId}`, error);
     }
@@ -80,10 +85,10 @@ export default async function plugin(bb: BbPluginApi) {
     await reconcile(thread.id);
   });
   bb.events.on("thread.active", async ({ thread }) => {
-    await reconcile(thread.id);
+    await reconcile(thread.id, true);
   });
   bb.events.on("thread.idle", async ({ thread }) => {
-    await reconcile(thread.id);
+    await reconcile(thread.id, true);
   });
   bb.events.on("thread.archived", ({ thread }) => service.supersede(thread.id));
   bb.events.on("thread.deleted", ({ thread }) =>

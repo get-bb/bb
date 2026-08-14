@@ -171,6 +171,12 @@ export class ProviderRetryService {
     return this.withThreadLock(threadId, () => this.reconcileDirect(threadId));
   }
 
+  async reconcileTracked(threadId: string): Promise<ProviderRetryView | null> {
+    return this.withThreadLock(threadId, () =>
+      this.entries.has(threadId) ? this.reconcileDirect(threadId) : null,
+    );
+  }
+
   private async reconcileDirect(
     threadId: string,
   ): Promise<ProviderRetryView | null> {
