@@ -37,6 +37,10 @@
     "description": "Bulk VEX succeeds for three rows and fails independently for two.",
     "refs": ["platform/vex-bulk-partial.json"]
   },
+  "real-binary-sast-any-version-identity": {
+    "description": "Sanitized captured Platform response preserves a binary-SAST file-path component with an empty version and no purl.",
+    "refs": ["platform/fs193-binary-sast-specimen.json"]
+  },
   "real-cve-uuid-field-mapping": {
     "description": "Captured Platform response carries the CVE in findingId and an opaque UUID in vulnerabilityId.",
     "refs": ["platform/fs174-cve-uuid-mapping-specimen.json"]

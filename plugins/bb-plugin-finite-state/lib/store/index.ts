@@ -79,6 +79,7 @@ export interface SyncStateRow {
   staging_continuation: string | null;
   staged_pages: number;
   staged_rows: number;
+  staged_quarantined: number;
   last_pull: string | null;
   error: string | null;
 }

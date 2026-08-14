@@ -1138,4 +1138,8 @@ export const MIGRATIONS: string[] = [
    )`,
   `CREATE INDEX IF NOT EXISTS ix_workspace_platform_project_binding_platform
      ON workspace_platform_project_binding (platform_project_id, workspace_project_id)`,
+
+  // AMD-0021: retain finding quarantine accounting across resumed pull
+  // invocations in the generation-owned staging checkpoint.
+  `ALTER TABLE sync_state ADD COLUMN staged_quarantined INTEGER NOT NULL DEFAULT 0 CHECK (staged_quarantined >= 0)`,
 ];

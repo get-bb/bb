@@ -1,5 +1,6 @@
 import type { Json, RemotePage } from "../../../lib/remote/types.js";
 import type { SyncScope } from "../../sync/engine/adapter.js";
+import { TerminalPullError } from "../../sync/engine/pull.js";
 import {
   FindingsCacheError,
   type FindingsDeps,
@@ -212,12 +213,6 @@ export function normalizeFinding(value: Json): NormalizedFinding {
       `Finding ${findingId} has no component name for canonical identity; ${payloadKeyDetail(row, component)}`,
     );
   }
-  if (!componentPurl && !componentVersion) {
-    throw new FindingsCacheError(
-      "FINDING_COMPONENT_IDENTITY_MISSING",
-      `Finding ${findingId} has neither purl nor exact component version; ${payloadKeyDetail(row, component)}`,
-    );
-  }
   let stableKey: string;
   let canonicalIdentity;
   try {
@@ -290,13 +285,16 @@ function checkpoint(
 ): {
   pages: number;
   rows: number;
+  quarantined: number;
   continuation: string | null;
   pulledAt: string;
 } {
   const row = deps.db
     .prepare(
       `SELECT state.staged_pages AS pages, state.staged_rows AS rows,
-            state.staging_continuation AS continuation, generation.started_at AS pulledAt
+            state.staged_quarantined AS quarantined,
+            state.staging_continuation AS continuation,
+            generation.started_at AS pulledAt
        FROM sync_state AS state
        JOIN pull_generation AS generation
          ON generation.project_id = state.project_id
@@ -309,6 +307,7 @@ function checkpoint(
     | {
         pages: number;
         rows: number;
+        quarantined: number;
         continuation: string | null;
         pulledAt: string;
       }
@@ -328,8 +327,27 @@ function writePage(
   pageNumber: number,
   page: RemotePage<Record<string, Json>>,
   pulledAt: string,
-): { inserted: number; deduplicated: number } {
-  const normalized = page.items.map((item) => normalizeFinding(item));
+): {
+  inserted: number;
+  deduplicated: number;
+  quarantined: number;
+  quarantineReasons: ReadonlyMap<string, number>;
+} {
+  const normalized: NormalizedFinding[] = [];
+  let quarantined = 0;
+  const quarantineReasons = new Map<string, number>();
+  for (const item of page.items) {
+    try {
+      normalized.push(normalizeFinding(item));
+    } catch (error: unknown) {
+      if (!(error instanceof FindingsCacheError)) throw error;
+      quarantined += 1;
+      quarantineReasons.set(
+        error.code,
+        (quarantineReasons.get(error.code) ?? 0) + 1,
+      );
+    }
+  }
   const unique = new Map<string, NormalizedFinding>();
   let deduplicated = 0;
   for (const item of normalized) {
@@ -417,7 +435,9 @@ function writePage(
     const updated = deps.db
       .prepare(
         `UPDATE sync_state
-          SET staging_continuation = ?, staged_pages = ?, staged_rows = staged_rows + ?, error = NULL
+          SET staging_continuation = ?, staged_pages = ?,
+              staged_rows = staged_rows + ?,
+              staged_quarantined = staged_quarantined + ?, error = NULL
         WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?
           AND staging_generation_id = ? AND staged_pages = ?`,
       )
@@ -425,6 +445,7 @@ function writePage(
         page.next,
         pageNumber,
         inserted,
+        quarantined,
         scope.projectId,
         scope.projectVersionId,
         ENTITY_KIND,
@@ -437,7 +458,24 @@ function writePage(
         "Finding staging checkpoint moved",
       );
   })();
-  return { inserted, deduplicated };
+  return { inserted, deduplicated, quarantined, quarantineReasons };
+}
+
+const ALL_ROWS_QUARANTINED = "FINDING_ALL_ROWS_QUARANTINED";
+
+function allRowsQuarantinedError(
+  quarantined: number,
+  reasons: ReadonlyMap<string, number>,
+): FindingsCacheError {
+  const reasonSummary =
+    [...reasons.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([code, count]) => `${code}=${count}`)
+      .join(", ") || `FINDING_PRIOR_INVOCATION_QUARANTINE=${quarantined}`;
+  return new FindingsCacheError(
+    ALL_ROWS_QUARANTINED,
+    `${ALL_ROWS_QUARANTINED}: quarantined ${quarantined} fetched finding rows; reasons [${reasonSummary}]`,
+  );
 }
 
 export async function pullFindings(
@@ -457,10 +495,18 @@ export async function pullFindings(
   const pulledAt = state.pulledAt;
   let pages = state.pages;
   let fetched = 0;
+  let staged = 0;
+  let quarantined = 0;
+  const quarantineReasons = new Map<string, number>();
   let deduplicated = 0;
   let latestOf: number | null = null;
   try {
     if (state.pages > 0 && state.continuation === null) {
+      if (state.rows === 0 && state.quarantined > 0) {
+        throw new TerminalPullError(
+          allRowsQuarantinedError(state.quarantined, quarantineReasons),
+        );
+      }
       onProgress({ page: pages, of: pages, phase: "done" });
       return {
         fetched: 0,
@@ -468,6 +514,7 @@ export async function pullFindings(
         pages,
         pulledAt,
         deduplicated,
+        quarantined: state.quarantined,
       };
     }
     const iterable = deps.platform.getFindings({
@@ -492,7 +539,15 @@ export async function pullFindings(
         page,
         pulledAt,
       );
-      fetched += written.inserted;
+      fetched += page.items.length;
+      staged += written.inserted;
+      quarantined += written.quarantined;
+      for (const [code, count] of written.quarantineReasons) {
+        quarantineReasons.set(code, (quarantineReasons.get(code) ?? 0) + count);
+      }
+      if (written.quarantined > 0) {
+        deps.quarantine?.({ count: written.quarantined });
+      }
       deduplicated += written.deduplicated;
       onProgress({ page: pages, of: latestOf, phase: "write" });
     }
@@ -502,13 +557,27 @@ export async function pullFindings(
         projectVersionId: scope.projectVersionId,
       });
     }
+    const published = state.rows + staged;
+    const generationQuarantined = state.quarantined + quarantined;
+    if (state.quarantined > 0) {
+      quarantineReasons.set(
+        "FINDING_PRIOR_INVOCATION_QUARANTINE",
+        state.quarantined,
+      );
+    }
+    if (generationQuarantined > 0 && published === 0) {
+      throw new TerminalPullError(
+        allRowsQuarantinedError(generationQuarantined, quarantineReasons),
+      );
+    }
     onProgress({ page: pages, of: latestOf, phase: "done" });
     return {
       fetched,
-      published: state.rows + fetched,
+      published,
       pages,
       pulledAt,
       deduplicated,
+      quarantined: generationQuarantined,
     };
   } catch (error: unknown) {
     onProgress({ page: pages, of: latestOf, phase: "error" });

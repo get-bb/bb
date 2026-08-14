@@ -76,6 +76,40 @@ describe("findings cache pull", () => {
         "name-group-version",
       ),
     );
+
+    const binarySastWire = fixture("fs193-binary-sast-specimen.json");
+    const binarySast = normalizeFinding(binarySastWire);
+    expect(binarySast).toMatchObject({
+      findingId: "00000000-0000-5000-8000-000000000193",
+      cve: "FS-500-006",
+      findingType: "binary-sast",
+      componentGroup: "update%2Ffirmware-root%2Fetc%2Fssl%2Fcerts",
+      componentName: "ca-certificates.crt",
+      componentVersion: null,
+      componentPurl: null,
+    });
+    expect(JSON.parse(binarySast.raw)).toEqual(binarySastWire);
+    expect(binarySast.stableKey).toBe(
+      findingStableKey(
+        {
+          cve: "FS-500-006",
+          purl: null,
+          name: "ca-certificates.crt",
+          group: "update%2Ffirmware-root%2Fetc%2Fssl%2Fcerts",
+          version: null,
+        },
+        "name-group-any-version",
+      ),
+    );
+    expect(parseFindingStableKey(binarySast.stableKey)).toMatchObject({
+      cve: "FS-500-006",
+      tier: "name-group-any-version",
+      component: {
+        group: "update%2ffirmware-root%2fetc%2fssl%2fcerts",
+        name: "ca-certificates.crt",
+        version: null,
+      },
+    });
   });
 
   it("preserves malformed escaping and keeps encoded and literal versions collision-free", () => {
@@ -369,7 +403,7 @@ describe("findings cache pull", () => {
 
     await expect(pull(deps, scope, ["finding"])).resolves.toMatchObject({
       generationId: "generation-1",
-      kinds: { finding: { fetched: 1, baseRows: 2 } },
+      kinds: { finding: { fetched: 2, baseRows: 2 } },
     });
     const result = queryFindings(db, { projectId: scope.projectId, pvId });
     expect(result.items).toHaveLength(2);

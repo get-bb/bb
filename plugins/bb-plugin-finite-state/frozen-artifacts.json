@@ -26,8 +26,8 @@
       "active": true
     },
     "plugins/bb-plugin-finite-state/lib/store/schema.ts": {
-      "sha256": "19e0461c798ec193b9867d71a306f6fda58c0b6da2664551211cab830a79dd6f",
-      "amendment": "AMD-0020",
+      "sha256": "3241e26c1a71702b3cdb7b9be90a45cdbfff592e13d038a6ab13876304906642",
+      "amendment": "AMD-0021",
       "active": true
     },
     "plugins/bb-plugin-finite-state/lib/sync/registry.ts": {

@@ -27,6 +27,11 @@ export function registerFindings(bb: BbPluginApi, ctx: PluginContext): void {
             `${message}: ${details.count} for project version ${details.projectVersionId}`,
           );
         },
+        quarantine({ count }) {
+          ctx.log.warn(
+            `Quarantined individually unkeyable Platform finding rows: ${count}`,
+          );
+        },
       },
       scope,
       generationId,

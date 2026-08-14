@@ -82,6 +82,8 @@ export interface FindingsDeps {
     message: string,
     details: { count: number; projectVersionId: string },
   ) => void;
+  /** Reports only aggregate counts; quarantined remote text is never logged. */
+  quarantine?: (details: { count: number }) => void;
 }
 
 export interface FindingsFilter {
@@ -126,10 +128,12 @@ export interface PullProgress {
 }
 
 export interface PullFindingsResult {
-  /** Rows fetched and staged by this invocation, excluding reused staging. */
+  /** Remote rows received by this invocation, including quarantined and duplicate rows. */
   fetched: number;
   /** Complete row count in the generation that is ready to publish. */
   published: number;
+  /** Individually invalid remote rows excluded across this staged generation. */
+  quarantined: number;
   pages: number;
   pulledAt: string;
   deduplicated: number;

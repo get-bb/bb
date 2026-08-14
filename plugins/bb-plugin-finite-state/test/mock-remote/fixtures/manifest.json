@@ -38,6 +38,10 @@
       "description": "Bulk VEX succeeds for three rows and fails independently for two.",
       "refs": ["platform/vex-bulk-partial.json"]
     },
+    "real-binary-sast-any-version-identity": {
+      "description": "Sanitized captured Platform response preserves a binary-SAST file-path component with an empty version and no purl.",
+      "refs": ["platform/fs193-binary-sast-specimen.json"]
+    },
     "real-cve-uuid-field-mapping": {
       "description": "Captured Platform response carries the CVE in findingId and an opaque UUID in vulnerabilityId.",
       "refs": ["platform/fs174-cve-uuid-mapping-specimen.json"]
@@ -137,9 +141,9 @@
       "sha256": "f39fa98949f3fc92ae2411e7836507dfd531d8f8df48137f9d165fd43c6763dd"
     },
     {
-      "bytes": 3465,
+      "bytes": 3710,
       "path": "cases.json",
-      "sha256": "d813d246921b9d3f2cbafe0f5084b80f9738da1394be24d949f7a5f62b9e5948"
+      "sha256": "0a5cde2c11920227a8121e5c6848a2295e013cb3a1e18f56a0c50aba4e105b3e"
     },
     {
       "bytes": 3847,
@@ -277,6 +281,11 @@
       "bytes": 1348,
       "path": "platform/fs174-i491nax-distro-specimen.json",
       "sha256": "b8e47940f7f660ae8bc0c1c5fd7dd8a916f2c5550682946e335fc6c9b0ec46c6"
+    },
+    {
+      "bytes": 454,
+      "path": "platform/fs193-binary-sast-specimen.json",
+      "sha256": "3de38f1154cc04b34c28f6f7c19a3ccd64824ef5df09cfd4671bd845ea26796f"
     },
     {
       "bytes": 697,

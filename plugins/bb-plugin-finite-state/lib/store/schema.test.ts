@@ -73,6 +73,7 @@ const ROW_COLUMNS = {
     "staged_rows",
     "last_pull",
     "error",
+    "staged_quarantined",
   ]),
   workspace_platform_project_binding: [
     "workspace_project_id",
@@ -752,6 +753,7 @@ const AMD_0010_REBUILD_STATEMENT_COUNT = 22;
 const AMD_0017_BACKFILL_STATEMENT_COUNT = 2;
 const AMD_0018_HARDWARE_SEMANTIC_STATEMENT_COUNT = 2;
 const AMD_0020_PROJECT_BINDING_STATEMENT_COUNT = 2;
+const AMD_0021_QUARANTINE_COUNTER_STATEMENT_COUNT = 1;
 
 function insertGeneration(
   db: Database.Database,
@@ -799,7 +801,8 @@ describe("shared-store-freeze", () => {
         SCHEMA_INDEXES.length +
         SCHEMA_VIEWS.length +
         AMD_0010_REBUILD_STATEMENT_COUNT +
-        AMD_0017_BACKFILL_STATEMENT_COUNT,
+        AMD_0017_BACKFILL_STATEMENT_COUNT +
+        AMD_0021_QUARANTINE_COUNTER_STATEMENT_COUNT,
     );
     expect(
       MIGRATIONS.filter((statement) =>
@@ -1001,7 +1004,8 @@ describe("shared-store-freeze", () => {
         -(
           AMD_0017_BACKFILL_STATEMENT_COUNT +
           AMD_0018_HARDWARE_SEMANTIC_STATEMENT_COUNT +
-          AMD_0020_PROJECT_BINDING_STATEMENT_COUNT
+          AMD_0020_PROJECT_BINDING_STATEMENT_COUNT +
+          AMD_0021_QUARANTINE_COUNTER_STATEMENT_COUNT
         ),
       ),
     );
@@ -1053,7 +1057,13 @@ describe("shared-store-freeze", () => {
     const db = host.bb.storage.database();
     host.bb.storage.migrate(
       db,
-      MIGRATIONS.slice(0, -AMD_0020_PROJECT_BINDING_STATEMENT_COUNT),
+      MIGRATIONS.slice(
+        0,
+        -(
+          AMD_0020_PROJECT_BINDING_STATEMENT_COUNT +
+          AMD_0021_QUARANTINE_COUNTER_STATEMENT_COUNT
+        ),
+      ),
     );
     insertGeneration(db, "platform-project", "version-1", "generation-1");
     db.prepare(
@@ -1083,6 +1093,43 @@ describe("shared-store-freeze", () => {
     expect(
       db.prepare("SELECT * FROM workspace_platform_project_binding").all(),
     ).toEqual([]);
+    await host.harness.lifecycle.dispose();
+  });
+
+  it("adds per-generation quarantine accounting without changing populated sync state", async () => {
+    const host = createFakePluginHost({
+      pluginId: "finite-state-schema-amd-0021",
+    });
+    const db = host.bb.storage.database();
+    host.bb.storage.migrate(
+      db,
+      MIGRATIONS.slice(0, -AMD_0021_QUARANTINE_COUNTER_STATEMENT_COUNT),
+    );
+    insertGeneration(db, "platform-project", "version-1", "generation-1");
+    db.prepare(
+      `INSERT INTO sync_state
+       (project_id, project_version_id, entity_kind, accepted_generation_id,
+        staged_pages, staged_rows, last_pull)
+       VALUES ('platform-project', 'version-1', 'finding', 'generation-1',
+               2, 17, '2026-08-14T00:00:00.000Z')`,
+    ).run();
+
+    host.bb.storage.migrate(db, MIGRATIONS);
+
+    expect(
+      db
+        .prepare(
+          `SELECT accepted_generation_id, staged_pages, staged_rows,
+                  staged_quarantined
+             FROM sync_state`,
+        )
+        .get(),
+    ).toEqual({
+      accepted_generation_id: "generation-1",
+      staged_pages: 2,
+      staged_rows: 17,
+      staged_quarantined: 0,
+    });
     await host.harness.lifecycle.dispose();
   });
 

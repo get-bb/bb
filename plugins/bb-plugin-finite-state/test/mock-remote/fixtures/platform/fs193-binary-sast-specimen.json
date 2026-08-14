@@ -1,0 +1,13 @@
+{
+  "id": "00000000-0000-5000-8000-000000000193",
+  "title": "FS-500-006 - /update/firmware-root/etc/ssl/certs/ca-certificates.crt",
+  "findingId": "FS-500-006",
+  "component": {
+    "id": "00000000-0000-5000-8000-000000000194",
+    "name": "/update/firmware-root/etc/ssl/certs/ca-certificates.crt",
+    "version": "",
+    "appId": "00000000-0000-5000-8000-000000000195",
+    "vcId": "00000000-0000-5000-8000-000000000196"
+  },
+  "type": "binary-sast"
+}

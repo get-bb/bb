@@ -958,6 +958,7 @@ describe("deterministic-seed-corpus", () => {
       "firmware-unpack-error",
       "non-ascii-names",
       "partial-vex-failure",
+      "real-binary-sast-any-version-identity",
       "real-cve-uuid-field-mapping",
       "real-distro-finding-identity",
       "requirement-without-verification",

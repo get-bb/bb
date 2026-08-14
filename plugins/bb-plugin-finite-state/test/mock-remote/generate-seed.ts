@@ -123,6 +123,25 @@ const FS174_CVE_UUID_FINDING = `{
   "exploitInfo": [],
   "dependencyPath": null
 }`;
+// Sanitized projection of the read-only production Platform capture in FS-192:
+// bb thread thr_au4euua3y2 events 3966/4015 and
+// UX-FINDINGS-2026-08-13-sweep6.md:110. Event 3966 records the full payload
+// key set (including findingId); event 4015 records the projected values.
+// Preserve its nested component, empty version, absent purl, and binary-sast type.
+const FS193_BINARY_SAST_FINDING = `{
+  "id": "00000000-0000-5000-8000-000000000193",
+  "title": "FS-500-006 - /update/firmware-root/etc/ssl/certs/ca-certificates.crt",
+  "findingId": "FS-500-006",
+  "component": {
+    "id": "00000000-0000-5000-8000-000000000194",
+    "name": "/update/firmware-root/etc/ssl/certs/ca-certificates.crt",
+    "version": "",
+    "appId": "00000000-0000-5000-8000-000000000195",
+    "vcId": "00000000-0000-5000-8000-000000000196"
+  },
+  "type": "binary-sast"
+}
+`;
 const COUNTS = {
   findings: 4_000,
   components: 180,
@@ -768,6 +787,11 @@ function buildCorpus(seed: string): {
         "Captured Platform response carries the CVE in findingId and an opaque UUID in vulnerabilityId.",
       refs: ["platform/fs174-cve-uuid-mapping-specimen.json"],
     },
+    "real-binary-sast-any-version-identity": {
+      description:
+        "Sanitized captured Platform response preserves a binary-SAST file-path component with an empty version and no purl.",
+      refs: ["platform/fs193-binary-sast-specimen.json"],
+    },
     "non-ascii-names": {
       description:
         "Names contain composed non-ASCII Latin characters and the micro sign.",
@@ -877,6 +901,10 @@ function buildCorpus(seed: string): {
     {
       path: "platform/fs174-cve-uuid-mapping-specimen.json",
       bytes: text(FS174_CVE_UUID_FINDING),
+    },
+    {
+      path: "platform/fs193-binary-sast-specimen.json",
+      bytes: text(FS193_BINARY_SAST_FINDING),
     },
     {
       path: "platform/components.jsonl",
