@@ -5,6 +5,9 @@ import {
 import semver from "semver";
 import { z } from "zod";
 import {
+  gitRangeSourceSpec,
+  gitSemverTagName,
+  normalizeGitTagPrefix,
   normalizePluginSubdirectory,
   parsePluginSource,
 } from "../plugins/install-sources.js";
@@ -146,47 +149,88 @@ const npmSourceSchema = z
   })
   .strict();
 
-const gitSourceSchema = z
-  .object({
-    git: z
-      .object({
-        url: httpsUrl,
-        subdir: z
-          .string()
-          .min(1)
-          .superRefine((value, ctx) => {
-            try {
-              normalizePluginSubdirectory(value);
-            } catch (error) {
-              ctx.addIssue({
-                code: "custom",
-                message: error instanceof Error ? error.message : String(error),
-              });
-            }
-          })
-          .optional(),
-        ref: z
-          .string()
-          .min(1)
-          .superRefine((value, ctx) => {
-            try {
-              const parsed = parsePluginSource(
-                `git:https://marketplace.invalid/plugin.git@${value}`,
-              );
-              if (parsed.kind !== "git" || parsed.ref !== value) {
-                throw new Error("git ref is ambiguous");
-              }
-            } catch (error) {
-              ctx.addIssue({
-                code: "custom",
-                message: error instanceof Error ? error.message : String(error),
-              });
-            }
-          }),
-      })
-      .strict(),
-  })
-  .strict();
+const gitSubdirSchema = z
+  .string()
+  .min(1)
+  .superRefine((value, ctx) => {
+    try {
+      normalizePluginSubdirectory(value);
+    } catch (error) {
+      ctx.addIssue({
+        code: "custom",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+/**
+ * A ref must survive BB's `git:<url>@<ref>` syntax unchanged, so a listing
+ * cannot smuggle a range, a `semver:` selector, or a second `@` past it.
+ */
+const gitRefSchema = z
+  .string()
+  .min(1)
+  .superRefine((value, ctx) => {
+    try {
+      const parsed = parsePluginSource(
+        `git:https://marketplace.invalid/plugin.git@${value}`,
+      );
+      if (
+        parsed.kind !== "git" ||
+        parsed.selector.kind !== "ref" ||
+        parsed.selector.ref !== value
+      ) {
+        throw new Error("git ref is ambiguous");
+      }
+    } catch (error) {
+      ctx.addIssue({
+        code: "custom",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+const gitTagPrefixSchema = z
+  .string()
+  .min(1)
+  .superRefine((value, ctx) => {
+    try {
+      normalizeGitTagPrefix(value);
+    } catch (error) {
+      ctx.addIssue({
+        code: "custom",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+/** `ref` and `range` are mutually exclusive; strict objects enforce the XOR. */
+const gitSourceSchema = z.union([
+  z
+    .object({
+      git: z
+        .object({
+          url: httpsUrl,
+          subdir: gitSubdirSchema.optional(),
+          ref: gitRefSchema,
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      git: z
+        .object({
+          url: httpsUrl,
+          subdir: gitSubdirSchema.optional(),
+          range: semverRange,
+          /** Monorepo tagging: `notes/` matches `notes/vX.Y.Z` tags. */
+          tagPrefix: gitTagPrefixSchema.optional(),
+        })
+        .strict(),
+    })
+    .strict(),
+]);
 
 const entrySchema = z
   .object({
@@ -344,9 +388,11 @@ export function entrySourceDisplay(entry: MarketplaceEntry): string {
         : ` (registry ${entry.source.npm.registry})`;
     return `npm:${entry.source.npm.package}${spec.length === 0 ? "" : `@${spec}`}${registry}`;
   }
-  const subdir =
-    entry.source.git.subdir === undefined ? "" : `#${entry.source.git.subdir}`;
-  return `git:${entry.source.git.url}@${entry.source.git.ref}${subdir}`;
+  const git = entry.source.git;
+  const subdir = git.subdir === undefined ? "" : `#${git.subdir}`;
+  if ("ref" in git) return `git:${git.url}@${git.ref}${subdir}`;
+  const prefix = git.tagPrefix ?? "";
+  return `git:${git.url}@${git.range}${subdir} (tags ${gitSemverTagName(prefix, "X.Y.Z")})`;
 }
 
 interface ResolvedEntrySource {
@@ -372,11 +418,21 @@ export function resolvedEntrySource(
         : { npmRegistry: entry.source.npm.registry }),
     };
   }
+  const git = entry.source.git;
   return {
-    source: `git:${entry.source.git.url}@${entry.source.git.ref}`,
+    // A range entry always uses the explicit `semver:` spec: the listing said
+    // range, so a repository that also has a ref of that name must not win.
+    source:
+      "ref" in git
+        ? `git:${git.url}@${git.ref}`
+        : gitRangeSourceSpec({
+            url: git.url,
+            range: git.range,
+            tagPrefix: git.tagPrefix ?? "",
+          }),
     selection:
-      entry.source.git.subdir === undefined
+      git.subdir === undefined
         ? ROOT_PLUGIN_SOURCE_SELECTION
-        : { kind: "subdirectory", path: entry.source.git.subdir },
+        : { kind: "subdirectory", path: git.subdir },
   };
 }

@@ -110,6 +110,67 @@ describe("normalized plugin persistence", () => {
     ).toThrow(/resolution fields/);
   });
 
+  it("stores a git ref and a git tag range in mutually exclusive columns", () => {
+    const common = {
+      provenance: { kind: "direct" } as const,
+      exactResolution: { kind: "git" as const, commit: "abcdef1234567" },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: null,
+      rootDir: "/cache/repo/abcdef1234567",
+      version: "1.4.2",
+      enabled: true,
+    };
+    upsertInstalledPlugin(db, {
+      ...common,
+      id: "ranged",
+      source: "git:/repo@semver:notes/:^1.0.0",
+      sourceIntent: {
+        kind: "git",
+        url: "/repo",
+        subdirectory: "plugins/notes",
+        selector: {
+          kind: "range",
+          range: "^1.0.0",
+          tagPrefix: "notes/",
+          resolvedTag: "notes/v1.4.2",
+        },
+      },
+    });
+    expect(getInstalledPlugin(db, "ranged")).toMatchObject({
+      sourceGitRange: "^1.0.0",
+      sourceGitTagPrefix: "notes/",
+      sourceGitResolvedTag: "notes/v1.4.2",
+      sourceGitRequestedRef: null,
+      sourceGitRefKind: null,
+    });
+
+    // Reinstalling the same id against a ref must clear the range trio, or a
+    // later resolution would still range over tags.
+    upsertInstalledPlugin(db, {
+      ...common,
+      id: "ranged",
+      source: "git:/repo@main",
+      sourceIntent: {
+        kind: "git",
+        url: "/repo",
+        subdirectory: "plugins/notes",
+        selector: { kind: "ref", ref: "main", refKind: "branch" },
+      },
+    });
+    expect(getInstalledPlugin(db, "ranged")).toMatchObject({
+      sourceGitRange: null,
+      sourceGitTagPrefix: null,
+      sourceGitResolvedTag: null,
+      sourceGitRequestedRef: "main",
+      sourceGitRefKind: "branch",
+    });
+  });
+
   it("retains artifact records when a plugin registration is removed", () => {
     upsertInstalledPlugin(db, {
       id: "retained",
@@ -119,8 +180,7 @@ describe("normalized plugin persistence", () => {
         kind: "git",
         url: "/repo",
         subdirectory: null,
-        requestedRef: "main",
-        refKind: "branch",
+        selector: { kind: "ref", ref: "main", refKind: "branch" },
       },
       exactResolution: { kind: "git", commit: "abcdef1234567" },
       updateState: {

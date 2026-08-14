@@ -870,8 +870,7 @@ describe("plugin update service and routes", () => {
         kind: "git",
         url: repo,
         subdirectory: null,
-        requestedRef: "main",
-        refKind: "branch",
+        selector: { kind: "ref", ref: "main", refKind: "branch" },
       },
       exactResolution: { kind: "git", commit: currentCommit },
       updateState: {
@@ -902,5 +901,126 @@ describe("plugin update service and routes", () => {
       gitResolvedCommit: nextCommit,
     });
     await stat(join(legacyRoot, "package.json"));
+  });
+  /** A second repository whose plugin releases are tagged vX.Y.Z. */
+  async function taggedRepo(): Promise<string> {
+    const tagged = join(workDir, "tagged");
+    await mkdir(tagged, { recursive: true });
+    await git(tagged, ["init", "-q", "-b", "main"]);
+    await git(tagged, ["config", "user.email", "test@example.com"]);
+    await git(tagged, ["config", "user.name", "Test"]);
+    await writeFile(
+      join(tagged, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-tagged",
+        version: "1.0.0",
+        bb: {
+          name: "Tagged fixture",
+          description: "Tagged release fixture.",
+          branding: { icon: "Zap" },
+          server: "./server.ts",
+        },
+      }),
+    );
+    await writeFile(
+      join(tagged, "server.ts"),
+      `export default function plugin(bb: any) { bb.log.info("tagged"); }`,
+    );
+    await git(tagged, ["add", "-A"]);
+    await git(tagged, ["commit", "-qm", "1.0.0"]);
+    await git(tagged, ["tag", "v1.0.0"]);
+    return tagged;
+  }
+
+  async function releaseTag(repoDir: string, tag: string): Promise<string> {
+    await writeFile(join(repoDir, "release.txt"), tag);
+    await git(repoDir, ["add", "-A"]);
+    await git(repoDir, ["commit", "-qm", tag]);
+    await git(repoDir, ["tag", tag]);
+    return git(repoDir, ["rev-parse", "HEAD"]);
+  }
+
+  it("offers and applies a newer tag inside a git semver range", async () => {
+    const tagged = await taggedRepo();
+    await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
+    const nextCommit = await releaseTag(tagged, "v1.1.0");
+    // Outside the range: it must never be offered.
+    await releaseTag(tagged, "v2.0.0");
+
+    const checked = await service.checkForUpdates("tagged");
+    expect(checked).toMatchObject([
+      {
+        id: "tagged",
+        outcome: "update-available",
+        candidate: {
+          version: nextCommit,
+          display: expect.stringContaining("@v1.1.0"),
+        },
+      },
+    ]);
+
+    const applied = await service.applyUpdate("tagged");
+    expect(applied).toMatchObject({ ok: true, result: { applied: true } });
+    expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
+      sourceGitRange: "^1.0.0",
+      sourceGitResolvedTag: "v1.1.0",
+      gitResolvedCommit: nextCommit,
+    });
+    expect(await service.checkForUpdates("tagged")).toMatchObject([
+      { id: "tagged", outcome: "current" },
+    ]);
+  });
+
+  it("refuses to resolve a release tag that was moved to another commit", async () => {
+    const tagged = await taggedRepo();
+    await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
+    const installed = getInstalledPluginRegistration(db, "tagged");
+    // The author rewrites the release the user already accepted.
+    await writeFile(join(tagged, "release.txt"), "rewritten");
+    await git(tagged, ["add", "-A"]);
+    await git(tagged, ["commit", "-qm", "rewrite"]);
+    await git(tagged, ["tag", "-f", "v1.0.0", "HEAD"]);
+    const moved = await git(tagged, ["rev-parse", "HEAD"]);
+
+    expect(await service.checkForUpdates("tagged")).toMatchObject([
+      {
+        id: "tagged",
+        outcome: "unavailable",
+        detail: expect.stringContaining("security check failed"),
+      },
+    ]);
+    const applied = await service.applyUpdate("tagged");
+    expect(applied).toMatchObject({
+      ok: false,
+      error: expect.stringContaining(
+        `${installed?.gitResolvedCommit ?? ""} to ${moved}`,
+      ),
+    });
+    // The installed plugin is untouched: only the resolution is refused.
+    expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
+      sourceGitResolvedTag: "v1.0.0",
+      gitResolvedCommit: installed?.gitResolvedCommit,
+    });
+  });
+
+  it("refuses an exact-tag install whose tag moved", async () => {
+    const tagged = await taggedRepo();
+    await service.install(`git:${tagged}@v1.0.0`, { kind: "root" });
+    expect(await service.checkForUpdates("tagged")).toMatchObject([
+      { id: "tagged", outcome: "pinned" },
+    ]);
+
+    await writeFile(join(tagged, "release.txt"), "rewritten");
+    await git(tagged, ["add", "-A"]);
+    await git(tagged, ["commit", "-qm", "rewrite"]);
+    await git(tagged, ["tag", "-f", "v1.0.0", "HEAD"]);
+
+    expect(await service.checkForUpdates("tagged")).toMatchObject([
+      {
+        id: "tagged",
+        outcome: "unavailable",
+        detail: expect.stringContaining('git tag "v1.0.0"'),
+      },
+    ]);
   });
 });

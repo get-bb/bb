@@ -18,6 +18,21 @@ import semver from "semver";
 import { spawnPortableOutputProcess } from "@bb/process-utils";
 
 /**
+ * What a `git:` spec asks for.
+ *
+ * - "ref" is one branch, tag, or commit, classified later with ls-remote.
+ * - "range" is a semver range resolved over `[tagPrefix]vX.Y.Z` tags.
+ * - "ref-or-range" is the implicit form: the spec reads as a semver range,
+ *   but a repository is free to name a branch `1.x`. Classification decides,
+ *   and a spec that is both is refused rather than guessed. See
+ *   {@link isGitSemverRangeSpec}.
+ */
+export type ParsedGitSelector =
+  | { kind: "ref"; ref: string }
+  | { kind: "range"; range: string; tagPrefix: string }
+  | { kind: "ref-or-range"; ref: string; range: string };
+
+/**
  * Parsed `bb plugin install` source spec (design §6). The original spec is
  * retained for display/diagnostics; normalized persistence is authoritative.
  */
@@ -28,10 +43,9 @@ export type ParsedPluginSource =
       kind: "git";
       /** Clone URL (https, or an on-disk repo path). */
       url: string;
-      /** Requested branch, tag, or commit. Classified with ls-remote. */
-      ref: string;
-      /** Managed dir relative to <dataDir>/plugins/git: "<host>/<path>@<ref>". */
-      installDir: string;
+      /** The spec as written after "@"; "HEAD" when it was omitted. */
+      spec: string;
+      selector: ParsedGitSelector;
       /** Cache namespace relative to plugins/cache/git: "<host>/<path>". */
       cachePath: string;
     }
@@ -45,6 +59,14 @@ export type ParsedPluginSource =
 
 const COMMIT_SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
 export const DEFAULT_GIT_REF = "HEAD";
+/** Forces the rest of a git spec to read as a semver range: `semver:^1.2.0`. */
+const GIT_RANGE_SPEC_PREFIX = "semver:";
+/** Forces the rest of a git spec to read as a literal ref: `ref:1.x`. */
+const GIT_REF_SPEC_PREFIX = "ref:";
+/** `v1`, `1.2`, and `v1.2.3` are ordinary tag names, not ranges. */
+const BARE_VERSION_SPEC_PATTERN = /^v?\d+(?:\.\d+)*$/u;
+const GIT_TAG_PREFIX_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/u;
+const MAX_GIT_TAG_PREFIX_LENGTH = 128;
 // Loose npm package-name shape; enough to keep names safe as path segments.
 const NPM_NAME_PATTERN = /^(@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/;
 const BUILTIN_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
@@ -64,6 +86,113 @@ function assertSafeSegments(value: string, label: string): void {
   }
 }
 
+/**
+ * Whether a git spec reads as a semver range rather than as a ref name.
+ *
+ * A bare version token is excluded: `v1`, `v1.2`, and `v1.2.3` all parse as
+ * semver ranges, but they are how repositories actually name tags, so they
+ * keep resolving as the literal tag. Write `semver:v1` to range over them.
+ */
+export function isGitSemverRangeSpec(spec: string): boolean {
+  return (
+    semver.validRange(spec) !== null &&
+    semver.valid(spec) === null &&
+    !BARE_VERSION_SPEC_PATTERN.test(spec)
+  );
+}
+
+/**
+ * Validate a monorepo tag prefix such as `thread-hover-cards/`, which
+ * versions one plugin of a repository with `thread-hover-cards/vX.Y.Z` tags.
+ * An empty prefix means repository-wide `vX.Y.Z` tags.
+ */
+export function normalizeGitTagPrefix(value: string): string {
+  if (value.length === 0) return value;
+  if (
+    value.length > MAX_GIT_TAG_PREFIX_LENGTH ||
+    !GIT_TAG_PREFIX_PATTERN.test(value) ||
+    value.includes("..") ||
+    value.includes("//") ||
+    value.endsWith(".") ||
+    value.split("/").some((segment) => segment.endsWith(".lock"))
+  ) {
+    throw new Error(`invalid git tag prefix "${value}"`);
+  }
+  return value;
+}
+
+/**
+ * The canonical install spec for a semver range over tags. The explicit
+ * `semver:` form never collides with a ref of the same name, so generated
+ * specs (marketplace entries, `--tag-prefix`) always use it.
+ */
+export function gitRangeSourceSpec(args: {
+  url: string;
+  range: string;
+  tagPrefix: string;
+}): string {
+  const prefix =
+    args.tagPrefix.length === 0
+      ? ""
+      : `${normalizeGitTagPrefix(args.tagPrefix)}:`;
+  return `git:${args.url}@${GIT_RANGE_SPEC_PREFIX}${prefix}${args.range}`;
+}
+
+/** The tag a released `version` carries under `tagPrefix`. */
+export function gitSemverTagName(tagPrefix: string, version: string): string {
+  return `${tagPrefix}v${version}`;
+}
+
+/**
+ * The release a tag names under `tagPrefix`, or null when the tag is not a
+ * `[tagPrefix]vX.Y.Z` release tag. The version must be canonical semver, so
+ * `v1.2` and `v1.2.3+build` are not releases of this scheme.
+ */
+export function gitSemverTagVersion(
+  tag: string,
+  tagPrefix: string,
+): string | null {
+  if (!tag.startsWith(tagPrefix)) return null;
+  const rest = tag.slice(tagPrefix.length);
+  if (!rest.startsWith("v")) return null;
+  const version = rest.slice(1);
+  return semver.parse(version)?.version === version ? version : null;
+}
+
+function parseGitSelector(spec: string): ParsedGitSelector {
+  if (spec.startsWith(GIT_REF_SPEC_PREFIX)) {
+    const ref = spec.slice(GIT_REF_SPEC_PREFIX.length);
+    if (ref.length === 0) throw new Error("git source has an empty ref");
+    return { kind: "ref", ref };
+  }
+  if (spec.startsWith(GIT_RANGE_SPEC_PREFIX)) {
+    // "semver:<range>" or "semver:<tagPrefix>:<range>". Neither a range nor a
+    // ref name can contain ":", so the split is unambiguous.
+    const parts = spec.slice(GIT_RANGE_SPEC_PREFIX.length).split(":");
+    if (parts.length > 2) {
+      throw new Error(`invalid git semver spec "${spec}"`);
+    }
+    const range = parts[parts.length - 1] ?? "";
+    const tagPrefix = normalizeGitTagPrefix(
+      parts.length === 2 ? (parts[0] ?? "") : "",
+    );
+    if (semver.validRange(range) === null) {
+      throw new Error(`invalid git semver range "${range}"`);
+    }
+    return { kind: "range", range, tagPrefix };
+  }
+  // Git ref names cannot contain ":", so the only specs that legitimately
+  // carry one are the selector prefixes handled above.
+  if (spec.includes(":")) {
+    throw new Error(
+      `invalid git spec "${spec}" — use "ref:<name>" or "semver:[<tagPrefix>:]<range>"`,
+    );
+  }
+  return isGitSemverRangeSpec(spec)
+    ? { kind: "ref-or-range", ref: spec, range: spec }
+    : { kind: "ref", ref: spec };
+}
+
 function parseGitSource(spec: string): ParsedPluginSource {
   const at = spec.lastIndexOf("@");
   if (at === spec.length - 1) {
@@ -74,6 +203,7 @@ function parseGitSource(spec: string): ParsedPluginSource {
   if (ref.startsWith("-") || ref.includes("..")) {
     throw new Error(`invalid git ref "${ref}"`);
   }
+  const selector = parseGitSelector(ref);
   let url: string;
   let host: string;
   let repoPath: string;
@@ -115,8 +245,8 @@ function parseGitSource(spec: string): ParsedPluginSource {
   return {
     kind: "git",
     url,
-    ref,
-    installDir: `${host}/${repoPath}@${ref}`,
+    spec: ref,
+    selector,
     cachePath: `${host}/${repoPath}`,
   };
 }
@@ -550,15 +680,31 @@ export const INSTALL_COMMAND_TIMEOUT_MS = 5 * 60_000;
 export async function runInstallCommand(
   command: string,
   args: string[],
-  options?: { timeoutMs?: number; notFoundHint?: string },
+  options?: {
+    timeoutMs?: number;
+    notFoundHint?: string;
+    /**
+     * Keep the whole output up to this size and fail past it, for commands
+     * whose full stdout is parsed. Without it only the last 8 KB survives,
+     * which is enough to explain a failure but not to read a tag listing.
+     */
+    maxStdoutChars?: number;
+  },
 ): Promise<string> {
   const timeoutMs = options?.timeoutMs ?? INSTALL_COMMAND_TIMEOUT_MS;
   const child = spawnPortableOutputProcess({ command, args });
   let stderr = "";
   let stdout = "";
+  let overflowed = false;
   child.stdout.on("data", (chunk: Buffer) => {
     stdout += chunk.toString("utf8");
-    if (stdout.length > 8192) stdout = stdout.slice(-8192);
+    const limit = options?.maxStdoutChars;
+    if (limit === undefined) {
+      if (stdout.length > 8192) stdout = stdout.slice(-8192);
+    } else if (stdout.length > limit && !overflowed) {
+      overflowed = true;
+      child.kill("SIGKILL");
+    }
   });
   child.stderr.on("data", (chunk: Buffer) => {
     stderr += chunk.toString("utf8");
@@ -584,6 +730,14 @@ export async function runInstallCommand(
     });
     child.on("close", (code) => {
       clearTimeout(timer);
+      if (overflowed) {
+        reject(
+          new Error(
+            `${command} ${args[0]} produced more than ${options?.maxStdoutChars} bytes of output`,
+          ),
+        );
+        return;
+      }
       if (code === 0) {
         resolve();
         return;

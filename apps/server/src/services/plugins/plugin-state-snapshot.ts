@@ -62,6 +62,11 @@ const installedPluginRowFields = {
   sourceGitSubdirectory: z.string().nullable(),
   sourceGitRequestedRef: z.string().nullable(),
   sourceGitRefKind: z.enum(["branch", "tag", "commit"]).nullable(),
+  // Snapshots written before git ranges existed omit these; those rows all
+  // pinned one ref.
+  sourceGitRange: z.string().nullable().default(null),
+  sourceGitTagPrefix: z.string().nullable().default(null),
+  sourceGitResolvedTag: z.string().nullable().default(null),
   npmResolvedVersion: z.string().nullable(),
   npmIntegrity: z.string().nullable(),
   gitResolvedCommit: z.string().nullable(),

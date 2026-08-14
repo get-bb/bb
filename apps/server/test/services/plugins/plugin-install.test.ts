@@ -32,6 +32,7 @@ import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import { validatePluginArtifactMeta } from "../../../src/services/plugins/app-bundle.js";
 import {
   gitArtifactCacheDir,
+  gitRangeSourceSpec,
   hashInstallDir,
   npmArtifactCacheDir,
   parsePluginSource,
@@ -148,8 +149,8 @@ describe("plugin install sources", () => {
     expect(parsePluginSource("git:github.com/acme/bb-plugin-foo@v1")).toEqual({
       kind: "git",
       url: "https://github.com/acme/bb-plugin-foo",
-      ref: "v1",
-      installDir: "github.com/acme/bb-plugin-foo@v1",
+      spec: "v1",
+      selector: { kind: "ref", ref: "v1" },
       cachePath: "github.com/acme/bb-plugin-foo",
     });
     expect(
@@ -163,20 +164,20 @@ describe("plugin install sources", () => {
     expect(parsePluginSource("https://github.com/acme/bb-plugin-foo")).toEqual({
       kind: "git",
       url: "https://github.com/acme/bb-plugin-foo",
-      ref: "HEAD",
-      installDir: "github.com/acme/bb-plugin-foo@HEAD",
+      spec: "HEAD",
+      selector: { kind: "ref", ref: "HEAD" },
       cachePath: "github.com/acme/bb-plugin-foo",
     });
     expect(
       parsePluginSource("https://github.com/acme/bb-plugin-foo/"),
     ).toMatchObject({
       kind: "git",
-      ref: "HEAD",
+      spec: "HEAD",
       cachePath: "github.com/acme/bb-plugin-foo",
     });
     expect(parsePluginSource("git:github.com/acme/repo")).toMatchObject({
       kind: "git",
-      ref: "HEAD",
+      spec: "HEAD",
     });
     expect(() => parsePluginSource("git:github.com/acme/repo@")).toThrowError(
       /empty ref/,
@@ -190,6 +191,55 @@ describe("plugin install sources", () => {
     expect(() =>
       parsePluginSource("git:github.com/acme/repo@-evil"),
     ).toThrowError(/invalid git ref/);
+  });
+
+  it("reads git semver ranges, explicit selectors, and tag prefixes", () => {
+    // A range operator means a range; a bare version token stays the tag it
+    // almost always is.
+    for (const spec of ["^1.2.0", "~1.2", "1.x", ">=1.0.0 <2.0.0", "*"]) {
+      expect(
+        parsePluginSource(`git:github.com/acme/repo@${spec}`),
+      ).toMatchObject({
+        selector: { kind: "ref-or-range", ref: spec, range: spec },
+      });
+    }
+    for (const spec of ["v1", "v1.2", "1.2.3", "main", "release/next"]) {
+      expect(
+        parsePluginSource(`git:github.com/acme/repo@${spec}`),
+      ).toMatchObject({ selector: { kind: "ref", ref: spec } });
+    }
+    expect(
+      parsePluginSource("git:github.com/acme/repo@semver:^1.2.0"),
+    ).toMatchObject({
+      spec: "semver:^1.2.0",
+      selector: { kind: "range", range: "^1.2.0", tagPrefix: "" },
+    });
+    expect(
+      parsePluginSource("git:github.com/acme/repo@semver:notes/:^1.2.0"),
+    ).toMatchObject({
+      selector: { kind: "range", range: "^1.2.0", tagPrefix: "notes/" },
+    });
+    expect(parsePluginSource("git:github.com/acme/repo@ref:1.x")).toMatchObject(
+      { selector: { kind: "ref", ref: "1.x" } },
+    );
+    expect(
+      gitRangeSourceSpec({
+        url: "https://github.com/acme/repo.git",
+        range: "^1.2.0",
+        tagPrefix: "notes/",
+      }),
+    ).toBe("git:https://github.com/acme/repo.git@semver:notes/:^1.2.0");
+    for (const spec of [
+      "semver:not a range",
+      "semver:a:b:^1.0.0",
+      "semver:../evil/:^1.0.0",
+      "ref:",
+      "weird:ref",
+    ]) {
+      expect(() =>
+        parsePluginSource(`git:github.com/acme/repo@${spec}`),
+      ).toThrow();
+    }
   });
 
   it("classifies omitted, exact, range, and dist-tag npm specs", () => {
@@ -465,6 +515,132 @@ describe("plugin install flows", () => {
         gitResolvedCommit: expect.stringMatching(/^[0-9a-f]{40}$/),
         activeArtifactId: expect.any(String),
       });
+    });
+
+    it("resolves a semver range over release tags and tracks compatible", async () => {
+      const repoDir = join(workDir, "repo-range");
+      await writePluginFixture(repoDir, { name: "bb-plugin-ranger" });
+      await initGitRepo(repoDir);
+      const first = await commitAll(repoDir, "init");
+      await git(repoDir, ["tag", "v1.0.0"]);
+      await writeFile(join(repoDir, "note.txt"), "1.1.0");
+      const second = await commitAll(repoDir, "1.1.0");
+      await git(repoDir, ["tag", "-a", "v1.1.0", "-m", "1.1.0"]);
+      await writeFile(join(repoDir, "note.txt"), "2.0.0");
+      await commitAll(repoDir, "2.0.0");
+      await git(repoDir, ["tag", "v2.0.0"]);
+      await writeFile(join(repoDir, "note.txt"), "1.2.0-beta.1");
+      await commitAll(repoDir, "1.2.0-beta.1");
+      await git(repoDir, ["tag", "v1.2.0-beta.1"]);
+
+      const source = `git:${repoDir}@^1.0.0`;
+      const entry = await service.install(source, { kind: "root" });
+
+      // The highest stable release inside the range wins: not 2.0.0, and not
+      // the 1.2.0 prerelease the range does not name.
+      expect(entry).toMatchObject({ id: "ranger", status: "running" });
+      expect(entry.sourceDisplay).toContain("tracks compatible");
+      expect(getInstalledPluginRegistration(db, "ranger")).toMatchObject({
+        sourceKind: "git",
+        sourceGitUrl: repoDir,
+        sourceGitRange: "^1.0.0",
+        sourceGitTagPrefix: "",
+        sourceGitResolvedTag: "v1.1.0",
+        sourceGitRequestedRef: null,
+        sourceGitRefKind: null,
+        gitResolvedCommit: second,
+      });
+      expect(second).not.toBe(first);
+      const view = await service.getSource("ranger");
+      expect(view).toMatchObject({ range: "^1.0.0", resolvedTag: "v1.1.0" });
+    });
+
+    it("refuses a range spec that is also a ref, and honors the explicit forms", async () => {
+      const repoDir = join(workDir, "repo-ambiguous");
+      await writePluginFixture(repoDir, { name: "bb-plugin-ambiguous" });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "init");
+      await git(repoDir, ["tag", "v1.0.0"]);
+      // A branch literally named like a range: bb must not guess which one
+      // the user meant.
+      await git(repoDir, ["branch", "1.x"]);
+
+      await expect(
+        service.install(`git:${repoDir}@1.x`, { kind: "root" }),
+      ).rejects.toThrow(/both a semver range and a branch/);
+      expect(getInstalledPluginRegistration(db, "ambiguous")).toBeUndefined();
+
+      await service.install(`git:${repoDir}@semver:1.x`, { kind: "root" });
+      expect(getInstalledPluginRegistration(db, "ambiguous")).toMatchObject({
+        sourceGitRange: "1.x",
+        sourceGitResolvedTag: "v1.0.0",
+      });
+      expect(await service.remove("ambiguous")).toBe(true);
+
+      await service.install(`git:${repoDir}@ref:1.x`, { kind: "root" });
+      expect(getInstalledPluginRegistration(db, "ambiguous")).toMatchObject({
+        sourceGitRange: null,
+        sourceGitRequestedRef: "1.x",
+        sourceGitRefKind: "branch",
+      });
+    });
+
+    it("resolves a prefixed range and reports one with no matching tag", async () => {
+      const repoDir = join(workDir, "repo-prefixed");
+      await writePluginFixture(repoDir, { name: "bb-plugin-prefixed" });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "init");
+      // Repository-wide tags must not answer a prefixed range.
+      await git(repoDir, ["tag", "v9.0.0"]);
+      await writeFile(join(repoDir, "note.txt"), "prefixed");
+      const tagged = await commitAll(repoDir, "prefixed release");
+      await git(repoDir, ["tag", "prefixed/v1.4.2"]);
+
+      await expect(
+        service.install(`git:${repoDir}@semver:missing/:^1.0.0`, {
+          kind: "root",
+        }),
+      ).rejects.toThrow(/no tag of .* matches \^1\.0\.0/);
+
+      await service.install(`git:${repoDir}@semver:prefixed/:^1.0.0`, {
+        kind: "root",
+      });
+      expect(getInstalledPluginRegistration(db, "prefixed")).toMatchObject({
+        sourceGitRange: "^1.0.0",
+        sourceGitTagPrefix: "prefixed/",
+        sourceGitResolvedTag: "prefixed/v1.4.2",
+        gitResolvedCommit: tagged,
+      });
+    });
+
+    it("installs a catalog entry that lists a semver range", async () => {
+      const repoDir = join(workDir, "repo-catalog-range");
+      await writePluginFixture(repoDir, { name: "bb-plugin-catalog-range" });
+      await initGitRepo(repoDir);
+      const commit = await commitAll(repoDir, "init");
+      await git(repoDir, ["tag", "v1.3.0"]);
+
+      const entry = await service.installCatalogPlugin({
+        marketplace: "bb-official",
+        entryId: "catalog-range",
+        pluginId: "catalog-range",
+        source: `git:${repoDir}@semver:^1.0.0`,
+        selection: ROOT_PLUGIN_SOURCE_SELECTION,
+      });
+
+      expect(entry).toMatchObject({
+        id: "catalog-range",
+        provenance: "catalog",
+        status: "running",
+      });
+      expect(getInstalledPluginRegistration(db, "catalog-range")).toMatchObject(
+        {
+          catalogEntryId: "catalog-range",
+          sourceGitRange: "^1.0.0",
+          sourceGitResolvedTag: "v1.3.0",
+          gitResolvedCommit: commit,
+        },
+      );
     });
 
     it("refuses a git plugin that shadows a builtin after materialization", async () => {

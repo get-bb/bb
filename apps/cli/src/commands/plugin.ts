@@ -602,6 +602,31 @@ function dualInterpretationError(source: string): string {
   );
 }
 
+/**
+ * Rewrite a `git:<url>@<range>` spec into the explicit `semver:` form that
+ * carries a tag prefix. The prefix only means something for a range, so a spec
+ * that is already explicit — or that names a ref — is refused rather than
+ * silently reinterpreted.
+ */
+function withGitTagPrefix(source: string, tagPrefix: string): string {
+  const at = source.lastIndexOf("@");
+  const spec = at <= 0 ? "" : source.slice(at + 1);
+  if (
+    (!source.startsWith("git:") && !/^https?:\/\//iu.test(source)) ||
+    spec.length === 0
+  ) {
+    throw new Error(
+      "--tag-prefix applies to a git: source with a semver range, such as git:github.com/acme/repo@^1.2.0.",
+    );
+  }
+  if (spec.startsWith("semver:") || spec.startsWith("ref:")) {
+    throw new Error(
+      `Use --tag-prefix or an explicit "${spec.split(":")[0] ?? ""}:" spec, not both.`,
+    );
+  }
+  return `${source.slice(0, at)}@semver:${tagPrefix}:${spec}`;
+}
+
 function hasPathSyntax(source: string): boolean {
   return (
     source.includes("/") ||
@@ -874,6 +899,13 @@ export function registerPluginCommands(
         if (source.subdirectory !== undefined) {
           console.log(`  subdirectory: ${source.subdirectory}`);
         }
+        if (source.range !== undefined) console.log(`  range: ${source.range}`);
+        if (source.tagPrefix !== undefined) {
+          console.log(`  tag prefix: ${source.tagPrefix}`);
+        }
+        if (source.resolvedTag !== undefined) {
+          console.log(`  tag: ${source.resolvedTag}`);
+        }
         if (source.registry) console.log(`  registry: ${source.registry}`);
         if (source.integrity) console.log(`  integrity: ${source.integrity}`);
         if (source.engines.bb) {
@@ -901,7 +933,7 @@ export function registerPluginCommands(
   plugin
     .command("install <source>")
     .description(
-      "Install a bundled official plugin by name, Git repository URL, local path, builtin:<name>, git:<url>[@<ref>], or npm:<name>@<version> (managed sources validate engines ranges and build artifacts; bundled plugin ids are reserved)",
+      "Install a bundled official plugin by name, Git repository URL, local path, builtin:<name>, git:<url>[@<ref|semver-range>], or npm:<name>@<version> (managed sources validate engines ranges and build artifacts; bundled plugin ids are reserved)",
     )
     .option(
       "--subdirectory <path>",
@@ -910,6 +942,10 @@ export function registerPluginCommands(
     .option(
       "--plugin <name>",
       "Install the .bb/plugins.json entry with this name (git:/path: repositories)",
+    )
+    .option(
+      "--tag-prefix <prefix>",
+      "Resolve a git: semver range over <prefix>vX.Y.Z tags (monorepo tagging)",
     )
     .option("--yes", "Skip the confirmation prompt")
     .option("--json", "Output JSON")
@@ -921,6 +957,7 @@ export function registerPluginCommands(
             yes?: boolean;
             subdirectory?: string;
             plugin?: string;
+            tagPrefix?: string;
           },
         ) => {
           if (opts.subdirectory !== undefined && opts.plugin !== undefined) {
@@ -928,7 +965,16 @@ export function registerPluginCommands(
               "Use --subdirectory or --plugin, not both: --plugin resolves a name from .bb/plugins.json to a subdirectory.",
             );
           }
-          const intent = await resolveInstallIntent(getUrl(), source);
+          const requested =
+            opts.tagPrefix === undefined
+              ? source
+              : withGitTagPrefix(source, opts.tagPrefix);
+          const intent = await resolveInstallIntent(getUrl(), requested);
+          if (intent.kind === "catalog" && opts.tagPrefix !== undefined) {
+            throw new Error(
+              `"${source}" is an official plugin entry; --tag-prefix applies to git: sources only.`,
+            );
+          }
           if (
             intent.kind === "catalog" &&
             (opts.subdirectory !== undefined || opts.plugin !== undefined)
@@ -945,7 +991,7 @@ export function registerPluginCommands(
               ? intent.summary
               : intent.entry.source.startsWith("builtin:")
                 ? `Installing ${intent.entry.displayName}, bundled with BB (${intent.entry.source})`
-                : `Installing ${intent.entry.displayName} from its pinned source (${intent.entry.source})`;
+                : `Installing ${intent.entry.displayName} from its listed source (${intent.entry.source})`;
           if (intent.kind === "source" && intent.source.startsWith("path:")) {
             const path = intent.source.slice(5);
             // Best effort — a missing/invalid manifest is the server's
@@ -1092,7 +1138,7 @@ export function registerPluginCommands(
             if (!shouldAttempt) {
               if (result.outcome === "pinned") {
                 console.log(
-                  `${result.id}: skipped — pinned${detail ? ` (${detail})` : ""}; remove and reinstall with a tracking npm range or git branch to receive updates.`,
+                  `${result.id}: skipped — pinned${detail ? ` (${detail})` : ""}; remove and reinstall with a tracking npm range, git branch, or git semver range to receive updates.`,
                 );
               } else if (result.outcome === "incompatible") {
                 console.log(

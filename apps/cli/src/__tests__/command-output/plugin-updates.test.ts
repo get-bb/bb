@@ -210,7 +210,7 @@ describe("bb plugin update commands", () => {
     await runCommand(["plugin", "update", "notes"], register);
 
     expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
-      "remove and reinstall with a tracking npm range or git branch",
+      "remove and reinstall with a tracking npm range, git branch, or git semver range",
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });

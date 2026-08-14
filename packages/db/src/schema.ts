@@ -228,10 +228,18 @@ export const installedPlugins = sqliteTable("plugins", {
   }),
   sourceGitUrl: text("source_git_url"),
   sourceGitSubdirectory: text("source_git_subdirectory"),
+  // A git source names either one ref or a semver range over release tags.
+  // The ref pair is null for a range install and the range trio is null for a
+  // ref install; exactly one pair is set.
   sourceGitRequestedRef: text("source_git_requested_ref"),
   sourceGitRefKind: text("source_git_ref_kind", {
     enum: ["branch", "tag", "commit"],
   }),
+  sourceGitRange: text("source_git_range"),
+  /** "" means repository-wide `vX.Y.Z` tags; a prefix versions one plugin. */
+  sourceGitTagPrefix: text("source_git_tag_prefix"),
+  /** Tag the range resolved to; `git_resolved_commit` is what it pointed at. */
+  sourceGitResolvedTag: text("source_git_resolved_tag"),
   npmResolvedVersion: text("npm_resolved_version"),
   npmIntegrity: text("npm_integrity"),
   gitResolvedCommit: text("git_resolved_commit"),

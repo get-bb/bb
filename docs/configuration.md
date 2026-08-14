@@ -694,7 +694,7 @@ invalid file is rejected whole. The manifest is an index only; it never
 overrides a plugin's identity, branding, entry points, or engine ranges.
 
 Install one plugin of the repository with
-`bb plugin install git:<url>[@<ref>] --plugin <name>` (resolves a collection
+`bb plugin install git:<url>[@<ref|semver-range>] --plugin <name>` (resolves a collection
 entry) or `--subdirectory <relative-path>` (the primitive, which needs no
 collection manifest). Both flags work for `path:` sources and are mutually
 exclusive. Installs from the same repository and commit share one cached
@@ -772,9 +772,16 @@ Dependency resolution and bundling run on install and update-apply only —
 never on an update check, which reads the manifest and stops. An omitted npm
 spec tracks the newest compatible stable release, ranges track within the
 range, dist-tags track the tag, and exact versions are pinned. A bare HTTP(S)
-Git repository URL or `git:<url>[@<ref>]` requires `git`; an omitted ref tracks
-the repository's default branch, explicit branches track their head, and tags
-and commits are pinned. Local
+Git repository URL or `git:<url>[@<ref|semver-range>]` requires `git`; an
+omitted ref tracks the repository's default branch, explicit branches track
+their head, and tags and commits are pinned. A semver range
+(`git:<url>@^1.2.0`, or `@semver:<range>` to state the intent explicitly)
+tracks the repository's `[<tag-prefix>]vX.Y.Z` release tags: bb installs the
+highest release the range allows, excludes prereleases unless the range names
+one, records the tag and the commit it pointed at, and refuses that tag later
+if it moved. `--tag-prefix <prefix>` ranges over one plugin's tags in a
+multi-plugin repository. A bare range that is also a literal branch or tag
+name fails the install and asks for `@semver:` or `@ref:`. Local
 path installs register the directory in place and never delete it. Builtin
 plugins use `builtin:<name>` and ship with bb unless removed. Managed
 (`git:`/`npm:`) installs

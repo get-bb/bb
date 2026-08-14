@@ -186,10 +186,24 @@ bb plugin install ./bb-plugin-notes
 bb plugin install npm:bb-plugin-notes@^1.0.0
 bb plugin install https://github.com/acme/bb-plugin-notes
 bb plugin install git:https://github.com/acme/bb-plugin-notes.git@main
+bb plugin install git:https://github.com/acme/bb-plugin-notes.git@^1.2.0
 ```
 
 A bare HTTP(S) repository URL tracks its default branch. Use the `git:` form
 with an explicit branch, tag, or commit when that tracking intent matters.
+
+### Releasing a git plugin with semver tags
+
+Tag each release `vX.Y.Z` and users can install a range instead of a ref:
+bb reads the repository's tags, installs the highest release the range allows,
+and `bb plugin update` moves them to later releases in the same range.
+Prereleases stay out unless the range names one. Give each plugin of a
+multi-plugin repository its own tag prefix — `notes/v1.2.3` — and users add
+`--tag-prefix notes/`.
+
+bb records the tag it installed together with the commit that tag pointed at,
+and refuses the plugin if that tag is ever moved to another commit. Publish a
+fix as a new version rather than retagging.
 
 ### Several plugins in one repository
 

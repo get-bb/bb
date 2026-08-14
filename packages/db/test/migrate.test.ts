@@ -624,19 +624,28 @@ function resetMigrationsAfterThreadSearch(db: DbConnection): void {
 
 /**
  * Migration 0094 adds the marketplace catalog tables and the plugins
- * marketplace-name column. Rewind scenarios that clear its journal row must
- * remove both, or migrate() replays the CREATE/ADD against a DB that has them.
+ * marketplace-name column, and 0095 adds the git tag-range columns. Rewind
+ * scenarios that clear those journal rows must remove all of them, or
+ * migrate() replays the CREATE/ADD against a DB that has them.
  */
 function dropMarketplaceCatalogSchema(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS plugin_marketplace_icons").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_marketplaces").run();
-  const columns = db.$client
-    .prepare<[], TableInfoRow>("PRAGMA table_info(plugins)")
-    .all();
-  if (columns.some((column) => column.name === "catalog_marketplace_name")) {
+  const columns = new Set(
     db.$client
-      .prepare("ALTER TABLE plugins DROP COLUMN catalog_marketplace_name")
-      .run();
+      .prepare<[], TableInfoRow>("PRAGMA table_info(plugins)")
+      .all()
+      .map((column) => column.name),
+  );
+  for (const column of [
+    "catalog_marketplace_name",
+    "source_git_range",
+    "source_git_tag_prefix",
+    "source_git_resolved_tag",
+  ]) {
+    if (columns.has(column)) {
+      db.$client.prepare(`ALTER TABLE plugins DROP COLUMN ${column}`).run();
+    }
   }
 }
 

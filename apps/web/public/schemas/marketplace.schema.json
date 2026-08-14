@@ -5,12 +5,7 @@
   "description": "A catalog of plugin listings with store branding. Entries point at npm packages or git repositories; BB's install pipeline stays authoritative for identity and compatibility.",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "schemaVersion",
-    "name",
-    "displayName",
-    "plugins"
-  ],
+  "required": ["schemaVersion", "name", "displayName", "plugins"],
   "properties": {
     "$schema": {
       "const": "https://getbb.app/schemas/marketplace.schema.json"
@@ -75,9 +70,7 @@
             {
               "type": "object",
               "additionalProperties": false,
-              "required": [
-                "url"
-              ],
+              "required": ["url"],
               "properties": {
                 "url": {
                   "type": "string",
@@ -101,9 +94,7 @@
         "author": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "name"
-          ],
+          "required": ["name"],
           "$comment": "Never put an email address here: the manifest is public and mirrored.",
           "properties": {
             "name": {
@@ -135,12 +126,9 @@
         },
         "source": {
           "oneOf": [
-            {
-              "$ref": "#/$defs/npmSource"
-            },
-            {
-              "$ref": "#/$defs/gitSource"
-            }
+            { "$ref": "#/$defs/npmSource" },
+            { "$ref": "#/$defs/gitRefSource" },
+            { "$ref": "#/$defs/gitRangeSource" }
           ]
         }
       }
@@ -148,22 +136,15 @@
     "npmSource": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "npm"
-      ],
+      "required": ["npm"],
       "properties": {
         "npm": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "package"
-          ],
+          "required": ["package"],
           "$comment": "range and tag are mutually exclusive.",
           "not": {
-            "required": [
-              "range",
-              "tag"
-            ]
+            "required": ["range", "tag"]
           },
           "properties": {
             "package": {
@@ -185,34 +166,52 @@
         }
       }
     },
-    "gitSource": {
+    "gitSubdir": {
+      "type": "string",
+      "$comment": "Repository-relative directory; absolute paths, empty segments, .. and .git are rejected.",
+      "pattern": "^(?![A-Za-z]:)(?!/)(?!(?:[^/]+/)*(?:\\.|\\.\\.|\\.git)(?:/|$))[^/\\\\]+(?:/[^/\\\\]+)*$"
+    },
+    "gitRefSource": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "git"
-      ],
+      "required": ["git"],
+      "$comment": "One branch, tag, or commit. Mutually exclusive with the range form.",
       "properties": {
         "git": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "url",
-            "ref"
-          ],
+          "required": ["url", "ref"],
           "properties": {
-            "url": {
-              "type": "string",
-              "pattern": "^https://"
-            },
-            "subdir": {
-              "type": "string",
-              "$comment": "Repository-relative directory; absolute paths, empty segments, .. and .git are rejected.",
-              "pattern": "^(?![A-Za-z]:)(?!/)(?!(?:[^/]+/)*(?:\\.|\\.\\.|\\.git)(?:/|$))[^/\\\\]+(?:/[^/\\\\]+)*$"
-            },
+            "url": { "type": "string", "pattern": "^https://" },
+            "subdir": { "$ref": "#/$defs/gitSubdir" },
             "ref": {
               "type": "string",
-              "$comment": "Must round-trip through BB's git:<url>@<ref> install syntax.",
-              "pattern": "^(?!-)(?![\\s\\S]*\\.\\.)(?![\\s\\S]*@)[\\s\\S]+$"
+              "$comment": "Must round-trip through BB's git:<url>@<ref> install syntax, so \":\" (which BB reads as a ref:/semver: selector) is rejected.",
+              "pattern": "^(?!-)(?![\\s\\S]*\\.\\.)(?![\\s\\S]*@)(?![\\s\\S]*:)[\\s\\S]+$"
+            }
+          }
+        }
+      }
+    },
+    "gitRangeSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["git"],
+      "$comment": "A semver range resolved over the repository's [tagPrefix]vX.Y.Z release tags. BB records the tag and commit it selected and refuses a tag that later points elsewhere.",
+      "properties": {
+        "git": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["url", "range"],
+          "properties": {
+            "url": { "type": "string", "pattern": "^https://" },
+            "subdir": { "$ref": "#/$defs/gitSubdir" },
+            "range": { "$ref": "#/$defs/semverRange" },
+            "tagPrefix": {
+              "type": "string",
+              "$comment": "Monorepo tagging: \"notes/\" matches notes/vX.Y.Z tags. Omit for repository-wide vX.Y.Z tags.",
+              "maxLength": 128,
+              "pattern": "^(?!.*\\.\\.)(?!.*//)(?!.*\\.$)[A-Za-z0-9][A-Za-z0-9._/-]*$"
             }
           }
         }

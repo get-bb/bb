@@ -1113,7 +1113,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   function updateTrackingForRow(row: InstalledPluginRow): string {
     return (row.sourceKind === "npm" && row.sourceNpmSpecKind !== "exact") ||
-      (row.sourceKind === "git" && row.sourceGitRefKind === "branch")
+      (row.sourceKind === "git" &&
+        (row.sourceGitRefKind === "branch" || row.sourceGitRange !== null))
       ? "tracks compatible"
       : "pinned";
   }
@@ -1126,7 +1127,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     if (row.sourceKind === "npm") {
       return `npm · ${row.sourceNpmPackage ?? row.id} · ${updateTrackingForRow(row)}`;
     }
-    return `git · ${row.sourceGitUrl ?? row.source} · ${updateTrackingForRow(row)}`;
+    const range = row.sourceGitRange === null ? "" : ` · ${row.sourceGitRange}`;
+    return `git · ${row.sourceGitUrl ?? row.source}${range} · ${updateTrackingForRow(row)}`;
   }
 
   function updateStateForRow(

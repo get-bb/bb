@@ -148,6 +148,52 @@ describe("bb plugin catalog", () => {
     ]);
   });
 
+  it("rewrites --tag-prefix into an explicit semver install spec", async () => {
+    vi.mocked(fetch).mockImplementation(async () =>
+      json({ ok: true, plugin: installedPlugin }),
+    );
+
+    await runCommand(
+      [
+        "plugin",
+        "install",
+        "git:github.com/acme/bb-plugins@^1.2.0",
+        "--tag-prefix",
+        "linear/",
+        "--yes",
+      ],
+      register,
+    );
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.map(
+          (call) =>
+            (JSON.parse(String(call[1]?.body)) as { source: string }).source,
+        ),
+    ).toEqual(["git:github.com/acme/bb-plugins@semver:linear/:^1.2.0"]);
+
+    // A prefix means nothing without a range spec, and it must not silently
+    // rewrite a spec that already states its selector.
+    const errorSpy = vi.mocked(console.error);
+    for (const args of [
+      ["plugin", "install", "git:github.com/acme/bb-plugins", "--yes"],
+      [
+        "plugin",
+        "install",
+        "git:github.com/acme/bb-plugins@semver:^1.2.0",
+        "--yes",
+      ],
+    ]) {
+      await expect(
+        runCommand([...args, "--tag-prefix", "linear/"], register),
+      ).rejects.toThrowError("process.exit:1");
+    }
+    expect(
+      errorSpy.mock.calls.map((call) => call.join(" ")).join("\n"),
+    ).toMatch(/--tag-prefix applies to a git: source[\s\S]*not both/);
+  });
+
   it("refuses --plugin together with --subdirectory", async () => {
     const errorSpy = vi.mocked(console.error);
 

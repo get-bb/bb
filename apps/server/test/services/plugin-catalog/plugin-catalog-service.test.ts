@@ -609,8 +609,11 @@ describe("plugin catalog service", () => {
           kind: "git",
           url: "https://github.com/brsbl/bb-plugins.git",
           subdirectory: null,
-          requestedRef: "30f91fd977ba1ce60532af27a68534464fb62516",
-          refKind: "commit",
+          selector: {
+            kind: "ref",
+            ref: "30f91fd977ba1ce60532af27a68534464fb62516",
+            refKind: "commit",
+          },
         },
         exactResolution: {
           kind: "git",

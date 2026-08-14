@@ -6,15 +6,20 @@ import {
   setInstalledPluginSourceClassification,
   setInstalledPluginUpdateState,
   type InstalledPluginRow,
+  type PluginGitSelector,
 } from "@bb/db";
+import { gitSelectorForRow } from "./git-source-intent.js";
 import { readPluginManifest } from "./manifest.js";
 import {
   createNpmResolverRun,
+  listGitSemverTags,
   resolveGitRef,
   resolveGitUpdate,
   resolveNpmUpdate,
+  selectGitSemverTag,
   selectNpmCandidate,
   type CompatibilityProblem,
+  type GitSemverTag,
   type NpmSourceIntentForResolution,
   type PluginResolvedUpdateVersion,
   type PluginUpdateResolution,
@@ -125,6 +130,70 @@ export function createPluginUpdates(
     }
   }
 
+  /**
+   * The git intent of a row, classifying a legacy ref that was persisted
+   * before bb recorded whether it names a branch, a tag, or a commit.
+   */
+  async function classifiedGitIntentForRow(
+    row: InstalledPluginRow,
+  ): Promise<
+    | { outcome: "resolved"; url: string; selector: PluginGitSelector }
+    | { outcome: "unavailable"; detail: string }
+  > {
+    if (row.sourceGitUrl === null) {
+      throw new Error(`plugin "${row.id}" has corrupt normalized git state`);
+    }
+    const url = row.sourceGitUrl;
+    const selector = gitSelectorForRow(row);
+    if (selector !== null) return { outcome: "resolved", url, selector };
+    if (row.sourceGitRequestedRef === null) {
+      throw new Error(`plugin "${row.id}" has corrupt normalized git state`);
+    }
+    const ref = row.sourceGitRequestedRef;
+    const classified = await resolveGitRef({ url, ref });
+    if (classified.outcome === "unavailable") return classified;
+    if (
+      !setInstalledPluginSourceClassification(deps.db, row.id, {
+        kind: "git",
+        refKind: classified.refKind,
+      })
+    ) {
+      throw new Error(`plugin "${row.id}" disappeared during normalization`);
+    }
+    return {
+      outcome: "resolved",
+      url,
+      selector: { kind: "ref", ref, refKind: classified.refKind },
+    };
+  }
+
+  /**
+   * The selector to persist when a git candidate activates. A range install
+   * re-resolves its tags here so the recorded tag is the one this commit came
+   * from, and so a listing that changed under the update is refused.
+   */
+  async function activationSelectorForCandidate(args: {
+    url: string;
+    selector: PluginGitSelector;
+    candidateCommit: string;
+  }): Promise<PluginGitSelector> {
+    if (args.selector.kind === "ref") return args.selector;
+    const tags: GitSemverTag[] = await listGitSemverTags({
+      url: args.url,
+      tagPrefix: args.selector.tagPrefix,
+    });
+    const selected = selectGitSemverTag({
+      tags,
+      range: args.selector.range,
+    });
+    if (selected === null || selected.commit !== args.candidateCommit) {
+      throw new Error(
+        `git candidate changed during update: resolved ${args.candidateCommit}, selected ${selected?.commit ?? "nothing"}`,
+      );
+    }
+    return { ...args.selector, resolvedTag: selected.tag };
+  }
+
   async function resolveUpdateForRow(args: {
     row: InstalledPluginRow;
     npmRun: ReturnType<typeof createNpmResolverRun>;
@@ -157,38 +226,16 @@ export function createPluginUpdates(
         includePinned: args.npmIntentOverride !== undefined,
       });
     }
-    if (
-      args.row.sourceGitUrl === null ||
-      args.row.sourceGitRequestedRef === null ||
-      args.row.gitResolvedCommit === null
-    ) {
+    if (args.row.gitResolvedCommit === null) {
       throw new Error(
         `plugin "${args.row.id}" has corrupt normalized git state`,
       );
     }
-    let refKind = args.row.sourceGitRefKind;
-    if (refKind === null) {
-      const classified = await resolveGitRef({
-        url: args.row.sourceGitUrl,
-        ref: args.row.sourceGitRequestedRef,
-      });
-      if (classified.outcome === "unavailable") return classified;
-      refKind = classified.refKind;
-      if (
-        !setInstalledPluginSourceClassification(deps.db, args.row.id, {
-          kind: "git",
-          refKind,
-        })
-      ) {
-        throw new Error(
-          `plugin "${args.row.id}" disappeared during normalization`,
-        );
-      }
-    }
+    const intent = await classifiedGitIntentForRow(args.row);
+    if (intent.outcome === "unavailable") return intent;
     const remote = await resolveGitUpdate({
-      url: args.row.sourceGitUrl,
-      ref: args.row.sourceGitRequestedRef,
-      refKind,
+      url: intent.url,
+      intent: intent.selector,
       currentCommit: args.row.gitResolvedCommit,
     });
     if (remote.outcome !== "update-available") return remote;
@@ -303,6 +350,14 @@ export function createPluginUpdates(
         ...(row.sourceGitSubdirectory === null
           ? {}
           : { subdirectory: row.sourceGitSubdirectory }),
+        ...(row.sourceGitRange === null ? {} : { range: row.sourceGitRange }),
+        ...(row.sourceGitTagPrefix === null ||
+        row.sourceGitTagPrefix.length === 0
+          ? {}
+          : { tagPrefix: row.sourceGitTagPrefix }),
+        ...(row.sourceGitResolvedTag === null
+          ? {}
+          : { resolvedTag: row.sourceGitResolvedTag }),
         ...(row.npmIntegrity === null ? {} : { integrity: row.npmIntegrity }),
         ...(row.sourceNpmRegistry === null
           ? {}
@@ -402,28 +457,25 @@ export function createPluginUpdates(
             row.sourceKind === "git" &&
             resolution.outcome === "update-available"
           ) {
-            const persistedRefKind =
-              row.sourceGitRefKind ??
-              getInstalledPlugin(deps.db, id)?.sourceGitRefKind ??
-              null;
-            if (
-              row.sourceGitUrl === null ||
-              row.sourceGitRequestedRef === null ||
-              persistedRefKind === null
-            ) {
-              throw new Error(
-                `plugin "${id}" has corrupt normalized git state`,
-              );
-            }
             const activationRow = getInstalledPlugin(deps.db, id);
             if (activationRow === undefined) {
               throw new Error(`plugin "${id}" disappeared before activation`);
+            }
+            // resolveUpdateForRow classified the row a moment ago, so this
+            // reads the persisted intent rather than reaching the network.
+            const intent = await classifiedGitIntentForRow(activationRow);
+            if (intent.outcome === "unavailable") {
+              return { ok: false, error: intent.detail };
             }
             const staged = await stageGitCandidate({
               row: activationRow,
               commit: resolution.candidate.version,
               promote: true,
-              activationRefKind: persistedRefKind,
+              activationSelector: await activationSelectorForCandidate({
+                url: intent.url,
+                selector: intent.selector,
+                candidateCommit: resolution.candidate.version,
+              }),
             });
             if (staged.outcome !== "valid") {
               const detail =

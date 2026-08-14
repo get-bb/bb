@@ -157,7 +157,7 @@ added/updated/unchanged counts.
   bb plugin install <entry>      Install a bundled official plugin by name
                                  (github, docs, memory, tasks), a Git repository
                                  URL, local path, builtin:<name>,
-                                 git:<url>[@<ref>], or
+                                 git:<url>[@<ref|semver-range>], or
                                  npm:<package>[@<version|tag|range>]
                                  (npm: needs npm on PATH; installs prompt —
                                  pass --yes to skip). Managed git:/npm:
@@ -165,13 +165,16 @@ added/updated/unchanged counts.
                                  mismatches, manifest/artifact identity
                                  mismatches, and ids reserved by bundled plugins
                                  Omitted npm specs, ranges, dist-tags, omitted
-                                 Git refs, and Git branches track; exact npm
-                                 versions, Git tags, and Git commits are pinned
+                                 Git refs, Git branches, and Git semver ranges
+                                 track; exact npm versions, Git tags, and Git
+                                 commits are pinned
                                  --subdirectory <path> installs one plugin
                                  directory of a multi-plugin git:/path:
                                  repository; --plugin <name> installs the
                                  .bb/plugins.json entry with that name
                                  (the two flags are mutually exclusive)
+                                 --tag-prefix <prefix> resolves a git: semver
+                                 range over <prefix>vX.Y.Z tags
   bb plugin outdated             Check installed plugins for compatible
                                  updates (table; --json for raw results).
                                  Columns: installed, latest compatible,
@@ -186,7 +189,8 @@ added/updated/unchanged counts.
                                  installs stay put
   bb plugin list                 Status, services, schedules, handler timings
   bb plugin source <id> [--json] Show requested/resolved source, subdirectory,
-                                 engine ranges, install time, and recent
+                                 semver range with its tag prefix and resolved
+                                 tag, engine ranges, install time, and recent
                                  activation history
   bb plugin enable|disable <id>  Load or unload an installed plugin
   bb plugin reload [id]          Re-run factories against current sources
@@ -295,7 +299,33 @@ Reinstalling an already-installed managed plugin is refused — use
 leaves the latest failure visible as needing attention. Exact npm versions,
 git tags and commits, path sources, and bundled official plugins are pinned;
 npm ranges/omitted specs/dist-tags, omitted Git refs (the repository default
-branch), and Git branches track compatible updates.
+branch), Git branches, and Git semver ranges track compatible updates.
+
+Git semver ranges
+
+A git source can track releases the way an npm range does, over the
+repository's tags:
+
+  bb plugin install git:github.com/acme/repo@^1.2.0
+  bb plugin install git:github.com/acme/repo@semver:^1.2.0
+  bb plugin install git:github.com/acme/repo@^1.2.0 --tag-prefix notes/
+
+bb lists refs/tags, keeps the tags named [<tag-prefix>]vX.Y.Z that parse as
+semver, and installs the highest one the range allows. Prereleases are
+excluded unless the range itself names one (^1.0.0-beta.1), exactly as for an
+npm range. Without --tag-prefix the tags are repository-wide (v1.2.3); with
+it they version one plugin of a repository (notes/v1.2.3).
+
+bb records the tag it selected and the commit that tag pointed at. If that
+tag later points at another commit, bb refuses to resolve it and names both
+commits: a released version is not allowed to change under you. Remove and
+reinstall the plugin to accept the new commit.
+
+A bare spec that reads as a range (`^1.2.0`, `1.x`, `>=1 <2`) resolves over
+tags only when the repository has no branch or tag of that literal name; when
+it has both, the install fails and asks you to choose. Write
+`@semver:<range>` for the range or `@ref:<name>` for the literal ref. Bare
+version tags such as `v1` and `v1.2.3` are always the literal tag.
 
 `bb plugin search <query>` matches id, display name, description, category,
 and tags across the bundled official plugins and the BB Official marketplace

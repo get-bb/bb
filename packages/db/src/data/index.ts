@@ -195,6 +195,7 @@ export {
   type LegacyPluginExactResolution,
   type NormalizeLegacyInstalledPluginInput,
   type PluginExactResolution,
+  type PluginGitSelector,
   type PluginProvenance,
   type PluginSourceIntent,
   type PluginUpdateState,

@@ -22,8 +22,23 @@ export type PluginSourceIntent =
       kind: "git";
       url: string;
       subdirectory: string | null;
-      requestedRef: string;
-      refKind: "branch" | "tag" | "commit";
+      selector: PluginGitSelector;
+    };
+
+/**
+ * What a git plugin tracks. A "ref" install follows one branch, tag, or
+ * commit. A "range" install follows a semver range over `[tagPrefix]vX.Y.Z`
+ * release tags and records the tag it resolved to, so a tag that later moves
+ * is detectable.
+ */
+export type PluginGitSelector =
+  | { kind: "ref"; ref: string; refKind: "branch" | "tag" | "commit" }
+  | {
+      kind: "range";
+      range: string;
+      /** "" for repository-wide `vX.Y.Z` tags. */
+      tagPrefix: string;
+      resolvedTag: string;
     };
 
 export type PluginExactResolution =
@@ -60,6 +75,9 @@ export interface InstalledPluginRow {
   sourceGitSubdirectory: string | null;
   sourceGitRequestedRef: string | null;
   sourceGitRefKind: "branch" | "tag" | "commit" | null;
+  sourceGitRange: string | null;
+  sourceGitTagPrefix: string | null;
+  sourceGitResolvedTag: string | null;
   npmResolvedVersion: string | null;
   npmIntegrity: string | null;
   gitResolvedCommit: string | null;
@@ -106,6 +124,26 @@ export type NormalizeLegacyInstalledPluginInput = Omit<
   "exactResolution"
 > & { exactResolution: LegacyPluginExactResolution };
 
+/** The five git selector columns, of which exactly one group is non-null. */
+function gitSelectorColumns(selector: PluginGitSelector | null) {
+  return {
+    sourceGitRequestedRef:
+      selector?.kind === "ref" ? selector.ref : (null as string | null),
+    sourceGitRefKind:
+      selector?.kind === "ref"
+        ? selector.refKind
+        : (null as "branch" | "tag" | "commit" | null),
+    sourceGitRange:
+      selector?.kind === "range" ? selector.range : (null as string | null),
+    sourceGitTagPrefix:
+      selector?.kind === "range" ? selector.tagPrefix : (null as string | null),
+    sourceGitResolvedTag:
+      selector?.kind === "range"
+        ? selector.resolvedTag
+        : (null as string | null),
+  } as const;
+}
+
 function normalizedColumns(
   plugin: UpsertInstalledPluginInput | NormalizeLegacyInstalledPluginInput,
 ) {
@@ -149,12 +187,9 @@ function normalizedColumns(
       plugin.sourceIntent.kind === "git"
         ? plugin.sourceIntent.subdirectory
         : null,
-    sourceGitRequestedRef:
-      plugin.sourceIntent.kind === "git"
-        ? plugin.sourceIntent.requestedRef
-        : null,
-    sourceGitRefKind:
-      plugin.sourceIntent.kind === "git" ? plugin.sourceIntent.refKind : null,
+    ...gitSelectorColumns(
+      plugin.sourceIntent.kind === "git" ? plugin.sourceIntent.selector : null,
+    ),
     npmResolvedVersion:
       plugin.exactResolution.kind === "npm"
         ? plugin.exactResolution.version

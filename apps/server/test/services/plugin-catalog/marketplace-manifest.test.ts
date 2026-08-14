@@ -219,6 +219,53 @@ describe("marketplace manifest schema", () => {
       }
     });
 
+    it("accepts a git range entry and rejects one that also names a ref", () => {
+      const ranged = firstEntry([
+        entry({
+          source: {
+            git: {
+              url: "https://github.com/acme/plugins.git",
+              range: "^1.0.0",
+              tagPrefix: "widgets/",
+              subdir: "plugins/widgets",
+            },
+          },
+        }),
+      ]);
+      expect(resolvedEntrySource(ranged)).toEqual({
+        source:
+          "git:https://github.com/acme/plugins.git@semver:widgets/:^1.0.0",
+        selection: { kind: "subdirectory", path: "plugins/widgets" },
+      });
+      expect(entrySourceDisplay(ranged)).toBe(
+        "git:https://github.com/acme/plugins.git@^1.0.0#plugins/widgets (tags widgets/vX.Y.Z)",
+      );
+
+      // ref and range are mutually exclusive, and a range entry still needs
+      // one of them.
+      for (const git of [
+        {
+          url: "https://github.com/acme/plugins.git",
+          ref: "v1.0.0",
+          range: "^1.0.0",
+        },
+        { url: "https://github.com/acme/plugins.git" },
+        { url: "https://github.com/acme/plugins.git", range: "not a range" },
+        {
+          url: "https://github.com/acme/plugins.git",
+          range: "^1.0.0",
+          tagPrefix: "../evil/",
+        },
+        {
+          url: "https://github.com/acme/plugins.git",
+          ref: "v1.0.0",
+          tagPrefix: "widgets/",
+        },
+      ]) {
+        expect(() => parse([entry({ source: { git } })])).toThrow();
+      }
+    });
+
     it("translates entries into install-pipeline inputs", () => {
       const git = firstEntry([
         entry({

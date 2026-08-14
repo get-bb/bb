@@ -3,6 +3,8 @@ import { z } from "zod";
 import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import {
   DEFAULT_GIT_REF,
+  gitSemverTagName,
+  gitSemverTagVersion,
   isCommitSha,
   runInstallCommand,
 } from "./install-sources.js";
@@ -162,7 +164,12 @@ class NpmPackageUnavailableError extends Error {}
 function requestedRangeIncludesPrerelease(spec: string): boolean {
   const range = new semver.Range(spec);
   return range.set.some((comparators) =>
-    comparators.some((comparator) => comparator.semver.prerelease.length > 0),
+    comparators.some((comparator) => {
+      // A comparator of "*" carries semver's ANY sentinel where its type
+      // promises a version, so read it as the unknown it is.
+      const version: unknown = comparator.semver;
+      return version instanceof semver.SemVer && version.prerelease.length > 0;
+    }),
   );
 }
 
@@ -465,10 +472,7 @@ export async function resolveGitRef(args: {
     const output = await runInstallCommand(
       "git",
       ["ls-remote", args.url, DEFAULT_GIT_REF],
-      {
-        notFoundHint:
-          '"git" was not found on PATH — git plugin updates require git',
-      },
+      { notFoundHint: GIT_NOT_FOUND_HINT },
     );
     const commit = parseLsRemote(output).get(DEFAULT_GIT_REF);
     return commit === undefined
@@ -487,10 +491,7 @@ export async function resolveGitRef(args: {
       `refs/tags/${args.ref}^{}`,
       `refs/heads/${args.ref}`,
     ],
-    {
-      notFoundHint:
-        '"git" was not found on PATH — git plugin updates require git',
-    },
+    { notFoundHint: GIT_NOT_FOUND_HINT },
   );
   const refs = parseLsRemote(output);
   const tag =
@@ -519,27 +520,219 @@ export function gitResolvedVersion(args: {
   };
 }
 
+/** One `[tagPrefix]vX.Y.Z` release tag of a repository. */
+export interface GitSemverTag {
+  /** Full tag name, e.g. `notes/v1.2.3`. */
+  tag: string;
+  /** Canonical semver the tag names, e.g. `1.2.3`. */
+  version: string;
+  /** Commit the tag points at; an annotated tag is peeled first. */
+  commit: string;
+}
+
+/**
+ * Cap on `git ls-remote --tags` output. A repository with more than ~130,000
+ * release tags is a mistake, not a plugin source, and silently reading a
+ * truncated listing would resolve a range to the wrong release.
+ */
+const MAX_LS_REMOTE_TAG_BYTES = 8 * 1024 * 1024;
+
+const GIT_NOT_FOUND_HINT =
+  '"git" was not found on PATH — git plugin updates require git';
+
+/**
+ * Release tags of `url` under `tagPrefix`, newest first. Tags that do not
+ * parse as `[tagPrefix]vX.Y.Z` are ignored: a repository may tag anything.
+ */
+export async function listGitSemverTags(args: {
+  url: string;
+  tagPrefix: string;
+}): Promise<GitSemverTag[]> {
+  const output = await runInstallCommand(
+    "git",
+    ["ls-remote", "--tags", args.url],
+    {
+      notFoundHint: GIT_NOT_FOUND_HINT,
+      maxStdoutChars: MAX_LS_REMOTE_TAG_BYTES,
+    },
+  );
+  const refs = parseLsRemote(output);
+  const tags: GitSemverTag[] = [];
+  for (const [ref, commit] of refs) {
+    // An annotated tag also lists a peeled "^{}" ref naming the commit it
+    // tags; that peeled commit is the one a checkout lands on.
+    if (!ref.startsWith("refs/tags/") || ref.endsWith("^{}")) continue;
+    const tag = ref.slice("refs/tags/".length);
+    const version = gitSemverTagVersion(tag, args.tagPrefix);
+    if (version === null) continue;
+    tags.push({ tag, version, commit: refs.get(`${ref}^{}`) ?? commit });
+  }
+  return tags.sort((left, right) =>
+    semver.rcompare(left.version, right.version),
+  );
+}
+
+/**
+ * Highest release satisfying `range`. Prereleases are excluded unless the
+ * range itself names one, exactly as {@link allowedNpmVersions} decides it
+ * for npm.
+ */
+export function selectGitSemverTag(args: {
+  tags: readonly GitSemverTag[];
+  range: string;
+}): GitSemverTag | null {
+  const permitsPrerelease = requestedRangeIncludesPrerelease(args.range);
+  return (
+    args.tags
+      .filter((tag) => semver.satisfies(tag.version, args.range))
+      .filter(
+        (tag) => permitsPrerelease || semver.prerelease(tag.version) === null,
+      )
+      .sort((left, right) => semver.rcompare(left.version, right.version))[0] ??
+    null
+  );
+}
+
+/**
+ * Tags are mutable and commits are not, so a recorded resolution is the only
+ * evidence of what was installed. A tag that now names another commit is a
+ * rewritten release: refuse it and let a person decide, rather than pulling
+ * different code under a version the user already approved.
+ */
+export function movedGitTagDetail(args: {
+  url: string;
+  tag: string;
+  recordedCommit: string;
+  currentCommit: string;
+}): string | null {
+  if (args.currentCommit === args.recordedCommit) return null;
+  return (
+    `security check failed: git tag "${args.tag}" in ${args.url} moved from ` +
+    `${args.recordedCommit} to ${args.currentCommit}; bb will not re-resolve a ` +
+    `tag that changed. Remove the plugin and install it again to accept the new commit`
+  );
+}
+
+/** What an installed git plugin tracks, as recorded at install time. */
+export type GitUpdateIntent =
+  | { kind: "ref"; ref: string; refKind: GitRefKind }
+  | {
+      kind: "range";
+      range: string;
+      /** "" for repository-wide `vX.Y.Z` tags. */
+      tagPrefix: string;
+      /** Tag the range resolved to when the plugin was installed or updated. */
+      resolvedTag: string;
+    };
+
+async function resolveGitRangeUpdate(args: {
+  url: string;
+  intent: Extract<GitUpdateIntent, { kind: "range" }>;
+  current: PluginResolvedUpdateVersion;
+  currentCommit: string;
+}): Promise<PluginUpdateResolution> {
+  const tags = await listGitSemverTags({
+    url: args.url,
+    tagPrefix: args.intent.tagPrefix,
+  });
+  const recorded = tags.find((tag) => tag.tag === args.intent.resolvedTag);
+  if (recorded !== undefined) {
+    const moved = movedGitTagDetail({
+      url: args.url,
+      tag: recorded.tag,
+      recordedCommit: args.currentCommit,
+      currentCommit: recorded.commit,
+    });
+    if (moved !== null) return { outcome: "unavailable", detail: moved };
+  }
+  const selected = selectGitSemverTag({ tags, range: args.intent.range });
+  if (selected === null) {
+    return {
+      outcome: "unavailable",
+      detail: `no tag of ${args.url} matches ${args.intent.range} (looking for tags named "${gitSemverTagName(args.intent.tagPrefix, "X.Y.Z")}")`,
+    };
+  }
+  if (selected.commit === args.currentCommit) {
+    return { outcome: "current", current: args.current };
+  }
+  return {
+    outcome: "update-available",
+    current: args.current,
+    candidate: gitResolvedVersion({
+      url: args.url,
+      ref: selected.tag,
+      commit: selected.commit,
+    }),
+  };
+}
+
 export async function resolveGitUpdate(args: {
   url: string;
-  ref: string;
-  refKind: GitRefKind;
+  intent: GitUpdateIntent;
   currentCommit: string;
 }): Promise<PluginUpdateResolution> {
   const current = gitResolvedVersion({
     url: args.url,
-    ref: args.ref,
+    ref:
+      args.intent.kind === "range" ? args.intent.resolvedTag : args.intent.ref,
     commit: args.currentCommit,
   });
-  if (args.refKind !== "branch") return { outcome: "pinned", current };
-  const resolved = await resolveGitRef({ url: args.url, ref: args.ref });
+  if (args.intent.kind === "range") {
+    return resolveGitRangeUpdate({
+      url: args.url,
+      intent: args.intent,
+      current,
+      currentCommit: args.currentCommit,
+    });
+  }
+  if (args.intent.refKind === "commit") return { outcome: "pinned", current };
+  const resolved = await resolveGitRef({ url: args.url, ref: args.intent.ref });
   if (resolved.outcome === "unavailable") return resolved;
+  // A tag install stays pinned, but the pin only means anything while the tag
+  // still names the commit bb installed.
+  if (args.intent.refKind === "tag") {
+    const moved = movedGitTagDetail({
+      url: args.url,
+      tag: args.intent.ref,
+      recordedCommit: args.currentCommit,
+      currentCommit: resolved.commit,
+    });
+    return moved === null
+      ? { outcome: "pinned", current }
+      : { outcome: "unavailable", detail: moved };
+  }
   const candidate = gitResolvedVersion({
     url: args.url,
-    ref: args.ref,
+    ref: args.intent.ref,
     commit: resolved.commit,
   });
   if (resolved.commit === args.currentCommit) {
     return { outcome: "current", current };
   }
   return { outcome: "update-available", current, candidate };
+}
+
+/**
+ * Resolve a semver range over a repository's tags for an install. Returns the
+ * exact tag and commit to record.
+ */
+export async function resolveGitRange(args: {
+  url: string;
+  range: string;
+  tagPrefix: string;
+}): Promise<
+  | { outcome: "resolved"; tag: string; version: string; commit: string }
+  | { outcome: "unavailable"; detail: string }
+> {
+  const tags = await listGitSemverTags({
+    url: args.url,
+    tagPrefix: args.tagPrefix,
+  });
+  const selected = selectGitSemverTag({ tags, range: args.range });
+  return selected === null
+    ? {
+        outcome: "unavailable",
+        detail: `no tag of ${args.url} matches ${args.range} (looking for tags named "${gitSemverTagName(args.tagPrefix, "X.Y.Z")}")`,
+      }
+    : { outcome: "resolved", ...selected };
 }

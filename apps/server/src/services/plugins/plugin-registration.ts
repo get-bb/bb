@@ -30,6 +30,7 @@ import {
   realPathInside,
   runInstallCommand,
 } from "./install-sources.js";
+import { gitRefNameForRow, gitSelectorForRow } from "./git-source-intent.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import type {
   InstallContext,
@@ -127,11 +128,27 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
         row.sourceNpmSpecKind === intent.specKind
       );
     }
+    const selector = gitSelectorForRow(row);
+    if (
+      row.sourceGitUrl !== intent.url ||
+      row.sourceGitSubdirectory !== intent.subdirectory ||
+      selector === null
+    ) {
+      return false;
+    }
+    // The resolved tag of a range install moves with every update, so the
+    // range and its prefix are the identity, not what they point at today.
+    if (selector.kind === "ref") {
+      return (
+        intent.selector.kind === "ref" &&
+        selector.ref === intent.selector.ref &&
+        selector.refKind === intent.selector.refKind
+      );
+    }
     return (
-      row.sourceGitUrl === intent.url &&
-      row.sourceGitSubdirectory === intent.subdirectory &&
-      row.sourceGitRequestedRef === intent.requestedRef &&
-      row.sourceGitRefKind === intent.refKind
+      intent.selector.kind === "range" &&
+      selector.range === intent.selector.range &&
+      selector.tagPrefix === intent.selector.tagPrefix
     );
   }
 
@@ -155,6 +172,9 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       current.sourceGitSubdirectory === expected.sourceGitSubdirectory &&
       current.sourceGitRequestedRef === expected.sourceGitRequestedRef &&
       current.sourceGitRefKind === expected.sourceGitRefKind &&
+      current.sourceGitRange === expected.sourceGitRange &&
+      current.sourceGitTagPrefix === expected.sourceGitTagPrefix &&
+      current.sourceGitResolvedTag === expected.sourceGitResolvedTag &&
       current.npmResolvedVersion === expected.npmResolvedVersion &&
       current.npmIntegrity === expected.npmIntegrity &&
       current.gitResolvedCommit === expected.gitResolvedCommit &&
@@ -182,6 +202,9 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       sourceGitSubdirectory: row.sourceGitSubdirectory,
       sourceGitRequestedRef: row.sourceGitRequestedRef,
       sourceGitRefKind: row.sourceGitRefKind,
+      sourceGitRange: row.sourceGitRange,
+      sourceGitTagPrefix: row.sourceGitTagPrefix,
+      sourceGitResolvedTag: row.sourceGitResolvedTag,
     });
   }
 
@@ -381,16 +404,17 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       };
     }
     if (row.sourceKind === "git") {
+      const ref = gitRefNameForRow(row);
       if (
         row.sourceGitUrl === null ||
-        row.sourceGitRequestedRef === null ||
+        ref === null ||
         row.gitResolvedCommit === null
       ) {
         throw new Error(`plugin "${row.id}" has corrupt normalized git state`);
       }
       return gitResolvedVersion({
         url: row.sourceGitUrl,
-        ref: row.sourceGitRequestedRef,
+        ref,
         commit: row.gitResolvedCommit,
       });
     }
@@ -426,19 +450,16 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     }
     if (row.sourceKind === "npm")
       return { kind: "npm", ...npmIntentForRow(row) };
-    if (
-      row.sourceKind === "git" &&
-      row.sourceGitUrl !== null &&
-      row.sourceGitRequestedRef !== null &&
-      row.sourceGitRefKind !== null
-    ) {
-      return {
-        kind: "git",
-        url: row.sourceGitUrl,
-        subdirectory: row.sourceGitSubdirectory,
-        requestedRef: row.sourceGitRequestedRef,
-        refKind: row.sourceGitRefKind,
-      };
+    if (row.sourceKind === "git") {
+      const selector = gitSelectorForRow(row);
+      if (row.sourceGitUrl !== null && selector !== null) {
+        return {
+          kind: "git",
+          url: row.sourceGitUrl,
+          subdirectory: row.sourceGitSubdirectory,
+          selector,
+        };
+      }
     }
     throw new Error(`plugin "${row.id}" has corrupt normalized source intent`);
   }
@@ -617,12 +638,13 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
           integrity: null,
         };
       } else {
-        let refKind: GitRefKind = isCommitSha(parsed.ref) ? "commit" : "branch";
+        // Legacy rows predate range installs: every one of them stored a
+        // literal ref spec.
+        const ref =
+          parsed.selector.kind === "range" ? parsed.spec : parsed.selector.ref;
+        let refKind: GitRefKind = isCommitSha(ref) ? "commit" : "branch";
         try {
-          const remote = await resolveGitRef({
-            url: parsed.url,
-            ref: parsed.ref,
-          });
+          const remote = await resolveGitRef({ url: parsed.url, ref });
           if (remote.outcome === "resolved") refKind = remote.refKind;
         } catch {
           // Preserve startup for an offline legacy install. Non-SHA legacy
@@ -632,10 +654,9 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
           kind: "git",
           url: parsed.url,
           subdirectory: null,
-          requestedRef: parsed.ref,
-          refKind,
+          selector: { kind: "ref", ref, refKind },
         };
-        let commit: string | null = isCommitSha(parsed.ref) ? parsed.ref : null;
+        let commit: string | null = isCommitSha(ref) ? ref : null;
         try {
           commit = await runInstallCommand("git", [
             "-C",

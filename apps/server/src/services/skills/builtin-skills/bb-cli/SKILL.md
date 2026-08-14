@@ -744,14 +744,23 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
 - Commands:
   - `bb plugin install <src>` — official plugin name (github, docs, memory,
     tasks), HTTP(S) Git repository URL, local path, `builtin:<name>`,
-    `git:<url>[@<ref>]`, or `npm:<package>[@<version|tag|range>]` (npm on PATH
-    required for `npm:`). Repository URLs and prefixes `path:` / `npm:` /
-    `git:` / `builtin:` skip official-plugin resolution. To pin or range an
-    npm package, install with `npm:<package>@…`.
+    `git:<url>[@<ref|semver-range>]`, or `npm:<package>[@<version|tag|range>]`
+    (npm on PATH required for `npm:`). Repository URLs and prefixes `path:` /
+    `npm:` / `git:` / `builtin:` skip official-plugin resolution. To pin or
+    range an npm package, install with `npm:<package>@…`.
     Omit the npm spec to track compatible stable releases; ranges and dist-tags
     track, while exact versions are pinned. Omit the Git ref to track the
     repository's default branch; explicit branches track, while tags and
-    commits are pinned. Installs prompt for confirmation (plugins are full-trust code);
+    commits are pinned. A Git semver range
+    (`git:github.com/acme/repo@^1.2.0`) tracks the repository's `vX.Y.Z` tags,
+    picking the highest release the range allows and excluding prereleases
+    unless the range names one. `--tag-prefix <prefix>` ranges over
+    `<prefix>vX.Y.Z` tags instead, for a repository that versions each plugin
+    on its own. bb records the selected tag and its commit and refuses to
+    resolve that tag again if it moved. A bare spec that reads as a range
+    resolves over tags only when no branch or tag has that literal name; when
+    both exist the install fails — write `@semver:<range>` or `@ref:<name>`.
+    Installs prompt for confirmation (plugins are full-trust code);
     pass `--yes` to skip. Reinstalling an already-installed managed plugin is
     refused — use `bb plugin update`. Plugins that declare a frontend (`bb.app`)
     are built at install time for path sources and git sources without a
@@ -772,15 +781,16 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     any blocked incompatible newer release. Dev builds (bb `0.0.0`) annotate
     that `engines.bb` is not enforced.
   - `bb plugin update <id>` / `bb plugin update --all` — apply compatible
-    updates for tracking sources. Same full-trust confirmation as install
-    (`--yes` skips; non-TTY refuses without it). Use `bb plugin outdated` to
-    preview available updates; changing a pinned source requires reinstalling
-    it after removal.
+    updates for tracking sources, including newer tags that satisfy a Git
+    semver range. Same full-trust confirmation as install (`--yes` skips;
+    non-TTY refuses without it). Use `bb plugin outdated` to preview available
+    updates; changing a pinned source requires reinstalling it after removal.
   - `bb plugin list` — status, background services, schedules, handler timings,
     and each plugin's contributed `bb` command.
   - `bb plugin source <id> [--json]` — requested and resolved source, the
-    repository subdirectory for a nested plugin, engine ranges, install time,
-    integrity/registry details, and recent activation history.
+    repository subdirectory for a nested plugin, the semver range with its tag
+    prefix and resolved tag for a Git range install, engine ranges, install
+    time, integrity/registry details, and recent activation history.
   - `bb plugin enable|disable <id>`, `bb plugin reload [id]`,
     `bb plugin remove <id>` (builtin removals are remembered).
   - `bb plugin config <id> [set <key> <value> | unset <key>]` — declared

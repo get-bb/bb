@@ -43,6 +43,15 @@ export interface PluginIdArgs {
 
 /** Install directly from a path:, git:, npm:, or builtin: source spec. */
 export interface PluginInstallArgs {
+  /**
+   * `path:<dir>`, `builtin:<name>`, `npm:<package>[@<version|tag|range>]`, or
+   * `git:<url>[@<spec>]`. A git spec is one ref, or a semver range resolved
+   * over the repository's `[<tagPrefix>]vX.Y.Z` release tags:
+   * `git:<url>@semver:<range>` and `git:<url>@semver:<tagPrefix>:<range>` say
+   * range explicitly, `git:<url>@ref:<name>` says ref explicitly, and a bare
+   * `^1.2.0` resolves over tags unless the repository also has a ref of that
+   * literal name (which is refused as ambiguous).
+   */
   source: string;
   /**
    * Directory of a multi-plugin repository to install, relative to the
