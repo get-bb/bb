@@ -1,3 +1,5 @@
+import { isLoopbackHostname } from "./loopback-hostname";
+
 export type LocalHostDaemonAccessState =
   | "available"
   | "denied"
@@ -18,26 +20,13 @@ interface ResolveLocalHostDaemonAccessArgs {
   hostname: string | null;
   isDesktop: boolean;
   permissions: LocalNetworkPermissionQuery | null;
+  sessionAccessGranted: boolean;
 }
 
 const LOCAL_NETWORK_PERMISSION_NAMES: readonly LocalNetworkPermissionName[] = [
   "loopback-network",
   "local-network-access",
 ];
-
-function normalizeHostname(hostname: string): string {
-  return hostname.toLowerCase().replace(/\.$/u, "");
-}
-
-export function isLoopbackHostname(hostname: string): boolean {
-  const normalizedHostname = normalizeHostname(hostname);
-  return (
-    normalizedHostname === "localhost" ||
-    normalizedHostname === "127.0.0.1" ||
-    normalizedHostname === "::1" ||
-    normalizedHostname === "[::1]"
-  );
-}
 
 export function getBrowserLocalNetworkPermissionQuery(): LocalNetworkPermissionQuery | null {
   if (
@@ -80,12 +69,17 @@ export async function resolveLocalHostDaemonAccess({
   hostname,
   isDesktop,
   permissions,
+  sessionAccessGranted,
 }: ResolveLocalHostDaemonAccessArgs): Promise<LocalHostDaemonAccessState> {
   if (configuredPort === null) {
     return "unavailable";
   }
 
-  if (isDesktop || (hostname !== null && isLoopbackHostname(hostname))) {
+  if (
+    sessionAccessGranted ||
+    isDesktop ||
+    (hostname !== null && isLoopbackHostname(hostname))
+  ) {
     return "available";
   }
 

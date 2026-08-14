@@ -165,17 +165,20 @@ localHostStatusRefreshTickAtom.onMount = (setRefreshTick) => {
 };
 
 const localHostDaemonAccessRefreshTickAtom = atom(0);
+const localHostDaemonSessionAccessGrantedAtom = atom(false);
 
 export const localHostDaemonAccessStateAtom = atom<
   Promise<LocalHostDaemonAccessState>
 >(async (get) => {
   get(localHostDaemonAccessRefreshTickAtom);
+  const sessionAccessGranted = get(localHostDaemonSessionAccessGrantedAtom);
   const config = await get(systemConfigAtom);
   return resolveLocalHostDaemonAccess({
     configuredPort: config.hostDaemonPort,
     hostname: typeof window === "undefined" ? null : window.location.hostname,
     isDesktop: getBbDesktopInfo() !== null,
     permissions: getBrowserLocalNetworkPermissionQuery(),
+    sessionAccessGranted,
   });
 });
 
@@ -193,6 +196,9 @@ export const requestLocalHostDaemonAccessAtom = atom(
     }
 
     const status = await fetchHostStatus(config.hostDaemonPort);
+    if (status !== null) {
+      set(localHostDaemonSessionAccessGrantedAtom, true);
+    }
     set(localHostDaemonAccessRefreshTickAtom, (count) => count + 1);
     set(localHostStatusRefreshTickAtom, (count) => count + 1);
     return status !== null;

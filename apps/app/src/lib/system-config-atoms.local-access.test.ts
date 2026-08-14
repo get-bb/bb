@@ -78,4 +78,30 @@ describe("local host daemon access atoms", () => {
     );
     expect(mocks.fetchHostStatus).toHaveBeenCalledExactlyOnceWith(38_887);
   });
+
+  it("keeps successful explicit access when permission queries are unsupported", async () => {
+    vi.stubGlobal("navigator", {
+      permissions: {
+        query: vi.fn(async () => {
+          throw new TypeError("unsupported permission");
+        }),
+      },
+      userAgent: "test",
+    });
+    mocks.fetchHostStatus.mockResolvedValue({
+      connected: true,
+      hostId: "host-local",
+    });
+    const store = createStore();
+
+    await expect(store.get(localHostDaemonAccessStateAtom)).resolves.toBe(
+      "unsupported",
+    );
+    await expect(store.set(requestLocalHostDaemonAccessAtom)).resolves.toBe(
+      true,
+    );
+    await expect(store.get(localHostDaemonAccessStateAtom)).resolves.toBe(
+      "available",
+    );
+  });
 });

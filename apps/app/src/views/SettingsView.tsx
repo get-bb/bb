@@ -480,14 +480,16 @@ export function LocalOpenTargetSettingsSection({
     const description = accessDenied
       ? "Loopback access is blocked. Allow it for this site in your browser settings, then reload bb."
       : accessAvailable
-        ? "No local bb helper is reachable on this device. Start bb locally to discover installed editors."
+        ? "No local bb helper is reachable on this device. Start bb locally, then retry to discover installed editors."
         : "Allow bb to discover editors on this device. Your browser may ask for access to apps and services on this computer.";
     const buttonLabel = accessRequestPending
-      ? "Enabling…"
+      ? accessAvailable
+        ? "Retrying…"
+        : "Enabling…"
       : accessDenied
         ? "Blocked"
         : accessAvailable
-          ? "Unavailable"
+          ? "Retry"
           : "Enable";
 
     return (
@@ -499,7 +501,7 @@ export function LocalOpenTargetSettingsSection({
           <Button
             variant="outline"
             size="sm"
-            disabled={accessRequestPending || accessDenied || accessAvailable}
+            disabled={accessRequestPending || accessDenied}
             onClick={handleRequestAccess}
           >
             {buttonLabel}

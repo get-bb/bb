@@ -1,5 +1,7 @@
-// Address-bar / new-tab search input parsing for the browser surface. Pure and
-// dependency-free so the URL-vs-search heuristic can be unit tested directly.
+// Address-bar / new-tab search input parsing for the browser surface. Kept pure
+// so the URL-vs-search heuristic can be unit tested directly.
+
+import { isLoopbackHostname } from "./loopback-hostname";
 
 const SEARCH_ENGINE_URL = "https://www.google.com/search";
 const HTTP_SCHEME_PATTERN = /^https?:\/\//i;
@@ -73,18 +75,8 @@ function parseIpv4Octets(host: string): number[] | null {
   return octets;
 }
 
-function isIpv4LoopbackHost(host: string): boolean {
-  const octets = parseIpv4Octets(host);
-  return octets !== null && octets[0] === 127;
-}
-
 function isBareLoopbackHost(host: string): boolean {
-  return (
-    host === "localhost" ||
-    host.endsWith(".localhost") ||
-    host === "::1" ||
-    isIpv4LoopbackHost(host)
-  );
+  return isLoopbackHostname(host);
 }
 
 function isBlockedIpv4Host(host: string): boolean {
@@ -114,7 +106,7 @@ function isBlockedBareHost(host: string): boolean {
 function isPublicBareHost(host: string): boolean {
   const ipv4 = parseIpv4Octets(host);
   if (ipv4 !== null) {
-    return !isIpv4LoopbackHost(host) && !isBlockedIpv4Host(host);
+    return !isLoopbackHostname(host) && !isBlockedIpv4Host(host);
   }
 
   return (

@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  isLoopbackHostname,
   resolveLocalHostDaemonAccess,
   resolveLocalHostDaemonProbePort,
   type LocalNetworkPermissionQuery,
@@ -13,13 +12,6 @@ function createPermissionQuery(
 }
 
 describe("local host daemon access", () => {
-  it.each(["localhost", "LOCALHOST.", "127.0.0.1", "::1", "[::1]"])(
-    "recognizes %s as loopback",
-    (hostname) => {
-      expect(isLoopbackHostname(hostname)).toBe(true);
-    },
-  );
-
   it("does not query browser permission without a configured helper", async () => {
     const query = vi.fn<LocalNetworkPermissionQuery["query"]>();
 
@@ -29,6 +21,7 @@ describe("local host daemon access", () => {
         hostname: "bb.example.com",
         isDesktop: false,
         permissions: createPermissionQuery(query),
+        sessionAccessGranted: false,
       }),
     ).resolves.toBe("unavailable");
     expect(query).not.toHaveBeenCalled();
@@ -45,6 +38,7 @@ describe("local host daemon access", () => {
         configuredPort: 38_887,
         ...context,
         permissions: createPermissionQuery(query),
+        sessionAccessGranted: false,
       }),
     ).resolves.toBe("available");
     expect(query).not.toHaveBeenCalled();
@@ -70,6 +64,7 @@ describe("local host daemon access", () => {
           hostname: "bb.example.com",
           isDesktop: false,
           permissions: createPermissionQuery(query),
+          sessionAccessGranted: false,
         }),
       ).resolves.toBe(accessState);
       expect(query).toHaveBeenCalledExactlyOnceWith({
@@ -94,6 +89,7 @@ describe("local host daemon access", () => {
         hostname: "bb.example.com",
         isDesktop: false,
         permissions: createPermissionQuery(query),
+        sessionAccessGranted: false,
       }),
     ).resolves.toBe("available");
     expect(query.mock.calls).toEqual([
@@ -113,8 +109,24 @@ describe("local host daemon access", () => {
         hostname: "bb.example.com",
         isDesktop: false,
         permissions: createPermissionQuery(query),
+        sessionAccessGranted: false,
       }),
     ).resolves.toBe("unsupported");
+  });
+
+  it("trusts access already proven by an explicit session request", async () => {
+    const query = vi.fn<LocalNetworkPermissionQuery["query"]>();
+
+    await expect(
+      resolveLocalHostDaemonAccess({
+        configuredPort: 38_887,
+        hostname: "bb.example.com",
+        isDesktop: false,
+        permissions: createPermissionQuery(query),
+        sessionAccessGranted: true,
+      }),
+    ).resolves.toBe("available");
+    expect(query).not.toHaveBeenCalled();
   });
 
   it("only exposes the helper port when probing is available", () => {

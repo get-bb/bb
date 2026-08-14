@@ -62,6 +62,14 @@ describe("LocalOpenTargetSettingsSection", () => {
     expect(onRequestAccess).not.toHaveBeenCalled();
   });
 
+  it("retries after the helper was unavailable", async () => {
+    const { onRequestAccess } = renderSection({ accessState: "available" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(onRequestAccess).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/start bb locally, then retry/i)).not.toBeNull();
+  });
+
   it("shows editor preferences when the helper is reachable", () => {
     renderSection({ accessState: "available", hasDaemon: true });
 
