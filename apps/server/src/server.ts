@@ -453,6 +453,7 @@ export function createApp(
     db: deps.db,
     appVersion: deps.config.appVersion,
     marketplaceUrl: deps.config.marketplaceUrl,
+    dataDir: deps.config.dataDir,
     plugins: pluginService,
     // The store's installed/compatible flags ride the plugin-list broadcast,
     // so a refreshed catalog reaches open windows without polling.

@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { InstalledPlugin } from "@bb/server-contract";
+import {
+  OFFICIAL_PLUGIN_MARKETPLACE_NAME,
+  type InstalledPlugin,
+  type PluginCatalogInstallPlan,
+  type PluginCatalogResolvedSource,
+} from "@bb/server-contract";
 import { Button } from "@bb/shared-ui/button";
 import {
   Dialog,
@@ -22,15 +27,18 @@ import {
 import {
   installCatalogPlugin,
   installPlugin,
+  useCatalogInstallPlan,
 } from "@/hooks/queries/plugin-catalog-queries";
 import { CatalogEntryIcon, FullTrustWarning } from "./plugin-ui";
 
 /**
- * Pre-fill for Browse-tab installs: the dialog shows the official catalog
- * entry instead of the free source field.
+ * Pre-fill for Browse-tab installs: the dialog shows the catalog entry instead
+ * of the free source field.
  */
 export type AddPluginInitial = {
   entryId: string;
+  /** Marketplace that listed the entry; the install routes through it. */
+  marketplace: string;
   displayName: string;
   icon: string | null;
   iconUrl: string | null;
@@ -91,17 +99,138 @@ function buildRequest(
   initial: AddPluginInitial | null,
   sourceText: string,
 ):
-  | { kind: "catalog"; entryId: string }
+  | { kind: "catalog"; entryId: string; marketplace: string }
   | { kind: "direct"; source: string }
   | null {
   if (initial !== null) {
     return {
       kind: "catalog",
       entryId: initial.entryId,
+      marketplace: initial.marketplace,
     };
   }
   const trimmed = sourceText.trim();
   return trimmed.length === 0 ? null : { kind: "direct", source: trimmed };
+}
+
+/** One labelled fact of the resolved source, rendered as a definition row. */
+function resolvedSourceRows(
+  source: PluginCatalogResolvedSource,
+): { label: string; value: string }[] {
+  if (source.kind === "npm") {
+    return [
+      {
+        label: "npm package",
+        value: `${source.package}@${source.range ?? source.tag ?? "latest"}`,
+      },
+      ...(source.registry === undefined
+        ? []
+        : [{ label: "registry", value: source.registry }]),
+    ];
+  }
+  return [
+    { label: "repository", value: source.url },
+    ...(source.subdir === undefined
+      ? []
+      : [{ label: "subdirectory", value: source.subdir }]),
+    ...(source.ref === undefined
+      ? []
+      : [{ label: "ref", value: source.ref }]),
+    ...(source.range === undefined
+      ? []
+      : [
+          {
+            label: "semver range",
+            value:
+              source.tagPrefix === undefined
+                ? source.range
+                : `${source.range} (tags ${source.tagPrefix}vX.Y.Z)`,
+          },
+        ]),
+    ...(source.resolvedTag === undefined
+      ? []
+      : [{ label: "resolves to tag", value: source.resolvedTag }]),
+    ...(source.resolvedCommit === undefined
+      ? []
+      : [{ label: "resolves to commit", value: source.resolvedCommit }]),
+    ...(source.unresolvedReason === undefined
+      ? []
+      : [{ label: "not resolved", value: source.unresolvedReason }]),
+  ];
+}
+
+/**
+ * The true resolved source of a third-party entry, shown before anything runs.
+ * A listing's own display metadata is not evidence of what the install
+ * fetches, so this renders what bb resolved from the marketplace's source
+ * fields — including the exact tag and commit a semver range lands on.
+ */
+function ThirdPartySourceDisclosure({
+  plan,
+  pending,
+  error,
+}: {
+  plan: PluginCatalogInstallPlan | undefined;
+  pending: boolean;
+  error: unknown;
+}) {
+  if (pending) {
+    return (
+      <p className="text-2xs text-subtle-foreground" role="status">
+        Resolving the listed source…
+      </p>
+    );
+  }
+  if (error !== null && error !== undefined) {
+    return (
+      <p className="text-2xs text-warning-text" role="status">
+        Could not resolve this listing&rsquo;s source:{" "}
+        {pluginAdminErrorMessage(error)}
+      </p>
+    );
+  }
+  if (plan === undefined || plan.kind !== "marketplace" || plan.official) {
+    return null;
+  }
+  const author =
+    plan.author.url === null ? null : (
+      <a
+        href={plan.author.url}
+        target="_blank"
+        rel="noreferrer"
+        className="underline underline-offset-2"
+      >
+        {plan.author.name}
+      </a>
+    );
+  return (
+    <div className="space-y-1.5 rounded-md border border-border bg-muted/30 px-3 py-2">
+      <p className="text-2xs text-subtle-foreground">
+        Listed by <span className="text-foreground">{plan.marketplaceDisplayName}</span>,
+        a third-party marketplace that BB does not review.
+      </p>
+      <dl className="space-y-0.5">
+        <div className="flex gap-2">
+          <dt className="w-28 shrink-0 text-2xs text-subtle-foreground">
+            author
+          </dt>
+          <dd className="min-w-0 break-all font-mono text-2xs text-foreground">
+            {author ?? plan.author.name}
+          </dd>
+        </div>
+        {resolvedSourceRows(plan.resolvedSource).map((row) => (
+          <div key={row.label} className="flex gap-2">
+            <dt className="w-28 shrink-0 text-2xs text-subtle-foreground">
+              {row.label}
+            </dt>
+            <dd className="min-w-0 break-all font-mono text-2xs text-foreground">
+              {row.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
 }
 
 function AddPluginDialogContent({
@@ -116,11 +245,25 @@ function AddPluginDialogContent({
   const queryClient = useQueryClient();
   const [sourceText, setSourceText] = useState("");
   const request = buildRequest(initial, sourceText);
+  // Only a third-party listing needs its source resolved before confirming:
+  // the official catalog is BB's own and installs without a round trip.
+  const thirdParty =
+    initial !== null &&
+    initial.marketplace !== OFFICIAL_PLUGIN_MARKETPLACE_NAME;
+  const planQuery = useCatalogInstallPlan(
+    thirdParty && initial !== null
+      ? { entryId: initial.entryId, marketplace: initial.marketplace }
+      : null,
+  );
+  const plan = planQuery.data;
 
   const install = useMutation({
     mutationFn: (body: NonNullable<typeof request>) =>
       body.kind === "catalog"
-        ? installCatalogPlugin(fetch, { entryId: body.entryId })
+        ? installCatalogPlugin(fetch, {
+            entryId: body.entryId,
+            marketplace: body.marketplace,
+          })
         : installPlugin(fetch, body.source),
     onSuccess: (plugin) => {
       applyInstalledPlugin({ queryClient, plugin });
@@ -145,9 +288,11 @@ function AddPluginDialogContent({
           {initial !== null ? `Install ${initial.displayName}?` : "Add plugin"}
         </DialogTitle>
         <DialogDescription>
-          {initial !== null
-            ? catalogInstallDescription(initial.source)
-            : "Install from npm, a Git repository, or a local path."}
+          {initial === null
+            ? "Install from npm, a Git repository, or a local path."
+            : thirdParty
+              ? "Install this plugin from the source its marketplace lists."
+              : catalogInstallDescription(initial.source)}
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-3">
@@ -184,6 +329,14 @@ function AddPluginDialogContent({
           </div>
         )}
 
+        {thirdParty ? (
+          <ThirdPartySourceDisclosure
+            plan={plan}
+            pending={planQuery.isPending}
+            error={planQuery.error}
+          />
+        ) : null}
+
         {install.isPending ? (
           <div
             className="h-0.5 overflow-hidden rounded-full bg-border"
@@ -206,7 +359,13 @@ function AddPluginDialogContent({
         </Button>
         <Button
           type="button"
-          disabled={request === null || install.isPending}
+          disabled={
+            request === null ||
+            install.isPending ||
+            // A third-party install is confirmed against its resolved source,
+            // so the button waits for that resolution to arrive.
+            (thirdParty && planQuery.isPending)
+          }
           aria-busy={install.isPending}
           onClick={() => {
             if (request !== null) install.mutate(request);

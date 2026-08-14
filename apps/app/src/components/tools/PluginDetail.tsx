@@ -132,8 +132,28 @@ export function CatalogPluginDetail({
       maxWidthClassName="max-w-5xl"
       leading={<CatalogEntryIcon entry={entry} className="size-full" />}
       title={entry.displayName}
-      titleMeta={<ProvenancePill label="BB Official" />}
-      metadata={<span>{entry.category}</span>}
+      titleMeta={<ProvenancePill label={entry.marketplaceDisplayName} />}
+      metadata={
+        <>
+          <span>{entry.category}</span>
+          {entry.author === null ? null : (
+            <span>
+              {entry.author.url === null ? (
+                entry.author.name
+              ) : (
+                <a
+                  href={entry.author.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline underline-offset-2"
+                >
+                  {entry.author.name}
+                </a>
+              )}
+            </span>
+          )}
+        </>
+      }
       actions={
         <ResourceInstallControl
           accessibleLabel={`Install ${entry.displayName}`}

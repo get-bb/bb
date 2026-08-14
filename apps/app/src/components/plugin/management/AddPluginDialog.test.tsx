@@ -16,6 +16,34 @@ interface RecordedRequest {
   init: RequestInit | undefined;
 }
 
+/** The install-plan the dialog resolves before confirming a catalog entry. */
+function installPlanFor(url: string): unknown {
+  const params = new URL(url, "https://bb.test").searchParams;
+  const entryId = params.get("entryId") ?? "";
+  const marketplace = params.get("marketplace") ?? "bb-official";
+  const official = marketplace === "bb-official";
+  return {
+    kind: "marketplace",
+    entryId,
+    pluginId: entryId,
+    displayName: entryId,
+    marketplace,
+    marketplaceDisplayName: official ? "BB Official" : "Acme Plugins",
+    official,
+    author: { name: "Acme", url: "https://github.com/acme" },
+    source: "git:https://github.com/acme/plugins.git@semver:^1.0.0",
+    resolvedSource: {
+      kind: "git",
+      url: "https://github.com/acme/plugins.git",
+      range: "^1.0.0",
+      resolvedTag: "v1.2.3",
+      resolvedCommit: "a".repeat(40),
+    },
+    compatible: true,
+    incompatibleReason: null,
+  };
+}
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -73,6 +101,9 @@ function stubFetch(
         url === "/api/v1/plugin-catalog/install"
       ) {
         return jsonResponse(installBody, installStatus);
+      }
+      if (url.startsWith("/api/v1/plugin-catalog/install-plan")) {
+        return jsonResponse({ plan: installPlanFor(url) });
       }
       return jsonResponse({ error: "not found" }, 404);
     }),
@@ -186,6 +217,7 @@ describe("AddPluginDialog", () => {
     stubFetch();
     const { unmount } = renderDialog({
       entryId: "linear",
+      marketplace: "bb-official",
       displayName: "Linear",
       icon: "Github",
       iconUrl: null,
@@ -200,6 +232,7 @@ describe("AddPluginDialog", () => {
     // bundle. A ref can be a branch, so the dialog must not call it pinned.
     const git = renderDialog({
       entryId: "thread-hover-cards",
+      marketplace: "bb-official",
       displayName: "Thread Hover Cards",
       icon: "Github",
       iconUrl: null,
@@ -215,6 +248,7 @@ describe("AddPluginDialog", () => {
 
     renderDialog({
       entryId: "widgets",
+      marketplace: "bb-official",
       displayName: "Widgets",
       icon: "Zap",
       iconUrl: null,
@@ -236,6 +270,7 @@ describe("AddPluginDialog", () => {
       displayName: "Widgets",
       icon: "Zap",
       iconUrl: null,
+      marketplace: "bb-official",
       source: "npm:bb-plugin-widgets@^1.0.0 (registry https://npm.acme.test)",
     });
 
@@ -250,6 +285,7 @@ describe("AddPluginDialog", () => {
     const requests = stubFetch();
     renderDialog({
       entryId: "linear",
+      marketplace: "bb-official",
       displayName: "Linear",
       icon: "Github",
       iconUrl: null,
@@ -268,6 +304,7 @@ describe("AddPluginDialog", () => {
       expect(post).toBeDefined();
       expect(JSON.parse(String(post?.init?.body))).toEqual({
         entryId: "linear",
+        marketplace: "bb-official",
       });
     });
   });
@@ -278,6 +315,7 @@ describe("AddPluginDialog", () => {
       "/api/v1/plugin-catalog/icons/bb-official/widgets?h=icon-hash";
     renderDialog({
       entryId: "widgets",
+      marketplace: "bb-official",
       displayName: "Widgets",
       icon: null,
       iconUrl,
@@ -300,6 +338,7 @@ describe("AddPluginDialog", () => {
         onOpenChange={() => {}}
         initial={{
           entryId: "linear",
+          marketplace: "bb-official",
           displayName: "Linear",
           icon: "Github",
           iconUrl: null,

@@ -25,6 +25,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 const MEMORY_ENTRY: PluginCatalogSearchEntry = {
   entryId: "memory",
+  marketplace: "bb-official",
   pluginId: "memory",
   displayName: "Memory",
   description: "Provider-independent durable memory for agents.",
@@ -32,6 +33,9 @@ const MEMORY_ENTRY: PluginCatalogSearchEntry = {
   iconUrl: null,
   category: "Context & knowledge",
   source: "builtin:memory",
+  marketplaceDisplayName: "BB Official",
+  official: true,
+  author: null,
   installed: false,
   compatible: true,
   incompatibleReason: null,
@@ -46,6 +50,7 @@ const CATALOG_STATUS = {
 const INCOMPATIBLE_ENTRY: PluginCatalogSearchEntry = {
   ...MEMORY_ENTRY,
   entryId: "future-memory",
+  marketplace: "bb-official",
   pluginId: "future-memory",
   displayName: "Future Memory",
   compatible: false,
@@ -55,6 +60,7 @@ const INCOMPATIBLE_ENTRY: PluginCatalogSearchEntry = {
 const GITHUB_ENTRY: PluginCatalogSearchEntry = {
   ...MEMORY_ENTRY,
   entryId: "github",
+  marketplace: "bb-official",
   pluginId: "github",
   displayName: "GitHub",
   description: "Browse GitHub issues and pull requests in BB.",
@@ -97,7 +103,9 @@ afterEach(() => {
 });
 
 describe("BrowsePluginsTab", () => {
-  it("sorts by plugin name ascending by default and reverses direction", async () => {
+  // Browse groups by marketplace and then by section, so the sort direction
+  // orders entries inside a section rather than across the whole page.
+  it("sorts by plugin name inside each section and reverses direction", async () => {
     const entries = [
       { ...MEMORY_ENTRY, displayName: "Zulu" },
       { ...GITHUB_ENTRY, displayName: "Alpha" },
@@ -141,9 +149,9 @@ describe("BrowsePluginsTab", () => {
         ),
       ].map((button) => button.getAttribute("aria-label"));
     expect(cardOrder()).toEqual([
-      "Open Alpha details",
       "Open Middle details",
       "Open Zulu details",
+      "Open Alpha details",
     ]);
 
     const sortTrigger = screen.getByRole("button", {
@@ -157,6 +165,9 @@ describe("BrowsePluginsTab", () => {
       "Open Middle details",
       "Open Alpha details",
     ]);
+    // Section headings name the tag-derived groups the entries fall into.
+    expect(screen.getByText("Context & knowledge")).toBeTruthy();
+    expect(screen.getByText("Developer tools")).toBeTruthy();
   });
 
   it("renders every catalog entry once and filters the grid by category", async () => {
@@ -336,6 +347,7 @@ describe("BrowsePluginsTab", () => {
     fireEvent.click(install);
     expect(onInstall).toHaveBeenCalledWith({
       entryId: "memory",
+      marketplace: "bb-official",
       displayName: "Memory",
       icon: "Brain",
       iconUrl: null,
@@ -488,6 +500,7 @@ describe("BrowsePluginsTab", () => {
               {
                 ...MEMORY_ENTRY,
                 entryId: "docs",
+                marketplace: "bb-official",
                 pluginId: "simple-notes",
                 displayName: "Docs",
                 source: "builtin:docs",

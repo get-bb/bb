@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import type { DbConnection } from "../connection.js";
+import type { DbConnection, DbQueryConnection } from "../connection.js";
 import { installedPlugins, pluginArtifacts } from "../schema.js";
 
 export type PluginProvenance =
@@ -352,6 +352,46 @@ export function upsertInstalledPlugin(
   const row = getInstalledPlugin(db, plugin.id);
   if (!row) throw new Error(`plugin row missing after upsert: ${plugin.id}`);
   return row;
+}
+
+/** Live installs a marketplace listed, used when that marketplace is removed. */
+export function listInstalledPluginsFromMarketplace(
+  db: DbQueryConnection,
+  marketplaceName: string,
+): { id: string }[] {
+  return db
+    .select({ id: installedPlugins.id })
+    .from(installedPlugins)
+    .where(
+      and(
+        eq(installedPlugins.provenance, "catalog"),
+        eq(installedPlugins.catalogMarketplaceName, marketplaceName),
+        isNull(installedPlugins.removedAt),
+      ),
+    )
+    .all();
+}
+
+/**
+ * Convert a catalog install into a direct one, keeping its source intent and
+ * exact resolution. Removing a marketplace drops the discovery layer only: the
+ * plugin keeps running and keeps checking for updates from its recorded source.
+ */
+export function setInstalledPluginDirectProvenance(
+  db: DbQueryConnection,
+  id: string,
+): boolean {
+  const result = db
+    .update(installedPlugins)
+    .set({
+      provenance: "direct",
+      catalogEntryId: null,
+      catalogMarketplaceName: null,
+      updatedAt: Date.now(),
+    })
+    .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
+    .run();
+  return result.changes > 0;
 }
 
 export function setInstalledPluginEnabled(

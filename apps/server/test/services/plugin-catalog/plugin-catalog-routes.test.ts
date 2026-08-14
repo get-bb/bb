@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createConnection, migrate, type DbConnection } from "@bb/db";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -19,12 +22,18 @@ const VALID_SVG = Buffer.from(
 describe("plugin catalog routes", () => {
   let db: DbConnection;
 
-  beforeEach(() => {
+  let dataDir: string;
+
+  beforeEach(async () => {
     db = createConnection(":memory:");
     migrate(db);
+    dataDir = await mkdtemp(join(tmpdir(), "bb-catalog-routes-"));
   });
 
-  afterEach(() => db.$client.close());
+  afterEach(async () => {
+    db.$client.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   function catalogApp(
     fetchImpl?: Parameters<typeof createPluginCatalogService>[0]["fetch"],
@@ -33,6 +42,7 @@ describe("plugin catalog routes", () => {
       db,
       appVersion: "1.0.0",
       marketplaceUrl: MANIFEST_URL,
+      dataDir,
       plugins: {
         installOfficialPlugin: async () => {
           throw new Error("unexpected install");

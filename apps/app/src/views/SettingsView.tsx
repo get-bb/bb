@@ -49,6 +49,7 @@ import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsS
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
 import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
 import { CliSkillsSettingsSection } from "@/components/settings/CliSkillsSettingsSection";
+import { MarketplacesSettingsSection } from "@/components/settings/MarketplacesSettingsSection";
 import {
   useUpdateGeneralSettings,
   useUpdateAppearance,
@@ -1179,6 +1180,8 @@ export function SettingsView() {
         }
       />
     );
+  } else if (activeSection === "marketplaces") {
+    content = <MarketplacesSettingsSection />;
   } else if (activeSection === "community") {
     content = <CommunitySettingsSection />;
   } else if (activeSection === "archived") {

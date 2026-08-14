@@ -680,6 +680,13 @@
       "when": 1786722089647,
       "tag": "0096_heavy_shiva",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "6",
+      "when": 1786722321775,
+      "tag": "0097_whole_blackheart",
+      "breakpoints": true
     }
   ]
 }

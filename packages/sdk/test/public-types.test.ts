@@ -293,12 +293,20 @@ type ExpectedPluginsKey =
   | "install"
   | "list"
   | "listUpdateResults"
+  | "marketplaces"
   | "reload"
   | "remove"
   | "token"
   | "updateSettings";
 
-type ExpectedPluginCatalogKey = "install" | "search" | "status" | "submission";
+type ExpectedPluginCatalogKey =
+  | "install"
+  | "installPlan"
+  | "search"
+  | "status"
+  | "submission";
+
+type ExpectedPluginMarketplacesKey = "add" | "list" | "refresh" | "remove";
 
 type ExpectedProjectsKey =
   | "attachments"
@@ -494,6 +502,9 @@ describe("SDK public type entrypoints", () => {
     expectTypeOf<
       keyof RootBbSdk["plugins"]["catalog"]
     >().toEqualTypeOf<ExpectedPluginCatalogKey>();
+    expectTypeOf<
+      keyof RootBbSdk["plugins"]["marketplaces"]
+    >().toEqualTypeOf<ExpectedPluginMarketplacesKey>();
     expectTypeOf<
       keyof RootBbSdk["projects"]
     >().toEqualTypeOf<ExpectedProjectsKey>();

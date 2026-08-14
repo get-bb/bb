@@ -10,6 +10,8 @@ import { derivePluginId } from "@bb/domain";
 import type {
   InstalledPlugin as PluginEntry,
   PluginApplyUpdateResult,
+  PluginCatalogInstallPlan,
+  PluginCatalogResolvedSource,
   PluginCatalogSearchResult,
   PluginUpdateCheckEntry as PluginUpdateResult,
 } from "@bb/server-contract";
@@ -648,7 +650,18 @@ async function existsOnDisk(source: string): Promise<boolean> {
 
 type InstallIntent =
   | { kind: "source"; source: string; summary: string }
-  | { kind: "catalog"; entry: PluginCatalogSearchResult };
+  | { kind: "catalog"; plan: PluginCatalogInstallPlan };
+
+/** `<entry-id>@<marketplace>`, both lowercase kebab-case. */
+const QUALIFIED_ENTRY_PATTERN =
+  /^([a-z0-9][a-z0-9-]*)@([a-z0-9][a-z0-9-]*)$/u;
+
+function installPlan(
+  baseUrl: string,
+  args: { entryId: string; marketplace?: string },
+): Promise<PluginCatalogInstallPlan> {
+  return createCliBbSdk(baseUrl).plugins.catalog.installPlan(args);
+}
 
 async function resolveInstallIntent(
   baseUrl: string,
@@ -681,11 +694,29 @@ async function resolveInstallIntent(
     };
   }
 
+  // `<id>@<marketplace>` names one marketplace's entry. Every other source
+  // form is already handled above, so this shape cannot be anything else.
+  const qualified = QUALIFIED_ENTRY_PATTERN.exec(input);
+  if (qualified !== null) {
+    const [, entryId, marketplace] = qualified;
+    return {
+      kind: "catalog",
+      plan: await installPlan(baseUrl, {
+        entryId: entryId ?? "",
+        marketplace: marketplace ?? "",
+      }),
+    };
+  }
   if (!input.includes("@")) {
-    const entry = (await searchCatalog(baseUrl, input)).find(
+    const listed = (await searchCatalog(baseUrl, input)).some(
       (candidate) => candidate.entryId === input,
     );
-    if (entry !== undefined) return { kind: "catalog", entry };
+    // The server owns the routing: it installs the single match, falls back to
+    // the bundled plugin of that name, or refuses an id several marketplaces
+    // list. Asking it here is what makes the confirmation show the real plan.
+    if (listed) {
+      return { kind: "catalog", plan: await installPlan(baseUrl, { entryId: input }) };
+    }
   }
   if (!(await existsOnDisk(input)))
     throw new Error(dualInterpretationError(input));
@@ -696,6 +727,63 @@ async function resolveInstallIntent(
     source: `path:${path}`,
     summary: `Installing ${path}`,
   };
+}
+
+/** The npm or git source line of an install confirmation. */
+function resolvedSourceLines(source: PluginCatalogResolvedSource): string[] {
+  if (source.kind === "npm") {
+    const spec = source.range ?? source.tag ?? "latest";
+    return [
+      `  npm package: ${source.package}@${spec}`,
+      ...(source.registry === undefined
+        ? []
+        : [`  registry: ${source.registry}`]),
+    ];
+  }
+  const lines = [`  git repository: ${source.url}`];
+  if (source.subdir !== undefined) {
+    lines.push(`  subdirectory: ${source.subdir}`);
+  }
+  if (source.ref !== undefined) lines.push(`  ref: ${source.ref}`);
+  if (source.range !== undefined) {
+    const prefix =
+      source.tagPrefix === undefined ? "" : ` (tags ${source.tagPrefix}vX.Y.Z)`;
+    lines.push(`  semver range: ${source.range}${prefix}`);
+  }
+  if (source.resolvedTag !== undefined) {
+    lines.push(`  resolves to tag: ${source.resolvedTag}`);
+  }
+  if (source.resolvedCommit !== undefined) {
+    lines.push(`  resolves to commit: ${source.resolvedCommit}`);
+  }
+  if (source.unresolvedReason !== undefined) {
+    lines.push(`  not resolved right now: ${source.unresolvedReason}`);
+  }
+  return lines;
+}
+
+/**
+ * What the install will actually do. A third-party listing shows its
+ * marketplace, its author, and the true resolved source — the listing's own
+ * description is not evidence of what the install fetches.
+ */
+function installPlanSummary(plan: PluginCatalogInstallPlan): string {
+  if (plan.kind === "bundled") {
+    return `Installing ${plan.displayName}, bundled with BB (${plan.source})`;
+  }
+  if (plan.official) {
+    return `Installing ${plan.displayName} from its listed source (${plan.source})`;
+  }
+  const author =
+    plan.author.url === null
+      ? plan.author.name
+      : `${plan.author.name} (${plan.author.url})`;
+  return [
+    `Installing ${plan.displayName} (${plan.entryId}@${plan.marketplace})`,
+    `  marketplace: ${plan.marketplaceDisplayName} — a third-party marketplace, not reviewed by BB`,
+    `  author: ${author}`,
+    ...resolvedSourceLines(plan.resolvedSource),
+  ].join("\n");
 }
 
 function printPlugin(plugin: PluginEntry): void {
@@ -985,14 +1073,12 @@ export function registerPluginCommands(
             );
           }
           // Catalog entries split by source kind: `builtin:` plugins ship
-          // inside the app, git-catalog entries install from their pinned,
-          // reviewed commit — the preamble must not claim one is the other.
+          // inside the app, marketplace entries install from their listed
+          // source — the preamble must not claim one is the other.
           let summary =
             intent.kind === "source"
               ? intent.summary
-              : intent.entry.source.startsWith("builtin:")
-                ? `Installing ${intent.entry.displayName}, bundled with BB (${intent.entry.source})`
-                : `Installing ${intent.entry.displayName} from its listed source (${intent.entry.source})`;
+              : installPlanSummary(intent.plan);
           if (intent.kind === "source" && intent.source.startsWith("path:")) {
             const path = intent.source.slice(5);
             // Best effort — a missing/invalid manifest is the server's
@@ -1051,9 +1137,14 @@ export function registerPluginCommands(
                     : { subdirectory: opts.subdirectory }),
                   ...(opts.plugin === undefined ? {} : { plugin: opts.plugin }),
                 })
-              : await createCliBbSdk(getUrl()).plugins.catalog.install({
-                  entryId: intent.entry.entryId,
-                });
+              : await createCliBbSdk(getUrl()).plugins.catalog.install(
+                  intent.plan.kind === "marketplace"
+                    ? {
+                        entryId: intent.plan.entryId,
+                        marketplace: intent.plan.marketplace,
+                      }
+                    : { entryId: intent.plan.entryId },
+                );
           const result = { ok: true as const, plugin };
           if (opts.json) {
             outputJson(opts, result);

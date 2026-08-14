@@ -1,10 +1,16 @@
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
 import { pluginMarketplaceIcons, pluginMarketplaces } from "../schema.js";
 
+/** How bb reads a marketplace manifest. */
+export type PluginMarketplaceSourceKind = "https" | "git" | "path";
+
 export interface PluginMarketplaceRow {
   name: string;
+  sourceKind: PluginMarketplaceSourceKind;
   manifestUrl: string;
+  sourceGitRef: string | null;
+  sourceGitCommit: string | null;
   manifestJson: string;
   etag: string | null;
   lastModified: string | null;
@@ -17,7 +23,10 @@ export interface PluginMarketplaceRow {
 
 export interface UpsertPluginMarketplaceInput {
   name: string;
+  sourceKind: PluginMarketplaceSourceKind;
   manifestUrl: string;
+  sourceGitRef: string | null;
+  sourceGitCommit: string | null;
   manifestJson: string;
   etag: string | null;
   lastModified: string | null;
@@ -51,6 +60,35 @@ export function getPluginMarketplace(
     .from(pluginMarketplaces)
     .where(eq(pluginMarketplaces.name, name))
     .get();
+}
+
+/** Every registered marketplace, ordered by name for stable listings. */
+export function listPluginMarketplaces(
+  db: DbQueryConnection,
+): PluginMarketplaceRow[] {
+  return db
+    .select()
+    .from(pluginMarketplaces)
+    .orderBy(asc(pluginMarketplaces.name))
+    .all();
+}
+
+/**
+ * Delete a marketplace and its cached icons. Installed plugins are untouched:
+ * the caller converts their provenance first, so removal never disturbs
+ * running code.
+ */
+export function deletePluginMarketplace(
+  db: DbQueryConnection,
+  name: string,
+): boolean {
+  db.delete(pluginMarketplaceIcons)
+    .where(eq(pluginMarketplaceIcons.marketplaceName, name))
+    .run();
+  return (
+    db.delete(pluginMarketplaces).where(eq(pluginMarketplaces.name, name)).run()
+      .changes > 0
+  );
 }
 
 export function upsertPluginMarketplace(

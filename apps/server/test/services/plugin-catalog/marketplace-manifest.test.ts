@@ -5,7 +5,7 @@ import {
   entrySourceDisplay,
   marketplacePolicyWideningProblem,
   parseMarketplaceManifest,
-  resolveEntryIconUrl,
+  resolveEntryIcon,
   resolvedEntrySource,
   type MarketplaceEntry,
 } from "../../../src/services/plugin-catalog/marketplace-manifest.js";
@@ -147,14 +147,42 @@ describe("marketplace manifest schema", () => {
 
     it("resolves a relative URL against the manifest URL", () => {
       expect(
-        resolveEntryIconUrl(
+        resolveEntryIcon(
           firstEntry([entry({ icon: { url: "./icons/widgets.svg" } })]),
-          MANIFEST_URL,
+          { kind: "url", manifestUrl: MANIFEST_URL },
         ),
-      ).toBe("https://getbb.app/marketplace/v1/icons/widgets.svg");
-      expect(resolveEntryIconUrl(firstEntry([entry()]), MANIFEST_URL)).toBe(
-        null,
-      );
+      ).toEqual({
+        kind: "remote",
+        url: "https://getbb.app/marketplace/v1/icons/widgets.svg",
+      });
+      expect(
+        resolveEntryIcon(firstEntry([entry()]), {
+          kind: "url",
+          manifestUrl: MANIFEST_URL,
+        }),
+      ).toBe(null);
+    });
+
+    it("reads a relative URL beside the manifest for a local marketplace", () => {
+      expect(
+        resolveEntryIcon(
+          firstEntry([entry({ icon: { url: "./icons/widgets.svg" } })]),
+          { kind: "dir", root: "/checkout" },
+        ),
+      ).toEqual({
+        kind: "local",
+        path: "/checkout/icons/widgets.svg",
+        relativePath: "icons/widgets.svg",
+      });
+      // An absolute icon URL stays remote even for a local marketplace.
+      expect(
+        resolveEntryIcon(
+          firstEntry([
+            entry({ icon: { url: "https://cdn.example/widgets.svg" } }),
+          ]),
+          { kind: "dir", root: "/checkout" },
+        ),
+      ).toEqual({ kind: "remote", url: "https://cdn.example/widgets.svg" });
     });
   });
 

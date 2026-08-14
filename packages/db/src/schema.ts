@@ -306,8 +306,20 @@ export const pluginArtifacts = sqliteTable(
 // serving the store offline.
 export const pluginMarketplaces = sqliteTable("plugin_marketplaces", {
   name: text("name").primaryKey(),
-  /** Manifest URL the stored document came from; relative icons resolve against it. */
+  /** How bb reads the manifest: over HTTPS, from a git checkout, or from a directory. */
+  sourceKind: text("source_kind", { enum: ["https", "git", "path"] })
+    .notNull()
+    .default("https"),
+  /**
+   * Where the stored document came from: the manifest URL for an "https"
+   * marketplace, the clone URL for a "git" one, the absolute directory for a
+   * "path" one. An https marketplace resolves relative icon URLs against it.
+   */
   manifestUrl: text("manifest_url").notNull(),
+  /** Requested git ref of a "git" marketplace; null for every other kind. */
+  sourceGitRef: text("source_git_ref"),
+  /** Commit the last successful "git" refresh read the manifest from. */
+  sourceGitCommit: text("source_git_commit"),
   manifestJson: text("manifest_json").notNull(),
   etag: text("etag"),
   lastModified: text("last_modified"),

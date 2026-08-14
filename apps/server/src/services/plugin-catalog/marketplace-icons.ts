@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import {
   listPluginMarketplaceIcons,
   type DbConnection,
@@ -13,9 +14,12 @@ import {
   MARKETPLACE_FETCH_TIMEOUT_MS,
   type MarketplaceFetch,
 } from "./marketplace-http.js";
+import { realPathInside } from "../plugins/install-sources.js";
 import {
-  resolveEntryIconUrl,
+  resolveEntryIcon,
   type MarketplaceEntry,
+  type MarketplaceIconBase,
+  type MarketplaceIconLocation,
 } from "./marketplace-manifest.js";
 
 /** Real logo assets are a few KB; this only bounds a hostile response. */
@@ -62,7 +66,15 @@ export function marketplaceIconContentType(
   iconUrl: string,
   bytes: Uint8Array,
 ): string {
-  const pathname = new URL(iconUrl).pathname.toLowerCase();
+  return marketplaceIconContentTypeForPath(new URL(iconUrl).pathname, bytes);
+}
+
+/** The same validation for an icon read from disk, keyed on its file name. */
+export function marketplaceIconContentTypeForPath(
+  filePath: string,
+  bytes: Uint8Array,
+): string {
+  const pathname = filePath.toLowerCase();
   if (bytes.byteLength > MARKETPLACE_ICON_MAX_BYTES) {
     throw new Error(`icon exceeds ${MARKETPLACE_ICON_MAX_BYTES} bytes`);
   }
@@ -95,28 +107,33 @@ export function marketplaceIconContentType(
  * `entries` is always the whole catalog — icons of entries it no longer lists
  * are dropped. `onlyMissing` (an unchanged manifest) retries entries with no
  * cached icon without re-reading the ones already cached.
+ *
+ * `base` decides where a relative icon comes from: the manifest URL for an
+ * https marketplace, the checkout or directory for a git or path one. Local
+ * icons are read through {@link realPathInside}, so a symlink cannot pull
+ * bytes out of the checkout.
  */
 export async function fetchMarketplaceIcons(args: {
   db: DbConnection;
   marketplaceName: string;
-  manifestUrl: string;
+  base: MarketplaceIconBase;
   entries: readonly MarketplaceEntry[];
   onlyMissing: boolean;
   fetch: MarketplaceFetch;
   warn?: (message: string) => void;
 }): Promise<UpsertPluginMarketplaceIconInput[]> {
-  const wanted = new Map<string, string>();
+  const wanted = new Map<string, MarketplaceIconLocation>();
   for (const entry of args.entries) {
-    let iconUrl: string | null;
+    let icon: MarketplaceIconLocation | null;
     try {
-      iconUrl = resolveEntryIconUrl(entry, args.manifestUrl);
+      icon = resolveEntryIcon(entry, args.base);
     } catch (error) {
       args.warn?.(
         `marketplace ${args.marketplaceName} entry "${entry.id}": ${marketplaceErrorMessage(error)}`,
       );
       continue;
     }
-    if (iconUrl !== null) wanted.set(entry.id, iconUrl);
+    if (icon !== null) wanted.set(entry.id, icon);
   }
 
   const cachedByEntryId = new Map(
@@ -146,21 +163,40 @@ export async function fetchMarketplaceIcons(args: {
     resolved.set(entryId, icon);
   };
 
-  const runOne = async (entryId: string, iconUrl: string): Promise<void> => {
+  const runOne = async (
+    entryId: string,
+    icon: MarketplaceIconLocation,
+  ): Promise<void> => {
+    const sourceUrl = iconSourceUrl(icon);
     const cached = cachedByEntryId.get(entryId);
-    const unchangedUrl = cached?.sourceUrl === iconUrl;
-    if (args.onlyMissing && cached !== undefined && unchangedUrl) {
+    const unchangedUrl = cached?.sourceUrl === sourceUrl;
+    // A local icon lives in a checkout bb just materialized, so there is no
+    // conditional request to make and re-reading it is a local file read.
+    if (
+      args.onlyMissing &&
+      icon.kind === "remote" &&
+      cached !== undefined &&
+      unchangedUrl
+    ) {
       keep(entryId, iconInputFromRow(cached));
       return;
     }
     try {
-      const refreshed = await fetchOneIcon({
-        marketplaceName: args.marketplaceName,
-        entryId,
-        iconUrl,
-        cached,
-        fetch: args.fetch,
-      });
+      const refreshed =
+        icon.kind === "local"
+          ? await readOneLocalIcon({
+              marketplaceName: args.marketplaceName,
+              entryId,
+              icon,
+              base: args.base,
+            })
+          : await fetchOneIcon({
+              marketplaceName: args.marketplaceName,
+              entryId,
+              iconUrl: icon.url,
+              cached,
+              fetch: args.fetch,
+            });
       if (refreshed !== null) {
         keep(entryId, refreshed);
       } else if (cached !== undefined && unchangedUrl) {
@@ -168,7 +204,7 @@ export async function fetchMarketplaceIcons(args: {
       }
     } catch (error) {
       args.warn?.(
-        `marketplace ${args.marketplaceName} entry "${entryId}" icon ${iconUrl} was rejected: ${marketplaceErrorMessage(error)}`,
+        `marketplace ${args.marketplaceName} entry "${entryId}" icon ${sourceUrl} was rejected: ${marketplaceErrorMessage(error)}`,
       );
       // A failed revalidation keeps the matching last-known-good asset. An
       // asset from a previous URL does not describe the new catalog.
@@ -200,6 +236,37 @@ export async function fetchMarketplaceIcons(args: {
     .filter(
       (icon): icon is UpsertPluginMarketplaceIconInput => icon !== undefined,
     );
+}
+
+/** Stable identity of an icon's origin, stored so a moved icon refetches. */
+function iconSourceUrl(icon: MarketplaceIconLocation): string {
+  return icon.kind === "remote" ? icon.url : `file:${icon.relativePath}`;
+}
+
+async function readOneLocalIcon(args: {
+  marketplaceName: string;
+  entryId: string;
+  icon: Extract<MarketplaceIconLocation, { kind: "local" }>;
+  base: MarketplaceIconBase;
+}): Promise<UpsertPluginMarketplaceIconInput> {
+  if (args.base.kind !== "dir") {
+    throw new Error("local icons require a directory base");
+  }
+  const path = await realPathInside(
+    args.base.root,
+    args.icon.path,
+    `entry "${args.entryId}" icon`,
+  );
+  const bytes = new Uint8Array(await readFile(path));
+  return {
+    marketplaceName: args.marketplaceName,
+    entryId: args.entryId,
+    sourceUrl: iconSourceUrl(args.icon),
+    contentType: marketplaceIconContentTypeForPath(args.icon.relativePath, bytes),
+    etag: null,
+    contentHash: createHash("sha256").update(bytes).digest("hex").slice(0, 16),
+    bytes: Buffer.from(bytes),
+  };
 }
 
 function iconInputFromRow(

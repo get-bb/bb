@@ -23,6 +23,7 @@ export const SETTINGS_NAV_SECTIONS = [
   { icon: "Folder", id: "files", label: "Files" },
   { icon: "Laptop", id: "machines", label: "Machines" },
   { icon: "PackageReceive", id: "updates", label: "Updates" },
+  { icon: "Puzzle", id: "marketplaces", label: "Plugin marketplaces" },
   { icon: "Beaker", id: "experiments", label: "Experiments" },
   { icon: "MessageSquare", id: "community", label: "Community" },
   { icon: "Archive", id: "archived", label: "Archived threads" },

@@ -1,9 +1,28 @@
-import { pluginCatalogInstallRequestSchema } from "@bb/server-contract";
+import {
+  pluginCatalogInstallRequestSchema,
+  pluginMarketplaceAddRequestSchema,
+  pluginMarketplaceRefreshRequestSchema,
+  PLUGIN_MARKETPLACE_NAME_PATTERN,
+} from "@bb/server-contract";
 import type { Hono } from "hono";
-import type { PluginCatalogService } from "../services/plugin-catalog/plugin-catalog-service.js";
+import type {
+  PluginCatalogEntrySelector,
+  PluginCatalogService,
+} from "../services/plugin-catalog/plugin-catalog-service.js";
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Entry selector from a query string, validated at the boundary. */
+function entrySelector(
+  entryId: string | undefined,
+  marketplace: string | undefined,
+): PluginCatalogEntrySelector | null {
+  if (entryId === undefined || entryId.length === 0) return null;
+  if (marketplace === undefined) return { entryId };
+  if (!PLUGIN_MARKETPLACE_NAME_PATTERN.test(marketplace)) return null;
+  return { entryId, marketplace };
 }
 
 export function registerPluginCatalogRoutes(
@@ -46,16 +65,91 @@ export function registerPluginCatalogRoutes(
     });
   });
 
+  // What an install would do, resolved before anything runs: the install
+  // confirmation renders this, so the user approves the true source rather
+  // than the listing's description of it.
+  app.get("/plugin-catalog/install-plan", async (context) => {
+    const selector = entrySelector(
+      context.req.query("entryId"),
+      context.req.query("marketplace"),
+    );
+    if (selector === null) {
+      return context.json(
+        { error: "expected ?entryId=<id>[&marketplace=<name>]" },
+        422,
+      );
+    }
+    try {
+      return context.json({ plan: await catalog.installPlan(selector) });
+    } catch (error) {
+      return context.json({ error: message(error) }, 422);
+    }
+  });
+
   app.post("/plugin-catalog/install", async (context) => {
     const json: unknown = await context.req.json().catch(() => null);
     const body = pluginCatalogInstallRequestSchema.safeParse(json);
     if (!body.success) {
-      return context.json({ error: 'expected { "entryId": string }' }, 422);
+      return context.json(
+        { error: 'expected { "entryId": string, "marketplace"?: string }' },
+        422,
+      );
     }
     try {
       return context.json({
         ok: true as const,
-        plugin: await catalog.install(body.data.entryId),
+        plugin: await catalog.install(body.data),
+      });
+    } catch (error) {
+      return context.json({ error: message(error) }, 422);
+    }
+  });
+
+  app.get("/marketplaces", (context) =>
+    context.json({ marketplaces: catalog.listMarketplaces() }),
+  );
+
+  app.post("/marketplaces", async (context) => {
+    const json: unknown = await context.req.json().catch(() => null);
+    const body = pluginMarketplaceAddRequestSchema.safeParse(json);
+    if (!body.success) {
+      return context.json({ error: 'expected { "source": string }' }, 422);
+    }
+    try {
+      return context.json({
+        ok: true as const,
+        marketplace: await catalog.addMarketplace(body.data.source),
+      });
+    } catch (error) {
+      return context.json({ error: message(error) }, 422);
+    }
+  });
+
+  app.post("/marketplaces/refresh", async (context) => {
+    const json: unknown = await context.req.json().catch(() => null);
+    const body = pluginMarketplaceRefreshRequestSchema.safeParse(json ?? {});
+    if (!body.success) {
+      return context.json({ error: 'expected { "name"?: string }' }, 422);
+    }
+    try {
+      return context.json({
+        results: await catalog.refreshMarketplaces(body.data),
+      });
+    } catch (error) {
+      return context.json({ error: message(error) }, 422);
+    }
+  });
+
+  app.delete("/marketplaces/:name", async (context) => {
+    const name = context.req.param("name");
+    if (!PLUGIN_MARKETPLACE_NAME_PATTERN.test(name)) {
+      return context.json({ error: `invalid marketplace name "${name}"` }, 422);
+    }
+    try {
+      const removed = await catalog.removeMarketplace(name);
+      return context.json({
+        ok: true as const,
+        convertedPluginIds: removed.convertedPluginIds,
       });
     } catch (error) {
       return context.json({ error: message(error) }, 422);
