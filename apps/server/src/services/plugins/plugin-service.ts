@@ -998,6 +998,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     disposeOne,
     loadOne,
     validateInstallDir: (args) => managedValidateInstallDir(args),
+    checkEngineRange,
+    checkPluginSdkRange,
     syncCliSkill,
     notifyPluginsChanged,
     list,

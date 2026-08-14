@@ -54,6 +54,8 @@ export interface PluginRegistrationContext {
   disposeOne: (id: string) => Promise<void>;
   loadOne: (row: InstalledPluginRow) => Promise<void>;
   validateInstallDir: (args: RegisterInstalledArgs) => Promise<PluginManifest>;
+  checkEngineRange: (manifest: PluginManifest) => string | undefined;
+  checkPluginSdkRange: (manifest: PluginManifest) => string | undefined;
   syncCliSkill: () => Promise<void>;
   notifyPluginsChanged: () => void;
   list: () => PluginListEntry[];
@@ -67,6 +69,8 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     disposeOne,
     loadOne,
     validateInstallDir,
+    checkEngineRange,
+    checkPluginSdkRange,
     syncCliSkill,
     notifyPluginsChanged,
     list,
@@ -248,6 +252,22 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       args.sourceIntent.kind !== "builtin"
     ) {
       refuseBuiltinShadow(initialManifest.id);
+    }
+    // Compatibility is decided here, at the one chokepoint every managed
+    // registration passes through. `validateInstallDir` runs the same checks,
+    // but a cache hit registers with `validated: true` and skips it — and a
+    // cached artifact this bb accepted before can fail its own range after a
+    // bb or SDK version change. The plugin's package.json is the only source
+    // of truth for compatibility, so read it on every path.
+    if (args.refuseEngineMismatch) {
+      const engineProblem =
+        checkEngineRange(initialManifest) ??
+        checkPluginSdkRange(initialManifest);
+      if (engineProblem !== undefined) {
+        throw new Error(
+          `install refused: plugin "${initialManifest.id}" ${engineProblem}`,
+        );
+      }
     }
     const manifest = args.validated
       ? initialManifest

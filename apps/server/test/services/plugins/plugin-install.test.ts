@@ -964,6 +964,52 @@ describe("plugin install flows", () => {
       await stat(join(pathDir, "package.json"));
     });
 
+    // A cache hit registers with `validated: true`, which skips
+    // `validateInstallDir` and the engine checks inside it. The cached bytes
+    // were compatible when bb first accepted them, so nothing re-reads the
+    // range — and after a bb version change the same artifact can register
+    // while this build cannot run it.
+    it("refuses a cached artifact whose engine range no longer matches", async () => {
+      const repoDir = join(workDir, "repo-cached-engine");
+      await writePluginFixture(repoDir, {
+        name: "bb-plugin-cached-engine",
+        engines: ">=0.9.0",
+      });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "init");
+      const source = `git:${repoDir}@main`;
+
+      await service.install(source, { kind: "root" });
+      expect(await service.remove("cached-engine")).toBe(true);
+      const clonesBefore = materializationCount;
+      await service.stop();
+
+      // The same db and dataDir, so the checkout and its artifact row survive.
+      service = createPluginService({
+        db,
+        hub: {
+          getDaemonSessionIdForHost: () => null,
+          notifyPluginSignal: () => 0,
+          notifySystem: () => {},
+        },
+        logger,
+        dataDir,
+        appVersion: "0.5.0",
+        loadTimeoutMs: 2000,
+        onArtifactMaterialize: () => {
+          materializationCount += 1;
+        },
+      });
+
+      await expect(
+        service.install(source, { kind: "root" }),
+      ).rejects.toThrowError(/install refused.*requires bb >=0\.9\.0/u);
+      // No re-clone: the refusal came from the cache-hit path, not a fresh
+      // materialization that would have run the checks anyway.
+      expect(materializationCount).toBe(clonesBefore);
+      expect(getInstalledPluginRegistration(db, "cached-engine")).toBeUndefined();
+    });
+
     it("refuses a git url without the git binary being asked to run arbitrary flags", async () => {
       await expect(
         service.install("git:@main", { kind: "root" }),
