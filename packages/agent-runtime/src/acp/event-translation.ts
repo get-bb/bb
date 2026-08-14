@@ -100,9 +100,6 @@ const ACP_PLAN_STEP_STATUS_BY_ENTRY_STATUS = {
 const acpCompactionItemIds = createScopedItemIdFactory({
   prefix: "acp-compaction",
 });
-const acpReasoningItemIds = createScopedItemIdFactory({
-  prefix: "acp-reasoning",
-});
 
 function mapAcpToolCallStatus(
   status: AcpToolCallUpdateEvent["status"],
@@ -349,9 +346,36 @@ export interface CreateAcpEventTranslatorOptions {
   providerId: string;
   /** Prefix for bb-owned turn ids emitted by this translator instance. */
   turnIdPrefix?: string;
+  /**
+   * Prefix for bb-owned assistant/reasoning item ids. The legacy adapter keeps
+   * one translator per thread for the process lifetime, so its per-session
+   * counters ("acp-assistant-N") stay unique. A per-session translator (the
+   * canonical bridge surface) restarts those counters on resume, so it must
+   * inject per-session entropy here — a bare counter is the #1224 cross-resume
+   * collision.
+   */
+  itemIdPrefix?: string;
+  /**
+   * Emit a synthetic `item/started` when an assistant-message or reasoning
+   * item opens delta-first. ACP streams bare chunks; the canonical event
+   * grammar requires every item's first event to be `item/started`, so the
+   * protocol-pure surface opts in while the legacy adapter keeps its
+   * delta-first shape (the projection backfill covers persisted history).
+   */
+  synthesizeItemStarted?: boolean;
 }
 
 export function createAcpEventTranslator(options: CreateAcpEventTranslatorOptions) {
+  const assistantIdPrefix =
+    options.itemIdPrefix === undefined
+      ? "acp-assistant"
+      : `${options.itemIdPrefix}assistant`;
+  const acpReasoningItemIds = createScopedItemIdFactory({
+    prefix:
+      options.itemIdPrefix === undefined
+        ? "acp-reasoning"
+        : `${options.itemIdPrefix}reasoning`,
+  });
   const turnState = createProviderTurnStateRegistry<AcpTurnState>({
     createState: () => ({
       assistantMessageCounter: 0,
@@ -444,7 +468,7 @@ export function createAcpEventTranslator(options: CreateAcpEventTranslatorOption
       return;
     }
     const itemId = turnState.resolveCompletedAssistantMessageId({
-      assistantIdPrefix: "acp-assistant",
+      assistantIdPrefix,
       parentToolCallId,
       state,
     });
@@ -567,11 +591,26 @@ export function createAcpEventTranslator(options: CreateAcpEventTranslatorOption
         const turnId = state.currentTurnId;
         if (!turnId) return [];
         flushOpenThoughtItem(events, state, parentToolCallId);
+        const opensItem = !state.openAssistantMessageIdsByScope.has(
+          `${parentToolCallId ?? "root"}:assistant`,
+        );
         const itemId = turnState.getOrCreateAssistantMessageId({
-          assistantIdPrefix: "acp-assistant",
+          assistantIdPrefix,
           parentToolCallId,
           state,
         });
+        if (opensItem && options.synthesizeItemStarted === true) {
+          events.push({
+            type: "item/started",
+            threadId: UNSTAMPED_THREAD_ID,
+            providerThreadId: "",
+            scope: turnScope(turnId),
+            item: withParentToolCallId(
+              { type: "agentMessage", id: itemId, text: "" },
+              parentToolCallId,
+            ),
+          });
+        }
         state.agentMessageTextsByItemId.set(
           itemId,
           (state.agentMessageTextsByItemId.get(itemId) ?? "") + text,
@@ -598,11 +637,26 @@ export function createAcpEventTranslator(options: CreateAcpEventTranslatorOption
         }
         const turnId = state.currentTurnId;
         if (!turnId) return [];
+        const opensItem = !state.openReasoningItemIdsByScope.has(
+          `${parentToolCallId ?? "root"}:thought`,
+        );
         const itemId = acpReasoningItemIds.getOrCreate({
           state,
           parentToolCallId,
           scopeId: "thought",
         });
+        if (opensItem && options.synthesizeItemStarted === true) {
+          events.push({
+            type: "item/started",
+            threadId: UNSTAMPED_THREAD_ID,
+            providerThreadId: "",
+            scope: turnScope(turnId),
+            item: withParentToolCallId(
+              { type: "reasoning", id: itemId, summary: [], content: [] },
+              parentToolCallId,
+            ),
+          });
+        }
         state.thoughtTextsByItemId.set(
           itemId,
           (state.thoughtTextsByItemId.get(itemId) ?? "") + text,
@@ -1076,3 +1130,5 @@ export function createAcpEventTranslator(options: CreateAcpEventTranslatorOption
 
   return { resolveState, translateAcpEvent, turnState };
 }
+
+export type AcpEventTranslator = ReturnType<typeof createAcpEventTranslator>;

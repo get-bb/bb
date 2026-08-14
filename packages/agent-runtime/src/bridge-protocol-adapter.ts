@@ -187,7 +187,15 @@ export function createBridgeProtocolAdapter(
           return {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.modelList,
-            params: command.cwd !== undefined ? { cwd: command.cwd } : {},
+            params: {
+              ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
+              // Model listing has no session to carry providerOptions, so the
+              // provider-scoped statics (e.g. the ACP launch spec the bridge
+              // resolves its list command from) ride the request directly.
+              ...(options.staticProviderOptions !== undefined
+                ? { providerOptions: options.staticProviderOptions }
+                : {}),
+            },
           };
         case "skills/configure":
           // Wired in phase 2a: the canonical single-catalog payload replaces

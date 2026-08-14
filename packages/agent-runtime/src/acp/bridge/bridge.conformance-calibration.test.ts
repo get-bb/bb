@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   formatConformanceReport,
@@ -14,16 +15,29 @@ import {
 import { handleLine } from "./bridge.js";
 
 /**
- * Calibration, not conformance: drives the UNMODIFIED acp bridge through the
- * canonical protocol suite and pins the result.
+ * The acp bridge's conformance run: drives the bridge through the canonical
+ * Provider Bridge Protocol suite against the scripted fake agent and asserts
+ * a fully green report.
  *
- * Already flipped by phase 2a: the JSON-RPC hygiene rules (reply, never
- * drop — the calibration's first real finding was that #859 fixed
- * discrimination here but never implemented #853's reply-never-drop). The
- * remaining failures are the canonical surface: as the acp bridge becomes
- * protocol-pure, expectations below flip to "pass" until this file asserts
- * a fully green report and renames itself the acp conformance test.
+ * History: this file started as a calibration that pinned the gap list of the
+ * unmodified bridge. Phase 2a implemented the canonical session surface
+ * (per-session dialect, thread/event emission through the shared translator,
+ * canonical request variants, release-vs-interrupt stop intent), so every
+ * scenario now must pass — a regression in any rule is a protocol break.
+ *
+ * The fake agent does not advertise loadSession, so the resume scenario
+ * exercises the fresh-session fallback: the kit tolerates that because turn
+ * and item ids carry per-session entropy (unique across resumes) and the
+ * post-resume turn works — canonical handlers resolve sessions by bb
+ * threadId, not by the stale providerThreadId.
  */
+
+const FAKE_AGENT_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "fake-acp-agent.mjs",
+);
+
+const CONFORMANCE_THREAD_ID = "thr_conformance_1";
 
 let output: CapturedBridgeJsonRpcOutput;
 let workspaceDir: string;
@@ -33,12 +47,34 @@ beforeEach(() => {
   output = captureBridgeJsonRpcOutput();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // Reap the session the kit leaves behind (its last scenario resumes and
+  // runs a turn) so the fake-agent subprocess does not outlive the test.
+  const cleanupId = 990_001;
+  handleLine(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      id: cleanupId,
+      method: "thread/stop",
+      params: {
+        threadId: CONFORMANCE_THREAD_ID,
+        providerThreadId: "conformance-cleanup",
+        intent: "release",
+        activeTurnId: null,
+      },
+    }),
+  );
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (output.messages.some((message) => message.id === cleanupId)) {
+      break;
+    }
+    await new Promise((resolveTick) => setTimeout(resolveTick, 20));
+  }
   output.restore();
   rmSync(workspaceDir, { recursive: true, force: true });
 });
 
-it("pins the canonical-protocol gap list for the unmodified acp bridge", async () => {
+it("passes the canonical protocol suite against the fake agent", async () => {
   let drained = 0;
   const transport: BridgeConformanceTransport = {
     send: (line) => handleLine(line),
@@ -54,15 +90,27 @@ it("pins the canonical-protocol gap list for the unmodified acp bridge", async (
     session: {
       cwd: workspaceDir,
       promptInput: [{ type: "text", text: "say hello", mentions: [] }],
+      options: {
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+        providerOptions: {
+          acpLaunchSpec: {
+            displayName: "Fake ACP Agent",
+            command: process.execPath,
+            args: [FAKE_AGENT_PATH],
+            env: {},
+          },
+        },
+      },
     },
-    // The canonical scenarios fail fast on this bridge (schema rejections),
-    // so a tight timeout only bounds the genuinely unanswered cases.
-    timeoutMs: 2_000,
+    timeoutMs: 10_000,
   });
 
-  // Keep the human-readable gap list visible in test output for the
-  // phase-2a implementer (and for diagnosing expectation drift).
-  console.info(`acp bridge calibration:\n${formatConformanceReport(report)}`);
+  // Keep the human-readable report visible in test output for diagnosing
+  // any regression.
+  console.info(`acp bridge conformance:\n${formatConformanceReport(report)}`);
 
   const statusById = Object.fromEntries(
     report.results.map((result) => [result.id, result.status]),
@@ -74,15 +122,13 @@ it("pins the canonical-protocol gap list for the unmodified acp bridge", async (
     "rpc/non-json-ignored": "pass",
     "rpc/response-not-request": "pass",
     "handshake/initialize": "pass",
-    // The canonical session surface is not implemented yet — phase 2a
-    // flips these.
-    "session/start-identity": "fail",
-    "turn/lifecycle": "skipped",
-    "events/schema-valid": "skipped",
-    "item/opens-before-delta": "skipped",
-    "stop/release-not-interrupted": "skipped",
-    "session/resume-id-uniqueness": "skipped",
+    "session/start-identity": "pass",
+    "turn/lifecycle": "pass",
+    "events/schema-valid": "pass",
+    "item/opens-before-delta": "pass",
+    "stop/release-not-interrupted": "pass",
+    "session/resume-id-uniqueness": "pass",
   });
 
-  expect(report.passed).toBe(false);
-}, 30_000);
+  expect(report.passed).toBe(true);
+}, 60_000);

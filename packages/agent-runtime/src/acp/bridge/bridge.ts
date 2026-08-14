@@ -12,23 +12,32 @@
  */
 
 import { execFile } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { promises as fs, readFileSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { dirname, isAbsolute, basename, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import {
+  pendingInteractionResolutionSchema,
   reasoningEffortsForLevels,
   type AvailableModel,
   type PromptInput,
   type ReasoningLevel,
+  type ThreadEvent,
 } from "@bb/domain";
+import { hostDaemonAcpLaunchSpecSchema } from "@bb/host-daemon-contract";
 import { buildEditDiff } from "../../shared/adapter-utils.js";
 import {
+  BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
+  BRIDGE_NOTIFICATION_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
 } from "@bb/provider-bridge-protocol";
+import {
+  buildAcceptedUserMessageEvent,
+  queueAcceptedUserMessage,
+} from "../../shared/accepted-user-messages.js";
 import {
   createBridgeIo,
   createBridgeLineHandler,
@@ -56,9 +65,14 @@ import {
   ACP_UPDATE_METHOD,
   ACP_WARNING_METHOD,
   acpBridgeCommandSchema,
+  acpBridgeModelListParamsSchema,
+  acpBridgeThreadForkParamsSchema,
+  acpBridgeThreadResumeParamsSchema,
+  acpBridgeThreadStartParamsSchema,
   acpPermissionResponseSchema,
   type AcpBridgeAgentCommand,
   type AcpBridgeCommand,
+  type AcpBridgeModelListParams,
   type AcpBridgeNativeReasoning,
   type AcpBridgePermissionCli,
   type AcpBridgeReasoningCli,
@@ -67,6 +81,19 @@ import {
   type AcpBridgeThreadStartParams,
   acpBridgeCommandMethodValues,
 } from "../bridge-protocol.js";
+import {
+  createAcpEventTranslator,
+  type AcpEventTranslator,
+} from "../event-translation.js";
+import {
+  buildAcpPermissionInteractionPayload,
+  resolveAcpPermissionDecision,
+} from "../interactions.js";
+import { acpProfileFromLaunchSpec, type AcpAgentProfile } from "../profiles.js";
+import {
+  buildAcpModelListParams,
+  buildAcpSessionParams,
+} from "../session-params.js";
 import {
   ACP_PROTOCOL_VERSION,
   type AcpConfigOption,
@@ -126,9 +153,20 @@ interface PendingAcpPermission {
   options: AcpPermissionOption[];
 }
 
+/**
+ * Which wire dialect the session's runtime speaks. "legacy" keeps today's
+ * `acp/*` notifications translated adapter-side; "canonical" runs every
+ * session-scoped notification through the bridge-held translator and emits
+ * finished `ThreadEvent`s as `thread/event` per the Provider Bridge Protocol.
+ */
+type AcpSessionDialect = "legacy" | "canonical";
+
 interface AcpThreadSession {
   bbThreadId: string;
   providerThreadId: string;
+  dialect: AcpSessionDialect;
+  /** Per-session translator; non-null exactly for canonical sessions. */
+  translator: AcpEventTranslator | null;
   connection: AcpAgentConnection;
   agentLabel: string;
   supportsImageInput: boolean;
@@ -218,6 +256,92 @@ function sendRuntimeRequest(
     params,
   });
   return responsePromise;
+}
+
+// ---------------------------------------------------------------------------
+// Canonical-dialect emission
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-process entropy for canonical turn/item id prefixes (#1224): combined
+ * with a per-session serial below, ids never collide across process restarts
+ * or session resumes.
+ */
+const canonicalIdEntropyPrefix = `bt${randomUUID().slice(0, 8)}-`;
+let canonicalSessionSerial = 0;
+const ACP_CANONICAL_PROVIDER_ID = "acp";
+
+function createCanonicalSessionTranslator(): AcpEventTranslator {
+  canonicalSessionSerial += 1;
+  const idPrefix = `${canonicalIdEntropyPrefix}${canonicalSessionSerial}-`;
+  return createAcpEventTranslator({
+    providerId: ACP_CANONICAL_PROVIDER_ID,
+    turnIdPrefix: idPrefix,
+    itemIdPrefix: idPrefix,
+    synthesizeItemStarted: true,
+  });
+}
+
+function sendThreadEvents(
+  session: AcpThreadSession,
+  events: readonly ThreadEvent[],
+): void {
+  for (const event of events) {
+    sendNotification(BRIDGE_NOTIFICATION_METHODS.threadEvent, {
+      threadId: session.bbThreadId,
+      event,
+    });
+  }
+}
+
+/**
+ * The one session-scoped emitter. Legacy sessions get today's notification
+ * verbatim; canonical sessions run it through the session translator and emit
+ * the finished `ThreadEvent`s as `thread/event` notifications.
+ */
+function emitForSession(
+  session: AcpThreadSession,
+  method: string,
+  params: Record<string, unknown>,
+): void {
+  if (session.dialect === "legacy" || session.translator === null) {
+    sendNotification(method, params);
+    return;
+  }
+  sendThreadEvents(
+    session,
+    session.translator.translateAcpEvent(
+      { jsonrpc: "2.0", method, params },
+      { threadId: session.bbThreadId },
+    ),
+  );
+}
+
+function emitSessionError(session: AcpThreadSession, message: string): void {
+  if (session.dialect === "canonical" && session.translator !== null) {
+    // Settle any open translator turn first: every accepted turn reaches
+    // exactly one terminal state, and settlement events precede the error
+    // signal. Without an open turn the error stays a runtime notification —
+    // translating it would fabricate a failed turn bb never accepted.
+    const state = session.translator.resolveState({
+      threadId: session.bbThreadId,
+    });
+    if (state.currentTurnId !== undefined) {
+      emitForSession(session, "error", {
+        threadId: session.bbThreadId,
+        message,
+      });
+    }
+    sendNotification(BRIDGE_NOTIFICATION_METHODS.error, {
+      threadId: session.bbThreadId,
+      ...(session.providerThreadId !== ""
+        ? { providerThreadId: session.providerThreadId }
+        : {}),
+      message,
+    });
+    return;
+  }
+  sendNotification("error", { threadId: session.bbThreadId, message });
 }
 
 function resolveBridgeProcessArgsForMcpServer(): string[] {
@@ -1263,22 +1387,62 @@ function handlePermissionRequest(
   const rawInputCommand = acpRawInputCommandSchema.safeParse(
     toolCall?.rawInput,
   );
+  const normalizedToolCall = toolCall?.toolCallId
+    ? {
+        toolCallId: toolCall.toolCallId,
+        ...(toolCall.title ? { title: toolCall.title } : {}),
+        ...(toolCall.kind ? { kind: toolCall.kind } : {}),
+        ...(rawInputCommand.success
+          ? { command: rawInputCommand.data.command }
+          : {}),
+      }
+    : undefined;
+
+  if (session.dialect === "canonical" && session.translator !== null) {
+    // Canonical sessions carry the canonical PendingInteractionPayload out
+    // and map the canonical PendingInteractionResolution back — the same
+    // mapping the legacy adapter applies runtime-side.
+    const payload = buildAcpPermissionInteractionPayload({
+      toolCall: normalizedToolCall,
+      options: parsed.data.options,
+    });
+    const state = session.translator.resolveState({
+      threadId: session.bbThreadId,
+    });
+    void sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest, {
+      providerThreadId: session.providerThreadId,
+      threadId: session.bbThreadId,
+      turnId: state.currentTurnId ?? null,
+      payload,
+    })
+      .then((result) => {
+        if (!session.pendingPermissions.delete(pending)) {
+          // Already settled as cancelled (stop/cancel raced the decision).
+          return;
+        }
+        const resolution = pendingInteractionResolutionSchema.safeParse(result);
+        const response = resolution.success
+          ? resolveAcpPermissionDecision({
+              payload,
+              resolution: resolution.data,
+            })
+          : null;
+        respondPermission(pending, response?.decision ?? null);
+      })
+      .catch(() => {
+        if (!session.pendingPermissions.delete(pending)) {
+          return;
+        }
+        respondPermission(pending, null);
+      });
+    return;
+  }
+
   void sendRuntimeRequest(ACP_PERMISSION_REQUEST_METHOD, {
     threadId: session.bbThreadId,
     providerThreadId: session.providerThreadId,
     turnId: null,
-    ...(toolCall?.toolCallId
-      ? {
-          toolCall: {
-            toolCallId: toolCall.toolCallId,
-            ...(toolCall.title ? { title: toolCall.title } : {}),
-            ...(toolCall.kind ? { kind: toolCall.kind } : {}),
-            ...(rawInputCommand.success
-              ? { command: rawInputCommand.data.command }
-              : {}),
-          },
-        }
-      : {}),
+    ...(normalizedToolCall ? { toolCall: normalizedToolCall } : {}),
     options: parsed.data.options,
   })
     .then((result) => {
@@ -1384,7 +1548,7 @@ async function handleFsWriteTextFile(
     await fs.writeFile(parsed.data.path, parsed.data.content, "utf8");
 
     const diff = buildEditDiff(parsed.data.path, oldText, parsed.data.content);
-    sendNotification(ACP_FS_WRITE_METHOD, {
+    emitForSession(session, ACP_FS_WRITE_METHOD, {
       threadId: session.bbThreadId,
       path: parsed.data.path,
       kind: oldText === undefined ? "add" : "update",
@@ -1429,6 +1593,7 @@ type AcpSessionStartParams =
 
 async function startAgentSession(
   request: AcpSessionStartParams,
+  dialect: AcpSessionDialect,
 ): Promise<AcpThreadSession> {
   const params = request.params;
   const bbThreadId = params.threadId;
@@ -1438,9 +1603,29 @@ async function startAgentSession(
     await stopSession(existing);
   }
 
+  const translator =
+    dialect === "canonical" ? createCanonicalSessionTranslator() : null;
+  // Canonical ordering guarantee: thread/identity precedes any thread/event
+  // for the session, so pre-identity notifications are held and flushed after
+  // the identity goes out. Legacy keeps today's immediate emission.
+  const deferredCanonicalEmits: {
+    method: string;
+    params: Record<string, unknown>;
+  }[] = [];
+  const emitStartNotification = (
+    method: string,
+    notificationParams: Record<string, unknown>,
+  ): void => {
+    if (dialect === "canonical") {
+      deferredCanonicalEmits.push({ method, params: notificationParams });
+      return;
+    }
+    sendNotification(method, notificationParams);
+  };
+
   const launch = await resolveAgentLaunchArgs(params);
   if (launch.warning) {
-    sendNotification(ACP_WARNING_METHOD, {
+    emitStartNotification(ACP_WARNING_METHOD, {
       threadId: bbThreadId,
       summary: launch.warning,
     });
@@ -1469,18 +1654,19 @@ async function startAgentSession(
       if (!wasCurrent || session.stopping) {
         return;
       }
-      sendNotification("error", {
-        threadId: bbThreadId,
-        message:
-          `ACP agent "${agentLabel}" exited unexpectedly` +
+      emitSessionError(
+        session,
+        `ACP agent "${agentLabel}" exited unexpectedly` +
           `${info.code !== null ? ` (code ${info.code})` : ""}` +
           `${info.stderrTail ? `: ${info.stderrTail}` : ""}`,
-      });
+      );
     },
   });
   session = {
     bbThreadId,
     providerThreadId: "",
+    dialect,
+    translator,
     connection,
     agentLabel,
     supportsImageInput: false,
@@ -1618,7 +1804,7 @@ async function startAgentSession(
         nativeReasoning: params.nativeReasoning,
       });
       if (request.kind === "resume") {
-        sendNotification(ACP_WARNING_METHOD, {
+        emitStartNotification(ACP_WARNING_METHOD, {
           threadId: bbThreadId,
           summary: `${agentLabel} could not restore the previous session; continuing in a fresh session without in-agent history.`,
         });
@@ -1637,7 +1823,7 @@ async function startAgentSession(
       session.loadingSessionId = undefined;
       session.pendingLoadUsageUpdate = undefined;
       if (loadUsageUpdate) {
-        sendNotification(ACP_UPDATE_METHOD, {
+        emitStartNotification(ACP_UPDATE_METHOD, {
           threadId: session.bbThreadId,
           update: loadUsageUpdate,
         });
@@ -1647,10 +1833,17 @@ async function startAgentSession(
     session.providerThreadId = sessionId;
     sessionsByBbThreadId.set(bbThreadId, session);
     bbThreadIdByProviderThreadId.set(sessionId, bbThreadId);
-    sendNotification("thread/identity", {
+    sendNotification(BRIDGE_NOTIFICATION_METHODS.threadIdentity, {
       threadId: bbThreadId,
       providerThreadId: sessionId,
+      ...(dialect === "canonical"
+        ? { sessionRestorable: session.supportsLoadSession }
+        : {}),
     });
+    for (const deferred of deferredCanonicalEmits) {
+      emitForSession(session, deferred.method, deferred.params);
+    }
+    deferredCanonicalEmits.length = 0;
     return session;
   } catch (error) {
     session.stopping = true;
@@ -1686,6 +1879,23 @@ async function stopSession(session: AcpThreadSession): Promise<void> {
   removeSession(session);
 }
 
+/**
+ * Detach a session without the cancel-settle path: a release stop must never
+ * fabricate an interruption (#1584). The agent subprocess is reaped directly;
+ * any in-flight prompt rejection is swallowed by the turn loop because
+ * `stopping` is already set.
+ */
+function releaseSession(session: AcpThreadSession): void {
+  if (session.stopping) {
+    return;
+  }
+  session.stopping = true;
+  session.queuedInputs = [];
+  cancelPendingPermissions(session);
+  session.connection.kill();
+  removeSession(session);
+}
+
 // ---------------------------------------------------------------------------
 // Turn loop
 // ---------------------------------------------------------------------------
@@ -1714,7 +1924,7 @@ function finishTurn(
   session.queuedInputs = [];
   session.promptRequestPending = false;
   session.cancelRequested = false;
-  sendNotification(ACP_TURN_COMPLETED_METHOD, {
+  emitForSession(session, ACP_TURN_COMPLETED_METHOD, {
     threadId: session.bbThreadId,
     stopReason,
   });
@@ -1722,7 +1932,9 @@ function finishTurn(
 
 function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
   session.activePromptKind = "turn";
-  sendNotification(ACP_TURN_STARTED_METHOD, { threadId: session.bbThreadId });
+  emitForSession(session, ACP_TURN_STARTED_METHOD, {
+    threadId: session.bbThreadId,
+  });
 
   session.turnSettled = (async () => {
     let input = firstInput;
@@ -1759,10 +1971,10 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
         // An exited agent already produced an error notification from the
         // connection's exit handler; only report in-protocol prompt failures.
         if (!session.stopping && !session.connection.exited) {
-          sendNotification("error", {
-            threadId: session.bbThreadId,
-            message: error instanceof Error ? error.message : String(error),
-          });
+          emitSessionError(
+            session,
+            error instanceof Error ? error.message : String(error),
+          );
         }
         return;
       }
@@ -1789,7 +2001,7 @@ function startCompaction(session: AcpThreadSession): void {
   }
 
   session.activePromptKind = "compaction";
-  sendNotification(ACP_COMPACTION_STARTED_METHOD, {
+  emitForSession(session, ACP_COMPACTION_STARTED_METHOD, {
     threadId: session.bbThreadId,
   });
 
@@ -1812,14 +2024,14 @@ function startCompaction(session: AcpThreadSession): void {
                 status: "failed",
                 error: `Agent stopped compaction: ${result.stopReason}`,
               };
-      sendNotification(ACP_COMPACTION_COMPLETED_METHOD, {
+      emitForSession(session, ACP_COMPACTION_COMPLETED_METHOD, {
         threadId: session.bbThreadId,
         ...outcome,
       });
     })
     .catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
-      sendNotification(ACP_COMPACTION_COMPLETED_METHOD, {
+      emitForSession(session, ACP_COMPACTION_COMPLETED_METHOD, {
         threadId: session.bbThreadId,
         status: "failed",
         error: message,
@@ -1889,7 +2101,7 @@ function handleAgentNotification(
   ) {
     return;
   }
-  sendNotification(ACP_UPDATE_METHOD, {
+  emitForSession(session, ACP_UPDATE_METHOD, {
     threadId: session.bbThreadId,
     update: parsed.data.update,
   });
@@ -1943,6 +2155,79 @@ function decodeAcpBridgeJsonRpcRequest(raw: unknown): DecodedAcpBridgeRequest {
   };
 }
 
+async function handleModelList(
+  id: string | number,
+  params: AcpBridgeModelListParams,
+): Promise<void> {
+  const catalog = params.listCommand
+    ? await loadAgentModelCatalog(params.listCommand)
+    : null;
+  if (catalog) {
+    sendResult(
+      id,
+      splitPrimaryModels(
+        applyConfiguredReasoningToModels(catalog.models, {
+          reasoningCli: params.reasoningCli,
+          nativeReasoning: params.nativeReasoning,
+        }),
+        params.primaryModels,
+      ),
+    );
+    return;
+  }
+  const sessionDiscoveredModels =
+    params.listCommand === undefined && params.agent
+      ? await loadSessionDiscoveredModels(params.agent)
+      : null;
+  if (sessionDiscoveredModels) {
+    sendResult(id, {
+      models: applyConfiguredReasoningToModels(sessionDiscoveredModels, {
+        reasoningCli: params.reasoningCli,
+        nativeReasoning: params.nativeReasoning,
+      }),
+      selectedOnlyModels: [],
+    });
+    return;
+  }
+  sendResult(id, {
+    models: [
+      applyConfiguredReasoningToModel(ACP_DEFAULT_MODEL, {
+        reasoningCli: params.reasoningCli,
+        nativeReasoning: params.nativeReasoning,
+      }),
+    ],
+    selectedOnlyModels: [],
+  });
+}
+
+/**
+ * Resolve the agent launch profile a canonical request carries in
+ * `providerOptions.acpLaunchSpec`. Session construction cannot proceed
+ * without it, so absence is INVALID_PARAMS (replied by the caller).
+ */
+function decodeCanonicalLaunchProfile(
+  providerOptions: Record<string, unknown> | undefined,
+): AcpAgentProfile | null {
+  const launchSpec = hostDaemonAcpLaunchSpecSchema.safeParse(
+    providerOptions?.["acpLaunchSpec"],
+  );
+  if (!launchSpec.success) {
+    return null;
+  }
+  return acpProfileFromLaunchSpec(launchSpec.data, ACP_CANONICAL_PROVIDER_ID);
+}
+
+function sendMissingLaunchSpecError(
+  id: string | number,
+  method: string,
+): void {
+  sendError(
+    id,
+    BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS,
+    `Invalid params for "${method}": options.providerOptions.acpLaunchSpec is required by the ACP bridge`,
+  );
+}
+
 async function handleRequest(
   request: AcpBridgeCommand & { id: string | number },
 ): Promise<void> {
@@ -1971,53 +2256,62 @@ async function handleRequest(
       return;
 
     case "model/list": {
-      const catalog = request.params.listCommand
-        ? await loadAgentModelCatalog(request.params.listCommand)
-        : null;
-      if (catalog) {
-        sendResult(
+      if ("providerOptions" in request.params) {
+        // Canonical model/list carries the launch spec in providerOptions.
+        // A missing/invalid spec degrades to the synthetic default entry —
+        // model listing stays resilient rather than failing the picker.
+        const profile = decodeCanonicalLaunchProfile(
+          request.params.providerOptions,
+        );
+        await handleModelList(
           request.id,
-          splitPrimaryModels(
-            applyConfiguredReasoningToModels(catalog.models, {
-              reasoningCli: request.params.reasoningCli,
-              nativeReasoning: request.params.nativeReasoning,
-            }),
-            request.params.primaryModels,
+          acpBridgeModelListParamsSchema.parse(
+            profile === null ? {} : buildAcpModelListParams(profile),
           ),
         );
         return;
       }
-      const sessionDiscoveredModels =
-        request.params.listCommand === undefined && request.params.agent
-          ? await loadSessionDiscoveredModels(request.params.agent)
-          : null;
-      if (sessionDiscoveredModels) {
-        sendResult(request.id, {
-          models: applyConfiguredReasoningToModels(sessionDiscoveredModels, {
-            reasoningCli: request.params.reasoningCli,
-            nativeReasoning: request.params.nativeReasoning,
-          }),
-          selectedOnlyModels: [],
-        });
-        return;
-      }
-      sendResult(request.id, {
-        models: [
-          applyConfiguredReasoningToModel(ACP_DEFAULT_MODEL, {
-            reasoningCli: request.params.reasoningCli,
-            nativeReasoning: request.params.nativeReasoning,
-          }),
-        ],
-        selectedOnlyModels: [],
-      });
+      await handleModelList(request.id, request.params);
       return;
     }
 
     case "thread/start": {
-      const session = await startAgentSession({
-        kind: "start",
-        params: request.params,
-      });
+      if ("options" in request.params) {
+        const params = request.params;
+        const profile = decodeCanonicalLaunchProfile(
+          params.options.providerOptions,
+        );
+        if (profile === null) {
+          sendMissingLaunchSpecError(request.id, request.method);
+          return;
+        }
+        const session = await startAgentSession(
+          {
+            kind: "start",
+            params: acpBridgeThreadStartParamsSchema.parse(
+              buildAcpSessionParams({
+                additionalWorkspaceWriteRoots: [],
+                cwd: params.cwd,
+                dynamicTools: params.dynamicTools,
+                options: params.options,
+                profile,
+                providerLabel: profile.displayName,
+                threadId: params.threadId,
+              }),
+            ),
+          },
+          "canonical",
+        );
+        sendResult(request.id, {
+          providerThreadId: session.providerThreadId,
+          sessionRestorable: session.supportsLoadSession,
+        });
+        return;
+      }
+      const session = await startAgentSession(
+        { kind: "start", params: request.params },
+        "legacy",
+      );
       sendResult(request.id, {
         providerThreadId: session.providerThreadId,
         sessionRestorable: session.supportsLoadSession,
@@ -2026,10 +2320,43 @@ async function handleRequest(
     }
 
     case "thread/resume": {
-      const session = await startAgentSession({
-        kind: "resume",
-        params: request.params,
-      });
+      if ("options" in request.params) {
+        const params = request.params;
+        const profile = decodeCanonicalLaunchProfile(
+          params.options.providerOptions,
+        );
+        if (profile === null) {
+          sendMissingLaunchSpecError(request.id, request.method);
+          return;
+        }
+        const session = await startAgentSession(
+          {
+            kind: "resume",
+            params: acpBridgeThreadResumeParamsSchema.parse({
+              ...buildAcpSessionParams({
+                additionalWorkspaceWriteRoots: [],
+                cwd: params.cwd,
+                dynamicTools: params.dynamicTools,
+                options: params.options,
+                profile,
+                providerLabel: profile.displayName,
+                threadId: params.threadId,
+              }),
+              providerThreadId: params.providerThreadId,
+            }),
+          },
+          "canonical",
+        );
+        sendResult(request.id, {
+          providerThreadId: session.providerThreadId,
+          sessionRestorable: session.supportsLoadSession,
+        });
+        return;
+      }
+      const session = await startAgentSession(
+        { kind: "resume", params: request.params },
+        "legacy",
+      );
       sendResult(request.id, {
         providerThreadId: session.providerThreadId,
         sessionRestorable: session.supportsLoadSession,
@@ -2038,15 +2365,99 @@ async function handleRequest(
     }
 
     case "thread/fork": {
-      const session = await startAgentSession({
-        kind: "fork",
-        params: request.params,
-      });
+      if ("options" in request.params) {
+        const params = request.params;
+        if (params.sourceProviderCheckpointId !== undefined) {
+          // ACP session/fork clones whole sessions; a fork:"tip" bridge
+          // rejects checkpoint forks instead of cloning history the bb
+          // timeline does not show.
+          sendError(
+            request.id,
+            BRIDGE_JSON_RPC_ERRORS.FORK_CHECKPOINT_UNSUPPORTED,
+            "ACP session/fork cannot fork at a checkpoint; only tip forks are supported",
+          );
+          return;
+        }
+        const profile = decodeCanonicalLaunchProfile(
+          params.options.providerOptions,
+        );
+        if (profile === null) {
+          sendMissingLaunchSpecError(request.id, request.method);
+          return;
+        }
+        const session = await startAgentSession(
+          {
+            kind: "fork",
+            params: acpBridgeThreadForkParamsSchema.parse({
+              ...buildAcpSessionParams({
+                additionalWorkspaceWriteRoots: [],
+                cwd: params.cwd,
+                dynamicTools: params.dynamicTools,
+                options: params.options,
+                profile,
+                providerLabel: profile.displayName,
+                threadId: params.threadId,
+              }),
+              sourceProviderThreadId: params.sourceProviderThreadId,
+            }),
+          },
+          "canonical",
+        );
+        sendResult(request.id, {
+          providerThreadId: session.providerThreadId,
+          sessionRestorable: session.supportsLoadSession,
+        });
+        return;
+      }
+      const session = await startAgentSession(
+        { kind: "fork", params: request.params },
+        "legacy",
+      );
       sendResult(request.id, { providerThreadId: session.providerThreadId });
       return;
     }
 
     case "turn/start": {
+      if ("options" in request.params) {
+        // Canonical requests resolve the session by bb threadId: a resume
+        // fallback replaces the provider session id, but the bb thread stays
+        // the stable handle.
+        const params = request.params;
+        const session = sessionsByBbThreadId.get(params.threadId);
+        if (!session || session.stopping || session.translator === null) {
+          sendError(request.id, -32000, "No active ACP session");
+          return;
+        }
+        if (session.activePromptKind !== null) {
+          sendError(request.id, -32000, "A turn is already active");
+          return;
+        }
+        // Accepted-input correlation (turn/input/accepted): queue onto the
+        // translator so its onTurnStart drains it into the opening turn; a
+        // still-open translator turn gets the event immediately instead.
+        const state = session.translator.resolveState({
+          threadId: session.bbThreadId,
+        });
+        if (state.currentTurnId !== undefined) {
+          sendThreadEvents(
+            session,
+            buildAcceptedUserMessageEvent({
+              clientRequestId: params.clientRequestId,
+              providerThreadId: session.providerThreadId,
+              threadId: session.bbThreadId,
+              turnId: state.currentTurnId,
+            }),
+          );
+        } else {
+          queueAcceptedUserMessage({
+            clientRequestId: params.clientRequestId,
+            state,
+          });
+        }
+        runTurn(session, params.input);
+        sendResult(request.id, { threadId: params.threadId });
+        return;
+      }
       const session = getSessionByProviderThreadId(request.params.threadId);
       if (!session || session.stopping) {
         sendError(request.id, -32000, "No active ACP session");
@@ -2062,6 +2473,37 @@ async function handleRequest(
     }
 
     case "turn/steer": {
+      if ("options" in request.params) {
+        const params = request.params;
+        const session = sessionsByBbThreadId.get(params.threadId);
+        if (!session || session.stopping) {
+          sendError(request.id, -32000, "No active ACP session");
+          return;
+        }
+        if (session.activePromptKind !== "turn") {
+          sendError(
+            request.id,
+            ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE,
+            "No active turn to steer",
+          );
+          return;
+        }
+        // A steer joins the active turn, so its acceptance is emitted
+        // immediately against the expected turn id.
+        sendThreadEvents(
+          session,
+          buildAcceptedUserMessageEvent({
+            clientRequestId: params.clientRequestId,
+            providerThreadId: session.providerThreadId,
+            threadId: session.bbThreadId,
+            turnId: params.expectedTurnId,
+          }),
+        );
+        session.queuedInputs.push(params.input);
+        requestSteerCancel(session);
+        sendResult(request.id, { threadId: params.threadId });
+        return;
+      }
       const session = getSessionByProviderThreadId(request.params.threadId);
       if (!session || session.stopping) {
         sendError(request.id, -32000, "No active ACP session");
@@ -2082,6 +2524,18 @@ async function handleRequest(
     }
 
     case "thread/stop": {
+      if ("intent" in request.params) {
+        const session = sessionsByBbThreadId.get(request.params.threadId);
+        if (session) {
+          if (request.params.intent === "release") {
+            releaseSession(session);
+          } else {
+            await stopSession(session);
+          }
+        }
+        sendResult(request.id, { ok: true });
+        return;
+      }
       const session = getSessionByProviderThreadId(request.params.threadId);
       if (session) {
         await stopSession(session);
@@ -2089,6 +2543,12 @@ async function handleRequest(
       sendResult(request.id, { ok: true });
       return;
     }
+
+    case "thread/discard":
+      // ACP agents have no provider-side thread to delete; discard succeeds
+      // as a noop.
+      sendResult(request.id, { ok: true });
+      return;
 
     case "thread/compact": {
       const session = getSessionByProviderThreadId(request.params.threadId);
