@@ -9,7 +9,7 @@ import {
 import { readPluginManifest } from "./manifest.js";
 
 /** Repository-relative location of the plugin collection manifest. */
-export const COLLECTION_MANIFEST_PATH = ".bb/plugins.json";
+const COLLECTION_MANIFEST_PATH = ".bb/plugins.json";
 export const COLLECTION_SCHEMA_URL =
   "https://getbb.app/schemas/plugins.schema.json";
 
@@ -20,7 +20,7 @@ const COLLECTION_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
  * explicit "./" prefix, so it never reads as an absolute path, a package
  * name, or a URL.
  */
-export function subdirectoryFromCollectionSource(source: string): string {
+function subdirectoryFromCollectionSource(source: string): string {
   if (!source.startsWith("./")) {
     throw new Error(`source "${source}" must start with "./"`);
   }
@@ -50,7 +50,7 @@ const collectionEntrySchema = z
  * It selects directories and nothing else: identity, branding, entry points,
  * and compatibility stay with each plugin's own package manifest.
  */
-export const pluginCollectionManifestSchema = z
+const pluginCollectionManifestSchema = z
   .object({
     $schema: z.literal(COLLECTION_SCHEMA_URL).optional(),
     schemaVersion: z.literal(1),
@@ -72,7 +72,7 @@ export const pluginCollectionManifestSchema = z
     });
   });
 
-export type PluginCollectionManifest = z.infer<
+type PluginCollectionManifest = z.infer<
   typeof pluginCollectionManifestSchema
 >;
 
