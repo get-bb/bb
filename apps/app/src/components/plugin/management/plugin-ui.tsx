@@ -262,6 +262,29 @@ export function FullTrustWarning() {
   );
 }
 
+/**
+ * Shown before installing anything that does not ship inside the app.
+ *
+ * The catalog lists community and third-party plugins beside BB's own, and a
+ * listing being in the catalog is not evidence that BB wrote the code. This is
+ * a warning rather than a note because the install grants full trust, and
+ * authorship is the fact the confirmation used to overstate.
+ */
+export function NotBuiltByBbWarning() {
+  return (
+    <p
+      className="flex items-start gap-1.5 text-2xs leading-snug text-warning-text"
+      data-testid="not-built-by-bb-warning"
+    >
+      <Icon name="AlertTriangle" className="mt-0.5 size-3 shrink-0" />
+      <span>
+        BB did not build this plugin. Review its author and source before you
+        install it.
+      </span>
+    </p>
+  );
+}
+
 /** The rollback promise — always visible in update dialogs (locked rule). */
 export function RollbackNote({
   fromVersion,

@@ -567,7 +567,7 @@ const UNINSTALLED_CATALOG_PLUGIN = {
   iconUrl: null,
   category: "Developer tools",
   source: "builtin:github",
-  marketplaceDisplayName: "BB Official",
+  marketplaceDisplayName: "BB Community",
   publisherLabel: "BB Official",
   official: true,
   author: null,
@@ -695,6 +695,7 @@ function CatalogPlugin({
         initial={{
           entryId: entry.entryId,
           marketplace: "bb-community",
+          publisherLabel: "BB Community",
           displayName: entry.displayName,
           icon: entry.icon,
           iconUrl: entry.iconUrl,

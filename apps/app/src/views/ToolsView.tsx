@@ -381,6 +381,7 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
                 : {
                     entryId: installTarget.entryId,
                     marketplace: installTarget.marketplace,
+                    publisherLabel: installTarget.publisherLabel,
                     displayName: installTarget.displayName,
                     icon: installTarget.icon,
                     iconUrl: installTarget.iconUrl,

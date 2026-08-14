@@ -220,13 +220,14 @@ describe("AddPluginDialog", () => {
     const { unmount } = renderDialog({
       entryId: "linear",
       marketplace: "bb-community",
+      publisherLabel: "BB Community",
       displayName: "Linear",
       icon: "Github",
       iconUrl: null,
       source: "builtin:linear",
     });
     expect(
-      screen.getByText("Install this official plugin, bundled with BB."),
+      screen.getByText("Install this plugin, bundled with BB."),
     ).not.toBeNull();
     unmount();
 
@@ -235,6 +236,7 @@ describe("AddPluginDialog", () => {
     const git = renderDialog({
       entryId: "thread-hover-cards",
       marketplace: "bb-community",
+      publisherLabel: "BB Community",
       displayName: "Thread Hover Cards",
       icon: "Github",
       iconUrl: null,
@@ -242,7 +244,7 @@ describe("AddPluginDialog", () => {
     });
     expect(
       screen.getByText(
-        "Install this official plugin from its listed source repository.",
+        "Install this BB Community plugin from its listed source repository.",
       ),
     ).not.toBeNull();
     expect(screen.queryByText(/bundled with BB/)).toBeNull();
@@ -251,6 +253,7 @@ describe("AddPluginDialog", () => {
     renderDialog({
       entryId: "widgets",
       marketplace: "bb-community",
+      publisherLabel: "BB Community",
       displayName: "Widgets",
       icon: "Zap",
       iconUrl: null,
@@ -258,9 +261,44 @@ describe("AddPluginDialog", () => {
     });
     expect(
       screen.getByText(
-        "Install this official plugin from its listed npm package.",
+        "Install this BB Community plugin from its listed npm package.",
       ),
     ).not.toBeNull();
+  });
+
+  it("warns that BB did not build anything it does not bundle", () => {
+    stubFetch();
+    // A bundled plugin ships inside the app, so its authorship needs no
+    // warning; every other install does, whatever listed it.
+    const bundled = renderDialog({
+      entryId: "linear",
+      marketplace: "bb-community",
+      publisherLabel: "BB Community",
+      displayName: "Linear",
+      icon: "Github",
+      iconUrl: null,
+      source: "builtin:linear",
+    });
+    expect(screen.queryByTestId("not-built-by-bb-warning")).toBeNull();
+    bundled.unmount();
+
+    // Reviewed by BB, but not written by BB — the catalog listing it is not
+    // evidence of authorship.
+    const community = renderDialog({
+      entryId: "thread-hover-cards",
+      marketplace: "bb-community",
+      publisherLabel: "BB Community",
+      displayName: "Thread Hover Cards",
+      icon: "Github",
+      iconUrl: null,
+      source: "git:https://github.com/brsbl/bb-plugins@b173b67",
+    });
+    expect(screen.getByTestId("not-built-by-bb-warning")).toBeTruthy();
+    community.unmount();
+
+    // A pasted source has no listing at all.
+    renderDialog(null);
+    expect(screen.getByTestId("not-built-by-bb-warning")).toBeTruthy();
   });
 
   it("shows the exact source, including a pinned npm registry", () => {
@@ -273,6 +311,7 @@ describe("AddPluginDialog", () => {
       icon: "Zap",
       iconUrl: null,
       marketplace: "bb-community",
+      publisherLabel: "BB Community",
       source: "npm:bb-plugin-widgets@^1.0.0 (registry https://npm.acme.test)",
     });
 
@@ -288,6 +327,7 @@ describe("AddPluginDialog", () => {
     renderDialog({
       entryId: "linear",
       marketplace: "bb-community",
+      publisherLabel: "BB Community",
       displayName: "Linear",
       icon: "Github",
       iconUrl: null,
@@ -318,6 +358,7 @@ describe("AddPluginDialog", () => {
     renderDialog({
       entryId: "widgets",
       marketplace: "bb-community",
+      publisherLabel: "BB Community",
       displayName: "Widgets",
       icon: null,
       iconUrl,
@@ -341,6 +382,7 @@ describe("AddPluginDialog", () => {
         initial={{
           entryId: "linear",
           marketplace: "bb-community",
+          publisherLabel: "BB Community",
           displayName: "Linear",
           icon: "Github",
           iconUrl: null,
@@ -395,6 +437,7 @@ describe("AddPluginDialog", () => {
     renderDialog({
       entryId: "notes",
       marketplace: "acme-plugins",
+      publisherLabel: "Acme Plugins",
       displayName: "Acme Notes",
       icon: "Zap",
       iconUrl: null,
@@ -441,6 +484,7 @@ describe("AddPluginDialog", () => {
     renderDialog({
       entryId: "linear",
       marketplace: "bb-community",
+      publisherLabel: "BB Community",
       displayName: "Linear",
       icon: "Github",
       iconUrl: null,

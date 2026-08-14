@@ -413,6 +413,7 @@ function BrowseCard({
           onInstall({
             entryId: entry.entryId,
             marketplace: entry.marketplace,
+            publisherLabel: entry.publisherLabel,
             displayName: entry.displayName,
             icon: entry.icon,
             iconUrl: entry.iconUrl,

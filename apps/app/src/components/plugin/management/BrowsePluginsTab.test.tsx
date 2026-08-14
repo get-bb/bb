@@ -33,7 +33,7 @@ const MEMORY_ENTRY: PluginCatalogSearchEntry = {
   iconUrl: null,
   category: "Context & knowledge",
   source: "builtin:memory",
-  marketplaceDisplayName: "BB Official",
+  marketplaceDisplayName: "BB Community",
   publisherLabel: "BB Official",
   official: true,
   author: null,
@@ -404,6 +404,7 @@ describe("BrowsePluginsTab", () => {
     expect(onInstall).toHaveBeenCalledWith({
       entryId: "memory",
       marketplace: "bb-community",
+      publisherLabel: "BB Official",
       displayName: "Memory",
       icon: "Brain",
       iconUrl: null,
