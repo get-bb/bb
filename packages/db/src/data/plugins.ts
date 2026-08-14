@@ -119,13 +119,35 @@ export interface LegacyInstalledPluginRegistration {
   enabled: boolean;
 }
 
+type NormalizeLegacyPluginSourceIntent =
+  | Exclude<PluginSourceIntent, { kind: "git" }>
+  | {
+      kind: "git";
+      url: string;
+      subdirectory: string | null;
+      /** An offline backfill cannot safely guess whether a ref is a tag. */
+      selector: {
+        kind: "ref";
+        ref: string;
+        refKind: "branch" | "tag" | "commit" | null;
+      };
+    };
+
 export type NormalizeLegacyInstalledPluginInput = Omit<
   UpsertInstalledPluginInput,
-  "exactResolution"
-> & { exactResolution: LegacyPluginExactResolution };
+  "exactResolution" | "sourceIntent"
+> & {
+  sourceIntent: NormalizeLegacyPluginSourceIntent;
+  exactResolution: LegacyPluginExactResolution;
+};
 
 /** The five git selector columns, of which exactly one group is non-null. */
-function gitSelectorColumns(selector: PluginGitSelector | null) {
+function gitSelectorColumns(
+  selector:
+    | PluginGitSelector
+    | Extract<NormalizeLegacyPluginSourceIntent, { kind: "git" }>["selector"]
+    | null,
+) {
   return {
     sourceGitRequestedRef:
       selector?.kind === "ref" ? selector.ref : (null as string | null),

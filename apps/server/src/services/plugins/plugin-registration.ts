@@ -8,6 +8,7 @@ import {
   upsertInstalledPlugin,
   type InstalledPluginRow,
   type LegacyPluginExactResolution,
+  type NormalizeLegacyInstalledPluginInput,
   type PluginExactResolution,
   type PluginProvenance,
   type PluginSourceIntent,
@@ -613,7 +614,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
   async function backfillNormalizedPluginRegistrations(): Promise<void> {
     for (const row of listUnnormalizedPluginRegistrations(deps.db)) {
       const parsed = parsePluginSource(row.source);
-      let sourceIntent: PluginSourceIntent;
+      let sourceIntent: NormalizeLegacyInstalledPluginInput["sourceIntent"];
       let exactResolution: LegacyPluginExactResolution;
       let provenance: PluginProvenance = { kind: "direct" };
       if (parsed.kind === "path") {
@@ -642,13 +643,13 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
         // literal ref spec.
         const ref =
           parsed.selector.kind === "range" ? parsed.spec : parsed.selector.ref;
-        let refKind: GitRefKind = isCommitSha(ref) ? "commit" : "branch";
+        let refKind: GitRefKind | null = isCommitSha(ref) ? "commit" : null;
         try {
           const remote = await resolveGitRef({ url: parsed.url, ref });
           if (remote.outcome === "resolved") refKind = remote.refKind;
         } catch {
-          // Preserve startup for an offline legacy install. Non-SHA legacy
-          // refs historically refreshed, so branch is the safe fallback.
+          // Preserve startup for an offline legacy install. Keep the kind
+          // unknown because guessing branch can bypass moved-tag detection.
         }
         sourceIntent = {
           kind: "git",

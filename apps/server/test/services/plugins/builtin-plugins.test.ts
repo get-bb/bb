@@ -336,6 +336,32 @@ describe("builtin plugin reconciliation", () => {
     ).toEqual(once);
   });
 
+  it("keeps an offline legacy git ref unclassified", async () => {
+    const missingRepo = join(workDir, "missing-remote");
+    db.$client
+      .prepare(
+        `INSERT INTO plugins
+         (id, source, root_dir, version, enabled, installed_at, updated_at)
+         VALUES (?, ?, ?, '1.0.0', 0, 10, 20)`,
+      )
+      .run(
+        "legacy-offline-tag",
+        `git:${missingRepo}@v1.0.0`,
+        join(workDir, "missing-plugin-root"),
+      );
+
+    service = createService({ db, dataDir: join(workDir, "data") });
+    await service.start();
+
+    expect(
+      getInstalledPluginRegistration(db, "legacy-offline-tag"),
+    ).toMatchObject({
+      normalizationVersion: 1,
+      sourceGitRequestedRef: "v1.0.0",
+      sourceGitRefKind: null,
+    });
+  });
+
   it("installs a default-disabled builtin without loading it", async () => {
     service = createService({
       db,
