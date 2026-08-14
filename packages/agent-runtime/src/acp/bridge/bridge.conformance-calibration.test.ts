@@ -73,8 +73,9 @@ it("pins the canonical-protocol gap list for the unmodified acp bridge", async (
     "rpc/invalid-params": "pass",
     "rpc/non-json-ignored": "pass",
     "rpc/response-not-request": "pass",
-    // The canonical surface is not implemented yet — phase 2a flips these.
-    "handshake/initialize": "fail",
+    "handshake/initialize": "pass",
+    // The canonical session surface is not implemented yet — phase 2a
+    // flips these.
     "session/start-identity": "fail",
     "turn/lifecycle": "skipped",
     "events/schema-valid": "skipped",

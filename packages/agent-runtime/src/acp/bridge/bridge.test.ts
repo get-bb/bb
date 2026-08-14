@@ -307,7 +307,11 @@ describe("acp bridge", () => {
     const initializeId = sendRequest("initialize", {
       clientInfo: { name: "bb", version: "1.0.0" },
     });
-    expect((await waitForResponse(initializeId)).result).toEqual({ ok: true });
+    expect((await waitForResponse(initializeId)).result).toMatchObject({
+      ok: true,
+      protocolVersion: 1,
+      capabilities: { fork: "tip", approvalRequestPolicy: "runtime" },
+    });
 
     const modelListId = sendRequest("model/list", {
       listCommand: {

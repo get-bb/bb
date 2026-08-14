@@ -25,7 +25,10 @@ import {
   type ReasoningLevel,
 } from "@bb/domain";
 import { buildEditDiff } from "../../shared/adapter-utils.js";
-import { BRIDGE_JSON_RPC_ERRORS } from "@bb/provider-bridge-protocol";
+import {
+  BRIDGE_JSON_RPC_ERRORS,
+  PROVIDER_BRIDGE_PROTOCOL_VERSION,
+} from "@bb/provider-bridge-protocol";
 import {
   createBridgeIo,
   createBridgeLineHandler,
@@ -1945,7 +1948,26 @@ async function handleRequest(
 ): Promise<void> {
   switch (request.method) {
     case "initialize":
-      sendResult(request.id, { ok: true });
+      // The canonical handshake (@bb/provider-bridge-protocol): the bridge
+      // reports the session-behavior facts its own code implements. fork is
+      // "tip" — ACP session/fork clones whole sessions and each agent's
+      // support is verified per session at agent initialize. sessionRestore
+      // stays false at the handshake; sessions that negotiate loadSession
+      // report sessionRestorable per session. The legacy adapter ignores
+      // this result (plus `ok` for its historical shape).
+      sendResult(request.id, {
+        ok: true,
+        protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
+        capabilities: {
+          sessionRestore: false,
+          archiveSync: false,
+          nameSync: false,
+          goalState: false,
+          manualCompaction: false,
+          fork: "tip",
+          approvalRequestPolicy: "runtime",
+        },
+      });
       return;
 
     case "model/list": {

@@ -174,9 +174,21 @@ const acpBridgeThreadIdParamsSchema = z.object({
 export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("initialize"),
-    params: z.object({
-      clientInfo: z.object({ name: z.string(), version: z.string() }),
-    }),
+    // Accepts both the legacy shape ({clientInfo}) and the canonical
+    // Provider Bridge Protocol shape ({protocolVersion, client}) during the
+    // migration; the reply is always the canonical handshake, which the
+    // legacy adapter ignores.
+    params: z.union([
+      z.object({
+        clientInfo: z.object({ name: z.string(), version: z.string() }),
+      }),
+      z
+        .object({
+          protocolVersion: z.number().int().positive(),
+          client: z.object({ name: z.string(), version: z.string() }),
+        })
+        .passthrough(),
+    ]),
   }),
   z.object({
     method: z.literal("model/list"),
