@@ -210,44 +210,6 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(container.textContent).toBe("");
   });
 
-  it("links direct plugins to the marketplace repository", async () => {
-    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
-    render(
-      <MemoryRouter>
-        <QueryClientWrapper>
-          <PluginDetail
-            isLoading={false}
-            plugin={{
-              ...GITHUB_PLUGIN,
-              source: "path:/Users/you/Code/github-plugin",
-              provenance: "direct",
-              catalogEntryId: null,
-            }}
-            pending={false}
-            openSourceDisabled
-            onToggle={() => {}}
-            onEdit={() => {}}
-            onOpenSource={() => {}}
-            onDelete={() => {}}
-          />
-        </QueryClientWrapper>
-      </MemoryRouter>,
-    );
-
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "GitHub actions" }),
-    );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Submit to marketplace" }),
-    );
-    expect(openSpy).toHaveBeenCalledWith(
-      "https://github.com/get-bb/marketplace",
-      "_blank",
-      "noopener,noreferrer",
-    );
-  });
-
   it("keeps catalog provenance and release management in the unified detail taxonomy", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });

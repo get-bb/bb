@@ -11,7 +11,6 @@ import {
   ResourceOverflowMenu,
   type ResourceOverflowMenuItem,
 } from "@bb/shared-ui/resource-list";
-import { PLUGIN_MARKETPLACE_SUBMISSION_URL } from "@bb/domain";
 import { Switch } from "@bb/shared-ui/switch";
 import {
   Tooltip,
@@ -28,8 +27,6 @@ import {
   PluginDetailReleaseStatus,
   pluginHasUpdateSurfaces,
 } from "@/components/plugin/management/PluginUpdatesCard";
-import { isOfficialProvenance } from "@/components/plugin/plugin-provenance";
-import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
   CatalogEntryIcon,
   formatAbsoluteDate,
@@ -364,18 +361,6 @@ export function PluginDetail({
           },
         ]
       : []),
-    // Official plugins already have marketplace entries. This action sends
-    // other plugin authors to the repository that accepts listing requests.
-    ...(isOfficialProvenance(plugin.provenance)
-      ? []
-      : [
-          {
-            label: "Submit to marketplace",
-            icon: "Github" as const,
-            onSelect: () =>
-              openUrlInExternalBrowser(PLUGIN_MARKETPLACE_SUBMISSION_URL),
-          },
-        ]),
     {
       label: pluginRemovalLabel(plugin),
       icon: "Trash2" as const,

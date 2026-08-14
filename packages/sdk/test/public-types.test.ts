@@ -303,8 +303,7 @@ type ExpectedPluginCatalogKey =
   | "install"
   | "installPlan"
   | "search"
-  | "status"
-  | "submission";
+  | "status";
 
 type ExpectedPluginMarketplacesKey = "add" | "list" | "refresh" | "remove";
 

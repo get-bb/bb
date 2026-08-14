@@ -291,8 +291,7 @@ requires `author.github` and treats it as the listing's ownership record:
   listings accept any public member of the org.
 - Ownership transfer is an entry PR that changes `author`, approved by a
   maintainer, ideally with an approving review from the departing owner.
-- Contact email stays in the private intake submission, never in the
-  published manifest.
+- The listing workflow does not collect contact email.
 - CI warns (does not fail) when the entry author disagrees with the
   `author` field of the plugin's own package manifest at the pinned or
   resolved source, so drift is visible in review.
@@ -408,7 +407,7 @@ payload changes.
 - Published schemas use `https://getbb.app/schemas/` URLs.
 - This stack adds the R2 reader and its binding. The registry repository,
   publication credentials, and publication workflow remain future work.
-- The existing intake-form link remains. This stack adds no hosted submission
-  service or in-app submission dialog.
+- The submission skill creates registry pull requests. No hosted submission
+  service or in-app submission dialog exists.
 
 > AGENT GENERATED: by Claude Fable 5

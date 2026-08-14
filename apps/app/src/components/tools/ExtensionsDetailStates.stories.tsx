@@ -1107,7 +1107,6 @@ const CATALOG_PLUGIN = {
 } satisfies PluginListItem;
 
 const pluginUninstallItems = [
-  { label: "Submit to marketplace", icon: "Github" as const, onSelect: noop },
   {
     label: "Uninstall",
     icon: "Trash2" as const,
@@ -1128,7 +1127,6 @@ const pluginCatalogItems = [
 const pluginLocalItems = [
   { label: "Edit", icon: "Edit" as const, onSelect: noop },
   { label: "Open source", icon: "ExternalLink" as const, onSelect: noop },
-  { label: "Submit to marketplace", icon: "Github" as const, onSelect: noop },
   {
     label: "Remove from bb",
     icon: "Trash2" as const,

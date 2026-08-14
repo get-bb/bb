@@ -401,8 +401,6 @@ HTTP(S) Git repository URLs, `path:`, `npm:`, `git:`, and `builtin:`
 sources—and path-like syntax—continue to bypass official-plugin resolution.
 Agents use the built-in `submit-a-plugin` skill to prepare a release, validate
 an official marketplace entry, and open the listing pull request.
-SDK clients can get the same public repository URL without a server request
-through `sdk.plugins.catalog.submission()`. It returns `{ url }`.
 
 Builds are automatic once installed. Git installs run `npm install`
 (lifecycle scripts disabled), then compile both bundles — so a git plugin may

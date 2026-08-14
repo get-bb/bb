@@ -36,11 +36,11 @@ Treat those files as the source of truth. Use this skill for the workflow and qu
 
 If the user asks only for instructions, give instructions without external changes.
 
-If the user asks for submission, complete the release and pull request when the required access exists.
+If the user asks for submission, prepare the release and pull request.
 
 Ask only for information that you cannot obtain from the plugin, Git, npm, or GitHub.
 
-Stop before a release when the version, ownership, or source choice requires a user decision.
+Stop before each release mutation until the user approves the exact release.
 
 Do not expose tokens, npm credentials, private URLs, or local secrets.
 
@@ -57,7 +57,19 @@ Find the plugin package before you prepare a release.
 7. Check for a `.bb/plugins.json` file in a repository with multiple plugins.
 8. Determine the plugin subdirectory from the repository root.
 
-The final package name component supplies the ID. Remove a leading `bb-plugin-` from that component.
+Use the bundled helper to calculate the same ID that bb uses:
+
+```sh
+node /PATH/TO/THIS/SKILL/scripts/derive-plugin-id.mjs /PATH/TO/PLUGIN/package.json
+```
+
+The helper reads the package name without putting it into shell source.
+
+The algorithm removes the npm scope and a lowercase `bb-plugin-` prefix.
+
+It then converts the name to lowercase. It changes each other character to a hyphen.
+
+It removes hyphens from both ends. It stops when this process produces an empty ID.
 
 For example, `@acme/bb-plugin-notes` supplies the ID `notes`.
 
@@ -70,6 +82,25 @@ bb plugin build
 ```
 
 Do not release a plugin with failed checks or uncommitted release changes.
+
+## Get separate release approval
+
+A request to submit a plugin does not approve an npm publication or a Git push.
+
+Prepare and validate everything that does not change remote state first.
+
+Before the first release mutation, show the user these exact values:
+
+- The authenticated account.
+- The repository and remote URL.
+- The release commit.
+- The package name and version.
+- The Git tag or npm source.
+- Every command that will change remote state.
+
+Ask the user to approve this release. Do not push a commit or tag before approval.
+
+Do not run `npm publish` before approval. Do not treat approval of another release as approval for this release.
 
 ## Select a release source
 
@@ -89,7 +120,7 @@ Set `tagPrefix` to the text before `vX.Y.Z` for the second form.
 
 Create a new tag for every release. Never move or replace an existing release tag.
 
-Use an annotated tag after the release commit exists:
+After user approval, use an annotated tag after the release commit exists:
 
 ```sh
 git tag -a v1.2.3 -m "Release v1.2.3"
@@ -147,10 +178,10 @@ The npm package must contain the prebuilt bb files. A Git install can build sour
 
 1. Run `bb plugin build`.
 2. Run the plugin tests and type checks.
-3. Run `npm pack --dry-run`.
+3. Run `npm pack --dry-run --ignore-scripts`.
 4. Confirm that the package includes its manifest and required `dist` files.
 5. Confirm the npm account with `npm whoami`.
-6. Publish the exact manifest version with `npm publish`.
+6. Publish the exact manifest version with `npm publish --ignore-scripts` after approval.
 7. Add `--access public` for a new public scoped package.
 8. Confirm publication with `npm view PACKAGE@VERSION name version`.
 
@@ -291,12 +322,37 @@ If `upstream` already exists, verify its URL instead of adding it again.
 
 Do not reuse a directory with unrelated changes. Do not overwrite an existing branch.
 
+## Continue without gh
+
+The missing `gh` command must not prevent local entry preparation and validation.
+
+If `gh` is missing or authentication fails, clone the public repository directly:
+
+```sh
+git clone https://github.com/get-bb/marketplace.git /SAFE/NEW/PATH/marketplace
+cd /SAFE/NEW/PATH/marketplace
+git switch -c submit-PLUGIN_ID
+```
+
+Create the entry and icon in this clone. Complete all local validation steps.
+
+Return the local clone path, entry path, icon path, branch name, and validation results.
+
+Give the user these manual steps:
+
+1. Fork `get-bb/marketplace` in GitHub.
+2. Add the fork as a Git remote.
+3. Push `submit-PLUGIN_ID` to that fork.
+4. Open a pull request from that branch to `get-bb/marketplace:main`.
+
+Do not stop with only general instructions when you can prepare validated local files.
+
 ## Validate the marketplace
 
 Install only the marketplace repository dependencies. Do not run code from the submitted plugin during this step.
 
 ```sh
-npm ci
+npm ci --ignore-scripts
 npm run build
 npm run check
 ```
@@ -329,7 +385,7 @@ Commit only the new entry and its icon. Do not commit `dist/` or unrelated files
 
 ```sh
 git add entries/PLUGIN_ID.json icons/PLUGIN_ICON
-git commit -m "Add PLUGIN_DISPLAY_NAME plugin"
+git commit -m "Add plugin entry: PLUGIN_ID"
 git push -u origin submit-PLUGIN_ID
 ```
 
@@ -340,9 +396,11 @@ gh pr create \
   --repo get-bb/marketplace \
   --base main \
   --head GITHUB_LOGIN:submit-PLUGIN_ID \
-  --title "Add PLUGIN_DISPLAY_NAME plugin" \
+  --title "Add plugin entry: PLUGIN_ID" \
   --body-file /SAFE/PATH/pr-body.md
 ```
+
+Use only the validated plugin ID in shell arguments. Keep display names and descriptions in data files.
 
 Write a short pull request body with these sections:
 

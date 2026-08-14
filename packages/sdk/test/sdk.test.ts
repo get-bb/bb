@@ -1410,9 +1410,6 @@ describe("@bb/sdk", () => {
     ).resolves.toMatchObject([
       { entryId: "notes", pluginId: "notes", compatible: true },
     ]);
-    expect(sdk.plugins.catalog.submission()).toEqual({
-      url: "https://github.com/get-bb/marketplace",
-    });
     expect(queue.requests).toEqual([
       {
         bodyText: undefined,
