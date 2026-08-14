@@ -484,7 +484,7 @@ describe("plugin install flows", () => {
           service.installCatalogPlugin({
             marketplace: "bb-official",
             entryId: "catalog-npm-entry",
-            pluginId: "bb-plugin-registry",
+            pluginId: "registry",
             source: "npm:bb-plugin-registry@^1.0.0",
             selection: ROOT_PLUGIN_SOURCE_SELECTION,
             npmRegistry: registry,
@@ -492,7 +492,7 @@ describe("plugin install flows", () => {
         ).rejects.toThrow(/marketplace/);
       }
       expect(
-        getInstalledPluginRegistration(db, "bb-plugin-registry"),
+        getInstalledPluginRegistration(db, "registry"),
       ).toBeUndefined();
     });
 
