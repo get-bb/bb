@@ -127,8 +127,12 @@ exists, not an invention:
   (`packages/domain/src/pending-interactions.ts`).
 - **Handshake**: `initialize` exchanges `{protocolVersion, capabilities}` in
   both directions. Optional capabilities cover the long tail: usage reporting,
-  compaction, host AI services (voice transcription / structured inference —
-  today's codex-only daemon commands), fork, archive, CLI lifecycle.
+  rate-limit state (`ProviderRateLimitState` is already a normalized domain
+  type, but only claude/codex translation produces it — the #1374 "2 of 4"
+  example; promoting it into the protocol event schema lets any bridge join
+  and feeds the provider-retry plugin unchanged), compaction, host AI
+  services (voice transcription / structured inference — today's codex-only
+  daemon commands), fork, archive, CLI lifecycle.
 - **CLI lifecycle lives in the bridge, not the declaration**: optional
   `provider/health` (installed?, version, auth state, login command),
   `provider/install`, and `provider/update` methods replace the daemon's
@@ -479,10 +483,12 @@ protocol method:
   switches → normalized event fields emitted by bridges.
 - `EDIT_MESSAGE_PROVIDER_IDS` → capability.
 - Onboarding and `SETTINGS_PROVIDER_ENTRIES` → registry-driven.
-- Plugin-side provider id lists → capabilities read off `ProviderInfo`:
-  the ask-user-question plugin's `NATIVE_TOOL_PROVIDER_IDS` duplicates what
-  `userQuestion` already declares (today that capability has no production
-  consumer at all — the plugin hardcodes its own list instead).
+- Plugin-side provider id lists → capabilities/branding read off
+  `ProviderInfo`: the ask-user-question plugin's `NATIVE_TOOL_PROVIDER_IDS`
+  duplicates what `supportsNativeUserQuestion` declares (today that
+  capability has no production consumer at all — the plugin hardcodes its
+  own list instead), and the provider-retry banner's `providerLabel` switch
+  (`plugins/provider-retry/banner.tsx`) duplicates registry display names.
 
 ## Verification
 
