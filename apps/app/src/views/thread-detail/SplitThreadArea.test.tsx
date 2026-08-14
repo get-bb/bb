@@ -44,7 +44,6 @@ import {
 } from "@/components/plugin/plugin-composer-host";
 import { PaneContext, usePaneSecondaryPanelRegistration } from "./PaneContext";
 import { SplitThreadArea } from "./SplitThreadArea";
-import { SplitDimmingButton } from "./SplitDimmingButton";
 import { applyThreadOpenToLayout } from "./splitThreadNavigation";
 
 // Per-thread archived/deleted state consulted by the mocked useThread, driving
@@ -268,7 +267,6 @@ vi.mock("./ThreadDetailView", () => ({
         data-focused={pane?.isFocused ? "true" : "false"}
         data-window-top-left-owner={pane?.ownsWindowTopLeft ? "true" : "false"}
       >
-        {pane?.isSplitPane ? <SplitDimmingButton /> : null}
         <div
           data-testid={`drag-${threadId}`}
           onPointerDown={(event) => pane?.beginPaneDrag?.(event, threadId)}
@@ -954,78 +952,6 @@ describe("SplitThreadArea", () => {
     expect(separator.classList).toContain("bg-border-seam");
     expect(separator.classList).not.toContain("w-1.5");
     expect(separator.firstElementChild?.classList).toContain("w-3");
-  });
-
-  it("shows one persisted dimming toggle only for splits and updates every pane immediately", async () => {
-    renderSplitArea({ path: threadPath("thr-a") });
-    expect(
-      screen.queryByRole("button", { name: "Clear spotlight" }),
-    ).toBeNull();
-
-    cleanup();
-    renderSplitArea({
-      path: threadPath("thr-a"),
-      layout: twoPaneLayout("pane-1"),
-    });
-
-    const toggle = screen.getByRole("button", {
-      name: "Clear spotlight",
-    });
-    expect(
-      screen.getAllByRole("button", {
-        name: "Clear spotlight",
-      }),
-    ).toHaveLength(1);
-    expect(toggle.getAttribute("aria-pressed")).toBe("true");
-    expect(toggle.querySelector('[data-icon="Idea"]')).not.toBeNull();
-
-    fireEvent.focus(toggle);
-    await waitFor(() => {
-      expect(
-        screen
-          .getAllByRole("tooltip")
-          .some((tooltip) => tooltip.textContent === "Clear spotlight"),
-      ).toBe(true);
-    });
-
-    fireEvent.click(toggle);
-    expect(toggle.getAttribute("aria-pressed")).toBe("false");
-    expect(toggle.getAttribute("aria-label")).toBe("Spotlight this split");
-    expect(toggle.querySelector('[data-icon="LightbulbOff"]')).not.toBeNull();
-    expect(window.localStorage.getItem(DIM_INACTIVE_SPLITS_STORAGE_KEY)).toBe(
-      "false",
-    );
-    for (const scrim of document.querySelectorAll("[data-pane-focus-scrim]")) {
-      expect(scrim.classList).toContain("bg-transparent");
-      expect(scrim.classList).not.toContain("bg-background/30");
-    }
-    fireEvent.blur(toggle);
-    fireEvent.focus(toggle);
-    await waitFor(() => {
-      expect(
-        screen
-          .getAllByRole("tooltip")
-          .some((tooltip) => tooltip.textContent === "Spotlight this split"),
-      ).toBe(true);
-    });
-
-    cleanup();
-    renderSplitArea({
-      path: threadPath("thr-a"),
-      layout: twoPaneLayout("pane-1"),
-    });
-    const reloadedToggle = screen.getByRole("button", {
-      name: "Spotlight this split",
-    });
-    expect(reloadedToggle.getAttribute("aria-pressed")).toBe("false");
-    expect(
-      reloadedToggle.querySelector('[data-icon="LightbulbOff"]'),
-    ).not.toBeNull();
-    expect(
-      document
-        .querySelector('[data-split-pane-id="pane-2"] [data-pane-focus-scrim]')
-        ?.classList.contains("bg-transparent"),
-    ).toBe(true);
   });
 
   it("keeps the divider above pane headers so stacked splits stay resizable", () => {

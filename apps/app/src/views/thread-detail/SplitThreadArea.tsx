@@ -112,7 +112,6 @@ import {
   CONTEXT_SELECTION_SURFACE_CLASS,
 } from "@/components/ui/context-selection";
 import { PaneMaximizeButton } from "./PaneMaximizeButton";
-import { SplitDimmingButton } from "./SplitDimmingButton";
 import { wsManager } from "@/lib/ws";
 
 // A `pointerdown`-relative move threshold before a pane-header drag engages.
@@ -1061,7 +1060,6 @@ function NonThreadPaneContent({
   };
   const actions = (
     <>
-      <SplitDimmingButton />
       {panel ? (
         <PluginPanelHeaderActions
           panel={panel}
