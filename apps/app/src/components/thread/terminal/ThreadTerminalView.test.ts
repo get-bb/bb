@@ -9,6 +9,7 @@ import {
   loadOptionalTerminalWebglAddon,
   loadTerminalWebglRenderer,
   shouldFocusTerminalAfterAsyncMount,
+  shouldFocusTerminalFromTouchRelease,
   TERMINAL_ALLOW_PROPOSED_API,
   TERMINAL_FONT_FAMILY,
   TERMINAL_UNICODE_VERSION,
@@ -80,6 +81,29 @@ describe("terminal async mount focus", () => {
         isPanelOpen: false,
       }),
     ).toBe(false);
+  });
+});
+
+describe("terminal touch focus", () => {
+  it("focuses the terminal after a tap", () => {
+    expect(
+      shouldFocusTerminalFromTouchRelease({ x: 40, y: 80 }, { x: 43, y: 84 }),
+    ).toBe(true);
+  });
+
+  it("does not focus the terminal after a scroll gesture", () => {
+    expect(
+      shouldFocusTerminalFromTouchRelease({ x: 40, y: 80 }, { x: 40, y: 120 }),
+    ).toBe(false);
+  });
+
+  it("does not focus the terminal without one complete touch", () => {
+    expect(shouldFocusTerminalFromTouchRelease(null, { x: 40, y: 80 })).toBe(
+      false,
+    );
+    expect(shouldFocusTerminalFromTouchRelease({ x: 40, y: 80 }, null)).toBe(
+      false,
+    );
   });
 });
 
