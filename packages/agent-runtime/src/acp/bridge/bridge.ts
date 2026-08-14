@@ -1526,6 +1526,17 @@ async function startAgentSession(
         `ACP agent "${agentLabel}" does not advertise session/fork support.`,
       );
     }
+    // ACP session/fork clones the whole source session. It cannot stop at a
+    // message checkpoint, so a message edit would keep source turns that the
+    // BB timeline no longer shows. Reject the fork instead.
+    if (
+      request.kind === "fork" &&
+      request.params.sourceProviderCheckpointId !== undefined
+    ) {
+      throw new Error(
+        `ACP agent "${agentLabel}" does not support a session/fork checkpoint.`,
+      );
+    }
     const mcpServers = await buildSessionMcpServers(params);
 
     let sessionId: string | undefined;
@@ -1541,6 +1552,17 @@ async function startAgentSession(
         },
         resultSchema: acpSessionForkResultSchema,
       });
+      // The agent owns this value and the schema checks only that it is a
+      // string. A reused ID would overwrite the map entry of the source or of
+      // another live thread, so reject it instead of registering it.
+      if (
+        forkedSession.sessionId === request.params.sourceProviderThreadId ||
+        getSessionByProviderThreadId(forkedSession.sessionId) !== undefined
+      ) {
+        throw new Error(
+          `ACP agent "${agentLabel}" returned an active session ID for session/fork.`,
+        );
+      }
       sessionId = forkedSession.sessionId;
       loadedConfigOptions = forkedSession.configOptions;
       loadedModels = forkedSession.models;

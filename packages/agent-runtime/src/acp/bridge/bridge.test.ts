@@ -1816,6 +1816,50 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("selected-model:fake/strong");
   });
 
+  it("rejects a checkpoint fork before session/fork", async () => {
+    const forkLog = join(workspaceDir, "checkpoint-fork-params.json");
+    const forkId = sendRequest("thread/fork", {
+      threadId: "thread-checkpoint-fork",
+      sourceProviderThreadId: "source-session",
+      sourceProviderCheckpointId: "message-7",
+      cwd: workspaceDir,
+      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
+      permissionMode: "full",
+      permissionEscalation: null,
+      workspaceWriteRoots: [workspaceDir],
+      envVars: { FAKE_ACP_FORK_SESSION: "1", FAKE_ACP_FORK_LOG: forkLog },
+    });
+
+    const response = await waitForResponse(forkId);
+    expect(response.error?.message).toMatch(
+      /does not support a session\/fork checkpoint/u,
+    );
+    expect(existsSync(forkLog)).toBe(false);
+    expect(notifications("thread/identity")).toEqual([]);
+  });
+
+  it("rejects a fork result that reuses the source session id", async () => {
+    const forkId = sendRequest("thread/fork", {
+      threadId: "thread-colliding-fork",
+      sourceProviderThreadId: "source-session",
+      cwd: workspaceDir,
+      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
+      permissionMode: "full",
+      permissionEscalation: null,
+      workspaceWriteRoots: [workspaceDir],
+      envVars: {
+        FAKE_ACP_FORK_SESSION: "1",
+        FAKE_ACP_FORK_REUSE_SOURCE_ID: "1",
+      },
+    });
+
+    const response = await waitForResponse(forkId);
+    expect(response.error?.message).toMatch(
+      /returned an active session ID for session\/fork/u,
+    );
+    expect(notifications("thread/identity")).toEqual([]);
+  });
+
   it("rejects fork before session/fork when the agent omits the capability", async () => {
     const forkLog = join(workspaceDir, "unsupported-fork-params.json");
     const forkId = sendRequest("thread/fork", {

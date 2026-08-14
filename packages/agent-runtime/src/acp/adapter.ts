@@ -1448,6 +1448,12 @@ export function createAcpProviderAdapter(
               params: {
                 ...buildSessionParams(command),
                 sourceProviderThreadId: command.sourceProviderThreadId,
+                ...(command.sourceProviderCheckpointId !== undefined
+                  ? {
+                      sourceProviderCheckpointId:
+                        command.sourceProviderCheckpointId,
+                    }
+                  : {}),
               },
             };
           }

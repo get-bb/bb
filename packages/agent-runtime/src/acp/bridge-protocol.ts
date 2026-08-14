@@ -150,6 +150,7 @@ export type AcpBridgeThreadResumeParams = z.infer<
 
 const acpBridgeThreadForkParamsSchema = acpBridgeSessionParamsSchema.extend({
   sourceProviderThreadId: z.string().min(1),
+  sourceProviderCheckpointId: z.string().min(1).optional(),
 });
 export type AcpBridgeThreadForkParams = z.infer<
   typeof acpBridgeThreadForkParamsSchema

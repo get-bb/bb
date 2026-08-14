@@ -186,6 +186,11 @@ function resolveForkDescriptor(
   if (!supportsNativeFork(args.providerId)) {
     return null;
   }
+  // A provider session ID is opaque to every other provider, so a fork is
+  // possible only when the source and the child use the same provider.
+  if (args.sourceThread.providerId !== args.providerId) {
+    return null;
+  }
   const sourceProviderThreadId =
     args.sourceSeqEnd === undefined
       ? getLastProviderThreadId(deps, args.sourceThread.id)

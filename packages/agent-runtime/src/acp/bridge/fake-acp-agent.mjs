@@ -12,6 +12,8 @@
  * - FAKE_ACP_FAIL_LOAD=1     → advertise session/load, then fail it
  * - FAKE_ACP_FORK_SESSION=1  → advertise + accept session/fork
  * - FAKE_ACP_FORK_LOG        → write the session/fork params as JSON
+ * - FAKE_ACP_FORK_REUSE_SOURCE_ID=1
+ *                            → return the source session id from session/fork
  * - FAKE_ACP_USAGE_ON_LOAD=1 → report context usage during session/load
  * - FAKE_ACP_USAGE_SESSION_ID
  *                            → override the usage notification session id
@@ -45,6 +47,7 @@ import { appendFileSync, writeFileSync } from "node:fs";
 const failLoad = process.env.FAKE_ACP_FAIL_LOAD === "1";
 const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1" || failLoad;
 const forkSession = process.env.FAKE_ACP_FORK_SESSION === "1";
+const forkReuseSourceId = process.env.FAKE_ACP_FORK_REUSE_SOURCE_ID === "1";
 const usageOnLoad = process.env.FAKE_ACP_USAGE_ON_LOAD === "1";
 const usageSessionId = process.env.FAKE_ACP_USAGE_SESSION_ID;
 const modelConfig = process.env.FAKE_ACP_MODEL_CONFIG === "1";
@@ -453,7 +456,9 @@ async function handleMessage(message) {
           JSON.stringify(message.params),
         );
       }
-      activeSessionId = `fake-fork-${process.pid}`;
+      activeSessionId = forkReuseSourceId
+        ? message.params.sessionId
+        : `fake-fork-${process.pid}`;
       captureMcpServers(message);
       send({
         jsonrpc: "2.0",

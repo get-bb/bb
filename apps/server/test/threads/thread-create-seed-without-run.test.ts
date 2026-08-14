@@ -1021,6 +1021,56 @@ describe("thread creation child-thread boundary validation", () => {
     );
   });
 
+  it("rejects a fork whose target provider differs from the source provider", async () => {
+    await withTestHarness(async (harness) => {
+      const path = "/tmp/fork-cross-provider-project";
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-fork-cross-provider",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path,
+      });
+      const sourceThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "acp-amp",
+      });
+      // The source has a live provider session, so only the provider mismatch
+      // can block the fork. A provider session ID means nothing to another
+      // provider, so BB must not hand it to a codex agent.
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "acp-amp-session",
+        threadId: sourceThread.id,
+      });
+
+      const error = await captureCreateError(() =>
+        createThreadFromRequest(harness.deps, {
+          environment: {
+            type: "host",
+            hostId: host.id,
+            workspace: { type: "unmanaged", path },
+          },
+          input: textInput("Fork into another provider"),
+          origin: "app",
+          originKind: "fork",
+          projectId: project.id,
+          providerId: "codex",
+          sourceThreadId: sourceThread.id,
+          startedOnBehalfOf: null,
+        }),
+      );
+      expect(error.status).toBe(400);
+      expect(error.body.code).toBe("fork_source_session_unavailable");
+    });
+  });
+
   it("rejects a fork when the source has no active provider session", async () => {
     await withChildBoundaryHarness(
       "fork-no-source-session",
