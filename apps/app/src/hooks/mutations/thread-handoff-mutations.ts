@@ -7,7 +7,7 @@ import type {
 import type { ThreadHandoffResponse } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
 import { invalidateThreadListMembershipQueries } from "../cache-owners/mutation-cache-effects";
-import { threadHandoffQueryKey } from "../queries/query-keys";
+import { setCachedThreadHandoff } from "../cache-owners/thread-handoff-cache-owner";
 
 export interface ThreadHandoffMutationRequest {
   archiveSource: boolean;
@@ -34,10 +34,7 @@ export function useThreadHandoff() {
         origin: "app",
       }),
     onSuccess: (result: ThreadHandoffResponse) => {
-      queryClient.setQueryData(
-        threadHandoffQueryKey(result.replacementThreadId),
-        result,
-      );
+      setCachedThreadHandoff(queryClient, result);
       invalidateThreadListMembershipQueries({
         queryClient,
         threadId: result.sourceThreadId,
