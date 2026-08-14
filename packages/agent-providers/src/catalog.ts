@@ -52,12 +52,6 @@ export interface ProviderServerCapabilities {
    */
   supportsWorkflows: boolean;
   /**
-   * Whether the provider applies a changed model/reasoning level in place on
-   * `thread/resume` while preserving context (sticky execution override).
-   * Providers without verified in-place swap require respawning the thread.
-   */
-  supportsExecutionOverride: boolean;
-  /**
    * Whether this provider backs host-daemon-routed AI services (voice
    * transcription and structured inference) via its `*.voice.transcribe` /
    * `*.inference.complete` daemon commands.
@@ -168,7 +162,6 @@ const ACP_CAPABILITIES: ProviderCapabilities = {
 const CODEX_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsSessionRestore: true,
   supportsWorkflows: false,
-  supportsExecutionOverride: false,
   backsHostDaemonAiServices: true,
   // Per-model list from app-server is authoritative; this ladder is the
   // fallback for custom models / missing catalogs. "ultra" is Codex-only.
@@ -178,7 +171,6 @@ const CODEX_SERVER_CAPABILITIES: ProviderServerCapabilities = {
 const CLAUDE_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsSessionRestore: true,
   supportsWorkflows: true,
-  supportsExecutionOverride: true,
   backsHostDaemonAiServices: false,
   reasoningLevels: ["low", "medium", "high", "xhigh", "ultracode", "max"],
 };
@@ -186,7 +178,6 @@ const CLAUDE_SERVER_CAPABILITIES: ProviderServerCapabilities = {
 const PI_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsSessionRestore: true,
   supportsWorkflows: false,
-  supportsExecutionOverride: false,
   backsHostDaemonAiServices: false,
   // "none" is the thinking-off level: some Pi models (e.g. Ollama Cloud models
   // whose `thinkingLevelMap` advertises `off`, and non-reasoning models) expose
@@ -204,7 +195,6 @@ const ACP_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   // The ACP initialize result supplies the precise loadSession capability.
   supportsSessionRestore: false,
   supportsWorkflows: false,
-  supportsExecutionOverride: false,
   backsHostDaemonAiServices: false,
   // Cursor encodes reasoning effort in its model ids (`gpt-5.3-codex-high`);
   // the ACP bridge resolves (model, level) to the exact variant id at session
@@ -222,7 +212,7 @@ const ACP_SERVER_CAPABILITIES: ProviderServerCapabilities = {
  *   3. `info.composerActions` (wire-facing composer affordances): skills,
  *      plan, goal, or an explicit empty array.
  *   4. `serverCapabilities` (`ProviderServerCapabilities`, backend-only):
- *      workflows, execution override, host-daemon AI services, reasoning ladder.
+ *      workflows, host-daemon AI services, reasoning ladder.
  *   5. Its adapter + factory in `@bb/agent-runtime` (`provider-registry.ts`).
  * Host-local specifics stay with the daemon: provider CLI executable/install
  * metadata (`provider-cli-health.ts`) and injected-skill root layout

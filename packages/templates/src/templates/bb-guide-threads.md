@@ -204,7 +204,13 @@ Ownership:
     --clear-parent-thread                  Remove parent assignment
     --section <id>                         Move into a section
     --clear-section                        Remove section assignment
+    --model <model>                        Set the sticky model for the next and later turns
+    --reasoning-level <level>              Set the sticky reasoning level (provider-dependent)
     --visibility <visibility>              Set visible or hidden
+
+  Model and reasoning updates stay within the thread's current provider. BB
+  validates them against that provider's current model catalog, applies them on
+  the next turn, and keeps using them on later turns until changed.
 
   bb thread read [id]                      Mark read
   bb thread unread [id]                    Mark unread
