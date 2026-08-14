@@ -597,11 +597,7 @@ describe("WP-35 plan ordering and adapter projections", () => {
          (project_id, project_version_id, entity_kind,
           accepted_generation_id, base_revision, last_pull, error)
        VALUES (?, ?, 'component', 'generation-layout', 1, ?, NULL)`,
-    ).run(
-      scope.projectId,
-      scope.projectVersionId,
-      "2026-08-13T12:00:01.000Z",
-    );
+    ).run(scope.projectId, scope.projectVersionId, "2026-08-13T12:00:01.000Z");
     db.prepare(
       `INSERT INTO base_snapshot
          (project_id, project_version_id, entity_kind, generation_id,
@@ -657,11 +653,7 @@ describe("WP-35 plan ordering and adapter projections", () => {
   it("round-trips dataflow and asset POST/PATCH mismatches back to stable YAML", () => {
     const flow = dataflow("telemetry", "device", "cloud");
     if (flow.kind !== "dataflow") throw new Error("expected dataflow fixture");
-    const flowCreate = projectCreateFields(
-      flow,
-      scope,
-      projectionResolver,
-    );
+    const flowCreate = projectCreateFields(flow, scope, projectionResolver);
     const flowPatch = projectPatchFields(flow, scope, projectionResolver);
     expect(flowCreate).toMatchObject({
       source_component_id: "remote-device",
@@ -708,8 +700,13 @@ describe("WP-35 plan ordering and adapter projections", () => {
     expect(assetCreate.business_value).toBe("critical");
     expect(assetPatch.criticality).toBe("critical");
     expect(assetPatch).not.toHaveProperty("business_value");
+    const { business_value: createCriticality, ...assetCreateResponse } =
+      assetCreate;
     for (const [id, fields] of [
-      ["remote-credentials", assetCreate],
+      [
+        "remote-credentials",
+        { ...assetCreateResponse, criticality: createCriticality },
+      ],
       ["remote-credentials", assetPatch],
     ] as const) {
       expect(
@@ -731,7 +728,7 @@ describe("WP-35 plan ordering and adapter projections", () => {
     }
   });
 
-  it("rejects missing remote semantics, derives fresh references, and preserves accepted identity", () => {
+  it("tolerates optional remote semantics, derives fresh references, and preserves accepted identity", () => {
     const fields = projectCreateFields(
       component("gateway", "Gateway"),
       scope,
@@ -747,14 +744,14 @@ describe("WP-35 plan ordering and adapter projections", () => {
       fields: { ...fields, ...overrides },
     });
     const { criticality: _criticality, ...missingCriticality } = fields;
-    expect(() =>
+    expect(
       projectRemoteEntity(
         "component",
         { ...remote({}), fields: missingCriticality },
         scope,
         projectionResolver,
-      ),
-    ).toThrow(/REMOTE_FIELD_MISSING.*criticality/iu);
+      ).payload["fields"],
+    ).not.toHaveProperty("criticality");
     expect(
       projectRemoteEntity(
         "component",

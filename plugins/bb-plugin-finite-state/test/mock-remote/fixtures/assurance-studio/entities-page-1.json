@@ -4,9 +4,14 @@
     "items": [
       {
         "fields": {
-          "componentId": "component-0001",
+          "component_type": "firmware",
+          "criticality": "low",
+          "interfaces": ["ethernet"],
+          "is_entry_point": true,
           "name": "Architecture node 1",
-          "zoneId": "zone-1"
+          "stores_data": true,
+          "technologies": ["linux"],
+          "zone_id": "zone-1"
         },
         "humanEdited": true,
         "id": "as-component-01",
@@ -17,9 +22,14 @@
       },
       {
         "fields": {
-          "componentId": "component-0002",
+          "component_type": "software",
+          "criticality": "medium",
+          "interfaces": ["serial"],
+          "is_entry_point": false,
           "name": "Architecture node 2",
-          "zoneId": "zone-2"
+          "stores_data": false,
+          "technologies": ["bare-metal"],
+          "zone_id": "zone-2"
         },
         "humanEdited": false,
         "id": "as-component-02",
@@ -30,9 +40,14 @@
       },
       {
         "fields": {
-          "componentId": "component-0003",
+          "component_type": "hardware",
+          "criticality": "high",
+          "interfaces": ["ethernet"],
+          "is_entry_point": false,
           "name": "Architecture node 3",
-          "zoneId": "zone-3"
+          "stores_data": false,
+          "technologies": ["linux"],
+          "zone_id": "zone-3"
         },
         "humanEdited": false,
         "id": "as-component-03",
@@ -43,9 +58,14 @@
       },
       {
         "fields": {
-          "componentId": "component-0004",
+          "component_type": "network",
+          "criticality": "critical",
+          "interfaces": ["serial"],
+          "is_entry_point": false,
           "name": "Contrôleur télémétrie",
-          "zoneId": "zone-1"
+          "stores_data": true,
+          "technologies": ["bare-metal"],
+          "zone_id": "zone-1"
         },
         "humanEdited": false,
         "id": "as-component-04",
@@ -56,9 +76,14 @@
       },
       {
         "fields": {
-          "componentId": "component-0005",
+          "component_type": "cloud_service",
+          "criticality": "low",
+          "interfaces": ["ethernet"],
+          "is_entry_point": true,
           "name": "Architecture node 5",
-          "zoneId": "zone-2"
+          "stores_data": false,
+          "technologies": ["linux"],
+          "zone_id": "zone-2"
         },
         "humanEdited": false,
         "id": "as-component-05",
@@ -69,9 +94,14 @@
       },
       {
         "fields": {
-          "componentId": "component-0006",
+          "component_type": "mobile_app",
+          "criticality": "medium",
+          "interfaces": ["serial"],
+          "is_entry_point": false,
           "name": "Architecture node 6",
-          "zoneId": "zone-3"
+          "stores_data": false,
+          "technologies": ["bare-metal"],
+          "zone_id": "zone-3"
         },
         "humanEdited": false,
         "id": "as-component-06",
@@ -82,9 +112,14 @@
       },
       {
         "fields": {
-          "componentId": "component-0007",
+          "component_type": "web_app",
+          "criticality": "high",
+          "interfaces": ["ethernet"],
+          "is_entry_point": false,
           "name": "Architecture node 7",
-          "zoneId": "zone-1"
+          "stores_data": true,
+          "technologies": ["linux"],
+          "zone_id": "zone-1"
         },
         "humanEdited": false,
         "id": "as-component-07",
@@ -95,9 +130,14 @@
       },
       {
         "fields": {
-          "componentId": "component-0008",
+          "component_type": "database",
+          "criticality": "critical",
+          "interfaces": ["serial"],
+          "is_entry_point": false,
           "name": "Architecture node 8",
-          "zoneId": "zone-2"
+          "stores_data": false,
+          "technologies": ["bare-metal"],
+          "zone_id": "zone-2"
         },
         "humanEdited": false,
         "id": "as-component-08",
@@ -108,9 +148,14 @@
       },
       {
         "fields": {
-          "componentId": "component-0009",
+          "component_type": "api",
+          "criticality": "low",
+          "interfaces": ["ethernet"],
+          "is_entry_point": true,
           "name": "Architecture node 9",
-          "zoneId": "zone-3"
+          "stores_data": false,
+          "technologies": ["linux"],
+          "zone_id": "zone-3"
         },
         "humanEdited": false,
         "id": "as-component-09",
@@ -121,9 +166,14 @@
       },
       {
         "fields": {
-          "componentId": "component-0010",
+          "component_type": "sensor",
+          "criticality": "medium",
+          "interfaces": ["serial"],
+          "is_entry_point": false,
           "name": "Architecture node 10",
-          "zoneId": "zone-1"
+          "stores_data": true,
+          "technologies": ["bare-metal"],
+          "zone_id": "zone-1"
         },
         "humanEdited": false,
         "id": "as-component-10",
@@ -134,9 +184,14 @@
       },
       {
         "fields": {
-          "componentId": "component-0011",
+          "component_type": "actuator",
+          "criticality": "high",
+          "interfaces": ["ethernet"],
+          "is_entry_point": false,
           "name": "Architecture node 11",
-          "zoneId": "zone-2"
+          "stores_data": false,
+          "technologies": ["linux"],
+          "zone_id": "zone-2"
         },
         "humanEdited": false,
         "id": "as-component-11",
@@ -147,9 +202,14 @@
       },
       {
         "fields": {
-          "componentId": "component-0012",
+          "component_type": "communication",
+          "criticality": "critical",
+          "interfaces": ["serial"],
+          "is_entry_point": false,
           "name": "Architecture node 12",
-          "zoneId": "zone-3"
+          "stores_data": false,
+          "technologies": ["bare-metal"],
+          "zone_id": "zone-3"
         },
         "humanEdited": false,
         "id": "as-component-12",
@@ -160,7 +220,8 @@
       },
       {
         "fields": {
-          "name": "Untrusted"
+          "name": "Untrusted",
+          "trust_level": "untrusted"
         },
         "humanEdited": false,
         "id": "zone-1",
@@ -171,7 +232,8 @@
       },
       {
         "fields": {
-          "name": "Control"
+          "name": "Control",
+          "trust_level": "semi_trusted"
         },
         "humanEdited": false,
         "id": "zone-2",
@@ -182,7 +244,8 @@
       },
       {
         "fields": {
-          "name": "Safety"
+          "name": "Safety",
+          "trust_level": "highly_trusted"
         },
         "humanEdited": false,
         "id": "zone-3",
@@ -193,7 +256,6 @@
       },
       {
         "fields": {
-          "componentId": "as-component-01",
           "name": "Protected asset 1"
         },
         "humanEdited": false,
@@ -205,7 +267,6 @@
       },
       {
         "fields": {
-          "componentId": "as-component-02",
           "name": "Protected asset 2"
         },
         "humanEdited": false,
@@ -217,7 +278,6 @@
       },
       {
         "fields": {
-          "componentId": "as-component-03",
           "name": "Protected asset 3"
         },
         "humanEdited": false,
@@ -229,7 +289,6 @@
       },
       {
         "fields": {
-          "componentId": "as-component-04",
           "name": "Protected asset 4"
         },
         "humanEdited": false,
@@ -241,10 +300,14 @@
       },
       {
         "fields": {
+          "crosses_trust_boundary": true,
+          "data_types": ["telemetry"],
+          "is_authenticated": false,
+          "is_encrypted": false,
           "name": "Dataflow 1",
           "protocol": "MQTT",
-          "sourceId": "as-component-01",
-          "targetId": "as-component-02"
+          "source_component_id": "as-component-01",
+          "target_component_id": "as-component-02"
         },
         "humanEdited": false,
         "id": "flow-01",
@@ -255,10 +318,14 @@
       },
       {
         "fields": {
+          "crosses_trust_boundary": false,
+          "data_types": ["control"],
+          "is_authenticated": true,
+          "is_encrypted": true,
           "name": "Dataflow 2",
           "protocol": "TLS",
-          "sourceId": "as-component-02",
-          "targetId": "as-component-03"
+          "source_component_id": "as-component-02",
+          "target_component_id": "as-component-03"
         },
         "humanEdited": false,
         "id": "flow-02",
@@ -269,10 +336,14 @@
       },
       {
         "fields": {
+          "crosses_trust_boundary": false,
+          "data_types": ["telemetry"],
+          "is_authenticated": false,
+          "is_encrypted": false,
           "name": "Dataflow 3",
           "protocol": "MQTT",
-          "sourceId": "as-component-03",
-          "targetId": "as-component-04"
+          "source_component_id": "as-component-03",
+          "target_component_id": "as-component-04"
         },
         "humanEdited": false,
         "id": "flow-03",
@@ -283,10 +354,14 @@
       },
       {
         "fields": {
+          "crosses_trust_boundary": true,
+          "data_types": ["control"],
+          "is_authenticated": true,
+          "is_encrypted": true,
           "name": "Dataflow 4",
           "protocol": "TLS",
-          "sourceId": "as-component-04",
-          "targetId": "as-component-05"
+          "source_component_id": "as-component-04",
+          "target_component_id": "as-component-05"
         },
         "humanEdited": false,
         "id": "flow-04",
@@ -297,10 +372,14 @@
       },
       {
         "fields": {
+          "crosses_trust_boundary": false,
+          "data_types": ["telemetry"],
+          "is_authenticated": false,
+          "is_encrypted": false,
           "name": "Dataflow 5",
           "protocol": "MQTT",
-          "sourceId": "as-component-05",
-          "targetId": "as-component-06"
+          "source_component_id": "as-component-05",
+          "target_component_id": "as-component-06"
         },
         "humanEdited": false,
         "id": "flow-05",
@@ -311,10 +390,14 @@
       },
       {
         "fields": {
+          "crosses_trust_boundary": false,
+          "data_types": ["control"],
+          "is_authenticated": true,
+          "is_encrypted": true,
           "name": "Dataflow 6",
           "protocol": "TLS",
-          "sourceId": "as-component-06",
-          "targetId": "as-component-07"
+          "source_component_id": "as-component-06",
+          "target_component_id": "as-component-07"
         },
         "humanEdited": false,
         "id": "flow-06",

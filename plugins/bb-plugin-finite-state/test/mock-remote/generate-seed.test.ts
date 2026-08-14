@@ -20,7 +20,9 @@ import { afterEach, describe, expect, test } from "vitest";
 import {
   normalizeForgeJobSnapshot,
   type ForgeJobCandidate,
+  type Json,
 } from "../../lib/remote/types.js";
+import { ASSURANCE_STUDIO_COMPONENT_TYPES } from "../../lanes/product-security/canvas/editing/schema.js";
 import { generateFixtureCorpus } from "./generate-seed.js";
 import {
   DEFAULT_FIXTURE_SEED,
@@ -31,7 +33,12 @@ import {
 interface IdentityFixture {
   organization: { id: string };
   project: { id: string; orgId: string };
-  versions: { id: string; projectId: string; priorVersionId: string | null; scanId: string }[];
+  versions: {
+    id: string;
+    projectId: string;
+    priorVersionId: string | null;
+    scanId: string;
+  }[];
 }
 
 interface ComponentFixture {
@@ -62,7 +69,7 @@ interface AsEntityFixture {
   projectId: string;
   kind: string;
   reviewVersion: string;
-  fields: Record<string, string | string[]>;
+  fields: Record<string, Json>;
 }
 
 interface TaraDriftFixture {
@@ -175,6 +182,12 @@ interface VexBulkFixture {
 }
 
 const committedFixtures = fileURLToPath(new URL("./fixtures", import.meta.url));
+const assuranceStudioOpenApi = fileURLToPath(
+  new URL(
+    "../../docs/Implementation/api-reference/assurance-studio-openapi-2026-05-12.json",
+    import.meta.url,
+  ),
+);
 const temporaryRoots: string[] = [];
 
 function compareText(left: string, right: string): number {
@@ -202,7 +215,8 @@ async function relativeFiles(root: string, current = root): Promise<string[]> {
   const files: string[] = [];
   for (const name of (await readdir(current)).sort(compareText)) {
     const fullPath = join(current, name);
-    if ((await lstat(fullPath)).isDirectory()) files.push(...(await relativeFiles(root, fullPath)));
+    if ((await lstat(fullPath)).isDirectory())
+      files.push(...(await relativeFiles(root, fullPath)));
     else files.push(relative(root, fullPath).split(sep).join("/"));
   }
   return files;
@@ -224,7 +238,9 @@ async function runGeneratorCli(args: string[]): Promise<{
   const executable = fileURLToPath(
     new URL("../../../../node_modules/.bin/tsx", import.meta.url),
   );
-  const generator = fileURLToPath(new URL("./generate-seed.ts", import.meta.url));
+  const generator = fileURLToPath(
+    new URL("./generate-seed.ts", import.meta.url),
+  );
   return await new Promise((resolveResult, reject) => {
     const child = spawn(executable, [generator, ...args], { stdio: "pipe" });
     let stdout = "";
@@ -236,16 +252,29 @@ async function runGeneratorCli(args: string[]): Promise<{
       stderr += chunk;
     });
     child.on("error", reject);
-    child.on("close", (exitCode) => resolveResult({ exitCode, stdout, stderr }));
+    child.on("close", (exitCode) =>
+      resolveResult({ exitCode, stdout, stderr }),
+    );
   });
 }
 
-function expectReference(targets: Set<string>, reference: string, source: string): void {
-  expect(targets.has(reference), `${source} references missing target ${reference}`).toBe(true);
+function expectReference(
+  targets: Set<string>,
+  reference: string,
+  source: string,
+): void {
+  expect(
+    targets.has(reference),
+    `${source} references missing target ${reference}`,
+  ).toBe(true);
 }
 
 afterEach(async () => {
-  await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(
+    temporaryRoots
+      .splice(0)
+      .map((root) => rm(root, { recursive: true, force: true })),
+  );
 });
 
 describe("deterministic-seed-corpus", () => {
@@ -255,8 +284,16 @@ describe("deterministic-seed-corpus", () => {
     const firstOut = join(firstRoot, "fixtures");
     const secondOut = join(secondRoot, "fixtures");
 
-    const first = await generateFixtureCorpus({ seed: DEFAULT_FIXTURE_SEED, outDir: firstOut, check: false });
-    const second = await generateFixtureCorpus({ seed: DEFAULT_FIXTURE_SEED, outDir: secondOut, check: false });
+    const first = await generateFixtureCorpus({
+      seed: DEFAULT_FIXTURE_SEED,
+      outDir: firstOut,
+      check: false,
+    });
+    const second = await generateFixtureCorpus({
+      seed: DEFAULT_FIXTURE_SEED,
+      outDir: secondOut,
+      check: false,
+    });
 
     expect(first).toEqual(second);
     expect(await byteSnapshot(firstOut)).toEqual(await byteSnapshot(secondOut));
@@ -264,18 +301,33 @@ describe("deterministic-seed-corpus", () => {
   }, 30_000);
 
   test("committed manifest hashes, logical counts, and bounded size are exact", async () => {
-    const manifest = await parseJson<FixtureManifest>(join(committedFixtures, "manifest.json"));
-    const findings = await parseJsonl<FindingFixture>(join(committedFixtures, "platform", "findings.jsonl"));
-    const components = await parseJsonl<ComponentFixture>(join(committedFixtures, "platform", "components.jsonl"));
-    const entities = await parseJsonl<AsEntityFixture>(join(committedFixtures, "assurance-studio", "entities.jsonl"));
-    const requirements = await parseJsonl<RequirementFixture>(join(committedFixtures, "assurance-studio", "requirements.jsonl"));
-    const firmware = await parseJsonl<FirmwareFixture>(join(committedFixtures, "firmware", "manifest.jsonl"));
-    const documents = await parseJson<{ items: DocumentFixture[] }>(join(committedFixtures, "documents", "documents.json"));
+    const manifest = await parseJson<FixtureManifest>(
+      join(committedFixtures, "manifest.json"),
+    );
+    const findings = await parseJsonl<FindingFixture>(
+      join(committedFixtures, "platform", "findings.jsonl"),
+    );
+    const components = await parseJsonl<ComponentFixture>(
+      join(committedFixtures, "platform", "components.jsonl"),
+    );
+    const entities = await parseJsonl<AsEntityFixture>(
+      join(committedFixtures, "assurance-studio", "entities.jsonl"),
+    );
+    const requirements = await parseJsonl<RequirementFixture>(
+      join(committedFixtures, "assurance-studio", "requirements.jsonl"),
+    );
+    const firmware = await parseJsonl<FirmwareFixture>(
+      join(committedFixtures, "firmware", "manifest.jsonl"),
+    );
+    const documents = await parseJson<{ items: DocumentFixture[] }>(
+      join(committedFixtures, "documents", "documents.json"),
+    );
     expect(manifest.counts).toEqual({
       findings: new Set(findings.map((finding) => finding.id)).size,
       components: components.filter((component) => component.vulnerable).length,
       sbomComponents: components.length,
-      taraNodes: entities.filter((entity) => entity.kind === "component").length,
+      taraNodes: entities.filter((entity) => entity.kind === "component")
+        .length,
       requirements: requirements.length,
       firmwarePaths: firmware.length,
       documents: documents.items.length,
@@ -289,61 +341,152 @@ describe("deterministic-seed-corpus", () => {
     expect(manifest.counts.documents).toBeGreaterThanOrEqual(6);
 
     const listedPaths = new Set(manifest.files.map((file) => file.path));
-    const actualPaths = (await relativeFiles(committedFixtures)).filter((path) => path !== "manifest.json");
+    const actualPaths = (await relativeFiles(committedFixtures)).filter(
+      (path) => path !== "manifest.json",
+    );
     expect(listedPaths).toEqual(new Set(actualPaths));
-    let corpusBytes = (await stat(join(committedFixtures, "manifest.json"))).size;
+    let corpusBytes = (await stat(join(committedFixtures, "manifest.json")))
+      .size;
     for (const file of manifest.files) {
-      const bytes = await readFile(join(committedFixtures, ...file.path.split("/")));
+      const bytes = await readFile(
+        join(committedFixtures, ...file.path.split("/")),
+      );
       corpusBytes += bytes.byteLength;
       expect(bytes.byteLength, file.path).toBe(file.bytes);
-      expect(createHash("sha256").update(bytes).digest("hex"), file.path).toBe(file.sha256);
+      expect(createHash("sha256").update(bytes).digest("hex"), file.path).toBe(
+        file.sha256,
+      );
       if (file.rows !== undefined) {
-        const lineCount = (await readFile(join(committedFixtures, ...file.path.split("/")), "utf8")).trimEnd().split("\n").length;
+        const lineCount = (
+          await readFile(
+            join(committedFixtures, ...file.path.split("/")),
+            "utf8",
+          )
+        )
+          .trimEnd()
+          .split("\n").length;
         expect(lineCount, file.path).toBe(file.rows);
       }
     }
     expect(corpusBytes).toBeLessThan(4 * 1024 * 1024);
-    expect((await relativeFiles(join(committedFixtures, "firmware", "bytes"))).length).toBe(2);
-    expect(await readFile(join(committedFixtures, ".gitattributes"), "utf8")).toBe(
-      "*.bin binary\n",
-    );
+    expect(
+      (await relativeFiles(join(committedFixtures, "firmware", "bytes")))
+        .length,
+    ).toBe(2);
+    expect(
+      await readFile(join(committedFixtures, ".gitattributes"), "utf8"),
+    ).toBe("*.bin binary\n");
   });
 
   test("all references resolve with source-specific diagnostics", async () => {
-    const identity = await parseJson<IdentityFixture>(join(committedFixtures, "platform", "identity.json"));
-    const components = await parseJsonl<ComponentFixture>(join(committedFixtures, "platform", "components.jsonl"));
-    const findings = await parseJsonl<FindingFixture>(join(committedFixtures, "platform", "findings.jsonl"));
-    const entities = await parseJsonl<AsEntityFixture>(join(committedFixtures, "assurance-studio", "entities.jsonl"));
-    const requirements = await parseJsonl<RequirementFixture>(join(committedFixtures, "assurance-studio", "requirements.jsonl"));
-    const checks = await parseJsonl<VerificationFixture>(join(committedFixtures, "assurance-studio", "verification-checks.jsonl"));
-    const firmware = await parseJsonl<FirmwareFixture>(join(committedFixtures, "firmware", "manifest.jsonl"));
-    const documentEnvelope = await parseJson<{ items: DocumentFixture[] }>(join(committedFixtures, "documents", "documents.json"));
-    const runs = await parseJsonl<BenchRunFixture>(join(committedFixtures, "expected", "bench-runs.jsonl"));
-    const attestations = await parseJsonl<AttestationFixture>(join(committedFixtures, "expected", "attestations.jsonl"));
-    const hBomClaims = await parseJson<{ claims: HbomClaimFixture[] }>(join(committedFixtures, "documents", "hbom-claims.json"));
-    const extracts = await parseJsonl<SourceExtractFixture>(join(committedFixtures, "documents", "source-extracts.jsonl"));
-    const vex = await parseJson<VexBulkFixture>(join(committedFixtures, "platform", "vex-bulk-partial.json"));
-    const forgeJobs = await parseJsonl<ForgeJobFixture>(join(committedFixtures, "forge-compute", "jobs.jsonl"));
-    const identityLinks = await parseJson<IdentityLinksFixture>(join(committedFixtures, "expected", "identity-links.json"));
-    const filesystemResponse = await parseJson<FirmwareResponseFixture>(join(committedFixtures, "firmware", "filesystem-response.json"));
-    const sbom = await parseJson<SbomFixture>(join(committedFixtures, "platform", "sbom.cdx.json"));
-    const findingsPage = await parseJson<{ items: FindingFixture[]; total: number }>(join(committedFixtures, "platform", "findings-page-1.json"));
-    const componentsPage = await parseJson<{ items: ComponentFixture[]; total: number }>(join(committedFixtures, "platform", "components-page-1.json"));
-    const asSbomPage = await parseJson<{ success: boolean; data: { items: ComponentFixture[]; total: number } }>(join(committedFixtures, "assurance-studio", "project-sbom-page-1.json"));
-    const strictUnknownKey = await parseJson<{ projectVersionId: string; findingId: string }>(join(committedFixtures, "faults", "strict-unknown-key.json"));
-    const staleTara = await parseJson<{ entityId: string }>(join(committedFixtures, "faults", "assurance-studio-stale-tara.json"));
-    const findingHistory = await parseJson<FindingHistoryFixture>(join(committedFixtures, "expected", "finding-history.json"));
-    const findingDetail = await parseJson<FindingDetailFixture>(join(committedFixtures, "platform", "finding-detail.json"));
-    const vexExport = await readFile(join(committedFixtures, "platform", "vex-export.csv"), "utf8");
-    const asEntitiesPage = await parseJson<{ success: boolean; data: { items: AsEntityFixture[]; total: number } }>(join(committedFixtures, "assurance-studio", "entities-page-1.json"));
+    const identity = await parseJson<IdentityFixture>(
+      join(committedFixtures, "platform", "identity.json"),
+    );
+    const components = await parseJsonl<ComponentFixture>(
+      join(committedFixtures, "platform", "components.jsonl"),
+    );
+    const findings = await parseJsonl<FindingFixture>(
+      join(committedFixtures, "platform", "findings.jsonl"),
+    );
+    const entities = await parseJsonl<AsEntityFixture>(
+      join(committedFixtures, "assurance-studio", "entities.jsonl"),
+    );
+    const requirements = await parseJsonl<RequirementFixture>(
+      join(committedFixtures, "assurance-studio", "requirements.jsonl"),
+    );
+    const checks = await parseJsonl<VerificationFixture>(
+      join(committedFixtures, "assurance-studio", "verification-checks.jsonl"),
+    );
+    const firmware = await parseJsonl<FirmwareFixture>(
+      join(committedFixtures, "firmware", "manifest.jsonl"),
+    );
+    const documentEnvelope = await parseJson<{ items: DocumentFixture[] }>(
+      join(committedFixtures, "documents", "documents.json"),
+    );
+    const runs = await parseJsonl<BenchRunFixture>(
+      join(committedFixtures, "expected", "bench-runs.jsonl"),
+    );
+    const attestations = await parseJsonl<AttestationFixture>(
+      join(committedFixtures, "expected", "attestations.jsonl"),
+    );
+    const hBomClaims = await parseJson<{ claims: HbomClaimFixture[] }>(
+      join(committedFixtures, "documents", "hbom-claims.json"),
+    );
+    const extracts = await parseJsonl<SourceExtractFixture>(
+      join(committedFixtures, "documents", "source-extracts.jsonl"),
+    );
+    const vex = await parseJson<VexBulkFixture>(
+      join(committedFixtures, "platform", "vex-bulk-partial.json"),
+    );
+    const forgeJobs = await parseJsonl<ForgeJobFixture>(
+      join(committedFixtures, "forge-compute", "jobs.jsonl"),
+    );
+    const identityLinks = await parseJson<IdentityLinksFixture>(
+      join(committedFixtures, "expected", "identity-links.json"),
+    );
+    const filesystemResponse = await parseJson<FirmwareResponseFixture>(
+      join(committedFixtures, "firmware", "filesystem-response.json"),
+    );
+    const sbom = await parseJson<SbomFixture>(
+      join(committedFixtures, "platform", "sbom.cdx.json"),
+    );
+    const findingsPage = await parseJson<{
+      items: FindingFixture[];
+      total: number;
+    }>(join(committedFixtures, "platform", "findings-page-1.json"));
+    const componentsPage = await parseJson<{
+      items: ComponentFixture[];
+      total: number;
+    }>(join(committedFixtures, "platform", "components-page-1.json"));
+    const asSbomPage = await parseJson<{
+      success: boolean;
+      data: { items: ComponentFixture[]; total: number };
+    }>(join(committedFixtures, "assurance-studio", "project-sbom-page-1.json"));
+    const strictUnknownKey = await parseJson<{
+      projectVersionId: string;
+      findingId: string;
+    }>(join(committedFixtures, "faults", "strict-unknown-key.json"));
+    const staleTara = await parseJson<{ entityId: string }>(
+      join(committedFixtures, "faults", "assurance-studio-stale-tara.json"),
+    );
+    const findingHistory = await parseJson<FindingHistoryFixture>(
+      join(committedFixtures, "expected", "finding-history.json"),
+    );
+    const findingDetail = await parseJson<FindingDetailFixture>(
+      join(committedFixtures, "platform", "finding-detail.json"),
+    );
+    const vexExport = await readFile(
+      join(committedFixtures, "platform", "vex-export.csv"),
+      "utf8",
+    );
+    const asEntitiesPage = await parseJson<{
+      success: boolean;
+      data: { items: AsEntityFixture[]; total: number };
+    }>(join(committedFixtures, "assurance-studio", "entities-page-1.json"));
+    const openApi = await parseJson<{
+      components: { schemas: { ComponentType: { enum: string[] } } };
+    }>(assuranceStudioOpenApi);
 
-    expectReference(new Set([identity.organization.id]), identity.project.orgId, "platform/identity.json project");
+    expectReference(
+      new Set([identity.organization.id]),
+      identity.project.orgId,
+      "platform/identity.json project",
+    );
     const projectIds = new Set([identity.project.id]);
     const versionIds = new Set(identity.versions.map((version) => version.id));
     const scanIds = new Set(identity.versions.map((version) => version.scanId));
     for (const version of identity.versions) {
-      expectReference(projectIds, version.projectId, `platform/identity.json version ${version.id}`);
-      if (version.priorVersionId) expectReference(versionIds, version.priorVersionId, `platform/identity.json version ${version.id}`);
+      expectReference(
+        projectIds,
+        version.projectId,
+        `platform/identity.json version ${version.id}`,
+      );
+      if (version.priorVersionId)
+        expectReference(
+          versionIds,
+          version.priorVersionId,
+          `platform/identity.json version ${version.id}`,
+        );
     }
     expect(identityLinks).toMatchObject({
       orgId: identity.organization.id,
@@ -355,12 +498,32 @@ describe("deterministic-seed-corpus", () => {
     });
 
     const componentIds = new Set(components.map((component) => component.id));
-    const componentPurls = new Set(components.flatMap((component) => component.purl ? [component.purl] : []));
+    const componentPurls = new Set(
+      components.flatMap((component) =>
+        component.purl ? [component.purl] : [],
+      ),
+    );
     for (const finding of findings) {
-      expectReference(versionIds, finding.projectVersionId, `platform/findings.jsonl finding ${finding.id}`);
-      expectReference(componentIds, finding.component.id, `platform/findings.jsonl finding ${finding.id}`);
-      expect(Object.keys(finding.component).sort()).toEqual(["appId", "id", "name", "vcId", "version"]);
-      const component = components.find((candidate) => candidate.id === finding.component.id);
+      expectReference(
+        versionIds,
+        finding.projectVersionId,
+        `platform/findings.jsonl finding ${finding.id}`,
+      );
+      expectReference(
+        componentIds,
+        finding.component.id,
+        `platform/findings.jsonl finding ${finding.id}`,
+      );
+      expect(Object.keys(finding.component).sort()).toEqual([
+        "appId",
+        "id",
+        "name",
+        "vcId",
+        "version",
+      ]);
+      const component = components.find(
+        (candidate) => candidate.id === finding.component.id,
+      );
       expect(finding.component).toEqual({
         appId: `app-${component?.id}`,
         id: component?.id,
@@ -373,125 +536,404 @@ describe("deterministic-seed-corpus", () => {
       expect(finding).not.toHaveProperty("componentFallbackIdentity");
     }
     const findingIds = new Set(findings.map((finding) => finding.id));
-    for (const result of vex.results) expectReference(findingIds, result.findingId, "platform/vex-bulk-partial.json results");
-    expectReference(findingIds, findingHistory.findingId, "expected/finding-history.json findingId");
-    expect(findingHistory.events.map((event) => event.id)).toEqual(["soft-delete", "reconfirm"]);
-    const { cves: detailCves, comments: detailComments, ...detailFinding } = findingDetail;
+    for (const result of vex.results)
+      expectReference(
+        findingIds,
+        result.findingId,
+        "platform/vex-bulk-partial.json results",
+      );
+    expectReference(
+      findingIds,
+      findingHistory.findingId,
+      "expected/finding-history.json findingId",
+    );
+    expect(findingHistory.events.map((event) => event.id)).toEqual([
+      "soft-delete",
+      "reconfirm",
+    ]);
+    const {
+      cves: detailCves,
+      comments: detailComments,
+      ...detailFinding
+    } = findingDetail;
     expect(detailFinding).toEqual(findings[0]);
     expect(Object.keys(detailCves)).toEqual([findingDetail.cve]);
     expect(detailComments).toHaveLength(1);
     const vexLines = vexExport.trimEnd().split("\n");
     expect(vexLines[0]).toBe("finding_id,cve,component_id,severity");
     expect(vexLines.slice(1, -1)).toEqual(
-      findings.slice(0, 25).map((finding) =>
-        [finding.id, finding.cve, finding.component.id, finding.severity].join(","),
-      ),
+      findings
+        .slice(0, 25)
+        .map((finding) =>
+          [
+            finding.id,
+            finding.cve,
+            finding.component.id,
+            finding.severity,
+          ].join(","),
+        ),
     );
     expect(vexLines.at(-1)).toBe("# rows_written=25 rows_skipped=2");
-    expect(findingsPage.items).toEqual(findings.slice(0, findingsPage.items.length));
-    expect(findingsPage.total).toBe(new Set(findings.map((finding) => finding.id)).size);
-    expect(componentsPage.items).toEqual(components.slice(0, componentsPage.items.length));
+    expect(findingsPage.items).toEqual(
+      findings.slice(0, findingsPage.items.length),
+    );
+    expect(findingsPage.total).toBe(
+      new Set(findings.map((finding) => finding.id)).size,
+    );
+    expect(componentsPage.items).toEqual(
+      components.slice(0, componentsPage.items.length),
+    );
     expect(componentsPage.total).toBe(components.length);
     expect(asSbomPage.success).toBe(true);
-    expect(asSbomPage.data.items).toEqual(components.slice(0, asSbomPage.data.items.length));
+    expect(asSbomPage.data.items).toEqual(
+      components.slice(0, asSbomPage.data.items.length),
+    );
     expect(asSbomPage.data.total).toBe(components.length);
     expect(sbom.components).toHaveLength(components.length);
     for (const [index, sbomComponent] of sbom.components.entries()) {
       const component = components[index];
-      expect(sbomComponent, `platform/sbom.cdx.json component ${index}`).toEqual({
+      expect(
+        sbomComponent,
+        `platform/sbom.cdx.json component ${index}`,
+      ).toEqual({
         "bom-ref": component.id,
         name: component.name,
         version: component.version,
         purl: component.purl,
       });
-      expectReference(componentIds, sbomComponent["bom-ref"], `platform/sbom.cdx.json component ${index}.bom-ref`);
-      if (sbomComponent.purl) expectReference(componentPurls, sbomComponent.purl, `platform/sbom.cdx.json component ${index}.purl`);
+      expectReference(
+        componentIds,
+        sbomComponent["bom-ref"],
+        `platform/sbom.cdx.json component ${index}.bom-ref`,
+      );
+      if (sbomComponent.purl)
+        expectReference(
+          componentPurls,
+          sbomComponent.purl,
+          `platform/sbom.cdx.json component ${index}.purl`,
+        );
     }
-    expectReference(versionIds, strictUnknownKey.projectVersionId, "faults/strict-unknown-key.json projectVersionId");
-    expectReference(findingIds, strictUnknownKey.findingId, "faults/strict-unknown-key.json findingId");
+    expectReference(
+      versionIds,
+      strictUnknownKey.projectVersionId,
+      "faults/strict-unknown-key.json projectVersionId",
+    );
+    expectReference(
+      findingIds,
+      strictUnknownKey.findingId,
+      "faults/strict-unknown-key.json findingId",
+    );
 
     const entityIds = new Set(entities.map((entity) => entity.id));
-    const componentOrEntityIds = new Set([...componentIds, ...entityIds]);
-    const threatIds = new Set(entities.filter((entity) => entity.kind === "threat").map((entity) => entity.id));
-    const assetIds = new Set(entities.filter((entity) => entity.kind === "asset").map((entity) => entity.id));
-    const zoneIds = new Set(entities.filter((entity) => entity.kind === "zone").map((entity) => entity.id));
-    const dataflowIds = new Set(entities.filter((entity) => entity.kind === "dataflow").map((entity) => entity.id));
-    expectReference(entityIds, staleTara.entityId, "faults/assurance-studio-stale-tara.json entityId");
+    const threatIds = new Set(
+      entities
+        .filter((entity) => entity.kind === "threat")
+        .map((entity) => entity.id),
+    );
+    const mitigationIds = new Set(
+      entities
+        .filter((entity) => entity.kind === "mitigation")
+        .map((entity) => entity.id),
+    );
+    const assetIds = new Set(
+      entities
+        .filter((entity) => entity.kind === "asset")
+        .map((entity) => entity.id),
+    );
+    const zoneIds = new Set(
+      entities
+        .filter((entity) => entity.kind === "zone")
+        .map((entity) => entity.id),
+    );
+    const dataflowIds = new Set(
+      entities
+        .filter((entity) => entity.kind === "dataflow")
+        .map((entity) => entity.id),
+    );
+    expectReference(
+      entityIds,
+      staleTara.entityId,
+      "faults/assurance-studio-stale-tara.json entityId",
+    );
     expect(asEntitiesPage.success).toBe(true);
-    expect(asEntitiesPage.data.items).toEqual(entities.slice(0, asEntitiesPage.data.items.length));
+    expect(asEntitiesPage.data.items).toEqual(
+      entities.slice(0, asEntitiesPage.data.items.length),
+    );
     expect(asEntitiesPage.data.total).toBe(entities.length);
+    const taraComponents = entities.filter(
+      (entity) => entity.kind === "component",
+    );
+    expect(ASSURANCE_STUDIO_COMPONENT_TYPES).toEqual(
+      openApi.components.schemas.ComponentType.enum,
+    );
+    expect(
+      taraComponents.map((entity) => entity.fields.component_type),
+    ).toContain("firmware");
+    for (const component of taraComponents) {
+      expect(ASSURANCE_STUDIO_COMPONENT_TYPES).toContain(
+        component.fields.component_type,
+      );
+    }
+    for (const dataflow of entities.filter(
+      (entity) => entity.kind === "dataflow",
+    )) {
+      expect(dataflow.fields).not.toHaveProperty("bidirectional");
+      expect(dataflow.fields).not.toHaveProperty("is_bidirectional");
+      expect(typeof dataflow.fields.crosses_trust_boundary).toBe("boolean");
+    }
+    for (const asset of entities.filter((entity) => entity.kind === "asset")) {
+      expect(Object.keys(asset.fields)).toEqual(["name"]);
+    }
     for (const entity of entities) {
-      expectReference(projectIds, entity.projectId, `assurance-studio/entities.jsonl entity ${entity.id}`);
-      for (const [field, targets] of [["componentId", componentOrEntityIds], ["sourceId", entityIds], ["targetId", entityIds], ["zoneId", zoneIds], ["assetId", assetIds], ["threatId", threatIds]] as const) {
+      expectReference(
+        projectIds,
+        entity.projectId,
+        `assurance-studio/entities.jsonl entity ${entity.id}`,
+      );
+      for (const [field, targets] of [
+        ["source_component_id", entityIds],
+        ["target_component_id", entityIds],
+        ["zone_id", zoneIds],
+        ["threatId", threatIds],
+      ] as const) {
         const reference = entity.fields[field];
-        if (typeof reference === "string") expectReference(targets, reference, `assurance-studio/entities.jsonl entity ${entity.id}.${field}`);
+        if (typeof reference === "string")
+          expectReference(
+            targets,
+            reference,
+            `assurance-studio/entities.jsonl entity ${entity.id}.${field}`,
+          );
       }
-      for (const [field, targets] of [["threatIds", threatIds], ["dataflowIds", dataflowIds]] as const) {
+      for (const [field, targets] of [
+        ["threatIds", threatIds],
+        ["dataflowIds", dataflowIds],
+        ["asset_ids", assetIds],
+      ] as const) {
         const references = entity.fields[field];
-        if (Array.isArray(references)) for (const reference of references) expectReference(targets, reference, `assurance-studio/entities.jsonl entity ${entity.id}.${field}`);
+        if (Array.isArray(references)) {
+          for (const reference of references) {
+            expect(typeof reference).toBe("string");
+            if (typeof reference === "string")
+              expectReference(
+                targets,
+                reference,
+                `assurance-studio/entities.jsonl entity ${entity.id}.${field}`,
+              );
+          }
+        }
+      }
+      const linkedMitigations = entity.fields.linked_mitigations;
+      if (Array.isArray(linkedMitigations)) {
+        for (const linked of linkedMitigations) {
+          if (
+            typeof linked === "object" &&
+            linked !== null &&
+            "id" in linked &&
+            typeof linked.id === "string"
+          ) {
+            expectReference(
+              mitigationIds,
+              linked.id,
+              `assurance-studio/entities.jsonl entity ${entity.id}.linked_mitigations`,
+            );
+          }
+        }
+      }
+      if (
+        ["component", "asset", "dataflow", "threat", "zone"].includes(
+          entity.kind,
+        )
+      ) {
+        for (const legacyField of [
+          "assetId",
+          "componentId",
+          "sourceId",
+          "stride",
+          "targetId",
+          "title",
+          "zoneId",
+        ]) {
+          expect(entity.fields).not.toHaveProperty(legacyField);
+        }
       }
     }
 
-    const requirementIds = new Set(requirements.map((requirement) => requirement.id));
-    const documentIds = new Set(documentEnvelope.items.map((document) => document.id));
-    const evidenceIds = new Set(checks.flatMap((check) => check.results.map((result) => result.evidenceId)));
+    const requirementIds = new Set(
+      requirements.map((requirement) => requirement.id),
+    );
+    const documentIds = new Set(
+      documentEnvelope.items.map((document) => document.id),
+    );
+    const evidenceIds = new Set(
+      checks.flatMap((check) =>
+        check.results.map((result) => result.evidenceId),
+      ),
+    );
     for (const requirement of requirements) {
-      expectReference(projectIds, requirement.projectId, `assurance-studio/requirements.jsonl ${requirement.id}`);
-      for (const threatId of requirement.fields.threatIds) expectReference(threatIds, threatId, `assurance-studio/requirements.jsonl ${requirement.id}`);
-      expectReference(documentIds, requirement.fields.sourceRef.split("#")[0], `assurance-studio/requirements.jsonl ${requirement.id}.sourceRef`);
+      expectReference(
+        projectIds,
+        requirement.projectId,
+        `assurance-studio/requirements.jsonl ${requirement.id}`,
+      );
+      for (const threatId of requirement.fields.threatIds)
+        expectReference(
+          threatIds,
+          threatId,
+          `assurance-studio/requirements.jsonl ${requirement.id}`,
+        );
+      expectReference(
+        documentIds,
+        requirement.fields.sourceRef.split("#")[0],
+        `assurance-studio/requirements.jsonl ${requirement.id}.sourceRef`,
+      );
     }
     for (const check of checks) {
-      expectReference(projectIds, check.projectId, `assurance-studio/verification-checks.jsonl ${check.id}`);
-      expectReference(requirementIds, check.requirementId, `assurance-studio/verification-checks.jsonl ${check.id}`);
+      expectReference(
+        projectIds,
+        check.projectId,
+        `assurance-studio/verification-checks.jsonl ${check.id}`,
+      );
+      expectReference(
+        requirementIds,
+        check.requirementId,
+        `assurance-studio/verification-checks.jsonl ${check.id}`,
+      );
     }
     for (const path of firmware) {
-      expectReference(scanIds, path.scanId, `firmware/manifest.jsonl ${path.path}`);
+      expectReference(
+        scanIds,
+        path.scanId,
+        `firmware/manifest.jsonl ${path.path}`,
+      );
       if (path.byteSample) {
-        const samplePath = join(committedFixtures, ...path.byteSample.split("/"));
+        const samplePath = join(
+          committedFixtures,
+          ...path.byteSample.split("/"),
+        );
         const sampleBytes = await readFile(samplePath);
-        expect((await stat(samplePath)).isFile(), `firmware/manifest.jsonl ${path.path} missing ${path.byteSample}`).toBe(true);
-        expect(path.size, `firmware/manifest.jsonl ${path.path} size`).toBe(sampleBytes.byteLength);
+        expect(
+          (await stat(samplePath)).isFile(),
+          `firmware/manifest.jsonl ${path.path} missing ${path.byteSample}`,
+        ).toBe(true);
+        expect(path.size, `firmware/manifest.jsonl ${path.path} size`).toBe(
+          sampleBytes.byteLength,
+        );
         expect(path.hash, `firmware/manifest.jsonl ${path.path} hash`).toBe(
           createHash("sha256").update(sampleBytes).digest("hex"),
         );
       }
     }
-    expectReference(versionIds, filesystemResponse.projectVersionId, "firmware/filesystem-response.json projectVersionId");
-    expectReference(scanIds, filesystemResponse.scanId, "firmware/filesystem-response.json scanId");
-    expect(filesystemResponse.artifactHash).toBe(identityLinks.firmwareRootHash);
-    expect(filesystemResponse.entries).toEqual(firmware.slice(0, filesystemResponse.entries.length));
+    expectReference(
+      versionIds,
+      filesystemResponse.projectVersionId,
+      "firmware/filesystem-response.json projectVersionId",
+    );
+    expectReference(
+      scanIds,
+      filesystemResponse.scanId,
+      "firmware/filesystem-response.json scanId",
+    );
+    expect(filesystemResponse.artifactHash).toBe(
+      identityLinks.firmwareRootHash,
+    );
+    expect(filesystemResponse.entries).toEqual(
+      firmware.slice(0, filesystemResponse.entries.length),
+    );
     expect(filesystemResponse.total).toBe(firmware.length);
     for (const document of documentEnvelope.items) {
-      expectReference(projectIds, document.projectId, `documents/documents.json ${document.id}`);
-      for (const sourceRef of document.sourceRefs) expectReference(requirementIds, sourceRef.split(":")[0], `documents/documents.json ${document.id}.sourceRefs`);
+      expectReference(
+        projectIds,
+        document.projectId,
+        `documents/documents.json ${document.id}`,
+      );
+      for (const sourceRef of document.sourceRefs)
+        expectReference(
+          requirementIds,
+          sourceRef.split(":")[0],
+          `documents/documents.json ${document.id}.sourceRefs`,
+        );
     }
     for (const claim of hBomClaims.claims) {
-      expectReference(entityIds, claim.componentId, `documents/hbom-claims.json ${claim.id}`);
-      expectReference(documentIds, claim.sourceRef.split("#")[0], `documents/hbom-claims.json ${claim.id}.sourceRef`);
+      expectReference(
+        entityIds,
+        claim.componentId,
+        `documents/hbom-claims.json ${claim.id}`,
+      );
+      expectReference(
+        documentIds,
+        claim.sourceRef.split("#")[0],
+        `documents/hbom-claims.json ${claim.id}.sourceRef`,
+      );
     }
     for (const extract of extracts) {
-      expectReference(documentIds, extract.documentId, `documents/source-extracts.jsonl ${extract.id}`);
-      expectReference(new Set([...requirementIds, ...entityIds]), extract.target, `documents/source-extracts.jsonl ${extract.id}.target`);
+      expectReference(
+        documentIds,
+        extract.documentId,
+        `documents/source-extracts.jsonl ${extract.id}`,
+      );
+      expectReference(
+        new Set([...requirementIds, ...entityIds]),
+        extract.target,
+        `documents/source-extracts.jsonl ${extract.id}.target`,
+      );
     }
     const runIds = new Set(runs.map((run) => run.id));
     for (const run of runs) {
-      expectReference(versionIds, run.projectVersionId, `expected/bench-runs.jsonl ${run.id}`);
-      for (const requirementId of run.requirementIds) expectReference(requirementIds, requirementId, `expected/bench-runs.jsonl ${run.id}`);
-      for (const evidenceId of run.evidenceIds) expectReference(evidenceIds, evidenceId, `expected/bench-runs.jsonl ${run.id}`);
+      expectReference(
+        versionIds,
+        run.projectVersionId,
+        `expected/bench-runs.jsonl ${run.id}`,
+      );
+      for (const requirementId of run.requirementIds)
+        expectReference(
+          requirementIds,
+          requirementId,
+          `expected/bench-runs.jsonl ${run.id}`,
+        );
+      for (const evidenceId of run.evidenceIds)
+        expectReference(
+          evidenceIds,
+          evidenceId,
+          `expected/bench-runs.jsonl ${run.id}`,
+        );
     }
     for (const attestation of attestations) {
-      expectReference(runIds, attestation.runId, `expected/attestations.jsonl ${attestation.id}`);
-      for (const requirementId of attestation.requirementIds) expectReference(requirementIds, requirementId, `expected/attestations.jsonl ${attestation.id}`);
+      expectReference(
+        runIds,
+        attestation.runId,
+        `expected/attestations.jsonl ${attestation.id}`,
+      );
+      for (const requirementId of attestation.requirementIds)
+        expectReference(
+          requirementIds,
+          requirementId,
+          `expected/attestations.jsonl ${attestation.id}`,
+        );
     }
     for (const job of forgeJobs) {
-      expectReference(projectIds, job.scope.projectId, `forge-compute/jobs.jsonl ${job.jobId}.scope.projectId`);
-      expectReference(versionIds, job.scope.projectVersionId, `forge-compute/jobs.jsonl ${job.jobId}.scope.projectVersionId`);
-      if (job.runId) expectReference(runIds, job.runId, `forge-compute/jobs.jsonl ${job.jobId}.runId`);
+      expectReference(
+        projectIds,
+        job.scope.projectId,
+        `forge-compute/jobs.jsonl ${job.jobId}.scope.projectId`,
+      );
+      expectReference(
+        versionIds,
+        job.scope.projectVersionId,
+        `forge-compute/jobs.jsonl ${job.jobId}.scope.projectVersionId`,
+      );
+      if (job.runId)
+        expectReference(
+          runIds,
+          job.runId,
+          `forge-compute/jobs.jsonl ${job.jobId}.runId`,
+        );
     }
   });
 
   test("required awkward cases exist once and every case file is addressable", async () => {
-    const manifest = await parseJson<FixtureManifest>(join(committedFixtures, "manifest.json"));
+    const manifest = await parseJson<FixtureManifest>(
+      join(committedFixtures, "manifest.json"),
+    );
     const expectedCaseIds = [
       "binary-firmware-file",
       "component-without-purl",
@@ -509,53 +951,114 @@ describe("deterministic-seed-corpus", () => {
       "withdrawn-document",
       "zero-byte-firmware-file",
     ];
-    expect(Object.keys(manifest.cases).sort(compareText)).toEqual(expectedCaseIds);
+    expect(Object.keys(manifest.cases).sort(compareText)).toEqual(
+      expectedCaseIds,
+    );
     const fixturePaths = new Set(await relativeFiles(committedFixtures));
     for (const [caseId, fixtureCase] of Object.entries(manifest.cases)) {
       expect(fixtureCase.refs.length, caseId).toBeGreaterThan(0);
       for (const reference of fixtureCase.refs) {
-        expectReference(fixturePaths, reference.split("#")[0], `cases.json ${caseId}`);
+        expectReference(
+          fixturePaths,
+          reference.split("#")[0],
+          `cases.json ${caseId}`,
+        );
       }
     }
 
-    const findings = await parseJsonl<FindingFixture>(join(committedFixtures, "platform", "findings.jsonl"));
+    const findings = await parseJsonl<FindingFixture>(
+      join(committedFixtures, "platform", "findings.jsonl"),
+    );
     const findingCounts = new Map<string, number>();
-    for (const finding of findings) findingCounts.set(finding.id, (findingCounts.get(finding.id) ?? 0) + 1);
-    expect([...findingCounts.values()].filter((count) => count === 2)).toHaveLength(1);
-    expect([...findingCounts.values()].filter((count) => count > 2)).toHaveLength(0);
+    for (const finding of findings)
+      findingCounts.set(finding.id, (findingCounts.get(finding.id) ?? 0) + 1);
+    expect(
+      [...findingCounts.values()].filter((count) => count === 2),
+    ).toHaveLength(1);
+    expect(
+      [...findingCounts.values()].filter((count) => count > 2),
+    ).toHaveLength(0);
 
-    const components = await parseJsonl<ComponentFixture>(join(committedFixtures, "platform", "components.jsonl"));
-    expect(components.filter((component) => component.purl === null && component.fallbackIdentity !== null)).toHaveLength(1);
-    const requirements = await parseJsonl<RequirementFixture>(join(committedFixtures, "assurance-studio", "requirements.jsonl"));
-    const checks = await parseJsonl<VerificationFixture>(join(committedFixtures, "assurance-studio", "verification-checks.jsonl"));
-    expect(requirements.filter((requirement) => !checks.some((check) => check.requirementId === requirement.id))).toHaveLength(1);
-    const firmware = await parseJsonl<{ kind: string; errors: string[] }>(join(committedFixtures, "firmware", "manifest.jsonl"));
-    expect(firmware.filter((entry) => entry.kind === "symlink")).toHaveLength(1);
+    const components = await parseJsonl<ComponentFixture>(
+      join(committedFixtures, "platform", "components.jsonl"),
+    );
+    expect(
+      components.filter(
+        (component) =>
+          component.purl === null && component.fallbackIdentity !== null,
+      ),
+    ).toHaveLength(1);
+    const requirements = await parseJsonl<RequirementFixture>(
+      join(committedFixtures, "assurance-studio", "requirements.jsonl"),
+    );
+    const checks = await parseJsonl<VerificationFixture>(
+      join(committedFixtures, "assurance-studio", "verification-checks.jsonl"),
+    );
+    expect(
+      requirements.filter(
+        (requirement) =>
+          !checks.some((check) => check.requirementId === requirement.id),
+      ),
+    ).toHaveLength(1);
+    const firmware = await parseJsonl<{ kind: string; errors: string[] }>(
+      join(committedFixtures, "firmware", "manifest.jsonl"),
+    );
+    expect(firmware.filter((entry) => entry.kind === "symlink")).toHaveLength(
+      1,
+    );
     expect(firmware.filter((entry) => entry.errors.length > 0)).toHaveLength(1);
-    const documents = await parseJson<{ items: DocumentFixture[] }>(join(committedFixtures, "documents", "documents.json"));
-    expect(documents.items.filter((document) => document.status === "withdrawn")).toHaveLength(1);
+    const documents = await parseJson<{ items: DocumentFixture[] }>(
+      join(committedFixtures, "documents", "documents.json"),
+    );
+    expect(
+      documents.items.filter((document) => document.status === "withdrawn"),
+    ).toHaveLength(1);
   });
 
   test("raw fixtures preserve verified service quirks and optional compute isolation", async () => {
-    const detail = await parseJson<{ cves: Record<string, object> }>(join(committedFixtures, "platform", "finding-detail.json"));
+    const detail = await parseJson<{ cves: Record<string, object> }>(
+      join(committedFixtures, "platform", "finding-detail.json"),
+    );
     expect(Array.isArray(detail.cves)).toBe(false);
     expect(Object.keys(detail.cves)[0]).toMatch(/^CVE-/);
 
-    const summary = await parseJson<{ bySeverity: Record<string, number>; total: number }>(join(committedFixtures, "platform", "findings-summary.json"));
-    expect(Object.values(summary.bySeverity).reduce((sum, value) => sum + value, 0)).toBe(summary.total);
+    const summary = await parseJson<{
+      bySeverity: Record<string, number>;
+      total: number;
+    }>(join(committedFixtures, "platform", "findings-summary.json"));
+    expect(
+      Object.values(summary.bySeverity).reduce((sum, value) => sum + value, 0),
+    ).toBe(summary.total);
 
-    const asPage = await parseJson<{ success: boolean; data: { items: object[]; total: number; page: number; pageSize: number; hasMore: boolean } }>(join(committedFixtures, "assurance-studio", "entities-page-1.json"));
-    expect(asPage).toMatchObject({ success: true, data: { page: 1, pageSize: 25, hasMore: true } });
+    const asPage = await parseJson<{
+      success: boolean;
+      data: {
+        items: object[];
+        total: number;
+        page: number;
+        pageSize: number;
+        hasMore: boolean;
+      };
+    }>(join(committedFixtures, "assurance-studio", "entities-page-1.json"));
+    expect(asPage).toMatchObject({
+      success: true,
+      data: { page: 1, pageSize: 25, hasMore: true },
+    });
     expect(asPage.data.total).toBeGreaterThan(asPage.data.items.length);
-    const entities = await parseJsonl<AsEntityFixture>(join(committedFixtures, "assurance-studio", "entities.jsonl"));
+    const entities = await parseJsonl<AsEntityFixture>(
+      join(committedFixtures, "assurance-studio", "entities.jsonl"),
+    );
     const precisionRevision = entities.find(
-      (entity) => BigInt(entity.reviewVersion) > BigInt(Number.MAX_SAFE_INTEGER),
+      (entity) =>
+        BigInt(entity.reviewVersion) > BigInt(Number.MAX_SAFE_INTEGER),
     );
     expect(precisionRevision?.reviewVersion).toBe("9007199254740993");
     const taraDrift = await parseJson<TaraDriftFixture>(
       join(committedFixtures, "assurance-studio", "tara-drift.json"),
     );
-    const taraEntity = entities.find((entity) => entity.id === taraDrift.entityId);
+    const taraEntity = entities.find(
+      (entity) => entity.id === taraDrift.entityId,
+    );
     expect(taraDrift.base).toBe(taraEntity?.fields[taraDrift.field]);
     expect(taraDrift.expectedHeadVersionId).not.toBe(taraEntity?.reviewVersion);
     expect(taraDrift.expectedHeadVersionId).toBe("9007199254740996");
@@ -567,14 +1070,27 @@ describe("deterministic-seed-corpus", () => {
       Number(taraDrift.remoteHeadVersionId),
     );
 
-    const vex = await parseJson<VexBulkFixture>(join(committedFixtures, "platform", "vex-bulk-partial.json"));
+    const vex = await parseJson<VexBulkFixture>(
+      join(committedFixtures, "platform", "vex-bulk-partial.json"),
+    );
     expect(vex.status).toBe("partial_success");
     expect(vex.summary).toEqual({ total: 5, succeeded: 3, failed: 2 });
     expect(vex.results.filter((result) => result.success)).toHaveLength(3);
 
-    expect((await readFile(join(committedFixtures, "platform", "vex-export.csv"), "utf8")).toString()).toMatch(/# rows_written=25 rows_skipped=2\n$/);
-    const jobs = await parseJsonl<ForgeJobFixture>(join(committedFixtures, "forge-compute", "jobs.jsonl"));
-    expect(new Set(jobs.map((job) => job.status))).toEqual(new Set(["RUNNING", "COMPLETED", "FAILED", "TIMEOUT", "CANCELLED"]));
+    expect(
+      (
+        await readFile(
+          join(committedFixtures, "platform", "vex-export.csv"),
+          "utf8",
+        )
+      ).toString(),
+    ).toMatch(/# rows_written=25 rows_skipped=2\n$/);
+    const jobs = await parseJsonl<ForgeJobFixture>(
+      join(committedFixtures, "forge-compute", "jobs.jsonl"),
+    );
+    expect(new Set(jobs.map((job) => job.status))).toEqual(
+      new Set(["RUNNING", "COMPLETED", "FAILED", "TIMEOUT", "CANCELLED"]),
+    );
     const cancelled = jobs.find((job) => job.status === "CANCELLED");
     expect(cancelled).toBeDefined();
     if (cancelled) {
@@ -586,7 +1102,10 @@ describe("deterministic-seed-corpus", () => {
         },
       });
     }
-    const nonForgeFiles = (await relativeFiles(committedFixtures)).filter((path) => !path.startsWith("forge-compute/") && !path.endsWith("manifest.json"));
+    const nonForgeFiles = (await relativeFiles(committedFixtures)).filter(
+      (path) =>
+        !path.startsWith("forge-compute/") && !path.endsWith("manifest.json"),
+    );
     for (const path of nonForgeFiles) {
       const bytes = await readFile(join(committedFixtures, ...path.split("/")));
       expect(bytes.includes(Buffer.from("forge-job-")), path).toBe(false);
@@ -596,13 +1115,27 @@ describe("deterministic-seed-corpus", () => {
   test("different seed changes hashes but preserves schema and count invariants", async () => {
     const firstRoot = await temporaryDirectory();
     const secondRoot = await temporaryDirectory();
-    const first = await generateFixtureCorpus({ seed: DEFAULT_FIXTURE_SEED, outDir: join(firstRoot, "fixtures"), check: false });
-    const second = await generateFixtureCorpus({ seed: "finite-state-eagle-alternate", outDir: join(secondRoot, "fixtures"), check: false });
+    const first = await generateFixtureCorpus({
+      seed: DEFAULT_FIXTURE_SEED,
+      outDir: join(firstRoot, "fixtures"),
+      check: false,
+    });
+    const second = await generateFixtureCorpus({
+      seed: "finite-state-eagle-alternate",
+      outDir: join(secondRoot, "fixtures"),
+      check: false,
+    });
     expect(second.schemaVersion).toBe(first.schemaVersion);
     expect(second.fixedNow).toBe(first.fixedNow);
     expect(second.counts).toEqual(first.counts);
-    expect(second.files.map((file) => file.path)).toEqual(first.files.map((file) => file.path));
-    expect(second.files.filter((file, index) => file.sha256 !== first.files[index].sha256).length).toBe(21);
+    expect(second.files.map((file) => file.path)).toEqual(
+      first.files.map((file) => file.path),
+    );
+    expect(
+      second.files.filter(
+        (file, index) => file.sha256 !== first.files[index].sha256,
+      ).length,
+    ).toBe(21);
   });
 
   test("unknown CLI arguments emit one typed diagnostic without a stack", async () => {
@@ -618,7 +1151,12 @@ describe("deterministic-seed-corpus", () => {
   test("--seed rejects an option as its value without writing", async () => {
     const root = await temporaryDirectory();
     const outDir = join(root, "fixtures");
-    const result = await runGeneratorCli(["--seed", "--check", "--out", outDir]);
+    const result = await runGeneratorCli([
+      "--seed",
+      "--check",
+      "--out",
+      outDir,
+    ]);
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
@@ -631,13 +1169,26 @@ describe("deterministic-seed-corpus", () => {
   test("--check detects one-byte drift and does not overwrite it", async () => {
     const root = await temporaryDirectory();
     const outDir = join(root, "fixtures");
-    await generateFixtureCorpus({ seed: DEFAULT_FIXTURE_SEED, outDir, check: false });
+    await generateFixtureCorpus({
+      seed: DEFAULT_FIXTURE_SEED,
+      outDir,
+      check: false,
+    });
     const driftedPath = join(outDir, "platform", "findings-summary.json");
     const original = await readFile(driftedPath);
-    const drifted = Buffer.concat([original.subarray(0, original.length - 1), Buffer.from(" \n")]);
+    const drifted = Buffer.concat([
+      original.subarray(0, original.length - 1),
+      Buffer.from(" \n"),
+    ]);
     await writeFile(driftedPath, drifted);
 
-    await expect(generateFixtureCorpus({ seed: DEFAULT_FIXTURE_SEED, outDir, check: true })).rejects.toMatchObject({
+    await expect(
+      generateFixtureCorpus({
+        seed: DEFAULT_FIXTURE_SEED,
+        outDir,
+        check: true,
+      }),
+    ).rejects.toMatchObject({
       name: "FixtureGenerationError",
       code: "FIXTURE_DRIFT",
     });
@@ -648,19 +1199,33 @@ describe("deterministic-seed-corpus", () => {
     const root = await temporaryDirectory();
     const invalidOutput = join(root, "not-a-directory");
     await writeFile(invalidOutput, "occupied");
-    await expect(generateFixtureCorpus({ seed: DEFAULT_FIXTURE_SEED, outDir: invalidOutput, check: false })).rejects.toMatchObject({
+    await expect(
+      generateFixtureCorpus({
+        seed: DEFAULT_FIXTURE_SEED,
+        outDir: invalidOutput,
+        check: false,
+      }),
+    ).rejects.toMatchObject({
       name: "FixtureGenerationError",
       code: "INVALID_OUTPUT",
     });
     expect(await readFile(invalidOutput, "utf8")).toBe("occupied");
 
     const untouchedOutput = join(root, "untouched-fixtures");
-    await expect(generateFixtureCorpus({ seed: " bad-seed", outDir: untouchedOutput, check: false })).rejects.toMatchObject({
+    await expect(
+      generateFixtureCorpus({
+        seed: " bad-seed",
+        outDir: untouchedOutput,
+        check: false,
+      }),
+    ).rejects.toMatchObject({
       name: "FixtureGenerationError",
       code: "INVALID_SEED",
     });
     await expect(stat(untouchedOutput)).rejects.toThrow();
-    expect((await readdir(root)).sort(compareText)).toEqual(["not-a-directory"]);
+    expect((await readdir(root)).sort(compareText)).toEqual([
+      "not-a-directory",
+    ]);
   });
 
   test("unwritable output parent fails with a typed message and leaves no partial corpus", async () => {
@@ -669,11 +1234,13 @@ describe("deterministic-seed-corpus", () => {
     await mkdir(parent);
     await chmod(parent, 0o500);
     try {
-      await expect(generateFixtureCorpus({
-        seed: DEFAULT_FIXTURE_SEED,
-        outDir: join(parent, "fixtures"),
-        check: false,
-      })).rejects.toMatchObject({
+      await expect(
+        generateFixtureCorpus({
+          seed: DEFAULT_FIXTURE_SEED,
+          outDir: join(parent, "fixtures"),
+          check: false,
+        }),
+      ).rejects.toMatchObject({
         name: "FixtureGenerationError",
         code: "INVALID_OUTPUT",
       });
@@ -684,18 +1251,31 @@ describe("deterministic-seed-corpus", () => {
   });
 
   test("fixtures contain no secret-like tokens, host paths, wall-clock timestamps, or CRLF", async () => {
-    const manifest = await parseJson<FixtureManifest>(join(committedFixtures, "manifest.json"));
+    const manifest = await parseJson<FixtureManifest>(
+      join(committedFixtures, "manifest.json"),
+    );
     const currentDate = new Date().toISOString().slice(0, 10);
     const textExtensions = new Set([".json", ".jsonl", ".csv", ".md"]);
     for (const path of await relativeFiles(committedFixtures)) {
       const extension = path.slice(path.lastIndexOf("."));
       if (!textExtensions.has(extension)) continue;
-      const contents = await readFile(join(committedFixtures, ...path.split("/")), "utf8");
+      const contents = await readFile(
+        join(committedFixtures, ...path.split("/")),
+        "utf8",
+      );
       expect(contents.includes("\r"), path).toBe(false);
-      expect(contents, path).not.toMatch(/(?:\/Users\/|\/home\/|[A-Z]:\\|BEGIN (?:RSA |OPENSSH )?PRIVATE KEY|gh[opsu]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,})/);
-      if (currentDate !== manifest.fixedNow.slice(0, 10)) expect(contents, path).not.toContain(currentDate);
-      for (const timestamp of contents.matchAll(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z/g)) {
-        expect(timestamp[0], `${path} contains timestamp outside fixed clock`).toBe(manifest.fixedNow);
+      expect(contents, path).not.toMatch(
+        /(?:\/Users\/|\/home\/|[A-Z]:\\|BEGIN (?:RSA |OPENSSH )?PRIVATE KEY|gh[opsu]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,})/,
+      );
+      if (currentDate !== manifest.fixedNow.slice(0, 10))
+        expect(contents, path).not.toContain(currentDate);
+      for (const timestamp of contents.matchAll(
+        /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z/g,
+      )) {
+        expect(
+          timestamp[0],
+          `${path} contains timestamp outside fixed clock`,
+        ).toBe(manifest.fixedNow);
       }
     }
   });

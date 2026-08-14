@@ -9,33 +9,23 @@
     },
     "component-without-purl": {
       "description": "A vulnerable component uses its content-hash fallback identity.",
-      "refs": [
-        "platform/components.jsonl#component=component-0005"
-      ]
+      "refs": ["platform/components.jsonl#component=component-0005"]
     },
     "conflicting-hbom-claims": {
       "description": "Two document-backed claims disagree about the same HBOM field.",
-      "refs": [
-        "documents/hbom-claims.json#component=as-component-01"
-      ]
+      "refs": ["documents/hbom-claims.json#component=as-component-01"]
     },
     "duplicate-finding-row": {
       "description": "One finding row is repeated byte-for-byte in the JSONL collection.",
-      "refs": [
-        "platform/findings.jsonl#finding=8000000000000000027"
-      ]
+      "refs": ["platform/findings.jsonl#finding=8000000000000000027"]
     },
     "firmware-symlink": {
       "description": "A symlink attempts to escape the materialization root.",
-      "refs": [
-        "firmware/manifest.jsonl#path=rootfs/link-outside"
-      ]
+      "refs": ["firmware/manifest.jsonl#path=rootfs/link-outside"]
     },
     "firmware-unpack-error": {
       "description": "A nested archive retains its unpack error in manifest metadata.",
-      "refs": [
-        "firmware/manifest.jsonl#path=rootfs/var/lib/broken-archive.tar"
-      ]
+      "refs": ["firmware/manifest.jsonl#path=rootfs/var/lib/broken-archive.tar"]
     },
     "non-ascii-names": {
       "description": "Names contain composed non-ASCII Latin characters and the micro sign.",
@@ -46,9 +36,7 @@
     },
     "partial-vex-failure": {
       "description": "Bulk VEX succeeds for three rows and fails independently for two.",
-      "refs": [
-        "platform/vex-bulk-partial.json"
-      ]
+      "refs": ["platform/vex-bulk-partial.json"]
     },
     "requirement-without-verification": {
       "description": "One requirement intentionally has no verification check.",
@@ -58,9 +46,7 @@
     },
     "same-field-tara-drift": {
       "description": "Local and remote edits change the same TARA field from a common base.",
-      "refs": [
-        "assurance-studio/tara-drift.json#entity=as-component-01"
-      ]
+      "refs": ["assurance-studio/tara-drift.json#entity=as-component-01"]
     },
     "soft-delete-then-reconfirm": {
       "description": "Expected history includes a soft delete followed by upstream reconfirmation.",
@@ -71,21 +57,15 @@
     },
     "strict-unknown-key": {
       "description": "A strict-schema request contains one unknown key.",
-      "refs": [
-        "faults/strict-unknown-key.json#key=unexpectedFixtureKey"
-      ]
+      "refs": ["faults/strict-unknown-key.json#key=unexpectedFixtureKey"]
     },
     "version-changed-component": {
       "description": "A component changed version between the prior and current product versions.",
-      "refs": [
-        "platform/components.jsonl#component=component-0002"
-      ]
+      "refs": ["platform/components.jsonl#component=component-0002"]
     },
     "withdrawn-document": {
       "description": "One document remains addressable after withdrawal.",
-      "refs": [
-        "documents/documents.json#document=document-6"
-      ]
+      "refs": ["documents/documents.json#document=document-6"]
     },
     "zero-byte-firmware-file": {
       "description": "The firmware tree contains a real zero-byte sample.",
@@ -116,15 +96,15 @@
       "sha256": "00215cc1c8e31894acb1ca68543cb18ce68c2f4bd0e25309fb66fb778582091c"
     },
     {
-      "bytes": 8915,
+      "bytes": 11996,
       "path": "assurance-studio/entities-page-1.json",
-      "sha256": "464e483aaadc8632af3bfeaa3550226fb7306b6dd36266b0420f3782880f8837"
+      "sha256": "fa6de9ec424fbd79b3a3da6c1e30ad60db0f72acc11d96aa239bd9a6c1b5caf6"
     },
     {
-      "bytes": 14175,
+      "bytes": 18778,
       "path": "assurance-studio/entities.jsonl",
       "rows": 62,
-      "sha256": "0daf497c641eff3534545df18acc254c2975935285f56cb9e7e24a2383d0e5e7"
+      "sha256": "e8ac953253588d7928efdebc35d63572b2eb44bfd2f1cbb02fa6026cbb993519"
     },
     {
       "bytes": 13587,

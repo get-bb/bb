@@ -47,6 +47,26 @@ const stringListSchema = z
   .default([]);
 
 export const criticalitySchema = z.enum(["low", "medium", "high", "critical"]);
+export const ASSURANCE_STUDIO_COMPONENT_TYPES = [
+  "firmware",
+  "software",
+  "hardware",
+  "network",
+  "cloud_service",
+  "mobile_app",
+  "web_app",
+  "database",
+  "api",
+  "sensor",
+  "actuator",
+  "communication",
+  "other",
+] as const;
+
+export const assuranceStudioComponentTypeSchema = z.enum(
+  ASSURANCE_STUDIO_COMPONENT_TYPES,
+);
+
 export const componentTypeSchema = z.enum([
   "software",
   "hardware",

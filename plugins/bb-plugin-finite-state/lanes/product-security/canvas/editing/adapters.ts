@@ -16,10 +16,15 @@ import {
 } from "../../../sync/engine/adapter.js";
 import { createSerializer } from "../../../sync/serialize/serializer.js";
 import {
+  assuranceStudioComponentTypeSchema,
+  assetEntitySchema,
   architectureEntityPayload,
-  criticalitySchema,
+  componentEntitySchema,
+  dataflowEntitySchema,
+  threatEntitySchema,
   type ArchitectureYamlEntity,
   type CanvasEntityKind,
+  zoneEntitySchema,
 } from "./schema.js";
 import { parseCanvasEntity, canvasEntityFile } from "./writer.js";
 
@@ -35,6 +40,76 @@ export interface AdapterSlugResolver {
     slug: string,
   ): string | null;
 }
+
+const REMOTE_FIELDS = {
+  common: {
+    name: ["name", "title", "label"],
+    description: ["description", "summary"],
+  },
+  component: {
+    componentType: ["component_type", "componentType", "type"],
+    criticality: ["criticality"],
+    zone: ["zone_id", "zone"],
+    interfaces: ["interfaces"],
+    technologies: ["technologies"],
+    entryPoint: ["is_entry_point", "isEntryPoint"],
+    storesData: ["stores_data", "storesData", "is_data_store", "isDataStore"],
+  },
+  zone: {
+    trustLevel: ["trust_level", "trustLevel"],
+    parent: ["parent_zone_id", "parent_zone", "zone"],
+  },
+  asset: {
+    criticality: ["criticality"],
+    assetType: ["asset_type", "assetType", "type"],
+    zone: ["zone_id", "zone"],
+    dataClassification: ["data_classification"],
+  },
+  dataflow: {
+    source: ["source_component_id", "from_component", "from"],
+    target: ["target_component_id", "to_component", "to"],
+    protocol: ["protocol"],
+    dataTypes: ["data_types", "dataTypes"],
+    encrypted: ["is_encrypted", "encrypted"],
+    authenticated: ["is_authenticated", "authenticated"],
+  },
+  threat: {
+    category: ["category", "stride_category", "stride_categories"],
+    threatSource: ["threat_source", "threatSource"],
+    severity: ["severity"],
+    components: ["affected_component_ids", "affected_components"],
+    assets: ["asset_ids", "affected_asset_ids", "affected_assets"],
+    dataflows: ["affected_dataflow_ids", "affected_dataflows"],
+    mitigations: ["mitigation_ids", "mitigations", "linked_mitigations"],
+    assumptions: ["preconditions", "assumptions"],
+  },
+} as const;
+
+export interface TaraRemoteFieldRead {
+  kind: CanvasEntityKind;
+  field: string;
+  aliases: readonly string[];
+  requirement: "required" | "optional";
+}
+
+export type TaraRemoteFieldReadObserver = (read: TaraRemoteFieldRead) => void;
+
+// The authored YAML schemas stay strict. These boundary-only variants preserve
+// absence for fields that the vendored AS response schemas do not require.
+const remoteComponentEntitySchema = componentEntitySchema
+  .partial({
+    component_type: true,
+    criticality: true,
+  })
+  .extend({
+    component_type: assuranceStudioComponentTypeSchema.optional(),
+  });
+const remoteZoneEntitySchema = zoneEntitySchema.partial({ trust_level: true });
+const remoteAssetEntitySchema = assetEntitySchema.partial({
+  asset_type: true,
+  criticality: true,
+});
+const remoteThreatEntitySchema = threatEntitySchema.partial({ severity: true });
 
 function optional<T extends Json>(
   field: string,
@@ -185,29 +260,6 @@ export function projectPatchFields(
   return projectCreateFields(entity, scope, resolver);
 }
 
-function stringField(
-  fields: Record<string, Json>,
-  ...names: string[]
-): string | undefined {
-  for (const name of names) {
-    const value = fields[name];
-    if (typeof value === "string" && value.trim().length > 0) return value;
-  }
-  return undefined;
-}
-
-function requiredStringField(
-  kind: CanvasEntityKind,
-  fields: Record<string, Json>,
-  ...names: string[]
-): string {
-  const value = stringField(fields, ...names);
-  if (value) return value;
-  throw new Error(
-    `REMOTE_FIELD_MISSING: ${kind} payload lacks ${names.join("/")}.`,
-  );
-}
-
 function isJson(value: unknown): value is Json {
   if (
     value === null ||
@@ -225,84 +277,189 @@ function isJson(value: unknown): value is Json {
   );
 }
 
-function requiredBooleanField(
-  kind: CanvasEntityKind,
-  fields: Record<string, Json>,
-  ...names: string[]
-): boolean {
-  for (const name of names) {
-    const value = fields[name];
-    if (typeof value === "boolean") return value;
-  }
-  throw new Error(
-    `REMOTE_FIELD_MISSING: ${kind} payload lacks ${names.join("/")}.`,
-  );
-}
-
-function requiredStringList(
-  kind: CanvasEntityKind,
-  fields: Record<string, Json>,
-  ...names: string[]
-): string[] {
-  for (const name of names) {
-    const value = fields[name];
-    if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
-      return value;
+function referenceIds(value: Json): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const ids: string[] = [];
+  for (const item of value) {
+    if (typeof item === "string") {
+      ids.push(item);
+      continue;
     }
-  }
-  throw new Error(
-    `REMOTE_FIELD_MISSING: ${kind} payload lacks ${names.join("/")}.`,
-  );
-}
-
-function requiredList(
-  kind: CanvasEntityKind,
-  fields: Record<string, Json>,
-  name: string,
-): Json[] {
-  const value = fields[name];
-  if (Array.isArray(value)) return value;
-  throw new Error(`REMOTE_FIELD_MISSING: ${kind} payload lacks ${name}.`);
-}
-
-function remoteReference(
-  fields: Record<string, Json>,
-  resolver: AdapterSlugResolver,
-  scope: SyncScope,
-  kind: CanvasEntityKind | "mitigation",
-  ...names: string[]
-): string | undefined {
-  const value = stringField(fields, ...names);
-  if (!value) return undefined;
-  return resolver.remoteToSlug(scope, kind, value) ?? derivedRemoteSlug(kind, value);
-}
-
-function remoteReferenceList(
-  fields: Record<string, Json>,
-  resolver: AdapterSlugResolver,
-  scope: SyncScope,
-  kind: CanvasEntityKind | "mitigation",
-  ...names: string[]
-): string[] {
-  let references: string[] | null = null;
-  for (const name of names) {
-    const value = fields[name];
     if (
-      Array.isArray(value) &&
-      value.every((item) => typeof item === "string")
+      typeof item === "object" &&
+      item !== null &&
+      !Array.isArray(item) &&
+      typeof item["id"] === "string"
     ) {
-      references = value;
-      break;
+      ids.push(item["id"]);
+      continue;
     }
+    return null;
   }
-  if (!references) {
+  return ids;
+}
+
+class RemoteFieldReader {
+  constructor(
+    private readonly kind: CanvasEntityKind,
+    private readonly fields: Readonly<Record<string, Json>>,
+    private readonly scope: SyncScope,
+    private readonly resolver: AdapterSlugResolver,
+    private readonly observe?: TaraRemoteFieldReadObserver,
+  ) {}
+
+  private record(
+    field: string,
+    aliases: readonly string[],
+    requirement: TaraRemoteFieldRead["requirement"],
+  ): void {
+    this.observe?.({
+      kind: this.kind,
+      field,
+      aliases: [...aliases],
+      requirement,
+    });
+  }
+
+  private missing(aliases: readonly string[]): never {
     throw new Error(
-      `REMOTE_FIELD_MISSING: ${kind} reference list lacks ${names.join("/")}.`,
+      `REMOTE_FIELD_MISSING: ${this.kind} payload lacks ${aliases.join("/")}.`,
     );
   }
-  return references.map((value) => {
-    return resolver.remoteToSlug(scope, kind, value) ?? derivedRemoteSlug(kind, value);
-  });
+
+  private findString(aliases: readonly string[]): string | undefined {
+    for (const alias of aliases) {
+      const value = this.fields[alias];
+      if (typeof value === "string" && value.trim().length > 0) return value;
+    }
+    return undefined;
+  }
+
+  requiredString(field: string, aliases: readonly string[]): string {
+    this.record(field, aliases, "required");
+    return this.findString(aliases) ?? this.missing(aliases);
+  }
+
+  optionalString(
+    field: string,
+    aliases: readonly string[],
+  ): string | undefined {
+    this.record(field, aliases, "optional");
+    return this.findString(aliases);
+  }
+
+  requiredSingleString(field: string, aliases: readonly string[]): string {
+    this.record(field, aliases, "required");
+    const scalar = this.findString(aliases);
+    if (scalar) return scalar;
+    for (const alias of aliases) {
+      const value = this.fields[alias];
+      if (
+        Array.isArray(value) &&
+        value.every((item) => typeof item === "string")
+      ) {
+        if (value.length === 1 && value[0]!.trim().length > 0) return value[0]!;
+        if (value.length > 1) {
+          throw new Error(
+            `REMOTE_FIELD_UNSUPPORTED: ${this.kind} payload has ${value.length} ${alias} values; authored YAML supports one category.`,
+          );
+        }
+      }
+    }
+    return this.missing(aliases);
+  }
+
+  optionalBoolean(
+    field: string,
+    aliases: readonly string[],
+  ): boolean | undefined {
+    this.record(field, aliases, "optional");
+    for (const alias of aliases) {
+      const value = this.fields[alias];
+      if (typeof value === "boolean") return value;
+    }
+    return undefined;
+  }
+
+  optionalStringList(
+    field: string,
+    aliases: readonly string[],
+  ): string[] | undefined {
+    this.record(field, aliases, "optional");
+    for (const alias of aliases) {
+      const value = this.fields[alias];
+      if (
+        Array.isArray(value) &&
+        value.every((item) => typeof item === "string")
+      ) {
+        return value;
+      }
+    }
+    return undefined;
+  }
+
+  private resolve(
+    targetKind: CanvasEntityKind | "mitigation",
+    remoteId: string,
+  ): string {
+    return (
+      this.resolver.remoteToSlug(this.scope, targetKind, remoteId) ??
+      derivedRemoteSlug(targetKind, remoteId)
+    );
+  }
+
+  optionalReference(
+    field: string,
+    targetKind: CanvasEntityKind | "mitigation",
+    aliases: readonly string[],
+  ): string | undefined {
+    this.record(field, aliases, "optional");
+    const remoteId = this.findString(aliases);
+    return remoteId ? this.resolve(targetKind, remoteId) : undefined;
+  }
+
+  requiredReference(
+    field: string,
+    targetKind: CanvasEntityKind | "mitigation",
+    aliases: readonly string[],
+  ): string {
+    this.record(field, aliases, "required");
+    const remoteId = this.findString(aliases);
+    return remoteId
+      ? this.resolve(targetKind, remoteId)
+      : this.missing(aliases);
+  }
+
+  private findReferenceList(aliases: readonly string[]): string[] | undefined {
+    for (const alias of aliases) {
+      const value = this.fields[alias];
+      if (value === undefined) continue;
+      const ids = referenceIds(value);
+      if (ids !== null) return ids;
+    }
+    return undefined;
+  }
+
+  optionalReferenceList(
+    field: string,
+    targetKind: CanvasEntityKind | "mitigation",
+    aliases: readonly string[],
+  ): string[] | undefined {
+    this.record(field, aliases, "optional");
+    return this.findReferenceList(aliases)?.map((remoteId) =>
+      this.resolve(targetKind, remoteId),
+    );
+  }
+
+  requiredReferenceList(
+    field: string,
+    targetKind: CanvasEntityKind | "mitigation",
+    aliases: readonly string[],
+  ): string[] {
+    this.record(field, aliases, "required");
+    const remoteIds = this.findReferenceList(aliases) ?? this.missing(aliases);
+    return remoteIds.map((remoteId) => this.resolve(targetKind, remoteId));
+  }
 }
 
 function derivedRemoteSlug(
@@ -312,198 +469,256 @@ function derivedRemoteSlug(
   // Fresh pulls must resolve a referenced remote ID before its entity may have
   // been fetched, so the fallback must be derivable from the ID alone. Including
   // a name would make the result order-dependent and can break cross-kind links.
-  const identity = createHash("sha256").update(remoteId).digest("hex").slice(0, 20);
+  const identity = createHash("sha256")
+    .update(remoteId)
+    .digest("hex")
+    .slice(0, 20);
   return `${kind}-${identity}`;
 }
 
 function remotePayload(
   kind: CanvasEntityKind,
   remoteId: string,
-  fields: Record<string, Json>,
+  remote: RemoteFieldReader,
   scope: SyncScope,
   resolver: AdapterSlugResolver,
 ): Record<string, unknown> {
-  const slug = resolver.remoteToSlug(scope, kind, remoteId)
-    ?? derivedRemoteSlug(kind, remoteId);
-  const name = stringField(fields, "name", "title", "label");
-  if (!name) throw new Error(`${kind} remote payload lacks name.`);
-  const description = stringField(fields, "description", "summary");
+  const slug =
+    resolver.remoteToSlug(scope, kind, remoteId) ??
+    derivedRemoteSlug(kind, remoteId);
+  const name = remote.requiredString("name", REMOTE_FIELDS.common.name);
+  const description = remote.optionalString(
+    "description",
+    REMOTE_FIELDS.common.description,
+  );
   const common = { slug, name, ...optional("description", description) };
   switch (kind) {
     case "component":
       return {
         ...common,
-        component_type: requiredStringField(
-          kind,
-          fields,
+        ...optional(
           "component_type",
-          "componentType",
-          "type",
+          remote.optionalString(
+            "component_type",
+            REMOTE_FIELDS.component.componentType,
+          ),
         ),
-        criticality: requiredStringField(kind, fields, "criticality"),
+        ...optional(
+          "criticality",
+          remote.optionalString(
+            "criticality",
+            REMOTE_FIELDS.component.criticality,
+          ),
+        ),
         ...optional(
           "zone",
-          remoteReference(fields, resolver, scope, "zone", "zone_id", "zone"),
+          remote.optionalReference(
+            "zone",
+            "zone",
+            REMOTE_FIELDS.component.zone,
+          ),
         ),
-        interfaces: requiredList(kind, fields, "interfaces"),
-        technologies: requiredStringList(kind, fields, "technologies"),
-        is_entry_point: requiredBooleanField(
-          kind,
-          fields,
+        // AS returns interface labels; authored YAML wraps each label in its
+        // richer local interface object without inventing protocol metadata.
+        ...optional(
+          "interfaces",
+          remote
+            .optionalStringList(
+              "interfaces",
+              REMOTE_FIELDS.component.interfaces,
+            )
+            ?.map((interfaceName) => ({ name: interfaceName })),
+        ),
+        ...optional(
+          "technologies",
+          remote.optionalStringList(
+            "technologies",
+            REMOTE_FIELDS.component.technologies,
+          ),
+        ),
+        ...optional(
           "is_entry_point",
-          "isEntryPoint",
+          remote.optionalBoolean(
+            "is_entry_point",
+            REMOTE_FIELDS.component.entryPoint,
+          ),
         ),
-        stores_data: requiredBooleanField(
-          kind,
-          fields,
+        ...optional(
           "stores_data",
-          "storesData",
-          "is_data_store",
-          "isDataStore",
+          remote.optionalBoolean(
+            "stores_data",
+            REMOTE_FIELDS.component.storesData,
+          ),
         ),
       };
     case "zone":
       return {
         ...common,
-        trust_level: requiredStringField(
-          kind,
-          fields,
+        ...optional(
           "trust_level",
-          "trustLevel",
+          remote.optionalString("trust_level", REMOTE_FIELDS.zone.trustLevel),
         ),
         ...optional(
           "zone",
-          remoteReference(
-            fields,
-            resolver,
-            scope,
-            "zone",
-            "parent_zone_id",
-            "parent_zone",
-            "zone",
-          ),
+          remote.optionalReference("zone", "zone", REMOTE_FIELDS.zone.parent),
         ),
       };
     case "asset": {
-      const criticality = requiredStringField(
-        kind,
-        fields,
-        "criticality",
-        "business_value",
-      );
-      criticalitySchema.parse(criticality);
       return {
         ...common,
-        asset_type: requiredStringField(
-          kind,
-          fields,
-          "asset_type",
-          "assetType",
-          "type",
+        ...optional(
+          "criticality",
+          remote.optionalString("criticality", REMOTE_FIELDS.asset.criticality),
         ),
-        criticality,
+        ...optional(
+          "asset_type",
+          remote.optionalString("asset_type", REMOTE_FIELDS.asset.assetType),
+        ),
         ...optional(
           "zone",
-          remoteReference(fields, resolver, scope, "zone", "zone_id", "zone"),
+          remote.optionalReference("zone", "zone", REMOTE_FIELDS.asset.zone),
         ),
         ...optional(
           "data_classification",
-          stringField(fields, "data_classification"),
+          remote.optionalString(
+            "data_classification",
+            REMOTE_FIELDS.asset.dataClassification,
+          ),
         ),
       };
     }
     case "dataflow":
       return {
         ...common,
-        from: remoteReference(
-          fields,
-          resolver,
-          scope,
-          "component",
-          "source_component_id",
-          "from_component",
+        from: remote.requiredReference(
           "from",
-        ),
-        to: remoteReference(
-          fields,
-          resolver,
-          scope,
           "component",
-          "target_component_id",
-          "to_component",
+          REMOTE_FIELDS.dataflow.source,
+        ),
+        to: remote.requiredReference(
           "to",
+          "component",
+          REMOTE_FIELDS.dataflow.target,
         ),
-        ...optional("protocol", stringField(fields, "protocol")),
-        data_types: requiredStringList(kind, fields, "data_types", "dataTypes"),
-        encrypted: requiredBooleanField(
-          kind,
-          fields,
-          "is_encrypted",
+        ...optional(
+          "protocol",
+          remote.optionalString("protocol", REMOTE_FIELDS.dataflow.protocol),
+        ),
+        ...optional(
+          "data_types",
+          remote.optionalStringList(
+            "data_types",
+            REMOTE_FIELDS.dataflow.dataTypes,
+          ),
+        ),
+        ...optional(
           "encrypted",
+          remote.optionalBoolean("encrypted", REMOTE_FIELDS.dataflow.encrypted),
         ),
-        authenticated: requiredBooleanField(
-          kind,
-          fields,
-          "is_authenticated",
+        ...optional(
           "authenticated",
-        ),
-        bidirectional: requiredBooleanField(
-          kind,
-          fields,
-          "is_bidirectional",
-          "bidirectional",
+          remote.optionalBoolean(
+            "authenticated",
+            REMOTE_FIELDS.dataflow.authenticated,
+          ),
         ),
       };
     case "threat":
       return {
         ...common,
-        category: requiredStringField(
-          kind,
-          fields,
+        category: remote.requiredSingleString(
           "category",
-          "stride_category",
+          REMOTE_FIELDS.threat.category,
         ),
-        threat_source: requiredStringField(
-          kind,
-          fields,
+        threat_source: remote.requiredString(
           "threat_source",
-          "threatSource",
+          REMOTE_FIELDS.threat.threatSource,
         ),
-        severity: requiredStringField(kind, fields, "severity"),
-        affected_components: remoteReferenceList(
-          fields,
-          resolver,
-          scope,
-          "component",
-          "affected_component_ids",
+        // AS's Threat response has no threat severity field. Keep it absent
+        // instead of fabricating one from the semantically different risk_level.
+        ...optional(
+          "severity",
+          remote.optionalString("severity", REMOTE_FIELDS.threat.severity),
+        ),
+        ...optional(
           "affected_components",
+          remote.optionalReferenceList(
+            "affected_components",
+            "component",
+            REMOTE_FIELDS.threat.components,
+          ),
         ),
-        affected_assets: remoteReferenceList(
-          fields,
-          resolver,
-          scope,
-          "asset",
-          "affected_asset_ids",
+        affected_assets: remote.requiredReferenceList(
           "affected_assets",
+          "asset",
+          REMOTE_FIELDS.threat.assets,
         ),
-        dataflows: remoteReferenceList(
-          fields,
-          resolver,
-          scope,
-          "dataflow",
-          "affected_dataflow_ids",
-          "affected_dataflows",
+        // AS does not return a threat-to-dataflow relation. Omission preserves
+        // that unknown state instead of asserting an empty remote relation.
+        ...optional(
+          "dataflows",
+          remote.optionalReferenceList(
+            "dataflows",
+            "dataflow",
+            REMOTE_FIELDS.threat.dataflows,
+          ),
         ),
-        mitigations: remoteReferenceList(
-          fields,
-          resolver,
-          scope,
-          "mitigation",
-          "mitigation_ids",
+        mitigations: remote.requiredReferenceList(
           "mitigations",
+          "mitigation",
+          REMOTE_FIELDS.threat.mitigations,
         ),
-        assumptions: requiredStringList(kind, fields, "assumptions"),
+        ...optional(
+          "assumptions",
+          remote.optionalStringList(
+            "assumptions",
+            REMOTE_FIELDS.threat.assumptions,
+          ),
+        ),
       };
+  }
+}
+
+function canonicalRemotePayload(
+  kind: CanvasEntityKind,
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  switch (kind) {
+    case "component": {
+      const { kind: _kind, ...fields } = remoteComponentEntitySchema.parse({
+        kind,
+        ...payload,
+      });
+      return fields;
+    }
+    case "zone": {
+      const { kind: _kind, ...fields } = remoteZoneEntitySchema.parse({
+        kind,
+        ...payload,
+      });
+      return fields;
+    }
+    case "asset": {
+      const { kind: _kind, ...fields } = remoteAssetEntitySchema.parse({
+        kind,
+        ...payload,
+      });
+      return fields;
+    }
+    case "dataflow": {
+      const { kind: _kind, ...fields } = dataflowEntitySchema.parse({
+        kind,
+        ...payload,
+      });
+      return fields;
+    }
+    case "threat": {
+      const { kind: _kind, ...fields } = remoteThreatEntitySchema.parse({
+        kind,
+        ...payload,
+      });
+      return fields;
+    }
   }
 }
 
@@ -512,6 +727,7 @@ export function projectRemoteEntity(
   remote: AsEntity,
   scope: SyncScope,
   resolver: AdapterSlugResolver,
+  observe?: TaraRemoteFieldReadObserver,
 ): ServerEntity {
   if (remote.kind !== kind) {
     throw new Error(
@@ -533,19 +749,16 @@ export function projectRemoteEntity(
       fields[field] = value;
     }
   }
-  const entity = parseCanvasEntity(
+  const payload = canonicalRemotePayload(
     kind,
-    createSerializer(kind).toYaml(
-      remotePayload(kind, remote.id, fields, scope, resolver),
-      {
-        idToSlug() {
-          return null;
-        },
-      },
+    remotePayload(
+      kind,
+      remote.id,
+      new RemoteFieldReader(kind, fields, scope, resolver, observe),
+      scope,
+      resolver,
     ),
-    `<remote:${kind}:${remote.id}>`,
   );
-  const payload = architectureEntityPayload(entity);
   return {
     key: ENTITIES[kind].key(payload),
     remoteId: remote.id,
