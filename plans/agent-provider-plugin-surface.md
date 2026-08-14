@@ -175,7 +175,7 @@ bb.agents.experimental_registerProvider({
   id: "claude-code",                    // stable; existing ids unchanged
   displayName: "Claude Code",
   icon: { asset: "icons/claude.svg" },  // served via existing plugin assets
-  kind: "agent",                        // "agent" | "router" — metadata only for now
+  kind: "agent",                        // "agent" | "router" — see router note below
   capabilities: {
     // one merged block: today's ProviderCapabilities + ProviderServerCapabilities
     fork: true, archive: false, rename: false, serviceTier: false,
@@ -190,7 +190,7 @@ bb.agents.experimental_registerProvider({
   composerActions: [...],
   executionOptionScopes: { model: "live", reasoningLevel: "live", ... },
   approvalRequestPolicy: "provider",
-  bridge: { entry: "provider-bridge" }, // built artifact, see delivery below
+  bridge: { entry: "provider-bridge" }, // required for kind "agent"; routers omit it
   cli: {                                // drives generic daemon health/install
     executable: "claude", npmPackage: "@anthropic-ai/claude-code",
     minVersion: "...", install: {...}, update: {...},
@@ -208,9 +208,27 @@ hardcoded icon maps and reads `logoUrl` at every icon call site. The app
 stops importing `@bb/agent-providers` entirely (the speculative
 execution-options placeholder switches to last-known server data).
 
-`kind: "router"` is **reserved metadata** in this change: declared, stored,
-surfaced on `ProviderInfo`, but nothing in core implements delegation. A
-router provider's bridge does its own delegation behind the same protocol.
+**Routers.** A provider entry is ultimately a picker option that resolves
+into thread execution params at submit time. A `kind: "router"` provider is a
+provider that makes that resolution *dynamic*: it appears in the
+model/reasoning pickers like any other provider, but it never executes
+anything itself — at submit it resolves the submission into another
+registered provider's (model, reasoning) pair, and the thread runs on that
+delegate's bridge. Motivating future example (not built in this change): an
+"Auto" plugin whose settings page holds a user-authored routing prompt, e.g.
+"frontend work → Claude Code Opus, everything else → Codex 5.6-sol".
+
+Consequences for this change:
+
+- `kind: "agent"` **requires** `bridge`; `kind: "router"` **omits** it
+  (declaration validation enforces both directions). Every regular provider
+  ships a bridge that runs on the host and implements the protocol.
+- Routing resolution is server-side product policy (plugins run in the
+  server; the daemon only ever sees the resolved delegate provider), which is
+  where a future `resolveExecution(submission) → {providerId, model,
+  reasoningLevel}` plugin hook slots in. That hook is **not** part of this
+  change — this change only guarantees the declaration shape, `ProviderInfo`
+  `kind`, and the bridge-optional rule leave room for it.
 
 ### 4. Bridge delivery to hosts
 
@@ -363,7 +381,9 @@ protocol method:
 
 ## Explicitly out of scope
 
-- Router delegation semantics (only the `kind` metadata ships).
+- Router delegation semantics: only the `kind` metadata and the
+  bridge-optional declaration rule ship; the submit-time resolution hook is
+  future work for the auto-router plugin.
 - Per-provider timeline rendering via plugin frontends — bridges normalize
   events instead; provider plugins may use existing slots (settings sections,
   composer customizations) for provider-specific UI.
@@ -371,17 +391,94 @@ protocol method:
   the co-located home where that work can happen incrementally).
 - Sandboxing bridges beyond installation trust.
 
-## Open questions (recommended defaults in parentheses)
+## Decisions (Michael, 2026-08-14)
 
-1. Third-party bridge trust: is installation trust sufficient, or do we want
-   a per-host approval step before a plugin's bridge first runs on an
-   enrolled machine? (Default: installation trust, matching plugins and
-   `customAcpAgents` today.)
-2. Are first-party provider plugins individually disable-able? (Default:
-   yes — it forces the graceful-absence path to be correct, which a crashed
-   plugin exercises anyway.)
-3. `kind: "router"` — reserved metadata only, or does something read it in
-   this change? (Default: reserved.)
-4. `customAcpAgents` long-term: keep config.json compatibility under the acp
-   plugin indefinitely, or migrate to plugin settings with a one-time import?
-   (Default: keep compatibility; add the settings UI on top.)
+1. **Bridge trust**: installation trust is sufficient — no per-host approval
+   step. Matches plugins and `customAcpAgents` today.
+2. **Disable-ability**: first-party provider plugins are individually
+   disable-able; the "provider unavailable" absence path must be correct.
+3. **Routers**: the motivating case is a future "Auto" router plugin that
+   dynamically resolves each submission to another provider's
+   (model, reasoning) pair via a user-authored routing prompt in its settings
+   page. Not built now; this change ships `kind`, the bridge-required-for-
+   agents / bridge-absent-for-routers declaration rule, and leaves the
+   server-side resolution hook as future work. Every regular provider
+   registers a host-run bridge implementing the protocol.
+4. **`customAcpAgents`** (default stands, not explicitly decided): keep
+   config.json compatibility under the acp plugin; add the settings UI on
+   top.
+
+## Appendix: Phase 2 anatomy — what the four adapters share and where the code moves
+
+Each provider today is an in-core adapter (the 16-member `ProviderAdapter`)
+plus, for three of four, a bridge child process:
+
+| Provider | In-core today | In bridge today | Child process |
+| --- | --- | --- | --- |
+| claude-code | ~7.3k lines (adapter, `translate-message.ts` 1073, `task-translation.ts`, `schemas.ts`, `interactive-contract.ts`, visibility, model list) | ~2.1k (wraps Claude Agent SDK; permission + readonly-bash policy) | `node bb-claude-bridge` |
+| pi | ~2.5k (adapter, visibility, model list) | ~1.9k (wraps Pi SDK) | `node bb-pi-bridge` |
+| acp | ~2.7k (adapter, `wire.ts`, `bridge-protocol.ts`, visibility, profiles) | ~2.9k (generic ACP client, permission/fs policy, model catalog, MCP tool proxy) | `node bb-acp-bridge` → ACP agent |
+| codex | **all** ~7.2k (adapter, `event-translation.ts` 1095, `schemas.ts` 998, interactive requests, permission maps, visibility, models) | none | `codex app-server` directly |
+
+**Already uniform.** The outbound request vocabulary is the same on every
+process boundary — all four send `initialize`, `model/list`, `thread/start`,
+`thread/resume`, `thread/fork`, `turn/start`, `turn/steer`, `thread/stop`
+(+ `thread/compact`, `thread/archive` where supported). The bb-authored
+bridges use bb-shaped methods, and codex app-server's native protocol is what
+`AdapterCommand` was modeled on. `buildCommandPlan` implementations differ in
+**params construction**, not method choice. `createStandardAdapterMembers`
+(`shared/standard-adapter-members.ts`) is already the de-facto base class —
+it synthesizes command dispatch, unsupported-command noops, accepted-user-
+message events, tool-call decode, and normalized model-list parsing. The
+generic `BridgeProviderAdapter` is essentially that helper with its two open
+slots (`buildProviderCommandPlan`, `translateEvent`) turned into constants.
+
+**Genuinely different — the four deltas:**
+
+1. **Inbound event vocabulary** (~70% of adapter code). claude-code and pi
+   bridges forward raw SDK payloads in `sdk/message` envelopes; acp forwards
+   semi-normalized `acp/update` notifications; codex emits app-server
+   notifications (`turn/started`, `item/*`, deltas). Each `translateEvent`
+   converts its language into the same bb `ThreadEvent`s. Pure translation,
+   no runtime-state dependencies → moves file-for-file into each bridge,
+   which then emits `thread/event` notifications carrying finished
+   `ThreadEvent`s. Unit tests move verbatim.
+2. **Codec split (`native` vs `normalized`) = turn-id ownership.** Codex
+   turn ids come from the provider (hence `prepareTurnStart` correlation,
+   custom model-list parsing, tool calls keyed by `threadId`); the other
+   three synthesize bb turn ids in adapter-held state (tool calls keyed by
+   `providerThreadId`). The distinction **dissolves** rather than porting:
+   with translation and id synthesis both inside the bridge, every bridge
+   mints turn/item ids under the same conformance rules (turn-scoped,
+   per-instance entropy), the codex bridge keeps its id mapping internal,
+   and the two-shape `item/tool/call` contract collapses to one.
+3. **Interactive/permission requests.** claude-code: richest contract +
+   the only `approvalRequestPolicy: "provider"` adapter (bridge pre-filters
+   against policy). codex: approval-decision maps. acp: single
+   `acp/permission/request`. pi: none (`full`-only). Canonical
+   `PendingInteractionPayload` shapes already exist in
+   `shared/pending-interaction-normalization.ts`; bridges emit those, the
+   mapping moves inside, and `approvalRequestPolicy` stays declared (the
+   runtime already supports both modes).
+4. **Execution-settings behavior.** `classifyExecutionSettingsChange` /
+   `normalizeExecutionOptions` differ per provider (claude supports live
+   model swap; others require session rebuild). These become the declared
+   per-option scope table — not a bridge round-trip, because the server and
+   runtime need the answer before deciding whether to reconfigure.
+
+Plus the out-of-adapter leakage that gets deleted: codex process keying,
+archived-session regexes, and rename-retry in `runtime.ts` become declared
+`processScope` + typed protocol error codes; per-provider `visibility.ts`
+becomes the bridge's own choice of what to forward on the droppable
+`provider/raw` channel.
+
+**Per-provider PR mechanics** (same three moves each): fix the bridge's
+params/notifications to the canonical schemas → relocate translation modules
+into the bridge and emit `ThreadEvent`s → delete the bespoke adapter and
+register on the generic adapter with declaration data. Ordering by gap size:
+acp (bridge-protocol.ts is ~90% the target), pi (smallest translation move),
+claude-code (largest translation + exercises the `"provider"` approval path),
+codex (the only *new* bridge — near-passthrough on the command side since
+app-server already speaks the same methods; costs one extra process hop,
+buys uniform lifecycle, the env allowlist, and deleting the `runtime.ts`
+special cases). Only phase 1 involves design; phase 2 is pinned code motion.
