@@ -111,6 +111,10 @@ describe("plugin catalog service", () => {
           installedCatalogEntries.push(args);
           throw new Error("catalog installation stopped by test");
         },
+        resolveCatalogNpmSource: async () => ({
+          outcome: "unavailable" as const,
+          detail: "no registry in this test",
+        }),
       },
       ...(options?.bundledPlugins === undefined
         ? {}
@@ -234,9 +238,9 @@ describe("plugin catalog service", () => {
 
   it("rejects unknown catalog entries", async () => {
     const catalog = service();
-    await expect(catalog.install({ entryId: "does-not-exist" })).rejects.toThrow(
-      'unknown plugin catalog entry "does-not-exist"',
-    );
+    await expect(
+      catalog.install({ entryId: "does-not-exist" }),
+    ).rejects.toThrow('unknown plugin catalog entry "does-not-exist"');
   });
 
   it("drops entries whose bundled manifest is unreadable", async () => {

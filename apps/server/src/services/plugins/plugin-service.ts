@@ -211,7 +211,25 @@ export interface PluginService {
     npmRegistry?: string;
     /** Git commit the user confirmed before a third-party install. */
     expectedGitCommit?: string;
+    /** npm version the user confirmed before a third-party install. */
+    expectedNpmVersion?: string;
+    /** Integrity confirmed with that version, when the registry published one. */
+    expectedNpmIntegrity?: string;
   }): Promise<PluginListEntry>;
+  /**
+   * The exact npm version and integrity a listing's spec resolves to now.
+   * The catalog shows this in the install confirmation, and the install then
+   * refuses anything else.
+   */
+  resolveCatalogNpmSource(args: {
+    packageName: string;
+    registry?: string;
+    requestedSpec: string;
+    specKind: "default" | "exact" | "tag" | "range";
+  }): Promise<
+    | { outcome: "resolved"; version: string; integrity: string }
+    | { outcome: "unavailable"; detail: string }
+  >;
   installPath(path: string): Promise<PluginListEntry>;
   checkForUpdates(id?: string): Promise<PluginUpdateCheckEntry[]>;
   listUpdateResults(): PluginUpdateCheckEntry[];
@@ -1545,6 +1563,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           ...(entry.expectedGitCommit === undefined
             ? {}
             : { expectedGitCommit: entry.expectedGitCommit }),
+          ...(entry.expectedNpmVersion === undefined
+            ? {}
+            : { expectedNpmVersion: entry.expectedNpmVersion }),
+          ...(entry.expectedNpmIntegrity === undefined
+            ? {}
+            : { expectedNpmIntegrity: entry.expectedNpmIntegrity }),
         };
         if (parsed.kind === "git") {
           return installGitSource(
@@ -1569,6 +1593,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         );
       });
     },
+
+    resolveCatalogNpmSource: (args) =>
+      managedPluginArtifacts.resolveNpmCandidateForPlan(args),
 
     installPath: (path) =>
       withPluginOperationLock(REGISTRATION_MUTATION_KEY, () =>

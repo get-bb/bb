@@ -50,6 +50,10 @@ describe("plugin catalog routes", () => {
         installCatalogPlugin: async () => {
           throw new Error("unexpected catalog install");
         },
+        resolveCatalogNpmSource: async () => ({
+          outcome: "unavailable" as const,
+          detail: "no registry in this test",
+        }),
       },
       ...(fetchImpl === undefined ? {} : { fetch: fetchImpl }),
     });
@@ -284,6 +288,7 @@ describe("plugin catalog routes", () => {
             kind: "npm",
             package: "bb-plugin-notes",
             range: "^1.0.0",
+            unresolvedReason: "no registry in this test",
           },
         },
       });
@@ -308,11 +313,14 @@ describe("plugin catalog routes", () => {
           kind: "npm",
           package: "bb-plugin-notes",
           range: "^1.0.0",
+          unresolvedReason: "no registry in this test",
         },
       });
+      // The route reached the marketplace entry; the install then refused
+      // because a range with no resolved version identifies no exact code.
       expect(install.status).toBe(422);
       await expect(install.json()).resolves.toMatchObject({
-        error: expect.stringContaining("unexpected catalog install"),
+        error: expect.stringContaining("the npm source could not be resolved"),
       });
 
       const unknownMarketplace = await postJson(

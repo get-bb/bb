@@ -428,8 +428,9 @@ export type PluginCatalogSearchResponse = z.infer<
 
 /**
  * The true source an install will run against, resolved before anything runs.
- * A git entry also reports the tag and commit it resolves to right now, so a
- * range install is confirmed against the exact code it will fetch.
+ * Both kinds report the exact artifact they resolve to right now — a commit
+ * for git, a version and its integrity for npm — so a range or tag install is
+ * confirmed against the exact code it will fetch.
  */
 export const pluginCatalogResolvedSourceSchema = z.discriminatedUnion("kind", [
   z
@@ -442,6 +443,15 @@ export const pluginCatalogResolvedSourceSchema = z.discriminatedUnion("kind", [
       tag: z.string().optional(),
       /** Registry override the listing pins; absent uses bb's default. */
       registry: z.string().optional(),
+      /** Exact version the range or tag resolves to now; absent when unresolved. */
+      resolvedVersion: z.string().optional(),
+      /**
+       * Subresource integrity the registry publishes for that version; absent
+       * when the registry omits it, which bb reports rather than invents.
+       */
+      resolvedIntegrity: z.string().optional(),
+      /** Why bb could not resolve the version; absent once it resolved. */
+      unresolvedReason: z.string().optional(),
     })
     .strict(),
   z

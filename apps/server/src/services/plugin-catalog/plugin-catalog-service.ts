@@ -149,7 +149,7 @@ export function createPluginCatalogService(deps: {
   dataDir: string;
   plugins: Pick<
     PluginService,
-    "installOfficialPlugin" | "installCatalogPlugin"
+    "installOfficialPlugin" | "installCatalogPlugin" | "resolveCatalogNpmSource"
   >;
   bundledPlugins?: readonly BundledPluginRegistration[];
   fetch?: MarketplaceFetch;
@@ -725,19 +725,69 @@ export function createPluginCatalogService(deps: {
     }
   }
 
+  /**
+   * The exact version and integrity an npm entry resolves to right now, the
+   * npm counterpart of {@link resolveGitEntrySource}. A range or a dist-tag
+   * can name different code minute to minute, so a confirmation that shows
+   * only "package@^1.0.0" does not identify what the install will run.
+   */
+  async function resolveNpmEntrySource(
+    npm: Extract<MarketplaceEntry["source"], { npm: unknown }>["npm"],
+  ): Promise<PluginCatalogResolvedSource> {
+    const base = {
+      kind: "npm" as const,
+      package: npm.package,
+      ...(npm.range === undefined ? {} : { range: npm.range }),
+      ...(npm.tag === undefined ? {} : { tag: npm.tag }),
+      ...(npm.registry === undefined ? {} : { registry: npm.registry }),
+    };
+    try {
+      const resolved = await deps.plugins.resolveCatalogNpmSource({
+        packageName: npm.package,
+        ...(npm.registry === undefined ? {} : { registry: npm.registry }),
+        requestedSpec: npm.range ?? npm.tag ?? "",
+        specKind:
+          npm.range !== undefined
+            ? "range"
+            : npm.tag !== undefined
+              ? "tag"
+              : "default",
+      });
+      if (resolved.outcome === "unavailable") {
+        return { ...base, unresolvedReason: resolved.detail };
+      }
+      return {
+        ...base,
+        resolvedVersion: resolved.version,
+        // A registry that publishes no integrity is reported as it is; bb
+        // does not invent one, and the install then binds on version only.
+        ...(resolved.integrity.length === 0
+          ? {}
+          : { resolvedIntegrity: resolved.integrity }),
+      };
+    } catch (error) {
+      return { ...base, unresolvedReason: marketplaceErrorMessage(error) };
+    }
+  }
+
   async function resolvedEntrySourceView(
     entry: MarketplaceEntry,
     official: boolean,
   ): Promise<PluginCatalogResolvedSource> {
     if ("npm" in entry.source) {
       const npm = entry.source.npm;
-      return {
-        kind: "npm",
-        package: npm.package,
-        ...(npm.range === undefined ? {} : { range: npm.range }),
-        ...(npm.tag === undefined ? {} : { tag: npm.tag }),
-        ...(npm.registry === undefined ? {} : { registry: npm.registry }),
-      };
+      // The official catalog is reviewed and its sources are BB's own, so its
+      // confirmation does not pay for a registry round trip.
+      if (official) {
+        return {
+          kind: "npm",
+          package: npm.package,
+          ...(npm.range === undefined ? {} : { range: npm.range }),
+          ...(npm.tag === undefined ? {} : { tag: npm.tag }),
+          ...(npm.registry === undefined ? {} : { registry: npm.registry }),
+        };
+      }
+      return resolveNpmEntrySource(npm);
     }
     const git = entry.source.git;
     // The official catalog is reviewed and its sources are BB's own, so its
@@ -768,10 +818,19 @@ export function createPluginCatalogService(deps: {
     });
   }
 
+  /**
+   * The exact artifact a confirmed third-party install is bound to. The
+   * install pipeline refuses anything else, so a mutable range, dist-tag, or
+   * branch cannot deliver different full-trust code after the confirmation.
+   */
+  type ConfirmedEntryBinding =
+    | { kind: "git"; commit: string }
+    | { kind: "npm"; version: string; integrity: string | undefined };
+
   async function installMarketplaceEntry(
     row: PluginMarketplaceRow,
     entry: MarketplaceEntry,
-    expectedGitCommit?: string,
+    binding?: ConfirmedEntryBinding,
   ): Promise<InstalledPlugin> {
     // The UI disables incompatible entries, but the server owns the policy:
     // refuse direct installs the store would not offer.
@@ -788,14 +847,22 @@ export function createPluginCatalogService(deps: {
       ...(resolved.npmRegistry === undefined
         ? {}
         : { npmRegistry: resolved.npmRegistry }),
-      ...(expectedGitCommit === undefined ? {} : { expectedGitCommit }),
+      ...(binding?.kind === "git" ? { expectedGitCommit: binding.commit } : {}),
+      ...(binding?.kind === "npm"
+        ? {
+            expectedNpmVersion: binding.version,
+            ...(binding.integrity === undefined
+              ? {}
+              : { expectedNpmIntegrity: binding.integrity }),
+          }
+        : {}),
     });
   }
 
   async function confirmedThirdPartySource(args: {
     entry: MarketplaceEntry;
     confirmed: PluginCatalogResolvedSource | undefined;
-  }): Promise<string | undefined> {
+  }): Promise<ConfirmedEntryBinding> {
     if (args.confirmed === undefined) {
       throw new Error(
         "install refused: confirm the third-party marketplace source first",
@@ -807,13 +874,24 @@ export function createPluginCatalogService(deps: {
         "install refused: the marketplace source changed after confirmation; review it again",
       );
     }
-    if (current.kind === "npm") return undefined;
+    if (current.kind === "npm") {
+      if (current.resolvedVersion === undefined) {
+        throw new Error(
+          `install refused: the npm source could not be resolved (${current.unresolvedReason ?? "no version"})`,
+        );
+      }
+      return {
+        kind: "npm",
+        version: current.resolvedVersion,
+        integrity: current.resolvedIntegrity,
+      };
+    }
     if (current.resolvedCommit === undefined) {
       throw new Error(
         `install refused: the git source could not be resolved (${current.unresolvedReason ?? "no commit"})`,
       );
     }
-    return current.resolvedCommit;
+    return { kind: "git", commit: current.resolvedCommit };
   }
 
   return {

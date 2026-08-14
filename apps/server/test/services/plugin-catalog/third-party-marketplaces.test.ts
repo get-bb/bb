@@ -15,6 +15,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
 import type { MarketplaceFetch } from "../../../src/services/plugin-catalog/marketplace-http.js";
+import type { PluginService } from "../../../src/services/plugins/plugin-service.js";
 
 const run = promisify(execFile);
 
@@ -99,6 +100,7 @@ describe("third-party marketplaces", () => {
   function service(options?: {
     fetch?: MarketplaceFetch;
     warn?: (message: string) => void;
+    resolveNpm?: PluginService["resolveCatalogNpmSource"];
   }) {
     return createPluginCatalogService({
       db,
@@ -114,6 +116,13 @@ describe("third-party marketplaces", () => {
           installedCatalogEntries.push(args);
           throw new Error("catalog installation stopped by test");
         },
+        resolveCatalogNpmSource:
+          options?.resolveNpm ??
+          (async () => ({
+            outcome: "resolved" as const,
+            version: "1.4.2",
+            integrity: "sha512-listed",
+          })),
       },
       ...(options?.fetch === undefined ? {} : { fetch: options.fetch }),
       ...(options?.warn === undefined ? {} : { warn: options.warn }),
@@ -356,7 +365,12 @@ describe("third-party marketplaces", () => {
       catalog.install({
         entryId: "notes",
         marketplace: "acme-plugins",
-        confirmedSource: { kind: "npm", package: "bb-plugin-notes" },
+        confirmedSource: {
+          kind: "npm",
+          package: "bb-plugin-notes",
+          resolvedVersion: "1.4.2",
+          resolvedIntegrity: "sha512-listed",
+        },
       }),
     ).rejects.toThrow("catalog installation stopped by test");
     expect(installedCatalogEntries).toEqual([
@@ -366,6 +380,10 @@ describe("third-party marketplaces", () => {
         pluginId: "notes",
         source: "npm:bb-plugin-notes",
         selection: { kind: "root" },
+        // The confirmed version and integrity travel to the installer, which
+        // refuses anything else.
+        expectedNpmVersion: "1.4.2",
+        expectedNpmIntegrity: "sha512-listed",
       },
     ]);
   });
@@ -394,6 +412,10 @@ describe("third-party marketplaces", () => {
         installCatalogPlugin: async () => {
           throw new Error("unexpected catalog install");
         },
+        resolveCatalogNpmSource: async () => ({
+          outcome: "unavailable" as const,
+          detail: "no registry in this test",
+        }),
       },
       fetch: marketplaceFetch({ [OFFICIAL_URL]: manifest("bb-official", []) }),
     });
@@ -423,7 +445,12 @@ describe("third-party marketplaces", () => {
     await expect(
       catalog.install({
         entryId: "notes",
-        confirmedSource: { kind: "npm", package: "bb-plugin-notes" },
+        confirmedSource: {
+          kind: "npm",
+          package: "bb-plugin-notes",
+          resolvedVersion: "1.4.2",
+          resolvedIntegrity: "sha512-listed",
+        },
       }),
     ).rejects.toThrow("catalog installation stopped by test");
     expect(installedCatalogEntries).toHaveLength(1);
@@ -853,6 +880,185 @@ describe("third-party marketplaces", () => {
       /marketplace manifest exceeds/u,
     );
     expect(getPluginMarketplace(db, "acme-plugins")).toBeUndefined();
+  });
+
+  it("binds an npm install to the exact version it confirmed", async () => {
+    const npmEntry = entry({
+      source: { npm: { package: "bb-plugin-notes", range: "^1.0.0" } },
+    });
+    let resolvedVersion = "1.4.2";
+    const catalog = service({
+      fetch: marketplaceFetch({
+        [OFFICIAL_URL]: manifest("bb-official", []),
+        [ACME_URL]: manifest("acme-plugins", [npmEntry]),
+      }),
+      resolveNpm: async () => ({
+        outcome: "resolved" as const,
+        version: resolvedVersion,
+        integrity: `sha512-${resolvedVersion}`,
+      }),
+    });
+    await catalog.addMarketplace(ACME_URL);
+
+    const plan = await catalog.installPlan({
+      entryId: "notes",
+      marketplace: "acme-plugins",
+    });
+    // The plan names exact code, not just the range the listing tracks.
+    expect(plan).toMatchObject({
+      kind: "marketplace",
+      resolvedSource: {
+        kind: "npm",
+        package: "bb-plugin-notes",
+        range: "^1.0.0",
+        resolvedVersion: "1.4.2",
+        resolvedIntegrity: "sha512-1.4.2",
+      },
+    });
+    if (plan.kind !== "marketplace") throw new Error("expected a marketplace");
+
+    // The range now resolves elsewhere: the confirmation no longer describes
+    // what the install would fetch, so the install refuses.
+    resolvedVersion = "1.5.0";
+    await expect(
+      catalog.install({
+        entryId: "notes",
+        marketplace: "acme-plugins",
+        confirmedSource: plan.resolvedSource,
+      }),
+    ).rejects.toThrow(/source changed after confirmation/u);
+    expect(installedCatalogEntries).toEqual([]);
+
+    // Confirming the current resolution installs, bound to that exact pair.
+    const current = await catalog.installPlan({
+      entryId: "notes",
+      marketplace: "acme-plugins",
+    });
+    if (current.kind !== "marketplace") {
+      throw new Error("expected a marketplace");
+    }
+    await expect(
+      catalog.install({
+        entryId: "notes",
+        marketplace: "acme-plugins",
+        confirmedSource: current.resolvedSource,
+      }),
+    ).rejects.toThrow("catalog installation stopped by test");
+    expect(installedCatalogEntries).toEqual([
+      expect.objectContaining({
+        expectedNpmVersion: "1.5.0",
+        expectedNpmIntegrity: "sha512-1.5.0",
+      }),
+    ]);
+  });
+
+  it("refuses an npm install whose version cannot be resolved", async () => {
+    const npmEntry = entry({
+      source: { npm: { package: "bb-plugin-notes", tag: "beta" } },
+    });
+    const catalog = service({
+      fetch: marketplaceFetch({
+        [OFFICIAL_URL]: manifest("bb-official", []),
+        [ACME_URL]: manifest("acme-plugins", [npmEntry]),
+      }),
+      resolveNpm: async () => ({
+        outcome: "unavailable" as const,
+        detail: "registry is unreachable",
+      }),
+    });
+    await catalog.addMarketplace(ACME_URL);
+
+    const plan = await catalog.installPlan({
+      entryId: "notes",
+      marketplace: "acme-plugins",
+    });
+    if (plan.kind !== "marketplace") throw new Error("expected a marketplace");
+    await expect(
+      catalog.install({
+        entryId: "notes",
+        marketplace: "acme-plugins",
+        confirmedSource: plan.resolvedSource,
+      }),
+    ).rejects.toThrow(/npm source could not be resolved/u);
+    expect(installedCatalogEntries).toEqual([]);
+  });
+
+  it("holds the marketplace lock across an install", async () => {
+    const order: string[] = [];
+    let release = (): void => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let resolveCalls = 0;
+    const catalog = service({
+      fetch: marketplaceFetch({
+        [OFFICIAL_URL]: manifest("bb-official", []),
+        [ACME_URL]: manifest("acme-plugins", [
+          entry({
+            source: { npm: { package: "bb-plugin-notes", range: "^1.0.0" } },
+          }),
+        ]),
+      }),
+      // The install re-resolves the source; hold it there so a removal has a
+      // real window to delete the row underneath the install.
+      resolveNpm: async () => {
+        resolveCalls += 1;
+        if (resolveCalls > 1) await gate;
+        return {
+          outcome: "resolved" as const,
+          version: "1.4.2",
+          integrity: "sha512-listed",
+        };
+      },
+    });
+    await catalog.addMarketplace(ACME_URL);
+    const plan = await catalog.installPlan({
+      entryId: "notes",
+      marketplace: "acme-plugins",
+    });
+    if (plan.kind !== "marketplace") throw new Error("expected a marketplace");
+
+    const install = catalog
+      .install({
+        entryId: "notes",
+        marketplace: "acme-plugins",
+        confirmedSource: plan.resolvedSource,
+      })
+      .catch((error: unknown) => {
+        order.push("install");
+        throw error;
+      });
+    const removal = catalog.removeMarketplace("acme-plugins").then((result) => {
+      order.push("removal");
+      return result;
+    });
+    release();
+
+    await expect(install).rejects.toThrow(
+      "catalog installation stopped by test",
+    );
+    await expect(removal).resolves.toMatchObject({ convertedPluginIds: [] });
+    // The removal waited: it cannot delete or retarget the row between the
+    // install plan and the catalog provenance write.
+    expect(order).toEqual(["install", "removal"]);
+    expect(installedCatalogEntries).toEqual([
+      expect.objectContaining({ marketplace: "acme-plugins" }),
+    ]);
+    expect(getPluginMarketplace(db, "acme-plugins")).toBeUndefined();
+  });
+
+  it("refuses a manifest name that later routes cannot address", async () => {
+    const catalog = service({
+      fetch: marketplaceFetch({
+        [OFFICIAL_URL]: manifest("bb-official", []),
+        [ACME_URL]: manifest("a".repeat(65), [entry()]),
+      }),
+    });
+
+    await expect(catalog.addMarketplace(ACME_URL)).rejects.toThrow(
+      /invalid marketplace manifest/u,
+    );
+    expect(getPluginMarketplace(db, "a".repeat(65))).toBeUndefined();
   });
 
   it("refuses a marketplace source bb cannot interpret", async () => {
