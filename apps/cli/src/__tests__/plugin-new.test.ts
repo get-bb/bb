@@ -1,6 +1,14 @@
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
+import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -68,6 +76,23 @@ for (const name of Object.keys(installed)) {
 }
 `;
 
+/** Answer the npm registry probe with a fixed version list. */
+function stubRegistryVersions(versions: string[]): void {
+  vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
+    expect(String(input)).toContain("registry.npmjs.org");
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          versions: Object.fromEntries(
+            versions.map((version) => [version, {}]),
+          ),
+        }),
+        { headers: { "content-type": "application/json" } },
+      ),
+    );
+  });
+}
+
 describe.sequential("bb plugin new dependency install", () => {
   const originalCwd = process.cwd();
   let workDir: string;
@@ -85,6 +110,11 @@ describe.sequential("bb plugin new dependency install", () => {
     vi.stubEnv("NODE_ENV", "production");
     logged = [];
     warned = [];
+    // `bb plugin new` asks npm whether this bb's SDK version is published, so
+    // it can warn that the scaffold's exact pin will not install yet. Stubbed
+    // here: these tests are about the npm tree, and must not depend on the
+    // network or on where the release train happens to be.
+    stubRegistryVersions([PLUGIN_SDK_VERSION]);
     vi.spyOn(console, "log").mockImplementation((line: unknown) => {
       logged.push(String(line));
     });
@@ -168,6 +198,49 @@ describe.sequential("bb plugin new dependency install", () => {
     );
     // The manual step is the only way out, so the next steps must show it.
     expect(logged).toContain("  npm install --include=dev");
+  });
+
+  it("pins the scaffold to this bb's SDK version", async () => {
+    await runPluginNew(["pinned"]);
+
+    const manifest: { devDependencies: Record<string, string> } = JSON.parse(
+      await readFile(join(workDir, "bb-plugin-pinned", "package.json"), "utf8"),
+    );
+    expect(manifest.devDependencies["@get-bb/plugin-sdk"]).toBe(
+      PLUGIN_SDK_VERSION,
+    );
+    expect(await isInstalled("bb-plugin-pinned", "@get-bb/plugin-sdk")).toBe(
+      true,
+    );
+    expect(warned).toEqual([]);
+  });
+
+  it("warns, without failing, when this bb's SDK version is not on npm yet", async () => {
+    stubRegistryVersions(["0.0.1"]);
+
+    await runPluginNew(["unpublished"]);
+
+    // Scaffolding still completes — only the install is at risk.
+    expect(logged).toContain(
+      "Created bb-plugin-unpublished/ (bb-plugin-unpublished).",
+    );
+    const warnings = warned.join("\n");
+    expect(warnings).toContain(
+      `@get-bb/plugin-sdk ${PLUGIN_SDK_VERSION} — this bb's SDK version — was not found on npm`,
+    );
+    expect(warnings).toContain("npm pack");
+  });
+
+  it("warns rather than failing when the registry cannot be reached", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
+
+    await runPluginNew(["offline"]);
+
+    expect(logged).toContain("Created bb-plugin-offline/ (bb-plugin-offline).");
+    // An unreachable registry must not claim the install will fail — only a
+    // positive registry miss earns that firm warning.
+    expect(warned.join("\n")).toContain("could not reach the npm registry");
+    expect(warned.join("\n")).not.toContain("was not found on npm");
   });
 
   it("falls back to the manual step when npm is not on PATH", async () => {

@@ -193,12 +193,15 @@ added/updated/unchanged counts.
   bb plugin remove <id>          Uninstall (managed git:/npm: files deleted;
                                  builtin removals are remembered)
   bb plugin new <name> [--app]   Scaffold a new plugin and install its npm
-                                 dependencies (no server required; --app adds
-                                 a frontend entry, app.tsx, plus a
-                                 typecheck-only tsconfig.json)
-  bb plugin types [path]         Write this bb's @get-bb/plugin-sdk declarations
-                                 into the plugin's types/ (default: cwd);
-                                 --check reports staleness and writes nothing
+                                 dependencies, including @get-bb/plugin-sdk
+                                 pinned to this bb's exact SDK version (no
+                                 server required; --app adds a frontend entry,
+                                 app.tsx, plus a typecheck-only tsconfig.json)
+  bb plugin types [path]         Sync a plugin's @get-bb/plugin-sdk surface to
+                                 this bb (default: cwd): report the npm pin,
+                                 or rewrite the vendored types/ of a plugin
+                                 that still carries them; --check writes
+                                 nothing and exits non-zero on a mismatch
   bb plugin build [path]         Compile the plugin into dist/ — the backend
                                  bundle (server.js, server.meta.json) and,
                                  when bb.app is declared, the frontend bundle
@@ -407,14 +410,17 @@ The backend entry default-exports a factory receiving the full plugin API:
   import type { BbPluginApi } from "@get-bb/plugin-sdk";
   export default async function plugin(bb: BbPluginApi) { ... }
 
-The import is type-only and erased at load; the scaffold ships the full API
-as bundled .d.ts in types/ (tsconfig maps @get-bb/plugin-sdk to them), so
+The import is type-only and erased at load; the scaffold depends on the npm
+package @get-bb/plugin-sdk, pinned to this bb's exact SDK version, so
 `npm install && npx tsc --noEmit` typechecks anywhere — no bb checkout
-needed. Those files are ordinary readable declarations, not a minified
-bundle: read them for an exact signature. The SDK surface grows every
-release, so `bb plugin types` rewrites them from the running bb — run it in a
-cloned or older plugin, and `bb plugin types --check` in CI. `bb plugin
-build` and `bb plugin dev` refresh them for you. Need a symbol the types
+needed. The full API lands at
+node_modules/@get-bb/plugin-sdk/bundled-types/bb-plugin-sdk.d.ts (and
+-app.d.ts): ordinary readable declarations, not a minified bundle — read them
+for an exact signature. Plugins scaffolded before this switch instead vendor
+the same declarations in types/, mapped through tsconfig, until they migrate.
+The SDK surface grows every release, so `bb plugin types` syncs a plugin to
+the running bb — run it in a cloned or older plugin, and `bb plugin types
+--check` in CI. Need a symbol the types
 don't explain? Clone the repo: https://github.com/get-bb/bb. The API in
 one line each — bb.log (plugin-scoped logger behind `bb plugin logs`);
 bb.settings.define (declarative settings incl. secrets, editable via

@@ -148,13 +148,22 @@ This skill is a guide, not the contract. For an exact signature or a symbol it
 does not cover:
 
 1. **`bb plugin types`**, run in the plugin directory (or given its path),
-   rewrites that plugin's `types/*.d.ts` from the running bb — no server
-   needed. The scaffold seeds them once, so a cloned or older plugin can be
-   thousands of lines behind. `--check` reports staleness without writing;
-   `bb plugin build` and `bb plugin dev` refresh them too.
-2. **Read `types/bb-plugin-sdk.d.ts`** (`-app.d.ts` for frontend symbols) —
-   the authoritative surface, ~13,000 lines of readable declarations with doc
-   comments, and what the scaffold `tsconfig.json` maps `@get-bb/plugin-sdk` to.
+   syncs that plugin's SDK surface to the running bb — no server needed. For a
+   plugin that depends on the npm package it reports the pin against this bb;
+   for an older plugin that still vendors `types/*.d.ts` it rewrites those
+   declarations. Either way a cloned or older plugin can be thousands of lines
+   behind. `--check` reports a mismatch without writing; `bb plugin build` and
+   `bb plugin dev` keep things in step too.
+2. **Read the bundled declarations** — the authoritative surface, ~13,000
+   lines of readable declarations with doc comments:
+   - plugins scaffolded by a current bb depend on the npm package, so after
+     `npm install` read
+     `node_modules/@get-bb/plugin-sdk/bundled-types/bb-plugin-sdk.d.ts`
+     (`bb-plugin-sdk-app.d.ts` for frontend symbols);
+   - plugins scaffolded before that still carry the same declarations in
+     `types/bb-plugin-sdk.d.ts` (`types/bb-plugin-sdk-app.d.ts`), which the
+     plugin's `tsconfig.json` maps `@get-bb/plugin-sdk` onto. Read whichever
+     the plugin in front of you has.
 3. **`git clone --depth 1 https://github.com/get-bb/bb`** for host behavior or
    a reference implementation: `packages/plugin-sdk/src/`,
    `apps/server/src/services/plugins/`, `plugins/`.
@@ -310,8 +319,8 @@ that need the singleton personal project use
 `bb.sdk.projects.list({ includePersonal: true })`.
 
 **Area map.** Every area below is reachable from `bb.sdk`. This lists the
-methods, not their arguments — read `types/bb-plugin-sdk.d.ts` for exact
-signatures.
+methods, not their arguments — read the bundled `bb-plugin-sdk.d.ts` for exact
+signatures (see "Looking up the exact API").
 
 | Area             | Methods                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1720,6 +1729,8 @@ Remaining reference examples in `examples/plugins/`:
   `defineRpcContract` plus `PLUGIN_CLI_OUTPUT_MAX_BYTES`; validator imports are
   plugin dependencies. The
   scaffold tsconfig typechecks both `server.ts` and `app.tsx`.
-- `types/*.d.ts` is a per-plugin copy, not a live view of the SDK: run
-  `bb plugin types` before trusting it, and never fall back to a minified
-  `dist/` bundle — see "Looking up the exact API".
+- The declarations you read are pinned to one SDK version, not a live view:
+  new plugins get them from the exact `@get-bb/plugin-sdk` devDependency, older
+  ones from a vendored `types/*.d.ts` copy. Run `bb plugin types` before
+  trusting either, and never fall back to a minified `dist/` bundle — see
+  "Looking up the exact API".

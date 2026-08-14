@@ -26,8 +26,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 const DIRS_WITHOUT_BUNDLED_SOURCE = new Set([
   "node_modules",
   "dist",
-  // Bundled SDK declarations, resolved through tsconfig paths — the npm types
-  // they reference are devDependencies by design.
+  // Vendored SDK declarations, if a pre-npm plugin still carries them — the
+  // npm types they reference are devDependencies by design.
   "types",
   "skills",
 ]);

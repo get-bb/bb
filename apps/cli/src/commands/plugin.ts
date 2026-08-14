@@ -14,10 +14,14 @@ import type {
   PluginUpdateCheckEntry as PluginUpdateResult,
 } from "@bb/server-contract";
 import { installedPluginSchema } from "@bb/server-contract";
-import { PLUGIN_SUBMISSION_FORM_URL } from "@bb/domain";
+import { PLUGIN_SDK_VERSION, PLUGIN_SUBMISSION_FORM_URL } from "@bb/domain";
 import { BbHttpError } from "@bb/sdk";
 import { parseDataDirEnvValue, resolveProdDataDir } from "@bb/config/runtime";
-import { scaffoldPlugin, syncPluginTypes } from "@bb/templates/plugin-scaffold";
+import {
+  resolvePluginSdkLayout,
+  scaffoldPlugin,
+  syncPluginTypes,
+} from "@bb/templates/plugin-scaffold";
 import { action } from "../action.js";
 import { cliFetch, createCliBbSdk } from "../client.js";
 import {
@@ -167,11 +171,17 @@ async function readPluginManifest(
  * typechecks against declarations older than the bb they run. A failure here
  * is reported and swallowed: a read-only or otherwise unwritable `types/`
  * must not fail a build.
+ *
+ * Plugins that resolve the SDK from npm (the layout `bb plugin new` writes)
+ * have no `types/` to refresh, and creating one would shadow the installed
+ * package — those return silently.
  */
 async function refreshPluginTypes(
   rootDir: string,
   hasApp: boolean,
 ): Promise<void> {
+  const layout = await resolvePluginSdkLayout(rootDir);
+  if (layout.kind === "package") return;
   let files: Awaited<ReturnType<typeof syncPluginTypes>>;
   try {
     files = await syncPluginTypes({ rootDir, app: hasApp });
@@ -253,6 +263,80 @@ async function isPackageInstalled(
       dir = parent;
     }
   }
+}
+
+/**
+ * Warn when this bb's SDK version is not on the public npm registry yet.
+ *
+ * The scaffold pins `@get-bb/plugin-sdk` to `PLUGIN_SDK_VERSION` exactly, so a
+ * developer build (or the window between cutting a version and publishing it)
+ * produces a plugin whose `npm install` cannot resolve. That is a legible
+ * warning with a workaround, never a scaffolding failure: the sources are
+ * already written and correct, and a registry that is slow or unreachable must
+ * not change the outcome. A registry that positively lacks the version gets
+ * the firm warning; a check that could not complete — offline, proxy,
+ * timeout, private registry — only says the pin is unverified, because
+ * claiming the install will fail on a network hiccup would be a lie.
+ */
+async function warnIfSdkVersionUnpublished(): Promise<void> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 3_000);
+  let status: "published" | "missing" | "unknown" = "unknown";
+  try {
+    const response = await fetch(
+      "https://registry.npmjs.org/@get-bb%2fplugin-sdk",
+      {
+        headers: {
+          // Ask for the abbreviated document: versions only, far smaller.
+          accept: "application/vnd.npm.install-v1+json",
+        },
+        signal: controller.signal,
+      },
+    );
+    if (response.status === 404) {
+      status = "missing";
+    } else if (response.ok) {
+      const document: unknown = await response.json();
+      const versions =
+        typeof document === "object" && document !== null
+          ? (document as { versions?: unknown }).versions
+          : undefined;
+      const published =
+        typeof versions === "object" &&
+        versions !== null &&
+        PLUGIN_SDK_VERSION in versions;
+      status = published ? "published" : "missing";
+    }
+  } catch {
+    // Leave status "unknown": the registry could not be consulted.
+  } finally {
+    clearTimeout(timer);
+  }
+  if (status === "published") return;
+  if (status === "unknown") {
+    console.warn(
+      `Warning: could not reach the npm registry to verify that @get-bb/plugin-sdk ${PLUGIN_SDK_VERSION} — this bb's SDK version — is published.`,
+    );
+    console.warn(
+      "  If `npm install` fails to resolve it, the version may not be on your registry yet.",
+    );
+    return;
+  }
+  console.warn(
+    `Warning: @get-bb/plugin-sdk ${PLUGIN_SDK_VERSION} — this bb's SDK version — was not found on npm.`,
+  );
+  console.warn(
+    "  `npm install` in the new plugin will fail until that version publishes.",
+  );
+  console.warn(
+    "  To work around it, pack the SDK from a bb checkout and point the",
+  );
+  console.warn("  devDependency at the tarball:");
+  console.warn("    (cd <bb-repo>/packages/plugin-sdk && npm pack)");
+  console.warn(
+    '    npm pkg set devDependencies.@get-bb/plugin-sdk="file:/abs/path/to/get-bb-plugin-sdk-' +
+      `${PLUGIN_SDK_VERSION}.tgz"`,
+  );
 }
 
 /**
@@ -910,6 +994,9 @@ export function registerPluginCommands(
           app: opts.app ?? false,
         });
         console.log(`Created ${directoryName}/ (${packageName}).`);
+        // Before the install, so a resolution failure below reads as expected
+        // rather than as a broken scaffold.
+        await warnIfSdkVersionUnpublished();
         const installed = await installScaffoldDependencies(targetDir);
         console.log("Next steps:");
         console.log(`  cd ${directoryName}`);
@@ -923,9 +1010,12 @@ export function registerPluginCommands(
   plugin
     .command("types [path]")
     .description(
-      "Write this bb's @get-bb/plugin-sdk declarations into the plugin's types/ directory (default: cwd); the authoritative, readable API surface for editors, tsc, and agents",
+      "Sync a plugin's @get-bb/plugin-sdk surface to the running bb (default: cwd): report the npm pin for plugins that depend on the package, or rewrite the vendored types/ declarations for plugins that still carry them",
     )
-    .option("--check", "Report whether types/ is current; write nothing")
+    .option(
+      "--check",
+      "Report whether the SDK surface is current; write nothing",
+    )
     .action(
       action(async (path: string | undefined, opts: { check?: boolean }) => {
         const rootDir = resolve(process.cwd(), path ?? ".");
@@ -943,6 +1033,26 @@ export function registerPluginCommands(
           process.exit(1);
         }
         const hasApp = typeof manifest.bb.app === "string";
+        const layout = await resolvePluginSdkLayout(rootDir);
+        if (layout.kind === "package") {
+          // Nothing to write: the declarations live in the installed package.
+          // Report the pin against this bb so a mismatch is visible (and, with
+          // --check, fatal) until repinning lands.
+          console.log(
+            `This plugin uses the npm package @get-bb/plugin-sdk; pin is ${layout.pin ?? "not declared"}, host is ${PLUGIN_SDK_VERSION}.`,
+          );
+          if (layout.pin === PLUGIN_SDK_VERSION) {
+            console.log(
+              "The declarations are in node_modules/@get-bb/plugin-sdk/bundled-types/ — read them for exact signatures.",
+            );
+            return;
+          }
+          console.error(
+            `Set "@get-bb/plugin-sdk" to ${PLUGIN_SDK_VERSION} in devDependencies and re-run npm install.`,
+          );
+          if (opts.check) process.exit(1);
+          return;
+        }
         const files = await syncPluginTypes({
           rootDir,
           app: hasApp,

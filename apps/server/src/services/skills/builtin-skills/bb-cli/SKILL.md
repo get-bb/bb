@@ -770,6 +770,11 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - `bb plugin new <name> [--app]` — scaffold a plugin and install its npm
     dependencies (`--app` adds a frontend entry plus a typecheck-only
     `tsconfig.json`; scaffold sets `engines.bbPluginSdk` to `>=0.4.3`). The
+    scaffold depends on `@get-bb/plugin-sdk`, pinned to this bb's exact SDK
+    version in `devDependencies`, so the API declarations arrive with
+    `npm install` at `node_modules/@get-bb/plugin-sdk/bundled-types/*.d.ts`
+    (no vendored `types/`). If that version is not on npm yet, it warns and
+    still scaffolds. The
     install is best-effort and verified: if npm is missing or leaves a package
     out, it says so and prints the manual `npm install --include=dev` step
     rather than reporting success; `bb plugin build [path]` —
@@ -777,12 +782,15 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     `server.meta.json` stamped with SDK/identity metadata; preferred by
     git/npm installs over source) and, when `bb.app` is declared, `app.js` +
     `app.css` + `app.meta.json`. Neither needs the server.
-  - `bb plugin types [path]` — rewrite the plugin's `types/*.d.ts` from the
-    running bb's `@get-bb/plugin-sdk` declarations, creating `types/` when absent.
-    Run it in a cloned or older plugin: the scaffold seeds those files once and
-    the SDK surface grows every release. `--check` reports staleness and exits
-    non-zero without writing (for CI). `bb plugin build` and `bb plugin dev`
-    refresh them automatically. Needs no server.
+  - `bb plugin types [path]` — sync the plugin's `@get-bb/plugin-sdk` surface
+    to the running bb (default: cwd). For a plugin that depends on the npm
+    package it reports the declared pin against this bb's SDK version; for a
+    plugin that still vendors declarations it rewrites `types/*.d.ts`, creating
+    `types/` when absent. Run it in a cloned or older plugin: the SDK surface
+    grows every release. `--check` writes nothing and exits non-zero on a
+    mismatch (for CI). `bb plugin build` and `bb plugin dev` refresh vendored
+    declarations automatically and leave npm-package plugins alone. Needs no
+    server.
   - `bb plugin dev [path]` — watch loop for an installed plugin (default:
     cwd): on every change it rebuilds the frontend bundle (when `bb.app` is
     declared) and reloads the plugin; open app pages pick the new UI up live.

@@ -136,6 +136,10 @@ The complete root declaration flattens the unpublished BB workspace contracts.
 The testing declarations reuse that public `@get-bb/plugin-sdk` root instead of
 embedding a second copy, and no declaration depends on unpublished `@bb/*`
 packages. Genuine npm types (`hono`, `better-sqlite3`, `zod`, React, and Testing
-Library) remain peer imports. Scaffolded plugins still vendor the root/app
-declarations in `types/`; installing this package is needed only when their
-tests import the testing subpaths.
+Library) remain peer imports. Scaffolded plugins depend on this package —
+`bb plugin new` pins it exactly in `devDependencies` — and read the root/app
+declarations straight from `node_modules/@get-bb/plugin-sdk/bundled-types/`,
+the same files the testing subpaths reuse. Plugins scaffolded before that
+switch still vendor a copy of the root/app declarations in `types/` and map
+`@get-bb/plugin-sdk` onto them through their `tsconfig.json`; `bb plugin
+types` keeps those refreshed until they migrate.

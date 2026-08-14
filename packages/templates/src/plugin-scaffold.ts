@@ -119,6 +119,124 @@ export async function syncPluginTypes(
 }
 
 /**
+ * How a plugin on disk gets its `@get-bb/plugin-sdk` declarations.
+ *
+ * - `vendored`: the pre-npm layout — a `types/bb-plugin-sdk.d.ts` copy, and/or
+ *   a tsconfig that maps `@get-bb/plugin-sdk` onto it. {@link syncPluginTypes}
+ *   owns these, and `bb plugin types|build|dev` keep refreshing them.
+ * - `package`: what `bb plugin new` writes now — no `types/`, no path map, an
+ *   exact `@get-bb/plugin-sdk` pin in the manifest whose installed
+ *   `bundled-types/*.d.ts` are the surface. Nothing is written into these.
+ */
+export interface PluginSdkLayout {
+  kind: "vendored" | "package";
+  /**
+   * Exact version the manifest pins `@get-bb/plugin-sdk` to (dev or runtime
+   * dependency), or null when it declares none. A range rather than an exact
+   * version comes back verbatim; callers compare it against the running host.
+   */
+  pin: string | null;
+}
+
+/**
+ * Classify a plugin directory so callers refresh vendored declarations without
+ * ever writing `types/` into a plugin that resolves the SDK from npm.
+ *
+ * Vendored wins whenever either half of the old layout is present: a plugin
+ * mid-migration (declarations deleted but the path map still in tsconfig, or
+ * the reverse) must keep typechecking rather than silently lose its types.
+ */
+export async function resolvePluginSdkLayout(
+  rootDir: string,
+): Promise<PluginSdkLayout> {
+  const pin = await readDeclaredSdkPin(rootDir);
+  const hasVendoredTypes =
+    (await pathExists(join(rootDir, "types", "bb-plugin-sdk.d.ts"))) ||
+    (await pathExists(join(rootDir, "types", "bb-plugin-sdk-app.d.ts")));
+  const hasPathMap = await tsconfigMapsSdk(rootDir);
+  return {
+    kind: hasVendoredTypes || hasPathMap ? "vendored" : "package",
+    pin,
+  };
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await lstat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** `@get-bb/plugin-sdk` as declared in the plugin manifest, or null. */
+async function readDeclaredSdkPin(rootDir: string): Promise<string | null> {
+  const manifest = await readJsonFile(join(rootDir, "package.json"));
+  if (manifest === null) return null;
+  for (const field of ["devDependencies", "dependencies"] as const) {
+    const deps = manifest[field];
+    if (typeof deps !== "object" || deps === null) continue;
+    const declared = (deps as Record<string, unknown>)["@get-bb/plugin-sdk"];
+    if (typeof declared === "string") return declared;
+  }
+  return null;
+}
+
+/**
+ * Whether tsconfig.json still maps the SDK at a local file. Pre-rename
+ * plugins map `@bb/plugin-sdk`, so both names count. tsconfig.json is JSONC
+ * (tsc accepts comments and trailing commas), so when strict parsing fails
+ * fall back to a raw-text scan — misreading a commented-out map as vendored
+ * only keeps the legacy refresh alive, while the opposite mistake silently
+ * strips a working plugin of its declarations.
+ */
+async function tsconfigMapsSdk(rootDir: string): Promise<boolean> {
+  const tsconfigPath = join(rootDir, "tsconfig.json");
+  const tsconfig = await readJsonFile(tsconfigPath);
+  if (tsconfig === null) {
+    let raw: string;
+    try {
+      raw = await readFile(tsconfigPath, "utf8");
+    } catch {
+      return false;
+    }
+    return (
+      raw.includes('"@get-bb/plugin-sdk') || raw.includes('"@bb/plugin-sdk')
+    );
+  }
+  const compilerOptions = tsconfig.compilerOptions;
+  if (typeof compilerOptions !== "object" || compilerOptions === null) {
+    return false;
+  }
+  const paths = (compilerOptions as Record<string, unknown>).paths;
+  if (typeof paths !== "object" || paths === null) return false;
+  return Object.keys(paths).some(
+    (key) =>
+      key === "@get-bb/plugin-sdk" ||
+      key.startsWith("@get-bb/plugin-sdk/") ||
+      key === "@bb/plugin-sdk" ||
+      key.startsWith("@bb/plugin-sdk/"),
+  );
+}
+
+/**
+ * Parse a JSON file, or null when it is missing or unparseable. Layout
+ * detection is a hint for whether to refresh declarations; a plugin with a
+ * broken manifest is rejected with a real error by the caller, not here.
+ */
+async function readJsonFile(
+  path: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
+    if (typeof parsed !== "object" || parsed === null) return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * `lstat` that never follows the final path component. Returns null when the
  * path does not exist, and refuses a symbolic link.
  *
@@ -387,9 +505,12 @@ export default definePluginApp((app) => {
 /**
  * Typecheck-only tsconfig: server.ts compiles against the BbPluginApi contract
  * (type-only, erased at load time); app.tsx is included when the plugin
- * declares a frontend entry. `@get-bb/plugin-sdk` resolves to the bundled `.d.ts`
- * files shipped in `types/`, so authors get the root/app types without a
- * package install. Tests can install `@get-bb/plugin-sdk` for its testing subpaths.
+ * declares a frontend entry. `@get-bb/plugin-sdk` and `@get-bb/plugin-sdk/app`
+ * resolve through plain node resolution to the installed npm package (declared
+ * as an exact devDependency pin), whose `bundled-types/*.d.ts` are the API
+ * surface — no path mapping, so editors, `tsc`, and the build all agree with
+ * what `npm install` put on disk. Tests reach the testing subpaths of the same
+ * package.
  */
 function tsconfigSource(app: boolean): string {
   return `${JSON.stringify(
@@ -404,19 +525,15 @@ function tsconfigSource(app: boolean): string {
         // Only @types/node ambiently — stray ancestor node_modules/@types
         // (e.g. bun-types in a home directory) must not leak in.
         types: ["node"],
-        paths: {
-          "@get-bb/plugin-sdk": ["./types/bb-plugin-sdk.d.ts"],
-          "@get-bb/plugin-sdk/app": ["./types/bb-plugin-sdk-app.d.ts"],
-          // Vendored components import via "@/..." (shadcn convention);
-          // esbuild reads this mapping too during `bb plugin build`.
-          ...(app ? { "@/*": ["./*"] } : {}),
-        },
+        // Vendored components import via "@/..." (shadcn convention);
+        // esbuild reads this mapping too during `bb plugin build`.
+        ...(app ? { paths: { "@/*": ["./*"] } } : {}),
         noEmit: true,
         skipLibCheck: false,
       },
       include: app
-        ? ["server.ts", "app.tsx", "types", "components", "lib", "hooks"]
-        : ["server.ts", "types"],
+        ? ["server.ts", "app.tsx", "components", "lib", "hooks"]
+        : ["server.ts"],
     },
     null,
     2,
@@ -517,22 +634,30 @@ bb plugin config ${id} set greeting hi
 
 ## Types & API reference
 
-\`types/bb-plugin-sdk.d.ts\` (and \`types/bb-plugin-sdk-app.d.ts\` for the
-frontend) are the full, bundled BB plugin API — \`tsconfig.json\` maps
-\`@get-bb/plugin-sdk\` to them, so your editor and \`tsc\` see real types with no extra
-install. They are readable declarations: open them for an exact signature.
-
-The SDK surface grows with every BB release, and these are a copy. Refresh
-them from the BB you are running:
+The plugin API ships as the npm package \`@get-bb/plugin-sdk\`, pinned to an
+exact version in \`devDependencies\` (\`${PLUGIN_SDK_VERSION}\` — the SDK of the BB
+that scaffolded this plugin). After \`npm install\`, the full surface is on disk
+at:
 
 \`\`\`
-bb plugin types          # rewrite types/ from this BB
-bb plugin types --check  # CI: fail when they are out of date
+node_modules/@get-bb/plugin-sdk/bundled-types/bb-plugin-sdk.d.ts      # backend
+node_modules/@get-bb/plugin-sdk/bundled-types/bb-plugin-sdk-app.d.ts  # frontend
 \`\`\`
 
-\`bb plugin build\` and \`bb plugin dev\` refresh them for you. Ask BB to write
-plugins for you: the \`bb-plugin-authoring\` skill documents the whole surface
-with examples.
+Your editor and \`tsc\` resolve \`@get-bb/plugin-sdk\` there through ordinary node
+resolution — no path mapping. These are readable declarations: open them for an
+exact signature.
+
+The SDK surface grows with every BB release, so the pin has to track the BB you
+actually run:
+
+\`\`\`
+bb plugin types          # sync this plugin's SDK surface to the running BB
+bb plugin types --check  # CI: fail when it does not match
+\`\`\`
+
+Ask BB to write plugins for you: the \`bb-plugin-authoring\` skill documents
+the whole surface with examples.
 
 Confused by the API, or need something the types don't explain? Clone the BB
 repo and read the source: <https://github.com/get-bb/bb>.
@@ -585,14 +710,19 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
           ...(app ? PLUGIN_STARTER_DEPENDENCIES : {}),
           zod: "^4.3.6",
         },
-        // Typecheck-only. The BbPluginApi/SDK types come from the bundled
-        // `.d.ts` in `types/` (tsconfig maps @get-bb/plugin-sdk to them), so the
-        // package is not needed for normal plugin source. These supply the real
-        // npm types those declarations reference (hono/better-sqlite3 and the
-        // root contract's React types) for packages generated source does not
-        // import: BB provides them at runtime and the bundle never inlines
-        // them. An author who imports one directly must promote it above.
+        // Typecheck-only. @get-bb/plugin-sdk carries the BbPluginApi/SDK
+        // declarations (node_modules/@get-bb/plugin-sdk/bundled-types/*.d.ts);
+        // BB provides its runtime, so it is never bundled and belongs here
+        // rather than in dependencies. The pin is exact, not a caret: the
+        // declarations must describe the bb actually loading the plugin, and
+        // `bb plugin types` keeps it matched to the bb you run. The rest supply
+        // the real npm types those declarations reference (hono/better-sqlite3
+        // and the root contract's React types) for packages generated source
+        // does not import: BB provides them at runtime and the bundle never
+        // inlines them. An author who imports one directly must promote it
+        // above.
         devDependencies: {
+          "@get-bb/plugin-sdk": PLUGIN_SDK_VERSION,
           "@types/better-sqlite3": "^7.6.12",
           "@types/node": "^22.0.0",
           // The root SDK declaration also exposes frontend contract types, so
@@ -612,12 +742,10 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
   );
   await writeFile(join(targetDir, "server.ts"), serverEntrySource(packageName));
   await writeFile(join(targetDir, "tsconfig.json"), tsconfigSource(app));
-  // Bundled root/app declarations keep normal plugin source self-contained.
-  // Tests that use @get-bb/plugin-sdk/testing install the published package; the
-  // exact root/app paths syncPluginTypes writes intentionally keep resolving
-  // here. Seeding through the same function `bb plugin types` uses is what
-  // stops a scaffolded plugin and a refreshed one from ever diverging.
-  await syncPluginTypes({ rootDir: targetDir, app });
+  // No `types/` here: the declarations arrive with `npm install` from the
+  // exact-pinned @get-bb/plugin-sdk devDependency above. Plugins scaffolded
+  // before that switch still vendor `types/`, and syncPluginTypes keeps
+  // refreshing those — see resolvePluginSdkLayout.
   if (app) {
     await writeFile(join(targetDir, "app.tsx"), appEntrySource(packageName));
     // Vendored starter components (shadcn model — the author owns and edits
