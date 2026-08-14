@@ -57,6 +57,8 @@ import {
   resolveGitRef,
   selectNpmCandidate,
   type CompatibilityProblem,
+  type GitCandidateProbeResult,
+  type GitSemverTag,
   type NpmResolvedCandidate,
   type NpmSourceIntentForResolution,
 } from "./update-resolver.js";
@@ -506,6 +508,9 @@ export function createManagedPluginArtifacts(
    */
   async function resolveGitSelector(
     parsed: Extract<ReturnType<typeof parsePluginSource>, { kind: "git" }>,
+    source: string,
+    selection: PluginSourceSelection,
+    context: InstallContext,
   ): Promise<{ selector: PluginGitSelector; commit: string }> {
     const { selector } = parsed;
     if (selector.kind !== "range") {
@@ -537,19 +542,108 @@ export function createManagedPluginArtifacts(
         url: parsed.url,
         range: selector.range,
         tagPrefix: "",
+        probeCandidate: (candidate) =>
+          probeGitInstallCandidate({
+            parsed,
+            source,
+            selection,
+            context,
+            candidate,
+          }),
       });
     }
     return resolveGitRangeSelector({
       url: parsed.url,
       range: selector.range,
       tagPrefix: selector.tagPrefix,
+      probeCandidate: (candidate) =>
+        probeGitInstallCandidate({
+          parsed,
+          source,
+          selection,
+          context,
+          candidate,
+        }),
     });
+  }
+
+  async function probeGitInstallCandidate(args: {
+    parsed: Extract<ReturnType<typeof parsePluginSource>, { kind: "git" }>;
+    source: string;
+    selection: PluginSourceSelection;
+    context: InstallContext;
+    candidate: GitSemverTag;
+  }): Promise<GitCandidateProbeResult> {
+    const targetDir = gitArtifactCacheDir(
+      deps.dataDir,
+      args.parsed.cachePath,
+      args.candidate.commit,
+    );
+    const stagingDir = `${targetDir}.install-probe-${randomUUID()}`;
+    await mkdir(dirname(stagingDir), { recursive: true });
+    try {
+      deps.onArtifactMaterialize?.({ path: targetDir });
+      await runInstallCommand("git", [
+        "clone",
+        "--quiet",
+        args.parsed.url,
+        stagingDir,
+      ]);
+      await runInstallCommand("git", [
+        "-C",
+        stagingDir,
+        "checkout",
+        "--quiet",
+        "--detach",
+        args.candidate.commit,
+      ]);
+      const subdirectory = await resolveSelectedSubdirectory({
+        checkoutDir: stagingDir,
+        selection: args.selection,
+        sourceLabel: args.source,
+      });
+      const root = pluginRootDir(stagingDir, subdirectory);
+      const realRoot = await realPathInside(
+        stagingDir,
+        root,
+        "git plugin subdirectory",
+        subdirectory === null,
+      );
+      const manifest = await readPluginManifest(realRoot);
+      assertExpectedPluginId(args.context, manifest.id, args.source);
+      const compatibility = evaluateCompatibility({
+        bbRange: manifest.bbEngineRange,
+        sdkRange: manifest.bbPluginSdkRange,
+        appVersion: deps.appVersion,
+      });
+      return compatibility.effective.length > 0
+        ? {
+            outcome: "incompatible",
+            reasons: compatibility.effective,
+            devMode: compatibility.devMode,
+          }
+        : {
+            outcome: "compatible",
+            devMode: compatibility.devMode,
+            packagedBuildProblems: compatibility.packaged,
+          };
+    } catch (error) {
+      return {
+        outcome: "invalid",
+        detail: error instanceof Error ? error.message : String(error),
+      };
+    } finally {
+      await rm(stagingDir, { recursive: true, force: true });
+    }
   }
 
   async function resolveGitRangeSelector(args: {
     url: string;
     range: string;
     tagPrefix: string;
+    probeCandidate: (
+      candidate: GitSemverTag,
+    ) => Promise<GitCandidateProbeResult>;
   }): Promise<{ selector: PluginGitSelector; commit: string }> {
     const resolved = await resolveGitRange(args);
     if (resolved.outcome === "unavailable") {
@@ -572,7 +666,12 @@ export function createManagedPluginArtifacts(
     selection: PluginSourceSelection,
     context: InstallContext = directInstallContext,
   ): Promise<PluginListEntry> {
-    const resolution = await resolveGitSelector(parsed);
+    const resolution = await resolveGitSelector(
+      parsed,
+      source,
+      selection,
+      context,
+    );
     const resolvedCommit = resolution.commit;
     const resolvedSelector = resolution.selector;
     const checkoutRef = gitSelectorRefName(resolvedSelector);

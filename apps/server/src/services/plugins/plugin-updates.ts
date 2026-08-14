@@ -23,6 +23,7 @@ import {
   selectNpmCandidate,
   type CompatibilityProblem,
   type GitCandidateProbe,
+  type GitCandidateProbeResult,
   type NpmSourceIntentForResolution,
   type PluginResolvedUpdateVersion,
   type PluginUpdateResolution,
@@ -76,6 +77,9 @@ export function createPluginUpdates(
     managedArtifacts: { applyNpmCandidate, stageGitCandidate },
     runArtifactGc,
   } = context;
+  // A commit is immutable. Keep its manifest compatibility result for this
+  // server process so the six-hour sweep does not clone the same releases.
+  const gitCandidateProbeCache = new Map<string, GitCandidateProbeResult>();
 
   function problemMessages(problems: CompatibilityProblem[]): string[] {
     return problems.map((problem) => problem.message);
@@ -301,18 +305,34 @@ export function createPluginUpdates(
     if (intent.outcome === "unavailable") return intent;
     const row = args.row;
     const probeGitCandidate: GitCandidateProbe = async (candidate) => {
+      const cacheKey = JSON.stringify([
+        row.id,
+        row.sourceGitUrl,
+        row.sourceGitSubdirectory,
+        candidate.commit,
+        deps.appVersion,
+      ]);
+      const cached = gitCandidateProbeCache.get(cacheKey);
+      if (cached !== undefined) return cached;
       const probed = await stageGitCandidate({
         row,
         commit: candidate.commit,
         promote: false,
       });
-      return probed.outcome === "valid"
-        ? {
-            outcome: "compatible",
-            devMode: probed.devMode,
-            packagedBuildProblems: probed.packagedBuildProblems,
-          }
-        : probed;
+      const result: GitCandidateProbeResult =
+        probed.outcome === "valid"
+          ? {
+              outcome: "compatible",
+              devMode: probed.devMode,
+              packagedBuildProblems: probed.packagedBuildProblems,
+            }
+          : probed;
+      // A transient clone or parse failure can recover. Compatibility is a
+      // property of this immutable commit and the running bb version.
+      if (result.outcome !== "invalid") {
+        gitCandidateProbeCache.set(cacheKey, result);
+      }
+      return result;
     };
     // A range tracks whatever release this bb can run, so the resolver walks
     // its matching tags. A ref names one commit, so it is staged once here.

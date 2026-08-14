@@ -120,7 +120,8 @@ export function createNpmResolverRun(options?: {
   readJson?: (response: Response) => Promise<unknown>;
 }): NpmResolverRun {
   const fetchImpl = options?.fetch ?? fetch;
-  const readJson = options?.readJson ?? ((response: Response) => response.json());
+  const readJson =
+    options?.readJson ?? ((response: Response) => response.json());
   const cache = new Map<string, Promise<Packument>>();
   return {
     getPackument(intent) {
@@ -656,7 +657,7 @@ export type GitUpdateIntent =
  * this: a git release declares its engine ranges in the checked-out
  * package.json, not in the ref listing.
  */
-export type GitCandidateProbe = (candidate: GitSemverTag) => Promise<
+export type GitCandidateProbeResult =
   | {
       outcome: "compatible";
       devMode: boolean;
@@ -667,8 +668,11 @@ export type GitCandidateProbe = (candidate: GitSemverTag) => Promise<
       reasons: CompatibilityProblem[];
       devMode: boolean;
     }
-  | { outcome: "invalid"; detail: string }
->;
+  | { outcome: "invalid"; detail: string };
+
+export type GitCandidateProbe = (
+  candidate: GitSemverTag,
+) => Promise<GitCandidateProbeResult>;
 
 /**
  * Releases probed before bb gives up. Each probe checks out one release, so
@@ -853,6 +857,8 @@ export async function resolveGitRange(args: {
   url: string;
   range: string;
   tagPrefix: string;
+  /** Initial installs use this to skip releases that this bb cannot run. */
+  probeCandidate?: GitCandidateProbe;
 }): Promise<
   | { outcome: "resolved"; tag: string; version: string; commit: string }
   | { outcome: "unavailable"; detail: string }
@@ -861,11 +867,43 @@ export async function resolveGitRange(args: {
     url: args.url,
     tagPrefix: args.tagPrefix,
   });
-  const selected = selectGitSemverTag({ tags, range: args.range });
-  return selected === null
-    ? {
+  const candidates = satisfyingGitSemverTags({ tags, range: args.range });
+  if (candidates.length === 0) {
+    return {
+      outcome: "unavailable",
+      detail: `no tag of ${args.url} matches ${args.range} (looking for tags named "${gitSemverTagName(args.tagPrefix, "X.Y.Z")}")`,
+    };
+  }
+  if (args.probeCandidate === undefined) {
+    const selected = candidates[0];
+    return selected === undefined
+      ? {
+          outcome: "unavailable",
+          detail: `no tag of ${args.url} matches ${args.range}`,
+        }
+      : { outcome: "resolved", ...selected };
+  }
+  let firstProblem: string | undefined;
+  let probes = 0;
+  for (const candidate of candidates) {
+    if (probes >= MAX_GIT_CANDIDATE_PROBES) {
+      return {
         outcome: "unavailable",
-        detail: `no tag of ${args.url} matches ${args.range} (looking for tags named "${gitSemverTagName(args.tagPrefix, "X.Y.Z")}")`,
-      }
-    : { outcome: "resolved", ...selected };
+        detail: `no release of ${args.url} matching ${args.range} runs on this bb within the newest ${MAX_GIT_CANDIDATE_PROBES} releases`,
+      };
+    }
+    probes += 1;
+    const probed = await args.probeCandidate(candidate);
+    if (probed.outcome === "compatible") {
+      return { outcome: "resolved", ...candidate };
+    }
+    firstProblem ??=
+      probed.outcome === "invalid" ? probed.detail : probed.reasons[0]?.message;
+  }
+  return {
+    outcome: "unavailable",
+    detail:
+      firstProblem ??
+      `no release of ${args.url} matching ${args.range} runs on this bb`,
+  };
 }

@@ -79,6 +79,7 @@ describe("plugin update service and routes", () => {
   let repo: string;
   let service: PluginService;
   let app: Hono;
+  let materializationCount: number;
   let afterArtifactPromoted:
     | ((args: {
         pluginId: string;
@@ -98,6 +99,7 @@ describe("plugin update service and routes", () => {
     await git(repo, ["config", "user.name", "Test"]);
     await commitPlugin(repo, "1.0.0");
     afterArtifactPromoted = undefined;
+    materializationCount = 0;
     service = createPluginService({
       db,
       hub: {
@@ -111,6 +113,9 @@ describe("plugin update service and routes", () => {
       loadTimeoutMs: 2000,
       stabilizationWindowMs: 0,
       afterArtifactPromoted: async (args) => afterArtifactPromoted?.(args),
+      onArtifactMaterialize: () => {
+        materializationCount += 1;
+      },
     });
     await service.install(`git:${repo}@main`, { kind: "root" });
     app = new Hono();
@@ -1123,11 +1128,43 @@ describe("plugin update service and routes", () => {
         blocked: { version: blockedCommit },
       },
     ]);
+    const afterFirstCheck = materializationCount;
+    expect(await service.checkForUpdates("tagged")).toMatchObject([
+      { id: "tagged", outcome: "update-available" },
+    ]);
+    expect(materializationCount).toBe(afterFirstCheck);
 
     const applied = await service.applyUpdate("tagged");
     expect(applied).toMatchObject({ ok: true, result: { applied: true } });
     expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
       sourceGitResolvedTag: "v1.1.0",
+      gitResolvedCommit: compatible,
+    });
+  });
+
+  it("installs the newest compatible release from a git range", async () => {
+    const tagged = await taggedRepo();
+    const compatible = await git(tagged, ["rev-parse", "v1.0.0"]);
+    await writeFile(
+      join(tagged, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-tagged",
+        version: "1.1.0",
+        engines: { bb: ">=99.0.0" },
+        bb: {
+          name: "Tagged fixture",
+          description: "Tagged release fixture.",
+          branding: { icon: "Zap" },
+          server: "./server.ts",
+        },
+      }),
+    );
+    await releaseTag(tagged, "v1.1.0");
+
+    await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
+
+    expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
+      sourceGitResolvedTag: "v1.0.0",
       gitResolvedCommit: compatible,
     });
   });
