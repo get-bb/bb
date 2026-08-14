@@ -428,6 +428,12 @@ const retireRequestedAtMigrationPath = resolve(
   "drizzle",
   "0091_daffy_dark_phoenix.sql",
 );
+const pluginArtifactCheckoutRootMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0094_mighty_polaris.sql",
+);
 const sidebarOrderingMigrationPath = resolve(
   __dirname,
   "..",
@@ -1319,6 +1325,65 @@ function deleteDeferredCleanupMigrationRows(db: DbConnection): void {
 }
 
 describe("migrate", () => {
+  it("backfills the first checkout commit component for every artifact shape", () => {
+    const db = createConnection(":memory:");
+    const commit = "d".repeat(40);
+    try {
+      db.$client.exec(`
+        CREATE TABLE plugin_artifacts (
+          id text PRIMARY KEY NOT NULL,
+          source_kind text NOT NULL,
+          git_resolved_commit text,
+          path text NOT NULL
+        );
+      `);
+      const insert = db.$client.prepare<
+        [string, string, string | null, string]
+      >(
+        "INSERT INTO plugin_artifacts (id, source_kind, git_resolved_commit, path) VALUES (?, ?, ?, ?)",
+      );
+      insert.run("root", "git", commit, `/cache/repo/${commit}`);
+      insert.run("nested", "git", commit, `/cache/repo/${commit}/plugins/a`);
+      insert.run(
+        "collision",
+        "git",
+        commit,
+        `/cache/repo/${commit}/vendor/${commit}`,
+      );
+      insert.run(
+        "windows",
+        "git",
+        commit,
+        `C:\\cache\\repo\\${commit}\\plugins\\a`,
+      );
+      insert.run("npm", "npm", null, "/cache/npm/package/1.0.0");
+      insert.run("unresolved-git", "git", null, "/cache/git/legacy");
+
+      runMigrationFile({
+        db,
+        migrationPath: pluginArtifactCheckoutRootMigrationPath,
+      });
+
+      expect(
+        db.$client
+          .prepare<
+            [],
+            { id: string; root: string | null }
+          >("SELECT id, git_checkout_root AS root FROM plugin_artifacts ORDER BY id")
+          .all(),
+      ).toEqual([
+        { id: "collision", root: `/cache/repo/${commit}` },
+        { id: "nested", root: `/cache/repo/${commit}` },
+        { id: "npm", root: null },
+        { id: "root", root: `/cache/repo/${commit}` },
+        { id: "unresolved-git", root: null },
+        { id: "windows", root: `C:\\cache\\repo\\${commit}` },
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("backfills the retirement clock only for environments already retiring", () => {
     const db = createConnection(":memory:");
     try {
