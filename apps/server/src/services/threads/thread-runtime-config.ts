@@ -15,6 +15,7 @@ import type {
 import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
 import { renderTemplate } from "@bb/templates";
 import { ApiError } from "../../errors.js";
+import { getConnectIsRemote } from "../../request-context.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
 import { requireThreadStoragePath } from "./thread-storage.js";
@@ -202,6 +203,7 @@ export async function resolveThreadRuntimeCommandConfig(
   });
   const conditionalConfiguration = await resolvePluginAgentConfiguration({
     context: {
+      experimental_connect_isRemote: getConnectIsRemote(),
       thread: {
         id: args.thread.id,
         title: args.thread.title,

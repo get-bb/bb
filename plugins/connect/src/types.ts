@@ -67,6 +67,3 @@ export interface ConnectStatus {
 }
 
 export const CONNECT_REALTIME_CHANNEL = "connect";
-
-/** Window during which recent remote activity keeps instructions active. */
-export const REMOTE_ACTIVITY_INSTRUCTIONS_MS = 5 * 60 * 1000;

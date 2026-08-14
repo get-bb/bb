@@ -6,6 +6,7 @@ import {
   createFakePluginHost,
   type FakePluginHost,
 } from "@get-bb/plugin-sdk/testing";
+import type { PluginAgentConfigurationContext } from "@get-bb/plugin-sdk";
 import { decodeFrame, encodeFrame, type Frame } from "@bb/tunnel-contract";
 import {
   headersForLoopbackRequest,
@@ -42,6 +43,7 @@ function createConnectFakeHost(options?: {
 }): FakePluginHost {
   return createFakePluginHost({
     pluginId: "connect",
+    agentSkillIds: ["share-server-links"],
     sdk: {
       system: {
         config: async () => ({ primaryHostId: SERVER_HOST_ID }) as never,
@@ -76,6 +78,39 @@ function createConnectFakeHost(options?: {
         }
       : {}),
   });
+}
+
+function agentConfigurationContext(
+  connectIsRemote: boolean,
+): PluginAgentConfigurationContext {
+  return {
+    experimental_connect_isRemote: connectIsRemote,
+    thread: {
+      id: "th_1",
+      title: null,
+      parentThreadId: null,
+      sourceThreadId: null,
+    },
+    project: {
+      id: "proj_1",
+      kind: "standard",
+      name: "bb",
+      gitRemoteUrl: null,
+    },
+    environment: {
+      id: "env_1",
+      name: null,
+      path: "/tmp/bb",
+      workspaceProvisionType: "unmanaged",
+      branchName: null,
+    },
+    host: {
+      id: SERVER_HOST_ID,
+      name: SERVER_HOST_NAME,
+    },
+    provider: { id: "codex", model: "gpt-5.6" },
+    origin: { kind: null, pluginId: null },
+  };
 }
 
 describe("deriveConnectBaseUrl", () => {
@@ -1435,15 +1470,22 @@ describe("connect plugin", () => {
     );
   });
 
-  it("registers contributeInstructions", async () => {
+  it("adds share guidance only for Connect requests", async () => {
     const { harness } = await loadPlugin();
-    expect(harness.registrations.instructionProvider).not.toBeNull();
-    expect(
-      harness.registrations.instructionProvider?.({
-        threadId: "th_1",
-        projectId: "proj_1",
-      }),
-    ).toBeNull();
+    expect(harness.registrations.instructionProvider).toBeNull();
+    expect(harness.registrations.agentConfigurationProvider).not.toBeNull();
+
+    const connect = await harness.resolveAgentConfiguration(
+      agentConfigurationContext(true),
+    );
+    expect(connect.skills).toEqual(["share-server-links"]);
+    expect(connect.instructions).toBeNull();
+
+    const local = await harness.resolveAgentConfiguration(
+      agentConfigurationContext(false),
+    );
+    expect(local.skills).toEqual([]);
+    expect(local.instructions).toBeNull();
   });
 
   it("pair redeems, persists the credential to kv, and reports paired", async () => {

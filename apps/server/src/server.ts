@@ -42,7 +42,9 @@ import {
 } from "./internal/auth.js";
 import {
   captureTrustedRemoteAddress,
+  getGateAuthKind,
   resolveRequestAppSurface,
+  runWithConnectRemote,
 } from "./request-context.js";
 import { runEventLoopWork } from "./services/system/event-loop-work.js";
 import { runWithTelemetryAppSurface } from "./services/system/telemetry.js";
@@ -288,7 +290,10 @@ export function createApp(
       context,
       deps.config.appSurface,
     );
-    return runWithTelemetryAppSurface(appSurface, next);
+    return runWithConnectRemote(
+      getGateAuthKind(context) === "session",
+      () => runWithTelemetryAppSurface(appSurface, next),
+    );
   });
   app.use("*", async (context, next) => {
     const path = context.req.path;

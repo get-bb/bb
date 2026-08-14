@@ -386,6 +386,14 @@ export interface PluginAgentToolRegistrationBase {
 
 /** Stable, plain-data context resolved by the server for one agent session. */
 export interface PluginAgentConfigurationContext {
+  /**
+   * Whether this configuration resolution was triggered by a request forwarded
+   * from an authenticated BB Connect session. The value is request-scoped; the
+   * returned configuration follows the runtime lifetime rules on `configure`.
+   * Informational only; never use it for authorization.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_connect_isRemote: boolean;
   thread: {
     id: string;
     title: string | null;

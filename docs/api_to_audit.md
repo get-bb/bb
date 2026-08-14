@@ -5,6 +5,27 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
+## `PluginAgentConfigurationContext.experimental_connect_isRemote`
+
+**What it does.** Reports whether the request that caused agent configuration
+was forwarded from an authenticated bb Connect session. It reports request
+origin, not network reachability, and is informational only.
+
+**Audit before stabilizing.**
+
+1. **Lifetime.** Verify request context propagation through thread
+   provisioning and queued-message deferral. Restart, recovery, and sweep work
+   should use `false`.
+2. **Session semantics.** Confirm plugins understand that the boolean is
+   request-scoped, while the returned configuration can remain active for the
+   provider session and does not update when another viewer opens a tab.
+3. **Connect semantics.** Confirm Connect removes caller-supplied gate headers
+   and adds the session marker only after authentication. Ordinary direct
+   desktop, web, CLI, daemon, and background work should produce `false`.
+4. **Trust.** A direct caller can supply the informational header. Authorization
+   must continue to use server-owned authentication and route policy, never a
+   plugin callback.
+
 ## `PluginNavPanelRegistration.experimental_sidebarAccessory`
 
 **What it does.** Lets a nav panel register a no-props, presentational React

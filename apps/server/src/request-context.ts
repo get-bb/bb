@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import {
   APP_SURFACE_HEADER_NAME,
@@ -10,6 +11,8 @@ export const TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY = "bbTrustedRemoteAddress";
 export const GATE_AUTH_HEADER_NAME = "x-bb-gate-auth";
 export const GATE_MACHINE_ID_HEADER_NAME = "x-bb-gate-machine-id";
 export type GateAuthKind = "machine" | "session";
+
+const connectIsRemoteStorage = new AsyncLocalStorage<boolean>();
 
 export interface GateAuthHeaderReader {
   req: { header(name: string): string | undefined };
@@ -52,6 +55,17 @@ export function getGateAuthKind(
 export function getGateMachineId(context: GateAuthHeaderReader): string | null {
   const value = context.req.header(GATE_MACHINE_ID_HEADER_NAME)?.trim();
   return value ? value : null;
+}
+
+export function runWithConnectRemote<T>(
+  connectIsRemote: boolean,
+  callback: () => T,
+): T {
+  return connectIsRemoteStorage.run(connectIsRemote, callback);
+}
+
+export function getConnectIsRemote(): boolean {
+  return connectIsRemoteStorage.getStore() ?? false;
 }
 
 export function resolveRequestAppSurface(

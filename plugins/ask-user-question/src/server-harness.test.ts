@@ -18,6 +18,7 @@ function configurationContext(
   providerId: string,
 ): PluginAgentConfigurationContext {
   return {
+    experimental_connect_isRemote: false,
     thread: {
       id: "thr-test",
       title: null,

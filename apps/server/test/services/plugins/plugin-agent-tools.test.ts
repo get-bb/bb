@@ -6,6 +6,7 @@ import { z } from "zod";
 import { createConnection, migrate, type DbConnection } from "@bb/db";
 import { encodeClientTurnRequestIdNumber } from "@bb/domain";
 import type { Logger } from "@bb/logger";
+import { runWithConnectRemote } from "../../../src/request-context.js";
 import { RESERVED_AGENT_TOOL_NAMES } from "../../../src/services/plugins/plugin-api.js";
 import {
   createPluginService,
@@ -734,8 +735,13 @@ describe("plugin tools reach thread runtime config", () => {
       });
     };
 
-    const alphaCommand = await build(alpha, 10);
-    const betaCommand = await build(beta, 11);
+    const alphaCommand = await runWithConnectRemote(true, () =>
+      build(alpha, 10),
+    );
+    const betaCommand = await runWithConnectRemote(false, () =>
+      build(beta, 11),
+    );
+    const backgroundAlphaCommand = await build(alpha, 12);
     expect(alphaCommand.dynamicTools.map((tool) => tool.name)).toEqual([
       UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME,
       "alpha_tool",
@@ -771,15 +777,27 @@ describe("plugin tools reach thread runtime config", () => {
     ).not.toContain("alpha-skill");
     expect(alphaCommand.instructions).toContain('"name":"Alpha Host"');
     expect(alphaCommand.instructions).toContain(
+      '"experimental_connect_isRemote":true',
+    );
+    expect(alphaCommand.instructions).toContain(
       '"id":"codex","model":"gpt-5.6"',
     );
     expect(alphaCommand.instructions).toContain('"kind":null,"pluginId":null');
     expect(alphaCommand.instructions).toContain("factory=1;configure=1");
     expect(betaCommand.instructions).toContain('"name":"Beta Host"');
     expect(betaCommand.instructions).toContain(
+      '"experimental_connect_isRemote":false',
+    );
+    expect(betaCommand.instructions).toContain(
       '"id":"claude-code","model":"claude-opus-4-6"',
     );
     expect(betaCommand.instructions).toContain("factory=1;configure=2");
+    expect(backgroundAlphaCommand.instructions).toContain(
+      '"experimental_connect_isRemote":false',
+    );
+    expect(backgroundAlphaCommand.instructions).toContain(
+      "factory=1;configure=3",
+    );
     expect(alphaCommand.instructions).toContain(
       "Static instructions for alpha_tool",
     );
@@ -794,7 +812,7 @@ describe("plugin tools reach thread runtime config", () => {
         .list()
         .find((plugin) => plugin.id === "broken-conditional")?.handlerStats
         .errorCount,
-    ).toBe(2);
+    ).toBe(3);
     expect(
       harness.pluginService.listAgentTools().map((tool) => tool.tool.name),
     ).toEqual(["broken_tool", "alpha_tool", "beta_tool"]);
@@ -808,7 +826,7 @@ describe("plugin tools reach thread runtime config", () => {
       visibility: "hidden",
       sourceThreadId: alpha.thread.id,
     });
-    const sideCommand = await build({ ...alpha, thread: sideThread }, 12);
+    const sideCommand = await build({ ...alpha, thread: sideThread }, 13);
     // A side chat is an ordinary plugin-owned fork: it keeps the built-in
     // mutable environment tool, and configure() selections apply as usual.
     expect(sideCommand.dynamicTools.map((tool) => tool.name)).toEqual([
@@ -837,10 +855,10 @@ describe("plugin tools reach thread runtime config", () => {
       harness.pluginService.list().find((plugin) => plugin.id === "conditional")
         ?.handlerStats.errorCount,
     ).toBe(0);
-    const betaAgain = await build(beta, 13);
+    const betaAgain = await build(beta, 14);
     // The side-chat resolution applied configure too, so this remains the
-    // fourth callback invocation without rebuilding the factory.
-    expect(betaAgain.instructions).toContain("factory=1;configure=4");
+    // fifth callback invocation without rebuilding the factory.
+    expect(betaAgain.instructions).toContain("factory=1;configure=5");
 
     const betaExecution = await resolveExecutionOptions(harness.deps, {
       threadId: beta.thread.id,
@@ -865,7 +883,7 @@ describe("plugin tools reach thread runtime config", () => {
       turnSubmit.resumeContext.injectedSkillSources.map((skill) => skill.name),
     ).toContain("beta-skill");
     expect(turnSubmit.resumeContext.instructions).toContain(
-      "factory=1;configure=5",
+      "factory=1;configure=6",
     );
   });
 });

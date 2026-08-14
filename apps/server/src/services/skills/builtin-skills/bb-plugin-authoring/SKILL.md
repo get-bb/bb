@@ -746,9 +746,15 @@ is truncated to 4096 characters.
 `configure` is also synchronous and may be registered only once per factory
 execution. Its context has required, plain-data `thread`, `project`,
 `environment`, `host`, and `provider: { id, model }` objects, plus `sideChat`
-and `origin: { kind, pluginId }`; genuinely absent values are `null`, not
-omitted. `tools` names and `skills` frontmatter names may select only this
-plugin's static registrations. A `tools` entry may instead be
+and `origin: { kind, pluginId }`. The experimental
+`experimental_connect_isRemote` boolean reports whether the configuration
+resolution was triggered by a request forwarded from an authenticated bb
+Connect session. It is request-scoped and informational, not an authorization
+signal. The returned configuration still follows the provider-session and
+runtime lifetime rules above. Genuinely absent values are `null`, not omitted.
+
+`tools` names and `skills` frontmatter names may select only this plugin's
+static registrations. A `tools` entry may instead be
 `{ name, parameters }` to override the parameter schema advertised to the
 provider for that resolution only — `parameters` must be a JSON-serializable
 JSON-schema object with root `type: "object"`, at most 128 KiB serialized, and

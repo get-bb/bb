@@ -7,10 +7,7 @@ import { ConnectTunnel } from "./tunnel.js";
 import { ShareHostResolver } from "./hosts.js";
 import { resolveLocalCloudLoopbackUrl } from "./local-loopback.js";
 import { resolveDefaultConnectBaseUrl } from "./redeem.js";
-import {
-  CONNECT_REALTIME_CHANNEL,
-  REMOTE_ACTIVITY_INSTRUCTIONS_MS,
-} from "./types.js";
+import { CONNECT_REALTIME_CHANNEL } from "./types.js";
 
 export default async function plugin(bb: BbPluginApi) {
   const store = createKvCredentialStore(bb.storage.kv);
@@ -48,20 +45,11 @@ export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(connectRpcContract, createRpcHandlers(tunnel, hostResolver));
   registerConnectCli({ bb, tunnel, hostResolver });
 
-  bb.agents.contributeInstructions(() => {
-    const status = tunnel.status();
-    if (!status.paired || status.url === null) return null;
-    const recent =
-      status.remoteClients > 0 ||
-      (status.lastRemoteActivityAt !== null &&
-        Date.now() - status.lastRemoteActivityAt <
-          REMOTE_ACTIVITY_INSTRUCTIONS_MS);
-    if (!recent) return null;
-    return (
-      `The user is currently viewing this bb remotely at ${status.url}. ` +
-      "Port shares work from a thread on any enrolled host: when you start an HTTP server they should see, run `bb connect expose <port>` from that thread. " +
-      "The command returns the correct public URL for the thread's host; give it to them as a markdown link because a localhost URL will not work remotely."
-    );
+  bb.agents.configure(({ experimental_connect_isRemote }) => {
+    return {
+      tools: [],
+      skills: experimental_connect_isRemote ? ["share-server-links"] : [],
+    };
   });
 
   // The tunnel lives inside this service: idle while unpaired, dialing when

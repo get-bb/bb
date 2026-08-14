@@ -582,6 +582,7 @@ describe("sdk", () => {
 
 describe("agent tools", () => {
   const configurationContext = {
+    experimental_connect_isRemote: false,
     thread: {
       id: "thread-test",
       title: null,
