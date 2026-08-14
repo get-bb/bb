@@ -7,6 +7,7 @@ import {
 } from "@bb/db";
 import { assertValidPluginCompactIconSvg } from "@bb/plugin-build";
 import {
+  assertPublicMarketplaceUrl,
   boundedResponseBytes,
   marketplaceErrorMessage,
   MARKETPLACE_FETCH_TIMEOUT_MS,
@@ -160,6 +161,9 @@ async function fetchOneIcon(args: {
   cached: PluginMarketplaceIconRow | undefined;
   fetch: MarketplaceFetch;
 }): Promise<UpsertPluginMarketplaceIconInput | null> {
+  // The entry, not BB, chose this URL. It gets the manifest's own network
+  // policy even when a caller injects its own fetch.
+  assertPublicMarketplaceUrl(args.iconUrl);
   const cached = args.cached;
   const unchangedUrl =
     cached !== undefined && cached.sourceUrl === args.iconUrl;

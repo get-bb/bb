@@ -30,6 +30,7 @@ import { fetchMarketplaceIcons } from "./marketplace-icons.js";
 import {
   boundedResponseBytes,
   marketplaceErrorMessage,
+  publicMarketplaceFetch,
   MARKETPLACE_FETCH_TIMEOUT_MS,
   type MarketplaceFetch,
 } from "./marketplace-http.js";
@@ -115,7 +116,11 @@ export function createPluginCatalogService(deps: {
     ]),
   );
   const now = deps.now ?? Date.now;
-  const fetchMarketplace = deps.fetch ?? globalThis.fetch.bind(globalThis);
+  // Manifests and entry icons share one guarded socket: https on port 443, no
+  // credentials, no redirects, and a DNS answer that must route only through
+  // the public internet. An entry can name any icon URL, so the icon fetch
+  // needs the same protection as the manifest fetch.
+  const fetchMarketplace = deps.fetch ?? publicMarketplaceFetch;
   const schedule =
     deps.schedule ??
     ((callback: () => void, delayMs: number) => {
