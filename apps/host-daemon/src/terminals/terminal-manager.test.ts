@@ -1105,7 +1105,7 @@ describe("TerminalManager", () => {
       tailBytes: 4 * 1024 * 1024,
     });
 
-    expect(pty.writeCalls).toEqual(["\u001b[?1;2c", "\u001b[?1;2c"]);
+    expect(pty.writeCalls).toEqual(["\u001b[?1;2c\u001b[?1;2c"]);
     expect(collectTerminalOutput(harness.messages)).toBe("beforebetweenafter");
     expect(harness.messages).toContainEqual({
       type: "terminal.replay",
@@ -1149,6 +1149,16 @@ describe("TerminalManager", () => {
       replayStartSeq: 0,
       nextSeq: 0,
     });
+  });
+
+  it("bounds device attribute replies for one flooded output chunk", async () => {
+    const harness = createHarness();
+    const pty = await openTerminal(harness);
+
+    pty.emitData("\u001b[c".repeat(5_000));
+
+    expect(pty.writeCalls).toEqual(["\u001b[?1;2c".repeat(8)]);
+    expect(collectTerminalOutput(harness.messages)).toBe("");
   });
 
   it("preserves near matches and incomplete device attribute queries on exit", async () => {

@@ -29,6 +29,11 @@ const DEFAULT_TERMINAL_CLOSE_GRACE_PERIOD_MS = 2_000;
 // instead of adding more protocol-specific handlers here.
 const PRIMARY_DEVICE_ATTRIBUTES_QUERY_PATTERN = /\u001b\[(?:0)?c/g;
 const PRIMARY_DEVICE_ATTRIBUTES_RESPONSE = "\u001b[?1;2c";
+// One 64 KiB output chunk can hold more than 20,000 DA1 queries. node-pty
+// copies each reply into an unbounded write queue, so a terminal process could
+// exhaust host daemon memory. Send one bounded write for each output chunk.
+// A shell needs only one answer for each startup query.
+const MAX_PRIMARY_DEVICE_ATTRIBUTES_REPLIES_PER_CHUNK = 8;
 const NODE_PTY_NATIVE_DIRS: readonly string[] = [
   path.join("build", "Release"),
   path.join("build", "Debug"),
@@ -862,8 +867,12 @@ export class TerminalManager {
       data,
     );
     session.pendingPrimaryDeviceAttributesQuery = result.pendingQuery;
-    for (let index = 0; index < result.queryCount; index += 1) {
-      session.pty.write(PRIMARY_DEVICE_ATTRIBUTES_RESPONSE);
+    if (result.queryCount > 0) {
+      const replyCount = Math.min(
+        result.queryCount,
+        MAX_PRIMARY_DEVICE_ATTRIBUTES_REPLIES_PER_CHUNK,
+      );
+      session.pty.write(PRIMARY_DEVICE_ATTRIBUTES_RESPONSE.repeat(replyCount));
     }
     this.bufferTerminalOutput(session, result.output);
   }
