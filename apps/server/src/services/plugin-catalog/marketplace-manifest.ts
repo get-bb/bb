@@ -324,7 +324,13 @@ export function marketplacePolicyWideningProblem(
 export function entrySourceDisplay(entry: MarketplaceEntry): string {
   if ("npm" in entry.source) {
     const spec = entry.source.npm.range ?? entry.source.npm.tag ?? "";
-    return `npm:${entry.source.npm.package}${spec.length === 0 ? "" : `@${spec}`}`;
+    // A listing that pins its own registry replaces the host's npm
+    // configuration, so the confirmation must name that registry.
+    const registry =
+      entry.source.npm.registry === undefined
+        ? ""
+        : ` (registry ${entry.source.npm.registry})`;
+    return `npm:${entry.source.npm.package}${spec.length === 0 ? "" : `@${spec}`}${registry}`;
   }
   const subdir =
     entry.source.git.subdir === undefined ? "" : `#${entry.source.git.subdir}`;

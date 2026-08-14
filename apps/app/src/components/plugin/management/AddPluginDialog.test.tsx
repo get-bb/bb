@@ -227,6 +227,25 @@ describe("AddPluginDialog", () => {
     ).not.toBeNull();
   });
 
+  it("shows the exact source, including a pinned npm registry", () => {
+    stubFetch();
+    // A listing can send BB to another registry. The confirmation names it,
+    // so nobody confirms an install whose code comes from an unseen host.
+    renderDialog({
+      entryId: "widgets",
+      displayName: "Widgets",
+      icon: "Zap",
+      iconUrl: null,
+      source: "npm:bb-plugin-widgets@^1.0.0 (registry https://npm.acme.test)",
+    });
+
+    expect(
+      screen.getByText(
+        "npm:bb-plugin-widgets@^1.0.0 (registry https://npm.acme.test)",
+      ),
+    ).not.toBeNull();
+  });
+
   it("installs official catalog entries through the catalog endpoint", async () => {
     const requests = stubFetch();
     renderDialog({

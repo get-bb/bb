@@ -15,6 +15,11 @@ import {
   type PluginSourceIntent,
 } from "@bb/db";
 import { buildPluginApp, buildPluginServer } from "@bb/plugin-build";
+import {
+  assertPublicMarketplaceUrl,
+  publicMarketplaceFetch,
+  MARKETPLACE_FETCH_TIMEOUT_MS,
+} from "../plugin-catalog/marketplace-http.js";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { validatePluginArtifactMeta } from "./app-bundle.js";
 import type { PluginSourceSelection } from "@bb/server-contract";
@@ -741,9 +746,15 @@ export function createManagedPluginArtifacts(
     await mkdir(registryProbe, { recursive: true });
     // A listing that pins its own registry wins over the host's npm config;
     // the pinned value is persisted, so updates re-resolve against it too.
+    // The host's own configured registry is the operator's choice, but a
+    // listing is untrusted input: it gets the marketplace network policy, so
+    // it cannot aim BB at an internal service.
+    const listedRegistry = context.npmRegistry;
+    if (listedRegistry !== undefined) {
+      assertPublicMarketplaceUrl(listedRegistry);
+    }
     const registry =
-      context.npmRegistry ??
-      (await resolveNpmRegistry(registryProbe, parsed.name));
+      listedRegistry ?? (await resolveNpmRegistry(registryProbe, parsed.name));
     const intent: NpmSourceIntentForResolution = {
       packageName: parsed.name,
       registry,
@@ -766,7 +777,20 @@ export function createManagedPluginArtifacts(
     const selected = await selectNpmCandidate({
       intent,
       appVersion: deps.appVersion,
-      run: createNpmResolverRun(),
+      // A listed registry is contacted through the guarded socket, so a
+      // hostile DNS answer cannot reach a private host either.
+      run: createNpmResolverRun(
+        listedRegistry === undefined
+          ? {}
+          : {
+              fetch: (input, init) =>
+                publicMarketplaceFetch(input, {
+                  ...init,
+                  redirect: "error",
+                  signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
+                }),
+            },
+      ),
     });
     if (selected.outcome === "unavailable") {
       throw new Error(`install failed: ${selected.detail}`);

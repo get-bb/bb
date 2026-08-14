@@ -392,6 +392,29 @@ describe("plugin install flows", () => {
       expect(getInstalledPluginRegistration(db, "narrow")).toBeUndefined();
     });
 
+    it("refuses a listed npm registry that is not a public https host", async () => {
+      for (const registry of [
+        "https://127.0.0.1/registry",
+        "https://localhost/registry",
+        "https://registry.acme.test:8443/",
+        "https://user:secret@registry.acme.test/",
+      ]) {
+        await expect(
+          service.installCatalogPlugin({
+            marketplace: "bb-official",
+            entryId: "catalog-npm-entry",
+            pluginId: "bb-plugin-registry",
+            source: "npm:bb-plugin-registry@^1.0.0",
+            selection: ROOT_PLUGIN_SOURCE_SELECTION,
+            npmRegistry: registry,
+          }),
+        ).rejects.toThrow(/marketplace/);
+      }
+      expect(
+        getInstalledPluginRegistration(db, "bb-plugin-registry"),
+      ).toBeUndefined();
+    });
+
     it("refuses a git catalog install whose manifest id differs from the entry", async () => {
       const repoDir = join(workDir, "repo-catalog-mismatch");
       await writePluginFixture(repoDir, { name: "bb-plugin-imposter" });

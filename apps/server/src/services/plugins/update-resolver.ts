@@ -103,7 +103,11 @@ export interface NpmResolverRun {
 }
 
 export function createNpmResolverRun(options?: {
-  fetch?: typeof fetch;
+  /**
+   * Narrower than `typeof fetch` on purpose: a caller can hand in a guarded
+   * transport that only speaks (url, init), such as the marketplace fetch.
+   */
+  fetch?: (input: string, init: RequestInit) => Promise<Response>;
 }): NpmResolverRun {
   const fetchImpl = options?.fetch ?? fetch;
   const cache = new Map<string, Promise<Packument>>();
