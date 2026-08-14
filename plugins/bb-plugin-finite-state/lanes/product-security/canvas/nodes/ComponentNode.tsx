@@ -1,16 +1,31 @@
+import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import {
-  Handle,
-  Position,
-  type Node,
-  type NodeProps,
-} from "@xyflow/react";
+  ApiIcon,
+  CircleIcon,
+  CloudIcon,
+  CloudServerIcon,
+  ComputerTerminal01Icon,
+  ConnectIcon,
+  DatabaseIcon,
+  ElectricPlugsIcon,
+  InternetIcon,
+  LaptopIcon,
+  LockIcon,
+  MicrochipIcon,
+  MobileProgrammingIcon,
+  QuestionIcon,
+  SourceCodeIcon,
+  TestTube01Icon,
+  ViewIcon,
+  WebProgrammingIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { useMemo } from "react";
 import { Badge } from "@bb/shared-ui/badge";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import type { CanvasFlowNodeData } from "../foundation/CanvasViewport.js";
-import type {
-  ArchitectureNodeData,
-} from "./adapters.js";
+import type { ASSURANCE_STUDIO_COMPONENT_TYPES } from "../editing/schema.js";
+import type { ArchitectureNodeData } from "./adapters.js";
 import { useOptionalArchitectureSelection } from "./selection.js";
 
 interface RichCanvasNodeData extends CanvasFlowNodeData {
@@ -19,22 +34,72 @@ interface RichCanvasNodeData extends CanvasFlowNodeData {
 
 type RichCanvasNode = Node<RichCanvasNodeData>;
 
-const COMPONENT_ICONS: Record<string, IconName> = {
-  software: "Code",
-  hardware: "Laptop",
-  sensor: "Eye",
-  actuator: "ElectricPlugs",
-  ecu: "ComputerTerminal01",
-  hsm: "Lock",
-  tee: "Container",
-  medical_device: "Beaker",
-  network: "Globe",
+type AssuranceStudioComponentType =
+  (typeof ASSURANCE_STUDIO_COMPONENT_TYPES)[number];
+
+interface ComponentIconDefinition {
+  icon: IconSvgElement;
+  name: string;
+}
+
+const COMPONENT_ICONS: Record<string, ComponentIconDefinition> &
+  Record<AssuranceStudioComponentType, ComponentIconDefinition> = {
+  firmware: { icon: MicrochipIcon, name: "Microchip" },
+  software: { icon: SourceCodeIcon, name: "SourceCode" },
+  hardware: { icon: LaptopIcon, name: "Laptop" },
+  network: { icon: InternetIcon, name: "Internet" },
+  cloud_service: { icon: CloudServerIcon, name: "CloudServer" },
+  mobile_app: { icon: MobileProgrammingIcon, name: "MobileProgramming" },
+  web_app: { icon: WebProgrammingIcon, name: "WebProgramming" },
+  database: { icon: DatabaseIcon, name: "Database" },
+  api: { icon: ApiIcon, name: "Api" },
+  sensor: { icon: ViewIcon, name: "View" },
+  actuator: { icon: ElectricPlugsIcon, name: "ElectricPlugs" },
+  communication: { icon: ConnectIcon, name: "Connect" },
+  other: { icon: QuestionIcon, name: "Question" },
 };
 
-export function componentIcon(componentType: string | undefined): IconName {
-  return componentType
-    ? (COMPONENT_ICONS[componentType] ?? "Circle")
-    : "Circle";
+const RETIRED_COMPONENT_ICONS: Record<string, ComponentIconDefinition> = {
+  ecu: { icon: ComputerTerminal01Icon, name: "ComputerTerminal01" },
+  hsm: { icon: LockIcon, name: "Lock" },
+  tee: { icon: CloudIcon, name: "Cloud" },
+  medical_device: { icon: TestTube01Icon, name: "TestTube01" },
+};
+
+const FALLBACK_COMPONENT_ICON: ComponentIconDefinition = {
+  icon: CircleIcon,
+  name: "Circle",
+};
+
+export function componentIcon(
+  componentType: string | undefined,
+): ComponentIconDefinition {
+  if (!componentType) return FALLBACK_COMPONENT_ICON;
+  if (Object.hasOwn(COMPONENT_ICONS, componentType)) {
+    return COMPONENT_ICONS[componentType];
+  }
+  if (Object.hasOwn(RETIRED_COMPONENT_ICONS, componentType)) {
+    return RETIRED_COMPONENT_ICONS[componentType];
+  }
+  return FALLBACK_COMPONENT_ICON;
+}
+
+export function ComponentTypeIcon({
+  className,
+  componentType,
+}: {
+  className?: string;
+  componentType: string | undefined;
+}): React.JSX.Element {
+  const definition = componentIcon(componentType);
+  return (
+    <HugeiconsIcon
+      aria-hidden="true"
+      className={className}
+      data-component-icon={definition.name}
+      icon={definition.icon}
+    />
+  );
 }
 
 export function architectureDataFromNode(
@@ -55,7 +120,7 @@ export function architectureDataFromNode(
 
 interface CanvasNodeFrameProps {
   architecture: ArchitectureNodeData;
-  icon: IconName;
+  icon: IconName | React.JSX.Element;
   selected: boolean;
   children?: React.ReactNode;
   className?: string;
@@ -95,7 +160,11 @@ export function CanvasNodeFrame({
       />
       <div className="flex min-w-0 items-center gap-2">
         <span className="rounded-md border border-border bg-muted p-1.5">
-          <Icon aria-hidden="true" className="size-4" name={icon} />
+          {typeof icon === "string" ? (
+            <Icon aria-hidden="true" className="size-4" name={icon} />
+          ) : (
+            icon
+          )}
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{architecture.name}</p>
@@ -139,14 +208,18 @@ export function ComponentNode({
   return (
     <CanvasNodeFrame
       architecture={architecture}
-      icon={componentIcon(architecture.componentType)}
+      icon={
+        <ComponentTypeIcon
+          className="size-4"
+          componentType={architecture.componentType}
+        />
+      }
       selected={selected}
     >
       <Badge variant="secondary">
-        <Icon
-          aria-hidden="true"
+        <ComponentTypeIcon
           className="mr-1 size-3"
-          name={componentIcon(architecture.componentType)}
+          componentType={architecture.componentType}
         />
         {architecture.componentType ?? "component"}
       </Badge>

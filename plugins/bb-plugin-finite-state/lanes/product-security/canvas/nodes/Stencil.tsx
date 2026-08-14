@@ -4,7 +4,7 @@ import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { ASSURANCE_STUDIO_COMPONENT_TYPES } from "../editing/schema.js";
-import { componentIcon } from "./ComponentNode.js";
+import { ComponentTypeIcon } from "./ComponentNode.js";
 import { wp35MutationStubs } from "./selection.js";
 
 export function Stencil(): React.JSX.Element {
@@ -48,11 +48,7 @@ export function Stencil(): React.JSX.Element {
                 className="flex items-center gap-2 rounded-md border border-border px-2 py-2 text-sm"
                 key={type}
               >
-                <Icon
-                  aria-hidden="true"
-                  className="size-4"
-                  name={componentIcon(type)}
-                />
+                <ComponentTypeIcon className="size-4" componentType={type} />
                 <span className="min-w-0 flex-1 truncate">
                   {type.replaceAll("_", " ")}
                 </span>

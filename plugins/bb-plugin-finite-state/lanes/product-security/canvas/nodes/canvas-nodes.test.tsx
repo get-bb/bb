@@ -40,6 +40,21 @@ const cache = {
 const clipboardWrite = vi.fn(async (_value: string) => undefined);
 
 const componentTypes = ASSURANCE_STUDIO_COMPONENT_TYPES;
+const componentIconNames = {
+  firmware: "Microchip",
+  software: "SourceCode",
+  hardware: "Laptop",
+  network: "Internet",
+  cloud_service: "CloudServer",
+  mobile_app: "MobileProgramming",
+  web_app: "WebProgramming",
+  database: "Database",
+  api: "Api",
+  sensor: "View",
+  actuator: "ElectricPlugs",
+  communication: "Connect",
+  other: "Question",
+} as const satisfies Record<(typeof componentTypes)[number], string>;
 
 interface TestCanvasNodeData extends Record<string, unknown> {
   model: CanvasNodeModel;
@@ -542,10 +557,24 @@ describe("WP-32 inspector and project scope", () => {
     ).toBeTruthy();
     expect(await slot.findByText("Slug: component-software")).toBeTruthy();
     for (const componentType of componentTypes) {
+      const componentNode = await slot.findByLabelText(
+        `component ${componentType.replaceAll("_", " ")} node`,
+      );
       expect(
-        await slot.findByLabelText(
-          `component ${componentType.replaceAll("_", " ")} node`,
+        componentNode.querySelectorAll(
+          `[data-component-icon="${componentIconNames[componentType]}"]`,
         ),
+      ).toHaveLength(2);
+
+      const stencilType = slot.getByText(componentType.replaceAll("_", " "), {
+        selector: "li span",
+      });
+      expect(
+        stencilType
+          .closest("li")
+          ?.querySelector(
+            `[data-component-icon="${componentIconNames[componentType]}"]`,
+          ),
       ).toBeTruthy();
     }
     expect(await slot.findByLabelText("zone Clinical network")).toBeTruthy();
