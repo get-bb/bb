@@ -22,6 +22,10 @@ interface MockPierreFileProps {
     contents: string;
     name: string;
   };
+  selectedLines?: {
+    end: number;
+    start: number;
+  } | null;
 }
 
 const pierreMock = vi.hoisted(() => {
@@ -60,6 +64,7 @@ const pierreMock = vi.hoisted(() => {
     lastFile: null as MockPierreFileProps["file"] | null,
     mountCount: 0,
     renderCount: 0,
+    scrollIntoView: vi.fn(),
     statsCallback: null as StatsCallback | null,
     unsubscribe: vi.fn(),
   };
@@ -86,21 +91,47 @@ vi.mock("@pierre/diffs/react", async () => {
   const React = await import("react");
 
   return {
-    File: ({ file }: MockPierreFileProps) => {
+    File: ({ file, selectedLines = null }: MockPierreFileProps) => {
       const [instanceId] = React.useState(() => {
         pierreMock.state.mountCount += 1;
         return pierreMock.state.mountCount;
       });
+      const hostRef = React.useRef<HTMLElement>(null);
       pierreMock.state.lastFile = file;
       pierreMock.state.renderCount += 1;
+
+      React.useLayoutEffect(() => {
+        const host = hostRef.current;
+        if (host === null) return;
+        const shadowRoot = host.shadowRoot ?? host.attachShadow({ mode: "open" });
+        shadowRoot.replaceChildren(
+          ...file.contents.split("\n").map((lineContents, index) => {
+            const lineNumber = index + 1;
+            const line = document.createElement("div");
+            line.dataset.line = String(lineNumber);
+            line.dataset.lineIndex = String(index);
+            line.textContent = lineContents;
+            line.scrollIntoView = pierreMock.state.scrollIntoView;
+            if (
+              selectedLines !== null &&
+              lineNumber >= selectedLines.start &&
+              lineNumber <= selectedLines.end
+            ) {
+              line.dataset.selectedLine = "single";
+            }
+            return line;
+          }),
+        );
+      }, [file.contents, selectedLines]);
+
       return React.createElement(
-        "pre",
+        "diffs-container",
         {
+          ref: hostRef,
           "data-instance-id": String(instanceId),
           "data-render-count": String(pierreMock.state.renderCount),
           "data-testid": "pierre-file",
         },
-        file.contents,
       );
     },
     useWorkerPool: () => pierreMock.workerPool,
@@ -114,6 +145,7 @@ describe("FilePreview", () => {
     pierreMock.state.lastFile = null;
     pierreMock.state.mountCount = 0;
     pierreMock.state.renderCount = 0;
+    pierreMock.state.scrollIntoView.mockClear();
     pierreMock.state.statsCallback = null;
     pierreMock.state.unsubscribe.mockClear();
     pierreMock.workerPool.subscribeToStatChanges.mockClear();
@@ -239,6 +271,36 @@ describe("FilePreview", () => {
     });
 
     await screen.findByTestId("pierre-file");
+  });
+
+  it("scrolls to a target line inside Pierre's shadow root after the worker is ready", async () => {
+    render(
+      <FilePreview
+        headerMode="none"
+        path="apps/app/src/lib/thread-read-state.ts"
+        state={{
+          kind: "ready",
+          file: {
+            name: "thread-read-state.ts",
+            contents: ["first", "second", "third"].join("\n"),
+          },
+          lineRange: { startLineNumber: 2, endLineNumber: 2 },
+          textPreviewKind: null,
+        }}
+      />,
+    );
+
+    const pierreFile = await screen.findByTestId("pierre-file");
+    await waitFor(() => {
+      expect(pierreMock.state.scrollIntoView).toHaveBeenCalledWith({
+        block: "center",
+      });
+    });
+    expect(
+      pierreFile.shadowRoot
+        ?.querySelector('[data-line="2"]')
+        ?.hasAttribute("data-file-preview-target-line"),
+    ).toBe(true);
   });
 
   it("remounts the code view when the highlighted file cache resolves", async () => {

@@ -8,7 +8,11 @@ import {
 } from "react";
 import { File as PierreFile, useWorkerPool } from "@pierre/diffs/react";
 import type { FileOptions } from "@pierre/diffs/react";
-import type { SelectedLineRange, SupportedLanguages } from "@pierre/diffs";
+import {
+  DIFFS_TAG_NAME,
+  type SelectedLineRange,
+  type SupportedLanguages,
+} from "@pierre/diffs";
 import type { UrlTransform } from "react-markdown";
 import { Button } from "@bb/shared-ui/button";
 import { usePierreLineSelectionActions } from "@/components/git-diff/PierreLineSelectionActions.js";
@@ -1085,13 +1089,29 @@ function IframeFilePreview({ sandbox, title, url }: IframeFilePreviewTarget) {
   );
 }
 
+function getPreviewTargetRoots(container: HTMLElement): ParentNode[] {
+  const roots: ParentNode[] = [container];
+  // Pierre owns its rendered line elements inside an open shadow root, which
+  // normal descendant queries on the React wrapper cannot cross.
+  for (const pierreContainer of container.querySelectorAll<HTMLElement>(
+    DIFFS_TAG_NAME,
+  )) {
+    if (pierreContainer.shadowRoot !== null) {
+      roots.push(pierreContainer.shadowRoot);
+    }
+  }
+  return roots;
+}
+
 function clearPreviewTargetLine(container: HTMLElement) {
-  const targetLines = container.querySelectorAll(
-    "[data-file-preview-target-line]",
-  );
-  for (const targetLine of targetLines) {
-    targetLine.removeAttribute("data-file-preview-target-line");
-    targetLine.removeAttribute("data-selected-line");
+  for (const root of getPreviewTargetRoots(container)) {
+    const targetLines = root.querySelectorAll(
+      "[data-file-preview-target-line]",
+    );
+    for (const targetLine of targetLines) {
+      targetLine.removeAttribute("data-file-preview-target-line");
+      targetLine.removeAttribute("data-selected-line");
+    }
   }
 }
 
@@ -1099,15 +1119,21 @@ function findPreviewTargetLine(
   container: HTMLElement,
   lineNumber: number,
 ): HTMLElement | null {
-  const lines = container.querySelectorAll(`[data-line="${lineNumber}"]`);
-  for (const line of lines) {
-    if (line instanceof HTMLElement && line.dataset.lineIndex !== undefined) {
-      return line;
+  const roots = getPreviewTargetRoots(container);
+  for (const root of roots) {
+    const lines = root.querySelectorAll(`[data-line="${lineNumber}"]`);
+    for (const line of lines) {
+      if (line instanceof HTMLElement && line.dataset.lineIndex !== undefined) {
+        return line;
+      }
     }
   }
-  for (const line of lines) {
-    if (line instanceof HTMLElement) {
-      return line;
+  for (const root of roots) {
+    const lines = root.querySelectorAll(`[data-line="${lineNumber}"]`);
+    for (const line of lines) {
+      if (line instanceof HTMLElement) {
+        return line;
+      }
     }
   }
   return null;
@@ -1296,12 +1322,9 @@ function FilePreviewCode({
       const container = containerRef.current;
       if (!container) return;
       clearPreviewTargetLine(container);
-      clearPreviewTargetLine(container.ownerDocument.body);
       if (targetLineNumber === null) return;
 
-      const line =
-        findPreviewTargetLine(container, targetLineNumber) ??
-        findPreviewTargetLine(container.ownerDocument.body, targetLineNumber);
+      const line = findPreviewTargetLine(container, targetLineNumber);
       if (line) {
         line.setAttribute("data-file-preview-target-line", "");
         line.setAttribute("data-selected-line", "single");
@@ -1319,13 +1342,18 @@ function FilePreviewCode({
     return () => {
       if (cleanupContainer) {
         clearPreviewTargetLine(cleanupContainer);
-        clearPreviewTargetLine(cleanupContainer.ownerDocument.body);
       }
       if (animationFrame !== null) {
         window.cancelAnimationFrame(animationFrame);
       }
     };
-  }, [file.contents, file.name, targetLineNumber]);
+  }, [
+    file.contents,
+    file.name,
+    shouldWaitForWorkerPool,
+    targetLineNumber,
+    workerHighlightCacheState,
+  ]);
 
   if (shouldWaitForWorkerPool) {
     return <FilePreviewLoading />;
