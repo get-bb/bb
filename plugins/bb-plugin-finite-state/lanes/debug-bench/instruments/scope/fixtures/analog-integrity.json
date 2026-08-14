@@ -1,0 +1,25 @@
+{
+  "schema": "finite-state-scope-v1",
+  "sampleRateHz": 1000,
+  "_provenance": {
+    "source": "Synthetic golden values in the normalized shape produced from PicoSDK block-mode ADC buffers",
+    "vendorShape": "one equal-length voltage array per enabled channel",
+    "references": [
+      "https://github.com/picotech/picosdk-python-wrappers",
+      "https://siglentna.com/wp-content/uploads/dlm_uploads/2017/10/Programming-Guide_forSDS1000X-E.pdf",
+      "https://pyvisa.readthedocs.io/en/1.15.0/introduction/rvalues.html"
+    ]
+  },
+  "channels": {
+    "A": [
+      0, 0, 0, 0, 0, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1,
+      1.04, 1.01, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+    ],
+    "B": [
+      3.3, 3.301, 3.299, 3.3, 3.301, 3.299, 3.3, 3.301, 3.299, 3.3, 3.301,
+      3.299, 3.3, 3.301, 3.299, 3.3, 3.301, 3.299, 3.3, 3.3, 3.2, 3.201, 3.199,
+      3.2, 3.201, 3.199, 3.2, 3.201, 3.199, 3.2, 3.3, 3.301, 3.299, 3.3, 3.301,
+      3.299, 3.3, 3.301, 3.299, 3.3
+    ]
+  }
+}
