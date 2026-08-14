@@ -588,59 +588,119 @@ function TiptapEditor({
   );
 }
 
+type DocsRpcClient = ReturnType<typeof useRpc<typeof docsRpcContract>>;
+
+interface NotebookStore {
+  consumers: Set<symbol>;
+  data: NotesData | null;
+  inFlight: Promise<void> | null;
+  listeners: Set<() => void>;
+  owner: symbol | null;
+  requestId: number;
+  vaultId: string | null;
+}
+
+const notebookStores = new Map<string | null, NotebookStore>();
+
+function getNotebookStore(vaultId: string | null): NotebookStore {
+  const existing = notebookStores.get(vaultId);
+  if (existing) return existing;
+  const store: NotebookStore = {
+    consumers: new Set(),
+    data: null,
+    inFlight: null,
+    listeners: new Set(),
+    owner: null,
+    requestId: 0,
+    vaultId,
+  };
+  notebookStores.set(vaultId, store);
+  return store;
+}
+
+function notifyNotebookStore(store: NotebookStore): void {
+  for (const listener of store.listeners) listener();
+}
+
+function refreshNotebookStore(
+  store: NotebookStore,
+  rpc: DocsRpcClient,
+): Promise<void> {
+  if (notebookStores.get(store.vaultId) !== store)
+    return Promise.resolve();
+  if (store.inFlight) return store.inFlight;
+  const requestId = ++store.requestId;
+  const request = rpc
+    .call("listNotes", store.vaultId ? { vaultId: store.vaultId } : {})
+    .then((value) => {
+      if (
+        requestId !== store.requestId ||
+        notebookStores.get(store.vaultId) !== store
+      )
+        return;
+      store.data = parseNotesData(value);
+      notifyNotebookStore(store);
+    })
+    .catch((error: unknown) => {
+      if (
+        requestId !== store.requestId ||
+        notebookStores.get(store.vaultId) !== store ||
+        store.data === null
+      )
+        return;
+      store.data = {
+        ...store.data,
+        error: error instanceof Error ? error.message : String(error),
+      };
+      notifyNotebookStore(store);
+    })
+    .finally(() => {
+      if (store.inFlight === request) store.inFlight = null;
+    });
+  store.inFlight = request;
+  return request;
+}
+
 function useNotebook(vaultId: string | null) {
   const rpc = useRpc<typeof docsRpcContract>();
-  const currentVaultIdRef = useRef(vaultId);
-  currentVaultIdRef.current = vaultId;
-  const requestIdRef = useRef(0);
-  const [result, setResult] = useState<{
-    requestedVaultId: string | null;
-    data: NotesData;
-  } | null>(null);
+  const rpcRef = useRef(rpc);
+  rpcRef.current = rpc;
+  const store = useMemo(() => getNotebookStore(vaultId), [vaultId]);
+  const consumerRef = useRef(Symbol("docs-notebook-consumer"));
+  const [, rerender] = useState(0);
   const refresh = useCallback(() => {
-    const requestedVaultId = vaultId;
-    if (currentVaultIdRef.current !== requestedVaultId) return;
-    const requestId = ++requestIdRef.current;
-    void rpc
-      .call("listNotes", vaultId ? { vaultId } : {})
-      .then((value) => {
-        if (
-          requestId !== requestIdRef.current ||
-          currentVaultIdRef.current !== requestedVaultId
-        )
-          return;
-        setResult({ requestedVaultId, data: parseNotesData(value) });
-      })
-      .catch((error: unknown) => {
-        if (
-          requestId !== requestIdRef.current ||
-          currentVaultIdRef.current !== requestedVaultId
-        )
-          return;
-        setResult((current) =>
-          current?.requestedVaultId === requestedVaultId
-            ? {
-                ...current,
-                data: {
-                  ...current.data,
-                  error: error instanceof Error ? error.message : String(error),
-                },
-              }
-            : null,
-        );
-      });
-  }, [rpc, vaultId]);
+    void refreshNotebookStore(store, rpcRef.current);
+  }, [store]);
+
   useEffect(() => {
-    refresh();
+    const consumer = consumerRef.current;
+    const listener = () => rerender((version) => version + 1);
+    store.consumers.add(consumer);
+    store.listeners.add(listener);
+    store.owner ??= consumer;
+    if (store.data === null) refresh();
     return () => {
-      requestIdRef.current += 1;
+      store.consumers.delete(consumer);
+      store.listeners.delete(listener);
+      if (store.owner === consumer)
+        store.owner = store.consumers.values().next().value ?? null;
+      if (store.consumers.size === 0) {
+        store.requestId += 1;
+        notebookStores.delete(store.vaultId);
+      }
     };
-  }, [refresh]);
-  useRealtime("vault-changed", refresh);
+  }, [refresh, store]);
+
+  useRealtime(
+    "vault-changed",
+    useCallback(() => {
+      if (store.owner === consumerRef.current) refresh();
+    }, [refresh, store]),
+  );
+
   const data =
-    result?.requestedVaultId === vaultId &&
-    (vaultId === null || result.data.vault.id === vaultId)
-      ? result.data
+    store.data && (vaultId === null || store.data.vault.id === vaultId)
+      ? store.data
       : null;
   return { data, refresh };
 }

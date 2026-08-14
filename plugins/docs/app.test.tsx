@@ -326,7 +326,7 @@ describe("Docs nav panel", () => {
     });
   });
 
-  it("keeps independently mounted page and navigation on the route vault across out-of-order refreshes", async () => {
+  it("shares one notebook request across page and navigation mounts and vault events", async () => {
     type PendingNotebook = {
       vaultId: string;
       resolve: (value: ReturnType<typeof listNotesResult>) => void;
@@ -394,11 +394,8 @@ describe("Docs nav panel", () => {
       { subPath: "personal/personal.md", params: null },
       { rpc },
     );
-    await waitFor(() => expect(pending).toHaveLength(2));
-    expect(pending.map((request) => request.vaultId)).toEqual([
-      "personal",
-      "personal",
-    ]);
+    await waitFor(() => expect(pending).toHaveLength(1));
+    expect(pending.map((request) => request.vaultId)).toEqual(["personal"]);
     for (const request of pending.splice(0))
       request.resolve(notebook("personal"));
     await page.findByText("Personal document");
@@ -406,10 +403,9 @@ describe("Docs nav panel", () => {
 
     await page.emitRealtime("vault-changed", { vaultId: "personal" });
     await navigation.emitRealtime("vault-changed", { vaultId: "personal" });
-    await waitFor(() => expect(pending).toHaveLength(2));
+    await waitFor(() => expect(pending).toHaveLength(1));
     const latePersonalRequests = pending.splice(0);
     expect(latePersonalRequests.map((request) => request.vaultId)).toEqual([
-      "personal",
       "personal",
     ]);
 
@@ -419,12 +415,9 @@ describe("Docs nav panel", () => {
     );
     expect(page.queryByText("Personal document")).toBeNull();
     expect(navigation.queryByText("Personal note")).toBeNull();
-    await waitFor(() => expect(pending).toHaveLength(2));
+    await waitFor(() => expect(pending).toHaveLength(1));
     const workRequests = pending.splice(0);
-    expect(workRequests.map((request) => request.vaultId)).toEqual([
-      "work",
-      "work",
-    ]);
+    expect(workRequests.map((request) => request.vaultId)).toEqual(["work"]);
     for (const request of workRequests) request.resolve(notebook("work"));
     await page.findByText("Work document");
     await navigation.findByText("Work note");
