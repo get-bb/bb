@@ -175,7 +175,7 @@ Messaging:
   turn. Use --mode queue for non-urgent follow-ups that can wait until the agent
   is free.
 
-  bb thread stop [id]                      Stop an active or provisioning thread
+  bb thread stop [id]                      Stop work and release the agent runtime
   bb thread retry [id]                     Continue a subscription-limited turn
     --self                                 Target current thread
     --request-id <id>                      Require an exact failed request id
@@ -229,6 +229,11 @@ Lifecycle:
 
   bb thread archive [id]                   Archive a thread (and children/hidden forks)
     --self                                 Archive current thread
+
+  `thread stop` preserves the thread history, metadata, environment, and future
+  resume behavior. It stops active work and releases an idle agent runtime.
+  The command succeeds when no runtime is loaded. Archive a finished hidden
+  worker first, then stop it to release memory promptly.
 
   bb thread unarchive [id]                 Unarchive a thread
     --self                                 Unarchive current thread

@@ -503,7 +503,7 @@ export function registerActionsCommands(
 
   parent
     .command("stop [id]")
-    .description("Stop an active or starting thread")
+    .description("Stop work and release the loaded agent runtime")
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
     .action(

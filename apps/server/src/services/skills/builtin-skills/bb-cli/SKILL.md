@@ -194,6 +194,9 @@ isolated|reuse`, or anchor with `--source-seq-end`. Permission mode inherits
   inherited value. A hidden child still reports its turns and blockers to its
   parent thread; only forks and side chats stay silent. Promote or hide an
   existing thread with `bb thread update <id> --visibility visible|hidden`.
+- Stop a finished hidden worker with `bb thread stop <id>` to release its agent
+  runtime promptly. Archive it first when it no longer belongs in active thread
+  lists. Stop preserves the thread and supports a later resume.
 - `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
   server for browser access at `<handle>.getbb.app` (get the code from
   https://getbb.app). Pairing returns immediately — the
@@ -469,6 +472,8 @@ For review or fix pipelines, get the environment ID from
 - For interrupted or stopped threads, inspect first. If the user stopped the
   thread, treat that as intentional unless they ask you to continue.
 - Use `bb thread stop <id>` when a thread is stuck or no longer needed.
+- `bb thread stop <id>` also releases an idle or stuck agent runtime. The
+  command is idempotent and preserves thread history.
 - Use `bb thread compact <id>` to send the built-in `/compact` command to an idle or errored thread. Completion or failure appears in the timeline. Codex, Claude Code, Pi, and OpenCode ACP support it; Cursor ACP does not expose compatible compaction through ACP.
 - Use `bb thread cancel-plan <id>` to exit an active Plan turn without
   optimistically clearing its banner. Use `bb thread clear-goal <id>` to clear

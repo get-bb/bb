@@ -23,6 +23,10 @@ import {
   seedThread,
   seedThreadRuntimeState,
 } from "../../helpers/seed.js";
+import {
+  reportQueuedCommandSuccess,
+  waitForQueuedCommand,
+} from "../../helpers/commands.js";
 import { startTestServer, testLogger } from "../../helpers/test-app.js";
 
 const logger = testLogger as unknown as Logger;
@@ -321,9 +325,16 @@ describe("plugin bb.sdk against a running server", () => {
           input: [{ type: "text", text: "Continue", mentions: [] }],
         }),
       ).resolves.toEqual({ ok: true });
-      await expect(
-        api.sdk.threads.stop({ threadId: operable.id }),
-      ).resolves.toEqual({ ok: true });
+      const stopPromise = api.sdk.threads.stop({ threadId: operable.id });
+      const stop = await waitForQueuedCommand(
+        server,
+        ({ command }) =>
+          command.type === "thread.stop" && command.threadId === operable.id,
+      );
+      await reportQueuedCommandSuccess(server, stop, {
+        providerCheckpointId: null,
+      });
+      await expect(stopPromise).resolves.toEqual({ ok: true });
     } finally {
       await server.pluginService.stop();
       await rm(workDir, { recursive: true, force: true });

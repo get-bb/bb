@@ -666,7 +666,7 @@ describe("dispatchCommand", () => {
     expect(flush).toHaveBeenCalledOnce();
   });
 
-  it("rejects thread.stop when no runtime holds the thread", async () => {
+  it("treats thread.stop as successful when no runtime holds the thread", async () => {
     const manager = new RuntimeManager({
       createRuntime: () => createRuntime(),
       provisionWorkspace: async () => createWorkspace(),
@@ -687,7 +687,7 @@ describe("dispatchCommand", () => {
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       }),
-    ).rejects.toMatchObject({ code: "unknown_environment" });
+    ).resolves.toEqual({ providerCheckpointId: null });
   });
 
   it("cancels a plan in the environment the thread moved away from", async () => {

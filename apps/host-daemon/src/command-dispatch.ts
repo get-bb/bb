@@ -11,7 +11,6 @@ import {
 } from "@bb/host-daemon-contract";
 import semver from "semver";
 import {
-  CommandDispatchError,
   defaultListModels,
   ExpectedCommandDispatchError,
   type CommandOf,
@@ -419,13 +418,7 @@ const commandHandlers: CommandHandlerMap = {
       command.environmentId,
     );
     if (!entry) {
-      if (released.releasedEnvironmentIds.length === 0) {
-        throw new CommandDispatchError(
-          "unknown_environment",
-          `No runtime exists for environment ${command.environmentId}`,
-        );
-      }
-      // The old owner stopped, so the stop reached the running turn.
+      // No loaded runtime means the idempotent stop already reached its goal.
       await options.eventSink.flush();
       return {
         providerCheckpointId: released.providerCheckpointId,

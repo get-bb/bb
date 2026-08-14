@@ -443,7 +443,9 @@ bb SDK — handlers/services only, not the factory; spawned threads are
 attributed to the plugin; `visibility: "hidden"` creates directly addressable
 background workers omitted from sidebar organization and unread/pending
 favicon attention, with other behavior unchanged; a child thread inherits
-its parent's visibility and still notifies that parent);
+its parent's visibility and still notifies that parent; plugins must archive
+finished hidden workers when appropriate and call `threads.stop` in a
+`finally` block to release each agent runtime promptly);
 bb.events.on (observe thread.created/idle/failed/deleted);
 bb.http.route (routes under /api/v1/plugins/<id>/http/* with
 local/token/none auth); defineRpcContract + bb.rpc.register (Standard

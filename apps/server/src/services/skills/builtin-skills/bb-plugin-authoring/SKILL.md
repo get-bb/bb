@@ -389,6 +389,29 @@ parent's visibility when you omit `visibility`, and a hidden child still
 reports its turns and blockers to its parent. This is an organization contract, not a security
 boundary: plugins are full-trust server code.
 
+Hidden worker threads need explicit runtime cleanup. Stop each hidden thread
+promptly after its final result, including error paths. Stop releases an active,
+idle, or stuck runtime and preserves the thread for a later resume. Archive
+first when the worker no longer belongs in active lists. Use a `finally`
+block so a plugin failure cannot retain the agent process:
+
+```ts
+const worker = await bb.sdk.threads.spawn({
+  projectId,
+  environment: { type: "project-default" },
+  prompt: "Review this change.",
+  visibility: "hidden",
+});
+
+try {
+  await bb.sdk.threads.wait({ threadId: worker.id, status: "idle" });
+  return await bb.sdk.threads.output({ threadId: worker.id });
+} finally {
+  await bb.sdk.threads.archive({ threadId: worker.id });
+  await bb.sdk.threads.stop({ threadId: worker.id });
+}
+```
+
 SDK realtime observation stays separate from plugin lifecycle events:
 `bb.sdk.subscribe({ event, callback, ...selector })` returns an unsubscribe
 function. Do not use `bb.events.on` for SDK entity-change subscriptions.

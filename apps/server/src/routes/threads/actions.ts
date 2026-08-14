@@ -64,7 +64,7 @@ import {
   getLastProviderThreadId,
   isManualCompactionActive,
 } from "../../services/threads/thread-events.js";
-import { requestThreadStopForCurrentState } from "../../services/threads/thread-lifecycle.js";
+import { stopThreadForCurrentState } from "../../services/threads/thread-lifecycle.js";
 import {
   getThreadPromptBannerActivity,
   toThreadListEntryResponses,
@@ -500,7 +500,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
             db: deps.db,
             thread,
           });
-    requestThreadStopForCurrentState(deps, thread, environment);
+    await stopThreadForCurrentState(deps, thread, environment);
     return context.json({ ok: true });
   });
 

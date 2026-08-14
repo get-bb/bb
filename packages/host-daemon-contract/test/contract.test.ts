@@ -1058,6 +1058,8 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
+  // Version 120 makes thread.stop idempotent and releases idle runtimes. Older
+  // daemons reject a stop when no environment runtime is loaded.
   // Version 119 carries required workspace diff limits and line-stat
   // completeness over the host wire. Older daemons cannot safely enforce or
   // interpret those fields, so enrolled machines must update before serving
@@ -1077,8 +1079,8 @@ describe("host-daemon command schemas", () => {
   // against its Pi provider ladder, so enrolled machines must not run that
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
-  it("uses protocol version 119 for bounded workspace diff results", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(119);
+  it("uses protocol version 120 for idempotent thread stop", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(120);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

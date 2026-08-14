@@ -472,6 +472,10 @@ export interface ThreadsArea {
   search(args: ThreadSearchArgs): Promise<ThreadSearchResult>;
   send(args: ThreadSendArgs): Promise<ThreadSendResult>;
   spawn(args: ThreadSpawnArgs): Promise<ThreadSpawnResult>;
+  /**
+   * Stop active work and release the loaded agent runtime. This operation is
+   * idempotent and preserves thread history for a later resume.
+   */
   stop(args: ThreadActionArgs): Promise<ThreadStopResult>;
   tabs: ThreadTabsArea;
   timeline(args: ThreadTimelineArgs): Promise<ThreadTimelineResult>;

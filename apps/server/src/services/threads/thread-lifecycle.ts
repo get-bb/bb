@@ -1228,6 +1228,20 @@ export function requestThreadStop(
   deps: CommandResultSideEffectsDeps,
   args: RequestThreadStopArgs,
 ): void {
+  if (!markThreadStopRequested(deps, args)) {
+    return;
+  }
+  if (!inFlightThreadRpcGuard.claim(args.threadId, "thread.stop")) {
+    return;
+  }
+
+  dispatchThreadStopCommand(deps, args);
+}
+
+function markThreadStopRequested(
+  deps: CommandResultSideEffectsDeps,
+  args: RequestThreadStopArgs,
+): boolean {
   const notificationBuffer = new NotificationBuffer();
   deps.db.transaction(
     (tx) => {
@@ -1248,14 +1262,7 @@ export function requestThreadStop(
   notificationBuffer.flushInto(deps.hub);
 
   const currentThread = getThread(deps.db, args.threadId);
-  if (!currentThread || currentThread.status !== "stopping") {
-    return;
-  }
-  if (!inFlightThreadRpcGuard.claim(args.threadId, "thread.stop")) {
-    return;
-  }
-
-  dispatchThreadStopCommand(deps, args);
+  return currentThread?.status === "stopping";
 }
 
 // The stop command is dispatched once — no inline retry, no durable timer.
@@ -1426,6 +1433,58 @@ export function requestThreadStopForCurrentState(
     hasActiveThreadProvisioningContext(thread.id)
   ) {
     requestPreStartThreadStop(deps, thread);
+  }
+}
+
+export async function stopThreadForCurrentState(
+  deps: RequestThreadStopForCurrentStateDeps,
+  thread: RequestThreadStopForCurrentStateThread,
+  environment: RequestThreadStopForCurrentStateEnvironment | null,
+): Promise<void> {
+  const hasLiveRuntime =
+    thread.status === "active" ||
+    hasLiveThreadStartInFlight(thread.id) ||
+    (thread.status === "stopping" && getActiveTurnId(deps, thread.id) !== null);
+  if (hasLiveRuntime) {
+    if (environment === null) {
+      return;
+    }
+    const args: RequestThreadStopArgs = {
+      environmentId: environment.id,
+      hostId: environment.hostId,
+      interruptionReason: "manual-stop",
+      threadId: thread.id,
+    };
+    if (!markThreadStopRequested(deps, args)) {
+      return;
+    }
+    await runLiveHostCommand(deps, {
+      command: buildThreadStopCommand(args),
+      hostId: args.hostId,
+      timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+    });
+    return;
+  }
+
+  if (
+    isPreStartThreadStatus(thread.status) ||
+    thread.status === "stopping" ||
+    hasActiveThreadProvisioningContext(thread.id)
+  ) {
+    requestPreStartThreadStop(deps, thread);
+    return;
+  }
+
+  if (environment !== null) {
+    await runLiveHostCommand(deps, {
+      command: buildThreadStopCommand({
+        environmentId: environment.id,
+        hostId: environment.hostId,
+        threadId: thread.id,
+      }),
+      hostId: environment.hostId,
+      timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+    });
   }
 }
 
