@@ -237,6 +237,7 @@ describe("workflows plugin", () => {
       host: { id: "host-1", name: "host" },
       provider: { id: "codex", model: "gpt-test" },
       origin: { kind: null, pluginId: "workflows" },
+      experimental_connect_isRemote: false,
     });
     expect(workerConfig.tools.map((tool) => tool.name)).toEqual([
       "bb_workflow_result",
@@ -277,6 +278,7 @@ describe("workflows plugin", () => {
       host: { id: "host-1", name: "host" },
       provider: { id: "codex", model: "gpt-test" },
       origin: { kind: null, pluginId: null },
+      experimental_connect_isRemote: false,
     });
     expect(authorConfig.tools.map((tool) => tool.name)).toEqual([
       "bb_workflow_run",

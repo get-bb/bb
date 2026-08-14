@@ -205,6 +205,7 @@ describe("workflows CLI argument validation", () => {
       host: { id: "host-test", name: "host" },
       provider: { id: "codex", model: "gpt-test" },
       origin: { kind: null, pluginId: null },
+      experimental_connect_isRemote: false,
     });
     expect(author.tools.map((tool) => tool.name)).toEqual(["bb_workflow_run"]);
     expect(author.skills).toEqual(["workflows"]);
