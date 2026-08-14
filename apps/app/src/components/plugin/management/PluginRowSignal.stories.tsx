@@ -14,9 +14,10 @@ export default {
 const FULL_HASH = "a985e1d5523398e9c7459d35679142cc4339771e";
 
 const GIT_PLUGIN = {
-  id: "improve-prompt",
-  source: "git:https://github.com/brsbl/bb-plugins.git@plugin/improve-prompt",
-  rootDir: "/home/user/.bb/plugins/improve-prompt",
+  id: "prompt-shaper",
+  source:
+    "git:https://github.com/brsbl/bb-plugins.git@1c6bb2e8ad3551466981e7eb027cc4b1f3428cac",
+  rootDir: "/home/user/.bb/plugins/prompt-shaper",
   version: "0.1.0",
   enabled: true,
   status: "running",
@@ -36,7 +37,7 @@ const GIT_PLUGIN = {
   app: { hasApp: true, bundle: null },
   provenance: "catalog" as const,
   isOrphanedBuiltin: false,
-  catalogEntryId: "improve-prompt",
+  catalogEntryId: "prompt-shaper",
   sourceDisplay: "git · github.com/brsbl/bb-plugins",
   updateState: { ...EMPTY_PLUGIN_UPDATE_STATE, availableVersion: FULL_HASH },
 } satisfies PluginListItem;
