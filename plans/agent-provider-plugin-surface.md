@@ -390,6 +390,17 @@ branch. Provider ids never change, so there is no data migration anywhere.
   resume, item lifecycle ordering — every item opens with `item/started`,
   delta-first openings are non-conformant — and the env allowlist). It
   encodes the incident-derived rules above.
+- The protocol doc gets an explicit **event-grammar section** — today the
+  event vocabulary is structurally schema'd but its sequences are implicit
+  (per-adapter conventions, comments, and consumer defensiveness), and every
+  unstated rule has been discovered by its violation. State the turn
+  lifecycle state machine, the item lifecycle, which orderings producers
+  guarantee vs which consumers must never assume, and id scoping.
+  Enforcement lives in two places with different strictness: the conformance
+  kit checks grammar behaviorally in CI (strict), and the runtime ingests
+  with a lenient grammar guard — a violation becomes a droppable diagnostic
+  plus a visible warning, never a hard failure (#1320: one bad event must
+  never block a host).
 - Implement the generic `BridgeProviderAdapter` in `agent-runtime`, driven by
   declaration data. Add the turn-start watchdog.
 - Existing integration tests (`integration.provider-basic`, `multi-provider`,
