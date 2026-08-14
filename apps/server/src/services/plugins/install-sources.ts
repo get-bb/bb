@@ -114,7 +114,9 @@ export function normalizeGitTagPrefix(value: string): string {
     value.includes("..") ||
     value.includes("//") ||
     value.endsWith(".") ||
-    value.split("/").some((segment) => segment.endsWith(".lock"))
+    value
+      .split("/")
+      .some((segment) => segment.startsWith(".") || segment.endsWith(".lock"))
   ) {
     throw new Error(`invalid git tag prefix "${value}"`);
   }

@@ -211,7 +211,7 @@
               "type": "string",
               "$comment": "Monorepo tagging: \"notes/\" matches notes/vX.Y.Z tags. Omit for repository-wide vX.Y.Z tags.",
               "maxLength": 128,
-              "pattern": "^(?!.*\\.\\.)(?!.*//)(?!.*\\.$)[A-Za-z0-9][A-Za-z0-9._/-]*$"
+              "pattern": "^(?!.*\\.\\.)(?!.*//)(?!.*\\/\\.)(?![^/]*\\.lock(?:/|$))(?!.*\\/[^/]*\\.lock(?:/|$))(?!.*\\.$)[A-Za-z0-9][A-Za-z0-9._/-]*$"
             }
           }
         }
