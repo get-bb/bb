@@ -59,10 +59,14 @@ The provider "contract" today is six scattered surfaces:
 (`hostDaemonAcpLaunchSpecSchema`) resolved per command — from `config.json`
 for custom agents, from the in-repo `KNOWN_ACP_AGENTS` table (a code change)
 for known ones — and run by the generic ACP bridge. It works, but the path
-is deliberately least-common-denominator: no fork, no `auto` permission mode
+is deliberately least-common-denominator: no `auto` permission mode
 (ACP threads default to `full`), no token usage, no plan/goal composer
 modes, no command-shaped scan roots (native *skill* typeahead does work),
 degraded approvals/models/reasoning, config-file-only setup, no settings UI.
+(Fork landed 2026-08-14 via `53d193144`: the bridge negotiates the agent's
+unstable `session/fork` capability at initialize and rejects agents that
+don't advertise it — the declare-coarse-then-handshake-narrows pattern this
+plan proposes generally.)
 
 **Plugin backends** run in-process in the server (frontends ship as app
 bundles). The host daemon has **zero**
@@ -257,7 +261,11 @@ bb.agents.experimental_registerProvider({
     permissionModes: ["accept-edits", "auto", "full"],
     reasoningLevels: ["low", "medium", "high", "xhigh", "ultracode", "max"],
     promptModes: ["plan"],
-    sessionPersistence: "resume",       // reap/resume eligibility, declared
+    sessionPersistence: "resume",       // reap/resume eligibility, declared.
+                                       // First piece already shipped on main
+                                       // as `supportsSessionRestore`
+                                       // (`3bc9ce54b`, session-release
+                                       // experiment); this field absorbs it.
     processScope: "shared",             // "thread" (codex) | "shared"
   },
   composerActions: [...],
@@ -266,28 +274,19 @@ bb.agents.experimental_registerProvider({
   // NOTE: `executionOptionScopes` is a *cost signal*, not a mechanism. The
   // bridge owns the mechanics of applying option changes (reconfigure in
   // place vs rebuild its provider session), and the runtime never diffs
-  // options — it forwards them on every command. The declaration exists for
-  // the consumers that need the answer before anything executes and without
-  // a host round trip: validating the no-message override API
-  // (`PATCH /threads/:id {model, reasoningLevel}` — today claude-only via
-  // `supportsExecutionOverride`), and letting the UI distinguish "applies
-  // seamlessly" from "will rebuild the provider session" when a user changes
-  // model/reasoning mid-thread. Every provider offers the composer switcher
-  // today; what differs is underneath — claude applies live, everyone else
-  // gets a silent session rebuild on the next turn. The override API
-  // (`bb thread update --model`, no-message settings change; state is a
-  // server-DB override record, resolved into each turn's options — bridges
-  // hold no override state) is claude-only via a v1 scoping choice (commit `1a5620b53`,
-  // "codex gated out for v1"; its "#75" is a pre-GitHub ticket id, not PR #75).
-  // Relaxing that 400 is orthogonal to this plan — the server could accept
-  // and let the next turn rebuild today, exactly as the composer path
-  // already does. This plan only (a) repoints the gate from the dying
-  // catalog boolean to the derived scope answer, behavior-identical, and
-  // (b) makes any rebuild visible, which is what would make a later
-  // relaxation comfortable. The relaxation itself is a separate product
-  // decision.
-  // In-place override support derives from it (`model` and `reasoningLevel`
-  // both "live") — there is no separate `executionOverride` capability.
+  // options — it forwards them on every command. Every provider offers the
+  // composer switcher, and since #1610 the sticky override API
+  // (`bb thread update --model` / `PATCH /threads/:id`; state is a
+  // server-DB override record resolved into each turn's options — bridges
+  // hold no override state) works on every provider too, same-provider
+  // only: #1610 deleted both the claude-only gate (a v1 scoping choice from
+  // commit `1a5620b53`) and the `supportsExecutionOverride` capability.
+  // What still differs is underneath — claude applies live, everyone else
+  // gets a session rebuild on the next turn, today with zero visibility.
+  // So this declaration is purely a UI/product signal (show "applies
+  // seamlessly" vs "will rebuild the agent session"), and #1610 makes the
+  // rebuild-notification rule *more* important, not less: the silent
+  // disruptive case is now reachable on every provider via API.
   // The conformance kit cross-checks declaration against bridge behavior,
   // and session rebuilds must be reported (session-replacement notification
   // + background-work settlement events), never silent — the #1268 lesson
@@ -472,6 +471,10 @@ No server↔daemon wire change in this phase; bridges stay daemon-bundled.
   `bundled` as fallback for one release, then remove).
 - Ship a sample provider plugin in `examples/plugins/` wrapping the existing
   fake provider script — executable documentation and a conformance target.
+- Distribution for third-party provider plugins rides the marketplace
+  infrastructure that landed 2026-08-14 (#1579–#1582: collection manifests,
+  git/semver sources, the BB Official catalog) — no new distribution
+  mechanism is needed.
 - Update discoverable surfaces in the same change: `bb-plugin-authoring`
   skill, `docs/cli-guide-and-skill.md` surfaces, guide templates.
 
@@ -618,8 +621,9 @@ native protocol is what `AdapterCommand` was modeled on. But uniformity ends
 there — the command→method mapping itself diverges, and phase 1 must pick a
 canonical mapping for each divergence:
 
-- acp sends no `thread/fork` at all (ACP has no fork primitive; the command
-  throws before reaching the wire).
+- acp gained `thread/fork` only on 2026-08-14 (`53d193144`), gated on the
+  agent advertising the unstable ACP fork capability at initialize; before
+  that the command threw before reaching the wire.
 - codex maps `thread/stop` → `turn/interrupt`, `thread/discard` →
   `thread/archive`, and compaction → `thread/compact/start`; claude maps
   `thread/discard` → `thread/stop`; acp noops discard.
