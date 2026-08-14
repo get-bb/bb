@@ -5,12 +5,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AutoHeightContainer, HeightTransition } from "./height-transition";
 
 class ResizeObserverStub implements ResizeObserver {
+  static instances: ResizeObserverStub[] = [];
+
+  constructor(readonly callback: ResizeObserverCallback) {
+    ResizeObserverStub.instances.push(this);
+  }
+
   observe: ResizeObserver["observe"] = vi.fn();
   unobserve: ResizeObserver["unobserve"] = vi.fn();
   disconnect: ResizeObserver["disconnect"] = vi.fn();
 }
 
 afterEach(() => {
+  ResizeObserverStub.instances.length = 0;
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -52,8 +59,8 @@ describe("HeightTransition", () => {
         <span data-testid="restored-child">Restored content</span>
       </HeightTransition>,
     );
-    const wrapper =
-      view.getByTestId("restored-child").parentElement?.parentElement;
+    const wrapper = view.getByTestId("restored-child").parentElement
+      ?.parentElement;
 
     expect(wrapper?.style.height).toBe("40px");
     offsetHeight.mockReturnValue(80);
@@ -69,12 +76,7 @@ describe("HeightTransition", () => {
 
 describe("AutoHeightContainer", () => {
   it("snap-syncs an authoritative layout revision", () => {
-    class ResizeObserverMock {
-      observe() {}
-      disconnect() {}
-      unobserve() {}
-    }
-    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
 
     const view = render(
       <AutoHeightContainer snapRevision="active">
@@ -83,8 +85,10 @@ describe("AutoHeightContainer", () => {
     );
     const inner = view.getByText("Streaming response").parentElement;
     const wrapper = inner?.parentElement;
+    const observer = ResizeObserverStub.instances[0];
     expect(inner).not.toBeNull();
     expect(wrapper?.style.height).toBe("0px");
+    expect(observer).toBeDefined();
 
     Object.defineProperty(inner, "offsetHeight", {
       configurable: true,
@@ -97,5 +101,8 @@ describe("AutoHeightContainer", () => {
     );
 
     expect(wrapper?.style.height).toBe("480px");
+    expect(wrapper?.style.transitionDuration).toBe("0s");
+    expect(ResizeObserverStub.instances).toEqual([observer]);
+    expect(observer?.disconnect).not.toHaveBeenCalled();
   });
 });

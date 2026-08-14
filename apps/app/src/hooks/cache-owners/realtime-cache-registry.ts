@@ -258,7 +258,7 @@ function invalidateTerminalTimelineQueryKeys({
     // cancel the stale read and fetch the terminal shape immediately.
     cancelTrailingActiveRefetch({ queryClient, queryKey });
     void queryClient.cancelQueries({ queryKey });
-    queryClient.invalidateQueries({ queryKey }, { cancelRefetch: false });
+    queryClient.invalidateQueries({ queryKey });
   }
 }
 

@@ -183,8 +183,7 @@ export function HeightTransition({
       // scrollHeight, which the bottom-anchor sentinel then chases.
       const layoutAnimationActive =
         store.get(layoutAnimationInFlightCountAtom) > 0;
-      const snap =
-        widthChanged || pendingVisibilitySnap || layoutAnimationActive;
+      const snap = widthChanged || pendingVisibilitySnap || layoutAnimationActive;
       pendingVisibilitySnap = false;
       lastWidth = width;
       const nextHeight = visible ? `${height}px` : "0px";
@@ -290,10 +289,9 @@ export function AutoHeightContainer({
 }: AutoHeightContainerProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
+  const snapToCurrentHeightRef = useRef<(() => void) | null>(null);
+  const previousSnapRevisionRef = useRef(snapRevision);
   const store = useStore();
-  // A revision change reinstalls the observer and writes the replacement's
-  // intrinsic height before paint. This is intentionally rare (turn completion)
-  // and leaves ordinary streaming ResizeObserver updates animated.
   useLayoutEffect(() => {
     const wrapper = wrapperRef.current;
     const inner = innerRef.current;
@@ -310,6 +308,12 @@ export function AutoHeightContainer({
       restoreTimerId: null,
       usingIntrinsicHeight: false,
     };
+    const snapToCurrentHeight = () => {
+      cancelIntrinsicHeightRestore(resizeState);
+      resizeState.usingIntrinsicHeight = false;
+      applyHeight(wrapper, `${inner.offsetHeight}px`, true, snapState);
+    };
+    snapToCurrentHeightRef.current = snapToCurrentHeight;
     const deferInitialSettleComplete = () => {
       if (initialSettleComplete) {
         return;
@@ -360,20 +364,28 @@ export function AutoHeightContainer({
     const onVisibility = () => {
       if (!isDocumentVisible()) return;
       pendingVisibilitySnap = true;
-      cancelIntrinsicHeightRestore(resizeState);
-      resizeState.usingIntrinsicHeight = false;
-      applyHeight(wrapper, `${inner.offsetHeight}px`, true, snapState);
+      snapToCurrentHeight();
     };
     const unsubscribeFromDocumentVisibility =
       subscribeToDocumentVisibility(onVisibility);
     return () => {
+      snapToCurrentHeightRef.current = null;
       observer.disconnect();
       unsubscribeFromDocumentVisibility();
       window.clearTimeout(initialSettleTimerId);
       cancelIntrinsicHeightRestore(resizeState);
       cleanupSnapState(wrapper, snapState);
     };
-  }, [snapRevision, store]);
+  }, [store]);
+  // Authoritative replacements (turn completion) must update before paint,
+  // but they must not reinstall the observer and reset its settle/resize state.
+  useLayoutEffect(() => {
+    if (previousSnapRevisionRef.current === snapRevision) {
+      return;
+    }
+    previousSnapRevisionRef.current = snapRevision;
+    snapToCurrentHeightRef.current?.();
+  }, [snapRevision]);
   return (
     <div
       ref={wrapperRef}

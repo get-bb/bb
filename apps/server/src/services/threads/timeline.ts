@@ -921,7 +921,7 @@ function ensureSequenceWindowWholeItemRows(
     const ref = storedEventRowItemRef(row);
     const key = scopedItemRefKey(ref);
     if (!completedItemKeys.has(key) && itemsStartingBeforeWindow.has(key)) {
-      bufferedTextItems.set(key, itemsStartingBeforeWindow.get(key) ?? ref);
+      bufferedTextItems.set(key, ref);
     }
   }
   const bufferedTextRows = listStoredBufferedTextDeltaRowsByItems(db, {
