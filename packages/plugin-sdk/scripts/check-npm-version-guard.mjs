@@ -184,8 +184,12 @@ export function decideNpmVersionGuard({ version, local, registry }) {
       ...changed.map((name) => `  - ${name}`),
       "",
       "A published version is never republished, so this change would never reach",
-      "npm consumers. Bump the version in packages/domain/src/plugin-sdk-version.ts",
-      "and packages/plugin-sdk/package.json (they must stay in sync), then re-run.",
+      "npm consumers. Bump the version, then re-run:",
+      "",
+      "  node scripts/bump-plugin-sdk.mjs --patch",
+      "",
+      "That moves packages/domain/src/plugin-sdk-version.ts and",
+      "packages/plugin-sdk/package.json together; they must stay in sync.",
     ].join("\n"),
   };
 }

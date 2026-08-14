@@ -252,8 +252,15 @@ nothing: a failure there cannot hold back the npm or desktop release.
 
 The SDK version is **settled in the repo before any build**, never computed at
 publish time. It lives in `packages/domain/src/plugin-sdk-version.ts`
-(`PLUGIN_SDK_VERSION`) and is mirrored in `packages/plugin-sdk/package.json`;
-both must be bumped together. The job is publish-if-missing: it reads the local
+(`PLUGIN_SDK_VERSION`) and is mirrored in `packages/plugin-sdk/package.json`.
+Both must be bumped together, so move them with the script rather than by hand:
+
+```bash
+node scripts/bump-plugin-sdk.mjs --patch   # or --minor, --major, or an explicit version
+```
+
+The script writes both files atomically and refuses to run when they already
+disagree. The job is publish-if-missing: it reads the local
 version, asks npm whether that exact version exists, and either logs
 "already published, skipping" or publishes. Every run is therefore idempotent —
 most runs publish nothing.
@@ -266,7 +273,7 @@ enforces that on every PR from the `checks` job in `ci.yml`:
 | ------------------------------------------- | -------------------------------------------------------------------- |
 | Package or version absent (404)             | Pass — the publish job will ship this version.                       |
 | Version published, packed package identical | Pass.                                                                |
-| Version published, packed package differs   | Fail — bump `PLUGIN_SDK_VERSION` and the `plugin-sdk` manifest.      |
+| Version published, packed package differs   | Fail — run `node scripts/bump-plugin-sdk.mjs --patch`.               |
 | Registry unreachable, or local pack failed  | Exit 2; CI logs a warning and continues (infrastructure, not a bug). |
 
 The comparison covers the whole package, not just the declarations: a
