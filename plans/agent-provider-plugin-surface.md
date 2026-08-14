@@ -218,7 +218,7 @@ bb.agents.experimental_registerProvider({
   capabilities: {
     // one merged block: today's ProviderCapabilities + ProviderServerCapabilities
     fork: true, archive: false, rename: false, serviceTier: false,
-    userQuestion: true, workflows: true, executionOverride: true,
+    userQuestion: true, workflows: true, hostAiServices: false,
     manualCompaction: true, messageEditing: true,
     permissionModes: ["accept-edits", "auto", "full"],
     reasoningLevels: ["low", "medium", "high", "xhigh", "ultracode", "max"],
@@ -229,6 +229,12 @@ bb.agents.experimental_registerProvider({
   composerActions: [...],
   executionOptionScopes: { model: "live", reasoningLevel: "live", ... },
   approvalRequestPolicy: "provider",
+  // NOTE: no `executionOverride` capability. Today the server
+  // (`supportsExecutionOverride`) and the runtime
+  // (`classifyExecutionSettingsChange`) answer the same question in two
+  // unrelated code paths. Both derive from `executionOptionScopes`:
+  // in-place override is supported iff `model` and `reasoningLevel` are
+  // both "live". One source of truth; the two layers cannot disagree.
   bridge: { entry: "provider-bridge" }, // required for kind "agent"; routers omit it
   // NOTE: no `cli` and no `skillRoots` blocks — CLI lifecycle and skill
   // layout knowledge are bridge protocol methods, not declaration data. See
@@ -418,6 +424,10 @@ protocol method:
   switches → normalized event fields emitted by bridges.
 - `EDIT_MESSAGE_PROVIDER_IDS` → capability.
 - Onboarding and `SETTINGS_PROVIDER_ENTRIES` → registry-driven.
+- Plugin-side provider id lists → capabilities read off `ProviderInfo`:
+  the ask-user-question plugin's `NATIVE_TOOL_PROVIDER_IDS` duplicates what
+  `userQuestion` already declares (today that capability has no production
+  consumer at all — the plugin hardcodes its own list instead).
 
 ## Verification
 
