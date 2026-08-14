@@ -443,7 +443,15 @@ Rollout below) deletes the bespoke adapter and the flag. Adapter unit tests
 move with the code and become bridge tests; every bridge passes the
 conformance kit in its own package.
 
-Order by distance from the target shape:
+Order by distance from the target shape — which is also **ascending
+stakes**: codex and claude-code are the flagship providers (the deepest
+adapters, the richest capabilities, and the bulk of real usage), so they
+migrate last, on machinery already proven twice against providers where a
+regression costs little. acp and pi are the practice rounds; they harden
+the kit, the generic adapter, and the parity-replay harness before either
+flagship is touched. Start recording codex/claude traffic corpora for the
+parity replay during phase 1, so the flagship migrations begin with the
+richest evidence base rather than assembling it late.
 
 1. **acp** — `bridge-protocol.ts` is nearly the protocol already.
 2. **pi** — bridge exists; adapter translation is the thinnest.
@@ -505,7 +513,12 @@ No server↔daemon wire change in this phase; bridges stay daemon-bundled.
 ### Phase 6 — Consolidation sweep (independent cleanups)
 
 Each deletes a scattered special case in favor of declared capability or
-protocol method:
+protocol method. One guardrail governs the whole phase: **generalizing must
+not degrade the flagships.** codex and claude-code are the best provider
+experiences bb has; every registry-driven replacement (usage UI, settings
+surfaces, onboarding) must express the full richness their hardcoded
+surfaces have today — the point of this plan is to raise other providers to
+their level, never to flatten them toward a common denominator.
 
 - `supportsManualCompaction` string list → capability + `thread/compact`
   protocol method.
@@ -560,7 +573,11 @@ Phases 1–4 change no wire schemas, so toggles create no daemon-version
 matrix; the phase-2 flag rides the session payload like the release
 experiment does. Graduation per toggle: conformance kit green, dual-path
 parity replay clean, a defined incident-free soak with default-on, then a
-**deletion PR** that removes the old path and the flag. Every toggle is
+**deletion PR** that removes the old path and the flag. Weight the rigor by
+stakes: codex and claude-code get the largest replay corpora, the longest
+soaks, and the deepest manual QA; pi and acp can graduate faster. The codex
+bridge deserves the most caution of all — it is the only *new* bridge and it
+serves the top provider. Every toggle is
 created with its deletion PR scheduled — "for the time being" is a soak
 window, not a steady state.
 
