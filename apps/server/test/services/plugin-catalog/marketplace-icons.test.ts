@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { marketplaceIconContentType } from "../../../src/services/plugin-catalog/marketplace-icons.js";
+import { mkdtemp, open, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  marketplaceIconContentType,
+  readBoundedMarketplaceIconFile,
+} from "../../../src/services/plugin-catalog/marketplace-icons.js";
 
 const SVG = Buffer.from(
   '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h16v16H0z"/></svg>',
@@ -16,6 +22,13 @@ const WEBP = Buffer.concat([
 ]);
 
 const base = "https://cdn.example/icons/widgets";
+const cleanup: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(
+    cleanup.splice(0).map((path) => rm(path, { recursive: true, force: true })),
+  );
+});
 
 describe("marketplace icon validation", () => {
   it("accepts each declared format", () => {
@@ -57,6 +70,23 @@ describe("marketplace icon validation", () => {
     expect(() =>
       marketplaceIconContentType(`${base}.png`, Buffer.alloc(300 * 1024)),
     ).toThrow(/exceeds 262144 bytes/);
+  });
+
+  it("bounds a local icon read before validation", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "bb-local-icon-bound-"));
+    cleanup.push(directory);
+    const path = join(directory, "large.png");
+    const handle = await open(path, "w");
+    try {
+      // A sparse file proves the reader does not allocate or read its size.
+      await handle.truncate(3 * 1024 * 1024 * 1024);
+    } finally {
+      await handle.close();
+    }
+
+    await expect(readBoundedMarketplaceIconFile(path)).rejects.toThrow(
+      /icon exceeds 262144 bytes/u,
+    );
   });
 
   it("refuses a URL with an unsupported extension", () => {

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { open } from "node:fs/promises";
 import {
   listPluginMarketplaceIcons,
   type DbConnection,
@@ -24,6 +24,35 @@ import {
 
 /** Real logo assets are a few KB; this only bounds a hostile response. */
 const MARKETPLACE_ICON_MAX_BYTES = 256 * 1024;
+
+/** Read one local icon through one handle and stop after the size boundary. */
+export async function readBoundedMarketplaceIconFile(
+  path: string,
+): Promise<Uint8Array> {
+  const handle = await open(path, "r");
+  try {
+    const metadata = await handle.stat();
+    if (!metadata.isFile()) throw new Error("icon is not a regular file");
+    const buffer = Buffer.allocUnsafe(MARKETPLACE_ICON_MAX_BYTES + 1);
+    let offset = 0;
+    while (offset < buffer.byteLength) {
+      const result = await handle.read(
+        buffer,
+        offset,
+        buffer.byteLength - offset,
+        offset,
+      );
+      if (result.bytesRead === 0) break;
+      offset += result.bytesRead;
+    }
+    if (offset > MARKETPLACE_ICON_MAX_BYTES) {
+      throw new Error(`icon exceeds ${MARKETPLACE_ICON_MAX_BYTES} bytes`);
+    }
+    return buffer.subarray(0, offset);
+  } finally {
+    await handle.close();
+  }
+}
 
 /**
  * Every icon of one marketplace together. The per-icon cap alone still lets a
@@ -257,7 +286,7 @@ async function readOneLocalIcon(args: {
     args.icon.path,
     `entry "${args.entryId}" icon`,
   );
-  const bytes = new Uint8Array(await readFile(path));
+  const bytes = await readBoundedMarketplaceIconFile(path);
   return {
     marketplaceName: args.marketplaceName,
     entryId: args.entryId,
