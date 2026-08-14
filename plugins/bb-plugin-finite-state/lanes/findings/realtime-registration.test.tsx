@@ -175,6 +175,7 @@ describe("registered findings realtime boundary", () => {
         expect(versionReads).toBe(1);
         const signalCursor = host.harness.inspection.realtimeSignals.length;
         await host.harness.behavior.callRpc("syncPull", {
+          workspaceProjectId: "bb-project-fs140",
           projectId: platformProjectId,
           projectVersionId,
           kinds: ["finding"],

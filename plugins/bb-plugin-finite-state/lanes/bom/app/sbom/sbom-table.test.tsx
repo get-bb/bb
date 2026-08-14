@@ -139,10 +139,16 @@ async function renderBom(
     panel,
     { subPath },
     {
-      context: { projectId: "project-1" },
+      context: { projectId: "workspace-project-1" },
       sidebarThreads: {
         status: "ready",
-        projects: [{ id: "project-1", name: "Project One", isPersonal: false }],
+        projects: [
+          {
+            id: "workspace-project-1",
+            name: "Project One",
+            isPersonal: false,
+          },
+        ],
       },
       rpc: {
         connectionsStatus: connectedRemoteStatus,
@@ -207,6 +213,7 @@ describe("SBOM virtual table", () => {
         expect.objectContaining({
           method: "syncPull",
           input: {
+            workspaceProjectId: "workspace-project-1",
             projectId: "project-1",
             projectVersionId: "version-1",
             kinds: ["sbomComponent"],

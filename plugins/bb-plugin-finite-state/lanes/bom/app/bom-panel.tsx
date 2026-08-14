@@ -326,6 +326,7 @@ export function BomPanel({ subPath }: PluginNavPanelProps): React.JSX.Element {
               }
               projectId={platformProjectId}
               projectVersionId={projectVersionId}
+              workspaceProjectId={workspaceProjectId}
             />
           </div>
           {route.componentKey ? (

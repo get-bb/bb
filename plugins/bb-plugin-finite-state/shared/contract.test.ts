@@ -178,8 +178,8 @@ function objectField(
 }
 
 describe("rpc-contract-freeze", () => {
-  it("exports version six and all 86 bijective logical-to-wire names", () => {
-    expect(CONTRACT_VERSION).toBe(6);
+  it("exports version seven and all 86 bijective logical-to-wire names", () => {
+    expect(CONTRACT_VERSION).toBe(7);
     expect(Object.keys(RPC_WIRE_METHODS).sort()).toEqual(
       [...EXPECTED_LOGICAL_METHODS].sort(),
     );
@@ -241,7 +241,8 @@ describe("rpc-contract-freeze", () => {
     expect(
       objectVariants(rpcContract.taraCommandApply.input)
         .filter(
-          (variant) => objectField(variant, "operation")?.safeParse("delete").success,
+          (variant) =>
+            objectField(variant, "operation")?.safeParse("delete").success,
         )
         .map((variant) => Object.keys(variant.shape).sort()),
     ).toEqual([
@@ -317,30 +318,38 @@ describe("rpc-contract-freeze", () => {
   });
 
   it("keeps firmware input issuance non-null, relative, and path-redacted", () => {
-    expect(rpcContract.firmwareInputIssue.input.parse({
-      projectId: "project-1",
-      projectVersionId: "pv-1",
-      environmentId: "environment-1",
-      firmwarePath: "artifacts/firmware.bin",
-    })).toEqual({
+    expect(
+      rpcContract.firmwareInputIssue.input.parse({
+        projectId: "project-1",
+        projectVersionId: "pv-1",
+        environmentId: "environment-1",
+        firmwarePath: "artifacts/firmware.bin",
+      }),
+    ).toEqual({
       projectId: "project-1",
       projectVersionId: "pv-1",
       environmentId: "environment-1",
       firmwarePath: "artifacts/firmware.bin",
     });
-    expect(rpcContract.firmwareInputIssue.input.safeParse({
-      projectId: "project-1",
-      projectVersionId: null,
-      environmentId: "environment-1",
-      firmwarePath: "artifacts/firmware.bin",
-    }).success).toBe(false);
-    expect(rpcContract.firmwareInputIssue.input.safeParse({
-      projectId: "project-1",
-      projectVersionId: "pv-1",
-      environmentId: "environment-1",
-      firmwarePath: "/tmp/firmware.bin",
-    }).success).toBe(false);
-    expect(Object.keys(rpcContract.firmwareInputIssue.output.shape)).not.toContain("firmwarePath");
+    expect(
+      rpcContract.firmwareInputIssue.input.safeParse({
+        projectId: "project-1",
+        projectVersionId: null,
+        environmentId: "environment-1",
+        firmwarePath: "artifacts/firmware.bin",
+      }).success,
+    ).toBe(false);
+    expect(
+      rpcContract.firmwareInputIssue.input.safeParse({
+        projectId: "project-1",
+        projectVersionId: "pv-1",
+        environmentId: "environment-1",
+        firmwarePath: "/tmp/firmware.bin",
+      }).success,
+    ).toBe(false);
+    expect(
+      Object.keys(rpcContract.firmwareInputIssue.output.shape),
+    ).not.toContain("firmwarePath");
   });
 
   it("requires explicit project coordinates and rejects the internal sentinel", () => {
@@ -363,9 +372,14 @@ describe("rpc-contract-freeze", () => {
     for (const [method, contract] of Object.entries(rpcContract)) {
       if (UN_SCOPED_METHODS.has(method)) continue;
       const variants = objectVariants(contract.input);
-      expect(variants.length, `${method} must have a scoped object input`).toBeGreaterThan(0);
+      expect(
+        variants.length,
+        `${method} must have a scoped object input`,
+      ).toBeGreaterThan(0);
       for (const variant of variants) {
-        expect(variant.shape, `${method} projectId`).toHaveProperty("projectId");
+        expect(variant.shape, `${method} projectId`).toHaveProperty(
+          "projectId",
+        );
         expect(variant.shape, `${method} projectVersionId`).toHaveProperty(
           "projectVersionId",
         );
@@ -432,8 +446,12 @@ describe("rpc-contract-freeze", () => {
             expect(outputKeys).toContain("total");
             expect(outputKeys).toContain("cursor");
             expect(outputKeys).not.toContain("next");
-            expect(objectField(contract.output, "total")?.safeParse(null).success).toBe(false);
-            expect(objectField(contract.output, "cursor")?.safeParse(null).success).toBe(true);
+            expect(
+              objectField(contract.output, "total")?.safeParse(null).success,
+            ).toBe(false);
+            expect(
+              objectField(contract.output, "cursor")?.safeParse(null).success,
+            ).toBe(true);
           }
           continue;
         }
@@ -446,8 +464,12 @@ describe("rpc-contract-freeze", () => {
         if (!inputKeys.includes("pageSize")) continue;
         pagedMethods += 1;
         expect(inputKeys).toContain("continuation");
-        expect(objectField(input, "pageSize")?.safeParse(0).success).toBe(false);
-        expect(objectField(input, "pageSize")?.safeParse(201).success).toBe(false);
+        expect(objectField(input, "pageSize")?.safeParse(0).success).toBe(
+          false,
+        );
+        expect(objectField(input, "pageSize")?.safeParse(201).success).toBe(
+          false,
+        );
 
         expect(contract.output).toBeInstanceOf(z.ZodObject);
         if (contract.output instanceof z.ZodObject) {
@@ -456,12 +478,13 @@ describe("rpc-contract-freeze", () => {
           expect(outputKeys).toContain("total");
           expect(outputKeys).toContain("next");
           expect(outputKeys).not.toContain("cursor");
-          expect(objectField(contract.output, "total")?.safeParse(null).success).toBe(
-            true,
-          );
-          expect(objectField(contract.output, "next")?.safeParse("opaque-next").success).toBe(
-            true,
-          );
+          expect(
+            objectField(contract.output, "total")?.safeParse(null).success,
+          ).toBe(true);
+          expect(
+            objectField(contract.output, "next")?.safeParse("opaque-next")
+              .success,
+          ).toBe(true);
         }
       }
     }
@@ -471,7 +494,8 @@ describe("rpc-contract-freeze", () => {
   it("keeps every AMD-0011 list method on the items-total-cursor shape", () => {
     const listMethods = Object.entries(RPC_WIRE_METHODS)
       .filter(([logical]) =>
-        /^(?:hardware|grounding|authoring|benchDev)\..*\.list$/u.test(logical))
+        /^(?:hardware|grounding|authoring|benchDev)\..*\.list$/u.test(logical),
+      )
       .map(([, wire]) => wire);
     expect(listMethods.sort()).toEqual(
       [...AMD_0011_CURSOR_PAGED_METHODS]
@@ -528,6 +552,9 @@ describe("rpc-contract-freeze", () => {
     expect(rpcContract.syncPlan.output.shape).toHaveProperty("baseRevisions");
     expect(rpcContract.syncPull.output.shape).toHaveProperty("generationId");
     expect(rpcContract.syncPull.output.shape).toHaveProperty("acceptedAt");
+    expect(rpcContract.syncPull.input.shape).toHaveProperty(
+      "workspaceProjectId",
+    );
     expect(rpcContract.syncStatus.output.shape).toHaveProperty(
       "acceptedGenerationIds",
     );
@@ -560,7 +587,9 @@ describe("rpc-contract-freeze", () => {
     expect(humanApprovalCapabilitySchema.safeParse("confirmed").success).toBe(
       false,
     );
-    expect(humanApprovalCapabilitySchema.safeParse(CAPABILITY).success).toBe(true);
+    expect(humanApprovalCapabilitySchema.safeParse(CAPABILITY).success).toBe(
+      true,
+    );
 
     for (const method of HUMAN_ONLY_RPC_METHODS) {
       const variants = objectVariants(rpcContract[method].input);
@@ -568,13 +597,16 @@ describe("rpc-contract-freeze", () => {
       expect(variants[0]?.shape, `${method} capability`).toHaveProperty(
         "humanApprovalCapability",
       );
-      expect(variants[0]?.shape, `${method} confirmed alias`).not.toHaveProperty(
-        "confirmed",
-      );
+      expect(
+        variants[0]?.shape,
+        `${method} confirmed alias`,
+      ).not.toHaveProperty("confirmed");
     }
-    expect(Object.keys(rpcContract).some((method) => /mint|capability/iu.test(method))).toBe(
-      false,
-    );
+    expect(
+      Object.keys(rpcContract).some((method) =>
+        /mint|capability/iu.test(method),
+      ),
+    ).toBe(false);
   });
 
   it("accepts numeric-string identities and rejects unknown input seams", () => {
@@ -605,7 +637,9 @@ describe("rpc-contract-freeze", () => {
 
   it("keeps JSON finite, locators structured, and binary RPC methods absent", () => {
     expect(jsonValueSchema.safeParse(Number.NaN).success).toBe(false);
-    expect(jsonValueSchema.safeParse(Number.POSITIVE_INFINITY).success).toBe(false);
+    expect(jsonValueSchema.safeParse(Number.POSITIVE_INFINITY).success).toBe(
+      false,
+    );
     expect(jsonValueSchema.safeParse(undefined).success).toBe(false);
     expect(
       entitySummarySchema.safeParse({

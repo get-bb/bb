@@ -152,6 +152,7 @@ function TableSkeleton(): React.JSX.Element {
 }
 
 export interface SbomTableProps {
+  workspaceProjectId: string;
   projectId: string;
   projectVersionId: string;
   filters: SbomFiltersValue;
@@ -159,6 +160,7 @@ export interface SbomTableProps {
 }
 
 export function SbomTable({
+  workspaceProjectId,
   projectId,
   projectVersionId,
   filters,
@@ -275,6 +277,7 @@ export function SbomTable({
     setPullError(null);
     try {
       await rpc.call("syncPull", {
+        workspaceProjectId,
         projectId,
         projectVersionId,
         kinds: ["sbomComponent"],
@@ -287,7 +290,7 @@ export function SbomTable({
     } finally {
       setPulling(false);
     }
-  }, [projectId, projectVersionId, pulling, refresh, rpc]);
+  }, [projectId, projectVersionId, pulling, refresh, rpc, workspaceProjectId]);
 
   const virtualizer = useVirtualizer({
     count: rows.length,

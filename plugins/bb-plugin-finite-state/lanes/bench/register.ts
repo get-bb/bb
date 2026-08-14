@@ -6,6 +6,10 @@ import {
   PROJECT_LEVEL_VERSION_ID,
   toStorageProjectVersionId,
 } from "../../lib/store/index.js";
+import {
+  backfillUnambiguousWorkspaceProjectBinding,
+  WORKSPACE_PLATFORM_PROJECT_PREDICATE,
+} from "../../lib/store/project-scope.js";
 import { rpcContract } from "../../shared/contract.js";
 import {
   createBenchHostJoinCode,
@@ -422,6 +426,7 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
   bb.rpc.register(benchUiRpcContract, {
     async benchProjectVersions(input) {
       await bb.sdk.projects.get({ projectId: input.projectId });
+      backfillUnambiguousWorkspaceProjectBinding(db, input.projectId);
       const rows = db
         .prepare<[string, string], BenchProjectVersionRow>(
           `SELECT s.project_id, s.project_version_id, MAX(s.last_pull) AS as_of,
@@ -432,7 +437,8 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
               AND g.project_version_id = s.project_version_id
               AND g.generation_id = s.accepted_generation_id
               AND g.status = 'accepted'
-            WHERE s.project_id = ? AND s.entity_kind = 'verificationRun'
+            WHERE ${WORKSPACE_PLATFORM_PROJECT_PREDICATE}
+              AND s.entity_kind = 'verificationRun'
               AND s.project_version_id <> ?
               AND s.accepted_generation_id IS NOT NULL
             GROUP BY s.project_id, s.project_version_id

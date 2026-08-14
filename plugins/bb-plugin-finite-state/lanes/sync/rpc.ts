@@ -1,5 +1,6 @@
 import type { BbPluginApi } from "@bb/plugin-sdk";
 
+import { bindWorkspacePlatformProject } from "../../lib/store/project-scope.js";
 import { ENTITIES, type EntityKind } from "../../lib/sync/registry.js";
 import { rpcContract } from "../../shared/contract.js";
 import { resolveConflictRpc } from "./conflicts/index.js";
@@ -43,12 +44,18 @@ function cacheState(metadata: ReturnType<typeof syncMetadata>) {
 export function registerSyncRpc(bb: BbPluginApi, deps: EngineDeps): void {
   bb.rpc.register(syncContract, {
     async syncPull(input) {
+      await bb.sdk.projects.get({ projectId: input.workspaceProjectId });
       const kinds = entityKinds(input.kinds);
       const scope = {
         projectId: input.projectId,
         projectVersionId: input.projectVersionId,
       };
       const report = await pull(deps, scope, kinds);
+      bindWorkspacePlatformProject(
+        deps.db,
+        input.workspaceProjectId,
+        scope.projectId,
+      );
       const metadata = syncMetadata(deps, scope, kinds);
       return {
         ...scope,

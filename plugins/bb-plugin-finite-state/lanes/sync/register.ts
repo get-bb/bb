@@ -15,7 +15,7 @@ import { registerSyncRpc } from "./rpc.js";
 async function resolveSyncWorktreeRoot(
   ctx: PluginContext,
   cliContext: PluginCliContext,
-): Promise<string> {
+): Promise<{ worktreeRoot: string; workspaceProjectId: string }> {
   if (!cliContext.threadId) {
     throw new Error(
       "SYNC_EXECUTION_CONTEXT_REQUIRED: invoke from a bb thread; cwd is not trusted as a worktree identity",
@@ -41,7 +41,10 @@ async function resolveSyncWorktreeRoot(
       "SYNC_EXECUTION_CONTEXT_INVALID: environment has no verified workspace path",
     );
   }
-  return environment.path;
+  return {
+    worktreeRoot: environment.path,
+    workspaceProjectId: thread.projectId,
+  };
 }
 
 export function registerSync(bb: BbPluginApi, ctx: PluginContext): void {

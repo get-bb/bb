@@ -9,7 +9,7 @@
 import { defineRpcContract } from "@bb/plugin-sdk";
 import { z } from "zod";
 
-export const CONTRACT_VERSION = 6 as const;
+export const CONTRACT_VERSION = 7 as const;
 
 export type JsonValue =
   | null
@@ -396,7 +396,10 @@ export const documentLocatorSchema = z.discriminatedUnion("kind", [
         value.bbox !== undefined &&
         (value.bbox[2] < value.bbox[0] || value.bbox[3] < value.bbox[1])
       ) {
-        context.addIssue({ code: "custom", message: "bbox must not be inverted" });
+        context.addIssue({
+          code: "custom",
+          message: "bbox must not be inverted",
+        });
       }
     }),
   z
@@ -445,9 +448,7 @@ export const fieldDiffSchema = z
 export const conflictResolutionSchema = z.discriminatedUnion("choice", [
   z.object({ choice: z.literal("take-ours") }).strict(),
   z.object({ choice: z.literal("take-theirs") }).strict(),
-  z
-    .object({ choice: z.literal("edited"), value: jsonValueSchema })
-    .strict(),
+  z.object({ choice: z.literal("edited"), value: jsonValueSchema }).strict(),
 ]);
 export const attributionSchema = z
   .object({
@@ -743,8 +744,7 @@ const localWriteResultSchema = z
   })
   .strict()
   .refine(
-    (result) =>
-      result.beforeSha256 !== null || result.afterSha256 !== null,
+    (result) => result.beforeSha256 !== null || result.afterSha256 !== null,
     {
       message: "beforeSha256 and afterSha256 cannot both be null",
       path: ["afterSha256"],
@@ -942,7 +942,11 @@ const firmwareFileSchema = z
     size: z.number().int().nonnegative().nullable(),
     mediaType: z.string().max(500).nullable(),
     fields: fieldsSchema,
-    previewHex: z.string().regex(/^[a-fA-F0-9]*$/u).max(512).nullable(),
+    previewHex: z
+      .string()
+      .regex(/^[a-fA-F0-9]*$/u)
+      .max(512)
+      .nullable(),
     previewBytes: z.number().int().min(0).max(256),
     materialized: z.boolean(),
     cache: cacheStateSchema,
@@ -1309,7 +1313,13 @@ const authoringGateStatusSchema = z
     configured: z.boolean(),
     configSha256: sha256Schema.nullable(),
     trigger: z.enum(["pre_pr", "post_merge"]).nullable(),
-    state: z.enum(["not_run", "running", "passed", "failed", "failed_unconfigured"]),
+    state: z.enum([
+      "not_run",
+      "running",
+      "passed",
+      "failed",
+      "failed_unconfigured",
+    ]),
     ranAt: timestampSchema.nullable(),
     failures: z.array(safeDetailSchema).max(200),
   })
@@ -1375,17 +1385,19 @@ const humanApprovalInputField = {
   humanApprovalCapability: humanApprovalCapabilitySchema,
 } as const;
 const pagedScopedInput = (extra: z.ZodRawShape = {}) =>
-  z
-    .object({ ...projectScopeFields, ...pageRequestFields, ...extra })
-    .strict();
+  z.object({ ...projectScopeFields, ...pageRequestFields, ...extra }).strict();
 
 export const rpcContract = defineRpcContract({
   connectionsStatus: { input: z.null(), output: connectionsStatusSchema },
-  workspaceSummary: { input: projectScopeSchema, output: workspaceSummarySchema },
+  workspaceSummary: {
+    input: projectScopeSchema,
+    output: workspaceSummarySchema,
+  },
   syncPull: {
     input: z
       .object({
         ...projectScopeFields,
+        workspaceProjectId: identifierSchema,
         kinds: z.array(identifierSchema).max(200).optional(),
       })
       .strict(),
@@ -1456,7 +1468,9 @@ export const rpcContract = defineRpcContract({
     output: pageResultSchema(entitySummarySchema),
   },
   findingsGet: {
-    input: z.object({ ...projectScopeFields, findingId: identifierSchema }).strict(),
+    input: z
+      .object({ ...projectScopeFields, findingId: identifierSchema })
+      .strict(),
     output: entityDetailSchema,
   },
   findingsActivityList: {
@@ -1508,7 +1522,9 @@ export const rpcContract = defineRpcContract({
   },
   findingsFacets: { input: projectScopeSchema, output: facetsSchema },
   triageRunGet: {
-    input: z.object({ ...projectScopeFields, runId: identifierSchema }).strict(),
+    input: z
+      .object({ ...projectScopeFields, runId: identifierSchema })
+      .strict(),
     output: triageRunSchema,
   },
   triageDecisionWrite: {
@@ -1582,11 +1598,18 @@ export const rpcContract = defineRpcContract({
   },
   taraGet: {
     input: z
-      .object({ ...projectScopeFields, kind: taraKindSchema, id: identifierSchema })
+      .object({
+        ...projectScopeFields,
+        kind: taraKindSchema,
+        id: identifierSchema,
+      })
       .strict(),
     output: entityDetailSchema,
   },
-  taraCommandApply: { input: taraCommandSchema, output: localWriteResultSchema },
+  taraCommandApply: {
+    input: taraCommandSchema,
+    output: localWriteResultSchema,
+  },
   taraDeleteImpact: {
     input: z
       .object({
@@ -1647,7 +1670,9 @@ export const rpcContract = defineRpcContract({
     output: pageResultSchema(entitySummarySchema),
   },
   verificationsRunGet: {
-    input: z.object({ ...projectScopeFields, runId: identifierSchema }).strict(),
+    input: z
+      .object({ ...projectScopeFields, runId: identifierSchema })
+      .strict(),
     output: entityDetailSchema,
   },
   verificationsRunStart: {
@@ -1853,7 +1878,9 @@ export const rpcContract = defineRpcContract({
     output: actionJobSchema,
   },
   firmwareMaterializeCancel: {
-    input: z.object({ ...projectScopeFields, jobId: identifierSchema }).strict(),
+    input: z
+      .object({ ...projectScopeFields, jobId: identifierSchema })
+      .strict(),
     output: actionJobSchema,
   },
   firmwareFileHydrate: {
@@ -1868,7 +1895,9 @@ export const rpcContract = defineRpcContract({
     output: pageResultSchema(entitySummarySchema),
   },
   benchRunGet: {
-    input: z.object({ ...projectScopeFields, runId: identifierSchema }).strict(),
+    input: z
+      .object({ ...projectScopeFields, runId: identifierSchema })
+      .strict(),
     output: entityDetailSchema,
   },
   benchLogsList: {
@@ -1876,7 +1905,9 @@ export const rpcContract = defineRpcContract({
     output: pageResultSchema(benchLogSchema),
   },
   benchVerdictGet: {
-    input: z.object({ ...projectScopeFields, verdictId: identifierSchema }).strict(),
+    input: z
+      .object({ ...projectScopeFields, verdictId: identifierSchema })
+      .strict(),
     output: verdictSchema,
   },
   benchRunStart: {
@@ -1922,7 +1953,9 @@ export const rpcContract = defineRpcContract({
     output: pageResultSchema(entitySummarySchema),
   },
   documentsGet: {
-    input: z.object({ ...projectScopeFields, documentId: identifierSchema }).strict(),
+    input: z
+      .object({ ...projectScopeFields, documentId: identifierSchema })
+      .strict(),
     output: entityDetailSchema,
   },
   documentsSearch: {
@@ -1959,7 +1992,9 @@ export const rpcContract = defineRpcContract({
   },
 
   hardwareProjectsList: {
-    input: cursorPagedScopedInput({ query: z.string().trim().max(1000).optional() }),
+    input: cursorPagedScopedInput({
+      query: z.string().trim().max(1000).optional(),
+    }),
     output: cursorPageResultSchema(hardwareProjectSchema),
   },
   hardwareSymbolsList: {
@@ -2118,9 +2153,14 @@ export const rpcContract = defineRpcContract({
   },
   benchDevRunsList: {
     input: cursorPagedScopedInput({
-      kinds: z.array(z.enum(["build", "flash", "probe"])).max(3).optional(),
+      kinds: z
+        .array(z.enum(["build", "flash", "probe"]))
+        .max(3)
+        .optional(),
       statuses: z
-        .array(z.enum(["queued", "running", "succeeded", "failed", "cancelled"]))
+        .array(
+          z.enum(["queued", "running", "succeeded", "failed", "cancelled"]),
+        )
         .max(5)
         .optional(),
     }),

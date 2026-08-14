@@ -491,3 +491,28 @@ specs: `docs/Product Specs/SPEC 07` and `SPEC 08`._
 - Status: withdrawn — superseded by owner ruling retiring the WP-08 fixture freeze (2026-08-13)
 - Proposal record: FS-164 task comment `01KZYJGP57P3WQAPS7HT9KF98V`
 - Disposition: the proposed content landed as ordinary reviewed work under the fixture-fidelity rule in PR #102.
+
+### AMD-0020 — Bind bb workspace projects to cached Platform projects
+
+- Status: approved
+- Approved: 2026-08-14 07:49 ET, product owner Matt Wyckhouse, relayed via supervisor and recorded by coordinator thread `thr_hg37weivk7`
+- Artifacts:
+  - `plugins/bb-plugin-finite-state/lib/store/schema.ts`
+  - `plugins/bb-plugin-finite-state/shared/contract.ts`
+- Contract version: 7
+- Prior artifact hash:
+  - `lib/store/schema.ts`: `4d79c90e4294580a030d56720154e78b31fe2d2ab2b718968f346db8cc6de14c`
+  - `shared/contract.ts`: `ffa2f477ab2868f678ec4a8f06c962d17e51121706fe0ee52db360178cd505ab`
+- New artifact hashes:
+  - `lib/store/schema.ts`: `19e0461c798ec193b9867d71a306f6fda58c0b6da2664551211cab830a79dd6f`
+  - `shared/contract.ts`: `b00370339d16e391b9efc4a15246939e63ea2053ef6782699f768e7e812757fd`
+- Reason: FS-191 cannot scope cached-version catalogs by comparing their bb workspace-project input to `sync_state.project_id`, which stores a Finite State Platform project id. The round-1 implementation made every post-pull catalog empty and its tests hid the regression by equating the two identifier spaces.
+- Migration: append `workspace_platform_project_binding` with composite primary key `(workspace_project_id, platform_project_id)` and a reverse lookup index. Successful registered pulls (CLI and syncPull RPC) record the association after atomic cache publication; `syncPull` accepts the required bb `workspaceProjectId` separately from its Platform `projectId`. Findings, BOM, and Bench version catalogs filter in SQLite through the association. A pre-migration Platform project with no binding remains visible; when the store contains exactly one Platform project and no bindings, the first validated workspace catalog read backfills the unambiguous association.
+- Known limitation: the plugin SDK exposes no authenticated caller workspace identity to RPC handlers. `syncPull` validates that `workspaceProjectId` names a real bb project before pulling or recording a binding, but it cannot prevent a caller from supplying a different real workspace project's id. Closing that residual requires a caller identity from the plugin SDK rather than another plugin-local comparison.
+- Ratified scope: the appended `lib/store/schema.ts` binding table and the `shared/contract.ts` version-7 `syncPull.workspaceProjectId` change, including registered validation before pull and binding persistence.
+- Acceptance: the frozen accept flow recorded both artifacts atomically under AMD-0020 at the hashes above and advanced the baseline contract version to 7.
+- Affected WPs and gates: FS-191; sync CLI, Findings/BOM/Bench cached-version registered surfaces, shared-store migration, frozen baseline, Node 22.19 typecheck/test/lint/build gates
+- Approval provenance: coordinator ruling authorized the design direction in FS-191 round 1; owner Matt Wyckhouse ratified the complete two-artifact scope at 2026-08-14 07:49 ET after the round-3 repair.
+- Affected-lane reviewer: independent FS-191 reviews in coordinator thread `thr_hg37weivk7`; round 3 mutation-verified every prior repair and narrowed the residual to registered workspace validation, which is covered at head `b0b16b988`.
+- Broadcast and merge commits: contract version 7 broadcast by PR #134; merge commit pending owner merge after exact-head green gates
+- Evidence: FS-191 round-1 production probe at head `9489c1be5` exposed empty catalogs from comparing unrelated id spaces. Round-2 mutation checks killed relaxed legacy backfill, ignored existing bindings, and deleted legacy visibility. Round-3 registered proof rejects a junk workspace before pull, persists no binding, and fails when that validation is removed.

@@ -51,201 +51,684 @@ function defineColumns<Row>() {
 
 const ROW_COLUMNS = {
   pull_generation: defineColumns<PullGenerationRow>()([
-    "project_id", "project_version_id", "generation_id", "status",
-    "requested_kinds_json", "started_at", "completed_at", "accepted_at", "error",
+    "project_id",
+    "project_version_id",
+    "generation_id",
+    "status",
+    "requested_kinds_json",
+    "started_at",
+    "completed_at",
+    "accepted_at",
+    "error",
   ]),
   sync_state: defineColumns<SyncStateRow>()([
-    "project_id", "project_version_id", "entity_kind",
-    "accepted_generation_id", "staging_generation_id", "base_revision",
-    "staging_continuation", "staged_pages", "staged_rows", "last_pull", "error",
+    "project_id",
+    "project_version_id",
+    "entity_kind",
+    "accepted_generation_id",
+    "staging_generation_id",
+    "base_revision",
+    "staging_continuation",
+    "staged_pages",
+    "staged_rows",
+    "last_pull",
+    "error",
   ]),
+  workspace_platform_project_binding: [
+    "workspace_project_id",
+    "platform_project_id",
+  ],
   push_log: defineColumns<PushLogRow>()([
-    "project_id", "project_version_id", "id", "run_id", "base_generation_id",
-    "base_revision", "expected_base_content_hash", "entity_kind", "entity_key",
-    "op", "status", "error", "created_at", "applied_at",
+    "project_id",
+    "project_version_id",
+    "id",
+    "run_id",
+    "base_generation_id",
+    "base_revision",
+    "expected_base_content_hash",
+    "entity_kind",
+    "entity_key",
+    "op",
+    "status",
+    "error",
+    "created_at",
+    "applied_at",
   ]),
   base_snapshot: defineColumns<BaseSnapshotRow>()([
-    "project_id", "project_version_id", "entity_kind", "generation_id",
-    "entity_key", "remote_id", "payload", "content_hash", "pulled_at",
+    "project_id",
+    "project_version_id",
+    "entity_kind",
+    "generation_id",
+    "entity_key",
+    "remote_id",
+    "payload",
+    "content_hash",
+    "pulled_at",
   ]),
   id_map: defineColumns<IdMapRow>()([
-    "project_id", "project_version_id", "entity_kind", "generation_id",
-    "entity_key", "remote_id", "pulled_at",
+    "project_id",
+    "project_version_id",
+    "entity_kind",
+    "generation_id",
+    "entity_key",
+    "remote_id",
+    "pulled_at",
   ]),
   entity_review_state: defineColumns<EntityReviewStateRow>()([
-    "project_id", "project_version_id", "generation_id", "entity_kind",
-    "entity_key", "remote_id", "review_status", "review_version", "pulled_at",
+    "project_id",
+    "project_version_id",
+    "generation_id",
+    "entity_kind",
+    "entity_key",
+    "remote_id",
+    "review_status",
+    "review_version",
+    "pulled_at",
   ]),
   findings: defineColumns<FindingRow>()([
-    "project_id", "project_version_id", "generation_id", "finding_id", "stable_key",
-    "finding_type", "cve", "title", "component_name", "component_group",
-    "component_version", "component_purl", "severity", "risk_score", "band",
-    "cvss_score", "cvss_vector", "epss_score", "epss_percentile", "in_kev",
-    "in_vc_kev", "has_exploit", "exploit_maturity", "reachability_score",
-    "reachability_verdict", "reachability_factors", "vuln_in_dataset", "cwes",
-    "warning_count", "violation_count", "location", "vex_status", "vex_response",
-    "vex_justification", "vex_reason", "comments", "first_seen", "soft_deleted",
-    "raw", "pulled_at",
+    "project_id",
+    "project_version_id",
+    "generation_id",
+    "finding_id",
+    "stable_key",
+    "finding_type",
+    "cve",
+    "title",
+    "component_name",
+    "component_group",
+    "component_version",
+    "component_purl",
+    "severity",
+    "risk_score",
+    "band",
+    "cvss_score",
+    "cvss_vector",
+    "epss_score",
+    "epss_percentile",
+    "in_kev",
+    "in_vc_kev",
+    "has_exploit",
+    "exploit_maturity",
+    "reachability_score",
+    "reachability_verdict",
+    "reachability_factors",
+    "vuln_in_dataset",
+    "cwes",
+    "warning_count",
+    "violation_count",
+    "location",
+    "vex_status",
+    "vex_response",
+    "vex_justification",
+    "vex_reason",
+    "comments",
+    "first_seen",
+    "soft_deleted",
+    "raw",
+    "pulled_at",
   ]),
   finding_cwes: defineColumns<FindingCweRow>()([
-    "project_id", "project_version_id", "generation_id", "finding_id", "cwe", "pulled_at",
+    "project_id",
+    "project_version_id",
+    "generation_id",
+    "finding_id",
+    "cwe",
+    "pulled_at",
   ]),
   finding_activity: defineColumns<FindingActivityRow>()([
-    "project_id", "project_version_id", "generation_id", "finding_id", "event_id",
-    "stable_key", "actor", "event_at", "source", "old_tuple", "new_tuple", "raw", "pulled_at",
+    "project_id",
+    "project_version_id",
+    "generation_id",
+    "finding_id",
+    "event_id",
+    "stable_key",
+    "actor",
+    "event_at",
+    "source",
+    "old_tuple",
+    "new_tuple",
+    "raw",
+    "pulled_at",
   ]),
   overlay_index: defineColumns<OverlayIndexRow>()([
-    "project_id", "project_version_id", "entity_kind", "stable_key", "component_key",
-    "cve", "file_path", "file_sha256", "vex_status", "vex_response",
-    "vex_justification", "vex_reason", "pin", "provenance_by", "provenance_at",
-    "evidence", "sync_base", "pushed_at", "local_state", "drift_state", "match_tier",
-    "policy_warning_count", "policy_violation_count", "indexed_at",
+    "project_id",
+    "project_version_id",
+    "entity_kind",
+    "stable_key",
+    "component_key",
+    "cve",
+    "file_path",
+    "file_sha256",
+    "vex_status",
+    "vex_response",
+    "vex_justification",
+    "vex_reason",
+    "pin",
+    "provenance_by",
+    "provenance_at",
+    "evidence",
+    "sync_base",
+    "pushed_at",
+    "local_state",
+    "drift_state",
+    "match_tier",
+    "policy_warning_count",
+    "policy_violation_count",
+    "indexed_at",
   ]),
   triage_runs: defineColumns<TriageRunRow>()([
-    "project_id", "project_version_id", "run_id", "source", "dry_run", "status",
-    "input_digest", "written", "held", "conflicts", "skipped_existing", "errors",
-    "report_json", "created_at", "finished_at",
+    "project_id",
+    "project_version_id",
+    "run_id",
+    "source",
+    "dry_run",
+    "status",
+    "input_digest",
+    "written",
+    "held",
+    "conflicts",
+    "skipped_existing",
+    "errors",
+    "report_json",
+    "created_at",
+    "finished_at",
   ]),
   sbom_components: defineColumns<SbomComponentRow>()([
-    "project_id", "project_version_id", "generation_id", "component_id", "component_key",
-    "purl", "name", "component_group", "version", "cpe", "license", "supplier",
-    "source", "file_locations", "is_stale", "raw", "pulled_at",
+    "project_id",
+    "project_version_id",
+    "generation_id",
+    "component_id",
+    "component_key",
+    "purl",
+    "name",
+    "component_group",
+    "version",
+    "cpe",
+    "license",
+    "supplier",
+    "source",
+    "file_locations",
+    "is_stale",
+    "raw",
+    "pulled_at",
   ]),
   sbom_vuln_rollup: defineColumns<SbomVulnRollupRow>()([
-    "project_id", "project_version_id", "generation_id", "component_key", "critical",
-    "high", "medium", "low", "kev_count", "max_epss", "reachability_verdict", "computed_at",
+    "project_id",
+    "project_version_id",
+    "generation_id",
+    "component_key",
+    "critical",
+    "high",
+    "medium",
+    "low",
+    "kev_count",
+    "max_epss",
+    "reachability_verdict",
+    "computed_at",
   ]),
   hbom_cells: defineColumns<HbomCellRow>()([
-    "project_id", "project_version_id", "part_key", "field", "value", "provenance",
-    "source_ref", "confidence", "asserted_by", "asserted_at", "note", "accepted_by",
-    "accepted_at", "state", "file_sha256", "indexed_at",
+    "project_id",
+    "project_version_id",
+    "part_key",
+    "field",
+    "value",
+    "provenance",
+    "source_ref",
+    "confidence",
+    "asserted_by",
+    "asserted_at",
+    "note",
+    "accepted_by",
+    "accepted_at",
+    "state",
+    "file_sha256",
+    "indexed_at",
   ]),
   hbom_candidates: defineColumns<HbomCandidateRow>()([
-    "project_id", "project_version_id", "candidate_id", "part_key", "field", "value",
-    "provenance", "source_ref", "confidence", "asserted_by", "asserted_at", "status", "indexed_at",
+    "project_id",
+    "project_version_id",
+    "candidate_id",
+    "part_key",
+    "field",
+    "value",
+    "provenance",
+    "source_ref",
+    "confidence",
+    "asserted_by",
+    "asserted_at",
+    "status",
+    "indexed_at",
   ]),
   standards: defineColumns<StandardRow>()([
-    "project_id", "project_version_id", "generation_id", "standard_id", "code", "name",
-    "scope", "review_status", "review_version", "raw", "pulled_at",
+    "project_id",
+    "project_version_id",
+    "generation_id",
+    "standard_id",
+    "code",
+    "name",
+    "scope",
+    "review_status",
+    "review_version",
+    "raw",
+    "pulled_at",
   ]),
   standards_clauses: defineColumns<StandardsClauseRow>()([
-    "project_id", "project_version_id", "generation_id", "standard_id", "clause_id",
-    "clause_code", "section_path", "parent_clause_id", "title", "body", "review_status",
-    "review_version", "raw", "pulled_at",
+    "project_id",
+    "project_version_id",
+    "generation_id",
+    "standard_id",
+    "clause_id",
+    "clause_code",
+    "section_path",
+    "parent_clause_id",
+    "title",
+    "body",
+    "review_status",
+    "review_version",
+    "raw",
+    "pulled_at",
   ]),
   methodology_profiles: defineColumns<MethodologyProfileRow>()([
-    "project_id", "project_version_id", "generation_id", "profile_id", "organization_id",
-    "scope", "name", "asset_properties", "impact_dimensions", "risk_scale",
-    "assurance_levels", "ownership_labels", "stride_map", "review_version", "raw", "pulled_at",
+    "project_id",
+    "project_version_id",
+    "generation_id",
+    "profile_id",
+    "organization_id",
+    "scope",
+    "name",
+    "asset_properties",
+    "impact_dimensions",
+    "risk_scale",
+    "assurance_levels",
+    "ownership_labels",
+    "stride_map",
+    "review_version",
+    "raw",
+    "pulled_at",
   ]),
   attack_paths: defineColumns<AttackPathRow>()([
-    "project_id", "project_version_id", "generation_id", "path_id", "route_signature", "name",
-    "threat_key", "steps", "edges", "total_steps", "zones_traversed", "exploitability",
-    "review_status", "review_version", "raw", "pulled_at",
+    "project_id",
+    "project_version_id",
+    "generation_id",
+    "path_id",
+    "route_signature",
+    "name",
+    "threat_key",
+    "steps",
+    "edges",
+    "total_steps",
+    "zones_traversed",
+    "exploitability",
+    "review_status",
+    "review_version",
+    "raw",
+    "pulled_at",
   ]),
   verification_checks: defineColumns<VerificationCheckRow>()([
-    "project_id", "project_version_id", "generation_id", "check_id", "code", "name",
-    "check_type", "category", "description", "pass_criteria", "fail_criteria",
-    "input_description", "parameters", "default_sla_days", "deleted_at", "review_status",
-    "review_version", "raw", "pulled_at",
+    "project_id",
+    "project_version_id",
+    "generation_id",
+    "check_id",
+    "code",
+    "name",
+    "check_type",
+    "category",
+    "description",
+    "pass_criteria",
+    "fail_criteria",
+    "input_description",
+    "parameters",
+    "default_sla_days",
+    "deleted_at",
+    "review_status",
+    "review_version",
+    "raw",
+    "pulled_at",
   ]),
   requirement_check_mappings: defineColumns<RequirementCheckMappingRow>()([
-    "project_id", "project_version_id", "generation_id", "requirement_key", "check_id",
-    "is_required", "coverage_level", "suppressed", "raw", "pulled_at",
+    "project_id",
+    "project_version_id",
+    "generation_id",
+    "requirement_key",
+    "check_id",
+    "is_required",
+    "coverage_level",
+    "suppressed",
+    "raw",
+    "pulled_at",
   ]),
   requirement_rollup: defineColumns<RequirementRollupRow>()([
-    "project_id", "project_version_id", "generation_id", "requirement_key",
-    "verification_status", "total_checks", "verified_checks", "failed_checks", "error_checks",
-    "inconclusive_checks", "running_checks", "pending_checks", "skipped_checks", "last_run_at", "pulled_at",
+    "project_id",
+    "project_version_id",
+    "generation_id",
+    "requirement_key",
+    "verification_status",
+    "total_checks",
+    "verified_checks",
+    "failed_checks",
+    "error_checks",
+    "inconclusive_checks",
+    "running_checks",
+    "pending_checks",
+    "skipped_checks",
+    "last_run_at",
+    "pulled_at",
   ]),
   verification_runs: defineColumns<VerificationRunRow>()([
-    "project_id", "project_version_id", "generation_id", "run_id", "tier", "matrix_col", "kind",
-    "trigger", "host_id", "thread_id", "target", "config", "status", "started_at", "finished_at",
-    "duration_ms", "firmware_digest", "job_id", "log_locator", "log_cursor", "raw", "synced_at",
+    "project_id",
+    "project_version_id",
+    "generation_id",
+    "run_id",
+    "tier",
+    "matrix_col",
+    "kind",
+    "trigger",
+    "host_id",
+    "thread_id",
+    "target",
+    "config",
+    "status",
+    "started_at",
+    "finished_at",
+    "duration_ms",
+    "firmware_digest",
+    "job_id",
+    "log_locator",
+    "log_cursor",
+    "raw",
+    "synced_at",
   ]),
   verification_results: defineColumns<VerificationResultRow>()([
-    "project_id", "project_version_id", "generation_id", "result_id", "run_id", "requirement_key",
-    "check_id", "tier", "status", "outcome", "confidence", "evidence_summary", "result_data",
-    "measured", "executed_at", "executed_by", "failure_reason", "remediation_suggestion",
-    "fs_version_id", "fs_version_name", "is_latest", "superseded_by", "sla_status", "mapping_state",
-    "raw", "pulled_at",
+    "project_id",
+    "project_version_id",
+    "generation_id",
+    "result_id",
+    "run_id",
+    "requirement_key",
+    "check_id",
+    "tier",
+    "status",
+    "outcome",
+    "confidence",
+    "evidence_summary",
+    "result_data",
+    "measured",
+    "executed_at",
+    "executed_by",
+    "failure_reason",
+    "remediation_suggestion",
+    "fs_version_id",
+    "fs_version_name",
+    "is_latest",
+    "superseded_by",
+    "sla_status",
+    "mapping_state",
+    "raw",
+    "pulled_at",
   ]),
   verification_artifacts: defineColumns<VerificationArtifactRow>()([
-    "project_id", "project_version_id", "generation_id", "artifact_id", "run_id", "result_id",
-    "name", "kind", "locator", "media_type", "sha256", "bytes", "created_at", "pulled_at",
+    "project_id",
+    "project_version_id",
+    "generation_id",
+    "artifact_id",
+    "run_id",
+    "result_id",
+    "name",
+    "kind",
+    "locator",
+    "media_type",
+    "sha256",
+    "bytes",
+    "created_at",
+    "pulled_at",
   ]),
   attestations: defineColumns<AttestationRow>()([
-    "project_id", "project_version_id", "generation_id", "attestation_id", "run_id", "format",
-    "predicate_type", "subject_digest", "evidence_digest", "verdict", "requirement_ids", "check_ids",
-    "result_refs", "signer_identity", "rekor_uuid", "envelope_locator", "payload",
-    "signature_verified", "subject_matches_run", "verified", "created_at", "pulled_at",
+    "project_id",
+    "project_version_id",
+    "generation_id",
+    "attestation_id",
+    "run_id",
+    "format",
+    "predicate_type",
+    "subject_digest",
+    "evidence_digest",
+    "verdict",
+    "requirement_ids",
+    "check_ids",
+    "result_refs",
+    "signer_identity",
+    "rekor_uuid",
+    "envelope_locator",
+    "payload",
+    "signature_verified",
+    "subject_matches_run",
+    "verified",
+    "created_at",
+    "pulled_at",
   ]),
   firmware_mounts: defineColumns<FirmwareMountRow>()([
-    "project_id", "project_version_id", "generation_id", "source", "state", "scan_id",
-    "input_sha256", "artifact_hash", "root_path", "file_count", "materialized_files", "error_count",
-    "admin_bytes_ok", "message", "materialized_at", "pulled_at",
+    "project_id",
+    "project_version_id",
+    "generation_id",
+    "source",
+    "state",
+    "scan_id",
+    "input_sha256",
+    "artifact_hash",
+    "root_path",
+    "file_count",
+    "materialized_files",
+    "error_count",
+    "admin_bytes_ok",
+    "message",
+    "materialized_at",
+    "pulled_at",
   ]),
   document: defineColumns<DocumentRow>()([
-    "project_id", "project_version_id", "document_id", "sha256", "name", "path", "doc_kind",
-    "mime_type", "bytes", "withdrawn", "needs_ocr", "uploaded_at", "analyzed_by", "analyzed_at",
-    "cells_extracted", "indexed_at",
+    "project_id",
+    "project_version_id",
+    "document_id",
+    "sha256",
+    "name",
+    "path",
+    "doc_kind",
+    "mime_type",
+    "bytes",
+    "withdrawn",
+    "needs_ocr",
+    "uploaded_at",
+    "analyzed_by",
+    "analyzed_at",
+    "cells_extracted",
+    "indexed_at",
   ]),
   document_extraction: defineColumns<DocumentExtractionRow>()([
-    "project_id", "project_version_id", "extraction_id", "document_id", "field", "value",
-    "confidence", "source_ref", "locator_kind", "page", "bbox", "sheet", "cell", "line_start",
-    "line_end", "target_surface", "target_id", "target_field", "status", "extracted_by", "extracted_at", "raw",
+    "project_id",
+    "project_version_id",
+    "extraction_id",
+    "document_id",
+    "field",
+    "value",
+    "confidence",
+    "source_ref",
+    "locator_kind",
+    "page",
+    "bbox",
+    "sheet",
+    "cell",
+    "line_start",
+    "line_end",
+    "target_surface",
+    "target_id",
+    "target_field",
+    "status",
+    "extracted_by",
+    "extracted_at",
+    "raw",
   ]),
   hbom_docs: defineColumns<HbomDocRow>()([
-    "project_id", "project_version_id", "document_id", "sha256", "name", "path", "doc_kind",
-    "mime_type", "bytes", "withdrawn", "needs_ocr", "uploaded_at", "analyzed_by", "analyzed_at",
-    "cells_extracted", "indexed_at",
+    "project_id",
+    "project_version_id",
+    "document_id",
+    "sha256",
+    "name",
+    "path",
+    "doc_kind",
+    "mime_type",
+    "bytes",
+    "withdrawn",
+    "needs_ocr",
+    "uploaded_at",
+    "analyzed_by",
+    "analyzed_at",
+    "cells_extracted",
+    "indexed_at",
   ]),
   hw_project: [
-    "project_id", "project_version_id", "project_key", "name", "sch_path",
-    "pcb_path", "sch_hash", "pcb_hash", "kicad_version", "discovered_at", "supported",
+    "project_id",
+    "project_version_id",
+    "project_key",
+    "name",
+    "sch_path",
+    "pcb_path",
+    "sch_hash",
+    "pcb_hash",
+    "kicad_version",
+    "discovered_at",
+    "supported",
   ],
   hw_artifact: [
-    "project_id", "project_version_id", "project_key", "kind", "sheet_path",
-    "path", "source_hash", "cli_version", "generated_at",
+    "project_id",
+    "project_version_id",
+    "project_key",
+    "kind",
+    "sheet_path",
+    "path",
+    "source_hash",
+    "cli_version",
+    "generated_at",
   ],
   hw_symbol: [
-    "project_id", "project_version_id", "project_key", "sheet_path", "reference",
-    "value", "footprint", "mpn", "manufacturer", "at_x", "at_y", "angle", "unit", "fields",
+    "project_id",
+    "project_version_id",
+    "project_key",
+    "sheet_path",
+    "reference",
+    "value",
+    "footprint",
+    "mpn",
+    "manufacturer",
+    "at_x",
+    "at_y",
+    "angle",
+    "unit",
+    "fields",
   ],
   hw_net: [
-    "project_id", "project_version_id", "project_key", "net_name", "nodes",
+    "project_id",
+    "project_version_id",
+    "project_key",
+    "net_name",
+    "nodes",
   ],
   hw_sheet: [
-    "project_id", "project_version_id", "project_key", "sheet_path", "name",
-    "parent_sheet_path", "page_order", "width_mm", "height_mm",
+    "project_id",
+    "project_version_id",
+    "project_key",
+    "sheet_path",
+    "name",
+    "parent_sheet_path",
+    "page_order",
+    "width_mm",
+    "height_mm",
   ],
   hw_ingest: [
-    "project_id", "project_version_id", "project_key", "source_hash", "ingested_at",
-    "symbol_refs", "connectivity_gaps",
+    "project_id",
+    "project_version_id",
+    "project_key",
+    "source_hash",
+    "ingested_at",
+    "symbol_refs",
+    "connectivity_gaps",
   ],
   hw_violation: [
-    "project_id", "project_version_id", "id", "project_key", "kind", "severity",
-    "rule", "description", "refs", "at_x", "at_y", "run_at",
+    "project_id",
+    "project_version_id",
+    "id",
+    "project_key",
+    "kind",
+    "severity",
+    "rule",
+    "description",
+    "refs",
+    "at_x",
+    "at_y",
+    "run_at",
   ],
   ground_source: [
-    "project_id", "project_version_id", "source_id", "project_key", "kind", "part",
-    "title", "path", "pages", "indexed_at", "status", "license", "redistributable",
+    "project_id",
+    "project_version_id",
+    "source_id",
+    "project_key",
+    "kind",
+    "part",
+    "title",
+    "path",
+    "pages",
+    "indexed_at",
+    "status",
+    "license",
+    "redistributable",
   ],
   ground_chunk: [
-    "project_id", "project_version_id", "chunk_id", "source_id", "page", "kind",
-    "anchor", "text", "embedding",
+    "project_id",
+    "project_version_id",
+    "chunk_id",
+    "source_id",
+    "page",
+    "kind",
+    "anchor",
+    "text",
+    "embedding",
   ],
   bench_device: [
-    "project_id", "project_version_id", "device_id", "kind", "make", "model",
-    "connection", "transport", "claimed_by", "claimed_at", "claim_scope", "last_seen",
+    "project_id",
+    "project_version_id",
+    "device_id",
+    "kind",
+    "make",
+    "model",
+    "connection",
+    "transport",
+    "claimed_by",
+    "claimed_at",
+    "claim_scope",
+    "last_seen",
   ],
   probe_run: [
-    "project_id", "project_version_id", "run_id", "script_path", "devices",
-    "hypothesis", "outcome", "artifacts", "started_at", "finished_at",
+    "project_id",
+    "project_version_id",
+    "run_id",
+    "script_path",
+    "devices",
+    "hypothesis",
+    "outcome",
+    "artifacts",
+    "started_at",
+    "finished_at",
   ],
   build_run: [
-    "project_id", "project_version_id", "run_id", "kind", "target", "toolchain",
-    "status", "artifact", "digest", "log_path", "started_at",
+    "project_id",
+    "project_version_id",
+    "run_id",
+    "kind",
+    "target",
+    "toolchain",
+    "status",
+    "artifact",
+    "digest",
+    "log_path",
+    "started_at",
   ],
 } satisfies Record<
   (typeof SCHEMA_TABLES)[number] | (typeof SCHEMA_VIEWS)[number],
@@ -268,6 +751,7 @@ const PRE_AMENDMENT_MIGRATION_COUNT = 78;
 const AMD_0010_REBUILD_STATEMENT_COUNT = 22;
 const AMD_0017_BACKFILL_STATEMENT_COUNT = 2;
 const AMD_0018_HARDWARE_SEMANTIC_STATEMENT_COUNT = 2;
+const AMD_0020_PROJECT_BINDING_STATEMENT_COUNT = 2;
 
 function insertGeneration(
   db: Database.Database,
@@ -309,18 +793,23 @@ afterEach(() => {
 
 describe("shared-store-freeze", () => {
   it("applies the positional migration once and fails loudly on a preexisting base table", async () => {
-    expect(SCHEMA_VERSION).toBe(2);
+    expect(SCHEMA_VERSION).toBe(3);
     expect(MIGRATIONS).toHaveLength(
-      SCHEMA_TABLES.length + SCHEMA_INDEXES.length + SCHEMA_VIEWS.length
-        + AMD_0010_REBUILD_STATEMENT_COUNT + AMD_0017_BACKFILL_STATEMENT_COUNT,
+      SCHEMA_TABLES.length +
+        SCHEMA_INDEXES.length +
+        SCHEMA_VIEWS.length +
+        AMD_0010_REBUILD_STATEMENT_COUNT +
+        AMD_0017_BACKFILL_STATEMENT_COUNT,
     );
     expect(
-      MIGRATIONS.filter((statement) => /^CREATE TABLE\b/u.test(statement)).every(
-        (statement) => !statement.includes("IF NOT EXISTS"),
-      ),
+      MIGRATIONS.filter((statement) =>
+        /^CREATE TABLE\b/u.test(statement),
+      ).every((statement) => !statement.includes("IF NOT EXISTS")),
     ).toBe(true);
 
-    const host = createFakePluginHost({ pluginId: "finite-state-schema-repeat" });
+    const host = createFakePluginHost({
+      pluginId: "finite-state-schema-repeat",
+    });
     const db = host.bb.storage.database();
     host.bb.storage.migrate(db, MIGRATIONS);
     const firstCount = db
@@ -328,9 +817,9 @@ describe("shared-store-freeze", () => {
       .pluck()
       .get();
     host.bb.storage.migrate(db, MIGRATIONS);
-    expect(db.prepare("SELECT count(*) FROM _bb_migrations").pluck().get()).toBe(
-      firstCount,
-    );
+    expect(
+      db.prepare("SELECT count(*) FROM _bb_migrations").pluck().get(),
+    ).toBe(firstCount);
     expect(firstCount).toBe(MIGRATIONS.length);
     await host.harness.lifecycle.dispose();
 
@@ -339,9 +828,9 @@ describe("shared-store-freeze", () => {
     });
     const collisionDb = collisionHost.bb.storage.database();
     collisionDb.exec("CREATE TABLE pull_generation (unexpected TEXT)");
-    expect(() => collisionHost.bb.storage.migrate(collisionDb, MIGRATIONS)).toThrow(
-      /already exists/i,
-    );
+    expect(() =>
+      collisionHost.bb.storage.migrate(collisionDb, MIGRATIONS),
+    ).toThrow(/already exists/i);
     await collisionHost.harness.lifecycle.dispose();
   });
 
@@ -360,8 +849,8 @@ describe("shared-store-freeze", () => {
     expect(names("table")).toEqual([...SCHEMA_TABLES].sort());
     expect(names("index")).toEqual([...SCHEMA_INDEXES].sort());
     expect(names("view")).toEqual([...SCHEMA_VIEWS].sort());
-    expect(SCHEMA_TABLES).toHaveLength(41);
-    expect(SCHEMA_INDEXES).toHaveLength(51);
+    expect(SCHEMA_TABLES).toHaveLength(42);
+    expect(SCHEMA_INDEXES).toHaveLength(52);
 
     const registryCacheNames = Object.values(ENTITIES).flatMap((entry) =>
       entry.class === "CACHED" ? [entry.table] : [],
@@ -375,12 +864,16 @@ describe("shared-store-freeze", () => {
         .prepare("SELECT type FROM sqlite_schema WHERE name = ?")
         .pluck()
         .get(storageName);
-      expect(kind, storageName).toBe(storageName === "hbom_docs" ? "view" : "table");
+      expect(kind, storageName).toBe(
+        storageName === "hbom_docs" ? "view" : "table",
+      );
     }
   });
 
   it("upgrades a populated pre-amendment matrix without row or FK loss", async () => {
-    const host = createFakePluginHost({ pluginId: "finite-state-schema-amd-0010" });
+    const host = createFakePluginHost({
+      pluginId: "finite-state-schema-amd-0010",
+    });
     const db = host.bb.storage.database();
     db.pragma("foreign_keys = ON");
     host.bb.storage.migrate(
@@ -448,9 +941,15 @@ describe("shared-store-freeze", () => {
     host.bb.storage.migrate(db, MIGRATIONS);
 
     expect(snapshot("verification_runs", "run_id")).toEqual(before.runs);
-    expect(snapshot("verification_results", "result_id")).toEqual(before.results);
-    expect(snapshot("verification_artifacts", "artifact_id")).toEqual(before.artifacts);
-    expect(snapshot("attestations", "attestation_id")).toEqual(before.attestations);
+    expect(snapshot("verification_results", "result_id")).toEqual(
+      before.results,
+    );
+    expect(snapshot("verification_artifacts", "artifact_id")).toEqual(
+      before.artifacts,
+    );
+    expect(snapshot("attestations", "attestation_id")).toEqual(
+      before.attestations,
+    );
     expect(db.pragma("foreign_key_check")).toEqual([]);
 
     db.prepare(
@@ -468,29 +967,43 @@ describe("shared-store-freeze", () => {
                'run-hardware', 'hardware', 'verified', '{}', 'now')`,
     ).run();
     expect(() =>
-      db.prepare(
-        `INSERT INTO verification_results
+      db
+        .prepare(
+          `INSERT INTO verification_results
            (project_id, project_version_id, generation_id, result_id, tier,
             status, raw, pulled_at)
          VALUES ('project-a', 'version-a', 'generation-a', 'result-hil2',
                  'hil2', 'verified', '{}', 'now')`,
-      ).run(),
+        )
+        .run(),
     ).toThrow(/check constraint failed/i);
 
-    const appliedCount = db.prepare("SELECT count(*) FROM _bb_migrations").pluck().get();
+    const appliedCount = db
+      .prepare("SELECT count(*) FROM _bb_migrations")
+      .pluck()
+      .get();
     host.bb.storage.migrate(db, MIGRATIONS);
-    expect(db.prepare("SELECT count(*) FROM _bb_migrations").pluck().get()).toBe(appliedCount);
+    expect(
+      db.prepare("SELECT count(*) FROM _bb_migrations").pluck().get(),
+    ).toBe(appliedCount);
     await host.harness.lifecycle.dispose();
   });
 
   it("backfills pre-AMD-0017 KiCad compatibility by version shape without discovery", async () => {
-    const host = createFakePluginHost({ pluginId: "finite-state-schema-amd-0017" });
+    const host = createFakePluginHost({
+      pluginId: "finite-state-schema-amd-0017",
+    });
     const db = host.bb.storage.database();
     host.bb.storage.migrate(
       db,
-      MIGRATIONS.slice(0, -(
-        AMD_0017_BACKFILL_STATEMENT_COUNT + AMD_0018_HARDWARE_SEMANTIC_STATEMENT_COUNT
-      )),
+      MIGRATIONS.slice(
+        0,
+        -(
+          AMD_0017_BACKFILL_STATEMENT_COUNT +
+          AMD_0018_HARDWARE_SEMANTIC_STATEMENT_COUNT +
+          AMD_0020_PROJECT_BINDING_STATEMENT_COUNT
+        ),
+      ),
     );
 
     const insert = db.prepare(
@@ -518,7 +1031,11 @@ describe("shared-store-freeze", () => {
     host.bb.storage.migrate(db, MIGRATIONS);
 
     expect(
-      db.prepare("SELECT project_key, supported FROM hw_project ORDER BY project_key").all(),
+      db
+        .prepare(
+          "SELECT project_key, supported FROM hw_project ORDER BY project_key",
+        )
+        .all(),
     ).toEqual([
       { project_key: "dotted-five.kicad_pro", supported: 0 },
       { project_key: "legacy-five.kicad_pro", supported: 0 },
@@ -526,6 +1043,46 @@ describe("shared-store-freeze", () => {
       { project_key: "modern-generator.kicad_pro", supported: 1 },
       { project_key: "unknown.kicad_pro", supported: 0 },
     ]);
+    await host.harness.lifecycle.dispose();
+  });
+
+  it("adds the workspace-to-Platform binding table without changing populated cache rows", async () => {
+    const host = createFakePluginHost({
+      pluginId: "finite-state-schema-amd-0020",
+    });
+    const db = host.bb.storage.database();
+    host.bb.storage.migrate(
+      db,
+      MIGRATIONS.slice(0, -AMD_0020_PROJECT_BINDING_STATEMENT_COUNT),
+    );
+    insertGeneration(db, "platform-project", "version-1", "generation-1");
+    db.prepare(
+      `INSERT INTO sync_state
+       (project_id, project_version_id, entity_kind, accepted_generation_id,
+        last_pull)
+       VALUES ('platform-project', 'version-1', 'finding', 'generation-1',
+               '2026-08-14T00:00:00.000Z')`,
+    ).run();
+
+    host.bb.storage.migrate(db, MIGRATIONS);
+
+    expect(
+      db
+        .prepare(
+          `SELECT project_id, project_version_id, accepted_generation_id
+             FROM sync_state`,
+        )
+        .all(),
+    ).toEqual([
+      {
+        project_id: "platform-project",
+        project_version_id: "version-1",
+        accepted_generation_id: "generation-1",
+      },
+    ]);
+    expect(
+      db.prepare("SELECT * FROM workspace_platform_project_binding").all(),
+    ).toEqual([]);
     await host.harness.lifecycle.dispose();
   });
 
@@ -548,17 +1105,44 @@ describe("shared-store-freeze", () => {
         notnull: 0 | 1;
         pk: number;
       }[];
-      expect(columns.slice(0, 2).map(({ name }) => name), table).toEqual([
-        "project_id",
-        "project_version_id",
-      ]);
-      expect(columns.slice(0, 2).map(({ notnull }) => notnull), table).toEqual([1, 1]);
+      if (table === "workspace_platform_project_binding") {
+        expect(
+          columns.map(({ name }) => name),
+          table,
+        ).toEqual(["workspace_project_id", "platform_project_id"]);
+        expect(
+          columns.map(({ notnull }) => notnull),
+          table,
+        ).toEqual([1, 1]);
+        expect(
+          columns
+            .filter(({ pk }) => pk > 0)
+            .sort((a, b) => a.pk - b.pk)
+            .map(({ name }) => name),
+          `${table} primary key`,
+        ).toEqual(["workspace_project_id", "platform_project_id"]);
+        continue;
+      }
       expect(
-        columns.filter(({ pk }) => pk > 0).sort((a, b) => a.pk - b.pk).slice(0, 2).map(({ name }) => name),
+        columns.slice(0, 2).map(({ name }) => name),
+        table,
+      ).toEqual(["project_id", "project_version_id"]);
+      expect(
+        columns.slice(0, 2).map(({ notnull }) => notnull),
+        table,
+      ).toEqual([1, 1]);
+      expect(
+        columns
+          .filter(({ pk }) => pk > 0)
+          .sort((a, b) => a.pk - b.pk)
+          .slice(0, 2)
+          .map(({ name }) => name),
         `${table} primary key`,
       ).toEqual(["project_id", "project_version_id"]);
 
-      const uniqueIndexes = db.prepare(`PRAGMA index_list('${table}')`).all() as {
+      const uniqueIndexes = db
+        .prepare(`PRAGMA index_list('${table}')`)
+        .all() as {
         name: string;
         unique: 0 | 1;
       }[];
@@ -573,7 +1157,9 @@ describe("shared-store-freeze", () => {
         ]);
       }
 
-      const foreignKeys = db.prepare(`PRAGMA foreign_key_list('${table}')`).all() as {
+      const foreignKeys = db
+        .prepare(`PRAGMA foreign_key_list('${table}')`)
+        .all() as {
         id: number;
         seq: number;
         from: string;
@@ -586,7 +1172,10 @@ describe("shared-store-freeze", () => {
       }
       for (const [id, rows] of groups) {
         expect(
-          [...rows].sort((a, b) => a.seq - b.seq).slice(0, 2).map(({ from }) => from),
+          [...rows]
+            .sort((a, b) => a.seq - b.seq)
+            .slice(0, 2)
+            .map(({ from }) => from),
           `${table} foreign key ${id}`,
         ).toEqual(["project_id", "project_version_id"]);
       }
@@ -594,9 +1183,17 @@ describe("shared-store-freeze", () => {
 
     for (const index of SCHEMA_INDEXES) {
       const sql = db
-        .prepare("SELECT sql FROM sqlite_schema WHERE type = 'index' AND name = ?")
+        .prepare(
+          "SELECT sql FROM sqlite_schema WHERE type = 'index' AND name = ?",
+        )
         .pluck()
         .get(index) as string;
+      if (index === "ix_workspace_platform_project_binding_platform") {
+        expect(sql, index).toMatch(
+          /\(platform_project_id, workspace_project_id\)/u,
+        );
+        continue;
+      }
       expect(sql, index).toMatch(/\(project_id, project_version_id(?:,|\))/u);
     }
     expect(db.pragma("foreign_key_check")).toEqual([]);
@@ -648,7 +1245,10 @@ describe("shared-store-freeze", () => {
           staging_generation_id, base_revision, staged_pages, staged_rows)
        VALUES ('project-a', 'version-a', ?, 'old', 'next', 3, 1, 1)`,
     ).run("sbomComponent");
-    for (const [generation, finding] of [["old", "visible-old"], ["next", "hidden-next"]]) {
+    for (const [generation, finding] of [
+      ["old", "visible-old"],
+      ["next", "hidden-next"],
+    ]) {
       db.prepare(
         `INSERT INTO findings
            (project_id, project_version_id, generation_id, finding_id, stable_key, raw, pulled_at)
@@ -715,7 +1315,11 @@ describe("shared-store-freeze", () => {
         .all(),
     ).toEqual([
       { entity_kind: "finding", base_revision: 8, staging_generation_id: null },
-      { entity_kind: "sbomComponent", base_revision: 4, staging_generation_id: null },
+      {
+        entity_kind: "sbomComponent",
+        base_revision: 4,
+        staging_generation_id: null,
+      },
     ]);
   });
 
@@ -740,38 +1344,48 @@ describe("shared-store-freeze", () => {
        VALUES ('project-a', 'version-a', 'threat', 'accepted', ?, ?, 'old')`,
     ).run("THREAT-1", "remote-1");
 
-    const advance = db.transaction((expectedRevision: number, expectedHash: string) => {
-      const base = db
-        .prepare(
-          `SELECT content_hash FROM base_snapshot
+    const advance = db.transaction(
+      (expectedRevision: number, expectedHash: string) => {
+        const base = db
+          .prepare(
+            `SELECT content_hash FROM base_snapshot
             WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?
               AND generation_id = ? AND entity_key = ?`,
-        )
-        .get("project-a", "version-a", "threat", "accepted", "THREAT-1") as {
-        content_hash: string;
-      };
-      const changed = db.prepare(
-        `UPDATE sync_state SET base_revision = base_revision + 1
+          )
+          .get("project-a", "version-a", "threat", "accepted", "THREAT-1") as {
+          content_hash: string;
+        };
+        const changed = db
+          .prepare(
+            `UPDATE sync_state SET base_revision = base_revision + 1
           WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?
             AND accepted_generation_id = ? AND base_revision = ?`,
-      ).run("project-a", "version-a", "threat", "accepted", expectedRevision);
-      if (changed.changes !== 1 || base.content_hash !== expectedHash) {
-        throw new Error("stale base fence");
-      }
-      db.prepare(
-        `UPDATE base_snapshot SET payload = '{"updated":true}', content_hash = 'hash-new', pulled_at = 'new'
+          )
+          .run(
+            "project-a",
+            "version-a",
+            "threat",
+            "accepted",
+            expectedRevision,
+          );
+        if (changed.changes !== 1 || base.content_hash !== expectedHash) {
+          throw new Error("stale base fence");
+        }
+        db.prepare(
+          `UPDATE base_snapshot SET payload = '{"updated":true}', content_hash = 'hash-new', pulled_at = 'new'
           WHERE project_id = 'project-a' AND project_version_id = 'version-a'
             AND entity_kind = 'threat' AND generation_id = 'accepted' AND entity_key = 'THREAT-1'`,
-      ).run();
-      db.prepare(
-        `INSERT INTO push_log
+        ).run();
+        db.prepare(
+          `INSERT INTO push_log
            (project_id, project_version_id, id, run_id, base_generation_id,
             base_revision, expected_base_content_hash, entity_kind, entity_key,
             op, status, created_at, applied_at)
          VALUES ('project-a', 'version-a', 1, 'run-1', 'accepted', 10,
                  'hash-old', 'threat', 'THREAT-1', 'update', 'applied', 'now', 'now')`,
-      ).run();
-    });
+        ).run();
+      },
+    );
 
     expect(() => advance(9, "hash-old")).toThrow("stale base fence");
     expect(() => advance(10, "wrong-hash")).toThrow("stale base fence");
@@ -800,36 +1414,44 @@ describe("shared-store-freeze", () => {
                'datasheet', 'application/pdf', 1, 'now', 'now')`,
     ).run();
     expect(() =>
-      db.prepare(
-        `INSERT INTO document_extraction
+      db
+        .prepare(
+          `INSERT INTO document_extraction
            (project_id, project_version_id, extraction_id, document_id, field,
             source_ref, locator_kind, status, extracted_at)
          VALUES ('project-b', 'version-a', 'x', 'doc', 'mpn', 'ref', 'pdf', 'proposal', 'now')`,
-      ).run(),
+        )
+        .run(),
     ).toThrow(/foreign key constraint failed/i);
     expect(() =>
-      db.prepare(
-        `INSERT INTO hbom_cells
+      db
+        .prepare(
+          `INSERT INTO hbom_cells
            (project_id, project_version_id, part_key, field, confidence, state,
             file_sha256, indexed_at)
          VALUES ('project-a', 'version-a', 'part', 'mpn', 1.1, 'proposal', 'sha', 'now')`,
-      ).run(),
+        )
+        .run(),
     ).toThrow(/check constraint failed/i);
     expect(() =>
-      db.prepare(
-        `INSERT INTO overlay_index
+      db
+        .prepare(
+          `INSERT INTO overlay_index
            (project_id, project_version_id, entity_kind, stable_key, file_path,
             file_sha256, local_state, indexed_at)
          VALUES ('project-a', 'version-a', 'vexDecision', 'key', 'f.yaml', 'sha', 'ambiguous', 'now')`,
-      ).run(),
+        )
+        .run(),
     ).toThrow(/check constraint failed/i);
     expect(() =>
-      db.prepare(
-        `INSERT INTO findings
+      db
+        .prepare(
+          `INSERT INTO findings
            (project_id, project_version_id, generation_id, finding_id, stable_key,
             in_kev, raw, pulled_at)
          VALUES ('project-a', 'version-a', 'g', 'finding', 'key', 2, '{}', 'now')`,
-      ).run(),
+        )
+        .run(),
     ).toThrow(/check constraint failed/i);
   });
 
@@ -897,14 +1519,16 @@ describe("shared-store-freeze", () => {
                'completed', 'firmware-good', '{}', 'now')`,
     ).run();
     expect(() =>
-      db.prepare(
-        `INSERT INTO attestations
+      db
+        .prepare(
+          `INSERT INTO attestations
            (project_id, project_version_id, generation_id, attestation_id, run_id,
             format, subject_digest, payload, signature_verified, subject_matches_run,
             verified, created_at, pulled_at)
          VALUES ('project-a', 'version-a', 'g', 'att', 'run', 'in-toto',
                  'firmware-bad', '{}', 1, 0, 1, 'now', 'now')`,
-      ).run(),
+        )
+        .run(),
     ).toThrow(/check constraint failed/i);
 
     db.prepare(
@@ -916,7 +1540,10 @@ describe("shared-store-freeze", () => {
                'firmware-good', '{}', 1, 1, 1, 'now', 'now')`,
     ).run();
 
-    for (const [kind, id] of [["datasheet", "visible"], ["regulatory", "hidden"]]) {
+    for (const [kind, id] of [
+      ["datasheet", "visible"],
+      ["regulatory", "hidden"],
+    ]) {
       db.prepare(
         `INSERT INTO document
            (project_id, project_version_id, document_id, sha256, name, path,
@@ -932,7 +1559,11 @@ describe("shared-store-freeze", () => {
         )
         .all(),
     ).toEqual([
-      { project_id: "project-a", project_version_id: "version-a", document_id: "visible" },
+      {
+        project_id: "project-a",
+        project_version_id: "version-a",
+        document_id: "visible",
+      },
     ]);
   });
 

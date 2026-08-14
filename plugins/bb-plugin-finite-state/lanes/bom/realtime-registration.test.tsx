@@ -85,6 +85,11 @@ describe("registered BOM realtime boundary", () => {
     async () => {
       const host = createFakePluginHost({
         pluginId: "finite-state-bom-realtime-boundary",
+        sdk: {
+          projects: {
+            get: ({ projectId }) => ({ id: projectId, sources: [] }),
+          },
+        },
       });
       const state = createMockPlatformState(FIXTURE_ROOT);
       const mock = createMockRemote({
@@ -199,6 +204,7 @@ describe("registered BOM realtime boundary", () => {
         ): Promise<FakeRealtimeSignal[]> => {
           const signalCursor = host.harness.inspection.realtimeSignals.length;
           await host.harness.behavior.callRpc("syncPull", {
+            workspaceProjectId: "bb-project-fs176",
             projectId,
             projectVersionId,
             kinds: ["sbomComponent"],

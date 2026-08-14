@@ -3,11 +3,12 @@
 // APPEND-ONLY after first release: never reorder/edit a shipped statement.
 // This is shared data.db only. WP-47 owns every manifest.sqlite statement.
 
-export const SCHEMA_VERSION = 2 as const;
+export const SCHEMA_VERSION = 3 as const;
 
 export const SCHEMA_TABLES = [
   "pull_generation",
   "sync_state",
+  "workspace_platform_project_binding",
   "push_log",
   "base_snapshot",
   "id_map",
@@ -52,6 +53,7 @@ export const SCHEMA_TABLES = [
 export const SCHEMA_INDEXES = [
   "ix_pull_generation_status",
   "ix_sync_state_generation",
+  "ix_workspace_platform_project_binding_platform",
   "ix_push_log_run",
   "ix_entity_review_state_status",
   "ix_findings_page",
@@ -1126,4 +1128,14 @@ export const MIGRATIONS: string[] = [
      FOREIGN KEY (project_id, project_version_id, project_key)
        REFERENCES hw_project(project_id, project_version_id, project_key) ON DELETE CASCADE
    )`,
+
+  // AMD-0020: bind bb workspace projects to Platform projects without
+  // conflating their identifier spaces.
+  `CREATE TABLE workspace_platform_project_binding (
+     workspace_project_id TEXT NOT NULL,
+     platform_project_id  TEXT NOT NULL,
+     PRIMARY KEY (workspace_project_id, platform_project_id)
+   )`,
+  `CREATE INDEX IF NOT EXISTS ix_workspace_platform_project_binding_platform
+     ON workspace_platform_project_binding (platform_project_id, workspace_project_id)`,
 ];

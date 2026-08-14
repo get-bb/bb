@@ -3,6 +3,10 @@ import type { PluginContext } from "../../lib/context.js";
 import type Database from "better-sqlite3";
 import { dirname, isAbsolute } from "node:path";
 import type { PlatformClient, RemoteServices } from "../../lib/remote/types.js";
+import {
+  backfillUnambiguousWorkspaceProjectBinding,
+  WORKSPACE_PLATFORM_PROJECT_PREDICATE,
+} from "../../lib/store/project-scope.js";
 import type { JsonValue } from "../../shared/contract.js";
 import { rpcContract } from "../../shared/contract.js";
 import { registerCachePuller } from "../sync/engine/adapter.js";
@@ -273,9 +277,10 @@ export function registerBom(bb: BbPluginApi, ctx: PluginContext): void {
       if (project.sources.length === 0) {
         throw new Error("BOM_PROJECT_SOURCE_REQUIRED");
       }
+      backfillUnambiguousWorkspaceProjectBinding(db, input.projectId);
       const rows = db
         .prepare<
-          [],
+          [string],
           {
             project_id: string;
             project_version_id: string;
@@ -289,13 +294,14 @@ export function registerBom(bb: BbPluginApi, ctx: PluginContext): void {
                       WHEN entity_kind = 'sbomComponent' AND error IS NOT NULL THEN 1
                       ELSE 0
                     END) AS stale
-           FROM sync_state
-          WHERE entity_kind IN ('finding', 'sbomComponent')
-            AND accepted_generation_id IS NOT NULL
-          GROUP BY project_id, project_version_id
-          ORDER BY MAX(last_pull) DESC, project_id ASC, project_version_id ASC`,
+           FROM sync_state s
+          WHERE ${WORKSPACE_PLATFORM_PROJECT_PREDICATE}
+            AND s.entity_kind IN ('finding', 'sbomComponent')
+            AND s.accepted_generation_id IS NOT NULL
+          GROUP BY s.project_id, s.project_version_id
+          ORDER BY MAX(s.last_pull) DESC, s.project_id ASC, s.project_version_id ASC`,
         )
-        .all();
+        .all(input.projectId);
       const versions = rows.map((row) => ({
         platformProjectId: row.project_id,
         projectVersionId: row.project_version_id,

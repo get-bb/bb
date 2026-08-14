@@ -122,6 +122,10 @@ describe("bench registration", () => {
                '2026-08-12T20:00:01.000Z'),
               ('project-foreign', 'foreign-version', 'verificationRun',
                'generation-foreign', 1, '2026-08-12T20:00:02.000Z');
+       INSERT INTO workspace_platform_project_binding
+         (workspace_project_id, platform_project_id)
+       VALUES ('workspace-project-a', 'project-a'),
+              ('workspace-project-foreign', 'project-foreign');
        INSERT INTO firmware_mounts
          (project_id, project_version_id, generation_id, source, state,
           input_sha256, artifact_hash, root_path, file_count,
@@ -140,7 +144,7 @@ describe("bench registration", () => {
     expect(page).toMatchObject({ items: [], total: 0, next: null });
     await expect(
       host.harness.behavior.callRpc("benchProjectVersions", {
-        projectId: "project-a",
+        projectId: "workspace-project-a",
       }),
     ).resolves.toEqual({
       versions: [
