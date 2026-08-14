@@ -220,6 +220,50 @@ export type ArchitectureYamlEntity = z.output<
   typeof architectureYamlEntitySchema
 >;
 
+// Accepted cache rows are an external read model, not authoring documents.
+// Pull adapters may omit authoring-only fields or retain remote-only fields;
+// deletion analysis only needs stable identity and reference-bearing fields.
+const acceptedEntityIdentityFields = {
+  slug: stableSlugSchema,
+  name: nameSchema.optional(),
+} as const;
+const acceptedComponentEntitySchema = z.object({
+  kind: z.literal("component"),
+  ...acceptedEntityIdentityFields,
+  zone: stableSlugSchema.optional(),
+});
+const acceptedZoneEntitySchema = z.object({
+  kind: z.literal("zone"),
+  ...acceptedEntityIdentityFields,
+  zone: stableSlugSchema.optional(),
+});
+const acceptedAssetEntitySchema = z.object({
+  kind: z.literal("asset"),
+  ...acceptedEntityIdentityFields,
+  zone: stableSlugSchema.optional(),
+});
+const acceptedDataflowEntitySchema = z.object({
+  kind: z.literal("dataflow"),
+  ...acceptedEntityIdentityFields,
+  from: stableSlugSchema.optional(),
+  to: stableSlugSchema.optional(),
+});
+const acceptedThreatEntitySchema = z.object({
+  kind: z.literal("threat"),
+  ...acceptedEntityIdentityFields,
+  affected_components: referenceListSchema.optional(),
+  affected_assets: referenceListSchema.optional(),
+  dataflows: referenceListSchema.optional(),
+  mitigations: referenceListSchema.optional(),
+});
+
+export type CanvasReadableEntity =
+  | z.output<typeof acceptedComponentEntitySchema>
+  | z.output<typeof acceptedZoneEntitySchema>
+  | z.output<typeof acceptedAssetEntitySchema>
+  | z.output<typeof acceptedDataflowEntitySchema>
+  | z.output<typeof acceptedThreatEntitySchema>;
+
 export interface DeletionImpact {
   slug: string;
   referrers: { kind: string; slug: string; effect: string }[];
@@ -245,6 +289,24 @@ export function parseArchitectureEntity(
   }
 }
 
+export function parseAcceptedArchitectureEntity(
+  kind: CanvasEntityKind,
+  payload: Record<string, unknown>,
+): CanvasReadableEntity {
+  switch (kind) {
+    case "component":
+      return acceptedComponentEntitySchema.parse({ kind, ...payload });
+    case "zone":
+      return acceptedZoneEntitySchema.parse({ kind, ...payload });
+    case "asset":
+      return acceptedAssetEntitySchema.parse({ kind, ...payload });
+    case "dataflow":
+      return acceptedDataflowEntitySchema.parse({ kind, ...payload });
+    case "threat":
+      return acceptedThreatEntitySchema.parse({ kind, ...payload });
+  }
+}
+
 export function architectureEntityPayload(
   entity: ArchitectureYamlEntity,
 ): Record<string, unknown> {
@@ -259,7 +321,7 @@ export interface CanvasReference {
 }
 
 export function entityReferences(
-  entity: ArchitectureYamlEntity,
+  entity: CanvasReadableEntity,
 ): readonly CanvasReference[] {
   switch (entity.kind) {
     case "component":
@@ -276,27 +338,31 @@ export function entityReferences(
         : [];
     case "dataflow":
       return [
-        { field: "from", kind: "component", slug: entity.from },
-        { field: "to", kind: "component", slug: entity.to },
+        ...(entity.from
+          ? [{ field: "from", kind: "component" as const, slug: entity.from }]
+          : []),
+        ...(entity.to
+          ? [{ field: "to", kind: "component" as const, slug: entity.to }]
+          : []),
       ];
     case "threat":
       return [
-        ...entity.affected_components.map((slug) => ({
+        ...(entity.affected_components ?? []).map((slug) => ({
           field: "affected_components",
           kind: "component" as const,
           slug,
         })),
-        ...entity.affected_assets.map((slug) => ({
+        ...(entity.affected_assets ?? []).map((slug) => ({
           field: "affected_assets",
           kind: "asset" as const,
           slug,
         })),
-        ...entity.dataflows.map((slug) => ({
+        ...(entity.dataflows ?? []).map((slug) => ({
           field: "dataflows",
           kind: "dataflow" as const,
           slug,
         })),
-        ...entity.mitigations.map((slug) => ({
+        ...(entity.mitigations ?? []).map((slug) => ({
           field: "mitigations",
           kind: "mitigation" as const,
           slug,

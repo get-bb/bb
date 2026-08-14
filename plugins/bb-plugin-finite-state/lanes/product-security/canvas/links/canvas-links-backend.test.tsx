@@ -26,6 +26,7 @@ import {
 import { canvasLinksRpcContract, type CanvasLayoutV1 } from "./schema.js";
 
 const PROJECT_ID = "project-wp34";
+const WORKSPACE_PROJECT_ID = "workspace-wp34";
 const VERSION_ID = "version-current";
 const SOURCE_SLUG = "component-gateway";
 const WORKSPACE_ROOT = "/workspace";
@@ -98,11 +99,16 @@ describe("WP-34 production link RPC boundary", () => {
       pluginId: "finite-state",
       sdk: {
         projects: {
-          get: () => ({
-            sources: [
-              { hostId: "host-1", path: WORKSPACE_ROOT, isDefault: true },
-            ],
-          }),
+          get: ({ projectId }) => {
+            if (projectId !== WORKSPACE_PROJECT_ID) {
+              throw new Error(`unknown workspace project: ${projectId}`);
+            }
+            return {
+              sources: [
+                { hostId: "host-1", path: WORKSPACE_ROOT, isDefault: true },
+              ],
+            };
+          },
         },
         files: {
           read: ({ path }) => {
@@ -201,11 +207,20 @@ describe("WP-34 production link RPC boundary", () => {
     });
     const context = createPluginContext(host.bb);
     seedAcceptedVersion(context);
+    context
+      .db()
+      .prepare(
+        `INSERT INTO workspace_platform_project_binding
+           (workspace_project_id, platform_project_id)
+         VALUES (?, ?)`,
+      )
+      .run(WORKSPACE_PROJECT_ID, PROJECT_ID);
     registerCanvasLinksBackend(host.bb, context);
 
     const input = {
-      projectId: PROJECT_ID,
-      projectVersionId: null,
+      workspaceProjectId: WORKSPACE_PROJECT_ID,
+      platformProjectId: PROJECT_ID,
+      projectVersionId: VERSION_ID,
       sourceSlug: SOURCE_SLUG,
     };
     const [sbom, firmware, requirement, verification] = await Promise.all([
@@ -252,7 +267,7 @@ describe("WP-34 production link RPC boundary", () => {
       includePreview: false,
     });
     expect(captured.requirements).toHaveBeenCalledWith({
-      projectId: PROJECT_ID,
+      projectId: WORKSPACE_PROJECT_ID,
       projectVersionId: null,
       pageSize: 200,
       continuation: null,
@@ -269,6 +284,10 @@ describe("WP-34 production link RPC boundary", () => {
             call.method === "verificationsMatrix",
         ),
     ).toBe(false);
+    expect(host.harness.sdk.callsTo("projects.get")).toEqual([
+      [{ projectId: WORKSPACE_PROJECT_ID }],
+      [{ projectId: WORKSPACE_PROJECT_ID }],
+    ]);
     await host.harness.lifecycle.dispose();
   });
 
@@ -340,7 +359,6 @@ describe("WP-34 production layout RPC boundary", () => {
     const first = canvasLinksRpcContract.canvasLayoutSave.output.parse(
       await host.harness.callRpc("canvasLayoutSave", {
         projectId: PROJECT_ID,
-        projectVersionId: null,
         layout: initial,
         expectedSha256: null,
       }),
@@ -356,7 +374,6 @@ describe("WP-34 production layout RPC boundary", () => {
     const loaded = canvasLinksRpcContract.canvasLayoutLoad.output.parse(
       await host.harness.callRpc("canvasLayoutLoad", {
         projectId: PROJECT_ID,
-        projectVersionId: null,
         nodes: [{ slug: "known", width: 216, height: 112 }],
         edges: [],
       }),
@@ -370,7 +387,6 @@ describe("WP-34 production layout RPC boundary", () => {
     const pruned = canvasLinksRpcContract.canvasLayoutSave.output.parse(
       await host.harness.callRpc("canvasLayoutSave", {
         projectId: PROJECT_ID,
-        projectVersionId: null,
         layout: layout({ known: { x: 40, y: 50, collapsed: true } }),
         expectedSha256: first.outcome === "saved" ? first.sha256 : SHA_A,
       }),
@@ -381,7 +397,6 @@ describe("WP-34 production layout RPC boundary", () => {
     const noOp = canvasLinksRpcContract.canvasLayoutSave.output.parse(
       await host.harness.callRpc("canvasLayoutSave", {
         projectId: PROJECT_ID,
-        projectVersionId: null,
         layout: layout({ known: { x: 40, y: 50, collapsed: true } }),
         expectedSha256: pruned.outcome === "saved" ? pruned.sha256 : SHA_A,
       }),
@@ -396,7 +411,6 @@ describe("WP-34 production layout RPC boundary", () => {
     const conflict = canvasLinksRpcContract.canvasLayoutSave.output.parse(
       await host.harness.callRpc("canvasLayoutSave", {
         projectId: PROJECT_ID,
-        projectVersionId: null,
         layout: layout({ known: { x: 30, y: 40 } }),
         expectedSha256: pruned.outcome === "saved" ? pruned.sha256 : SHA_A,
       }),

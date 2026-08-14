@@ -18,6 +18,7 @@ import {
   retiredAuthoredComponentTypeSchema,
   strideCategorySchema,
   type ArchitectureYamlEntity,
+  type CanvasReadableEntity,
   type CanvasEntityKind,
   type CanvasReference,
   type DeletionImpact,
@@ -321,7 +322,7 @@ export function registerCanvasValidators(
 }
 
 function deletionReferenceEffect(
-  entity: ArchitectureYamlEntity,
+  entity: CanvasReadableEntity,
   field: string,
 ): string {
   if (entity.kind === "dataflow" && (field === "from" || field === "to")) {
@@ -334,7 +335,7 @@ function deletionReferenceEffect(
 export function computeDeletionImpact(
   entityKind: CanvasEntityKind,
   slug: string,
-  entities: readonly ArchitectureYamlEntity[],
+  entities: readonly CanvasReadableEntity[],
 ): DeletionImpact {
   const referrers = entities
     .flatMap((entity) =>

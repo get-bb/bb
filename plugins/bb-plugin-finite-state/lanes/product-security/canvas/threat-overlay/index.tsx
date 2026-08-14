@@ -39,6 +39,7 @@ import {
   threatSlugFromPathname,
 } from "./selection.js";
 import { useThreatOverlayVisibility } from "./visibility.js";
+import type { ResolvedTaraScope } from "../scope/index.js";
 
 const PROJECT_SCOPE_STORAGE_KEY =
   "finite-state:product-security:project-scope:v1";
@@ -68,7 +69,9 @@ const EMPTY_THREATS: Snapshot["threats"] = [];
 const EMPTY_AGGREGATES: Snapshot["aggregates"] = [];
 
 interface ProductSecurityThreatOverlayProps {
+  scope?: ResolvedTaraScope;
   projectId?: string | null;
+  projectVersionId?: string | null;
   focus?: string | null;
   highlight?: string | null;
   appRuntime?: ThreatOverlayAppRuntime;
@@ -129,6 +132,8 @@ function payloadProjectId(payload: unknown): string | null {
 
 function useThreatSnapshot(
   projectId: string | null,
+  projectVersionId: string | null,
+  workspaceProjectId: string | null,
   appRuntime: ThreatOverlayAppRuntime,
 ): {
   state: SnapshotState;
@@ -147,8 +152,20 @@ function useThreatSnapshot(
     () => setRequestRevision((current) => current + 1),
     [],
   );
+  const scopeKey = projectId
+    ? `${projectId}\0${projectVersionId ?? "@project"}`
+    : null;
   appRuntime.useRealtime("tara:changed", (payload) => {
-    if (projectId && payloadProjectId(payload) === projectId) retry();
+    if (
+      projectId &&
+      payloadProjectId(payload) === projectId &&
+      (projectVersionId === null ||
+        (typeof payload === "object" &&
+          payload !== null &&
+          Reflect.get(payload, "projectVersionId") === projectVersionId))
+    ) {
+      retry();
+    }
   });
 
   useEffect(() => {
@@ -157,12 +174,13 @@ function useThreatSnapshot(
     void rpc
       .call("threatOverlaySnapshot", {
         projectId,
-        projectVersionId: null,
+        projectVersionId,
+        workspaceProjectId,
       })
       .then((data) => {
         if (!active) return;
         setState({
-          projectId,
+          projectId: scopeKey,
           data,
           loading: false,
           error: null,
@@ -172,8 +190,8 @@ function useThreatSnapshot(
       .catch((error: unknown) => {
         if (!active) return;
         setState((current) => ({
-          projectId,
-          data: current.projectId === projectId ? current.data : null,
+          projectId: scopeKey,
+          data: current.projectId === scopeKey ? current.data : null,
           loading: false,
           error: safeClientError(error),
           completedRequestRevision: requestRevision,
@@ -182,19 +200,26 @@ function useThreatSnapshot(
     return () => {
       active = false;
     };
-  }, [projectId, requestRevision, rpc]);
+  }, [
+    projectId,
+    projectVersionId,
+    requestRevision,
+    rpc,
+    scopeKey,
+    workspaceProjectId,
+  ]);
   const pending = Boolean(
-    projectId &&
-    (state.projectId !== projectId ||
+    scopeKey &&
+    (state.projectId !== scopeKey ||
       state.completedRequestRevision !== requestRevision),
   );
   return {
     state: projectId
       ? {
-          projectId,
-          data: state.projectId === projectId ? state.data : null,
+          projectId: scopeKey,
+          data: state.projectId === scopeKey ? state.data : null,
           loading: pending,
-          error: pending || state.projectId !== projectId ? null : state.error,
+          error: pending || state.projectId !== scopeKey ? null : state.error,
         }
       : { projectId: null, data: null, loading: false, error: null },
     retry,
@@ -376,13 +401,17 @@ function loadingPanel(): React.JSX.Element {
 }
 
 export function ProductSecurityThreatOverlay({
+  scope,
   projectId: explicitProjectId,
+  projectVersionId: explicitProjectVersionId = null,
   focus = null,
   highlight = null,
   appRuntime,
 }: ProductSecurityThreatOverlayProps = {}): React.JSX.Element {
   const [persistedProjectId] = useState(readPersistedProjectId);
-  const projectId = explicitProjectId ?? persistedProjectId;
+  const projectId =
+    scope?.platformProjectId ?? explicitProjectId ?? persistedProjectId;
+  const projectVersionId = scope?.projectVersionId ?? explicitProjectVersionId;
   if (!projectId) {
     return (
       <div className="absolute bottom-3 left-3 right-3 z-20 rounded-lg border border-border bg-card/95 p-4 text-card-foreground shadow-lg">
@@ -400,6 +429,8 @@ export function ProductSecurityThreatOverlay({
         focus={focus}
         highlight={highlight}
         projectId={projectId}
+        projectVersionId={projectVersionId}
+        workspaceProjectId={scope?.workspaceProjectId ?? null}
       />
     );
   }
@@ -408,16 +439,22 @@ export function ProductSecurityThreatOverlay({
       focus={focus}
       highlight={highlight}
       projectId={projectId}
+      projectVersionId={projectVersionId}
+      workspaceProjectId={scope?.workspaceProjectId ?? null}
     />
   );
 }
 
 function RuntimeThreatOverlay({
   projectId,
+  projectVersionId,
+  workspaceProjectId,
   focus,
   highlight,
 }: {
   projectId: string;
+  projectVersionId: string | null;
+  workspaceProjectId: string | null;
   focus: string | null;
   highlight: string | null;
 }): React.JSX.Element {
@@ -459,6 +496,8 @@ function RuntimeThreatOverlay({
       focus={focus}
       highlight={highlight}
       projectId={projectId}
+      projectVersionId={projectVersionId}
+      workspaceProjectId={workspaceProjectId}
     />
   );
 }
@@ -466,11 +505,15 @@ function RuntimeThreatOverlay({
 function ConfiguredThreatOverlay({
   appRuntime,
   projectId,
+  projectVersionId,
+  workspaceProjectId,
   focus,
   highlight,
 }: {
   appRuntime: ThreatOverlayAppRuntime;
   projectId: string;
+  projectVersionId: string | null;
+  workspaceProjectId: string | null;
   focus: string | null;
   highlight: string | null;
 }): React.JSX.Element {
@@ -483,7 +526,12 @@ function ConfiguredThreatOverlay({
   const setArchitectureSelectedIds = architecture.setSelectedIds;
   const { fitView } = useReactFlow();
   const rpc = appRuntime.useRpc<typeof threatOverlayRpcContract>();
-  const snapshot = useThreatSnapshot(projectId, appRuntime);
+  const snapshot = useThreatSnapshot(
+    projectId,
+    projectVersionId,
+    workspaceProjectId,
+    appRuntime,
+  );
   const sharedVisibility = useThreatOverlayVisibility();
   const [localCollapsed, setLocalCollapsed] = useState(false);
   const collapsed = sharedVisibility?.collapsed ?? localCollapsed;

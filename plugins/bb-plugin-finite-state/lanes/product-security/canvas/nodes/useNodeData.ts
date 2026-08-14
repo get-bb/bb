@@ -17,10 +17,14 @@ import {
   architectureCacheSignals,
   REFRESH_FAILURE_CACHE_MESSAGE,
 } from "./cacheMessage.js";
+import type { ResolvedTaraScope } from "../scope/index.js";
+import type { taraCanvasRpcContract } from "../scope/backend.js";
 
 type TaraListInput = z.input<(typeof rpcContract)["taraList"]["input"]>;
 type TaraListPage = z.output<(typeof rpcContract)["taraList"]["output"]>;
-type TaraListCall = (input: TaraListInput) => Promise<TaraListPage>;
+type TaraListCall = (
+  input: TaraListInput & { kind: TaraKind },
+) => Promise<TaraListPage>;
 
 const TARA_KINDS = ["component", "zone", "asset", "dataflow"] as const;
 const MAX_TARA_PAGES_PER_KIND = 1_000;
@@ -223,6 +227,7 @@ function toArchitectureEdge(
 async function readKind(
   call: TaraListCall,
   projectId: string,
+  projectVersionId: string | null,
   kind: TaraKind,
 ): Promise<TaraListPage[]> {
   const pages: TaraListPage[] = [];
@@ -231,7 +236,7 @@ async function readKind(
   for (let pageIndex = 0; pageIndex < MAX_TARA_PAGES_PER_KIND; pageIndex += 1) {
     const request = {
       projectId,
-      projectVersionId: null,
+      projectVersionId,
       pageSize: 200,
       continuation,
       kind,
@@ -254,16 +259,21 @@ async function readKind(
 }
 
 export interface ArchitectureDataSource {
-  read(projectId: string): Promise<ArchitectureModel>;
+  read(
+    projectId: string,
+    projectVersionId?: string | null,
+  ): Promise<ArchitectureModel>;
 }
 
 export function createRpcArchitectureDataSource(
   call: TaraListCall,
 ): ArchitectureDataSource {
   return {
-    async read(projectId) {
+    async read(projectId, projectVersionId = null) {
       const pageGroups = await Promise.all(
-        TARA_KINDS.map((kind) => readKind(call, projectId, kind)),
+        TARA_KINDS.map((kind) =>
+          readKind(call, projectId, projectVersionId, kind),
+        ),
       );
       const nodes = new Map<string, ArchitectureNodeData>();
       const dataflows = new Map<string, ArchitectureEdgeData>();
@@ -302,7 +312,7 @@ export function createRpcArchitectureDataSource(
         }
       }
       return {
-        revision: `${projectId}:${revisions.join("|")}`,
+        revision: `${projectId}:${projectVersionId}:${revisions.join("|")}`,
         nodes: [...nodes.values()],
         dataflows: [...dataflows.values()],
         cache: {
@@ -376,12 +386,12 @@ export interface ArchitectureDataState {
 }
 
 interface ProjectModel {
-  projectId: string;
+  scopeKey: string;
   model: ArchitectureModel;
 }
 
 interface LoadResult {
-  projectId: string;
+  scopeKey: string;
   requestRevision: number;
   error: string | null;
 }
@@ -392,7 +402,10 @@ function safeError(error: unknown): string {
     : "The local product-security model could not be read.";
 }
 
-function payloadProjectId(payload: unknown): string | null {
+function payloadScope(payload: unknown): {
+  projectId: string;
+  projectVersionId: string | null;
+} | null {
   if (
     typeof payload !== "object" ||
     payload === null ||
@@ -401,17 +414,31 @@ function payloadProjectId(payload: unknown): string | null {
     return null;
   }
   const projectId = Reflect.get(payload, "projectId");
-  return typeof projectId === "string" ? projectId : null;
+  const projectVersionId = Reflect.get(payload, "projectVersionId");
+  return typeof projectId === "string" &&
+    (typeof projectVersionId === "string" || projectVersionId === null)
+    ? { projectId, projectVersionId }
+    : null;
 }
 
 export function useArchitectureData(
-  projectId: string | null,
+  scope: ResolvedTaraScope | null,
 ): ArchitectureDataState {
-  const rpc = useRpc<typeof rpcContract>();
+  const rpc = useRpc<typeof rpcContract & typeof taraCanvasRpcContract>();
   const source = useMemo(
     () =>
-      createRpcArchitectureDataSource((input) => rpc.call("taraList", input)),
-    [rpc],
+      createRpcArchitectureDataSource((input) => {
+        if (!scope) throw new Error("No TARA version is selected.");
+        return rpc.call("taraCanvasList", {
+          workspaceProjectId: scope.workspaceProjectId,
+          platformProjectId: input.projectId,
+          projectVersionId: input.projectVersionId,
+          kind: input.kind,
+          pageSize: input.pageSize,
+          continuation: input.continuation,
+        });
+      }),
+    [rpc, scope],
   );
   const [requestRevision, setRequestRevision] = useState(0);
   const [projectModel, setProjectModel] = useState<ProjectModel | null>(null);
@@ -420,37 +447,45 @@ export function useArchitectureData(
     () => setRequestRevision((current) => current + 1),
     [],
   );
+  const scopeKey = scope
+    ? `${scope.workspaceProjectId}\0${scope.platformProjectId}\0${scope.projectVersionId}`
+    : null;
 
   useRealtime("tara:changed", (payload) => {
-    if (projectId && payloadProjectId(payload) === projectId) retry();
+    const published = payloadScope(payload);
+    if (
+      scope &&
+      published?.projectId === scope.platformProjectId &&
+      published.projectVersionId === scope.projectVersionId
+    ) {
+      retry();
+    }
   });
 
   useEffect(() => {
-    if (!projectId) return;
+    if (!scope || !scopeKey) return;
     let active = true;
     void source
-      .read(projectId)
+      .read(scope.platformProjectId, scope.projectVersionId)
       .then((model) => {
         if (!active) return;
-        setProjectModel({ projectId, model });
-        setLoadResult({ projectId, requestRevision, error: null });
+        setProjectModel({ scopeKey, model });
+        setLoadResult({ scopeKey, requestRevision, error: null });
       })
       .catch((error: unknown) => {
         if (!active) return;
-        setLoadResult({ projectId, requestRevision, error: safeError(error) });
+        setLoadResult({ scopeKey, requestRevision, error: safeError(error) });
       });
     return () => {
       active = false;
     };
-  }, [projectId, requestRevision, source]);
+  }, [requestRevision, scope, scopeKey, source]);
 
   const model =
-    projectId && projectModel?.projectId === projectId
-      ? projectModel.model
-      : null;
+    scopeKey && projectModel?.scopeKey === scopeKey ? projectModel.model : null;
   const visibleResult =
-    projectId &&
-    loadResult?.projectId === projectId &&
+    scopeKey &&
+    loadResult?.scopeKey === scopeKey &&
     loadResult.requestRevision === requestRevision
       ? loadResult
       : null;
@@ -460,7 +495,7 @@ export function useArchitectureData(
     [model],
   );
   return {
-    status: !projectId
+    status: !scope
       ? "unconfigured"
       : model
         ? "ready"

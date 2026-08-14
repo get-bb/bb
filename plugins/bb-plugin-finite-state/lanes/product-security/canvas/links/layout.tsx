@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useEdges, useNodes, useReactFlow, type Edge, type Node } from "@xyflow/react";
+import {
+  useEdges,
+  useNodes,
+  useReactFlow,
+  type Edge,
+  type Node,
+} from "@xyflow/react";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import type { z } from "zod";
-import {
-  type canvasLinksRpcContract,
-  type CanvasLayoutV1,
-} from "./schema.js";
+import { type canvasLinksRpcContract, type CanvasLayoutV1 } from "./schema.js";
 
 type AppRuntime = typeof import("@bb/plugin-sdk/app");
 export type CanvasLayoutAppRuntime = Pick<AppRuntime, "useRpc">;
@@ -47,7 +50,10 @@ function normalizeLayout(layout: CanvasLayoutV1): CanvasLayoutV1 {
 }
 
 function layoutsEqual(left: CanvasLayoutV1, right: CanvasLayoutV1): boolean {
-  return JSON.stringify(normalizeLayout(left)) === JSON.stringify(normalizeLayout(right));
+  return (
+    JSON.stringify(normalizeLayout(left)) ===
+    JSON.stringify(normalizeLayout(right))
+  );
 }
 
 function withoutOrphans(
@@ -237,7 +243,6 @@ export function CanvasLayoutPersistence({
     void rpc
       .call("canvasLayoutLoad", {
         projectId,
-        projectVersionId: null,
         nodes: discovered.nodes.map((node) => ({
           slug: node.id,
           width: node.width,
@@ -273,7 +278,6 @@ export function CanvasLayoutPersistence({
             try {
               saved = await rpc.call("canvasLayoutSave", {
                 projectId,
-                projectVersionId: null,
                 layout,
                 expectedSha256: expectedSha256 ?? null,
               });
@@ -291,9 +295,7 @@ export function CanvasLayoutPersistence({
               ...current,
               status: "ready",
               message: null,
-              orphanSlugs: pendingPruneRef.current
-                ? []
-                : current.orphanSlugs,
+              orphanSlugs: pendingPruneRef.current ? [] : current.orphanSlugs,
             }));
             pendingPruneRef.current = false;
             return { outcome: "saved", sha256: saved.sha256 };
@@ -360,10 +362,7 @@ export function CanvasLayoutPersistence({
     baseLayoutRef.current = pruned;
   }, [state.orphanSlugs]);
 
-  if (
-    state.status === "ready" &&
-    state.orphanSlugs.length === 0
-  ) {
+  if (state.status === "ready" && state.orphanSlugs.length === 0) {
     return null;
   }
   return (
@@ -404,7 +403,12 @@ export function CanvasLayoutPersistence({
             </>
           ) : null}
           {state.status === "conflict" || state.status === "error" ? (
-            <Button className="mt-2" onClick={reload} size="sm" variant="outline">
+            <Button
+              className="mt-2"
+              onClick={reload}
+              size="sm"
+              variant="outline"
+            >
               <Icon aria-hidden="true" className="size-4" name="RotateCcw" />
               Reload and compare
             </Button>

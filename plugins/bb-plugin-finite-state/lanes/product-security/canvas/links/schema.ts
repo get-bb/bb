@@ -15,7 +15,8 @@ export const stableSlugSchema = z
   .min(1)
   .max(512)
   .refine((value) => !CONTROL_OR_SEPARATOR_PATTERN.test(value), {
-    message: "stable slugs must not contain control characters or path separators",
+    message:
+      "stable slugs must not contain control characters or path separators",
   })
   .refine((value) => !UUID_PATTERN.test(value), {
     message: "layout and link keys must be stable slugs, not UUIDs",
@@ -42,12 +43,7 @@ const relativeFirmwarePathSchema = z
   )
   .transform((value) => value.replace(/^\/+/, ""));
 
-const purlSchema = z
-  .string()
-  .trim()
-  .min(5)
-  .max(2_048)
-  .startsWith("pkg:");
+const purlSchema = z.string().trim().min(5).max(2_048).startsWith("pkg:");
 
 export const linkProvenanceSchema = z
   .object({
@@ -84,7 +80,9 @@ export const sbomLinksDocumentSchema = z
         (total, entries) => total + entries.length,
         0,
       ) <= MAX_LINKS_PER_FAMILY,
-    { message: `SBOM mappings may contain at most ${MAX_LINKS_PER_FAMILY} links` },
+    {
+      message: `SBOM mappings may contain at most ${MAX_LINKS_PER_FAMILY} links`,
+    },
   );
 
 export const firmwareLinksDocumentSchema = z
@@ -102,7 +100,9 @@ export const firmwareLinksDocumentSchema = z
         (total, entries) => total + entries.length,
         0,
       ) <= MAX_LINKS_PER_FAMILY,
-    { message: `firmware mappings may contain at most ${MAX_LINKS_PER_FAMILY} links` },
+    {
+      message: `firmware mappings may contain at most ${MAX_LINKS_PER_FAMILY} links`,
+    },
   );
 
 export type SbomLinksDocument = z.output<typeof sbomLinksDocumentSchema>;
@@ -158,10 +158,7 @@ export const canvasLayoutV1Schema = z
 export interface CanvasLayoutV1 {
   schema: "fs-canvas-layout/v1";
   project: string;
-  nodes: Record<
-    string,
-    { x: number; y: number; collapsed?: boolean }
-  >;
+  nodes: Record<string, { x: number; y: number; collapsed?: boolean }>;
 }
 
 export const crossSurfaceLinkKindSchema = z.enum([
@@ -170,9 +167,7 @@ export const crossSurfaceLinkKindSchema = z.enum([
   "requirement",
   "verification",
 ]);
-export type CrossSurfaceLinkKind = z.output<
-  typeof crossSurfaceLinkKindSchema
->;
+export type CrossSurfaceLinkKind = z.output<typeof crossSurfaceLinkKindSchema>;
 
 export const crossSurfaceLinkSchema = z
   .object({
@@ -181,9 +176,7 @@ export const crossSurfaceLinkSchema = z
     target: z.string().max(2_048),
     label: z.string().trim().min(1).max(500),
     ready: z.boolean(),
-    reason: z
-      .enum(["not_pulled", "not_mapped", "unavailable"])
-      .optional(),
+    reason: z.enum(["not_pulled", "not_mapped", "unavailable"]).optional(),
     provenance: linkProvenanceSchema.optional(),
   })
   .strict()
@@ -221,9 +214,7 @@ export const linkFamilyReadinessSchema = z
   })
   .strict();
 
-export type LinkFamilyReadiness = z.output<
-  typeof linkFamilyReadinessSchema
->;
+export type LinkFamilyReadiness = z.output<typeof linkFamilyReadinessSchema>;
 
 export const resolvedCrossSurfaceLinksSchema = z
   .object({
@@ -258,14 +249,24 @@ const discoveredEdgeSchema = z
   .object({ source: stableSlugSchema, target: stableSlugSchema })
   .strict();
 
+const workspaceProjectIdSchema = z.string().trim().min(1).max(512);
 const projectScopeFields = {
-  projectId: z.string().trim().min(1).max(512),
+  workspaceProjectId: workspaceProjectIdSchema,
+  platformProjectId: z.string().trim().min(1).max(512).nullable(),
   projectVersionId: z.string().trim().min(1).max(512).nullable(),
 } as const;
 
 const familyInputSchema = z
   .object({ ...projectScopeFields, sourceSlug: stableSlugSchema })
-  .strict();
+  .strict()
+  .refine(
+    (value) =>
+      (value.platformProjectId === null) === (value.projectVersionId === null),
+    {
+      message:
+        "Platform project and version identities must both be present or both be absent.",
+    },
+  );
 
 const canvasLayoutLoadResultSchema = z
   .object({
@@ -315,7 +316,7 @@ export const canvasLinksRpcContract = defineRpcContract({
   canvasLayoutLoad: {
     input: z
       .object({
-        ...projectScopeFields,
+        projectId: workspaceProjectIdSchema,
         nodes: z.array(discoveredNodeSchema).max(MAX_CANVAS_LAYOUT_NODES),
         edges: z.array(discoveredEdgeSchema).max(MAX_CANVAS_LAYOUT_EDGES),
       })
@@ -325,7 +326,7 @@ export const canvasLinksRpcContract = defineRpcContract({
   canvasLayoutSave: {
     input: z
       .object({
-        ...projectScopeFields,
+        projectId: workspaceProjectIdSchema,
         layout: canvasLayoutV1Schema,
         expectedSha256: sha256Schema.nullable(),
       })

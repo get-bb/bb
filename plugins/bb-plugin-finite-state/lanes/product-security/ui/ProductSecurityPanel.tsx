@@ -47,6 +47,12 @@ import {
 } from "./states.js";
 import { isVerificationTier } from "../verifications/matrix/status.js";
 import { ThreatOverlayVisibilityProvider } from "../canvas/threat-overlay/visibility.js";
+import {
+  taraScopeVersionKey,
+  useResolvedTaraScope,
+  type ResolvedTaraScope,
+  type TaraScopeState,
+} from "../canvas/scope/index.js";
 
 const PROJECT_SCOPE_STORAGE_KEY =
   "finite-state:product-security:project-scope:v1";
@@ -94,23 +100,72 @@ interface LoadedArchitectureCanvasProps {
   graph: CanvasArchitectureGraph;
   adjacency: ReadonlyMap<string, ArchitectureAdjacency>;
   foundationModel: CanvasModel;
-  projectId: string;
+  scope: ResolvedTaraScope;
   focusId: string | null;
   onFocusRoute(kind: ArchitectureSelectionKind, slug: string): void;
   onRepairSourceFile(sourceFile: string, slug: string): void;
 }
 
+function LegacyPromotionNotice({
+  scopeState,
+  versionId,
+  onVersionIdChange,
+}: {
+  scopeState: TaraScopeState;
+  versionId: string;
+  onVersionIdChange(value: string): void;
+}): React.JSX.Element | null {
+  if (!scopeState.legacy) return null;
+  return (
+    <div className="border-b border-border bg-card px-4 py-3">
+      <p className="text-sm font-medium text-foreground">
+        Promote legacy TARA to a version
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        The associated Platform project {scopeState.legacy.platformProjectId}{" "}
+        has a project-scoped snapshot. Promotion copies every accepted kind
+        together and refuses a non-empty target.
+      </p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <label className="sr-only" htmlFor="tara-promotion-version">
+          Target version ID
+        </label>
+        <input
+          className="h-9 min-w-52 rounded-md border border-input bg-background px-3 text-sm"
+          id="tara-promotion-version"
+          onChange={(event) => onVersionIdChange(event.target.value)}
+          placeholder="Target version ID"
+          value={versionId}
+        />
+        <button
+          className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50"
+          disabled={scopeState.promoting || versionId.trim().length === 0}
+          onClick={() => void scopeState.promote(versionId.trim())}
+          type="button"
+        >
+          {scopeState.promoting ? "Promoting…" : "Promote complete snapshot"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function TaraPanel({
   features,
-  projectId,
+  workspaceProjectId,
+  scopeState,
   detail,
 }: {
   features: ProductSecurityFeatures;
-  projectId: string | null;
+  workspaceProjectId: string | null;
+  scopeState: TaraScopeState;
   detail: readonly string[];
 }): React.JSX.Element {
   const navigate = useBbNavigate();
-  const data = useArchitectureData(projectId);
+  const [promotionVersionId, setPromotionVersionId] = useState("");
+  const [localAuthoringRequest, setLocalAuthoringRequest] = useState(0);
+  const scope = scopeState.scope;
+  const data = useArchitectureData(scope);
   const focusId = focusIdFromRoute(detail);
   const foundationModel = useMemo(
     () =>
@@ -151,7 +206,7 @@ function TaraPanel({
             graph,
             adjacency,
             foundationModel,
-            projectId: canvasProjectId,
+            scope: canvasScope,
             focusId: canvasFocusId,
             onFocusRoute: focusRoute,
             onRepairSourceFile: repairSourceFile,
@@ -178,7 +233,8 @@ function TaraPanel({
                     EditingLayer: features.EditingLayer,
                   }}
                   model={foundationModel}
-                  projectId={canvasProjectId}
+                  projectId={`${canvasScope.platformProjectId}:${canvasScope.projectVersionId}`}
+                  scope={canvasScope}
                 />
               </nodeModule.ProductSecurityCanvasWorkspace>
             );
@@ -188,9 +244,17 @@ function TaraPanel({
     [features],
   );
 
-  if (!projectId || data.status === "unconfigured") {
+  if (!workspaceProjectId) {
     return <CanvasUnconfiguredState />;
   }
+  if (scopeState.status === "loading") return <CanvasLoadingState />;
+  if (scopeState.status === "unconfigured") {
+    return <CanvasUnconfiguredState />;
+  }
+  if (scopeState.status === "error" || !scope) {
+    return <CanvasErrorState onRetry={scopeState.retry} />;
+  }
+  if (data.status === "unconfigured") return <CanvasUnconfiguredState />;
   if (data.status === "loading") return <CanvasLoadingState />;
   if (
     data.status === "error" ||
@@ -206,6 +270,19 @@ function TaraPanel({
     const cacheSignals = architectureCacheSignals(data.model.cache.message);
     return (
       <div className="relative h-full min-h-0">
+        <LegacyPromotionNotice
+          onVersionIdChange={setPromotionVersionId}
+          scopeState={scopeState}
+          versionId={promotionVersionId}
+        />
+        {scopeState.promotionMessage ? (
+          <div
+            className="border-b border-border bg-muted px-4 py-2 text-sm text-muted-foreground"
+            role="status"
+          >
+            {scopeState.promotionMessage}
+          </div>
+        ) : null}
         {data.error ? (
           <CanvasErrorState onRetry={data.retry} />
         ) : cacheSignals.fileDiagnostics ? (
@@ -217,9 +294,14 @@ function TaraPanel({
         ) : cacheSignals.refreshFailed ? (
           <CanvasRefreshFailureState onRetry={data.retry} />
         ) : (
-          <CanvasEmptyState onRetry={data.retry} />
+          <CanvasEmptyState
+            onContinueLocalAuthoring={() =>
+              setLocalAuthoringRequest((request) => request + 1)
+            }
+            onRetry={data.retry}
+          />
         )}
-        <EditingLayer />
+        <EditingLayer createRequest={localAuthoringRequest} scope={scope} />
       </div>
     );
   }
@@ -230,6 +312,19 @@ function TaraPanel({
   const graph = data.graph;
   return (
     <div className="flex h-full min-h-0 flex-col">
+      <LegacyPromotionNotice
+        onVersionIdChange={setPromotionVersionId}
+        scopeState={scopeState}
+        versionId={promotionVersionId}
+      />
+      {scopeState.promotionMessage ? (
+        <div
+          className="border-b border-border bg-muted px-4 py-2 text-sm text-muted-foreground"
+          role="status"
+        >
+          {scopeState.promotionMessage}
+        </div>
+      ) : null}
       <CanvasCacheBanner
         error={data.error}
         message={model.cache.message}
@@ -261,7 +356,7 @@ function TaraPanel({
             model={model}
             onFocusRoute={onFocusRoute}
             onRepairSourceFile={onRepairSourceFile}
-            projectId={projectId}
+            scope={scope}
           />
         </Suspense>
       </div>
@@ -298,6 +393,9 @@ export function ProductSecurityPanel({
       ? selectedProjectId
       : null;
   const projectId = routeProjectId ?? fallbackProjectId;
+  const taraScope = useResolvedTaraScope(
+    route.tab === "tara" ? projectId : null,
+  );
   const RequirementsCards = features.RequirementsCards;
   const RequirementsTraceabilityLayer = features.RequirementsTraceabilityLayer;
   const RequirementsConversionLayer = features.RequirementsConversionLayer;
@@ -364,6 +462,48 @@ export function ProductSecurityPanel({
               </option>
             ))}
           </select>
+          {route.tab === "tara" && projectId ? (
+            <>
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="product-security-version"
+              >
+                Version
+              </label>
+              <select
+                aria-label="TARA version"
+                className="h-9 max-w-64 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+                disabled={
+                  taraScope.status !== "ready" || taraScope.versions.length <= 1
+                }
+                id="product-security-version"
+                onChange={(event) => taraScope.select(event.target.value)}
+                value={taraScope.selectedKey}
+              >
+                {taraScope.status === "loading" ? (
+                  <option value="">Resolving accepted version…</option>
+                ) : null}
+                {taraScope.scope?.mode === "local" ? (
+                  <option value="">Local working model</option>
+                ) : null}
+                {taraScope.versions.map((version) => (
+                  <option
+                    key={taraScopeVersionKey(version)}
+                    value={taraScopeVersionKey(version)}
+                  >
+                    {taraScope.versions.some(
+                      (candidate) =>
+                        candidate.platformProjectId !==
+                        version.platformProjectId,
+                    )
+                      ? `${version.platformProjectId} · `
+                      : ""}
+                    {version.projectVersionId}
+                  </option>
+                ))}
+              </select>
+            </>
+          ) : null}
         </div>
       </nav>
       <ThreatOverlayVisibilityProvider>
@@ -372,7 +512,8 @@ export function ProductSecurityPanel({
             <TaraPanel
               detail={route.detail}
               features={features}
-              projectId={projectId}
+              scopeState={taraScope}
+              workspaceProjectId={projectId}
             />
           ) : null}
           {route.tab === "requirements" && projectId ? (

@@ -3,6 +3,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+import type { PluginNavPanelProps } from "@bb/plugin-sdk/app";
 import { connectedRemoteStatus } from "../../../../test/app-connections.js";
 import { ProductSecurityEditingLayer } from "../editing/index.js";
 import {
@@ -14,6 +15,7 @@ import { ProductSecurityThreatOverlay } from "../threat-overlay/index.js";
 import CanvasShell, { type CanvasFoundationFeatures } from "./CanvasShell.js";
 import { canvasLayoutStorageKey } from "./layout-storage.js";
 import type { CanvasModel, LayoutResult } from "./types.js";
+import { resolveTestTaraScope } from "../scope/test-fixture.js";
 
 const cache = {
   state: "fresh",
@@ -291,6 +293,123 @@ async function productSecurityPanel() {
 }
 
 describe("WP-31 bb panel qualification", () => {
+  it("clears the old canvas and overlay before rendering a newly selected version", async () => {
+    await loadPluginApp(() => import("../../../../app.js"));
+    const { ProductSecurityPanel } =
+      await import("../../ui/ProductSecurityPanel.js");
+    const EmptyLayer = () => null;
+    const ThreatScope = ({
+      scope,
+    }: {
+      scope?: { projectVersionId: string | null };
+    }) => (
+      <output>
+        {scope ? `overlay ${scope.projectVersionId}` : "no overlay"}
+      </output>
+    );
+    const features = {
+      loadNodeTypes: loadProductSecurityNodeTypes,
+      edgeTypes: {},
+      ThreatOverlay: ThreatScope,
+      LinksLayer: EmptyLayer,
+      EditingLayer: EmptyLayer,
+      RequirementsCards: EmptyLayer,
+      RequirementsTraceabilityLayer: EmptyLayer,
+      RequirementsConversionLayer: EmptyLayer,
+      VerificationMatrix: EmptyLayer,
+      VerificationRunDetailLayer: EmptyLayer,
+    };
+    const versions = ["version-2", "version-1"].map((projectVersionId) => ({
+      platformProjectId: "platform-1",
+      projectVersionId,
+      asOf: `2026-08-14T1${projectVersionId.endsWith("2") ? "2" : "1"}:00:00.000Z`,
+    }));
+    const slot = renderSlot(
+      {
+        component(props: PluginNavPanelProps): React.JSX.Element {
+          return <ProductSecurityPanel {...props} features={features} />;
+        },
+      },
+      { subPath: "tara" },
+      {
+        context: { projectId: "workspace-1", threadId: null },
+        sidebarThreads: {
+          status: "ready",
+          projects: [
+            { id: "workspace-1", name: "Medical device", isPersonal: false },
+          ],
+          threads: [],
+        },
+        rpc: {
+          taraScopeResolve: (input) => {
+            const explicit =
+              typeof input === "object" && input !== null
+                ? Reflect.get(input, "explicit")
+                : null;
+            const projectVersionId =
+              typeof explicit === "object" && explicit !== null
+                ? Reflect.get(explicit, "projectVersionId")
+                : "version-2";
+            const selected =
+              versions.find(
+                (version) => version.projectVersionId === projectVersionId,
+              ) ?? versions[0]!;
+            return {
+              versions,
+              selected,
+              source: explicit ? "explicit" : "latest",
+              legacy: null,
+            };
+          },
+          taraCanvasList: (input) => {
+            const page = taraPage(input);
+            const projectVersionId =
+              typeof input === "object" && input !== null
+                ? Reflect.get(input, "projectVersionId")
+                : null;
+            return inputKind(input) === "component"
+              ? {
+                  ...page,
+                  items: page.items.map((item) => ({
+                    ...item,
+                    label: `${item.label} ${projectVersionId}`,
+                  })),
+                }
+              : page;
+          },
+        },
+      },
+    );
+    expect(
+      await slot.findByLabelText("component Connected device version-2"),
+    ).toBeTruthy();
+    expect(await slot.findByText("overlay version-2")).toBeTruthy();
+
+    fireEvent.change(slot.getByLabelText("TARA version"), {
+      target: {
+        value: `${versions[1]!.platformProjectId}\0${versions[1]!.projectVersionId}`,
+      },
+    });
+    expect(
+      slot.queryByLabelText("component Connected device version-2"),
+    ).toBeNull();
+    expect(slot.queryByText("overlay version-2")).toBeNull();
+    expect(slot.getByLabelText("Loading product-security model")).toBeTruthy();
+    expect(
+      await slot.findByLabelText("component Connected device version-1"),
+    ).toBeTruthy();
+    expect(await slot.findByText("overlay version-1")).toBeTruthy();
+    const latestTaraCalls = slot.inspection.rpcCalls.filter(
+      (call) =>
+        call.method === "taraCanvasList" &&
+        typeof call.input === "object" &&
+        call.input !== null &&
+        Reflect.get(call.input, "projectVersionId") === "version-1",
+    );
+    expect(latestTaraCalls).toHaveLength(4);
+    slot.lifecycle.unmount();
+  });
+
   it("registers three subpaths and self-loads requirements without reading TARA", async () => {
     const panel = await productSecurityPanel();
     const slot = renderSlot(
@@ -300,6 +419,7 @@ describe("WP-31 bb panel qualification", () => {
         context: { projectId: "project-1", threadId: null },
         rpc: {
           connectionsStatus: connectedRemoteStatus,
+          taraScopeResolve: resolveTestTaraScope,
           requirementsList: () => requirementsPage(),
         },
       },
@@ -325,7 +445,8 @@ describe("WP-31 bb panel qualification", () => {
         context: { projectId: "project-1", threadId: null },
         rpc: {
           connectionsStatus: connectedRemoteStatus,
-          taraList: (input) => taraPage(input),
+          taraScopeResolve: resolveTestTaraScope,
+          taraCanvasList: (input) => taraPage(input),
         },
       },
     );
@@ -378,7 +499,8 @@ describe("WP-31 bb panel qualification", () => {
         context: { projectId: "project-1", threadId: null },
         rpc: {
           connectionsStatus: connectedRemoteStatus,
-          taraList: (input) => {
+          taraScopeResolve: resolveTestTaraScope,
+          taraCanvasList: (input) => {
             if (offline) throw new Error("offline");
             return taraPage(input);
           },
@@ -412,7 +534,8 @@ describe("WP-31 bb panel qualification", () => {
         context: { projectId: "project-1", threadId: null },
         rpc: {
           connectionsStatus: connectedRemoteStatus,
-          taraList: () => {
+          taraScopeResolve: resolveTestTaraScope,
+          taraCanvasList: () => {
             if (offline) throw new Error("offline");
             return { items: [], total: 0, next: null, cache };
           },
@@ -439,7 +562,8 @@ describe("WP-31 bb panel qualification", () => {
         context: { projectId: "project-1", threadId: null },
         rpc: {
           connectionsStatus: connectedRemoteStatus,
-          taraList: () => ({ items: [], total: 0, next: null, cache }),
+          taraScopeResolve: resolveTestTaraScope,
+          taraCanvasList: () => ({ items: [], total: 0, next: null, cache }),
         },
       },
     );
@@ -453,7 +577,8 @@ describe("WP-31 bb panel qualification", () => {
         context: { projectId: "project-1", threadId: null },
         rpc: {
           connectionsStatus: connectedRemoteStatus,
-          taraList: () => Promise.reject(new Error("cache failure")),
+          taraScopeResolve: resolveTestTaraScope,
+          taraCanvasList: () => Promise.reject(new Error("cache failure")),
         },
       },
     );
@@ -469,7 +594,8 @@ describe("WP-31 bb panel qualification", () => {
         context: { projectId: "project-1", threadId: null },
         rpc: {
           connectionsStatus: connectedRemoteStatus,
-          taraList: (input) => taraPage(input, true),
+          taraScopeResolve: resolveTestTaraScope,
+          taraCanvasList: (input) => taraPage(input, true),
         },
       },
     );
@@ -485,7 +611,8 @@ describe("WP-31 bb panel qualification", () => {
         context: { projectId: "project-1", threadId: null },
         rpc: {
           connectionsStatus: connectedRemoteStatus,
-          taraList: (input) => ({
+          taraScopeResolve: resolveTestTaraScope,
+          taraCanvasList: (input) => ({
             items: [],
             total: 0,
             next: null,
@@ -519,7 +646,8 @@ describe("WP-31 bb panel qualification", () => {
         context: { projectId: "project-1", threadId: null },
         rpc: {
           connectionsStatus: connectedRemoteStatus,
-          taraList: (input) => {
+          taraScopeResolve: resolveTestTaraScope,
+          taraCanvasList: (input) => {
             const unsupportedComponent = inputKind(input) === "component";
             const page = taraPage(input, unsupportedComponent);
             return {
@@ -558,7 +686,8 @@ describe("WP-31 bb panel qualification", () => {
         context: { projectId: "project-1", threadId: null },
         rpc: {
           connectionsStatus: connectedRemoteStatus,
-          taraList: () => ({
+          taraScopeResolve: resolveTestTaraScope,
+          taraCanvasList: () => ({
             items: [],
             total: 0,
             next: null,
@@ -588,7 +717,8 @@ describe("WP-31 bb panel qualification", () => {
         context: { projectId: "project-1", threadId: null },
         rpc: {
           connectionsStatus: connectedRemoteStatus,
-          taraList: (input) => ({
+          taraScopeResolve: resolveTestTaraScope,
+          taraCanvasList: (input) => ({
             items: [],
             total: 0,
             next: null,
@@ -630,6 +760,105 @@ describe("WP-31 bb panel qualification", () => {
     );
     expect(await unconfigured.findByText("Choose a project")).toBeTruthy();
     unconfigured.lifecycle.unmount();
+
+    const freshProject = renderSlot(
+      panel,
+      { subPath: "tara" },
+      {
+        context: { projectId: "fresh-workspace", threadId: null },
+        rpc: {
+          connectionsStatus: connectedRemoteStatus,
+          taraScopeResolve: () => ({
+            versions: [],
+            selected: null,
+            source: "local",
+            legacy: null,
+          }),
+          taraCanvasList: () => ({
+            items: [],
+            total: 0,
+            next: null,
+            cache,
+          }),
+        },
+      },
+    );
+    expect(
+      await freshProject.findByText("No architecture model yet"),
+    ).toBeTruthy();
+    expect(
+      freshProject.getByRole("button", { name: "Open Sync" }),
+    ).toBeTruthy();
+    const continueLocal = freshProject.getByRole("button", {
+      name: "Continue local authoring",
+    });
+    expect(continueLocal).toBeTruthy();
+    const localVersion = freshProject.getByRole("combobox", {
+      name: "TARA version",
+    });
+    expect(localVersion).toBeInstanceOf(HTMLSelectElement);
+    expect((localVersion as HTMLSelectElement).value).toBe("");
+    fireEvent.click(continueLocal);
+    expect(await freshProject.findByLabelText("Create component")).toBeTruthy();
+    expect(freshProject.queryByText("Loading accepted model…")).toBeNull();
+    freshProject.lifecycle.unmount();
+  });
+
+  it("requires and discloses explicit all-kind legacy promotion", async () => {
+    const panel = await productSecurityPanel();
+    let promoted = false;
+    const selected = {
+      platformProjectId: "platform-legacy",
+      projectVersionId: "version-promoted",
+      asOf: "2026-08-14T12:00:00.000Z",
+    };
+    const slot = renderSlot(
+      panel,
+      { subPath: "tara" },
+      {
+        context: { projectId: "workspace-legacy", threadId: null },
+        rpc: {
+          connectionsStatus: connectedRemoteStatus,
+          taraScopeResolve: () =>
+            promoted
+              ? {
+                  versions: [selected],
+                  selected,
+                  source: "explicit",
+                  legacy: null,
+                }
+              : {
+                  versions: [],
+                  selected: null,
+                  source: "local",
+                  legacy: {
+                    platformProjectId: "platform-legacy",
+                    kinds: ["component", "threat"],
+                  },
+                },
+          taraScopePromote: () => {
+            promoted = true;
+            return { selected, promotedKinds: ["component", "threat"] };
+          },
+          taraCanvasList: () => ({ items: [], total: 0, next: null, cache }),
+        },
+      },
+    );
+    expect(
+      await slot.findByText("Promote legacy TARA to a version"),
+    ).toBeTruthy();
+    fireEvent.change(slot.getByLabelText("Target version ID"), {
+      target: { value: "version-promoted" },
+    });
+    fireEvent.click(
+      slot.getByRole("button", { name: "Promote complete snapshot" }),
+    );
+    expect(
+      await slot.findByText(
+        "Promoted the complete legacy snapshot: component, threat.",
+      ),
+    ).toBeTruthy();
+    slot.lifecycle.unmount();
   });
 
   it("paints Arrange state and persists successful positions", async () => {

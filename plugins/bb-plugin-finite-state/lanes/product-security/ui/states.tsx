@@ -28,15 +28,18 @@ export function CanvasLoadingState(): React.JSX.Element {
 
 export function CanvasEmptyState({
   onRetry,
-}: RetryStateProps): React.JSX.Element {
+  onContinueLocalAuthoring,
+}: RetryStateProps & {
+  onContinueLocalAuthoring?(): void;
+}): React.JSX.Element {
   const navigate = useBbNavigate();
   return (
     <div className="flex h-full min-h-80 items-center justify-center bg-background p-6 text-foreground">
       <div className="max-w-md rounded-lg border border-border bg-card p-6 text-center text-card-foreground">
         <p className="text-base font-medium">No architecture model yet</p>
         <p className="mt-2 text-sm text-muted-foreground">
-          Pull Product Security from the Sync panel or add local architecture
-          YAML, then retry this cache read.
+          Pull Product Security from Sync, or continue authoring local YAML
+          before the first pull.
         </p>
         <div className="mt-4 flex flex-wrap justify-center gap-2">
           <button
@@ -50,6 +53,15 @@ export function CanvasEmptyState({
           >
             Open Sync
           </button>
+          {onContinueLocalAuthoring ? (
+            <button
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={onContinueLocalAuthoring}
+              type="button"
+            >
+              Continue local authoring
+            </button>
+          ) : null}
           <button
             className="rounded-md border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={onRetry}

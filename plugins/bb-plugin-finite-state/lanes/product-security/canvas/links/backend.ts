@@ -32,6 +32,7 @@ import {
   type FirmwareLinksDocument,
   type SbomLinksDocument,
 } from "./schema.js";
+import { assertWorkspacePlatformProjectBinding } from "../scope/identity.js";
 
 const SBOM_LINKS_FILE = ".fs/links/sbom.yaml";
 const FIRMWARE_LINKS_FILE = ".fs/links/firmware.yaml";
@@ -388,7 +389,14 @@ export function registerCanvasLinksBackend(
   const db = ctx.db();
   bb.rpc.register(canvasLinksRpcContract, {
     async canvasSbomLinks(input) {
-      const source = await projectSource(bb, input.projectId);
+      if (input.platformProjectId) {
+        assertWorkspacePlatformProjectBinding(
+          db,
+          input.workspaceProjectId,
+          input.platformProjectId,
+        );
+      }
+      const source = await projectSource(bb, input.workspaceProjectId);
       const mapping: MappingLoad<SbomLinksDocument> = await readMapping(
         bb,
         source,
@@ -399,7 +407,7 @@ export function registerCanvasLinksBackend(
         {
           ...emptyResolverInput(input.sourceSlug, {
             sbom: sbomSurface(bb, db, {
-              projectId: input.projectId,
+              projectId: input.platformProjectId ?? input.workspaceProjectId,
               projectVersionId: input.projectVersionId,
             }),
           }),
@@ -410,7 +418,14 @@ export function registerCanvasLinksBackend(
       return familyResult(input.sourceSlug, family);
     },
     async canvasFirmwareLinks(input) {
-      const source = await projectSource(bb, input.projectId);
+      if (input.platformProjectId) {
+        assertWorkspacePlatformProjectBinding(
+          db,
+          input.workspaceProjectId,
+          input.platformProjectId,
+        );
+      }
+      const source = await projectSource(bb, input.workspaceProjectId);
       const mapping: MappingLoad<FirmwareLinksDocument> = await readMapping(
         bb,
         source,
@@ -421,7 +436,7 @@ export function registerCanvasLinksBackend(
         {
           ...emptyResolverInput(input.sourceSlug, {
             firmware: firmwareSurface(bb, db, {
-              projectId: input.projectId,
+              projectId: input.platformProjectId ?? input.workspaceProjectId,
               projectVersionId: input.projectVersionId,
             }),
           }),
@@ -432,11 +447,18 @@ export function registerCanvasLinksBackend(
       return familyResult(input.sourceSlug, family);
     },
     async canvasRequirementLinks(input) {
+      if (input.platformProjectId) {
+        assertWorkspacePlatformProjectBinding(
+          db,
+          input.workspaceProjectId,
+          input.platformProjectId,
+        );
+      }
       const family = await resolveCrossSurfaceLinkFamily(
         emptyResolverInput(input.sourceSlug, {
           requirement: requirementSurface(bb, {
-            projectId: input.projectId,
-            projectVersionId: input.projectVersionId,
+            projectId: input.workspaceProjectId,
+            projectVersionId: null,
           }),
         }),
         "requirement",
@@ -444,6 +466,13 @@ export function registerCanvasLinksBackend(
       return familyResult(input.sourceSlug, family);
     },
     async canvasVerificationLinks(input) {
+      if (input.platformProjectId) {
+        assertWorkspacePlatformProjectBinding(
+          db,
+          input.workspaceProjectId,
+          input.platformProjectId,
+        );
+      }
       const family = await resolveCrossSurfaceLinkFamily(
         emptyResolverInput(input.sourceSlug, {
           verification: verificationSurface(),

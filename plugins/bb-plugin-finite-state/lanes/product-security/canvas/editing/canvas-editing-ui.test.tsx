@@ -4,6 +4,7 @@ import { cleanup, fireEvent } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { connectedRemoteStatus } from "../../../../test/app-connections.js";
+import { resolveTestTaraScope } from "../scope/test-fixture.js";
 
 afterEach(() => {
   cleanup();
@@ -30,7 +31,8 @@ describe("WP-35 empty-model editing entry", () => {
         context: { projectId: "project-empty", threadId: null },
         rpc: {
           connectionsStatus: connectedRemoteStatus,
-          taraList: () => ({
+          taraScopeResolve: resolveTestTaraScope,
+          taraCanvasList: () => ({
             items: [],
             total: 0,
             next: null,
@@ -67,7 +69,8 @@ describe("WP-35 empty-model editing entry", () => {
         context: { projectId: "project-invalid", threadId: null },
         rpc: {
           connectionsStatus: connectedRemoteStatus,
-          taraList: () =>
+          taraScopeResolve: resolveTestTaraScope,
+          taraCanvasList: () =>
             Promise.reject(
               new Error(
                 "INVALID_WORKING_TARA: component YAML contains verification_status",

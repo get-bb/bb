@@ -301,6 +301,69 @@ describe("WP-34 inspector links", () => {
     slot.lifecycle.unmount();
   });
 
+  it("keeps workspace layout identity separate from version-scoped link reads", async () => {
+    const appRuntime = installedAppRuntime();
+    const workspaceProjectId = "workspace-wp34";
+    const slot = renderSlot<{}, typeof canvasLinksRpcContract>(
+      {
+        component: () => (
+          <ArchitectureHarness>
+            <ProductSecurityLinksLayer
+              appRuntime={appRuntime}
+              scope={{
+                workspaceProjectId,
+                platformProjectId: PROJECT_ID,
+                projectVersionId: "version-wp34",
+                mode: "version",
+              }}
+            />
+          </ArchitectureHarness>
+        ),
+      },
+      {},
+      {
+        rpc: {
+          canvasSbomLinks: () =>
+            readyFamily("sbom", "component-key", "Gateway package"),
+          canvasFirmwareLinks: () =>
+            readyFamily("firmware", "usr/bin/gateway", "Gateway binary"),
+          canvasRequirementLinks: () =>
+            readyFamily("requirement", "REQ-104", "Secure update"),
+          canvasVerificationLinks: unavailableVerificationFamily,
+          canvasLayoutLoad: () => ({
+            ...layoutLoadResult(),
+            layout: layout({}, workspaceProjectId),
+          }),
+          canvasLayoutSave: () => ({
+            outcome: "saved",
+            file: CANVAS_LAYOUT_FILE,
+            sha256: "c".repeat(64),
+            changed: false,
+          }),
+        },
+      },
+    );
+
+    await slot.findByRole("button", {
+      name: "Open SBOM entry: Gateway package",
+    });
+    const layoutCall = slot.inspection.rpcCalls.find(
+      (call) => call.method === "canvasLayoutLoad",
+    );
+    expect(layoutCall?.input).toMatchObject({
+      projectId: workspaceProjectId,
+    });
+    const linkCall = slot.inspection.rpcCalls.find(
+      (call) => call.method === "canvasSbomLinks",
+    );
+    expect(linkCall?.input).toMatchObject({
+      workspaceProjectId,
+      platformProjectId: PROJECT_ID,
+      projectVersionId: "version-wp34",
+    });
+    slot.lifecycle.unmount();
+  });
+
   it("keeps firmware and requirements interactive when the SBOM RPC fails", async () => {
     const appRuntime = installedAppRuntime();
     const slot = renderSlot<{}, typeof canvasLinksRpcContract>(

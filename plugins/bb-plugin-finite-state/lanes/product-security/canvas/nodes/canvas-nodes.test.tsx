@@ -34,6 +34,7 @@ import {
   type ThreatOverlayAppRuntime,
 } from "../threat-overlay/index.js";
 import { threatOverlayRpcContract } from "../threat-overlay/backend.js";
+import { resolveTestTaraScope } from "../scope/test-fixture.js";
 
 const cache = {
   state: "fresh" as const,
@@ -557,7 +558,10 @@ describe("WP-32 inspector and project scope", () => {
           ],
           threads: [],
         },
-        rpc: { taraList: (input) => taraPage(input) },
+        rpc: {
+          taraScopeResolve: resolveTestTaraScope,
+          taraCanvasList: (input) => taraPage(input),
+        },
       },
     );
     expect(slot.getByText("Choose a project")).toBeTruthy();
@@ -601,13 +605,18 @@ describe("WP-32 inspector and project scope", () => {
     expect(
       slot.getByText("Partial architecture:", { exact: false }),
     ).toBeTruthy();
-    expect(slot.inspection.rpcCalls).toHaveLength(4);
+    const taraCalls = slot.inspection.rpcCalls.filter(
+      (call) => call.method === "taraCanvasList",
+    );
+    expect(taraCalls).toHaveLength(4);
     expect(
-      slot.inspection.rpcCalls.every(
+      taraCalls.every(
         (call) =>
           typeof call.input === "object" &&
           call.input !== null &&
-          Reflect.get(call.input, "projectId") === "project-1",
+          Reflect.get(call.input, "workspaceProjectId") === "project-1" &&
+          Reflect.get(call.input, "platformProjectId") === "project-1" &&
+          Reflect.get(call.input, "projectVersionId") === "version-1",
       ),
     ).toBe(true);
     expect(
@@ -697,7 +706,8 @@ describe("WP-32 inspector and project scope", () => {
           threads: [],
         },
         rpc: {
-          taraList: (input) => taraPage(input),
+          taraScopeResolve: resolveTestTaraScope,
+          taraCanvasList: (input) => taraPage(input),
           threatOverlaySnapshot: () =>
             threatOverlayRpcContract.threatOverlaySnapshot.output.parse({
               projectVersionId: null,

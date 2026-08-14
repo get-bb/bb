@@ -63,6 +63,7 @@ describe("Product Security path-install import boundary", () => {
     const source = readFileSync(entry, "utf8");
     for (const backend of [
       "./canvas/nodes/backend.js",
+      "./canvas/scope/backend.js",
       "./canvas/threat-overlay/backend.js",
       "./canvas/links/backend.js",
       "./canvas/editing/backend.js",

@@ -22,19 +22,26 @@ import type {
   LayoutRequest,
   LayoutResult,
 } from "./types.js";
+import type { ResolvedTaraScope } from "../scope/index.js";
+
+export interface CanvasLayerScopeProps {
+  scope?: ResolvedTaraScope;
+  createRequest?: number;
+}
 
 export interface CanvasFoundationFeatures {
   nodeTypes: NodeTypes;
   edgeTypes: EdgeTypes;
-  ThreatOverlay: ComponentType;
-  LinksLayer: ComponentType;
-  EditingLayer: ComponentType;
+  ThreatOverlay: ComponentType<CanvasLayerScopeProps>;
+  LinksLayer: ComponentType<CanvasLayerScopeProps>;
+  EditingLayer: ComponentType<CanvasLayerScopeProps>;
 }
 
 type LayoutRunner = (request: LayoutRequest) => Promise<LayoutResult>;
 
 interface CanvasShellProps {
   projectId: string;
+  scope?: ResolvedTaraScope;
   model: CanvasModel;
   features: CanvasFoundationFeatures;
   arrange?: LayoutRunner;
@@ -139,6 +146,7 @@ function safeLayoutError(error: unknown): string {
 
 function CanvasShellState({
   projectId,
+  scope,
   model,
   features,
   arrange = runMainThreadLayout,
@@ -275,9 +283,9 @@ function CanvasShellState({
         onViewportChange={updateViewport}
         reducedMotion={reducedMotion}
       />
-      <ThreatOverlay />
-      <LinksLayer />
-      <EditingLayer />
+      <ThreatOverlay scope={scope} />
+      <LinksLayer scope={scope} />
+      <EditingLayer scope={scope} />
       <output className="sr-only" data-canvas-selection="">
         {viewport.selectedIds.join(",")}
       </output>

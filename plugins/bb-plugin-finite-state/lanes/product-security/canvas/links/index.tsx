@@ -22,6 +22,7 @@ import {
   type LinkFamilyReadiness,
   type ResolvedCrossSurfaceLinks,
 } from "./schema.js";
+import type { ResolvedTaraScope } from "../scope/index.js";
 
 const PROJECT_SCOPE_STORAGE_KEY =
   "finite-state:product-security:project-scope:v1";
@@ -95,18 +96,20 @@ function unavailableFamily(
 
 function useCrossSurfaceLinks(
   appRuntime: CanvasLinksAppRuntime,
-  projectId: string | null,
+  workspaceProjectId: string | null,
+  platformProjectId: string | null,
+  projectVersionId: string | null,
   sourceSlug: string | null,
 ): { state: CrossSurfaceLinksState; retry(): void } {
   const rpc = appRuntime.useRpc<typeof canvasLinksRpcContract>();
   const [revision, setRevision] = useState(0);
   const [state, setState] = useState<CrossSurfaceLinksState>(
-    projectId ? { state: "loading" } : { state: "unconfigured" },
+    workspaceProjectId ? { state: "loading" } : { state: "unconfigured" },
   );
   const retry = useCallback(() => setRevision((current) => current + 1), []);
 
   useEffect(() => {
-    if (!projectId) {
+    if (!workspaceProjectId) {
       setState({ state: "unconfigured" });
       return;
     }
@@ -114,8 +117,9 @@ function useCrossSurfaceLinks(
     let active = true;
     setState({ state: "loading" });
     const input = {
-      projectId,
-      projectVersionId: null,
+      workspaceProjectId,
+      platformProjectId,
+      projectVersionId,
       sourceSlug,
     };
     void Promise.allSettled([
@@ -148,7 +152,14 @@ function useCrossSurfaceLinks(
     return () => {
       active = false;
     };
-  }, [projectId, revision, rpc, sourceSlug]);
+  }, [
+    platformProjectId,
+    projectVersionId,
+    revision,
+    rpc,
+    sourceSlug,
+    workspaceProjectId,
+  ]);
 
   return { state, retry };
 }
@@ -188,12 +199,18 @@ function useInspectorPortalTarget(): HTMLElement | null {
 
 interface ConfiguredLinksLayerProps {
   appRuntime: CanvasLinksAppRuntime;
-  projectId: string | null;
+  layoutProjectId: string | null;
+  workspaceProjectId: string | null;
+  platformProjectId: string | null;
+  projectVersionId: string | null;
 }
 
 function ConfiguredLinksLayer({
   appRuntime,
-  projectId,
+  layoutProjectId,
+  workspaceProjectId,
+  platformProjectId,
+  projectVersionId,
 }: ConfiguredLinksLayerProps): React.JSX.Element | null {
   const architecture = useOptionalArchitectureSelection();
   if (!architecture) return null;
@@ -201,7 +218,10 @@ function ConfiguredLinksLayer({
     <ArchitectureLinksLayer
       appRuntime={appRuntime}
       architecture={architecture}
-      projectId={projectId}
+      layoutProjectId={layoutProjectId}
+      workspaceProjectId={workspaceProjectId}
+      platformProjectId={platformProjectId}
+      projectVersionId={projectVersionId}
     />
   );
 }
@@ -209,7 +229,10 @@ function ConfiguredLinksLayer({
 function ArchitectureLinksLayer({
   appRuntime,
   architecture,
-  projectId,
+  layoutProjectId,
+  workspaceProjectId,
+  platformProjectId,
+  projectVersionId,
 }: ConfiguredLinksLayerProps & {
   architecture: ArchitectureSelectionContextValue;
 }): React.JSX.Element | null {
@@ -227,7 +250,13 @@ function ArchitectureLinksLayer({
     : undefined;
   const sourceSlug =
     selectedNode?.kind === "component" ? selectedNode.slug : null;
-  const links = useCrossSurfaceLinks(appRuntime, projectId, sourceSlug);
+  const links = useCrossSurfaceLinks(
+    appRuntime,
+    workspaceProjectId,
+    platformProjectId,
+    projectVersionId,
+    sourceSlug,
+  );
 
   const onNavigate = useCallback(
     (link: CrossSurfaceLink) => {
@@ -284,7 +313,7 @@ function ArchitectureLinksLayer({
     [navigate, sourceSlug],
   );
 
-  if (!portalTarget || !projectId) return null;
+  if (!portalTarget || !workspaceProjectId || !layoutProjectId) return null;
   return createPortal(
     <>
       {sourceSlug ? (
@@ -295,7 +324,10 @@ function ArchitectureLinksLayer({
           value={links.state}
         />
       ) : null}
-      <CanvasLayoutPersistence appRuntime={appRuntime} projectId={projectId} />
+      <CanvasLayoutPersistence
+        appRuntime={appRuntime}
+        projectId={layoutProjectId}
+      />
     </>,
     portalTarget,
   );
@@ -303,19 +335,30 @@ function ArchitectureLinksLayer({
 
 export interface ProductSecurityLinksLayerProps {
   appRuntime?: CanvasLinksAppRuntime;
+  scope?: ResolvedTaraScope;
   projectId?: string | null;
+  projectVersionId?: string | null;
 }
 
 export const productSecurityEdgeTypes: EdgeTypes = {};
 
 export function ProductSecurityLinksLayer({
   appRuntime: injectedRuntime,
+  scope,
   projectId: injectedProjectId,
+  projectVersionId: injectedProjectVersionId = null,
 }: ProductSecurityLinksLayerProps = {}): React.JSX.Element | null {
-  const projectId = useMemo(
-    () => injectedProjectId ?? readPersistedProjectId(),
-    [injectedProjectId],
+  const workspaceProjectId = useMemo(
+    () =>
+      scope?.workspaceProjectId ??
+      injectedProjectId ??
+      readPersistedProjectId(),
+    [injectedProjectId, scope?.workspaceProjectId],
   );
+  const platformProjectId =
+    scope?.mode === "version" ? scope.platformProjectId : null;
+  const projectVersionId = scope?.projectVersionId ?? injectedProjectVersionId;
+  const layoutProjectId = workspaceProjectId;
   const [loadedRuntime, setLoadedRuntime] =
     useState<CanvasLinksAppRuntime | null>(null);
   const [runtimeFailed, setRuntimeFailed] = useState(false);
@@ -336,5 +379,13 @@ export function ProductSecurityLinksLayer({
   }, [injectedRuntime]);
   const appRuntime = injectedRuntime ?? loadedRuntime;
   if ((!injectedRuntime && runtimeFailed) || !appRuntime) return null;
-  return <ConfiguredLinksLayer appRuntime={appRuntime} projectId={projectId} />;
+  return (
+    <ConfiguredLinksLayer
+      appRuntime={appRuntime}
+      layoutProjectId={layoutProjectId}
+      workspaceProjectId={workspaceProjectId}
+      platformProjectId={platformProjectId}
+      projectVersionId={projectVersionId}
+    />
+  );
 }

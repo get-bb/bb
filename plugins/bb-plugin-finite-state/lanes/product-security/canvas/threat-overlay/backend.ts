@@ -25,28 +25,59 @@ import {
   parseAttackPathSteps,
   parseExploitability,
 } from "./path.js";
+import { readCanvasWorkingOverlay } from "../editing/backend.js";
+import { architectureEntityPayload } from "../editing/schema.js";
+import { assertWorkspacePlatformProjectBinding } from "../scope/identity.js";
 
 const MAX_THREATS = 2_000;
 const MAX_TARGETS_PER_THREAT = 100;
 const MAX_AGGREGATES = 10_000;
 const MAX_PATH_PAGE_SIZE = 100;
 
+const projectScopeFields = {
+  projectId: z.string().trim().min(1).max(512),
+  projectVersionId: z.string().trim().min(1).max(512).nullable(),
+  workspaceProjectId: z
+    .string()
+    .trim()
+    .min(1)
+    .max(512)
+    .nullable()
+    .default(null),
+} as const;
+
+function hasVersionWorkspace(input: {
+  projectVersionId: string | null;
+  workspaceProjectId: string | null;
+}): boolean {
+  return input.projectVersionId === null || input.workspaceProjectId !== null;
+}
+
+const versionWorkspaceIssue = {
+  message: "Version-scoped TARA requires a workspace project identity.",
+  path: ["workspaceProjectId"],
+};
+
 const projectScopeSchema = z
+  .object(projectScopeFields)
+  .strict()
+  .refine(hasVersionWorkspace, versionWorkspaceIssue);
+const pathPageInputSchema = z
   .object({
-    projectId: z.string().trim().min(1).max(512),
-    projectVersionId: z.string().trim().min(1).max(512).nullable(),
-  })
-  .strict();
-const pathPageInputSchema = projectScopeSchema
-  .extend({
+    ...projectScopeFields,
     threatSlug: z.string().trim().min(1).max(512),
     pageSize: z.number().int().min(1).max(MAX_PATH_PAGE_SIZE).default(50),
     continuation: z.string().min(1).max(4096).nullable().default(null),
   })
-  .strict();
-const pathInputSchema = projectScopeSchema
-  .extend({ routeSignature: z.string().trim().min(1).max(2048) })
-  .strict();
+  .strict()
+  .refine(hasVersionWorkspace, versionWorkspaceIssue);
+const pathInputSchema = z
+  .object({
+    ...projectScopeFields,
+    routeSignature: z.string().trim().min(1).max(2048),
+  })
+  .strict()
+  .refine(hasVersionWorkspace, versionWorkspaceIssue);
 const strideCategorySchema = z.enum([
   "spoofing",
   "tampering",
@@ -168,7 +199,11 @@ export const threatOverlayRpcContract = defineRpcContract({
 type ThreatSnapshot = z.output<
   (typeof threatOverlayRpcContract)["threatOverlaySnapshot"]["output"]
 >;
-type ProjectScope = z.output<typeof projectScopeSchema>;
+type ProjectScope = {
+  projectId: string;
+  projectVersionId: string | null;
+  workspaceProjectId?: string | null;
+};
 type PathPageInput = z.output<typeof pathPageInputSchema>;
 type PathInput = z.output<typeof pathInputSchema>;
 
@@ -199,6 +234,7 @@ function resolvedThreatScope(
     )
     .get(scope.projectId, PROJECT_LEVEL_VERSION_ID);
   return {
+    workspaceProjectId: scope.workspaceProjectId,
     projectId: scope.projectId,
     projectVersionId: row
       ? fromStorageProjectVersionId(row.project_version_id)
@@ -599,6 +635,89 @@ export function readThreatSnapshot(
   return memoizeSnapshot(snapshotCache, revision, snapshot);
 }
 
+async function readMergedThreatSnapshot(
+  bb: BbPluginApi,
+  db: Database.Database,
+  scope: ProjectScope,
+  snapshotCache: Map<string, ThreatSnapshot>,
+): Promise<ThreatSnapshot> {
+  const localWorkingScope =
+    scope.workspaceProjectId !== null && scope.projectVersionId === null;
+  const localVocabulary = methodologyVocabulary(null);
+  const base = localWorkingScope
+    ? {
+        projectVersionId: null,
+        revision: `local:${scope.workspaceProjectId}`,
+        threats: [],
+        aggregates: [],
+        methodology: {
+          configured: false,
+          labels: labelsForOutput(localVocabulary),
+        },
+        total: 0,
+        truncated: false,
+        partialError: null,
+        cache: cacheState(undefined),
+      }
+    : readThreatSnapshot(db, scope, snapshotCache);
+  if (!scope.workspaceProjectId) return base;
+  const working = await readCanvasWorkingOverlay(bb, {
+    workspaceProjectId: scope.workspaceProjectId,
+    projectVersionId: scope.projectVersionId,
+    kind: "threat",
+  });
+  const methodology = localWorkingScope
+    ? { vocabulary: localVocabulary }
+    : readMethodology(db, scope);
+  const pathGeneration = localWorkingScope
+    ? null
+    : acceptedPathGeneration(db, scope).generationId;
+  const pathCounts = readPathCounts(db, scope, pathGeneration);
+  const threatsBySlug = new Map(
+    base.threats.map((threat) => [threat.slug, threat] as const),
+  );
+  for (const slug of working.excludedSlugs) threatsBySlug.delete(slug);
+  for (const stored of working.entities) {
+    const entity = stored.entity;
+    threatsBySlug.delete(entity.slug);
+    const payload = jsonValueSchema.parse(architectureEntityPayload(entity));
+    if (!isJsonRecord(payload) || !isOpenThreat(payload)) continue;
+    const rawCategory =
+      firstString(payload, "category", "stride", "threat_category") ??
+      "unknown";
+    threatsBySlug.set(entity.slug, {
+      slug: entity.slug,
+      title: firstString(payload, "title", "name", "label") ?? entity.slug,
+      rawCategory,
+      category: categoryFromVocabulary(rawCategory, methodology.vocabulary),
+      severity: firstString(payload, "severity", "risk", "priority"),
+      targetSlugs: stringValues(
+        payload,
+        "affected_components",
+        "affectedComponents",
+        "affected_assets",
+        "affectedAssets",
+        "dataflows",
+      ),
+      attackPathCount: pathCounts.get(entity.slug) ?? 0,
+    });
+  }
+  const threats = [...threatsBySlug.values()].sort((left, right) =>
+    left.slug.localeCompare(right.slug),
+  );
+  const aggregates = aggregateThreats(threats).slice(0, MAX_AGGREGATES);
+  return {
+    ...base,
+    revision: `sha256:${createHash("sha256")
+      .update(`${base.revision}\0${JSON.stringify(threats)}`)
+      .digest("hex")}`,
+    threats,
+    aggregates,
+    total: threats.length,
+    truncated: threats.length > MAX_THREATS,
+  };
+}
+
 function encodeContinuation(routeSignature: string): string {
   return Buffer.from(routeSignature, "utf8").toString("base64url");
 }
@@ -733,14 +852,35 @@ export function registerThreatOverlayBackend(
     "product-security:threat-overlay:snapshots",
     () => new Map<string, ThreatSnapshot>(),
   );
+  const assertVersionScope = (input: {
+    workspaceProjectId: string | null;
+    projectId: string;
+    projectVersionId: string | null;
+  }) => {
+    if (input.projectVersionId === null) return;
+    if (!input.workspaceProjectId) {
+      throw new Error(
+        "Version-scoped TARA requires a workspace project identity.",
+      );
+    }
+    assertWorkspacePlatformProjectBinding(
+      ctx.db(),
+      input.workspaceProjectId,
+      input.projectId,
+    );
+  };
   bb.rpc.register(threatOverlayRpcContract, {
     threatOverlaySnapshot(input) {
-      return readThreatSnapshot(ctx.db(), input, snapshotCache);
+      const db = ctx.db();
+      assertVersionScope(input);
+      return readMergedThreatSnapshot(bb, db, input, snapshotCache);
     },
     threatOverlayPaths(input) {
+      assertVersionScope(input);
       return readPathPage(ctx.db(), input);
     },
     threatOverlayPath(input) {
+      assertVersionScope(input);
       return readPath(ctx.db(), input);
     },
   });
