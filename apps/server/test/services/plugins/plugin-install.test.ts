@@ -222,6 +222,9 @@ describe("plugin install sources", () => {
       spec: "",
       specKind: "default",
     });
+    expect(() => parsePluginSource("npm:--registry@latest")).toThrow(
+      /invalid npm package name/,
+    );
   });
 
   it("treats bare non-URL strings and path: as local paths with no managed dir", () => {

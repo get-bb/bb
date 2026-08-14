@@ -4,7 +4,10 @@ import {
 } from "@bb/server-contract";
 import semver from "semver";
 import { z } from "zod";
-import { normalizePluginSubdirectory } from "../plugins/install-sources.js";
+import {
+  normalizePluginSubdirectory,
+  parsePluginSource,
+} from "../plugins/install-sources.js";
 
 /** Published contract, consumed by the registry repository's CI. */
 export const MARKETPLACE_SCHEMA_URL =
@@ -103,7 +106,26 @@ const npmSourceSchema = z
   .object({
     npm: z
       .object({
-        package: z.string().min(1),
+        package: z
+          .string()
+          .min(1)
+          .superRefine((value, ctx) => {
+            try {
+              const parsed = parsePluginSource(`npm:${value}`);
+              if (
+                parsed.kind !== "npm" ||
+                parsed.name !== value ||
+                parsed.spec.length !== 0
+              ) {
+                throw new Error("package name is ambiguous");
+              }
+            } catch (error) {
+              ctx.addIssue({
+                code: "custom",
+                message: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }),
         range: semverRange.optional(),
         /** An npm dist-tag such as `beta`; mutually exclusive with `range`. */
         tag: z
@@ -139,7 +161,24 @@ const gitSourceSchema = z
             }
           })
           .optional(),
-        ref: z.string().min(1),
+        ref: z
+          .string()
+          .min(1)
+          .superRefine((value, ctx) => {
+            try {
+              const parsed = parsePluginSource(
+                `git:https://marketplace.invalid/plugin.git@${value}`,
+              );
+              if (parsed.kind !== "git" || parsed.ref !== value) {
+                throw new Error("git ref is ambiguous");
+              }
+            } catch (error) {
+              ctx.addIssue({
+                code: "custom",
+                message: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }),
       })
       .strict(),
   })

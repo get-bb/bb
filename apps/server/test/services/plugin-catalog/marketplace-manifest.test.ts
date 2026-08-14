@@ -156,6 +156,18 @@ describe("marketplace manifest schema", () => {
   });
 
   describe("sources", () => {
+    it("rejects npm package names the install pipeline cannot parse", () => {
+      for (const packageName of ["../plugin", "name@version", "--registry"]) {
+        expect(() =>
+          parse([
+            entry({
+              source: { npm: { package: packageName, range: "^1.0.0" } },
+            }),
+          ]),
+        ).toThrow(/npm package|ambiguous/);
+      }
+    });
+
     it("rejects an npm entry that sets both range and tag", () => {
       expect(() =>
         parse([
@@ -187,6 +199,23 @@ describe("marketplace manifest schema", () => {
             }),
           ]),
         ).toThrow();
+      }
+    });
+
+    it("rejects git refs that change meaning in an install source", () => {
+      for (const ref of ["release@other", "-upload-pack", "release..next"]) {
+        expect(() =>
+          parse([
+            entry({
+              source: {
+                git: {
+                  url: "https://github.com/acme/plugins.git",
+                  ref,
+                },
+              },
+            }),
+          ]),
+        ).toThrow(/git ref/);
       }
     });
 

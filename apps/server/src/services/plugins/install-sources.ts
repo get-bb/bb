@@ -46,8 +46,7 @@ export type ParsedPluginSource =
 const COMMIT_SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
 export const DEFAULT_GIT_REF = "HEAD";
 // Loose npm package-name shape; enough to keep names safe as path segments.
-const NPM_NAME_PATTERN =
-  /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
+const NPM_NAME_PATTERN = /^(@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/;
 const BUILTIN_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
 export function isCommitSha(ref: string): boolean {
