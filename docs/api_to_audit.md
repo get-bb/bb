@@ -151,6 +151,45 @@ Each label is capped at 80 characters and rendered as a truncating segment.
    only for non-MCP native plugin tools. Confirm that distinction stays sound
    as provider adapters and dynamic-tool provenance evolve.
 
+## `bb.agents.experimental_registerProvider`
+
+**What it does.** Lets a plugin declare an agent provider (or a `"router"`
+picker entry) into the server's `ProviderRegistryService`. The declaration is
+validated at call time by the shared host policy
+(`validatePluginProviderDeclaration`); registrations stage during the factory
+and commit when the plugin load commits, are replaced wholesale on reload, and
+are removed by the returned disposer or on unload/disable. A registered
+provider is mapped onto the catalog shapes (`ProviderInfo` +
+`ProviderServerCapabilities`) and appears in the composed provider listing
+(`GET /system/providers` / execution options). The full declaration rides the
+registration record so fields without a registry consumer yet (`kind`,
+`bridge`, `supportsNativeSessionRewind`, `supportsManualCompaction`) are not
+dropped.
+
+**Audit before stabilizing.**
+
+1. **Policy consumers still read the core catalog — the stabilization
+   blocker.** Thread default policy, permission gates/ceiling, and reasoning
+   validation resolve provider capabilities from `@bb/agent-providers`
+   helpers, not from the registry, so a thread cannot yet be created on a
+   plugin-registered provider (only the listing is repointed). Repoint every
+   policy consumer to `ProviderRegistryService` before dropping the prefix.
+2. **Icon URL shape.** `logoUrl` is emitted as
+   `/api/v1/plugins/<pluginId>/assets/<icon.asset>`. Confirm the plugin asset
+   route actually serves arbitrary declared assets at that path (today it
+   serves app bundles and branding variants), and decide the cache policy,
+   before the URL shape freezes into clients.
+3. **Collision semantics.** Ids are first-come collision-rejected: a staged
+   collision fails the whole plugin load; a post-activation registration
+   throws to the plugin. Confirm first-wins (vs. deterministic priority) is
+   right across plugin load order, and that a plugin re-declaring its own id
+   on reload/settings change never races another plugin's claim.
+4. **`bridge.entry` is validated but not delivered.** The path is checked
+   against the manifest escape rules now, but nothing builds or ships the
+   bridge bundle to hosts until phase 5. Confirm the reference shape (single
+   entry name vs. per-platform bundles) survives the bridge delivery design
+   before stabilizing.
+
 ## `experimental_NewThreadComposer` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** The host-owned new-thread compose surface, the create-side

@@ -43,6 +43,7 @@ type GlobalSkillInstallDeps = Pick<
   | "lifecycleDedupers"
   | "logger"
   | "machineAuth"
+  | "providerRegistry"
   | "skillTreeRegistry"
   | "telemetry"
 >;

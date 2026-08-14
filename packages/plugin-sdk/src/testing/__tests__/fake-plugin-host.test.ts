@@ -927,3 +927,137 @@ describe("realtime and status", () => {
     ]);
   });
 });
+
+describe("agents.experimental_registerProvider", () => {
+  function agentDeclaration(
+    overrides: Record<string, unknown> = {},
+  ): Parameters<BbPluginApi["agents"]["experimental_registerProvider"]>[0] {
+    return {
+      id: "my-agent",
+      displayName: "My Agent",
+      icon: { asset: "icons/agent.svg" },
+      kind: "agent",
+      bridge: { entry: "dist/bridge.js" },
+      capabilities: {
+        supportsServiceTier: false,
+        supportsHostAiServices: false,
+        supportsNativeUserQuestion: true,
+        supportsNativeFork: true,
+        supportsNativeSessionRewind: false,
+        supportsManualCompaction: true,
+        permissionModes: ["accept-edits", "full"],
+        reasoningLevels: ["low", "medium", "high"],
+      },
+      composerActions: ["plan"],
+      ...overrides,
+    } as Parameters<
+      BbPluginApi["agents"]["experimental_registerProvider"]
+    >[0];
+  }
+
+  it("rejects malformed declarations with the shared host policy", () => {
+    const { bb } = createFakePluginHost();
+    const register = bb.agents.experimental_registerProvider;
+
+    expect(() => register(agentDeclaration({ id: "Bad_Id!" }))).toThrow(
+      /invalid provider id/,
+    );
+    expect(() => register(agentDeclaration({ id: "x" }))).toThrow(
+      /invalid provider id/,
+    );
+    expect(() => register(agentDeclaration({ displayName: "   " }))).toThrow(
+      /displayName must be 1-80 non-blank characters/,
+    );
+    // kind/bridge cross-rule, both directions.
+    expect(() => register(agentDeclaration({ bridge: undefined }))).toThrow(
+      /kind "agent" requires bridge/,
+    );
+    expect(() =>
+      register(agentDeclaration({ kind: "router" })),
+    ).toThrow(/kind "router" must not declare a bridge/);
+    expect(() =>
+      register(
+        agentDeclaration({
+          capabilities: {
+            ...agentDeclaration().capabilities,
+            permissionModes: [],
+          },
+        }),
+      ),
+    ).toThrow(/permissionModes must include at least one entry/);
+    expect(() =>
+      register(
+        agentDeclaration({
+          capabilities: {
+            ...agentDeclaration().capabilities,
+            reasoningLevels: ["low", "low"],
+          },
+        }),
+      ),
+    ).toThrow(/reasoningLevels entry "low" is duplicated/);
+    expect(() =>
+      register(agentDeclaration({ icon: { asset: "../outside.svg" } })),
+    ).toThrow(/icon.asset must not escape the plugin directory/);
+    expect(() =>
+      register(agentDeclaration({ icon: { asset: "/abs/icon.svg" } })),
+    ).toThrow(/icon.asset must be relative/);
+    expect(() =>
+      register(agentDeclaration({ bridge: { entry: "  " } })),
+    ).toThrow(/bridge.entry must be a non-blank relative path/);
+    expect(() =>
+      register(
+        agentDeclaration({ composerActions: ["plan", "plan"] }),
+      ),
+    ).toThrow(/composerActions entry "plan" is duplicated/);
+  });
+
+  it("round-trips a registration through the harness and dispose", () => {
+    const { bb, harness } = createFakePluginHost();
+    const handle = bb.agents.experimental_registerProvider(
+      agentDeclaration({ displayName: "  My Agent  " }),
+    );
+
+    expect(harness.registrations.providerRegistrations).toHaveLength(1);
+    const registered = harness.registrations.providerRegistrations[0]!;
+    // Normalized frozen copy: trimmed display name, contract fields only.
+    expect(registered.displayName).toBe("My Agent");
+    expect(registered.bridge).toEqual({ entry: "dist/bridge.js" });
+    expect(Object.isFrozen(registered)).toBe(true);
+    expect(Object.isFrozen(registered.capabilities)).toBe(true);
+
+    // Live ids are collision-rejected until disposed.
+    expect(() =>
+      bb.agents.experimental_registerProvider(agentDeclaration()),
+    ).toThrow(/already registered/);
+
+    handle.dispose();
+    handle.dispose(); // idempotent
+    expect(harness.registrations.providerRegistrations).toEqual([]);
+
+    // A disposed id can be re-registered (settings-driven re-declaration).
+    bb.agents.experimental_registerProvider(
+      agentDeclaration({ displayName: "Second Declaration" }),
+    );
+    expect(
+      harness.registrations.providerRegistrations.map(
+        (declaration) => declaration.displayName,
+      ),
+    ).toEqual(["Second Declaration"]);
+  });
+
+  it("accepts a bridgeless router and clears registrations on dispose", async () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.agents.experimental_registerProvider(
+      agentDeclaration({ id: "my-router", kind: "router", bridge: undefined }),
+    );
+    expect(
+      harness.registrations.providerRegistrations.map((entry) => entry.id),
+    ).toEqual(["my-router"]);
+
+    await harness.dispose();
+    expect(harness.registrations.providerRegistrations).toEqual([]);
+    expect(() =>
+      bb.agents.experimental_registerProvider(agentDeclaration()),
+    ).toThrow("used a stale API handle");
+  });
+});

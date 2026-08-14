@@ -9,6 +9,7 @@ import { initDb } from "../../src/db.js";
 import { createApp } from "../../src/server.js";
 import { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../src/services/machine-auth.js";
+import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
 import { SkillTreeRegistry } from "../../src/services/skills/injected-skills.js";
 import {
   createAppVersionService,
@@ -117,6 +118,7 @@ export async function createTestAppHarness(
   const hub = new NotificationHubImpl();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
+  const providerRegistry = createProviderRegistryService();
   const lifecycleDedupers = createLifecycleDedupers();
   const machineAuth = await createMachineAuthService({
     dataDir,
@@ -188,6 +190,7 @@ export async function createTestAppHarness(
     lifecycleDedupers,
     logger: testLogger,
     machineAuth: testMachineAuth,
+    providerRegistry,
     skillTreeRegistry,
     telemetry,
     terminalSessions,
@@ -209,6 +212,7 @@ export async function createTestAppHarness(
     logger: testLogger,
     machineAuth: testMachineAuth,
     pendingInteractions,
+    providerRegistry,
     skillTreeRegistry,
     telemetry,
     terminalSessions,

@@ -5,6 +5,12 @@ import type {
   PluginCliExecutionResult,
   PluginCliOutputLimitError,
   PluginMentionTrigger,
+  PluginProviderCapabilities,
+  PluginProviderComposerAction,
+  PluginProviderDeclaration,
+  PluginProviderKind,
+  PluginProviderPermissionMode,
+  PluginProviderReasoningLevel,
   PluginSettingDescriptor,
   PluginSettingDescriptors,
 } from "../backend-contract.js";
@@ -68,6 +74,10 @@ export const PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES = 128 * 1024;
 // Mention provider ids prefix wire item ids ("<providerId>:<itemId>"), so
 // ":" is excluded to keep the split unambiguous.
 export const MENTION_PROVIDER_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
+// Agent provider ids are stable public identifiers: thread rows persist them
+// and routes/pickers reference them. 2-64 chars, lowercase.
+export const PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,63}$/;
 
 // Settings keys become file names (secrets) and CLI arguments.
 export const SETTING_KEY_PATTERN = /^[a-zA-Z0-9_-]+$/;
@@ -240,6 +250,228 @@ export function normalizeMentionProviderTriggers(
     normalized.push(trigger);
   }
   return normalized;
+}
+
+export const PLUGIN_PROVIDER_DISPLAY_NAME_MAX_CHARS = 80;
+
+export const PLUGIN_PROVIDER_KIND_VALUES = [
+  "agent",
+  "router",
+] as const satisfies readonly PluginProviderKind[];
+
+export const PLUGIN_PROVIDER_PERMISSION_MODE_VALUES = [
+  "accept-edits",
+  "auto",
+  "full",
+] as const satisfies readonly PluginProviderPermissionMode[];
+
+export const PLUGIN_PROVIDER_REASONING_LEVEL_VALUES = [
+  "none",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "ultracode",
+  "max",
+  "ultra",
+] as const satisfies readonly PluginProviderReasoningLevel[];
+
+export const PLUGIN_PROVIDER_COMPOSER_ACTION_VALUES = [
+  "plan",
+  "goal",
+] as const satisfies readonly PluginProviderComposerAction[];
+
+/** Plugin-relative path rules shared by provider icon assets and bridge
+ * entries — the manifest entry-path escape rules, minus the rootDir resolve
+ * (the SDK has no rootDir): relative, no ".." segments, no backslashes. */
+function validateProviderRelativePath(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`provider ${label} must be a non-blank relative path`);
+  }
+  if (value.includes("\\")) {
+    throw new Error(
+      `provider ${label} must use "/" separators, got ${JSON.stringify(value)}`,
+    );
+  }
+  if (value.startsWith("/")) {
+    throw new Error(
+      `provider ${label} must be relative, got ${JSON.stringify(value)}`,
+    );
+  }
+  if (value.split("/").some((segment) => segment === "..")) {
+    throw new Error(
+      `provider ${label} must not escape the plugin directory, got ${JSON.stringify(value)}`,
+    );
+  }
+  return value;
+}
+
+function validateProviderLiteralArray<T extends string>(args: {
+  providerId: string;
+  field: string;
+  value: unknown;
+  allowed: readonly T[];
+  requireNonEmpty: boolean;
+}): readonly T[] {
+  const { providerId, field, value, allowed, requireNonEmpty } = args;
+  if (!Array.isArray(value)) {
+    throw new Error(`provider "${providerId}" ${field} must be an array`);
+  }
+  if (requireNonEmpty && value.length === 0) {
+    throw new Error(
+      `provider "${providerId}" ${field} must include at least one entry`,
+    );
+  }
+  const seen = new Set<T>();
+  const normalized: T[] = [];
+  for (const entry of value) {
+    if (
+      typeof entry !== "string" ||
+      !(allowed as readonly string[]).includes(entry)
+    ) {
+      throw new Error(
+        `provider "${providerId}" ${field} entry ${JSON.stringify(entry)} is invalid; use one of ${allowed.join(", ")}`,
+      );
+    }
+    const literal = entry as T;
+    if (seen.has(literal)) {
+      throw new Error(
+        `provider "${providerId}" ${field} entry ${JSON.stringify(entry)} is duplicated`,
+      );
+    }
+    seen.add(literal);
+    normalized.push(literal);
+  }
+  return Object.freeze(normalized);
+}
+
+/**
+ * Validate one `bb.agents.experimental_registerProvider` declaration. Plugin
+ * sources are untyped at runtime, so every field is checked; the production
+ * host and the fake host both call this, so they accept and reject provider
+ * declarations identically. Throws a descriptive error on the first problem;
+ * returns a normalized, deeply frozen copy carrying only contract fields.
+ */
+export function validatePluginProviderDeclaration(
+  declaration: PluginProviderDeclaration,
+): PluginProviderDeclaration {
+  if (typeof declaration !== "object" || declaration === null) {
+    throw new Error("provider declaration must be an object");
+  }
+  const id = declaration.id;
+  if (typeof id !== "string" || !PROVIDER_ID_PATTERN.test(id)) {
+    throw new Error(
+      `invalid provider id ${JSON.stringify(id)} — use 2-64 lowercase letters, digits, and "-", starting with a letter or digit`,
+    );
+  }
+  const displayName =
+    typeof declaration.displayName === "string"
+      ? declaration.displayName.trim()
+      : "";
+  if (
+    displayName.length === 0 ||
+    displayName.length > PLUGIN_PROVIDER_DISPLAY_NAME_MAX_CHARS
+  ) {
+    throw new Error(
+      `provider "${id}" displayName must be 1-${PLUGIN_PROVIDER_DISPLAY_NAME_MAX_CHARS} non-blank characters`,
+    );
+  }
+  const kind = declaration.kind;
+  if (
+    typeof kind !== "string" ||
+    !(PLUGIN_PROVIDER_KIND_VALUES as readonly string[]).includes(kind)
+  ) {
+    throw new Error(
+      `provider "${id}" kind must be one of ${PLUGIN_PROVIDER_KIND_VALUES.join(", ")}`,
+    );
+  }
+  let icon: { asset: string } | undefined;
+  if (declaration.icon !== undefined) {
+    if (typeof declaration.icon !== "object" || declaration.icon === null) {
+      throw new Error(`provider "${id}" icon must be { asset: string }`);
+    }
+    icon = Object.freeze({
+      asset: validateProviderRelativePath(
+        declaration.icon.asset,
+        `"${id}" icon.asset`,
+      ),
+    });
+  }
+  let bridge: { entry: string } | undefined;
+  if (kind === "agent") {
+    if (typeof declaration.bridge !== "object" || declaration.bridge === null) {
+      throw new Error(
+        `provider "${id}" kind "agent" requires bridge: { entry: string }`,
+      );
+    }
+    bridge = Object.freeze({
+      entry: validateProviderRelativePath(
+        declaration.bridge.entry,
+        `"${id}" bridge.entry`,
+      ),
+    });
+  } else if (declaration.bridge !== undefined) {
+    throw new Error(
+      `provider "${id}" kind "router" must not declare a bridge — routers never execute sessions themselves`,
+    );
+  }
+  const capabilities = declaration.capabilities;
+  if (typeof capabilities !== "object" || capabilities === null) {
+    throw new Error(`provider "${id}" capabilities must be an object`);
+  }
+  const booleanCapabilityFields = [
+    "supportsServiceTier",
+    "supportsHostAiServices",
+    "supportsNativeUserQuestion",
+    "supportsNativeFork",
+    "supportsNativeSessionRewind",
+    "supportsManualCompaction",
+  ] as const;
+  for (const field of booleanCapabilityFields) {
+    if (typeof capabilities[field] !== "boolean") {
+      throw new Error(
+        `provider "${id}" capabilities.${field} must be a boolean`,
+      );
+    }
+  }
+  const normalizedCapabilities: PluginProviderCapabilities = Object.freeze({
+    supportsServiceTier: capabilities.supportsServiceTier,
+    supportsHostAiServices: capabilities.supportsHostAiServices,
+    supportsNativeUserQuestion: capabilities.supportsNativeUserQuestion,
+    supportsNativeFork: capabilities.supportsNativeFork,
+    supportsNativeSessionRewind: capabilities.supportsNativeSessionRewind,
+    supportsManualCompaction: capabilities.supportsManualCompaction,
+    permissionModes: validateProviderLiteralArray({
+      providerId: id,
+      field: "capabilities.permissionModes",
+      value: capabilities.permissionModes,
+      allowed: PLUGIN_PROVIDER_PERMISSION_MODE_VALUES,
+      requireNonEmpty: true,
+    }),
+    reasoningLevels: validateProviderLiteralArray({
+      providerId: id,
+      field: "capabilities.reasoningLevels",
+      value: capabilities.reasoningLevels,
+      allowed: PLUGIN_PROVIDER_REASONING_LEVEL_VALUES,
+      requireNonEmpty: true,
+    }),
+  });
+  const composerActions = validateProviderLiteralArray({
+    providerId: id,
+    field: "composerActions",
+    value: declaration.composerActions,
+    allowed: PLUGIN_PROVIDER_COMPOSER_ACTION_VALUES,
+    requireNonEmpty: false,
+  });
+  return Object.freeze({
+    id,
+    displayName,
+    ...(icon === undefined ? {} : { icon }),
+    kind,
+    ...(bridge === undefined ? {} : { bridge }),
+    capabilities: normalizedCapabilities,
+    composerActions,
+  });
 }
 
 export function isStandardSchema(value: unknown): value is StandardSchemaV1 {

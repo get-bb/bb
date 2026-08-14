@@ -453,6 +453,125 @@ export interface PluginAgentConfiguration {
   instructions?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Agent provider declarations (plans/agent-provider-plugin-surface.md §3).
+// ---------------------------------------------------------------------------
+
+/**
+ * How a registered provider entry resolves at submit time.
+ *
+ * - `"agent"`: the provider executes threads itself through its plugin-built
+ *   bridge — the declaration MUST carry a
+ *   {@link PluginProviderDeclaration.bridge} reference.
+ * - `"router"`: a picker entry that never executes anything itself — its
+ *   selection resolves to another registered provider's (model, reasoning)
+ *   pair at submit time. The declaration MUST NOT carry `bridge`.
+ */
+export type PluginProviderKind = "agent" | "router";
+
+/**
+ * Permission modes a provider can run a session in — BB's own permission
+ * vocabulary, ordered least ("accept-edits") to most ("full") privileged.
+ */
+export type PluginProviderPermissionMode = "accept-edits" | "auto" | "full";
+
+/**
+ * Coarse reasoning-effort ladder entries, ordered lowest to highest. The
+ * declared ladder is a fallback only: precise per-model reasoning sets come
+ * from the provider's model list at runtime.
+ */
+export type PluginProviderReasoningLevel =
+  | "none"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "ultracode"
+  | "max"
+  | "ultra";
+
+/**
+ * Composer actions a provider supports, by name only. The skills
+ * slash-command typeahead is universal — BB injects skills into every
+ * provider — so it is implicit and never declared, and the composer owns the
+ * trigger syntax (`/plan `, `/goal `) rather than each declaration repeating
+ * it.
+ */
+export type PluginProviderComposerAction = "plan" | "goal";
+
+/**
+ * Pre-session capability facts about a provider. A capability earns a field
+ * here only when it passes BOTH tests: (1) a consumer outside the provider's
+ * own plugin needs the fact, and (2) the fact is needed before / without a
+ * live session (picker rendering, route gating, cross-plugin tool
+ * composition — including with the host offline). Every boolean is a
+ * provider-native fact — the provider implements the feature; the flag only
+ * tells external consumers it exists. Everything else is a handshake fact the
+ * bridge reports at `initialize`, where it cannot drift from behavior.
+ */
+export interface PluginProviderCapabilities {
+  /** The provider accepts a fast/priority service-tier choice — shows the
+   * service-tier toggle in the picker. */
+  supportsServiceTier: boolean;
+  /** The provider backs host-daemon-routed AI services (voice transcription
+   * and structured inference) — the server may route those requests through
+   * it. */
+  supportsHostAiServices: boolean;
+  /** The provider ships its own native ask-user-question tool — the
+   * ask-user-question plugin skips registering its duplicate. */
+  supportsNativeUserQuestion: boolean;
+  /** The provider can fork a session natively — gates the fork affordance in
+   * the UI. */
+  supportsNativeFork: boolean;
+  /** The provider can rewind a session to an earlier point — gates the
+   * edit-past-message affordance. */
+  supportsNativeSessionRewind: boolean;
+  /** The provider accepts an explicit context-compaction request — gates the
+   * compact affordance. */
+  supportsManualCompaction: boolean;
+  /** Permission modes the provider can actually run in. Non-empty, no
+   * duplicates. */
+  permissionModes: readonly PluginProviderPermissionMode[];
+  /** The provider's coarse fallback reasoning ladder (see
+   * {@link PluginProviderReasoningLevel}). Non-empty, no duplicates. */
+  reasoningLevels: readonly PluginProviderReasoningLevel[];
+}
+
+/**
+ * One provider this plugin contributes to BB's provider registry.
+ *
+ * Ids are stable public identifiers — thread rows and routes reference them —
+ * and are collision-rejected: a declaration whose id matches a core provider
+ * or another plugin's live registration is refused. Registrations are
+ * replaced wholesale on plugin reload, like every other plugin surface.
+ */
+export interface PluginProviderDeclaration {
+  /** Stable provider id: 2–64 characters of lowercase letters, digits, and
+   * "-", starting with a letter or digit. Existing ids must never change —
+   * threads persist them. */
+  id: string;
+  /** Picker display name: 1–80 characters, non-blank. */
+  displayName: string;
+  /** Optional picker icon served via the plugin's existing asset route.
+   * `asset` is a plugin-relative path — no leading "/", no ".." segments, no
+   * backslashes (the manifest entry-path escape rules). */
+  icon?: { asset: string };
+  /** See {@link PluginProviderKind}: `"agent"` REQUIRES `bridge`; `"router"`
+   * FORBIDS it. */
+  kind: PluginProviderKind;
+  /** The plugin-built bridge bundle that executes this provider's sessions.
+   * `entry` names the bundle as a non-blank plugin-relative path (same escape
+   * rules as `icon.asset`). Validated now; delivery to hosts ships in a later
+   * phase. */
+  bridge?: { entry: string };
+  /** Pre-session capability facts (see the declaration tests on
+   * {@link PluginProviderCapabilities}). */
+  capabilities: PluginProviderCapabilities;
+  /** Composer actions this provider supports. No duplicates; may be empty
+   * (the universal skills typeahead is implicit). */
+  composerActions: readonly PluginProviderComposerAction[];
+}
+
 export interface PluginAgents {
   /**
    * Select this plugin's statically registered tools and manifest skills for
@@ -522,6 +641,20 @@ export interface PluginAgents {
   contributeInstructions(
     provider: (ctx: { threadId: string; projectId: string }) => string | null,
   ): void;
+  /**
+   * Register an agent provider this plugin contributes (experimental — see
+   * docs/api_to_audit.md before relying on it). The declaration is validated
+   * at call time; the provider joins the server's provider registry when the
+   * plugin load commits and then appears in provider listings. Ids are stable
+   * and collision-rejected: an id already claimed by a core provider or
+   * another plugin fails this plugin's load. A plugin may register several
+   * providers and may re-register after `dispose()` (a settings-driven
+   * re-declaration); registrations are replaced wholesale on plugin reload,
+   * like every other surface. The disposer removes the registration.
+   */
+  experimental_registerProvider(declaration: PluginProviderDeclaration): {
+    dispose(): void;
+  };
 }
 
 // ---------------------------------------------------------------------------

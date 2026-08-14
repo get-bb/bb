@@ -28,6 +28,7 @@ import {
   RESERVED_BB_CLI_COMMANDS,
   RPC_METHOD_PATTERN,
   summarizeParseIssues,
+  validatePluginProviderDeclaration,
   validateSettingsUpdate,
   adoptHttpRouteResponse,
 } from "../internal/host-policy.js";
@@ -58,6 +59,7 @@ import type {
   PluginMentionItem,
   PluginMentionSearchContext,
   PluginMentionTrigger,
+  PluginProviderDeclaration,
   PluginRealtime,
   PluginRpc,
   PluginServerApi,
@@ -217,6 +219,9 @@ export interface FakePluginRegistrations {
     | null;
   threadEventHandlers: Record<PluginThreadEventName, number>;
   mentionProviders: FakeMentionProviderRecord[];
+  /** Live provider registrations from `experimental_registerProvider`
+   * (normalized declarations, registration order; dispose removes). */
+  providerRegistrations: PluginProviderDeclaration[];
 }
 
 /** Read-only state for assertions after a plugin registers or handles work. */
@@ -1179,6 +1184,7 @@ function createFakePluginHostInternal(
 
   // --- agents ---
   const agentTools: FakeAgentToolRecord[] = [];
+  const providerRegistrations: PluginProviderDeclaration[] = [];
   let agentConfigurationProvider:
     | ((context: PluginAgentConfigurationContext) => PluginAgentConfiguration)
     | null = null;
@@ -1209,6 +1215,31 @@ function createFakePluginHostInternal(
         );
       }
       instructionProvider = provider;
+    },
+    experimental_registerProvider(declaration) {
+      assertLive();
+      // The shared validator: the fake host must accept and reject provider
+      // declarations exactly like production.
+      const normalized = validatePluginProviderDeclaration(declaration);
+      if (
+        providerRegistrations.some(
+          (existing) => existing.id === normalized.id,
+        )
+      ) {
+        throw new Error(
+          `Provider "${normalized.id}" is already registered; a plugin cannot shadow an existing provider.`,
+        );
+      }
+      providerRegistrations.push(normalized);
+      let disposed = false;
+      const dispose = (): void => {
+        if (disposed) return;
+        disposed = true;
+        const index = providerRegistrations.indexOf(normalized);
+        if (index !== -1) providerRegistrations.splice(index, 1);
+      };
+      disposeHooks.push(dispose);
+      return { dispose };
     },
     registerTool(tool: {
       name: string;
@@ -1783,6 +1814,7 @@ function createFakePluginHostInternal(
         };
       },
       mentionProviders,
+      providerRegistrations,
     },
     get pendingInteractions() {
       return [...pendingInteractions].map(([id, pending]) => ({

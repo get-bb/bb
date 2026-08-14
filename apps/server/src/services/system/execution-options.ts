@@ -7,7 +7,6 @@ import type {
 } from "@bb/server-contract";
 import {
   buildAcpProviderInfo,
-  listBuiltInAgentProviderInfos,
   listClaudeCodeFallbackModels,
 } from "@bb/agent-providers";
 import {
@@ -102,12 +101,14 @@ function buildCustomAcpProviderInfo(agent: CustomAcpAgent): ProviderInfo {
 }
 
 function listConfiguredSystemProviderInfos(
-  customAcpAgents: CustomAcpAgent[],
+  deps: Pick<LoggedWorkSessionDeps, "config" | "providerRegistry">,
   installedKnownAcpAgents: readonly KnownAcpAgent[],
 ): ProviderInfo[] {
   const providers = [
-    ...listBuiltInAgentProviderInfos(),
-    ...customAcpAgents.map(buildCustomAcpProviderInfo),
+    // The registry is the single provider-metadata source: the core seed plus
+    // live plugin registrations (bb.agents.experimental_registerProvider).
+    ...deps.providerRegistry.list().map((entry) => entry.info),
+    ...deps.config.customAcpAgents.map(buildCustomAcpProviderInfo),
   ];
   const seenProviderIds = new Set(providers.map((provider) => provider.id));
   for (const agent of installedKnownAcpAgents) {
@@ -213,7 +214,7 @@ async function listSystemProviderInfosForHost(
   hostId: string,
 ): Promise<ProviderInfo[]> {
   return listConfiguredSystemProviderInfos(
-    deps.config.customAcpAgents,
+    deps,
     await listInstalledKnownAcpAgents(deps, hostId),
   );
 }
@@ -241,7 +242,7 @@ function resolveSystemProviderInfosPlan(
       hostId: null,
       hostLookupError: error,
       providersPromise: Promise.resolve(
-        listConfiguredSystemProviderInfos(deps.config.customAcpAgents, []),
+        listConfiguredSystemProviderInfos(deps, []),
       ),
     };
   }
@@ -287,7 +288,7 @@ export async function resolveSystemProviderModels(
   args: ResolveSystemProviderModelsArgs,
 ): Promise<ModelListResult> {
   const configuredProvider = listConfiguredSystemProviderInfos(
-    deps.config.customAcpAgents,
+    deps,
     [],
   ).find((provider) => provider.id === args.providerId);
   const knownAcpAgent = findKnownAcpAgentForProviderId(args.providerId);
@@ -403,7 +404,7 @@ export async function resolveSystemExecutionOptions(
   const { hostId, hostLookupError, providersPromise } =
     resolveSystemProviderInfosPlan(deps, query);
   const configuredRequestedProvider = query.providerId
-    ? listConfiguredSystemProviderInfos(deps.config.customAcpAgents, []).find(
+    ? listConfiguredSystemProviderInfos(deps, []).find(
         (provider) => provider.id === query.providerId,
       )
     : undefined;

@@ -23,6 +23,7 @@ import {
   type ProviderServerCapabilities,
 } from "@bb/agent-providers";
 import type { PermissionMode, ProviderInfo } from "@bb/domain";
+import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 
 export type ProviderRegistrationSource =
   | { kind: "core" }
@@ -32,6 +33,13 @@ export interface ProviderRegistration {
   info: ProviderInfo;
   serverCapabilities: ProviderServerCapabilities;
   source: ProviderRegistrationSource;
+  /**
+   * The plugin's full declaration — present only for plugin-sourced entries.
+   * Retained so declared facts without a registry consumer yet (`kind`,
+   * `bridge`, `supportsNativeSessionRewind`, `supportsManualCompaction`) are
+   * not dropped by the info/serverCapabilities mapping.
+   */
+  declaration?: PluginProviderDeclaration;
 }
 
 export interface ProviderRegistryService {
@@ -149,6 +157,9 @@ export function createProviderRegistryService(): ProviderRegistryService {
         info: registration.info,
         serverCapabilities: registration.serverCapabilities,
         source: { kind: "plugin", pluginId: registration.pluginId },
+        ...(registration.declaration === undefined
+          ? {}
+          : { declaration: registration.declaration }),
       };
       pluginRegistrations.set(providerId, entry);
       return {

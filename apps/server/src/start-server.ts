@@ -19,6 +19,7 @@ import {
   runPeriodicSweeps,
   runStartupRecoverySweep,
 } from "./services/system/periodic-sweeps.js";
+import { createProviderRegistryService } from "./services/providers/provider-registry.js";
 import { createTelemetryService } from "./services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
 import { resolveThreadStorageRootPath } from "./services/threads/thread-storage.js";
@@ -54,6 +55,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const hub = new NotificationHub();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
+  const providerRegistry = createProviderRegistryService();
   const lifecycleDedupers = createLifecycleDedupers();
   const appUrl = toOptionalString(serverConfig.BB_APP_URL);
   const threadStorageRootPath = resolveThreadStorageRootPath({
@@ -131,6 +133,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     lifecycleDedupers,
     logger,
     machineAuth,
+    providerRegistry,
     skillTreeRegistry,
     telemetry,
     terminalSessions,
@@ -158,6 +161,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       logger,
       machineAuth,
       pendingInteractions,
+      providerRegistry,
       skillTreeRegistry,
       telemetry,
       terminalSessions,
@@ -176,6 +180,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     logger,
     machineAuth,
     pendingInteractions,
+    providerRegistry,
     skillTreeRegistry,
     pluginSchedules: pluginService,
     pluginService,

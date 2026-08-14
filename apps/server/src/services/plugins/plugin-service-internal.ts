@@ -18,6 +18,7 @@ import type {
   PluginMentionTrigger,
 } from "./plugin-api.js";
 import type { HostSharedPortCoordinator } from "../../ws/host-shared-ports.js";
+import type { ProviderRegistryService } from "../providers/provider-registry.js";
 export type {
   PluginApplyUpdateResult,
   PluginHandlerStats,
@@ -86,6 +87,9 @@ export interface PluginServiceDeps {
   ensureSharedPortTunnel?: (
     hostId: string,
   ) => Promise<HostDaemonConnectTunnelIdentity>;
+  /** Omitted only by isolated plugin tests that exercise no provider surface;
+   * `bb.agents.experimental_registerProvider` throws without it. */
+  providerRegistry?: ProviderRegistryService;
   /** Thread DTO assembly for lifecycle events + plugin-signal broadcast +
    * the `plugins-changed` system broadcast on lifecycle completion. */
   hub: Pick<
