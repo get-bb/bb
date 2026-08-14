@@ -17,6 +17,7 @@ import {
 import {
   CanvasEntityValidationError,
   RetiredComponentTypeValidationAdvisory,
+  UnsupportedComponentTypeValidationAdvisory,
   validateArchitecturePayload,
   validateEntityReferences,
 } from "./validators.js";
@@ -44,14 +45,31 @@ export class RetiredComponentTypeReadAdvisory extends Error {
 }
 
 export interface CanvasFileDiagnostic {
+  code:
+    | "UNSUPPORTED_COMPONENT_TYPE"
+    | "RETIRED_COMPONENT_TYPE"
+    | "INVALID_AUTHORED_YAML";
   file: string;
   slug: string;
+  value: string | null;
   message: string;
 }
 
 export interface CanvasFileListing {
   entities: StoredCanvasEntity[];
   diagnostics: CanvasFileDiagnostic[];
+}
+
+function canvasFileDiagnosticCode(
+  error: unknown,
+): CanvasFileDiagnostic["code"] {
+  if (error instanceof UnsupportedComponentTypeValidationAdvisory) {
+    return "UNSUPPORTED_COMPONENT_TYPE";
+  }
+  if (error instanceof RetiredComponentTypeReadAdvisory) {
+    return "RETIRED_COMPONENT_TYPE";
+  }
+  return "INVALID_AUTHORED_YAML";
 }
 
 export type CanvasWriteOutcome =
@@ -509,8 +527,15 @@ export function createSdkCanvasFileStore(
           return {
             entity: null,
             diagnostic: {
+              code: canvasFileDiagnosticCode(error),
               file,
               slug: name,
+              value:
+                error instanceof UnsupportedComponentTypeValidationAdvisory
+                  ? error.value
+                  : error instanceof RetiredComponentTypeReadAdvisory
+                    ? error.entity.component_type
+                    : null,
               message:
                 error instanceof Error && error.message.length > 0
                   ? error.message

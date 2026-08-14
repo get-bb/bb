@@ -105,12 +105,14 @@ export function CanvasUnconfiguredState(): React.JSX.Element {
 interface CanvasCacheBannerProps {
   stale: boolean;
   error: string | null;
+  message: string | null;
   pulledAt: string | null;
 }
 
 export function CanvasCacheBanner({
   stale,
   error,
+  message,
   pulledAt,
 }: CanvasCacheBannerProps): React.JSX.Element | null {
   if (!stale && !error) return null;
@@ -121,7 +123,8 @@ export function CanvasCacheBanner({
     >
       {error
         ? "Refresh failed. The accepted warm-cache canvas remains available."
-        : "This canvas is stale and remains readable from the accepted local cache."}
+        : (message ??
+          "This canvas is stale and remains readable from the accepted local cache.")}
       {pulledAt ? ` Last accepted pull: ${pulledAt}.` : ""}
     </div>
   );

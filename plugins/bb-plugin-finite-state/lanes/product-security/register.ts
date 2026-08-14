@@ -1,7 +1,12 @@
+import { basename } from "node:path";
 import type { BbPluginApi } from "@bb/plugin-sdk";
 import type Database from "better-sqlite3";
 import type { JsonValue } from "../../shared/contract.js";
-import { jsonValueSchema, rpcContract } from "../../shared/contract.js";
+import {
+  cacheStateSchema,
+  jsonValueSchema,
+  rpcContract,
+} from "../../shared/contract.js";
 import type { PluginContext } from "../../lib/context.js";
 import { toStorageProjectVersionId } from "../../lib/store/index.js";
 import { registerCanvasEditingBackend } from "./canvas/editing/backend.js";
@@ -9,12 +14,11 @@ import { registerCanvasLinksBackend } from "./canvas/links/backend.js";
 import { registerCanvasNodesBackend } from "./canvas/nodes/backend.js";
 import { registerThreatOverlayBackend } from "./canvas/threat-overlay/backend.js";
 import type { CanvasTaraKind } from "./canvas/foundation/types.js";
-import {
-  architectureEntityPayload,
-} from "./canvas/editing/schema.js";
+import { architectureEntityPayload } from "./canvas/editing/schema.js";
 import {
   canvasDeletedMarkerPrefix,
   createSdkCanvasFileStore,
+  type CanvasFileDiagnostic,
   type CanvasProjectSource,
   type StoredCanvasEntity,
 } from "./canvas/editing/writer.js";
@@ -148,16 +152,171 @@ function compareTaraSlug(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
+const CACHE_MESSAGE_MAX_LENGTH = 500;
+const CACHE_MESSAGE_BASE_MAX_LENGTH = 100;
+const DIAGNOSTIC_ENTRY_MAX_LENGTH = 110;
+const UNSAFE_CACHE_DETAIL_PATTERN =
+  /(?:authorization|bearer\s|api[_-]?key|token=|https?:\/\/[^\s]*[?@])/giu;
+
+function sanitizeCacheDetail(value: string): string {
+  return value
+    .replace(UNSAFE_CACHE_DETAIL_PATTERN, "[redacted]")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+function compactDetail(value: string, maxLength: number): string {
+  const safe = sanitizeCacheDetail(value);
+  if (safe.length <= maxLength) return safe;
+  if (maxLength <= 1) return safe.slice(0, maxLength);
+  const suffixLength = Math.min(12, Math.floor((maxLength - 1) / 2));
+  const prefixLength = maxLength - suffixLength - 1;
+  return sanitizeCacheDetail(
+    `${safe.slice(0, prefixLength)}…${safe.slice(-suffixLength)}`,
+  );
+}
+
+function diagnosticFileLabel(file: string, maxLength: number): string {
+  const normalized = file.replaceAll("\\", "/");
+  const name = basename(normalized) || "unknown.yaml";
+  return compactDetail(name, maxLength);
+}
+
+function diagnosticEntry(
+  diagnostic: CanvasFileDiagnostic,
+  maxLength: number,
+): string {
+  if (diagnostic.code === "UNSUPPORTED_COMPONENT_TYPE") {
+    const prefix = "Unsupported component type in authored file ";
+    const file = diagnosticFileLabel(
+      diagnostic.file,
+      Math.max(12, Math.min(56, maxLength - prefix.length - 1)),
+    );
+    const withoutValue = `${prefix}${file}.`;
+    const value = compactDetail(diagnostic.value ?? "unknown", 24);
+    const withValue = `Unsupported component type “${value}” in authored file ${file}.`;
+    return withValue.length <= maxLength ? withValue : withoutValue;
+  }
+  if (diagnostic.code === "RETIRED_COMPONENT_TYPE") {
+    const prefix =
+      "Retired component type requires migration in authored file ";
+    const file = diagnosticFileLabel(
+      diagnostic.file,
+      Math.max(12, Math.min(56, maxLength - prefix.length - 1)),
+    );
+    const withoutValue = `${prefix}${file}.`;
+    const value = compactDetail(diagnostic.value ?? "unknown", 24);
+    const withValue = `Retired component type “${value}” requires migration in authored file ${file}.`;
+    return withValue.length <= maxLength ? withValue : withoutValue;
+  }
+  const prefix = "Invalid working YAML quarantined at ";
+  const file = diagnosticFileLabel(
+    diagnostic.file,
+    Math.max(12, Math.min(56, maxLength - prefix.length - 1)),
+  );
+  const required = `Invalid working YAML quarantined at ${file}.`;
+  const reasonBudget = maxLength - required.length - " Reason: ".length;
+  if (reasonBudget < 16) return required;
+  const reason = compactDetail(diagnostic.message, reasonBudget);
+  return `${required} Reason: ${reason}`;
+}
+
+function moreDiagnosticsTail(count: number): string {
+  return count > 0
+    ? ` +${count} more diagnostic${count === 1 ? "" : "s"}.`
+    : "";
+}
+
+function diagnosticGroupMessage(
+  diagnostics: readonly CanvasFileDiagnostic[],
+  maxLength: number,
+): string {
+  const first = diagnostics[0];
+  if (!first) return "";
+  let shown = 1;
+  let tail = moreDiagnosticsTail(diagnostics.length - shown);
+  const entries = [diagnosticEntry(first, maxLength - tail.length)];
+  while (shown < diagnostics.length) {
+    const candidate = diagnosticEntry(
+      diagnostics[shown]!,
+      DIAGNOSTIC_ENTRY_MAX_LENGTH,
+    );
+    const candidateTail = moreDiagnosticsTail(diagnostics.length - shown - 1);
+    const candidateLength =
+      entries.join(" ").length + 1 + candidate.length + candidateTail.length;
+    if (candidateLength > maxLength) break;
+    entries.push(candidate);
+    shown += 1;
+    tail = candidateTail;
+  }
+  return `${entries.join(" ")}${tail}`;
+}
+
 function workingDiagnosticMessage(
   baseMessage: string | null,
-  diagnostics: readonly { file: string; message: string }[],
+  diagnostics: readonly CanvasFileDiagnostic[],
 ): string | null {
-  const first = diagnostics[0];
-  const invalid = first
-    ? `Invalid working YAML quarantined at ${first.file}: ${first.message}${diagnostics.length > 1 ? ` And ${diagnostics.length - 1} more invalid file${diagnostics.length === 2 ? "" : "s"}.` : ""}`
+  const diagnosticCodes: readonly CanvasFileDiagnostic["code"][] = [
+    "UNSUPPORTED_COMPONENT_TYPE",
+    "RETIRED_COMPONENT_TYPE",
+    "INVALID_AUTHORED_YAML",
+  ];
+  const diagnosticGroups = diagnosticCodes.flatMap((code) => {
+    const matching = diagnostics.filter(
+      (diagnostic) => diagnostic.code === code,
+    );
+    return matching.length > 0 ? [matching] : [];
+  });
+  const safeBase = baseMessage
+    ? compactDetail(baseMessage, CACHE_MESSAGE_BASE_MAX_LENGTH)
     : null;
-  const combined = [baseMessage, invalid].filter(Boolean).join(" ");
-  return combined.length > 0 ? combined.slice(0, 4_000) : null;
+  const segmentCount = diagnosticGroups.length + (safeBase ? 1 : 0);
+  if (segmentCount === 0) return null;
+  const separatorsLength = segmentCount - 1;
+  const groupsBudget =
+    CACHE_MESSAGE_MAX_LENGTH - (safeBase?.length ?? 0) - separatorsLength;
+  const baseGroupBudget =
+    diagnosticGroups.length > 0
+      ? Math.floor(groupsBudget / diagnosticGroups.length)
+      : 0;
+  let remainingBudget = groupsBudget;
+  const groups = diagnosticGroups.map((group, index) => {
+    const remainingGroups = diagnosticGroups.length - index;
+    const budget =
+      index === diagnosticGroups.length - 1
+        ? remainingBudget
+        : Math.max(
+            baseGroupBudget,
+            Math.floor(remainingBudget / remainingGroups),
+          );
+    remainingBudget -= budget;
+    return diagnosticGroupMessage(group, budget);
+  });
+  const message = [safeBase, ...groups].filter(Boolean).join(" ");
+  const validated = cacheStateSchema.shape.message.safeParse(message);
+  if (validated.success) return validated.data;
+
+  const counts = diagnosticCodes.flatMap((code) => {
+    const count = diagnostics.filter(
+      (diagnostic) => diagnostic.code === code,
+    ).length;
+    if (count === 0) return [];
+    if (code === "UNSUPPORTED_COMPONENT_TYPE") {
+      return [`Unsupported component types: ${count}.`];
+    }
+    if (code === "RETIRED_COMPONENT_TYPE") {
+      return [`Retired component types requiring migration: ${count}.`];
+    }
+    return [`Invalid working YAML files quarantined: ${count}.`];
+  });
+  const fallback = [
+    ...(baseMessage
+      ? ["Product-security refresh failed; showing accepted cache."]
+      : []),
+    ...counts,
+  ].join(" ");
+  const validatedFallback = cacheStateSchema.shape.message.safeParse(fallback);
+  return validatedFallback.success ? validatedFallback.data : null;
 }
 
 export async function listTara(
@@ -186,7 +345,7 @@ export async function listTara(
   const pageSize = input.pageSize ?? 50;
   const afterKey = decodeContinuation(input.continuation ?? null);
   let working: StoredCanvasEntity[] = [];
-  let diagnostics: { file: string; slug: string; message: string }[] = [];
+  let diagnostics: CanvasFileDiagnostic[] = [];
   let source: CanvasProjectSource | null = null;
   try {
     source = await projectSource(bb, input.projectId);
@@ -270,11 +429,8 @@ export async function listTara(
         )
     : [];
   const acceptedTotal = sync?.accepted_generation_id
-    ? db
-        .prepare<
-          [string, string, string, string, string],
-          TaraTotalRow
-        >(
+    ? (db
+        .prepare<[string, string, string, string, string], TaraTotalRow>(
           `SELECT COUNT(*) AS total
              FROM (
                SELECT COALESCE(
@@ -296,7 +452,7 @@ export async function listTara(
           kind,
           sync.accepted_generation_id,
           excludedJson,
-        )?.total ?? 0
+        )?.total ?? 0)
     : 0;
   const mergedRows: Array<[string, Record<string, JsonValue>]> = [];
   for (const row of rows) {

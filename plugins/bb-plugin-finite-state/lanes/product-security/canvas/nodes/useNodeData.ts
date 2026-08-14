@@ -264,6 +264,7 @@ export function createRpcArchitectureDataSource(
       const nodes = new Map<string, ArchitectureNodeData>();
       const dataflows = new Map<string, ArchitectureEdgeData>();
       const revisions: string[] = [];
+      const cacheMessages = new Set<string>();
       let pulledAt: string | null = null;
       let stale = false;
       for (let kindIndex = 0; kindIndex < pageGroups.length; kindIndex += 1) {
@@ -271,6 +272,9 @@ export function createRpcArchitectureDataSource(
         const pages = pageGroups[kindIndex] ?? [];
         for (const page of pages) {
           stale ||= page.cache.state === "stale";
+          if (page.cache.state === "stale" && page.cache.message) {
+            cacheMessages.add(page.cache.message);
+          }
           if (page.cache.asOf && (!pulledAt || page.cache.asOf > pulledAt)) {
             pulledAt = page.cache.asOf;
           }
@@ -289,7 +293,14 @@ export function createRpcArchitectureDataSource(
         revision: `${projectId}:${revisions.join("|")}`,
         nodes: [...nodes.values()],
         dataflows: [...dataflows.values()],
-        cache: { pulledAt, stale },
+        cache: {
+          pulledAt,
+          stale,
+          message:
+            cacheMessages.size > 0
+              ? [...cacheMessages].join(" ").slice(0, 4_000)
+              : null,
+        },
       };
     },
   };

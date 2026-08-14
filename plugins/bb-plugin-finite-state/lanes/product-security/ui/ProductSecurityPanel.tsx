@@ -215,6 +215,7 @@ function TaraPanel({
     <div className="flex h-full min-h-0 flex-col">
       <CanvasCacheBanner
         error={data.error}
+        message={model.cache.message}
         pulledAt={model.cache.pulledAt}
         stale={model.cache.stale}
       />
@@ -286,11 +287,12 @@ export function ProductSecurityPanel({
   const VerificationMatrix = features.VerificationMatrix;
   const VerificationRunDetailLayer = features.VerificationRunDetailLayer;
   const verificationTier = route.detail[1];
-  const isVerificationRunDetail = route.detail.length === 2
-    && Boolean(route.detail[0])
-    && verificationTier !== undefined
-    && verificationTier !== "hardware"
-    && isVerificationTier(verificationTier);
+  const isVerificationRunDetail =
+    route.detail.length === 2 &&
+    Boolean(route.detail[0]) &&
+    verificationTier !== undefined &&
+    verificationTier !== "hardware" &&
+    isVerificationTier(verificationTier);
   return (
     <section
       aria-label="Product Security"
@@ -369,9 +371,14 @@ export function ProductSecurityPanel({
           </>
         ) : null}
         {route.tab === "verifications" && projectId ? (
-          isVerificationRunDetail
-            ? <VerificationRunDetailLayer detail={route.detail} projectId={projectId} />
-            : <VerificationMatrix projectId={projectId} />
+          isVerificationRunDetail ? (
+            <VerificationRunDetailLayer
+              detail={route.detail}
+              projectId={projectId}
+            />
+          ) : (
+            <VerificationMatrix projectId={projectId} />
+          )
         ) : null}
         {route.tab !== "tara" && !projectId ? (
           <CanvasUnconfiguredState />

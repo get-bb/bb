@@ -89,7 +89,7 @@ function CulledCoordinatorViewport({
 function architectureFixture(): ArchitectureModel {
   return {
     revision: "project-1:generation-wp32:32",
-    cache: { pulledAt: cache.asOf, stale: false },
+    cache: { pulledAt: cache.asOf, stale: false, message: null },
     nodes: [
       {
         slug: "zone-clinical",
@@ -447,7 +447,7 @@ describe("WP-32 inspector and project scope", () => {
   it("keeps coordination mounted when the former first node is not rendered", async () => {
     const model: ArchitectureModel = {
       revision: "project-1:culled-coordinator",
-      cache: { pulledAt: cache.asOf, stale: false },
+      cache: { pulledAt: cache.asOf, stale: false, message: null },
       nodes: [
         {
           slug: "zone-clinical",

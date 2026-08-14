@@ -11,9 +11,11 @@ import { planItemId } from "../../../sync/plan/order.js";
 import type { PlanItem, ValidationError } from "../../../sync/plan/index.js";
 import {
   CANVAS_ENTITY_KINDS,
+  componentTypeSchema,
   entityReferences,
   parseArchitectureEntity,
   retiredAuthoredComponentEntitySchema,
+  retiredAuthoredComponentTypeSchema,
   strideCategorySchema,
   type ArchitectureYamlEntity,
   type CanvasEntityKind,
@@ -84,6 +86,17 @@ export class RetiredComponentTypeValidationAdvisory extends CanvasEntityValidati
   }
 }
 
+export class UnsupportedComponentTypeValidationAdvisory extends CanvasEntityValidationError {
+  constructor(readonly value: string) {
+    super(
+      "UNSUPPORTED_COMPONENT_TYPE",
+      `component_type “${value}” is not recognized by the current or retired canvas vocabulary. Choose one of: ${componentTypeSchema.options.join(", ")}.`,
+      "component_type",
+    );
+    this.name = "UnsupportedComponentTypeValidationAdvisory";
+  }
+}
+
 function inspectAuthoredValue(value: unknown, path: string): void {
   if (typeof value === "string" && UUID.test(value)) {
     throw new CanvasEntityValidationError(
@@ -118,12 +131,20 @@ export function validateArchitecturePayload(
 ): ArchitectureYamlEntity {
   inspectAuthoredValue(payload, "");
   if (kind === "component") {
+    const componentType = payload["component_type"];
     const retired = retiredAuthoredComponentEntitySchema.safeParse({
       kind,
       ...payload,
     });
     if (retired.success) {
       throw new RetiredComponentTypeValidationAdvisory(retired.data);
+    }
+    if (
+      typeof componentType === "string" &&
+      !retiredAuthoredComponentTypeSchema.safeParse(componentType).success &&
+      !componentTypeSchema.safeParse(componentType).success
+    ) {
+      throw new UnsupportedComponentTypeValidationAdvisory(componentType);
     }
   }
   if (

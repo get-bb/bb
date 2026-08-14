@@ -49,7 +49,7 @@ export interface ArchitectureModel {
   revision: string;
   nodes: ArchitectureNodeData[];
   dataflows: ArchitectureEdgeData[];
-  cache: { pulledAt: string | null; stale: boolean };
+  cache: { pulledAt: string | null; stale: boolean; message: string | null };
 }
 
 export interface UnresolvedRef {
@@ -258,7 +258,11 @@ export function toCanvasGraph(
 export function fromCanvasGraph(
   revision: string,
   graph: Pick<CanvasArchitectureGraph, "nodes" | "edges">,
-  cache: ArchitectureModel["cache"] = { pulledAt: null, stale: false },
+  cache: ArchitectureModel["cache"] = {
+    pulledAt: null,
+    stale: false,
+    message: null,
+  },
 ): ArchitectureModel {
   return {
     revision,
