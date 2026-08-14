@@ -31,6 +31,10 @@ import {
 // imported inside buildPluginApp — importing this loads nothing heavy.
 import { buildPluginApp, createPluginDevLoop } from "@bb/plugin-build";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
+import {
+  marketplacePublisherLabels,
+  pluginPublisherLabel,
+} from "../plugin-catalog/marketplace-publishers.js";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
 import {
   ROOT_PLUGIN_SOURCE_SELECTION,
@@ -1248,6 +1252,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   function list(): PluginListEntry[] {
     const scheduleRows = listPluginSchedules(deps.db);
+    const publisherLabels = marketplacePublisherLabels(deps.db);
     return listInstalledPlugins(deps.db)
       .sort((a, b) => a.id.localeCompare(b.id))
       .map((row) => {
@@ -1272,6 +1277,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           ...(row.catalogMarketplaceName === null
             ? {}
             : { catalogMarketplaceName: row.catalogMarketplaceName }),
+          publisherLabel: pluginPublisherLabel({
+            provenance: row.provenance,
+            catalogMarketplaceName: row.catalogMarketplaceName,
+            labels: publisherLabels,
+          }),
           isOrphanedBuiltin:
             row.sourceKind === "builtin" &&
             !bundledPlugins.some(

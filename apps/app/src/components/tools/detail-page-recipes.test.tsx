@@ -85,6 +85,7 @@ const PLUGIN: PluginListItem = {
   provenance: "catalog",
   isOrphanedBuiltin: false,
   catalogEntryId: "github",
+  publisherLabel: "BB Community",
   sourceDisplay: "BB Official · GitHub",
   updateState: EMPTY_PLUGIN_UPDATE_STATE,
 };

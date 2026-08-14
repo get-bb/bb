@@ -50,6 +50,7 @@ import {
   type MarketplaceFetch,
 } from "./marketplace-http.js";
 import {
+  BUILTIN_PUBLISHER_LABEL,
   entryIconName,
   entrySourceDisplay,
   OFFICIAL_MARKETPLACE_NAME,
@@ -375,6 +376,9 @@ export function createPluginCatalogService(deps: {
       // with the official marketplace rather than inventing a fourth origin.
       marketplace: OFFICIAL_MARKETPLACE_NAME,
       marketplaceDisplayName: BUNDLED_OFFICIAL_MARKETPLACE.displayName,
+      // Grouped with the official marketplace, but published by the build:
+      // the badge says so even though the section heading does not.
+      publisherLabel: BUILTIN_PUBLISHER_LABEL,
       official: true,
       // Bundled plugins are BB's own; attribute them like the seed entries.
       author: { name: "BB Team", url: "https://getbb.app" },
@@ -430,6 +434,7 @@ export function createPluginCatalogService(deps: {
       source: entrySourceDisplay(entry),
       marketplace: row.name,
       marketplaceDisplayName: catalog.displayName,
+      publisherLabel: catalog.displayName,
       official,
       author: entryAuthor(entry),
       installed:

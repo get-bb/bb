@@ -13,8 +13,8 @@ import { OFFICIAL_MARKETPLACE_NAME } from "./marketplace-manifest.js";
 export const BUNDLED_OFFICIAL_MARKETPLACE: MarketplaceManifest = {
   schemaVersion: 1,
   name: OFFICIAL_MARKETPLACE_NAME,
-  displayName: "BB Official",
-  description: "Plugins built and reviewed by the BB team.",
+  displayName: "BB Community",
+  description: "Plugins published to the BB registry and reviewed by the BB team.",
   plugins: [
     {
       id: "thread-hover-cards",

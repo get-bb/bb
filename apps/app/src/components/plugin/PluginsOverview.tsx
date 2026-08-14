@@ -23,41 +23,18 @@ import {
 } from "@/components/plugin/management/AddPluginDialog";
 import { BrowsePluginsTab } from "@/components/plugin/management/BrowsePluginsTab";
 import { InstalledPluginsTab } from "@/components/plugin/management/InstalledPluginsTab";
-import { isOfficialProvenance } from "@/components/plugin/plugin-provenance";
-import { PLUGINS_INSTALLED_DESCRIPTION } from "@/components/plugin/plugins-collection-copy";
 import {
-  usePluginList,
-  type PluginProvenance,
-} from "@/hooks/queries/plugin-settings-queries";
+  pluginPublisherFilterId,
+  pluginPublisherFilterOptions,
+} from "@/components/plugin/plugin-provenance";
+import { PLUGINS_INSTALLED_DESCRIPTION } from "@/components/plugin/plugins-collection-copy";
+import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import {
   getPluginDetailRoutePath,
   getRootComposeRoutePath,
 } from "@/lib/route-paths";
 
 type PluginsCollectionMode = "installed" | "browse";
-
-/** Where an installed plugin came from, as the collection filter presents it. */
-type PluginTypeFilter = "bb-official" | "user";
-
-const PLUGIN_TYPE_FILTERS: readonly PluginTypeFilter[] = [
-  "bb-official",
-  "user",
-];
-
-const PLUGIN_TYPE_FILTER_OPTIONS = PLUGIN_TYPE_FILTERS.map((type) => ({
-  id: type,
-  label: type === "bb-official" ? "BB Official" : "User",
-}));
-
-function pluginTypeFilterId(provenance: PluginProvenance): PluginTypeFilter {
-  return isOfficialProvenance(provenance) ? "bb-official" : "user";
-}
-
-// Membership, not repeated literals: a new entry in PLUGIN_TYPE_FILTERS is
-// selectable the moment it renders instead of being silently dropped here.
-function isPluginTypeFilter(value: string): value is PluginTypeFilter {
-  return PLUGIN_TYPE_FILTERS.some((filter) => filter === value);
-}
 
 function modeFromSearchParams(value: string | null): PluginsCollectionMode {
   if (value === "installed") return value;
@@ -86,14 +63,27 @@ export function PluginsOverview() {
     "asc" | "desc"
   >("asc");
   // Empty means unfiltered: the menu has no explicit "All" row.
-  const [typeFilters, setTypeFilters] = useState<PluginTypeFilter[]>([]);
+  const [typeFilters, setTypeFilters] = useState<string[]>([]);
+  // Facets follow the installed plugins, so adding a marketplace adds its
+  // facet. Uninstalling the last plugin of one removes its facet too, and the
+  // selection is intersected with what is on offer rather than kept: a
+  // vanished facet would otherwise filter the list to nothing with no row left
+  // in the menu to switch it back off.
+  const typeFilterOptions = useMemo(
+    () => pluginPublisherFilterOptions(plugins),
+    [plugins],
+  );
+  const activeTypeFilters = useMemo(() => {
+    const offered = new Set(typeFilterOptions.map((option) => option.id));
+    return typeFilters.filter((value) => offered.has(value));
+  }, [typeFilterOptions, typeFilters]);
   const normalizedInstalledQuery = installedQuery.trim().toLowerCase();
   // One projection identity resets both the accumulated rows and their
   // viewport measurement when search, filters, or sorting changes.
   const installedResetKey = [
     normalizedInstalledQuery,
     installedSortDirection,
-    [...typeFilters].sort().join(","),
+    [...activeTypeFilters].sort().join(","),
   ].join("\u0000");
   const installedPageSize = useResourceViewportPageSize(installedViewport, {
     resetKey: installedResetKey,
@@ -108,8 +98,8 @@ export function PluginsOverview() {
       plugins
         .filter((plugin) => {
           if (
-            typeFilters.length > 0 &&
-            !typeFilters.includes(pluginTypeFilterId(plugin.provenance))
+            activeTypeFilters.length > 0 &&
+            !activeTypeFilters.includes(pluginPublisherFilterId(plugin))
           ) {
             return false;
           }
@@ -129,11 +119,14 @@ export function PluginsOverview() {
           const enabledResult = Number(!left.enabled) - Number(!right.enabled);
           if (enabledResult !== 0) return enabledResult;
           if (left.enabled) {
-            const leftOfficial = isOfficialProvenance(left.provenance);
-            const rightOfficial = isOfficialProvenance(right.provenance);
-            const provenanceResult =
-              Number(!leftOfficial) - Number(!rightOfficial);
-            if (provenanceResult !== 0) return provenanceResult;
+            // Published plugins first, then the user's own; publishers
+            // themselves stay in one alphabetical run so the sort direction
+            // still controls the whole list.
+            const leftPublisher = left.publisherLabel;
+            const rightPublisher = right.publisherLabel;
+            const publisherResult =
+              Number(leftPublisher === null) - Number(rightPublisher === null);
+            if (publisherResult !== 0) return publisherResult;
           }
           const result = (left.name ?? left.id).localeCompare(
             right.name ?? right.id,
@@ -143,7 +136,12 @@ export function PluginsOverview() {
           }
           return left.id.localeCompare(right.id);
         }),
-    [installedSortDirection, normalizedInstalledQuery, plugins, typeFilters],
+    [
+      activeTypeFilters,
+      installedSortDirection,
+      normalizedInstalledQuery,
+      plugins,
+    ],
   );
   // Pages load as the sentinel scrolls into view; the page machinery stays
   // (viewport-fit chunk size, projection reset keys) but rows accumulate.
@@ -211,11 +209,9 @@ export function PluginsOverview() {
                   label="Type"
                   icon="SlidersHorizontal"
                   compact
-                  selectedValues={typeFilters}
-                  options={PLUGIN_TYPE_FILTER_OPTIONS}
-                  onChange={(values) =>
-                    setTypeFilters(values.filter(isPluginTypeFilter))
-                  }
+                  selectedValues={activeTypeFilters}
+                  options={typeFilterOptions}
+                  onChange={setTypeFilters}
                 />
                 <ResourceSortMenu
                   value="alpha"
@@ -248,7 +244,7 @@ export function PluginsOverview() {
               message={
                 normalizedInstalledQuery === ""
                   ? "No plugins match these filters."
-                  : typeFilters.length > 0
+                  : activeTypeFilters.length > 0
                     ? `No plugins match "${installedQuery}" with these filters.`
                     : `No plugins match "${installedQuery}"`
               }

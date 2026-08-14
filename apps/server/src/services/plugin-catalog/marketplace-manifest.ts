@@ -23,6 +23,13 @@ const MARKETPLACE_SCHEMA_URL =
 export const OFFICIAL_MARKETPLACE_NAME = OFFICIAL_PLUGIN_MARKETPLACE_NAME;
 
 /**
+ * Publisher shown for plugins that ship inside the app. They come from the
+ * build, not from a marketplace refresh, so they keep their own label even
+ * though the store groups them under the official marketplace.
+ */
+export const BUILTIN_PUBLISHER_LABEL = "BB Official";
+
+/**
  * Entries one manifest may list. The 1 MiB document limit alone still allows
  * thousands of entries, and each entry costs an icon request and an icon row.
  */

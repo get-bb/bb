@@ -58,16 +58,14 @@ import {
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useClipboardCopy } from "@/lib/clipboard";
 
-function pluginSourceLabel(plugin: PluginListItem): string | null {
-  // Only plugins that ship inside the app wear the pill. A catalog install
-  // can come from any marketplace, and the list DTO does not say which, so
-  // claiming BB Official for all of them would be a wrong trust signal.
-  return plugin.provenance === "builtin" ? "BB Official" : null;
-}
-
-/** Passive provenance shown beside an installed plugin's name. */
+/**
+ * Passive publisher shown beside an installed plugin's name: `BB Official` for
+ * a plugin bundled with the app, the listing marketplace's display name for a
+ * catalog install. A plugin the user added from a source wears no pill —
+ * naming a publisher there would be a trust signal bb cannot back.
+ */
 export function PluginProvenancePill({ plugin }: { plugin: PluginListItem }) {
-  const label = pluginSourceLabel(plugin);
+  const label = plugin.publisherLabel;
   return label === null ? null : <ProvenancePill label={label} />;
 }
 
@@ -112,7 +110,7 @@ function PluginPath({ path }: { path: string }) {
 }
 
 /**
- * Read-only detail for an uninstalled BB Official catalog entry.
+ * Read-only detail for an uninstalled catalog entry.
  *
  * The catalog exposes identity, category, description, and compatibility. It
  * cannot enumerate runtime capabilities until the plugin is installed and
@@ -130,7 +128,7 @@ export function CatalogPluginDetail({
       maxWidthClassName="max-w-5xl"
       leading={<CatalogEntryIcon entry={entry} className="size-full" />}
       title={entry.displayName}
-      titleMeta={<ProvenancePill label={entry.marketplaceDisplayName} />}
+      titleMeta={<ProvenancePill label={entry.publisherLabel} />}
       metadata={
         <>
           <span>{entry.category}</span>

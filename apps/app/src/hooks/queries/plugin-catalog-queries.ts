@@ -237,6 +237,8 @@ export interface PluginCatalogSearchEntry {
   source: string;
   marketplace: string;
   marketplaceDisplayName: string;
+  /** Publisher badge: the marketplace's name, or `BB Official` when bundled. */
+  publisherLabel: string;
   official: boolean;
   author: PluginCatalogAuthor | null;
   installed: boolean;
@@ -258,6 +260,7 @@ function toPluginCatalogSearchEntry(
     source: data.source,
     marketplace: data.marketplace,
     marketplaceDisplayName: data.marketplaceDisplayName,
+    publisherLabel: data.publisherLabel,
     official: data.official,
     author: data.author,
     installed: data.installed,

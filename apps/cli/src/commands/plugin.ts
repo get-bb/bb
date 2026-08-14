@@ -774,7 +774,7 @@ function installPlanSummary(plan: PluginCatalogInstallPlan): string {
     return `Installing ${plan.displayName}, bundled with BB (${plan.source})`;
   }
   if (plan.official) {
-    return `Installing ${plan.displayName} from the BB Official marketplace, reviewed by BB (${plan.source})`;
+    return `Installing ${plan.displayName} from the ${plan.marketplaceDisplayName} marketplace, reviewed by BB (${plan.source})`;
   }
   const author =
     plan.author.url === null
@@ -897,7 +897,7 @@ export function registerPluginCommands(
   plugin
     .command("search <query>")
     .description(
-      "Search every plugin the store lists: the plugins bundled with the app, the BB Official marketplace catalog BB reviews, and any third-party marketplace added on this host. The Marketplace column names the source; only bb-official is reviewed by BB",
+      "Search every plugin the store lists: the plugins bundled with the app, the reserved bb-official marketplace catalog BB reviews, and any third-party marketplace added on this host. The Marketplace column names the source; only bb-official is reviewed by BB",
     )
     .option("--json", "Output JSON")
     .action(

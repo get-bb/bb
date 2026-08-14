@@ -56,6 +56,7 @@ const GITHUB_PLUGIN = {
   provenance: "catalog" as const,
   isOrphanedBuiltin: false,
   catalogEntryId: "github",
+  publisherLabel: "BB Community",
   sourceDisplay: "BB Official · GitHub",
   updateState: EMPTY_PLUGIN_UPDATE_STATE,
 } satisfies PluginListItem;
@@ -71,6 +72,7 @@ const GITHUB_CATALOG_ENTRY = {
   category: "Developer tools",
   source: "builtin:github",
   marketplaceDisplayName: "BB Official",
+  publisherLabel: "BB Official",
   official: true,
   author: null,
   installed: false,
@@ -193,6 +195,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       source: "npm:@example/github@^1.0.0",
       provenance: "direct",
       catalogEntryId: null,
+      publisherLabel: null,
     };
     const { container, rerender } = render(
       <PluginProvenancePill plugin={directPlugin} />,
@@ -289,6 +292,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       source: "npm:@example/github@^1.0.0",
       provenance: "direct",
       catalogEntryId: null,
+      publisherLabel: null,
       updateState: {
         ...EMPTY_PLUGIN_UPDATE_STATE,
         availableVersion: "1.5.0",
@@ -364,6 +368,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       source: "npm:@example/github@^1.0.0",
       provenance: "direct",
       catalogEntryId: null,
+      publisherLabel: null,
     };
     const { queryClient, wrapper: QueryClientWrapper } =
       createQueryClientTestHarness();
@@ -430,6 +435,7 @@ describe("PluginDetail official catalog lifecycle", () => {
                 source: "npm:@example/github@^1.0.0",
                 provenance: "direct",
                 catalogEntryId: null,
+                publisherLabel: null,
                 updateState,
               }}
               pending={false}
@@ -477,6 +483,7 @@ describe("PluginDetail official catalog lifecycle", () => {
               source: "path:/plugins/omega",
               provenance: "direct",
               catalogEntryId: null,
+              publisherLabel: null,
             }}
             pending={false}
             openSourceDisabled
@@ -505,6 +512,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       source: "builtin:automations",
       provenance: "builtin" as const,
       catalogEntryId: null,
+      publisherLabel: "BB Official",
     };
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
@@ -595,6 +603,7 @@ describe("PluginDetail banner precedence", () => {
     source: "npm:@example/github@^1.0.0",
     provenance: "direct",
     catalogEntryId: null,
+    publisherLabel: null,
   };
   const collision: PluginListItem = {
     ...managedPlugin,
@@ -742,6 +751,7 @@ describe("PluginDetail runtime health", () => {
       source: "builtin:github",
       provenance: "builtin" as const,
       catalogEntryId: null,
+      publisherLabel: "BB Official",
       status,
       statusDetail: "The runtime reported a problem.",
       ...overrides,
@@ -1000,6 +1010,7 @@ describe("PluginDetail capability inventory", () => {
       source: "path:/plugins/capability-demo",
       provenance: "direct" as const,
       catalogEntryId: null,
+      publisherLabel: null,
       sourceDisplay: "Local path",
       hasSettings: true,
       cliCommand: {

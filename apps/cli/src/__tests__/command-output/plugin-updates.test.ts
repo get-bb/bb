@@ -18,6 +18,7 @@ const pluginList = (id: string, source: string) => ({
       rootDir: `/plugins/${id}`,
       version: "1.0.0",
       provenance: "direct",
+      publisherLabel: null,
       isOrphanedBuiltin: false,
       sourceDisplay: `npm · ${id} · tracks compatible`,
       updateState: {},

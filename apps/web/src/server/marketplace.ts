@@ -1,5 +1,5 @@
 /**
- * BB Official plugin marketplace, served from R2.
+ * The reserved bb-official plugin marketplace, served from R2.
  *
  * The registry repository (get-bb/marketplace) builds `marketplace.json` and
  * its icons and uploads them to the `bb-marketplace` bucket; this route reads

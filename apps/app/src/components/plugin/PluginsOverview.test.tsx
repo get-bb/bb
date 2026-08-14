@@ -97,6 +97,7 @@ const AUTOMATIONS_PLUGIN = {
   logoDarkUrl: null,
   hasSettings: false,
   provenance: "builtin",
+  publisherLabel: "BB Official",
   isOrphanedBuiltin: false,
   sourceDisplay: "builtin · automations",
   updateState: {},
@@ -120,6 +121,7 @@ const GITHUB_CATALOG_ENTRY = {
   source: "github-release:ymichael/bb/bb-plugin-github-{version}.tgz@^0.1.0",
   marketplace: "bb-official",
   marketplaceDisplayName: "BB Official",
+  publisherLabel: "BB Official",
   official: true,
   author: null,
   installed: false,
@@ -198,6 +200,7 @@ function installFetch(plugins: readonly unknown[] = [AUTOMATIONS_PLUGIN]) {
             description: GITHUB_CATALOG_ENTRY.description,
             icon: GITHUB_CATALOG_ENTRY.icon,
             provenance: "catalog",
+            publisherLabel: "BB Community",
             catalogEntryId: GITHUB_CATALOG_ENTRY.entryId,
             sourceDisplay: "BB Official · GitHub",
           },
@@ -322,6 +325,7 @@ describe("PluginsOverview", () => {
         description: DOCS_CATALOG_ENTRY.description,
         icon: DOCS_CATALOG_ENTRY.icon,
         provenance: "catalog",
+        publisherLabel: "BB Community",
         catalogEntryId: "docs",
       },
     ]);
@@ -623,7 +627,7 @@ describe("PluginsOverview", () => {
     }
   });
 
-  it("sorts enabled plugins before inactive plugins and BB Official first within enabled", async () => {
+  it("sorts enabled plugins before inactive plugins and published plugins first within enabled", async () => {
     installFetch([
       {
         ...AUTOMATIONS_PLUGIN,
@@ -632,6 +636,7 @@ describe("PluginsOverview", () => {
         enabled: false,
         status: "disabled",
         provenance: "catalog",
+        publisherLabel: "BB Community",
         catalogEntryId: "inactive-official",
       },
       {
@@ -639,6 +644,7 @@ describe("PluginsOverview", () => {
         id: "enabled-local-alpha",
         name: "Enabled Local",
         provenance: "direct",
+        publisherLabel: null,
       },
       {
         ...AUTOMATIONS_PLUGIN,
@@ -657,6 +663,7 @@ describe("PluginsOverview", () => {
         enabled: false,
         status: "disabled",
         provenance: "direct",
+        publisherLabel: null,
       },
     ]);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
@@ -679,8 +686,11 @@ describe("PluginsOverview", () => {
       "plugin-row-inactive-local",
       "plugin-row-inactive-official",
     ]);
+    // Publisher, not one shared "official" badge: the two bundled plugins say
+    // BB Official and the catalog install names the marketplace it came from.
     const officialPills = screen.getAllByText("BB Official");
-    expect(officialPills).toHaveLength(3);
+    expect(officialPills).toHaveLength(2);
+    expect(screen.getAllByText("BB Community")).toHaveLength(1);
     expect(officialPills[0]?.parentElement?.className).toContain("rounded-md");
     expect(officialPills[0]?.parentElement?.className).toContain(
       "bg-surface-recessed/45",
@@ -732,7 +742,7 @@ describe("PluginsOverview", () => {
     ]);
   });
 
-  it("filters installed plugins by type, treating builtin and catalog as BB Official", async () => {
+  it("gives each publisher its own Type facet, separate from User", async () => {
     installFetch([
       { ...AUTOMATIONS_PLUGIN, id: "builtin-one", name: "Builtin One" },
       {
@@ -740,6 +750,7 @@ describe("PluginsOverview", () => {
         id: "catalog-one",
         name: "Catalog One",
         provenance: "catalog",
+        publisherLabel: "BB Community",
         catalogEntryId: "catalog-one",
       },
       {
@@ -747,6 +758,7 @@ describe("PluginsOverview", () => {
         id: "direct-one",
         name: "Direct One",
         provenance: "direct",
+        publisherLabel: null,
       },
     ]);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
@@ -777,8 +789,17 @@ describe("PluginsOverview", () => {
     // There is no explicit "All" row: an empty selection means all types.
     expect(screen.queryByRole("menuitemcheckbox", { name: "All" })).toBeNull();
 
+    // Facets follow the installed plugins, so the marketplace appears on its
+    // own rather than being folded into BB Official.
     fireEvent.click(
       screen.getByRole("menuitemcheckbox", { name: "BB Official" }),
+    );
+    await waitFor(() => {
+      expect(rowIds()).toEqual(["plugin-row-builtin-one"]);
+    });
+
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "BB Community" }),
     );
     await waitFor(() => {
       expect(rowIds()).toEqual([
@@ -790,6 +811,9 @@ describe("PluginsOverview", () => {
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "User" }));
     fireEvent.click(
       screen.getByRole("menuitemcheckbox", { name: "BB Official" }),
+    );
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "BB Community" }),
     );
     await waitFor(() => {
       expect(rowIds()).toEqual(["plugin-row-direct-one"]);
@@ -803,6 +827,60 @@ describe("PluginsOverview", () => {
         "plugin-row-catalog-one",
         "plugin-row-direct-one",
       ]);
+    });
+    expect(screen.queryByText("No plugins match these filters.")).toBeNull();
+  });
+
+  it("drops a Type selection whose facet no longer has any plugin", async () => {
+    installFetch([
+      { ...AUTOMATIONS_PLUGIN, id: "builtin-one", name: "Builtin One" },
+      {
+        ...AUTOMATIONS_PLUGIN,
+        id: "acme-one",
+        name: "Acme One",
+        provenance: "catalog",
+        publisherLabel: "Acme Plugins",
+        catalogEntryId: "acme-one",
+      },
+    ]);
+    const { wrapper: QueryClientWrapper, queryClient } =
+      createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/extensions/plugins?view=installed"]}>
+        <QueryClientWrapper>
+          <PluginsOverview />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("Acme One");
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Type" }));
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Acme Plugins" }),
+    );
+    await waitFor(() => {
+      expect(
+        [...document.querySelectorAll('[data-testid^="plugin-row-"]')].map(
+          (row) => row.getAttribute("data-testid"),
+        ),
+      ).toEqual(["plugin-row-acme-one"]);
+    });
+
+    // Uninstalling the last Acme plugin removes its facet. The selection has to
+    // go with it, or the list stays empty with no menu row left to clear.
+    installFetch([
+      { ...AUTOMATIONS_PLUGIN, id: "builtin-one", name: "Builtin One" },
+    ]);
+    await act(async () => {
+      await queryClient.invalidateQueries();
+    });
+
+    await waitFor(() => {
+      expect(
+        [...document.querySelectorAll('[data-testid^="plugin-row-"]')].map(
+          (row) => row.getAttribute("data-testid"),
+        ),
+      ).toEqual(["plugin-row-builtin-one"]);
     });
     expect(screen.queryByText("No plugins match these filters.")).toBeNull();
   });
@@ -824,6 +902,7 @@ describe("PluginsOverview", () => {
         enabled: false,
         status: "disabled",
         provenance: "catalog",
+        publisherLabel: "BB Community",
         catalogEntryId: "inactive-catalog",
       },
       {
@@ -833,6 +912,7 @@ describe("PluginsOverview", () => {
         enabled: false,
         status: "disabled",
         provenance: "direct",
+        publisherLabel: null,
       },
     ]);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
@@ -860,7 +940,7 @@ describe("PluginsOverview", () => {
     expect(screen.getByText("Inactive Local Plugin")).toBeTruthy();
   });
 
-  it("consolidates built-in and catalog plugins under BB Official", async () => {
+  it("badges a built-in plugin BB Official and a catalog install by its marketplace", async () => {
     installFetch([
       AUTOMATIONS_PLUGIN,
       {
@@ -869,6 +949,7 @@ describe("PluginsOverview", () => {
         name: "GitHub",
         source: GITHUB_CATALOG_ENTRY.source,
         provenance: "catalog",
+        publisherLabel: "BB Community",
         catalogEntryId: GITHUB_CATALOG_ENTRY.entryId,
         sourceDisplay: "BB Official · GitHub",
       },
@@ -885,9 +966,12 @@ describe("PluginsOverview", () => {
     );
 
     const official = await screen.findAllByText("BB Official");
-    expect(official).toHaveLength(2);
+    expect(official).toHaveLength(1);
+    const community = screen.getAllByText("BB Community");
+    expect(community).toHaveLength(1);
+    // One badge treatment for both: only the publisher name differs.
     expect(official[0]?.parentElement?.className).toBe(
-      official[1]?.parentElement?.className,
+      community[0]?.parentElement?.className,
     );
   });
 });

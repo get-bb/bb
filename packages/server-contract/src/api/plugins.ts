@@ -188,6 +188,12 @@ export const installedPluginSchema = z.object({
   catalogEntryId: z.string().optional(),
   /** Marketplace that listed the entry; present only on catalog installs. */
   catalogMarketplaceName: z.string().optional(),
+  /**
+   * Publisher badge: `BB Official` for a bundled plugin, the listing
+   * marketplace's display name for a catalog install, and null for a plugin
+   * the user added from a source, which has no publisher bb can vouch for.
+   */
+  publisherLabel: z.string().nullable(),
   sourceDisplay: z.string(),
   updateState: pluginUpdateStateSchema,
   enabled: z.boolean(),
@@ -407,6 +413,13 @@ export const pluginCatalogSearchResultSchema = z.object({
   /** Marketplace that lists the entry; plugins bundled with the app use `bb-official`. */
   marketplace: z.string(),
   marketplaceDisplayName: z.string(),
+  /**
+   * Publisher badge for the entry: the listing marketplace's display name, or
+   * `BB Official` for plugins bundled with the app. It is separate from
+   * `marketplaceDisplayName` because bundled plugins are grouped under the
+   * official marketplace but are not published through it.
+   */
+  publisherLabel: z.string(),
   /** Whether the listing marketplace is the reserved `bb-official` one. */
   official: z.boolean(),
   /** Null for plugins bundled with the app, which list no separate author. */
