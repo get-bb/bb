@@ -74,6 +74,9 @@ export const PLUGIN_CONTRIBUTIONS_QUERY_KEY = "plugin-contributions";
 export const PLUGIN_SDK_SETTINGS_QUERY_KEY = "plugin-settings";
 export const PLUGIN_SOURCE_QUERY_KEY = "plugin-source";
 export const PLUGIN_CATALOG_SEARCH_QUERY_KEY = "plugin-catalog-search";
+export const PLUGIN_CATALOG_INSTALL_PLAN_QUERY_KEY =
+  "plugin-catalog-install-plan";
+export const PLUGIN_MARKETPLACES_QUERY_KEY = "plugin-marketplaces";
 export interface ThreadListQueryFilters {
   projectId?: string;
   hasParent?: ThreadListFilters["hasParent"];
@@ -1205,4 +1208,19 @@ export function pluginCatalogSearchQueryKey(query: string) {
 
 export function allPluginCatalogSearchQueryKeyPrefix() {
   return [PLUGIN_CATALOG_SEARCH_QUERY_KEY] as const;
+}
+
+export function pluginCatalogInstallPlanQueryKey(args: {
+  entryId: string;
+  marketplace?: string;
+}) {
+  return [
+    PLUGIN_CATALOG_INSTALL_PLAN_QUERY_KEY,
+    args.marketplace ?? "",
+    args.entryId,
+  ] as const;
+}
+
+export function pluginMarketplacesQueryKey() {
+  return [PLUGIN_MARKETPLACES_QUERY_KEY] as const;
 }

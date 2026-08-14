@@ -13,7 +13,12 @@ import type {
 import { useQuery, type QueryKey } from "@tanstack/react-query";
 import { createPluginsClient } from "./plugin-client";
 import { toEpochMs } from "./plugin-settings-queries";
-import { pluginCatalogSearchQueryKey, pluginSourceQueryKey } from "./query-keys";
+import {
+  pluginCatalogInstallPlanQueryKey,
+  pluginCatalogSearchQueryKey,
+  pluginMarketplacesQueryKey,
+  pluginSourceQueryKey,
+} from "./query-keys";
 
 type FetchLike = typeof fetch;
 
@@ -99,13 +104,6 @@ export async function fetchCatalogInstallPlan(
   return createPluginsClient(fetchImpl).catalog.installPlan(args);
 }
 
-export function pluginCatalogInstallPlanQueryKey(args: {
-  entryId: string;
-  marketplace?: string;
-}): QueryKey {
-  return ["plugin-catalog-install-plan", args.marketplace ?? "", args.entryId];
-}
-
 /**
  * Resolve an install before the user confirms it. Third-party entries pay a
  * network round trip for the resolved tag and commit, so this never runs until
@@ -156,10 +154,6 @@ export async function refreshPluginMarketplaces(
   return createPluginsClient(fetchImpl).marketplaces.refresh(
     name === undefined ? {} : { name },
   );
-}
-
-export function pluginMarketplacesQueryKey(): QueryKey {
-  return ["plugin-marketplaces"];
 }
 
 export function usePluginMarketplaces(options: { enabled: boolean }) {

@@ -152,6 +152,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "allPluginCatalogSearchQueryKeyPrefix",
     "allPluginListQueryKeyPrefix",
     "pluginListQueryKey",
+    "pluginMarketplacesQueryKey",
     "pluginSettingsViewQueryKey",
   ],
   "hooks/cache-owners/realtime-cache-registry.ts": [
