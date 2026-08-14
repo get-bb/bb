@@ -1286,7 +1286,7 @@ export function createAcpProviderAdapter(
   function buildSessionParams(
     command: Extract<
       AdapterCommand,
-      { type: "thread/start" | "thread/resume" }
+      { type: "thread/start" | "thread/resume" | "thread/fork" }
     >,
   ): Record<string, unknown> {
     const instructions = buildAcpSessionInstructions(command.options);
@@ -1434,6 +1434,20 @@ export function createAcpProviderAdapter(
               params: {
                 ...buildSessionParams(command),
                 providerThreadId: command.providerThreadId,
+              },
+            };
+          }
+          case "thread/fork": {
+            finishOpenProviderTurn({
+              registry: turnState,
+              threadId: command.threadId,
+            });
+            return {
+              kind: "request",
+              method: "thread/fork",
+              params: {
+                ...buildSessionParams(command),
+                sourceProviderThreadId: command.sourceProviderThreadId,
               },
             };
           }

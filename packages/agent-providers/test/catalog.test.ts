@@ -8,6 +8,7 @@ import {
   isAcpAgentProviderId,
   isAcpProviderId,
   supportsManualCompaction,
+  supportsNativeFork,
 } from "../src/index.js";
 
 describe("agent provider catalog", () => {
@@ -53,7 +54,7 @@ describe("agent provider catalog", () => {
         supportsRename: false,
         supportsServiceTier: true,
         supportsUserQuestion: false,
-        supportsFork: false,
+        supportsFork: true,
         supportedPermissionModes: ["accept-edits", "full"],
       },
       composerActions: [{ kind: "skills", trigger: "/" }],
@@ -70,6 +71,8 @@ describe("agent provider catalog", () => {
       getAcpProviderServerCapabilities("acp-my-agent"),
     );
     expect(getAgentProviderServerCapabilities("not-a-provider")).toBeNull();
+    expect(supportsNativeFork("acp-my-agent")).toBe(true);
+    expect(supportsNativeFork("not-a-provider")).toBe(false);
   });
 
   it("returns cloned catalog entries", () => {

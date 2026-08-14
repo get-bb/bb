@@ -953,7 +953,7 @@ describe("resolveSystemExecutionOptions", () => {
               available: true,
               composerActions: [{ kind: "skills", trigger: "/" }],
               capabilities: expect.objectContaining({
-                supportsFork: false,
+                supportsFork: true,
                 supportsServiceTier: true,
                 supportedPermissionModes: ["accept-edits", "full"],
               }),

@@ -58,6 +58,7 @@ import {
   type AcpBridgeNativeReasoning,
   type AcpBridgePermissionCli,
   type AcpBridgeReasoningCli,
+  type AcpBridgeThreadForkParams,
   type AcpBridgeThreadResumeParams,
   type AcpBridgeThreadStartParams,
 } from "../bridge-protocol.js";
@@ -69,6 +70,7 @@ import {
   acpPromptResultSchema,
   acpReadTextFileParamsSchema,
   acpRequestPermissionParamsSchema,
+  acpSessionForkResultSchema,
   acpSessionNewResultSchema,
   acpSessionNotificationParamsSchema,
   acpUsageUpdateSchema,
@@ -1416,7 +1418,8 @@ function getSessionByProviderThreadId(
 
 type AcpSessionStartParams =
   | { kind: "start"; params: AcpBridgeThreadStartParams }
-  | { kind: "resume"; params: AcpBridgeThreadResumeParams };
+  | { kind: "resume"; params: AcpBridgeThreadResumeParams }
+  | { kind: "fork"; params: AcpBridgeThreadForkParams };
 
 async function startAgentSession(
   request: AcpSessionStartParams,
@@ -1516,12 +1519,32 @@ async function startAgentSession(
       initializeResult.agentCapabilities?.promptCapabilities?.image ?? false;
     const supportsLoadSession =
       initializeResult.agentCapabilities?.loadSession ?? false;
+    const supportsFork =
+      initializeResult.agentCapabilities?.sessionCapabilities?.fork != null;
+    if (request.kind === "fork" && !supportsFork) {
+      throw new Error(
+        `ACP agent "${agentLabel}" does not advertise session/fork support.`,
+      );
+    }
     const mcpServers = await buildSessionMcpServers(params);
 
     let sessionId: string | undefined;
     let loadedConfigOptions: readonly AcpConfigOption[] | undefined;
     let loadedModels: AcpSessionModels | undefined;
-    if (request.kind === "resume" && supportsLoadSession) {
+    if (request.kind === "fork") {
+      const forkedSession = await connection.request({
+        method: "session/fork",
+        params: {
+          sessionId: request.params.sourceProviderThreadId,
+          cwd: params.cwd,
+          mcpServers,
+        },
+        resultSchema: acpSessionForkResultSchema,
+      });
+      sessionId = forkedSession.sessionId;
+      loadedConfigOptions = forkedSession.configOptions;
+      loadedModels = forkedSession.models;
+    } else if (request.kind === "resume" && supportsLoadSession) {
       session.loading = true;
       session.loadingSessionId = request.params.providerThreadId;
       session.pendingLoadUsageUpdate = undefined;
@@ -1926,6 +1949,15 @@ async function handleRequest(
     case "thread/resume": {
       const session = await startAgentSession({
         kind: "resume",
+        params: request.params,
+      });
+      sendResult(request.id, { providerThreadId: session.providerThreadId });
+      return;
+    }
+
+    case "thread/fork": {
+      const session = await startAgentSession({
+        kind: "fork",
         params: request.params,
       });
       sendResult(request.id, { providerThreadId: session.providerThreadId });

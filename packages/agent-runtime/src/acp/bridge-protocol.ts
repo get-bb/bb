@@ -148,6 +148,13 @@ export type AcpBridgeThreadResumeParams = z.infer<
   typeof acpBridgeThreadResumeParamsSchema
 >;
 
+const acpBridgeThreadForkParamsSchema = acpBridgeSessionParamsSchema.extend({
+  sourceProviderThreadId: z.string().min(1),
+});
+export type AcpBridgeThreadForkParams = z.infer<
+  typeof acpBridgeThreadForkParamsSchema
+>;
+
 const acpBridgeTurnStartParamsSchema = z.object({
   threadId: z.string().min(1),
   input: z.array(promptInputSchema),
@@ -181,6 +188,10 @@ export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("thread/resume"),
     params: acpBridgeThreadResumeParamsSchema,
+  }),
+  z.object({
+    method: z.literal("thread/fork"),
+    params: acpBridgeThreadForkParamsSchema,
   }),
   z.object({
     method: z.literal("turn/start"),

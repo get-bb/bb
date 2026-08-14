@@ -85,8 +85,10 @@ function countChangedLines(diff: string | undefined): {
 }
 
 describe("acp adapter command plans", () => {
-  it("advertises accept-edits and full without automatic review", () => {
-    expect(createAdapter().capabilities.supportedPermissionModes).toEqual([
+  it("advertises fork plus accept-edits and full without automatic review", () => {
+    const capabilities = createAdapter().capabilities;
+    expect(capabilities.supportsFork).toBe(true);
+    expect(capabilities.supportedPermissionModes).toEqual([
       "accept-edits",
       "full",
     ]);
@@ -282,6 +284,28 @@ describe("acp adapter command plans", () => {
         "Available bb skills:",
         "- debugging: Use when debugging runtime state. (SKILL.md: /tmp/bb/runtime/global-skills/def456/skills/debugging/SKILL.md)",
       ].join("\n"),
+    });
+  });
+
+  it("builds thread/fork with the source provider session", () => {
+    const adapter = createAdapter();
+    const plan = adapter.buildCommandPlan({
+      type: "thread/fork",
+      threadId: "thread-fork",
+      sourceProviderThreadId: "sess-source",
+      cwd: "/fork-workspace",
+      options: fullProviderExecutionContext,
+      instructionMode: "append",
+    });
+
+    expect(plan).toMatchObject({
+      kind: "request",
+      method: "thread/fork",
+      params: {
+        threadId: "thread-fork",
+        sourceProviderThreadId: "sess-source",
+        cwd: "/fork-workspace",
+      },
     });
   });
 

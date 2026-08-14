@@ -148,6 +148,9 @@ const ACP_COMPOSER_ACTIONS: ProviderComposerAction[] = [
 // its own model selection, tool execution, and session naming, so BB-side
 // capabilities stay minimal. Permission modes are enforced cooperatively by
 // the ACP bridge (permission-request policy + client fs write policy).
+// Fork support is negotiated with each agent before the bridge sends the
+// unstable ACP session/fork request; agents that do not advertise it fail the
+// fork without falling back to a fresh session.
 // Cursor exposes a `-fast` service tail per model; the bridge resolves it from
 // the serviceTier (the "Fast mode" toggle), so service tier is supported here
 // rather than fanning fast variants out as separate model-list entries.
@@ -156,9 +159,7 @@ const ACP_CAPABILITIES: ProviderCapabilities = {
   supportsRename: false,
   supportsServiceTier: true,
   supportsUserQuestion: false,
-  // ACP has no session-fork primitive; the adapter has no thread/fork handler,
-  // so forks are blocked at the server boundary rather than failing at runtime.
-  supportsFork: false,
+  supportsFork: true,
   supportedPermissionModes: ["accept-edits", "full"],
 };
 
@@ -392,12 +393,18 @@ export function isAgentProviderId(value: string): value is AgentProviderId {
   return agentProviderIdSchema.safeParse(value).success;
 }
 
-/** Whether this provider can clone a session at a branch point (native fork). */
+/** Whether BB can route this provider through its native session-fork path. */
 export function supportsNativeFork(providerId: string): boolean {
-  return (
-    isAgentProviderId(providerId) &&
-    getBuiltInAgentProviderInfo(providerId).capabilities.supportsFork
-  );
+  const provider = isAgentProviderId(providerId)
+    ? getBuiltInAgentProviderInfo(providerId)
+    : isAcpProviderId(providerId)
+      ? buildAcpProviderInfo({
+          id: providerId,
+          displayName: providerId,
+          logoUrl: null,
+        })
+      : null;
+  return provider?.capabilities.supportsFork ?? false;
 }
 
 /** Whether BB can explicitly request context compaction for this provider. */

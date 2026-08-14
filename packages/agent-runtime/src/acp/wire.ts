@@ -199,6 +199,12 @@ export const acpInitializeResultSchema = z
     agentCapabilities: z
       .object({
         loadSession: z.boolean().optional(),
+        sessionCapabilities: z
+          .object({
+            fork: z.object({}).passthrough().nullable().optional(),
+          })
+          .passthrough()
+          .optional(),
         promptCapabilities: z
           .object({
             image: z.boolean().optional(),
@@ -277,10 +283,10 @@ const acpLooseConfigOptionSchema = z
   .passthrough();
 
 function parseAcpConfigOptions(
-  options: unknown[] | undefined,
+  options: unknown[] | null | undefined,
   ctx: z.RefinementCtx,
 ): AcpConfigOption[] | undefined {
-  if (options === undefined) {
+  if (options == null) {
     return undefined;
   }
   const parsedOptions: AcpConfigOption[] = [];
@@ -336,6 +342,7 @@ export const acpSessionNewResultSchema = z
     models: acpSessionModelsSchema.optional(),
     configOptions: z
       .array(z.unknown())
+      .nullable()
       .optional()
       .transform((options, ctx) => parseAcpConfigOptions(options, ctx)),
   })
@@ -347,11 +354,16 @@ export const acpConfigStateResultSchema = z
     models: acpSessionModelsSchema.optional(),
     configOptions: z
       .array(z.unknown())
+      .nullable()
       .optional()
       .transform((options, ctx) => parseAcpConfigOptions(options, ctx)),
   })
   .passthrough();
 export type AcpConfigStateResult = z.infer<typeof acpConfigStateResultSchema>;
+
+export const acpSessionForkResultSchema = acpConfigStateResultSchema.extend({
+  sessionId: z.string(),
+});
 
 export const acpStopReasonSchema = z.enum([
   "end_turn",
