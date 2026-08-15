@@ -38,7 +38,7 @@ The Linux desktop app is now available as an Alpha x64 AppImage. Stable and nigh
 
 ### New features
 
-- You can now edit a message after you send it.
+- Sent-message editing is now on by default.
 - Double-click a thread name to edit it in place.
 - You can now disable split dimming in Appearance settings.
 - New shortcuts cycle models, providers, and reasoning levels in both directions.
