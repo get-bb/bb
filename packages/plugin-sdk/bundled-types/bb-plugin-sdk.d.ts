@@ -2418,9 +2418,9 @@ declare const projectBranchesResponseSchema: z$1.ZodObject<{
     selectedBranch: z$1.ZodNullable<z$1.ZodObject<{
         name: z$1.ZodString;
         kind: z$1.ZodEnum<{
+            missing: "missing";
             local: "local";
             remote: "remote";
-            missing: "missing";
         }>;
     }, z$1.core.$strip>>;
     defaultWorktreeBaseBranch: z$1.ZodNullable<z$1.ZodString>;
@@ -2848,9 +2848,9 @@ declare const environmentDiffBranchesResponseSchema: z$1.ZodObject<{
     selectedBranch: z$1.ZodNullable<z$1.ZodObject<{
         name: z$1.ZodString;
         kind: z$1.ZodEnum<{
+            missing: "missing";
             local: "local";
             remote: "remote";
-            missing: "missing";
         }>;
     }, z$1.core.$strip>>;
 }, z$1.core.$strip>;
@@ -2921,8 +2921,8 @@ declare const environmentDiffFileResponseSchema: z$1.ZodObject<{
     path: z$1.ZodString;
     content: z$1.ZodString;
     contentEncoding: z$1.ZodEnum<{
-        base64: "base64";
         utf8: "utf8";
+        base64: "base64";
     }>;
     mimeType: z$1.ZodOptional<z$1.ZodString>;
     sizeBytes: z$1.ZodNumber;
@@ -7558,9 +7558,9 @@ declare const systemCliSkillsStatusResponseSchema: z$1.ZodObject<{
         hostName: z$1.ZodString;
         status: z$1.ZodEnum<{
             unknown: "unknown";
-            missing: "missing";
             installed: "installed";
             outdated: "outdated";
+            missing: "missing";
         }>;
     }, z$1.core.$strip>>;
 }, z$1.core.$strip>;
@@ -13727,6 +13727,19 @@ interface PluginAgentConfigurationContext {
     provider: {
         id: string;
         model: string;
+        /**
+         * The provider's declared capabilities, so a plugin can decide what to
+         * contribute from what the provider says it does rather than from its own
+         * copy of a provider id list.
+         */
+        capabilities: {
+            /**
+             * The provider ships its own user-question affordance and bb routes it
+             * into the pending-interaction path. A plugin offering the same thing
+             * should withhold it here, or the model gets two ways to ask once.
+             */
+            supportsNativeUserQuestion: boolean;
+        };
     };
     /** How the thread was spawned. A side chat is the builtin side-chat
      * plugin's fork: `{ kind: "fork", pluginId: "side-chat" }`. */

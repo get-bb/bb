@@ -221,7 +221,18 @@ export async function resolveThreadRuntimeCommandConfig(
         branchName: environment.branchName,
       },
       host: { id: host.id, name: host.name },
-      provider: { id: args.thread.providerId, model: args.model },
+      provider: {
+        id: args.thread.providerId,
+        model: args.model,
+        capabilities: {
+          // Absent registration (an ACP tier id, or a provider whose plugin
+          // is disabled mid-thread) reads as "no native affordance", which is
+          // the safe answer: the plugin contributes its own.
+          supportsNativeUserQuestion:
+            deps.providerRegistry.get(args.thread.providerId)?.info.capabilities
+              .supportsUserQuestion ?? false,
+        },
+      },
       origin: {
         kind: args.thread.originKind,
         pluginId: args.thread.originPluginId,

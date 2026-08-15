@@ -416,6 +416,19 @@ export interface PluginAgentConfigurationContext {
   provider: {
     id: string;
     model: string;
+    /**
+     * The provider's declared capabilities, so a plugin can decide what to
+     * contribute from what the provider says it does rather than from its own
+     * copy of a provider id list.
+     */
+    capabilities: {
+      /**
+       * The provider ships its own user-question affordance and bb routes it
+       * into the pending-interaction path. A plugin offering the same thing
+       * should withhold it here, or the model gets two ways to ask once.
+       */
+      supportsNativeUserQuestion: boolean;
+    };
   };
   /** How the thread was spawned. A side chat is the builtin side-chat
    * plugin's fork: `{ kind: "fork", pluginId: "side-chat" }`. */

@@ -798,12 +798,21 @@ their level, never to flatten them toward a common denominator.
   switches → normalized event fields emitted by bridges.
 - `EDIT_MESSAGE_PROVIDER_IDS` → capability.
 - Onboarding and `SETTINGS_PROVIDER_ENTRIES` → registry-driven.
-- Plugin-side provider id lists → capabilities/branding read off
-  `ProviderInfo`: the ask-user-question plugin's `NATIVE_TOOL_PROVIDER_IDS`
-  duplicates what `supportsNativeUserQuestion` declares (today that
-  capability has no production consumer at all — the plugin hardcodes its
-  own list instead), and the provider-retry banner's `providerLabel` switch
-  (`plugins/provider-retry/banner.tsx`) duplicates registry display names.
+- PARTLY DONE (wave 4) — Plugin-side provider id lists → capabilities read
+  off `ProviderInfo`. The ask-user-question plugin's
+  `NATIVE_TOOL_PROVIDER_IDS` is DELETED: `PluginAgentConfigurationContext`
+  gained `provider.capabilities.supportsNativeUserQuestion`, filled at the
+  server boundary from the registry (absent registration reads false, so
+  the plugin contributes its own tool), which finally gives that declared
+  capability a production consumer.
+  DEFERRED — the provider-retry banner's `providerLabel` switch. It is a
+  plugin *frontend* component, and there is no plugin-facing provider
+  directory on either SDK surface: `@get-bb/plugin-sdk/app` exposes no
+  provider list/display-name hook, and `BbPluginApi` has no read side for
+  the registry either. Fixing it means a new public plugin API member
+  (`experimental_` + a `docs/api_to_audit.md` entry), which is new surface
+  design rather than a consolidation. Do it with the settings/onboarding
+  registry work, which needs the same directory.
 
 ## Rollout: experiment toggles and graduation
 

@@ -689,7 +689,11 @@ describe("agent tools", () => {
       branchName: null,
     },
     host: { id: "host-test", name: "Test host" },
-    provider: { id: "codex", model: "gpt-5" },
+    provider: {
+      id: "codex",
+      model: "gpt-5",
+      capabilities: { supportsNativeUserQuestion: false },
+    },
     origin: { kind: null, pluginId: null },
   } satisfies PluginAgentConfigurationContext;
 
@@ -775,7 +779,11 @@ describe("agent tools", () => {
       ...configurationContext,
       thread: { ...configurationContext.thread, id: "thread-beta" },
       host: { id: "host-beta", name: "Beta host" },
-      provider: { id: "claude-code", model: "claude-opus" },
+      provider: {
+      id: "claude-code",
+      model: "claude-opus",
+      capabilities: { supportsNativeUserQuestion: false },
+    },
     };
     const beta = await harness.resolveAgentConfiguration(betaContext);
 

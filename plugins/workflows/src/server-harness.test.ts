@@ -235,7 +235,11 @@ describe("workflows plugin", () => {
         branchName: null,
       },
       host: { id: "host-1", name: "host" },
-      provider: { id: "codex", model: "gpt-test" },
+      provider: {
+      id: "codex",
+      model: "gpt-test",
+      capabilities: { supportsNativeUserQuestion: false },
+    },
       origin: { kind: null, pluginId: "workflows" },
     });
     expect(workerConfig.tools.map((tool) => tool.name)).toEqual([
@@ -275,7 +279,11 @@ describe("workflows plugin", () => {
         branchName: null,
       },
       host: { id: "host-1", name: "host" },
-      provider: { id: "codex", model: "gpt-test" },
+      provider: {
+      id: "codex",
+      model: "gpt-test",
+      capabilities: { supportsNativeUserQuestion: false },
+    },
       origin: { kind: null, pluginId: null },
     });
     expect(authorConfig.tools.map((tool) => tool.name)).toEqual([

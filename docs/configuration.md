@@ -360,6 +360,12 @@ encoding effort in model ids. `flag` is inserted before the ACP agent args,
 picker default, and `levelValues` maps bb reasoning levels to the agent's CLI
 vocabulary when they differ.
 
+`supportsManualCompaction` is optional and defaults to `false`. Set it to
+`true` only when the agent accepts an explicit compaction request; ACP itself
+advertises nothing about compaction, so the agent definition is what declares
+it. bb hides the built-in `/compact` command for agents that do not. OpenCode
+declares it; Cursor does not.
+
 `nativeReasoning` is optional. Use it for ACP agents that accept reasoning via
 `session/set_config_option` but do not advertise a `thought_level` config option
 during model discovery. `configId` is the ACP config id to set,
