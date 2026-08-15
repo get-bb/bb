@@ -263,21 +263,29 @@ next starts; commits structured so a later PR split stays mechanical:
    session on `thread/start`, and the catalog table was only a pre-first-
    result seed.
    Blockers found for the remaining three, each different:
-   - **pi — hard blocker, do not force.** The daemon bundle keeps
-     `@earendil-works/pi-ai` and `pi-coding-agent` _external on disk_ on
-     purpose: Pi's extension loader resolves the host's Pi modules from the
-     pinned package tree, and bb-app ships them as npm dependencies.
-     `buildPluginProviderBridge` allows no externals but node builtins, and
-     an artifact is a lone `.mjs` in the daemon's content-addressed cache
-     with no `node_modules` ancestor. Inlining ~21 MB of Pi to make it
-     self-contained also breaks the shared-module identity extensions rely
-     on. This needs a decision first (allow declared externals resolved
-     against a plugin-owned dependency tree, ship the tree as part of the
-     artifact, or keep pi bundled). Second, smaller: the daemon imports
-     `createConfiguredPiSettingsManager` out of the pi bridge for pi's skill
-     scan roots (`list-commands.ts`) — the deferred `skills/scanRoots`
-     bridge method, or a daemon-local copy (the daemon already depends on
-     the Pi SDK).
+   - **pi — hard blocker, EMPIRICALLY VERIFIED (the identity argument was
+     wrong).** A fully-inlined single-file artifact was built (14.8 MB,
+     faster startup than the 800 KB external control) and driven through
+     the real smoke fixtures plus this machine's live pi config. It fails
+     for three reasons, none of them module identity (a deliberately
+     identity-divergent run passed every suite): (1) pi-coding-agent's
+     extension loader aliases the package to path.resolve(<loader
+     __dirname>, "../..", "index.js") with no fallback, so any extension
+     value-importing pi-coding-agent (all four real installed extensions
+     do) cannot load from a relocated bundle — unfixable from bb's side;
+     (2) import.meta.resolve for pi-agent-core/pi-tui/pi-ai/typebox runs
+     from the artifact path, which has no node_modules ancestor in the
+     daemon cache; (3) pi-ai's OAuth flow loader is deliberately
+     bundler-hostile (variable specifiers), so inlining breaks
+     Anthropic/Codex/Copilot/OpenRouter OAuth even with zero extensions.
+     The one artifact shape proven to work end to end is a DIRECTORY —
+     bridge .mjs plus a real npm-installed pi tree (~295 MB naive,
+     prunable) — the future externals/tree design if pi ever leaves the
+     daemon bundle. DECISION: pi's bridge stays daemon-bundled as a
+     documented exception. Independently and regardless: inline the
+     daemon's `createConfiguredPiSettingsManager` import into
+     `list-commands.ts` (the daemon already depends on the Pi SDK) so pi
+     is not gated on the deferred skills/scanRoots method.
    - **acp — needs the dynamic tier first.** `acp-cursor` is
      plugin-declared, but every other ACP id (known + `customAcpAgents`)
      is registered server-side by `acp-provider-tier.ts`, and
