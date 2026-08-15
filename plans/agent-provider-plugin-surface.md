@@ -119,9 +119,9 @@ Landed on this branch, every commit green:
      event at all (capacity unknown, notably for the 1M `[1m]` aliases). The
      bridge now seeds it at session construction and on every live model
      change, pinned by a bridge test that fails without it.
-  `hasOpenThreadWork` had no canonical implementation, so a codex session
-  whose only live work is a native subagent looked idle to the runtime's
-  reaper. FIXED in wave 4 by the `thread/openWork` notification (below).
+     `hasOpenThreadWork` had no canonical implementation, so a codex session
+     whose only live work is a native subagent looked idle to the runtime's
+     reaper. FIXED in wave 4 by the `thread/openWork` notification (below).
 - **WAVE 3 DONE (2026-08-15)**: the `providerBridge` experiment, its
   settings toggle, and the whole `/internal/provider-bridge-policy`
   endpoint are deleted — the response carried only the prefix list, and
@@ -161,7 +161,7 @@ Landed on this branch, every commit green:
   reuses the same translator, so the account-restart set, the
   archived-session regex, the empty-rollout rename retry, and the archive
   idempotency strings are all still fed — the bridge preserves those error
-  texts verbatim *on purpose*, with comments saying so. Thread-scoped
+  texts verbatim _on purpose_, with comments saying so. Thread-scoped
   process keys are redundant for isolation (the bridge supervises one
   app-server child per thread) but load-bearing for the restart and the
   pre-experiment reap, so collapsing them is a later refactor. Only one
@@ -225,6 +225,78 @@ next starts; commits structured so a later PR split stays mechanical:
    artifact pipeline (echo-provider is the template). After this, every
    provider-specific line lives in plugins/provider-*; agent-runtime
    keeps only the protocol, generic adapter, and supervision.
+   **CODEX DONE (2026-08-15), three to go, and they are not interchangeable
+   — see the per-provider blockers below.**
+   Two commits. First, the **bridge kit**: a plugin-shipped bridge cannot
+   import `@bb/agent-runtime`, and it turned out nearly every module under
+   `agent-runtime/src/shared/` had only provider-side consumers, so they
+   moved wholesale (with their tests) to
+   `@bb/provider-bridge-protocol/bridge-kit` — JSON-RPC plumbing, the stdio
+   harness, tool-call/interaction codecs, id scoping, visibility metadata,
+   translation helpers, plus the runtime↔bridge structural types
+   `provider-adapter.ts` used to declare. Bridge test infrastructure
+   (the in-process JSON-RPC driver, the calibration normalizer) became
+   `@bb/provider-bridge-protocol/testing`. `bridge-path`, `available-models`,
+   and `permission-policy` stayed behind as runtime concerns. The barrel
+   surfaced a genuine collision: two different `jsonRpcEnvelopeSchema` (the
+   normalized-codec one and the bridges' inbound-request one, now
+   `bridgeRequestEnvelopeSchema`).
+   Second, **codex**: sources moved verbatim into `plugins/provider-codex/src`,
+   `bb.providerBridge` added, `dist/provider-bridge.mjs` is 868 KB and
+   fully self-contained, and its 161 tests run as
+   `bb-plugin-provider-codex#test` (CI's packages shard already covers every
+   plugin). Every codex carve-out is gone end to end: the daemon bundle
+   target, the bb-app `files` entry, the launcher presence assertion, the
+   registry branch, and the provider-catalog capability/session-restore
+   baselines. The tarball smoke now drives the packed *plugin artifact\* and
+   expects `provider-codex` to reach "running" in the packed install.
+   Two facts the bundled branch supplied had to become properties of the
+   generic route or codex would have silently lost them: (a) environment
+   extra workspace write roots are host-local, so no server-sent
+   `providerOptions` can carry them — the registry merges them into every
+   plugin bridge's static option bag; (b) `bridgeLaunch.capabilities`
+   carried only service tier + permission modes, so archive/rename/fork
+   would have read false — the wire now carries the three the runtime
+   actually enforces, filled from the declaration (v124 unshipped, so no
+   bump, but contract/server/daemon/runtime moved together). Session
+   restorability needed no wire slot: the bridge already reports it per
+   session on `thread/start`, and the catalog table was only a pre-first-
+   result seed.
+   Blockers found for the remaining three, each different:
+   - **pi — hard blocker, do not force.** The daemon bundle keeps
+     `@earendil-works/pi-ai` and `pi-coding-agent` _external on disk_ on
+     purpose: Pi's extension loader resolves the host's Pi modules from the
+     pinned package tree, and bb-app ships them as npm dependencies.
+     `buildPluginProviderBridge` allows no externals but node builtins, and
+     an artifact is a lone `.mjs` in the daemon's content-addressed cache
+     with no `node_modules` ancestor. Inlining ~21 MB of Pi to make it
+     self-contained also breaks the shared-module identity extensions rely
+     on. This needs a decision first (allow declared externals resolved
+     against a plugin-owned dependency tree, ship the tree as part of the
+     artifact, or keep pi bundled). Second, smaller: the daemon imports
+     `createConfiguredPiSettingsManager` out of the pi bridge for pi's skill
+     scan roots (`list-commands.ts`) — the deferred `skills/scanRoots`
+     bridge method, or a daemon-local copy (the daemon already depends on
+     the Pi SDK).
+   - **acp — needs the dynamic tier first.** `acp-cursor` is
+     plugin-declared, but every other ACP id (known + `customAcpAgents`)
+     is registered server-side by `acp-provider-tier.ts`, and
+     `resolveBridgeLaunchForProviderId` only serves `source.kind === "plugin"`
+     registrations — those ids would end up with no bridge at all. The tier
+     has to resolve the ACP plugin's artifact for its ids (or become plugin
+     registrations) in the same change.
+   - **claude-code — mechanical, two small things.** The packaged-daemon
+     sentinel is `existsSync(bb-claude-code-bridge.mjs)` in
+     `host-daemon/src/index.ts`; it must move to a bridge that still ships
+     in the bundle (or to a non-bridge artifact) _before_ claude-code
+     leaves. And `shared/permission-policy.ts` is read by both the runtime
+     and the claude bridge — the one kit candidate with a live consumer on
+     each side.
+     Still id-switched in core after codex, unchanged by this wave: the
+     four-variant skill-root union and `runtime-skill-roots.ts`'s per-provider
+     normalizers (they ride the wire as data; collapsing them is the deferred
+     `skills/configure` work), and the runtime's deliberate codex error-text
+     special cases audited and kept in wave 3.
 
 FINAL VALIDATION GATE (mandatory before calling graduation done): full
 multi-agent adversarial review of the graduation diff; conformance all
@@ -307,7 +379,7 @@ for custom agents, from the in-repo `KNOWN_ACP_AGENTS` table (a code change)
 for known ones — and run by the generic ACP bridge. It works, but the path
 is deliberately least-common-denominator: no `auto` permission mode
 (ACP threads default to `full`), no token usage, no plan/goal composer
-modes, no command-shaped scan roots (native *skill* typeahead does work),
+modes, no command-shaped scan roots (native _skill_ typeahead does work),
 degraded approvals/models/reasoning, config-file-only setup, no settings UI.
 (Fork landed 2026-08-14 via `53d193144`: the bridge negotiates the agent's
 unstable `session/fork` capability at initialize and rejects agents that
@@ -339,22 +411,22 @@ From the incident archive (issues/PRs/commits touching providers). Each lesson
 becomes a concrete property of the new design; the conformance kit (below)
 encodes the testable ones.
 
-| Lesson (incident) | Design requirement |
-| --- | --- |
-| 87 protocol bumps in ~14 months (26 → 121); translation fixes require daemon deploys | Bridges version independently of the daemon. `initialize` negotiates `{protocolVersion, capabilities}` both ways; unknown methods/fields degrade, never crash. |
-| Idle reaping was Codex-only by accident (#1604); process-key scheme encoded eligibility | Process cardinality stops being a bb concept: one bridge process per (provider, environment), sessions multiplexed within. Release is uniform — `thread/stop {intent: "release"}` per session, restorability from the handshake/session report — and any internal child topology is the bridge's own business. |
-| Release vs interrupt conflated (#1584) | Protocol `thread/stop` carries `intent: "interrupt" \| "release"` from day one. |
-| Turn settlement gaps — repeated fixes (#1196, #1234, #1321, #1432), still no watchdog | Runtime (single owner of the turn state machine) keeps the accepted→dispatched→started→completed states; add the missing **turn-start watchdog** (visible failure if no `turn/started` within a bound). |
-| Session replaced as silent side effect of config diff (#1268, #1236) | No core-side option diffing at all: the bridge owns reconciliation, and session replacement must be **reported** (session-replacement notification + settlement events), never silent. |
-| Provider-minted ids trusted as bb ids froze a host for 30 min (#1320) | Protocol schema forbids the bridge from minting bb turn ids; only caller-vouched ids scope events. Diagnostic events are droppable by construction. |
-| Silently dropped undecodable JSON-RPC → 30s timeouts (#853) | Conformance rule: undecodable → `-32602` reply with issues; unknown method → `-32601`; request/response discriminated on `method`. |
-| Per-session item-id counters collided across resumes → permanent 500 (#1224) | Conformance rule: item ids unique across resume (turn-scoped with per-instance entropy); projection degrades, never throws. |
-| Normalized events with divergent shapes: pi/claude/acp open assistant text with bare `item/agentMessage/delta`, no `item/started`; timeline window cuts dropped the earlier deltas (fix in flight: `6e4628e9e`) | Conformance rule: every item's first event is `item/started` — bridges synthesize it when their SDK streams delta-first. The projection backfill stays for persisted history but becomes legacy-only. |
-| One bad entry or unknown enum member took down whole listings (#1044 null-for-absent, #580 new enum members, #1148 throwing extension loader) | Protocol schemas are lenient at the edge (soft-parse unknown enum members, null-tolerant); one malformed entry degrades to one missing entry. |
-| Ambient env leaks (`BB_THREAD_STORAGE`, Volta, Electron, fnm churn) (#1366, #1545, #1156) | Bridge env is **constructed by one allowlist function**; the daemon's own env is not reachable from provider-facing code. |
-| Same binary name, wrong CLI (#1231); launch drift not in process key | Process identity = hash(bridge artifact + declared exec inputs + env overrides + providerId), generalizing the ACP fingerprint to every provider. |
-| Cross-provider features shipped to half the matrix (#1374: rate limits 2/4, compaction 19 commits) | One implementation site: a feature is a protocol method + declared capability; participation is machine-checkable, not grep. |
-| One shared decoder bug hit three bridges at once (#853) | The shared protocol library gets tests proportional to fan-out: the conformance kit runs against **every** bridge in CI. |
+| Lesson (incident)                                                                                                                                                                                               | Design requirement                                                                                                                                                                                                                                                                                             |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 87 protocol bumps in ~14 months (26 → 121); translation fixes require daemon deploys                                                                                                                            | Bridges version independently of the daemon. `initialize` negotiates `{protocolVersion, capabilities}` both ways; unknown methods/fields degrade, never crash.                                                                                                                                                 |
+| Idle reaping was Codex-only by accident (#1604); process-key scheme encoded eligibility                                                                                                                         | Process cardinality stops being a bb concept: one bridge process per (provider, environment), sessions multiplexed within. Release is uniform — `thread/stop {intent: "release"}` per session, restorability from the handshake/session report — and any internal child topology is the bridge's own business. |
+| Release vs interrupt conflated (#1584)                                                                                                                                                                          | Protocol `thread/stop` carries `intent: "interrupt" \| "release"` from day one.                                                                                                                                                                                                                                |
+| Turn settlement gaps — repeated fixes (#1196, #1234, #1321, #1432), still no watchdog                                                                                                                           | Runtime (single owner of the turn state machine) keeps the accepted→dispatched→started→completed states; add the missing **turn-start watchdog** (visible failure if no `turn/started` within a bound).                                                                                                        |
+| Session replaced as silent side effect of config diff (#1268, #1236)                                                                                                                                            | No core-side option diffing at all: the bridge owns reconciliation, and session replacement must be **reported** (session-replacement notification + settlement events), never silent.                                                                                                                         |
+| Provider-minted ids trusted as bb ids froze a host for 30 min (#1320)                                                                                                                                           | Protocol schema forbids the bridge from minting bb turn ids; only caller-vouched ids scope events. Diagnostic events are droppable by construction.                                                                                                                                                            |
+| Silently dropped undecodable JSON-RPC → 30s timeouts (#853)                                                                                                                                                     | Conformance rule: undecodable → `-32602` reply with issues; unknown method → `-32601`; request/response discriminated on `method`.                                                                                                                                                                             |
+| Per-session item-id counters collided across resumes → permanent 500 (#1224)                                                                                                                                    | Conformance rule: item ids unique across resume (turn-scoped with per-instance entropy); projection degrades, never throws.                                                                                                                                                                                    |
+| Normalized events with divergent shapes: pi/claude/acp open assistant text with bare `item/agentMessage/delta`, no `item/started`; timeline window cuts dropped the earlier deltas (fix in flight: `6e4628e9e`) | Conformance rule: every item's first event is `item/started` — bridges synthesize it when their SDK streams delta-first. The projection backfill stays for persisted history but becomes legacy-only.                                                                                                          |
+| One bad entry or unknown enum member took down whole listings (#1044 null-for-absent, #580 new enum members, #1148 throwing extension loader)                                                                   | Protocol schemas are lenient at the edge (soft-parse unknown enum members, null-tolerant); one malformed entry degrades to one missing entry.                                                                                                                                                                  |
+| Ambient env leaks (`BB_THREAD_STORAGE`, Volta, Electron, fnm churn) (#1366, #1545, #1156)                                                                                                                       | Bridge env is **constructed by one allowlist function**; the daemon's own env is not reachable from provider-facing code.                                                                                                                                                                                      |
+| Same binary name, wrong CLI (#1231); launch drift not in process key                                                                                                                                            | Process identity = hash(bridge artifact + declared exec inputs + env overrides + providerId), generalizing the ACP fingerprint to every provider.                                                                                                                                                              |
+| Cross-provider features shipped to half the matrix (#1374: rate limits 2/4, compaction 19 commits)                                                                                                              | One implementation site: a feature is a protocol method + declared capability; participation is machine-checkable, not grep.                                                                                                                                                                                   |
+| One shared decoder bug hit three bridges at once (#853)                                                                                                                                                         | The shared protocol library gets tests proportional to fan-out: the conformance kit runs against **every** bridge in CI.                                                                                                                                                                                       |
 
 ## Design
 
@@ -405,7 +477,7 @@ exists, not an invention:
   encoding install strategies as a declarative mini-DSL
   (`npmGlobal` / `downloadedShellScript` / …) that would grow provider
   variants inside core again.
-- **Skills live in the bridge too, in both directions.** *Injection*
+- **Skills live in the bridge too, in both directions.** _Injection_
   (bb skills → provider): `skills/configure` carries one canonical payload —
   the staged catalog root plus skill descriptors — and each bridge
   transforms it into its provider's native shape (claude-code writes its
@@ -415,7 +487,7 @@ exists, not an invention:
   (four hardcoded shapes), the `runtime-skill-roots.ts` normalize/filter
   switch, and the four-variant skill-root union in `agent-runtime/types.ts`.
   The daemon keeps only the generic content-addressed staging (symlink-safe
-  copy, hashing), which is genuinely host infrastructure. *Discovery*
+  copy, hashing), which is genuinely host infrastructure. _Discovery_
   (provider-native skills → composer typeahead): an optional
   `skills/scanRoots {cwd}` method returns the provider's resolved scan
   roots; the daemon keeps the generic scanner/parser. The
@@ -450,20 +522,20 @@ payloads. `buildCommandPlan`, `translateEvent`, `parseModelListResult`,
 
 Disposition of every current `ProviderAdapter` member:
 
-| Member | Becomes |
-| --- | --- |
-| `id`, `displayName`, `capabilities` | declaration data |
-| `approvalRequestPolicy` | handshake fact (`initialize` result) |
-| `process` | uniform: `node <bridge entry>` from the bridge ref |
-| `buildCommandPlan` | deleted — fixed protocol methods; the bridge maps internally |
-| `translateEvent`, `translateAcceptedCommand` | deleted — bridge emits `ThreadEvent`s (accepted-user-message synthesis stays generic in runtime) |
-| `parseModelListResult` | deleted — protocol defines the `model/list` result schema |
-| `decodeToolCallRequest`, `decodeInteractiveRequest`, `buildInteractiveResponse` | deleted — canonical protocol schemas |
-| `classifyExecutionSettingsChange` | deleted with no replacement — the runtime never diffs options; the bridge reconciles internally, and rebuild visibility is the mandatory session-replacement notification. No declared scope table: #1610 removed its last server-side consumer (see the note in Design §3) |
-| `normalizeExecutionOptions` | deleted — bridge-internal normalization |
-| `buildPostInitializeRequests`, `prepareTurnStart`, `clearActiveTurnState` | deleted — bridge-internal or generic turn-state concerns |
-| `buildThreadDetachedEvents` | generic: runtime reconciles from its own background-work state |
-| per-provider `visibility.ts` | deleted — bridge classifies before emitting `provider/raw` |
+| Member                                                                          | Becomes                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`, `displayName`, `capabilities`                                             | declaration data                                                                                                                                                                                                                                                            |
+| `approvalRequestPolicy`                                                         | handshake fact (`initialize` result)                                                                                                                                                                                                                                        |
+| `process`                                                                       | uniform: `node <bridge entry>` from the bridge ref                                                                                                                                                                                                                          |
+| `buildCommandPlan`                                                              | deleted — fixed protocol methods; the bridge maps internally                                                                                                                                                                                                                |
+| `translateEvent`, `translateAcceptedCommand`                                    | deleted — bridge emits `ThreadEvent`s (accepted-user-message synthesis stays generic in runtime)                                                                                                                                                                            |
+| `parseModelListResult`                                                          | deleted — protocol defines the `model/list` result schema                                                                                                                                                                                                                   |
+| `decodeToolCallRequest`, `decodeInteractiveRequest`, `buildInteractiveResponse` | deleted — canonical protocol schemas                                                                                                                                                                                                                                        |
+| `classifyExecutionSettingsChange`                                               | deleted with no replacement — the runtime never diffs options; the bridge reconciles internally, and rebuild visibility is the mandatory session-replacement notification. No declared scope table: #1610 removed its last server-side consumer (see the note in Design §3) |
+| `normalizeExecutionOptions`                                                     | deleted — bridge-internal normalization                                                                                                                                                                                                                                     |
+| `buildPostInitializeRequests`, `prepareTurnStart`, `clearActiveTurnState`       | deleted — bridge-internal or generic turn-state concerns                                                                                                                                                                                                                    |
+| `buildThreadDetachedEvents`                                                     | generic: runtime reconciles from its own background-work state                                                                                                                                                                                                              |
+| per-provider `visibility.ts`                                                    | deleted — bridge classifies before emitting `provider/raw`                                                                                                                                                                                                                  |
 
 `ProviderExecutionContext` sheds every provider-flavored field.
 `claudeCodePermissionMode` becomes the declared prompt-mode capability + a
@@ -489,10 +561,10 @@ Sketch (final shape settled during implementation):
 
 ```ts
 bb.agents.experimental_registerProvider({
-  id: "claude-code",                    // stable; existing ids unchanged
+  id: "claude-code", // stable; existing ids unchanged
   displayName: "Claude Code",
-  icon: { asset: "icons/claude.svg" },  // served via existing plugin assets
-  kind: "agent",                        // "agent" | "router" — see router note
+  icon: { asset: "icons/claude.svg" }, // served via existing plugin assets
+  kind: "agent", // "agent" | "router" — see router note
   bridge: { entry: "provider-bridge" }, // required for kind "agent"; routers omit
 
   // A capability is DECLARED only when it passes BOTH tests:
@@ -506,27 +578,27 @@ bb.agents.experimental_registerProvider({
   capabilities: {
     permissionModes: ["accept-edits", "auto", "full"],
     reasoningLevels: ["low", "medium", "high", "xhigh", "ultracode", "max"],
-                                       // fallback ladder only; precise
-                                       // per-model sets come from model/list
-    supportsServiceTier: false,        // fast/priority toggle in the picker
-    supportsHostAiServices: false,     // server routes voice/inference
-    supportsNativeUserQuestion: true,  // ask-user-question plugin skips its
-                                       // duplicate tool
-    supportsNativeFork: true,          // fork affordance in the UI
+    // fallback ladder only; precise
+    // per-model sets come from model/list
+    supportsServiceTier: false, // fast/priority toggle in the picker
+    supportsHostAiServices: false, // server routes voice/inference
+    supportsNativeUserQuestion: true, // ask-user-question plugin skips its
+    // duplicate tool
+    supportsNativeFork: true, // fork affordance in the UI
     supportsNativeSessionRewind: true, // edit-past-message affordance
-    supportsManualCompaction: true,    // compact affordance
+    supportsManualCompaction: true, // compact affordance
     // MERGE CANDIDATE: fork + rewind may collapse into
     // `fork: "none" | "tip" | "checkpoint"` (rewind ≙ checkpoint fork) —
     // verify per provider how edit-message rewind is implemented before
     // merging. ACP is the motivating case: tip forks, no checkpoints.
   },
-  composerActions: ["plan"],           // just names. Skills typeahead is
-                                       // universal (bb injects skills into
-                                       // every provider) so it is implicit,
-                                       // and the {trigger, name,
-                                       // trailingText} boilerplate was
-                                       // identical everywhere — the
-                                       // composer owns the syntax.
+  composerActions: ["plan"], // just names. Skills typeahead is
+  // universal (bb injects skills into
+  // every provider) so it is implicit,
+  // and the {trigger, name,
+  // trailingText} boilerplate was
+  // identical everywhere — the
+  // composer owns the syntax.
 });
 ```
 
@@ -559,7 +631,6 @@ the bridge, conformance-checked, drift-proof by construction):
 plan action" is the same fact), `executionOptionScopes`,
 `supportsNativeWorkflows`, `executionOverride` (see notes above for each).
 
-
 Server side, a new `ProviderRegistryService` becomes the single source of
 provider metadata. Every current consumer of `@bb/agent-providers`
 (execution options, thread default policy, reasoning policy, permission
@@ -572,7 +643,7 @@ execution-options placeholder switches to last-known server data).
 
 **Routers.** A provider entry is ultimately a picker option that resolves
 into thread execution params at submit time. A `kind: "router"` provider
-makes that resolution *indirect*: it appears in the model/reasoning pickers
+makes that resolution _indirect_: it appears in the model/reasoning pickers
 like any other provider, but it never executes anything itself — its
 selection resolves to another registered provider's (model, reasoning) pair,
 and the thread runs on that delegate's bridge. Two future archetypes
@@ -605,7 +676,7 @@ Consequences for this change:
   `resolveExecution(submission) → {providerId, model, reasoningLevel}` hook.
   Neither ships in this change — the declaration shape, `ProviderInfo`
   `kind`, and the bridge-optional rule just leave room for both.
-- When the hooks ship, the thread executes and persists as the *delegate*
+- When the hooks ship, the thread executes and persists as the _delegate_
   provider; the router id lives in the composer's sticky selection, not in
   thread execution state. Noted here so the registry design doesn't
   preclude that split.
@@ -675,7 +746,7 @@ Move translation/schemas/visibility/model code from each in-core adapter
 into that provider's bridge; the provider runs on the generic adapter
 **behind a per-provider experiment flag** (read at provider-process spawn —
 existing sessions are never handed between paths). During the window the old
-adapter and the new bridge import the *same* translation modules — the code
+adapter and the new bridge import the _same_ translation modules — the code
 moves once, only thin glue differs — so "keeping the old path" costs no
 duplicated 5k-line translators and no double maintenance. Graduation (see
 Rollout below) deletes the bespoke adapter and the flag. Adapter unit tests
@@ -767,7 +838,7 @@ their level, never to flatten them toward a common denominator.
   `manualCompaction` handshake fact) and the plugin half in phase 4
   (`capabilities.supportsManualCompaction` on the declaration). What was
   left was the dynamic ACP tier's `MANUAL_COMPACTION_ACP_PROVIDER_IDS =
-  ["acp-opencode"]` set, which is now a per-agent declaration:
+["acp-opencode"]` set, which is now a per-agent declaration:
   `KnownAcpAgent.supportsManualCompaction` and a `customAcpAgents`
   config field of the same name (default false). The registry cannot hold
   ACP declarations — they resolve from config per request — so it takes a
@@ -805,10 +876,11 @@ their level, never to flatten them toward a common denominator.
   runtime, both are currently daemon-local tables with no bridge involvement,
   and doing them in one pass means introducing the sessionless
   provider-query surface once instead of twice. Health/install/update is the
-  more delicate half — install and update *mutate the host* (`npm i -g`,
+  more delicate half — install and update _mutate the host_ (`npm i -g`,
   `claude doctor`), and v118 already tightened update results to reject
   unverifiable successes, so moving that into plugin-supplied bridge code is
   a trust-boundary change, not just code motion.
+
 - `PROVIDER_SKILL_SPECS` + `resolveProviderExtraRoots` → the optional
   `skills/scanRoots` bridge method with daemon-side caching. (The injection
   side is not deferred to this phase: the canonical `skills/configure`
@@ -826,10 +898,10 @@ their level, never to flatten them toward a common denominator.
   recursive vs flat, seeded vs unseeded identities), read by
   `resolveNativeSkillScanRoots` and `resolveParentSkillScanRoots`;
   `resolveProviderExtraRoots` is a SECOND ~55-line provider switch over a
-  *different* provider set for roots that cannot be static paths (codex and
+  _different_ provider set for roots that cannot be static paths (codex and
   claude plugin-command roots, pi/omp/grok/hermes configured roots, the
   grok↔claude compat kill-switch); and `resolveProviderCommandScanRoots`
-  branches root *ordering* on `codex || claude-code`. Add the daemon-side
+  branches root _ordering_ on `codex || claude-code`. Add the daemon-side
   `disabledDirectories` compat filtering and this is ~350 lines of
   provider-specific behavior, comparable to a phase-2 provider migration —
   except it must move into FIVE bridges at once, because a partial move
@@ -846,6 +918,7 @@ their level, never to flatten them toward a common denominator.
   `SKILL_COMMAND_SURFACE_PROVIDERS` cannot become registry-driven until
   this lands, because the daemon has no other way to learn a new
   provider's roots.
+
 - `providerCliKeyValues` / fixed-key `providerUsageResponseSchema` → generic
   per-provider-id map backed by an optional `provider/usage` bridge method;
   usage-limits and CLI-install UI become registry-driven. **DEFERRED from
@@ -903,12 +976,12 @@ their level, never to flatten them toward a common denominator.
   `parse-operation-message.ts`'s four-provider `providerDisplayName` switch
   is DELETED — every caller already supplies the registry-resolved name.
   KEPT deliberately: `model-fallback-extraction.ts`'s `providerId ===
-  "claude-code"` guard. It is not policy — it decodes a legacy raw Claude
+"claude-code"` guard. It is not policy — it decodes a legacy raw Claude
   SDK `sdk/message` payload for events that predate normalization, and the
   modern typed `provider/modelFallback` path sits directly above it.
   DEFERRED: `effective-prompt-mode.ts`'s Claude-only plan permission label
   ("Claude Code will plan without normal full-access execution") — that is
-  per-provider *copy*, not a capability, and generalizing it means a
+  per-provider _copy_, not a capability, and generalizing it means a
   declared string in the provider contract.
 - DONE (wave 4) — `EDIT_MESSAGE_PROVIDER_IDS` → capability. No new
   capability was needed: `supportsNativeSessionRewind` was already declared
@@ -938,7 +1011,7 @@ their level, never to flatten them toward a common denominator.
 
 - **DEFERRED from wave 4 — provider-scoped options for the claude/codex
   workflows, memory, and subagent toggles.** Still special-cased, and the
-  special case is in the *storage shape*, not in a lookup that could be
+  special case is in the _storage shape_, not in a lookup that could be
   swapped for a capability: `appSettings` has five provider-named boolean
   COLUMNS (`codexMemoryEnabled`, `claudeCodeMemoryEnabled`,
   `codexSubagentsDisabled`, `claudeCodeSubagentsDisabled`,
@@ -964,7 +1037,7 @@ their level, never to flatten them toward a common denominator.
   the plugin contributes its own tool), which finally gives that declared
   capability a production consumer.
   DEFERRED — the provider-retry banner's `providerLabel` switch. It is a
-  plugin *frontend* component, and there is no plugin-facing provider
+  plugin _frontend_ component, and there is no plugin-facing provider
   directory on either SDK surface: `@get-bb/plugin-sdk/app` exposes no
   provider list/display-name hook, and `BbPluginApi` has no read side for
   the registry either. Fixing it means a new public plugin API member
@@ -998,7 +1071,7 @@ parity replay clean, a defined incident-free soak with default-on, then a
 **deletion PR** that removes the old path and the flag. Weight the rigor by
 stakes: codex and claude-code get the largest replay corpora, the longest
 soaks, and the deepest manual QA; pi and acp can graduate faster. The codex
-bridge deserves the most caution of all — it is the only *new* bridge and it
+bridge deserves the most caution of all — it is the only _new_ bridge and it
 serves the top provider. Every toggle is
 created with its deletion PR scheduled — "for the time being" is a soak
 window, not a steady state.
@@ -1073,12 +1146,12 @@ window, not a steady state.
 Each provider today is an in-core adapter (the 18-member `ProviderAdapter`)
 plus, for three of four, a bridge child process:
 
-| Provider | In-core today | In bridge today | Child process |
-| --- | --- | --- | --- |
-| claude-code | ~5.2k lines (adapter 1357, `translate-message.ts` 1073, `task-translation.ts`, `schemas.ts`, `interactive-contract.ts`, visibility 620, model list, error-info, sdk-extraction) | ~4.2k (`bridge.ts` 2109 wrapping the Claude Agent SDK, readonly-bash policy, session options, mock-CLI proxy, MCP tool proxy) | `node bb-claude-code-bridge.mjs` |
-| pi | ~2.1k (adapter 1547, visibility, model list) | ~2.4k (wraps the Pi SDK) | `node bb-pi-bridge.mjs` |
-| acp | ~2.5k (adapter 1552, `wire.ts`, `bridge-protocol.ts`, visibility, profiles) | ~3.2k (generic ACP client, permission/fs policy, model catalog, MCP tool proxy) | `node bb-acp-bridge.mjs` → ACP agent |
-| codex | **all in-core**: ~5.3k hand-written (adapter 2239, `event-translation.ts` 1095, `schemas.ts` 998, interactive requests, permission maps, visibility, models) + ~1.9k generated app-server schema types | none | `codex app-server` directly |
+| Provider    | In-core today                                                                                                                                                                                          | In bridge today                                                                                                               | Child process                        |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| claude-code | ~5.2k lines (adapter 1357, `translate-message.ts` 1073, `task-translation.ts`, `schemas.ts`, `interactive-contract.ts`, visibility 620, model list, error-info, sdk-extraction)                        | ~4.2k (`bridge.ts` 2109 wrapping the Claude Agent SDK, readonly-bash policy, session options, mock-CLI proxy, MCP tool proxy) | `node bb-claude-code-bridge.mjs`     |
+| pi          | ~2.1k (adapter 1547, visibility, model list)                                                                                                                                                           | ~2.4k (wraps the Pi SDK)                                                                                                      | `node bb-pi-bridge.mjs`              |
+| acp         | ~2.5k (adapter 1552, `wire.ts`, `bridge-protocol.ts`, visibility, profiles)                                                                                                                            | ~3.2k (generic ACP client, permission/fs policy, model catalog, MCP tool proxy)                                               | `node bb-acp-bridge.mjs` → ACP agent |
+| codex       | **all in-core**: ~5.3k hand-written (adapter 2239, `event-translation.ts` 1095, `schemas.ts` 998, interactive requests, permission maps, visibility, models) + ~1.9k generated app-server schema types | none                                                                                                                          | `codex app-server` directly          |
 
 **A shared core, with real divergences.** Six methods plus `initialize`
 are identical on every process boundary — all four send `model/list`,
@@ -1167,7 +1240,7 @@ into the bridge and emit `ThreadEvent`s → delete the bespoke adapter and
 register on the generic adapter with declaration data. Ordering by gap size:
 acp (bridge-protocol.ts is ~90% the target), pi (smallest translation move),
 claude-code (largest translation + exercises the `"provider"` approval path),
-codex (the only *new* bridge — it inherits the translation code verbatim,
+codex (the only _new_ bridge — it inherits the translation code verbatim,
 but on the command side it is a method-mapping layer, not a passthrough: six
 of its command→method mappings diverge from the bb bridges, see above; costs
 one extra process hop, buys uniform lifecycle, the env allowlist, and
