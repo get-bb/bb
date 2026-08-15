@@ -208,6 +208,7 @@ describe("bb-app managed config", () => {
             command: "my-agent",
             args: ["acp"],
             env: { MY_AGENT_HOME: "/tmp/my-agent" },
+            supportsManualCompaction: false,
           },
         ],
       },
@@ -222,6 +223,7 @@ describe("bb-app managed config", () => {
         command: "my-agent",
         args: ["acp"],
         env: { MY_AGENT_HOME: "/tmp/my-agent" },
+        supportsManualCompaction: false,
       },
     ]);
   });
@@ -240,6 +242,7 @@ describe("bb-app managed config", () => {
             command: "my-agent",
             args: [],
             env: {},
+            supportsManualCompaction: false,
           },
         ],
       },
@@ -404,6 +407,7 @@ describe("bb-app managed config", () => {
           command: "valid-agent",
           args: [],
           env: {},
+          supportsManualCompaction: false,
         },
       ]);
       expect(logger.warnings()).toEqual([

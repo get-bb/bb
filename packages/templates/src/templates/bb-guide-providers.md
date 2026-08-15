@@ -119,12 +119,15 @@ nativeReasoning for ACP session/set_config_option reasoning. Optional logo
 accepts an SVG, PNG, or WebP path; relative paths resolve from the bb data dir.
 Use nativeSkillRoots to add native skills to the composer. User roots resolve
 from the target host home directory. Project roots resolve from the selected
-workspace. Each root must use a relative path without dot segments.
+workspace. Each root must use a relative path without dot segments. Set
+supportsManualCompaction to true only if the agent accepts an explicit
+compaction request; it defaults to false, and bb hides the /compact command
+for agents that do not declare it.
 
 Use top-level sharedSkillRoots for one provider-neutral skill collection. The
 user and project paths use the same relative-path rules. bb indexes these roots
 as read-only sources. It then injects the selected skills into all providers.
 The bb user and project roots keep higher precedence than matching shared roots.
 
-OpenCode ACP supports the built-in /compact command. Cursor ACP does not expose
-compatible manual compaction through ACP.
+OpenCode ACP declares support for the built-in /compact command. Cursor ACP does
+not expose compatible manual compaction through ACP.

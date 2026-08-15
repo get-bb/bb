@@ -21,6 +21,7 @@ import {
   runStartupRecoverySweep,
 } from "./services/system/periodic-sweeps.js";
 import { createProviderRegistryService } from "./services/providers/provider-registry.js";
+import { resolveAcpAgentCapabilitiesForProviderId } from "./services/system/acp-launch-spec.js";
 import { createTelemetryService } from "./services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
 import { resolveThreadStorageRootPath } from "./services/threads/thread-storage.js";
@@ -56,7 +57,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const hub = new NotificationHub();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
-  const providerRegistry = createProviderRegistryService();
   const lifecycleDedupers = createLifecycleDedupers();
   const appUrl = toOptionalString(serverConfig.BB_APP_URL);
   const threadStorageRootPath = resolveThreadStorageRootPath({
@@ -90,6 +90,16 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     threadStorageRootPath,
     transcriptionModel: serverConfig.BB_TRANSCRIPTION,
   };
+
+  // Reads `runtimeConfig.customAcpAgents` on every call so a `bb-app config
+  // refresh` (which replaces the array in place) is picked up immediately.
+  const providerRegistry = createProviderRegistryService({
+    resolveAcpAgentCapabilities: (providerId) =>
+      resolveAcpAgentCapabilitiesForProviderId(
+        { config: runtimeConfig },
+        providerId,
+      ),
+  });
 
   if (appUrl !== undefined) {
     runtimeConfig.appUrl = appUrl;

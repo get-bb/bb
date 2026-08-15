@@ -10,6 +10,7 @@ import { createApp } from "../../src/server.js";
 import { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../src/services/machine-auth.js";
 import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
+import { resolveAcpAgentCapabilitiesForProviderId } from "../../src/services/system/acp-launch-spec.js";
 import { registerFirstPartyProviders } from "./provider-registry.js";
 import { SkillTreeRegistry } from "../../src/services/skills/injected-skills.js";
 import { ProviderBridgeArtifactRegistry } from "../../src/services/plugins/provider-bridge-artifacts.js";
@@ -132,7 +133,10 @@ export async function createTestAppHarness(
   const hub = new NotificationHubImpl();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
-  const providerRegistry = createProviderRegistryService();
+  const providerRegistry = createProviderRegistryService({
+    resolveAcpAgentCapabilities: (providerId) =>
+      resolveAcpAgentCapabilitiesForProviderId({ config }, providerId),
+  });
   if (seedFirstPartyProviders) {
     await registerFirstPartyProviders(providerRegistry);
   }

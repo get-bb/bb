@@ -8,6 +8,11 @@
  * is that answer — the registry's accessors fall back to it, and the listing
  * composers build their `ProviderInfo`s from it.
  *
+ * Capabilities that vary per ACP agent rather than across the whole tier (for
+ * example manual compaction, which OpenCode supports and Cursor does not) are
+ * declared on the agent record itself and resolved by
+ * `system/acp-launch-spec.ts::resolveAcpAgentCapabilitiesForProviderId`.
+ *
  * The external agent owns model selection, tool execution, and session naming,
  * so BB-side capabilities stay minimal. Permission modes are enforced
  * cooperatively by the ACP bridge (permission-request policy + client fs write
@@ -66,13 +71,6 @@ const ACP_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   reasoningLevels: ACP_REASONING_LEVELS,
 };
 
-/**
- * ACP ids that accept an explicit compaction request. DEBT: a string list,
- * kept from the core catalog verbatim. It is replaced by a bridge-reported
- * capability plus a `thread/compact` protocol method in phase 6.
- */
-const MANUAL_COMPACTION_ACP_PROVIDER_IDS = new Set(["acp-opencode"]);
-
 export function isAcpProviderId(value: string): boolean {
   return value.startsWith("acp-");
 }
@@ -117,6 +115,3 @@ export function getAcpProviderServerCapabilities(
   return ACP_SERVER_CAPABILITIES;
 }
 
-export function acpSupportsManualCompaction(providerId: string): boolean {
-  return MANUAL_COMPACTION_ACP_PROVIDER_IDS.has(providerId);
-}

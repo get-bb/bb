@@ -12,7 +12,6 @@
  * stay in the bridge handshake; neither belongs here.
  */
 import {
-  acpSupportsManualCompaction,
   buildAcpProviderInfo,
   getAcpProviderServerCapabilities,
   isAcpProviderId,
@@ -96,10 +95,10 @@ export interface ProviderRegistryService {
   ): readonly PermissionMode[] | null;
   supportsNativeFork(providerId: string): boolean;
   /**
-   * Whether BB can explicitly request context compaction. Registered
-   * providers answer from their declaration; the dynamic ACP tier keeps its
-   * acp-opencode quirk until the phase-6 capability + `thread/compact`
-   * protocol method replace the string list.
+   * Whether BB can explicitly request context compaction (the canonical
+   * `thread/compact` bridge method). Registered providers answer from their
+   * plugin declaration; dynamic ACP ids answer from the resolved agent's own
+   * declaration via {@link ProviderRegistryDeps.resolveAcpAgentCapabilities}.
    */
   supportsManualCompaction(providerId: string): boolean;
   /**
@@ -114,7 +113,21 @@ export interface ProviderRegistryService {
   ): { dispose(): void };
 }
 
-export function createProviderRegistryService(): ProviderRegistryService {
+/**
+ * The dynamic ACP tier is resolved from config at request time, so the
+ * registry cannot hold those declarations. It takes a resolver instead; an
+ * omitted resolver answers "no ACP agent declares anything", which is what
+ * tests and pre-config construction want.
+ */
+export interface ProviderRegistryDeps {
+  resolveAcpAgentCapabilities?: (
+    providerId: string,
+  ) => { supportsManualCompaction: boolean } | null;
+}
+
+export function createProviderRegistryService(
+  deps: ProviderRegistryDeps = {},
+): ProviderRegistryService {
   const pluginRegistrations = new Map<string, ProviderRegistration>();
 
   function getRegistration(providerId: string): ProviderRegistration | null {
@@ -186,7 +199,10 @@ export function createProviderRegistryService(): ProviderRegistryService {
         );
       }
       if (isAcpProviderId(providerId)) {
-        return acpSupportsManualCompaction(providerId);
+        return (
+          deps.resolveAcpAgentCapabilities?.(providerId)
+            ?.supportsManualCompaction ?? false
+        );
       }
       return false;
     },

@@ -18,6 +18,25 @@ function findCustomAcpAgentForProviderId(
   );
 }
 
+/**
+ * The declared capabilities of a resolved ACP agent. ACP ids are never
+ * registered in the provider registry (they are resolved from launch specs at
+ * request time), so this is the ACP tier's equivalent of a plugin declaration.
+ * A custom agent wins over a known agent with the same provider id, exactly as
+ * it does for the launch spec.
+ */
+export function resolveAcpAgentCapabilitiesForProviderId(
+  deps: Pick<AppDeps, "config">,
+  providerId: string,
+): { supportsManualCompaction: boolean } | null {
+  const agent =
+    findCustomAcpAgentForProviderId(deps.config.customAcpAgents, providerId) ??
+    findKnownAcpAgentForProviderId(providerId);
+  return agent === undefined
+    ? null
+    : { supportsManualCompaction: agent.supportsManualCompaction };
+}
+
 export function resolveAcpLaunchSpecForProviderId(
   deps: Pick<AppDeps, "config">,
   providerId: string,

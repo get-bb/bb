@@ -32,6 +32,7 @@ function buildDynamicAcpAgents(): CustomAcpAgent[] {
       command: fixturePath,
       args: [],
       env: { BB_DYNAMIC_ACP_SMOKE: "thread" },
+      supportsManualCompaction: false,
       modelCli: {
         listArgs: ["--list-models"],
         selectFlag: "--model",
@@ -44,6 +45,7 @@ function buildDynamicAcpAgents(): CustomAcpAgent[] {
       command: fixturePath,
       args: [],
       env: {},
+      supportsManualCompaction: false,
     },
   ];
 }

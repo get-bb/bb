@@ -135,6 +135,11 @@ export const customAcpAgentSchema = z
     reasoningCli: acpReasoningCliSchema.optional(),
     nativeReasoning: acpNativeReasoningSchema.optional(),
     nativeSkillRoots: providerNativeSkillRootsSchema.optional(),
+    // Whether the agent accepts an explicit compaction request. The ACP
+    // protocol has no capability for it, so the agent definition declares it:
+    // OpenCode implements /compact, Cursor does not, and a custom agent says
+    // so here rather than being enumerated in a BB-side id list.
+    supportsManualCompaction: z.boolean().default(false),
   })
   .strict()
   .superRefine((agent, context) => {

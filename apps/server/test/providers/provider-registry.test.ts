@@ -72,8 +72,24 @@ describe("provider registry policy accessors", () => {
     expect(typeof registry.supportsNativeFork("acp-custom-agent")).toBe(
       "boolean",
     );
-    // The acp-opencode compaction quirk still rides the ACP tier.
+    // With no resolver wired the tier declares nothing, so an unresolvable
+    // acp-* id cannot claim a per-agent capability.
+    expect(registry.supportsManualCompaction("acp-opencode")).toBe(false);
+  });
+
+  // Manual compaction is per-agent, not per-tier: it used to be a hardcoded
+  // `["acp-opencode"]` set, and is now the resolved agent's own declaration.
+  it("reads acp compaction support from the resolved agent declaration", () => {
+    const declared = new Map([
+      ["acp-opencode", { supportsManualCompaction: true }],
+      ["acp-omp", { supportsManualCompaction: false }],
+    ]);
+    const registry = createProviderRegistryService({
+      resolveAcpAgentCapabilities: (providerId) =>
+        declared.get(providerId) ?? null,
+    });
     expect(registry.supportsManualCompaction("acp-opencode")).toBe(true);
+    expect(registry.supportsManualCompaction("acp-omp")).toBe(false);
     expect(registry.supportsManualCompaction("acp-custom-agent")).toBe(false);
   });
 

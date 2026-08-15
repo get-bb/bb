@@ -744,8 +744,21 @@ surfaces, onboarding) must express the full richness their hardcoded
 surfaces have today — the point of this plan is to raise other providers to
 their level, never to flatten them toward a common denominator.
 
-- `supportsManualCompaction` string list → capability + `thread/compact`
-  protocol method.
+- DONE (wave 4) — `supportsManualCompaction` string list → capability +
+  `thread/compact` protocol method. The protocol half already shipped in
+  phases 1–2 (`BRIDGE_REQUEST_METHODS.threadCompact`, the
+  `manualCompaction` handshake fact) and the plugin half in phase 4
+  (`capabilities.supportsManualCompaction` on the declaration). What was
+  left was the dynamic ACP tier's `MANUAL_COMPACTION_ACP_PROVIDER_IDS =
+  ["acp-opencode"]` set, which is now a per-agent declaration:
+  `KnownAcpAgent.supportsManualCompaction` and a `customAcpAgents`
+  config field of the same name (default false). The registry cannot hold
+  ACP declarations — they resolve from config per request — so it takes a
+  `resolveAcpAgentCapabilities` dep, wired at the server boundary from
+  `resolveAcpAgentCapabilitiesForProviderId` (custom agent wins over known
+  agent, same precedence as the launch spec). Deliberate behavior change:
+  a custom agent that shadows `acp-opencode` must now declare compaction
+  itself instead of inheriting it from the id.
 - `skillProviderSchema` closed enum → open provider id.
 - Daemon per-provider CLI tables (`provider-cli-health.ts`,
   `known_acp_agents.status`) → the optional `provider/health` /

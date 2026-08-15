@@ -26,6 +26,7 @@ import { createApp } from "../../../apps/server/src/server.js";
 import { PendingInteractionLifecycle } from "../../../apps/server/src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../../apps/server/src/services/machine-auth.js";
 import { createProviderRegistryService } from "../../../apps/server/src/services/providers/provider-registry.js";
+import { resolveAcpAgentCapabilitiesForProviderId } from "../../../apps/server/src/services/system/acp-launch-spec.js";
 import { registerFirstPartyProviders } from "../../../apps/server/test/helpers/provider-registry.js";
 import {
   copyBuiltinSkills,
@@ -272,7 +273,10 @@ async function startIntegrationServer(
   });
   const telemetry = createNoopTelemetryService();
   const skillTreeRegistry = new SkillTreeRegistry();
-  const providerRegistry = createProviderRegistryService();
+  const providerRegistry = createProviderRegistryService({
+    resolveAcpAgentCapabilities: (providerId) =>
+      resolveAcpAgentCapabilitiesForProviderId({ config }, providerId),
+  });
   // Providers come only from plugin declarations. This harness runs no plugin
   // service, so it registers the first-party declarations directly, exactly as
   // their plugins would.

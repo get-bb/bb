@@ -363,6 +363,7 @@ describe("public thread fork route", () => {
             command: "test-agent",
             args: ["acp"],
             env: {},
+            supportsManualCompaction: false,
           },
         ],
       },
