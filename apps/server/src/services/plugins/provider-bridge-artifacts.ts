@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES } from "@bb/host-daemon-contract";
 
 /**
  * A plugin's built provider bridge, recorded per load like the app-bundle
@@ -53,8 +54,9 @@ export class ProviderBridgeArtifactRegistry {
 
 /**
  * Read and hash-verify a plugin's built provider bridge. Returns null when
- * the bundle or its meta sidecar is missing, unreadable, or when the recorded
- * hash disagrees with the bytes on disk — the caller decides whether that
+ * the bundle or its meta sidecar is missing, unreadable, when the recorded
+ * hash disagrees with the bytes on disk, or when the bundle exceeds
+ * {@link MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES} — the caller decides whether that
  * means "build it" (mutable sources) or "refuse" (prebuilt sources).
  */
 export async function readPluginProviderBridgeArtifact(
@@ -87,6 +89,12 @@ export async function readPluginProviderBridgeArtifact(
     return null;
   }
   const recorded = meta as { sha256: string; byteLength: number };
+  // Refused before it can be recorded, so an oversized bundle is never
+  // addressable by any daemon: the daemon buffers an artifact whole to verify
+  // it, and the wire schema will not carry a byteLength past this anyway.
+  if (bytes.byteLength > MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES) {
+    return null;
+  }
   const actualSha256 = createHash("sha256").update(bytes).digest("hex");
   if (
     recorded.sha256 !== actualSha256 ||

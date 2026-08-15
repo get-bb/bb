@@ -1,7 +1,7 @@
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
-import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
+import { readBoundedLines } from "./bounded-line-reader.js";
 
 export type BridgeJsonRpcId = string | number;
 
@@ -109,8 +109,18 @@ export function startBridgeStdio(args: {
     process.once("SIGINT", args.onSigint);
   }
 
-  const readline = createInterface({ input: process.stdin, terminal: false });
-  readline.on("line", args.handleLine);
-  readline.on("close", args.onClose);
+  // Bounded rather than `readline`: the runtime on the other end of this pipe
+  // is trusted, but an unbounded line buffer is one malformed writer away from
+  // taking the bridge down with it.
+  readBoundedLines({
+    input: process.stdin,
+    onLine: args.handleLine,
+    onOverflow: (bytes) => {
+      process.stderr.write(
+        `Discarded an oversized JSON-RPC line from the runtime (${bytes} bytes).\n`,
+      );
+    },
+    onClose: args.onClose,
+  });
   return true;
 }

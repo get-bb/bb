@@ -211,6 +211,17 @@ export function normalizeHostDaemonAcpLaunchSpec(
 }
 
 /**
+ * Ceiling on one provider-bridge bundle. The daemon buffers an artifact whole
+ * to hash-verify it before executing it, so an unbounded bundle is unbounded
+ * daemon memory — and a bundle is now third-party plugin output. The largest
+ * first-party bridge is ~2.5 MB and the largest shape ever built (a fully
+ * inlined pi) was ~15 MB, so this is generous by two orders of magnitude
+ * while still bounding the buffer. Enforced twice: the server refuses to
+ * record a bigger artifact, and the wire schema refuses to carry one.
+ */
+export const MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES = 256 * 1024 * 1024;
+
+/**
  * How the daemon obtains the provider bridge for a plugin-registered
  * provider. `source.kind: "artifact"` means: download the content-addressed
  * bridge bundle from the server by sha256, verify the bytes, cache it under
@@ -229,7 +240,11 @@ export const hostDaemonBridgeLaunchSchema = z
         .object({
           kind: z.literal("artifact"),
           sha256: z.string().regex(/^[a-f0-9]{64}$/u),
-          byteLength: z.number().int().positive(),
+          byteLength: z
+            .number()
+            .int()
+            .positive()
+            .max(MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES),
         })
         .strict(),
     ]),

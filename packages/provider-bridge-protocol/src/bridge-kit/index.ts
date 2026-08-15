@@ -10,6 +10,7 @@
  */
 export * from "./accepted-user-messages.js";
 export * from "./adapter-utils.js";
+export * from "./bounded-line-reader.js";
 export * from "./bridge-harness.js";
 export * from "./bridge-runtime-env.js";
 export * from "./bridge-session-registry.js";

@@ -3,6 +3,10 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  hostDaemonBridgeLaunchSchema,
+  MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES,
+} from "@bb/host-daemon-contract";
 import { ensureCachedProviderBridge } from "./provider-bridges.js";
 
 const BRIDGE_BYTES = Buffer.from(
@@ -137,5 +141,49 @@ describe("ensureCachedProviderBridge", () => {
       }),
     ).rejects.toThrow(/Invalid provider bridge sha256/);
     expect(fetchProviderBridge).not.toHaveBeenCalled();
+  });
+
+  // The download is buffered whole before it can be verified, so the size has
+  // to be refused from the declaration, before any bytes arrive.
+  it("refuses an oversized artifact before touching the network", async () => {
+    const fetchProviderBridge = vi.fn(async () => new Uint8Array(BRIDGE_BYTES));
+    await expect(
+      ensureCachedProviderBridge({
+        dataDir,
+        fetchProviderBridge,
+        sha256: BRIDGE_SHA,
+        byteLength: MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES + 1,
+      }),
+    ).rejects.toThrow(/too large/);
+    expect(fetchProviderBridge).not.toHaveBeenCalled();
+  });
+});
+
+describe("bridgeLaunch wire schema", () => {
+  it("refuses to carry an oversized artifact at all", () => {
+    const launch = {
+      source: {
+        kind: "artifact",
+        sha256: BRIDGE_SHA,
+        byteLength: MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES + 1,
+      },
+      capabilities: {
+        supportsServiceTier: false,
+        supportedPermissionModes: ["full"],
+        supportsArchive: false,
+        supportsRename: false,
+        supportsFork: false,
+      },
+    };
+    expect(hostDaemonBridgeLaunchSchema.safeParse(launch).success).toBe(false);
+    expect(
+      hostDaemonBridgeLaunchSchema.safeParse({
+        ...launch,
+        source: {
+          ...launch.source,
+          byteLength: MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES,
+        },
+      }).success,
+    ).toBe(true);
   });
 });

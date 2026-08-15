@@ -1196,7 +1196,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       return {
         artifact: null,
         problem:
-          "provider bridge artifact is missing or does not match its recorded hash — rebuild with `bb plugin build`",
+          "provider bridge artifact is missing, larger than the artifact size limit, or does not match its recorded hash — rebuild with `bb plugin build`",
       };
     }
     return { artifact, problem: null };

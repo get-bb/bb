@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES } from "@bb/host-daemon-contract";
 
 /**
  * Content-addressed cache for plugin-delivered provider bridge bundles.
@@ -85,6 +86,15 @@ export async function ensureCachedProviderBridge(
 ): Promise<string> {
   if (!SHA256_PATTERN.test(args.sha256)) {
     throw new Error(`Invalid provider bridge sha256: "${args.sha256}"`);
+  }
+  // The download is buffered whole to hash-verify it before it can be
+  // executed, so the declared size is checked before a byte is fetched. The
+  // wire schema enforces the same cap; this is the guard for callers that
+  // build the args themselves.
+  if (args.byteLength > MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES) {
+    throw new Error(
+      `Provider bridge is too large: ${args.byteLength} bytes exceeds the ${MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES}-byte limit`,
+    );
   }
   const key = `${args.dataDir}\0${args.sha256}`;
   const pending = pendingBridgePulls.get(key);
