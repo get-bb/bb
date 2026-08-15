@@ -418,7 +418,7 @@ const piCompactionItemIds = createScopedItemIdFactory({
   prefix: "pi-compaction",
 });
 
-export function resetPiCommandOutputSnapshots(state: PiTurnState): void {
+function resetPiCommandOutputSnapshots(state: PiTurnState): void {
   state.commandOutputSnapshotsByCallId.clear();
 }
 

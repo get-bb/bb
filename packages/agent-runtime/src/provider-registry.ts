@@ -1,8 +1,9 @@
 /**
  * Provider registry.
  *
- * Manages the set of available built-in provider metadata and adapter factories
- * (codex, claude-code, pi).
+ * Manages the set of available built-in provider metadata, the canonical
+ * bridge routing for graduated providers (ACP, pi), and the remaining legacy
+ * adapter factories (codex, claude-code).
  */
 
 import {
@@ -19,7 +20,6 @@ import { resolveBridgeProcessArgs } from "./shared/bridge-path.js";
 import { BUILT_IN_ACP_LAUNCH_SPECS } from "./acp/launch-specs.js";
 import { createClaudeCodeProviderAdapter } from "./claude-code/adapter.js";
 import { createCodexProviderAdapter } from "./codex/adapter.js";
-import { createPiProviderAdapter } from "./pi/adapter.js";
 import type {
   ProviderAdapter,
   ProviderAdapterFactoryOptions,
@@ -48,10 +48,6 @@ const builtInProviders = [
     createAdapter: (options) => createClaudeCodeProviderAdapter(options),
     info: getBuiltInAgentProviderInfo("claude-code"),
   },
-  {
-    createAdapter: (options) => createPiProviderAdapter(options),
-    info: getBuiltInAgentProviderInfo("pi"),
-  },
 ] satisfies BuiltInProviderDescriptor[];
 
 const builtInProvidersById = new Map(
@@ -71,10 +67,10 @@ const builtInProvidersById = new Map(
  * Canonical path: providers run on the generic adapter speaking the canonical
  * Provider Bridge Protocol.
  *
- * ACP providers are graduated — their legacy adapter is gone, so they route
- * canonically regardless of the experiment's prefix policy. claude-code and
- * codex still ship a legacy adapter, so an enabled bridge-protocol prefix is
- * what routes them here.
+ * ACP providers and pi are graduated — their legacy adapters are gone, so they
+ * route canonically regardless of the experiment's prefix policy. claude-code
+ * and codex still ship a legacy adapter, so an enabled bridge-protocol prefix
+ * is what routes them here.
  *
  * The ACP launch spec travels opaquely via staticProviderOptions (claude-code
  * needs no launch spec — its provider-flavored knobs ride the per-command
@@ -128,10 +124,30 @@ function createBridgeProtocolAdapterForId(
         : {}),
     });
   }
-  // Graduated: the ACP legacy adapter is deleted, so ACP providers route
-  // canonically whether or not the experiment lists their prefix.
+  // Graduated: the ACP and pi legacy adapters are deleted, so those providers
+  // route canonically whether or not the experiment lists their prefix.
   if (isAcpProviderId(providerId)) {
     return createAcpBridgeAdapter(providerId, options);
+  }
+  if (providerId === "pi") {
+    const info = getBuiltInAgentProviderInfo("pi");
+    return createBridgeProtocolAdapter({
+      id: providerId,
+      displayName: info.displayName,
+      capabilities: info.capabilities,
+      process: {
+        command: options.bridgeNodeExecutablePath ?? "node",
+        args: resolveBridgeProcessArgs({
+          bridgeBundleDir: options.bridgeBundleDir,
+          bundleFileName: "bb-pi-bridge.mjs",
+          importMetaUrl: import.meta.url,
+          bridgeRelativePath: "pi/bridge/bridge.js",
+        }),
+        ...(options.bridgeNodeEnv !== undefined
+          ? { env: options.bridgeNodeEnv }
+          : {}),
+      },
+    });
   }
   const prefixes = options.bridgeProtocolProviderPrefixes ?? [];
   if (!prefixes.some((prefix) => providerId.startsWith(prefix))) {
@@ -201,26 +217,6 @@ function createBridgeProtocolAdapterForId(
             },
           }
         : {}),
-    });
-  }
-  if (providerId === "pi") {
-    const info = getBuiltInAgentProviderInfo("pi");
-    return createBridgeProtocolAdapter({
-      id: providerId,
-      displayName: info.displayName,
-      capabilities: info.capabilities,
-      process: {
-        command: options.bridgeNodeExecutablePath ?? "node",
-        args: resolveBridgeProcessArgs({
-          bridgeBundleDir: options.bridgeBundleDir,
-          bundleFileName: "bb-pi-bridge.mjs",
-          importMetaUrl: import.meta.url,
-          bridgeRelativePath: "pi/bridge/bridge.js",
-        }),
-        ...(options.bridgeNodeEnv !== undefined
-          ? { env: options.bridgeNodeEnv }
-          : {}),
-      },
     });
   }
   return null;

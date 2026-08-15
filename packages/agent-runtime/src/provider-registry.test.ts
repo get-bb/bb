@@ -183,33 +183,17 @@ describe("provider registry", () => {
     expect(acpProvider.process.env).toEqual(bridgeNodeEnv);
   });
 
-  it("passes the configured turn id prefix to bundled providers", () => {
+  // Only the remaining legacy adapters mint bb turn ids in-process; graduated
+  // providers mint them in their bridge from the prefix on the wire.
+  it("passes the configured turn id prefix to legacy adapters", () => {
     const claudeProvider = createProviderForId("claude-code", {
       additionalWorkspaceWriteRoots: [],
       turnIdPrefix: "turn_runtime_",
     });
-    const piProvider = createProviderForId("pi", {
-      additionalWorkspaceWriteRoots: [],
-      turnIdPrefix: "turn_runtime_",
-    });
 
-    const claudeEvents = claudeProvider.translateEvent({
-      type: "assistant",
-      message: {},
-    });
-    const piEvents = piProvider.translateEvent({
-      type: "agent_start",
-    });
-
-    expect(claudeEvents).toContainEqual(
-      expect.objectContaining({
-        type: "turn/started",
-        threadId: "",
-        providerThreadId: "",
-        scope: turnScope("turn_runtime_1"),
-      }),
-    );
-    expect(piEvents).toContainEqual(
+    expect(
+      claudeProvider.translateEvent({ type: "assistant", message: {} }),
+    ).toContainEqual(
       expect.objectContaining({
         type: "turn/started",
         threadId: "",
@@ -348,6 +332,17 @@ describe("provider registry", () => {
         },
       },
     });
+  });
+
+  it("routes pi canonically without an enabled bridge prefix", () => {
+    const provider = createProviderForId("pi", {
+      additionalWorkspaceWriteRoots: [],
+      bridgeProtocolProviderPrefixes: [],
+    });
+
+    expect(provider.process.args.at(-1)).toMatch(
+      /agent-runtime\/src\/pi\/bridge\/bridge\.ts$/,
+    );
   });
 
   it("routes acp providers canonically without an enabled bridge prefix", () => {

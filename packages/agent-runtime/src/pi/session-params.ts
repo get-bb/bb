@@ -2,9 +2,8 @@
  * Pi session parameter mapping.
  *
  * Shared helpers that build the pi bridge's internal session-construction
- * params. Extracted from the pi adapter so the adapter (legacy dialect) and
- * the bridge's canonical Provider Bridge Protocol handlers share one mapping,
- * the same pattern as `acp/session-params.ts`.
+ * params from canonical Provider Bridge Protocol session params, the same
+ * pattern as `acp/session-params.ts`.
  */
 
 import type { DynamicTool, InstructionMode, ReasoningLevel } from "@bb/domain";
@@ -27,7 +26,7 @@ export type PiReasoningLevel = z.infer<typeof piReasoningLevelSchema>;
 // Levels Pi does not support ("ultracode", "ultra") are dropped so the bridge
 // schema never receives a value it would reject; reconciliation picks the
 // closest supported level before this point, so this is a defensive floor.
-export function toPiThinkingLevel(
+function toPiThinkingLevel(
   reasoningLevel: ReasoningLevel | undefined,
 ): PiReasoningLevel | undefined {
   switch (reasoningLevel) {
@@ -46,7 +45,7 @@ export function toPiThinkingLevel(
   }
 }
 
-export function buildPiConfig(
+function buildPiConfig(
   threadId: string,
   options?: { envVars?: Record<string, string> | undefined },
 ): Record<string, unknown> | undefined {
