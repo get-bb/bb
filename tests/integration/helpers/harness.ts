@@ -25,6 +25,7 @@ import { createLifecycleDedupers } from "../../../apps/server/src/lifecycle-dedu
 import { createApp } from "../../../apps/server/src/server.js";
 import { PendingInteractionLifecycle } from "../../../apps/server/src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../../apps/server/src/services/machine-auth.js";
+import { createProviderRegistryService } from "../../../apps/server/src/services/providers/provider-registry.js";
 import {
   copyBuiltinSkills,
   resolveBuiltinSkillsRootPath,
@@ -269,6 +270,7 @@ async function startIntegrationServer(
   });
   const telemetry = createNoopTelemetryService();
   const skillTreeRegistry = new SkillTreeRegistry();
+  const providerRegistry = createProviderRegistryService();
   const pendingInteractions = new PendingInteractionLifecycle({
     config,
     db,
@@ -276,6 +278,7 @@ async function startIntegrationServer(
     lifecycleDedupers,
     logger: testLogger,
     machineAuth,
+    providerRegistry,
     skillTreeRegistry,
     telemetry,
     terminalSessions,
@@ -288,6 +291,7 @@ async function startIntegrationServer(
   const { app, injectWebSocket } = createApp({
     appVersion,
     bbAppManagedConfig,
+    providerRegistry,
     config,
     db,
     hub,
