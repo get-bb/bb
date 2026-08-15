@@ -40,9 +40,19 @@ const DEFAULT_PERMISSION_MODE: PermissionMode = "auto";
  * product fallback used when no caller or project has chosen a provider. The
  * core seed is first by construction (plugins append after it), so this is
  * the first built-in catalog provider. */
+/**
+ * The product default provider is explicit data, not registration order:
+ * codex when registered, else the first registered provider (a codex-less
+ * install — e.g. the codex plugin disabled — still gets a working default).
+ */
+export const PRODUCT_DEFAULT_PROVIDER_ID = "codex";
+
 function requireProductDefaultProviderId(
   registry: ProviderRegistryService,
 ): string {
+  if (registry.get(PRODUCT_DEFAULT_PROVIDER_ID) !== null) {
+    return PRODUCT_DEFAULT_PROVIDER_ID;
+  }
   const providerId = registry.list()[0]?.info.id;
   if (providerId === undefined) {
     throw new Error("Provider registry is empty");

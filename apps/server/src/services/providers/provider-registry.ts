@@ -68,12 +68,19 @@ export interface ProviderRegistryService {
   supportsManualCompaction(providerId: string): boolean;
   /**
    * Adds a plugin-registered provider. Rejects id collisions with any live
-   * registration — a plugin cannot shadow a core provider or another plugin.
-   * The disposer removes the registration (plugin reload/disable path).
+   * registration — a plugin cannot shadow a core provider or another plugin
+   * — EXCEPT builtin first-party plugins (`takeover: true`), which replace
+   * their core-seed entry in place: the picker position is preserved and the
+   * seed entry is restored when the plugin is disabled, so disabling a
+   * first-party provider plugin degrades to the core declaration rather
+   * than deleting the provider outright while the core seed still exists.
+   * (The seed itself is deleted at graduation; takeover then registers
+   * fresh.) The disposer removes the registration (plugin reload/disable).
    */
   register(
     registration: Omit<ProviderRegistration, "source"> & {
       pluginId: string;
+      takeover?: boolean;
     },
   ): { dispose(): void };
 }
@@ -168,6 +175,29 @@ export function createProviderRegistryService(): ProviderRegistryService {
 
     register(registration) {
       const providerId = registration.info.id;
+      const seedIndex = coreSeed.findIndex(
+        (entry) => entry.info.id === providerId,
+      );
+      if (registration.takeover === true && seedIndex !== -1) {
+        const replaced = coreSeed[seedIndex] as ProviderRegistration;
+        const entry: ProviderRegistration = {
+          info: registration.info,
+          serverCapabilities: registration.serverCapabilities,
+          ...(registration.declaration !== undefined
+            ? { declaration: registration.declaration }
+            : {}),
+          source: { kind: "plugin", pluginId: registration.pluginId },
+        };
+        coreSeed[seedIndex] = entry;
+        return {
+          dispose() {
+            const currentIndex = coreSeed.indexOf(entry);
+            if (currentIndex !== -1) {
+              coreSeed[currentIndex] = replaced;
+            }
+          },
+        };
+      }
       if (liveIds().has(providerId)) {
         throw new Error(
           `Provider "${providerId}" is already registered; a plugin cannot shadow an existing provider.`,

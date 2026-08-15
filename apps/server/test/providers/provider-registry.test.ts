@@ -65,6 +65,63 @@ describe("provider registry policy accessors", () => {
   });
 });
 
+describe("provider registry takeover", () => {
+  it("lets a builtin takeover replace its core-seed entry in place and restores on dispose", () => {
+    const registry = createProviderRegistryService();
+    const before = registry.list();
+    const codexIndex = before.findIndex((entry) => entry.info.id === "codex");
+    expect(codexIndex).toBeGreaterThanOrEqual(0);
+    const coreCodex = registry.get("codex");
+
+    const handle = registry.register({
+      info: { ...CURSOR_LIKE_INFO, id: "codex", displayName: "Codex (plugin)" },
+      serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
+      pluginId: "provider-codex",
+      takeover: true,
+    });
+
+    const after = registry.list();
+    // Position preserved, source flipped, count unchanged.
+    expect(after).toHaveLength(before.length);
+    expect(after[codexIndex]?.info.displayName).toBe("Codex (plugin)");
+    expect(after[codexIndex]?.source).toStrictEqual({
+      kind: "plugin",
+      pluginId: "provider-codex",
+    });
+
+    handle.dispose();
+    expect(registry.get("codex")).toStrictEqual(coreCodex);
+    expect(registry.list()[codexIndex]?.info.id).toBe("codex");
+  });
+
+  it("still rejects non-takeover shadowing of core and plugin ids", () => {
+    const registry = createProviderRegistryService();
+    expect(() =>
+      registry.register({
+        info: { ...CURSOR_LIKE_INFO, id: "codex" },
+        serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
+        pluginId: "impostor",
+      }),
+    ).toThrow(/already registered/);
+    // Takeover of another plugin's id is also rejected: takeover only
+    // targets the core seed.
+    const first = registry.register({
+      info: CURSOR_LIKE_INFO,
+      serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
+      pluginId: "owner",
+    });
+    expect(() =>
+      registry.register({
+        info: CURSOR_LIKE_INFO,
+        serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
+        pluginId: "impostor",
+        takeover: true,
+      }),
+    ).toThrow(/already registered/);
+    first.dispose();
+  });
+});
+
 describe("provider registry", () => {
   it("resolves a provider set identical to the core catalog (the phase-3 equality pin)", () => {
     const registry = createProviderRegistryService();
