@@ -322,7 +322,7 @@ describe("electron-builder signing config", () => {
     expect(config.asarUnpack).not.toContain("dist/bb-app-bridge.js");
   });
 
-  it("declares a Windows icon that exists on disk", async () => {
+  it("lets electron-builder rcedit the Windows executable icon", async () => {
     const configText = await readFile(
       resolve(desktopPackageRoot, "electron-builder.config.json"),
       "utf8",
@@ -335,6 +335,7 @@ describe("electron-builder signing config", () => {
     ).resolves.toBeUndefined();
     expect(config.win).toEqual(
       expect.objectContaining({
+        signAndEditExecutable: true,
         target: [{ arch: ["x64"], target: "nsis" }],
       }),
     );
