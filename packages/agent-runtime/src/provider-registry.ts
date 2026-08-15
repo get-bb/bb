@@ -1,9 +1,8 @@
 /**
  * Provider registry.
  *
- * Manages the set of available built-in provider metadata, the canonical
- * bridge routing for graduated providers (ACP, pi, claude-code), and the
- * remaining legacy adapter factory (codex).
+ * Manages the set of available built-in provider metadata and the canonical
+ * bridge routing every provider now uses. No legacy adapter factories remain.
  */
 
 import {
@@ -18,54 +17,24 @@ import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import { createBridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
 import { resolveBridgeProcessArgs } from "./shared/bridge-path.js";
 import { BUILT_IN_ACP_LAUNCH_SPECS } from "./acp/launch-specs.js";
-import { createCodexProviderAdapter } from "./codex/adapter.js";
 import type {
   ProviderAdapter,
   ProviderAdapterFactoryOptions,
 } from "./provider-adapter.js";
 
 // ---------------------------------------------------------------------------
-// Registry state
-// ---------------------------------------------------------------------------
-
-type ProviderFactory = (
-  options: ProviderAdapterFactoryOptions,
-) => ProviderAdapter;
-interface BuiltInProviderDescriptor {
-  createAdapter: ProviderFactory;
-  info: ProviderInfo;
-}
-
-const builtInProviders = [
-  {
-    // Codex app-server events already carry Codex-owned turn ids; the
-    // runtime-generated prefix is only for adapters that synthesize bb turn ids.
-    createAdapter: (options) => createCodexProviderAdapter(options),
-    info: getBuiltInAgentProviderInfo("codex"),
-  },
-] satisfies BuiltInProviderDescriptor[];
-
-const builtInProvidersById = new Map(
-  builtInProviders.map((descriptor) => [descriptor.info.id, descriptor]),
-);
-
-// ---------------------------------------------------------------------------
 // Lookup
 // ---------------------------------------------------------------------------
 
 /**
- * Create a provider adapter by ID.
- *
- * Looks up built-in providers. Throws if the ID is not found.
- */
-/**
  * Canonical path: providers run on the generic adapter speaking the canonical
  * Provider Bridge Protocol.
  *
- * ACP providers, pi and claude-code are graduated — their legacy adapters are
- * gone, so they route canonically regardless of the experiment's prefix
- * policy. codex still ships a legacy adapter, so an enabled bridge-protocol
- * prefix is what routes it here.
+ * Every provider is graduated: no legacy adapter remains, so every id routes
+ * here unconditionally. The providerBridge experiment's prefix list no longer
+ * gates anything (`bridgeProtocolProviderPrefixes` is now an accepted-and-
+ * ignored option; retiring the field itself is wave 3, since it is plumbed
+ * through the daemon).
  *
  * The ACP launch spec travels opaquely via staticProviderOptions (claude-code
  * needs no launch spec — its provider-flavored knobs ride the per-command
@@ -80,10 +49,8 @@ function createBridgeProtocolAdapterForId(
   // A hash-verified plugin artifact is its own routing authority: the server
   // only attaches a bridgeLaunch to commands for providers it has routed onto
   // the bridge protocol, and the daemon has already verified the artifact
-  // bytes. Gating it behind the prefix snapshot below made a freshly
-  // installed plugin provider unusable in any runtime created before the
-  // policy refresh (the snapshot is captured once per runtime). The prefix
-  // policy remains the experiment gate for the bundled first-party bridges.
+  // bytes. It is matched before the bundled first-party bridges so a plugin
+  // provider can never be shadowed by one of their ids.
   const isBundledBridgeId =
     providerId === "codex" ||
     providerId === "claude-code" ||
@@ -119,9 +86,6 @@ function createBridgeProtocolAdapterForId(
         : {}),
     });
   }
-  // Graduated: the ACP, pi and claude-code legacy adapters are deleted, so
-  // those providers route canonically whether or not the experiment lists
-  // their prefix.
   if (isAcpProviderId(providerId)) {
     return createAcpBridgeAdapter(providerId, options);
   }
@@ -177,10 +141,6 @@ function createBridgeProtocolAdapterForId(
           : {}),
       },
     });
-  }
-  const prefixes = options.bridgeProtocolProviderPrefixes ?? [];
-  if (!prefixes.some((prefix) => providerId.startsWith(prefix))) {
-    return null;
   }
   if (providerId === "codex") {
     const info = getBuiltInAgentProviderInfo("codex");
@@ -298,43 +258,10 @@ export function createProviderForId(
     return bridgeProtocolAdapter;
   }
 
-  const descriptor = isAgentProviderId(providerId)
-    ? builtInProvidersById.get(providerId)
-    : undefined;
-
-  if (!descriptor) {
-    const allIds = listBuiltInAgentProviderInfos().map((info) => info.id);
-    throw new Error(
-      `Unsupported provider "${providerId}". Available providers: ${allIds.join(", ")}.`,
-    );
-  }
-
-  const adapterOptions = toProviderAdapterFactoryOptions(options);
-
-  return descriptor.createAdapter(adapterOptions);
-}
-
-function toProviderAdapterFactoryOptions(
-  options?: ProviderAdapterFactoryOptions,
-): ProviderAdapterFactoryOptions {
-  return {
-    additionalWorkspaceWriteRoots: options?.additionalWorkspaceWriteRoots ?? [],
-    ...(options?.acpLaunchSpec !== undefined
-      ? { acpLaunchSpec: options.acpLaunchSpec }
-      : {}),
-    ...(options?.bridgeBundleDir !== undefined
-      ? { bridgeBundleDir: options.bridgeBundleDir }
-      : {}),
-    ...(options?.bridgeNodeEnv !== undefined
-      ? { bridgeNodeEnv: options.bridgeNodeEnv }
-      : {}),
-    ...(options?.bridgeNodeExecutablePath !== undefined
-      ? { bridgeNodeExecutablePath: options.bridgeNodeExecutablePath }
-      : {}),
-    ...(options?.turnIdPrefix !== undefined
-      ? { turnIdPrefix: options.turnIdPrefix }
-      : {}),
-  };
+  const allIds = listBuiltInAgentProviderInfos().map((info) => info.id);
+  throw new Error(
+    `Unsupported provider "${providerId}". Available providers: ${allIds.join(", ")}.`,
+  );
 }
 
 /**

@@ -29,7 +29,6 @@ import type { AskForApproval } from "./generated/codex-app-server/schema/v2/AskF
 import type { ApprovalsReviewer } from "./generated/codex-app-server/schema/v2/ApprovalsReviewer.js";
 import { mapBbReasoningLevelToCodex } from "./models.js";
 import { buildShellEnvironmentPolicyConfig } from "../shared/adapter-utils.js";
-import type { AgentRuntimeSkillRoot } from "../types.js";
 
 /**
  * The execution facts Codex param building actually reads. The legacy
@@ -95,10 +94,6 @@ export interface BuildCodexConfigArgs {
 
 export interface CodexSkillsExtraRootsSetParams {
   extraRoots: string[];
-}
-
-export interface CodexSkillRootPathArgs {
-  skillRoot: AgentRuntimeSkillRoot;
 }
 
 interface RealpathContainedDirectoryArgs {
@@ -181,15 +176,6 @@ export function resolveCodexInstructionOverrides(
     return { baseInstructions: instructions };
   }
   return { developerInstructions: instructions };
-}
-
-export function codexSkillRootPath(args: CodexSkillRootPathArgs): string {
-  if (args.skillRoot.providerId !== "codex") {
-    throw new Error(
-      `Codex cannot configure ${args.skillRoot.providerId} skill root "${args.skillRoot.id}".`,
-    );
-  }
-  return args.skillRoot.skillDirectoryRootPath;
 }
 
 function toWorkspaceWriteCodexSandboxPolicy(

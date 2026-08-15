@@ -373,6 +373,18 @@ function translateEventMessage(event: ProviderRuntimeEvent): ThreadEvent[] {
               : "",
         },
       ];
+    // The runtime settles `thread/goal/clear` on this notification rather than
+    // on the response, so a provider double that can drive that ordering needs
+    // to translate it.
+    case "thread/goal/cleared":
+      return [
+        {
+          type: "thread/goal/cleared",
+          threadId,
+          providerThreadId,
+          scope: threadScope(),
+        },
+      ];
     default:
       return [];
   }

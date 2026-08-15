@@ -8,58 +8,51 @@ import type {
   PromptInput,
   ThreadEvent,
 } from "@bb/domain";
-import { DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG } from "@bb/domain";
 import {
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
   interactionRequestParamsSchema,
 } from "@bb/provider-bridge-protocol";
-import { createCodexProviderAdapter } from "../adapter.js";
-import type { CodexEvent } from "../adapter.js";
+import type { ServerNotification as CodexEvent } from "../generated/codex-app-server/schema/ServerNotification.js";
 import type { Turn } from "../generated/codex-app-server/schema/v2/Turn.js";
 import { handleLine } from "./bridge.js";
 import { createBridgeJsonRpcTestHarness } from "../../test/bridge-json-rpc-test-helpers.js";
 import type { BridgeJsonRpcTestHarness } from "../../test/bridge-json-rpc-test-helpers.js";
 import {
   describeCalibrationEvents,
-  diffCalibrationStreams,
   normalizeCalibrationEvents,
 } from "../../test/calibration-diff.js";
 
 /**
- * Codex dual-path calibration.
+ * Codex scripted-session golden.
  *
- * Codex is structurally unlike pi and claude: it has no legacy bridge process.
- * The legacy runtime speaks to `codex app-server` directly and feeds its
- * notifications to `createCodexProviderAdapter().translateEvent(...)`, while
- * the canonical bridge owns an app-server child of its own. The two legs
- * therefore cannot share one live provider process; what they share is the
- * SCRIPT — one ordered list of app-server messages, replayed twice:
+ * One scripted app-server session — thread start, a first turn carrying a
+ * delta-first agent message, a command execution (with a mid-turn approval
+ * request and a streamed output delta) and a reasoning item, a steer, a short
+ * second turn whose agent message is NOT delta-first, then a release stop — is
+ * handed to `fake-codex-app-server.mjs` as an argv script file, so the bridge
+ * really spawns a child, really reads those messages off a pipe, and really
+ * translates them. The resulting ThreadEvent stream is pinned as a golden.
  *
- *  - legacy: straight into the adapter, interleaving `prepareTurnStart` per
- *    turn and `translateAcceptedCommand` for the steer, exactly as the runtime
- *    drives it around the child's stdout today;
- *  - canonical: handed to `fake-codex-app-server.mjs` as an argv script file,
- *    so the bridge really spawns a child, really reads those same messages off
- *    a pipe, and really translates them.
+ * This was a dual-path calibration until the legacy adapter graduated: the
+ * same script was also replayed straight into
+ * `createCodexProviderAdapter().translateEvent(...)` and the two streams were
+ * diffed. With one path left there is nothing to calibrate, but the scripted
+ * session is the only end-to-end assertion over a WHOLE codex session shape —
+ * turn boundaries, item identity across a delta-first open, the command
+ * execution's started/outputDelta/completed triple, reasoning, the steer's ack
+ * drained onto the open turn, and a release stop — so the golden stays.
+ * Changing the list below is a decision, not an accident.
  *
- * The session: thread start, a first turn carrying a delta-first agent
- * message, a command execution (with a mid-turn approval request and a
- * streamed output delta) and a reasoning item, a steer, a short second turn
- * whose agent message is NOT delta-first, then a release stop.
- *
- * Anything the diff reports is a translation or protocol difference, not
- * fixture drift, and the divergence lists below are the deliberate
- * canonical-vs-legacy delta: shrinking or growing them is a decision, not an
- * accident. Approvals travel on their own channel (bridge → runtime requests),
- * so they are compared separately from the event stream.
+ * Approvals travel on their own channel (bridge → runtime requests), so they
+ * are asserted separately from the golden.
  */
 
 const THREAD_ID = "thr_codex_calibration_1";
 /**
- * The codex thread id the legacy leg sees. The canonical leg's app-server
- * mints its own and rewrites the script to it; normalization blanks
- * `threadId`/`providerThreadId`, so both legs stay comparable.
+ * The codex thread id the script is written against. The app-server mints its
+ * own on `thread/start` and rewrites the script to it, so this value only has
+ * to be internally consistent.
  */
 const SCRIPT_THREAD_ID = "codex-script-thread";
 const FIRST_TURN_ID = "turn-cal-1";
@@ -263,16 +256,6 @@ const CANONICAL_OPTIONS = {
   permissionEscalation: null,
 } as const;
 
-/** The legacy runtime's execution context for adapter commands. */
-const LEGACY_EXECUTION_CONTEXT = {
-  claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-  permissionMode: "full",
-  permissionScope: "full",
-  approvalReviewer: null,
-  permissionEscalation: null,
-  workflowsEnabled: false,
-} as const;
-
 function promptInput(text: string): PromptInput[] {
   return [{ type: "text", text, mentions: [] }];
 }
@@ -284,88 +267,6 @@ const SECOND_REQUEST_ID = "creq_23456789ad";
 interface ReplayResult {
   approvals: PendingInteractionPayload[];
   events: ThreadEvent[];
-}
-
-function isScriptedRequest(
-  entry: ScriptedNotification | ScriptedRequest,
-): entry is ScriptedRequest {
-  return entry.kind === "request";
-}
-
-/**
- * The legacy leg: the runtime's own sequence — announce the provider thread,
- * queue each turn's client request id, translate every notification the child
- * emitted, decode every request it raised, and ack the steer itself (codex
- * never acks one).
- */
-function replayLegacy(): ReplayResult {
-  const adapter = createCodexProviderAdapter();
-  const events: ThreadEvent[] = [];
-  const approvals: PendingInteractionPayload[] = [];
-
-  // The identity notification the fake app-server emits on thread/start,
-  // carrying only the thread id exactly as the fake does.
-  events.push(
-    ...adapter.translateEvent({
-      jsonrpc: "2.0",
-      method: "thread/started",
-      params: { thread: { id: SCRIPT_THREAD_ID } },
-    }),
-  );
-
-  const runTurn = (turnIndex: number, clientRequestId: string): void => {
-    adapter.prepareTurnStart?.({
-      type: "turn/start",
-      threadId: THREAD_ID,
-      providerThreadId: SCRIPT_THREAD_ID,
-      clientRequestId,
-      input: promptInput("check the tree"),
-      options: LEGACY_EXECUTION_CONTEXT,
-    });
-    for (const entry of SCRIPT[turnIndex]) {
-      if (isScriptedRequest(entry)) {
-        const decoded = adapter.decodeInteractiveRequest?.({
-          id: 1,
-          method: entry.method,
-          params: entry.params,
-        });
-        if (!decoded) {
-          throw new Error(`Legacy path could not decode ${entry.method}`);
-        }
-        approvals.push(decoded.payload);
-        continue;
-      }
-      events.push(
-        ...adapter.translateEvent({
-          jsonrpc: "2.0",
-          method: entry.method,
-          params: entry.params,
-        }),
-      );
-    }
-  };
-
-  runTurn(0, FIRST_REQUEST_ID);
-
-  events.push(
-    ...(adapter.translateAcceptedCommand?.({
-      command: {
-        type: "turn/steer",
-        threadId: THREAD_ID,
-        providerThreadId: SCRIPT_THREAD_ID,
-        expectedTurnId: FIRST_TURN_ID,
-        clientRequestId: STEER_REQUEST_ID,
-        input: promptInput("also check git log"),
-        options: LEGACY_EXECUTION_CONTEXT,
-      },
-    }) ?? []),
-  );
-
-  runTurn(1, SECOND_REQUEST_ID);
-
-  // A release stop with no active turn plans nothing on the legacy path, so it
-  // contributes no events.
-  return { approvals, events };
 }
 
 /**
@@ -495,23 +396,49 @@ function firstTurnId(events: readonly ThreadEvent[]): string | undefined {
 }
 
 /**
- * The bridge stamps its session prefix on every id it hands out, including the
- * approval subject's item id. Strip it so the payloads compare as payloads.
+ * The golden event stream for the scripted session above.
+ *
+ * Turn 1 opens with the synthesized `item/started:agentMessage`: codex streams
+ * the delta before opening the item, and the canonical grammar requires every
+ * item to open with `item/started` (`synthesizeOpeningItem`). Turn 2's agent
+ * message is provider-opened, so a synthesized event THERE would be a bug —
+ * that asymmetry is the point of the two-turn script.
  */
-function withoutBridgeIdPrefix(
-  payload: PendingInteractionPayload,
-): PendingInteractionPayload {
-  if (payload.kind !== "approval" || payload.subject.kind !== "command") {
-    return payload;
-  }
-  return {
-    ...payload,
-    subject: {
-      ...payload.subject,
-      itemId: payload.subject.itemId.replace(/^bt[0-9a-f]{8}-\d+-/, ""),
-    },
-  };
-}
+const GOLDEN_EVENT_STREAM: string[] = [
+  // Session construction: the app-server's own `thread/started`, then the
+  // identity event carrying the provider thread id it minted.
+  "thread/started",
+  "thread/identity",
+  // Turn 1: the delta-first agent message (hence the synthesized
+  // item/started), then the command execution's started/outputDelta/completed
+  // triple with its aggregated output and exit code, then the reasoning item.
+  // Reasoning is provider-completed in one shot, so it has no `item/started` —
+  // synthesis fires only for an item that streams before it opens.
+  "turn/started",
+  "turn/input/accepted",
+  "item/started:agentMessage",
+  "item/agentMessage/delta",
+  "item/completed:agentMessage",
+  "item/started:commandExecution",
+  "item/commandExecution/outputDelta",
+  "item/completed:commandExecution",
+  "item/completed:reasoning",
+  "turn/completed",
+  // The steer's ack. Codex never acks a steer itself, so correlation is
+  // translator-owned and drains on the next `turn/started` — which is why the
+  // ack lands here, after turn 1 settled, rather than inside it.
+  "turn/input/accepted",
+  // Turn 2: the agent message is provider-opened, so there is NO synthesized
+  // `item/started` beyond the provider's own — the other half of the
+  // synthesis rule, and the reason the script carries two differently-shaped
+  // turns.
+  "turn/started",
+  "turn/input/accepted",
+  "item/started:agentMessage",
+  "item/completed:agentMessage",
+  "turn/completed",
+  // The release stop contributes no events.
+];
 
 let workspaceDir: string;
 
@@ -534,13 +461,11 @@ afterEach(() => {
   rmSync(workspaceDir, { recursive: true, force: true });
 });
 
-it("replays one scripted codex session identically on both paths", async () => {
-  const legacy = replayLegacy();
+it("replays one scripted codex session onto the golden event stream", async () => {
   const canonical = await replayCanonical(workspaceDir);
 
-  // A calibration is worthless if either leg went quiet, or if the canonical
-  // leg silently fell back to the fake app-server's own hardcoded turn.
-  expect(legacy.events.length).toBeGreaterThan(10);
+  // A golden is worthless if the run went quiet, or if the bridge silently fell
+  // back to the fake app-server's own hardcoded turn.
   expect(canonical.events.length).toBeGreaterThan(10);
   expect(
     canonical.events.some(
@@ -551,38 +476,13 @@ it("replays one scripted codex session identically on both paths", async () => {
     ),
   ).toBe(true);
 
-  const diff = diffCalibrationStreams(
-    normalizeCalibrationEvents(legacy.events),
-    normalizeCalibrationEvents(canonical.events),
-  );
+  expect(
+    describeCalibrationEvents(normalizeCalibrationEvents(canonical.events)),
+  ).toEqual(GOLDEN_EVENT_STREAM);
 
-  // Nothing the legacy path reports goes missing on the canonical one — not
-  // even `turn/input/accepted`, which (unlike pi and claude) is compared
-  // in-stream here: codex correlation is translator-owned and drains on
-  // `turn/started`, so both paths ack at the same point in the sequence.
-  expect(describeCalibrationEvents(diff.onlyInLegacy)).toEqual([]);
-
-  // The one canonical extra: the delta-first agent message in turn 1. Codex
-  // streams the delta before opening the item, and the canonical grammar
-  // requires every item to open with `item/started`
-  // (`synthesizeOpeningItem`), which the legacy shape omits. Turn 2's
-  // provider-opened message is NOT duplicated, which is the other half of that
-  // rule.
-  //
-  // Everything else matches byte for byte: thread started/identity, both
-  // turns' started/completed events (`providerCheckpointId` excepted — a
-  // bridge-only fact the normalizer drops), the agent-message delta and
-  // completion, the command execution's started/outputDelta/completed triple
-  // with its aggregated output and exit code, and the reasoning item.
-  expect(describeCalibrationEvents(diff.onlyInBridge)).toEqual([
-    "item/started:agentMessage",
-  ]);
-
-  // Approvals ride a different channel (bridge → runtime requests, decoded
-  // in-process by the adapter on the legacy path), so they are compared here
-  // rather than in the stream diff. Both paths must produce the same canonical
-  // payload for the same provider request.
-  expect(legacy.approvals).toHaveLength(1);
+  // Approvals ride a different channel (bridge → runtime requests), so they are
+  // asserted here rather than in the golden.
+  expect(canonical.approvals).toHaveLength(1);
   const canonicalApproval = canonical.approvals[0];
   if (
     canonicalApproval?.kind !== "approval" ||
@@ -595,16 +495,18 @@ it("replays one scripted codex session identically on both paths", async () => {
   expect(canonicalApproval.subject.itemId).toMatch(
     new RegExp(`^bt[0-9a-f]{8}-\\d+-${COMMAND_ITEM_ID}$`),
   );
-  expect(canonical.approvals.map(withoutBridgeIdPrefix)).toEqual(
-    legacy.approvals,
-  );
+  expect(canonicalApproval).toMatchObject({
+    kind: "approval",
+    reason: "git status touches the workspace",
+    subject: { kind: "command", command: "git status --short" },
+  });
 }, 60_000);
 
-it("reports an archived-session resume rejection identically on both paths", async () => {
-  // The legacy path is the app-server's own error text: the runtime matches
+it("surfaces an archived-session resume rejection verbatim", async () => {
+  // The error text is the app-server's own: the runtime matches
   // CODEX_ARCHIVED_SESSION_ERROR_PATTERN against it to drive its
-  // unarchive-and-retry recovery. The canonical path must surface that text
-  // VERBATIM (historical fix a4e3011b0) or the recovery silently stops firing.
+  // unarchive-and-retry recovery. The bridge must surface that text VERBATIM
+  // (historical fix a4e3011b0) or the recovery silently stops firing.
   const bridge = createBridgeJsonRpcTestHarness(handleLine);
   try {
     bridge.sendRequest(1, "thread/resume", {

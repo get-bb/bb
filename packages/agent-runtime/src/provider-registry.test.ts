@@ -18,30 +18,9 @@ const dynamicAcpLaunchSpec: HostDaemonAcpLaunchSpec = {
 };
 
 describe("provider registry", () => {
-  it("creates codex provider with expected process config", () => {
-    const provider = createProviderForId("codex");
-    expect(provider.id).toBe("codex");
-    expect(provider.process.command).toBe("codex");
-    expect(provider.process.args).toMatchObject(["app-server"]);
-  });
-
-  it("routes codex to the canonical bridge when its prefix is enabled", () => {
-    const provider = createProviderForId("codex", {
-      additionalWorkspaceWriteRoots: [],
-      bridgeProtocolProviderPrefixes: ["codex"],
-    });
-    expect(provider.id).toBe("codex");
-    expect(provider.process.command).toBe("node");
-    expect(provider.process.args.at(-1)).toMatch(
-      /agent-runtime\/src\/codex\/bridge\/bridge\.ts$/,
-    );
-    expect(existsSync(provider.process.args.at(-1) ?? "")).toBe(true);
-  });
-
   it("passes the configured bridge bundle directory to the codex bridge", () => {
     const provider = createProviderForId("codex", {
       additionalWorkspaceWriteRoots: [],
-      bridgeProtocolProviderPrefixes: ["codex"],
       bridgeBundleDir: "/tmp",
     });
     expect(provider.process.args[0]).toBe("/tmp/bb-codex-bridge.mjs");
@@ -50,7 +29,6 @@ describe("provider registry", () => {
   it("carries environment write roots to the codex bridge via provider options", () => {
     const provider = createProviderForId("codex", {
       additionalWorkspaceWriteRoots: ["/extra-root"],
-      bridgeProtocolProviderPrefixes: ["codex"],
     });
     const plan = provider.buildCommandPlan({
       type: "thread/start",
@@ -331,39 +309,31 @@ describe("provider registry", () => {
     });
   });
 
-  it("routes claude-code canonically without an enabled bridge prefix", () => {
-    const provider = createProviderForId("claude-code", {
-      additionalWorkspaceWriteRoots: [],
-      bridgeProtocolProviderPrefixes: [],
-    });
+  // Every provider is graduated: no legacy adapter remains, so an empty prefix
+  // list must still route each bundled id to its canonical bridge. This is the
+  // regression that would fire if the retired experiment gate came back.
+  it.each([
+    { providerId: "codex", bridgeDir: "codex" },
+    { providerId: "claude-code", bridgeDir: "claude-code" },
+    { providerId: "pi", bridgeDir: "pi" },
+    { providerId: "acp-custom", bridgeDir: "acp" },
+  ])(
+    "routes $providerId canonically without an enabled bridge prefix",
+    ({ providerId, bridgeDir }) => {
+      const provider = createProviderForId(providerId, {
+        additionalWorkspaceWriteRoots: [],
+        acpLaunchSpec: dynamicAcpLaunchSpec,
+        bridgeProtocolProviderPrefixes: [],
+      });
 
-    expect(provider.process.args.at(-1)).toMatch(
-      /agent-runtime\/src\/claude-code\/bridge\/bridge\.ts$/,
-    );
-  });
-
-  it("routes pi canonically without an enabled bridge prefix", () => {
-    const provider = createProviderForId("pi", {
-      additionalWorkspaceWriteRoots: [],
-      bridgeProtocolProviderPrefixes: [],
-    });
-
-    expect(provider.process.args.at(-1)).toMatch(
-      /agent-runtime\/src\/pi\/bridge\/bridge\.ts$/,
-    );
-  });
-
-  it("routes acp providers canonically without an enabled bridge prefix", () => {
-    const provider = createProviderForId("acp-custom", {
-      additionalWorkspaceWriteRoots: [],
-      acpLaunchSpec: dynamicAcpLaunchSpec,
-      bridgeProtocolProviderPrefixes: [],
-    });
-
-    expect(provider.process.args.at(-1)).toMatch(
-      /agent-runtime\/src\/acp\/bridge\/bridge\.ts$/,
-    );
-  });
+      expect(provider.process.command).toBe("node");
+      const bridgeEntry = provider.process.args.at(-1) ?? "";
+      expect(bridgeEntry).toMatch(
+        new RegExp(`agent-runtime/src/${bridgeDir}/bridge/bridge\\.ts$`),
+      );
+      expect(existsSync(bridgeEntry)).toBe(true);
+    },
+  );
 
   it("rejects unsupported adapters", () => {
     expect(() => createProviderForId("pi-mono")).toThrow(
@@ -455,10 +425,10 @@ describe("provider registry", () => {
     expect(provider.process.args[0]).toBe("/tmp/bb-pi-bridge.mjs");
   });
 
-  it("honors a verified bridge launch even when the prefix snapshot is stale", () => {
-    // The prefix list is captured once per runtime; a plugin installed after
-    // runtime creation must still execute — the hash-verified artifact is its
-    // own authority (the server only attaches bridgeLaunch to routed ids).
+  it("honors a verified bridge launch for an id the registry does not know", () => {
+    // The hash-verified artifact is its own routing authority: the server only
+    // attaches a bridgeLaunch to providers it has routed onto the bridge
+    // protocol, and the daemon has already verified the artifact bytes.
     const provider = createProviderForId("echo-agent", {
       additionalWorkspaceWriteRoots: [],
       bridgeProtocolProviderPrefixes: [],
