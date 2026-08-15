@@ -176,6 +176,11 @@ To publish or dry-run the channel manually from `main`, dispatch the same
 workflow with `npm_tag=nightly`. A non-dry run publishes both npm and desktop;
 a dry run validates only the npm package path.
 
+A stable release also refreshes the channel. A non-dry `npm_tag=latest` run
+publishes the release, then derives the next nightly version from the release
+commit and publishes npm and desktop nightly again. Without this step the
+nightly channel stays below `latest` until the next scheduled run.
+
 The nightly desktop is a separate installation:
 
 - product name: `bb Nightly`

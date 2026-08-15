@@ -38,6 +38,15 @@ gh workflow run publish-bb-app.yml \
 
 Set `dry_run=false` to publish both npm and the signed desktop nightly.
 
+A stable release refreshes the nightly channel too. A nightly version is the
+next patch above the version on `main`, so a new `latest` release moves ahead of
+the newest nightly. To prevent a nightly channel that is older than `latest`, a
+non-dry `npm_tag=latest` run adds a `publish-nightly` job. That job derives
+`<next patch>-nightly.<run id>.<attempt>` from the release commit, publishes it
+under the `nightly` dist-tag, and the same desktop jobs then rebuild and move
+the `desktop-nightly` release. The nightly jobs run after the stable publish
+succeeds, so a nightly failure cannot affect the release that already shipped.
+
 ## Release Policy
 
 - Publish only from `main`.
@@ -154,6 +163,10 @@ gh workflow run publish-bb-app.yml \
   -f allow_prerelease_latest=false \
   -f dry_run=false
 ```
+
+This run publishes the release and then republishes the nightly channel from the
+same commit, so the run also builds the `bb Nightly` desktop app. Expect the run
+to take longer than the npm publish alone.
 
 Use prerelease dist-tags such as `alpha` only when the user explicitly asks for
 a separate prerelease channel. npm Trusted Publishing authenticates
