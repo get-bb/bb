@@ -225,8 +225,8 @@ next starts; commits structured so a later PR split stays mechanical:
    artifact pipeline (echo-provider is the template). After this, every
    provider-specific line lives in plugins/provider-*; agent-runtime
    keeps only the protocol, generic adapter, and supervision.
-   **CODEX DONE (2026-08-15), three to go, and they are not interchangeable
-   — see the per-provider blockers below.**
+   **CODEX AND CLAUDE-CODE DONE (2026-08-15); acp is the last migration
+   and pi is a documented exception — see the per-provider notes below.**
    Two commits. First, the **bridge kit**: a plugin-shipped bridge cannot
    import `@bb/agent-runtime`, and it turned out nearly every module under
    `agent-runtime/src/shared/` had only provider-side consumers, so they
@@ -282,10 +282,12 @@ next starts; commits structured so a later PR split stays mechanical:
      bridge .mjs plus a real npm-installed pi tree (~295 MB naive,
      prunable) — the future externals/tree design if pi ever leaves the
      daemon bundle. DECISION: pi's bridge stays daemon-bundled as a
-     documented exception. Independently and regardless: inline the
-     daemon's `createConfiguredPiSettingsManager` import into
-     `list-commands.ts` (the daemon already depends on the Pi SDK) so pi
-     is not gated on the deferred skills/scanRoots method.
+     documented exception. Independently and regardless: DONE — the
+     daemon's `createConfiguredPiSettingsManager` import is inlined into
+     `list-commands.ts` (the daemon already depends on the Pi SDK) and the
+     `@bb/agent-runtime` re-export is gone, so nothing outside the pi
+     bridge directory reads from it and pi is not gated on the deferred
+     skills/scanRoots method.
    - **acp — needs the dynamic tier first.** `acp-cursor` is
      plugin-declared, but every other ACP id (known + `customAcpAgents`)
      is registered server-side by `acp-provider-tier.ts`, and
@@ -293,13 +295,32 @@ next starts; commits structured so a later PR split stays mechanical:
      registrations — those ids would end up with no bridge at all. The tier
      has to resolve the ACP plugin's artifact for its ids (or become plugin
      registrations) in the same change.
-   - **claude-code — mechanical, two small things.** The packaged-daemon
-     sentinel is `existsSync(bb-claude-code-bridge.mjs)` in
-     `host-daemon/src/index.ts`; it must move to a bridge that still ships
-     in the bundle (or to a non-bridge artifact) _before_ claude-code
-     leaves. And `shared/permission-policy.ts` is read by both the runtime
-     and the claude bridge — the one kit candidate with a live consumer on
-     each side.
+   - **claude-code — DONE (2026-08-15).** Sources and event fixtures moved
+     verbatim; `dist/provider-bridge.mjs` is 2.44 MB, fully self-contained,
+     and was driven standalone with an empty PATH (it answers `model/list`
+     from the artifact alone). The SDK inlines cleanly, unlike pi: its one
+     package-relative resolution is the optional native-CLI package,
+     reached only when `pathToClaudeCodeExecutable` is unset, and bb has
+     always set that from the host's own `claude` binary precisely because
+     the bundled bridge could not rely on package-relative resolution.
+     Nothing else in the bridge reads its own module path and its MCP tool
+     proxy is in-process.
+     The two prerequisites resolved as: the packaged-daemon sentinel moved
+     to `bb-pi-bridge.mjs` (pi is the bridge that stays bundled, so it is
+     the only file that outlives every other first-party bridge); and
+     `shared/permission-policy.ts` moved wholesale into the bridge kit
+     rather than being split — it is one three-line predicate, both sides
+     import it from the kit, and restating it is exactly how the two sides
+     would drift. Every carve-out is gone end to end (bundle target,
+     bb-app `files`, launcher assertion, registry branch, catalog
+     capability + session-restore baselines) and the tarball smoke drives
+     the packed artifact and expects `provider-claude-code` to reach
+     "running". 268 tests run as `bb-plugin-provider-claude-code#test`.
+     One consequence worth its own test: with claude-code out of the
+     restorable seed table, the `sessionRestorable` a bridge reports on
+     `thread/start` is the ONLY thing that lets the idle sweep release a
+     graduated provider's session, and nothing covered that path — the
+     process-lifecycle reaper tests now report it on the wire.
      Still id-switched in core after codex, unchanged by this wave: the
      four-variant skill-root union and `runtime-skill-roots.ts`'s per-provider
      normalizers (they ride the wire as data; collapsing them is the deferred
