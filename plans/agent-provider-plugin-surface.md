@@ -81,23 +81,51 @@ Landed on this branch, every commit green:
   classify every settings change as "live", but the runtime never carries
   envVars on turn options, so an env-var change cannot rebuild a live
   bridge session (legacy classified it as a session change).
-- **acp and pi are GRADUATED (2026-08-15)**: both legacy adapters, their
-  suites, and pi's dual-path calibration are deleted, and both providers
-  route to the generic bridge-protocol adapter unconditionally — the
-  experiment's prefix list now only gates claude-code and codex, which
-  still ship a legacy adapter. The `/provider-bridge-policy` prefixes are
-  left as-is (extra prefixes for always-canonical ids are harmless).
-  Shared-module invariants pinned only by the deleted suites moved first:
-  acp/session-params.test.ts and acp/event-translation.test.ts,
-  pi/event-translation.test.ts, pi/session-params.test.ts,
-  pi/model-list.test.ts. One latent bug surfaced and is fixed: the bundled
-  acp-cursor provider had no launch spec on the canonical path (the server
-  resolves specs only for configured and known ACP agents, and the
-  built-in profile table only fed the legacy adapter) — the launch data
-  now lives in acp/launch-specs.ts and the registry falls back to it.
-- **Remaining (graduation + phase 6)**: claude-code and codex legacy
-  adapter deletions and the
-  runtime codex special cases after experiment soak; core-seed deletion
+- **ALL FOUR PROVIDERS ARE GRADUATED (2026-08-15)**: every legacy adapter
+  and its suite are deleted (acp, pi, then claude-code and codex), plus the
+  pi and codex dual-path calibrations' legacy legs. With no legacy path
+  left, `createBridgeProtocolAdapterForId` lost its prefix gate and
+  `createProviderForId` lost the built-in factory table: every provider
+  routes to the generic bridge-protocol adapter unconditionally.
+  `bridgeProtocolProviderPrefixes` is now accepted-and-ignored; retiring the
+  field is wave 3, since it is plumbed through the daemon.
+  `shared/standard-adapter-members.ts` (254 lines) assembled legacy adapters
+  only and went with them, as did `codexSkillRootPath` (the canonical path
+  normalizes skill roots before they reach codex, so its guard was
+  unreachable).
+  Shared-module invariants pinned only by the deleted suites moved first,
+  re-expressed against the modules rather than command plans:
+  acp/session-params.test.ts, acp/event-translation.test.ts,
+  pi/{event-translation,session-params,model-list}.test.ts,
+  claude-code/{event-translation, event-translation.tool-calls,
+  event-translation.usage, interactions}.test.ts, and codex/
+  {event-translation,interactive-requests,session-params}.test.ts plus 24
+  cases into codex/translator.test.ts for the three stateful families that
+  suite uniquely held (git writable-root staging/activation/clearing,
+  raw-shell command-output recovery, native-subagent correlation).
+  `isStandaloneBuiltinCompactCommand` moved to @bb/domain.
+  The pi/claude-code/codex calibrations are now bridge-only scripted-session
+  goldens — with one path left there is nothing to calibrate, but the
+  whole-session shape is worth pinning.
+  Two latent bugs surfaced and are fixed, both the same shape — a knob only
+  the legacy path configured:
+  1. (wave 1) the bundled acp-cursor provider had no launch spec on the
+     canonical path; its launch data now lives in acp/launch-specs.ts and
+     the registry falls back to it.
+  2. (wave 2) the model-derived context-window hint was seeded only as a
+     side effect of building a legacy command plan — nothing under
+     claude-code/bridge/ ever called `setClaudeModelContextWindowHint`, so a
+     result omitting `modelUsage.contextWindow` produced NO context-window
+     event at all (capacity unknown, notably for the 1M `[1m]` aliases). The
+     bridge now seeds it at session construction and on every live model
+     change, pinned by a bridge test that fails without it.
+  Still open and unchanged by graduation: `hasOpenThreadWork` has no
+  canonical implementation, so a codex session whose only live work is a
+  native subagent (and a claude session whose only live work is an opaque
+  monitor task) looks idle to the runtime's reaper. That is the phase-6
+  generic-adapter hook below, not a regression.
+- **Remaining (phase 6)**: the runtime codex special cases; core-seed
+  deletion
   and @bb/agent-providers removal from agent-runtime; the consolidation
   sweep (scattered enums, usage surfaces, provider-scoped options for
   workflows/memory toggles); hasOpenThreadWork generic-adapter hook;
@@ -110,16 +138,10 @@ Landed on this branch, every commit green:
   gained `claim()` (the dispatch-ownership seam), and a turn/started that
   lands after the turn/start response claims the dispatch first, so the
   real turn always wins and no turn is fabricated from a late signal (the
-  acp bug 0c2f4cc9a). Graduation prerequisite from the historical-bug audit: several shared
-  translator invariants are pinned only by the legacy adapter tests, so
-  before each deletion PR the relevant cases move to bridge-path suites —
-  a codex translator.test.ts (output capture across reordering, subagent
-  correlation, accepted-steer correlation, delegation nesting), a
-  prompt-completes-without-turn conformance scenario, pi aggregator
-  prefixing/context-window model-list cases, and claude rate-limit
-  retry classification. Calibration replay suites for pi/claude-code/
-  codex (acp has one) are the other graduation gate. Done for acp and pi;
-  claude-code and codex still owe theirs.
+  acp bug 0c2f4cc9a). The graduation prerequisite from the historical-bug
+  audit — move every shared translator invariant pinned only by a legacy
+  adapter suite into a bridge-path suite before deleting it — is DONE for
+  all four providers, as is the calibration gate.
 
 ## Graduation execution (started 2026-08-15)
 
@@ -129,7 +151,8 @@ next starts; commits structured so a later PR split stays mechanical:
 1. DONE — codex zero-work-prompt settlement fix (the pinned gap) + acp/pi
    legacy adapter deletions (scan adapter tests for uncovered
    shared-module invariants and MOVE them before deleting).
-2. claude-code, then codex legacy deletions (same discipline).
+2. DONE — claude-code, then codex legacy deletions (same discipline). No
+   legacy adapter remains anywhere.
 3. Flag retirement (providerBridge experiment, prefix policy plumbing,
    daemon prefix capture — no protocol bump needed, v124 unshipped),
    core-seed deletion, @bb/agent-providers removal, runtime codex
