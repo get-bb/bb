@@ -174,8 +174,10 @@ describe("provider bridge artifact delivery (server)", () => {
         { headers },
       );
       expect(policyResponse.status).toBe(200);
+      // Default-on ships the four bundled prefixes; the plugin id must stay
+      // absent regardless.
       expect(await policyResponse.json()).toEqual({
-        bridgeProtocolProviderPrefixes: [],
+        bridgeProtocolProviderPrefixes: ["acp-", "claude-code", "codex", "pi"],
       });
 
       // Thread commands attach bridgeLaunch for the plugin provider…
