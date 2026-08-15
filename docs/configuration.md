@@ -650,9 +650,11 @@ raising `BB_LOG_LEVEL`.
 
 ## Plugins
 
-Plugins are on by default. Builtin plugins, including connect, ship with bb;
-user-installed plugins come from `bb plugin install` or the bundled official
-store.
+Plugins are on by default. Builtin plugins ship with bb; user-installed
+plugins come from `bb plugin install` or the bundled official store.
+Connect, automations, secrets, and side-chat start disabled.
+ask-user-question, custom-instructions, inline-vis, and provider-retry start
+enabled. Workflows stays disabled.
 
 Plugin state lives under the data dir:
 
@@ -734,8 +736,8 @@ the plugin so it can be surfaced as needing attention.
 
 ### Provider retry plugin
 
-The builtin Provider retry plugin is disabled on fresh installations. Enable
-it under Extensions → Plugins or with `bb plugin enable provider-retry`. It
+The builtin Provider retry plugin is enabled on fresh installations. Disable
+it under Extensions → Plugins or with `bb plugin disable provider-retry`. It
 automatically waits for structured Codex and Claude Code subscription-window
 resets when the failed turn was accepted, the provider has stopped its own
 retries, and the original execution settings remain available. Prior output or

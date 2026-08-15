@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -114,17 +114,18 @@ export const BUILTIN_PLUGINS = [
 );
 
 /**
- * Named builtins whose persisted `enabled` flag is copied onto existing
- * cells once. Stock reconcile keeps `existing.enabled`, so a default flip
- * would otherwise leave running cells on the old flags. Tombstoned or
- * non-builtin rows are skipped; later operator changes are not overwritten.
+ * Named builtins whose `defaultEnabled` flipped for the Work Together
+ * profile. Stock reconcile keeps `existing.enabled`, so those flips would
+ * otherwise leave running cells on the old flags. `custom-instructions` and
+ * `inline-vis` stay off this list: their defaults did not change, and
+ * including them would only re-enable an operator who already turned them
+ * off. Tombstoned or non-builtin rows are skipped; later operator changes
+ * are not overwritten.
  */
 export const WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_NAMES = [
   "ask-user-question",
   "automations",
   "connect",
-  "custom-instructions",
-  "inline-vis",
   "provider-retry",
   "secrets",
   "side-chat",
@@ -139,6 +140,20 @@ export function workTogetherBuiltinDefaultsMarkerPath(dataDir: string): string {
     "plugins",
     `.${WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_ID}`,
   );
+}
+
+/** True only when the marker file exists and contains the expected id. */
+export function workTogetherBuiltinDefaultsMarkerApplied(
+  dataDir: string,
+): boolean {
+  try {
+    return readFileSync(
+      workTogetherBuiltinDefaultsMarkerPath(dataDir),
+      "utf8",
+    ).includes(WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_ID);
+  } catch {
+    return false;
+  }
 }
 
 /**

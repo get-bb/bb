@@ -1,5 +1,4 @@
-import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { isBbManagedWorkspacePath } from "../threads/worktree-paths.js";
 import {
@@ -22,6 +21,7 @@ import {
   builtinPluginSource,
   WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_ID,
   WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_NAMES,
+  workTogetherBuiltinDefaultsMarkerApplied,
   workTogetherBuiltinDefaultsMarkerPath,
   type BundledPluginRegistration,
 } from "./builtin-registry.js";
@@ -621,11 +621,12 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
   /**
    * One-shot: copy current `defaultEnabled` onto already-installed named
    * builtins. Skips tombstones (`getInstalledPlugin` hides `removedAt`) and
-   * non-builtin sources so an operator remove is not undone.
+   * non-builtin sources so an operator remove is not undone. The marker is
+   * treated as applied only when it contains the expected id, and is written
+   * via temp-file rename so a crash cannot leave a false "done" file.
    */
   async function applyWorkTogetherBuiltinEnabledDefaults(): Promise<void> {
-    const markerPath = workTogetherBuiltinDefaultsMarkerPath(deps.dataDir);
-    if (existsSync(markerPath)) return;
+    if (workTogetherBuiltinDefaultsMarkerApplied(deps.dataDir)) return;
 
     const names = new Set<string>(WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_NAMES);
     const flipped: string[] = [];
@@ -652,11 +653,14 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       flipped.push(bundled.name);
     }
 
+    const markerPath = workTogetherBuiltinDefaultsMarkerPath(deps.dataDir);
     await mkdir(dirname(markerPath), { recursive: true });
+    const tmpPath = `${markerPath}.tmp`;
     await writeFile(
-      markerPath,
+      tmpPath,
       `${WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_ID}\n`,
     );
+    await rename(tmpPath, markerPath);
     if (flipped.length > 0) {
       logger.info(
         `applied Work Together builtin enabled defaults: ${flipped.join(", ")}`,
