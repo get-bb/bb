@@ -41,6 +41,11 @@ interface FetchRecorder {
 }
 
 interface CreateFetchRecorderArgs {
+  /**
+   * Per-call answers for /internal/provider-bridge-policy: a prefix list, or
+   * null for a server failure. The last entry repeats.
+   */
+  providerBridgePolicyResponses?: Array<readonly string[] | null>;
   inactiveSessionOnFirstEventPost?: boolean;
   interactiveRequestError?: Error;
   interactiveRequestResponse?: HostDaemonInteractiveRequestResponse;
@@ -130,6 +135,7 @@ function createFetchRecorder(
   const requests: RecordedFetchRequest[] = [];
   let eventPostCount = 0;
   let sessionOpenCount = 0;
+  let providerBridgePolicyCount = 0;
   const fetchFn: FetchFn = async (input, init) => {
     const url = readFetchUrl(input);
     const request = {
@@ -183,6 +189,20 @@ function createFetchRecorder(
           status: "pending",
         };
       return Response.json(response);
+    }
+    if (url.pathname === "/internal/provider-bridge-policy") {
+      const responses = args.providerBridgePolicyResponses ?? [];
+      const answer =
+        responses.length === 0
+          ? null
+          : (responses[
+              Math.min(providerBridgePolicyCount, responses.length - 1)
+            ] ?? null);
+      providerBridgePolicyCount += 1;
+      if (answer === null) {
+        return new Response("policy unavailable", { status: 503 });
+      }
+      return Response.json({ bridgeProtocolProviderPrefixes: answer });
     }
     if (url.pathname === "/internal/session/interactive-request/interrupt") {
       return Response.json({
@@ -571,6 +591,68 @@ describe("createHostDaemonApp", () => {
           },
         }),
       );
+    } finally {
+      await app.daemon.shutdown("test");
+    }
+  });
+
+  // A runtime captures the bridge prefixes at creation, so a server that is
+  // still starting when the daemon comes up must not leave every early runtime
+  // permanently on an empty policy.
+  it("retries the startup provider bridge policy read before creating runtimes", async () => {
+    const dataDir = await makeTempDir("bb-host-daemon-app-bridge-policy-");
+    const fetchRecorder = createFetchRecorder({
+      providerBridgePolicyResponses: [null, ["codex"]],
+    });
+    const runtimeOptions: RuntimeOptionsRef = { current: null };
+    const listModels = vi.fn<AgentRuntime["listModels"]>(async () => ({
+      models: [],
+      selectedOnlyModels: [],
+    }));
+    const app = await createHostDaemonApp({
+      dataDir,
+      serverUrl: "http://127.0.0.1:3334",
+      hostKey: "host-key-app-test",
+      hostType: "persistent",
+      hostId: "host-app-test",
+      hostName: "App Test Host",
+      instanceId: "instance-app-test",
+      logger: createLogger(),
+      releaseLock: async () => undefined,
+      localApiConfig: null,
+      createRuntime: (options) => {
+        runtimeOptions.current = options;
+        return createFakeRuntimeWithModelList(listModels);
+      },
+      fetchFn: fetchRecorder.fetchFn,
+      createWebSocket: createOpeningWebSocket(),
+    });
+
+    try {
+      const policyRequestCount = (): number =>
+        fetchRecorder.requests.filter(
+          (request) => request.pathname === "/internal/provider-bridge-policy",
+        ).length;
+      const deadline = Date.now() + 5_000;
+      while (policyRequestCount() < 2 && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      expect(policyRequestCount()).toBe(2);
+
+      await expect(
+        app.router.handleOnlineRpcRequest({
+          type: "host-rpc.request",
+          requestId: "provider-models-bridge-policy-test",
+          command: {
+            type: "provider.list_models",
+            providerId: "codex",
+          },
+        }),
+      ).resolves.toMatchObject({ ok: true });
+
+      expect(runtimeOptions.current?.bridgeProtocolProviderPrefixes).toEqual([
+        "codex",
+      ]);
     } finally {
       await app.daemon.shutdown("test");
     }
