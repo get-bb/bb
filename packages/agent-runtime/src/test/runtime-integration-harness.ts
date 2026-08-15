@@ -29,9 +29,11 @@ import { createAgentRuntime } from "../runtime.js";
 import { PI_BRIDGE_SESSION_DIR_ENV } from "../pi/bridge/session-paths.js";
 import type {
   AgentRuntime,
+  AgentRuntimeBridgeLaunch,
   AgentRuntimeExecutionOptions,
   AgentRuntimeSkillRoot,
 } from "../types.js";
+import { resolveIntegrationBridgeLaunch } from "./integration-provider-bridges.js";
 import {
   waitForRuntimeConditionUnsafe,
   waitForThreadTurnCompleted as waitForSharedThreadTurnCompleted,
@@ -858,6 +860,30 @@ function createRuntimeProcessEnv(
   };
 }
 
+/**
+ * The daemon receives a provider's `bridgeLaunch` on every command that can
+ * start its process; the server attaches it. Tests call the runtime directly,
+ * so the harness plays the server's part: each entry point that can launch a
+ * provider gets the artifact this provider's plugin built, unless the caller
+ * passed one explicitly. Without it a graduated provider has no bridge and
+ * every call fails with "Unsupported provider".
+ */
+function withBridgeLaunch(
+  runtime: AgentRuntime,
+  bridgeLaunch: AgentRuntimeBridgeLaunch,
+): AgentRuntime {
+  return {
+    ...runtime,
+    ensureProvider: (args) =>
+      runtime.ensureProvider({ bridgeLaunch, ...args }),
+    startThread: (args) => runtime.startThread({ bridgeLaunch, ...args }),
+    prepareThreadRewind: (args) =>
+      runtime.prepareThreadRewind({ bridgeLaunch, ...args }),
+    resumeThread: (args) => runtime.resumeThread({ bridgeLaunch, ...args }),
+    listModels: (args) => runtime.listModels({ bridgeLaunch, ...args }),
+  };
+}
+
 export function createTestRuntime(
   providerId: string,
   opts?: CreateTestRuntimeOptions,
@@ -898,8 +924,13 @@ export function createTestRuntime(
     onStderr: () => {},
   });
 
+  const bridgeLaunch = resolveIntegrationBridgeLaunch(providerId);
+
   return {
-    runtime,
+    runtime:
+      bridgeLaunch === undefined
+        ? runtime
+        : withBridgeLaunch(runtime, bridgeLaunch),
     events,
     toolCalls,
     interactiveRequests,

@@ -1213,12 +1213,18 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../plugin-build
       '@bb/test-helpers':
         specifier: workspace:*
         version: link:../test-helpers
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
+      '@get-bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../plugin-sdk
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
