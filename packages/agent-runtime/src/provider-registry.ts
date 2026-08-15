@@ -7,11 +7,12 @@
 
 import {
   buildAcpProviderInfo,
-  getBuiltInAgentProviderInfo,
+  getBundledProviderInfo,
   isAcpProviderId,
-  isAgentProviderId,
-  listBuiltInAgentProviderInfos,
-} from "@bb/agent-providers";
+  isBundledProviderId,
+  listBundledProviderIds,
+  listBundledProviderInfos,
+} from "./provider-catalog.js";
 import type { ProviderInfo } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import { createBridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
@@ -49,10 +50,7 @@ function createBridgeProtocolAdapterForId(
   // bytes. It is matched before the bundled first-party bridges so a plugin
   // provider can never be shadowed by one of their ids.
   const isBundledBridgeId =
-    providerId === "codex" ||
-    providerId === "claude-code" ||
-    providerId === "pi" ||
-    isAcpProviderId(providerId);
+    isBundledProviderId(providerId) || isAcpProviderId(providerId);
   if (options.bridgeLaunch !== undefined && !isBundledBridgeId) {
     return createBridgeProtocolAdapter({
       id: providerId,
@@ -87,7 +85,7 @@ function createBridgeProtocolAdapterForId(
     return createAcpBridgeAdapter(providerId, options);
   }
   if (providerId === "claude-code") {
-    const info = getBuiltInAgentProviderInfo("claude-code");
+    const info = requireBundledProviderInfo("claude-code");
     const additionalWorkspaceWriteRoots =
       options.additionalWorkspaceWriteRoots ?? [];
     return createBridgeProtocolAdapter({
@@ -120,7 +118,7 @@ function createBridgeProtocolAdapterForId(
     });
   }
   if (providerId === "pi") {
-    const info = getBuiltInAgentProviderInfo("pi");
+    const info = requireBundledProviderInfo("pi");
     return createBridgeProtocolAdapter({
       id: providerId,
       displayName: info.displayName,
@@ -140,7 +138,7 @@ function createBridgeProtocolAdapterForId(
     });
   }
   if (providerId === "codex") {
-    const info = getBuiltInAgentProviderInfo("codex");
+    const info = requireBundledProviderInfo("codex");
     const additionalWorkspaceWriteRoots =
       options.additionalWorkspaceWriteRoots ?? [];
     return createBridgeProtocolAdapter({
@@ -175,18 +173,25 @@ function createBridgeProtocolAdapterForId(
   return null;
 }
 
+function requireBundledProviderInfo(providerId: string): ProviderInfo {
+  const info = getBundledProviderInfo(providerId);
+  if (info === null) {
+    throw new Error(`"${providerId}" has no bundled provider baseline.`);
+  }
+  return info;
+}
+
 function createAcpBridgeAdapter(
   providerId: string,
   options: ProviderAdapterFactoryOptions,
 ): ProviderAdapter {
   const launchSpec = resolveAcpLaunchSpec(providerId, options);
-  const info = isAgentProviderId(providerId)
-    ? getBuiltInAgentProviderInfo(providerId)
-    : buildAcpProviderInfo({
-        id: providerId,
-        displayName: launchSpec?.displayName ?? providerId,
-        logoUrl: null,
-      });
+  const info =
+    getBundledProviderInfo(providerId) ??
+    buildAcpProviderInfo({
+      id: providerId,
+      displayName: launchSpec?.displayName ?? providerId,
+    });
   return createBridgeProtocolAdapter({
     id: providerId,
     displayName: info.displayName,
@@ -255,9 +260,8 @@ export function createProviderForId(
     return bridgeProtocolAdapter;
   }
 
-  const allIds = listBuiltInAgentProviderInfos().map((info) => info.id);
   throw new Error(
-    `Unsupported provider "${providerId}". Available providers: ${allIds.join(", ")}.`,
+    `Unsupported provider "${providerId}". Available providers: ${listBundledProviderIds().join(", ")}.`,
   );
 }
 
@@ -265,5 +269,5 @@ export function createProviderForId(
  * List info for all available built-in providers.
  */
 export function listAvailableProviderInfos(): ProviderInfo[] {
-  return listBuiltInAgentProviderInfos();
+  return listBundledProviderInfos();
 }

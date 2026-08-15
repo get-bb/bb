@@ -1,4 +1,3 @@
-import { listBuiltInAgentProviderInfos } from "@bb/agent-providers";
 import {
   PERSONAL_PROJECT_ID,
   type ProjectExecutionDefaults,
@@ -11,6 +10,7 @@ import {
   resolveThreadDefaultPermissionMode,
   resolveThreadExecutionPermissionMode,
   resolveWorkflowsEnabledPolicy,
+  PRODUCT_DEFAULT_PROVIDER_ID,
 } from "../../src/services/threads/thread-default-policy.js";
 import { createTestProviderRegistry } from "../helpers/provider-registry.js";
 
@@ -79,9 +79,10 @@ describe("resolveWorkflowsEnabledPolicy", () => {
 });
 
 describe("resolveCreateThreadExecutionDefaults", () => {
-  it("uses the model picker's first catalog provider without pinning a model", () => {
-    const productProviderId = listBuiltInAgentProviderInfos()[0]?.id;
-    expect(productProviderId).toBeDefined();
+  it("uses the picker's first provider without pinning a model", () => {
+    // The product default and the picker's first entry are the same fact.
+    const productProviderId = registry.list()[0]?.info.id;
+    expect(productProviderId).toBe(PRODUCT_DEFAULT_PROVIDER_ID);
 
     expect(
       resolveCreateThreadExecutionDefaults(registry, {

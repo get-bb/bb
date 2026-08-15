@@ -3,7 +3,7 @@ import {
   CLAUDE_CODE_ACTIVE_CATALOG,
   DEFAULT_CLAUDE_CODE_MODEL,
   listClaudeCodeFallbackModels,
-} from "../src/index.js";
+} from "./model-catalog.js";
 
 describe("Claude Code curated catalog", () => {
   // Moving aliases resolve per account, which reads as safer, but they are not

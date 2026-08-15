@@ -1,9 +1,9 @@
 import path from "node:path";
 import { z } from "zod";
 import {
-  getAgentProviderServerCapabilities,
   isAcpProviderId,
-} from "@bb/agent-providers";
+  isSessionRestorableProvider,
+} from "./provider-catalog.js";
 import {
   normalizeProviderThreadNameEvent,
   toProviderExternalThreadName,
@@ -1472,8 +1472,7 @@ function createAgentRuntimeInternal(
             projectId,
             providerId,
             sessionRestorable:
-              getAgentProviderServerCapabilities(providerId)
-                ?.supportsSessionRestore ?? false,
+              isSessionRestorableProvider(providerId),
             skillRoots: providerSkillRoots,
             workspacePath: options.workspacePath,
           });
@@ -1852,8 +1851,7 @@ function createAgentRuntimeInternal(
             projectId,
             providerId,
             sessionRestorable:
-              getAgentProviderServerCapabilities(providerId)
-                ?.supportsSessionRestore ?? false,
+              isSessionRestorableProvider(providerId),
             skillRoots: providerSkillRoots,
             workspacePath: options.workspacePath,
           });

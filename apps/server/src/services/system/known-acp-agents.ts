@@ -1,4 +1,4 @@
-import { buildAcpProviderInfo } from "@bb/agent-providers";
+import { buildAcpProviderInfo } from "../providers/acp-provider-tier.js";
 import type { ProviderInfo } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 

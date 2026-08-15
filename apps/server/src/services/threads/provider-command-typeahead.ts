@@ -1,4 +1,7 @@
-import { buildAcpProviderInfo, isAcpProviderId } from "@bb/agent-providers";
+import {
+  buildAcpProviderInfo,
+  isAcpProviderId,
+} from "../providers/acp-provider-tier.js";
 import {
   providerCommandSectionRank,
   type CommandListResponse,

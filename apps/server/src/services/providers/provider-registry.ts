@@ -12,11 +12,11 @@
  * stay in the bridge handshake; neither belongs here.
  */
 import {
+  acpSupportsManualCompaction,
   buildAcpProviderInfo,
   getAcpProviderServerCapabilities,
   isAcpProviderId,
-  supportsManualCompaction as supportsCatalogManualCompaction,
-} from "@bb/agent-providers";
+} from "./acp-provider-tier.js";
 import type { PermissionMode, ProviderInfo, ReasoningLevel } from "@bb/domain";
 import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 
@@ -97,9 +97,9 @@ export interface ProviderRegistryService {
   supportsNativeFork(providerId: string): boolean;
   /**
    * Whether BB can explicitly request context compaction. Registered
-   * providers answer from their declaration; the dynamic ACP tier keeps the
-   * catalog helper's acp-opencode quirk until the phase-6 capability +
-   * `thread/compact` protocol method replace the string list.
+   * providers answer from their declaration; the dynamic ACP tier keeps its
+   * acp-opencode quirk until the phase-6 capability + `thread/compact`
+   * protocol method replace the string list.
    */
   supportsManualCompaction(providerId: string): boolean;
   /**
@@ -186,7 +186,7 @@ export function createProviderRegistryService(): ProviderRegistryService {
         );
       }
       if (isAcpProviderId(providerId)) {
-        return supportsCatalogManualCompaction(providerId);
+        return acpSupportsManualCompaction(providerId);
       }
       return false;
     },

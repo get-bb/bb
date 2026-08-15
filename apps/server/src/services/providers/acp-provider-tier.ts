@@ -1,0 +1,122 @@
+/**
+ * The dynamic ACP tier.
+ *
+ * Every other provider is a plugin declaration in the registry. ACP ids are
+ * different: known agents (`acp-opencode`, `acp-omp`, …) and user-configured
+ * custom agents (`acp-<slug>`) are resolved from launch specs at request time
+ * and are never declared, so they need a shared capability answer. This module
+ * is that answer — the registry's accessors fall back to it, and the listing
+ * composers build their `ProviderInfo`s from it.
+ *
+ * The external agent owns model selection, tool execution, and session naming,
+ * so BB-side capabilities stay minimal. Permission modes are enforced
+ * cooperatively by the ACP bridge (permission-request policy + client fs write
+ * policy). Fork support is the declared offer; each agent's real answer is
+ * negotiated at the bridge handshake before the unstable ACP session/fork
+ * request is sent. Service tier is supported because Cursor exposes a `-fast`
+ * model tail that the bridge resolves from the tier rather than fanning fast
+ * variants out as separate model-list entries.
+ */
+import type {
+  PermissionMode,
+  ProviderCapabilities,
+  ProviderComposerAction,
+  ProviderInfo,
+  ReasoningLevel,
+} from "@bb/domain";
+import type { ProviderServerCapabilities } from "./provider-registry.js";
+
+const ACP_PERMISSION_MODES: readonly PermissionMode[] = [
+  "accept-edits",
+  "full",
+];
+
+const ACP_CAPABILITIES: Omit<
+  ProviderCapabilities,
+  "supportedPermissionModes"
+> = {
+  supportsArchive: false,
+  supportsRename: false,
+  supportsServiceTier: true,
+  supportsUserQuestion: false,
+  supportsFork: true,
+};
+
+// Skills are injected into every provider runtime, so the `/` skills
+// typeahead is universal; ACP agents contribute no other composer affordance.
+const ACP_COMPOSER_ACTIONS: readonly ProviderComposerAction[] = [
+  { kind: "skills", trigger: "/" },
+];
+
+// ACP agents manage reasoning effort internally. Cursor encodes it in its
+// model ids (`gpt-5.3-codex-high`) and the bridge resolves (model, level) to
+// the exact variant at session launch, so this coarse ladder is only the
+// fallback when per-model efforts from `model/list` are unavailable.
+const ACP_REASONING_LEVELS: readonly ReasoningLevel[] = [
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+];
+
+const ACP_SERVER_CAPABILITIES: ProviderServerCapabilities = {
+  supportsWorkflows: false,
+  backsHostDaemonAiServices: false,
+  reasoningLevels: ACP_REASONING_LEVELS,
+};
+
+/**
+ * ACP ids that accept an explicit compaction request. DEBT: a string list,
+ * kept from the core catalog verbatim. It is replaced by a bridge-reported
+ * capability plus a `thread/compact` protocol method in phase 6.
+ */
+const MANUAL_COMPACTION_ACP_PROVIDER_IDS = new Set(["acp-opencode"]);
+
+export function isAcpProviderId(value: string): boolean {
+  return value.startsWith("acp-");
+}
+
+function requireAcpProviderId(providerId: string): void {
+  if (!isAcpProviderId(providerId)) {
+    throw new Error(`ACP provider id "${providerId}" must start with "acp-".`);
+  }
+}
+
+export interface BuildAcpProviderInfoArgs {
+  id: string;
+  displayName: string;
+  logoUrl: string | null;
+}
+
+export function buildAcpProviderInfo(
+  args: BuildAcpProviderInfoArgs,
+): ProviderInfo {
+  requireAcpProviderId(args.id);
+  return {
+    available: true,
+    capabilities: {
+      ...ACP_CAPABILITIES,
+      supportedPermissionModes: [...ACP_PERMISSION_MODES],
+    },
+    composerActions: ACP_COMPOSER_ACTIONS.map((action) =>
+      action.kind === "skills"
+        ? { kind: "skills", trigger: action.trigger }
+        : { ...action },
+    ),
+    displayName: args.displayName,
+    id: args.id,
+    logoUrl: args.logoUrl,
+  };
+}
+
+export function getAcpProviderServerCapabilities(
+  providerId: string,
+): ProviderServerCapabilities {
+  requireAcpProviderId(providerId);
+  return ACP_SERVER_CAPABILITIES;
+}
+
+export function acpSupportsManualCompaction(providerId: string): boolean {
+  return MANUAL_COMPACTION_ACP_PROVIDER_IDS.has(providerId);
+}

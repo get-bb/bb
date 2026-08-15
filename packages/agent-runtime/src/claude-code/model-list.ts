@@ -4,7 +4,7 @@ import {
   CLAUDE_XHIGH_CAPABLE_REASONING_EFFORTS,
   DEFAULT_CLAUDE_CODE_MODEL,
   type ClaudeCodeCatalogEntry,
-} from "@bb/agent-providers";
+} from "./model-catalog.js";
 import {
   cloneReasoningEfforts,
   HIGH_REASONING_EFFORT,

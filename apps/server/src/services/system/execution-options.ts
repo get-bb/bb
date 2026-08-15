@@ -5,10 +5,8 @@ import type {
   SystemExecutionOptionsResponse,
   SystemProvidersQuery,
 } from "@bb/server-contract";
-import {
-  buildAcpProviderInfo,
-  listClaudeCodeFallbackModels,
-} from "@bb/agent-providers";
+import { buildAcpProviderInfo } from "../providers/acp-provider-tier.js";
+import { listClaudeCodeFallbackModels } from "./claude-code-fallback-models.js";
 import {
   formatCustomAcpAgentProviderId,
   type CustomAcpAgent,
