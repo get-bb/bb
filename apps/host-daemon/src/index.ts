@@ -17,8 +17,18 @@ type MainFailureHandler = (error: unknown) => void;
 
 const entrypointDir = dirname(fileURLToPath(import.meta.url));
 
+/**
+ * In a packaged build the daemon bundle sits beside the bundled bridge files,
+ * so their directory is the entrypoint directory; running from source it is
+ * not, and the bundled bridges resolve from their TypeScript sources instead.
+ *
+ * The sentinel is the Pi bridge because Pi's bridge is the one that stays
+ * daemon-bundled: its agent tree cannot be inlined into a relocatable
+ * artifact (empirically verified — see the graduation plan), while every other
+ * first-party bridge ships as a plugin artifact.
+ */
 function resolveEntrypointBridgeBundleDir(): string | undefined {
-  return existsSync(join(entrypointDir, "bb-claude-code-bridge.mjs"))
+  return existsSync(join(entrypointDir, "bb-pi-bridge.mjs"))
     ? entrypointDir
     : undefined;
 }

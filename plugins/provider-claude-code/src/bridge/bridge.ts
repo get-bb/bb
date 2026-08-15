@@ -46,7 +46,6 @@ import {
   turnSteerParamsSchema as canonicalTurnSteerParamsSchema,
 } from "@bb/provider-bridge-protocol";
 import { z } from "zod";
-import type { AgentRuntimeClaudeCodeSkillRoot } from "../../types.js";
 import {
   UNSTAMPED_THREAD_ID,
   buildAcceptedUserMessageEvent,
@@ -58,13 +57,13 @@ import {
   queueAcceptedUserMessage,
   runBridgeRequest,
   startBridgeStdio,
+  shouldAutoDenyInteractiveRequest,
   withoutBridgeRuntimeEnv,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import type {
   BridgeToolCallRequest,
   PendingBridgeToolCall,
 } from "@bb/provider-bridge-protocol/bridge-kit";
-import { shouldAutoDenyInteractiveRequest } from "../../shared/permission-policy.js";
 import {
   createClaudeEventTranslator,
   type ClaudeEventTranslator,
@@ -77,6 +76,7 @@ import {
 import {
   buildClaudeCanonicalSessionParams,
   buildClaudeCanonicalTurnParams,
+  type ClaudeCodeSkillRoot,
 } from "../session-params.js";
 import { buildInterruptedClaudeTaskEvents } from "../task-translation.js";
 import { SdkSession, type SdkSessionOptions } from "./sdk-session.js";
@@ -408,7 +408,7 @@ let toolCallRequestIdCounter = 0;
  * session built afterwards loads them as local plugins. `null` means the
  * runtime never configured skills for this process.
  */
-let configuredSkillRoots: AgentRuntimeClaudeCodeSkillRoot[] | null = null;
+let configuredSkillRoots: ClaudeCodeSkillRoot[] | null = null;
 
 // Runtime waits on thread/stop until the SDK stream drains or this timeout
 // forces the session closed. Stop remains a best-effort success boundary.
@@ -2135,7 +2135,6 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       // applied to every session started afterwards.
       configuredSkillRoots = request.params.roots.map((root) => ({
         id: root.id,
-        providerId: "claude-code",
         localPluginPath: root.path,
       }));
       sendResult(request.id, { ok: true });

@@ -24,7 +24,6 @@ import type {
 } from "@bb/domain";
 import { z } from "zod";
 import { buildShellEnvironmentPolicyConfig } from "@bb/provider-bridge-protocol/bridge-kit";
-import type { AgentRuntimeSkillRoot } from "../types.js";
 import {
   toClaudePermissionMode,
   type ClaudePermissionMode,
@@ -43,8 +42,18 @@ interface ClaudeSkillConfigParams {
   plugins: ClaudeLocalPluginConfig[];
 }
 
+/**
+ * A staged skill root in Claude's native form. The canonical
+ * `skills/configure` payload is mapped onto this by the bridge; Claude loads
+ * each one as a local plugin.
+ */
+export interface ClaudeCodeSkillRoot {
+  id: string;
+  localPluginPath: string;
+}
+
 interface ClaudeSkillConfigEntryArgs {
-  skillRoot: AgentRuntimeSkillRoot;
+  skillRoot: ClaudeCodeSkillRoot;
 }
 
 function buildAdditionalWorkspaceWriteRootsParams(
@@ -58,11 +67,6 @@ function buildAdditionalWorkspaceWriteRootsParams(
 function buildClaudeSkillConfigEntry(
   args: ClaudeSkillConfigEntryArgs,
 ): ClaudeLocalPluginConfig {
-  if (args.skillRoot.providerId !== "claude-code") {
-    throw new Error(
-      `Claude Code cannot configure ${args.skillRoot.providerId} skill root "${args.skillRoot.id}".`,
-    );
-  }
   return {
     type: "local",
     path: args.skillRoot.localPluginPath,
@@ -76,7 +80,7 @@ function buildClaudeSkillConfigEntry(
  * plugins, built-ins). Plugin skills are enabled by CLI defaults.
  */
 function buildClaudeSkillConfigParams(
-  skillRoots: readonly AgentRuntimeSkillRoot[] | undefined,
+  skillRoots: readonly ClaudeCodeSkillRoot[] | undefined,
 ): ClaudeSkillConfigParams | undefined {
   if (!skillRoots || skillRoots.length === 0) {
     return undefined;
@@ -112,7 +116,7 @@ export type ClaudeSessionExecutionOptions = RuntimePermissionPolicy & {
   workflowsEnabled: boolean;
   memoryEnabled?: boolean | undefined;
   providerSubagentsEnabled?: boolean | undefined;
-  skillRoots?: readonly AgentRuntimeSkillRoot[] | undefined;
+  skillRoots?: readonly ClaudeCodeSkillRoot[] | undefined;
 };
 
 function resolveClaudeSessionPermissionMode(
@@ -233,7 +237,7 @@ export interface BuildClaudeCanonicalSessionParamsArgs {
    * params never carry them: the process-scoped catalog is configured once and
    * applies to every session the bridge builds afterwards.
    */
-  skillRoots?: readonly AgentRuntimeSkillRoot[] | undefined;
+  skillRoots?: readonly ClaudeCodeSkillRoot[] | undefined;
 }
 
 /**

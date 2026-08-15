@@ -38,6 +38,13 @@ interface CreateProviderProcessManagerArgs {
 interface WriteThreadScopedProviderScriptArgs {
   logPath: string;
   scriptPath: string;
+  /**
+   * Report restore support on `thread/start`, the way a graduated bridge does.
+   * Providers shipped as plugin artifacts are not in the runtime's restorable
+   * seed table at all, so this wire field is the only thing that makes their
+   * idle sessions eligible for release.
+   */
+  sessionRestorable?: boolean;
 }
 
 interface ProviderAccountErrorParams {
@@ -258,7 +265,7 @@ rl.on("line", (line) => {
     const providerThreadId = "prov-" + processId;
     fs.appendFileSync(logPath, "thread-start:" + processId + ":" + threadId + "\\n");
     threads.set(threadId, providerThreadId);
-    send({ jsonrpc: "2.0", id: message.id, result: { providerThreadId } });
+    send({ jsonrpc: "2.0", id: message.id, result: { providerThreadId${args.sessionRestorable === true ? ", sessionRestorable: true" : ""} } });
     send({
       jsonrpc: "2.0",
       method: "thread/identity",
@@ -1469,11 +1476,17 @@ rl.on("line", (line) => {
     }
   });
 
+  // claude-code ships its bridge as a plugin artifact, so it is absent from
+  // the runtime's restorable seed table: the only thing that makes its idle
+  // sessions reapable is the `sessionRestorable` its bridge reports on
+  // thread/start. If that wire field stopped being read, idle release would
+  // silently stop for every graduated provider.
   it("reaps a restorable non-Codex session only when the experiment is on", async () => {
     const providerScript = join(tmpDir, "claude-idle-reaper-provider.cjs");
     writeThreadScopedProviderScript({
       logPath: join(tmpDir, "claude-idle-reaper-provider.log"),
       scriptPath: providerScript,
+      sessionRestorable: true,
     });
     const runtime = createAgentRuntimeWithAdapters({
       workspacePath: tmpDir,
@@ -1529,6 +1542,7 @@ rl.on("line", (line) => {
     writeThreadScopedProviderScript({
       logPath: join(tmpDir, "claude-stop-failure-provider.log"),
       scriptPath: providerScript,
+      sessionRestorable: true,
     });
     const runtime = createAgentRuntimeWithAdapters({
       workspacePath: tmpDir,

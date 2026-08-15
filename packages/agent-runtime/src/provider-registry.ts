@@ -34,11 +34,11 @@ import type {
  * Every provider is graduated: no legacy adapter remains, so every id routes
  * here unconditionally.
  *
- * The ACP launch spec travels opaquely via staticProviderOptions (claude-code
- * needs no launch spec — its provider-flavored knobs ride the per-command
- * providerOptions the generic adapter packs, and codex's static entry carries
- * the environment's extra write roots). Transitional wiring — phase 3
- * provider declarations replace this table.
+ * The ACP launch spec travels opaquely via staticProviderOptions; the
+ * plugin-shipped bridges need no launch spec, since their provider-flavored
+ * knobs ride the per-command providerOptions the generic adapter packs and
+ * their static entry carries the environment's extra write roots.
+ * Transitional wiring — phase 3 provider declarations replace this table.
  */
 function createBridgeProtocolAdapterForId(
   providerId: string,
@@ -85,39 +85,6 @@ function createBridgeProtocolAdapterForId(
   }
   if (isAcpProviderId(providerId)) {
     return createAcpBridgeAdapter(providerId, options);
-  }
-  if (providerId === "claude-code") {
-    const info = requireBundledProviderInfo("claude-code");
-    const additionalWorkspaceWriteRoots =
-      options.additionalWorkspaceWriteRoots ?? [];
-    return createBridgeProtocolAdapter({
-      id: providerId,
-      displayName: info.displayName,
-      capabilities: info.capabilities,
-      process: {
-        command: options.bridgeNodeExecutablePath ?? "node",
-        args: resolveBridgeProcessArgs({
-          bridgeBundleDir: options.bridgeBundleDir,
-          bundleFileName: "bb-claude-code-bridge.mjs",
-          importMetaUrl: import.meta.url,
-          bridgeRelativePath: "claude-code/bridge/bridge.js",
-        }),
-        ...(options.bridgeNodeEnv !== undefined
-          ? { env: options.bridgeNodeEnv }
-          : {}),
-      },
-      // Same delivery as codex: the canonical wire has no core field for
-      // environment-level extra write roots, so they ride the provider-scoped
-      // options bag and reach session construction exactly as the legacy
-      // adapter delivered them.
-      ...(additionalWorkspaceWriteRoots.length > 0
-        ? {
-            staticProviderOptions: {
-              additionalWorkspaceWriteRoots: [...additionalWorkspaceWriteRoots],
-            },
-          }
-        : {}),
-    });
   }
   if (providerId === "pi") {
     const info = requireBundledProviderInfo("pi");

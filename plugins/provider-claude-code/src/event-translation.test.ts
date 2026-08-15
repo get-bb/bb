@@ -31,7 +31,7 @@ import { createClaudeEventTranslator } from "./event-translation.js";
  */
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const FIXTURES = resolve(__dirname, "../__fixtures__/claude-code");
+const FIXTURES = resolve(__dirname, "./__fixtures__");
 
 function isFixtureObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);

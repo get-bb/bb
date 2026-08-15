@@ -18,7 +18,7 @@ const dynamicAcpLaunchSpec: HostDaemonAcpLaunchSpec = {
 };
 
 describe("provider registry", () => {
-  it.each([{ providerId: "claude-code" }, { providerId: "acp-cursor" }])(
+  it.each([{ providerId: "acp-cursor" }])(
     "carries environment write roots to the $providerId bridge via provider options",
     ({ providerId }) => {
       const provider = createProviderForId(providerId, {
@@ -52,60 +52,17 @@ describe("provider registry", () => {
     },
   );
 
-  // The deleted legacy adapter was the only pin on what claude-code
-  // advertises. The registry now hands the catalog entry straight to the
-  // generic bridge adapter, and the server reads these to decide which
-  // commands it may even send, so an accidental flip is silent.
-  it("advertises the claude-code capability set on the canonical adapter", () => {
-    expect(createProviderForId("claude-code").capabilities).toEqual({
-      supportsArchive: false,
-      supportsRename: false,
-      supportsServiceTier: false,
-      supportsUserQuestion: true,
-      supportsFork: true,
-      supportsSessionRewind: true,
-      supportedPermissionModes: ["accept-edits", "auto", "full"],
-    });
-  });
-
-  it("creates claude-code provider with expected process config", () => {
-    const provider = createProviderForId("claude-code");
-    expect(provider.id).toBe("claude-code");
-    expect(provider.process.command).toBe("node");
-    expect(provider.process.args.slice(0, 3)).toEqual([
-      "--conditions=source",
-      "--import",
-      import.meta.resolve("tsx"),
-    ]);
-    expect(provider.process.args.at(-1)).toMatch(
-      /agent-runtime\/src\/claude-code\/bridge\/bridge\.ts$/,
-    );
-    expect(existsSync(provider.process.args.at(-1) ?? "")).toBe(true);
-  });
-
   it("passes the configured bridge bundle directory to bundled providers", () => {
-    const claudeProvider = createProviderForId("claude-code", {
-      additionalWorkspaceWriteRoots: [],
-      bridgeBundleDir: "/tmp",
-    });
     const piProvider = createProviderForId("pi", {
       additionalWorkspaceWriteRoots: [],
       bridgeBundleDir: "/tmp",
     });
 
-    expect(claudeProvider.process.args[0]).toBe(
-      "/tmp/bb-claude-code-bridge.mjs",
-    );
     expect(piProvider.process.args[0]).toBe("/tmp/bb-pi-bridge.mjs");
   });
 
   it("passes the configured bridge node runtime to bundled providers", () => {
     const bridgeNodeEnv = { ELECTRON_RUN_AS_NODE: "1" };
-    const claudeProvider = createProviderForId("claude-code", {
-      additionalWorkspaceWriteRoots: [],
-      bridgeNodeEnv,
-      bridgeNodeExecutablePath: "/Applications/bb.app/Contents/MacOS/bb",
-    });
     const piProvider = createProviderForId("pi", {
       additionalWorkspaceWriteRoots: [],
       bridgeNodeEnv,
@@ -117,10 +74,6 @@ describe("provider registry", () => {
       bridgeNodeExecutablePath: "/Applications/bb.app/Contents/MacOS/bb",
     });
 
-    expect(claudeProvider.process.command).toBe(
-      "/Applications/bb.app/Contents/MacOS/bb",
-    );
-    expect(claudeProvider.process.env).toEqual(bridgeNodeEnv);
     expect(piProvider.process.command).toBe(
       "/Applications/bb.app/Contents/MacOS/bb",
     );
@@ -130,12 +83,6 @@ describe("provider registry", () => {
     );
     expect(acpProvider.process.env).toEqual(bridgeNodeEnv);
   });
-
-  // The claude-code legacy adapter was the only in-process consumer of the
-  // runtime's turn id prefix; graduated providers mint bb turn ids in their
-  // bridge from the prefix on the wire. `shared/turn-state.test.ts` covers the
-  // minting itself, and `claude-code/event-translation.test.ts` covers the
-  // translator honoring the prefix.
 
   it("creates pi provider with expected process config", () => {
     const provider = createProviderForId("pi");
@@ -272,7 +219,6 @@ describe("provider registry", () => {
   // list must still route each bundled id to its canonical bridge. This is the
   // regression that would fire if the retired experiment gate came back.
   it.each([
-    { providerId: "claude-code", bridgeDir: "claude-code" },
     { providerId: "pi", bridgeDir: "pi" },
     { providerId: "acp-custom", bridgeDir: "acp" },
   ])(

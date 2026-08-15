@@ -24,6 +24,7 @@ const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
   "automations",
   // Providers whose bridge ships as a plugin artifact: if the plugin does not
   // load, its provider disappears from the install entirely.
+  "provider-claude-code",
   "provider-codex",
   "connect",
   "custom-instructions",
@@ -400,17 +401,23 @@ async function smokeBridgeModelList({
 
 async function smokeProviderBridgeBundles(packageDir) {
   await smokeBridgeModelList({
-    // The packaged bridge intentionally relies on the host's Claude CLI for
-    // account-scoped discovery. CI does not install that provider binary, so
-    // its explicit unavailable-provider response is a valid smoke outcome.
+    // Claude Code ships its bridge as a plugin artifact (graduation wave 5),
+    // so the packed bundle to smoke is the one `bb plugin build` produced for
+    // the builtin plugin, not a daemon-side file. The bridge intentionally
+    // relies on the host's Claude CLI for account-scoped discovery; CI does
+    // not install that binary, so its explicit unavailable-provider response
+    // is a valid smoke outcome.
     allowUnavailableProvider: true,
     bridgePath: join(
       packageDir,
-      "host-daemon",
+      "server",
       "dist",
-      "bb-claude-code-bridge.mjs",
+      "builtin-plugins",
+      "provider-claude-code",
+      "dist",
+      "provider-bridge.mjs",
     ),
-    label: "Claude Code bridge model/list",
+    label: "Claude Code provider-bridge artifact model/list",
   });
   await smokeBridgeModelList({
     bridgePath: join(packageDir, "host-daemon", "dist", "bb-pi-bridge.mjs"),

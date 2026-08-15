@@ -19,7 +19,7 @@ import {
   sendProviderRequestDecodeErrorIfKnown,
   sendProviderResponseEncodeErrorIfKnown,
 } from "@bb/provider-bridge-protocol/bridge-kit";
-import { shouldAutoDenyInteractiveRequest } from "./shared/permission-policy.js";
+import { shouldAutoDenyInteractiveRequest } from "@bb/provider-bridge-protocol/bridge-kit";
 
 export type RuntimeProviderRequestKind = "interactive request" | "tool call";
 

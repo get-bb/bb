@@ -303,7 +303,7 @@ function createConfiguredPiSettingsManager(
     !hasTrustRequiringProjectResources(cwd)
       ? true
       : (new ProjectTrustStore(agentDir).get(cwd) ??
-        settingsManager.getDefaultProjectTrust() === "always"),
+          settingsManager.getDefaultProjectTrust() === "always"),
   );
   return settingsManager;
 }

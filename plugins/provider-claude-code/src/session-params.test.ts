@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG } from "@bb/domain";
 import type { RuntimePermissionPolicy } from "@bb/domain";
-import type { ProviderExecutionContext } from "../provider-adapter.js";
 import {
   buildClaudeCanonicalSessionParams,
   buildClaudeCanonicalTurnParams,
   buildClaudeSessionParams,
+  type ClaudeSessionExecutionOptions,
 } from "./session-params.js";
 
 /**
@@ -13,7 +13,7 @@ import {
  * the canonical wire (execution options plus the claude-flavored knobs the
  * generic bridge-protocol adapter packs under `options.providerOptions`)
  * has to produce exactly the params the legacy adapter builds from the same
- * `ProviderExecutionContext`. Divergence here is the migration hazard — a
+ * `ProviderExecutionContext`, which satisfies it structurally. Divergence here is the migration hazard — a
  * knob that silently stops reaching the bridge on one dialect.
  */
 
@@ -31,7 +31,7 @@ const EXECUTION_CONTEXT = {
   permissionScope: "workspace",
   approvalReviewer: "user",
   permissionEscalation: "ask",
-} satisfies ProviderExecutionContext;
+} satisfies ClaudeSessionExecutionOptions;
 
 /**
  * The canonical wire options exactly as the generic adapter's

@@ -13,7 +13,7 @@
  * disappears when that bridge moves into its plugin directory and ships
  * through the artifact pipeline (wave 5 of the graduation plan), at which
  * point its capabilities arrive on the launch like every other plugin's.
- * Codex has already made that move; claude-code, pi, and acp have not.
+ * Codex and claude-code have already made that move; pi and acp have not.
  */
 import type { ProviderCapabilities, ProviderInfo } from "@bb/domain";
 
@@ -21,16 +21,6 @@ import type { ProviderCapabilities, ProviderInfo } from "@bb/domain";
 export function isAcpProviderId(value: string): boolean {
   return value.startsWith("acp-");
 }
-
-const CLAUDE_CODE_CAPABILITIES: ProviderCapabilities = {
-  supportsArchive: false,
-  supportsRename: false,
-  supportsServiceTier: false,
-  supportsUserQuestion: true,
-  supportsFork: true,
-  supportsSessionRewind: true,
-  supportedPermissionModes: ["accept-edits", "auto", "full"],
-};
 
 const PI_CAPABILITIES: ProviderCapabilities = {
   supportsArchive: false,
@@ -65,7 +55,6 @@ const ACP_CAPABILITIES: ProviderCapabilities = {
  * comes from the agent's initialize result, so the static claim is false.
  */
 const SESSION_RESTORABLE_BY_PROVIDER_ID: Readonly<Record<string, boolean>> = {
-  "claude-code": true,
   pi: true,
 };
 
@@ -75,10 +64,6 @@ interface BundledProvider {
 }
 
 const BUNDLED_PROVIDERS: Readonly<Record<string, BundledProvider>> = {
-  "claude-code": {
-    displayName: "Claude Code",
-    capabilities: CLAUDE_CODE_CAPABILITIES,
-  },
   pi: { displayName: "Pi", capabilities: PI_CAPABILITIES },
   "acp-cursor": { displayName: "Cursor", capabilities: ACP_CAPABILITIES },
 };

@@ -51,7 +51,15 @@ import type {
   ProviderTurnStateRegistry,
   ToolUseTranslationInput,
 } from "@bb/provider-bridge-protocol/bridge-kit";
-import type { ProviderTranslationContext } from "../provider-adapter.js";
+/**
+ * The per-event translation scope the runtime's generic adapter passes in. Its
+ * `ProviderTranslationContext` satisfies this structurally; stated here so the
+ * plugin does not depend on `@bb/agent-runtime`.
+ */
+export interface ProviderTranslationContext {
+  threadId?: string;
+  parentToolCallId?: string;
+}
 import {
   claudeApiRetryMessageSchema,
   claudeAssistantMessageSchema,

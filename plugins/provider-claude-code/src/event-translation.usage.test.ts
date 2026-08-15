@@ -16,12 +16,12 @@ import { createClaudeEventTranslator } from "./event-translation.js";
  * invariants outlive the suite they were written in. They are exercised here
  * through the translator directly, the way the bridge constructs it.
  *
- * The fixture cases additionally keep src/__fixtures__/claude-code/*.json
+ * The fixture cases additionally keep src/__fixtures__/*.json
  * reachable; without them those fixtures would be orphaned.
  */
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const FIXTURES = resolve(__dirname, "../__fixtures__/claude-code");
+const FIXTURES = resolve(__dirname, "./__fixtures__");
 
 function isFixtureObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
