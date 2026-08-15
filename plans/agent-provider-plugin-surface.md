@@ -354,7 +354,38 @@ next starts; commits structured so a later PR split stays mechanical:
    harness just got, and it belongs to the final gate's live QA matrix.
 
 FINAL VALIDATION GATE (mandatory before calling graduation done): full
-multi-agent adversarial review of the graduation diff; conformance all
+multi-agent adversarial review of the graduation diff — DONE, and all
+eight confirmed findings are fixed with red-verified tests (full-tree
+typecheck + test green):
+  1+6. `thread.archive` / `thread.unarchive` carried no `bridgeLaunch`, so
+     every graduated provider threw "Unsupported provider" — unarchive
+     always (it runs on a fresh provider-maintenance runtime), archive
+     whenever the thread's process was not already live. Threaded end to
+     end like `thread.start`: wire field, server attach, daemon artifact
+     resolve, runtime process key + adapter.
+  2. The codex account-restart re-resume rebuilt from `ThreadRuntimeConfig`,
+     which stored no launch, so it killed the thread's process and then
+     failed to rebuild it. The config now carries the launch (archive and
+     unarchive fall back to it too).
+  3. The codex bridge never retracted `thread/openWork` on child exit, and
+     the runtime's view is level-triggered, so the thread was never
+     idle-reaped. Child exit now clears the dead child's translator state
+     and re-reports.
+  4. Known and custom ACP agents were listed independently of the registry,
+     but their only bridge is the ACP plugin's; with that plugin disabled
+     the picker offered agents whose first turn died on the daemon. The
+     dynamic ACP tier is now gated on a registered ACP provider plugin.
+  5. The listener serves before plugins load, so provider-routed work saw
+     an empty registry on boot (409 `no_provider_available`, empty provider
+     list, turns dispatched with no `bridgeLaunch`). The registry now has a
+     bounded settlement gate the server resolves when plugin startup
+     settles, awaited by thread create, command building, provider listing
+     and model loads.
+  7. ThreadDetailView read the execution-options cache non-reactively for
+     fork/edit affordances; it now subscribes to the query cache.
+  8. The skills library labelled every custom ACP agent "ACP provider"; it
+     now names providers from the server roster.
+Remaining: conformance all
 green for all five bridges (the codex pin must be flipped, not deleted);
 calibration suites re-run as bridge-only self-consistency checks; a full
 live QA matrix with real CLIs covering the previously-missed paths
