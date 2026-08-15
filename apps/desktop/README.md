@@ -119,6 +119,9 @@ pnpm --filter @bb/desktop run dist:win
 
 `package:win` unpacks the app. `dist:win` builds the NSIS installer. There is
 no Windows auto-update feed. Sign and `latest.yml` stay out of this cut.
+`package:win` and `dist:win` drop `CSC_LINK` and `CSC_KEY_PASSWORD` so a macOS
+certificate in the environment cannot reach Authenticode. Set `WIN_CSC_LINK`
+when a Windows certificate is actually intended.
 
 Linux gets both update paths, but they are not equivalent:
 

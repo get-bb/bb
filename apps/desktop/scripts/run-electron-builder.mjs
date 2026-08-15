@@ -27,6 +27,7 @@ const electronBuilderCli = requireFromDesktopPackage.resolve(
 );
 
 const codeSigningKeys = ["CSC_LINK", "CSC_KEY_PASSWORD"];
+const macCodeSigningSecretKeys = ["CSC_LINK", "CSC_KEY_PASSWORD"];
 const notarizationKeys = [
   "APPLE_ID",
   "APPLE_APP_SPECIFIC_PASSWORD",
@@ -203,15 +204,32 @@ export function resolveElectronBuilderConfig(baseConfig, env) {
   };
 }
 
-function createElectronBuilderEnv(signingPlan) {
+export function shouldStripMacCodeSigningSecrets(electronBuilderArgs) {
+  return (
+    electronBuilderArgs.includes("--win") &&
+    !electronBuilderArgs.includes("--mac")
+  );
+}
+
+export function createElectronBuilderEnv(
+  signingPlan,
+  env = process.env,
+  electronBuilderArgs = [],
+) {
   const childEnv = {
-    ...process.env,
+    ...env,
   };
 
   childEnv.CSC_IDENTITY_AUTO_DISCOVERY =
     signingPlan.mode !== "disabled" && !signingPlan.identityName
       ? "true"
       : "false";
+
+  if (shouldStripMacCodeSigningSecrets(electronBuilderArgs)) {
+    for (const key of macCodeSigningSecretKeys) {
+      delete childEnv[key];
+    }
+  }
 
   return childEnv;
 }
@@ -235,7 +253,7 @@ async function runElectronBuilder(args, signingPlan) {
     [electronBuilderCli, "--config", generatedConfigPath, ...args],
     {
       cwd: desktopPackageRoot,
-      env: createElectronBuilderEnv(signingPlan),
+      env: createElectronBuilderEnv(signingPlan, process.env, args),
       stdio: "inherit",
     },
   );
@@ -271,7 +289,11 @@ async function main() {
     return;
   }
 
-  if (
+  if (shouldStripMacCodeSigningSecrets(electronBuilderArgs)) {
+    console.log(
+      "Windows-only pack ignores CSC_LINK and CSC_KEY_PASSWORD so macOS signing secrets cannot reach Authenticode.",
+    );
+  } else if (
     electronBuilderArgs.includes("--linux") &&
     !electronBuilderArgs.includes("--mac")
   ) {
@@ -302,6 +324,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
 export const electronBuilderSigningEnvironment = {
   codeSigningKeys,
+  macCodeSigningSecretKeys,
   missingEnvironmentKeys,
   notarizationKeys,
   requiredSigningEnvironmentKeys,

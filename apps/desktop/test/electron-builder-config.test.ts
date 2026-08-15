@@ -19,6 +19,11 @@ import {
   createDesktopReleaseInfo,
   DESKTOP_AUTO_UPDATE_FEED_CONFIG,
 } from "../src/desktop-update-provider.js";
+import {
+  createElectronBuilderEnv,
+  electronBuilderSigningEnvironment,
+  shouldStripMacCodeSigningSecrets,
+} from "../scripts/run-electron-builder.mjs";
 
 const desktopPackageRoot = process.cwd();
 const require = createRequire(resolve(desktopPackageRoot, "package.json"));
@@ -109,6 +114,7 @@ const electronBuilderConfigSchema = z
     win: z
       .object({
         icon: z.string().min(1),
+        signAndEditExecutable: z.literal(true),
       })
       .passthrough()
       .optional(),
@@ -322,7 +328,7 @@ describe("electron-builder signing config", () => {
     expect(config.asarUnpack).not.toContain("dist/bb-app-bridge.js");
   });
 
-  it("lets electron-builder rcedit the Windows executable icon", async () => {
+  it("enables electron-builder Windows executable resource editing", async () => {
     const configText = await readFile(
       resolve(desktopPackageRoot, "electron-builder.config.json"),
       "utf8",
@@ -345,6 +351,25 @@ describe("electron-builder signing config", () => {
         oneClick: false,
         perMachine: false,
       }),
+    );
+  });
+
+  it("rejects a Windows config that disables executable resource editing", async () => {
+    const configText = await readFile(
+      resolve(desktopPackageRoot, "electron-builder.config.json"),
+      "utf8",
+    );
+    const config = electronBuilderConfigSchema.parse(JSON.parse(configText));
+    const disabled = {
+      ...config,
+      win: {
+        ...config.win,
+        signAndEditExecutable: false,
+      },
+    };
+
+    expect(() => electronBuilderConfigSchema.parse(disabled)).toThrow(
+      /signAndEditExecutable/u,
     );
   });
 
@@ -750,6 +775,8 @@ describe("electron-builder signing config", () => {
       provider: "generic",
       url: nightlyRelease.updateReleaseBaseUrl,
     });
+    expect(config.win?.signAndEditExecutable).toBe(true);
+    expect(config.win?.icon).toBe("assets/icon.ico");
   });
 
   it("rejects unknown desktop release channels", async () => {
@@ -772,6 +799,7 @@ describe("electron-builder signing config", () => {
     expect(config.mac).not.toHaveProperty("identity");
     expect(config.mac.notarize).toBe(false);
     expect(config.dmg.sign).toBe(false);
+    expect(config.win?.signAndEditExecutable).toBe(true);
   });
 
   it("keeps builds unsigned when keychain auto-discovery is explicitly disabled", async () => {
@@ -817,5 +845,59 @@ describe("electron-builder signing config", () => {
     );
     expect(completeAppleCredentials.config.mac.notarize).toBe(true);
     expect(completeAppleCredentials.config.dmg.sign).toBe(false);
+  });
+
+  it("strips macOS signing secrets from Windows-only electron-builder env", () => {
+    expect(shouldStripMacCodeSigningSecrets(["--win", "--x64"])).toBe(true);
+    expect(
+      shouldStripMacCodeSigningSecrets(["--win", "--linux", "--x64"]),
+    ).toBe(true);
+    expect(shouldStripMacCodeSigningSecrets(["--win", "--mac"])).toBe(false);
+    expect(shouldStripMacCodeSigningSecrets(["--mac", "--arm64"])).toBe(false);
+    expect(shouldStripMacCodeSigningSecrets(["--linux", "--x64"])).toBe(false);
+
+    const childEnv = createElectronBuilderEnv(
+      {
+        mode: "environment",
+        identityName: "Sawyer Hood (TEAMID1234)",
+        notarizationEnabled: true,
+      },
+      {
+        CSC_KEY_PASSWORD: "p12-password",
+        CSC_LINK: "base64-p12",
+        PATH: "/usr/bin",
+        WIN_CSC_KEY_PASSWORD: "win-p12-password",
+        WIN_CSC_LINK: "win-base64-p12",
+      },
+      ["--win", "--x64"],
+    );
+
+    expect(childEnv.CSC_LINK).toBeUndefined();
+    expect(childEnv.CSC_KEY_PASSWORD).toBeUndefined();
+    expect(childEnv.WIN_CSC_LINK).toBe("win-base64-p12");
+    expect(childEnv.WIN_CSC_KEY_PASSWORD).toBe("win-p12-password");
+    expect(childEnv.PATH).toBe("/usr/bin");
+    expect(electronBuilderSigningEnvironment.macCodeSigningSecretKeys).toEqual(
+      ["CSC_LINK", "CSC_KEY_PASSWORD"],
+    );
+  });
+
+  it("keeps macOS signing secrets when a Windows pack also targets macOS", () => {
+    const childEnv = createElectronBuilderEnv(
+      {
+        mode: "environment",
+        identityName: undefined,
+        notarizationEnabled: true,
+      },
+      {
+        CSC_KEY_PASSWORD: "p12-password",
+        CSC_LINK: "base64-p12",
+      },
+      ["--mac", "--win"],
+    );
+
+    expect(childEnv.CSC_LINK).toBe("base64-p12");
+    expect(childEnv.CSC_KEY_PASSWORD).toBe("p12-password");
+    expect(childEnv.CSC_IDENTITY_AUTO_DISCOVERY).toBe("true");
   });
 });
