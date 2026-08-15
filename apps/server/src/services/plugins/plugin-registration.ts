@@ -1,10 +1,13 @@
-import { resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { isBbManagedWorkspacePath } from "../threads/worktree-paths.js";
 import {
   getInstalledPlugin,
   getInstalledPluginRegistration,
   listUnnormalizedPluginRegistrations,
   normalizeInstalledPluginRegistration,
+  setInstalledPluginEnabled,
   setInstalledPluginSourceClassification,
   upsertInstalledPlugin,
   type InstalledPluginRow,
@@ -17,6 +20,9 @@ import {
 import {
   BUNDLED_PLUGINS,
   builtinPluginSource,
+  WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_ID,
+  WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_NAMES,
+  workTogetherBuiltinDefaultsMarkerPath,
   type BundledPluginRegistration,
 } from "./builtin-registry.js";
 import { CURATED_MARKETPLACE_NAME } from "../plugin-catalog/marketplace-manifest.js";
@@ -608,6 +614,53 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
           enabled: existing?.enabled ?? bundled.defaultEnabled,
         });
       }
+    }
+    await applyWorkTogetherBuiltinEnabledDefaults();
+  }
+
+  /**
+   * One-shot: copy current `defaultEnabled` onto already-installed named
+   * builtins. Skips tombstones (`getInstalledPlugin` hides `removedAt`) and
+   * non-builtin sources so an operator remove is not undone.
+   */
+  async function applyWorkTogetherBuiltinEnabledDefaults(): Promise<void> {
+    const markerPath = workTogetherBuiltinDefaultsMarkerPath(deps.dataDir);
+    if (existsSync(markerPath)) return;
+
+    const names = new Set<string>(WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_NAMES);
+    const flipped: string[] = [];
+    for (const bundled of bundledPlugins) {
+      if (!names.has(bundled.name)) continue;
+      const existing = getInstalledPlugin(deps.db, bundled.pluginId);
+      if (
+        existing === undefined ||
+        existing.sourceKind !== "builtin" ||
+        existing.sourceBuiltinName !== bundled.name ||
+        existing.enabled === bundled.defaultEnabled
+      ) {
+        continue;
+      }
+      if (
+        !setInstalledPluginEnabled(
+          deps.db,
+          bundled.pluginId,
+          bundled.defaultEnabled,
+        )
+      ) {
+        continue;
+      }
+      flipped.push(bundled.name);
+    }
+
+    await mkdir(dirname(markerPath), { recursive: true });
+    await writeFile(
+      markerPath,
+      `${WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_ID}\n`,
+    );
+    if (flipped.length > 0) {
+      logger.info(
+        `applied Work Together builtin enabled defaults: ${flipped.join(", ")}`,
+      );
     }
   }
 
