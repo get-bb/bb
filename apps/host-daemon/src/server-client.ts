@@ -201,6 +201,12 @@ export interface ServerClient {
     digest: string;
     expectedByteLength: number;
   }): Promise<Uint8Array>;
+  /**
+   * Raw bytes of a plugin provider's bridge bundle, addressed by content
+   * hash. The caller verifies the sha256 over the received bytes before
+   * caching or executing them.
+   */
+  fetchProviderBridge(sha256: string): Promise<Uint8Array>;
   postEvents(events: HostDaemonEventEnvelope[]): Promise<EventPostResult>;
   callTool(request: ToolCallRequest): Promise<HostDaemonToolCallResponse>;
   registerInteractiveRequest(
@@ -571,6 +577,18 @@ export function createServerClient(
         );
       }
       return readPluginHostArtifactBytes(response, args.expectedByteLength);
+    async fetchProviderBridge(sha256: string): Promise<Uint8Array> {
+      // Same trust model as fetchSkillTree: the authenticated daemon
+      // transport is the boundary, and the caller hash-verifies the bytes
+      // before they are cached or executed.
+      const response = await fetchFn(
+        buildInternalUrl(`/provider-bridges/${encodeURIComponent(sha256)}`),
+        { method: "GET", headers: headers() },
+      );
+      if (!response.ok) {
+        throw await createResponseError("fetch provider bridge", response);
+      }
+      return new Uint8Array(await response.arrayBuffer());
     },
 
     async postEvents(

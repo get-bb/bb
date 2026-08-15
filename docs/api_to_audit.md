@@ -184,11 +184,19 @@ dropped.
    throws to the plugin. Confirm first-wins (vs. deterministic priority) is
    right across plugin load order, and that a plugin re-declaring its own id
    on reload/settings change never races another plugin's claim.
-4. **`bridge.entry` is validated but not delivered.** The path is checked
-   against the manifest escape rules now, but nothing builds or ships the
-   bridge bundle to hosts until phase 5. Confirm the reference shape (single
-   entry name vs. per-platform bundles) survives the bridge delivery design
-   before stabilizing.
+4. **`bridge.entry` delivery (phase 5, shipped for third-party).** A plugin
+   declaring `bb.providerBridge` in its manifest gets its bridge built
+   (`dist/provider-bridge.mjs`, self-contained node ESM), recorded
+   content-addressed (`ProviderBridgeArtifactRegistry`), and delivered:
+   thread commands carry `bridgeLaunch {source: {kind: "artifact", sha256,
+   byteLength}}` (the protocol-123 field) and daemons download/verify/cache
+   via `GET /internal/provider-bridges/:sha256`. First-party providers stay
+   daemon-bundled (no artifact recorded for their takeover registrations)
+   until graduation flips them to artifact delivery. Before stabilizing:
+   confirm the single-bundle reference shape (`entry` names the bundle;
+   `bb.providerBridge` names the source) survives per-platform needs, and
+   audit `providerOptions` on `bridgeLaunch` (schema'd but not yet populated
+   by any server path).
 
 ## `experimental_NewThreadComposer` (`@get-bb/plugin-sdk/app`)
 

@@ -9,6 +9,7 @@ export type {
   AgentRuntime,
   AgentRuntimeAcpSkill,
   AgentRuntimeAcpSkillRoot,
+  AgentRuntimeBridgeLaunch,
   AgentRuntimeClaudeCodeSkillRoot,
   AgentRuntimeCodexSkillRoot,
   AgentRuntimeExecutionOptions,

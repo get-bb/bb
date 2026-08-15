@@ -357,6 +357,125 @@ describe("thread command dispatch", () => {
     );
   });
 
+  it("caches a bridge artifact for thread.start and hands the runtime the verified path", async () => {
+    const { createHash } = await import("node:crypto");
+    const dataDir = await makeTempDir("bb-bridge-launch-start-");
+    const bridgeBytes = Buffer.from("export const bridge = true;\n");
+    const sha256 = createHash("sha256").update(bridgeBytes).digest("hex");
+    const harness = createHarness({ workspacePath: "/tmp/env-bridge-start" });
+    const fetchProviderBridge = vi.fn(async () => new Uint8Array(bridgeBytes));
+
+    await dispatchCommand(
+      {
+        type: "thread.start",
+        environmentId: "env-bridge-start",
+        threadId: "thread-bridge-start",
+        workspaceContext: {
+          workspacePath: "/tmp/env-bridge-start",
+          workspaceProvisionType: "unmanaged",
+        },
+        projectId: "project-bridge-start",
+        providerId: "echo-agent",
+        bridgeLaunch: {
+          source: {
+            kind: "artifact",
+            sha256,
+            byteLength: bridgeBytes.byteLength,
+          },
+          providerOptions: { echoPrefix: "echo:" },
+        },
+        requestId: nextClientRequestId(),
+        input: [textPromptInput("hello")],
+        options: {
+          model: "echo-default",
+          serviceTier: "default",
+          reasoningLevel: "medium",
+          workflowsEnabled: false,
+          permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
+          permissionEscalation: null,
+        },
+        instructions: "Be a helpful coding agent.",
+        dynamicTools: [],
+        injectedSkillSources: [],
+        instructionMode: "append",
+      },
+      {
+        ...harness.dispatchOptions({ dataDir }),
+        fetchProviderBridge,
+      },
+    );
+
+    const artifactPath = path.join(dataDir, "provider-bridges", `${sha256}.mjs`);
+    expect(harness.runtimeState.startedBridgeLaunch).toEqual({
+      sha256,
+      artifactPath,
+      providerOptions: { echoPrefix: "echo:" },
+    });
+    await expect(fs.readFile(artifactPath)).resolves.toEqual(bridgeBytes);
+  });
+
+  it("resolves resume-context bridge launches for turn.submit resumes", async () => {
+    const { createHash } = await import("node:crypto");
+    const dataDir = await makeTempDir("bb-bridge-launch-resume-");
+    const bridgeBytes = Buffer.from("export const resumeBridge = true;\n");
+    const sha256 = createHash("sha256").update(bridgeBytes).digest("hex");
+    const harness = createHarness({ workspacePath: "/tmp/env-bridge-resume" });
+    const fetchProviderBridge = vi.fn(async () => new Uint8Array(bridgeBytes));
+
+    await dispatchCommand(
+      {
+        type: "turn.submit",
+        environmentId: "env-bridge-resume",
+        threadId: "thread-bridge-resume",
+        requestId: nextClientRequestId(),
+        input: [textPromptInput("follow up")],
+        options: {
+          model: "echo-default",
+          serviceTier: "default",
+          reasoningLevel: "medium",
+          workflowsEnabled: false,
+          permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
+          permissionEscalation: null,
+        },
+        resumeContext: {
+          workspaceContext: {
+            workspacePath: "/tmp/env-bridge-resume",
+            workspaceProvisionType: "unmanaged",
+          },
+          projectId: "project-bridge-resume",
+          providerId: "echo-agent",
+          providerThreadId: "provider-bridge-resume",
+          bridgeLaunch: {
+            source: {
+              kind: "artifact",
+              sha256,
+              byteLength: bridgeBytes.byteLength,
+            },
+          },
+          instructions: "Be a helpful coding agent.",
+          dynamicTools: [],
+          injectedSkillSources: [],
+          instructionMode: "append",
+        },
+        target: { mode: "start" },
+      },
+      {
+        ...harness.dispatchOptions({ dataDir }),
+        fetchProviderBridge,
+      },
+    );
+
+    expect(harness.runtimeState.resumedBridgeLaunch).toEqual({
+      sha256,
+      artifactPath: path.join(dataDir, "provider-bridges", `${sha256}.mjs`),
+    });
+    expect(fetchProviderBridge).toHaveBeenCalledTimes(1);
+  });
+
   it("resumes turn.submit again when attachment staging loses the hosted thread", async () => {
     const threadStorageRootPath = await makeTempDir(
       "bb-turn-submit-reaped-during-staging-",

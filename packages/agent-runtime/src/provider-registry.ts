@@ -167,6 +167,38 @@ function createBridgeProtocolAdapterForId(
       },
     });
   }
+  // Plugin-delivered bridge: the daemon has already downloaded and
+  // hash-verified the artifact, so the process is simply the daemon's node
+  // running that file. The four first-party ids returned above and ACP ids
+  // resolve below — both keep their bundled bridges untouched; this branch
+  // only serves plugin providers whose commands carried a bridgeLaunch spec.
+  if (options.bridgeLaunch !== undefined && !isAcpProviderId(providerId)) {
+    return createBridgeProtocolAdapter({
+      id: providerId,
+      displayName: providerId,
+      // Conservative declaration baseline: the provider's real declaration
+      // lives server-side and session-behavior facts arrive via the
+      // initialize handshake, which may only narrow. Nothing here widens.
+      capabilities: {
+        supportsArchive: false,
+        supportsRename: false,
+        supportsServiceTier: false,
+        supportsUserQuestion: false,
+        supportsFork: false,
+        supportedPermissionModes: ["full"],
+      },
+      process: {
+        command: options.bridgeNodeExecutablePath ?? "node",
+        args: [options.bridgeLaunch.artifactPath],
+        ...(options.bridgeNodeEnv !== undefined
+          ? { env: options.bridgeNodeEnv }
+          : {}),
+      },
+      ...(options.bridgeLaunch.providerOptions !== undefined
+        ? { staticProviderOptions: options.bridgeLaunch.providerOptions }
+        : {}),
+    });
+  }
   if (!isAcpProviderId(providerId)) {
     return null;
   }

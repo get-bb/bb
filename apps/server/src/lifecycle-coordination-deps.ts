@@ -9,6 +9,7 @@ export type LifecycleCoordinationDeps = Pick<
   | "logger"
   | "machineAuth"
   | "providerRegistry"
+  | "providerBridgeArtifacts"
   | "skillTreeRegistry"
   | "telemetry"
 >;

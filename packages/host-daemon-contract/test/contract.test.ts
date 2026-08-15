@@ -718,6 +718,14 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "ACP permission CLI config only needs args for modes that differ from the agent default.",
   "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.insertAfterArgs":
     "ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
+  "hostDaemonCommandSchema.bridgeLaunch":
+    "thread.start, turn.submit, and thread.goal.clear carry a bridge launch spec only for plugin providers with stored bridge artifacts; absence means daemon-local (bundled) bridge resolution.",
+  "hostDaemonCommandSchema.bridgeLaunch.providerOptions":
+    "bridge launch specs omit providerOptions when the provider plugin declares no static option bag for its bridge.",
+  "hostDaemonCommandSchema.resumeContext.bridgeLaunch":
+    "resume contexts carry a bridge launch spec only for plugin providers with stored bridge artifacts that may need lazy resume.",
+  "hostDaemonCommandSchema.resumeContext.bridgeLaunch.providerOptions":
+    "resume-context bridge launch specs omit providerOptions when the provider plugin declares no static option bag for its bridge.",
   "hostDaemonCommandSchema.checkout":
     "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
   "hostDaemonCommandSchema.targetPath":
@@ -730,6 +738,10 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "workspace.status may omit mergeBaseBranch when the caller only needs working-tree state.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec":
     "provider.list_models includes an ACP launch spec only for dynamic ACP providers; built-ins resolve from daemon-side profiles.",
+  "hostDaemonOnlineRpcCommandSchema.bridgeLaunch":
+    "provider.list_models carries a bridge launch spec only for plugin providers with stored bridge artifacts; absence means daemon-local (bundled) bridge resolution.",
+  "hostDaemonOnlineRpcCommandSchema.bridgeLaunch.providerOptions":
+    "bridge launch specs omit providerOptions when the provider plugin declares no static option bag for its bridge.",
   "hostDaemonOnlineRpcCommandSchema.cwd":
     "provider.list_models may omit cwd when only user-level provider configuration applies.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.cwd":
@@ -2286,6 +2298,112 @@ describe("host-daemon command schemas", () => {
     expect(hostDaemonCommandSchema.parse(turnSubmitRoundTrip)).toEqual(
       turnSubmitCommand,
     );
+
+    // Version-124 compat: the same version-123 payloads (no bridgeLaunch)
+    // must round-trip byte-identically — the parses above already assert
+    // that, and no default may materialize the new field.
+    expect(hostDaemonCommandSchema.parse(threadStartRoundTrip)).not.toHaveProperty(
+      "bridgeLaunch",
+    );
+    const parsedTurnSubmit = hostDaemonCommandSchema.parse(turnSubmitRoundTrip);
+    expect(parsedTurnSubmit).not.toHaveProperty("bridgeLaunch");
+    expect(
+      (parsedTurnSubmit as { resumeContext: object }).resumeContext,
+    ).not.toHaveProperty("bridgeLaunch");
+  });
+
+  it("round-trips bridge launch specs and rejects malformed artifact sources", () => {
+    const bridgeLaunch = {
+      source: {
+        kind: "artifact",
+        sha256: "a".repeat(64),
+        byteLength: 4096,
+      },
+      providerOptions: { echoPrefix: "echo:" },
+    };
+
+    const providerListModelsCommand = {
+      type: "provider.list_models",
+      providerId: "echo-agent",
+      bridgeLaunch,
+      cwd: "/tmp/workspace",
+    };
+    expect(
+      hostDaemonOnlineRpcCommandSchema.parse(
+        JSON.parse(JSON.stringify(providerListModelsCommand)),
+      ),
+    ).toEqual(providerListModelsCommand);
+
+    const threadStartCommand = {
+      type: "thread.start",
+      environmentId: "env_123",
+      threadId: "thr_123",
+      workspaceContext: {
+        workspacePath: "/tmp/workspace",
+        workspaceProvisionType: "unmanaged",
+      },
+      projectId: "proj_123",
+      providerId: "echo-agent",
+      bridgeLaunch,
+      requestId: CLIENT_REQUEST_ID,
+      input: [{ type: "text", text: "hello", mentions: [] }],
+      options: {
+        model: "echo-default",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        workflowsEnabled: false,
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+      },
+      instructions: "Be a helpful thread.",
+      dynamicTools: [],
+      injectedSkillSources: [],
+      instructionMode: "append",
+    };
+    expect(
+      hostDaemonCommandSchema.parse(JSON.parse(JSON.stringify(threadStartCommand))),
+    ).toEqual(threadStartCommand);
+
+    // resumeContext carries the field too (turn.submit / thread.goal.clear).
+    const goalClearCommand = {
+      type: "thread.goal.clear",
+      environmentId: "env_123",
+      threadId: "thr_123",
+      options: threadStartCommand.options,
+      bridgeLaunch,
+      resumeContext: {
+        workspaceContext: threadStartCommand.workspaceContext,
+        projectId: "proj_123",
+        providerId: "echo-agent",
+        providerThreadId: "provider_123",
+        bridgeLaunch,
+        instructions: "Be a helpful thread.",
+        dynamicTools: [],
+        injectedSkillSources: [],
+        instructionMode: "append",
+      },
+    };
+    expect(
+      hostDaemonCommandSchema.parse(JSON.parse(JSON.stringify(goalClearCommand))),
+    ).toEqual(goalClearCommand);
+
+    // Never execute unverifiable bytes: a malformed hash, a non-positive
+    // byte length, and an unknown source kind all fail the parse.
+    for (const source of [
+      { kind: "artifact", sha256: "not-a-hash", byteLength: 4096 },
+      { kind: "artifact", sha256: "A".repeat(64), byteLength: 4096 },
+      { kind: "artifact", sha256: "a".repeat(64), byteLength: 0 },
+      { kind: "bundled" },
+    ]) {
+      expect(
+        hostDaemonCommandSchema.safeParse({
+          ...threadStartCommand,
+          bridgeLaunch: { source },
+        }).success,
+      ).toBe(false);
+    }
   });
 
   it("parses every injected skill source variant", () => {

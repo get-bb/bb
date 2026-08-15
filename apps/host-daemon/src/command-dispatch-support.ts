@@ -2,6 +2,7 @@ import {
   createAgentRuntime,
   fingerprintAcpLaunchSpec,
   type AgentRuntime,
+  type AgentRuntimeBridgeLaunch,
   type AgentRuntimeOptions,
 } from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
@@ -9,6 +10,7 @@ import type { EventSinkInput } from "./event-sink.js";
 import type {
   HostDaemonCommand,
   HostDaemonAcpLaunchSpec,
+  HostDaemonBridgeLaunch,
   HostDaemonInjectedSkillSource,
   HostDaemonOnlineRpcCommand,
   HostDaemonConnectTunnelIdentity,
@@ -22,6 +24,10 @@ import { RuntimeManager, type RuntimeEntry } from "./runtime-manager.js";
 import type { TerminalManager } from "./terminals/terminal-manager.js";
 import type { FetchProjectAttachment } from "./project-attachments.js";
 import type { FetchSkillTree } from "./skill-trees.js";
+import {
+  ensureCachedProviderBridge,
+  type FetchProviderBridge,
+} from "./provider-bridges.js";
 
 type DispatchCommand = HostDaemonCommand | HostDaemonOnlineRpcCommand;
 
@@ -44,12 +50,14 @@ export interface CommandDispatchOptions {
   dataDir: string;
   fetchProjectAttachment: FetchProjectAttachment;
   fetchSkillTree?: FetchSkillTree;
+  fetchProviderBridge?: FetchProviderBridge;
   runtimeManager: RuntimeManager;
   terminalManager?: Pick<TerminalManager, "closeEnvironmentTerminals">;
   eventSink: EventSink;
   listModels?: (args: {
     providerId: string;
     acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    bridgeLaunch?: AgentRuntimeBridgeLaunch;
     cwd?: string;
   }) => Promise<{
     models: AvailableModel[];
@@ -108,6 +116,40 @@ const SPAWN_PATTERN = /\bspawn\b/;
 const ACP_AUTH_REQUIRED_PATTERN =
   /ACP agent is (?:installed but )?not authenticated|Authentication required.*(?:agent login|CURSOR_API_KEY|CURSOR_AUTH_TOKEN|api key|auth token|login)/is;
 
+/**
+ * Turn a wire `bridgeLaunch` into the runtime shape: ensure the artifact is
+ * cached (downloading + hash-verifying if needed) and hand the runtime the
+ * verified local path. Absent input stays absent — first-party providers keep
+ * daemon-local bridge resolution.
+ */
+export async function resolveRuntimeBridgeLaunch(
+  bridgeLaunch: HostDaemonBridgeLaunch | undefined,
+  options: Pick<CommandDispatchOptions, "dataDir" | "fetchProviderBridge">,
+): Promise<AgentRuntimeBridgeLaunch | undefined> {
+  if (bridgeLaunch === undefined) {
+    return undefined;
+  }
+  if (options.fetchProviderBridge === undefined) {
+    throw new CommandDispatchError(
+      "provider_bridge_unavailable",
+      "This daemon has no provider-bridge fetcher configured",
+    );
+  }
+  const artifactPath = await ensureCachedProviderBridge({
+    dataDir: options.dataDir,
+    fetchProviderBridge: options.fetchProviderBridge,
+    sha256: bridgeLaunch.source.sha256,
+    byteLength: bridgeLaunch.source.byteLength,
+  });
+  return {
+    sha256: bridgeLaunch.source.sha256,
+    artifactPath,
+    ...(bridgeLaunch.providerOptions !== undefined
+      ? { providerOptions: bridgeLaunch.providerOptions }
+      : {}),
+  };
+}
+
 const defaultModelListRuntimes = new Map<string, AgentRuntime>();
 
 export async function shutdownDefaultListModelsRuntimes(): Promise<void> {
@@ -117,7 +159,11 @@ export async function shutdownDefaultListModelsRuntimes(): Promise<void> {
 }
 
 export async function defaultListModels(
-  args: { providerId: string; acpLaunchSpec?: HostDaemonAcpLaunchSpec },
+  args: {
+    providerId: string;
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    bridgeLaunch?: AgentRuntimeBridgeLaunch;
+  },
   options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
 ): Promise<{
   models: AvailableModel[];
@@ -125,6 +171,9 @@ export async function defaultListModels(
 }> {
   const runtimeKey =
     `${options.bridgeBundleDir ?? ""}` +
+    (args.bridgeLaunch !== undefined
+      ? `#bridge:${args.bridgeLaunch.sha256.slice(0, 16)}`
+      : "") +
     (args.acpLaunchSpec !== undefined
       ? `#acp:${fingerprintAcpLaunchSpec(args.acpLaunchSpec)}`
       : "");
@@ -132,6 +181,12 @@ export async function defaultListModels(
   if (!runtime) {
     runtime = createAgentRuntime({
       bridgeBundleDir: options.bridgeBundleDir,
+      // A bridgeLaunch only ever rides commands for providers the server has
+      // routed onto the bridge protocol, so its presence stands in for the
+      // policy prefixes this fallback runtime has no session to fetch.
+      ...(args.bridgeLaunch !== undefined
+        ? { bridgeProtocolProviderPrefixes: [args.providerId] }
+        : {}),
       workspacePath: process.cwd(),
       onEvent: () => {},
       onToolCall: async () => ({

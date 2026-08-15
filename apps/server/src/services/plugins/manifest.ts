@@ -42,6 +42,8 @@ export interface PluginManifest {
   appEntry: string | undefined;
   /** Absolute path of the host-runtime entry file, when declared. */
   hostEntry: string | undefined;
+  /** Absolute path of the provider-bridge entry file, when declared. */
+  providerBridgeEntry: string | undefined;
   /** CSS palettes declared by `bb.themes`, with manifest-relative paths resolved. */
   themes: Array<{
     id: string;
@@ -303,6 +305,9 @@ export async function readPluginManifest(
     serverEntry,
     appEntry: bb.app ? resolveEntry(rootDir, bb.app, "bb.app") : undefined,
     hostEntry,
+    providerBridgeEntry: bb.providerBridge
+      ? resolveEntry(rootDir, bb.providerBridge, "bb.providerBridge")
+      : undefined,
     themes,
     skillsRootPaths,
     skillNames: await readSkillNames(skillsRootPaths),

@@ -860,6 +860,11 @@ export type HostDaemonInternalSchema = {
   };
   "/plugins/:pluginId/host/:digest": {
     /** Pull the active immutable host bundle for one plugin generation. */
+  "/provider-bridges/:sha256": {
+    /** Used by the daemon to pull a plugin provider's bridge bundle by content
+     *  hash. The daemon verifies the sha256 over the received bytes before
+     *  caching or executing them. Additive route (same pattern as
+     *  /provider-bridge-policy): old daemons never call it. */
     $get: Endpoint<Record<never, never>, Uint8Array, 200, "binary">;
   };
   "/hosts/enroll-key": {

@@ -29,6 +29,7 @@ import { requireEnvironment } from "../lib/entity-lookup.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import { getSupportedReasoningLevelsForProvider } from "../threads/thread-reasoning-policy.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
+import { resolveBridgeLaunchForProviderId } from "./provider-bridge-launch.js";
 import {
   buildKnownAcpProviderInfo,
   findKnownAcpAgentForProviderId,
@@ -527,6 +528,7 @@ async function loadSystemProviderModels(
     customAcpAgent === undefined
       ? findKnownAcpAgentForProviderId(provider.id)
       : undefined;
+  const bridgeLaunch = resolveBridgeLaunchForProviderId(deps, provider.id);
   try {
     const { models, selectedOnlyModels } = await callHostRetryableOnlineRpc(
       deps,
@@ -547,6 +549,7 @@ async function loadSystemProviderModels(
                     normalizeHostDaemonAcpLaunchSpec(knownAcpAgent),
                 }
               : {}),
+          ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
         },
       },
     );

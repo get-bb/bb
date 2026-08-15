@@ -240,19 +240,25 @@ added/updated/unchanged counts.
                                  terminal). The old layout keeps working, so
                                  nothing migrates unless you ask
   bb plugin build [path]         Compile the plugin into dist/ — the backend
-                                 bundle (server.js, server.meta.json), optional
-                                 bb.app frontend (app.js, app.css,
-                                 app.meta.json), and optional bb.host Node
-                                 bundle (host.js, host.js.map,
-                                 host.meta.json). Each
-                                 *.meta.json is stamped with SDK major/version,
-                                 artifactFormatVersion, pluginId, pluginVersion,
-                                 and builtWith (bb + plugin SDK versions); no
-                                 server required
-  bb plugin dev [path]           Watch a plugin's sources (default: cwd),
-                                 rebuild declared frontend and host bundles,
-                                 then reload the plugin on every change;
-                                 Ctrl+C to stop
+                                 bundle (server.js, server.meta.json); when
+                                 bb.app is declared, the frontend bundle
+                                 (app.js, app.css, app.meta.json); when
+                                 bb.host is declared, the Node host bundle
+                                 (host.js, host.js.map, host.meta.json); and
+                                 when bb.providerBridge is declared, the
+                                 self-contained provider bridge
+                                 (provider-bridge.mjs plus
+                                 provider-bridge.meta.json recording its
+                                 sha256 and byteLength — host daemons fetch
+                                 and verify the bundle by that hash). Each
+                                 *.meta.json is stamped with SDK
+                                 major/version, artifactFormatVersion,
+                                 pluginId, pluginVersion, and builtWith (bb +
+                                 plugin SDK versions); no server required
+  bb plugin dev [path]           Watch a plugin's sources (default: cwd) and
+                                 on every change rebuild its declared frontend,
+                                 host, and provider-bridge bundles, then
+                                 reload the plugin; Ctrl+C to stop
 
   bb marketplace add <source>    Add a marketplace from an https manifest URL,
                                  git:<url>[@<ref>], or path:<directory>. bb

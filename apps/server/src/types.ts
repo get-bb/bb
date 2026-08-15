@@ -18,6 +18,7 @@ import type { WatchInterestCoordinator } from "./ws/watch-interests.js";
 import type { HostSharedPortCoordinator } from "./ws/host-shared-ports.js";
 import type { SkillTreeRegistry } from "./services/skills/injected-skills.js";
 import type { ProviderRegistryService } from "./services/providers/provider-registry.js";
+import type { ProviderBridgeArtifactRegistry } from "./services/plugins/provider-bridge-artifacts.js";
 
 export type ServerLogger = Pick<Logger, "debug" | "error" | "info" | "warn">;
 
@@ -61,6 +62,7 @@ export interface AppDeps {
   machineAuth: MachineAuthService;
   pendingInteractions: PendingInteractionLifecycle;
   providerRegistry: ProviderRegistryService;
+  providerBridgeArtifacts: ProviderBridgeArtifactRegistry;
   skillTreeRegistry: SkillTreeRegistry;
   telemetry: TelemetryService;
   terminalSessions: TerminalSessionLifecycle;
@@ -81,6 +83,7 @@ export type LifecycleDeps = Pick<
   | "lifecycleDedupers"
   | "machineAuth"
   | "providerRegistry"
+  | "providerBridgeArtifacts"
   | "skillTreeRegistry"
   | "telemetry"
 >;

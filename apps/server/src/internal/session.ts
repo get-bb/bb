@@ -56,6 +56,19 @@ export function registerInternalSessionRoutes(
       ...(experiments.providerBridgeCodex ? ["codex"] : []),
       ...(experiments.providerBridgePi ? ["pi"] : []),
     ];
+    // Plugin providers with stored bridge artifacts always route onto the
+    // canonical protocol — there is no bespoke adapter for them, so they are
+    // not experiment-gated. Exact ids, same safety argument as above.
+    for (const entry of deps.providerRegistry.list()) {
+      if (entry.source.kind !== "plugin") continue;
+      const artifact = deps.providerBridgeArtifacts.getForPlugin(
+        entry.source.pluginId,
+      );
+      if (artifact === undefined) continue;
+      if (!prefixes.includes(entry.info.id)) {
+        prefixes.push(entry.info.id);
+      }
+    }
     return context.json({ bridgeProtocolProviderPrefixes: prefixes });
   });
 

@@ -789,6 +789,11 @@ export async function createHostDaemonApp(
         source: "fetchSkillTree",
         request: () => serverClient.fetchSkillTree(treeHash),
       }),
+    fetchProviderBridge: (sha256) =>
+      runSessionRequest({
+        source: "fetchProviderBridge",
+        request: () => serverClient.fetchProviderBridge(sha256),
+      }),
     runtimeManager,
     terminalManager,
     listModels: async (args) => {

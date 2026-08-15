@@ -61,6 +61,7 @@ import { RuntimeBackgroundWorkState } from "./runtime-background-work-state.js";
 import { RuntimeTurnState } from "./runtime-turn-state.js";
 import type {
   AgentRuntime,
+  AgentRuntimeBridgeLaunch,
   AgentRuntimeExecutionOptions,
   AgentRuntimeOptions,
   ReapedIdleProviderSession,
@@ -136,6 +137,7 @@ interface FindReapableIdleProviderSessionArgs {
 
 interface ResolveProviderProcessKeyArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
   providerId: string;
   threadId?: string;
 }
@@ -444,10 +446,16 @@ function createAgentRuntimeInternal(
       args.providerId !== CODEX_PROVIDER_ID || args.threadId === undefined
         ? args.providerId
         : `${CODEX_THREAD_PROCESS_KEY_PREFIX}${args.threadId}`;
+    // A plugin-delivered bridge keys process identity by its artifact hash so
+    // a plugin update (new artifact) gets a fresh bridge process.
+    const bridgeKey =
+      args.bridgeLaunch === undefined
+        ? baseKey
+        : `${baseKey}#bridge:${args.bridgeLaunch.sha256.slice(0, 16)}`;
     if (args.acpLaunchSpec === undefined) {
-      return baseKey;
+      return bridgeKey;
     }
-    return `${baseKey}#acp:${fingerprintAcpLaunchSpec(args.acpLaunchSpec)}`;
+    return `${bridgeKey}#acp:${fingerprintAcpLaunchSpec(args.acpLaunchSpec)}`;
   }
 
   function requireProviderProcess(
@@ -1370,15 +1378,22 @@ function createAgentRuntimeInternal(
   }
 
   const runtime: AgentRuntime = {
-    async ensureProvider({ providerId, forThreadId, acpLaunchSpec }) {
+    async ensureProvider({
+      providerId,
+      forThreadId,
+      acpLaunchSpec,
+      bridgeLaunch,
+    }) {
       await providerProcesses.ensureProvider({
         processKey: resolveProviderProcessKey({
           ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+          ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
           providerId,
           ...(forThreadId !== undefined ? { threadId: forThreadId } : {}),
         }),
         providerId,
         ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+        ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
       });
     },
 
@@ -1388,6 +1403,7 @@ function createAgentRuntimeInternal(
       projectId,
       providerId,
       acpLaunchSpec,
+      bridgeLaunch,
       clientRequestId,
       input,
       inputGroups,
@@ -1404,6 +1420,7 @@ function createAgentRuntimeInternal(
         work: async () => {
           const processKey = resolveProviderProcessKey({
             ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+            ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
             providerId,
             threadId,
           });
@@ -1411,6 +1428,7 @@ function createAgentRuntimeInternal(
             providerId,
             forThreadId: threadId,
             ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+            ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
           });
 
           const proc = requireProviderProcess({ processKey, providerId });
@@ -1565,6 +1583,7 @@ function createAgentRuntimeInternal(
       sourceProviderThreadId,
       retainThroughProviderCheckpoint,
       acpLaunchSpec,
+      bridgeLaunch,
       options: execOpts,
       instructions,
       dynamicTools,
@@ -1585,6 +1604,7 @@ function createAgentRuntimeInternal(
         work: async () => {
           const processKey = resolveProviderProcessKey({
             ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+            ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
             providerId,
             threadId,
           });
@@ -1592,6 +1612,7 @@ function createAgentRuntimeInternal(
             providerId,
             forThreadId: threadId,
             ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+            ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
           });
           const proc = requireProviderProcess({ processKey, providerId });
           if (!proc.adapter.capabilities.supportsFork) {
@@ -1747,6 +1768,7 @@ function createAgentRuntimeInternal(
       providerThreadId,
       providerId,
       acpLaunchSpec,
+      bridgeLaunch,
       options: execOpts,
       instructions,
       dynamicTools,
@@ -1758,6 +1780,7 @@ function createAgentRuntimeInternal(
         work: async () => {
           const processKey = resolveProviderProcessKey({
             ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+            ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
             providerId,
             threadId,
           });
@@ -1765,6 +1788,7 @@ function createAgentRuntimeInternal(
             providerId,
             forThreadId: threadId,
             ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+            ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
           });
 
           const proc = requireProviderProcess({ processKey, providerId });
@@ -2219,14 +2243,16 @@ function createAgentRuntimeInternal(
       });
     },
 
-    async listModels({ providerId, acpLaunchSpec, cwd }) {
+    async listModels({ providerId, acpLaunchSpec, bridgeLaunch, cwd }) {
       await runtime.ensureProvider({
         providerId,
         ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+        ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
       });
       const proc = requireProviderProcess({
         processKey: resolveProviderProcessKey({
           ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+          ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
           providerId,
         }),
         providerId,

@@ -13,6 +13,7 @@ import semver from "semver";
 import {
   defaultListModels,
   ExpectedCommandDispatchError,
+  resolveRuntimeBridgeLaunch,
   type CommandOf,
   type CommandDispatchOptions,
 } from "./command-dispatch-support.js";
@@ -647,14 +648,20 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.read_file": readHostFile,
   "host.read_file_relative": readHostRelativeFile,
   "host.write_file": writeHostFile,
-  "provider.list_models": async (command, options) =>
-    (options.listModels ?? defaultListModels)({
+  "provider.list_models": async (command, options) => {
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    return (options.listModels ?? defaultListModels)({
       providerId: command.providerId,
       ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
       ...(command.acpLaunchSpec !== undefined
         ? { acpLaunchSpec: command.acpLaunchSpec }
         : {}),
-    }),
+      ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+    });
+  },
   "known_acp_agents.status": async (command, options) =>
     getKnownAcpAgentsStatus({
       agents: command.agents,

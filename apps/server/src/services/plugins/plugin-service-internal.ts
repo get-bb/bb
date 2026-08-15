@@ -19,6 +19,7 @@ import type {
 } from "./plugin-api.js";
 import type { HostSharedPortCoordinator } from "../../ws/host-shared-ports.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
+import type { ProviderBridgeArtifactRegistry } from "./provider-bridge-artifacts.js";
 export type {
   PluginApplyUpdateResult,
   PluginHandlerStats,
@@ -90,6 +91,10 @@ export interface PluginServiceDeps {
   /** Omitted only by isolated plugin tests that exercise no provider surface;
    * `bb.agents.experimental_registerProvider` throws without it. */
   providerRegistry?: ProviderRegistryService;
+  /** Live provider-bridge artifacts, shared with the internal routes and
+   * thread commands. Omitted only by isolated plugin tests that exercise no
+   * provider surface. */
+  providerBridgeArtifacts?: ProviderBridgeArtifactRegistry;
   /** Thread DTO assembly for lifecycle events + plugin-signal broadcast +
    * the `plugins-changed` system broadcast on lifecycle completion. */
   hub: Pick<

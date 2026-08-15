@@ -31,6 +31,7 @@ import {
   resolveBuiltinSkillsRootPath,
 } from "../../../apps/server/src/services/skills/builtin-skills-copy.js";
 import { SkillTreeRegistry } from "../../../apps/server/src/services/skills/injected-skills.js";
+import { ProviderBridgeArtifactRegistry } from "../../../apps/server/src/services/plugins/provider-bridge-artifacts.js";
 import { createAppVersionService } from "../../../apps/server/src/services/system/app-version.js";
 import { createBbAppManagedConfigReloader } from "../../../apps/server/src/services/system/bb-app-managed-config.js";
 import { createNoopTelemetryService } from "../../../apps/server/src/services/system/telemetry.js";
@@ -271,6 +272,7 @@ async function startIntegrationServer(
   const telemetry = createNoopTelemetryService();
   const skillTreeRegistry = new SkillTreeRegistry();
   const providerRegistry = createProviderRegistryService();
+  const providerBridgeArtifacts = new ProviderBridgeArtifactRegistry();
   const pendingInteractions = new PendingInteractionLifecycle({
     config,
     db,
@@ -279,6 +281,7 @@ async function startIntegrationServer(
     logger: testLogger,
     machineAuth,
     providerRegistry,
+    providerBridgeArtifacts,
     skillTreeRegistry,
     telemetry,
     terminalSessions,
@@ -292,6 +295,7 @@ async function startIntegrationServer(
     appVersion,
     bbAppManagedConfig,
     providerRegistry,
+    providerBridgeArtifacts,
     config,
     db,
     hub,

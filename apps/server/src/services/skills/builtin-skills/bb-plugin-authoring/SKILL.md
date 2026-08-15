@@ -72,6 +72,16 @@ The manifest is `package.json`:
   `bb plugin build` needs no server, and depending on `bb-app@X` builds
   against exactly that release's shim configuration. bb downloads its build
   toolchain on first use, so cache `<dataDir>/plugins/toolchain-*` in CI.
+- `bb.providerBridge` (optional) — provider-bridge entry for agent-provider
+  plugins (for example `./src/provider-bridge.ts`). `bb plugin build`
+  compiles it into a fully self-contained `dist/provider-bridge.mjs` (all
+  dependencies inlined; only node builtins external) plus
+  `dist/provider-bridge.meta.json` recording the bundle's `sha256` and
+  `byteLength`. Path and builtin installs rebuild it on every load; git
+  installs build it at install time; npm installs must ship the prebuilt
+  bundle. Enrolled host daemons download the artifact by content hash,
+  verify it, and run it with their own node — see the provider section
+  below.
 - `bb.skills` (optional) — relocates the auto-imported skills directories
   (default `skills/`; `[]` opts out). Every `skills/<name>/SKILL.md` is
   injected into agent threads as the plugin skills tier.
@@ -1046,6 +1056,74 @@ instruction selections apply at those same boundaries. Independent side-chat
 safety policy such as permission escalation is unchanged. The legacy
 `contributeInstructions` provider remains excluded from side chats, so use
 `configure` for side-chat-aware dynamic instructions.
+
+### bb.agents.experimental_registerProvider — agent providers
+
+A plugin can contribute a full agent provider: a picker entry whose threads
+run on a **provider bridge** the plugin ships. The working reference is
+`examples/plugins/echo-provider` — declaration, bridge, and conformance test
+in one small package.
+
+```ts
+bb.agents.experimental_registerProvider({
+  id: "echo-agent",              // stable public id; thread rows persist it
+  displayName: "Echo Agent",     // 1-80 chars, shown in the picker
+  icon: { asset: "icons/echo.svg" }, // optional, plugin-relative
+  kind: "agent",                 // "agent" REQUIRES bridge; "router" forbids it
+  bridge: { entry: "provider-bridge" }, // names the built bundle
+  capabilities: {
+    // Pre-session facts only — session behavior (fork granularity, archive
+    // sync, …) is reported by the bridge itself at initialize and may only
+    // narrow what is declared here, never widen it.
+    supportsServiceTier: false,
+    supportsHostAiServices: false,
+    supportsNativeUserQuestion: false,
+    supportsNativeFork: false,
+    supportsNativeSessionRewind: false,
+    supportsManualCompaction: false,
+    permissionModes: ["full"],       // non-empty, no duplicates
+    reasoningLevels: ["medium"],     // coarse fallback ladder
+  },
+  composerActions: [],           // skills typeahead is implicit
+});
+```
+
+Ids are collision-rejected against core providers and other plugins'
+registrations; registrations replace wholesale on reload like every other
+surface. Disabling the plugin removes the provider (open threads show a
+provider-unavailable state instead of erroring).
+
+**The bridge.** Declare `bb.providerBridge` in the manifest
+(`"./src/provider-bridge.ts"`). The bridge is a standalone process speaking
+the canonical Provider Bridge Protocol — line-delimited JSON-RPC 2.0 over
+stdio, documented in `docs/provider-bridge-protocol.md` with schemas in
+`@bb/provider-bridge-protocol`. Minimum correct surface: the `initialize`
+handshake (`{protocolVersion, capabilities}`), `thread/start` /
+`thread/resume` answering `{providerThreadId}` after a `thread/identity`
+notification, `turn/start` driving the event grammar (`turn/input/accepted`
+→ `turn/started` → `item/started` → deltas → `item/completed` →
+`turn/completed` as `thread/event` notifications carrying bb
+`ThreadEvent`s), `thread/stop` honoring both intents (`release` must
+fabricate nothing), and reply hygiene: unknown method → `-32601`, invalid
+params → `-32602` with the issues, never a silent drop. The bridge — never
+the provider — mints every turn and item id, with per-instance entropy so
+ids survive restarts and resumes.
+
+**Conformance.** Ship a test that drives
+`@bb/provider-bridge-protocol/conformance` against your bridge in-process:
+export the bridge's line handler, wire `runBridgeConformance` with a
+transport whose `send` calls it and whose `takeMessages` drains captured
+stdout, and assert all eleven scenarios pass (see
+`examples/plugins/echo-provider/provider-bridge.conformance.test.ts`).
+
+**Delivery.** On install/reload the server builds the bridge and records
+`{sha256, byteLength, path}`. Thread commands for the provider carry that
+hash to the host daemon, which downloads the bytes from the server,
+verifies the sha256 before caching under `<dataDir>/provider-bridges/`, and
+runs the artifact with its own node — it never executes unverified bytes.
+Trust model: installation trust, exactly like every other plugin surface. A
+bridge runs only for an installed, enabled plugin, and only on hosts whose
+server instructs it.
 
 ### bb.ui — host-rendered UI (no frontend bundle needed)
 

@@ -49,6 +49,7 @@ import { clampPermissionModeToHost } from "../hosts/permission-ceiling.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import { workspaceContextFromPath } from "../environments/workspace-command-target.js";
 import { resolveAcpLaunchSpecForProviderId } from "../system/acp-launch-spec.js";
+import { resolveBridgeLaunchForProviderId } from "../system/provider-bridge-launch.js";
 
 export type ExecutionOptionsRequest = ExistingThreadExecutionInputRequest;
 
@@ -96,7 +97,10 @@ export interface ThreadStartCommandArgs {
 
 interface PreparedTurnSubmitCommandBuildArgs {
   claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
-  deps: Pick<AppDeps, "config" | "db" | "providerRegistry">;
+  deps: Pick<
+    AppDeps,
+    "config" | "db" | "providerRegistry" | "providerBridgeArtifacts"
+  >;
   environmentId: string;
   hostId: string;
   execution: ResolvedThreadExecutionOptions;
@@ -325,6 +329,7 @@ export async function buildThreadStartCommand(
     deps,
     args.providerId,
   );
+  const bridgeLaunch = resolveBridgeLaunchForProviderId(deps, args.providerId);
   return {
     type: "thread.start",
     environmentId: args.environment.id,
@@ -336,6 +341,7 @@ export async function buildThreadStartCommand(
     projectId: args.projectId,
     providerId: args.providerId,
     ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+    ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
     requestId: args.requestId,
     input: args.input,
     ...(args.inputGroups !== undefined
@@ -370,11 +376,16 @@ function buildPreparedTurnSubmitCommandPayload(
     args.deps,
     args.runtimeContext.providerId,
   );
+  const bridgeLaunch = resolveBridgeLaunchForProviderId(
+    args.deps,
+    args.runtimeContext.providerId,
+  );
   return {
     type: "turn.submit",
     environmentId: args.environmentId,
     threadId: args.threadId,
     ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+    ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
     input: args.input,
     ...(args.inputGroups !== undefined
       ? { inputGroups: args.inputGroups }
@@ -406,6 +417,7 @@ function buildPreparedTurnSubmitCommandPayload(
       projectId: args.runtimeContext.projectId,
       providerId: args.runtimeContext.providerId,
       ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+      ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
       providerThreadId: args.providerThreadId,
       instructions: args.runtimeContext.instructions,
       dynamicTools: args.runtimeContext.dynamicTools,

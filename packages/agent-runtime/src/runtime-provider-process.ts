@@ -19,6 +19,7 @@ import {
 } from "./runtime-json-rpc.js";
 import type { RuntimeProviderIdentityState } from "./runtime-thread-identity.js";
 import type {
+  AgentRuntimeBridgeLaunch,
   AgentRuntimeOptions,
   AgentRuntimeProcessExitThreadState,
   AgentRuntimeSkillRoot,
@@ -79,6 +80,7 @@ export interface RuntimeProviderProcessManagerArgs {
 
 export interface EnsureRuntimeProviderArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
   processKey: string;
   providerId: string;
 }
@@ -175,7 +177,11 @@ export class RuntimeProviderProcessManager {
     }
 
     const startPromise = (async () => {
-      const adapter = this.getAdapter(args.providerId, args.acpLaunchSpec);
+      const adapter = this.getAdapter(
+        args.providerId,
+        args.acpLaunchSpec,
+        args.bridgeLaunch,
+      );
       const providerProcess = this.spawnProvider({
         adapter,
         processKey: args.processKey,
@@ -348,10 +354,12 @@ export class RuntimeProviderProcessManager {
   private getAdapter(
     providerId: string,
     acpLaunchSpec: HostDaemonAcpLaunchSpec | undefined,
+    bridgeLaunch: AgentRuntimeBridgeLaunch | undefined,
   ): ProviderAdapter {
     const adapterOptions = {
       additionalWorkspaceWriteRoots: this.args.additionalWorkspaceWriteRoots,
       ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+      ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
       bridgeProtocolProviderPrefixes: this.args.bridgeProtocolProviderPrefixes,
       bridgeBundleDir: this.args.bridgeBundleDir,
       ...(this.args.bridgeNodeEnv !== undefined

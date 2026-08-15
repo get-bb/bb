@@ -209,12 +209,43 @@ export function normalizeHostDaemonAcpLaunchSpec(
   };
 }
 
+/**
+ * How the daemon obtains the provider bridge for a plugin-registered
+ * provider. `source.kind: "artifact"` means: download the content-addressed
+ * bridge bundle from the server by sha256, verify the bytes, cache it under
+ * the daemon data dir, and run it with the daemon's node. Absence of the
+ * whole field means today's daemon-local resolution (the bundled first-party
+ * bridges) — the field is only sent for plugin providers with stored
+ * artifacts, so first-party providers are wire-identical to version 122.
+ *
+ * `providerOptions` is the provider plugin's opaque static option bag,
+ * forwarded to the bridge untouched.
+ */
+export const hostDaemonBridgeLaunchSchema = z
+  .object({
+    source: z.discriminatedUnion("kind", [
+      z
+        .object({
+          kind: z.literal("artifact"),
+          sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+          byteLength: z.number().int().positive(),
+        })
+        .strict(),
+    ]),
+    providerOptions: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict();
+export type HostDaemonBridgeLaunch = z.infer<
+  typeof hostDaemonBridgeLaunchSchema
+>;
+
 const hostDaemonThreadRuntimeContextSchema = z
   .object({
     workspaceContext: workspaceContextSchema,
     projectId: z.string().min(1),
     providerId: z.string().min(1),
     acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema.optional(),
     options: runtimeThreadExecutionOptionsSchema,
     instructions: z.string().min(1),
     dynamicTools: z.array(dynamicToolSchema),
@@ -359,6 +390,7 @@ const turnSubmitCommandSchema = hostDaemonThreadTargetSchema
     inputGroups: z.array(z.array(promptInputSchema).min(1)).min(1).optional(),
     options: runtimeThreadExecutionOptionsSchema,
     acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema.optional(),
     resumeContext: turnResumeContextSchema,
     target: turnSubmitTargetSchema,
   })
@@ -387,6 +419,7 @@ const threadGoalClearCommandSchema = hostDaemonThreadTargetSchema
     type: z.literal("thread.goal.clear"),
     options: runtimeThreadExecutionOptionsSchema,
     acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema.optional(),
     resumeContext: turnResumeContextSchema,
   })
   .strict();
@@ -940,6 +973,7 @@ const providerListModelsCommandSchema = z.object({
   type: z.literal("provider.list_models"),
   providerId: z.string().min(1),
   acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
+  bridgeLaunch: hostDaemonBridgeLaunchSchema.optional(),
   cwd: z.string().min(1).optional(),
 });
 

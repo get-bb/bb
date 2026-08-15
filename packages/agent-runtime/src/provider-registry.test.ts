@@ -427,4 +427,89 @@ describe("provider registry", () => {
       'Unsupported provider "pi-mono"',
     );
   });
+
+  it("routes a plugin-delivered bridge artifact onto the generic adapter", () => {
+    const provider = createProviderForId("echo-agent", {
+      additionalWorkspaceWriteRoots: [],
+      bridgeProtocolProviderPrefixes: ["echo-agent"],
+      bridgeLaunch: {
+        sha256: "a".repeat(64),
+        artifactPath: "/data/provider-bridges/artifact.mjs",
+        providerOptions: { echoPrefix: "echo:" },
+      },
+    });
+
+    expect(provider.id).toBe("echo-agent");
+    expect(provider.process.command).toBe("node");
+    expect(provider.process.args).toEqual([
+      "/data/provider-bridges/artifact.mjs",
+    ]);
+
+    // The plugin's static option bag rides every session command.
+    const plan = provider.buildCommandPlan({
+      type: "thread/start",
+      threadId: "thread-1",
+      cwd: "/workspace",
+      options: {
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        workflowsEnabled: false,
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+      },
+      instructionMode: "append",
+    });
+    expect(plan).toMatchObject({
+      kind: "request",
+      method: "thread/start",
+      params: {
+        options: { providerOptions: { echoPrefix: "echo:" } },
+      },
+    });
+  });
+
+  it("runs plugin bridge artifacts under the configured bridge node runtime", () => {
+    const bridgeNodeEnv = { ELECTRON_RUN_AS_NODE: "1" };
+    const provider = createProviderForId("echo-agent", {
+      additionalWorkspaceWriteRoots: [],
+      bridgeProtocolProviderPrefixes: ["echo-agent"],
+      bridgeNodeEnv,
+      bridgeNodeExecutablePath: "/Applications/bb.app/Contents/MacOS/bb",
+      bridgeLaunch: {
+        sha256: "b".repeat(64),
+        artifactPath: "/data/provider-bridges/artifact.mjs",
+      },
+    });
+    expect(provider.process.command).toBe(
+      "/Applications/bb.app/Contents/MacOS/bb",
+    );
+    expect(provider.process.env).toEqual(bridgeNodeEnv);
+  });
+
+  it("keeps first-party bundled bridges untouched even when a bridge launch rides along", () => {
+    const provider = createProviderForId("pi", {
+      additionalWorkspaceWriteRoots: [],
+      bridgeProtocolProviderPrefixes: ["pi"],
+      bridgeBundleDir: "/tmp",
+      bridgeLaunch: {
+        sha256: "c".repeat(64),
+        artifactPath: "/data/provider-bridges/never-used.mjs",
+      },
+    });
+    expect(provider.process.args[0]).toBe("/tmp/bb-pi-bridge.mjs");
+  });
+
+  it("ignores a bridge launch for ids outside the routed prefixes", () => {
+    expect(() =>
+      createProviderForId("echo-agent", {
+        additionalWorkspaceWriteRoots: [],
+        bridgeProtocolProviderPrefixes: [],
+        bridgeLaunch: {
+          sha256: "d".repeat(64),
+          artifactPath: "/data/provider-bridges/artifact.mjs",
+        },
+      }),
+    ).toThrow('Unsupported provider "echo-agent"');
+  });
 });

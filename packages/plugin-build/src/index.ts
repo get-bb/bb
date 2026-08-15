@@ -29,6 +29,11 @@ export {
   HOST_ARTIFACT_RUNTIME_STUBS,
   type PluginHostBuildResult,
 } from "./build-plugin-host.js";
+export {
+  buildPluginProviderBridge,
+  type PluginProviderBridgeBuildResult,
+  type PluginProviderBridgeMeta,
+} from "./build-plugin-provider-bridge.js";
 export * from "./plugin-dev-loop.js";
 export {
   PLUGIN_TOOLCHAIN_PINS,

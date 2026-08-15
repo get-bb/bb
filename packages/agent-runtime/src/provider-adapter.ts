@@ -18,7 +18,10 @@ import type {
   ProviderInboundRequest,
   ProviderRuntimeEvent,
 } from "./runtime-json-rpc.js";
-import type { AgentRuntimeSkillRoot } from "./types.js";
+import type {
+  AgentRuntimeBridgeLaunch,
+  AgentRuntimeSkillRoot,
+} from "./types.js";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 
 export interface ProviderTranslationContext {
@@ -34,6 +37,12 @@ export interface ProviderAcceptedCommandTranslationArgs {
 export interface ProviderAdapterFactoryOptions {
   additionalWorkspaceWriteRoots: readonly string[];
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  /**
+   * A plugin-delivered bridge artifact resolved to a verified local path by
+   * the host daemon. Routes prefix-matched non-first-party providers onto the
+   * generic bridge-protocol adapter running that artifact.
+   */
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
   /**
    * Provider-id prefixes running on the canonical bridge protocol (the
    * generic adapter) instead of their bespoke adapters. Experiment-gated;

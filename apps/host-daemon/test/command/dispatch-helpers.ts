@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type {
   AgentRuntime,
+  AgentRuntimeBridgeLaunch,
   AgentRuntimeExecutionOptions,
   AgentRuntimeProviderSession,
 } from "@bb/agent-runtime";
@@ -89,6 +90,7 @@ interface FakeRuntimeState {
   renamedTitle: string | undefined;
   resumedDynamicTools: DynamicTool[] | undefined;
   resumedAcpLaunchSpec: HostDaemonAcpLaunchSpec | undefined;
+  resumedBridgeLaunch: AgentRuntimeBridgeLaunch | undefined;
   resumedEnvironmentId: string | undefined;
   resumedInstructions: string | undefined;
   resumedOptions: AgentRuntimeExecutionOptions | undefined;
@@ -98,6 +100,7 @@ interface FakeRuntimeState {
   shutdownCount: number;
   startedDynamicTools: DynamicTool[] | undefined;
   startedAcpLaunchSpec: HostDaemonAcpLaunchSpec | undefined;
+  startedBridgeLaunch: AgentRuntimeBridgeLaunch | undefined;
   startedEnvironmentId: string | undefined;
   startedInput: PromptInput[] | undefined;
   startedInputGroups: PromptInput[][] | undefined;
@@ -276,6 +279,7 @@ export function createFakeRuntime() {
     renamedTitle: undefined,
     resumedDynamicTools: undefined,
     resumedAcpLaunchSpec: undefined,
+    resumedBridgeLaunch: undefined,
     resumedEnvironmentId: undefined,
     resumedInstructions: undefined,
     resumedOptions: undefined,
@@ -285,6 +289,7 @@ export function createFakeRuntime() {
     shutdownCount: 0,
     startedDynamicTools: undefined,
     startedAcpLaunchSpec: undefined,
+    startedBridgeLaunch: undefined,
     startedEnvironmentId: undefined,
     startedInput: undefined,
     startedInputGroups: undefined,
@@ -334,6 +339,7 @@ export function createFakeRuntime() {
     async ensureProvider() {},
     async startThread(args) {
       state.startedAcpLaunchSpec = args.acpLaunchSpec;
+      state.startedBridgeLaunch = args.bridgeLaunch;
       state.startedEnvironmentId = args.environmentId;
       state.startedThreadId = args.threadId;
       state.startedDynamicTools = args.dynamicTools;
@@ -358,6 +364,7 @@ export function createFakeRuntime() {
     async discardThreadRewind() {},
     async resumeThread(args) {
       state.resumedAcpLaunchSpec = args.acpLaunchSpec;
+      state.resumedBridgeLaunch = args.bridgeLaunch;
       state.resumedEnvironmentId = args.environmentId;
       state.resumedThreadId = args.threadId;
       state.resumedDynamicTools = args.dynamicTools;
