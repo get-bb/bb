@@ -103,6 +103,32 @@ Landed on this branch, every commit green:
   retry classification. Calibration replay suites for pi/claude-code/
   codex (acp has one) are the other graduation gate.
 
+## Design notes from the #1641 prototype comparison (thr_fxnmqjf9a4)
+
+The provider-driver prototype (#1641) was reviewed side by side with this
+branch; its migration approach was rejected (all-provider cutover, no
+fallback, 109 commits behind) but several kernel ideas are worth adopting
+at graduation or in phase 6. Dispositions:
+
+- Already covered here in equivalent form: declaration-as-ceiling with
+  handshake narrowing (its inspect/declare split); bounded artifact
+  downloads (server-side caps — the daemon-side streaming claim was
+  refuted in review); server-owned DI registry; content-addressed,
+  hash-verified artifacts.
+- Adopt at graduation, when the runtime boundary hardens: a runtime
+  lifecycle validator in the generic adapter (enforce start-before-delta,
+  single settlement, id ownership at runtime rather than only in the
+  conformance kit); host-minted turn/item ids (today bridges mint with
+  entropy prefixes — validation, not minting, is the gap).
+- Adopt in phase 6 / as the third-party surface matures: framed transport
+  on dedicated fds with bounded queues (stdout corruption is currently
+  mitigated per-bridge, e.g. pi's stdout takeover); artifact cache
+  leases + GC and per-file rehash before launch; multiple named bridges
+  per plugin; namespacing third-party provider ids by plugin.
+- Rejected: exact-version protocol lockstep (hostile to independently
+  updated plugins; we keep the versioned handshake), process-wide SIGKILL
+  on attachment-local errors.
+
 ## Current State (2026-08-14)
 
 The provider "contract" today is six scattered surfaces:
