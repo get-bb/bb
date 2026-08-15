@@ -125,7 +125,7 @@ import {
   takeOverPiBridgeStdout,
 } from "../output-guard.js";
 import { PI_BRIDGE_SESSION_DIR_ENV } from "../session-paths.js";
-import { createBridgeJsonRpcTestHarness } from "../../../test/bridge-json-rpc-test-helpers.js";
+import { createBridgeJsonRpcTestHarness } from "@bb/provider-bridge-protocol/testing";
 
 const originalPiBridgeSessionDir = process.env[PI_BRIDGE_SESSION_DIR_ENV];
 

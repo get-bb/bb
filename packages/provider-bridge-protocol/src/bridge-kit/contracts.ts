@@ -7,7 +7,10 @@
  * `@bb/agent-runtime`) so a bridge shipped from a plugin never depends on the
  * runtime package.
  */
-import type { PendingInteractionPayload } from "@bb/domain";
+import type {
+  PendingInteractionPayload,
+  PendingInteractionResolution,
+} from "@bb/domain";
 
 export interface ProviderRequestCommandPlan {
   kind: "request";
@@ -80,4 +83,9 @@ export interface PreparedProviderCommandDispatch {
    * turn activity, without fabricating a turn from a late signal.
    */
   claim(): boolean;
+}
+
+export interface BuildInteractiveResponseArgs {
+  request: DecodedInteractiveRequest;
+  resolution: PendingInteractionResolution;
 }

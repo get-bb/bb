@@ -152,6 +152,9 @@ export async function resolveRuntimeBridgeLaunch(
       supportedPermissionModes: [
         ...bridgeLaunch.capabilities.supportedPermissionModes,
       ],
+      supportsArchive: bridgeLaunch.capabilities.supportsArchive,
+      supportsRename: bridgeLaunch.capabilities.supportsRename,
+      supportsFork: bridgeLaunch.capabilities.supportsFork,
     },
   };
 }

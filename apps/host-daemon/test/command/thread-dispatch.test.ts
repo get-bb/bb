@@ -386,6 +386,9 @@ describe("thread command dispatch", () => {
           capabilities: {
             supportsServiceTier: false,
             supportedPermissionModes: ["full"] as const,
+            supportsArchive: false,
+            supportsRename: false,
+            supportsFork: false,
           },
         },
         requestId: nextClientRequestId(),
@@ -411,7 +414,11 @@ describe("thread command dispatch", () => {
       },
     );
 
-    const artifactPath = path.join(dataDir, "provider-bridges", `${sha256}.mjs`);
+    const artifactPath = path.join(
+      dataDir,
+      "provider-bridges",
+      `${sha256}.mjs`,
+    );
     expect(harness.runtimeState.startedBridgeLaunch).toEqual({
       sha256,
       artifactPath,
@@ -419,6 +426,9 @@ describe("thread command dispatch", () => {
       capabilities: {
         supportsServiceTier: false,
         supportedPermissionModes: ["full"],
+        supportsArchive: false,
+        supportsRename: false,
+        supportsFork: false,
       },
     });
     await expect(fs.readFile(artifactPath)).resolves.toEqual(bridgeBytes);
@@ -466,6 +476,9 @@ describe("thread command dispatch", () => {
             capabilities: {
               supportsServiceTier: false,
               supportedPermissionModes: ["full"] as const,
+              supportsArchive: false,
+              supportsRename: false,
+              supportsFork: false,
             },
           },
           instructions: "Be a helpful coding agent.",
@@ -487,6 +500,9 @@ describe("thread command dispatch", () => {
       capabilities: {
         supportsServiceTier: false,
         supportedPermissionModes: ["full"],
+        supportsArchive: false,
+        supportsRename: false,
+        supportsFork: false,
       },
     });
     expect(fetchProviderBridge).toHaveBeenCalledTimes(1);

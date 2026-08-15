@@ -29,7 +29,7 @@ import type { CodexSessionOptions } from "./session-params.js";
  * codex legacy adapter suite, which asserted them through
  * `adapter.buildCommandPlan(...)` on `plan.params`. `session-params.ts` is
  * shared verbatim with the canonical codex bridge
- * (`packages/agent-runtime/src/codex/bridge/bridge.ts`), so the invariants
+ * (`plugins/provider-codex/src/bridge/bridge.ts`), so the invariants
  * outlive the adapter: they are properties of this module, not of the
  * command-plan shaping that died with the adapter.
  */

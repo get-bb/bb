@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import { threadEventNotificationSchema } from "@bb/provider-bridge-protocol";
-import { createBridgeJsonRpcTestHarness } from "../../test/bridge-json-rpc-test-helpers.js";
-import type { BridgeJsonRpcTestHarness } from "../../test/bridge-json-rpc-test-helpers.js";
+import { createBridgeJsonRpcTestHarness } from "@bb/provider-bridge-protocol/testing";
+import type { BridgeJsonRpcTestHarness } from "@bb/provider-bridge-protocol/testing";
 import { handleLine } from "./bridge.js";
 
 /**

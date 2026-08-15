@@ -42,7 +42,7 @@ import { listClaudeCodeBridgeModels } from "../model-list.js";
 import {
   createBridgeJsonRpcTestHarness,
   type BridgeJsonRpcOutputMessage,
-} from "../../../test/bridge-json-rpc-test-helpers.js";
+} from "@bb/provider-bridge-protocol/testing";
 
 type BridgeSessionOptions = ReturnType<typeof buildSessionOptions>;
 type BridgeSessionHooks = NonNullable<BridgeSessionOptions["hooks"]>;

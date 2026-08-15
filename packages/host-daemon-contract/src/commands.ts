@@ -234,14 +234,19 @@ export const hostDaemonBridgeLaunchSchema = z
         .strict(),
     ]),
     providerOptions: z.record(z.string(), z.unknown()).optional(),
-    // The provider's server-validated execution capabilities. The daemon has
-    // no registry, so without these it would have to guess a baseline and
-    // reject execution options the server already accepted (permission modes,
-    // service tier) before thread/start ever reached the bridge.
+    // The provider's server-validated capabilities, exactly the facts the
+    // runtime enforces before a command reaches the bridge: which execution
+    // options it accepts (permission modes, service tier) and which thread
+    // operations it offers (archive, rename, fork). The daemon has no
+    // registry, so without these it would have to guess a baseline and reject
+    // work the server already accepted.
     capabilities: z
       .object({
         supportsServiceTier: z.boolean(),
         supportedPermissionModes: z.array(permissionModeSchema).min(1),
+        supportsArchive: z.boolean(),
+        supportsRename: z.boolean(),
+        supportsFork: z.boolean(),
       })
       .strict(),
   })

@@ -20,11 +20,9 @@ import type { ClientTurnRequestId, ThreadEvent } from "@bb/domain";
 import { extractResultText } from "@bb/provider-bridge-protocol/bridge-kit";
 import type {
   JsonRpcMessage,
-  ProviderRuntimeEvent,
-} from "@bb/provider-bridge-protocol/bridge-kit";
-import type {
   PreparedProviderCommandDispatch,
   ProviderPostInitializeRequest,
+  ProviderRuntimeEvent,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   applyCodexRateLimitUpdate,

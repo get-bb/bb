@@ -15,7 +15,7 @@ import {
   captureBridgeJsonRpcOutput,
   type BridgeJsonRpcOutputMessage,
   type CapturedBridgeJsonRpcOutput,
-} from "../../test/bridge-json-rpc-test-helpers.js";
+} from "@bb/provider-bridge-protocol/testing";
 import { handleLine } from "./bridge.js";
 import { ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE } from "../bridge-protocol.js";
 import { ACP_BRIDGE_MCP_SERVER_NAME } from "./tool-proxy-mcp.js";

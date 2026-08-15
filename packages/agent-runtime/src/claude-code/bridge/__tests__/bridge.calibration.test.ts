@@ -52,13 +52,10 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 import { handleLine } from "../bridge.js";
 import {
   createBridgeJsonRpcTestHarness,
-  type BridgeJsonRpcTestHarness,
-} from "../../../test/bridge-json-rpc-test-helpers.js";
-import {
   describeCalibrationEvents,
   normalizeCalibrationEvents,
-} from "../../../test/calibration-diff.js";
-
+} from "@bb/provider-bridge-protocol/testing";
+import type { BridgeJsonRpcTestHarness } from "@bb/provider-bridge-protocol/testing";
 const THREAD_ID = "thr_calibration_1";
 const TOOL_USE_ID = "toolu_01AbCdEfGhIjKlMnOpQrStUv";
 const APPROVAL_TOOL_USE_ID = "toolu_01ApprovalWxYz0123456789";

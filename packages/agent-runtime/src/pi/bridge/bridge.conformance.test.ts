@@ -11,7 +11,7 @@ import {
 import {
   captureBridgeJsonRpcOutput,
   type CapturedBridgeJsonRpcOutput,
-} from "../../test/bridge-json-rpc-test-helpers.js";
+} from "@bb/provider-bridge-protocol/testing";
 
 /**
  * The pi bridge's conformance run: drives the bridge through the canonical

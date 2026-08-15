@@ -26,13 +26,13 @@ import {
 } from "@bb/provider-bridge-protocol";
 import {
   UNSTAMPED_THREAD_ID,
+  bridgeRequestEnvelopeSchema,
   buildAcceptedUserMessageEvent,
   createBridgeIo,
   createBridgeLineHandler,
   createBridgeSessionRegistry,
   decodeBridgeJsonRpcResponse,
   extractEnvOverrides,
-  bridgeRequestEnvelopeSchema,
   mimeTypeFromExtension,
   queueAcceptedUserMessage,
   runBridgeRequest,

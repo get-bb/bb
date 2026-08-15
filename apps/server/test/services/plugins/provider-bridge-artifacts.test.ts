@@ -200,11 +200,15 @@ describe("provider bridge artifact delivery (server)", () => {
           sha256: artifact.sha256,
           byteLength: artifact.byteLength,
         },
-        // The declaration's validated execution capabilities ride the launch
-        // so the daemon's adapter accepts what the server already offered.
+        // The declaration's validated capabilities ride the launch so the
+        // daemon's adapter accepts what the server already offered and offers
+        // the thread operations the declaration claims.
         capabilities: {
           supportsServiceTier: false,
           supportedPermissionModes: ["full"],
+          supportsArchive: false,
+          supportsRename: false,
+          supportsFork: false,
         },
       };
 

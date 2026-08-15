@@ -1,7 +1,7 @@
 // Classification invariants for `isStandaloneBuiltinCompactCommand`.
 //
 // These cases moved here from the legacy Codex adapter suite
-// (`packages/agent-runtime/src/codex/adapter.test.ts`) when that adapter was
+// (`plugins/provider-codex/src/adapter.test.ts`) when that adapter was
 // deleted. The function is shared with the canonical Codex bridge, which uses
 // it to route a standalone builtin `/compact` prompt to `thread/compact/start`
 // instead of `turn/start`; that routing decision is covered by the codex bridge
@@ -48,9 +48,9 @@ function promptTextInput(text: string): PromptInput {
 
 describe("isStandaloneBuiltinCompactCommand", () => {
   it("classifies a standalone builtin /compact mention as a compact command", () => {
-    expect(isStandaloneBuiltinCompactCommand([promptCompactCommandInput()])).toBe(
-      true,
-    );
+    expect(
+      isStandaloneBuiltinCompactCommand([promptCompactCommandInput()]),
+    ).toBe(true);
   });
 
   it("does not classify raw /compact text as a compact command", () => {

@@ -60,12 +60,14 @@ function createBridgeProtocolAdapterForId(
       // these before routing the command). Session-behavior facts arrive via
       // the initialize handshake, which may only narrow.
       capabilities: {
-        supportsArchive: false,
-        supportsRename: false,
+        supportsArchive: options.bridgeLaunch.capabilities.supportsArchive,
+        supportsRename: options.bridgeLaunch.capabilities.supportsRename,
         supportsServiceTier:
           options.bridgeLaunch.capabilities.supportsServiceTier,
+        // Session-behavior facts the runtime never enforces: the bridge
+        // answers for them per session (thread/identity, the handshake).
         supportsUserQuestion: false,
-        supportsFork: false,
+        supportsFork: options.bridgeLaunch.capabilities.supportsFork,
         supportsSessionRewind: false,
         supportedPermissionModes: [
           ...options.bridgeLaunch.capabilities.supportedPermissionModes,
@@ -78,9 +80,7 @@ function createBridgeProtocolAdapterForId(
           ? { env: options.bridgeNodeEnv }
           : {}),
       },
-      ...(options.bridgeLaunch.providerOptions !== undefined
-        ? { staticProviderOptions: options.bridgeLaunch.providerOptions }
-        : {}),
+      ...buildPluginStaticProviderOptions(options),
     });
   }
   if (isAcpProviderId(providerId)) {
@@ -139,40 +139,28 @@ function createBridgeProtocolAdapterForId(
       },
     });
   }
-  if (providerId === "codex") {
-    const info = requireBundledProviderInfo("codex");
-    const additionalWorkspaceWriteRoots =
-      options.additionalWorkspaceWriteRoots ?? [];
-    return createBridgeProtocolAdapter({
-      id: providerId,
-      displayName: info.displayName,
-      capabilities: info.capabilities,
-      process: {
-        command: options.bridgeNodeExecutablePath ?? "node",
-        args: resolveBridgeProcessArgs({
-          bridgeBundleDir: options.bridgeBundleDir,
-          bundleFileName: "bb-codex-bridge.mjs",
-          importMetaUrl: import.meta.url,
-          bridgeRelativePath: "codex/bridge/bridge.js",
-        }),
-        ...(options.bridgeNodeEnv !== undefined
-          ? { env: options.bridgeNodeEnv }
-          : {}),
-      },
-      // Environment-level extra write roots have no core field on the
-      // canonical wire; they ride the codex bridge's provider-scoped options
-      // bag (the acpLaunchSpec precedent) so workspace-write sandboxing keeps
-      // the same roots the legacy adapter received at construction.
-      ...(additionalWorkspaceWriteRoots.length > 0
-        ? {
-            staticProviderOptions: {
-              additionalWorkspaceWriteRoots: [...additionalWorkspaceWriteRoots],
-            },
-          }
-        : {}),
-    });
-  }
   return null;
+}
+
+/**
+ * A plugin bridge's provider-scoped statics: its own declared option bag plus
+ * the environment-level extra write roots, which have no core field on the
+ * canonical wire and are a host-local fact the server cannot supply.
+ */
+function buildPluginStaticProviderOptions(
+  options: ProviderAdapterFactoryOptions,
+): { staticProviderOptions?: Record<string, unknown> } {
+  const additionalWorkspaceWriteRoots =
+    options.additionalWorkspaceWriteRoots ?? [];
+  const staticProviderOptions = {
+    ...(options.bridgeLaunch?.providerOptions ?? {}),
+    ...(additionalWorkspaceWriteRoots.length > 0
+      ? { additionalWorkspaceWriteRoots: [...additionalWorkspaceWriteRoots] }
+      : {}),
+  };
+  return Object.keys(staticProviderOptions).length > 0
+    ? { staticProviderOptions }
+    : {};
 }
 
 function requireBundledProviderInfo(providerId: string): ProviderInfo {

@@ -16,13 +16,12 @@ import {
 import type { ServerNotification as CodexEvent } from "../generated/codex-app-server/schema/ServerNotification.js";
 import type { Turn } from "../generated/codex-app-server/schema/v2/Turn.js";
 import { handleLine } from "./bridge.js";
-import { createBridgeJsonRpcTestHarness } from "../../test/bridge-json-rpc-test-helpers.js";
-import type { BridgeJsonRpcTestHarness } from "../../test/bridge-json-rpc-test-helpers.js";
 import {
+  createBridgeJsonRpcTestHarness,
   describeCalibrationEvents,
   normalizeCalibrationEvents,
-} from "../../test/calibration-diff.js";
-
+} from "@bb/provider-bridge-protocol/testing";
+import type { BridgeJsonRpcTestHarness } from "@bb/provider-bridge-protocol/testing";
 /**
  * Codex scripted-session golden.
  *

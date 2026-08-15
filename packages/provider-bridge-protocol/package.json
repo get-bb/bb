@@ -17,6 +17,11 @@
       "source": "./src/conformance/index.ts",
       "types": "./src/conformance/index.ts",
       "default": "./src/conformance/index.ts"
+    },
+    "./testing": {
+      "source": "./src/testing/index.ts",
+      "types": "./src/testing/index.ts",
+      "default": "./src/testing/index.ts"
     }
   },
   "types": "./src/index.ts",

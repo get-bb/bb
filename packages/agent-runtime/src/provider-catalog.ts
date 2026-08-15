@@ -9,10 +9,11 @@
  * A plugin-delivered bridge never reads this: its validated capabilities ride
  * the verified `bridgeLaunch`.
  *
- * DEBT: this duplicates the declarations in plugins/provider-*. It disappears
- * when the first-party bridges move into their plugin directories and ship
+ * DEBT: this duplicates the declarations in plugins/provider-*. Each entry
+ * disappears when that bridge moves into its plugin directory and ships
  * through the artifact pipeline (wave 5 of the graduation plan), at which
- * point their capabilities arrive on the launch like every other plugin's.
+ * point its capabilities arrive on the launch like every other plugin's.
+ * Codex has already made that move; claude-code, pi, and acp have not.
  */
 import type { ProviderCapabilities, ProviderInfo } from "@bb/domain";
 
@@ -20,16 +21,6 @@ import type { ProviderCapabilities, ProviderInfo } from "@bb/domain";
 export function isAcpProviderId(value: string): boolean {
   return value.startsWith("acp-");
 }
-
-const CODEX_CAPABILITIES: ProviderCapabilities = {
-  supportsArchive: true,
-  supportsRename: true,
-  supportsServiceTier: true,
-  supportsUserQuestion: false,
-  supportsFork: true,
-  supportsSessionRewind: true,
-  supportedPermissionModes: ["accept-edits", "auto", "full"],
-};
 
 const CLAUDE_CODE_CAPABILITIES: ProviderCapabilities = {
   supportsArchive: false,
@@ -74,7 +65,6 @@ const ACP_CAPABILITIES: ProviderCapabilities = {
  * comes from the agent's initialize result, so the static claim is false.
  */
 const SESSION_RESTORABLE_BY_PROVIDER_ID: Readonly<Record<string, boolean>> = {
-  codex: true,
   "claude-code": true,
   pi: true,
 };
@@ -85,7 +75,6 @@ interface BundledProvider {
 }
 
 const BUNDLED_PROVIDERS: Readonly<Record<string, BundledProvider>> = {
-  codex: { displayName: "Codex", capabilities: CODEX_CAPABILITIES },
   "claude-code": {
     displayName: "Claude Code",
     capabilities: CLAUDE_CODE_CAPABILITIES,

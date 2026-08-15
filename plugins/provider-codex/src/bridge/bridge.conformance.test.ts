@@ -11,7 +11,7 @@ import {
 import {
   captureBridgeJsonRpcOutput,
   type CapturedBridgeJsonRpcOutput,
-} from "../../test/bridge-json-rpc-test-helpers.js";
+} from "@bb/provider-bridge-protocol/testing";
 import { handleLine } from "./bridge.js";
 
 /**

@@ -18,45 +18,6 @@ const dynamicAcpLaunchSpec: HostDaemonAcpLaunchSpec = {
 };
 
 describe("provider registry", () => {
-  it("passes the configured bridge bundle directory to the codex bridge", () => {
-    const provider = createProviderForId("codex", {
-      additionalWorkspaceWriteRoots: [],
-      bridgeBundleDir: "/tmp",
-    });
-    expect(provider.process.args[0]).toBe("/tmp/bb-codex-bridge.mjs");
-  });
-
-  it("carries environment write roots to the codex bridge via provider options", () => {
-    const provider = createProviderForId("codex", {
-      additionalWorkspaceWriteRoots: ["/extra-root"],
-    });
-    const plan = provider.buildCommandPlan({
-      type: "thread/start",
-      threadId: "thread-1",
-      cwd: "/workspace",
-      options: {
-        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-        workflowsEnabled: false,
-        permissionMode: "full",
-        permissionScope: "full",
-        approvalReviewer: null,
-        permissionEscalation: null,
-      },
-      instructionMode: "append",
-    });
-    expect(plan).toMatchObject({
-      kind: "request",
-      method: "thread/start",
-      params: {
-        options: {
-          providerOptions: {
-            additionalWorkspaceWriteRoots: ["/extra-root"],
-          },
-        },
-      },
-    });
-  });
-
   it.each([{ providerId: "claude-code" }, { providerId: "acp-cursor" }])(
     "carries environment write roots to the $providerId bridge via provider options",
     ({ providerId }) => {
@@ -311,7 +272,6 @@ describe("provider registry", () => {
   // list must still route each bundled id to its canonical bridge. This is the
   // regression that would fire if the retired experiment gate came back.
   it.each([
-    { providerId: "codex", bridgeDir: "codex" },
     { providerId: "claude-code", bridgeDir: "claude-code" },
     { providerId: "pi", bridgeDir: "pi" },
     { providerId: "acp-custom", bridgeDir: "acp" },
@@ -348,6 +308,9 @@ describe("provider registry", () => {
         capabilities: {
           supportsServiceTier: false,
           supportedPermissionModes: ["full"],
+          supportsArchive: false,
+          supportsRename: false,
+          supportsFork: false,
         },
       },
     });
@@ -382,6 +345,61 @@ describe("provider registry", () => {
     });
   });
 
+  // Codex graduated onto this route, where its environment-level write roots
+  // and its declared thread capabilities have to survive: both used to come
+  // from the bundled-bridge branch this replaced. The write roots are a
+  // host-local fact the server cannot put in providerOptions, so the registry
+  // merges them in beside the plugin's own bag.
+  it("carries environment write roots and declared capabilities onto an artifact bridge", () => {
+    const provider = createProviderForId("codex", {
+      additionalWorkspaceWriteRoots: ["/extra-root"],
+      bridgeLaunch: {
+        sha256: "b".repeat(64),
+        artifactPath: "/data/provider-bridges/codex.mjs",
+        capabilities: {
+          supportsServiceTier: true,
+          supportedPermissionModes: ["accept-edits", "auto", "full"],
+          supportsArchive: true,
+          supportsRename: true,
+          supportsFork: true,
+        },
+      },
+    });
+
+    expect(provider.capabilities).toMatchObject({
+      supportsArchive: true,
+      supportsRename: true,
+      supportsFork: true,
+      supportsServiceTier: true,
+      supportedPermissionModes: ["accept-edits", "auto", "full"],
+    });
+    const plan = provider.buildCommandPlan({
+      type: "thread/start",
+      threadId: "thread-1",
+      cwd: "/workspace",
+      options: {
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        workflowsEnabled: false,
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+      },
+      instructionMode: "append",
+    });
+    expect(plan).toMatchObject({
+      kind: "request",
+      method: "thread/start",
+      params: {
+        options: {
+          providerOptions: {
+            additionalWorkspaceWriteRoots: ["/extra-root"],
+          },
+        },
+      },
+    });
+  });
+
   it("runs plugin bridge artifacts under the configured bridge node runtime", () => {
     const bridgeNodeEnv = { ELECTRON_RUN_AS_NODE: "1" };
     const provider = createProviderForId("echo-agent", {
@@ -394,6 +412,9 @@ describe("provider registry", () => {
         capabilities: {
           supportsServiceTier: false,
           supportedPermissionModes: ["full"],
+          supportsArchive: false,
+          supportsRename: false,
+          supportsFork: false,
         },
       },
     });
@@ -413,6 +434,9 @@ describe("provider registry", () => {
         capabilities: {
           supportsServiceTier: false,
           supportedPermissionModes: ["full"],
+          supportsArchive: false,
+          supportsRename: false,
+          supportsFork: false,
         },
       },
     });
@@ -431,6 +455,9 @@ describe("provider registry", () => {
         capabilities: {
           supportsServiceTier: true,
           supportedPermissionModes: ["accept-edits", "full"],
+          supportsArchive: false,
+          supportsRename: false,
+          supportsFork: false,
         },
       },
     });

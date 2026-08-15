@@ -3,7 +3,6 @@ import type {
   ClientTurnRequestId,
   DynamicTool,
   InstructionMode,
-  PendingInteractionResolution,
   PromptInput,
   ClaudeCodeMockCliTrafficConfig,
   ProviderCapabilities,
@@ -16,6 +15,7 @@ import type {
 import type {
   ProviderInboundRequest,
   ProviderRuntimeEvent,
+  BuildInteractiveResponseArgs,
   DecodedInteractiveRequest,
   DecodedToolCallRequest,
   PreparedProviderCommandDispatch,
@@ -303,9 +303,4 @@ export interface ProviderAdapter {
   buildInteractiveResponse?(
     args: BuildInteractiveResponseArgs,
   ): ProviderInteractiveResponse;
-}
-
-export interface BuildInteractiveResponseArgs {
-  request: DecodedInteractiveRequest;
-  resolution: PendingInteractionResolution;
 }

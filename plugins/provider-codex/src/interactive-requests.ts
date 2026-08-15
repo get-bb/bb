@@ -1,13 +1,15 @@
 import type { CommandExecutionRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/CommandExecutionRequestApprovalResponse.js";
 import type { FileChangeRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/FileChangeRequestApprovalResponse.js";
 import type { PermissionsRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/PermissionsRequestApprovalResponse.js";
-import type { BuildInteractiveResponseArgs } from "../provider-adapter.js";
-import type { DecodedInteractiveRequest } from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   ProviderRequestDecodeError as ProviderRequestDecodeErrorValue,
   ProviderResponseEncodeError,
 } from "@bb/provider-bridge-protocol/bridge-kit";
-import type { ProviderInboundRequest } from "@bb/provider-bridge-protocol/bridge-kit";
+import type {
+  BuildInteractiveResponseArgs,
+  DecodedInteractiveRequest,
+  ProviderInboundRequest,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   parseCodexAvailableDecisions,
   pendingInteractionToCodexFileChangeApprovalDecision,

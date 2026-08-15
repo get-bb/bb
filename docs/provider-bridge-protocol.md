@@ -7,6 +7,23 @@ cannot express — the **event grammar**: which sequences are legal, who mints
 which identifiers, and which orderings each side may rely on. The
 conformance kit enforces the testable rules against every bridge in CI.
 
+## Where a bridge lives
+
+A bridge ships from its plugin: `bb.providerBridge` in the plugin manifest
+names its entry, `bb plugin build` bundles it to `dist/provider-bridge.mjs`,
+and the server stores that bundle content-addressed and hands hosts its
+hash. The daemon downloads, verifies, caches, and runs it. First-party
+bridges use exactly this path — `plugins/provider-codex/src/bridge/bridge.ts`
+is the largest worked example, and `examples/plugins/echo-provider` the
+smallest.
+
+The bundle is self-contained (only node builtins stay external), so a bridge
+may not depend on `@bb/agent-runtime`. The building blocks bb's own bridges
+share — JSON-RPC plumbing, the stdio harness, tool-call and interaction
+codecs, id scoping, translation helpers — live in
+`@bb/provider-bridge-protocol/bridge-kit`, with test infrastructure in
+`@bb/provider-bridge-protocol/testing`.
+
 ## Transport
 
 Line-delimited JSON-RPC 2.0 over the bridge process's stdin/stdout, in both
@@ -37,7 +54,7 @@ Handshake capabilities are **session-behavior facts** (`sessionRestore`,
 `approvalRequestPolicy`). They are reported by the code that implements
 them, so they cannot drift from behavior. The runtime never sends a
 capability-gated method to a bridge that did not advertise it. A handshake
-fact may only *narrow* what the provider's declaration advertises (a
+fact may only _narrow_ what the provider's declaration advertises (a
 declared fork affordance can turn out unavailable for this agent), never
 widen it.
 
@@ -45,11 +62,11 @@ widen it.
 
 Three identifier families, three owners:
 
-| Identifier | Minted by | Notes |
-| --- | --- | --- |
-| `threadId` | bb server | Opaque to the provider; echoed verbatim. |
-| `providerThreadId` | the provider | Its session handle (rollout id, session id). Exchanged via `thread/identity`; never used to scope bb events directly. |
-| turn ids and item ids on `ThreadEvent`s | **the bridge** | Never the provider. |
+| Identifier                              | Minted by      | Notes                                                                                                                 |
+| --------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `threadId`                              | bb server      | Opaque to the provider; echoed verbatim.                                                                              |
+| `providerThreadId`                      | the provider   | Its session handle (rollout id, session id). Exchanged via `thread/identity`; never used to scope bb events directly. |
+| turn ids and item ids on `ThreadEvent`s | **the bridge** | Never the provider.                                                                                                   |
 
 The bridge-minting rule is the #1320 lesson made structural: a provider can
 inject arbitrary identifiers on its own wire, but the ids that reach bb's

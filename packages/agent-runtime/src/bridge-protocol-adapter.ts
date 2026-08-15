@@ -28,7 +28,6 @@ import {
 import { z } from "zod";
 import type {
   AdapterCommand,
-  BuildInteractiveResponseArgs,
   ProviderAdapter,
   ProviderExecutionContext,
 } from "./provider-adapter.js";
@@ -36,14 +35,13 @@ import type {
   DecodedInteractiveRequest,
   DecodedToolCallRequest,
   ProviderCommandPlan,
+  ProviderInboundRequest,
   ProviderInteractiveResponse,
   ProviderPostInitializeRequest,
+  ProviderRuntimeEvent,
+  BuildInteractiveResponseArgs,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import { noPreparedProviderCommandDispatch } from "./provider-adapter.js";
-import type {
-  ProviderInboundRequest,
-  ProviderRuntimeEvent,
-} from "@bb/provider-bridge-protocol/bridge-kit";
 import { parseAvailableModelList } from "./shared/available-models.js";
 import type { AgentRuntimeSkillRoot } from "./types.js";
 

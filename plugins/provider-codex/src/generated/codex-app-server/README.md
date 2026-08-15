@@ -1,6 +1,6 @@
 # Codex App-Server Type Generation
 
-`packages/agent-runtime/src/codex/generated/codex-app-server/schema/` is generated directly from the local `codex` binary.
+`plugins/provider-codex/src/generated/codex-app-server/schema/` is generated directly from the local `codex` binary.
 
 ## Regenerate (stable API surface)
 
@@ -55,4 +55,4 @@ the kept subset is complete. Keep it pruned to avoid re-vendoring dead types.
 
 - `schema/*.ts`: generated from Codex app-server, pruned to the reachable subset (see above).
 - `index.ts` / barrels: intentionally **not** committed; the adapter imports concrete `schema/**` files directly.
-- `packages/agent-runtime/src/codex/event-translation.ts`: translates Codex app-server events into bb thread events.
+- `plugins/provider-codex/src/event-translation.ts`: translates Codex app-server events into bb thread events.

@@ -28,6 +28,7 @@ import {
 } from "@bb/domain";
 import { hostDaemonAcpLaunchSpecSchema } from "@bb/host-daemon-contract";
 import {
+  bridgeRequestEnvelopeSchema,
   buildAcceptedUserMessageEvent,
   buildEditDiff,
   createBridgeIo,
@@ -35,7 +36,6 @@ import {
   decodeBridgeJsonRpcResponse,
   decodeToolCallResponsePayload,
   isMainModule,
-  bridgeRequestEnvelopeSchema,
   mimeTypeFromExtension,
   queueAcceptedUserMessage,
   runBridgeRequest,

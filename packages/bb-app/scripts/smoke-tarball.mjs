@@ -22,6 +22,9 @@ const PLUGIN_LOAD_INTERVAL_MS = 1_000;
 // every builtin unable to resolve @get-bb/plugin-sdk at import time).
 const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
   "automations",
+  // Providers whose bridge ships as a plugin artifact: if the plugin does not
+  // load, its provider disappears from the install entirely.
+  "provider-codex",
   "connect",
   "custom-instructions",
   "inline-vis",
@@ -418,12 +421,22 @@ async function smokeProviderBridgeBundles(packageDir) {
     label: "ACP bridge model/list",
   });
   await smokeBridgeModelList({
-    // The codex bridge spawns the host's `codex app-server` for model
-    // discovery. CI does not install the Codex CLI, so the bridge's explicit
-    // missing-CLI response is a valid smoke outcome.
+    // Codex ships its bridge as a plugin artifact (graduation wave 5), so the
+    // packed bundle to smoke is the one `bb plugin build` produced for the
+    // builtin plugin, not a daemon-side file. The bridge spawns the host's
+    // `codex app-server` for model discovery; CI does not install the Codex
+    // CLI, so its explicit missing-CLI response is a valid smoke outcome.
     allowUnavailableProvider: true,
-    bridgePath: join(packageDir, "host-daemon", "dist", "bb-codex-bridge.mjs"),
-    label: "Codex bridge model/list",
+    bridgePath: join(
+      packageDir,
+      "server",
+      "dist",
+      "builtin-plugins",
+      "provider-codex",
+      "dist",
+      "provider-bridge.mjs",
+    ),
+    label: "Codex provider-bridge artifact model/list",
   });
 }
 
