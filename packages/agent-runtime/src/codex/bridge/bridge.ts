@@ -470,6 +470,13 @@ function decodeCodexOptions(options: BridgeExecutionOptions): DecodedCodexOption
  * behavior, reported via session/replaced instead of orchestrated by the
  * runtime). Model and serviceTier are deliberately absent: they ride every
  * codex turn/start, exactly as the legacy turn params carried them.
+ *
+ * envVars is deliberately absent too: the runtime builds the shell
+ * environment only for session-construction commands and sends
+ * `envVars: {}` on every turn/start and turn/steer, so a turn's signature
+ * could never match a constructed session's and every first turn would
+ * rebuild the session (and fail outright on a fresh thread, whose rollout
+ * codex only persists once a turn has run).
  */
 function constructionSignature(
   cwd: string,
@@ -478,7 +485,6 @@ function constructionSignature(
   return JSON.stringify({
     cwd,
     reasoningLevel: sessionOptions.reasoningLevel ?? null,
-    envVars: sessionOptions.envVars ?? {},
     memoryEnabled: sessionOptions.memoryEnabled ?? null,
     providerSubagentsEnabled: sessionOptions.providerSubagentsEnabled ?? null,
     permissionMode: sessionOptions.permissionMode,
