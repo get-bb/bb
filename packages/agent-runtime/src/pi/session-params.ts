@@ -79,13 +79,19 @@ export interface BuildPiCanonicalSessionParamsArgs {
   options: PiCanonicalSessionOptions;
   instructionMode: InstructionMode;
   dynamicTools?: readonly DynamicTool[] | undefined;
+  /**
+   * Skill directories latched by the canonical `skills/configure` request.
+   * Session params never carry them: the process-scoped catalog is configured
+   * once and applies to every session the bridge builds afterwards.
+   */
+  additionalSkillPaths?: readonly string[] | undefined;
 }
 
 /**
  * The pi bridge's internal session-construction params (the legacy
  * `thread/start` shape) built from canonical Provider Bridge Protocol
- * session params. Canonical sessions carry no per-provider skill roots —
- * skill injection moves to the canonical `skills/configure` payload.
+ * session params. Skill paths come from the process-scoped
+ * `skills/configure` latch rather than the session options.
  */
 export function buildPiCanonicalSessionParams(
   args: BuildPiCanonicalSessionParamsArgs,
@@ -106,6 +112,9 @@ export function buildPiCanonicalSessionParams(
     ...(reasoningLevel ? { reasoningLevel } : {}),
     ...(args.dynamicTools && args.dynamicTools.length > 0
       ? { dynamicTools: args.dynamicTools }
+      : {}),
+    ...(args.additionalSkillPaths && args.additionalSkillPaths.length > 0
+      ? { additionalSkillPaths: [...args.additionalSkillPaths] }
       : {}),
   };
 }

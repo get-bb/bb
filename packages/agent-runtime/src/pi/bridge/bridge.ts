@@ -22,6 +22,7 @@ import {
   threadStopParamsSchema as canonicalThreadStopParamsSchema,
   turnStartParamsSchema as canonicalTurnStartParamsSchema,
   turnSteerParamsSchema as canonicalTurnSteerParamsSchema,
+  skillsConfigureParamsSchema,
 } from "@bb/provider-bridge-protocol";
 import { extractEnvOverrides } from "../../shared/adapter-utils.js";
 import {
@@ -286,6 +287,10 @@ const piCommandSchema = z.discriminatedUnion("method", [
       threadId: z.string(),
     }),
   }),
+  z.object({
+    method: z.literal("skills/configure"),
+    params: skillsConfigureParamsSchema,
+  }),
 ]);
 
 export type PiCommand = z.infer<typeof piCommandSchema>;
@@ -435,6 +440,13 @@ const {
  */
 const canonicalIdEntropyPrefix = `bt${randomUUID().slice(0, 8)}-`;
 let canonicalSessionSerial = 0;
+/**
+ * Skill directories latched by the canonical `skills/configure` request. Pi
+ * takes additional skill paths at session construction only, so the payload is
+ * applied to every session started afterwards. `null` means the runtime never
+ * configured skills for this process.
+ */
+let configuredSkillPaths: string[] | null = null;
 const PI_CANONICAL_PROVIDER_ID = "pi";
 
 function createCanonicalSessionTranslator(): PiEventTranslator {
@@ -780,6 +792,7 @@ async function handleRequest(
               options: params.options,
               instructionMode: params.instructionMode,
               dynamicTools: params.dynamicTools,
+              additionalSkillPaths: configuredSkillPaths ?? undefined,
             }),
           ),
           "canonical",
@@ -804,6 +817,7 @@ async function handleRequest(
               options: params.options,
               instructionMode: params.instructionMode,
               dynamicTools: params.dynamicTools,
+              additionalSkillPaths: configuredSkillPaths ?? undefined,
             }),
           ),
           "canonical",
@@ -827,6 +841,7 @@ async function handleRequest(
               options: params.options,
               instructionMode: params.instructionMode,
               dynamicTools: params.dynamicTools,
+              additionalSkillPaths: configuredSkillPaths ?? undefined,
             }),
             sourceProviderThreadId: params.sourceProviderThreadId,
             ...(params.sourceProviderCheckpointId !== undefined
@@ -867,6 +882,13 @@ async function handleRequest(
       break;
     case "thread/discard":
       sendResult(request.id, await handleThreadDiscard(request.params));
+      break;
+    case "skills/configure":
+      // Pi loads staged skill roots as additional skill paths, read once when
+      // a session is constructed, so the payload is latched here and applied
+      // to every session started afterwards.
+      configuredSkillPaths = request.params.roots.map((root) => root.path);
+      sendResult(request.id, { ok: true });
       break;
   }
 }

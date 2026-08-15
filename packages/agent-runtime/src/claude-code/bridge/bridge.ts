@@ -46,6 +46,7 @@ import {
   turnSteerParamsSchema as canonicalTurnSteerParamsSchema,
 } from "@bb/provider-bridge-protocol";
 import { z } from "zod";
+import type { AgentRuntimeClaudeCodeSkillRoot } from "../../types.js";
 import { extractEnvOverrides } from "../../shared/adapter-utils.js";
 import {
   buildAcceptedUserMessageEvent,
@@ -405,6 +406,13 @@ interface ForwardUserQuestionRequestArgs extends BuildUserQuestionRequestParamsA
 
 let sessionSerialCounter = 0;
 let toolCallRequestIdCounter = 0;
+/**
+ * Skill roots latched by the canonical `skills/configure` request. The runtime
+ * configures the process once, before any session exists, and every canonical
+ * session built afterwards loads them as local plugins. `null` means the
+ * runtime never configured skills for this process.
+ */
+let configuredSkillRoots: AgentRuntimeClaudeCodeSkillRoot[] | null = null;
 
 // Runtime waits on thread/stop until the SDK stream drains or this timeout
 // forces the session closed. Stop remains a best-effort success boundary.
@@ -2005,6 +2013,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
               instructionMode: params.instructionMode,
               dynamicTools: params.dynamicTools,
               disallowedTools: params.disallowedTools,
+              skillRoots: configuredSkillRoots ?? undefined,
             }),
           ),
           "canonical",
@@ -2027,6 +2036,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
               instructionMode: params.instructionMode,
               dynamicTools: params.dynamicTools,
               disallowedTools: params.disallowedTools,
+              skillRoots: configuredSkillRoots ?? undefined,
             }),
             providerThreadId: params.providerThreadId,
           }),
@@ -2052,6 +2062,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
               instructionMode: params.instructionMode,
               dynamicTools: params.dynamicTools,
               disallowedTools: params.disallowedTools,
+              skillRoots: configuredSkillRoots ?? undefined,
             }),
             sourceProviderThreadId: params.sourceProviderThreadId,
             ...(params.sourceProviderCheckpointId !== undefined
@@ -2091,6 +2102,17 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
     }
     case "thread/discard":
       await handleCanonicalThreadDiscard(request.id, request.params);
+      break;
+    case "skills/configure":
+      // Claude loads staged skill roots as local plugins; the SDK takes them
+      // at session construction only, so the payload is latched here and
+      // applied to every session started afterwards.
+      configuredSkillRoots = request.params.roots.map((root) => ({
+        id: root.id,
+        providerId: "claude-code",
+        localPluginPath: root.path,
+      }));
+      sendResult(request.id, { ok: true });
       break;
   }
 }

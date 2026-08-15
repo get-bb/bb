@@ -26,6 +26,7 @@ import {
   threadStopParamsSchema as canonicalThreadStopParamsSchema,
   turnStartParamsSchema as canonicalTurnStartParamsSchema,
   turnSteerParamsSchema as canonicalTurnSteerParamsSchema,
+  skillsConfigureParamsSchema,
 } from "@bb/provider-bridge-protocol";
 import { z } from "zod";
 import {
@@ -279,6 +280,10 @@ export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("thread/compact"),
     params: acpBridgeThreadIdParamsSchema,
+  }),
+  z.object({
+    method: z.literal("skills/configure"),
+    params: skillsConfigureParamsSchema,
   }),
 ]);
 

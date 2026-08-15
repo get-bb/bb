@@ -28,6 +28,7 @@ import {
 } from "@bb/domain";
 import { hostDaemonAcpLaunchSpecSchema } from "@bb/host-daemon-contract";
 import { buildEditDiff } from "../../shared/adapter-utils.js";
+import type { AgentRuntimeAcpSkillRoot } from "../../types.js";
 import {
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
@@ -269,6 +270,13 @@ function sendRuntimeRequest(
  */
 const canonicalIdEntropyPrefix = `bt${randomUUID().slice(0, 8)}-`;
 let canonicalSessionSerial = 0;
+/**
+ * Skill roots latched by the canonical `skills/configure` request. ACP agents
+ * have no skill-directory concept, so the roots are listed in the session
+ * instructions — which are fixed at session construction, hence the latch.
+ * `null` means the runtime never configured skills for this process.
+ */
+let configuredSkillRoots: AgentRuntimeAcpSkillRoot[] | null = null;
 const ACP_CANONICAL_PROVIDER_ID = "acp";
 
 function createCanonicalSessionTranslator(): AcpEventTranslator {
@@ -2293,7 +2301,10 @@ async function handleRequest(
                 additionalWorkspaceWriteRoots: [],
                 cwd: params.cwd,
                 dynamicTools: params.dynamicTools,
-                options: params.options,
+                options: {
+                  ...params.options,
+                  skillRoots: configuredSkillRoots ?? undefined,
+                },
                 profile,
                 providerLabel: profile.displayName,
                 threadId: params.threadId,
@@ -2337,7 +2348,10 @@ async function handleRequest(
                 additionalWorkspaceWriteRoots: [],
                 cwd: params.cwd,
                 dynamicTools: params.dynamicTools,
-                options: params.options,
+                options: {
+                  ...params.options,
+                  skillRoots: configuredSkillRoots ?? undefined,
+                },
                 profile,
                 providerLabel: profile.displayName,
                 threadId: params.threadId,
@@ -2393,7 +2407,10 @@ async function handleRequest(
                 additionalWorkspaceWriteRoots: [],
                 cwd: params.cwd,
                 dynamicTools: params.dynamicTools,
-                options: params.options,
+                options: {
+                  ...params.options,
+                  skillRoots: configuredSkillRoots ?? undefined,
+                },
                 profile,
                 providerLabel: profile.displayName,
                 threadId: params.threadId,
@@ -2568,6 +2585,19 @@ async function handleRequest(
       }
       return;
     }
+
+    case "skills/configure":
+      configuredSkillRoots = request.params.roots.map((root) => ({
+        id: root.id,
+        providerId: "acp",
+        skillDirectoryRootPath: root.path,
+        skills: root.skills.map((skill) => ({
+          name: skill.name,
+          description: skill.description,
+        })),
+      }));
+      sendResult(request.id, { ok: true });
+      return;
   }
 }
 

@@ -369,6 +369,48 @@ describe("pi bridge", () => {
     }
   });
 
+  // Canonical sessions carry no skill roots in their options; the roots the
+  // runtime configures once per process must reach every session the bridge
+  // builds afterwards, or injected skills are silently dropped.
+  it("applies skills/configure roots to canonical sessions", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    mockCreateAgentSession.mockImplementation(async () => ({
+      session: createControlledPiAgentSession(),
+    }));
+
+    try {
+      bridge.sendRequest(70, "skills/configure", {
+        roots: [
+          { id: "root_a", path: "/staged/pi-skills-a", skills: [] },
+          { id: "root_b", path: "/staged/pi-skills-b", skills: [] },
+        ],
+      });
+      await bridge.waitForResponse(70);
+
+      bridge.sendRequest(71, "thread/start", {
+        cwd: "/tmp/worktree",
+        threadId: "thread-canonical-skills",
+        instructionMode: "append",
+        options: {
+          permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
+          permissionEscalation: null,
+        },
+      });
+      const response = await bridge.waitForResponse(71);
+
+      expect(response.error).toBeUndefined();
+      expect(mockResourceLoaders[0]?.options).toMatchObject({
+        additionalSkillPaths: ["/staged/pi-skills-a", "/staged/pi-skills-b"],
+      });
+    } finally {
+      // The latch is process-scoped; clear it so later tests see no paths.
+      bridge.sendRequest(79, "skills/configure", { roots: [] });
+      bridge.restore();
+    }
+  });
+
   it("passes baseInstructions through Pi's replacement system prompt path", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     mockCreateAgentSession.mockImplementation(async () => ({

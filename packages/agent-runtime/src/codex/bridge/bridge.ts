@@ -1700,9 +1700,9 @@ async function handleSkillsConfigure(
   id: string | number,
   params: z.infer<typeof skillsConfigureParamsSchema>,
 ): Promise<void> {
-  // Codex consumes the canonical payload as extra skill roots: the staged
-  // catalog root is the directory codex scans for skill files.
-  configuredSkillExtraRoots = [params.catalogRootPath];
+  // Codex consumes the canonical payload as extra skill roots: each staged
+  // root is a directory codex scans for skill files.
+  configuredSkillExtraRoots = params.roots.map((root) => root.path);
   try {
     for (const session of sessionsByBbThreadId.values()) {
       if (

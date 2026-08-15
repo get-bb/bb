@@ -220,13 +220,19 @@ export interface BuildClaudeCanonicalSessionParamsArgs {
   instructionMode: InstructionMode;
   dynamicTools?: readonly DynamicTool[] | undefined;
   disallowedTools?: readonly string[] | undefined;
+  /**
+   * Skill roots latched by the canonical `skills/configure` request. Session
+   * params never carry them: the process-scoped catalog is configured once and
+   * applies to every session the bridge builds afterwards.
+   */
+  skillRoots?: readonly AgentRuntimeSkillRoot[] | undefined;
 }
 
 /**
  * The bridge's internal session-construction params built from canonical
- * Provider Bridge Protocol session params. Canonical sessions carry no
- * per-provider skill roots (the canonical `skills/configure` payload owns
- * skill injection) and no daemon-level additional workspace write roots.
+ * Provider Bridge Protocol session params. Skill roots come from the
+ * process-scoped `skills/configure` latch rather than the session options, and
+ * canonical sessions carry no daemon-level additional workspace write roots.
  * A missing providerOptions bag falls back to the provider defaults
  * (workflows off, mock CLI traffic disabled).
  */
@@ -247,6 +253,7 @@ export function buildClaudeCanonicalSessionParams(
     // provider-flavored knobs override their canonical-wire placement.
     options: {
       ...args.options,
+      skillRoots: args.skillRoots,
       claudeCodePermissionMode: providerOptions.claudeCodePermissionMode,
       claudeCodeMockCliTraffic:
         providerOptions.claudeCodeMockCliTraffic ??

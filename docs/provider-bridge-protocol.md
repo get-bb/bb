@@ -78,9 +78,14 @@ Grammar rules:
    state. A prompt the provider handles without doing work (claude `/clear`)
    still produces a started+completed pair. Zero-event acceptance is the
    #1431 hung-thread class.
-2. `turn/started` carries the `clientRequestId` of the request that
-   initiated it, so correlation is explicit — the runtime never guesses
-   which user message opened a turn.
+2. Correlation rides its own event, not `turn/started`. `turn/started`
+   carries no `clientRequestId`. Once input is accepted the bridge MUST emit
+   `turn/input/accepted` — strict, scoped to the turn that carries the input,
+   carrying that request's `clientRequestId` — so correlation is explicit and
+   the runtime never guesses which user message opened a turn. Steered input
+   is accepted into the already-running turn and gets its own
+   `turn/input/accepted` scoped to that same turn, so one turn may carry
+   several.
 3. A turn the user did not initiate (provider-internal activity such as
    auto-compaction) either becomes a bridge-minted turn with its own events
    or is emitted as `provider/raw` diagnostics. It must never reference a

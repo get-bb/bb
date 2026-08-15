@@ -4049,3 +4049,62 @@ describe("bridge", () => {
     });
   });
 });
+
+describe("canonical skills/configure", () => {
+  // Canonical sessions carry no skill roots in their options; the roots the
+  // runtime configures once per process must reach every session the bridge
+  // builds afterwards, or injected skills are silently dropped.
+  const canonicalOptions = {
+    permissionMode: "full",
+    permissionScope: "full",
+    approvalReviewer: null,
+    permissionEscalation: null,
+  };
+
+  it("loads latched skill roots as local plugins on canonical sessions", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      bridge.sendRequest(1, "skills/configure", {
+        roots: [
+          { id: "root_a", path: "/staged/plugins/bb-skills-a", skills: [] },
+          { id: "root_b", path: "/staged/plugins/bb-skills-b", skills: [] },
+        ],
+      });
+      await bridge.waitForResponse(1);
+
+      bridge.sendRequest(2, "thread/start", {
+        threadId: "thread-canonical-skills",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: canonicalOptions,
+      });
+      await bridge.waitForResponse(2);
+
+      expect(getLatestQueryOptions()).toMatchObject({
+        plugins: [
+          { type: "local", path: "/staged/plugins/bb-skills-a" },
+          { type: "local", path: "/staged/plugins/bb-skills-b" },
+        ],
+      });
+
+      bridge.sendRequest(3, "thread/stop", {
+        threadId: "thread-canonical-skills",
+      });
+      await bridge.flushWork();
+      queries[0]?.finish();
+      await bridge.waitForResponse(3);
+    } finally {
+      // The latch is process-scoped; clear it so later tests see no plugins.
+      bridge.sendRequest(99, "skills/configure", { roots: [] });
+      queries[0]?.finish();
+      bridge.restore();
+    }
+  });
+});

@@ -23,6 +23,7 @@ import {
   initializeResultSchema,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   type BridgeCapabilities,
+  type SkillsConfigureRoot,
 } from "@bb/provider-bridge-protocol";
 import { z } from "zod";
 import type {
@@ -42,6 +43,7 @@ import type {
   ProviderRuntimeEvent,
 } from "./runtime-json-rpc.js";
 import { parseAvailableModelList } from "./shared/available-models.js";
+import type { AgentRuntimeSkillRoot } from "./types.js";
 
 export interface BridgeProtocolAdapterOptions {
   id: string;
@@ -147,6 +149,32 @@ function toBridgeWireOptions(
   };
 }
 
+/**
+ * Provider-flavored skill roots → the canonical `skills/configure` roots. The
+ * runtime has already filtered the roots to the target provider, so each root
+ * contributes the one directory its provider consumes; ACP additionally names
+ * its skills because they ride the session instructions rather than a scanned
+ * directory.
+ */
+function toBridgeSkillRoots(
+  skillRoots: readonly AgentRuntimeSkillRoot[],
+): SkillsConfigureRoot[] {
+  return skillRoots.map((skillRoot) => ({
+    id: skillRoot.id,
+    path:
+      skillRoot.providerId === "claude-code"
+        ? skillRoot.localPluginPath
+        : skillRoot.skillDirectoryRootPath,
+    skills:
+      skillRoot.providerId === "acp"
+        ? skillRoot.skills.map((skill) => ({
+            name: skill.name,
+            description: skill.description,
+          }))
+        : [],
+  }));
+}
+
 export function createBridgeProtocolAdapter(
   options: BridgeProtocolAdapterOptions,
 ): ProviderAdapter {
@@ -198,9 +226,11 @@ export function createBridgeProtocolAdapter(
             },
           };
         case "skills/configure":
-          // Wired in phase 2a: the canonical single-catalog payload replaces
-          // per-provider skill-root shapes end to end.
-          return { kind: "noop", reason: "canonical skills payload not wired" };
+          return {
+            kind: "request",
+            method: BRIDGE_REQUEST_METHODS.skillsConfigure,
+            params: { roots: toBridgeSkillRoots(command.skillRoots) },
+          };
         case "thread/start":
           return {
             kind: "request",

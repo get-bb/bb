@@ -143,6 +143,55 @@ describe("options mapping", () => {
   });
 });
 
+describe("skills/configure", () => {
+  it("forwards every provider flavor of skill root as canonical roots", () => {
+    const adapter = makeAdapter();
+    const plan = adapter.buildCommandPlan({
+      type: "skills/configure",
+      skillRoots: [
+        {
+          id: "root_claude",
+          providerId: "claude-code",
+          localPluginPath: "/staged/claude-plugin",
+        },
+        {
+          id: "root_codex",
+          providerId: "codex",
+          skillDirectoryRootPath: "/staged/codex-skills",
+        },
+        {
+          id: "root_pi",
+          providerId: "pi",
+          skillDirectoryRootPath: "/staged/pi-skills",
+        },
+        {
+          id: "root_acp",
+          providerId: "acp",
+          skillDirectoryRootPath: "/staged/acp-skills",
+          skills: [{ name: "deploy", description: "Ship the app." }],
+        },
+      ],
+    });
+
+    expect(plan).toEqual({
+      kind: "request",
+      method: "skills/configure",
+      params: {
+        roots: [
+          { id: "root_claude", path: "/staged/claude-plugin", skills: [] },
+          { id: "root_codex", path: "/staged/codex-skills", skills: [] },
+          { id: "root_pi", path: "/staged/pi-skills", skills: [] },
+          {
+            id: "root_acp",
+            path: "/staged/acp-skills",
+            skills: [{ name: "deploy", description: "Ship the app." }],
+          },
+        ],
+      },
+    });
+  });
+});
+
 describe("translateEvent", () => {
   const validEvent: ThreadEvent = {
     type: "turn/started",

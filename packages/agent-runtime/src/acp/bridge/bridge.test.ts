@@ -1444,6 +1444,81 @@ describe("acp bridge", () => {
     });
   });
 
+  // Canonical sessions carry no skill roots in their options; the roots the
+  // runtime configures once per process must reach the session instructions of
+  // every session built afterwards, or injected skills are silently dropped.
+  it("lists skills/configure roots in canonical session instructions", async () => {
+    const configureId = sendRequest("skills/configure", {
+      roots: [
+        {
+          id: "root_a",
+          path: "/staged/acp-skills",
+          skills: [{ name: "deploy", description: "Ship the app." }],
+        },
+      ],
+    });
+    expect((await waitForResponse(configureId)).error).toBeUndefined();
+
+    const promptLog = join(workspaceDir, "canonical-skills-prompt-log.jsonl");
+    const threadId = "thread-canonical-skills";
+    const startId = sendRequest("thread/start", {
+      threadId,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: {
+        instructions: "Be terse.",
+        envVars: { FAKE_ACP_PROMPT_LOG: promptLog },
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+        providerOptions: {
+          acpLaunchSpec: {
+            displayName: "Fake ACP Agent",
+            command: process.execPath,
+            args: [FAKE_AGENT_PATH],
+            env: {},
+          },
+        },
+      },
+    });
+    const startResponse = await waitForResponse(startId);
+    expect(startResponse.error).toBeUndefined();
+    const providerThreadId =
+      typeof startResponse.result === "object" &&
+      startResponse.result !== null &&
+      !Array.isArray(startResponse.result) &&
+      typeof startResponse.result.providerThreadId === "string"
+        ? startResponse.result.providerThreadId
+        : "";
+    startedProviderThreadIds.push(providerThreadId);
+
+    const turnId = sendRequest("turn/start", {
+      threadId,
+      providerThreadId,
+      clientRequestId: "creq_abcdefghjk",
+      input: [{ type: "text", text: "hi", mentions: [] }],
+      options: {
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+      },
+    });
+    await waitForResponse(turnId);
+    await waitForFileWithRealTimer(promptLog);
+
+    const prompt: unknown = JSON.parse(
+      readFileSync(promptLog, "utf8").trim().split("\n")[0] ?? "null",
+    );
+    expect(prompt).toContain("Available bb skills:");
+    expect(prompt).toContain(
+      "- deploy: Ship the app. (SKILL.md: /staged/acp-skills/deploy/SKILL.md)",
+    );
+    // The latch is process-scoped; clear it so later tests see no skills.
+    await waitForResponse(sendRequest("skills/configure", { roots: [] }));
+  });
+
   it("prepends instructions to the first prompt only", async () => {
     const { providerThreadId } = await startThread({
       instructions: "Be terse.",

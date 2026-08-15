@@ -13,6 +13,7 @@ import {
   threadStopParamsSchema as canonicalThreadStopParamsSchema,
   turnStartParamsSchema as canonicalTurnStartParamsSchema,
   turnSteerParamsSchema as canonicalTurnSteerParamsSchema,
+  skillsConfigureParamsSchema,
 } from "@bb/provider-bridge-protocol";
 import { z } from "zod";
 import { jsonRpcEnvelopeSchema } from "../../shared/bridge-tool-calls.js";
@@ -192,6 +193,10 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("thread/discard"),
     params: canonicalThreadDiscardParamsSchema,
+  }),
+  z.object({
+    method: z.literal("skills/configure"),
+    params: skillsConfigureParamsSchema,
   }),
 ]);
 
