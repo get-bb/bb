@@ -1,4 +1,6 @@
+import type { ThreadEvent } from "@bb/domain";
 import { describe, expect, it } from "vitest";
+import { checkItemOpensBeforeDelta } from "../src/conformance/index.js";
 import {
   bridgeCapabilitiesSchema,
   initializeResultSchema,
@@ -82,6 +84,60 @@ describe("item/tool/call", () => {
       arguments: {},
     });
     expect(unresolved.turnId).toBeNull();
+  });
+});
+
+describe("conformance item/opens-before-delta", () => {
+  const scope = { kind: "turn", turnId: "turn_1" } as const;
+  const base = {
+    threadId: "thr_1",
+    providerThreadId: "p_1",
+    itemId: "item_1",
+    scope,
+  } as const;
+  const delta = { ...base, delta: "hi" } as const;
+
+  const started = (id: string): ThreadEvent => ({
+    type: "item/started",
+    threadId: "thr_1",
+    providerThreadId: "p_1",
+    item: { type: "agentMessage", id, text: "" },
+    scope,
+  });
+
+  // Every itemId-carrying streaming event, not just the two whose name ends in
+  // "/delta" — suffix matching missed four of them.
+  const streamingEvents: ThreadEvent[] = [
+    { type: "item/agentMessage/delta", ...delta },
+    { type: "item/plan/delta", ...delta },
+    { type: "item/commandExecution/outputDelta", ...delta },
+    { type: "item/fileChange/outputDelta", ...delta },
+    { type: "item/reasoning/summaryTextDelta", ...delta },
+    { type: "item/reasoning/textDelta", ...delta },
+    { type: "item/mcpToolCall/progress", ...base },
+    { type: "item/toolCall/progress", ...base },
+  ];
+
+  it.each(streamingEvents.map((event) => [event.type, event] as const))(
+    "fails when %s arrives before item/started",
+    (_type, event) => {
+      const result = checkItemOpensBeforeDelta([event, started("item_1")]);
+      expect(result.status).toBe("fail");
+      expect(result.detail).toContain("before item/started");
+    },
+  );
+
+  it.each(streamingEvents.map((event) => [event.type, event] as const))(
+    "passes when %s follows item/started",
+    (_type, event) => {
+      expect(checkItemOpensBeforeDelta([started("item_1"), event]).status).toBe(
+        "pass",
+      );
+    },
+  );
+
+  it("skips an empty log rather than passing it", () => {
+    expect(checkItemOpensBeforeDelta([]).status).toBe("skipped");
   });
 });
 

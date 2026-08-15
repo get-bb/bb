@@ -5,6 +5,7 @@ import {
   runSessionLifecycleScenarios,
   type ConformanceSessionFixture,
 } from "./scenarios.js";
+export { checkItemOpensBeforeDelta } from "./scenarios.js";
 import {
   reportPassed,
   type BridgeConformanceTransport,

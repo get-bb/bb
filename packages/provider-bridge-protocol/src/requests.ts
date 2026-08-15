@@ -135,25 +135,43 @@ export const turnSteerParamsSchema = z
   .passthrough();
 
 /**
- * The canonical skill-injection payload. One shape for every provider: the
- * staged catalog root plus per-skill descriptors. Each bridge transforms it
- * into its provider's native form (a Claude plugin directory, a codex skills
- * dir, an ACP prompt listing) — the per-provider shapes never cross the wire.
+ * One staged skill root: an absolute directory the bridge hands to its
+ * provider, plus the skills it contains. `skills` is always present (empty for
+ * providers whose native form discovers skills from the directory itself);
+ * only providers that must name skills inline — ACP, which lists them in the
+ * session instructions — read it.
  */
-export const skillsConfigureParamsSchema = z
+export const skillsConfigureRootSchema = z
   .object({
-    catalogRootPath: z.string().min(1),
+    id: z.string().min(1),
+    path: z.string().min(1),
     skills: z.array(
       z
         .object({
           name: z.string().min(1),
           description: z.string(),
-          skillFilePath: z.string().min(1),
         })
         .passthrough(),
     ),
   })
   .passthrough();
+
+export type SkillsConfigureRoot = z.infer<typeof skillsConfigureRootSchema>;
+
+/**
+ * The canonical skill-injection payload. One shape for every provider: the
+ * staged roots plus their skills. Each bridge transforms a root into its
+ * provider's native form (a Claude local plugin, a codex extra skills root, a
+ * pi additional skill path, an ACP prompt listing) — the per-provider shapes
+ * never cross the wire.
+ */
+export const skillsConfigureParamsSchema = z
+  .object({
+    roots: z.array(skillsConfigureRootSchema),
+  })
+  .passthrough();
+
+export type SkillsConfigureParams = z.infer<typeof skillsConfigureParamsSchema>;
 
 // ---------------------------------------------------------------------------
 // Results
