@@ -13,13 +13,10 @@ import {
   listBuiltInAgentProviderInfos,
 } from "@bb/agent-providers";
 import type { ProviderInfo } from "@bb/domain";
-import { createAcpProviderAdapter } from "./acp/adapter.js";
+import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import { createBridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
 import { resolveBridgeProcessArgs } from "./shared/bridge-path.js";
-import {
-  acpProfileFromLaunchSpec,
-  ACP_AGENT_PROFILES,
-} from "./acp/profiles.js";
+import { BUILT_IN_ACP_LAUNCH_SPECS } from "./acp/launch-specs.js";
 import { createClaudeCodeProviderAdapter } from "./claude-code/adapter.js";
 import { createCodexProviderAdapter } from "./codex/adapter.js";
 import { createPiProviderAdapter } from "./pi/adapter.js";
@@ -55,11 +52,6 @@ const builtInProviders = [
     createAdapter: (options) => createPiProviderAdapter(options),
     info: getBuiltInAgentProviderInfo("pi"),
   },
-  ...ACP_AGENT_PROFILES.map((profile) => ({
-    createAdapter: (options: ProviderAdapterFactoryOptions) =>
-      createAcpProviderAdapter({ ...options, profile }),
-    info: getBuiltInAgentProviderInfo(profile.providerId),
-  })),
 ] satisfies BuiltInProviderDescriptor[];
 
 const builtInProvidersById = new Map(
@@ -76,15 +68,19 @@ const builtInProvidersById = new Map(
  * Looks up built-in providers. Throws if the ID is not found.
  */
 /**
- * Experiment-gated canonical path: providers whose id matches an enabled
- * bridge-protocol prefix run on the generic adapter speaking the canonical
- * Provider Bridge Protocol. ACP providers, pi, claude-code, and codex
- * participate today; the ACP launch spec travels opaquely via
- * staticProviderOptions (pi and claude-code need no launch spec — claude's
- * provider-flavored knobs ride the per-command providerOptions the generic
- * adapter packs, and codex's static entry carries the environment's extra
- * write roots). Transitional wiring — phase 3 provider declarations replace
- * this table.
+ * Canonical path: providers run on the generic adapter speaking the canonical
+ * Provider Bridge Protocol.
+ *
+ * ACP providers are graduated — their legacy adapter is gone, so they route
+ * canonically regardless of the experiment's prefix policy. claude-code and
+ * codex still ship a legacy adapter, so an enabled bridge-protocol prefix is
+ * what routes them here.
+ *
+ * The ACP launch spec travels opaquely via staticProviderOptions (claude-code
+ * needs no launch spec — its provider-flavored knobs ride the per-command
+ * providerOptions the generic adapter packs, and codex's static entry carries
+ * the environment's extra write roots). Transitional wiring — phase 3
+ * provider declarations replace this table.
  */
 function createBridgeProtocolAdapterForId(
   providerId: string,
@@ -131,6 +127,11 @@ function createBridgeProtocolAdapterForId(
         ? { staticProviderOptions: options.bridgeLaunch.providerOptions }
         : {}),
     });
+  }
+  // Graduated: the ACP legacy adapter is deleted, so ACP providers route
+  // canonically whether or not the experiment lists their prefix.
+  if (isAcpProviderId(providerId)) {
+    return createAcpBridgeAdapter(providerId, options);
   }
   const prefixes = options.bridgeProtocolProviderPrefixes ?? [];
   if (!prefixes.some((prefix) => providerId.startsWith(prefix))) {
@@ -222,17 +223,21 @@ function createBridgeProtocolAdapterForId(
       },
     });
   }
-  if (!isAcpProviderId(providerId)) {
-    return null;
-  }
-  const info =
-    isAgentProviderId(providerId) && providerId === "acp-cursor"
-      ? getBuiltInAgentProviderInfo(providerId)
-      : buildAcpProviderInfo({
-          id: providerId,
-          displayName: options.acpLaunchSpec?.displayName ?? providerId,
-          logoUrl: null,
-        });
+  return null;
+}
+
+function createAcpBridgeAdapter(
+  providerId: string,
+  options: ProviderAdapterFactoryOptions,
+): ProviderAdapter {
+  const launchSpec = resolveAcpLaunchSpec(providerId, options);
+  const info = isAgentProviderId(providerId)
+    ? getBuiltInAgentProviderInfo(providerId)
+    : buildAcpProviderInfo({
+        id: providerId,
+        displayName: launchSpec?.displayName ?? providerId,
+        logoUrl: null,
+      });
   return createBridgeProtocolAdapter({
     id: providerId,
     displayName: info.displayName,
@@ -249,8 +254,21 @@ function createBridgeProtocolAdapterForId(
         ? { env: options.bridgeNodeEnv }
         : {}),
     },
-    ...buildAcpStaticProviderOptions(options),
+    ...buildAcpStaticProviderOptions(launchSpec, options),
   });
+}
+
+/**
+ * The launch spec the ACP bridge constructs the agent from. Configured and
+ * known agents arrive with one on the command; the bundled first-party ACP
+ * providers have no server-side entry, so their spec comes from the built-in
+ * table.
+ */
+function resolveAcpLaunchSpec(
+  providerId: string,
+  options: ProviderAdapterFactoryOptions,
+): HostDaemonAcpLaunchSpec | undefined {
+  return options.acpLaunchSpec ?? BUILT_IN_ACP_LAUNCH_SPECS[providerId];
 }
 
 /**
@@ -260,14 +278,13 @@ function createBridgeProtocolAdapterForId(
  * legacy adapter passed at construction.
  */
 function buildAcpStaticProviderOptions(
+  launchSpec: HostDaemonAcpLaunchSpec | undefined,
   options: ProviderAdapterFactoryOptions,
 ): { staticProviderOptions?: Record<string, unknown> } {
   const additionalWorkspaceWriteRoots =
     options.additionalWorkspaceWriteRoots ?? [];
   const staticProviderOptions = {
-    ...(options.acpLaunchSpec !== undefined
-      ? { acpLaunchSpec: options.acpLaunchSpec }
-      : {}),
+    ...(launchSpec !== undefined ? { acpLaunchSpec: launchSpec } : {}),
     ...(additionalWorkspaceWriteRoots.length > 0
       ? { additionalWorkspaceWriteRoots: [...additionalWorkspaceWriteRoots] }
       : {}),
@@ -281,37 +298,20 @@ export function createProviderForId(
   providerId: string,
   options?: ProviderAdapterFactoryOptions,
 ): ProviderAdapter {
-  const bridgeProtocolAdapter = options
-    ? createBridgeProtocolAdapterForId(providerId, options)
-    : null;
+  const bridgeProtocolAdapter = createBridgeProtocolAdapterForId(
+    providerId,
+    options ?? { additionalWorkspaceWriteRoots: [] },
+  );
   if (bridgeProtocolAdapter !== null) {
     return bridgeProtocolAdapter;
   }
 
-  if (!isAgentProviderId(providerId) && options?.acpLaunchSpec) {
-    if (!isAcpProviderId(providerId)) {
-      throw new Error(
-        `ACP launch spec supplied for non-ACP provider "${providerId}".`,
-      );
-    }
-    const adapterOptions = toProviderAdapterFactoryOptions(options);
-    return createAcpProviderAdapter({
-      ...adapterOptions,
-      profile: acpProfileFromLaunchSpec(options.acpLaunchSpec, providerId),
-    });
-  }
-
-  if (!isAgentProviderId(providerId)) {
-    const allIds = builtInProviders.map((provider) => provider.info.id);
-    throw new Error(
-      `Unsupported provider "${providerId}". Available providers: ${allIds.join(", ")}.`,
-    );
-  }
-
-  const descriptor = builtInProvidersById.get(providerId);
+  const descriptor = isAgentProviderId(providerId)
+    ? builtInProvidersById.get(providerId)
+    : undefined;
 
   if (!descriptor) {
-    const allIds = builtInProviders.map((provider) => provider.info.id);
+    const allIds = listBuiltInAgentProviderInfos().map((info) => info.id);
     throw new Error(
       `Unsupported provider "${providerId}". Available providers: ${allIds.join(", ")}.`,
     );

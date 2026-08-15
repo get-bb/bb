@@ -267,7 +267,10 @@ describe("provider registry", () => {
     expect(provider.process.args[0]).toBe("/tmp/bb-acp-bridge.mjs");
   });
 
-  it("binds the acp cursor provider to its agent launch command", () => {
+  it("carries the built-in cursor launch spec to the acp bridge", () => {
+    // The server resolves launch specs only for configured and known ACP
+    // agents; the bundled cursor provider has none, so the registry's built-in
+    // table is the only thing that tells the bridge what to spawn.
     const provider = createProviderForId("acp-cursor");
     const plan = provider.buildCommandPlan({
       type: "thread/start",
@@ -287,7 +290,15 @@ describe("provider registry", () => {
       kind: "request",
       method: "thread/start",
       params: {
-        agent: { command: "cursor-agent", args: ["acp"] },
+        options: {
+          providerOptions: {
+            acpLaunchSpec: {
+              displayName: "Cursor",
+              command: "cursor-agent",
+              args: ["acp"],
+            },
+          },
+        },
       },
     });
   });
@@ -300,18 +311,13 @@ describe("provider registry", () => {
 
     expect(provider.id).toBe("acp-custom");
     expect(provider.displayName).toBe("Custom ACP");
-    const modelListPlan = provider.buildCommandPlan({ type: "model/list" });
-    expect(modelListPlan).toMatchObject({
+    // Model listing has no session, so the bridge only sees the static
+    // provider options; the launch spec must ride them too.
+    expect(provider.buildCommandPlan({ type: "model/list" })).toMatchObject({
       kind: "request",
       method: "model/list",
       params: {
-        listCommand: {
-          command: "custom-agent",
-          args: ["models", "list"],
-          cwd: "/agent-home",
-          envVars: { CUSTOM_AGENT_TOKEN: "token" },
-        },
-        primaryModels: ["model-a"],
+        providerOptions: { acpLaunchSpec: dynamicAcpLaunchSpec },
       },
     });
 
@@ -334,131 +340,27 @@ describe("provider registry", () => {
       kind: "request",
       method: "thread/start",
       params: {
-        cwd: "/agent-home",
-        agent: { command: "custom-agent", args: ["serve"] },
-        envVars: {
-          CUSTOM_AGENT_TOKEN: "token",
-          BB_THREAD_ID: "thread-1",
+        options: {
+          providerOptions: {
+            acpLaunchSpec: dynamicAcpLaunchSpec,
+            additionalWorkspaceWriteRoots: ["/extra-root"],
+          },
         },
-        workspaceWriteRoots: ["/agent-home", "/extra-root"],
       },
     });
   });
 
-  it("passes dynamic ACP reasoning CLI config to model listing and thread start", () => {
-    const reasoningCli: NonNullable<HostDaemonAcpLaunchSpec["reasoningCli"]> = {
-      flag: "--reasoning-effort",
-      supportedLevels: ["low", "medium", "high"],
-      levelValues: { max: "high" },
-      defaultLevel: "high",
-    };
+  it("routes acp providers canonically without an enabled bridge prefix", () => {
     const provider = createProviderForId("acp-custom", {
       additionalWorkspaceWriteRoots: [],
-      acpLaunchSpec: {
-        displayName: "Custom ACP",
-        command: "custom-agent",
-        args: ["serve"],
-        env: {},
-        reasoningCli,
-      },
+      acpLaunchSpec: dynamicAcpLaunchSpec,
+      bridgeProtocolProviderPrefixes: [],
     });
 
-    expect(provider.buildCommandPlan({ type: "model/list" })).toEqual({
-      kind: "request",
-      method: "model/list",
-      params: {
-        agent: { command: "custom-agent", args: ["serve"] },
-        primaryModels: [],
-        reasoningCli,
-      },
-    });
-
-    expect(
-      provider.buildCommandPlan({
-        type: "thread/start",
-        threadId: "thread-1",
-        cwd: "/workspace",
-        options: {
-          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-          workflowsEnabled: false,
-          permissionMode: "full",
-          permissionScope: "full",
-          approvalReviewer: null,
-          permissionEscalation: null,
-          reasoningLevel: "max",
-        },
-        instructionMode: "append",
-      }),
-    ).toMatchObject({
-      kind: "request",
-      method: "thread/start",
-      params: {
-        agent: { command: "custom-agent", args: ["serve"] },
-        launchReasoningLevel: "max",
-        reasoningCli,
-      },
-    });
+    expect(provider.process.args.at(-1)).toMatch(
+      /agent-runtime\/src\/acp\/bridge\/bridge\.ts$/,
+    );
   });
-
-  it.each<[string, HostDaemonAcpLaunchSpec["modelCli"]]>([
-    ["no model cli", undefined],
-    [
-      "empty model cli",
-      { listArgs: [], selectFlag: "--model", primaryModels: ["model-a"] },
-    ],
-  ])(
-    "uses ACP-native discovery and selection when a launch spec has %s",
-    (_name, modelCli) => {
-      const provider = createProviderForId("acp-custom", {
-        additionalWorkspaceWriteRoots: [],
-        acpLaunchSpec: {
-          displayName: "Custom ACP",
-          command: "custom-agent",
-          args: ["serve"],
-          env: {},
-          ...(modelCli !== undefined ? { modelCli } : {}),
-        },
-      });
-
-      const modelListPlan = provider.buildCommandPlan({ type: "model/list" });
-      expect(modelListPlan).toEqual({
-        kind: "request",
-        method: "model/list",
-        params: {
-          agent: { command: "custom-agent", args: ["serve"] },
-          primaryModels: [],
-        },
-      });
-
-      const params =
-        modelListPlan.kind === "request" ? modelListPlan.params : {};
-      expect(params).not.toHaveProperty("listCommand");
-
-      const startPlan = provider.buildCommandPlan({
-        type: "thread/start",
-        threadId: "thread-1",
-        cwd: "/workspace",
-        options: {
-          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-          workflowsEnabled: false,
-          permissionMode: "full",
-          permissionScope: "full",
-          approvalReviewer: null,
-          permissionEscalation: null,
-          model: "requested-model",
-        },
-        instructionMode: "append",
-      });
-      expect(startPlan).toMatchObject({
-        kind: "request",
-        method: "thread/start",
-        params: {
-          agent: { command: "custom-agent", args: ["serve"] },
-          modelSelection: { modelId: "requested-model" },
-        },
-      });
-    },
-  );
 
   it("rejects unsupported adapters", () => {
     expect(() => createProviderForId("pi-mono")).toThrow(
