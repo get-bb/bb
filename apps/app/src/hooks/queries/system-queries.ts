@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useSyncExternalStore } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AvailableModel, ProviderInfo } from "@bb/domain";
 import { SYSTEM_EXECUTION_OPTIONS_QUERY_KEY } from "@/hooks/queries/query-keys";
 import {
@@ -36,6 +37,7 @@ import {
   onboardingReposQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
+  systemProvidersQueryKey,
   systemUsageLimitsQueryKey,
   systemVersionQueryKey,
 } from "./query-keys";
@@ -256,6 +258,33 @@ export function findCachedProviderInfo(
   return null;
 }
 
+/**
+ * Reactive form of {@link findCachedProviderInfo}. The cache read alone is a
+ * render-time snapshot, and a component that does not mount the
+ * execution-options query itself never re-renders when that query lands — so a
+ * capability-gated affordance would stay hidden until some unrelated query
+ * happened to re-render the tree. Subscribing to the query cache makes it
+ * appear as soon as the data arrives, without mounting a second request.
+ */
+export function useCachedProviderInfo(
+  providerId: string | undefined,
+): ProviderInfo | null {
+  const queryClient = useQueryClient();
+  const subscribe = useCallback(
+    (onStoreChange: () => void) =>
+      queryClient.getQueryCache().subscribe(onStoreChange),
+    [queryClient],
+  );
+  const getSnapshot = useCallback(
+    () =>
+      providerId === undefined
+        ? null
+        : findCachedProviderInfo(queryClient, providerId),
+    [providerId, queryClient],
+  );
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
 function isAbortLikeError(error: unknown): boolean {
   return toRecord(error)?.name === "AbortError";
 }
@@ -277,6 +306,22 @@ function shouldRetrySystemExecutionOptions(
   }
 
   return true;
+}
+
+/**
+ * The provider roster with the server's display names. Cheaper than the full
+ * execution-options query (no model probe), which is what surfaces that only
+ * need to name a provider — the skills library's provider filter — should use.
+ */
+export function useSystemProviders(args: { enabled?: boolean } = {}) {
+  const enabled = args.enabled ?? true;
+  useSystemRealtimeSubscription({ enabled });
+  return useQuery<ProviderInfo[]>({
+    queryKey: systemProvidersQueryKey(),
+    queryFn: ({ signal }) => sdk.providers.list({ signal }),
+    enabled,
+    staleTime: 60_000,
+  });
 }
 
 export function useSystemExecutionOptions(

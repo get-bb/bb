@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { findCachedProviderInfo } from "@/hooks/queries/system-queries";
+import { useCachedProviderInfo } from "@/hooks/queries/system-queries";
 import { useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
@@ -929,13 +928,14 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     },
     [forkThreadFromMessage],
   );
-  const forkQueryClient = useQueryClient();
+  // Subscribed, not a bare cache read: this view never mounts the
+  // execution-options query itself (its composer child does), so a render-time
+  // snapshot would leave capability-gated affordances hidden until an
+  // unrelated query re-rendered the tree.
+  const threadProviderInfo = useCachedProviderInfo(thread?.providerId);
   const isForkAvailable = isThreadForkable(
     thread ?? null,
-    thread
-      ? (findCachedProviderInfo(forkQueryClient, thread.providerId)
-          ?.capabilities.supportsFork ?? false)
-      : false,
+    threadProviderInfo?.capabilities.supportsFork ?? false,
   );
   const dismissCompactKeyboard = useCallback(() => {
     if (!renderSecondaryPanelAsDrawer) {
@@ -978,9 +978,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     (systemConfigQuery.data?.experiments.editMessages ?? false) &&
     // Declared capability, same source as the fork affordance above: an edit
     // is a rewind to an earlier point in the provider session.
-    (findCachedProviderInfo(forkQueryClient, thread.providerId)?.capabilities
-      .supportsSessionRewind ??
-      false) &&
+    (threadProviderInfo?.capabilities.supportsSessionRewind ?? false) &&
     thread.archivedAt === null &&
     thread.deletedAt === null &&
     !hasPendingInteraction &&

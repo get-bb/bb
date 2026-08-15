@@ -24,14 +24,21 @@ const SKILL_ROOT_LABELS: Record<
  */
 export function skillScopeLabel(
   skill: Pick<SkillSummary, "scope" | "provider">,
+  /**
+   * The provider's display name from the server roster. Without it the label
+   * falls back to the icon's per-tier aria label, which every unknown `acp-*`
+   * agent shares ("ACP provider").
+   */
+  providerDisplayName?: string,
 ): string {
   if (skill.scope === "provider-user" || skill.scope === "provider-project") {
     const root = skill.scope === "provider-user" ? "user" : "project";
     const provider = skill.provider;
     const providerLabel =
-      provider === null
+      providerDisplayName ??
+      (provider === null
         ? "Provider"
-        : (getProviderIconInfo(provider)?.ariaLabel ?? provider);
+        : (getProviderIconInfo(provider)?.ariaLabel ?? provider));
     return `${providerLabel} · ${root}`;
   }
   return SKILL_ROOT_LABELS[skill.scope];
