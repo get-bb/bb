@@ -77,7 +77,11 @@ Grammar rules:
 1. Every accepted `turn/start` or `turn/steer` reaches exactly one terminal
    state. A prompt the provider handles without doing work (claude `/clear`)
    still produces a started+completed pair. Zero-event acceptance is the
-   #1431 hung-thread class.
+   #1431 hung-thread class. Conformance rule
+   `turn/settles-without-activity` checks this, but only for a bridge that
+   opts in by naming a zero-work prompt in its conformance fixture
+   (`zeroWorkPromptInput`) — the kit cannot elicit that shape generically,
+   since only the bridge knows what its provider handles locally.
 2. Correlation rides its own event, not `turn/started`. `turn/started`
    carries no `clientRequestId`. Once input is accepted the bridge MUST emit
    `turn/input/accepted` — strict, scoped to the turn that carries the input,
