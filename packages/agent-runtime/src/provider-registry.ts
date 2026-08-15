@@ -78,10 +78,11 @@ const builtInProvidersById = new Map(
 /**
  * Experiment-gated canonical path: providers whose id matches an enabled
  * bridge-protocol prefix run on the generic adapter speaking the canonical
- * Provider Bridge Protocol. ACP providers and pi participate today; the
- * ACP launch spec travels opaquely via staticProviderOptions (pi needs no
- * launch spec). Transitional wiring — phase 3 provider declarations replace
- * this table.
+ * Provider Bridge Protocol. ACP providers, pi, and claude-code participate
+ * today; the ACP launch spec travels opaquely via staticProviderOptions (pi
+ * and claude-code need no launch spec — claude's provider-flavored knobs ride
+ * the per-command providerOptions the generic adapter packs). Transitional
+ * wiring — phase 3 provider declarations replace this table.
  */
 function createBridgeProtocolAdapterForId(
   providerId: string,
@@ -90,6 +91,26 @@ function createBridgeProtocolAdapterForId(
   const prefixes = options.bridgeProtocolProviderPrefixes ?? [];
   if (!prefixes.some((prefix) => providerId.startsWith(prefix))) {
     return null;
+  }
+  if (providerId === "claude-code") {
+    const info = getBuiltInAgentProviderInfo("claude-code");
+    return createBridgeProtocolAdapter({
+      id: providerId,
+      displayName: info.displayName,
+      capabilities: info.capabilities,
+      process: {
+        command: options.bridgeNodeExecutablePath ?? "node",
+        args: resolveBridgeProcessArgs({
+          bridgeBundleDir: options.bridgeBundleDir,
+          bundleFileName: "bb-claude-code-bridge.mjs",
+          importMetaUrl: import.meta.url,
+          bridgeRelativePath: "claude-code/bridge/bridge.js",
+        }),
+        ...(options.bridgeNodeEnv !== undefined
+          ? { env: options.bridgeNodeEnv }
+          : {}),
+      },
+    });
   }
   if (providerId === "pi") {
     const info = getBuiltInAgentProviderInfo("pi");

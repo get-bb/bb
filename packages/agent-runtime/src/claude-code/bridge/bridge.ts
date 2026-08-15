@@ -20,9 +20,13 @@ import { resolve as resolvePath } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
+  pendingInteractionResolutionSchema,
+  turnScope,
   type PendingInteractionGrantedPermissionProfile,
+  type PendingInteractionPayload,
   type PermissionEscalation,
   type ReasoningLevel,
+  type ThreadEvent,
 } from "@bb/domain";
 import {
   forkSession,
@@ -31,8 +35,23 @@ import {
   type PermissionResult,
   type SDKMessage,
 } from "@anthropic-ai/claude-agent-sdk";
+import {
+  BRIDGE_INBOUND_REQUEST_METHODS,
+  BRIDGE_JSON_RPC_ERRORS,
+  BRIDGE_NOTIFICATION_METHODS,
+  PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  threadDiscardParamsSchema as canonicalThreadDiscardParamsSchema,
+  threadStopParamsSchema as canonicalThreadStopParamsSchema,
+  turnStartParamsSchema as canonicalTurnStartParamsSchema,
+  turnSteerParamsSchema as canonicalTurnSteerParamsSchema,
+} from "@bb/provider-bridge-protocol";
 import { z } from "zod";
 import { extractEnvOverrides } from "../../shared/adapter-utils.js";
+import {
+  buildAcceptedUserMessageEvent,
+  queueAcceptedUserMessage,
+} from "../../shared/accepted-user-messages.js";
+import { UNSTAMPED_THREAD_ID } from "../../shared/unstamped-thread-id.js";
 import {
   decodeBridgeJsonRpcResponse,
   type BridgeToolCallRequest,
@@ -49,9 +68,28 @@ import {
 } from "../../shared/bridge-session-registry.js";
 import { withoutBridgeRuntimeEnv } from "../../shared/bridge-runtime-env.js";
 import { shouldAutoDenyInteractiveRequest } from "../../shared/permission-policy.js";
+import {
+  createClaudeEventTranslator,
+  type ClaudeEventTranslator,
+} from "../event-translation.js";
+import {
+  buildClaudeApprovalInteractionPayload,
+  buildClaudeInteractiveResponse,
+  buildClaudeUserQuestionPayload,
+} from "../interactions.js";
+import {
+  buildClaudeCanonicalSessionParams,
+  buildClaudeCanonicalTurnParams,
+} from "../session-params.js";
+import { buildInterruptedClaudeTaskEvents } from "../task-translation.js";
 import { SdkSession, type SdkSessionOptions } from "./sdk-session.js";
 import { listClaudeCodeBridgeModels } from "./model-list.js";
 import {
+  claudeThreadForkParamsSchema,
+  claudeThreadResumeParamsSchema,
+  claudeThreadStartParamsSchema,
+  claudeTurnStartParamsSchema,
+  claudeTurnSteerParamsSchema,
   decodeClaudeCodeJsonRpcRequest,
   type ClaudeCodeJsonRpcRequest,
   type ThreadForkParams,
@@ -156,6 +194,12 @@ interface CreateSdkCallbackArgs {
 interface PendingInteractiveRequestBase {
   itemId: string;
   resolve: (value: PermissionResult) => void;
+  /**
+   * Canonical-dialect request: the `PendingInteractionPayload` sent out via
+   * `interaction/request`; the canonical resolution maps back through it.
+   * Null for legacy-dialect requests, which carry the Claude-native shapes.
+   */
+  canonicalPayload: PendingInteractionPayload | null;
 }
 
 interface PendingPermissionRequest extends PendingInteractiveRequestBase {
@@ -190,6 +234,15 @@ interface ClaudeSessionPermissionGrantCoverageArgs {
   toolName: string;
 }
 
+/**
+ * Which wire dialect the session's runtime speaks. "legacy" keeps today's
+ * `sdk/message` (and other claude-flavored) notifications translated
+ * adapter-side; "canonical" runs every session-scoped notification through
+ * the bridge-held translator and emits finished `ThreadEvent`s as
+ * `thread/event` per the Provider Bridge Protocol.
+ */
+type ClaudeSessionDialect = "legacy" | "canonical";
+
 interface ThreadSession {
   session: SdkSession;
   sessionConstructionConfig: SessionConstructionConfig;
@@ -197,6 +250,9 @@ interface ThreadSession {
   sessionSerial: number;
   closing: boolean;
   streamEnded: boolean;
+  dialect: ClaudeSessionDialect;
+  /** Per-session translator; non-null exactly for canonical sessions. */
+  translator: ClaudeEventTranslator | null;
   mockCliTrafficProxy: ClaudeCodeMockCliTrafficProxy | null;
   pendingToolCalls: Map<string | number, PendingBridgeToolCall>;
   pendingInteractiveRequests: Map<string | number, PendingInteractiveRequest>;
@@ -228,6 +284,7 @@ interface ThreadSession {
 }
 
 interface CreateThreadSessionArgs {
+  dialect: ClaudeSessionDialect;
   mockCliTrafficProxy: ClaudeCodeMockCliTrafficProxy | null;
   permissionEscalation: PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
@@ -238,6 +295,21 @@ interface CreateThreadSessionArgs {
   sessionOptions: SdkSessionOptions;
   sessionPermissionGrants?: ClaudeSessionPermissionGrant[];
   threadIdRef: ThreadIdRef;
+}
+
+type CanonicalThreadStopParams = z.infer<
+  typeof canonicalThreadStopParamsSchema
+>;
+type CanonicalThreadDiscardParams = z.infer<
+  typeof canonicalThreadDiscardParamsSchema
+>;
+type CanonicalTurnStartParams = z.infer<typeof canonicalTurnStartParamsSchema>;
+type CanonicalTurnSteerParams = z.infer<typeof canonicalTurnSteerParamsSchema>;
+
+/** Acceptance correlation for canonical turn input (turn/input/accepted). */
+interface CanonicalTurnAcceptance {
+  clientRequestId: CanonicalTurnStartParams["clientRequestId"];
+  providerThreadId: string;
 }
 
 interface PreparedSessionEnv {
@@ -531,21 +603,196 @@ async function applyLiveSessionSettings(
   threadSession.liveSettings = next;
 }
 
-function sendSdkMessage(threadId: string, message: SDKMessage): void {
-  send({
-    jsonrpc: "2.0",
-    method: "sdk/message",
-    params: { threadId, message },
+// ---------------------------------------------------------------------------
+// Canonical-dialect emission
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-process entropy for canonical turn/item id prefixes (#1224): combined
+ * with a per-session serial below, ids never collide across process restarts
+ * or session resumes.
+ */
+const canonicalIdEntropyPrefix = `bt${randomUUID().slice(0, 8)}-`;
+let canonicalSessionSerial = 0;
+const CLAUDE_CANONICAL_PROVIDER_ID = "claude-code";
+
+function createCanonicalSessionTranslator(): ClaudeEventTranslator {
+  canonicalSessionSerial += 1;
+  const idPrefix = `${canonicalIdEntropyPrefix}${canonicalSessionSerial}-`;
+  return createClaudeEventTranslator({
+    providerId: CLAUDE_CANONICAL_PROVIDER_ID,
+    turnIdPrefix: idPrefix,
+    itemIdPrefix: idPrefix,
+    synthesizeItemStarted: true,
   });
 }
 
-function sendThreadIdentity(threadId: string, providerThreadId: string): void {
+function sendThreadEvents(
+  threadId: string,
+  events: readonly ThreadEvent[],
+): void {
+  for (const event of events) {
+    send({
+      jsonrpc: "2.0",
+      method: BRIDGE_NOTIFICATION_METHODS.threadEvent,
+      params: { threadId, event },
+    });
+  }
+}
+
+/**
+ * The one session-scoped emitter. Legacy sessions get today's notification
+ * verbatim; canonical sessions run it through the session translator and emit
+ * the finished `ThreadEvent`s as `thread/event` notifications.
+ */
+function emitForSession(
+  threadSession: ThreadSession,
+  threadId: string,
+  method: string,
+  params: Record<string, unknown>,
+): void {
+  if (threadSession.dialect === "legacy" || threadSession.translator === null) {
+    send({ jsonrpc: "2.0", method, params });
+    return;
+  }
+  sendThreadEvents(
+    threadId,
+    threadSession.translator.translateClaudeEvent(
+      { jsonrpc: "2.0", method, params },
+      { threadId },
+    ),
+  );
+}
+
+function emitSessionError(
+  threadSession: ThreadSession,
+  threadId: string,
+  message: string,
+): void {
+  if (
+    threadSession.dialect === "canonical" &&
+    threadSession.translator !== null
+  ) {
+    // Settle any open translator turn first: every accepted turn reaches
+    // exactly one terminal state, and settlement events precede the error
+    // signal. Without an open turn the error stays a runtime notification —
+    // translating it would fabricate a failed turn bb never accepted.
+    const state = threadSession.translator.resolveState({ threadId });
+    if (state.currentTurnId !== undefined) {
+      emitForSession(threadSession, threadId, "error", { threadId, message });
+    }
+    send({
+      jsonrpc: "2.0",
+      method: BRIDGE_NOTIFICATION_METHODS.error,
+      params: {
+        threadId,
+        providerThreadId: threadSession.providerThreadId ?? threadId,
+        message,
+      },
+    });
+    return;
+  }
+  send({ jsonrpc: "2.0", method: "error", params: { threadId, message } });
+}
+
+/**
+ * Settle a canonical session's in-flight work and announce the rebuild.
+ * Mandatory whenever the bridge tears down and rebuilds a live provider
+ * session (execution options it cannot apply in place, resume fallback):
+ * settlement events precede the `session/replaced` notification, which is
+ * never silent (#1268). Legacy sessions are handled adapter-side and emit
+ * nothing here.
+ */
+function emitCanonicalSessionReplacement(args: {
+  contextLost: boolean;
+  providerThreadId: string | null;
+  reason: string;
+  threadId: string;
+  threadSession: ThreadSession;
+}): void {
+  const translator = args.threadSession.translator;
+  if (args.threadSession.dialect !== "canonical" || translator === null) {
+    return;
+  }
+  const state = translator.resolveState({ threadId: args.threadId });
+  const settlement: ThreadEvent[] = [];
+  if (state.currentTurnId !== undefined) {
+    settlement.push({
+      type: "turn/completed",
+      threadId: UNSTAMPED_THREAD_ID,
+      providerThreadId: "",
+      scope: turnScope(state.currentTurnId),
+      status: "interrupted",
+    });
+    translator.turnState.finishTurn({ state, threadId: args.threadId });
+  }
+  // Replacing the CLI session kills its background tasks with it.
+  settlement.push(
+    ...buildInterruptedClaudeTaskEvents({
+      tasks: state.tasksById,
+      threadId: UNSTAMPED_THREAD_ID,
+    }),
+  );
+  state.opaqueTaskIds.clear();
+  sendThreadEvents(args.threadId, settlement);
+  send({
+    jsonrpc: "2.0",
+    method: BRIDGE_NOTIFICATION_METHODS.sessionReplaced,
+    params: {
+      threadId: args.threadId,
+      providerThreadId: args.providerThreadId,
+      reason: args.reason,
+      contextLost: args.contextLost,
+    },
+  });
+}
+
+/**
+ * Correlate canonical turn input with its bb turn (turn/input/accepted): a
+ * still-open translator turn gets the event immediately; otherwise it is
+ * queued so the translator's onTurnStart drains it into the opening turn.
+ */
+function emitCanonicalTurnInputAccepted(
+  threadSession: ThreadSession,
+  acceptance: CanonicalTurnAcceptance,
+  threadId: string,
+): void {
+  if (threadSession.translator === null) {
+    return;
+  }
+  const state = threadSession.translator.resolveState({ threadId });
+  if (state.currentTurnId !== undefined) {
+    sendThreadEvents(
+      threadId,
+      buildAcceptedUserMessageEvent({
+        clientRequestId: acceptance.clientRequestId,
+        providerThreadId: acceptance.providerThreadId,
+        threadId,
+        turnId: state.currentTurnId,
+      }),
+    );
+    return;
+  }
+  queueAcceptedUserMessage({
+    clientRequestId: acceptance.clientRequestId,
+    state,
+  });
+}
+
+function sendThreadIdentity(
+  dialect: ClaudeSessionDialect,
+  threadId: string,
+  providerThreadId: string,
+): void {
   send({
     jsonrpc: "2.0",
     method: "thread/identity",
     params: {
       threadId,
       providerThreadId,
+      // Canonical sessions refine the handshake's sessionRestore per session:
+      // Claude sessions persist (persistSession) and reopen via SDK resume.
+      ...(dialect === "canonical" ? { sessionRestorable: true } : {}),
     },
   });
 }
@@ -642,6 +889,9 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     sessionSerial,
     closing: false,
     streamEnded: false,
+    dialect: args.dialect,
+    translator:
+      args.dialect === "canonical" ? createCanonicalSessionTranslator() : null,
     mockCliTrafficProxy: args.mockCliTrafficProxy,
     pendingToolCalls: new Map(),
     pendingInteractiveRequests: new Map(),
@@ -929,6 +1179,16 @@ function replaceThreadSession(args: ReplaceThreadSessionArgs): void {
   args.threadSession.closing = true;
   args.threadSession.mockCliTrafficProxy = null;
   resolvePendingSessionWork(args.threadSession, args.reason);
+  // Canonical sessions settle in-flight work and announce the rebuild before
+  // any replacement-session traffic; the replacement resumes the same
+  // provider session id, so provider-side context survives.
+  emitCanonicalSessionReplacement({
+    contextLost: false,
+    providerThreadId: args.providerThreadId,
+    reason: args.reason,
+    threadId: args.threadId,
+    threadSession: args.threadSession,
+  });
   args.threadSession.session.stop();
 
   // This is not a user-requested thread close: the thread remains active and
@@ -937,7 +1197,11 @@ function replaceThreadSession(args: ReplaceThreadSessionArgs): void {
   // the replacement, not wait on the poisoned resume session.
   sessions.set(args.threadId, args.replacementSession);
   args.replacementSession.session.start(args.providerThreadId);
-  sendThreadIdentity(args.threadId, args.providerThreadId);
+  sendThreadIdentity(
+    args.replacementSession.dialect,
+    args.threadId,
+    args.providerThreadId,
+  );
 }
 
 function replaceEndedThreadSession(
@@ -951,6 +1215,7 @@ function replaceEndedThreadSession(
   }
 
   const replacementSession = createThreadSession({
+    dialect: args.threadSession.dialect,
     mockCliTrafficProxy: args.threadSession.mockCliTrafficProxy,
     liveSettings: args.threadSession.liveSettings,
     permissionEscalation: args.threadSession.permissionEscalation,
@@ -1015,10 +1280,17 @@ function createOnSdkMessage(
       threadSession.providerThreadId !== providerThreadId
     ) {
       threadSession.providerThreadId = providerThreadId;
-      sendThreadIdentity(args.threadIdRef.current, providerThreadId);
+      sendThreadIdentity(
+        threadSession.dialect,
+        args.threadIdRef.current,
+        providerThreadId,
+      );
     }
     trackSdkAssistantPermissionEscalation(threadSession, message);
-    sendSdkMessage(args.threadIdRef.current, message);
+    emitForSession(threadSession, args.threadIdRef.current, "sdk/message", {
+      threadId: args.threadIdRef.current,
+      message,
+    });
   };
 }
 
@@ -1042,11 +1314,7 @@ function createOnSdkDone(
 
     const message = error instanceof Error ? error.message : String(error);
 
-    send({
-      jsonrpc: "2.0",
-      method: "error",
-      params: { threadId: args.threadIdRef.current, message },
-    });
+    emitSessionError(threadSession, args.threadIdRef.current, message);
   };
 }
 
@@ -1212,6 +1480,35 @@ function buildUserQuestionRequestParams(
   };
 }
 
+/**
+ * Decode an interactive-request response for the pending entry's dialect:
+ * canonical entries carry the canonical `PendingInteractionResolution` and
+ * map back through the shared interactions module; legacy entries carry the
+ * Claude-native interactive response. Null means undecodable (or a
+ * resolution kind that does not match the payload) and settles as a deny.
+ */
+function decodePendingInteractiveResponse(
+  pending: PendingInteractiveRequest,
+  result: unknown,
+): ClaudeInteractiveResponse | null {
+  if (pending.canonicalPayload !== null) {
+    const resolution = pendingInteractionResolutionSchema.safeParse(result);
+    if (!resolution.success) {
+      return null;
+    }
+    try {
+      return buildClaudeInteractiveResponse({
+        payload: pending.canonicalPayload,
+        resolution: resolution.data,
+      });
+    } catch {
+      return null;
+    }
+  }
+  const parsed = claudeInteractiveResponseSchema.safeParse(result);
+  return parsed.success ? parsed.data : null;
+}
+
 function buildInteractivePermissionResult(
   pending: PendingInteractiveRequest,
   response: ClaudeInteractiveResponse,
@@ -1265,6 +1562,23 @@ function buildInteractivePermissionResult(
   }
 }
 
+/**
+ * The bb turn id a canonical interaction correlates with: the translator's
+ * open turn when one exists, else null so the runtime resolves it from the
+ * active turn.
+ */
+function resolveCanonicalInteractionTurnId(
+  threadSession: ThreadSession,
+  threadId: string,
+): string | null {
+  if (threadSession.translator === null) {
+    return null;
+  }
+  return (
+    threadSession.translator.resolveState({ threadId }).currentTurnId ?? null
+  );
+}
+
 function createForwardInteractiveRequest(
   threadIdRef: ThreadIdRef,
 ): (args: ForwardInteractiveRequestArgs) => Promise<PermissionResult> {
@@ -1311,15 +1625,42 @@ function createForwardInteractiveRequest(
         });
       };
 
+      // Canonical sessions carry the canonical PendingInteractionPayload out
+      // as interaction/request and map the canonical resolution back — the
+      // same mapping the legacy adapter applies runtime-side.
+      const canonicalPayload =
+        threadSession.dialect === "canonical"
+          ? buildClaudeApprovalInteractionPayload(params)
+          : null;
+
       args.signal.addEventListener("abort", onAbort, { once: true });
       threadSession.pendingInteractiveRequests.set(requestId, {
         itemId: args.toolUseId,
         kind: "permission_request",
+        canonicalPayload,
         originalInput: args.input,
         permissions: params.permissions,
         resolve: finish,
         toolName: args.toolName,
       });
+
+      if (canonicalPayload !== null) {
+        send({
+          jsonrpc: "2.0",
+          id: requestId,
+          method: BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest,
+          params: {
+            threadId: args.threadId,
+            providerThreadId: args.providerThreadId,
+            turnId: resolveCanonicalInteractionTurnId(
+              threadSession,
+              args.threadId,
+            ),
+            payload: canonicalPayload,
+          },
+        });
+        return;
+      }
 
       send({
         jsonrpc: "2.0",
@@ -1365,12 +1706,36 @@ function createForwardUserQuestionRequest(
         });
       };
 
+      const canonicalPayload =
+        threadSession.dialect === "canonical"
+          ? buildClaudeUserQuestionPayload(params)
+          : null;
+
       args.signal.addEventListener("abort", onAbort, { once: true });
       threadSession.pendingInteractiveRequests.set(requestId, {
         itemId: args.toolUseId,
         kind: "user_question",
+        canonicalPayload,
         resolve: finish,
       });
+
+      if (canonicalPayload !== null) {
+        send({
+          jsonrpc: "2.0",
+          id: requestId,
+          method: BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest,
+          params: {
+            threadId: args.threadId,
+            providerThreadId: args.providerThreadId,
+            turnId: resolveCanonicalInteractionTurnId(
+              threadSession,
+              args.threadId,
+            ),
+            payload: canonicalPayload,
+          },
+        });
+        return;
+      }
 
       send({
         jsonrpc: "2.0",
@@ -1597,28 +1962,135 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
 async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
   switch (request.method) {
     case "initialize":
-      sendResult(request.id, { ok: true });
+      // The canonical handshake (@bb/provider-bridge-protocol): the bridge
+      // reports the session-behavior facts its own code implements.
+      // sessionRestore is true — sessions persist (persistSession) and
+      // SdkSession.start(resumeSessionId) reopens them via SDK resume.
+      // manualCompaction is false — there is no compact wire method here;
+      // `/compact` rides the prompt text and the Claude CLI handles it
+      // natively. fork is "checkpoint" — thread/fork maps
+      // sourceProviderCheckpointId onto forkSession's upToMessageId.
+      // approvalRequestPolicy is "provider" — canUseTool pre-filters
+      // approvals in this bridge (policy shortcuts above the forward), so
+      // every forwarded request already needs user input and the runtime
+      // must not reclassify it (#1236). The legacy adapter ignores this
+      // result (plus `ok` for its historical shape).
+      sendResult(request.id, {
+        ok: true,
+        protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
+        capabilities: {
+          sessionRestore: true,
+          archiveSync: false,
+          nameSync: false,
+          goalState: false,
+          manualCompaction: false,
+          fork: "checkpoint",
+          approvalRequestPolicy: "provider",
+        },
+      });
       break;
     case "model/list":
       sendResult(request.id, await listClaudeCodeBridgeModels());
       break;
-    case "thread/start":
-      await handleThreadStart(request.id, request.params);
+    case "thread/start": {
+      if ("options" in request.params) {
+        const params = request.params;
+        await handleThreadStart(
+          request.id,
+          claudeThreadStartParamsSchema.parse(
+            buildClaudeCanonicalSessionParams({
+              threadId: params.threadId,
+              cwd: params.cwd,
+              options: params.options,
+              instructionMode: params.instructionMode,
+              dynamicTools: params.dynamicTools,
+              disallowedTools: params.disallowedTools,
+            }),
+          ),
+          "canonical",
+        );
+        break;
+      }
+      await handleThreadStart(request.id, request.params, "legacy");
       break;
-    case "thread/resume":
-      await handleThreadResume(request.id, request.params);
+    }
+    case "thread/resume": {
+      if ("options" in request.params) {
+        const params = request.params;
+        await handleThreadResume(
+          request.id,
+          claudeThreadResumeParamsSchema.parse({
+            ...buildClaudeCanonicalSessionParams({
+              threadId: params.threadId,
+              cwd: params.cwd,
+              options: params.options,
+              instructionMode: params.instructionMode,
+              dynamicTools: params.dynamicTools,
+              disallowedTools: params.disallowedTools,
+            }),
+            providerThreadId: params.providerThreadId,
+          }),
+          "canonical",
+        );
+        break;
+      }
+      await handleThreadResume(request.id, request.params, "legacy");
       break;
-    case "thread/fork":
-      await handleThreadFork(request.id, request.params);
+    }
+    case "thread/fork": {
+      if ("options" in request.params) {
+        const params = request.params;
+        // Claude supports checkpoint forks natively:
+        // sourceProviderCheckpointId maps onto forkSession's upToMessageId.
+        await handleThreadFork(
+          request.id,
+          claudeThreadForkParamsSchema.parse({
+            ...buildClaudeCanonicalSessionParams({
+              threadId: params.threadId,
+              cwd: params.cwd,
+              options: params.options,
+              instructionMode: params.instructionMode,
+              dynamicTools: params.dynamicTools,
+              disallowedTools: params.disallowedTools,
+            }),
+            sourceProviderThreadId: params.sourceProviderThreadId,
+            ...(params.sourceProviderCheckpointId !== undefined
+              ? {
+                  sourceProviderCheckpointId: params.sourceProviderCheckpointId,
+                }
+              : {}),
+          }),
+          "canonical",
+        );
+        break;
+      }
+      await handleThreadFork(request.id, request.params, "legacy");
       break;
+    }
     case "turn/start":
+      if ("options" in request.params) {
+        await handleCanonicalTurnStart(request.id, request.params);
+        break;
+      }
       await handleTurnStart(request.id, request.params);
       break;
     case "turn/steer":
+      if ("options" in request.params) {
+        await handleCanonicalTurnSteer(request.id, request.params);
+        break;
+      }
       await handleTurnSteer(request.id, request.params);
       break;
-    case "thread/stop":
+    case "thread/stop": {
+      if ("intent" in request.params) {
+        await handleCanonicalThreadStop(request.id, request.params);
+        break;
+      }
       sendResult(request.id, await handleThreadStop(request.params));
+      break;
+    }
+    case "thread/discard":
+      await handleCanonicalThreadDiscard(request.id, request.params);
       break;
   }
 }
@@ -1626,6 +2098,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
 async function handleThreadStart(
   id: string | number,
   params: ThreadStartParams,
+  dialect: ClaudeSessionDialect,
 ): Promise<void> {
   const threadIdRef = { current: params.threadId };
 
@@ -1657,6 +2130,7 @@ async function handleThreadStart(
   }
 
   const threadSession = createThreadSession({
+    dialect,
     mockCliTrafficProxy: preparedEnv.mockCliTrafficProxy,
     liveSettings: toInitialLiveSessionSettings(params),
     permissionEscalation: params.permissionEscalation,
@@ -1671,13 +2145,21 @@ async function handleThreadStart(
   sessions.set(threadIdRef.current, threadSession);
   threadSession.session.start();
 
+  if (dialect === "canonical") {
+    // Canonical ordering: identity precedes any thread/event; the result
+    // carries the canonical identity shape with per-session restorability.
+    sendThreadIdentity(dialect, threadIdRef.current, providerThreadId);
+    sendResult(id, { providerThreadId, sessionRestorable: true });
+    return;
+  }
   sendResult(id, { threadId: threadIdRef.current, providerThreadId });
-  sendThreadIdentity(threadIdRef.current, providerThreadId);
+  sendThreadIdentity(dialect, threadIdRef.current, providerThreadId);
 }
 
 async function handleThreadResume(
   id: string | number,
   params: ThreadResumeParams,
+  dialect: ClaudeSessionDialect,
 ): Promise<void> {
   const threadId = params.threadId;
   const requestedProviderThreadId = params.providerThreadId ?? undefined;
@@ -1689,6 +2171,7 @@ async function handleThreadResume(
     requestedProviderThreadId &&
     !existing.closing &&
     !existing.streamEnded &&
+    existing.dialect === dialect &&
     existing.providerThreadId === requestedProviderThreadId &&
     isDeepStrictEqual(
       existing.sessionConstructionConfig,
@@ -1700,6 +2183,13 @@ async function handleThreadResume(
       toInitialLiveSessionSettings(params),
     );
     existing.permissionEscalation = params.permissionEscalation;
+    if (dialect === "canonical") {
+      sendResult(id, {
+        providerThreadId: requestedProviderThreadId,
+        sessionRestorable: true,
+      });
+      return;
+    }
     sendResult(id, {
       threadId,
       providerThreadId: requestedProviderThreadId,
@@ -1708,6 +2198,20 @@ async function handleThreadResume(
   }
 
   if (existing) {
+    if (!existing.closing) {
+      // A live canonical session the new construction-scoped settings cannot
+      // be applied to: settle its in-flight work and announce the rebuild
+      // before tearing it down (never silent, #1268). The replacement resumes
+      // the same provider session id, so provider-side context survives.
+      emitCanonicalSessionReplacement({
+        contextLost: false,
+        providerThreadId: requestedProviderThreadId ?? null,
+        reason:
+          "Claude session restarted: construction-scoped settings changed",
+        threadId,
+        threadSession: existing,
+      });
+    }
     await closeThreadSession({
       graceful: false,
       message: "Thread session replaced while awaiting permission approval",
@@ -1732,6 +2236,7 @@ async function handleThreadResume(
     sessionOptions.allowedTools = getAllowedToolNames(params.dynamicTools);
   }
   const threadSession = createThreadSession({
+    dialect,
     mockCliTrafficProxy: preparedEnv.mockCliTrafficProxy,
     liveSettings: toInitialLiveSessionSettings(params),
     permissionEscalation: params.permissionEscalation,
@@ -1748,6 +2253,15 @@ async function handleThreadResume(
   sessions.set(threadId, threadSession);
   threadSession.session.start(requestedProviderThreadId);
 
+  if (dialect === "canonical" && requestedProviderThreadId !== undefined) {
+    // Canonical ordering: identity precedes any thread/event for the session.
+    sendThreadIdentity(dialect, threadId, requestedProviderThreadId);
+    sendResult(id, {
+      providerThreadId: requestedProviderThreadId,
+      sessionRestorable: true,
+    });
+    return;
+  }
   sendResult(id, {
     threadId,
     providerThreadId: requestedProviderThreadId ?? null,
@@ -1757,6 +2271,7 @@ async function handleThreadResume(
 async function handleThreadFork(
   id: string | number,
   params: ThreadForkParams,
+  dialect: ClaudeSessionDialect,
 ): Promise<void> {
   const threadId = params.threadId;
 
@@ -1801,6 +2316,7 @@ async function handleThreadFork(
     sessionOptions.allowedTools = getAllowedToolNames(params.dynamicTools);
   }
   const threadSession = createThreadSession({
+    dialect,
     mockCliTrafficProxy: preparedEnv.mockCliTrafficProxy,
     liveSettings: toInitialLiveSessionSettings(params),
     permissionEscalation: params.permissionEscalation,
@@ -1815,8 +2331,16 @@ async function handleThreadFork(
   sessions.set(threadId, threadSession);
   threadSession.session.start(forkedProviderThreadId);
 
+  if (dialect === "canonical") {
+    sendThreadIdentity(dialect, threadId, forkedProviderThreadId);
+    sendResult(id, {
+      providerThreadId: forkedProviderThreadId,
+      sessionRestorable: true,
+    });
+    return;
+  }
   sendResult(id, { threadId, providerThreadId: forkedProviderThreadId });
-  sendThreadIdentity(threadId, forkedProviderThreadId);
+  sendThreadIdentity(dialect, threadId, forkedProviderThreadId);
 }
 
 function buildPromptTexts(
@@ -1838,10 +2362,11 @@ function buildPromptTexts(
 async function handleTurnStart(
   id: string | number,
   params: TurnStartParams,
+  acceptance?: CanonicalTurnAcceptance,
 ): Promise<void> {
   const inputs = buildPromptTexts(params.input, params.inputGroups);
   if (!inputs) {
-    sendError(id, -32602, "Missing input text");
+    sendError(id, BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS, "Missing input text");
     return;
   }
 
@@ -1870,17 +2395,42 @@ async function handleTurnStart(
     sendError(id, -32000, "Claude SDK input stream is closed");
     return;
   }
+  if (acceptance !== undefined) {
+    emitCanonicalTurnInputAccepted(threadSession, acceptance, params.threadId);
+  }
   threadSession.permissionEscalation = params.permissionEscalation;
   sendResult(id, { threadId: params.threadId });
+}
+
+async function handleCanonicalTurnStart(
+  id: string | number,
+  params: CanonicalTurnStartParams,
+): Promise<void> {
+  await handleTurnStart(
+    id,
+    claudeTurnStartParamsSchema.parse(
+      buildClaudeCanonicalTurnParams({
+        threadId: params.threadId,
+        providerThreadId: params.providerThreadId,
+        input: params.input,
+        options: params.options,
+      }),
+    ),
+    {
+      clientRequestId: params.clientRequestId,
+      providerThreadId: params.providerThreadId,
+    },
+  );
 }
 
 async function handleTurnSteer(
   id: string | number,
   params: TurnSteerParams,
+  acceptance?: CanonicalTurnAcceptance,
 ): Promise<void> {
   const inputs = buildPromptTexts(params.input, params.inputGroups);
   if (!inputs) {
-    sendError(id, -32602, "Missing input text");
+    sendError(id, BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS, "Missing input text");
     return;
   }
 
@@ -1912,6 +2462,13 @@ async function handleTurnSteer(
       sendError(id, -32000, "Claude SDK input stream is closed");
       return;
     }
+    if (acceptance !== undefined) {
+      emitCanonicalTurnInputAccepted(
+        threadSession,
+        acceptance,
+        params.threadId,
+      );
+    }
     threadSession.permissionEscalation = params.permissionEscalation;
     sendResult(id, { threadId: params.threadId });
     return;
@@ -1923,6 +2480,16 @@ async function handleTurnSteer(
       inputs[0] ?? "",
       params.permissionEscalation,
     );
+    // The acceptance is emitted only once the SDK actually consumed the
+    // queued input: a steer that joins a live turn correlates with it, and
+    // one that lands on an idle session correlates with the turn it opens.
+    if (acceptance !== undefined) {
+      emitCanonicalTurnInputAccepted(
+        threadSession,
+        acceptance,
+        params.threadId,
+      );
+    }
     // A failed steer must not change the running turn's escalation.
     threadSession.permissionEscalation = params.permissionEscalation;
     sendResult(id, { threadId: params.threadId });
@@ -1930,6 +2497,28 @@ async function handleTurnSteer(
     const message = error instanceof Error ? error.message : String(error);
     sendError(id, -32000, message);
   }
+}
+
+async function handleCanonicalTurnSteer(
+  id: string | number,
+  params: CanonicalTurnSteerParams,
+): Promise<void> {
+  await handleTurnSteer(
+    id,
+    claudeTurnSteerParamsSchema.parse(
+      buildClaudeCanonicalTurnParams({
+        threadId: params.threadId,
+        providerThreadId: params.providerThreadId,
+        expectedTurnId: params.expectedTurnId,
+        input: params.input,
+        options: params.options,
+      }),
+    ),
+    {
+      clientRequestId: params.clientRequestId,
+      providerThreadId: params.providerThreadId,
+    },
+  );
 }
 
 async function handleThreadStop(
@@ -1941,6 +2530,63 @@ async function handleThreadStop(
     threadId: params.threadId,
   });
   return { ok: true };
+}
+
+async function handleCanonicalThreadStop(
+  id: string | number,
+  params: CanonicalThreadStopParams,
+): Promise<void> {
+  const threadSession = sessions.get(params.threadId);
+  if (
+    params.intent === "interrupt" &&
+    threadSession !== undefined &&
+    !threadSession.closing &&
+    threadSession.translator !== null
+  ) {
+    // An interrupt settles the active turn as interrupted and, like today's
+    // cancel semantics, takes the session's background tasks down with the
+    // CLI session it closes.
+    const state = threadSession.translator.resolveState({
+      threadId: params.threadId,
+    });
+    const settlement: ThreadEvent[] = [];
+    if (state.currentTurnId !== undefined) {
+      settlement.push({
+        type: "turn/completed",
+        threadId: UNSTAMPED_THREAD_ID,
+        providerThreadId: "",
+        scope: turnScope(state.currentTurnId),
+        status: "interrupted",
+      });
+      threadSession.translator.turnState.finishTurn({
+        state,
+        threadId: params.threadId,
+      });
+    }
+    settlement.push(
+      ...buildInterruptedClaudeTaskEvents({
+        tasks: state.tasksById,
+        threadId: UNSTAMPED_THREAD_ID,
+      }),
+    );
+    state.opaqueTaskIds.clear();
+    sendThreadEvents(params.threadId, settlement);
+  }
+  // A release detaches the idle session and must not fabricate an
+  // interruption or settle background tasks (#1584): the session stays
+  // resumable from its persisted providerThreadId and the close path emits
+  // no turn events.
+  sendResult(id, await handleThreadStop({ threadId: params.threadId }));
+}
+
+async function handleCanonicalThreadDiscard(
+  id: string | number,
+  params: CanonicalThreadDiscardParams,
+): Promise<void> {
+  // Claude has no provider-side thread deletion; discard closes any live
+  // session for the thread and succeeds. Mirrors the legacy adapter, which
+  // maps thread/discard onto thread/stop.
+  sendResult(id, await handleThreadStop({ threadId: params.threadId }));
 }
 
 function localAttachmentMarker(args: {
@@ -2015,10 +2661,11 @@ function handleParsedMessage(parsed: unknown): void {
       return;
     }
 
-    const parsedResponse = claudeInteractiveResponseSchema.safeParse(
+    const interactiveResponse = decodePendingInteractiveResponse(
+      pending,
       response.result,
     );
-    if (!parsedResponse.success) {
+    if (interactiveResponse === null) {
       pending.resolve({
         behavior: "deny",
         message: "Invalid interactive response payload",
@@ -2026,8 +2673,6 @@ function handleParsedMessage(parsed: unknown): void {
       });
       return;
     }
-
-    const interactiveResponse = parsedResponse.data;
     if (
       pending.kind === "permission_request" &&
       shouldCacheClaudeSessionPermission(interactiveResponse)
@@ -2058,12 +2703,16 @@ function handleParsedMessage(parsed: unknown): void {
       return;
     case "unknown_method":
       logBridgeError(`Unknown method: ${decoded.method}`);
-      sendError(decoded.id, -32601, `Unknown method: ${decoded.method}`);
+      sendError(
+        decoded.id,
+        BRIDGE_JSON_RPC_ERRORS.METHOD_NOT_FOUND,
+        `Unknown method: ${decoded.method}`,
+      );
       return;
     case "invalid_params": {
       const message = `Invalid params for ${decoded.method}: ${decoded.issues}`;
       logBridgeError(message);
-      sendError(decoded.id, -32602, message);
+      sendError(decoded.id, BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS, message);
       return;
     }
     case "request": {
