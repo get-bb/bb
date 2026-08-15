@@ -39,9 +39,23 @@ Landed on this branch, every commit green:
   policy-consumer repoint — plugin-registered providers appear in listings
   and are accepted by thread policy end to end. UI decoupling (icon maps,
   app catalog imports) intentionally trails until phase-4 icon assets exist.
-- **In flight**: phase 2c (claude-code migration). **Not started**: phase 2d
-  (codex bridge), phase 4+ (first-party provider plugins, artifact
-  delivery, consolidation sweep).
+- **Phase 2 complete**: all four providers are conformant bridges (11/11
+  each). claude (c85cca643): translation extracted byte-identically,
+  session/replaced wired at both rebuild sites, canonical interactions for
+  approval + AskUserQuestion + plan-mode exit; findings: manual compaction
+  is prompt-text on claude (handshake false), fork is checkpoint-capable
+  via forkSession (evidence for the fork/rewind merge candidate). codex
+  (7bf1844e0): the one new bridge, canonical-only, owning per-thread
+  app-server children with the #1402 supervision rules; structural
+  bridge-minted ids reverse-map legacy-persisted codex ids;
+  archived-session resumes reply SESSION_NOT_RESTORABLE. Per-provider
+  experiment toggles exist for all four providers (default off). The
+  turn-start watchdog shipped (system/error, no wire change).
+- **Not started**: phase 4+ (first-party provider plugins, artifact
+  delivery, graduation deletions, consolidation sweep). Transitional gaps
+  recorded in the codex report: hasOpenThreadWork has no generic-adapter
+  hook until graduation; the runtime still thread-scopes codex process
+  keys (the bridge is already environment-multiplex-capable).
 
 ## Current State (2026-08-14)
 
