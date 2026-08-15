@@ -256,6 +256,9 @@ declare const experimentsSchema: z$1.ZodRecord<z$1.ZodEnum<{
     editMessages: "editMessages";
     newOnboarding: "newOnboarding";
     providerBridgeAcp: "providerBridgeAcp";
+    providerBridgeClaudeCode: "providerBridgeClaudeCode";
+    providerBridgeCodex: "providerBridgeCodex";
+    providerBridgePi: "providerBridgePi";
     providerSessionReaping: "providerSessionReaping";
 }>, z$1.ZodBoolean>;
 type Experiments = z$1.infer<typeof experimentsSchema>;
@@ -2930,8 +2933,8 @@ declare const environmentDiffFileResponseSchema: z$1.ZodObject<{
     path: z$1.ZodString;
     content: z$1.ZodString;
     contentEncoding: z$1.ZodEnum<{
-        utf8: "utf8";
         base64: "base64";
+        utf8: "utf8";
     }>;
     mimeType: z$1.ZodOptional<z$1.ZodString>;
     sizeBytes: z$1.ZodNumber;
@@ -7357,6 +7360,9 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
         editMessages: "editMessages";
         newOnboarding: "newOnboarding";
         providerBridgeAcp: "providerBridgeAcp";
+        providerBridgeClaudeCode: "providerBridgeClaudeCode";
+        providerBridgeCodex: "providerBridgeCodex";
+        providerBridgePi: "providerBridgePi";
         providerSessionReaping: "providerSessionReaping";
     }>, z$1.ZodBoolean>;
     appearance: z$1.ZodObject<{
