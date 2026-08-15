@@ -125,7 +125,11 @@ function sendBridgeJsonRpcRequest(args: SendBridgeJsonRpcRequestArgs): void {
 async function waitForBridgeJsonRpcResponse(
   args: WaitForBridgeJsonRpcResponseArgs,
 ): Promise<BridgeJsonRpcOutputMessage> {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
+  // Deadline-based, not tick-count-based: bridges that spawn a real child
+  // process (codex → fake app-server) need cold-start time on CI runners,
+  // while in-process bridges still resolve on the first tick.
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
     const response = args.output.messages.find(
       (message) => message.id === args.id,
     );
