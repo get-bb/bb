@@ -6,6 +6,8 @@ import {
   threadEventNotificationSchema,
   threadIdentityResultSchema,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  ThreadEventGrammar,
+  THREAD_EVENT_GRAMMAR_RULES,
 } from "../index.js";
 import {
   ConformanceClient,
@@ -95,49 +97,29 @@ function errorCode(message: JsonRpcWireMessage | null): number | undefined {
   return typeof code === "number" ? code : undefined;
 }
 
-/**
- * Every ThreadEvent that streams into an already-open item by `itemId`. Listed
- * explicitly rather than matched by name suffix: only two of the six streaming
- * deltas end in "/delta" (the rest are "/outputDelta", "/summaryTextDelta",
- * "/textDelta"), and the two progress events carry an `itemId` as well.
- * Keep in sync with the itemId-carrying members of the ThreadEvent union in
- * @bb/domain (packages/domain/src/provider-event.ts).
- */
-const ITEM_STREAMING_EVENT_TYPES = new Set<ThreadEvent["type"]>([
-  "item/agentMessage/delta",
-  "item/plan/delta",
-  "item/commandExecution/outputDelta",
-  "item/fileChange/outputDelta",
-  "item/reasoning/summaryTextDelta",
-  "item/reasoning/textDelta",
-  "item/mcpToolCall/progress",
-  "item/toolCall/progress",
-]);
-
 const ITEM_OPENS_BEFORE_DELTA_TITLE =
   "every item's first event is item/started";
 
 /**
  * item/opens-before-delta: no event may stream into an item id that no
  * item/started has opened yet. Pure over an event log so it is unit-testable
- * without a live bridge.
+ * without a live bridge — the streaming grammar machine the host runs live,
+ * fed a recording and filtered to this one rule.
  */
 export function checkItemOpensBeforeDelta(
   events: ThreadEvent[],
 ): ConformanceCheckResult {
-  const openedItemIds = new Set<string>();
+  const grammar = new ThreadEventGrammar();
   for (const event of events) {
-    if (event.type === "item/started") {
-      openedItemIds.add(event.item.id);
-      continue;
-    }
-    if (!ITEM_STREAMING_EVENT_TYPES.has(event.type)) continue;
-    if (!("itemId" in event) || typeof event.itemId !== "string") continue;
-    if (!openedItemIds.has(event.itemId)) {
+    const result = grammar.observe(event);
+    if (
+      result.kind === "violation" &&
+      result.rule === THREAD_EVENT_GRAMMAR_RULES.itemOpensBeforeDelta
+    ) {
       return fail(
-        "item/opens-before-delta",
+        THREAD_EVENT_GRAMMAR_RULES.itemOpensBeforeDelta,
         ITEM_OPENS_BEFORE_DELTA_TITLE,
-        `${event.type} for item ${event.itemId} arrived before item/started`,
+        result.reason,
       );
     }
   }

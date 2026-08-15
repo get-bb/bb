@@ -9,6 +9,7 @@ import {
   initializeResultSchema,
   threadEventNotificationSchema,
   threadStopParamsSchema,
+  ThreadEventGrammar,
   toolCallRequestParamsSchema,
   turnStartParamsSchema,
 } from "../src/index.js";
@@ -141,6 +142,122 @@ describe("conformance item/opens-before-delta", () => {
 
   it("skips an empty log rather than passing it", () => {
     expect(checkItemOpensBeforeDelta([]).status).toBe("skipped");
+  });
+});
+
+describe("streaming thread event grammar", () => {
+  const scope = { kind: "turn", turnId: "turn_1" } as const;
+  const identity = { threadId: "thr_1", providerThreadId: "p_1" } as const;
+
+  const started = (id: string): ThreadEvent => ({
+    type: "item/started",
+    ...identity,
+    item: { type: "agentMessage", id, text: "" },
+    scope,
+  });
+  const completed = (id: string): ThreadEvent => ({
+    type: "item/completed",
+    ...identity,
+    item: { type: "agentMessage", id, text: "done" },
+    scope,
+  });
+  const turnStarted = (turnId: string): ThreadEvent => ({
+    type: "turn/started",
+    ...identity,
+    scope: { kind: "turn", turnId },
+  });
+  const turnCompleted = (turnId: string): ThreadEvent => ({
+    type: "turn/completed",
+    ...identity,
+    scope: { kind: "turn", turnId },
+    status: "completed",
+  });
+
+  function observeAll(events: ThreadEvent[]) {
+    const grammar = new ThreadEventGrammar();
+    return events.map((event) => grammar.observe(event));
+  }
+
+  it("refuses a second settlement of the same item", () => {
+    const results = observeAll([
+      started("item_1"),
+      completed("item_1"),
+      completed("item_1"),
+    ]);
+    expect(results.map((result) => result.kind)).toEqual([
+      "ok",
+      "ok",
+      "violation",
+    ]);
+    expect(results[2]).toMatchObject({ rule: "item/settles-once" });
+  });
+
+  // An item that settles without a visible opening is non-conformant (the
+  // protocol says every item's first event is item/started), but it carries
+  // the full item payload — dropping it would lose real content, so it opens
+  // and settles in one step and only a REPEAT settlement is refused.
+  it("lets an item that never opened settle once", () => {
+    const results = observeAll([completed("item_1"), completed("item_1")]);
+    expect(results.map((result) => result.kind)).toEqual(["ok", "violation"]);
+  });
+
+  it("refuses turn/completed for a turn that never started", () => {
+    expect(observeAll([turnCompleted("turn_9")])[0]).toMatchObject({
+      kind: "violation",
+      rule: "turn/known",
+    });
+  });
+
+  it("refuses a duplicate turn/completed and a restart of a completed turn", () => {
+    const results = observeAll([
+      turnStarted("turn_1"),
+      turnCompleted("turn_1"),
+      turnCompleted("turn_1"),
+      turnStarted("turn_1"),
+    ]);
+    expect(results.map((result) => result.kind)).toEqual([
+      "ok",
+      "ok",
+      "violation",
+      "violation",
+    ]);
+    expect(results[2]).toMatchObject({ rule: "turn/settles-once" });
+    expect(results[3]).toMatchObject({ rule: "turn/starts-once" });
+  });
+
+  it("keeps each thread's items and turns separate", () => {
+    const grammar = new ThreadEventGrammar();
+    expect(grammar.observe(started("item_1")).kind).toBe("ok");
+    // Same item id, different thread: nothing opened it there.
+    expect(
+      grammar.observe({
+        type: "item/agentMessage/delta",
+        threadId: "thr_2",
+        providerThreadId: "p_2",
+        itemId: "item_1",
+        delta: "hi",
+        scope,
+      }).kind,
+    ).toBe("violation");
+    // A cleared thread forgets its open items.
+    grammar.clearThread("thr_1");
+    expect(
+      grammar.observe({
+        type: "item/agentMessage/delta",
+        threadId: "thr_1",
+        providerThreadId: "p_1",
+        itemId: "item_1",
+        delta: "hi",
+        scope,
+      }).kind,
+    ).toBe("violation");
+  });
+
+  it("does not advance state on a violating event", () => {
+    const grammar = new ThreadEventGrammar();
+    expect(grammar.observe(turnCompleted("turn_1")).kind).toBe("violation");
+    // The refused completion must not have registered as a completed turn.
+    expect(grammar.observe(turnStarted("turn_1")).kind).toBe("ok");
   });
 });
 

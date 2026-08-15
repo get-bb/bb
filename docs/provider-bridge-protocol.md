@@ -130,6 +130,18 @@ Grammar rules:
    order. Output may be delayed, never lost (#1400).
 3. Item ids are unique across the life of a thread, including resumes.
 
+## Host-side enforcement
+
+The conformance kit only covers bridges someone ran it against, and a bridge
+now ships as a plugin artifact that may be third-party. So the host also
+applies the grammar live, at its event intake (`ThreadEventGrammar`): a
+streaming event for an item no `item/started` opened, a second settlement of
+an item, a duplicate `turn/started` or `turn/completed`, and a
+`turn/completed` for a turn that never started are dropped before any runtime
+state changes, each with a warning naming the rule. An item that settles
+without opening is the one non-conformance kept rather than dropped — it
+carries the whole item, so refusing it would lose real content.
+
 ## Sessions
 
 1. `thread/start`, `thread/resume`, and `thread/fork` return

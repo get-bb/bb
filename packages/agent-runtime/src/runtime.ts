@@ -20,7 +20,10 @@ import type {
   ProviderAdapter,
   ProviderAdapterFactory,
 } from "./provider-adapter.js";
-import { BRIDGE_JSON_RPC_ERRORS } from "@bb/provider-bridge-protocol";
+import {
+  BRIDGE_JSON_RPC_ERRORS,
+  ThreadEventGrammar,
+} from "@bb/provider-bridge-protocol";
 import {
   JsonRpcResponseError,
   getJsonRpcStringParam,
@@ -58,7 +61,6 @@ import {
   stampThreadEventScope,
 } from "./runtime-thread-identity.js";
 import { RuntimeThreadGoalState } from "./runtime-thread-goal-state.js";
-import { RuntimeTurnReplayFilter } from "./runtime-turn-replay-filter.js";
 import { RuntimeBackgroundWorkState } from "./runtime-background-work-state.js";
 import { RuntimeTurnState } from "./runtime-turn-state.js";
 import type {
@@ -402,7 +404,10 @@ function createAgentRuntimeInternal(
   const threadGoalState = new RuntimeThreadGoalState();
   const turnState = new RuntimeTurnState();
   const backgroundWorkState = new RuntimeBackgroundWorkState();
-  const turnReplayFilter = new RuntimeTurnReplayFilter();
+  // The host's live grammar check on bridge event streams: the conformance
+  // kit's rules, applied to every bridge including the third-party artifacts
+  // nobody ran the kit against.
+  const threadEventGrammar = new ThreadEventGrammar();
   const bridgeNodeEnv = options.bridgeNodeEnv ?? defaultBridgeNodeEnv();
 
   const providerProcesses = new RuntimeProviderProcessManager({
@@ -447,7 +452,7 @@ function createAgentRuntimeInternal(
       clearThreadRuntimeConfig(threadId);
       turnState.clearThread(threadId);
       backgroundWorkState.clearThread(threadId);
-      turnReplayFilter.clearThread(threadId);
+      threadEventGrammar.clearThread(threadId);
     },
     onStderr: options.onStderr,
     skillRoots,
@@ -754,7 +759,7 @@ function createAgentRuntimeInternal(
     clearThreadRuntimeConfig(threadId);
     turnState.clearThread(threadId);
     backgroundWorkState.clearThread(threadId);
-    turnReplayFilter.clearThread(threadId);
+    threadEventGrammar.clearThread(threadId);
   }
 
   function markProviderSessionNotIdle(threadId: string): void {
@@ -1190,17 +1195,15 @@ function createAgentRuntimeInternal(
           threadId: targetThreadId,
         });
 
-        const replayResult = turnReplayFilter.observe(stampedEvent);
-        if (replayResult.kind === "drop-replayed-turn-start") {
+        const grammarResult = threadEventGrammar.observe(stampedEvent);
+        if (grammarResult.kind === "violation") {
           options.onStderr?.(
-            `Dropping replayed turn/started on already completed turn "${replayResult.turnId}" in thread "${replayResult.threadId}".`,
+            `Dropping ${stampedEvent.type} from provider "${args.proc.providerId}" in thread "${targetThreadId}" (${grammarResult.rule}): ${grammarResult.reason}.`,
           );
           continue;
         }
 
-        const normalizedEvent = normalizeProviderThreadNameEvent(
-          replayResult.event,
-        );
+        const normalizedEvent = normalizeProviderThreadNameEvent(stampedEvent);
         turnState.observe(normalizedEvent);
         backgroundWorkState.observe(normalizedEvent);
         observeProviderSessionIdleState(normalizedEvent);
@@ -2472,7 +2475,7 @@ function createAgentRuntimeInternal(
       threadGoalState.clear();
       turnState.clear();
       backgroundWorkState.clear();
-      turnReplayFilter.clear();
+      threadEventGrammar.clear();
       await providerProcesses.shutdown();
     },
   };
