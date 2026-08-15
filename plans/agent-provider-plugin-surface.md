@@ -87,6 +87,15 @@ Landed on this branch, every commit green:
   sweep (scattered enums, usage surfaces, provider-scoped options for
   workflows/memory toggles); hasOpenThreadWork generic-adapter hook;
   interim icon fallbacks and inlined placeholders move server-side.
+  Graduation prerequisite from the historical-bug audit: several shared
+  translator invariants are pinned only by the legacy adapter tests, so
+  before each deletion PR the relevant cases move to bridge-path suites —
+  a codex translator.test.ts (output capture across reordering, subagent
+  correlation, accepted-steer correlation, delegation nesting), a
+  prompt-completes-without-turn conformance scenario, pi aggregator
+  prefixing/context-window model-list cases, and claude rate-limit
+  retry classification. Calibration replay suites for pi/claude-code/
+  codex (acp has one) are the other graduation gate.
 
 ## Current State (2026-08-14)
 
