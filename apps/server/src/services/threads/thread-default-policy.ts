@@ -330,7 +330,10 @@ export function resolveThreadExecutionPermissionMode(
   registry: ProviderRegistryService,
   args: ResolveThreadExecutionPermissionModeArgs,
 ): PermissionMode {
-  const permissionMode = resolvePreferredThreadExecutionPermissionMode(args);
+  const permissionMode = resolvePreferredThreadExecutionPermissionMode(
+    registry,
+    args,
+  );
   if (
     !isManagedChildThread(args) ||
     args.parentThreadExecutionPermissionMode === undefined
@@ -356,6 +359,7 @@ export function resolveThreadExecutionPermissionMode(
 }
 
 function resolvePreferredThreadExecutionPermissionMode(
+  registry: ProviderRegistryService,
   args: ResolveThreadExecutionPermissionModeArgs,
 ): PermissionMode {
   if (args.requestedPermissionMode) {

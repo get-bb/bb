@@ -363,7 +363,7 @@ describe("resolveThreadExecutionPermissionMode", () => {
 
   it("clamps an explicitly requested mode to the parent's mode", () => {
     expect(
-      resolveThreadExecutionPermissionMode({
+      resolveThreadExecutionPermissionMode(registry, {
         requestedPermissionMode: "full",
         parentThread: makeParentThread(),
         parentThreadExecutionPermissionMode: "auto",
@@ -377,7 +377,7 @@ describe("resolveThreadExecutionPermissionMode", () => {
 
   it("clamps the child's recorded mode to the parent's current mode", () => {
     expect(
-      resolveThreadExecutionPermissionMode({
+      resolveThreadExecutionPermissionMode(registry, {
         lastExecutionPermissionMode: "full",
         parentThread: makeParentThread(),
         parentThreadExecutionPermissionMode: "auto",
@@ -391,7 +391,7 @@ describe("resolveThreadExecutionPermissionMode", () => {
 
   it("keeps an explicit full request under a full parent", () => {
     expect(
-      resolveThreadExecutionPermissionMode({
+      resolveThreadExecutionPermissionMode(registry, {
         requestedPermissionMode: "full",
         parentThread: makeParentThread(),
         parentThreadExecutionPermissionMode: "full",
@@ -405,7 +405,7 @@ describe("resolveThreadExecutionPermissionMode", () => {
 
   it("allows a child to run below its parent's mode", () => {
     expect(
-      resolveThreadExecutionPermissionMode({
+      resolveThreadExecutionPermissionMode(registry, {
         requestedPermissionMode: "accept-edits",
         parentThread: makeParentThread(),
         parentThreadExecutionPermissionMode: "full",
