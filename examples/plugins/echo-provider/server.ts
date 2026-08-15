@@ -3,7 +3,9 @@
  *
  * Surfaces demonstrated:
  * - bb.agents.experimental_registerProvider: the provider declaration (id,
- *   picker metadata, pre-session capability facts, and the bridge reference).
+ *   picker metadata, and pre-session capability facts). Metadata only — the
+ *   implementation is the bridge below, and a declaration without one is
+ *   refused.
  * - bb.providerBridge (package.json): the bridge entry `bb plugin build`
  *   bundles into dist/provider-bridge.mjs. The server stores that artifact
  *   content-addressed and enrolled host daemons download, hash-verify, and
@@ -20,9 +22,6 @@ export default function plugin(bb: BbPluginApi) {
   bb.agents.experimental_registerProvider({
     id: "echo-agent",
     displayName: "Echo Agent",
-    kind: "agent",
-    // Names the bundle bb plugin build emits from `bb.providerBridge`.
-    bridge: { entry: "provider-bridge" },
     capabilities: {
       supportsServiceTier: false,
       supportsHostAiServices: false,

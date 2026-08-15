@@ -385,6 +385,76 @@ typecheck + test green):
      fork/edit affordances; it now subscribes to the query cache.
   8. The skills library labelled every custom ACP agent "ACP provider"; it
      now names providers from the server roster.
+A SECOND, EXTERNAL comparison review then raised six more findings, all
+re-verified against current HEAD with the refute-by-default discipline
+(several resembled pre-graduation claims that had been refuted then; the
+code had since changed, and this time most were real). Five confirmed and
+fixed with red-verified tests, one commit each; one part refuted:
+
+  1. CONFIRMED — declaration/implementation binding. A declaration alone
+     made a provider listable and thread-creatable. A bridge build failure
+     on a mutable-source plugin left the plugin "running" with the failure
+     as a status detail and its provider in the picker (git installs fail
+     hard and npm installs require a prebuilt bundle, so only that path was
+     open); `kind: "router"` did the same by construction, since routers
+     have no bridge and nothing anywhere resolves one. Either way
+     `resolveBridgeLaunchForProviderId` failed open and the first turn died
+     on the daemon with "Unsupported provider". Registration now demands an
+     implementation — this load's artifact, or a daemon-bundled id — and
+     `kind`/`bridge` are gone from the declaration contract:
+     `bridge.entry` was validated and never bound to anything (all four
+     first-party plugins passed the placeholder "provider-bridge"; the real
+     entry is the manifest's `bb.providerBridge`). The daemon-bundled set
+     now lives once, on the host contract both sides read.
+  2. CONFIRMED — first-party id squatting. Collision rejection only covers
+     ids registered right now, so a disabled (or failed, or not-yet-loaded)
+     official plugin left its id free. For `pi` that is more than a name:
+     the runtime refuses artifact routing for bundled ids, so a third-party
+     "pi" would have supplied metadata for bb's own bundled bridge. The
+     four ids and the `acp-` prefix are now reserved to their official
+     plugin, enforced at declaration time and in the registry.
+  3. CONFIRMED — no lifecycle validation at the host boundary.
+     `translateEvent` was a shape-only zod parse straight into runtime
+     state; the only grammar rule anywhere was the turn-replay filter.
+     `ThreadEventGrammar` now applies the conformance kit's rules as a
+     streaming machine at intake (the kit's `checkItemOpensBeforeDelta` is
+     that machine fed a log, so there is one implementation), dropping
+     violations with a warning that names the rule. It replaces the replay
+     filter, whose completed-turn state it subsumes. An item that settles
+     without opening is kept rather than dropped: it carries the whole item
+     payload, so refusing it would lose real content — and the fake bridge
+     in the runtime's own tests emits exactly that shape. Ownership: the
+     single-thread fallback in event thread-id resolution no longer accepts
+     an id naming another live thread.
+  4. PARTLY CONFIRMED — resource bounds. The prior refutation ("server-side
+     caps bound the artifact download") no longer held: there was no cap on
+     a bridge bundle anywhere, and the daemon buffers one whole to verify it
+     before executing it. Capped now on the wire contract and enforced at
+     both ends. The stdout JSON-RPC line was genuinely unbounded on BOTH
+     sides of the pipe (`readline` has no maximum); `readBoundedLines`
+     replaces it and also strips CR, which the stdout path never did.
+     REFUTED — the daemon event-sink queue: unbounded on purpose and
+     documented as such (it holds every host thread's events across a
+     delivery stall and must not drop them), with depth/age tripwires that
+     already warn.
+  5. CONFIRMED — process identity and retirement, both halves. The process
+     key carried the artifact hash but not the declaration facts baked into
+     the adapter at spawn, so a plugin editing its declaration without
+     rebuilding its bundle kept serving new threads from the superseded
+     adapter; and the stale-hash sweep ran only on `ensureProvider`, so a
+     superseded process still owning a thread was skipped and never
+     revisited. A capabilities+options fingerprint now rides the key (and
+     the daemon's model-list runtime cache), and the release path — which
+     already retired thread-scoped codex processes — retires superseded
+     bridge processes too.
+  6. CONFIRMED — fork was constructed unconditionally. The runtime gated on
+     the declaration's `supportsFork` and never read the handshake's
+     `fork`, which the protocol doc calls the operative truth: a `"none"`
+     bridge was sent forks it never promised to reject, and a `"tip"`
+     bridge got checkpoint forks. The adapter now rejects both before
+     dispatch, and the start path builds its plan inside the try so a
+     rejected fork takes the normal failed-construction cleanup.
+
 Remaining: conformance all
 green for all five bridges (the codex pin must be flipped, not deleted);
 calibration suites re-run as bridge-only self-consistency checks; a full
