@@ -10,6 +10,7 @@ import { createApp } from "../../src/server.js";
 import { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../src/services/machine-auth.js";
 import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
+import { registerFirstPartyProviders } from "./provider-registry.js";
 import { SkillTreeRegistry } from "../../src/services/skills/injected-skills.js";
 import { ProviderBridgeArtifactRegistry } from "../../src/services/plugins/provider-bridge-artifacts.js";
 import {
@@ -64,6 +65,14 @@ export async function installTestBuiltinPlugin(
 export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
   appVersionService?: AppVersionService;
   terminalCloseTimeoutMs?: number;
+  /**
+   * Start with an EMPTY provider registry. Providers come only from plugin
+   * declarations now, so the harness pre-registers the four first-party ones
+   * for the majority of tests that need providers but not a plugin runtime.
+   * Tests that install those plugins for real must opt out, or the plugin's
+   * registration collides with the pre-registered copy.
+   */
+  seedFirstPartyProviders?: boolean;
 };
 
 export const testLogger = {
@@ -112,14 +121,21 @@ export function createTestDaemonHostKey(
 export async function createTestAppHarness(
   overrides: TestAppHarnessConfigOverrides = {},
 ): Promise<TestAppHarness> {
-  const { appVersionService, terminalCloseTimeoutMs, ...configOverrides } =
-    overrides;
+  const {
+    appVersionService,
+    terminalCloseTimeoutMs,
+    seedFirstPartyProviders = true,
+    ...configOverrides
+  } = overrides;
   const dataDir = await mkdtemp(join(tmpdir(), "bb-server-test-"));
   const db = initDb(":memory:");
   const hub = new NotificationHubImpl();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
   const providerRegistry = createProviderRegistryService();
+  if (seedFirstPartyProviders) {
+    await registerFirstPartyProviders(providerRegistry);
+  }
   const lifecycleDedupers = createLifecycleDedupers();
   const machineAuth = await createMachineAuthService({
     dataDir,

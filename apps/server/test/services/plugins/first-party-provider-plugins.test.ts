@@ -3,13 +3,16 @@ import { listSystemProviderInfos } from "../../../src/services/system/execution-
 import { withTestHarness, type TestAppHarness } from "../../helpers/test-app.js";
 
 /**
- * Phase-4 equality gate (plans/agent-provider-plugin-surface.md): the four
- * first-party provider plugins must reproduce the core catalog seed exactly.
- * After installing them, the registry listing is deep-identical to the
- * pre-takeover core seed EXCEPT `logoUrl` (null → plugin asset URL) and
- * `source` (core → plugin) — same ids, same order, same capabilities (the
- * registry takeover merge preserves the seed's archive/rename/workflows/
- * session-restore facts), same composer actions, same reasoning ladders.
+ * The first-party provider plugins are the ONLY source of the four built-in
+ * providers — the core catalog seed is deleted. So this is no longer a diff
+ * against a "before" snapshot (there is nothing to diff against); it is a
+ * golden pin on what the declarations must produce.
+ *
+ * What it guards is the same regression the old takeover merge existed to
+ * prevent: the facts that used to be preserved from the seed because the
+ * declaration had no slot for them — codex archive/rename mirroring and claude
+ * workflows — are now declared, and a wrong or missing declaration silently
+ * turns a flagship behavior off.
  */
 
 const FIRST_PARTY_PROVIDER_PLUGINS = [
@@ -17,39 +20,57 @@ const FIRST_PARTY_PROVIDER_PLUGINS = [
     builtinName: "provider-codex",
     pluginId: "provider-codex",
     providerId: "codex",
-    iconAsset: "icons/codex.svg",
+    displayName: "Codex",
+    supportsArchive: true,
+    supportsRename: true,
+    supportsWorkflows: false,
+    supportsManualCompaction: true,
+    backsHostDaemonAiServices: true,
   },
   {
     builtinName: "provider-claude-code",
     pluginId: "provider-claude-code",
     providerId: "claude-code",
-    iconAsset: "icons/claude-code.svg",
+    displayName: "Claude Code",
+    supportsArchive: false,
+    supportsRename: false,
+    supportsWorkflows: true,
+    supportsManualCompaction: true,
+    backsHostDaemonAiServices: false,
   },
   {
     builtinName: "provider-pi",
     pluginId: "provider-pi",
     providerId: "pi",
-    iconAsset: "icons/pi.svg",
+    displayName: "Pi",
+    supportsArchive: false,
+    supportsRename: false,
+    supportsWorkflows: false,
+    supportsManualCompaction: true,
+    backsHostDaemonAiServices: false,
   },
   {
     builtinName: "provider-acp",
     pluginId: "provider-acp",
     providerId: "acp-cursor",
-    iconAsset: "icons/cursor.svg",
+    displayName: "Cursor",
+    supportsArchive: false,
+    supportsRename: false,
+    supportsWorkflows: false,
+    supportsManualCompaction: false,
+    backsHostDaemonAiServices: false,
   },
 ] as const;
 
-const SEED_PROVIDER_IDS = FIRST_PARTY_PROVIDER_PLUGINS.map(
+const PROVIDER_IDS = FIRST_PARTY_PROVIDER_PLUGINS.map(
   (plugin) => plugin.providerId,
 );
 
-function expectedLogoUrl(
-  plugin: (typeof FIRST_PARTY_PROVIDER_PLUGINS)[number],
-): string {
+function expectedLogoUrl(providerId: string): string {
   // Served from the icon byte snapshot on the registration by the
   // provider-logo route (the raw plugin-assets route serves only branding
   // variants and built bundles).
-  return `/api/v1/system/providers/${plugin.providerId}/logo`;
+  return `/api/v1/system/providers/${providerId}/logo`;
 }
 
 async function installFirstPartyProviderPlugins(
@@ -69,119 +90,108 @@ async function installFirstPartyProviderPlugins(
 
 describe("first-party provider plugins", () => {
   it(
-    "takes over the core seed with a listing deep-identical except logoUrl and source",
+    "are the sole source of the built-in providers",
     async () => {
-      await withTestHarness(async (harness) => {
+      await withTestHarness({ seedFirstPartyProviders: false }, async (harness) => {
         const registry = harness.deps.providerRegistry;
-        const seed = structuredClone(registry.list());
-        expect(seed.map((entry) => entry.info.id)).toEqual(SEED_PROVIDER_IDS);
-        expect(seed.map((entry) => entry.source)).toEqual(
-          SEED_PROVIDER_IDS.map(() => ({ kind: "core" })),
-        );
-        expect(seed.map((entry) => entry.info.logoUrl)).toEqual(
-          SEED_PROVIDER_IDS.map(() => null),
-        );
-        const seedInfos = structuredClone(
-          await listSystemProviderInfos(harness.deps, {}),
-        );
-        const seedCompaction = SEED_PROVIDER_IDS.map((providerId) =>
-          registry.supportsManualCompaction(providerId),
-        );
+        // No seed underneath: nothing exists until the plugins load.
+        expect(registry.list()).toEqual([]);
 
         await installFirstPartyProviderPlugins(harness);
 
         const after = registry.list();
-        // Same providers in the same (picker) order.
-        expect(after.map((entry) => entry.info.id)).toEqual(SEED_PROVIDER_IDS);
+        // Product order, not plugin load order (which is alphabetical by
+        // plugin id and would put acp-cursor first).
+        expect(after.map((entry) => entry.info.id)).toEqual(PROVIDER_IDS);
+
         for (const [index, registration] of after.entries()) {
           const plugin = FIRST_PARTY_PROVIDER_PLUGINS[index];
-          const seedEntry = seed[index];
-          if (plugin === undefined || seedEntry === undefined) {
-            throw new Error(`missing seed entry at index ${index}`);
+          if (plugin === undefined) {
+            throw new Error(`missing expectation at index ${index}`);
           }
-          // The two permitted differences: source and logoUrl.
-          expect(registration.source).toEqual({
+          const label = plugin.providerId;
+          expect(registration.source, label).toEqual({
             kind: "plugin",
             pluginId: plugin.pluginId,
           });
-          expect(registration.info.logoUrl, plugin.providerId).toBe(
-            expectedLogoUrl(plugin),
+          expect(registration.info.displayName, label).toBe(plugin.displayName);
+          expect(registration.info.logoUrl, label).toBe(
+            expectedLogoUrl(plugin.providerId),
           );
-          // Everything else is deep-identical to the pre-takeover core seed:
-          // capabilities (archive/rename preserved by the takeover merge),
-          // composer actions, display name, availability.
+          // The facts the takeover merge used to carry over from the seed.
+          expect(registration.info.capabilities.supportsArchive, label).toBe(
+            plugin.supportsArchive,
+          );
+          expect(registration.info.capabilities.supportsRename, label).toBe(
+            plugin.supportsRename,
+          );
           expect(
-            { ...registration.info, logoUrl: null },
-            plugin.providerId,
-          ).toStrictEqual(seedEntry.info);
-          // Backend-only capabilities: workflows/session-restore preserved by
-          // the merge; AI services + reasoning ladders from the declarations.
-          expect(registration.serverCapabilities, plugin.providerId).toStrictEqual(
-            seedEntry.serverCapabilities,
+            registration.serverCapabilities.supportsWorkflows,
+            label,
+          ).toBe(plugin.supportsWorkflows);
+          expect(
+            registration.serverCapabilities.backsHostDaemonAiServices,
+            label,
+          ).toBe(plugin.backsHostDaemonAiServices);
+          expect(registry.supportsManualCompaction(plugin.providerId)).toBe(
+            plugin.supportsManualCompaction,
           );
           // The declared bridge reference rides the registration (phase 5).
-          expect(registration.declaration, plugin.providerId).toMatchObject({
+          expect(registration.declaration, label).toMatchObject({
             kind: "agent",
             bridge: { entry: "provider-bridge" },
           });
         }
-        // The compaction accessor answers from the plugin declarations and
-        // must match the catalog's pre-takeover answers.
-        expect(
-          SEED_PROVIDER_IDS.map((providerId) =>
-            registry.supportsManualCompaction(providerId),
-          ),
-        ).toEqual(seedCompaction);
 
-        // The composed provider listing (GET /system/providers path) is
-        // identical too, modulo the plugin-served logos.
-        const afterInfos = await listSystemProviderInfos(harness.deps, {});
-        expect(afterInfos.map((info) => info.logoUrl)).toEqual(
-          FIRST_PARTY_PROVIDER_PLUGINS.map(expectedLogoUrl),
+        // The composed provider listing (GET /system/providers path) agrees.
+        const infos = await listSystemProviderInfos(harness.deps, {});
+        expect(infos.map((info) => info.id)).toEqual(PROVIDER_IDS);
+        expect(infos.map((info) => info.logoUrl)).toEqual(
+          PROVIDER_IDS.map(expectedLogoUrl),
         );
-        expect(
-          afterInfos.map((info) => ({ ...info, logoUrl: null })),
-        ).toStrictEqual(seedInfos);
       });
     },
     60_000,
   );
 
   it(
-    "disabling provider-pi restores the pre-takeover core seed entry in place",
+    "disabling a provider plugin removes its provider, and re-enabling restores its position",
     async () => {
-      await withTestHarness(async (harness) => {
+      await withTestHarness({ seedFirstPartyProviders: false }, async (harness) => {
         const registry = harness.deps.providerRegistry;
-        const seedPi = structuredClone(registry.get("pi"));
-        expect(seedPi?.source).toEqual({ kind: "core" });
-
         await installFirstPartyProviderPlugins(harness);
         expect(registry.get("pi")?.source).toEqual({
           kind: "plugin",
           pluginId: "provider-pi",
         });
 
-        // Graceful absence (transitional): while the core seed still exists,
-        // disabling a first-party provider plugin degrades that provider to
-        // the pre-takeover core declaration instead of removing it.
+        // With the seed deleted there is nothing to degrade to: the provider
+        // is gone, and every policy accessor says so rather than keeping a
+        // stale claim alive.
         await harness.pluginService.setEnabled("provider-pi", false);
 
-        expect(registry.get("pi")).toStrictEqual(seedPi);
-        // Position preserved: pi stays third in the listing.
-        expect(registry.list().map((entry) => entry.info.id)).toEqual(
-          SEED_PROVIDER_IDS,
-        );
+        expect(registry.get("pi")).toBeNull();
+        expect(registry.getServerCapabilities("pi")).toBeNull();
+        expect(registry.getSupportedPermissionModes("pi")).toBeNull();
+        expect(registry.supportsNativeFork("pi")).toBe(false);
+        expect(registry.supportsManualCompaction("pi")).toBe(false);
+        expect(registry.list().map((entry) => entry.info.id)).toEqual([
+          "codex",
+          "claude-code",
+          "acp-cursor",
+        ]);
         const infos = await listSystemProviderInfos(harness.deps, {});
-        expect(
-          infos.find((info) => info.id === "pi"),
-        ).toStrictEqual(seedPi?.info);
+        expect(infos.find((info) => info.id === "pi")).toBeUndefined();
 
-        // Re-enabling takes the entry over again.
+        // Re-enabling restores it in its product position, not at the end.
         await harness.pluginService.setEnabled("provider-pi", true);
         expect(registry.get("pi")?.source).toEqual({
           kind: "plugin",
           pluginId: "provider-pi",
         });
+        expect(registry.list().map((entry) => entry.info.id)).toEqual(
+          PROVIDER_IDS,
+        );
       });
     },
     60_000,

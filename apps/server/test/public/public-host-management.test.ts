@@ -449,7 +449,10 @@ describe("public host management", () => {
   });
 
   it("asks the connect plugin to revoke the removed host's cloud machine", async () => {
-    await withTestHarness(async (harness) => {
+    // Starts the real plugin service, which loads the builtin provider
+    // plugins; they are the registry's only source, so the harness must not
+    // pre-register copies of the same declarations.
+    await withTestHarness({ seedFirstPartyProviders: false }, async (harness) => {
       const primary = seedHost(harness.deps, { id: "host_primary" });
       seedPrimaryHost(harness.deps, primary.id);
       const host = seedHost(harness.deps, {

@@ -12,9 +12,9 @@ import {
   resolveThreadExecutionPermissionMode,
   resolveWorkflowsEnabledPolicy,
 } from "../../src/services/threads/thread-default-policy.js";
-import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
+import { createTestProviderRegistry } from "../helpers/provider-registry.js";
 
-const registry = createProviderRegistryService();
+const registry = await createTestProviderRegistry();
 
 type PolicyTestThread = Pick<
   Thread,

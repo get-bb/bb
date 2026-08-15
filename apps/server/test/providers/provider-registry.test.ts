@@ -1,7 +1,3 @@
-import {
-  getBuiltInAgentProviderServerCapabilities,
-  listBuiltInAgentProviderInfos,
-} from "@bb/agent-providers";
 import { describe, expect, it } from "vitest";
 import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
 
@@ -23,38 +19,62 @@ const CURSOR_LIKE_INFO = {
 
 const MINIMAL_SERVER_CAPABILITIES = {
   supportsWorkflows: false,
-  supportsSessionRestore: false,
   backsHostDaemonAiServices: false,
   reasoningLevels: ["medium" as const],
 };
 
+function registerProvider(
+  registry: ReturnType<typeof createProviderRegistryService>,
+  id: string,
+  pluginId: string,
+): { dispose(): void } {
+  return registry.register({
+    info: { ...CURSOR_LIKE_INFO, id },
+    serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
+    pluginId,
+  });
+}
+
 describe("provider registry policy accessors", () => {
-  it("answers policy questions identically to the catalog helpers", () => {
+  it("answers from the registration, not a core seed", () => {
     const registry = createProviderRegistryService();
-    for (const info of listBuiltInAgentProviderInfos()) {
-      expect(registry.getServerCapabilities(info.id)).toStrictEqual(
-        getBuiltInAgentProviderServerCapabilities(info.id),
-      );
-      expect(registry.getSupportedPermissionModes(info.id)).toStrictEqual(
-        info.capabilities.supportedPermissionModes,
-      );
-      expect(registry.supportsNativeFork(info.id)).toBe(
-        info.capabilities.supportsFork,
-      );
-    }
+    registry.register({
+      info: {
+        ...CURSOR_LIKE_INFO,
+        id: "codex",
+        capabilities: {
+          ...CURSOR_LIKE_INFO.capabilities,
+          supportsFork: true,
+          supportedPermissionModes: ["accept-edits", "full"],
+        },
+      },
+      serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
+      pluginId: "provider-codex",
+    });
+    expect(registry.getServerCapabilities("codex")).toStrictEqual(
+      MINIMAL_SERVER_CAPABILITIES,
+    );
+    expect(registry.getSupportedPermissionModes("codex")).toStrictEqual([
+      "accept-edits",
+      "full",
+    ]);
+    expect(registry.supportsNativeFork("codex")).toBe(true);
   });
 
+  // The dynamic ACP tier is the one answer source that is not a registration:
+  // acp-* ids resolved from launch specs are never declared by a plugin.
   it("falls back to the shared ACP tier for unregistered acp-* ids", () => {
     const registry = createProviderRegistryService();
     expect(registry.getServerCapabilities("acp-custom-agent")).not.toBeNull();
     expect(
       registry.getSupportedPermissionModes("acp-custom-agent"),
     ).toStrictEqual(["accept-edits", "full"]);
-    // ACP fork support is the declared offer; per-agent truth is negotiated
-    // at the bridge handshake.
     expect(typeof registry.supportsNativeFork("acp-custom-agent")).toBe(
       "boolean",
     );
+    // The acp-opencode compaction quirk still rides the ACP tier.
+    expect(registry.supportsManualCompaction("acp-opencode")).toBe(true);
+    expect(registry.supportsManualCompaction("acp-custom-agent")).toBe(false);
   });
 
   it("answers null/false for unknown provider ids", () => {
@@ -63,95 +83,98 @@ describe("provider registry policy accessors", () => {
     expect(registry.getSupportedPermissionModes("nope")).toBeNull();
     expect(registry.supportsNativeFork("nope")).toBe(false);
   });
-});
 
-describe("provider registry takeover", () => {
-  it("lets a builtin takeover replace its core-seed entry in place and restores on dispose", () => {
+  // A disabled provider plugin removes its provider outright. The compaction
+  // accessor used to keep answering `true` for codex from a catalog string
+  // list even with no registration; that would have been the one accessor
+  // claiming a capability for a provider that no longer exists.
+  it("stops claiming capabilities for a provider whose plugin is gone", () => {
     const registry = createProviderRegistryService();
-    const before = registry.list();
-    const codexIndex = before.findIndex((entry) => entry.info.id === "codex");
-    expect(codexIndex).toBeGreaterThanOrEqual(0);
-    const coreCodex = registry.get("codex");
-
     const handle = registry.register({
-      info: { ...CURSOR_LIKE_INFO, id: "codex", displayName: "Codex (plugin)" },
+      info: { ...CURSOR_LIKE_INFO, id: "codex" },
       serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
       pluginId: "provider-codex",
-      takeover: true,
+      declaration: {
+        capabilities: { supportsManualCompaction: true },
+      } as never,
     });
-
-    const after = registry.list();
-    // Position preserved, source flipped, count unchanged.
-    expect(after).toHaveLength(before.length);
-    expect(after[codexIndex]?.info.displayName).toBe("Codex (plugin)");
-    expect(after[codexIndex]?.source).toStrictEqual({
-      kind: "plugin",
-      pluginId: "provider-codex",
-    });
+    expect(registry.supportsManualCompaction("codex")).toBe(true);
 
     handle.dispose();
-    expect(registry.get("codex")).toStrictEqual(coreCodex);
-    expect(registry.list()[codexIndex]?.info.id).toBe("codex");
+    expect(registry.get("codex")).toBeNull();
+    expect(registry.supportsManualCompaction("codex")).toBe(false);
+    expect(registry.getServerCapabilities("codex")).toBeNull();
+  });
+});
+
+describe("provider registry ordering", () => {
+  // Listing order is product policy. Plugins load alphabetically by plugin id
+  // and a disable/re-enable moves a registration to the end, so order must not
+  // come from registration order.
+  it("lists product-ordered ids first regardless of registration order", () => {
+    const registry = createProviderRegistryService();
+    registerProvider(registry, "pi", "provider-pi");
+    registerProvider(registry, "acp-cursor", "provider-acp");
+    registerProvider(registry, "codex", "provider-codex");
+    registerProvider(registry, "claude-code", "provider-claude-code");
+
+    expect(registry.list().map((entry) => entry.info.id)).toStrictEqual([
+      "codex",
+      "claude-code",
+      "pi",
+      "acp-cursor",
+    ]);
   });
 
-  it("still rejects non-takeover shadowing of core and plugin ids", () => {
+  it("appends undeclared ids after the product order, by registration", () => {
     const registry = createProviderRegistryService();
-    expect(() =>
-      registry.register({
-        info: { ...CURSOR_LIKE_INFO, id: "codex" },
-        serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
-        pluginId: "impostor",
-      }),
-    ).toThrow(/already registered/);
-    // Takeover of another plugin's id is also rejected: takeover only
-    // targets the core seed.
-    const first = registry.register({
-      info: CURSOR_LIKE_INFO,
-      serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
-      pluginId: "owner",
-    });
-    expect(() =>
-      registry.register({
-        info: CURSOR_LIKE_INFO,
-        serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
-        pluginId: "impostor",
-        takeover: true,
-      }),
-    ).toThrow(/already registered/);
-    first.dispose();
+    registerProvider(registry, "zeta-agent", "zeta");
+    registerProvider(registry, "codex", "provider-codex");
+    registerProvider(registry, "alpha-agent", "alpha");
+
+    expect(registry.list().map((entry) => entry.info.id)).toStrictEqual([
+      "codex",
+      "zeta-agent",
+      "alpha-agent",
+    ]);
+  });
+
+  it("re-enabling a provider plugin restores its listing position", () => {
+    const registry = createProviderRegistryService();
+    registerProvider(registry, "codex", "provider-codex");
+    const pi = registerProvider(registry, "pi", "provider-pi");
+    registerProvider(registry, "acp-cursor", "provider-acp");
+
+    pi.dispose();
+    expect(registry.list().map((entry) => entry.info.id)).toStrictEqual([
+      "codex",
+      "acp-cursor",
+    ]);
+
+    registerProvider(registry, "pi", "provider-pi");
+    expect(registry.list().map((entry) => entry.info.id)).toStrictEqual([
+      "codex",
+      "pi",
+      "acp-cursor",
+    ]);
   });
 });
 
 describe("provider registry", () => {
-  it("resolves a provider set identical to the core catalog (the phase-3 equality pin)", () => {
-    const registry = createProviderRegistryService();
-    expect(registry.list().map((entry) => entry.info)).toStrictEqual(
-      listBuiltInAgentProviderInfos(),
-    );
-    for (const info of listBuiltInAgentProviderInfos()) {
-      expect(registry.get(info.id)?.serverCapabilities).toStrictEqual(
-        getBuiltInAgentProviderServerCapabilities(info.id),
-      );
-      expect(registry.get(info.id)?.source).toStrictEqual({ kind: "core" });
-    }
+  it("starts empty: providers exist only while a plugin declares them", () => {
+    expect(createProviderRegistryService().list()).toStrictEqual([]);
   });
 
   it("rejects plugin registrations that shadow an existing provider", () => {
     const registry = createProviderRegistryService();
-    const coreId = listBuiltInAgentProviderInfos()[0]?.id;
-    expect(coreId).toBeDefined();
-    expect(() =>
-      registry.register({
-        info: { ...CURSOR_LIKE_INFO, id: coreId ?? "codex" },
-        serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
-        pluginId: "some-plugin",
-      }),
-    ).toThrow(/already registered/);
+    registerProvider(registry, "codex", "provider-codex");
+    expect(() => registerProvider(registry, "codex", "impostor")).toThrow(
+      /already registered/,
+    );
   });
 
-  it("adds and disposes plugin registrations without disturbing the core seed", () => {
+  it("adds and disposes plugin registrations", () => {
     const registry = createProviderRegistryService();
-    const before = registry.list().length;
     const handle = registry.register({
       info: CURSOR_LIKE_INFO,
       serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
@@ -160,11 +183,11 @@ describe("provider registry", () => {
     expect(registry.get("plugin-provider")).toMatchObject({
       source: { kind: "plugin", pluginId: "some-plugin" },
     });
-    expect(registry.list()).toHaveLength(before + 1);
+    expect(registry.list()).toHaveLength(1);
 
     handle.dispose();
     expect(registry.get("plugin-provider")).toBeNull();
-    expect(registry.list()).toHaveLength(before);
+    expect(registry.list()).toHaveLength(0);
 
     // Disposing twice, or after a re-registration, must not remove a newer
     // registration for the same id.

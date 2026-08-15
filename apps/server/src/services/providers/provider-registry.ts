@@ -1,13 +1,10 @@
 /**
  * The provider registry: the single server-side source of provider metadata.
  *
- * Phase 3 of plans/agent-provider-plugin-surface.md. Today the registry is
- * seeded from the core catalog (@bb/agent-providers), so its resolved
- * provider set is provably identical to the catalog's — the equality test
- * pins that. Plugin-registered providers
- * (bb.agents.experimental_registerProvider) join the same store; when the
- * built-ins ship as first-party plugins the core seed disappears and the
- * catalog package with it.
+ * Plugin declarations (bb.agents.experimental_registerProvider) are the ONLY
+ * source. The core catalog seed is gone, so a provider exists exactly while
+ * some enabled plugin declares it — disabling a provider plugin removes its
+ * provider rather than degrading it to a core entry.
  *
  * The registry holds DECLARATIONS — static metadata a provider asserts about
  * itself (identity, branding, capabilities, composer actions). Availability
@@ -17,29 +14,61 @@
 import {
   buildAcpProviderInfo,
   getAcpProviderServerCapabilities,
-  getBuiltInAgentProviderServerCapabilities,
   isAcpProviderId,
-  listBuiltInAgentProviderInfos,
   supportsManualCompaction as supportsCatalogManualCompaction,
-  type ProviderServerCapabilities,
 } from "@bb/agent-providers";
-import type { PermissionMode, ProviderInfo } from "@bb/domain";
+import type { PermissionMode, ProviderInfo, ReasoningLevel } from "@bb/domain";
 import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 
-export type ProviderRegistrationSource =
-  | { kind: "core" }
-  | { kind: "plugin"; pluginId: string };
+/**
+ * Backend-only provider facts, the server-side half of a declaration (the
+ * client-facing half is `ProviderInfo`). Kept here rather than in a shared
+ * package because only the registry and its policy accessors read it.
+ */
+export interface ProviderServerCapabilities {
+  /**
+   * Whether sessions get the Workflows feature (dynamic multi-agent
+   * orchestration). The Workflow tool's own opt-in rules govern actual use.
+   */
+  supportsWorkflows: boolean;
+  /**
+   * Whether this provider backs host-daemon-routed AI services (voice
+   * transcription and structured inference) via its `*.voice.transcribe` /
+   * `*.inference.complete` daemon commands.
+   */
+  backsHostDaemonAiServices: boolean;
+  /**
+   * The coarse, ordered per-provider reasoning ladder. Used as a fallback when
+   * a precise per-model `supportedReasoningEfforts` set is unavailable.
+   */
+  reasoningLevels: readonly ReasoningLevel[];
+}
+
+/**
+ * Listing order is product policy, so the server states it instead of
+ * inheriting it from plugin load order (which is alphabetical by plugin id
+ * and, worse, moves a provider to the end when it is disabled and re-enabled).
+ * Ids named here lead, in this order; everything else follows by registration.
+ * The first entry is also the product default provider.
+ */
+export const PRODUCT_PROVIDER_ORDER: readonly string[] = [
+  "codex",
+  "claude-code",
+  "pi",
+  "acp-cursor",
+];
+
+export type ProviderRegistrationSource = { kind: "plugin"; pluginId: string };
 
 export interface ProviderRegistration {
   info: ProviderInfo;
   serverCapabilities: ProviderServerCapabilities;
   source: ProviderRegistrationSource;
   /**
-   * The plugin's full declaration — present only for plugin-sourced entries.
-   * Retained so declared facts without a registry consumer yet (`kind`,
-   * `bridge`, `supportsNativeSessionRewind`) are not dropped by the
-   * info/serverCapabilities mapping; `supportsManualCompaction` is read from
-   * it by the compaction accessor below.
+   * The plugin's full declaration. Retained so declared facts without a
+   * registry consumer yet (`kind`, `bridge`, `supportsNativeSessionRewind`)
+   * are not dropped by the info/serverCapabilities mapping;
+   * `supportsManualCompaction` is read from it by the compaction accessor.
    */
   declaration?: PluginProviderDeclaration;
   /**
@@ -52,7 +81,7 @@ export interface ProviderRegistration {
 }
 
 export interface ProviderRegistryService {
-  /** Registered provider metadata, stable order: core seed first, then plugins by registration. */
+  /** Registered provider metadata in {@link PRODUCT_PROVIDER_ORDER}, then the rest by registration. */
   list(): ProviderRegistration[];
   get(providerId: string): ProviderRegistration | null;
   /**
@@ -67,61 +96,40 @@ export interface ProviderRegistryService {
   ): readonly PermissionMode[] | null;
   supportsNativeFork(providerId: string): boolean;
   /**
-   * Whether BB can explicitly request context compaction. Plugin providers
-   * answer from their declaration; every other id falls back to the catalog
-   * helper, which keeps its acp-opencode quirk until the phase-6
-   * capability + `thread/compact` protocol method replace the string list.
+   * Whether BB can explicitly request context compaction. Registered
+   * providers answer from their declaration; the dynamic ACP tier keeps the
+   * catalog helper's acp-opencode quirk until the phase-6 capability +
+   * `thread/compact` protocol method replace the string list.
    */
   supportsManualCompaction(providerId: string): boolean;
   /**
    * Adds a plugin-registered provider. Rejects id collisions with any live
-   * registration — a plugin cannot shadow a core provider or another plugin
-   * — EXCEPT builtin first-party plugins (`takeover: true`), which replace
-   * their core-seed entry in place: the picker position is preserved and the
-   * seed entry is restored when the plugin is disabled, so disabling a
-   * first-party provider plugin degrades to the core declaration rather
-   * than deleting the provider outright while the core seed still exists.
-   * (The seed itself is deleted at graduation; takeover then registers
-   * fresh.) The disposer removes the registration (plugin reload/disable).
+   * registration — a plugin cannot shadow another plugin's provider. The
+   * disposer removes the registration (plugin reload/disable), which really
+   * does remove the provider: with no seed underneath, a disabled provider
+   * plugin leaves no entry behind.
    */
   register(
-    registration: Omit<ProviderRegistration, "source"> & {
-      pluginId: string;
-      takeover?: boolean;
-    },
+    registration: Omit<ProviderRegistration, "source"> & { pluginId: string },
   ): { dispose(): void };
 }
 
 export function createProviderRegistryService(): ProviderRegistryService {
-  const coreSeed: ProviderRegistration[] = listBuiltInAgentProviderInfos().map(
-    (info) => ({
-      info,
-      serverCapabilities: getBuiltInAgentProviderServerCapabilities(info.id),
-      source: { kind: "core" },
-    }),
-  );
-
   const pluginRegistrations = new Map<string, ProviderRegistration>();
 
-  function liveIds(): Set<string> {
-    const ids = new Set(coreSeed.map((entry) => entry.info.id));
-    for (const id of pluginRegistrations.keys()) {
-      ids.add(id);
-    }
-    return ids;
-  }
-
   function getRegistration(providerId: string): ProviderRegistration | null {
-    const fromPlugin = pluginRegistrations.get(providerId);
-    if (fromPlugin) {
-      return fromPlugin;
-    }
-    return coreSeed.find((entry) => entry.info.id === providerId) ?? null;
+    return pluginRegistrations.get(providerId) ?? null;
   }
 
   return {
     list() {
-      return [...coreSeed, ...pluginRegistrations.values()];
+      const entries = [...pluginRegistrations.values()];
+      const rank = (entry: ProviderRegistration): number => {
+        const index = PRODUCT_PROVIDER_ORDER.indexOf(entry.info.id);
+        return index === -1 ? PRODUCT_PROVIDER_ORDER.length : index;
+      };
+      // Stable sort keeps registration order within the unranked tail.
+      return entries.sort((a, b) => rank(a) - rank(b));
     },
 
     get(providerId) {
@@ -171,63 +179,21 @@ export function createProviderRegistryService(): ProviderRegistryService {
 
     supportsManualCompaction(providerId) {
       const registration = getRegistration(providerId);
-      if (registration?.source.kind === "plugin") {
+      if (registration) {
         return (
           registration.declaration?.capabilities.supportsManualCompaction ??
           false
         );
       }
-      return supportsCatalogManualCompaction(providerId);
+      if (isAcpProviderId(providerId)) {
+        return supportsCatalogManualCompaction(providerId);
+      }
+      return false;
     },
 
     register(registration) {
       const providerId = registration.info.id;
-      const seedIndex = coreSeed.findIndex(
-        (entry) => entry.info.id === providerId,
-      );
-      if (registration.takeover === true && seedIndex !== -1) {
-        const replaced = coreSeed[seedIndex] as ProviderRegistration;
-        // Transitional merge: the plugin declaration has no slots for
-        // session-behavior facts (archive/name sync live in the bridge
-        // handshake; workflows moves to the claude plugin's own settings;
-        // session restore is handshake-reported). Until each field's proper
-        // consumer repoint ships, a takeover preserves the replaced entry's
-        // values so flipping a first-party plugin on cannot regress the
-        // flagship behaviors (codex archive mirroring, claude workflows).
-        const entry: ProviderRegistration = {
-          info: {
-            ...registration.info,
-            capabilities: {
-              ...registration.info.capabilities,
-              supportsArchive: replaced.info.capabilities.supportsArchive,
-              supportsRename: replaced.info.capabilities.supportsRename,
-            },
-          },
-          serverCapabilities: {
-            ...registration.serverCapabilities,
-            supportsWorkflows: replaced.serverCapabilities.supportsWorkflows,
-            supportsSessionRestore:
-              replaced.serverCapabilities.supportsSessionRestore,
-          },
-          ...(registration.declaration !== undefined
-            ? { declaration: registration.declaration }
-            : {}),
-          ...(registration.icon !== undefined
-            ? { icon: registration.icon }
-            : {}),
-          source: { kind: "plugin", pluginId: registration.pluginId },
-        };
-        coreSeed[seedIndex] = entry;
-        return {
-          dispose() {
-            const currentIndex = coreSeed.indexOf(entry);
-            if (currentIndex !== -1) {
-              coreSeed[currentIndex] = replaced;
-            }
-          },
-        };
-      }
-      if (liveIds().has(providerId)) {
+      if (pluginRegistrations.has(providerId)) {
         throw new Error(
           `Provider "${providerId}" is already registered; a plugin cannot shadow an existing provider.`,
         );

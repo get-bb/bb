@@ -158,9 +158,11 @@ picker entry) into the server's `ProviderRegistryService`. The declaration is
 validated at call time by the shared host policy
 (`validatePluginProviderDeclaration`); registrations stage during the factory
 and commit when the plugin load commits, are replaced wholesale on reload, and
-are removed by the returned disposer or on unload/disable. A registered
-provider is mapped onto the catalog shapes (`ProviderInfo` +
-`ProviderServerCapabilities`) and appears in the composed provider listing
+are removed by the returned disposer or on unload/disable. Declarations are
+now the ONLY source of providers — the core catalog seed is deleted, so
+disabling a provider plugin removes its provider. A registered provider is
+mapped onto `ProviderInfo` + `ProviderServerCapabilities` and appears in the
+composed provider listing
 (`GET /system/providers` / execution options). The full declaration rides the
 registration record so fields without a registry consumer yet (`kind`,
 `bridge`, `supportsNativeSessionRewind`, `supportsManualCompaction`) are not
@@ -168,12 +170,12 @@ dropped.
 
 **Audit before stabilizing.**
 
-1. **Policy consumers still read the core catalog — the stabilization
-   blocker.** Thread default policy, permission gates/ceiling, and reasoning
-   validation resolve provider capabilities from `@bb/agent-providers`
-   helpers, not from the registry, so a thread cannot yet be created on a
-   plugin-registered provider (only the listing is repointed). Repoint every
-   policy consumer to `ProviderRegistryService` before dropping the prefix.
+1. **Listing order is a server-side table.** `PRODUCT_PROVIDER_ORDER` in
+   `provider-registry.ts` names the ids that lead the picker (and its head is
+   the product default provider); everything else follows by registration
+   order. Decide whether third-party providers ever need to influence their
+   own position — self-declared ranking is hostile, so any answer other than
+   "no" needs a design — before the ordering behavior freezes into clients.
 2. **Icon URL shape.** `logoUrl` is emitted as
    `/api/v1/plugins/<pluginId>/assets/<icon.asset>`. Confirm the plugin asset
    route actually serves arbitrary declared assets at that path (today it

@@ -1,13 +1,13 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 
 /**
- * First-party ACP provider plugin (phase 4 of
+ * First-party ACP provider plugin (see
  * plans/agent-provider-plugin-surface.md). Registers only the Cursor
  * declaration for now — known/custom ACP composition stays server-side
- * transitionally (see README.md). The declaration mirrors the core catalog
- * entry exactly; the registry's builtin takeover replaces the core seed in
- * place, and disabling this plugin restores it. The bridge entry is validated
- * now — bridge bundles are delivered to hosts in phase 5.
+ * transitionally (see README.md). The
+ * declaration is the only source of this provider: with the core catalog seed
+ * deleted, disabling this plugin removes the provider. The bridge entry is
+ * validated now — bridge bundles are delivered to hosts in phase 5.
  */
 export default function plugin(bb: BbPluginApi) {
   bb.agents.experimental_registerProvider({
@@ -23,6 +23,9 @@ export default function plugin(bb: BbPluginApi) {
       supportsNativeFork: true,
       supportsNativeSessionRewind: false,
       supportsManualCompaction: false,
+      supportsThreadArchive: false,
+      supportsThreadRename: false,
+      supportsWorkflows: false,
       permissionModes: ["accept-edits", "full"],
       reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
     },

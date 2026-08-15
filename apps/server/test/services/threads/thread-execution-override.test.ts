@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createProviderRegistryService } from "../../../src/services/providers/provider-registry.js";
+import { createTestProviderRegistry } from "../../helpers/provider-registry.js";
 import { resolveThreadExecutionOverrideUpdate } from "../../../src/services/threads/thread-execution-override.js";
 import { availableModelFixture } from "../../helpers/available-models.js";
 
@@ -12,7 +12,7 @@ const HAIKU = availableModelFixture({ model: "claude-haiku-4-5" });
 const CATALOG = [OPUS, HAIKU];
 const EMPTY = { modelOverride: null, reasoningLevelOverride: null };
 
-const registry = createProviderRegistryService();
+const registry = await createTestProviderRegistry();
 
 describe("resolveThreadExecutionOverrideUpdate", () => {
   it("sets a model that is present in the active catalog", () => {

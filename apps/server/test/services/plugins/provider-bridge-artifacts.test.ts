@@ -43,6 +43,9 @@ const SERVER_SOURCE = `
         supportsNativeFork: false,
         supportsNativeSessionRewind: false,
         supportsManualCompaction: false,
+        supportsThreadArchive: false,
+        supportsThreadRename: false,
+        supportsWorkflows: false,
         permissionModes: ["full"],
         reasoningLevels: ["medium"],
       },
@@ -251,7 +254,7 @@ describe("provider bridge artifact delivery (server)", () => {
     });
   }, 120_000);
 
-  it("first-party takeover registrations never attach bridgeLaunch", async () => {
+  it("bundled first-party registrations never attach bridgeLaunch", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-first-party-no-bridge",

@@ -47,6 +47,9 @@ const REGISTER_PROVIDER_SOURCE = (id: string): string => `
         supportsNativeFork: true,
         supportsNativeSessionRewind: false,
         supportsManualCompaction: true,
+        supportsThreadArchive: false,
+        supportsThreadRename: false,
+        supportsWorkflows: false,
         permissionModes: ["accept-edits", "full"],
         reasoningLevels: ["low", "medium", "high"],
       },
@@ -102,7 +105,6 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
         },
         serverCapabilities: {
           supportsWorkflows: false,
-          supportsSessionRestore: false,
           backsHostDaemonAiServices: false,
           reasoningLevels: ["low", "medium", "high"],
         },
@@ -190,7 +192,7 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
     });
   });
 
-  it("rejects a collision with a core provider id as a plugin load failure", async () => {
+  it("rejects a collision with an existing provider id as a plugin load failure", async () => {
     await withTestHarness(async (harness) => {
       const rootDir = await writePlugin(workDir, {
         name: "bb-plugin-shadow-codex",
@@ -201,10 +203,11 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
       expect(entry.statusDetail).toContain(
         'Provider "codex" is already registered',
       );
-      // The core registration is untouched and the failed plugin
+      // The incumbent registration is untouched and the failed plugin
       // contributed nothing.
       expect(harness.deps.providerRegistry.get("codex")?.source).toEqual({
-        kind: "core",
+        kind: "plugin",
+        pluginId: "provider-codex",
       });
       const providers = await listSystemProviderInfos(harness.deps, {});
       expect(

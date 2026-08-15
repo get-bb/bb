@@ -1,10 +1,10 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 
 /**
- * First-party Codex provider plugin (phase 4 of
- * plans/agent-provider-plugin-surface.md). The declaration mirrors the core
- * catalog entry exactly; the registry's builtin takeover replaces the core
- * seed in place, and disabling this plugin restores it. The bridge entry is
+ * First-party Codex provider plugin (see
+ * plans/agent-provider-plugin-surface.md). The
+ * declaration is the only source of this provider: with the core catalog seed
+ * deleted, disabling this plugin removes the provider. The bridge entry is
  * validated now — bridge bundles are delivered to hosts in phase 5.
  */
 export default function plugin(bb: BbPluginApi) {
@@ -21,6 +21,9 @@ export default function plugin(bb: BbPluginApi) {
       supportsNativeFork: true,
       supportsNativeSessionRewind: true,
       supportsManualCompaction: true,
+      supportsThreadArchive: true,
+      supportsThreadRename: true,
+      supportsWorkflows: false,
       permissionModes: ["accept-edits", "auto", "full"],
       reasoningLevels: ["low", "medium", "high", "xhigh", "max", "ultra"],
     },

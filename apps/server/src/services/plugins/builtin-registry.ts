@@ -72,10 +72,9 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
     category: "Interface",
   },
-  // First-party agent provider plugins (phase 4 of
-  // plans/agent-provider-plugin-surface.md): each registers the provider
-  // declaration that the core catalog previously seeded; the registry
-  // takeover replaces the core entry in place.
+  // First-party agent provider plugins: each declares one of the providers
+  // the core catalog used to seed. With the seed deleted these declarations
+  // are the only source, so disabling one removes its provider.
   {
     name: "provider-acp",
     pluginId: "provider-acp",

@@ -19,6 +19,9 @@ function declaration(
       supportsNativeFork: true,
       supportsNativeSessionRewind: true,
       supportsManualCompaction: false,
+      supportsThreadArchive: true,
+      supportsThreadRename: true,
+      supportsWorkflows: true,
       permissionModes: ["accept-edits", "full"],
       reasoningLevels: ["low", "medium", "high"],
     },
@@ -41,8 +44,8 @@ describe("buildPluginProviderRegistration", () => {
       available: true,
       logoUrl: "/api/v1/system/providers/my-remote-agent/logo",
       capabilities: {
-        supportsArchive: false,
-        supportsRename: false,
+        supportsArchive: true,
+        supportsRename: true,
         supportsServiceTier: true,
         supportsUserQuestion: true,
         supportsFork: true,
@@ -61,8 +64,7 @@ describe("buildPluginProviderRegistration", () => {
       ],
     });
     expect(registration.serverCapabilities).toStrictEqual({
-      supportsWorkflows: false,
-      supportsSessionRestore: false,
+      supportsWorkflows: true,
       backsHostDaemonAiServices: false,
       reasoningLevels: ["low", "medium", "high"],
     });

@@ -1396,9 +1396,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
             return icon === null ? {} : { icon };
           })(),
           pluginId: row.id,
-          // Builtin first-party plugins take over their core-seed entry in
-          // place (restored on disable); third-party plugins never shadow.
-          takeover: isBuiltinPluginId(row.id),
         });
       },
       isProviderIdTaken: (providerId) => {
@@ -1410,14 +1407,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         // re-declaring the same id is not a collision.
         const existing = deps.providerRegistry.get(providerId);
         return (
-          existing !== null &&
-          !(
-            existing.source.kind === "plugin" &&
-            existing.source.pluginId === row.id
-          ) &&
-          // A core-seed id is not "taken" for a builtin plugin: it will
-          // take the entry over in place at activation.
-          !(existing.source.kind === "core" && isBuiltinPluginId(row.id))
+          existing !== null && existing.source.pluginId !== row.id
         );
       },
     });

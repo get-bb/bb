@@ -1072,15 +1072,18 @@ bb.agents.experimental_registerProvider({
   kind: "agent",                 // "agent" REQUIRES bridge; "router" forbids it
   bridge: { entry: "provider-bridge" }, // names the built bundle
   capabilities: {
-    // Pre-session facts only — session behavior (fork granularity, archive
-    // sync, …) is reported by the bridge itself at initialize and may only
-    // narrow what is declared here, never widen it.
+    // Pre-session facts only — finer session behavior (fork granularity, …)
+    // is reported by the bridge itself at initialize and may only narrow what
+    // is declared here, never widen it.
     supportsServiceTier: false,
     supportsHostAiServices: false,
     supportsNativeUserQuestion: false,
     supportsNativeFork: false,
     supportsNativeSessionRewind: false,
     supportsManualCompaction: false,
+    supportsThreadArchive: false,    // bb mirrors archive/unarchive onto it
+    supportsThreadRename: false,     // bb forwards renames to it
+    supportsWorkflows: false,        // the provider can run bb Workflow tools
     permissionModes: ["full"],       // non-empty, no duplicates
     reasoningLevels: ["medium"],     // coarse fallback ladder
   },

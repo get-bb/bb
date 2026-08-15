@@ -2,19 +2,20 @@
  * Maps a validated plugin provider declaration
  * (`bb.agents.experimental_registerProvider`) onto the registry's wire shapes:
  * the client-facing `ProviderInfo` and the backend-only
- * `ProviderServerCapabilities`. The shapes mirror the core catalog entries in
- * packages/agent-providers/src/catalog.ts exactly, so plugin providers ride
- * every existing consumer unchanged.
+ * `ProviderServerCapabilities`. Declarations are the only source of provider
+ * metadata, so every field a consumer reads must be declarable.
  *
  * Declared facts outside these shapes (`kind`, `bridge`,
  * `supportsNativeSessionRewind`, `supportsManualCompaction`) are not dropped:
  * the full declaration rides the registration record, where the registry's
  * compaction accessor reads `supportsManualCompaction`.
  */
-import type { ProviderServerCapabilities } from "@bb/agent-providers";
 import type { ProviderComposerAction, ProviderInfo } from "@bb/domain";
 import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
-import type { ProviderRegistration } from "./provider-registry.js";
+import type {
+  ProviderRegistration,
+  ProviderServerCapabilities,
+} from "./provider-registry.js";
 
 export function buildPluginProviderRegistration(args: {
   pluginId: string;
@@ -56,10 +57,8 @@ export function buildPluginProviderRegistration(args: {
         ? null
         : `/api/v1/system/providers/${declaration.id}/logo`,
     capabilities: {
-      // Archive/name sync are bridge-handshake facts (reported at
-      // `initialize`), never declared — plugin providers start without them.
-      supportsArchive: false,
-      supportsRename: false,
+      supportsArchive: capabilities.supportsThreadArchive,
+      supportsRename: capabilities.supportsThreadRename,
       supportsServiceTier: capabilities.supportsServiceTier,
       supportsUserQuestion: capabilities.supportsNativeUserQuestion,
       supportsFork: capabilities.supportsNativeFork,
@@ -69,10 +68,7 @@ export function buildPluginProviderRegistration(args: {
   };
 
   const serverCapabilities: ProviderServerCapabilities = {
-    supportsWorkflows: false,
-    // Session persistence is per-session (`sessionRestorable` on
-    // thread-identity results); the declaration carries no static claim.
-    supportsSessionRestore: false,
+    supportsWorkflows: capabilities.supportsWorkflows,
     backsHostDaemonAiServices: capabilities.supportsHostAiServices,
     reasoningLevels: [...capabilities.reasoningLevels],
   };

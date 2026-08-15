@@ -529,6 +529,15 @@ export interface PluginProviderCapabilities {
   /** The provider accepts an explicit context-compaction request — gates the
    * compact affordance. */
   supportsManualCompaction: boolean;
+  /** The provider keeps its own thread archive, so BB mirrors archive and
+   * unarchive onto it instead of tracking the state only in bb's own rows. */
+  supportsThreadArchive: boolean;
+  /** The provider stores a thread name of its own, so BB forwards renames to
+   * it. */
+  supportsThreadRename: boolean;
+  /** The provider can run BB's Workflow tools — gates the workflows opt-in on
+   * new threads. */
+  supportsWorkflows: boolean;
   /** Permission modes the provider can actually run in. Non-empty, no
    * duplicates. */
   permissionModes: readonly PluginProviderPermissionMode[];

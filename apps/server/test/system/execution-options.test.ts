@@ -12,9 +12,9 @@ import {
 } from "../helpers/host-rpc.js";
 import { seedHostSession } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
-import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
+import { createTestProviderRegistry } from "../helpers/provider-registry.js";
 
-const registry = createProviderRegistryService();
+const registry = await createTestProviderRegistry();
 
 describe("appendCustomModels", () => {
   it("appends custom models for the requested provider after the catalog", () => {

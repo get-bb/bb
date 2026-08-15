@@ -426,6 +426,9 @@ export function validatePluginProviderDeclaration(
     "supportsNativeFork",
     "supportsNativeSessionRewind",
     "supportsManualCompaction",
+    "supportsThreadArchive",
+    "supportsThreadRename",
+    "supportsWorkflows",
   ] as const;
   for (const field of booleanCapabilityFields) {
     if (typeof capabilities[field] !== "boolean") {
@@ -441,6 +444,9 @@ export function validatePluginProviderDeclaration(
     supportsNativeFork: capabilities.supportsNativeFork,
     supportsNativeSessionRewind: capabilities.supportsNativeSessionRewind,
     supportsManualCompaction: capabilities.supportsManualCompaction,
+    supportsThreadArchive: capabilities.supportsThreadArchive,
+    supportsThreadRename: capabilities.supportsThreadRename,
+    supportsWorkflows: capabilities.supportsWorkflows,
     permissionModes: validateProviderLiteralArray({
       providerId: id,
       field: "capabilities.permissionModes",
