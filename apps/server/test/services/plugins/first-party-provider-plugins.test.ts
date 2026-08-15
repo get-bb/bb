@@ -136,11 +136,9 @@ describe("first-party provider plugins", () => {
           expect(registry.supportsManualCompaction(plugin.providerId)).toBe(
             plugin.supportsManualCompaction,
           );
-          // The declared bridge reference rides the registration (phase 5).
-          expect(registration.declaration, label).toMatchObject({
-            kind: "agent",
-            bridge: { entry: "provider-bridge" },
-          });
+          // The declaration is metadata only; the implementation is the
+          // plugin's own built bridge artifact (pi's is daemon-bundled).
+          expect(registration.declaration?.id, label).toBe(plugin.providerId);
         }
 
         // The composed provider listing (GET /system/providers path) agrees.

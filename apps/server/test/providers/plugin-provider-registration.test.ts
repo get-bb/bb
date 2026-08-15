@@ -10,8 +10,6 @@ function declaration(
     id: "my-remote-agent",
     displayName: "My Remote Agent",
     icon: { asset: "icons/agent.svg" },
-    kind: "agent",
-    bridge: { entry: "dist/bridge.js" },
     capabilities: {
       supportsServiceTier: true,
       supportsHostAiServices: false,
@@ -70,17 +68,15 @@ describe("buildPluginProviderRegistration", () => {
       reasoningLevels: ["low", "medium", "high"],
     });
     // The full declaration rides the registration so declared facts without
-    // a registry consumer yet (kind, bridge, rewind, compaction) survive.
+    // a registry consumer yet (rewind, compaction) survive.
     expect(registration.declaration).toBe(normalized);
   });
 
-  it("maps an icon-less router to a null logoUrl and skills-only actions", () => {
+  it("maps an icon-less declaration to a null logoUrl and skills-only actions", () => {
     const registration = buildPluginProviderRegistration({
-      pluginId: "acme-router",
+      pluginId: "acme-plain",
       declaration: declaration({
-        id: "auto-router",
-        kind: "router",
-        bridge: undefined,
+        id: "plain-agent",
         icon: undefined,
         composerActions: [],
       }),
@@ -90,7 +86,5 @@ describe("buildPluginProviderRegistration", () => {
     expect(registration.info.composerActions).toStrictEqual([
       { kind: "skills", trigger: "/" },
     ]);
-    expect(registration.declaration?.kind).toBe("router");
-    expect(registration.declaration?.bridge).toBeUndefined();
   });
 });

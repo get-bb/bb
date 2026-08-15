@@ -57,7 +57,6 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginProviderCapabilities",
   "PluginProviderComposerAction",
   "PluginProviderDeclaration",
-  "PluginProviderKind",
   "PluginProviderPermissionMode",
   "PluginProviderReasoningLevel",
   "PluginRealtime",

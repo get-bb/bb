@@ -8,7 +8,6 @@ import type {
   PluginProviderCapabilities,
   PluginProviderComposerAction,
   PluginProviderDeclaration,
-  PluginProviderKind,
   PluginProviderPermissionMode,
   PluginProviderReasoningLevel,
   PluginSettingDescriptor,
@@ -254,11 +253,6 @@ export function normalizeMentionProviderTriggers(
 
 export const PLUGIN_PROVIDER_DISPLAY_NAME_MAX_CHARS = 80;
 
-export const PLUGIN_PROVIDER_KIND_VALUES = [
-  "agent",
-  "router",
-] as const satisfies readonly PluginProviderKind[];
-
 export const PLUGIN_PROVIDER_PERMISSION_MODE_VALUES = [
   "accept-edits",
   "auto",
@@ -376,15 +370,6 @@ export function validatePluginProviderDeclaration(
       `provider "${id}" displayName must be 1-${PLUGIN_PROVIDER_DISPLAY_NAME_MAX_CHARS} non-blank characters`,
     );
   }
-  const kind = declaration.kind;
-  if (
-    typeof kind !== "string" ||
-    !(PLUGIN_PROVIDER_KIND_VALUES as readonly string[]).includes(kind)
-  ) {
-    throw new Error(
-      `provider "${id}" kind must be one of ${PLUGIN_PROVIDER_KIND_VALUES.join(", ")}`,
-    );
-  }
   let icon: { asset: string } | undefined;
   if (declaration.icon !== undefined) {
     if (typeof declaration.icon !== "object" || declaration.icon === null) {
@@ -396,24 +381,6 @@ export function validatePluginProviderDeclaration(
         `"${id}" icon.asset`,
       ),
     });
-  }
-  let bridge: { entry: string } | undefined;
-  if (kind === "agent") {
-    if (typeof declaration.bridge !== "object" || declaration.bridge === null) {
-      throw new Error(
-        `provider "${id}" kind "agent" requires bridge: { entry: string }`,
-      );
-    }
-    bridge = Object.freeze({
-      entry: validateProviderRelativePath(
-        declaration.bridge.entry,
-        `"${id}" bridge.entry`,
-      ),
-    });
-  } else if (declaration.bridge !== undefined) {
-    throw new Error(
-      `provider "${id}" kind "router" must not declare a bridge — routers never execute sessions themselves`,
-    );
   }
   const capabilities = declaration.capabilities;
   if (typeof capabilities !== "object" || capabilities === null) {
@@ -473,8 +440,6 @@ export function validatePluginProviderDeclaration(
     id,
     displayName,
     ...(icon === undefined ? {} : { icon }),
-    kind,
-    ...(bridge === undefined ? {} : { bridge }),
     capabilities: normalizedCapabilities,
     composerActions,
   });

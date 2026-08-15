@@ -21,6 +21,7 @@ import {
   buildPluginProviderBridge,
   isIgnoredPluginDevPath,
 } from "@bb/plugin-build";
+import { DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS } from "@bb/host-daemon-contract";
 import {
   readPluginProviderBridgeArtifact,
   type PluginProviderBridgeArtifact,
@@ -1397,6 +1398,25 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           })(),
           pluginId: row.id,
         });
+      },
+      assertProviderImplementation: (providerId) => {
+        // A declaration is metadata; the implementation is this plugin's own
+        // bridge artifact (or, for pi, the bridge the daemon bundles). With
+        // neither, registering would put a provider in the picker whose every
+        // turn dies on the host with "Unsupported provider" — so the load
+        // fails here instead, naming the reason.
+        if (
+          providerBridgeCandidate.artifact !== null ||
+          DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS.includes(providerId)
+        ) {
+          return;
+        }
+        throw new Error(
+          `provider "${providerId}" has no bridge to run on: ${
+            providerBridgeCandidate.problem ??
+            'this plugin declares no "bb.providerBridge" entry in its manifest'
+          }`,
+        );
       },
       isProviderIdTaken: (providerId) => {
         if (!deps.providerRegistry) {

@@ -944,8 +944,6 @@ describe("agents.experimental_registerProvider", () => {
       id: "my-agent",
       displayName: "My Agent",
       icon: { asset: "icons/agent.svg" },
-      kind: "agent",
-      bridge: { entry: "dist/bridge.js" },
       capabilities: {
         supportsServiceTier: false,
         supportsHostAiServices: false,
@@ -979,13 +977,6 @@ describe("agents.experimental_registerProvider", () => {
     expect(() => register(agentDeclaration({ displayName: "   " }))).toThrow(
       /displayName must be 1-80 non-blank characters/,
     );
-    // kind/bridge cross-rule, both directions.
-    expect(() => register(agentDeclaration({ bridge: undefined }))).toThrow(
-      /kind "agent" requires bridge/,
-    );
-    expect(() =>
-      register(agentDeclaration({ kind: "router" })),
-    ).toThrow(/kind "router" must not declare a bridge/);
     expect(() =>
       register(
         agentDeclaration({
@@ -1013,9 +1004,6 @@ describe("agents.experimental_registerProvider", () => {
       register(agentDeclaration({ icon: { asset: "/abs/icon.svg" } })),
     ).toThrow(/icon.asset must be relative/);
     expect(() =>
-      register(agentDeclaration({ bridge: { entry: "  " } })),
-    ).toThrow(/bridge.entry must be a non-blank relative path/);
-    expect(() =>
       register(
         agentDeclaration({ composerActions: ["plan", "plan"] }),
       ),
@@ -1032,7 +1020,6 @@ describe("agents.experimental_registerProvider", () => {
     const registered = harness.registrations.providerRegistrations[0]!;
     // Normalized frozen copy: trimmed display name, contract fields only.
     expect(registered.displayName).toBe("My Agent");
-    expect(registered.bridge).toEqual({ entry: "dist/bridge.js" });
     expect(Object.isFrozen(registered)).toBe(true);
     expect(Object.isFrozen(registered.capabilities)).toBe(true);
 
@@ -1056,14 +1043,14 @@ describe("agents.experimental_registerProvider", () => {
     ).toEqual(["Second Declaration"]);
   });
 
-  it("accepts a bridgeless router and clears registrations on dispose", async () => {
+  it("clears registrations on dispose", async () => {
     const { bb, harness } = createFakePluginHost();
     bb.agents.experimental_registerProvider(
-      agentDeclaration({ id: "my-router", kind: "router", bridge: undefined }),
+      agentDeclaration({ id: "my-second-agent" }),
     );
     expect(
       harness.registrations.providerRegistrations.map((entry) => entry.id),
-    ).toEqual(["my-router"]);
+    ).toEqual(["my-second-agent"]);
 
     await harness.dispose();
     expect(harness.registrations.providerRegistrations).toEqual([]);

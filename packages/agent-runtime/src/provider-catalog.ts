@@ -14,6 +14,7 @@
  * only if pi ever ships as an artifact (see the graduation plan's pi verdict).
  */
 import type { ProviderCapabilities, ProviderInfo } from "@bb/domain";
+import { DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS } from "@bb/host-daemon-contract";
 
 /** Whether an id belongs to the dynamic ACP tier. */
 export function isAcpProviderId(value: string): boolean {
@@ -48,6 +49,17 @@ interface BundledProvider {
 const BUNDLED_PROVIDERS: Readonly<Record<string, BundledProvider>> = {
   pi: { displayName: "Pi", capabilities: PI_CAPABILITIES },
 };
+
+// The contract states which ids are daemon-bundled (the server reads the same
+// list to accept their declarations without an artifact); this file states
+// what those bridges advertise. Any drift between the two is a bug.
+for (const providerId of DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS) {
+  if (!Object.hasOwn(BUNDLED_PROVIDERS, providerId)) {
+    throw new Error(
+      `"${providerId}" is declared daemon-bundled but has no bundled provider baseline.`,
+    );
+  }
+}
 
 function cloneCapabilities(
   capabilities: ProviderCapabilities,

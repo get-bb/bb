@@ -40,8 +40,6 @@ const SERVER_SOURCE = `
     bb.agents.experimental_registerProvider({
       id: ${JSON.stringify(PROVIDER_ID)},
       displayName: "Echo Fixture Agent",
-      kind: "agent",
-      bridge: { entry: "provider-bridge" },
       capabilities: {
         supportsServiceTier: false,
         supportsHostAiServices: false,
@@ -115,7 +113,7 @@ describe("provider bridge artifact delivery (server)", () => {
       // Declaration registered.
       expect(harness.deps.providerRegistry.get(PROVIDER_ID)).toMatchObject({
         source: { kind: "plugin", pluginId: entry.id },
-        declaration: { bridge: { entry: "provider-bridge" } },
+        declaration: { id: PROVIDER_ID },
       });
 
       // Artifact recorded with the hash of the exact built bytes.

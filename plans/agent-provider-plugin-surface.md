@@ -650,8 +650,9 @@ bb.agents.experimental_registerProvider({
   id: "claude-code", // stable; existing ids unchanged
   displayName: "Claude Code",
   icon: { asset: "icons/claude.svg" }, // served via existing plugin assets
-  kind: "agent", // "agent" | "router" — see router note
-  bridge: { entry: "provider-bridge" }, // required for kind "agent"; routers omit
+  // No `kind` and no `bridge`: see the router note below. The implementation
+  // is the plugin's manifest `bb.providerBridge` artifact, and registration
+  // is refused without one (or a daemon-bundled id).
 
   // A capability is DECLARED only when it passes BOTH tests:
   //   1. a consumer outside the provider's own plugin needs the fact, and
@@ -748,9 +749,13 @@ and the thread runs on that delegate's bridge. Two future archetypes
 
 Consequences for this change:
 
-- `kind: "agent"` **requires** `bridge`; `kind: "router"` **omits** it
-  (declaration validation enforces both directions). Every regular provider
-  ships a bridge that runs on the host and implements the protocol.
+- SUPERSEDED (adversarial review, see the gate below): `kind` and `bridge`
+  are gone from the declaration. Nothing ever resolved a router, so a router
+  declaration registered a picker entry whose every turn died on the host;
+  and `bridge.entry` was validated but never bound to anything — the real
+  entry is the manifest's `bb.providerBridge`. Reintroducing routers means
+  reintroducing `kind` together with the resolver that makes it mean
+  something.
 - Router picker entries are **server-supplied** (declaration data, refreshed
   on plugin settings change): with no bridge there is no host-side
   `model/list`. The provider registry / execution-options path must support

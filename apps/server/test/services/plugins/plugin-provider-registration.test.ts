@@ -9,10 +9,15 @@ import {
 } from "../../../src/services/threads/thread-default-policy.js";
 import { withTestHarness } from "../../helpers/test-app.js";
 
+/**
+ * A provider fixture ships a bridge by default, because a declaration without
+ * one is refused: `withBridge: false` is how a test asks for that refusal.
+ */
 async function writePlugin(
   dir: string,
-  options: { name: string; serverSource: string },
+  options: { name: string; serverSource: string; withBridge?: boolean },
 ): Promise<string> {
+  const withBridge = options.withBridge ?? true;
   const rootDir = join(dir, options.name);
   await mkdir(rootDir, { recursive: true });
   await writeFile(
@@ -25,10 +30,17 @@ async function writePlugin(
         description: "Provider registration plugin fixture.",
         branding: { icon: "Zap" },
         server: "./server.ts",
+        ...(withBridge ? { providerBridge: "./bridge.ts" } : {}),
       },
     }),
   );
   await writeFile(join(rootDir, "server.ts"), options.serverSource);
+  if (withBridge) {
+    await writeFile(
+      join(rootDir, "bridge.ts"),
+      'process.stdin.on("data", () => undefined);\n',
+    );
+  }
   return rootDir;
 }
 
@@ -38,8 +50,6 @@ const REGISTER_PROVIDER_SOURCE = (id: string): string => `
       id: ${JSON.stringify(id)},
       displayName: "My Remote Agent",
       icon: { asset: "icons/agent.svg" },
-      kind: "agent",
-      bridge: { entry: "dist/bridge.js" },
       capabilities: {
         supportsServiceTier: true,
         supportsHostAiServices: false,
@@ -111,8 +121,6 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
       });
       // Fields without a registry consumer yet ride the full declaration.
       expect(registration?.declaration).toMatchObject({
-        kind: "agent",
-        bridge: { entry: "dist/bridge.js" },
         capabilities: {
           supportsNativeSessionRewind: false,
           supportsManualCompaction: true,
@@ -189,6 +197,29 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
         .list()
         .filter((candidate) => candidate.info.id === "reload-agent");
       expect(listed).toHaveLength(1);
+    });
+  });
+
+  // A declaration is metadata; without a bridge artifact behind it the picker
+  // would offer a provider whose every turn dies on the host.
+  it("refuses a declaration with no bridge to run on", async () => {
+    await withTestHarness(async (harness) => {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-bridgeless-agent",
+        serverSource: REGISTER_PROVIDER_SOURCE("bridgeless-agent"),
+        withBridge: false,
+      });
+      const entry = await harness.pluginService.installPath(rootDir);
+
+      expect(entry.status).toBe("error");
+      expect(entry.statusDetail).toContain(
+        'provider "bridgeless-agent" has no bridge to run on',
+      );
+      expect(harness.deps.providerRegistry.get("bridgeless-agent")).toBeNull();
+      const providers = await listSystemProviderInfos(harness.deps, {});
+      expect(providers.map((provider) => provider.id)).not.toContain(
+        "bridgeless-agent",
+      );
     });
   });
 

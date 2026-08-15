@@ -471,18 +471,6 @@ export interface PluginAgentConfiguration {
 // ---------------------------------------------------------------------------
 
 /**
- * How a registered provider entry resolves at submit time.
- *
- * - `"agent"`: the provider executes threads itself through its plugin-built
- *   bridge — the declaration MUST carry a
- *   {@link PluginProviderDeclaration.bridge} reference.
- * - `"router"`: a picker entry that never executes anything itself — its
- *   selection resolves to another registered provider's (model, reasoning)
- *   pair at submit time. The declaration MUST NOT carry `bridge`.
- */
-export type PluginProviderKind = "agent" | "router";
-
-/**
  * Permission modes a provider can run a session in — BB's own permission
  * vocabulary, ordered least ("accept-edits") to most ("full") privileged.
  */
@@ -563,9 +551,16 @@ export interface PluginProviderCapabilities {
  * One provider this plugin contributes to BB's provider registry.
  *
  * Ids are stable public identifiers — thread rows and routes reference them —
- * and are collision-rejected: a declaration whose id matches a core provider
- * or another plugin's live registration is refused. Registrations are
- * replaced wholesale on plugin reload, like every other plugin surface.
+ * and are collision-rejected: a declaration whose id matches another plugin's
+ * live registration, or reserves a first-party provider it does not own, is
+ * refused. Registrations are replaced wholesale on plugin reload, like every
+ * other plugin surface.
+ *
+ * A declaration is metadata only. The implementation is the plugin's own
+ * provider bridge, named by `bb.providerBridge` in the manifest and built into
+ * the artifact BB ships to hosts — declaring a provider without one is
+ * refused, because the picker entry would exist and no turn on it could ever
+ * run.
  */
 export interface PluginProviderDeclaration {
   /** Stable provider id: 2–64 characters of lowercase letters, digits, and
@@ -578,14 +573,6 @@ export interface PluginProviderDeclaration {
    * `asset` is a plugin-relative path — no leading "/", no ".." segments, no
    * backslashes (the manifest entry-path escape rules). */
   icon?: { asset: string };
-  /** See {@link PluginProviderKind}: `"agent"` REQUIRES `bridge`; `"router"`
-   * FORBIDS it. */
-  kind: PluginProviderKind;
-  /** The plugin-built bridge bundle that executes this provider's sessions.
-   * `entry` names the bundle as a non-blank plugin-relative path (same escape
-   * rules as `icon.asset`). Validated now; delivery to hosts ships in a later
-   * phase. */
-  bridge?: { entry: string };
   /** Pre-session capability facts (see the declaration tests on
    * {@link PluginProviderCapabilities}). */
   capabilities: PluginProviderCapabilities;

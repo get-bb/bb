@@ -95,17 +95,6 @@ interface PluginCliExecutionResult {
     error?: PluginCliOutputLimitError;
 }
 /**
- * How a registered provider entry resolves at submit time.
- *
- * - `"agent"`: the provider executes threads itself through its plugin-built
- *   bridge — the declaration MUST carry a
- *   {@link PluginProviderDeclaration.bridge} reference.
- * - `"router"`: a picker entry that never executes anything itself — its
- *   selection resolves to another registered provider's (model, reasoning)
- *   pair at submit time. The declaration MUST NOT carry `bridge`.
- */
-type PluginProviderKind = "agent" | "router";
-/**
  * Permission modes a provider can run a session in — BB's own permission
  * vocabulary, ordered least ("accept-edits") to most ("full") privileged.
  */
@@ -174,9 +163,16 @@ interface PluginProviderCapabilities {
  * One provider this plugin contributes to BB's provider registry.
  *
  * Ids are stable public identifiers — thread rows and routes reference them —
- * and are collision-rejected: a declaration whose id matches a core provider
- * or another plugin's live registration is refused. Registrations are
- * replaced wholesale on plugin reload, like every other plugin surface.
+ * and are collision-rejected: a declaration whose id matches another plugin's
+ * live registration, or reserves a first-party provider it does not own, is
+ * refused. Registrations are replaced wholesale on plugin reload, like every
+ * other plugin surface.
+ *
+ * A declaration is metadata only. The implementation is the plugin's own
+ * provider bridge, named by `bb.providerBridge` in the manifest and built into
+ * the artifact BB ships to hosts — declaring a provider without one is
+ * refused, because the picker entry would exist and no turn on it could ever
+ * run.
  */
 interface PluginProviderDeclaration {
     /** Stable provider id: 2–64 characters of lowercase letters, digits, and
@@ -190,16 +186,6 @@ interface PluginProviderDeclaration {
      * backslashes (the manifest entry-path escape rules). */
     icon?: {
         asset: string;
-    };
-    /** See {@link PluginProviderKind}: `"agent"` REQUIRES `bridge`; `"router"`
-     * FORBIDS it. */
-    kind: PluginProviderKind;
-    /** The plugin-built bridge bundle that executes this provider's sessions.
-     * `entry` names the bundle as a non-blank plugin-relative path (same escape
-     * rules as `icon.asset`). Validated now; delivery to hosts ships in a later
-     * phase. */
-    bridge?: {
-        entry: string;
     };
     /** Pre-session capability facts (see the declaration tests on
      * {@link PluginProviderCapabilities}). */
@@ -245,7 +231,6 @@ declare const PLUGIN_MENTION_TRIGGER_VALUES: readonly ["@", "#", "$", "!", "~"];
 declare function isPluginMentionTrigger(value: unknown): value is PluginMentionTrigger;
 declare function normalizeMentionProviderTriggers(providerId: string, triggers: unknown): readonly PluginMentionTrigger[];
 declare const PLUGIN_PROVIDER_DISPLAY_NAME_MAX_CHARS = 80;
-declare const PLUGIN_PROVIDER_KIND_VALUES: readonly ["agent", "router"];
 declare const PLUGIN_PROVIDER_PERMISSION_MODE_VALUES: readonly ["accept-edits", "auto", "full"];
 declare const PLUGIN_PROVIDER_REASONING_LEVEL_VALUES: readonly ["none", "low", "medium", "high", "xhigh", "ultracode", "max", "ultra"];
 declare const PLUGIN_PROVIDER_COMPOSER_ACTION_VALUES: readonly ["plan", "goal"];
@@ -266,4 +251,4 @@ declare function isZodSchemaLike(value: unknown): boolean;
 declare function summarizeParseIssues(error: unknown): string;
 declare function enforcePluginCliOutputLimit(result: Omit<PluginCliExecutionResult, "error">, jsonOutput: boolean): PluginCliExecutionResult;
 
-export { AGENT_TOOL_NAME_PATTERN, BACKGROUND_NAME_PATTERN, CLI_COMMAND_NAME_PATTERN, KV_VALUE_MAX_BYTES, MENTION_PROVIDER_ID_PATTERN, PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS, PLUGIN_AGENT_SELECTION_MAX_IDS, PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS, PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS, PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES, PLUGIN_HTTP_METHODS, PLUGIN_MENTION_TRIGGER_VALUES, PLUGIN_PROVIDER_COMPOSER_ACTION_VALUES, PLUGIN_PROVIDER_DISPLAY_NAME_MAX_CHARS, PLUGIN_PROVIDER_KIND_VALUES, PLUGIN_PROVIDER_PERMISSION_MODE_VALUES, PLUGIN_PROVIDER_REASONING_LEVEL_VALUES, PROVIDER_ID_PATTERN, RESERVED_AGENT_TOOL_NAMES, RESERVED_BB_CLI_COMMANDS, RPC_METHOD_PATTERN, SETTING_KEY_PATTERN, enforcePluginCliOutputLimit, isPluginMentionTrigger, isStandardSchema, isZodSchemaLike, normalizeMentionProviderTriggers, readRpcMethodContract, registerSettingDescriptors, summarizeParseIssues, validatePluginProviderDeclaration, validateSettingsUpdate };
+export { AGENT_TOOL_NAME_PATTERN, BACKGROUND_NAME_PATTERN, CLI_COMMAND_NAME_PATTERN, KV_VALUE_MAX_BYTES, MENTION_PROVIDER_ID_PATTERN, PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS, PLUGIN_AGENT_SELECTION_MAX_IDS, PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS, PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS, PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES, PLUGIN_HTTP_METHODS, PLUGIN_MENTION_TRIGGER_VALUES, PLUGIN_PROVIDER_COMPOSER_ACTION_VALUES, PLUGIN_PROVIDER_DISPLAY_NAME_MAX_CHARS, PLUGIN_PROVIDER_PERMISSION_MODE_VALUES, PLUGIN_PROVIDER_REASONING_LEVEL_VALUES, PROVIDER_ID_PATTERN, RESERVED_AGENT_TOOL_NAMES, RESERVED_BB_CLI_COMMANDS, RPC_METHOD_PATTERN, SETTING_KEY_PATTERN, enforcePluginCliOutputLimit, isPluginMentionTrigger, isStandardSchema, isZodSchemaLike, normalizeMentionProviderTriggers, readRpcMethodContract, registerSettingDescriptors, summarizeParseIssues, validatePluginProviderDeclaration, validateSettingsUpdate };

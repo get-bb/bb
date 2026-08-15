@@ -153,8 +153,11 @@ Each label is capped at 80 characters and rendered as a truncating segment.
 
 ## `bb.agents.experimental_registerProvider`
 
-**What it does.** Lets a plugin declare an agent provider (or a `"router"`
-picker entry) into the server's `ProviderRegistryService`. The declaration is
+**What it does.** Lets a plugin declare an agent provider into the server's
+`ProviderRegistryService`. The declaration is metadata only — the
+implementation is the plugin's `bb.providerBridge` artifact, and registering
+without one (and without being a daemon-bundled first-party id) fails the
+plugin load. The declaration is
 validated at call time by the shared host policy
 (`validatePluginProviderDeclaration`); registrations stage during the factory
 and commit when the plugin load commits, are replaced wholesale on reload, and
@@ -164,9 +167,8 @@ disabling a provider plugin removes its provider. A registered provider is
 mapped onto `ProviderInfo` + `ProviderServerCapabilities` and appears in the
 composed provider listing
 (`GET /system/providers` / execution options). The full declaration rides the
-registration record so fields without a registry consumer yet (`kind`,
-`bridge`, `supportsNativeSessionRewind`, `supportsManualCompaction`) are not
-dropped.
+registration record so fields without a registry consumer yet
+(`supportsNativeSessionRewind`, `supportsManualCompaction`) are not dropped.
 
 **Audit before stabilizing.**
 
@@ -186,19 +188,20 @@ dropped.
    throws to the plugin. Confirm first-wins (vs. deterministic priority) is
    right across plugin load order, and that a plugin re-declaring its own id
    on reload/settings change never races another plugin's claim.
-4. **`bridge.entry` delivery (phase 5, shipped for third-party).** A plugin
+4. **Bridge delivery (phase 5, shipped).** A plugin
    declaring `bb.providerBridge` in its manifest gets its bridge built
    (`dist/provider-bridge.mjs`, self-contained node ESM), recorded
    content-addressed (`ProviderBridgeArtifactRegistry`), and delivered:
    thread commands carry `bridgeLaunch {source: {kind: "artifact", sha256,
    byteLength}}` (the protocol-123 field) and daemons download/verify/cache
-   via `GET /internal/provider-bridges/:sha256`. First-party providers stay
-   daemon-bundled (no artifact recorded for their takeover registrations)
-   until graduation flips them to artifact delivery. Before stabilizing:
-   confirm the single-bundle reference shape (`entry` names the bundle;
-   `bb.providerBridge` names the source) survives per-platform needs, and
-   audit `providerOptions` on `bridgeLaunch` (schema'd but not yet populated
-   by any server path).
+   via `GET /internal/provider-bridges/:sha256`. Pi is the one provider whose
+   bridge stays daemon-bundled (`DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS`); every
+   other provider, first-party or not, arrives as an artifact. Before
+   stabilizing: confirm the single-bundle shape (`bb.providerBridge` names one
+   self-contained source) survives per-platform needs, and decide whether a
+   router-kind declaration — a picker entry resolving to another provider at
+   submit time, removed from the contract because nothing ever resolved one —
+   returns as its own surface.
 
 ## `app.slots.experimental_providerIcon` (`@get-bb/plugin-sdk/app`)
 
