@@ -422,11 +422,12 @@ export function createPluginApi(options: {
    * registrations (this plugin's own previous-load entries are ignored:
    * they are disposed before the staged replacements flush at activate). */
   isProviderIdTaken: (providerId: string) => boolean;
-  /** Throws unless this load can actually execute the declared provider —
-   * this plugin built a bridge artifact, or the id is one the daemon bundles
-   * a bridge for. A declaration with no implementation behind it would list a
-   * provider whose every turn dies on the host. */
-  assertProviderImplementation: (providerId: string) => void;
+  /** Throws unless this plugin may register this provider id at all: the id
+   * is not reserved for another (first-party) plugin, and this load can
+   * actually execute it — a bridge artifact it built, or an id the daemon
+   * bundles a bridge for. A declaration with no implementation behind it
+   * would list a provider whose every turn dies on the host. */
+  assertProviderRegistrable: (providerId: string) => void;
 }): PluginApiHandle {
   const {
     pluginId,
@@ -447,7 +448,7 @@ export function createPluginApi(options: {
     callPluginHost,
     registerProvider,
     isProviderIdTaken,
-    assertProviderImplementation,
+    assertProviderRegistrable,
   } = options;
   let invalidated = false;
   let activated = false;
@@ -872,7 +873,7 @@ export function createPluginApi(options: {
       assertLive();
       // Shared host policy: the fake host validates identically.
       const normalized = validatePluginProviderDeclaration(declaration);
-      assertProviderImplementation(normalized.id);
+      assertProviderRegistrable(normalized.id);
       if (providerRegistrations.has(normalized.id)) {
         throw new Error(
           `Provider "${normalized.id}" is already registered; a plugin cannot shadow an existing provider.`,

@@ -185,10 +185,32 @@ describe("provider registry", () => {
 
   it("rejects plugin registrations that shadow an existing provider", () => {
     const registry = createProviderRegistryService();
-    registerProvider(registry, "codex", "provider-codex");
-    expect(() => registerProvider(registry, "codex", "impostor")).toThrow(
-      /already registered/,
-    );
+    registerProvider(registry, "third-party-agent", "first-plugin");
+    expect(() =>
+      registerProvider(registry, "third-party-agent", "impostor"),
+    ).toThrow(/already registered/);
+  });
+
+  // Squatting, not shadowing: with the official plugin disabled its id is
+  // free, and for pi the runtime would still execute the daemon-bundled
+  // bridge under the impostor's metadata.
+  it("keeps first-party ids reserved even with no live registration", () => {
+    const registry = createProviderRegistryService();
+    for (const [providerId, owner] of [
+      ["codex", "provider-codex"],
+      ["claude-code", "provider-claude-code"],
+      ["pi", "provider-pi"],
+      ["acp-cursor", "provider-acp"],
+      ["acp-anything", "provider-acp"],
+    ] as const) {
+      expect(() => registerProvider(registry, providerId, "impostor")).toThrow(
+        new RegExp(`reserved for the "${owner}" plugin`),
+      );
+      // The owner itself registers normally.
+      registerProvider(registry, providerId, owner).dispose();
+    }
+    // Unreserved ids are unaffected.
+    registerProvider(registry, "some-third-party-agent", "impostor");
   });
 
   it("adds and disposes plugin registrations", () => {

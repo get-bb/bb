@@ -59,6 +59,48 @@ export const PRODUCT_PROVIDER_ORDER: readonly string[] = [
 
 export type ProviderRegistrationSource = { kind: "plugin"; pluginId: string };
 
+/**
+ * First-party provider ids, each reserved to the official plugin that owns it.
+ *
+ * These ids are not just names. `pi` is executed by the bridge inside the
+ * daemon bundle no matter who declares it, so a third-party plugin claiming
+ * that id would supply the metadata for somebody else's implementation; the
+ * others are the ids threads, defaults, and product ordering are written
+ * against. Reservation holds even while the owning plugin is disabled —
+ * otherwise disabling Codex would open "codex" for anyone to claim, and
+ * re-enabling it would fail.
+ */
+const RESERVED_PROVIDER_ID_OWNERS: Readonly<Record<string, string>> = {
+  codex: "provider-codex",
+  "claude-code": "provider-claude-code",
+  pi: "provider-pi",
+};
+
+/** The plugin that owns the whole `acp-*` tier, ids included. */
+const ACP_TIER_OWNER_PLUGIN_ID = "provider-acp";
+
+/**
+ * Why this plugin may not claim this provider id, or null when it may. The
+ * live-collision check is separate: this one answers for ids no plugin has
+ * registered (yet, or right now).
+ */
+export function reservedProviderIdProblem(args: {
+  pluginId: string;
+  providerId: string;
+}): string | null {
+  const owner = isAcpProviderId(args.providerId)
+    ? ACP_TIER_OWNER_PLUGIN_ID
+    : RESERVED_PROVIDER_ID_OWNERS[args.providerId];
+  if (owner === undefined || owner === args.pluginId) {
+    return null;
+  }
+  return `Provider "${args.providerId}" is reserved for the "${owner}" plugin${
+    isAcpProviderId(args.providerId)
+      ? ' (the "acp-" prefix names bb\'s ACP tier)'
+      : ""
+  }.`;
+}
+
 export interface ProviderRegistration {
   info: ProviderInfo;
   serverCapabilities: ProviderServerCapabilities;
@@ -109,7 +151,9 @@ export interface ProviderRegistryService {
   supportsManualCompaction(providerId: string): boolean;
   /**
    * Adds a plugin-registered provider. Rejects id collisions with any live
-   * registration — a plugin cannot shadow another plugin's provider. The
+   * registration — a plugin cannot shadow another plugin's provider — and
+   * first-party ids claimed by a plugin that does not own them
+   * ({@link reservedProviderIdProblem}). The
    * disposer removes the registration (plugin reload/disable), which really
    * does remove the provider: with no seed underneath, a disabled provider
    * plugin leaves no entry behind.
@@ -263,6 +307,13 @@ export function createProviderRegistryService(
 
     register(registration) {
       const providerId = registration.info.id;
+      const reserved = reservedProviderIdProblem({
+        pluginId: registration.pluginId,
+        providerId,
+      });
+      if (reserved !== null) {
+        throw new Error(reserved);
+      }
       if (pluginRegistrations.has(providerId)) {
         throw new Error(
           `Provider "${providerId}" is already registered; a plugin cannot shadow an existing provider.`,

@@ -48,6 +48,7 @@ import {
 import { parsePluginSource } from "./install-sources.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import { buildPluginProviderRegistration } from "../providers/plugin-provider-registration.js";
+import { reservedProviderIdProblem } from "../providers/provider-registry.js";
 import {
   isPluginSdkRangeSatisfied,
   pluginSdkRangeProblem,
@@ -1399,7 +1400,17 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           pluginId: row.id,
         });
       },
-      assertProviderImplementation: (providerId) => {
+      assertProviderRegistrable: (providerId) => {
+        // Reserved first-party ids, checked at call time so a staged
+        // registration fails the factory (the registry enforces the same rule
+        // for live registrations).
+        const reserved = reservedProviderIdProblem({
+          pluginId: row.id,
+          providerId,
+        });
+        if (reserved !== null) {
+          throw new Error(reserved);
+        }
         // A declaration is metadata; the implementation is this plugin's own
         // bridge artifact (or, for pi, the bridge the daemon bundles). With
         // neither, registering would put a provider in the picker whose every

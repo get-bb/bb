@@ -223,7 +223,11 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
     });
   });
 
-  it("rejects a collision with an existing provider id as a plugin load failure", async () => {
+  // Reservation, not just collision: the id belongs to provider-codex even
+  // when nothing has registered it (the plugin is disabled, or failed), and
+  // for a daemon-bundled id like pi the host would otherwise run bb's own
+  // bridge under the impostor's metadata.
+  it("rejects a first-party id claimed by another plugin as a load failure", async () => {
     await withTestHarness(async (harness) => {
       const rootDir = await writePlugin(workDir, {
         name: "bb-plugin-shadow-codex",
@@ -232,7 +236,7 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
       const entry = await harness.pluginService.installPath(rootDir);
       expect(entry.status).toBe("error");
       expect(entry.statusDetail).toContain(
-        'Provider "codex" is already registered',
+        'Provider "codex" is reserved for the "provider-codex" plugin',
       );
       // The incumbent registration is untouched and the failed plugin
       // contributed nothing.

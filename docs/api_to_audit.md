@@ -185,9 +185,13 @@ registration record so fields without a registry consumer yet
    before the URL shape freezes into clients.
 3. **Collision semantics.** Ids are first-come collision-rejected: a staged
    collision fails the whole plugin load; a post-activation registration
-   throws to the plugin. Confirm first-wins (vs. deterministic priority) is
-   right across plugin load order, and that a plugin re-declaring its own id
-   on reload/settings change never races another plugin's claim.
+   throws to the plugin. First-party ids (`codex`, `claude-code`, `pi`, and
+   the whole `acp-` prefix) are additionally reserved to their official
+   plugin whether or not it is currently loaded. Confirm first-wins (vs.
+   deterministic priority) is right across plugin load order, that a plugin
+   re-declaring its own id on reload/settings change never races another
+   plugin's claim, and decide whether the reserved set should be a namespace
+   rule (e.g. plugin-scoped id prefixes) before third-party ids proliferate.
 4. **Bridge delivery (phase 5, shipped).** A plugin
    declaring `bb.providerBridge` in its manifest gets its bridge built
    (`dist/provider-bridge.mjs`, self-contained node ESM), recorded
