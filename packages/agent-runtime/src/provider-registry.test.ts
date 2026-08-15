@@ -28,6 +28,60 @@ describe("provider registry", () => {
     expect(provider.process.args).toMatchObject(["app-server"]);
   });
 
+  it("routes codex to the canonical bridge when its prefix is enabled", () => {
+    const provider = createProviderForId("codex", {
+      additionalWorkspaceWriteRoots: [],
+      bridgeProtocolProviderPrefixes: ["codex"],
+    });
+    expect(provider.id).toBe("codex");
+    expect(provider.process.command).toBe("node");
+    expect(provider.process.args.at(-1)).toMatch(
+      /agent-runtime\/src\/codex\/bridge\/bridge\.ts$/,
+    );
+    expect(existsSync(provider.process.args.at(-1) ?? "")).toBe(true);
+  });
+
+  it("passes the configured bridge bundle directory to the codex bridge", () => {
+    const provider = createProviderForId("codex", {
+      additionalWorkspaceWriteRoots: [],
+      bridgeProtocolProviderPrefixes: ["codex"],
+      bridgeBundleDir: "/tmp",
+    });
+    expect(provider.process.args[0]).toBe("/tmp/bb-codex-bridge.mjs");
+  });
+
+  it("carries environment write roots to the codex bridge via provider options", () => {
+    const provider = createProviderForId("codex", {
+      additionalWorkspaceWriteRoots: ["/extra-root"],
+      bridgeProtocolProviderPrefixes: ["codex"],
+    });
+    const plan = provider.buildCommandPlan({
+      type: "thread/start",
+      threadId: "thread-1",
+      cwd: "/workspace",
+      options: {
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        workflowsEnabled: false,
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+      },
+      instructionMode: "append",
+    });
+    expect(plan).toMatchObject({
+      kind: "request",
+      method: "thread/start",
+      params: {
+        options: {
+          providerOptions: {
+            additionalWorkspaceWriteRoots: ["/extra-root"],
+          },
+        },
+      },
+    });
+  });
+
   it("creates claude-code provider with expected process config", () => {
     const provider = createProviderForId("claude-code");
     expect(provider.id).toBe("claude-code");

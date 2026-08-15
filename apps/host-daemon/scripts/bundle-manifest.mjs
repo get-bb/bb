@@ -71,6 +71,20 @@ export const bundleTargets = [
   },
   {
     banner: NODE_ESM_REQUIRE_BANNER,
+    entryPoint: resolve(
+      workspaceRoot,
+      "packages",
+      "agent-runtime",
+      "src",
+      "codex",
+      "bridge",
+      "bridge.ts",
+    ),
+    label: "codex bridge",
+    outfile: resolve(packageRoot, "dist", "bb-codex-bridge.mjs"),
+  },
+  {
+    banner: NODE_ESM_REQUIRE_BANNER,
     entryPoint: resolve(workspaceRoot, "apps", "cli", "src", "index.ts"),
     executable: true,
     label: "bb cli",

@@ -78,11 +78,13 @@ const builtInProvidersById = new Map(
 /**
  * Experiment-gated canonical path: providers whose id matches an enabled
  * bridge-protocol prefix run on the generic adapter speaking the canonical
- * Provider Bridge Protocol. ACP providers, pi, and claude-code participate
- * today; the ACP launch spec travels opaquely via staticProviderOptions (pi
- * and claude-code need no launch spec — claude's provider-flavored knobs ride
- * the per-command providerOptions the generic adapter packs). Transitional
- * wiring — phase 3 provider declarations replace this table.
+ * Provider Bridge Protocol. ACP providers, pi, claude-code, and codex
+ * participate today; the ACP launch spec travels opaquely via
+ * staticProviderOptions (pi and claude-code need no launch spec — claude's
+ * provider-flavored knobs ride the per-command providerOptions the generic
+ * adapter packs, and codex's static entry carries the environment's extra
+ * write roots). Transitional wiring — phase 3 provider declarations replace
+ * this table.
  */
 function createBridgeProtocolAdapterForId(
   providerId: string,
@@ -91,6 +93,39 @@ function createBridgeProtocolAdapterForId(
   const prefixes = options.bridgeProtocolProviderPrefixes ?? [];
   if (!prefixes.some((prefix) => providerId.startsWith(prefix))) {
     return null;
+  }
+  if (providerId === "codex") {
+    const info = getBuiltInAgentProviderInfo("codex");
+    const additionalWorkspaceWriteRoots =
+      options.additionalWorkspaceWriteRoots ?? [];
+    return createBridgeProtocolAdapter({
+      id: providerId,
+      displayName: info.displayName,
+      capabilities: info.capabilities,
+      process: {
+        command: options.bridgeNodeExecutablePath ?? "node",
+        args: resolveBridgeProcessArgs({
+          bridgeBundleDir: options.bridgeBundleDir,
+          bundleFileName: "bb-codex-bridge.mjs",
+          importMetaUrl: import.meta.url,
+          bridgeRelativePath: "codex/bridge/bridge.js",
+        }),
+        ...(options.bridgeNodeEnv !== undefined
+          ? { env: options.bridgeNodeEnv }
+          : {}),
+      },
+      // Environment-level extra write roots have no core field on the
+      // canonical wire; they ride the codex bridge's provider-scoped options
+      // bag (the acpLaunchSpec precedent) so workspace-write sandboxing keeps
+      // the same roots the legacy adapter received at construction.
+      ...(additionalWorkspaceWriteRoots.length > 0
+        ? {
+            staticProviderOptions: {
+              additionalWorkspaceWriteRoots: [...additionalWorkspaceWriteRoots],
+            },
+          }
+        : {}),
+    });
   }
   if (providerId === "claude-code") {
     const info = getBuiltInAgentProviderInfo("claude-code");

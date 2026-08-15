@@ -385,7 +385,7 @@ async function smokeBridgeModelList({
     "error" in modelListResponse &&
     isRecord(modelListResponse.error) &&
     typeof modelListResponse.error.message === "string" &&
-    /(?:Native CLI binary|Claude Code executable).*not found|could not find the Claude Code CLI/u.test(
+    /(?:Native CLI binary|Claude Code executable).*not found|could not find the (?:Claude Code|Codex) CLI/u.test(
       modelListResponse.error.message,
     );
   if (!allowUnavailableProvider || !unavailableProviderMessage) {
@@ -416,6 +416,14 @@ async function smokeProviderBridgeBundles(packageDir) {
   await smokeBridgeModelList({
     bridgePath: join(packageDir, "host-daemon", "dist", "bb-acp-bridge.mjs"),
     label: "ACP bridge model/list",
+  });
+  await smokeBridgeModelList({
+    // The codex bridge spawns the host's `codex app-server` for model
+    // discovery. CI does not install the Codex CLI, so the bridge's explicit
+    // missing-CLI response is a valid smoke outcome.
+    allowUnavailableProvider: true,
+    bridgePath: join(packageDir, "host-daemon", "dist", "bb-codex-bridge.mjs"),
+    label: "Codex bridge model/list",
   });
 }
 
