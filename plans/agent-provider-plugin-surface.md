@@ -51,11 +51,28 @@ Landed on this branch, every commit green:
   archived-session resumes reply SESSION_NOT_RESTORABLE. Per-provider
   experiment toggles exist for all four providers (default off). The
   turn-start watchdog shipped (system/error, no wire change).
-- **Not started**: phase 4+ (first-party provider plugins, artifact
-  delivery, graduation deletions, consolidation sweep). Transitional gaps
-  recorded in the codex report: hasOpenThreadWork has no generic-adapter
-  hook until graduation; the runtime still thread-scopes codex process
-  keys (the bridge is already environment-multiplex-capable).
+- **Phase 4 complete**: the four first-party provider plugins are builtin
+  and enabled by default, taking over their core-seed entries in place
+  (position-preserving, restored on disable; the takeover merge preserves
+  handshake-owned facts so flagship behavior cannot regress). The listing
+  differs from the seed only in logoUrl and source, pinned by test. The
+  app no longer depends on @bb/agent-providers: icons resolve
+  logoUrl-first over the vendored interim fallback, fork gating reads
+  server ProviderInfo, and the cold-cache placeholder is inlined.
+- **Phase 5 complete**: bb.providerBridge plugins build self-contained
+  bridge artifacts, the server stores and serves them content-addressed,
+  the daemon caches by verified hash, and an optional strict bridgeLaunch
+  rides beside acpLaunchSpec — HOST_DAEMON_PROTOCOL_VERSION 122 → 123,
+  the plan's one bump, with v122 compat fixtures. First-party providers
+  stay bundled (wire-identical payloads) until graduation.
+  examples/plugins/echo-provider proves the third-party path end to end,
+  passing the same 11-scenario conformance gate as the first-party four.
+- **Remaining (graduation + phase 6)**: legacy adapter deletions and the
+  runtime codex special cases after experiment soak; core-seed deletion
+  and @bb/agent-providers removal from agent-runtime; the consolidation
+  sweep (scattered enums, usage surfaces, provider-scoped options for
+  workflows/memory toggles); hasOpenThreadWork generic-adapter hook;
+  interim icon fallbacks and inlined placeholders move server-side.
 
 ## Current State (2026-08-14)
 
