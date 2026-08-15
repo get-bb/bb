@@ -494,6 +494,10 @@ export class BbRealtimeClient implements BbRealtime {
     };
 
     socket.onerror = () => {
+      // Node's WebSocket can synchronously emit another error when close() is
+      // called after a failed handshake. Disarm this handler first so the
+      // adapter cannot recurse through error -> close -> error.
+      socket.onerror = null;
       socket.close();
     };
 
