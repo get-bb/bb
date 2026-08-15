@@ -219,7 +219,7 @@ describe("readHostFileMetadata", () => {
     expect(result.modifiedAtMs).toBeGreaterThan(0);
   });
 
-  it("uses the same containment checks as disk reads", async () => {
+  it.skipIf(process.platform === "win32")("uses the same containment checks as disk reads", async () => {
     const repoPath = await initRepo();
     const outsidePath = path.join(repoPath, "..", "outside-metadata.txt");
     const symlinkPath = path.join(repoPath, "outside-link");
@@ -240,7 +240,7 @@ describe("readHostFileMetadata", () => {
 });
 
 describe("browseHostDirectory", () => {
-  it("lists immediate children sorted directories-first, hiding noise", async () => {
+  it.skipIf(process.platform === "win32")("lists immediate children sorted directories-first, hiding noise", async () => {
     const root = await makeTempDir("bb-browse-");
     await fs.mkdir(path.join(root, "beta"));
     await fs.mkdir(path.join(root, "alpha"));

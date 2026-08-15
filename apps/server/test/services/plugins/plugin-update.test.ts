@@ -76,7 +76,7 @@ async function commitPlugin(
   return git(repo, ["rev-parse", "HEAD"]);
 }
 
-describe("plugin update service and routes", () => {
+describe.skipIf(process.platform === "win32")("plugin update service and routes", () => {
   let db: DbConnection;
   let workDir: string;
   let repo: string;

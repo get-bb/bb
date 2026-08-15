@@ -303,7 +303,7 @@ describe("discoverProviderCommands (claude-code)", () => {
     );
   });
 
-  it("enforces the entry-count cap", async () => {
+  it.skipIf(process.platform === "win32")("enforces the entry-count cap", async () => {
     const fixture = await makeWorkspaceFixture();
     const commandsRoot = path.join(fixture.cwd, ".claude", "commands");
     const fileCount = 1_050; // > MAX_SCAN_ENTRY_COUNT (1000)
@@ -321,7 +321,7 @@ describe("discoverProviderCommands (claude-code)", () => {
     expect(commands.length).toBe(1_000);
   });
 
-  it("does not follow symlinked command files or directories", async () => {
+  it.skipIf(process.platform === "win32")("does not follow symlinked command files or directories", async () => {
     const fixture = await makeWorkspaceFixture();
     const commandsRoot = path.join(fixture.cwd, ".claude", "commands");
     await mkdir(commandsRoot, { recursive: true });
@@ -384,7 +384,7 @@ describe("discoverProviderCommands (claude-code)", () => {
     expect(byName(commands, "late")).toBeUndefined();
   });
 
-  it("rejects a recursive project root linked outside its boundary", async () => {
+  it.skipIf(process.platform === "win32")("rejects a recursive project root linked outside its boundary", async () => {
     const fixture = await makeWorkspaceFixture();
     const outsideRoot = path.join(tempRoot, "outside-recursive-root");
     const linkedRoot = path.join(fixture.cwd, ".cursor", "skills");
@@ -411,7 +411,7 @@ describe("discoverProviderCommands (claude-code)", () => {
     expect(commands).toEqual([]);
   });
 
-  it("does not follow project-origin symlinked skill directories or skill files", async () => {
+  it.skipIf(process.platform === "win32")("does not follow project-origin symlinked skill directories or skill files", async () => {
     const fixture = await makeWorkspaceFixture();
     const skillsRoot = path.join(fixture.cwd, ".claude", "skills");
     await mkdir(skillsRoot, { recursive: true });
@@ -441,7 +441,7 @@ describe("discoverProviderCommands (claude-code)", () => {
     expect(byName(commands, "linked-file")).toBeUndefined();
   });
 
-  it("follows user-origin symlinked skill directories and skill files", async () => {
+  it.skipIf(process.platform === "win32")("follows user-origin symlinked skill directories and skill files", async () => {
     const fixture = await makeWorkspaceFixture();
     const skillsRoot = path.join(fixture.homeDir, ".claude", "skills");
     await mkdir(skillsRoot, { recursive: true });
@@ -492,7 +492,7 @@ describe("discoverProviderCommands (claude-code)", () => {
     });
   });
 
-  it("discovers enabled installed plugin skills and commands with cache fallback", async () => {
+  it.skipIf(process.platform === "win32")("discovers enabled installed plugin skills and commands with cache fallback", async () => {
     const fixture = await makeWorkspaceFixture();
     const claudeRoot = path.join(fixture.homeDir, ".claude");
     await writeFileEnsuringDir(
@@ -1015,7 +1015,7 @@ describe("discoverProviderCommands (codex)", () => {
     expect(byName(commands, "cwd-skill")?.origin).toBe("project");
   });
 
-  it("follows user-origin symlinked skill directories and skill files", async () => {
+  it.skipIf(process.platform === "win32")("follows user-origin symlinked skill directories and skill files", async () => {
     const fixture = await makeWorkspaceFixture();
     const skillsRoot = path.join(fixture.codexHome, "skills");
     await mkdir(skillsRoot, { recursive: true });
@@ -1063,7 +1063,7 @@ describe("discoverProviderCommands (codex)", () => {
     });
   });
 
-  it("discovers system and enabled plugin skills from Codex storage", async () => {
+  it.skipIf(process.platform === "win32")("discovers system and enabled plugin skills from Codex storage", async () => {
     const fixture = await makeWorkspaceFixture();
     await writeFileEnsuringDir(
       path.join(
@@ -1603,7 +1603,7 @@ describe("resolveCommandScanRoots", () => {
     }
   });
 
-  it("discovers Cursor skills through a .cursor/skills root symlink", async () => {
+  it.skipIf(process.platform === "win32")("discovers Cursor skills through a .cursor/skills root symlink", async () => {
     const fixture = await makeWorkspaceFixture();
     await writeFileEnsuringDir(
       path.join(fixture.cwd, ".agents", "skills", "impeccable", "SKILL.md"),

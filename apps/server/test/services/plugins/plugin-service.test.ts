@@ -330,7 +330,9 @@ describe("plugin service", () => {
   // The marker carries the root id as well as the epoch. Without the id, an
   // import that crosses into another plugin's tree would carry the importer's
   // epoch and pin the imported plugin to a stale module.
-  it("reload of an imported plugin is visible to a plugin that imports it", async () => {
+  it.skipIf(process.platform === "win32")(
+    "reload of an imported plugin is visible to a plugin that imports it",
+    async () => {
     const importerDir = join(workDir, "bb-plugin-importer");
     const importedDir = join(workDir, "bb-plugin-imported");
     await writeEsmPlugin(importerDir, "importer");
@@ -368,7 +370,9 @@ describe("plugin service", () => {
   // A candidate that never commits must stay private. Cross-root importers do
   // not inherit the retained plugin's epoch (they resolve against the imported
   // root), so without a rollback they would read the rejected files.
-  it("hides a failed reload's sources from a plugin that imports it", async () => {
+  it.skipIf(process.platform === "win32")(
+    "hides a failed reload's sources from a plugin that imports it",
+    async () => {
     const importerDir = join(workDir, "bb-plugin-fail-importer");
     const importedDir = join(workDir, "bb-plugin-fail-imported");
     await writeEsmPlugin(importerDir, "fail-importer");
@@ -423,7 +427,9 @@ describe("plugin service", () => {
 
   // Node canonicalizes ESM files through symbolic links, so a root tracked as
   // the un-canonicalized install path never matches the module URL.
-  it("reload re-reads an ESM plugin installed through a symbolic link", async () => {
+  it.skipIf(process.platform === "win32")(
+    "reload re-reads an ESM plugin installed through a symbolic link",
+    async () => {
     const realDir = join(workDir, "real-symlinked");
     const linkDir = join(workDir, "link-symlinked");
     await writeEsmPlugin(realDir, "symlinked");

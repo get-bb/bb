@@ -24,7 +24,9 @@ import {
  * question. This exercises the real plugin against the real thread.start
  * command builder, which is the only place that answer is authoritative.
  */
-describe("ask-user-question builtin plugin", () => {
+describe.skipIf(process.platform === "win32")(
+  "ask-user-question builtin plugin",
+  () => {
   let harness: TestAppHarness;
   let requestValue = 1;
 

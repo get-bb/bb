@@ -56,7 +56,9 @@ describe("identity", () => {
       fs.readFile(path.join(dataDir, "host-id"), "utf8"),
     ).resolves.toContain("host-first");
     const stats = await fs.stat(path.join(dataDir, "host-id"));
-    expect(stats.mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect(stats.mode & 0o777).toBe(0o600);
+    }
   });
 
   it("detects a non-empty host name", async () => {

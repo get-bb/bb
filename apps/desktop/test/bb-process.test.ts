@@ -80,10 +80,9 @@ function isPidRunning(pid: number): boolean {
 }
 
 describe("bb app process", () => {
-  it("stops grandchild processes on win32", async () => {
-    if (process.platform !== "win32") {
-      return;
-    }
+  it.skipIf(process.platform !== "win32")(
+    "stops grandchild processes on win32",
+    async () => {
 
     const script = await createTempScript({
       contents: `
@@ -120,7 +119,8 @@ console.log("ready");
     });
 
     expect(isPidRunning(grandchildPid)).toBe(false);
-  });
+    },
+  );
 
   it("uses the dev Node executable without Electron node mode", () => {
     const env = createBbAppProcessEnv({

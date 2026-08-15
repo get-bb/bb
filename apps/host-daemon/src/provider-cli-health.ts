@@ -344,7 +344,7 @@ function getProviderCliDefinition(
   return PROVIDER_CLI_DEFINITIONS[provider];
 }
 
-function npmExecutableName(nodePlatform: NodeJS.Platform): string {
+export function npmExecutableName(nodePlatform: NodeJS.Platform): string {
   return nodePlatform === "win32" ? "npm.cmd" : "npm";
 }
 
@@ -672,6 +672,12 @@ function buildInstallAction({
   claudeCodeDoctorStatus,
 }: BuildInstallActionArgs): ProviderCliInstallAction | null {
   if (!installed) {
+    if (
+      definition.installCommand.kind === "downloadedShellScript" &&
+      nodePlatform === "win32"
+    ) {
+      return null;
+    }
     const command = installActionCommand(definition, nodePlatform);
     return {
       kind: "install",

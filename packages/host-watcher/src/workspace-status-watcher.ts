@@ -74,6 +74,7 @@ function runGitIgnoredMatchingStatus(
         encoding: "utf8",
         maxBuffer: WORKSPACE_ROOT_IGNORE_STATUS_MAX_BUFFER_BYTES,
         timeout: WORKSPACE_ROOT_IGNORE_STATUS_TIMEOUT_MS,
+        windowsHide: true,
       },
       (error, stdout) => {
         if (error) {

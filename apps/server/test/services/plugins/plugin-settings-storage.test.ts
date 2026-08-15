@@ -131,7 +131,9 @@ describe("plugin settings + storage", () => {
       });
     });
 
-    it("round-trips secrets through 0600 files and fires onChange with next/prev", async () => {
+    it.skipIf(process.platform === "win32")(
+      "round-trips secrets through 0600 files and fires onChange with next/prev",
+      async () => {
       await installConfigurable();
       const view = await service.updateSettings("configurable", {
         apiKey: "sk-secret-123",

@@ -13,24 +13,24 @@ describe("parseElapsedSeconds", () => {
 });
 
 describe("createNodeVerifiedProcessOps", () => {
-  it("does not use ps on win32 and can read this process", async () => {
-    if (process.platform !== "win32") {
-      return;
-    }
+  it.skipIf(process.platform !== "win32")(
+    "does not use ps on win32 and can read this process",
+    async () => {
 
     const identity = await readWindowsProcessIdentity(process.pid);
     expect(identity.command).toEqual(expect.stringMatching(/node/i));
     expect(identity.elapsedSeconds).toEqual(expect.any(Number));
 
     const ops = createNodeVerifiedProcessOps("win32");
-    const command = await ops.readCommand(process.pid);
-    expect(command).toEqual(expect.stringMatching(/node/i));
-  });
+    const fromOps = await ops.readIdentity(process.pid);
+    expect(fromOps.command).toEqual(expect.stringMatching(/node/i));
+    },
+    20_000,
+  );
 
-  it("kills grandchild processes on win32", async () => {
-    if (process.platform !== "win32") {
-      return;
-    }
+  it.skipIf(process.platform !== "win32")(
+    "kills grandchild processes on win32",
+    async () => {
 
     const parent = spawn(
       process.execPath,
@@ -67,5 +67,7 @@ describe("createNodeVerifiedProcessOps", () => {
     await expect(
       ops.waitForExit({ pid: grandchildPid, timeoutMs: 5_000 }),
     ).resolves.toBe(true);
-  });
+    },
+    20_000,
+  );
 });

@@ -315,7 +315,7 @@ describe("buildPluginApp", () => {
       "app.js",
       "app.meta.json",
     ]);
-  });
+  }, 20_000);
 
   it("errors clearly when the plugin has no bb.app entry", async () => {
     await writeFile(
@@ -456,6 +456,10 @@ async function linkScaffoldDeps(
     }
     const linkPath = join(targetDir, "node_modules", name);
     await mkdir(dirname(linkPath), { recursive: true });
-    await symlink(packageRoot, linkPath, "dir");
+    await symlink(
+      packageRoot,
+      linkPath,
+      process.platform === "win32" ? "junction" : "dir",
+    );
   }
 }

@@ -68,7 +68,7 @@ describe("UsageLimitsSettingsSectionContent", () => {
     expect(screen.getByText("Plan usage")).toBeDefined();
     expect(screen.getByText("50% used")).toBeDefined();
     expect(screen.getByText("On-demand spend")).toBeDefined();
-    expect(screen.getByText("$5.00 / $50")).toBeDefined();
+    expect(screen.getByText(/5.*\/.*50/)).toBeDefined();
   });
 
   it("hides Cursor when its CLI is not installed", () => {

@@ -157,7 +157,9 @@ describe("collection manifest in a checkout", () => {
     expect(await readPluginCollectionManifest(repoDir)).toBeNull();
   });
 
-  it("refuses a manifest symlinked out of the checkout", async () => {
+  it.skipIf(process.platform === "win32")(
+    "refuses a manifest symlinked out of the checkout",
+    async () => {
     const outside = join(workDir, "outside.json");
     await writeFile(outside, manifest([{ name: "a", source: "./a" }]));
     await symlink(outside, join(repoDir, ".bb", "plugins.json"));

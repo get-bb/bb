@@ -91,7 +91,7 @@ describe("protocol self-update", () => {
 
     expect(test.runProcess).toHaveBeenCalledOnce();
     expect(test.runProcess).toHaveBeenCalledWith(
-      "npm",
+      process.platform === "win32" ? "npm.cmd" : "npm",
       ["install", "-g", expect.stringContaining("bb-app-update-")],
       {
         env: expect.objectContaining({
@@ -110,7 +110,7 @@ describe("protocol self-update", () => {
     );
 
     expect(test.runProcess).toHaveBeenCalledWith(
-      "npm",
+      process.platform === "win32" ? "npm.cmd" : "npm",
       [
         "install",
         "-g",
@@ -131,7 +131,7 @@ describe("protocol self-update", () => {
     );
 
     expect(test.runProcess).toHaveBeenCalledWith(
-      "npm",
+      process.platform === "win32" ? "npm.cmd" : "npm",
       ["install", "-g", expect.stringContaining("bb-app-update-")],
       expect.any(Object),
     );

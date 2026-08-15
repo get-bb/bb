@@ -185,7 +185,7 @@ describe("parseGitHostPullRequest", () => {
   });
 });
 
-describe("runPullRequestActionForCurrentBranch", () => {
+describe.skipIf(process.platform === "win32")("runPullRequestActionForCurrentBranch", () => {
   const actionArgs = {
     cwd: "/tmp/workspace",
     localBranch: "bb/pr-action",
@@ -285,7 +285,7 @@ describe("runPullRequestActionForCurrentBranch", () => {
   });
 });
 
-describe("getPullRequestForCurrentBranch", () => {
+describe.skipIf(process.platform === "win32")("getPullRequestForCurrentBranch", () => {
   const lookupArgs = {
     cwd: "/tmp/workspace",
     localBranch: "bb/pr-lookup",

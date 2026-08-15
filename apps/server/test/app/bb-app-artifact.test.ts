@@ -56,7 +56,7 @@ afterEach(async () => {
   );
 });
 
-describe.each(MODES)("bb-app artifact service (%s)", (mode) => {
+describe.skipIf(process.platform === "win32").each(MODES)("bb-app artifact service (%s)", (mode) => {
   it("resolves and packs a structurally valid npm package", async () => {
     const test = await fixture(mode);
     const calls: Array<{

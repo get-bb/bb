@@ -1,3 +1,4 @@
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getPersonalWorkspaceRoot,
@@ -257,7 +258,7 @@ describe("environment command dispatch", () => {
     const dataDir = await makeTempDir("bb-dispatch-personal-data-");
     const environmentId = "env_personal";
     const personalWorkspaceRoot = getPersonalWorkspaceRoot(dataDir);
-    const targetPath = `${personalWorkspaceRoot}/${environmentId}`;
+    const targetPath = path.join(personalWorkspaceRoot, environmentId);
     const harness = createHarness({
       workspacePath: targetPath,
     });

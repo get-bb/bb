@@ -71,7 +71,9 @@ describe("auth state", () => {
       "serverUrl",
     );
     const stats = await fs.stat(authStatePath);
-    expect(stats.mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect(stats.mode & 0o777).toBe(0o600);
+    }
   });
 
   it("reads legacy auth state that still contains server URL", async () => {

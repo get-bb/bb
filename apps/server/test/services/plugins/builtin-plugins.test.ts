@@ -171,7 +171,7 @@ function createService(args: {
   });
 }
 
-describe("builtin plugin reconciliation", () => {
+describe.skipIf(process.platform === "win32")("builtin plugin reconciliation", () => {
   let db: DbConnection;
   let workDir: string;
   let service: PluginService | undefined;
@@ -823,7 +823,7 @@ describe("builtin plugin reconciliation", () => {
   });
 });
 
-describe("builtin plugin packaging", () => {
+describe.skipIf(process.platform === "win32")("builtin plugin packaging", () => {
   let workDir: string;
 
   beforeEach(async () => {

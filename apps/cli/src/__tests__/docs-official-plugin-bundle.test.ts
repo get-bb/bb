@@ -65,7 +65,7 @@ describe("Docs official plugin frontend bundle", () => {
     await symlink(
       join(SIMPLE_NOTES_DIR, "node_modules"),
       join(pluginDir, "node_modules"),
-      "dir",
+      process.platform === "win32" ? "junction" : "dir",
     );
     const { jsPath } = await buildPluginApp(pluginDir, "0.9.0-test", await testToolchain());
 

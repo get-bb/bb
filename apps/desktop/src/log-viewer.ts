@@ -1,7 +1,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdir, readdir, stat } from "node:fs/promises";
+import { mkdir, open, readdir, stat } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
+import { killWindowsProcessTree } from "@bb/config/verified-process-stop";
 import { escapeHtmlText } from "@bb/domain";
 import {
   LOG_VIEWER_VISIBLE_LINE_LIMIT,
@@ -63,14 +64,16 @@ interface LogFileCandidate {
 }
 
 interface TailProcess {
-  childProcess: ChildProcess;
+  childProcess: ChildProcess | null;
   filePath: string;
+  offset: number;
 }
 
 interface ComponentTailState {
   component: LogViewerComponent;
   currentFilePath: string | null;
   pendingText: string;
+  pendingUtf8: Buffer;
   tailProcess: TailProcess | null;
 }
 
@@ -484,17 +487,90 @@ function createComponentTailState(
     component: args.component,
     currentFilePath: null,
     pendingText: "",
+    pendingUtf8: Buffer.alloc(0),
     tailProcess: null,
   };
 }
 
-/** PowerShell single-quoted path. `$()` in a file name must not expand. */
-export function formatWindowsLogTailCommand(
-  filePath: string,
-  tailLines: number,
-): string {
-  const literalPath = filePath.replaceAll("'", "''");
-  return `Get-Content -LiteralPath '${literalPath}' -Tail ${String(tailLines)} -Wait -Encoding utf8`;
+export function splitUtf8Remainder(buffer: Buffer): {
+  text: string;
+  remainder: Buffer;
+} {
+  if (buffer.length === 0) {
+    return { text: "", remainder: Buffer.alloc(0) };
+  }
+
+  let split = buffer.length;
+  let index = buffer.length - 1;
+  let continuationCount = 0;
+  while (index >= 0 && (buffer[index]! & 0xc0) === 0x80) {
+    continuationCount += 1;
+    index -= 1;
+  }
+  if (index >= 0) {
+    const lead = buffer[index]!;
+    const expected =
+      (lead & 0x80) === 0
+        ? 1
+        : (lead & 0xe0) === 0xc0
+          ? 2
+          : (lead & 0xf0) === 0xe0
+            ? 3
+            : (lead & 0xf8) === 0xf0
+              ? 4
+              : 1;
+    if (continuationCount + 1 < expected) {
+      split = index;
+    }
+  }
+
+  return {
+    text: buffer.subarray(0, split).toString("utf8"),
+    remainder: Buffer.from(buffer.subarray(split)),
+  };
+}
+
+export async function readLogFileRange(args: {
+  filePath: string;
+  pendingUtf8: Buffer;
+  start: number;
+}): Promise<{ nextOffset: number; pendingUtf8: Buffer; text: string }> {
+  const handle = await open(args.filePath, "r");
+  try {
+    const fileStat = await handle.stat();
+    const offset = fileStat.size < args.start ? 0 : args.start;
+    const length = fileStat.size - offset;
+    if (length <= 0) {
+      return {
+        text: "",
+        nextOffset: fileStat.size,
+        pendingUtf8: args.pendingUtf8,
+      };
+    }
+    const buffer = Buffer.alloc(length);
+    const { bytesRead } = await handle.read(buffer, 0, length, offset);
+    const decoded = splitUtf8Remainder(
+      Buffer.concat([args.pendingUtf8, buffer.subarray(0, bytesRead)]),
+    );
+    return {
+      text: decoded.text,
+      nextOffset: offset + bytesRead,
+      pendingUtf8: decoded.remainder,
+    };
+  } finally {
+    await handle.close();
+  }
+}
+
+function lastLines(text: string, limit: number): string {
+  if (limit <= 0 || text.length === 0) {
+    return "";
+  }
+  const lines = text.split(/\r?\n/u);
+  if (lines.at(-1) === "") {
+    lines.pop();
+  }
+  return `${lines.slice(-limit).join("\n")}\n`;
 }
 
 export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
@@ -546,7 +622,17 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
     stopArgs.state.tailProcess = null;
     stopArgs.state.currentFilePath = null;
     stopArgs.state.pendingText = "";
+    stopArgs.state.pendingUtf8 = Buffer.alloc(0);
     if (tailProcess === null) {
+      return;
+    }
+    if (tailProcess.childProcess === null) {
+      return;
+    }
+    if (process.platform === "win32" && tailProcess.childProcess.pid) {
+      killWindowsProcessTree(tailProcess.childProcess.pid).once("error", () => {
+        tailProcess.childProcess?.kill("SIGTERM");
+      });
       return;
     }
     tailProcess.childProcess.kill("SIGTERM");
@@ -568,43 +654,85 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
     });
   }
 
+  async function readWindowsLogDelta(state: ComponentTailState): Promise<void> {
+    const tailProcess = state.tailProcess;
+    if (tailProcess === null || tailProcess.childProcess !== null) {
+      return;
+    }
+    try {
+      const chunk = await readLogFileRange({
+        filePath: tailProcess.filePath,
+        pendingUtf8: state.pendingUtf8,
+        start: tailProcess.offset,
+      });
+      tailProcess.offset = chunk.nextOffset;
+      state.pendingUtf8 = chunk.pendingUtf8;
+      if (chunk.text.length > 0) {
+        handleTailChunk({ chunk: chunk.text, state });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      emitSystemLine({
+        text: `${state.component} tail failed: ${message}`,
+      });
+    }
+  }
+
   function restartTailProcess(restartArgs: RestartTailProcessArgs): void {
     stopTailProcess({ state: restartArgs.state });
     restartArgs.state.currentFilePath = restartArgs.filePath;
 
-    const childProcess =
-      process.platform === "win32"
-        ? spawn(
-            "powershell.exe",
-            [
-              "-NoProfile",
-              "-NonInteractive",
-              "-Command",
-              formatWindowsLogTailCommand(
-                restartArgs.filePath,
-                LOG_VIEWER_INITIAL_TAIL_LINES,
-              ),
-            ],
-            {
-              stdio: ["ignore", "pipe", "pipe"],
-              windowsHide: true,
-            },
-          )
-        : spawn(
-            "tail",
-            [
-              "-n",
-              String(LOG_VIEWER_INITIAL_TAIL_LINES),
-              "-F",
-              restartArgs.filePath,
-            ],
-            {
-              stdio: ["ignore", "pipe", "pipe"],
-            },
-          );
+    if (process.platform === "win32") {
+      const tailProcess: TailProcess = {
+        childProcess: null,
+        filePath: restartArgs.filePath,
+        offset: 0,
+      };
+      restartArgs.state.tailProcess = tailProcess;
+      void readLogFileRange({
+        filePath: restartArgs.filePath,
+        pendingUtf8: Buffer.alloc(0),
+        start: 0,
+      })
+        .then((chunk) => {
+          if (restartArgs.state.tailProcess !== tailProcess) {
+            return;
+          }
+          tailProcess.offset = chunk.nextOffset;
+          restartArgs.state.pendingUtf8 = chunk.pendingUtf8;
+          const initial = lastLines(chunk.text, LOG_VIEWER_INITIAL_TAIL_LINES);
+          if (initial.length > 0) {
+            handleTailChunk({ chunk: initial, state: restartArgs.state });
+          }
+        })
+        .catch((error: unknown) => {
+          if (restartArgs.state.tailProcess !== tailProcess) {
+            return;
+          }
+          const message = error instanceof Error ? error.message : String(error);
+          emitSystemLine({
+            text: `${restartArgs.state.component} tail failed: ${message}`,
+          });
+        });
+      return;
+    }
+
+    const childProcess = spawn(
+      "tail",
+      [
+        "-n",
+        String(LOG_VIEWER_INITIAL_TAIL_LINES),
+        "-F",
+        restartArgs.filePath,
+      ],
+      {
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
     const tailProcess: TailProcess = {
       childProcess,
       filePath: restartArgs.filePath,
+      offset: 0,
     };
     restartArgs.state.tailProcess = tailProcess;
 
@@ -676,6 +804,10 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
           filePath: currentFilePath,
           state,
         });
+        continue;
+      }
+      if (process.platform === "win32") {
+        await readWindowsLogDelta(state);
       }
     }
   }
@@ -707,7 +839,7 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
   return {
     processIds() {
       return componentStates.flatMap((state) => {
-        const pid = state.tailProcess?.childProcess.pid;
+        const pid = state.tailProcess?.childProcess?.pid;
         return pid === undefined ? [] : [pid];
       });
     },

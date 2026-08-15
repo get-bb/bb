@@ -24,6 +24,12 @@ import {
 } from "@bb/config/app-runtime-file";
 import { stopVerifiedProcess } from "@bb/config/verified-process-stop";
 import {
+  bbCliLaunchSpec,
+  bbCliLaunchSpecFromPath,
+  isNodeExecutablePath,
+  spawnArgv,
+} from "@bb/config/bb-cli-launch";
+import {
   APP_SURFACE_ENV_NAME,
   APP_SURFACE_WEB,
   DEFAULT_APP_SURFACE,
@@ -2449,7 +2455,7 @@ function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
     // install spawned it. That binary can be older than this bundle and still
     // answer `--version`, so an inherited value would quietly win over the
     // bundle actually being run.
-    BB_CLI: join(args.context.daemonBundleDir, "bb"),
+    BB_CLI: bbCliLaunchSpec(args.context.daemonBundleDir).shellPath,
     BB_CLI_DIR: args.context.daemonBundleDir,
     BB_DATA_DIR: args.context.dataDir,
     BB_HOST_DAEMON_PORT: String(args.context.daemonPort),
@@ -2599,8 +2605,16 @@ export async function runBundledCliCommand(
   // Prefer the daemon-injected absolute CLI when present so packaged `bb`
   // trampolines match the running host daemon (dev workspace or this install).
   const bbCliOverride = trimToUndefined(args.env.BB_CLI);
-  const cliPath = bbCliOverride ?? join(args.context.daemonBundleDir, "bb");
-  const childProcess = spawn(cliPath, args.args, {
+  const launch =
+    bbCliOverride !== undefined && isNodeExecutablePath(bbCliOverride)
+      ? { command: bbCliOverride, args: [...args.args] }
+      : spawnArgv(
+          bbCliOverride !== undefined
+            ? bbCliLaunchSpecFromPath(bbCliOverride)
+            : bbCliLaunchSpec(args.context.daemonBundleDir),
+          args.args,
+        );
+  const childProcess = spawn(launch.command, launch.args, {
     cwd: process.cwd(),
     env: createCliEnv({ context: args.context, env: args.env }),
     stdio: "inherit",

@@ -165,7 +165,7 @@ describe("bb plugin catalog", () => {
 
     expect(fetch).toHaveBeenCalledTimes(1);
     const body = JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body));
-    expect(body.source).toMatch(/^path:.*\/linear$/);
+    expect(body.source).toMatch(/^path:.*[/\\]linear$/);
   });
 
   it("installs a pasted GitHub repository URL as a direct source", async () => {

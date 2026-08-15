@@ -5,15 +5,13 @@ import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import type { LoggedWorkSessionDeps, ServerLogger } from "../../types.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
+import { joinHostDataPath } from "./worktree-paths.js";
 
 /** Data-dir-relative path bb reads user agent instructions from. */
 export const DATA_DIR_AGENT_INSTRUCTIONS_RELATIVE_PATH = "AGENTS.md";
 
 /** Workspace-relative path bb reads project agent instructions from. */
-export const WORKSPACE_AGENT_INSTRUCTIONS_RELATIVE_PATH = path.join(
-  ".bb",
-  "AGENTS.md",
-);
+export const WORKSPACE_AGENT_INSTRUCTIONS_RELATIVE_PATH = ".bb/AGENTS.md";
 
 function isFsErrorWithCode(error: Error, code: string): boolean {
   return "code" in error && error.code === code;
@@ -70,9 +68,10 @@ export async function readWorkspaceAgentInstructions(
   deps: LoggedWorkSessionDeps,
   args: { hostId: string; workspacePath: string },
 ): Promise<string | null> {
-  const filePath = path.join(
+  const filePath = joinHostDataPath(
     args.workspacePath,
-    WORKSPACE_AGENT_INSTRUCTIONS_RELATIVE_PATH,
+    ".bb",
+    "AGENTS.md",
   );
   let result;
   try {

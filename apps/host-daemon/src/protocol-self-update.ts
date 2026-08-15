@@ -6,6 +6,7 @@ import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import type { HostDaemonLogger } from "./logger.js";
 import type { FetchFn } from "./server-client.js";
 import { usesSecureInternalFetchTransport } from "./server-client.js";
+import { npmExecutableName } from "./provider-cli-health.js";
 
 const execFileAsync = promisify(execFile);
 export const SELF_UPDATE_INITIAL_RETRY_DELAY_MS = 5_000;
@@ -146,7 +147,10 @@ async function defaultInstallTarball(
   }
   const prefixArgs =
     configuredPrefix === undefined ? [] : ["--prefix", configuredPrefix];
-  await runProcess("npm", ["install", "-g", ...prefixArgs, tarballPath], {
+  await runProcess(
+    npmExecutableName(process.platform),
+    ["install", "-g", ...prefixArgs, tarballPath],
+    {
     env: { ...process.env, PATH: path },
   });
 }

@@ -74,6 +74,12 @@ export async function installFakeNpm(workDir: string): Promise<string> {
   const binDir = join(workDir, "bin");
   await mkdir(binDir, { recursive: true });
   await writeFile(join(binDir, "npm"), FAKE_NPM, { mode: 0o755 });
+  if (process.platform === "win32") {
+    await writeFile(
+      join(binDir, "npm.cmd"),
+      `@echo off\r\n"${process.execPath}" "%~dp0npm" %*\r\n`,
+    );
+  }
   vi.stubEnv("PATH", `${binDir}${delimiter}${process.env.PATH ?? ""}`);
   return binDir;
 }

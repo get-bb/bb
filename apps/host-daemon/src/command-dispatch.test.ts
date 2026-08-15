@@ -1755,9 +1755,16 @@ describe("dispatchCommand", () => {
     // ~/.local/bin — are invisible to a daemon launched by launchd/systemd with
     // a stripped PATH.
     const binDir = await makeTempDir("bb-acp-shell-path-");
-    const executableName = `bb-acp-probe-${process.pid}`;
+    const executableName =
+      process.platform === "win32"
+        ? `bb-acp-probe-${process.pid}.cmd`
+        : `bb-acp-probe-${process.pid}`;
     const executablePath = path.join(binDir, executableName);
-    await fs.writeFile(executablePath, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    await fs.writeFile(
+      executablePath,
+      process.platform === "win32" ? "@echo off\r\nexit /b 0\r\n" : "#!/bin/sh\nexit 0\n",
+      { mode: 0o755 },
+    );
 
     const runtime = createRuntime();
     const manager = new RuntimeManager({
@@ -1768,7 +1775,9 @@ describe("dispatchCommand", () => {
     // never on process.env.PATH, so a detection that ignores the shell env
     // fails to find it. System bin dirs stay on PATH so `which` itself resolves;
     // only binDir (the stand-in for ~/.local/bin) is exclusive to the shell env.
-    manager.replaceManagedShellEnv({ PATH: `${binDir}:/usr/bin:/bin` });
+    manager.replaceManagedShellEnv({
+      PATH: [binDir, process.env.PATH ?? ""].filter((entry) => entry.length > 0).join(path.delimiter),
+    });
 
     const result = await dispatchOnlineRpcCommand(
       {

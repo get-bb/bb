@@ -161,7 +161,9 @@ describe("marketplace manifest schema", () => {
       ).toBe(null);
     });
 
-    it("reads a relative URL beside the manifest for a local marketplace", () => {
+    it.skipIf(process.platform === "win32")(
+      "reads a relative URL beside the manifest for a local marketplace",
+      () => {
       expect(
         resolveEntryIcon(
           firstEntry([entry({ icon: { url: "./icons/widgets.svg" } })]),

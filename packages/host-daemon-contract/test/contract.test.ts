@@ -1060,6 +1060,9 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
+  // Version 124 adds `win32` to hostPlatformSchema on the session-open wire.
+  // An older server rejects that enum value as invalid-message, so enrolled
+  // Windows daemons must update with the server.
   // Version 123 adds required status-enrichment budgets and a required
   // diff-files truncation marker. Older daemons cannot safely enforce or
   // interpret the new bounded workspace response contract.
@@ -1093,7 +1096,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(123);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(124);
   });
 
   it("requires an explicit intent on a thread stop command", () => {
@@ -2918,6 +2921,25 @@ describe("host-daemon command schemas", () => {
 });
 
 describe("host-daemon session schemas", () => {
+  it("accepts win32 as a session host platform", () => {
+    expect(
+      hostDaemonSessionOpenRequestSchema.parse({
+        hostId: "host_win",
+        instanceId: "instance_win",
+        hostName: "Win11",
+        hostType: "persistent",
+        hasMachineCredential: true,
+        platform: "win32",
+        dataDir: "C:\\Users\\me\\.bb",
+        protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+        activeThreads: [],
+      }),
+    ).toMatchObject({
+      platform: "win32",
+      dataDir: "C:\\Users\\me\\.bb",
+    });
+  });
+
   it("parses valid session open and event batch payloads", () => {
     expect(
       hostDaemonSessionOpenRequestSchema.parse({

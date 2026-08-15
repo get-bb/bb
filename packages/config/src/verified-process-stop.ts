@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -18,11 +18,17 @@ export const PROCESS_START_TOLERANCE_MS = 60_000;
  * can name an unrelated process. Every caller therefore checks both the command
  * line and the process start time before it sends a signal.
  */
+export interface ProcessIdentity {
+  command: string | null;
+  elapsedSeconds: number | null;
+}
+
 export interface VerifiedProcessOps {
   isRunning(pid: number): boolean;
   kill(pid: number, signal: NodeJS.Signals): void;
-  readCommand(pid: number): Promise<string | null>;
-  readElapsedSeconds(pid: number): Promise<number | null>;
+  /** When true, kill is already a tree force-kill and must not be called twice. */
+  forceKillOnly?: boolean;
+  readIdentity(pid: number): Promise<ProcessIdentity>;
   waitForExit(args: WaitForProcessExitArgs): Promise<boolean>;
 }
 
@@ -153,7 +159,7 @@ async function waitForProcessExit(
   return !isProcessRunning(args.pid);
 }
 
-function killWindowsProcessTree(pid: number): void {
+export function killWindowsProcessTree(pid: number): ChildProcess {
   const killer = spawn("taskkill", ["/T", "/F", "/PID", String(pid)], {
     stdio: "ignore",
     windowsHide: true,
@@ -161,6 +167,7 @@ function killWindowsProcessTree(pid: number): void {
   killer.once("error", () => {
     // The wait loop in stopVerifiedProcess is the source of truth.
   });
+  return killer;
 }
 
 export function createNodeVerifiedProcessOps(
@@ -168,15 +175,13 @@ export function createNodeVerifiedProcessOps(
 ): VerifiedProcessOps {
   if (platform === "win32") {
     return {
+      forceKillOnly: true,
       isRunning: (pid) => isProcessRunning(pid),
       kill(pid) {
         killWindowsProcessTree(pid);
       },
-      async readCommand(pid) {
-        return (await readWindowsProcessIdentity(pid)).command;
-      },
-      async readElapsedSeconds(pid) {
-        return (await readWindowsProcessIdentity(pid)).elapsedSeconds;
+      async readIdentity(pid) {
+        return readWindowsProcessIdentity(pid);
       },
       waitForExit: (args) => waitForProcessExit(args),
     };
@@ -187,10 +192,14 @@ export function createNodeVerifiedProcessOps(
     kill(pid, signal) {
       process.kill(pid, signal);
     },
-    readCommand: (pid) => readPsField(pid, "command="),
-    async readElapsedSeconds(pid) {
+    async readIdentity(pid) {
+      const command = await readPsField(pid, "command=");
       const rawElapsed = await readPsField(pid, "etime=");
-      return rawElapsed === null ? null : parseElapsedSeconds(rawElapsed);
+      return {
+        command,
+        elapsedSeconds:
+          rawElapsed === null ? null : parseElapsedSeconds(rawElapsed),
+      };
     },
     waitForExit: (args) => waitForProcessExit(args),
   };
@@ -206,7 +215,8 @@ interface VerifyProcessIdentityArgs {
 async function verifyProcessIdentity(
   args: VerifyProcessIdentityArgs,
 ): Promise<{ command: string | null; reason: UnverifiedReason } | null> {
-  const command = await args.processOps.readCommand(args.pid);
+  const identity = await args.processOps.readIdentity(args.pid);
+  const command = identity.command;
   const commandMatches =
     command !== null &&
     args.verifyTokens.some(
@@ -219,7 +229,7 @@ async function verifyProcessIdentity(
   // The command line alone cannot tell two bb launchers apart, and a recycled
   // PID can carry a matching name. The start time is what proves identity.
   const recordedStart = Date.parse(args.startedAt);
-  const elapsedSeconds = await args.processOps.readElapsedSeconds(args.pid);
+  const elapsedSeconds = identity.elapsedSeconds;
   if (Number.isNaN(recordedStart) || elapsedSeconds === null) {
     return { command, reason: "start-time" };
   }
@@ -265,7 +275,13 @@ export async function stopVerifiedProcess(
     timeoutMs: args.timeoutMs,
   });
   if (exited || !processOps.isRunning(args.pid)) {
-    return { kind: "stopped", usedKill: false };
+    return { kind: "stopped", usedKill: processOps.forceKillOnly === true };
+  }
+
+  if (processOps.forceKillOnly === true) {
+    return processOps.isRunning(args.pid)
+      ? { kind: "still-running" }
+      : { kind: "stopped", usedKill: true };
   }
 
   processOps.kill(args.pid, "SIGKILL");

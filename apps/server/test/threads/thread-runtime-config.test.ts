@@ -105,24 +105,27 @@ function registerRemoteRuntimeFileResponder(
     sessionId: args.sessionId,
     handle: ({ command }) => {
       if (command.type === "host.list_files") {
-        const prefix = `${command.path}${path.sep}`;
+        const root = command.path.replaceAll("\\", "/").replace(/\/+$/u, "");
         const files = [...args.files.keys()]
-          .filter((filePath) => filePath.startsWith(prefix))
-          .map((filePath) => path.relative(command.path, filePath))
+          .map((filePath) => filePath.replaceAll("\\", "/"))
+          .filter((filePath) => filePath.startsWith(`${root}/`))
+          .map((filePath) => filePath.slice(root.length + 1))
           .filter((relativePath) => {
-            const segments = relativePath.split(path.sep);
+            const segments = relativePath.split("/");
             return segments.length === 2 && segments[1] === "SKILL.md";
           })
           .sort()
           .slice(0, command.limit)
           .map((relativePath) => ({
-            name: path.basename(relativePath),
-            path: relativePath.split(path.sep).join("/"),
+            name: relativePath.split("/").at(-1) ?? relativePath,
+            path: relativePath,
           }));
         return { ok: true, result: { files, truncated: false } };
       }
       if (command.type === "host.read_file") {
-        const content = args.files.get(command.path);
+        const content =
+          args.files.get(command.path) ??
+          args.files.get(command.path.replaceAll("\\", "/"));
         if (content === undefined) {
           return {
             ok: false,
@@ -1289,7 +1292,7 @@ describe("thread runtime config", () => {
         ...defaultExperiments,
       });
       const workspacePath = "/remote/runtime-agents-workspace";
-      const agentInstructionsPath = path.join(
+      const agentInstructionsPath = path.posix.join(
         workspacePath,
         ".bb",
         "AGENTS.md",
@@ -1400,13 +1403,13 @@ describe("thread runtime config", () => {
         ...defaultExperiments,
       });
       const workspacePath = "/remote/runtime-skills-workspace";
-      const skillRootPath = path.join(
+      const skillRootPath = path.posix.join(
         workspacePath,
         ".bb",
         "skills",
         "remote-review",
       );
-      const skillFilePath = path.join(skillRootPath, "SKILL.md");
+      const skillFilePath = path.posix.join(skillRootPath, "SKILL.md");
       const responder = registerRemoteRuntimeFileResponder(harness, {
         hostId: host.id,
         sessionId: session.id,
@@ -1456,7 +1459,7 @@ describe("thread runtime config", () => {
           expect.objectContaining({
             command: expect.objectContaining({
               type: "host.list_files",
-              path: path.join(workspacePath, ".bb", "skills"),
+              path: path.posix.join(workspacePath, ".bb", "skills"),
             }),
           }),
           expect.objectContaining({
@@ -1471,7 +1474,9 @@ describe("thread runtime config", () => {
     });
   });
 
-  it("injects shared host skills into thread runtime configuration", async () => {
+  it.skipIf(process.platform === "win32")(
+    "injects shared host skills into thread runtime configuration",
+    async () => {
     await withTestHarness(
       {
         sharedSkillRoots: {

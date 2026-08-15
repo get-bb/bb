@@ -21,6 +21,14 @@ export const FILE_MANAGER_OPEN_CAPABILITIES: WorkspaceOpenTargetCapabilities = {
   openFileAtLine: false,
 };
 
+export const EXPLORER_FOLDER_OPEN_CAPABILITIES: WorkspaceOpenTargetCapabilities =
+  {
+    openDirectory: true,
+    openFile: false,
+    openFileAtColumn: false,
+    openFileAtLine: false,
+  };
+
 export const TERMINAL_OPEN_CAPABILITIES: WorkspaceOpenTargetCapabilities = {
   openDirectory: true,
   openFile: true,

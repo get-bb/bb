@@ -7,6 +7,11 @@
 import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
+import {
+  bbCliLaunchSpecFromPath,
+  isNodeExecutablePath,
+  spawnArgv,
+} from "@bb/config/bb-cli-launch";
 
 /** Set on the re-exec child so a shell-script → node hop cannot loop. */
 export const BB_CLI_REEXEC_ENV = "BB_CLI_REEXEC";
@@ -59,30 +64,61 @@ export function maybeReexecViaBbCli(
     return;
   }
 
-  const target = tryRealpath(targetRaw);
-  const current = tryRealpath(currentRaw);
-  if (target === null || current === null || target === current) {
-    return;
-  }
-
   const argv = options.argv ?? process.argv.slice(2);
   const childEnv: NodeJS.ProcessEnv = {
     ...env,
     [BB_CLI_REEXEC_ENV]: "1",
   };
 
-  if (options.reexec) {
-    options.reexec({ target, argv, env: childEnv });
+  if (isNodeExecutablePath(targetRaw)) {
+    const current = tryRealpath(currentRaw);
+    const target = tryRealpath(targetRaw);
+    if (target === null || current === null || target === current) {
+      return;
+    }
+    if (options.reexec) {
+      options.reexec({ target, argv, env: childEnv });
+      return;
+    }
+    const result = spawnSync(target, argv, {
+      env: childEnv,
+      stdio: "inherit",
+    });
+    if (result.error) {
+      process.stderr.write(
+        `bb: failed to re-exec BB_CLI=${target}: ${result.error.message}\n`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+    process.exit(result.status === null ? 1 : result.status);
     return;
   }
 
-  const result = spawnSync(target, argv, {
+  const spec = bbCliLaunchSpecFromPath(targetRaw);
+  const current = tryRealpath(currentRaw);
+  const jsEntry = tryRealpath(spec.jsEntryPath);
+  if (jsEntry === null || current === null || jsEntry === current) {
+    return;
+  }
+
+  const launch = spawnArgv(spec, argv);
+  if (options.reexec) {
+    options.reexec({
+      target: launch.command,
+      argv: launch.args,
+      env: childEnv,
+    });
+    return;
+  }
+
+  const result = spawnSync(launch.command, launch.args, {
     env: childEnv,
     stdio: "inherit",
   });
   if (result.error) {
     process.stderr.write(
-      `bb: failed to re-exec BB_CLI=${target}: ${result.error.message}\n`,
+      `bb: failed to re-exec BB_CLI=${launch.command}: ${result.error.message}\n`,
     );
     process.exitCode = 1;
     return;

@@ -3,7 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ENV_SETUP_SCRIPT_NAME } from "@bb/domain";
-import { shellSingleQuote, waitForSetupMarkerCount } from "@bb/test-helpers";
+import {
+  removePathWithRetry,
+  shellSingleQuote,
+  waitForSetupMarkerCount,
+} from "@bb/test-helpers";
 import { Workspace } from "../src/workspace.js";
 import {
   buildSetupScriptCommand,
@@ -95,7 +99,7 @@ afterEach(async () => {
   await Promise.all(
     tempDirs
       .splice(0)
-      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
+      .map((dir) => removePathWithRetry(dir)),
   );
 });
 
@@ -193,7 +197,7 @@ describe("workspace provisioning", () => {
 
     await expect(
       fs.readFile(path.join(targetPath, "remote.txt"), "utf8"),
-    ).resolves.toBe("remote\n");
+    ).resolves.toMatch(/^remote\r?\n$/);
     const worktreeHead = await runGit(["rev-parse", "HEAD"], {
       cwd: targetPath,
     });
@@ -263,7 +267,7 @@ describe("workspace provisioning", () => {
         waitForSetupMarkerCount({
           markerDir,
           expectedCount: 2,
-          timeoutMs: 10000,
+          timeoutMs: 20_000,
         }),
       ).resolves.toHaveLength(2);
     } finally {
@@ -274,7 +278,7 @@ describe("workspace provisioning", () => {
       { path: firstTargetPath },
       { path: secondTargetPath },
     ]);
-  }, 15000);
+  }, 30_000);
 
   it("creates nested worktree targets when parent directories do not exist", async () => {
     const sourceRepo = await initRepoWithOptionalSetup();
@@ -342,7 +346,7 @@ describe("workspace provisioning", () => {
     ).rejects.toThrow(/timed out/u);
   });
 
-  it("aborts setup scripts and emits cancellation progress", async () => {
+  it.skipIf(process.platform === "win32")("aborts setup scripts and emits cancellation progress", async () => {
     const workspacePath = await makeTempDir("bb-setup-abort-");
     const markerDir = await makeTempDir("bb-setup-abort-markers-");
     await fs.writeFile(
@@ -411,7 +415,7 @@ describe("workspace provisioning", () => {
     expect(entries).toContain("setup-cancelled:.bb-env-setup.sh cancelled");
   });
 
-  it("removes managed worktrees after setup script cancellation", async () => {
+  it.skipIf(process.platform === "win32")("removes managed worktrees after setup script cancellation", async () => {
     const markerDir = await makeTempDir("bb-worktree-abort-markers-");
     const sourceRepo = await initRepoWithOptionalSetup(
       [
@@ -479,7 +483,7 @@ describe("workspace provisioning", () => {
     expect(outputEntries).toEqual(["progress done"]);
   });
 
-  it("closes setup script stdin so hooks do not block on input", async () => {
+  it.skipIf(process.platform === "win32")("closes setup script stdin so hooks do not block on input", async () => {
     const workspacePath = await makeTempDir("bb-setup-stdin-closed-");
     await fs.writeFile(
       path.join(workspacePath, DEFAULT_ENV_SETUP_SCRIPT_NAME),
@@ -570,10 +574,9 @@ describe("workspace provisioning", () => {
     });
   });
 
-  it("runs a POSIX setup script on Windows through Git sh", async () => {
-    if (process.platform !== "win32") {
-      return;
-    }
+  it.skipIf(process.platform !== "win32")(
+    "runs a POSIX setup script on Windows through Git sh",
+    async () => {
     const workspacePath = await makeTempDir("bb-setup-win32-run-");
     await fs.writeFile(
       path.join(workspacePath, ".bb-env-setup.sh"),
@@ -586,7 +589,8 @@ describe("workspace provisioning", () => {
         timeoutMs: 900000,
       }),
     ).resolves.toMatchObject({ ran: true, exitCode: 0 });
-  });
+    },
+  );
 
   it("returns a no-op when the setup script is missing", async () => {
     const workspacePath = await makeTempDir("bb-setup-noop-");

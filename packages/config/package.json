@@ -127,6 +127,11 @@
       "source": "./src/verified-process-stop.ts",
       "types": "./src/verified-process-stop.ts",
       "default": "./src/verified-process-stop.ts"
+    },
+    "./bb-cli-launch": {
+      "source": "./src/bb-cli-launch.ts",
+      "types": "./src/bb-cli-launch.ts",
+      "default": "./src/bb-cli-launch.ts"
     }
   },
   "scripts": {

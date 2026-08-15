@@ -69,7 +69,7 @@ describe("GitHub official plugin frontend bundle", () => {
     await symlink(
       fileURLToPath(new URL("../../../../packages/shared-ui", import.meta.url)),
       sharedUiLink,
-      "dir",
+      process.platform === "win32" ? "junction" : "dir",
     );
     const { jsPath } = await buildPluginApp(pluginDir, "0.9.0-test", await testToolchain());
 

@@ -24,13 +24,11 @@ describe("internal skill tree routes", () => {
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toEqual({
         treeHash: manifest.treeHash,
-        entries: [
-          {
-            path: "SKILL.md",
-            mode: 0o644,
-            contentBase64: Buffer.from("tree route bytes\n").toString("base64"),
-          },
-        ],
+        entries: manifest.entries.map((entry) => ({
+          path: entry.path,
+          mode: entry.mode,
+          contentBase64: entry.bytes.toString("base64"),
+        })),
       });
     });
   });

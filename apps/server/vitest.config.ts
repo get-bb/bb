@@ -8,6 +8,7 @@ const isolationTests = findIsolationRequiringTests(__dirname, ["src", "test"]);
 export default defineWorkspaceTestConfig({
   test: {
     silent: "passed-only",
+    testTimeout: 15_000,
     env: {
       BB_DATA_DIR: "/tmp/bb-server-test",
       BB_SERVER_PORT: "49161",

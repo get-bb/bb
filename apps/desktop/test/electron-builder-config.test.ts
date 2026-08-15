@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import {
   access,
   chmod,
@@ -235,10 +236,13 @@ const runConfigScript: RunConfigScript = async (overrides) => {
   };
 };
 
-const runNativePrepScript: RunNativePrepScript = async (appOutDir) => {
+const runNativePrepScriptWithArgs = async (
+  appOutDir: string,
+  extraArgs: string[],
+): Promise<{ exitCode: number | null; stderr: string; stdout: string }> => {
   const child = spawn(
     process.execPath,
-    ["scripts/prepare-native-modules.cjs", appOutDir],
+    ["scripts/prepare-native-modules.cjs", appOutDir, ...extraArgs],
     {
       cwd: desktopPackageRoot,
     },
@@ -262,6 +266,10 @@ const runNativePrepScript: RunNativePrepScript = async (appOutDir) => {
     stderr: stderrChunks.join(""),
     stdout: stdoutChunks.join(""),
   };
+};
+
+const runNativePrepScript: RunNativePrepScript = async (appOutDir) => {
+  return runNativePrepScriptWithArgs(appOutDir, []);
 };
 
 const readResolvedConfig: ReadResolvedConfig = async (overrides) => {
@@ -390,7 +398,74 @@ describe("electron-builder signing config", () => {
     expect(() => nativePrep.resolveArchName({})).toThrow(
       /Unable to resolve packaged native arch/,
     );
+  }, 15_000);
+
+  const workspaceRoot = resolve(desktopPackageRoot, "..", "..");
+  const parcelWatcherWin32Present = [
+    resolve(
+      workspaceRoot,
+      "node_modules",
+      "@parcel",
+      "watcher-win32-x64",
+      "watcher.node",
+    ),
+    resolve(
+      workspaceRoot,
+      "node_modules",
+      ".pnpm",
+      "node_modules",
+      "@parcel",
+      "watcher-win32-x64",
+      "watcher.node",
+    ),
+  ].some((candidate) => existsSync(candidate));
+  const isWin32X64 = process.platform === "win32" && process.arch === "x64";
+
+  it("fails hard on win32-x64 when the watcher prebuild is missing", () => {
+    if (isWin32X64 && !parcelWatcherWin32Present) {
+      throw new Error(
+        "missing @parcel/watcher-win32-x64 on win32-x64; package:win cannot copy the watcher",
+      );
+    }
+    if (isWin32X64) {
+      expect(parcelWatcherWin32Present).toBe(true);
+    }
   });
+
+  it.skipIf(!parcelWatcherWin32Present)(
+    "spawns prepare-native-modules.cjs --platform=win32 and copies the watcher",
+    async () => {
+      const appOutDir = await mkdtemp(
+        resolve(tmpdir(), "bb-desktop-win32-native-"),
+      );
+      try {
+        await mkdir(resolve(appOutDir, "node_modules", "node-pty"), {
+          recursive: true,
+        });
+        await mkdir(resolve(appOutDir, "node_modules", "@parcel", "watcher"), {
+          recursive: true,
+        });
+        const result = await runNativePrepScriptWithArgs(appOutDir, [
+          "--platform=win32",
+          "--arch=x64",
+        ]);
+        expect(result.exitCode).toBe(0);
+        expect(
+          existsSync(
+            resolve(
+              appOutDir,
+              "node_modules",
+              "@parcel",
+              "watcher-win32-x64",
+            ),
+          ),
+        ).toBe(true);
+      } finally {
+        await rm(appOutDir, { recursive: true, force: true });
+      }
+    },
+    30_000,
+  );
 
   it("runs a native module preparation hook after packaging", async () => {
     const configText = await readFile(
@@ -504,7 +579,9 @@ describe("electron-builder signing config", () => {
     });
   });
 
-  it("patches packaged node-pty helper path handling", async () => {
+  it.skipIf(process.platform !== "darwin")(
+    "patches packaged node-pty helper path handling",
+    async () => {
     const appOutDir = await mkdtemp(
       resolve(tmpdir(), "bb-desktop-native-modules-"),
     );
@@ -558,7 +635,8 @@ describe("electron-builder signing config", () => {
     } finally {
       await rm(appOutDir, { force: true, recursive: true });
     }
-  });
+    },
+  );
 
   it("points mac signing entitlements at checked-in plist files", async () => {
     const configText = await readFile(

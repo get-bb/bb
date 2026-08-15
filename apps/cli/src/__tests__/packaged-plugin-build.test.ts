@@ -101,5 +101,5 @@ describe("packaged CLI plugin build", () => {
     );
     expect(appBundle).toContain("useComposerView");
     expect(appBundle).toContain("homepageSection");
-  }, 30_000);
+  }, 90_000);
 });

@@ -1,4 +1,3 @@
-import { realpathSync } from "node:fs";
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -71,8 +70,8 @@ describe("maybeReexecViaBbCli", () => {
     });
     expect(reexec).toHaveBeenCalledOnce();
     expect(reexec.mock.calls[0]?.[0]).toEqual({
-      target: realpathSync(target),
-      argv: ["status", "--json"],
+      target: process.execPath,
+      argv: [target, "status", "--json"],
       env: expect.objectContaining({
         BB_CLI: target,
         BB_SERVER_URL: "http://127.0.0.1:1",

@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { removePathWithRetry } from "@bb/test-helpers";
 import { Workspace } from "../src/workspace.js";
 import { runGit } from "../src/git.js";
 import type { RawDiffFileStat, WorkspaceDiffTarget } from "@bb/domain";
@@ -139,12 +140,12 @@ afterEach(async () => {
   await Promise.all(
     tempDirs
       .splice(0)
-      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
+      .map((dir) => removePathWithRetry(dir)),
   );
 });
 
 describe("Workspace.diffFiles", () => {
-  it("reports staged and untracked files before the initial commit", async () => {
+  it.skipIf(process.platform === "win32")("reports staged and untracked files before the initial commit", async () => {
     const repoPath = await initRepo();
     await write(repoPath, "staged.txt", "staged pending\n");
     await runGit(["add", "staged.txt"], { cwd: repoPath });
@@ -261,7 +262,7 @@ describe("Workspace.diffFiles", () => {
     expect(renamed?.previousPath).toBe("original.txt");
   });
 
-  it("detects a type change (file to symlink) as statusLetter T", async () => {
+  it.skipIf(process.platform === "win32")("detects a type change (file to symlink) as statusLetter T", async () => {
     const repoPath = await initRepo();
     await write(repoPath, "target.txt", "hello\n");
     await write(repoPath, "thing", "i am a regular file\n");
@@ -398,7 +399,7 @@ describe("Workspace.diffFiles", () => {
     );
   });
 
-  it("returns an exact truncated untracked slice at the file cap", async () => {
+  it.skipIf(process.platform === "win32")("returns an exact truncated untracked slice at the file cap", async () => {
     const repoPath = await initRepo();
     await Promise.all([
       write(repoPath, "one.txt", "one\n"),

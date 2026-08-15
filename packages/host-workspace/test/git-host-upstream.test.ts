@@ -4,7 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runGit } from "../src/git.js";
+import { removePathWithRetry } from "@bb/test-helpers";
+import { resolveShellPipelineExecutable, runGit } from "../src/git.js";
 import { Workspace } from "../src/workspace.js";
 
 const execFileAsync = promisify(execFile);
@@ -102,39 +103,44 @@ async function installFakeGh(mode: "found" | "none" | "auth"): Promise<{
   const binPath = await makeTempDir("bb-pr-upstream-bin-");
   const logPath = path.join(binPath, "gh.log");
   const ghPath = path.join(binPath, "gh");
-  await fs.writeFile(
-    ghPath,
-    [
-      "#!/bin/sh",
-      "first=1",
-      'for argument in "$@"; do',
-      '  if [ "$first" -eq 0 ]; then printf "\\t" >> "$TEST_GH_LOG"; fi',
-      '  printf "%s" "$argument" >> "$TEST_GH_LOG"',
-      "  first=0",
-      "done",
-      'printf "\\n" >> "$TEST_GH_LOG"',
-      'if [ "$TEST_GH_MODE" = "auth" ]; then',
-      '  printf "%s\\n" "gh: To get started with GitHub CLI, please run: gh auth login" >&2',
-      "  exit 4",
-      "fi",
-      'if [ "$1" = "pr" ] && [ "$2" = "view" ]; then',
-      '  if [ "$TEST_GH_MODE" = "none" ]; then',
-      '    printf "no pull requests found for branch \\"%s\\"\\n" "$3" >&2',
-      "    exit 1",
-      "  fi",
-      '  printf "%s\\n" "$TEST_GH_PR_JSON"',
-      "  exit 0",
-      "fi",
-      'if [ "$1" = "pr" ] && { [ "$2" = "ready" ] || [ "$2" = "merge" ]; }; then',
-      "  exit 0",
-      "fi",
-      'printf "unexpected gh arguments: %s\\n" "$*" >&2',
-      "exit 2",
-      "",
-    ].join("\n"),
-    "utf8",
-  );
+  const ghScript = [
+    "#!/bin/sh",
+    "first=1",
+    'for argument in "$@"; do',
+    '  if [ "$first" -eq 0 ]; then printf "\\t" >> "$TEST_GH_LOG"; fi',
+    '  printf "%s" "$argument" >> "$TEST_GH_LOG"',
+    "  first=0",
+    "done",
+    'printf "\\n" >> "$TEST_GH_LOG"',
+    'if [ "$TEST_GH_MODE" = "auth" ]; then',
+    '  printf "%s\\n" "gh: To get started with GitHub CLI, please run: gh auth login" >&2',
+    "  exit 4",
+    "fi",
+    'if [ "$1" = "pr" ] && [ "$2" = "view" ]; then',
+    '  if [ "$TEST_GH_MODE" = "none" ]; then',
+    '    printf "no pull requests found for branch \\"%s\\"\\n" "$3" >&2',
+    "    exit 1",
+    "  fi",
+    '  printf "%s\\n" "$TEST_GH_PR_JSON"',
+    "  exit 0",
+    "fi",
+    'if [ "$1" = "pr" ] && { [ "$2" = "ready" ] || [ "$2" = "merge" ]; }; then',
+    "  exit 0",
+    "fi",
+    'printf "unexpected gh arguments: %s\\n" "$*" >&2',
+    "exit 2",
+    "",
+  ].join("\n");
+  await fs.writeFile(ghPath, ghScript, "utf8");
   await fs.chmod(ghPath, 0o755);
+  if (process.platform === "win32") {
+    const sh = resolveShellPipelineExecutable();
+    await fs.writeFile(
+      path.join(binPath, "gh.cmd"),
+      `@echo off\r\n"${sh}" "${ghPath}" %*\r\n`,
+      "utf8",
+    );
+  }
 
   vi.stubEnv("TEST_GH_LOG", logPath);
   vi.stubEnv("TEST_GH_MODE", mode);
@@ -163,7 +169,7 @@ afterEach(async () => {
   await Promise.all(
     tempDirs
       .splice(0)
-      .map((directory) => fs.rm(directory, { recursive: true, force: true })),
+      .map((directory) => removePathWithRetry(directory)),
   );
 });
 
@@ -304,13 +310,20 @@ describe("pull request lookup for differently named upstream branches", () => {
     });
   });
 
-  it("returns unavailable when gh is not installed", async () => {
+  it.skipIf(process.platform === "win32")("returns unavailable when gh is not installed", async () => {
     const workspacePath = await createTrackedForkWorkspace();
     const binPath = await makeTempDir("bb-pr-upstream-no-gh-");
-    const { stdout } = await execFileAsync("which", ["git"], {
-      encoding: "utf8",
-    });
-    await fs.symlink(stdout.trim(), path.join(binPath, "git"));
+    const gitLookup =
+      process.platform === "win32"
+        ? await execFileAsync("where.exe", ["git"], { encoding: "utf8" })
+        : await execFileAsync("which", ["git"], { encoding: "utf8" });
+    const gitPath = gitLookup.stdout.split(/\r?\n/u)[0]?.trim();
+    if (gitPath === undefined || gitPath.length === 0) {
+      throw new Error("git is not on PATH");
+    }
+    const gitName = process.platform === "win32" ? "git.exe" : "git";
+    await fs.copyFile(gitPath, path.join(binPath, gitName));
+    vi.stubEnv("Path", binPath);
     vi.stubEnv("PATH", binPath);
 
     await expect(

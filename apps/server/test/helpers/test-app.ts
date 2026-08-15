@@ -1,4 +1,5 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
+import { removePathWithRetry } from "@bb/test-helpers";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
@@ -212,7 +213,7 @@ export async function createTestAppHarness(
     pluginService,
     pluginCatalogService,
     async cleanup(): Promise<void> {
-      await rm(dataDir, { recursive: true, force: true });
+      await removePathWithRetry(dataDir);
     },
   };
 }

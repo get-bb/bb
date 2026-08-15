@@ -1,4 +1,3 @@
-import path from "node:path";
 import {
   countProjectSources,
   findOrCreateProjectByLocalPathSource,
@@ -50,6 +49,7 @@ import { PROMPT_HISTORY_ENTRY_LIMIT } from "@bb/domain";
 import { resolveCreateThreadExecutionDefaults } from "../services/threads/thread-default-policy.js";
 import { resolveProjectCreateDefaultExecutionPlan } from "../services/threads/thread-execution-plan.js";
 import { toThreadListEntryResponses } from "../services/threads/thread-runtime-display.js";
+import { joinHostDataPath } from "../services/threads/worktree-paths.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import { runLiveHostCommand } from "../services/hosts/live-command.js";
 import {
@@ -637,7 +637,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
           type: "host.read_file",
-          path: path.join(target.path, filePath.relativePath),
+          path: joinHostDataPath(target.path, filePath.relativePath),
           rootPath: target.path,
         },
       });

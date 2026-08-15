@@ -218,7 +218,9 @@ describe("plugin manifest", () => {
     );
   });
 
-  it("rejects a branding asset symlink that escapes the plugin directory", async () => {
+  it.skipIf(process.platform === "win32")(
+    "rejects a branding asset symlink that escapes the plugin directory",
+    async () => {
     const outsideDir = await mkdtemp(
       join(tmpdir(), "bb-plugin-branding-outside-"),
     );

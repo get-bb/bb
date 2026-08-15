@@ -1,9 +1,9 @@
 import { Buffer } from "node:buffer";
-import path from "node:path";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
+import { joinHostDataPath } from "../threads/worktree-paths.js";
 import {
   resolveProjectSkillSourceFromContent,
   type ProjectInjectedSkillSource,
@@ -28,8 +28,11 @@ async function readProjectSkill(
     hostId: string;
   },
 ): Promise<ProjectInjectedSkillSource | null> {
-  const candidatePath = path.join(args.skillsRootPath, args.directoryName);
-  const skillFilePath = path.join(candidatePath, SKILL_FILE_NAME);
+  const candidatePath = joinHostDataPath(
+    args.skillsRootPath,
+    args.directoryName,
+  );
+  const skillFilePath = joinHostDataPath(candidatePath, SKILL_FILE_NAME);
   let result;
   try {
     result = await callHostRetryableOnlineRpc(deps, {
@@ -74,7 +77,7 @@ export async function resolveWorkspaceProjectSkills(
   deps: LoggedWorkSessionDeps,
   args: ResolveWorkspaceProjectSkillsArgs,
 ): Promise<ProjectInjectedSkillSource[]> {
-  const skillsRootPath = path.join(args.workspacePath, ".bb", "skills");
+  const skillsRootPath = joinHostDataPath(args.workspacePath, ".bb", "skills");
   const result = await callHostRetryableOnlineRpc(deps, {
     hostId: args.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,

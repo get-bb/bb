@@ -140,8 +140,10 @@ export function createBbAppArtifactService(
     }
 
     const stdout = await commandRunner(
-      "npm",
-      ["pack", "--pack-destination", cacheDir],
+      process.platform === "win32" ? (process.env.ComSpec ?? "cmd.exe") : "npm",
+      process.platform === "win32"
+        ? ["/d", "/c", "npm", "pack", "--pack-destination", cacheDir]
+        : ["pack", "--pack-destination", cacheDir],
       packageRoot,
     );
     const packedName = stdout.trim().split(/\r?\n/u).at(-1);

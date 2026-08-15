@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { removePathWithRetry } from "@bb/test-helpers";
 import {
   DEFAULT_ENV_SETUP_SCRIPT_NAME,
   type ProvisioningTranscriptEntry,
@@ -57,7 +58,7 @@ afterEach(async () => {
   await Promise.all(
     tempDirs
       .splice(0)
-      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
+      .map((dir) => removePathWithRetry(dir)),
   );
 });
 

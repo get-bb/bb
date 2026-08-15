@@ -10,6 +10,8 @@ describe("getAbsoluteDirname", () => {
     ["/storage/thr_1/current/summary.md", "/storage/thr_1/current"],
     ["/README.md", "/"],
     ["/storage/thr_1/", "/storage"],
+    ["C:\\repo\\docs\\a.md", "C:\\repo\\docs"],
+    ["C:\\repo\\file.md", "C:\\repo"],
   ])("resolves the parent of %s", (path, expected) => {
     expect(getAbsoluteDirname({ path })).toBe(expected);
   });
@@ -63,5 +65,23 @@ describe("isAbsoluteFilePathWithinRoot", () => {
         rootPath: "/Users/me/project",
       }),
     ).toBe(false);
+  });
+
+  it("treats mixed C:/ and C:\\ as the same root", () => {
+    expect(
+      isAbsoluteFilePathWithinRoot({
+        candidatePath: "C:\\repo\\file.md",
+        rootPath: "C:/repo",
+      }),
+    ).toBe(true);
+  });
+
+  it("folds drive-letter case on Windows paths", () => {
+    expect(
+      isAbsoluteFilePathWithinRoot({
+        candidatePath: "c:\\repo\\file.md",
+        rootPath: "C:\\repo",
+      }),
+    ).toBe(true);
   });
 });

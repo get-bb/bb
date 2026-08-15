@@ -7,9 +7,9 @@
 - macOS persistent host
 - Linux persistent host
 - Windows via Ubuntu on WSL2
-- Native Windows host from a source checkout (PowerShell, CMD, `C:\` / UNC paths).
-  Published npm and desktop download flows still document WSL2 as the Windows
-  path until Windows CI is a required gate. See #1206.
+- Native Windows source checkout is a development path (PowerShell, CMD,
+  drive-letter paths). It is not published support. See #1206 (proposal by
+  Rodion Mostovoi, [@rodion-m](https://github.com/rodion-m)).
 
 Minimum runtime: Node.js 22.19. The floor comes from Pi, whose packages declare
 `engines.node: ">=22.19.0"`.
@@ -27,12 +27,13 @@ tested lines, which npm surfaces as a warning rather than an install failure.
 
 Native Windows from this checkout:
 
-- `npx bb-app`, the `bb` CLI (`apps/cli/bin/bb.cmd` in a source checkout), and
+- From this checkout, `pnpm start` / the `bb` CLI (`apps/cli/bin/bb.cmd`) and
   a source-built Windows installer (`pnpm --filter @bb/desktop run dist:win`)
   run in PowerShell or CMD. `package:win` only emits the unpacked
-  `win-unpacked/bb.exe` used for local smoke.
+  `win-unpacked/bb.exe` used for local smoke. Do not use `npx bb-app@latest`
+  as a published Windows path.
 - Node.js, Git, and provider CLIs are native Windows installs (`.exe` / `PATHEXT`)
-- local project paths accept drive-letter and UNC paths
+- local project paths accept drive-letter paths
 - worktree setup hooks still use the POSIX `.bb-env-setup.sh` contract and run
   through Git's bundled `bash` when `sh` is not on `PATH`
 
@@ -150,8 +151,9 @@ rebuild the native dependency, for example `npm rebuild better-sqlite3`.
 - The repository enforces LF checkout for supported text files via
   [.gitattributes](../.gitattributes).
 - Supported Linux and WSL2 flows must work with those repository rules applied.
-- Native Windows checkouts are a supported product path. Text files still
-  check out as LF via [.gitattributes](../.gitattributes).
+- Native Windows checkouts use the same LF rules via
+  [.gitattributes](../.gitattributes). That does not make Windows a published
+  host.
 
 ## CI And Validation
 
@@ -169,5 +171,5 @@ rebuild the native dependency, for example `npm rebuild better-sqlite3`.
   smoke jobs do not run on pull requests and should not be configured as
   required PR checks.
 - Native Windows CI is not required on pull requests. Ubuntu and macOS remain
-  the required gates. Windows behavior is covered by in-repo unit tests that
-  run on every host.
+  the required gates. Tests that need `taskkill` or Git Bash use `it.skipIf`
+  on non-Windows hosts.

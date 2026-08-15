@@ -6,6 +6,7 @@ import type { HostDaemonDaemonWsMessage } from "@bb/host-daemon-contract";
 import type { HostWorkspace } from "@bb/host-workspace";
 import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { removePathWithRetry } from "@bb/test-helpers";
 import type { HostDaemonLogger } from "../logger.js";
 import { RuntimeManager } from "../runtime-manager.js";
 import {
@@ -101,9 +102,7 @@ function createFakeLogger(): HostDaemonLogger {
 
 async function cleanupTempDirs(): Promise<void> {
   await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((tempDir) => fs.rm(tempDir, { force: true, recursive: true })),
+    tempDirs.splice(0).map((tempDir) => removePathWithRetry(tempDir)),
   );
 }
 
@@ -927,10 +926,9 @@ describe("TerminalManager", () => {
     expect(env?.NODE_ENV).toBeUndefined();
   });
 
-  it("makes every available node-pty spawn-helper executable", async () => {
-    if (process.platform === "win32") {
-      return;
-    }
+  it.skipIf(process.platform === "win32")(
+    "makes every available node-pty spawn-helper executable",
+    async () => {
     const logger = createFakeLogger();
     const packageDirectory = await makeTempDir("bb-node-pty-package-");
     const buildNativePath = path.join(
@@ -982,10 +980,9 @@ describe("TerminalManager", () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
-  it("makes an available prebuild-only node-pty spawn-helper executable", async () => {
-    if (process.platform === "win32") {
-      return;
-    }
+  it.skipIf(process.platform === "win32")(
+    "makes an available prebuild-only node-pty spawn-helper executable",
+    async () => {
     const logger = createFakeLogger();
     const packageDirectory = await makeTempDir("bb-node-pty-package-");
     const prebuildHelperPath = path.join(
@@ -1459,10 +1456,52 @@ describe("TerminalManager", () => {
     expect(harness.adapter.spawned[0]?.args.file).toBe("cmd.exe");
   });
 
-  it("runs commands in one persistent shell from the workspace cwd", async () => {
-    if (process.platform === "win32") {
-      return;
-    }
+  it("passes cmd command-mode flags from the resolved shell basename", async () => {
+    const harness = createHarness();
+    const manager = new TerminalManager({
+      logger: {
+        debug: vi.fn(),
+        error: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+      },
+      platform: "win32",
+      ptyAdapter: harness.adapter,
+      resolveShell: async () => "C:\\Windows\\System32\\cmd.exe",
+      runtimeManager: harness.runtimeManager,
+      sendMessage: (message) => {
+        harness.messages.push(message);
+        return true;
+      },
+    });
+
+    await manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-cmd-command",
+      terminalId: "term-cmd-command",
+      threadId: "thr-1",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      },
+      cols: 100,
+      rows: 30,
+      start: { mode: "command", command: "pnpm dev" },
+    });
+
+    expect(harness.adapter.spawned[0]?.args).toMatchObject({
+      args: ["/d", "/s", "/c", "pnpm dev"],
+      file: "C:\\Windows\\System32\\cmd.exe",
+    });
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "runs commands in one persistent shell from the workspace cwd",
+    async () => {
 
     const workspacePath = await makeTempDir("bb-terminal-manager-real-");
     const targetPath = await makeTempDir("bb-terminal-manager-target-");

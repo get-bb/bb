@@ -1,4 +1,6 @@
 import { execFile, type ExecFileException } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { promisify } from "node:util";
 import {
   type GitHostPullRequest,
@@ -14,6 +16,73 @@ import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 import { runGit, type GitCommandResult, WorkspaceError } from "./git.js";
 
 const execFileAsync = promisify(execFile);
+
+function resolveExecutableOnPath(name: string): string | null {
+  const pathValue = process.env.PATH ?? process.env.Path ?? "";
+  const extensions =
+    process.platform === "win32"
+      ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";").filter(Boolean)
+      : [""];
+  for (const dir of pathValue.split(path.delimiter)) {
+    if (dir.length === 0) {
+      continue;
+    }
+    for (const extension of extensions) {
+      const withExt = path.join(dir, `${name}${extension}`);
+      if (existsSync(withExt)) {
+        return withExt;
+      }
+    }
+    const bare = path.join(dir, name);
+    if (existsSync(bare)) {
+      return bare;
+    }
+  }
+  return null;
+}
+
+function execGh(
+  ghArgs: readonly string[],
+  options: {
+    cwd: string;
+    timeout: number;
+    maxBuffer: number;
+  },
+): Promise<{ stdout: string; stderr: string }> {
+  const env = sanitizeInheritedChildProcessEnv({ env: process.env });
+  const resolved = resolveExecutableOnPath("gh");
+  if (resolved === null) {
+    const error = new Error("gh not found on PATH") as ExecFileException;
+    error.code = "ENOENT";
+    return Promise.reject(error);
+  }
+  const isCmd =
+    process.platform === "win32" &&
+    (resolved.toLowerCase().endsWith(".cmd") ||
+      resolved.toLowerCase().endsWith(".bat"));
+  if (isCmd) {
+    return execFileAsync(
+      process.env.ComSpec ?? "cmd.exe",
+      ["/d", "/c", resolved, ...ghArgs],
+      {
+        cwd: options.cwd,
+        encoding: "utf8",
+        env,
+        timeout: options.timeout,
+        maxBuffer: options.maxBuffer,
+        windowsHide: true,
+      },
+    );
+  }
+  return execFileAsync(resolved, [...ghArgs], {
+    cwd: options.cwd,
+    encoding: "utf8",
+    env,
+    timeout: options.timeout,
+    maxBuffer: options.maxBuffer,
+    windowsHide: true,
+  });
+}
 
 /** `gh` is a network round-trip; cap it so it never blocks a status poll. */
 const GH_PR_VIEW_TIMEOUT_MS = 10_000;
@@ -639,10 +708,8 @@ export async function getPullRequestForCurrentBranch(
   ];
   let stdout: string;
   try {
-    ({ stdout } = await execFileAsync("gh", ghArgs, {
+    ({ stdout } = await execGh(ghArgs, {
       cwd: args.cwd,
-      encoding: "utf8",
-      env: sanitizeInheritedChildProcessEnv({ env: process.env }),
       timeout: GH_PR_VIEW_TIMEOUT_MS,
       maxBuffer: GH_PR_VIEW_MAX_BUFFER_BYTES,
     }));
@@ -676,10 +743,8 @@ export async function runPullRequestActionForCurrentBranch(
     target.outcome === "upstream-branch" ? target.selector : null,
   );
   try {
-    await execFileAsync("gh", ghArgs, {
+    await execGh(ghArgs, {
       cwd: args.cwd,
-      encoding: "utf8",
-      env: sanitizeInheritedChildProcessEnv({ env: process.env }),
       timeout: GH_PR_ACTION_TIMEOUT_MS,
       maxBuffer: GH_PR_ACTION_MAX_BUFFER_BYTES,
     });

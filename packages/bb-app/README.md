@@ -37,7 +37,10 @@ credentials. If you use multiple providers, you can mix and match per task.
 
 - macOS
 - Linux
-- Windows (native PowerShell, CMD, drive-letter and UNC paths)
+- Windows via Ubuntu on WSL2
+
+A native Windows source checkout is a development path. It is not published
+support. See #1206.
 
 <details>
 <summary>Windows via Ubuntu on WSL2</summary>

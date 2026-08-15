@@ -36,6 +36,7 @@ import {
   storedBaseBranchNameToSpec,
 } from "../threads/thread-create-helpers.js";
 import {
+  hostPathKindFromDataDir,
   resolveManagedTargetPath,
   resolvePersonalTargetPath,
 } from "../threads/worktree-paths.js";
@@ -1082,6 +1083,7 @@ export async function dispatchManagedEnvironmentReprovision(
             resolvePersonalTargetPath({
               dataDir: hostSession.dataDir,
               environmentId: args.environment.id,
+              hostPathKind: hostPathKindFromDataDir(hostSession.dataDir),
             }),
           workspaceProvisionType: provisionType,
         })
@@ -1097,6 +1099,7 @@ export async function dispatchManagedEnvironmentReprovision(
               dataDir: hostSession.dataDir,
               environmentId: args.environment.id,
               sourcePath: source.path,
+              hostPathKind: hostPathKindFromDataDir(hostSession.dataDir),
             });
           const branchName =
             args.environment.branchName ??

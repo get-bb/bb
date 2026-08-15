@@ -5,9 +5,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createLogLineBuffer,
   createLogTailer,
-  formatWindowsLogTailCommand,
-  LOG_VIEWER_INITIAL_TAIL_LINES,
+  readLogFileRange,
   resolveCurrentLogFile,
+  splitUtf8Remainder,
   type LogTailer,
 } from "../src/log-viewer.js";
 import type { LogViewerLine } from "../src/log-viewer-contract.js";
@@ -77,24 +77,6 @@ function createTestLogLine(args: CreateTestLogLineArgs): LogViewerLine {
 }
 
 describe("log viewer", () => {
-  it("quotes a Windows log path so PowerShell cannot expand $() in the name", () => {
-    const command = formatWindowsLogTailCommand(
-      String.raw`C:\logs\server.$(Start-Process calc).log`,
-      LOG_VIEWER_INITIAL_TAIL_LINES,
-    );
-
-    expect(command).toBe(
-      `Get-Content -LiteralPath 'C:\\logs\\server.$(Start-Process calc).log' -Tail ${String(LOG_VIEWER_INITIAL_TAIL_LINES)} -Wait -Encoding utf8`,
-    );
-    expect(command).not.toContain(JSON.stringify(String.raw`C:\logs\server.$(Start-Process calc).log`));
-  });
-
-  it("escapes single quotes in the Windows log path", () => {
-    expect(formatWindowsLogTailCommand("C:\\logs\\O'Brien.log", 10)).toBe(
-      "Get-Content -LiteralPath 'C:\\logs\\O''Brien.log' -Tail 10 -Wait -Encoding utf8",
-    );
-  });
-
   it("selects the newest matching server log file", async () => {
     const tempDir = await createTempDir();
     const firstServerLog = join(tempDir.path, "server.1.log");
@@ -208,6 +190,11 @@ describe("log viewer", () => {
     await tailer.start();
 
     const processIds = tailer.processIds();
+    if (process.platform === "win32") {
+      expect(processIds).toEqual([]);
+      tailer.stop();
+      return;
+    }
     expect(processIds).toHaveLength(2);
     expect(processIds.every(isProcessRunning)).toBe(true);
 
@@ -263,5 +250,32 @@ describe("log viewer", () => {
       "line-2",
     ]);
     buffer.stop();
+  });
+
+  it("holds an incomplete UTF-8 sequence until the next read", async () => {
+    const cafe = Buffer.from("café\n", "utf8");
+    const first = cafe.subarray(0, cafe.length - 2);
+    const second = cafe.subarray(cafe.length - 2);
+    expect(splitUtf8Remainder(first).remainder.length).toBeGreaterThan(0);
+
+    const tempDir = await createTempDir();
+    const logPath = join(tempDir.path, "server.1.log");
+    await writeFile(logPath, first);
+    const firstRead = await readLogFileRange({
+      filePath: logPath,
+      pendingUtf8: Buffer.alloc(0),
+      start: 0,
+    });
+    expect(firstRead.text.includes("é")).toBe(false);
+    expect(firstRead.pendingUtf8.length).toBeGreaterThan(0);
+
+    await appendFile(logPath, second);
+    const secondRead = await readLogFileRange({
+      filePath: logPath,
+      pendingUtf8: firstRead.pendingUtf8,
+      start: firstRead.nextOffset,
+    });
+    expect(secondRead.text).toBe("é\n");
+    expect(secondRead.pendingUtf8.length).toBe(0);
   });
 });

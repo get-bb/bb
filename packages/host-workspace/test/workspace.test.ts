@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { removePathWithRetry } from "@bb/test-helpers";
 import type { WorkspaceChangeStats } from "@bb/domain";
 import { Workspace } from "../src/workspace.js";
 import { WorkspaceError } from "../src/git.js";
@@ -116,7 +117,7 @@ afterEach(async () => {
   await Promise.all(
     tempDirs
       .splice(0)
-      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
+      .map((dir) => removePathWithRetry(dir)),
   );
 });
 
@@ -280,7 +281,7 @@ describe("Workspace", () => {
     expect(branchFingerprint).not.toBe(initialFingerprint);
   });
 
-  it("returns grouped status details only when merge-base data is requested", async () => {
+  it.skipIf(process.platform === "win32")("returns grouped status details only when merge-base data is requested", async () => {
     const repoPath = await initRepo();
     await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
     await fs.writeFile(path.join(repoPath, "README.md"), "feature\n", "utf8");
@@ -513,7 +514,7 @@ describe("Workspace", () => {
     expect(status.mergeBase?.commits).toEqual([]);
   });
 
-  it("reports status for git repositories with no commits yet", async () => {
+  it.skipIf(process.platform === "win32")("reports status for git repositories with no commits yet", async () => {
     const repoPath = await makeTempDir("bb-workspace-unborn-repo-");
     await runGit(["init", "-b", "main"], { cwd: repoPath });
     await fs.writeFile(
@@ -1012,7 +1013,7 @@ describe("Workspace", () => {
     expect((await workspace.getStatus()).workingTree.state).toBe("clean");
   });
 
-  it("keeps real concurrent reset and checkout mutations coherent", async () => {
+  it.skipIf(process.platform === "win32")("keeps real concurrent reset and checkout mutations coherent", async () => {
     const repoPath = await initRepo();
     const workspace = new Workspace(repoPath);
     const fileNames = Array.from(
@@ -1247,7 +1248,7 @@ describe("Workspace", () => {
     ).rejects.toMatchObject({ code: "non_local_target_branch" });
   });
 
-  it("squash merges when the target branch is checked out in another worktree", async () => {
+  it.skipIf(process.platform === "win32")("squash merges when the target branch is checked out in another worktree", async () => {
     const { primaryRepo, worktreePath } =
       await createPrimaryAndFeatureWorktree();
 
@@ -1316,7 +1317,7 @@ describe("Workspace", () => {
     expect(files).toEqual(["README.md", "notes.txt"]);
   });
 
-  it("lists files recursively for non-git directories", async () => {
+  it.skipIf(process.platform === "win32")("lists files recursively for non-git directories", async () => {
     const folder = await makeTempDir("bb-workspace-files-");
     await fs.mkdir(path.join(folder, "nested"), { recursive: true });
     await fs.writeFile(

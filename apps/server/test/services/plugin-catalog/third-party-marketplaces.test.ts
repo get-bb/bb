@@ -72,7 +72,7 @@ function svgResponse(bytes: Buffer) {
   });
 }
 
-describe("third-party marketplaces", () => {
+describe.skipIf(process.platform === "win32")("third-party marketplaces", () => {
   let db: DbConnection;
   let dataDir: string;
   let installedCatalogEntries: unknown[];

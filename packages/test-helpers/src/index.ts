@@ -12,6 +12,7 @@ export {
   waitForSetupMarkerCount,
 } from "./setup-markers.js";
 export type { WaitForSetupMarkerCountArgs } from "./setup-markers.js";
+export { removePathWithRetry } from "./remove-path.js";
 export {
   makeWorkspaceMergeBase,
   makeWorkspaceStatus,

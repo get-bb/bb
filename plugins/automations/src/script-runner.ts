@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { constants } from "node:fs";
-import { delimiter, dirname, isAbsolute, join } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import { access, mkdir, stat } from "node:fs/promises";
 import {
@@ -23,9 +23,36 @@ let resolvedBbPath: string | null = null;
 export const BB_NOT_INJECTED_WARNING =
   "[bb] warning: could not locate the bb CLI, so `bb` is not on PATH for this script.";
 
-async function commandWorks(command: string, args: string[]): Promise<boolean> {
+export function jsEntryForCandidate(candidate: string): string {
+  return basename(candidate).toLowerCase().endsWith(".cmd")
+    ? join(dirname(candidate), "bb")
+    : candidate;
+}
+
+export function bbShellPathForResolvedJs(
+  jsPath: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (platform !== "win32") {
+    return jsPath;
+  }
+  if (basename(jsPath).toLowerCase().endsWith(".cmd")) {
+    return jsPath;
+  }
+  return join(dirname(jsPath), "bb.cmd");
+}
+
+export function bbProbeArgv(candidate: string): { command: string; args: string[] } {
+  return {
+    command: process.execPath,
+    args: [jsEntryForCandidate(candidate), "--version"],
+  };
+}
+
+async function commandWorks(candidate: string): Promise<boolean> {
   try {
-    await execFileAsync(command, args, { timeout: 5_000 });
+    const probe = bbProbeArgv(candidate);
+    await execFileAsync(probe.command, probe.args, { timeout: 5_000 });
     return true;
   } catch {
     return false;
@@ -60,7 +87,7 @@ export function bbBinaryCandidates(env: NodeJS.ProcessEnv): string[] {
   };
   const fromCli = env.BB_CLI?.trim();
   if (fromCli !== undefined && fromCli.length > 0) {
-    pushIfAbsolute(fromCli);
+    pushIfAbsolute(jsEntryForCandidate(fromCli));
   }
   const fromCliDir = env.BB_CLI_DIR?.trim();
   if (fromCliDir !== undefined && fromCliDir.length > 0) {
@@ -106,7 +133,7 @@ export async function resolveBbBinary(
   if (resolvedBbPath !== null) return resolvedBbPath;
   for (const candidate of bbBinaryCandidates(env)) {
     if (!(await isExecutableFile(candidate))) continue;
-    if (await commandWorks(candidate, ["--version"])) {
+    if (await commandWorks(candidate)) {
       resolvedBbPath = candidate;
       return candidate;
     }
@@ -268,9 +295,9 @@ export async function executeStoredScript(args: {
     BB_AUTOMATION_RUN_ID: args.runId,
   };
   // Scripts are told where bb is the same way agent shells are, so `"$BB_CLI"`
-  // works even when the directory is already on PATH.
+  // and `"%BB_CLI%"` work even when the directory is already on PATH.
   if (bbPath !== null) {
-    scriptEnv.BB_CLI = bbPath;
+    scriptEnv.BB_CLI = bbShellPathForResolvedJs(bbPath);
   }
   const cwd = scriptsRoot(args.pluginDataDir);
   await mkdir(cwd, { recursive: true });

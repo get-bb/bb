@@ -1,4 +1,3 @@
-import path from "node:path";
 import { updateEnvironmentMetadata } from "@bb/db";
 import {
   type GitBranchRefClassification,
@@ -32,6 +31,7 @@ import { runLiveCommandAndWait } from "../services/hosts/live-command-wait.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import { generateCommitMessage } from "../services/ai/commit-message.js";
 import { archiveEnvironmentThreads } from "../services/threads/thread-archive.js";
+import { joinHostDataPath } from "../services/threads/worktree-paths.js";
 import {
   normalizeBranchQuery,
   parseBranchListLimit,
@@ -523,7 +523,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     ) {
       throw new ApiError(400, "invalid_request", "Invalid path");
     }
-    const absolutePath = path.join(environment.path, repoRelativePath);
+    const absolutePath = joinHostDataPath(environment.path, repoRelativePath);
     const ref = resolveDiffFileRef(query);
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId: environment.hostId,

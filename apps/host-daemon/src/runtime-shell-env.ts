@@ -4,6 +4,10 @@ import fs from "node:fs/promises";
 import { basename, delimiter, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentRuntimeOptions } from "@bb/agent-runtime";
+import {
+  bbCliLaunchSpec,
+  bbShellFileName,
+} from "@bb/config/bb-cli-launch";
 import { assignIfDefined } from "@bb/config/objects";
 
 interface ResolveLocalBbExecutablePathOptions {
@@ -60,7 +64,9 @@ const USER_SHELL_ENV_TIMEOUT_MS = 3_000;
 const USER_SHELL_ENV_FORCE_KILL_AFTER_MS = 1_000;
 
 function getDefaultCliExecutablePath(): string {
-  return fileURLToPath(new URL("../../cli/bin/bb", import.meta.url));
+  return fileURLToPath(
+    new URL(`../../cli/bin/${bbShellFileName()}`, import.meta.url),
+  );
 }
 
 function getErrorCode(error: unknown): string | undefined {
@@ -351,13 +357,13 @@ export async function resolveLocalBbExecutablePath(
 export function bbExecutableFileName(
   platform: NodeJS.Platform = process.platform,
 ): string {
-  return platform === "win32" ? "bb.cmd" : "bb";
+  return bbShellFileName(platform);
 }
 
 export function resolveBbExecutablePathInDirectory(
   bbExecutableDirectory: string,
 ): string {
-  return resolve(bbExecutableDirectory, bbExecutableFileName());
+  return bbCliLaunchSpec(bbExecutableDirectory).shellPath;
 }
 
 export function prepareRuntimeShellEnv(

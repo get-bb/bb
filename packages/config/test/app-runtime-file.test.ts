@@ -125,14 +125,19 @@ describe("stopVerifiedProcess", () => {
   function createOps(
     overrides: Partial<VerifiedProcessOps> = {},
   ): VerifiedProcessOps {
-    return {
+    const ops: VerifiedProcessOps = {
       isRunning: () => true,
       kill: () => undefined,
-      readCommand: async () => "node /opt/bb/bb-app.js start",
-      readElapsedSeconds: async () => 60,
+      async readIdentity() {
+        return {
+          command: "node /opt/bb/bb-app.js start",
+          elapsedSeconds: 60,
+        };
+      },
       waitForExit: async () => true,
       ...overrides,
     };
+    return ops;
   }
 
   const startedAt = new Date(Date.now() - 60_000).toISOString();
@@ -156,7 +161,12 @@ describe("stopVerifiedProcess", () => {
       killTimeoutMs: 10,
       pid: 4_242,
       // A recycled pid: same command name, but it started two days ago.
-      processOps: createOps({ readElapsedSeconds: async () => 172_800 }),
+      processOps: createOps({
+        readIdentity: async () => ({
+          command: "node /opt/bb/bb-app.js start",
+          elapsedSeconds: 172_800,
+        }),
+      }),
       signal: "SIGTERM",
       startedAt,
       timeoutMs: 10,
@@ -170,7 +180,12 @@ describe("stopVerifiedProcess", () => {
     const result = await stopVerifiedProcess({
       killTimeoutMs: 10,
       pid: 4_242,
-      processOps: createOps({ readElapsedSeconds: async () => null }),
+      processOps: createOps({
+        readIdentity: async () => ({
+          command: "node /opt/bb/bb-app.js start",
+          elapsedSeconds: null,
+        }),
+      }),
       signal: "SIGTERM",
       startedAt,
       timeoutMs: 10,

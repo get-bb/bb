@@ -388,10 +388,13 @@ function resolveDesktopUpdateFeedUrl(
   args: ResolveDesktopUpdateFeedUrlArgs,
 ): string {
   const rawFeedUrl = args.env.BB_DESKTOP_VERSION_FEED_URL?.trim();
-  if (rawFeedUrl === undefined || rawFeedUrl.length === 0) {
-    return createDesktopUpdateFeedUrl(args.platform);
+  if (rawFeedUrl !== undefined && rawFeedUrl.length > 0) {
+    return rawFeedUrl;
   }
-  return rawFeedUrl;
+  if (args.platform === "windows") {
+    return "";
+  }
+  return createDesktopUpdateFeedUrl(args.platform);
 }
 
 function getDesktopVersion(version: string | undefined): string {

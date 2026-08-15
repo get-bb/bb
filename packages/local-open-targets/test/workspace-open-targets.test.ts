@@ -281,7 +281,7 @@ describe("workspace open targets", () => {
     });
   });
 
-  it("returns no targets for unsupported win32 runtime", async () => {
+  it("returns Explorer for win32 runtime", async () => {
     const execFile = vi.fn(async () => ({ stdout: "" }));
 
     await expect(
@@ -291,8 +291,74 @@ describe("workspace open targets", () => {
           platform: "win32",
         }),
       ),
-    ).resolves.toEqual([]);
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: "explorer",
+        label: "Explorer",
+        kind: "file-manager",
+        capabilities: {
+          openDirectory: true,
+          openFile: false,
+          openFileAtColumn: false,
+          openFileAtLine: false,
+        },
+      }),
+    ]);
     expect(execFile).not.toHaveBeenCalled();
+  });
+
+  it("opens a win32 folder in Explorer and refuses a file path", async () => {
+    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-explorer-"));
+    const filePath = path.join(workspacePath, "notes.md");
+    const calls: ExecFileCall[] = [];
+    const execFile = createAvailableExecFile({
+      availableExecutables: ["explorer.exe"],
+      calls,
+    });
+
+    try {
+      await writeFile(filePath, "# Notes\n");
+
+      await openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: null,
+          lineNumber: null,
+          path: workspacePath,
+          targetId: "explorer",
+        },
+        createRuntime({
+          execFile,
+          platform: "win32",
+        }),
+      );
+      expect(calls).toEqual([
+        {
+          file: "explorer.exe",
+          args: [workspacePath],
+        },
+      ]);
+
+      await expect(
+        openPathInTargetWithRuntime(
+          {
+            context: { kind: "local" },
+            columnNumber: null,
+            lineNumber: null,
+            path: filePath,
+            targetId: "explorer",
+          },
+          createRuntime({
+            execFile,
+            platform: "win32",
+          }),
+        ),
+      ).rejects.toMatchObject({
+        code: "path_not_openable",
+      });
+    } finally {
+      await rm(workspacePath, { force: true, recursive: true });
+    }
   });
 
   it("opens WSL paths with the configured default app bridge", async () => {
@@ -1924,7 +1990,9 @@ describe("workspace open targets", () => {
     });
   });
 
-  it("opens local directories in Terminal with a short cd command", async () => {
+  it.skipIf(process.platform === "win32")(
+    "opens local directories in Terminal with a short cd command",
+    async () => {
     const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
     const calls: ExecFileCall[] = [];
     const execFile = createAvailableExecFile({ calls });
@@ -1949,9 +2017,12 @@ describe("workspace open targets", () => {
     } finally {
       await rm(workspacePath, { force: true, recursive: true });
     }
-  });
+    },
+  );
 
-  it("opens local directories in iTerm2 with a short cd command", async () => {
+  it.skipIf(process.platform === "win32")(
+    "opens local directories in iTerm2 with a short cd command",
+    async () => {
     const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
     const calls: ExecFileCall[] = [];
     const execFile = createAvailableExecFile({
@@ -1984,9 +2055,12 @@ describe("workspace open targets", () => {
     } finally {
       await rm(workspacePath, { force: true, recursive: true });
     }
-  });
+    },
+  );
 
-  it("opens local files in Terminal with a resolved terminal editor command", async () => {
+  it.skipIf(process.platform === "win32")(
+    "opens local files in Terminal with a resolved terminal editor command",
+    async () => {
     const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
     const filePath = path.join(workspacePath, "src", "file.ts");
     const calls: ExecFileCall[] = [];
@@ -2022,7 +2096,9 @@ describe("workspace open targets", () => {
     }
   });
 
-  it("opens local files in iTerm2 with a resolved terminal editor command", async () => {
+  it.skipIf(process.platform === "win32")(
+    "opens local files in iTerm2 with a resolved terminal editor command",
+    async () => {
     const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
     const filePath = path.join(workspacePath, "README.md");
     const calls: ExecFileCall[] = [];
@@ -2061,7 +2137,9 @@ describe("workspace open targets", () => {
     }
   });
 
-  it("inserts terminal editor location args before explicit editor args separator", async () => {
+  it.skipIf(process.platform === "win32")(
+    "inserts terminal editor location args before explicit editor args separator",
+    async () => {
     const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
     const filePath = path.join(workspacePath, "src", "file.ts");
     const calls: ExecFileCall[] = [];
@@ -2098,7 +2176,9 @@ describe("workspace open targets", () => {
     }
   });
 
-  it("opens local files in Terminal at the containing directory when no terminal editor is available", async () => {
+  it.skipIf(process.platform === "win32")(
+    "opens local files in Terminal at the containing directory when no terminal editor is available",
+    async () => {
     const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
     const filePath = path.join(workspacePath, "README.md");
     const calls: ExecFileCall[] = [];
@@ -2126,7 +2206,8 @@ describe("workspace open targets", () => {
     } finally {
       await rm(workspacePath, { force: true, recursive: true });
     }
-  });
+    },
+  );
 
   it("opens local files in Warp at the containing directory", async () => {
     const root = await mkdtemp(

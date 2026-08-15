@@ -13,6 +13,7 @@ import {
 import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 import {
   BASIC_FILE_OPEN_CAPABILITIES,
+  EXPLORER_FOLDER_OPEN_CAPABILITIES,
   FILE_MANAGER_OPEN_CAPABILITIES,
   TERMINAL_OPEN_CAPABILITIES,
 } from "./capabilities.js";
@@ -901,6 +902,17 @@ export async function listWorkspaceOpenTargetsWithRuntime(
   runtime: WorkspaceOpenTargetRuntime,
   options: ListWorkspaceOpenTargetsOptions = {},
 ): Promise<WorkspaceOpenTarget[]> {
+  if (runtime.platform === "win32") {
+    return [
+      {
+        id: "explorer",
+        label: "Explorer",
+        kind: "file-manager",
+        icon: { kind: "symbol", name: "file-manager" },
+        capabilities: EXPLORER_FOLDER_OPEN_CAPABILITIES,
+      },
+    ];
+  }
   if (runtime.platform !== "darwin") {
     if (runtime.platform !== "linux") {
       return [];
@@ -1775,6 +1787,25 @@ async function resolvePlatformOpenInvocation(
   args: OpenPathInTargetArgs,
   runtime: WorkspaceOpenTargetRuntime,
 ): Promise<ExecFileInvocation> {
+  if (runtime.platform === "win32") {
+    if (args.targetId !== "explorer") {
+      throw new WorkspaceOpenTargetError({
+        code: "unsupported_platform",
+        message: "Workspace open targets are not supported on this platform",
+      });
+    }
+    const existingPath = await requireOpenablePath(args.path);
+    if (existingPath.type !== "directory") {
+      throw new WorkspaceOpenTargetError({
+        code: "path_not_openable",
+        message: "Explorer opens folders only",
+      });
+    }
+    return {
+      file: "explorer.exe",
+      args: [existingPath.path],
+    };
+  }
   if (runtime.platform !== "linux") {
     throw new WorkspaceOpenTargetError({
       code: "unsupported_platform",

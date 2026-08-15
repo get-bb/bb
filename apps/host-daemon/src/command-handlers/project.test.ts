@@ -61,7 +61,7 @@ describe("project.clone", () => {
     });
     await expect(
       fs.readFile(path.join(result.path, "README.md"), "utf8"),
-    ).resolves.toBe("hello\n");
+    ).resolves.toBe(process.platform === "win32" ? "hello\r\n" : "hello\n");
   });
 
   it("refuses a non-empty target with a structured error", async () => {
@@ -91,8 +91,8 @@ describe("project.clone", () => {
 
     expect(isExpectedCommandDispatchError(error)).toBe(true);
     expect(error).toMatchObject({ code: "git_command_failed" });
-    expect(error.message).toContain(
-      `fatal: repository '${missingRemote}' does not exist`,
+    expect(error.message).toMatch(
+      /does not exist|not appear to be a git repository/,
     );
   });
 

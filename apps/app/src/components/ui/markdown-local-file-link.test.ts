@@ -307,4 +307,81 @@ describe("resolveRelativeLocalFileHref", () => {
       }),
     ).toBeNull();
   });
+
+  it("resolves a relative preview link against a drive-letter file directory", () => {
+    expect(
+      resolveRelativeLocalFileHref({
+        baseDir: "C:\\repo\\docs",
+        href: "./other.md",
+        rootPath: "C:\\repo",
+      }),
+    ).toBe("C:\\repo\\docs\\other.md");
+    expect(
+      resolveRelativeLocalFileHref({
+        baseDir: "C:\\repo\\docs",
+        href: "https://example.test/other.md",
+        rootPath: "C:\\repo",
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("windows drive-letter preview hrefs", () => {
+  const containedWindowsLinks = {
+    kind: "contained",
+    rootPath: "C:\\repo",
+  } satisfies MarkdownAbsoluteLocalFileLinkRouting;
+
+  it("parses drive-letter paths and file URLs after a relative resolve", () => {
+    const resolved = resolveRelativeLocalFileHref({
+      baseDir: "C:\\repo\\docs",
+      href: "./other.md",
+      rootPath: "C:\\repo",
+    });
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: containedWindowsLinks,
+        href: resolved ?? undefined,
+      }),
+    ).toEqual({
+      path: "C:\\repo\\docs\\other.md",
+      lineRange: null,
+    });
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: containedWindowsLinks,
+        href: "C:\\repo\\docs\\readme.md:8",
+      }),
+    ).toEqual({
+      path: "C:\\repo\\docs\\readme.md",
+      lineRange: { startLineNumber: 8, endLineNumber: 8 },
+    });
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: containedWindowsLinks,
+        href: "file:///C:/repo/docs/readme.md#L8",
+      }),
+    ).toEqual({
+      path: "C:\\repo\\docs\\readme.md",
+      lineRange: { startLineNumber: 8, endLineNumber: 8 },
+    });
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: containedWindowsLinks,
+        href: "C:\\secret\\other.md",
+      }),
+    ).toBeNull();
+  });
+
+  it("builds a file URL for a drive-letter preview path", () => {
+    expect(
+      buildLocalFileAnchorHref(
+        {
+          path: "C:\\repo\\docs\\other.md",
+          lineRange: { startLineNumber: 3, endLineNumber: 3 },
+        },
+        "./other.md",
+      ),
+    ).toBe("file:///C:/repo/docs/other.md#L3");
+  });
 });

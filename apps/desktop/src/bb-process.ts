@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { killWindowsProcessTree } from "@bb/config/verified-process-stop";
 
 export interface RuntimeLogBuffer {
   append(chunk: Buffer | string): void;
@@ -194,14 +195,7 @@ function waitForProcessExitWithTimeout(
 
 function stopWindowsProcessTree(pid: number): Promise<void> {
   return new Promise((resolvePromise) => {
-    const killer = spawn(
-      "taskkill",
-      ["/T", "/F", "/PID", String(pid)],
-      {
-        stdio: "ignore",
-        windowsHide: true,
-      },
-    );
+    const killer = killWindowsProcessTree(pid);
     killer.once("error", () => {
       resolvePromise();
     });

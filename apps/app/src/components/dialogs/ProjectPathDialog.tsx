@@ -136,6 +136,12 @@ function getPlatformCopy(
   // The path is resolved on the host machine, not the device showing this
   // dialog — name the host so remote users don't type a local path.
   const hostSuffix = hostName ? ` on ${hostName}` : "";
+  if (platform === "win32") {
+    return {
+      description: `Enter an absolute Windows path${hostSuffix} to the project folder.`,
+      placeholder: "C:\\Users\\me\\src\\project",
+    };
+  }
   if (platform === "wsl") {
     return {
       description: `Enter an absolute WSL path${hostSuffix} to the project folder, such as /home/me/repo or /mnt/c/...`,

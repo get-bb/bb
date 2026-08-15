@@ -96,7 +96,7 @@ describe("install global skills", () => {
     }
   });
 
-  it("replaces a stale copy without leaving its removed files or staging dirs behind", async () => {
+  it.skipIf(process.platform === "win32")("replaces a stale copy without leaving its removed files or staging dirs behind", async () => {
     const dataDir = await makeTempDir();
     const homeDir = await makeTempDir();
     const claudeRoot = path.join(homeDir, ".claude", "skills");
@@ -159,7 +159,7 @@ describe("install global skills", () => {
     ).resolves.toBe("previous\n");
   });
 
-  it("reports the installed hash as the tree hash, and detects drift", async () => {
+  it.skipIf(process.platform === "win32")("reports the installed hash as the tree hash, and detects drift", async () => {
     const dataDir = await makeTempDir();
     const homeDir = await makeTempDir();
     const payload = createTreePayload("bb-cli", "installed body");

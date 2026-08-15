@@ -1,4 +1,5 @@
 import {
+  isAbsoluteFilePath,
   isAbsoluteFilePathWithinRoot,
   normalizeAbsoluteFilePath,
 } from "@/lib/absolute-file-path";
@@ -208,9 +209,26 @@ function parseLineSuffix(value: string): LocalFileHrefParts | null {
 }
 
 function hasLikelyFileBasename(path: string): boolean {
-  const segments = path.split("/");
+  const segments = path.split(/[\\/]/u);
   const basename = segments[segments.length - 1] ?? "";
   return basename.startsWith(".") || basename.includes(".");
+}
+
+function isWindowsDriveHref(path: string): boolean {
+  return /^[A-Za-z]:[\\/]/u.test(path);
+}
+
+function isUriSchemePath(path: string): boolean {
+  return !isWindowsDriveHref(path) && URI_SCHEME_PATTERN.test(path);
+}
+
+function fileUrlPathnameToLocalPath(pathname: string): string {
+  const decoded = safeDecodeURIComponent(pathname);
+  const windowsDrive = decoded.match(/^\/([A-Za-z]:)(\/.*)?$/u);
+  if (windowsDrive) {
+    return `${windowsDrive[1]}${windowsDrive[2] ?? "/"}`;
+  }
+  return decoded;
 }
 
 function hasControlCharacter(value: string): boolean {
@@ -228,17 +246,26 @@ function isValidAbsoluteLocalFilePath({
   path,
   requireLikelyFileBasename,
 }: LocalFilePathValidationArgs): boolean {
+  const normalized = normalizeAbsoluteFilePath({ path });
+  if (
+    normalized === null ||
+    normalized === "/" ||
+    /^[A-Za-z]:\\$/u.test(normalized) ||
+    normalized.startsWith("\\\\")
+  ) {
+    return false;
+  }
+
   return (
-    path.startsWith("/") &&
     !path.startsWith("//") &&
-    path !== "/" &&
     !path.endsWith("/") &&
+    !path.endsWith("\\") &&
     !path.includes("\n") &&
     !path.includes("\r") &&
     !path.includes("?") &&
     !path.includes("#") &&
     !hasControlCharacter(path) &&
-    (!requireLikelyFileBasename || hasLikelyFileBasename(path))
+    (!requireLikelyFileBasename || hasLikelyFileBasename(normalized))
   );
 }
 
@@ -249,8 +276,8 @@ function parseAbsoluteLocalFileHref(
   if (
     href.length === 0 ||
     href.trim() !== href ||
-    !href.startsWith("/") ||
-    href.startsWith("//")
+    href.startsWith("//") ||
+    (!href.startsWith("/") && !isWindowsDriveHref(href))
   ) {
     return null;
   }
@@ -296,10 +323,10 @@ export function resolveRelativeLocalFileHref({
     decodedHref.trim() !== decodedHref ||
     parsedHref === null ||
     parsedHref.path.length === 0 ||
-    parsedHref.path.startsWith("/") ||
+    isAbsoluteFilePath(parsedHref.path) ||
     parsedHref.path.startsWith("#") ||
     parsedHref.path.startsWith("?") ||
-    URI_SCHEME_PATTERN.test(parsedHref.path)
+    isUriSchemePath(parsedHref.path)
   ) {
     return null;
   }
@@ -381,7 +408,7 @@ export function parseLocalFileHref({
         return null;
       }
       link = parseAbsoluteLocalFileHref(
-        url.pathname + url.hash,
+        fileUrlPathnameToLocalPath(url.pathname) + url.hash,
         requireLikelyFileBasename,
       );
     } catch {
@@ -421,11 +448,28 @@ export function buildLocalFileAnchorHref(
   link: MarkdownPreviewLocalFileLink | null,
   originalHref: string | undefined,
 ): string | undefined {
-  if (!link || !link.path.startsWith("/")) {
+  if (!link) {
     return originalHref;
   }
 
-  return `file://${encodeFileUrlPath(link.path)}${buildLineRangeAnchorFragment(
-    link.lineRange,
-  )}`;
+  const normalized = normalizeAbsoluteFilePath({ path: link.path });
+  if (normalized === null) {
+    return originalHref;
+  }
+
+  if (normalized.startsWith("/")) {
+    return `file://${encodeFileUrlPath(normalized)}${buildLineRangeAnchorFragment(
+      link.lineRange,
+    )}`;
+  }
+
+  if (/^[A-Za-z]:\\/u.test(normalized)) {
+    const drive = normalized.slice(0, 2);
+    const rest = normalized.slice(2).replaceAll("\\", "/");
+    return `file:///${drive}${encodeFileUrlPath(rest)}${buildLineRangeAnchorFragment(
+      link.lineRange,
+    )}`;
+  }
+
+  return originalHref;
 }

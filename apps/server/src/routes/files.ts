@@ -81,10 +81,10 @@ function createRawFilesystemPathUnsupportedError(): ApiError {
 }
 
 function parseRawFilesystemPath(rawPath: string): string {
-  if (rawPath.includes("\0") || !path.isAbsolute(rawPath)) {
+  if (rawPath.includes("\0") || !isAbsoluteHostPath(rawPath)) {
     throw createRawFilesystemPathInvalidError();
   }
-  return path.resolve(rawPath);
+  return normalizeHostPath(rawPath);
 }
 
 function assertHtmlPreviewPath(filePath: string): void {

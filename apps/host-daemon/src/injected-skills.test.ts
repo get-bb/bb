@@ -219,9 +219,11 @@ describe("injected skill staging", () => {
     await expect(readFile(stagedScript, "utf8")).resolves.toBe(
       "#!/bin/sh\necho synced\n",
     );
-    await expect(
-      lstat(stagedScript).then((stat) => stat.mode & 0o777),
-    ).resolves.toBe(0o755);
+    if (process.platform !== "win32") {
+      await expect(
+        lstat(stagedScript).then((stat) => stat.mode & 0o777),
+      ).resolves.toBe(0o755);
+    }
     expect(fetchSkillTree).toHaveBeenCalledTimes(1);
     expect(fetchSkillTree).toHaveBeenCalledWith(payload.treeHash);
   });
@@ -320,7 +322,7 @@ describe("injected skill staging", () => {
     ).resolves.toMatchObject({ skillRoots: expect.any(Array) });
   });
 
-  it("garbage-collects the least-recently-used trees beyond the store cap", async () => {
+  it.skipIf(process.platform === "win32")("garbage-collects the least-recently-used trees beyond the store cap", async () => {
     const dataDir = await makeTempDir();
     const payloads = Array.from({ length: 65 }, (_, index) => {
       const name = `gc-skill-${index}`;
@@ -350,7 +352,7 @@ describe("injected skill staging", () => {
     expect(entries.filter((entry) => entry.isDirectory()).length).toBe(64);
   });
 
-  it("exempts in-flight tree hashes from garbage collection", async () => {
+  it.skipIf(process.platform === "win32")("exempts in-flight tree hashes from garbage collection", async () => {
     const dataDir = await makeTempDir();
     const storeRoot = path.join(dataDir, "runtime", "skill-store");
     const residents = Array.from({ length: 64 }, (_, index) => {
@@ -714,7 +716,7 @@ describe("injected skill staging", () => {
     }
   });
 
-  it("skips symlinked files during staging", async () => {
+  it.skipIf(process.platform === "win32")("skips symlinked files during staging", async () => {
     const dataDir = await makeTempDir();
     const outsideDir = await makeTempDir();
     const skillRootPath = await writeSkill({

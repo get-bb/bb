@@ -7,7 +7,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { join } from "node:path";
+import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
@@ -31,6 +31,9 @@ import {
 } from "./schedule-helpers.js";
 import {
   bbBinaryCandidates,
+  bbProbeArgv,
+  bbShellPathForResolvedJs,
+  jsEntryForCandidate,
   isWakeAgentSuppressed,
   mapScriptResultToRun,
   scriptPathEnv,
@@ -686,32 +689,61 @@ describe("bb CLI injection for script runs", () => {
         BB_CLI_DIR: "/other/dir",
       })[0],
     ).toBe("/daemon/bundle/bb");
-    // The server process gets BB_CLI_DIR, not BB_CLI, from the launcher.
     expect(bbBinaryCandidates({ BB_CLI_DIR: "/daemon/bundle" })[0]).toBe(
-      "/daemon/bundle/bb",
+      join("/daemon/bundle", "bb"),
     );
+    expect(
+      bbBinaryCandidates({
+        BB_CLI: join("/daemon/bundle", "bb.cmd"),
+      })[0],
+    ).toBe(join("/daemon/bundle", "bb"));
+  });
+
+  it("probes Node plus the JS entry, never a .cmd", () => {
+    const fromCmd = bbProbeArgv(join("/daemon/bundle", "bb.cmd"));
+    expect(fromCmd.command).toBe(process.execPath);
+    expect(fromCmd.args).toEqual([join("/daemon/bundle", "bb"), "--version"]);
+    expect(jsEntryForCandidate(join("/daemon/bundle", "bb.cmd"))).toBe(
+      join("/daemon/bundle", "bb"),
+    );
+    const fromJs = bbProbeArgv(join("/daemon/bundle", "bb"));
+    expect(fromJs.command).toBe(process.execPath);
+    expect(fromJs.args[0]?.endsWith(".cmd")).toBe(false);
+  });
+
+  it("injects the PATHEXT shim as BB_CLI on win32", () => {
+    const jsPath = join("/daemon/bundle", "bb");
+    expect(bbShellPathForResolvedJs(jsPath, "linux")).toBe(jsPath);
+    expect(bbShellPathForResolvedJs(jsPath, "win32")).toBe(
+      join("/daemon/bundle", "bb.cmd"),
+    );
+    expect(
+      bbShellPathForResolvedJs(join("/daemon/bundle", "bb.cmd"), "win32"),
+    ).toBe(join("/daemon/bundle", "bb.cmd"));
   });
 
   it("expands PATH itself so every candidate is absolute", () => {
     // The resolved value is handed to scripts as BB_CLI, which is documented
     // as absolute; a bare "bb" would re-resolve if a script edits PATH.
-    expect(bbBinaryCandidates({ PATH: "/usr/bin:/opt/tools" })).toEqual([
-      "/usr/bin/bb",
-      "/opt/tools/bb",
+    const pathValue = ["/usr/bin", "/opt/tools"].join(delimiter);
+    expect(bbBinaryCandidates({ PATH: pathValue })).toEqual([
+      join("/usr/bin", "bb"),
+      join("/opt/tools", "bb"),
       "/opt/homebrew/bin/bb",
       "/usr/local/bin/bb",
     ]);
     expect(
-      bbBinaryCandidates({ PATH: "/usr/bin" }).every((c) => c.startsWith("/")),
+      bbBinaryCandidates({ PATH: pathValue }).every((c) => isAbsolute(c)),
     ).toBe(true);
   });
 
   it("drops entries that would resolve against the wrong directory", () => {
     // An empty PATH entry means the cwd, which for a script run is the
     // automation scripts directory — a `bb` dropped there is not the CLI.
-    expect(bbBinaryCandidates({ PATH: "/usr/bin::/bin" })).toEqual([
-      "/usr/bin/bb",
-      "/bin/bb",
+    const pathWithHole = ["/usr/bin", "", "/bin"].join(delimiter);
+    expect(bbBinaryCandidates({ PATH: pathWithHole })).toEqual([
+      join("/usr/bin", "bb"),
+      join("/bin", "bb"),
       "/opt/homebrew/bin/bb",
       "/usr/local/bin/bb",
     ]);
@@ -725,15 +757,16 @@ describe("bb CLI injection for script runs", () => {
   });
 
   it("prepends bb's directory to PATH only when it is absolute", () => {
-    expect(scriptPathEnv("/daemon/bundle/bb", "/usr/bin:/bin")).toBe(
-      "/daemon/bundle:/usr/bin:/bin",
+    const inherited = ["/usr/bin", "/bin"].join(delimiter);
+    expect(scriptPathEnv("/daemon/bundle/bb", inherited)).toBe(
+      [dirname("/daemon/bundle/bb"), inherited].join(delimiter),
     );
     // Guard against a relative path ever reaching here: dirname() would be "."
     // and would put the scripts directory ahead of the system PATH.
-    expect(scriptPathEnv("bb", "/usr/bin:/bin")).toBe("/usr/bin:/bin");
-    expect(scriptPathEnv(null, "/usr/bin:/bin")).toBe("/usr/bin:/bin");
+    expect(scriptPathEnv("bb", inherited)).toBe(inherited);
+    expect(scriptPathEnv(null, inherited)).toBe(inherited);
     expect(scriptPathEnv("/daemon/bundle/bb", undefined)).toBe(
-      "/daemon/bundle",
+      dirname("/daemon/bundle/bb"),
     );
   });
 });

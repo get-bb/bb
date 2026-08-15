@@ -594,7 +594,7 @@ export function createManagedPluginArtifacts(
       args.parsed.cachePath,
       args.candidate.commit,
     );
-    const stagingDir = `${targetDir}.install-probe-${randomUUID()}`;
+    const stagingDir = `${targetDir}.p-${randomUUID().slice(0, 8)}`;
     await mkdir(dirname(stagingDir), { recursive: true });
     try {
       deps.onArtifactMaterialize?.({ path: targetDir });

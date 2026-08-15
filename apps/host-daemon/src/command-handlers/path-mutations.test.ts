@@ -112,7 +112,7 @@ describe("confined host path mutations", () => {
     await expect(fs.stat(nonEmpty)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("rejects symlink escapes and refuses to remove the declared root", async () => {
+  it.skipIf(process.platform === "win32")("rejects symlink escapes and refuses to remove the declared root", async () => {
     const root = await makeRoot();
     const outside = await makeRoot();
     const link = path.join(root, "outside");

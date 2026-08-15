@@ -1,4 +1,3 @@
-import path from "node:path";
 import {
   getBuiltInAgentProviderInfo,
   isAgentProviderId,
@@ -41,6 +40,7 @@ import {
   remapDaemonFileRouteError,
 } from "../../services/hosts/daemon-file-response.js";
 import { requireThreadStoragePath } from "../../services/threads/thread-storage.js";
+import { joinHostDataPath } from "../../services/threads/worktree-paths.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import {
   buildThreadConversationOutline,
@@ -249,7 +249,7 @@ async function serveThreadStorageRawFile(
       timeoutMs: COMMAND_TIMEOUT_MS,
       command: {
         type: "host.read_file",
-        path: path.join(target.storagePath, filePath.relativePath),
+        path: joinHostDataPath(target.storagePath, filePath.relativePath),
         rootPath: target.storagePath,
       },
     });
@@ -277,7 +277,7 @@ async function serveThreadWorktreeRawFile(
       timeoutMs: COMMAND_TIMEOUT_MS,
       command: {
         type: "host.read_file",
-        path: path.join(environment.path, filePath.relativePath),
+        path: joinHostDataPath(environment.path, filePath.relativePath),
         rootPath: environment.path,
       },
     });
@@ -647,7 +647,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
           type: "host.read_file",
-          path: path.join(target.storagePath, query.path),
+          path: joinHostDataPath(target.storagePath, query.path),
           rootPath: target.storagePath,
         },
       });

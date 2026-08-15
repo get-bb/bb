@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { removePathWithRetry } from "@bb/test-helpers";
 import {
   getCheckoutRef,
   getWorkspaceGitOperation,
@@ -96,7 +97,7 @@ afterEach(async () => {
   await Promise.all(
     tempDirs
       .splice(0)
-      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
+      .map((dir) => removePathWithRetry(dir)),
   );
 });
 
@@ -180,7 +181,7 @@ describe("runGitWithNullRecordLimit", () => {
     });
   });
 
-  it("does not confuse a regular numstat path ending in a tab with a rename", async () => {
+  it.skipIf(process.platform === "win32")("does not confuse a regular numstat path ending in a tab with a rename", async () => {
     const repoPath = await initReadGitBlobRepo();
     const unusualPath = "trailing-tab\t";
     await fs.writeFile(path.join(repoPath, unusualPath), "one\n");
@@ -257,7 +258,7 @@ describe("readDefaultBranchRefs", () => {
     });
   });
 
-  it("reports a local default ahead of origin", async () => {
+  it.skipIf(process.platform === "win32")("reports a local default ahead of origin", async () => {
     const { repoPath } = await initDefaultBranchRemoteRepo();
     await fs.writeFile(path.join(repoPath, "local.txt"), "local\n", "utf8");
     await runGit(["add", "."], { cwd: repoPath });
@@ -270,7 +271,7 @@ describe("readDefaultBranchRefs", () => {
     });
   });
 
-  it("reports diverged local and origin defaults", async () => {
+  it.skipIf(process.platform === "win32")("reports diverged local and origin defaults", async () => {
     const { remotePath, repoPath } = await initDefaultBranchRemoteRepo();
     await fs.writeFile(path.join(repoPath, "local.txt"), "local\n", "utf8");
     await runGit(["add", "."], { cwd: repoPath });

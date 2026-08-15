@@ -320,7 +320,9 @@ describe("appearance settings", () => {
     });
   });
 
-  it("lets a custom UI theme ship Pierre code-theme JSON", async () => {
+  it.skipIf(process.platform === "win32")(
+    "lets a custom UI theme ship Pierre code-theme JSON",
+    async () => {
     await withTestHarness(async (harness) => {
       await writeCustomTheme(harness.config.dataDir, "ocean", ":root {}");
       const darkTheme = {

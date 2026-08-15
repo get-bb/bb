@@ -16,6 +16,7 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
+    "@bb/config": "workspace:*",
     "@bb/domain": "workspace:*",
     "@bb/process-utils": "workspace:*"
   },

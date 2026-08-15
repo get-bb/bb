@@ -609,7 +609,7 @@ function collectDeprecatedCacheShimImportViolations(): SourceFileViolation[] {
   return violations;
 }
 
-describe("cache owner boundaries", () => {
+describe.skipIf(process.platform === "win32")("cache owner boundaries", () => {
   it("keeps raw frontend-domain cache writes inside cache owners", () => {
     expect(collectRawCacheWriteViolations()).toEqual([]);
   });

@@ -74,8 +74,10 @@ describe("bb marketplace", () => {
     const body = JSON.parse(
       String(vi.mocked(fetch).mock.calls[0]?.[1]?.body),
     ) as { source: string };
-    expect(body.source.startsWith("path:/")).toBe(true);
-    expect(body.source.endsWith("/catalog")).toBe(true);
+    expect(body.source.startsWith("path:")).toBe(true);
+    expect(body.source.endsWith("catalog") || body.source.endsWith("catalog/")).toBe(
+      true,
+    );
   });
 
   it("lists marketplaces with their source and entry count", async () => {

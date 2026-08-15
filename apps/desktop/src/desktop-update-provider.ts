@@ -1,5 +1,6 @@
 import {
   createBbDesktopVersionFeedFileName,
+  type BbDesktopInfo,
   type BbDesktopVersionFeedPlatform,
 } from "@bb/desktop-contract";
 
@@ -89,7 +90,7 @@ export interface ResolveDesktopUpdateSupportArgs {
    */
   canReplaceAppImage: (appImagePath: string) => boolean;
   env: NodeJS.ProcessEnv;
-  platform: BbDesktopVersionFeedPlatform;
+  platform: BbDesktopInfo["platform"];
 }
 
 export function resolveDesktopUpdateSupport(
@@ -97,6 +98,9 @@ export function resolveDesktopUpdateSupport(
 ): DesktopUpdateSupport {
   if (args.platform === "macos") {
     return { autoUpdate: true, versionCheck: true };
+  }
+  if (args.platform === "windows") {
+    return { autoUpdate: false, versionCheck: false };
   }
 
   // A distro package or an extracted directory cannot rewrite itself, so those

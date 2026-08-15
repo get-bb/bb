@@ -217,7 +217,7 @@ describe("writeHostFile", () => {
     await expect(fs.readFile(target, "utf8")).resolves.toBe("hello");
   });
 
-  it("rejects writes that escape the declared root via symlinks", async () => {
+  it.skipIf(process.platform === "win32")("rejects writes that escape the declared root via symlinks", async () => {
     const rootDir = await makeTempDir("bb-file-write-root-");
     const outsideDir = await makeTempDir("bb-file-write-outside-");
     await fs.symlink(outsideDir, path.join(rootDir, "link"), "dir");
@@ -265,7 +265,7 @@ describe("writeHostFile", () => {
     expect(result).toMatchObject({ outcome: "written" });
   });
 
-  it("uses mode for creation without chmodding an existing file", async () => {
+  it.skipIf(process.platform === "win32")("uses mode for creation without chmodding an existing file", async () => {
     const dir = await makeTempDir("bb-file-write-mode-");
     const created = path.join(dir, "created.env");
     await writeHostFile(writeCommand({ path: created, mode: 0o600 }));

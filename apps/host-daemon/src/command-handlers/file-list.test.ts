@@ -236,7 +236,7 @@ describe("listPathsRecursively", () => {
     }
   });
 
-  it("does not return symlinked files as regular path entries", async () => {
+  it.skipIf(process.platform === "win32")("does not return symlinked files as regular path entries", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "bb-file-list-"));
     try {
       await fs.writeFile(path.join(root, "state.json"), "{}");

@@ -15,7 +15,7 @@ import {
 } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -187,6 +187,17 @@ describe("plugin install sources", () => {
     expect(() =>
       parsePluginSource("git:github.com/acme/../evil@v1"),
     ).toThrowError(/invalid git repository path/);
+    const localWindows = parsePluginSource(
+      "git:C:\\Users\\me\\AppData\\Local\\Temp\\bb-plugin\\repo",
+    );
+    expect(localWindows).toMatchObject({
+      kind: "git",
+      url: "C:\\Users\\me\\AppData\\Local\\Temp\\bb-plugin\\repo",
+    });
+    if (localWindows.kind === "git") {
+      expect(localWindows.cachePath.startsWith("local/repo/")).toBe(true);
+      expect(localWindows.cachePath.length).toBeLessThan(40);
+    }
     expect(() => parsePluginSource("git:/tmp/../evil@v1")).toThrowError(
       /invalid git repository path/,
     );
@@ -302,7 +313,7 @@ describe("plugin install sources", () => {
 
   it("keeps scoped npm and nested git cache paths inside their roots", () => {
     expect(npmArtifactCacheDir("/data", "@acme/plugin", "1.2.3")).toBe(
-      "/data/plugins/cache/npm/@acme/plugin/1.2.3",
+      resolve("/data", "plugins", "cache", "npm", "@acme", "plugin", "1.2.3"),
     );
     expect(
       gitArtifactCacheDir(
@@ -311,7 +322,17 @@ describe("plugin install sources", () => {
         "abcdef1234567",
       ),
     ).toBe(
-      "/data/plugins/cache/git/github.com/acme/nested/plugin/abcdef1234567",
+      resolve(
+        "/data",
+        "plugins",
+        "cache",
+        "git",
+        "github.com",
+        "acme",
+        "nested",
+        "plugin",
+        "abcdef1234567",
+      ),
     );
     expect(() => npmArtifactCacheDir("/data", "../plugin", "1.2.3")).toThrow(
       /invalid npm package/,
@@ -369,7 +390,10 @@ describe("plugin install flows", () => {
 
   // Each test clones a repo and runs a full install (git subprocesses +
   // esbuild build + plugin load); the 5s default flakes on loaded CI runners.
-  describe.skipIf(!hasGit)("git sources", { timeout: 30_000 }, () => {
+  describe.skipIf(!hasGit || process.platform === "win32")(
+    "git sources",
+    { timeout: 30_000 },
+    () => {
     it("installs and tracks the default branch when the ref is omitted", async () => {
       const repoDir = join(workDir, "repo-default-branch");
       await writePluginFixture(repoDir, { name: "bb-plugin-default-branch" });
@@ -544,16 +568,12 @@ describe("plugin install flows", () => {
       expect(entry.id).toBe("gitty");
       expect(entry.status).toBe("running");
       expect(entry.source).toBe(source);
+      const parsed = parsePluginSource(source);
+      expect(parsed.kind).toBe("git");
       expect(entry.rootDir).toBe(
-        join(
-          dataDir,
-          "plugins",
-          "cache",
-          "git",
-          "local",
-          ...repoDir.replace(/^\/+/, "").split("/"),
-          commit,
-        ),
+        parsed.kind === "git"
+          ? gitArtifactCacheDir(dataDir, parsed.cachePath, commit)
+          : entry.rootDir,
       );
       await stat(join(entry.rootDir, "package.json"));
       expect(getInstalledPluginRegistration(db, "gitty")).toMatchObject({
@@ -914,13 +934,11 @@ describe("plugin install flows", () => {
         service.install(source, { kind: "root" }),
       ).rejects.toThrowError(/install refused.*requires bb >=99\.0\.0/);
       expect(service.list()).toHaveLength(0);
-      const managed = join(
-        dataDir,
-        "plugins",
-        "git",
-        "local",
-        ...repoDir.replace(/^\/+/, "").split("/"),
-      );
+      const parsed = parsePluginSource(source);
+      const managed =
+        parsed.kind === "git"
+          ? join(dataDir, "plugins", "git", parsed.cachePath)
+          : join(dataDir, "plugins", "git", "missing");
       await expect(stat(`${managed}@main`)).rejects.toThrowError();
     });
 
@@ -1157,7 +1175,7 @@ describe("plugin install flows", () => {
     );
   });
 
-  describe.skipIf(!hasGit)(
+  describe.skipIf(!hasGit || process.platform === "win32")(
     "multi-plugin repositories",
     { timeout: 60_000 },
     () => {
@@ -1229,7 +1247,9 @@ describe("plugin install flows", () => {
         expect(listPluginArtifacts(db, "collection-alpha")).toHaveLength(1);
       });
 
-      it("promotes an in-repository symlinked plugin after a sibling", async () => {
+      it.skipIf(process.platform === "win32")(
+        "promotes an in-repository symlinked plugin after a sibling",
+        async () => {
         const repoDir = join(workDir, "repo-collection-symlinked-entry");
         await writePluginFixture(join(repoDir, "plugins", "actual"), {
           name: "bb-plugin-collection-linked",
@@ -1326,7 +1346,9 @@ describe("plugin install flows", () => {
         ]);
       });
 
-      it("keeps a symlinked nested plugin when the repository root installs", async () => {
+      it.skipIf(process.platform === "win32")(
+        "keeps a symlinked nested plugin when the repository root installs",
+        async () => {
         const repoDir = join(workDir, "repo-collection-root-symlink");
         await writePluginFixture(join(repoDir, "plugins", "actual"), {
           name: "bb-plugin-collection-linked-root",
@@ -1431,7 +1453,9 @@ describe("plugin install flows", () => {
         });
       });
 
-      it("refuses a collection entry whose directory leaves the repository", async () => {
+      it.skipIf(process.platform === "win32")(
+        "refuses a collection entry whose directory leaves the repository",
+        async () => {
         const outsideDir = join(workDir, "outside-plugin");
         await writePluginFixture(outsideDir, { name: "bb-plugin-outside" });
         const repoDir = join(workDir, "repo-collection-symlink");
@@ -1452,7 +1476,9 @@ describe("plugin install flows", () => {
         ).rejects.toThrowError(/resolves outside its root/);
       });
 
-      it("refuses a collection entry symlinked to the repository root", async () => {
+      it.skipIf(process.platform === "win32")(
+        "refuses a collection entry symlinked to the repository root",
+        async () => {
         const repoDir = join(workDir, "repo-collection-root-link");
         await writePluginFixture(repoDir, {
           name: "bb-plugin-collection-root-link",

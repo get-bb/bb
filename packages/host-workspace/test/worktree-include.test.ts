@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { removePathWithRetry } from "@bb/test-helpers";
 import { WORKTREE_INCLUDE_FILE_NAME } from "@bb/domain";
 import { createWorktree } from "../src/provisioning.js";
 import { runGit } from "../src/git.js";
@@ -37,7 +38,7 @@ afterEach(async () => {
   await Promise.all(
     tempDirs
       .splice(0)
-      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
+      .map((dir) => removePathWithRetry(dir)),
   );
 });
 
@@ -85,7 +86,7 @@ describe("copyWorktreeIncludeFiles", () => {
     expect(result.copied).toEqual(["secrets/keep.pem"]);
   });
 
-  it("skips symlinks instead of copying what they point at", async () => {
+  it.skipIf(process.platform === "win32")("skips symlinks instead of copying what they point at", async () => {
     const sourcePath = await initRepo(".env\n");
     const outsideDir = await makeTempDir("bb-worktree-include-outside-");
     await writeFile(path.join(outsideDir, "real.env"), "OUTSIDE=1\n");
@@ -106,7 +107,7 @@ describe("copyWorktreeIncludeFiles", () => {
     await expect(fs.stat(path.join(targetPath, ".env"))).rejects.toThrow();
   });
 
-  it("does not write through a symlink already in the worktree", async () => {
+  it.skipIf(process.platform === "win32")("does not write through a symlink already in the worktree", async () => {
     const sourcePath = await initRepo(".env\n");
     await writeFile(path.join(sourcePath, ".env"), "SECRET=1\n");
     await writeFile(

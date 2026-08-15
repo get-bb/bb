@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { killWindowsProcessTree } from "@bb/config/verified-process-stop";
 import {
   DEFAULT_ENV_SETUP_SCRIPT_NAME,
   WORKTREE_INCLUDE_FILE_NAME,
@@ -226,6 +227,13 @@ function killSetupScriptProcess(args: KillSetupScriptProcessArgs): void {
     } catch {
       // Fall back to killing the direct child if the process group is gone.
     }
+  }
+
+  if (process.platform === "win32" && args.child.pid !== undefined) {
+    killWindowsProcessTree(args.child.pid).once("error", () => {
+      args.child.kill(args.signal);
+    });
+    return;
   }
 
   args.child.kill(args.signal);

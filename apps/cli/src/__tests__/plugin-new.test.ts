@@ -144,7 +144,7 @@ describe.sequential("bb plugin new dependency install", () => {
     );
     // The manual step is the only way out, so the next steps must show it.
     expect(logged).toContain("  npm install --include=dev");
-  });
+  }, 20_000);
 
   it("pins the scaffold to this bb's SDK version", async () => {
     await runPluginNew(["pinned"]);

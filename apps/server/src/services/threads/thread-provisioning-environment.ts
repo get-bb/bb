@@ -72,6 +72,7 @@ import {
 } from "./thread-provisioning-active-context.js";
 import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
 import {
+  hostPathKindFromDataDir,
   resolveManagedTargetPath,
   resolvePersonalTargetPath,
 } from "./worktree-paths.js";
@@ -854,6 +855,7 @@ function buildManagedEnvironmentPlan(
           dataDir: args.dataDir,
           environmentId: environment.id,
           sourcePath: args.sourcePath,
+          hostPathKind: hostPathKindFromDataDir(args.dataDir),
         }),
         workspaceProvisionType: args.workspaceProvisionType,
         setupTimeoutMs: SETUP_TIMEOUT_MS,
@@ -890,6 +892,7 @@ function buildPersonalEnvironmentPlan(
           targetPath: resolvePersonalTargetPath({
             dataDir: args.dataDir,
             environmentId: environment.id,
+            hostPathKind: hostPathKindFromDataDir(args.dataDir),
           }),
           workspaceProvisionType: args.workspaceProvisionType,
         }),

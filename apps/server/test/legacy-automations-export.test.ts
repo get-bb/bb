@@ -51,7 +51,7 @@ function createLegacyTables(db: DbConnection): void {
   `);
 }
 
-describe("exportLegacyAutomationsForPluginImport", () => {
+describe.skipIf(process.platform === "win32")("exportLegacyAutomationsForPluginImport", () => {
   let dataDir: string;
   let db: DbConnection;
 

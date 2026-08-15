@@ -58,7 +58,7 @@ describe("bb bin wrapper", () => {
     return fakeBinDir;
   }
 
-  it("builds the source CLI before executing when dist is missing", async () => {
+  it.skipIf(process.platform === "win32")("builds the source CLI before executing when dist is missing", async () => {
     const fakeRepoRoot = await createFakeRepo();
     const pnpmArgsPath = join(tempRoot, "pnpm-args.txt");
     const fakePnpmDir = await writeFakePnpm(`#!/bin/sh
@@ -99,7 +99,7 @@ NODE
     );
   });
 
-  it("uses the built CLI directly when dist exists", async () => {
+  it.skipIf(process.platform === "win32")("uses the built CLI directly when dist exists", async () => {
     const fakeRepoRoot = await createFakeRepo();
     const fakeDistDir = join(fakeRepoRoot, "apps", "cli", "dist");
     const pnpmCalledPath = join(tempRoot, "pnpm-called.txt");
@@ -130,4 +130,46 @@ exit 42
       code: "ENOENT",
     });
   });
+
+  it("does not resolve node.exe through a cwd-relative PATH entry", async () => {
+    const shim = await readFile(
+      join(repoRoot, "apps", "cli", "bin", "bb.cmd"),
+      "utf8",
+    );
+    expect(shim).not.toContain("%%~fD");
+    expect(shim).toContain("ENTRY:~0,1");
+  });
+
+  it.skipIf(process.platform !== "win32")(
+    "does not use a node.exe sitting in cwd when PATH starts with .",
+    async () => {
+      const fakeRepoRoot = await createFakeRepo();
+      const binDir = join(fakeRepoRoot, "apps", "cli", "bin");
+      const distDir = join(fakeRepoRoot, "apps", "cli", "dist");
+      await copyFile(
+        join(repoRoot, "apps", "cli", "bin", "bb.cmd"),
+        join(binDir, "bb.cmd"),
+      );
+      await mkdir(distDir, { recursive: true });
+      await writeFile(
+        join(distDir, "index.js"),
+        "process.stdout.write('from-bundle');",
+      );
+      const workspace = join(tempRoot, "workspace");
+      await mkdir(workspace);
+      await writeFile(join(workspace, "node.exe"), "hijack");
+      const result = await execFileAsync(
+        process.env.ComSpec ?? "cmd.exe",
+        ["/d", "/c", join(binDir, "bb.cmd"), "--probe"],
+        {
+          cwd: workspace,
+          env: {
+            ...process.env,
+            PATH: `.;${process.env.PATH ?? ""}`,
+          },
+        },
+      );
+      expect(result.stdout).toBe("from-bundle");
+    },
+  );
 });

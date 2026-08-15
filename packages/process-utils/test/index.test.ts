@@ -1,6 +1,6 @@
 import { once } from "node:events";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import {
@@ -262,7 +262,7 @@ describe("process utils", () => {
         rootPath: "/tmp/root",
         candidatePath: "/tmp/root/child/file.txt",
       }),
-    ).toBe("/tmp/root/child/file.txt");
+    ).toBe(resolve("/tmp/root/child/file.txt"));
   });
 
   it("rejects root and escaped paths", () => {
@@ -299,6 +299,25 @@ describe("process utils", () => {
     });
     expect("SKIP_ME" in sanitizedEnv).toBe(false);
   });
+
+  it.skipIf(process.platform !== "win32")(
+    "collapses case-insensitive env keys so the last write wins",
+    () => {
+      const sanitizedEnv = sanitizeInheritedChildProcessEnv({
+        env: {
+          Path: "first",
+          PATH: "second",
+          FOO: "1",
+        },
+      });
+      expect(
+        Object.keys(sanitizedEnv).filter(
+          (key) => key.toLowerCase() === "path",
+        ),
+      ).toHaveLength(1);
+      expect(sanitizedEnv.PATH ?? sanitizedEnv.Path).toBe("second");
+    },
+  );
 
   it("does not mutate the inherited env", () => {
     const env: NodeJS.ProcessEnv = {

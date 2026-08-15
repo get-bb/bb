@@ -445,16 +445,34 @@ async function warnIfSdkVersionUnpublished(): Promise<void> {
  * not installed, a network or auth error) is `unknown`: never fatal, never
  * interactive.
  */
+async function runNpm(
+  args: string[],
+  options: { cwd?: string; timeout?: number },
+): Promise<{ stdout: string }> {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const execFileAsync = promisify(execFile);
+  if (process.platform === "win32") {
+    return execFileAsync(process.env.ComSpec ?? "cmd.exe", ["/d", "/c", "npm", ...args], {
+      cwd: options.cwd,
+      timeout: options.timeout,
+      windowsHide: true,
+    });
+  }
+  return execFileAsync("npm", args, {
+    cwd: options.cwd,
+    timeout: options.timeout,
+    killSignal: "SIGKILL",
+  });
+}
+
 async function probeSdkVersionPublished(): Promise<
   "published" | "missing" | "unknown"
 > {
-  const { execFile } = await import("node:child_process");
-  const { promisify } = await import("node:util");
   try {
-    const { stdout } = await promisify(execFile)(
-      "npm",
+    const { stdout } = await runNpm(
       ["view", `@get-bb/plugin-sdk@${PLUGIN_SDK_VERSION}`, "version", "--json"],
-      { timeout: 5_000, killSignal: "SIGKILL" },
+      { timeout: 5_000 },
     );
     // Empty output from a successful `npm view` means the spec matched no
     // published version.
@@ -490,14 +508,10 @@ async function probeSdkVersionPublished(): Promise<
 async function installScaffoldDependencies(
   targetDir: string,
 ): Promise<boolean> {
-  const { execFile } = await import("node:child_process");
-  const { promisify } = await import("node:util");
   try {
-    await promisify(execFile)(
-      "npm",
-      ["install", "--include=dev", "--no-fund", "--no-audit"],
-      { cwd: targetDir },
-    );
+    await runNpm(["install", "--include=dev", "--no-fund", "--no-audit"], {
+      cwd: targetDir,
+    });
   } catch {
     console.warn(
       "Could not run npm install — run it in the plugin directory before `bb plugin build`.",

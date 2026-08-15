@@ -223,11 +223,26 @@ function parseGitSource(spec: string): ParsedPluginSource {
     url = urlish;
     host = parsed.host;
     repoPath = parsed.pathname.replace(/^\/+|\/+$/g, "").replace(/\.git$/, "");
-  } else if (urlish.startsWith("/")) {
+  } else if (
+    urlish.startsWith("/") ||
+    /^[A-Za-z]:[\\/]/.test(urlish) ||
+    urlish.startsWith("\\\\")
+  ) {
     // An on-disk repository (dev setups, tests). Grouped under "local".
+    // Hash the path so a Windows `C:\Users\...\Temp\...` clone dest stays
+    // under MAX_PATH. The leaf name stays for diagnostics.
     url = urlish;
     host = "local";
-    repoPath = urlish.replace(/^\/+/, "").replace(/\.git$/, "");
+    const normalizedLocalPath = urlish
+      .replace(/\\/gu, "/")
+      .replace(/^[A-Za-z]:/u, "")
+      .replace(/^\/+/u, "")
+      .replace(/\.git$/, "");
+    const leaf =
+      normalizedLocalPath.split("/").filter((segment) => segment.length > 0).at(
+        -1,
+      ) ?? "repo";
+    repoPath = `${leaf}/${createHash("sha256").update(normalizedLocalPath.toLowerCase()).digest("hex").slice(0, 16)}`;
   } else if (/^[a-z0-9]/i.test(urlish)) {
     // Shorthand: git:github.com/user/repo@ref
     url = `https://${urlish}`;

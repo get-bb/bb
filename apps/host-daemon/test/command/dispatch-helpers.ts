@@ -16,7 +16,11 @@ import type {
   PromptInput,
 } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
-import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
+import {
+  makeWorkspaceMergeBase,
+  makeWorkspaceStatus,
+  removePathWithRetry,
+} from "@bb/test-helpers";
 import type {
   HostWorkspace,
   ProvisionWorkspaceArgs,
@@ -543,9 +547,5 @@ export async function runGitCommand(
 }
 
 export async function cleanupTempDirs(): Promise<void> {
-  await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
-  );
+  await Promise.all(tempDirs.splice(0).map((dir) => removePathWithRetry(dir)));
 }

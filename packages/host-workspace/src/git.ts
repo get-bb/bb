@@ -9,7 +9,10 @@ import type {
   GitCheckoutRef,
   WorkspaceGitOperation,
 } from "@bb/domain";
-import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
+import {
+  execFilePortable,
+  sanitizeInheritedChildProcessEnv,
+} from "@bb/process-utils";
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_BUFFER_BYTES = 16 * 1024 * 1024;
@@ -136,8 +139,12 @@ function toExecError(error: unknown): ExecFileException | undefined {
   return undefined;
 }
 
+function normalizeGitText(value: string): string {
+  return value.replaceAll("\r\n", "\n").replaceAll("\r", "\n");
+}
+
 function trimOutput(value: string): string {
-  return value.trim().replace(/\n+$/u, "");
+  return normalizeGitText(value).trim().replace(/\n+$/u, "");
 }
 
 function getExitCode(error: ExecFileException | undefined): number {
@@ -259,17 +266,18 @@ export async function runGit(
     throw createGitCommandCancelledError(args, options.signal.reason);
   }
   try {
-    const result = await execFileAsync("git", args, {
+    const result = await execFilePortable({
+      command: "git",
+      args,
       cwd: options.cwd,
-      encoding: "utf8",
       env: resolveGitProcessEnv({ env: options.env }),
-      maxBuffer: options.maxBufferBytes ?? DEFAULT_BUFFER_BYTES,
+      maxBufferBytes: options.maxBufferBytes ?? DEFAULT_BUFFER_BYTES,
       signal: options.signal,
-      timeout: options.timeoutMs,
+      timeoutMs: options.timeoutMs,
     });
     return {
-      stdout: result.stdout,
-      stderr: result.stderr,
+      stdout: normalizeGitText(result.stdout),
+      stderr: normalizeGitText(result.stderr),
       exitCode: 0,
     };
   } catch (error) {
@@ -286,15 +294,15 @@ export async function runGit(
       isStdoutMaxBufferExceededError(error)
     ) {
       return {
-        stdout: execError?.stdout ?? "",
-        stderr: execError?.stderr ?? "",
+        stdout: normalizeGitText(execError?.stdout ?? ""),
+        stderr: normalizeGitText(execError?.stderr ?? ""),
         exitCode: 0,
       };
     }
     if (options.allowFailure) {
       return {
-        stdout: execError?.stdout ?? "",
-        stderr: execError?.stderr ?? "",
+        stdout: normalizeGitText(execError?.stdout ?? ""),
+        stderr: normalizeGitText(execError?.stderr ?? ""),
         exitCode: getExitCode(execError),
       };
     }
@@ -343,6 +351,7 @@ export async function runGitWithNullRecordLimit(
       cwd: options.cwd,
       env: resolveGitProcessEnv({ env: options.env }),
       stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
     });
     const stdoutRecords: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
@@ -512,13 +521,35 @@ export function resolveShellPipelineExecutable(
   if (platform !== "win32") {
     return "sh";
   }
-  const gitSh = path.join(
-    process.env.ProgramFiles ?? "C:\\Program Files",
-    "Git",
-    "bin",
-    "sh.exe",
-  );
-  return existsSync(gitSh) ? gitSh : "sh.exe";
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (dir.length === 0) {
+      continue;
+    }
+    const fromPath = path.join(dir, "sh.exe");
+    if (existsSync(fromPath)) {
+      return fromPath;
+    }
+  }
+  const candidates = [
+    process.env.LOCALAPPDATA
+      ? path.join(process.env.LOCALAPPDATA, "Programs", "Git", "bin", "sh.exe")
+      : null,
+    path.join(
+      process.env.ProgramFiles ?? "C:\\Program Files",
+      "Git",
+      "bin",
+      "sh.exe",
+    ),
+    process.env["ProgramFiles(x86)"]
+      ? path.join(process.env["ProgramFiles(x86)"], "Git", "bin", "sh.exe")
+      : null,
+  ];
+  for (const candidate of candidates) {
+    if (candidate !== null && existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return "sh.exe";
 }
 
 export async function runShellPipeline(
@@ -530,19 +561,20 @@ export async function runShellPipeline(
     throw createShellPipelineCancelledError(options.signal.reason);
   }
   try {
-    const result = await execFileAsync(
-      resolveShellPipelineExecutable(),
-      ["-c", script, "sh", ...positionalArgs],
-      {
-        cwd: options.cwd,
-        encoding: "utf8",
-        env: resolveGitProcessEnv({ env: undefined }),
-        maxBuffer: DEFAULT_BUFFER_BYTES,
-        signal: options.signal,
-        timeout: options.timeoutMs,
-      },
-    );
-    return { stdout: result.stdout, stderr: result.stderr, exitCode: 0 };
+    const result = await execFilePortable({
+      command: resolveShellPipelineExecutable(),
+      args: ["-c", script, "sh", ...positionalArgs],
+      cwd: options.cwd,
+      env: resolveGitProcessEnv({ env: undefined }),
+      maxBufferBytes: DEFAULT_BUFFER_BYTES,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+    return {
+      stdout: normalizeGitText(result.stdout),
+      stderr: normalizeGitText(result.stderr),
+      exitCode: 0,
+    };
   } catch (error) {
     if (options.signal?.aborted) {
       throw createShellPipelineCancelledError(error);
@@ -554,8 +586,8 @@ export async function runShellPipeline(
     }
     if (options.allowFailure) {
       return {
-        stdout: execError?.stdout ?? "",
-        stderr: execError?.stderr ?? "",
+        stdout: normalizeGitText(execError?.stdout ?? ""),
+        stderr: normalizeGitText(execError?.stderr ?? ""),
         exitCode: getExitCode(execError),
       };
     }
@@ -1432,6 +1464,7 @@ export async function readGitBlob(
       encoding: "buffer",
       env: resolveGitProcessEnv({ env: undefined }),
       maxBuffer: maxBytes,
+      windowsHide: true,
     });
     const contents = Buffer.from(result.stdout);
     return { contents, sizeBytes: size };

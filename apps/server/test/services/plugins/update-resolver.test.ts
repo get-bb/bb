@@ -219,7 +219,7 @@ describe("npm update candidate selection", () => {
   });
 });
 
-describe("git update resolution", () => {
+describe.skipIf(process.platform === "win32")("git update resolution", () => {
   it("classifies tags and branches, detects a moved branch, and reports current", async () => {
     const repo = await mkdtemp(join(tmpdir(), "bb-update-resolver-git-"));
     cleanup.push(repo);
@@ -292,7 +292,7 @@ describe("git update resolution", () => {
   });
 });
 
-describe("git semver tag resolution", () => {
+describe.skipIf(process.platform === "win32")("git semver tag resolution", () => {
   async function tagRepo(): Promise<{
     repo: string;
     commitOf: Map<string, string>;

@@ -1,7 +1,6 @@
 import semver from "semver";
 import {
   bbDesktopVersionFeedSchema,
-  desktopPlatformFromNode,
   type BbDesktopInfo,
   type BbDesktopInfoChangeHandler,
   type BbDesktopInfoUnsubscribe,

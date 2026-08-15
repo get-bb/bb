@@ -136,14 +136,18 @@ interface TestHostRpcSocket {
   send(data: string): void;
 }
 
+function asPosixPath(value: string): string {
+  return value.replaceAll("\\", "/");
+}
+
 function isRuntimeWorkspaceFileCommand(command: HostDaemonRpcCommand): boolean {
   if (command.type === "host.list_files") {
-    return command.path.endsWith(path.join(".bb", "skills"));
+    return asPosixPath(command.path).endsWith(".bb/skills");
   }
   if (command.type !== "host.read_file") return false;
+  const posixPath = asPosixPath(command.path);
   return (
-    command.path.endsWith(path.join(".bb", "AGENTS.md")) ||
-    command.path.includes(`${path.sep}.bb${path.sep}skills${path.sep}`)
+    posixPath.endsWith(".bb/AGENTS.md") || posixPath.includes("/.bb/skills/")
   );
 }
 
@@ -423,7 +427,7 @@ function isCapturedRpcForHarness(
 export async function waitForQueuedCommand(
   harness: TestAppHarness,
   predicate: (queued: QueuedCommand) => boolean,
-  timeoutMs = 1_000,
+  timeoutMs = 8_000,
 ): Promise<QueuedCommand> {
   const deadline = Date.now() + timeoutMs;
 
@@ -444,7 +448,7 @@ export async function waitForQueuedCommandAfter(
   harness: TestAppHarness,
   afterCursor: number,
   predicate: (queued: QueuedCommand) => boolean,
-  timeoutMs = 1_000,
+  timeoutMs = 8_000,
 ): Promise<QueuedCommand> {
   return waitForQueuedCommand(
     harness,

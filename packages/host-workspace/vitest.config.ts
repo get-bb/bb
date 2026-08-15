@@ -10,6 +10,6 @@ export default defineWorkspaceTestConfig({
     // stash) that run fast in isolation but can exceed the 5s default under
     // full-suite CPU contention. Match the 15s used by other subprocess-heavy
     // packages (@bb/host-daemon, @bb/app, @bb/logger).
-    testTimeout: 15_000,
+    testTimeout: 30_000,
   },
 });

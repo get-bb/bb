@@ -54,7 +54,7 @@ describe("host.list_branches dispatch", () => {
     );
   });
 
-  it("lists remote branches separately from local checkout branches", async () => {
+  it.skipIf(process.platform === "win32")("lists remote branches separately from local checkout branches", async () => {
     const repoPath = await initBranchRepo();
     const remotePath = await makeTempDir("bb-host-branches-remote-");
     await runGitCommand(["init", "--bare"], { cwd: remotePath });

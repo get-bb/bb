@@ -576,17 +576,23 @@ describe("bb-app launcher", () => {
       homeDir: "/home/tester",
     });
 
-    expect(context.dataDir).toBe("/home/tester/.bb");
-    expect(context.configFile).toBe("/home/tester/.bb/config.json");
-    expect(context.envFile).toBe("/home/tester/.bb/env.json");
+    expect(context.dataDir).toBe(join("/home/tester", ".bb"));
+    expect(context.configFile).toBe(join("/home/tester", ".bb", "config.json"));
+    expect(context.envFile).toBe(join("/home/tester", ".bb", "env.json"));
     expect(context.serverPort).toBe(38886);
     expect(context.daemonPort).toBe(38887);
     expect(context.serverUrl).toBe("http://127.0.0.1:38886");
     expect(context.serverEntry).toBe(
-      "/repo/packages/bb-app/server/dist/index.js",
+      fileURLToPath(
+        pathToFileURL("/repo/packages/bb-app/server/dist/index.js").href,
+      ),
     );
     expect(context.daemonEntry).toBe(
-      "/repo/packages/bb-app/host-daemon/dist/daemon-bundle.mjs",
+      fileURLToPath(
+        pathToFileURL(
+          "/repo/packages/bb-app/host-daemon/dist/daemon-bundle.mjs",
+        ).href,
+      ),
     );
     expect(context.appVersion).toBe("0.0.0-dev");
   });
@@ -599,12 +605,22 @@ describe("bb-app launcher", () => {
       homeDir: "/home/tester",
     });
 
-    expect(context.packageRoot).toBe("/repo/packages/bb-app");
-    expect(context.appDistDir).toBe("/repo/apps/app/dist");
-    expect(context.serverEntry).toBe("/repo/apps/server/dist/index.js");
-    expect(context.daemonBundleDir).toBe("/repo/apps/host-daemon/dist");
+    expect(context.packageRoot).toBe(
+      fileURLToPath(pathToFileURL("/repo/packages/bb-app").href),
+    );
+    expect(context.appDistDir).toBe(
+      fileURLToPath(pathToFileURL("/repo/apps/app/dist").href),
+    );
+    expect(context.serverEntry).toBe(
+      fileURLToPath(pathToFileURL("/repo/apps/server/dist/index.js").href),
+    );
+    expect(context.daemonBundleDir).toBe(
+      fileURLToPath(pathToFileURL("/repo/apps/host-daemon/dist").href),
+    );
     expect(context.daemonEntry).toBe(
-      "/repo/apps/host-daemon/dist/daemon-bundle.mjs",
+      fileURLToPath(
+        pathToFileURL("/repo/apps/host-daemon/dist/daemon-bundle.mjs").href,
+      ),
     );
   });
 
@@ -632,7 +648,7 @@ describe("bb-app launcher", () => {
     };
 
     expect(resolveDataDir({ env, homeDir: "/home/tester" })).toBe(
-      "/home/tester/custom-bb",
+      resolve("/home/tester/custom-bb"),
     );
     expect(resolvePort({ defaultPort: 1, env, name: "BB_SERVER_PORT" })).toBe(
       48886,
@@ -1069,8 +1085,10 @@ describe("bb-app launcher", () => {
         },
       },
     );
-    expect(statSync(join(dataDir, "config.json")).mode & 0o777).toBe(0o600);
-    expect(statSync(join(dataDir, "env.json")).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect(statSync(join(dataDir, "config.json")).mode & 0o777).toBe(0o600);
+      expect(statSync(join(dataDir, "env.json")).mode & 0o777).toBe(0o600);
+    }
   });
 
   it("stores client SSH targets from the client command", async () => {
@@ -1108,7 +1126,9 @@ describe("bb-app launcher", () => {
           },
         },
       });
-      expect(statSync(join(dataDir, "client.json")).mode & 0o777).toBe(0o600);
+      if (process.platform !== "win32") {
+        expect(statSync(join(dataDir, "client.json")).mode & 0o777).toBe(0o600);
+      }
 
       await runBbApp([
         "--data-dir",
@@ -1333,7 +1353,9 @@ describe("bb-app launcher", () => {
         },
       },
     );
-    expect(statSync(join(dataDir, "env.json")).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect(statSync(join(dataDir, "env.json")).mode & 0o777).toBe(0o600);
+    }
   });
 
   it("rejects invalid server bind hosts before writing managed env", async () => {
@@ -1830,7 +1852,9 @@ describe("bb-app launcher", () => {
     }
   });
 
-  it("detects npm bin symlinks as the main module", () => {
+  it.skipIf(process.platform === "win32")(
+    "detects npm bin symlinks as the main module",
+    () => {
     const testDir = mkdtempSync(join(tmpdir(), "bb-bb-app-main-"));
     const realEntryPath = join(testDir, "dist-index.js");
     const symlinkPath = join(testDir, "bb");
@@ -1843,7 +1867,8 @@ describe("bb-app launcher", () => {
         moduleUrl: pathToFileURL(realEntryPath).href,
       }),
     ).toBe(true);
-  });
+    },
+  );
 
   it("observes child processes that exited before wait registration", async () => {
     const childProcess = spawn(process.execPath, ["-e", "process.exit(7)"], {

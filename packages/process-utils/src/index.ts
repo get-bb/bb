@@ -1,4 +1,9 @@
-import type { ChildProcess, StdioOptions } from "node:child_process";
+import {
+  execFile,
+  type ChildProcess,
+  type StdioOptions,
+} from "node:child_process";
+import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -12,6 +17,7 @@ export interface PortableSpawnRequest {
   detached?: boolean;
   env?: NodeJS.ProcessEnv;
   stdio?: StdioOptions;
+  windowsHide?: boolean;
 }
 
 export type PortableChildProcess = ChildProcess;
@@ -96,6 +102,8 @@ type UncaughtExceptionMonitorHandler = (
   origin: NodeJS.UncaughtExceptionOrigin,
 ) => void;
 
+const execFileAsync = promisify(execFile);
+
 export function spawnPortableProcess(
   request: PortableSpawnRequest,
 ): PortableChildProcess {
@@ -104,7 +112,36 @@ export function spawnPortableProcess(
     detached: request.detached,
     env: request.env,
     stdio: request.stdio,
+    windowsHide: request.windowsHide ?? process.platform === "win32",
   });
+}
+
+export interface ExecFilePortableRequest {
+  command: string;
+  args: string[];
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  maxBufferBytes?: number;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
+export async function execFilePortable(
+  request: ExecFilePortableRequest,
+): Promise<{ stdout: string; stderr: string }> {
+  const result = await execFileAsync(request.command, request.args, {
+    cwd: request.cwd,
+    encoding: "utf8",
+    env: request.env,
+    maxBuffer: request.maxBufferBytes,
+    signal: request.signal,
+    timeout: request.timeoutMs,
+    windowsHide: true,
+  });
+  return {
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
 }
 
 function assertPortablePipedProcess(
@@ -181,6 +218,14 @@ export function sanitizeInheritedChildProcessEnv(
     }
     if (key === "NODE_ENV" || key.startsWith("BB_")) {
       continue;
+    }
+    if (process.platform === "win32") {
+      const existingKey = Object.keys(sanitizedEnv).find(
+        (candidate) => candidate.toLowerCase() === key.toLowerCase(),
+      );
+      if (existingKey !== undefined) {
+        delete sanitizedEnv[existingKey];
+      }
     }
     sanitizedEnv[key] = value;
   }

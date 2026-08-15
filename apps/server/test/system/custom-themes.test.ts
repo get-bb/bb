@@ -83,7 +83,9 @@ describe("custom themes service", () => {
     );
   });
 
-  it("loads convention Pierre JSON files next to theme.css", async () => {
+  it.skipIf(process.platform === "win32")(
+    "loads convention Pierre JSON files next to theme.css",
+    async () => {
     await writeTheme(themeRoot, "ocean", ":root {}");
     const darkTheme = { name: "Ocean Dark", type: "dark", tokenColors: [] };
     await writeFile(

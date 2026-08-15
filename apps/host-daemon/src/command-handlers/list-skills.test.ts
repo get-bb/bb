@@ -260,7 +260,7 @@ describe("resolveSkillScanRoots + discoverSkills (codex)", () => {
     expect(new Set(skills.map((skill) => skill.id)).size).toBe(2);
   });
 
-  it("marks followed user skill directory and SKILL.md symlinks as linked", async () => {
+  it.skipIf(process.platform === "win32")("marks followed user skill directory and SKILL.md symlinks as linked", async () => {
     const fixture = await makeWorkspaceFixture();
     const skillsRoot = path.join(fixture.codexHome, "skills");
     const linkedDirectoryTarget = path.join(tempRoot, "linked-skill-target");
@@ -322,7 +322,7 @@ describe("resolveSkillScanRoots + discoverSkills (shared roots)", () => {
     expect(byName(skills, "user-shared")?.rootKind).toBe("shared-user");
   });
 
-  it("discovers a project skill through a symlinked shared root", async () => {
+  it.skipIf(process.platform === "win32")("discovers a project skill through a symlinked shared root", async () => {
     const fixture = await makeWorkspaceFixture();
     await writeSkill(
       path.join(fixture.cwd, ".agents", "skills", "linked-root", "SKILL.md"),
@@ -356,7 +356,7 @@ describe("resolveSkillScanRoots + discoverSkills (shared roots)", () => {
 });
 
 describe("resolveSkillScanRoots + discoverSkills (acp-cursor)", () => {
-  it("classifies a skill through a symlinked .cursor/skills root", async () => {
+  it.skipIf(process.platform === "win32")("classifies a skill through a symlinked .cursor/skills root", async () => {
     const fixture = await makeWorkspaceFixture();
     await writeSkill(
       path.join(fixture.cwd, ".agents", "skills", "impeccable", "SKILL.md"),
@@ -471,7 +471,7 @@ describe("deleteHostSkill", () => {
     ).rejects.toMatchObject({ code: "invalid_skill_name" });
   });
 
-  it("refuses a skill symlinked outside the bb root after realpath", async () => {
+  it.skipIf(process.platform === "win32")("refuses a skill symlinked outside the bb root after realpath", async () => {
     const fixture = await makeWorkspaceFixture();
     // A real skill dir living outside any bb root.
     const outside = path.join(tempRoot, "outside", "secret");
@@ -499,7 +499,7 @@ describe("deleteHostSkill", () => {
     ).not.toBeNull();
   });
 
-  it("refuses a skill symlinked to a sibling inside the same root", async () => {
+  it.skipIf(process.platform === "win32")("refuses a skill symlinked to a sibling inside the same root", async () => {
     const fixture = await makeWorkspaceFixture();
     const skillsRoot = path.join(fixture.dataDir, "skills");
     // A real sibling skill, and a symlink that resolves to it.

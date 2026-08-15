@@ -162,8 +162,10 @@ describe("injected skill source discovery", () => {
     expect(readSkillTreeManifest(secondRoot).treeHash).not.toBe(baseline);
     await rename(renamedReference, secondReference);
 
-    await chmod(secondReference, 0o755);
-    expect(readSkillTreeManifest(secondRoot).treeHash).not.toBe(baseline);
+    if (process.platform !== "win32") {
+      await chmod(secondReference, 0o755);
+      expect(readSkillTreeManifest(secondRoot).treeHash).not.toBe(baseline);
+    }
   });
 
   it("hashes Unicode paths in locale-independent code-point order", () => {
@@ -249,7 +251,9 @@ describe("injected skill source discovery", () => {
     });
   });
 
-  it("rejects symlinked skill directories", async () => {
+  it.skipIf(process.platform === "win32")(
+    "rejects symlinked skill directories",
+    async () => {
     const dataDir = await makeTempDir();
     const outsideRoot = await makeTempDir();
     const skillsRootPath = path.join(dataDir, "skills");

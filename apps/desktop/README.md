@@ -1,8 +1,8 @@
 # @bb/desktop
 
-macOS and Linux Electron shell for bb. The desktop app loads the existing bb
-web UI and uses the packaged `bb-app` launcher for server and host-daemon
-lifecycle.
+macOS, Linux, and Windows Electron shell for bb. The desktop app loads the
+existing bb web UI and uses the packaged `bb-app` launcher for server and
+host-daemon lifecycle.
 
 ## Development
 
@@ -73,8 +73,10 @@ pnpm exec turbo run desktop:build --filter=@bb/desktop
 pnpm exec turbo run smoke:packaged --filter=@bb/desktop
 ```
 
-Artifacts are written under `apps/desktop/release/`. The macOS build is Apple
-Silicon arm64-only; Intel Macs are not a target. Without signing secrets, local builds
+Artifacts are written under `apps/desktop/release/`. Published desktop
+downloads remain macOS Apple Silicon arm64-only; Intel Macs are not a
+target. Local Linux and Windows packaging is documented below.
+Without signing secrets, local builds
 sign with a code-signing identity auto-discovered from the keychain and skip
 notarization. A valid signature matters even for local builds: macOS
 provenance-tracks unsigned apps, forcing syspolicyd to evaluate every exec in
@@ -104,6 +106,19 @@ Running an AppImage normally requires FUSE and, on some distributions, the
 CI builds Linux artifacts on the pinned `ubuntu-22.04` runner. The AppImage
 links against the build machine's glibc, so that pin sets the oldest
 distribution that can run a published build. Raise it deliberately.
+
+### Windows (NSIS, x64)
+
+Unsigned local Windows packaging lives on this checkout. It is not a published
+download path. From the repo root:
+
+```bash
+pnpm --filter @bb/desktop run package:win
+pnpm --filter @bb/desktop run dist:win
+```
+
+`package:win` unpacks the app. `dist:win` builds the NSIS installer. There is
+no Windows auto-update feed. Sign and `latest.yml` stay out of this cut.
 
 Linux gets both update paths, but they are not equivalent:
 

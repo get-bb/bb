@@ -21,23 +21,31 @@ export interface NormalizeAbsoluteFilePathArgs {
   path: string;
 }
 
-function trimTrailingSlash(path: string): string {
-  if (path === "/") {
-    return path;
-  }
-  return path.replace(/\/+$/u, "");
+function isWindowsUncPath(path: string): boolean {
+  return /^\\\\[^\\/]/u.test(path);
 }
 
-function trimLeadingSlash(path: string): string {
-  return path.replace(/^\/+/u, "");
+function isWindowsDrivePath(path: string): boolean {
+  return /^[A-Za-z]:[\\/]/u.test(path);
 }
 
 function isWindowsAbsoluteFilePath(path: string): boolean {
-  return /^[A-Za-z]:[\\/]/u.test(path) || /^\\\\[^\\/]/u.test(path);
+  return isWindowsDrivePath(path) || isWindowsUncPath(path);
 }
 
-function isAbsoluteFilePath(path: string): boolean {
+export function isAbsoluteFilePath(path: string): boolean {
   return path.startsWith("/") || isWindowsAbsoluteFilePath(path);
+}
+
+function trimTrailingSlash(path: string): string {
+  if (path === "/" || /^[A-Za-z]:\\$/u.test(path) || /^\\\\[^\\]+\\[^\\]+\\?$/u.test(path)) {
+    return path.replace(/\\$/u, (match) => (path.length === 3 ? match : ""));
+  }
+  return path.replace(/[\\/]+$/u, "");
+}
+
+function trimLeadingSlash(path: string): string {
+  return path.replace(/^[\\/]+/u, "");
 }
 
 export function normalizeAbsoluteFilePath({
@@ -47,32 +55,60 @@ export function normalizeAbsoluteFilePath({
     return null;
   }
 
-  const windowsAbsolute = isWindowsAbsoluteFilePath(path);
-  const separator = windowsAbsolute && path.includes("\\") ? "\\" : "/";
-  const normalizedSegments: string[] = [];
-  for (const segment of path.split(/[\\/]/u)) {
+  if (isWindowsUncPath(path)) {
+    const segments = path.split(/[\\/]/u).filter((segment) => segment.length > 0);
+    if (segments.length < 2) {
+      return null;
+    }
+    const share = [segments[0], segments[1]];
+    const rest: string[] = [];
+    for (const segment of segments.slice(2)) {
+      if (segment === ".") {
+        continue;
+      }
+      if (segment === "..") {
+        if (rest.length > 0) {
+          rest.pop();
+        }
+        continue;
+      }
+      rest.push(segment);
+    }
+    return `\\\\${[...share, ...rest].join("\\")}`;
+  }
+
+  if (isWindowsDrivePath(path)) {
+    const drive = `${path[0]!.toUpperCase()}:`;
+    const rest: string[] = [];
+    for (const segment of path.slice(2).split(/[\\/]/u)) {
+      if (segment.length === 0 || segment === ".") {
+        continue;
+      }
+      if (segment === "..") {
+        if (rest.length > 0) {
+          rest.pop();
+        }
+        continue;
+      }
+      rest.push(segment);
+    }
+    return rest.length === 0 ? `${drive}\\` : `${drive}\\${rest.join("\\")}`;
+  }
+
+  const posixSegments: string[] = [];
+  for (const segment of path.split("/")) {
     if (segment.length === 0 || segment === ".") {
       continue;
     }
     if (segment === "..") {
-      if (normalizedSegments.length > 0) {
-        normalizedSegments.pop();
+      if (posixSegments.length > 0) {
+        posixSegments.pop();
       }
       continue;
     }
-    normalizedSegments.push(segment);
+    posixSegments.push(segment);
   }
-
-  if (windowsAbsolute) {
-    if (path.startsWith("\\\\")) {
-      return `\\\\${normalizedSegments.join(separator)}`;
-    }
-    return normalizedSegments.join(separator);
-  }
-
-  return normalizedSegments.length === 0
-    ? "/"
-    : `/${normalizedSegments.join("/")}`;
+  return posixSegments.length === 0 ? "/" : `/${posixSegments.join("/")}`;
 }
 
 export function isAbsoluteFilePathWithinRoot({
@@ -91,11 +127,15 @@ export function isAbsoluteFilePathWithinRoot({
     return normalizedCandidatePath.startsWith("/");
   }
 
-  return (
-    normalizedCandidatePath === normalizedRootPath ||
-    normalizedCandidatePath.startsWith(`${normalizedRootPath}/`) ||
-    normalizedCandidatePath.startsWith(`${normalizedRootPath}\\`)
-  );
+  const windowsRoot = isWindowsAbsoluteFilePath(normalizedRootPath);
+  const candidateKey = windowsRoot
+    ? normalizedCandidatePath.toLowerCase()
+    : normalizedCandidatePath;
+  const rootKey = windowsRoot
+    ? trimTrailingSlash(normalizedRootPath).toLowerCase()
+    : trimTrailingSlash(normalizedRootPath);
+  const separator = windowsRoot ? "\\" : "/";
+  return candidateKey === rootKey || candidateKey.startsWith(`${rootKey}${separator}`);
 }
 
 export function buildAbsoluteFilePath({
@@ -106,12 +146,16 @@ export function buildAbsoluteFilePath({
     return path;
   }
 
-  const normalizedRootPath = trimTrailingSlash(rootPath);
+  const normalizedRoot =
+    normalizeAbsoluteFilePath({ path: rootPath }) ?? trimTrailingSlash(rootPath);
   const relativePath = trimLeadingSlash(path);
-  if (normalizedRootPath === "/") {
+  if (normalizedRoot === "/") {
     return `/${relativePath}`;
   }
-  return `${normalizedRootPath}/${relativePath}`;
+  if (isWindowsAbsoluteFilePath(normalizedRoot)) {
+    return `${trimTrailingSlash(normalizedRoot)}\\${relativePath.replaceAll("/", "\\")}`;
+  }
+  return `${normalizedRoot}/${relativePath}`;
 }
 
 export function resolveAbsoluteFilePath({
@@ -127,12 +171,26 @@ export function resolveAbsoluteFilePath({
   return buildAbsoluteFilePath({ path, rootPath });
 }
 
-/**
- * Parent directory of an absolute path, used as the base for resolving relative
- * links inside a previewed file. Returns the filesystem root for top-level paths.
- */
 export function getAbsoluteDirname({ path }: GetAbsoluteDirnameArgs): string {
-  const trimmed = trimTrailingSlash(path);
-  const lastSlashIndex = trimmed.lastIndexOf("/");
-  return lastSlashIndex <= 0 ? "/" : trimmed.slice(0, lastSlashIndex);
+  const normalized = normalizeAbsoluteFilePath({ path });
+  if (normalized === null) {
+    return "/";
+  }
+  if (normalized === "/" || /^[A-Za-z]:\\$/u.test(normalized)) {
+    return normalized;
+  }
+  if (isWindowsUncPath(normalized)) {
+    const parts = normalized.split("\\").filter((part) => part.length > 0);
+    if (parts.length <= 2) {
+      return normalized;
+    }
+    return `\\\\${parts.slice(0, -1).join("\\")}`;
+  }
+  const separator = isWindowsDrivePath(normalized) ? "\\" : "/";
+  const lastSlashIndex = normalized.lastIndexOf(separator);
+  if (lastSlashIndex <= 0) {
+    return isWindowsDrivePath(normalized) ? `${normalized.slice(0, 2)}\\` : "/";
+  }
+  const parent = normalized.slice(0, lastSlashIndex);
+  return parent === "" || /^[A-Za-z]:$/u.test(parent) ? `${parent}\\` : parent;
 }

@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { WorkSessionDeps } from "../../types.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
+import { joinHostDataPath } from "./worktree-paths.js";
 
 export interface ResolveThreadStorageRootPathArgs {
   dataDir: string;
@@ -32,13 +33,13 @@ export function resolveThreadStorageRootPath(
   if (configuredRoot && configuredRoot.trim().length > 0) {
     return path.resolve(configuredRoot);
   }
-  return path.join(args.dataDir, "thread-storage");
+  return joinHostDataPath(args.dataDir, "thread-storage");
 }
 
 export function resolveThreadStoragePathFromRoot(
   args: ResolveThreadStoragePathFromRootArgs,
 ): string {
-  return path.join(args.threadStorageRootPath, args.threadId);
+  return joinHostDataPath(args.threadStorageRootPath, args.threadId);
 }
 
 export async function requireThreadStorageContext(

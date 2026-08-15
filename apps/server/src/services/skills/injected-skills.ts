@@ -7,6 +7,7 @@ import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
 import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
 import { z } from "zod";
 import type { ServerLogger } from "../../types.js";
+import { joinHostDataPath } from "../threads/worktree-paths.js";
 import { REGISTRY_SKILL_PROVENANCE_FILE_NAME } from "./registry-skill-provenance.js";
 
 const SKILL_FILE_NAME = "SKILL.md";
@@ -287,7 +288,7 @@ function sourceRootPath(source: HostDaemonInjectedSkillSource): string {
 }
 
 function toSkillFilePath(candidatePath: string): string {
-  return path.join(candidatePath, SKILL_FILE_NAME);
+  return joinHostDataPath(candidatePath, SKILL_FILE_NAME);
 }
 
 function readSkillCandidate(

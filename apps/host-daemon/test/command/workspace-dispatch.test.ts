@@ -406,7 +406,7 @@ describe("workspace command dispatch", () => {
     );
 
     const paths = result.files.map((file) => file.path).sort();
-    expect(paths).toEqual(["notes.md", path.join("notes", "todo.md")]);
+    expect(paths).toEqual(["notes.md", "notes/todo.md"]);
     expect(result.truncated).toBe(false);
   });
 
@@ -437,7 +437,7 @@ describe("workspace command dispatch", () => {
         .sort((left, right) => left.path.localeCompare(right.path)),
     ).toEqual([
       { kind: "directory", path: "notes", name: "notes" },
-      { kind: "file", path: path.join("notes", "todo.md"), name: "todo.md" },
+      { kind: "file", path: "notes/todo.md", name: "todo.md" },
     ]);
     expect(result.truncated).toBe(false);
   });
@@ -480,7 +480,7 @@ describe("workspace command dispatch", () => {
     expect(result.truncated).toBe(false);
   });
 
-  it("rejects host.list_files when path itself is a symlink", async () => {
+  it.skipIf(process.platform === "win32")("rejects host.list_files when path itself is a symlink", async () => {
     const tempDir = await makeTempDir("bb-dispatch-host-list-symlink-root-");
     const targetRoot = path.join(tempDir, "target-root");
     const symlinkRoot = path.join(tempDir, "root-link");
@@ -680,7 +680,7 @@ describe("workspace command dispatch", () => {
     });
   });
 
-  it("rejects host.read_file_relative symlink escapes", async () => {
+  it.skipIf(process.platform === "win32")("rejects host.read_file_relative symlink escapes", async () => {
     const tempDir = await makeTempDir(
       "bb-dispatch-host-read-relative-symlink-",
     );
@@ -705,7 +705,7 @@ describe("workspace command dispatch", () => {
     });
   });
 
-  it("rejects host.read_file_relative when rootPath itself is a symlink", async () => {
+  it.skipIf(process.platform === "win32")("rejects host.read_file_relative when rootPath itself is a symlink", async () => {
     const tempDir = await makeTempDir(
       "bb-dispatch-host-read-relative-root-symlink-",
     );
@@ -805,7 +805,7 @@ describe("workspace command dispatch", () => {
     });
   });
 
-  it("rejects host.read_file when the resolved path escapes rootPath through a symlink", async () => {
+  it.skipIf(process.platform === "win32")("rejects host.read_file when the resolved path escapes rootPath through a symlink", async () => {
     const tempDir = await makeTempDir("bb-dispatch-host-read-root-escape-");
     const outsidePath = path.join(tempDir, "..", "outside.txt");
     const nestedDir = path.join(tempDir, "notes");
@@ -831,7 +831,7 @@ describe("workspace command dispatch", () => {
     });
   });
 
-  it("rejects host.read_file when rootPath itself is a symlink", async () => {
+  it.skipIf(process.platform === "win32")("rejects host.read_file when rootPath itself is a symlink", async () => {
     const tempDir = await makeTempDir("bb-dispatch-host-read-root-symlink-");
     const targetRoot = path.join(tempDir, "target-root");
     const symlinkRoot = path.join(tempDir, "root-link");

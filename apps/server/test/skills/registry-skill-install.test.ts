@@ -153,7 +153,7 @@ describe("installServerRegistrySkill", () => {
     }
   });
 
-  it("does not adopt an untagged tree containing a symlink", async () => {
+  it.skipIf(process.platform === "win32")("does not adopt an untagged tree containing a symlink", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "bb-registry-symlink-test-"));
     try {
       const skillDirectory = await writeUntaggedSkill({

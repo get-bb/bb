@@ -7,6 +7,7 @@ import {
   realpathSync,
   rmSync,
   symlinkSync,
+  copyFileSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -29,7 +30,11 @@ function createFixture(): { binDir: string; dataDir: string; homeDir: string } {
   mkdirSync(binDir, { recursive: true });
   mkdirSync(dataDir, { recursive: true });
   mkdirSync(homeDir, { recursive: true });
-  symlinkSync(process.execPath, join(binDir, "node"));
+  try {
+    symlinkSync(process.execPath, join(binDir, "node"));
+  } catch {
+    copyFileSync(process.execPath, join(binDir, "node.exe"));
+  }
   return { binDir, dataDir, homeDir };
 }
 
@@ -246,7 +251,7 @@ afterEach(() => {
   }
 });
 
-describe("machine install script", () => {
+describe.skipIf(process.platform === "win32")("machine install script", () => {
   it("rejects missing required flags with usage", () => {
     const fixture = createFixture();
     const result = runScript(["--join-code", "code-only"], fixture);

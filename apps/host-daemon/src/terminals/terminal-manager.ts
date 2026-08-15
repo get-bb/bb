@@ -325,17 +325,41 @@ function isNonEmptyString(value: string | undefined): value is string {
   return value !== undefined && value.length > 0;
 }
 
+function resolveExecutableOnPath(name: string): string | null {
+  if (path.isAbsolute(name)) {
+    return existsSync(name) ? name : null;
+  }
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (dir.length === 0) {
+      continue;
+    }
+    const candidate = path.join(dir, name);
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 export async function resolveDefaultTerminalShell(): Promise<string> {
-  const candidates =
-    process.platform === "win32"
-      ? [
-          process.env.ComSpec,
-          process.env.SHELL,
-          "pwsh.exe",
-          "powershell.exe",
-          "cmd.exe",
-        ]
-      : [process.env.SHELL, "/bin/zsh", "/bin/bash", "/bin/sh"];
+  if (process.platform === "win32") {
+    const candidates = [
+      process.env.ComSpec,
+      process.env.SHELL,
+      "pwsh.exe",
+      "powershell.exe",
+      "cmd.exe",
+    ].filter(isNonEmptyString);
+    for (const candidate of candidates) {
+      const resolved = resolveExecutableOnPath(candidate);
+      if (resolved !== null) {
+        return resolved;
+      }
+    }
+    return "cmd.exe";
+  }
+
+  const candidates = [process.env.SHELL, "/bin/zsh", "/bin/bash", "/bin/sh"];
   const resolvedCandidates = candidates.filter(isNonEmptyString);
 
   for (const candidate of resolvedCandidates) {
@@ -344,7 +368,7 @@ export async function resolveDefaultTerminalShell(): Promise<string> {
     }
   }
 
-  return process.platform === "win32" ? "cmd.exe" : "/bin/sh";
+  return "/bin/sh";
 }
 
 function buildTerminalEnv(args: BuildTerminalEnvArgs): NodeJS.ProcessEnv {
@@ -375,16 +399,21 @@ function terminalTitleFromCommand(command: string): string {
 
 function terminalSpawnArgsForStart(
   message: TerminalOpenMessage,
-  platform: NodeJS.Platform,
+  shell: string,
 ): string[] {
   switch (message.start.mode) {
     case "shell":
       return [];
-    case "command":
-      if (platform === "win32") {
+    case "command": {
+      const name = path.basename(shell).toLowerCase();
+      if (name === "cmd.exe" || name === "cmd") {
         return ["/d", "/s", "/c", message.start.command];
       }
+      if (name === "pwsh.exe" || name === "pwsh" || name === "powershell.exe" || name === "powershell") {
+        return ["-NoProfile", "-Command", message.start.command];
+      }
       return ["-lc", message.start.command];
+    }
   }
 }
 
@@ -465,7 +494,6 @@ function consumePrimaryDeviceAttributesQueries(
 export class TerminalManager {
   private readonly closeGracePeriodMs: number;
   private readonly outputBatchDelayMs: number;
-  private readonly platform: NodeJS.Platform;
   private readonly ptyAdapter: TerminalPtyAdapter;
   private readonly resolveShell: ResolveTerminalShell;
   private readonly scrollbackMaxBytes: number;
@@ -482,7 +510,7 @@ export class TerminalManager {
       options.closeGracePeriodMs ?? DEFAULT_TERMINAL_CLOSE_GRACE_PERIOD_MS;
     this.outputBatchDelayMs =
       options.outputBatchDelayMs ?? DEFAULT_OUTPUT_BATCH_DELAY_MS;
-    this.platform = options.platform ?? process.platform;
+
     this.ptyAdapter = options.ptyAdapter ?? nodePtyAdapter;
     this.resolveShell = options.resolveShell ?? resolveDefaultTerminalShell;
     this.scrollbackMaxBytes =
@@ -593,7 +621,7 @@ export class TerminalManager {
       const target = await this.resolveTerminalOpenTarget(message);
       const shell = await this.resolveShell();
       const pty = this.ptyAdapter.spawn({
-        args: terminalSpawnArgsForStart(message, this.platform),
+        args: terminalSpawnArgsForStart(message, shell),
         cols: message.cols,
         cwd: target.cwd,
         env: buildTerminalEnv({
