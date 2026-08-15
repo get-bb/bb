@@ -343,6 +343,29 @@ function ExperimentsStory() {
           providerBridgeAcp: enabled,
         }))
       }
+      providerBridgeClaudeCodeEnabled={
+        state.experiments.providerBridgeClaudeCode ?? false
+      }
+      onProviderBridgeClaudeCodeEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          providerBridgeClaudeCode: enabled,
+        }))
+      }
+      providerBridgeCodexEnabled={state.experiments.providerBridgeCodex ?? false}
+      onProviderBridgeCodexEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          providerBridgeCodex: enabled,
+        }))
+      }
+      providerBridgePiEnabled={state.experiments.providerBridgePi ?? false}
+      onProviderBridgePiEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          providerBridgePi: enabled,
+        }))
+      }
       providerSessionReapingEnabled={state.experiments.providerSessionReaping}
       onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
         state.setExperiments((current) => ({

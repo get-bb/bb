@@ -210,11 +210,17 @@ export interface ExperimentsSettingsSectionProps {
   editMessagesEnabled: boolean;
   newOnboardingEnabled: boolean;
   providerBridgeAcpEnabled: boolean;
+  providerBridgeClaudeCodeEnabled: boolean;
+  providerBridgeCodexEnabled: boolean;
+  providerBridgePiEnabled: boolean;
   providerSessionReapingEnabled: boolean;
   onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
   onEditMessagesEnabledChange: (enabled: boolean) => void;
   onNewOnboardingEnabledChange: (enabled: boolean) => void;
   onProviderBridgeAcpEnabledChange: (enabled: boolean) => void;
+  onProviderBridgeClaudeCodeEnabledChange: (enabled: boolean) => void;
+  onProviderBridgeCodexEnabledChange: (enabled: boolean) => void;
+  onProviderBridgePiEnabledChange: (enabled: boolean) => void;
   onProviderSessionReapingEnabledChange: (enabled: boolean) => void;
 }
 
@@ -998,17 +1004,27 @@ const NEW_ONBOARDING_EXPERIMENT_LABEL = "New onboarding";
 const PROVIDER_SESSION_REAPING_EXPERIMENT_LABEL =
   "Idle provider session release";
 const PROVIDER_BRIDGE_ACP_EXPERIMENT_LABEL = "ACP bridge protocol";
+const PROVIDER_BRIDGE_CLAUDE_CODE_EXPERIMENT_LABEL =
+  "Claude Code bridge protocol";
+const PROVIDER_BRIDGE_CODEX_EXPERIMENT_LABEL = "Codex bridge protocol";
+const PROVIDER_BRIDGE_PI_EXPERIMENT_LABEL = "Pi bridge protocol";
 export function ExperimentsSettingsSection({
   claudeCodeMockCliTrafficEnabled,
   disabled,
   editMessagesEnabled,
   newOnboardingEnabled,
   providerBridgeAcpEnabled,
+  providerBridgeClaudeCodeEnabled,
+  providerBridgeCodexEnabled,
+  providerBridgePiEnabled,
   providerSessionReapingEnabled,
   onClaudeCodeMockCliTrafficEnabledChange,
   onEditMessagesEnabledChange,
   onNewOnboardingEnabledChange,
   onProviderBridgeAcpEnabledChange,
+  onProviderBridgeClaudeCodeEnabledChange,
+  onProviderBridgeCodexEnabledChange,
+  onProviderBridgePiEnabledChange,
   onProviderSessionReapingEnabledChange,
 }: ExperimentsSettingsSectionProps) {
   return (
@@ -1064,6 +1080,45 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onProviderBridgeAcpEnabledChange}
             aria-label={PROVIDER_BRIDGE_ACP_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={PROVIDER_BRIDGE_CLAUDE_CODE_EXPERIMENT_LABEL}
+          labelBadge="dev-only"
+          description="Run Claude Code on the canonical provider bridge protocol."
+        >
+          <Switch
+            checked={providerBridgeClaudeCodeEnabled}
+            disabled={disabled}
+            onCheckedChange={onProviderBridgeClaudeCodeEnabledChange}
+            aria-label={PROVIDER_BRIDGE_CLAUDE_CODE_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={PROVIDER_BRIDGE_CODEX_EXPERIMENT_LABEL}
+          labelBadge="dev-only"
+          description="Run Codex on the canonical provider bridge protocol."
+        >
+          <Switch
+            checked={providerBridgeCodexEnabled}
+            disabled={disabled}
+            onCheckedChange={onProviderBridgeCodexEnabledChange}
+            aria-label={PROVIDER_BRIDGE_CODEX_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={PROVIDER_BRIDGE_PI_EXPERIMENT_LABEL}
+          labelBadge="dev-only"
+          description="Run Pi on the canonical provider bridge protocol."
+        >
+          <Switch
+            checked={providerBridgePiEnabled}
+            disabled={disabled}
+            onCheckedChange={onProviderBridgePiEnabledChange}
+            aria-label={PROVIDER_BRIDGE_PI_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
@@ -1251,6 +1306,27 @@ export function SettingsView() {
           updateExperimentsMutation.mutate({
             ...experiments,
             providerBridgeAcp: enabled,
+          })
+        }
+        providerBridgeClaudeCodeEnabled={experiments.providerBridgeClaudeCode}
+        onProviderBridgeClaudeCodeEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            providerBridgeClaudeCode: enabled,
+          })
+        }
+        providerBridgeCodexEnabled={experiments.providerBridgeCodex}
+        onProviderBridgeCodexEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            providerBridgeCodex: enabled,
+          })
+        }
+        providerBridgePiEnabled={experiments.providerBridgePi}
+        onProviderBridgePiEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            providerBridgePi: enabled,
           })
         }
         newOnboardingEnabled={experiments.newOnboarding}

@@ -15,6 +15,9 @@ export const experimentKeys = [
   "editMessages",
   "newOnboarding",
   "providerBridgeAcp",
+  "providerBridgeClaudeCode",
+  "providerBridgeCodex",
+  "providerBridgePi",
   "providerSessionReaping",
 ] as const;
 export const experimentKeySchema = z.enum(experimentKeys);
@@ -32,5 +35,8 @@ export const defaultExperiments: Experiments = {
   editMessages: true,
   newOnboarding: false,
   providerBridgeAcp: false,
+  providerBridgeClaudeCode: false,
+  providerBridgeCodex: false,
+  providerBridgePi: false,
   providerSessionReaping: false,
 };

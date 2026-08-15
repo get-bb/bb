@@ -18,6 +18,9 @@ describe("experiments settings", () => {
         editMessages: true,
         newOnboarding: false,
         providerBridgeAcp: false,
+        providerBridgeClaudeCode: false,
+        providerBridgeCodex: false,
+        providerBridgePi: false,
         providerSessionReaping: false,
       });
     });
@@ -33,6 +36,9 @@ describe("experiments settings", () => {
           editMessages: true,
           newOnboarding: true,
           providerBridgeAcp: true,
+          providerBridgeClaudeCode: true,
+          providerBridgeCodex: true,
+          providerBridgePi: true,
           providerSessionReaping: true,
         }),
       });
@@ -42,6 +48,9 @@ describe("experiments settings", () => {
         editMessages: true,
         newOnboarding: true,
         providerBridgeAcp: true,
+        providerBridgeClaudeCode: true,
+        providerBridgeCodex: true,
+        providerBridgePi: true,
         providerSessionReaping: true,
       });
       expect(getExperiments(harness.db)).toEqual({
@@ -49,6 +58,9 @@ describe("experiments settings", () => {
         editMessages: true,
         newOnboarding: true,
         providerBridgeAcp: true,
+        providerBridgeClaudeCode: true,
+        providerBridgeCodex: true,
+        providerBridgePi: true,
         providerSessionReaping: true,
       });
 
@@ -60,6 +72,9 @@ describe("experiments settings", () => {
         editMessages: true,
         newOnboarding: true,
         providerBridgeAcp: true,
+        providerBridgeClaudeCode: true,
+        providerBridgeCodex: true,
+        providerBridgePi: true,
         providerSessionReaping: true,
       });
     });
@@ -96,6 +111,9 @@ describe("experiments settings", () => {
           editMessages: true,
           newOnboarding: false,
           providerBridgeAcp: true,
+          providerBridgeClaudeCode: true,
+          providerBridgeCodex: true,
+          providerBridgePi: true,
           providerSessionReaping: true,
         }),
       });
@@ -110,7 +128,7 @@ describe("experiments settings", () => {
         { headers },
       );
       await expect(readJson(updatedBridgePolicy)).resolves.toEqual({
-        bridgeProtocolProviderPrefixes: ["acp-"],
+        bridgeProtocolProviderPrefixes: ["acp-", "claude-code", "codex", "pi"],
       });
     });
   });
@@ -128,6 +146,9 @@ describe("experiments settings", () => {
           editMessages: false,
           newOnboarding: false,
           providerBridgeAcp: false,
+          providerBridgeClaudeCode: false,
+          providerBridgeCodex: false,
+          providerBridgePi: false,
           providerSessionReaping: false,
         }),
       });

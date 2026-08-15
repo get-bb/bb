@@ -863,6 +863,9 @@ describe("thread runtime config", () => {
         editMessages: false,
         newOnboarding: false,
         providerBridgeAcp: false,
+        providerBridgeClaudeCode: false,
+        providerBridgeCodex: false,
+        providerBridgePi: false,
         providerSessionReaping: false,
       });
 

@@ -46,11 +46,17 @@ export function registerInternalSessionRoutes(
 
   get("/provider-bridge-policy", (context) => {
     getAuthenticatedDaemon(context);
-    return context.json({
-      bridgeProtocolProviderPrefixes: getExperiments(deps.db).providerBridgeAcp
-        ? ["acp-"]
-        : [],
-    });
+    const experiments = getExperiments(deps.db);
+    // Exact-id prefixes are safe: registry routing rejects non-matching ids
+    // (e.g. "pi" cannot match a hypothetical "pi-x" because the routing also
+    // requires a known provider).
+    const prefixes = [
+      ...(experiments.providerBridgeAcp ? ["acp-"] : []),
+      ...(experiments.providerBridgeClaudeCode ? ["claude-code"] : []),
+      ...(experiments.providerBridgeCodex ? ["codex"] : []),
+      ...(experiments.providerBridgePi ? ["pi"] : []),
+    ];
+    return context.json({ bridgeProtocolProviderPrefixes: prefixes });
   });
 
   post(
