@@ -49,6 +49,7 @@ describe("buildPluginProviderRegistration", () => {
         supportsServiceTier: true,
         supportsUserQuestion: true,
         supportsFork: true,
+        supportsSessionRewind: true,
         supportedPermissionModes: ["accept-edits", "full"],
       },
       composerActions: [

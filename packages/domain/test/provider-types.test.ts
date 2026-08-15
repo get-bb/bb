@@ -12,6 +12,7 @@ describe("provider info schema", () => {
       supportsServiceTier: true,
       supportsUserQuestion: false,
       supportsFork: true,
+      supportsSessionRewind: true,
       supportedPermissionModes: ["accept-edits", "auto", "full"],
     },
     available: true,

@@ -146,6 +146,7 @@ const PLACEHOLDER_PROVIDER_INFOS: ProviderInfo[] = [
       supportsServiceTier: true,
       supportsUserQuestion: false,
       supportsFork: true,
+      supportsSessionRewind: true,
       supportedPermissionModes: ["accept-edits", "auto", "full"],
     },
     composerActions: [
@@ -165,6 +166,7 @@ const PLACEHOLDER_PROVIDER_INFOS: ProviderInfo[] = [
       supportsServiceTier: false,
       supportsUserQuestion: true,
       supportsFork: true,
+      supportsSessionRewind: true,
       supportedPermissionModes: ["accept-edits", "auto", "full"],
     },
     composerActions: [
@@ -183,6 +185,7 @@ const PLACEHOLDER_PROVIDER_INFOS: ProviderInfo[] = [
       supportsServiceTier: false,
       supportsUserQuestion: false,
       supportsFork: true,
+      supportsSessionRewind: true,
       supportedPermissionModes: ["full"],
     },
     composerActions: [{ kind: "skills", trigger: "/" }],
@@ -198,6 +201,7 @@ const PLACEHOLDER_PROVIDER_INFOS: ProviderInfo[] = [
       supportsServiceTier: true,
       supportsUserQuestion: false,
       supportsFork: true,
+      supportsSessionRewind: false,
       supportedPermissionModes: ["accept-edits", "full"],
     },
     composerActions: [{ kind: "skills", trigger: "/" }],

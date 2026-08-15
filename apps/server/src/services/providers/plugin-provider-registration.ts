@@ -6,7 +6,7 @@
  * metadata, so every field a consumer reads must be declarable.
  *
  * Declared facts outside these shapes (`kind`, `bridge`,
- * `supportsNativeSessionRewind`, `supportsManualCompaction`) are not dropped:
+ * `supportsManualCompaction`) are not dropped:
  * the full declaration rides the registration record, where the registry's
  * compaction accessor reads `supportsManualCompaction`.
  */
@@ -62,6 +62,7 @@ export function buildPluginProviderRegistration(args: {
       supportsServiceTier: capabilities.supportsServiceTier,
       supportsUserQuestion: capabilities.supportsNativeUserQuestion,
       supportsFork: capabilities.supportsNativeFork,
+      supportsSessionRewind: capabilities.supportsNativeSessionRewind,
       supportedPermissionModes: [...capabilities.permissionModes],
     },
     composerActions,

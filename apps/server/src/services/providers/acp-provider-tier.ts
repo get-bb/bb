@@ -45,6 +45,9 @@ const ACP_CAPABILITIES: Omit<
   supportsServiceTier: true,
   supportsUserQuestion: false,
   supportsFork: true,
+  // ACP session/fork clones a whole session and cannot stop at a checkpoint,
+  // so fork is offered but edit-message rewind is not.
+  supportsSessionRewind: false,
 };
 
 // Skills are injected into every provider runtime, so the `/` skills

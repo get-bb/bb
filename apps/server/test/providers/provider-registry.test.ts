@@ -9,6 +9,7 @@ const CURSOR_LIKE_INFO = {
     supportsServiceTier: false,
     supportsUserQuestion: false,
     supportsFork: false,
+    supportsSessionRewind: false,
     supportedPermissionModes: ["full" as const],
   },
   composerActions: [],
@@ -45,6 +46,7 @@ describe("provider registry policy accessors", () => {
         capabilities: {
           ...CURSOR_LIKE_INFO.capabilities,
           supportsFork: true,
+          supportsSessionRewind: true,
           supportedPermissionModes: ["accept-edits", "full"],
         },
       },

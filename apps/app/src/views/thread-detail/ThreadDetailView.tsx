@@ -976,9 +976,11 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const canEditSentMessages =
     thread !== undefined &&
     (systemConfigQuery.data?.experiments.editMessages ?? false) &&
-    (thread.providerId === "claude-code" ||
-      thread.providerId === "codex" ||
-      thread.providerId === "pi") &&
+    // Declared capability, same source as the fork affordance above: an edit
+    // is a rewind to an earlier point in the provider session.
+    (findCachedProviderInfo(forkQueryClient, thread.providerId)?.capabilities
+      .supportsSessionRewind ??
+      false) &&
     thread.archivedAt === null &&
     thread.deletedAt === null &&
     !hasPendingInteraction &&

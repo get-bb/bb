@@ -107,7 +107,6 @@ function findCommittedOperation(
     : null;
 }
 
-const EDIT_MESSAGE_PROVIDER_IDS = new Set(["claude-code", "codex", "pi"]);
 const EDIT_MESSAGE_STOP_TIMEOUT_MS = 60_000;
 
 function isMessageEditThreadQuiescent(thread: Pick<Thread, "status">): boolean {
@@ -287,9 +286,6 @@ function resolveEditableTurn(
   thread: Thread,
   requestSequence?: number,
 ): EditableTurn {
-  if (!EDIT_MESSAGE_PROVIDER_IDS.has(thread.providerId)) {
-    conflict(`Editing messages is not supported for ${thread.providerId}`);
-  }
   if (thread.archivedAt !== null || thread.deletedAt !== null) {
     conflict("The thread is not writable");
   }
@@ -396,6 +392,12 @@ export async function editThreadMessage(
 ): Promise<EditMessageResponse> {
   if (!getExperiments(deps.db).editMessages) {
     conflict("Enable the Edit messages experiment before editing a message");
+  }
+  // Rewinding to an earlier point in the provider session is what an edit
+  // is, so the provider's declared rewind support gates it. Fork alone is
+  // not enough — ACP clones whole sessions tip-only.
+  if (!deps.providerRegistry.supportsSessionRewind(args.thread.providerId)) {
+    conflict(`Editing messages is not supported for ${args.thread.providerId}`);
   }
   const fingerprint = requestFingerprint(args.payload);
   const committed = findCommittedOperation(deps.db, {

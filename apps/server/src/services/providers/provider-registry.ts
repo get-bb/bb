@@ -65,8 +65,8 @@ export interface ProviderRegistration {
   source: ProviderRegistrationSource;
   /**
    * The plugin's full declaration. Retained so declared facts without a
-   * registry consumer yet (`kind`, `bridge`, `supportsNativeSessionRewind`)
-   * are not dropped by the info/serverCapabilities mapping;
+   * registry consumer yet (`kind`, `bridge`) are not dropped by the
+   * info/serverCapabilities mapping;
    * `supportsManualCompaction` is read from it by the compaction accessor.
    */
   declaration?: PluginProviderDeclaration;
@@ -94,6 +94,12 @@ export interface ProviderRegistryService {
     providerId: string,
   ): readonly PermissionMode[] | null;
   supportsNativeFork(providerId: string): boolean;
+  /**
+   * Whether the provider can recreate a session at an earlier point, which is
+   * what edit-past-message rewind needs. Fork is not enough: ACP clones whole
+   * sessions tip-only.
+   */
+  supportsSessionRewind(providerId: string): boolean;
   /**
    * Whether BB can explicitly request context compaction (the canonical
    * `thread/compact` bridge method). Registered providers answer from their
@@ -186,6 +192,21 @@ export function createProviderRegistryService(
           displayName: providerId,
           logoUrl: null,
         }).capabilities.supportsFork;
+      }
+      return false;
+    },
+
+    supportsSessionRewind(providerId) {
+      const registration = getRegistration(providerId);
+      if (registration) {
+        return registration.info.capabilities.supportsSessionRewind;
+      }
+      if (isAcpProviderId(providerId)) {
+        return buildAcpProviderInfo({
+          id: providerId,
+          displayName: providerId,
+          logoUrl: null,
+        }).capabilities.supportsSessionRewind;
       }
       return false;
     },

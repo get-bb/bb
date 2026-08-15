@@ -796,7 +796,17 @@ their level, never to flatten them toward a common denominator.
   optional protocol capability on the bridge.
 - `thread-timeline-active-prompt-mode` enum + `thread-view` provider
   switches → normalized event fields emitted by bridges.
-- `EDIT_MESSAGE_PROVIDER_IDS` → capability.
+- DONE (wave 4) — `EDIT_MESSAGE_PROVIDER_IDS` → capability. No new
+  capability was needed: `supportsNativeSessionRewind` was already declared
+  by every provider plugin (and already documented as gating the
+  edit-past-message affordance) with exactly the same answers as the
+  hardcoded `["claude-code", "codex", "pi"]` set — it just had no consumer.
+  It now surfaces as `ProviderInfo.capabilities.supportsSessionRewind`,
+  answered by a registry accessor for the server gate and read from the
+  cached provider info by the app's `canEditSentMessages` — the same
+  `findCachedProviderInfo(...).capabilities` call the fork affordance
+  forty lines above it already made. It stays separate from
+  `supportsFork` on purpose: ACP forks tip-only.
 - Onboarding and `SETTINGS_PROVIDER_ENTRIES` → registry-driven.
 - PARTLY DONE (wave 4) — Plugin-side provider id lists → capabilities read
   off `ProviderInfo`. The ask-user-question plugin's
