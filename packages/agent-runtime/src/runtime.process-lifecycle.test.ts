@@ -915,6 +915,85 @@ rl.on("line", (line) => {
     await runtime.shutdown();
   });
 
+  it("stops a thread-scoped codex process when session construction fails", async () => {
+    const processLogPath = join(tmpDir, "failing-start-provider.log");
+    const failingStartProviderScript = join(
+      tmpDir,
+      "failing-start-provider.cjs",
+    );
+    writeFileSync(
+      failingStartProviderScript,
+      `const fs = require("fs");
+const readline = require("readline");
+const logPath = ${JSON.stringify(processLogPath)};
+const processId = String(process.pid);
+fs.appendFileSync(logPath, "spawn:" + processId + "\\n");
+process.on("SIGTERM", () => {
+  fs.appendFileSync(logPath, "exit:" + processId + "\\n");
+  process.exit(0);
+});
+const rl = readline.createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+  const message = JSON.parse(line);
+  if (message.id === undefined) return;
+  if (message.method === "thread/start") {
+    process.stdout.write(JSON.stringify({
+      jsonrpc: "2.0",
+      id: message.id,
+      error: { code: -32000, message: "no rollout found for thread id" },
+    }) + "\\n");
+    return;
+  }
+  process.stdout.write(JSON.stringify({
+    jsonrpc: "2.0",
+    id: message.id,
+    result: { ok: true },
+  }) + "\\n");
+});
+`,
+    );
+
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: () => {},
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: () => {
+        const adapter = createFakeAdapter(failingStartProviderScript);
+        return {
+          ...adapter,
+          displayName: "Codex",
+          id: "codex",
+        };
+      },
+    });
+
+    await expect(
+      runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "codex",
+        options: fullRuntimeOptions,
+      }),
+    ).rejects.toThrow("no rollout found");
+
+    // The failed construction must not leak the thread-scoped process: it is
+    // shut down and the thread holds no provider session.
+    await waitForRuntimeState({
+      label: "thread-scoped provider process stopped after failed start",
+      predicate: () =>
+        readLogLines(processLogPath).filter((line) => line.startsWith("exit:"))
+          .length === 1,
+      runtime,
+    });
+    expect(runtime.getProviderSession("t1")).toBeNull();
+
+    await runtime.shutdown();
+  });
+
   it("restarts a codex thread process after a terminal account error before the next turn", async () => {
     const events: ThreadEvent[] = [];
     const processLogPath = join(tmpDir, "account-restart-provider.log");

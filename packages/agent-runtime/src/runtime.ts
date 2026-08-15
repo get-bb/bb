@@ -1509,47 +1509,67 @@ function createAgentRuntimeInternal(
             providerId,
           });
 
-          const result = await sendCommand({
-            proc,
-            message: cmd,
-            resultSchema: threadIdentityResultSchema,
-            timeoutMs: THREAD_CREATION_REQUEST_TIMEOUT_MS,
-            // A fork reads the source session, so an archived source fails the
-            // same way a resume does. A plain start has no session to unarchive.
-            ...(fork
-              ? {
-                  recovery: {
-                    providerId,
-                    providerThreadId: fork.sourceProviderThreadId,
-                    threadId,
-                  },
-                }
-              : {}),
-          });
-          const providerThreadId = resolveThreadIdentityResult({
-            result,
-            threadId,
-          });
-          updateSessionRestoreCapability(threadId, result.sessionRestorable);
-          if (providerThreadId) {
-            recordProviderThreadIdentity(proc, threadId, providerThreadId);
-          }
-          emitAcceptedCommandEvents({
-            command: adapterCommand,
-            proc,
-            ...(providerThreadId !== undefined ? { providerThreadId } : {}),
-            sourceThreadId: threadId,
-          });
+          let resolved: string;
+          try {
+            const result = await sendCommand({
+              proc,
+              message: cmd,
+              resultSchema: threadIdentityResultSchema,
+              timeoutMs: THREAD_CREATION_REQUEST_TIMEOUT_MS,
+              // A fork reads the source session, so an archived source fails
+              // the same way a resume does. A plain start has no session to
+              // unarchive.
+              ...(fork
+                ? {
+                    recovery: {
+                      providerId,
+                      providerThreadId: fork.sourceProviderThreadId,
+                      threadId,
+                    },
+                  }
+                : {}),
+            });
+            const providerThreadId = resolveThreadIdentityResult({
+              result,
+              threadId,
+            });
+            updateSessionRestoreCapability(threadId, result.sessionRestorable);
+            if (providerThreadId) {
+              recordProviderThreadIdentity(proc, threadId, providerThreadId);
+            }
+            emitAcceptedCommandEvents({
+              command: adapterCommand,
+              proc,
+              ...(providerThreadId !== undefined ? { providerThreadId } : {}),
+              sourceThreadId: threadId,
+            });
 
-          const resolved = await waitForProviderThreadIdentity(
-            proc,
-            threadId,
-            5000,
-          );
-          if (!resolved) {
-            throw new Error(
-              `Provider "${providerId}" did not return a providerThreadId for thread "${threadId}" within 5 seconds`,
+            const identity = await waitForProviderThreadIdentity(
+              proc,
+              threadId,
+              5000,
             );
+            if (!identity) {
+              throw new Error(
+                `Provider "${providerId}" did not return a providerThreadId for thread "${threadId}" within 5 seconds`,
+              );
+            }
+            resolved = identity;
+          } catch (startError) {
+            // A failed session construction has no session to keep: drop the
+            // thread's runtime state and stop a thread-scoped process so the
+            // failure cannot leak an idle provider under the daemon. A failed
+            // FIRST TURN (below) deliberately keeps both — the constructed
+            // session stays live for a retry.
+            forgetThreadRuntimeState(proc, threadId);
+            try {
+              await shutdownThreadScopedCodexProcessIfIdle(proc);
+            } catch (shutdownError) {
+              options.onStderr?.(
+                `Failed to stop the provider after thread "${threadId}" session construction failed: ${shutdownError instanceof Error ? shutdownError.message : String(shutdownError)}`,
+              );
+            }
+            throw startError;
           }
 
           if (input && input.length > 0) {
