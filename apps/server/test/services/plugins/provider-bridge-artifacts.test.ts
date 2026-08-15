@@ -208,6 +208,12 @@ describe("provider bridge artifact delivery (server)", () => {
           sha256: artifact.sha256,
           byteLength: artifact.byteLength,
         },
+        // The declaration's validated execution capabilities ride the launch
+        // so the daemon's adapter accepts what the server already offered.
+        capabilities: {
+          supportsServiceTier: false,
+          supportedPermissionModes: ["full"],
+        },
       };
 
       const startCommand = await buildThreadStartCommand(harness.deps, {

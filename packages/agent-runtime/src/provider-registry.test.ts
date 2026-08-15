@@ -436,6 +436,10 @@ describe("provider registry", () => {
         sha256: "a".repeat(64),
         artifactPath: "/data/provider-bridges/artifact.mjs",
         providerOptions: { echoPrefix: "echo:" },
+        capabilities: {
+          supportsServiceTier: false,
+          supportedPermissionModes: ["full"],
+        },
       },
     });
 
@@ -479,6 +483,10 @@ describe("provider registry", () => {
       bridgeLaunch: {
         sha256: "b".repeat(64),
         artifactPath: "/data/provider-bridges/artifact.mjs",
+        capabilities: {
+          supportsServiceTier: false,
+          supportedPermissionModes: ["full"],
+        },
       },
     });
     expect(provider.process.command).toBe(
@@ -495,21 +503,39 @@ describe("provider registry", () => {
       bridgeLaunch: {
         sha256: "c".repeat(64),
         artifactPath: "/data/provider-bridges/never-used.mjs",
+        capabilities: {
+          supportsServiceTier: false,
+          supportedPermissionModes: ["full"],
+        },
       },
     });
     expect(provider.process.args[0]).toBe("/tmp/bb-pi-bridge.mjs");
   });
 
-  it("ignores a bridge launch for ids outside the routed prefixes", () => {
-    expect(() =>
-      createProviderForId("echo-agent", {
-        additionalWorkspaceWriteRoots: [],
-        bridgeProtocolProviderPrefixes: [],
-        bridgeLaunch: {
-          sha256: "d".repeat(64),
-          artifactPath: "/data/provider-bridges/artifact.mjs",
+  it("honors a verified bridge launch even when the prefix snapshot is stale", () => {
+    // The prefix list is captured once per runtime; a plugin installed after
+    // runtime creation must still execute — the hash-verified artifact is its
+    // own authority (the server only attaches bridgeLaunch to routed ids).
+    const provider = createProviderForId("echo-agent", {
+      additionalWorkspaceWriteRoots: [],
+      bridgeProtocolProviderPrefixes: [],
+      bridgeLaunch: {
+        sha256: "d".repeat(64),
+        artifactPath: "/data/provider-bridges/artifact.mjs",
+        capabilities: {
+          supportsServiceTier: true,
+          supportedPermissionModes: ["accept-edits", "full"],
         },
-      }),
-    ).toThrow('Unsupported provider "echo-agent"');
+      },
+    });
+    expect(provider.process.args).toEqual([
+      "/data/provider-bridges/artifact.mjs",
+    ]);
+    // The transported declaration capabilities drive execution checks.
+    expect(provider.capabilities.supportsServiceTier).toBe(true);
+    expect(provider.capabilities.supportedPermissionModes).toEqual([
+      "accept-edits",
+      "full",
+    ]);
   });
 });

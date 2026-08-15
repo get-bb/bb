@@ -7,6 +7,7 @@ import {
   dynamicToolSchema,
   instructionModeSchema,
   pendingInteractionResolutionSchema,
+  permissionModeSchema,
   promptInputSchema,
   projectSourceCheckoutSchema,
   threadGitDiffResponseSchema,
@@ -233,6 +234,16 @@ export const hostDaemonBridgeLaunchSchema = z
         .strict(),
     ]),
     providerOptions: z.record(z.string(), z.unknown()).optional(),
+    // The provider's server-validated execution capabilities. The daemon has
+    // no registry, so without these it would have to guess a baseline and
+    // reject execution options the server already accepted (permission modes,
+    // service tier) before thread/start ever reached the bridge.
+    capabilities: z
+      .object({
+        supportsServiceTier: z.boolean(),
+        supportedPermissionModes: z.array(permissionModeSchema).min(1),
+      })
+      .strict(),
   })
   .strict();
 export type HostDaemonBridgeLaunch = z.infer<

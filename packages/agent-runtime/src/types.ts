@@ -1,4 +1,5 @@
 import type {
+  PermissionMode,
   AvailableModel,
   ClientTurnRequestId,
   DynamicTool,
@@ -151,6 +152,11 @@ export interface AgentRuntimeBridgeLaunch {
   artifactPath: string;
   /** The provider plugin's opaque static option bag, forwarded untouched. */
   providerOptions?: Record<string, unknown>;
+  /** Server-validated execution capabilities from the provider declaration. */
+  capabilities: {
+    supportsServiceTier: boolean;
+    supportedPermissionModes: PermissionMode[];
+  };
 }
 
 export interface EnsureProviderArgs {

@@ -90,6 +90,48 @@ function createBridgeProtocolAdapterForId(
   providerId: string,
   options: ProviderAdapterFactoryOptions,
 ): ProviderAdapter | null {
+  // A hash-verified plugin artifact is its own routing authority: the server
+  // only attaches a bridgeLaunch to commands for providers it has routed onto
+  // the bridge protocol, and the daemon has already verified the artifact
+  // bytes. Gating it behind the prefix snapshot below made a freshly
+  // installed plugin provider unusable in any runtime created before the
+  // policy refresh (the snapshot is captured once per runtime). The prefix
+  // policy remains the experiment gate for the bundled first-party bridges.
+  const isBundledBridgeId =
+    providerId === "codex" ||
+    providerId === "claude-code" ||
+    providerId === "pi" ||
+    isAcpProviderId(providerId);
+  if (options.bridgeLaunch !== undefined && !isBundledBridgeId) {
+    return createBridgeProtocolAdapter({
+      id: providerId,
+      displayName: providerId,
+      // The provider's real declaration lives server-side; the launch spec
+      // transports its validated execution capabilities (the server accepted
+      // these before routing the command). Session-behavior facts arrive via
+      // the initialize handshake, which may only narrow.
+      capabilities: {
+        supportsArchive: false,
+        supportsRename: false,
+        supportsServiceTier: options.bridgeLaunch.capabilities.supportsServiceTier,
+        supportsUserQuestion: false,
+        supportsFork: false,
+        supportedPermissionModes: [
+          ...options.bridgeLaunch.capabilities.supportedPermissionModes,
+        ],
+      },
+      process: {
+        command: options.bridgeNodeExecutablePath ?? "node",
+        args: [options.bridgeLaunch.artifactPath],
+        ...(options.bridgeNodeEnv !== undefined
+          ? { env: options.bridgeNodeEnv }
+          : {}),
+      },
+      ...(options.bridgeLaunch.providerOptions !== undefined
+        ? { staticProviderOptions: options.bridgeLaunch.providerOptions }
+        : {}),
+    });
+  }
   const prefixes = options.bridgeProtocolProviderPrefixes ?? [];
   if (!prefixes.some((prefix) => providerId.startsWith(prefix))) {
     return null;
@@ -165,38 +207,6 @@ function createBridgeProtocolAdapterForId(
           ? { env: options.bridgeNodeEnv }
           : {}),
       },
-    });
-  }
-  // Plugin-delivered bridge: the daemon has already downloaded and
-  // hash-verified the artifact, so the process is simply the daemon's node
-  // running that file. The four first-party ids returned above and ACP ids
-  // resolve below — both keep their bundled bridges untouched; this branch
-  // only serves plugin providers whose commands carried a bridgeLaunch spec.
-  if (options.bridgeLaunch !== undefined && !isAcpProviderId(providerId)) {
-    return createBridgeProtocolAdapter({
-      id: providerId,
-      displayName: providerId,
-      // Conservative declaration baseline: the provider's real declaration
-      // lives server-side and session-behavior facts arrive via the
-      // initialize handshake, which may only narrow. Nothing here widens.
-      capabilities: {
-        supportsArchive: false,
-        supportsRename: false,
-        supportsServiceTier: false,
-        supportsUserQuestion: false,
-        supportsFork: false,
-        supportedPermissionModes: ["full"],
-      },
-      process: {
-        command: options.bridgeNodeExecutablePath ?? "node",
-        args: [options.bridgeLaunch.artifactPath],
-        ...(options.bridgeNodeEnv !== undefined
-          ? { env: options.bridgeNodeEnv }
-          : {}),
-      },
-      ...(options.bridgeLaunch.providerOptions !== undefined
-        ? { staticProviderOptions: options.bridgeLaunch.providerOptions }
-        : {}),
     });
   }
   if (!isAcpProviderId(providerId)) {

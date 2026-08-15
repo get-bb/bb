@@ -383,6 +383,10 @@ describe("thread command dispatch", () => {
             byteLength: bridgeBytes.byteLength,
           },
           providerOptions: { echoPrefix: "echo:" },
+          capabilities: {
+            supportsServiceTier: false,
+            supportedPermissionModes: ["full"] as const,
+          },
         },
         requestId: nextClientRequestId(),
         input: [textPromptInput("hello")],
@@ -412,6 +416,10 @@ describe("thread command dispatch", () => {
       sha256,
       artifactPath,
       providerOptions: { echoPrefix: "echo:" },
+      capabilities: {
+        supportsServiceTier: false,
+        supportedPermissionModes: ["full"],
+      },
     });
     await expect(fs.readFile(artifactPath)).resolves.toEqual(bridgeBytes);
   });
@@ -455,6 +463,10 @@ describe("thread command dispatch", () => {
               sha256,
               byteLength: bridgeBytes.byteLength,
             },
+            capabilities: {
+              supportsServiceTier: false,
+              supportedPermissionModes: ["full"] as const,
+            },
           },
           instructions: "Be a helpful coding agent.",
           dynamicTools: [],
@@ -472,6 +484,10 @@ describe("thread command dispatch", () => {
     expect(harness.runtimeState.resumedBridgeLaunch).toEqual({
       sha256,
       artifactPath: path.join(dataDir, "provider-bridges", `${sha256}.mjs`),
+      capabilities: {
+        supportsServiceTier: false,
+        supportedPermissionModes: ["full"],
+      },
     });
     expect(fetchProviderBridge).toHaveBeenCalledTimes(1);
   });

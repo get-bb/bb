@@ -28,5 +28,14 @@ export function resolveBridgeLaunchForProviderId(
       sha256: artifact.sha256,
       byteLength: artifact.byteLength,
     },
+    // The daemon has no registry: transport the validated declaration's
+    // execution capabilities so its adapter accepts the same permission
+    // modes and service tier the server already offered to clients.
+    capabilities: {
+      supportsServiceTier: registration.info.capabilities.supportsServiceTier,
+      supportedPermissionModes: [
+        ...registration.info.capabilities.supportedPermissionModes,
+      ],
+    },
   };
 }
