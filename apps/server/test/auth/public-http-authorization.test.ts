@@ -850,8 +850,8 @@ describe("signed Work Together public HTTP authorize", () => {
     expect(allowed.sort()).toEqual(
       [...PUBLIC_HTTP_WORK_TOGETHER_OWNER_OPERATION_NAMES].sort(),
     );
-    expect(allowed).toHaveLength(65);
-    expect(denied).toHaveLength(178 - 65);
+    expect(allowed).toHaveLength(64);
+    expect(denied).toHaveLength(185 - 64);
   });
 
   it("allows members only the conservative allowlist and denies the rest", async () => {
@@ -894,8 +894,8 @@ describe("signed Work Together public HTTP authorize", () => {
     expect(allowed.sort()).toEqual(
       [...PUBLIC_HTTP_MEMBER_OPERATION_NAMES].sort(),
     );
-    expect(allowed).toHaveLength(62);
-    expect(denied).toHaveLength(178 - 62);
+    expect(allowed).toHaveLength(61);
+    expect(denied).toHaveLength(185 - 61);
   });
 
   it("fails closed for malformed action/resource, stale revision, and removal", async () => {
