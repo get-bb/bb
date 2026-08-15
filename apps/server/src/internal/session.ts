@@ -50,12 +50,9 @@ export function registerInternalSessionRoutes(
     // Exact-id prefixes are safe: registry routing rejects non-matching ids
     // (e.g. "pi" cannot match a hypothetical "pi-x" because the routing also
     // requires a known provider).
-    const prefixes = [
-      ...(experiments.providerBridgeAcp ? ["acp-"] : []),
-      ...(experiments.providerBridgeClaudeCode ? ["claude-code"] : []),
-      ...(experiments.providerBridgeCodex ? ["codex"] : []),
-      ...(experiments.providerBridgePi ? ["pi"] : []),
-    ];
+    const prefixes = experiments.providerBridge
+      ? ["acp-", "claude-code", "codex", "pi"]
+      : [];
     // Plugin providers with stored bridge artifacts always route onto the
     // canonical protocol — there is no bespoke adapter for them, so they are
     // not experiment-gated. Exact ids, same safety argument as above.

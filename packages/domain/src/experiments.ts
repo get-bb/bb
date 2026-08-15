@@ -14,10 +14,7 @@ export const experimentKeys = [
   "claudeCodeMockCliTraffic",
   "editMessages",
   "newOnboarding",
-  "providerBridgeAcp",
-  "providerBridgeClaudeCode",
-  "providerBridgeCodex",
-  "providerBridgePi",
+  "providerBridge",
   "providerSessionReaping",
 ] as const;
 export const experimentKeySchema = z.enum(experimentKeys);
@@ -34,9 +31,6 @@ export const defaultExperiments: Experiments = {
   claudeCodeMockCliTraffic: false,
   editMessages: true,
   newOnboarding: false,
-  providerBridgeAcp: false,
-  providerBridgeClaudeCode: false,
-  providerBridgeCodex: false,
-  providerBridgePi: false,
+  providerBridge: false,
   providerSessionReaping: false,
 };

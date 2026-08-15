@@ -17,10 +17,7 @@ describe("experiments settings", () => {
         claudeCodeMockCliTraffic: false,
         editMessages: true,
         newOnboarding: false,
-        providerBridgeAcp: false,
-        providerBridgeClaudeCode: false,
-        providerBridgeCodex: false,
-        providerBridgePi: false,
+        providerBridge: false,
         providerSessionReaping: false,
       });
     });
@@ -35,10 +32,7 @@ describe("experiments settings", () => {
           claudeCodeMockCliTraffic: true,
           editMessages: true,
           newOnboarding: true,
-          providerBridgeAcp: true,
-          providerBridgeClaudeCode: true,
-          providerBridgeCodex: true,
-          providerBridgePi: true,
+          providerBridge: true,
           providerSessionReaping: true,
         }),
       });
@@ -47,20 +41,14 @@ describe("experiments settings", () => {
         claudeCodeMockCliTraffic: true,
         editMessages: true,
         newOnboarding: true,
-        providerBridgeAcp: true,
-        providerBridgeClaudeCode: true,
-        providerBridgeCodex: true,
-        providerBridgePi: true,
+        providerBridge: true,
         providerSessionReaping: true,
       });
       expect(getExperiments(harness.db)).toEqual({
         claudeCodeMockCliTraffic: true,
         editMessages: true,
         newOnboarding: true,
-        providerBridgeAcp: true,
-        providerBridgeClaudeCode: true,
-        providerBridgeCodex: true,
-        providerBridgePi: true,
+        providerBridge: true,
         providerSessionReaping: true,
       });
 
@@ -71,10 +59,7 @@ describe("experiments settings", () => {
         claudeCodeMockCliTraffic: true,
         editMessages: true,
         newOnboarding: true,
-        providerBridgeAcp: true,
-        providerBridgeClaudeCode: true,
-        providerBridgeCodex: true,
-        providerBridgePi: true,
+        providerBridge: true,
         providerSessionReaping: true,
       });
     });
@@ -110,10 +95,7 @@ describe("experiments settings", () => {
           claudeCodeMockCliTraffic: false,
           editMessages: true,
           newOnboarding: false,
-          providerBridgeAcp: true,
-          providerBridgeClaudeCode: true,
-          providerBridgeCodex: true,
-          providerBridgePi: true,
+          providerBridge: true,
           providerSessionReaping: true,
         }),
       });
@@ -145,10 +127,7 @@ describe("experiments settings", () => {
           claudeCodeMockCliTraffic: false,
           editMessages: false,
           newOnboarding: false,
-          providerBridgeAcp: false,
-          providerBridgeClaudeCode: false,
-          providerBridgeCodex: false,
-          providerBridgePi: false,
+          providerBridge: false,
           providerSessionReaping: false,
         }),
       });
