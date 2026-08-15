@@ -34,6 +34,14 @@ function respondError(id, code, message) {
   send({ jsonrpc: "2.0", id, error: { code, message } });
 }
 
+/** The prompt the kit's turn/settles-without-activity scenario sends. */
+const ZERO_WORK_PROMPT_TEXT = "/clear";
+
+function firstInputText(input) {
+  const first = Array.isArray(input) ? input[0] : undefined;
+  return first && first.type === "text" ? first.text : undefined;
+}
+
 function runScriptedTurn(threadId) {
   turnCounter += 1;
   const turnId = `turn-fx-${turnCounter}`;
@@ -102,6 +110,13 @@ function handleRequest(message) {
       return;
     }
     case "turn/start": {
+      // A prompt the provider handles locally: accepted and answered, but with
+      // no turn/started and no turn/completed, so nothing in the child's
+      // output can open or settle a bb turn (#1431).
+      if (firstInputText(params.input) === ZERO_WORK_PROMPT_TEXT) {
+        respond(id, {});
+        return;
+      }
       runScriptedTurn(params.threadId);
       respond(id, {});
       return;

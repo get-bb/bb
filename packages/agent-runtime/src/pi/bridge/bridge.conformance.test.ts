@@ -86,6 +86,9 @@ import { PI_BRIDGE_SESSION_DIR_ENV } from "./session-paths.js";
 
 const CONFORMANCE_THREAD_ID = "thr_conformance_1";
 
+/** The prompt the kit's turn/settles-without-activity scenario sends. */
+const ZERO_WORK_PROMPT_TEXT = "/clear";
+
 /** Freeform provider fixture; the bridge translator narrows it by schema. */
 function asPiSdkEvent(event: Record<string, unknown>): AgentSessionEvent {
   return event as unknown as AgentSessionEvent;
@@ -132,7 +135,13 @@ function createScriptedPiAgentSession(): ScriptedPiAgentSession {
     getContextUsage: vi.fn(() => undefined),
     hasExtensionHandlers: vi.fn(() => false),
     isStreaming: false,
-    prompt: vi.fn(async () => {
+    prompt: vi.fn(async (promptText: string) => {
+      // A prompt the agent handles without emitting a single SDK event: the
+      // bridge's own pi/prompt/settled report is then the only signal that can
+      // settle the turn (#1431).
+      if (promptText === ZERO_WORK_PROMPT_TEXT) {
+        return;
+      }
       scriptedTurnCounter += 1;
       const text = `hello from turn ${scriptedTurnCounter}`;
       emit(asPiSdkEvent({ type: "agent_start" }));
@@ -241,6 +250,9 @@ it("passes the canonical protocol suite against the scripted pi session", async 
     session: {
       cwd: workspaceDir,
       promptInput: [{ type: "text", text: "say hello", mentions: [] }],
+      zeroWorkPromptInput: [
+        { type: "text", text: ZERO_WORK_PROMPT_TEXT, mentions: [] },
+      ],
     },
     timeoutMs: 10_000,
   });
@@ -265,6 +277,7 @@ it("passes the canonical protocol suite against the scripted pi session", async 
     "item/opens-before-delta": "pass",
     "stop/release-not-interrupted": "pass",
     "session/resume-id-uniqueness": "pass",
+    "turn/settles-without-activity": "pass",
   });
 
   expect(report.passed).toBe(true);

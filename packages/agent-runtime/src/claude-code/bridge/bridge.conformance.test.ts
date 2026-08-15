@@ -47,6 +47,9 @@ import { handleLine } from "./bridge.js";
 
 const CONFORMANCE_THREAD_ID = "thr_conformance_1";
 
+/** The prompt the kit's turn/settles-without-activity scenario sends. */
+const ZERO_WORK_PROMPT_TEXT = "/clear";
+
 /** Freeform provider fixture; the bridge translator narrows it by schema. */
 function asSdkMessage(message: Record<string, unknown>): SDKMessage {
   return message as unknown as SDKMessage;
@@ -83,7 +86,23 @@ function createScriptedClaudeQuery(call: ScriptedClaudeQueryCall) {
   };
 
   void (async () => {
-    for await (const _userMessage of call.prompt) {
+    for await (const userMessage of call.prompt) {
+      // Claude handles `/clear` locally: a bare success result, no assistant
+      // message and no stream event, so nothing opens a bb turn (#1431). The
+      // kit's zero-work prompt reproduces exactly that shape.
+      if (userMessage.message.content === ZERO_WORK_PROMPT_TEXT) {
+        push(
+          asSdkMessage({
+            type: "result",
+            subtype: "success",
+            session_id: sessionId,
+            is_error: false,
+            usage: { input_tokens: 0, output_tokens: 0 },
+            modelUsage: {},
+          }),
+        );
+        continue;
+      }
       scriptedTurnCounter += 1;
       const text = `hello from turn ${scriptedTurnCounter}`;
       push(
@@ -222,6 +241,9 @@ it("passes the canonical protocol suite against the scripted claude session", as
     session: {
       cwd: workspaceDir,
       promptInput: [{ type: "text", text: "say hello", mentions: [] }],
+      zeroWorkPromptInput: [
+        { type: "text", text: ZERO_WORK_PROMPT_TEXT, mentions: [] },
+      ],
     },
     timeoutMs: 10_000,
   });
@@ -248,6 +270,7 @@ it("passes the canonical protocol suite against the scripted claude session", as
     "item/opens-before-delta": "pass",
     "stop/release-not-interrupted": "pass",
     "session/resume-id-uniqueness": "pass",
+    "turn/settles-without-activity": "pass",
   });
 
   expect(report.passed).toBe(true);

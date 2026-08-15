@@ -19,6 +19,18 @@ export interface ConformanceSessionFixture {
   cwd: string;
   /** Prompt expected to elicit at least one assistant-message item. */
   promptInput: PromptInput[];
+  /**
+   * A prompt this provider accepts and completes locally, without producing
+   * any of the activity that opens a bb turn — Claude Code's `/clear` is the
+   * canonical example (#1431). Opting in enables
+   * `turn/settles-without-activity`.
+   *
+   * The kit cannot elicit this shape generically: only the bridge knows what
+   * its provider handles as zero work. A fixture that omits it produces no
+   * result for that rule rather than a skip, so bridges that have not opted in
+   * keep a fully green report.
+   */
+  zeroWorkPromptInput?: PromptInput[];
   /** Execution options for the session; the kit defaults to full mode. */
   options?: Record<string, unknown>;
 }
@@ -545,5 +557,83 @@ export async function runSessionLifecycleScenarios(
       }
     }
   }
+
+  results.push(...(await runZeroWorkTurnScenario(context, threadId)));
+
   return results;
+}
+
+const SETTLES_WITHOUT_ACTIVITY_ID = "turn/settles-without-activity";
+const SETTLES_WITHOUT_ACTIVITY_TITLE =
+  "a turn the provider completes without activity still settles";
+
+/**
+ * turn/settles-without-activity: a provider may accept a prompt and finish it
+ * without emitting any of the ordinary activity that opens a bb turn — Claude
+ * Code answers `/clear` locally with a bare success result (#1431). The turn
+ * must still reach a terminal `turn/completed`. Without one the thread stays
+ * active forever: `bb thread wait --status idle` hangs and accepted input
+ * queued behind the abandoned turn never drains.
+ *
+ * Runs last so the turn it adds cannot perturb the ordinal expectations of the
+ * lifecycle scenarios, and only when the fixture names a zero-work prompt.
+ */
+async function runZeroWorkTurnScenario(
+  context: ScenarioContext,
+  threadId: string,
+): Promise<ConformanceCheckResult[]> {
+  const { client, fixture } = context;
+  const zeroWorkPromptInput = fixture.zeroWorkPromptInput;
+  if (zeroWorkPromptInput === undefined) {
+    return [];
+  }
+  if (context.providerThreadId === undefined) {
+    return [
+      skipped(
+        SETTLES_WITHOUT_ACTIVITY_ID,
+        SETTLES_WITHOUT_ACTIVITY_TITLE,
+        "prerequisite session/start-identity failed",
+      ),
+    ];
+  }
+
+  const before = threadEvents(context, threadId).filter(
+    (event) => event.type === "turn/completed",
+  ).length;
+  const id = client.request(BRIDGE_REQUEST_METHODS.turnStart, {
+    threadId,
+    providerThreadId: context.providerThreadId,
+    input: zeroWorkPromptInput,
+    clientRequestId: nextConformanceClientRequestId(),
+    options: defaultOptions(fixture),
+  });
+  const settled = await client.waitFor(() => {
+    const completions = threadEvents(context, threadId).filter(
+      (event) => event.type === "turn/completed",
+    );
+    return completions.length > before ? completions[before] : undefined;
+  });
+  const response = await client.waitForResponse(id);
+
+  if (response !== null && response.error !== undefined) {
+    // A bridge is free to reject the prompt outright; what it may not do is
+    // accept it and then never settle.
+    return [
+      skipped(
+        SETTLES_WITHOUT_ACTIVITY_ID,
+        SETTLES_WITHOUT_ACTIVITY_TITLE,
+        `the zero-work prompt was rejected: ${JSON.stringify(response.error)}`,
+      ),
+    ];
+  }
+  if (settled === null) {
+    return [
+      fail(
+        SETTLES_WITHOUT_ACTIVITY_ID,
+        SETTLES_WITHOUT_ACTIVITY_TITLE,
+        "the accepted zero-work turn never emitted a terminal turn/completed",
+      ),
+    ];
+  }
+  return [pass(SETTLES_WITHOUT_ACTIVITY_ID, SETTLES_WITHOUT_ACTIVITY_TITLE)];
 }

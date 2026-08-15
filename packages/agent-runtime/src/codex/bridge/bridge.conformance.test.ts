@@ -27,6 +27,25 @@ import { handleLine } from "./bridge.js";
  * bridge's item-opening synthesis, bridge-minted id stamping, and
  * cross-resume id uniqueness (fresh entropy-prefixed session serial per
  * construction) are what the kit verifies.
+ *
+ * KNOWN GAP — `turn/settles-without-activity` fails here, deliberately pinned
+ * as "fail" rather than skipped. #1432 gave claude, acp, and pi a shared
+ * terminal-turn rule but left codex out on the reasoning that "its native
+ * lifecycle already settles this shape". That holds only while the app-server
+ * emits `turn/started` for every accepted prompt. When it does not (this
+ * fixture's zero-work prompt, and the `thread/compact/start` path, which the
+ * bridge dispatches instead of `turn/start`), the bridge accepts the turn,
+ * answers the request, and emits nothing: the bb turn never settles and the
+ * thread stays active. The runtime's turn-start watchdog surfaces a
+ * `provider_turn_start_timeout` system/error after 120s but does not settle
+ * the turn.
+ *
+ * Not fixed here because the fix is not local: the bridge would have to prove
+ * ownership before synthesizing a turn (the queued turn-start client request
+ * id is the natural proof, but `PreparedProviderCommandDispatch` exposes only
+ * `rollback()`, so the seam is a shared-type change), and it must not race a
+ * `turn/started` that arrives after the `turn/start` response — fabricating a
+ * turn from a late signal is the ACP bug 0c2f4cc9a fixed.
  */
 
 const CONFORMANCE_THREAD_ID = "thr_conformance_1";
@@ -92,6 +111,10 @@ it("passes the canonical protocol suite against supervised fake app-server child
     session: {
       cwd: workspaceDir,
       promptInput: [{ type: "text", text: "say hello", mentions: [] }],
+      // The fake app-server accepts this prompt and answers with no
+      // turn/started and no turn/completed at all — see the KNOWN GAP note
+      // above.
+      zeroWorkPromptInput: [{ type: "text", text: "/clear", mentions: [] }],
     },
     timeoutMs: 10_000,
   });
@@ -116,7 +139,16 @@ it("passes the canonical protocol suite against supervised fake app-server child
     "item/opens-before-delta": "pass",
     "stop/release-not-interrupted": "pass",
     "session/resume-id-uniqueness": "pass",
+    // KNOWN GAP, pinned deliberately: see the file comment. Flipping this to
+    // "pass" is a graduation prerequisite.
+    "turn/settles-without-activity": "fail",
   });
 
-  expect(report.passed).toBe(true);
+  // Stronger than `report.passed`: exactly one rule may be non-green, and it
+  // must be the known gap. Any other regression fails here.
+  expect(
+    report.results
+      .filter((result) => result.status !== "pass")
+      .map((result) => result.id),
+  ).toEqual(["turn/settles-without-activity"]);
 }, 60_000);

@@ -90,6 +90,10 @@ it("passes the canonical protocol suite against the fake agent", async () => {
     session: {
       cwd: workspaceDir,
       promptInput: [{ type: "text", text: "say hello", mentions: [] }],
+      // The fake agent treats this exact prompt as a provider-local control
+      // (OpenCode does the same): it answers `stopReason: end_turn` without a
+      // single session/update, so the turn carries no activity at all.
+      zeroWorkPromptInput: [{ type: "text", text: "/compact", mentions: [] }],
       options: {
         permissionMode: "full",
         permissionScope: "full",
@@ -128,6 +132,7 @@ it("passes the canonical protocol suite against the fake agent", async () => {
     "item/opens-before-delta": "pass",
     "stop/release-not-interrupted": "pass",
     "session/resume-id-uniqueness": "pass",
+    "turn/settles-without-activity": "pass",
   });
 
   expect(report.passed).toBe(true);
