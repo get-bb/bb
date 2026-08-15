@@ -794,8 +794,29 @@ their level, never to flatten them toward a common denominator.
   usage-limits and CLI-install UI become registry-driven.
 - Host-daemon AI services (voice/inference, codex-only daemon commands) →
   optional protocol capability on the bridge.
-- `thread-timeline-active-prompt-mode` enum + `thread-view` provider
-  switches → normalized event fields emitted by bridges.
+- MOSTLY DONE (wave 4) — `thread-timeline-active-prompt-mode` enum +
+  `thread-view` provider switches. The premise needed correcting: plan mode
+  is not bridge-emitted at all, it is derived server-side from a `/plan`
+  command pill, so "normalized event fields emitted by bridges" was the
+  wrong shape. The right source already existed —
+  `ProviderInfo.composerActions` with `kind: "plan"`, declared by exactly
+  the two providers the hardcoded gate named.
+  `threadTimelineActivePromptModeSchema.providerId` widened from
+  `z.enum(["claude-code","codex"])` to an open id, and the extraction takes
+  the declared `planCommand` (which replaces BOTH the id gate and the
+  hardcoded `{trigger:"/",name:"plan"}` selector). The duplicate gate in
+  `thread-runtime-display.ts::canThreadShowActivePlanMode` reads the same
+  resolver. Plan mode now works for a plugin provider that declares it.
+  `parse-operation-message.ts`'s four-provider `providerDisplayName` switch
+  is DELETED — every caller already supplies the registry-resolved name.
+  KEPT deliberately: `model-fallback-extraction.ts`'s `providerId ===
+  "claude-code"` guard. It is not policy — it decodes a legacy raw Claude
+  SDK `sdk/message` payload for events that predate normalization, and the
+  modern typed `provider/modelFallback` path sits directly above it.
+  DEFERRED: `effective-prompt-mode.ts`'s Claude-only plan permission label
+  ("Claude Code will plan without normal full-access execution") — that is
+  per-provider *copy*, not a capability, and generalizing it means a
+  declared string in the provider contract.
 - DONE (wave 4) — `EDIT_MESSAGE_PROVIDER_IDS` → capability. No new
   capability was needed: `supportsNativeSessionRewind` was already declared
   by every provider plugin (and already documented as gating the

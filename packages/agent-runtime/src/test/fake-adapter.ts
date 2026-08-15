@@ -492,6 +492,7 @@ export function createFakeAdapter(
       supportsServiceTier: false,
       supportsUserQuestion,
       supportsFork: true,
+      supportsSessionRewind: true,
       supportedPermissionModes: ["accept-edits", "auto", "full"],
     },
     classifyExecutionSettingsChange: classifySessionExecutionSettingsChange,

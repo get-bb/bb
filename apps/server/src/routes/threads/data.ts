@@ -72,6 +72,7 @@ import {
   parseInteger,
   parseOptionalInteger,
 } from "../../services/lib/validation.js";
+import { resolveProviderPlanCommand } from "../../services/providers/provider-plan-command.js";
 import { parsePathKindInclusion } from "../path-list-inclusion.js";
 import { parseFileListLimit } from "../file-list-query.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
@@ -354,6 +355,10 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
             maxSeq,
             page,
             providerDisplayName,
+            planCommand: resolveProviderPlanCommand(
+              deps.providerRegistry,
+              thread.providerId,
+            ),
             summaryOnly,
           },
         );

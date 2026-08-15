@@ -65,6 +65,7 @@ function createBridgeProtocolAdapterForId(
         supportsServiceTier: options.bridgeLaunch.capabilities.supportsServiceTier,
         supportsUserQuestion: false,
         supportsFork: false,
+        supportsSessionRewind: false,
         supportedPermissionModes: [
           ...options.bridgeLaunch.capabilities.supportedPermissionModes,
         ],

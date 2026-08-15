@@ -14,6 +14,7 @@ function makeAdapter() {
       supportsServiceTier: false,
       supportsUserQuestion: false,
       supportsFork: true,
+      supportsSessionRewind: true,
       supportedPermissionModes: ["full"],
     },
     process: { command: "node", args: ["fake-bridge.mjs"] },

@@ -27,6 +27,7 @@ const CODEX_CAPABILITIES: ProviderCapabilities = {
   supportsServiceTier: true,
   supportsUserQuestion: false,
   supportsFork: true,
+  supportsSessionRewind: true,
   supportedPermissionModes: ["accept-edits", "auto", "full"],
 };
 
@@ -36,6 +37,7 @@ const CLAUDE_CODE_CAPABILITIES: ProviderCapabilities = {
   supportsServiceTier: false,
   supportsUserQuestion: true,
   supportsFork: true,
+  supportsSessionRewind: true,
   supportedPermissionModes: ["accept-edits", "auto", "full"],
 };
 
@@ -45,6 +47,7 @@ const PI_CAPABILITIES: ProviderCapabilities = {
   supportsServiceTier: false,
   supportsUserQuestion: false,
   supportsFork: true,
+  supportsSessionRewind: true,
   supportedPermissionModes: ["full"],
 };
 
@@ -61,6 +64,7 @@ const ACP_CAPABILITIES: ProviderCapabilities = {
   supportsServiceTier: true,
   supportsUserQuestion: false,
   supportsFork: true,
+  supportsSessionRewind: false,
   supportedPermissionModes: ["accept-edits", "full"],
 };
 

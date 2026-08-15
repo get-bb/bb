@@ -102,6 +102,7 @@ describe("provider registry", () => {
       supportsServiceTier: false,
       supportsUserQuestion: true,
       supportsFork: true,
+      supportsSessionRewind: true,
       supportedPermissionModes: ["accept-edits", "auto", "full"],
     });
   });

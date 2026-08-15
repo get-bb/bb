@@ -33,6 +33,11 @@ import {
   toThreadListEntryResponses,
 } from "../../../src/services/threads/thread-runtime-display.js";
 import { NotificationHub } from "../../../src/ws/hub.js";
+import { createTestProviderRegistry } from "../../helpers/provider-registry.js";
+
+// Plan-mode eligibility is the provider's declared `plan` composer action, so
+// the banner path needs the real first-party declarations.
+const providerRegistry = await createTestProviderRegistry();
 
 interface SetupResult {
   db: DbConnection;
@@ -350,7 +355,7 @@ describe("thread runtime display", () => {
     });
 
     const entries = toThreadListEntryResponses(
-      { db, hub },
+      { db, hub, providerRegistry },
       {
         now,
         threads: [
@@ -400,7 +405,7 @@ describe("thread runtime display", () => {
 
     expect(
       toThreadListEntryResponses(
-        { db, hub },
+        { db, hub, providerRegistry },
         {
           now: 1_000,
           threads,
@@ -563,7 +568,7 @@ describe("thread runtime display", () => {
     });
 
     const entries = toThreadListEntryResponses(
-      { db, hub },
+      { db, hub, providerRegistry },
       {
         threads: [
           createThreadListEntry({
