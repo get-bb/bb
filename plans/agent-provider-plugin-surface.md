@@ -225,8 +225,10 @@ next starts; commits structured so a later PR split stays mechanical:
    artifact pipeline (echo-provider is the template). After this, every
    provider-specific line lives in plugins/provider-*; agent-runtime
    keeps only the protocol, generic adapter, and supervision.
-   **CODEX AND CLAUDE-CODE DONE (2026-08-15); acp is the last migration
-   and pi is a documented exception — see the per-provider notes below.**
+   **DONE (2026-08-15): codex, claude-code, and acp all ship as plugin
+   artifacts. Pi stays daemon-bundled as an empirically verified exception,
+   so it is the only bundled bridge left — see the per-provider notes
+   below. What remains is the FINAL VALIDATION GATE.**
    Two commits. First, the **bridge kit**: a plugin-shipped bridge cannot
    import `@bb/agent-runtime`, and it turned out nearly every module under
    `agent-runtime/src/shared/` had only provider-side consumers, so they
@@ -288,13 +290,28 @@ next starts; commits structured so a later PR split stays mechanical:
      `@bb/agent-runtime` re-export is gone, so nothing outside the pi
      bridge directory reads from it and pi is not gated on the deferred
      skills/scanRoots method.
-   - **acp — needs the dynamic tier first.** `acp-cursor` is
-     plugin-declared, but every other ACP id (known + `customAcpAgents`)
-     is registered server-side by `acp-provider-tier.ts`, and
-     `resolveBridgeLaunchForProviderId` only serves `source.kind === "plugin"`
-     registrations — those ids would end up with no bridge at all. The tier
-     has to resolve the ACP plugin's artifact for its ids (or become plugin
-     registrations) in the same change.
+   - **acp — DONE (2026-08-15).** The blocker was routing, not bundling.
+     `resolveBridgeLaunchForProviderId` now resolves the ACP tier
+     explicitly: an unregistered `acp-*` id borrows the artifact of
+     whichever plugin declares ACP and takes its capabilities from the
+     shared tier — the same fallback every other ACP policy accessor on
+     the registry already uses — so known agents and `customAcpAgents`
+     entries keep launching. The launch spec rides exactly as before (the
+     `acpLaunchSpec` command field, then the provider-scoped statics), and
+     `acp-cursor`, whose spec has no server-side entry, still reads the
+     runtime's built-in table, now `acp-launch-specs.ts` beside its
+     fingerprint. `dist/provider-bridge.mjs` is 919 KB and self-contained;
+     no hono reaches it through the `@bb/host-daemon-contract` dependency
+     the bridge needs to parse the launch spec (the one core-package
+     dependency a first-party bridge still has, and the reason the
+     acp-cursor table has not moved server-side yet). 143 tests run as
+     `bb-plugin-provider-acp#test`.
+     Two test-side consequences worth keeping: the integration harness
+     builds and records the first-party bridge artifacts the way the
+     plugin runtime does — without a `bridgeLaunch` a graduated provider
+     has no bridge at all, so the dynamic-ACP smoke now drives the real
+     artifact route; and the host-daemon-contract bridge-launch round-trip,
+     left red by the codex commit, is green again.
    - **claude-code — DONE (2026-08-15).** Sources and event fixtures moved
      verbatim; `dist/provider-bridge.mjs` is 2.44 MB, fully self-contained,
      and was driven standalone with an empty PATH (it answers `model/list`
@@ -321,11 +338,20 @@ next starts; commits structured so a later PR split stays mechanical:
      `thread/start` is the ONLY thing that lets the idle sweep release a
      graduated provider's session, and nothing covered that path — the
      process-lifecycle reaper tests now report it on the wire.
-     Still id-switched in core after codex, unchanged by this wave: the
-     four-variant skill-root union and `runtime-skill-roots.ts`'s per-provider
-     normalizers (they ride the wire as data; collapsing them is the deferred
-     `skills/configure` work), and the runtime's deliberate codex error-text
-     special cases audited and kept in wave 3.
+   Still id-switched in core after the wave, deliberately: the four-variant
+   skill-root union and `runtime-skill-roots.ts`'s per-provider normalizers
+   (they ride the wire as data; collapsing them is the deferred
+   `skills/configure` work), `isAcpProviderId` (used by those normalizers,
+   by the steer-stale recovery, and by the server's ACP tier), the
+   `acp-launch-specs.ts` cursor table, and the runtime's deliberate codex
+   error-text special cases audited and kept in wave 3.
+   KNOWN RED, PRE-EXISTING, NOT ADDRESSED BY THIS WAVE: the
+   `@bb/agent-runtime#test:integration` suite (live CLIs, not in CI)
+   constructs providers straight from `createProviderForId` with no
+   `bridgeLaunch`, so every graduated provider now fails there with
+   "Unsupported provider". Codex broke it first; claude-code and acp extend
+   it. The harness needs the same built-artifact wiring the integration
+   harness just got, and it belongs to the final gate's live QA matrix.
 
 FINAL VALIDATION GATE (mandatory before calling graduation done): full
 multi-agent adversarial review of the graduation diff; conformance all
