@@ -1,0 +1,28 @@
+{
+  "name": "bb-plugin-provider-codex",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Run bb threads with Codex.",
+  "engines": {
+    "bb": ">=0.0"
+  },
+  "bb": {
+    "name": "Codex provider",
+    "description": "Run bb threads with Codex.",
+    "branding": {
+      "icon": "./icons/codex.svg"
+    },
+    "server": "./server.ts"
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "workspace:*",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  }
+}

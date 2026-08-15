@@ -1,0 +1,28 @@
+{
+  "name": "bb-plugin-provider-acp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Run bb threads with ACP (Agent Client Protocol) agents, starting with Cursor.",
+  "engines": {
+    "bb": ">=0.0"
+  },
+  "bb": {
+    "name": "ACP providers",
+    "description": "Run bb threads with ACP (Agent Client Protocol) agents, starting with Cursor.",
+    "branding": {
+      "icon": "./icons/cursor.svg"
+    },
+    "server": "./server.ts"
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "workspace:*",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  }
+}

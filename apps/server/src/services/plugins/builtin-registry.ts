@@ -72,6 +72,34 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
     category: "Interface",
   },
+  // First-party agent provider plugins (phase 4 of
+  // plans/agent-provider-plugin-surface.md): each registers the provider
+  // declaration that the core catalog previously seeded; the registry
+  // takeover replaces the core entry in place.
+  {
+    name: "provider-acp",
+    pluginId: "provider-acp",
+    defaultEnabled: true,
+    category: "Agent interaction",
+  },
+  {
+    name: "provider-claude-code",
+    pluginId: "provider-claude-code",
+    defaultEnabled: true,
+    category: "Agent interaction",
+  },
+  {
+    name: "provider-codex",
+    pluginId: "provider-codex",
+    defaultEnabled: true,
+    category: "Agent interaction",
+  },
+  {
+    name: "provider-pi",
+    pluginId: "provider-pi",
+    defaultEnabled: true,
+    category: "Agent interaction",
+  },
   {
     name: "keep-awake",
     pluginId: "keep-awake",
