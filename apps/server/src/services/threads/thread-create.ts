@@ -731,6 +731,10 @@ export async function createThreadFromRequest(
     input: requestInput.input,
     projectId: requestInput.projectId,
   });
+  // Providers register with plugin startup, which the listener does not wait
+  // for: without this, a thread created on boot sees an empty registry and
+  // fails with "no provider available".
+  await deps.providerRegistry.whenRegistrationsSettled();
   const { executionDefaults, providerId, requestedModel } =
     resolveProjectExecutionDefaultsForCreate(deps, {
       executionInputSources: requestInput.executionInputSources,

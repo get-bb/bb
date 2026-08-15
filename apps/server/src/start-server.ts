@@ -94,6 +94,9 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   // Reads `runtimeConfig.customAcpAgents` on every call so a `bb-app config
   // refresh` (which replaces the array in place) is picked up immediately.
   const providerRegistry = createProviderRegistryService({
+    // Providers arrive with plugin startup, which runs after the listener is
+    // up; provider-routed work waits for it instead of failing on boot.
+    deferRegistrationsSettled: true,
     resolveAcpAgentCapabilities: (providerId) =>
       resolveAcpAgentCapabilitiesForProviderId(
         { config: runtimeConfig },
@@ -235,9 +238,16 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   pluginService.bindSdk({
     baseUrl: `http://127.0.0.1:${serverConfig.BB_SERVER_PORT}`,
   });
-  void pluginService.start().catch((error: unknown) => {
-    logger.error({ err: error }, "Plugin startup failed");
-  });
+  void pluginService
+    .start()
+    .catch((error: unknown) => {
+      logger.error({ err: error }, "Plugin startup failed");
+    })
+    .finally(() => {
+      // Success or failure, the registry now holds whatever loaded: release
+      // the requests waiting for providers rather than stalling them out.
+      providerRegistry.markRegistrationsSettled();
+    });
   // Discovery metadata only: a refresh never installs, updates, or runs
   // plugin code, and a failure keeps the last-known-good catalog.
   pluginCatalogService.startPeriodicRefresh();

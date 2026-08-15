@@ -320,6 +320,10 @@ export async function buildThreadStartCommand(
   deps: LoggedWorkSessionDeps,
   args: ThreadStartCommandArgs,
 ): Promise<Extract<HostDaemonCommand, { type: "thread.start" }>> {
+  // A graduated provider only has a bridge while its plugin is registered, and
+  // plugins load after the listener starts serving. Wait, or a turn submitted
+  // during that window dispatches with no bridgeLaunch and dies on the daemon.
+  await deps.providerRegistry.whenRegistrationsSettled();
   const runtimeContext = await resolveThreadRuntimeCommandConfig(deps, {
     thread: args.thread,
     environment: args.environment,
@@ -440,6 +444,7 @@ export async function prepareTurnSubmitCommandPayload(
   deps: LoggedWorkSessionDeps,
   args: PrepareTurnSubmitCommandPayloadArgs,
 ): Promise<PreparedTurnSubmitCommandPayload> {
+  await deps.providerRegistry.whenRegistrationsSettled();
   const providerThreadId = requireProviderThreadId(
     args.providerThreadId ?? getLastProviderThreadId(deps, args.thread.id),
     args.thread.id,

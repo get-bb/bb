@@ -279,6 +279,9 @@ export async function listSystemProviderInfos(
   deps: LoggedWorkSessionDeps,
   query: ListSystemProviderInfosRequest = {},
 ): Promise<ProviderInfo[]> {
+  // Plugins register their providers after the listener is already serving, so
+  // an early request would otherwise report an empty provider list.
+  await deps.providerRegistry.whenRegistrationsSettled();
   return (await resolveSystemProviderInfos(deps, query)).providers;
 }
 
@@ -301,6 +304,7 @@ export async function resolveSystemProviderModels(
   deps: LoggedWorkSessionDeps,
   args: ResolveSystemProviderModelsArgs,
 ): Promise<ModelListResult> {
+  await deps.providerRegistry.whenRegistrationsSettled();
   const configuredProvider = listConfiguredSystemProviderInfos(
     deps,
     [],
@@ -422,6 +426,7 @@ export async function resolveSystemExecutionOptions(
   deps: LoggedWorkSessionDeps,
   query: SystemExecutionOptionsRequest,
 ): Promise<SystemExecutionOptionsResponse> {
+  await deps.providerRegistry.whenRegistrationsSettled();
   const cwd =
     query.environmentId === undefined
       ? undefined

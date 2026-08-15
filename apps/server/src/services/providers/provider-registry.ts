@@ -117,7 +117,28 @@ export interface ProviderRegistryService {
   register(
     registration: Omit<ProviderRegistration, "source"> & { pluginId: string },
   ): { dispose(): void };
+  /**
+   * Resolves once provider registrations have settled — that is, once plugin
+   * startup finished (or failed). Providers exist only while their plugin is
+   * loaded, and the HTTP listener deliberately starts serving before plugins
+   * load, so anything that routes work by provider must wait for this: on that
+   * boot window the registry is still empty and the request would fail with
+   * "no provider available" or dispatch a command with no bridge launch.
+   *
+   * Bounded by {@link REGISTRATIONS_SETTLED_TIMEOUT_MS} so a stuck plugin
+   * cannot wedge requests, and so a plugin's own loopback SDK call during
+   * startup cannot deadlock against its load.
+   */
+  whenRegistrationsSettled(): Promise<void>;
+  /** Called once by the server after plugin startup settles. */
+  markRegistrationsSettled(): void;
 }
+
+/**
+ * A boot-time turn waits this long for plugins at most; past it the request
+ * proceeds against whatever registered, which is the pre-gate behavior.
+ */
+export const REGISTRATIONS_SETTLED_TIMEOUT_MS = 30_000;
 
 /**
  * The dynamic ACP tier is resolved from config at request time, so the
@@ -129,12 +150,24 @@ export interface ProviderRegistryDeps {
   resolveAcpAgentCapabilities?: (
     providerId: string,
   ) => { supportsManualCompaction: boolean } | null;
+  /**
+   * Defaults to settled: only the real server defers, because only there do
+   * registrations arrive asynchronously from plugin startup.
+   */
+  deferRegistrationsSettled?: boolean;
 }
 
 export function createProviderRegistryService(
   deps: ProviderRegistryDeps = {},
 ): ProviderRegistryService {
   const pluginRegistrations = new Map<string, ProviderRegistration>();
+  let settle: (() => void) | null = null;
+  const settled: Promise<void> =
+    deps.deferRegistrationsSettled === true
+      ? new Promise<void>((resolve) => {
+          settle = resolve;
+        })
+      : Promise.resolve();
 
   function getRegistration(providerId: string): ProviderRegistration | null {
     return pluginRegistrations.get(providerId) ?? null;
@@ -252,6 +285,26 @@ export function createProviderRegistryService(
           }
         },
       };
+    },
+
+    async whenRegistrationsSettled() {
+      if (settle === null) {
+        return settled;
+      }
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([
+        settled,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, REGISTRATIONS_SETTLED_TIMEOUT_MS);
+          timer.unref?.();
+        }),
+      ]);
+      clearTimeout(timer);
+    },
+
+    markRegistrationsSettled() {
+      settle?.();
+      settle = null;
     },
   };
 }

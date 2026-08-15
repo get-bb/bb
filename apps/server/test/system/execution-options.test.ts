@@ -16,6 +16,7 @@ import {
   createTestProviderRegistry,
   registerFirstPartyProviders,
 } from "../helpers/provider-registry.js";
+import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
 
 const registry = await createTestProviderRegistry();
 
@@ -992,6 +993,37 @@ describe("resolveSystemExecutionOptions", () => {
             },
           },
         });
+      },
+    );
+  });
+
+  // The HTTP listener deliberately starts serving before plugins load, and
+  // providers now exist only while their plugin is loaded, so a request that
+  // lands in that window must wait instead of reporting no providers at all.
+  it("waits for plugin provider registrations before answering with an empty registry", async () => {
+    await withTestHarness(
+      { seedFirstPartyProviders: false },
+      async (harness) => {
+        const registry = createProviderRegistryService({
+          deferRegistrationsSettled: true,
+        });
+        harness.deps.providerRegistry = registry;
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-execution-options-boot-window",
+        });
+        registerProviderHostRpcResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+        });
+
+        const providersPromise = listSystemProviderInfos(harness.deps, {});
+        // Plugin startup lands after the request already began.
+        await registerFirstPartyProviders(registry);
+        registry.markRegistrationsSettled();
+
+        expect((await providersPromise).map((provider) => provider.id)).toEqual(
+          ["codex", "claude-code", "pi", "acp-cursor"],
+        );
       },
     );
   });
