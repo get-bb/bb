@@ -584,6 +584,23 @@ export function createCodexEventTranslator(
           providerThreadId,
         });
       },
+      claim: () => {
+        // Still queued means no turn/started (and no turn/completed, which
+        // clears the thread's queue) has consumed this dispatch: the provider
+        // accepted the prompt without opening a turn for it.
+        const queued =
+          nativeTurnStartClientRequestIdsByProviderThreadId.get(
+            providerThreadId,
+          ) ?? [];
+        if (!queued.includes(clientRequestId)) {
+          return false;
+        }
+        removeNativeTurnStartClientRequestId({
+          clientRequestId,
+          providerThreadId,
+        });
+        return true;
+      },
     };
   }
 

@@ -259,6 +259,15 @@ export function flattenPromptInputGroups(
 
 export interface PreparedProviderCommandDispatch {
   rollback(): void;
+  /**
+   * Claims the prepared correlation if no provider event has consumed it yet,
+   * proving this dispatch still owns unstarted work. Returns true (and drops
+   * the correlation, so nothing can consume it twice) when the provider never
+   * started a turn for this dispatch; false once it did. Callers use it to
+   * settle a prompt the provider accepted and finished without emitting any
+   * turn activity, without fabricating a turn from a late signal.
+   */
+  claim(): boolean;
 }
 
 export function noPreparedProviderCommandDispatch(

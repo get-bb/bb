@@ -28,24 +28,12 @@ import { handleLine } from "./bridge.js";
  * cross-resume id uniqueness (fresh entropy-prefixed session serial per
  * construction) are what the kit verifies.
  *
- * KNOWN GAP — `turn/settles-without-activity` fails here, deliberately pinned
- * as "fail" rather than skipped. #1432 gave claude, acp, and pi a shared
- * terminal-turn rule but left codex out on the reasoning that "its native
- * lifecycle already settles this shape". That holds only while the app-server
- * emits `turn/started` for every accepted prompt. When it does not (this
- * fixture's zero-work prompt, and the `thread/compact/start` path, which the
- * bridge dispatches instead of `turn/start`), the bridge accepts the turn,
- * answers the request, and emits nothing: the bb turn never settles and the
- * thread stays active. The runtime's turn-start watchdog surfaces a
- * `provider_turn_start_timeout` system/error after 120s but does not settle
- * the turn.
- *
- * Not fixed here because the fix is not local: the bridge would have to prove
- * ownership before synthesizing a turn (the queued turn-start client request
- * id is the natural proof, but `PreparedProviderCommandDispatch` exposes only
- * `rollback()`, so the seam is a shared-type change), and it must not race a
- * `turn/started` that arrives after the `turn/start` response — fabricating a
- * turn from a late signal is the ACP bug 0c2f4cc9a fixed.
+ * `turn/settles-without-activity` covers the shape codex's native lifecycle
+ * does not settle on its own: a prompt the app-server accepts and finishes
+ * without emitting `turn/started` (this fixture's zero-work prompt, and the
+ * `thread/compact/start` path the bridge dispatches instead of `turn/start`).
+ * The bridge settles it from the dispatch it provably owns — the queued
+ * turn-start correlation — never from a late signal.
  */
 
 const CONFORMANCE_THREAD_ID = "thr_conformance_1";
@@ -112,8 +100,8 @@ it("passes the canonical protocol suite against supervised fake app-server child
       cwd: workspaceDir,
       promptInput: [{ type: "text", text: "say hello", mentions: [] }],
       // The fake app-server accepts this prompt and answers with no
-      // turn/started and no turn/completed at all — see the KNOWN GAP note
-      // above.
+      // turn/started and no turn/completed at all; only the bridge's
+      // dispatch-owned settlement can close the bb turn.
       zeroWorkPromptInput: [{ type: "text", text: "/clear", mentions: [] }],
     },
     timeoutMs: 10_000,
@@ -139,16 +127,13 @@ it("passes the canonical protocol suite against supervised fake app-server child
     "item/opens-before-delta": "pass",
     "stop/release-not-interrupted": "pass",
     "session/resume-id-uniqueness": "pass",
-    // KNOWN GAP, pinned deliberately: see the file comment. Flipping this to
-    // "pass" is a graduation prerequisite.
-    "turn/settles-without-activity": "fail",
+    "turn/settles-without-activity": "pass",
   });
 
-  // Stronger than `report.passed`: exactly one rule may be non-green, and it
-  // must be the known gap. Any other regression fails here.
+  // Stronger than `report.passed`: no rule may be non-green, not even skipped.
   expect(
     report.results
       .filter((result) => result.status !== "pass")
       .map((result) => result.id),
-  ).toEqual(["turn/settles-without-activity"]);
+  ).toEqual([]);
 }, 60_000);

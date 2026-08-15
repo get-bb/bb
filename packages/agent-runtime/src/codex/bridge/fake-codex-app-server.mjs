@@ -49,6 +49,16 @@ function respondError(id, code, message) {
 /** The prompt the kit's turn/settles-without-activity scenario sends. */
 const ZERO_WORK_PROMPT_TEXT = "/clear";
 
+/**
+ * A prompt answered BEFORE any turn notification, whose real turn then arrives
+ * late. Codex normally emits `turn/started` ahead of its `turn/start`
+ * response; this inverts that order so the bridge's zero-work settlement has
+ * to lose the race to the real turn (fabricating a turn from a late signal is
+ * the ACP bug 0c2f4cc9a).
+ */
+const LATE_TURN_START_PROMPT_TEXT = "/late-start";
+const LATE_TURN_START_DELAY_MS = 60;
+
 function firstInputText(input) {
   const first = Array.isArray(input) ? input[0] : undefined;
   return first && first.type === "text" ? first.text : undefined;
@@ -190,6 +200,14 @@ async function handleRequest(message) {
       // output can open or settle a bb turn (#1431).
       if (firstInputText(params.input) === ZERO_WORK_PROMPT_TEXT) {
         respond(id, {});
+        return;
+      }
+      if (firstInputText(params.input) === LATE_TURN_START_PROMPT_TEXT) {
+        respond(id, {});
+        setTimeout(
+          () => runScriptedTurn(params.threadId),
+          LATE_TURN_START_DELAY_MS,
+        );
         return;
       }
       if (scriptedTurns) {

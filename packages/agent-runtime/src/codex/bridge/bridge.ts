@@ -42,9 +42,7 @@ import {
   type ThreadEventItem,
   type ThreadEventScope,
 } from "@bb/domain";
-import {
-  sanitizeInheritedChildProcessEnv,
-} from "@bb/process-utils";
+import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 import {
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
@@ -81,6 +79,7 @@ import { withoutBridgeRuntimeEnv } from "../../shared/bridge-runtime-env.js";
 import { buildAcceptedUserMessageEvent } from "../../shared/accepted-user-messages.js";
 import type {
   DecodedInteractiveRequest,
+  PreparedProviderCommandDispatch,
   ProviderPostInitializeRequest,
 } from "../../provider-adapter.js";
 import type { ProviderRuntimeEvent } from "../../runtime-json-rpc.js";
@@ -143,10 +142,16 @@ const codexBridgeCommandSchema = z.discriminatedUnion("method", [
     method: z.literal("thread/resume"),
     params: threadResumeParamsSchema,
   }),
-  z.object({ method: z.literal("thread/fork"), params: threadForkParamsSchema }),
+  z.object({
+    method: z.literal("thread/fork"),
+    params: threadForkParamsSchema,
+  }),
   z.object({ method: z.literal("turn/start"), params: turnStartParamsSchema }),
   z.object({ method: z.literal("turn/steer"), params: turnSteerParamsSchema }),
-  z.object({ method: z.literal("thread/stop"), params: threadStopParamsSchema }),
+  z.object({
+    method: z.literal("thread/stop"),
+    params: threadStopParamsSchema,
+  }),
   z.object({
     method: z.literal("thread/discard"),
     params: threadDiscardParamsSchema,
@@ -448,8 +453,12 @@ interface DecodedCodexOptions {
   additionalWorkspaceWriteRoots: string[];
 }
 
-function decodeCodexOptions(options: BridgeExecutionOptions): DecodedCodexOptions {
-  const decoded = codexProviderOptionsSchema.parse(options.providerOptions ?? {});
+function decodeCodexOptions(
+  options: BridgeExecutionOptions,
+): DecodedCodexOptions {
+  const decoded = codexProviderOptionsSchema.parse(
+    options.providerOptions ?? {},
+  );
   return {
     sessionOptions: {
       ...options,
@@ -576,7 +585,8 @@ function remapEvent(
         ...event,
         threadId,
         scope,
-        ...(event.providerCheckpointId === undefined && codexTurnId !== undefined
+        ...(event.providerCheckpointId === undefined &&
+        codexTurnId !== undefined
           ? { providerCheckpointId: codexTurnId }
           : {}),
       };
@@ -667,7 +677,10 @@ function toCanonicalEvents(
   return out;
 }
 
-function sendThreadEvent(session: CodexBridgeSession, event: ThreadEvent): void {
+function sendThreadEvent(
+  session: CodexBridgeSession,
+  event: ThreadEvent,
+): void {
   if (!session.identityAnnounced) {
     session.pendingPreIdentityEvents.push(event);
     return;
@@ -1442,6 +1455,85 @@ async function requireLiveSessionForTurn(
   return { session, connection: session.connection };
 }
 
+/**
+ * How long after a dispatch is answered the zero-work settlement decision
+ * waits. Codex emits `turn/started` before it answers `turn/start`
+ * (68d80092f — the reason `prepareTurnStart` queues the correlation before
+ * dispatch), so a dispatch still unclaimed when its answer arrives already
+ * means the provider opened no turn for it. The window is insurance against a
+ * reordered stream: a `turn/started` that lands inside it claims the dispatch
+ * first and the real turn wins.
+ */
+const ZERO_WORK_SETTLEMENT_GRACE_MS = 250;
+
+let syntheticZeroWorkTurnCounter = 0;
+
+/**
+ * Settle a prompt the app-server accepted and finished without opening a turn
+ * (#1431's shape): a zero-work prompt, or a `thread/compact/start` dispatch
+ * the provider answers without turn activity. Nothing in the child's output
+ * can start or settle a bb turn for it, so the bb turn would never settle and
+ * the thread would stay active forever.
+ *
+ * Ownership is proved, never guessed (the ACP bug 0c2f4cc9a fabricated turns
+ * from late signals): the only dispatch settled here is the queued turn-start
+ * correlation this call created, and only while `claim()` shows no
+ * `turn/started` (or `turn/completed`, which clears the thread's queue) has
+ * consumed it. A session that has any open codex turn is left alone as well —
+ * a real turn is running and owns the settlement.
+ */
+function scheduleZeroWorkTurnSettlement(args: {
+  clientRequestId: TurnStartParamsShape["clientRequestId"];
+  codexThreadId: string;
+  prepared: PreparedProviderCommandDispatch | null;
+  session: CodexBridgeSession;
+}): void {
+  const { clientRequestId, codexThreadId, prepared, session } = args;
+  if (prepared === null) {
+    return;
+  }
+  const serial = session.serial;
+  const timer = setTimeout(() => {
+    const live = currentSession(session.bbThreadId, serial);
+    if (!live || live.openCodexTurnIds.size > 0) {
+      return;
+    }
+    if (!prepared.claim()) {
+      return;
+    }
+    syntheticZeroWorkTurnCounter += 1;
+    const turnId = toBridgeId(
+      live,
+      `zero-work-${syntheticZeroWorkTurnCounter}`,
+    );
+    const base = {
+      threadId: live.bbThreadId,
+      providerThreadId: codexThreadId,
+      scope: turnScope(turnId),
+    };
+    // Canonical terminal shape: the turn opens, the input that started it is
+    // acknowledged against that turn, and it settles. No providerCheckpointId
+    // — a synthetic turn is not a codex fork point.
+    for (const event of [
+      { type: "turn/started" as const, ...base },
+      ...buildAcceptedUserMessageEvent({
+        clientRequestId,
+        providerThreadId: codexThreadId,
+        threadId: live.bbThreadId,
+        turnId,
+      }),
+      {
+        type: "turn/completed" as const,
+        ...base,
+        status: "completed" as const,
+      },
+    ]) {
+      sendThreadEvent(live, event);
+    }
+  }, ZERO_WORK_SETTLEMENT_GRACE_MS);
+  timer.unref?.();
+}
+
 async function handleTurnStart(
   id: string | number,
   params: TurnStartParamsShape,
@@ -1510,6 +1602,12 @@ async function handleTurnStart(
       });
     }
     sendResult(id, { threadId: params.threadId });
+    scheduleZeroWorkTurnSettlement({
+      clientRequestId: params.clientRequestId,
+      codexThreadId,
+      prepared,
+      session,
+    });
   } catch (error) {
     prepared?.rollback();
     sendError(
