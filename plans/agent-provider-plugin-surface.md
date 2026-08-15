@@ -81,7 +81,22 @@ Landed on this branch, every commit green:
   classify every settings change as "live", but the runtime never carries
   envVars on turn options, so an env-var change cannot rebuild a live
   bridge session (legacy classified it as a session change).
-- **Remaining (graduation + phase 6)**: legacy adapter deletions and the
+- **acp and pi are GRADUATED (2026-08-15)**: both legacy adapters, their
+  suites, and pi's dual-path calibration are deleted, and both providers
+  route to the generic bridge-protocol adapter unconditionally — the
+  experiment's prefix list now only gates claude-code and codex, which
+  still ship a legacy adapter. The `/provider-bridge-policy` prefixes are
+  left as-is (extra prefixes for always-canonical ids are harmless).
+  Shared-module invariants pinned only by the deleted suites moved first:
+  acp/session-params.test.ts and acp/event-translation.test.ts,
+  pi/event-translation.test.ts, pi/session-params.test.ts,
+  pi/model-list.test.ts. One latent bug surfaced and is fixed: the bundled
+  acp-cursor provider had no launch spec on the canonical path (the server
+  resolves specs only for configured and known ACP agents, and the
+  built-in profile table only fed the legacy adapter) — the launch data
+  now lives in acp/launch-specs.ts and the registry falls back to it.
+- **Remaining (graduation + phase 6)**: claude-code and codex legacy
+  adapter deletions and the
   runtime codex special cases after experiment soak; core-seed deletion
   and @bb/agent-providers removal from agent-runtime; the consolidation
   sweep (scattered enums, usage surfaces, provider-scoped options for
@@ -103,16 +118,17 @@ Landed on this branch, every commit green:
   prompt-completes-without-turn conformance scenario, pi aggregator
   prefixing/context-window model-list cases, and claude rate-limit
   retry classification. Calibration replay suites for pi/claude-code/
-  codex (acp has one) are the other graduation gate.
+  codex (acp has one) are the other graduation gate. Done for acp and pi;
+  claude-code and codex still owe theirs.
 
 ## Graduation execution (started 2026-08-15)
 
 Waves, each ending with a full board (typecheck + all suites) before the
 next starts; commits structured so a later PR split stays mechanical:
 
-1. Codex zero-work-prompt settlement fix (the pinned gap) + acp/pi legacy
-   adapter deletions (scan adapter tests for uncovered shared-module
-   invariants and MOVE them before deleting).
+1. DONE — codex zero-work-prompt settlement fix (the pinned gap) + acp/pi
+   legacy adapter deletions (scan adapter tests for uncovered
+   shared-module invariants and MOVE them before deleting).
 2. claude-code, then codex legacy deletions (same discipline).
 3. Flag retirement (providerBridge experiment, prefix policy plumbing,
    daemon prefix capture — no protocol bump needed, v124 unshipped),
