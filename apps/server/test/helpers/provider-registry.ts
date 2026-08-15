@@ -83,12 +83,18 @@ async function loadDeclaration(
 
 /**
  * Registers the four first-party providers into an existing registry, exactly
- * as their plugins would.
+ * as their plugins would. `excludePluginIds` models a plugin the user disabled
+ * (or that failed to load), whose provider is then absent from the registry.
  */
 export async function registerFirstPartyProviders(
   registry: ProviderRegistryService,
+  options: { excludePluginIds?: readonly string[] } = {},
 ): Promise<void> {
+  const excluded = new Set(options.excludePluginIds ?? []);
   for (const pluginId of FIRST_PARTY_PROVIDER_PLUGIN_IDS) {
+    if (excluded.has(pluginId)) {
+      continue;
+    }
     const declaration = await loadDeclaration(pluginId);
     registry.register({
       ...buildPluginProviderRegistration({ pluginId, declaration }),

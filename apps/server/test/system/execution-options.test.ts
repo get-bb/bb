@@ -12,7 +12,10 @@ import {
 } from "../helpers/host-rpc.js";
 import { seedHostSession } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
-import { createTestProviderRegistry } from "../helpers/provider-registry.js";
+import {
+  createTestProviderRegistry,
+  registerFirstPartyProviders,
+} from "../helpers/provider-registry.js";
 
 const registry = await createTestProviderRegistry();
 
@@ -989,6 +992,54 @@ describe("resolveSystemExecutionOptions", () => {
             },
           },
         });
+      },
+    );
+  });
+
+  // Dynamic ACP ids run on the ACP plugin's bridge and are never registered
+  // themselves, so with that plugin disabled they have no bridge anywhere:
+  // listing them would offer agents whose first turn fails on the daemon.
+  it("omits custom and known ACP agents when no ACP provider plugin is registered", async () => {
+    await withTestHarness(
+      {
+        seedFirstPartyProviders: false,
+        customAcpAgents: [
+          {
+            id: "example-agent",
+            displayName: "Example Agent",
+            command: "example-agent",
+            args: ["acp", "--stdio"],
+            env: {},
+            supportsManualCompaction: false,
+          },
+        ],
+      },
+      async (harness) => {
+        await registerFirstPartyProviders(harness.deps.providerRegistry, {
+          excludePluginIds: ["provider-acp"],
+        });
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-execution-options-no-acp-plugin",
+        });
+        const responder = registerProviderHostRpcResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+        });
+
+        const providers = await listSystemProviderInfos(harness.deps, {
+          hostId: host.id,
+        });
+
+        expect(providers.map((provider) => provider.id)).toEqual([
+          "codex",
+          "claude-code",
+          "pi",
+        ]);
+        // Nothing ACP to offer, so the host is never probed for installed
+        // known agents either.
+        expect(
+          responder.requests.map((request) => request.command.type),
+        ).toEqual([]);
       },
     );
   });

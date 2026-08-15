@@ -58,6 +58,21 @@ export function resolveBridgeLaunchForProviderId(
 }
 
 /**
+ * Whether the ACP tier has a plugin behind it. Dynamic ACP ids — the known
+ * agents (`acp-opencode`, …) and every `customAcpAgents` entry — are never
+ * registered: they run on the bridge of whichever plugin declares the ACP
+ * tier. With that plugin disabled or unloaded there is no ACP bridge anywhere,
+ * so those agents cannot run and must not be offered — the daemon has no
+ * bundled ACP adapter left and would reject the turn as an unsupported
+ * provider.
+ */
+export function isAcpProviderTierRegistered(
+  deps: Pick<AppDeps, "providerRegistry">,
+): boolean {
+  return findAcpTierRegistration(deps) !== null;
+}
+
+/**
  * The plugin whose bridge artifact runs this provider id.
  *
  * Normally that is the provider's own registration. ACP is the exception: only
@@ -78,9 +93,19 @@ function resolveBridgeRegistration(
   if (!isAcpProviderId(providerId)) {
     return null;
   }
-  return (
-    deps.providerRegistry
-      .list()
-      .find((entry) => isAcpProviderId(entry.info.id)) ?? null
-  );
+  return findAcpTierRegistration(deps);
+}
+
+function findAcpTierRegistration(
+  deps: Pick<AppDeps, "providerRegistry">,
+): (ProviderRegistration & { source: { kind: "plugin" } }) | null {
+  for (const entry of deps.providerRegistry.list()) {
+    if (!isAcpProviderId(entry.info.id)) {
+      continue;
+    }
+    if (entry.source.kind === "plugin") {
+      return entry;
+    }
+  }
+  return null;
 }
