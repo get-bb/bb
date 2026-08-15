@@ -10,8 +10,17 @@
  * DELTA-FIRST — `item/agentMessage/delta` arrives before any `item/started`
  * for that item — so the bridge's item-opening synthesis is exercised for
  * real by the conformance kit's item/opens-before-delta rule.
+ *
+ * An optional argv[2] script file replaces that hardcoded turn:
+ * `{ "turns": [[{ "method", "params" }, …], …] }`, where the Nth accepted
+ * `turn/start` emits the Nth turn's notifications verbatim. It exists so the
+ * dual-path calibration suite can drive this process and the legacy adapter
+ * from ONE script. Every `threadId` in the script is rewritten to the thread
+ * id this process minted, because only this process knows it. Without the
+ * argument the hardcoded behavior below is unchanged.
  */
 
+import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
 let threadCounter = 0;
@@ -68,6 +77,47 @@ function runScriptedTurn(threadId) {
   openTurnIdsByThreadId.delete(threadId);
 }
 
+// argv, not an env var: the bridge builds its child's environment from an
+// allowlist, so an env var set by a test never reaches this process.
+const scriptPath = process.argv[2];
+const scriptedTurns = scriptPath
+  ? JSON.parse(readFileSync(scriptPath, "utf8")).turns
+  : null;
+let scriptedTurnIndex = 0;
+
+/** Rewrite every `threadId` to the id this process minted for the session. */
+function withThreadId(value, threadId) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => withThreadId(entry, threadId));
+  }
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
+  const rewritten = {};
+  for (const [key, entry] of Object.entries(value)) {
+    rewritten[key] =
+      key === "threadId" && typeof entry === "string"
+        ? threadId
+        : withThreadId(entry, threadId);
+  }
+  return rewritten;
+}
+
+function runScriptFileTurn(threadId) {
+  const turn = scriptedTurns[scriptedTurnIndex] ?? [];
+  scriptedTurnIndex += 1;
+  for (const notification of turn) {
+    const params = withThreadId(notification.params ?? {}, threadId);
+    if (notification.method === "turn/started") {
+      openTurnIdsByThreadId.set(threadId, params.turn.id);
+    }
+    if (notification.method === "turn/completed") {
+      openTurnIdsByThreadId.delete(threadId);
+    }
+    notify(notification.method, params);
+  }
+}
+
 function handleRequest(message) {
   const { id, method } = message;
   const params = message.params ?? {};
@@ -117,7 +167,11 @@ function handleRequest(message) {
         respond(id, {});
         return;
       }
-      runScriptedTurn(params.threadId);
+      if (scriptedTurns) {
+        runScriptFileTurn(params.threadId);
+      } else {
+        runScriptedTurn(params.threadId);
+      }
       respond(id, {});
       return;
     }
