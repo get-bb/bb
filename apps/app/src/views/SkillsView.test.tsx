@@ -45,7 +45,7 @@ function makeSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
     name: "code-review",
     description: "Review the current diff.",
     provider: "claude-code",
-    scope: "claude-user",
+    scope: "provider-user",
     pluginId: null,
     filePath: "/home/u/.claude/skills/code-review/SKILL.md",
     manageable: true,
@@ -390,12 +390,12 @@ describe("SkillsOverview", () => {
           makeSkill({
             name: "claude-authored",
             provider: "claude-code",
-            scope: "claude-user",
+            scope: "provider-user",
           }),
           makeSkill({
             name: "codex-authored",
             provider: "codex",
-            scope: "codex-project",
+            scope: "provider-project",
           }),
           makeSkill({
             name: "official-skill",
@@ -554,14 +554,17 @@ describe("SkillsOverview", () => {
     expect(markup).toContain("Useful skill");
   });
 
-  it("disables provider filters that have no matching skills", async () => {
+  // Provider ids are an open vocabulary, so the filter rows come from the
+  // listed skills rather than a hardcoded provider table: a provider with no
+  // skills has no row at all instead of a permanently greyed one.
+  it("lists a provider filter only for providers present in the skills", async () => {
     renderDom(
       <SkillsOverview
         skills={[
           makeSkill({
             name: "codex-skill",
             provider: "codex",
-            scope: "codex-user",
+            scope: "provider-user",
           }),
         ]}
         isLoading={false}
@@ -575,11 +578,12 @@ describe("SkillsOverview", () => {
 
     await waitFor(() => {
       expect(
-        screen
-          .getByRole("menuitemcheckbox", { name: "Claude Code" })
-          .getAttribute("aria-disabled"),
-      ).toBe("true");
+        screen.getByRole("menuitemcheckbox", { name: "Codex" }),
+      ).not.toBeNull();
     });
+    expect(
+      screen.queryByRole("menuitemcheckbox", { name: "Claude Code" }),
+    ).toBeNull();
     expect(
       screen
         .getByRole("menuitemcheckbox", { name: "Codex" })
@@ -638,7 +642,7 @@ describe("SkillsOverview", () => {
           makeSkill({
             name: "codex-skill",
             provider: "codex",
-            scope: "codex-user",
+            scope: "provider-user",
           }),
         ]}
         isLoading={false}
@@ -1541,7 +1545,7 @@ describe("SkillDetailDialogView", () => {
     const skill = makeSkill({
       name: "code-review",
       provider: "claude-code",
-      scope: "claude-user",
+      scope: "provider-user",
       manageable: true,
     });
     renderSkillDetailDialog(skill, { canEdit: true, canDelete: true });

@@ -28,7 +28,7 @@ import { CreateWithTemplatesButton } from "@/components/create-via-prompt-exampl
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import { SkillDetailView } from "@/components/tools/SkillDetailView";
 import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
-import { SKILL_SCOPE_LABELS } from "@/components/tools/skill-taxonomy";
+import { skillScopeLabel } from "@/components/tools/skill-taxonomy";
 import {
   getProviderIconColorClass,
   getProviderIconInfo,
@@ -38,27 +38,6 @@ type ResourceProviderFilter = "bb" | SkillProvider;
 type ResourceSkillSourceFilter = "included" | "bb-official" | "user";
 type ResourceSortMode = "provider" | "alpha";
 type ResourceSortDirection = "asc" | "desc";
-
-// Keyed by the filter union rather than listed as an array, so adding a member
-// to `SkillProvider` is a typecheck error here instead of a silent gap. A plain
-// `readonly ResourceProviderFilter[]` permits a subset, which would leave the
-// new provider's skills unreachable under any non-empty Provider selection
-// while still compiling. The Type side gets the same guarantee from
-// `skillSourceFilterLabel`'s exhaustive switch.
-const RESOURCE_PROVIDER_FILTER_ORDER: Record<ResourceProviderFilter, number> = {
-  bb: 0,
-  "claude-code": 1,
-  codex: 2,
-  "acp-cursor": 3,
-};
-
-const RESOURCE_PROVIDER_FILTERS: readonly ResourceProviderFilter[] = (
-  Object.keys(RESOURCE_PROVIDER_FILTER_ORDER) as ResourceProviderFilter[]
-).sort(
-  (left, right) =>
-    RESOURCE_PROVIDER_FILTER_ORDER[left] -
-    RESOURCE_PROVIDER_FILTER_ORDER[right],
-);
 
 const RESOURCE_SKILL_SOURCE_FILTERS: readonly ResourceSkillSourceFilter[] = [
   "included",
@@ -105,15 +84,14 @@ function isResourceSkillSourceFilter(
   return value === "included" || value === "bb-official" || value === "user";
 }
 
-// The filter menu hands back plain strings, so both selections are narrowed on
-// the way in rather than cast: this rejects any value that is not a rendered
-// provider option, where a cast would wave it through into state. What keeps
-// the option list itself complete is `RESOURCE_PROVIDER_FILTER_ORDER` being
-// keyed by the union, not this guard.
+// The filter menu hands back plain strings. Provider ids are an open
+// vocabulary now, so completeness of the option list comes from deriving it
+// from the listed skills rather than from a closed table; this only rejects
+// the empty string, which is not a provider id.
 function isResourceProviderFilter(
   value: string,
 ): value is ResourceProviderFilter {
-  return RESOURCE_PROVIDER_FILTERS.some((provider) => provider === value);
+  return value !== "";
 }
 
 export function ProviderLogo({
@@ -181,7 +159,7 @@ function SkillLeading({ skill }: { skill: SkillSummary }) {
 }
 
 function skillDescription(skill: SkillSummary): string {
-  return skill.description ?? SKILL_SCOPE_LABELS[skill.scope];
+  return skill.description ?? skillScopeLabel(skill);
 }
 
 function providerPluginNameForSkill(skill: SkillSummary): string {
@@ -369,8 +347,22 @@ export function SkillsOverview({
     return counts;
   }, [skills]);
   const providerBucketCount = providerCounts.size;
+  // Derived from the listed skills (plus any still-selected filter) so a
+  // provider bb has never heard of still gets a filter row. "bb" leads;
+  // the rest sort by display label, which reproduces the order the old
+  // hardcoded table hardcoded.
   const providerOptions = useMemo(() => {
-    return RESOURCE_PROVIDER_FILTERS.map((provider) => ({
+    const present = new Set<ResourceProviderFilter>([
+      "bb",
+      ...providerCounts.keys(),
+      ...providerFilters,
+    ]);
+    const ordered = [...present].sort((left, right) =>
+      left === "bb" || right === "bb"
+        ? Number(left !== "bb") - Number(right !== "bb")
+        : providerFilterLabel(left).localeCompare(providerFilterLabel(right)),
+    );
+    return ordered.map((provider) => ({
       id: provider,
       label: providerFilterLabel(provider),
       leading:
@@ -415,7 +407,7 @@ export function SkillsOverview({
           skill.name,
           skill.description ?? "",
           providerLabel(skill.provider),
-          SKILL_SCOPE_LABELS[skill.scope],
+          skillScopeLabel(skill),
         ]
           .join(" ")
           .toLowerCase()

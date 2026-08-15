@@ -848,12 +848,11 @@ const hostListSkillsCommandSchema = z
 export const deletableSkillScopeSchema = z.enum([
   "bb-user",
   "bb-project",
-  "claude-user",
-  "claude-project",
-  "codex-user",
-  "codex-project",
-  "cursor-user",
-  "cursor-project",
+  // The daemon only distinguishes bb roots (derived locally) from provider
+  // roots (an explicit `rootPath` from server-side discovery), so naming the
+  // provider here bought nothing and closed the vocabulary to plugins.
+  "provider-user",
+  "provider-project",
 ]);
 export type DeletableSkillScope = z.infer<typeof deletableSkillScopeSchema>;
 

@@ -161,7 +161,7 @@ describe("registry skill matching", () => {
     expect(
       resolveInstalledRegistrySkill(registrySkill, [
         installedSkill({ manageable: false }),
-        installedSkill({ scope: "claude-user" }),
+        installedSkill({ scope: "provider-user" }),
         installedSkill({ provider: "codex" }),
       ]),
     ).toBeNull();

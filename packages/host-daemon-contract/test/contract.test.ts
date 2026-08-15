@@ -2827,7 +2827,7 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonOnlineRpcCommandSchema.safeParse({
         ...base,
-        scope: "claude-user",
+        scope: "provider-user",
       }).success,
     ).toBe(false);
   });

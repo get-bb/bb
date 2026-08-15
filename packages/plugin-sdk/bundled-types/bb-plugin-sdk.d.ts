@@ -2418,9 +2418,9 @@ declare const projectBranchesResponseSchema: z$1.ZodObject<{
     selectedBranch: z$1.ZodNullable<z$1.ZodObject<{
         name: z$1.ZodString;
         kind: z$1.ZodEnum<{
-            missing: "missing";
             local: "local";
             remote: "remote";
+            missing: "missing";
         }>;
     }, z$1.core.$strip>>;
     defaultWorktreeBaseBranch: z$1.ZodNullable<z$1.ZodString>;
@@ -2556,22 +2556,14 @@ declare const skillListResponseSchema: z$1.ZodObject<{
         id: z$1.ZodString;
         name: z$1.ZodString;
         description: z$1.ZodNullable<z$1.ZodString>;
-        provider: z$1.ZodNullable<z$1.ZodEnum<{
-            codex: "codex";
-            "claude-code": "claude-code";
-            "acp-cursor": "acp-cursor";
-        }>>;
+        provider: z$1.ZodNullable<z$1.ZodString>;
         scope: z$1.ZodEnum<{
             plugin: "plugin";
             "bb-builtin": "bb-builtin";
             "bb-user": "bb-user";
             "bb-project": "bb-project";
-            "claude-user": "claude-user";
-            "claude-project": "claude-project";
-            "codex-user": "codex-user";
-            "codex-project": "codex-project";
-            "cursor-user": "cursor-user";
-            "cursor-project": "cursor-project";
+            "provider-user": "provider-user";
+            "provider-project": "provider-project";
             "shared-user": "shared-user";
             "shared-project": "shared-project";
         }>;
@@ -2856,9 +2848,9 @@ declare const environmentDiffBranchesResponseSchema: z$1.ZodObject<{
     selectedBranch: z$1.ZodNullable<z$1.ZodObject<{
         name: z$1.ZodString;
         kind: z$1.ZodEnum<{
-            missing: "missing";
             local: "local";
             remote: "remote";
+            missing: "missing";
         }>;
     }, z$1.core.$strip>>;
 }, z$1.core.$strip>;
@@ -2929,8 +2921,8 @@ declare const environmentDiffFileResponseSchema: z$1.ZodObject<{
     path: z$1.ZodString;
     content: z$1.ZodString;
     contentEncoding: z$1.ZodEnum<{
-        utf8: "utf8";
         base64: "base64";
+        utf8: "utf8";
     }>;
     mimeType: z$1.ZodOptional<z$1.ZodString>;
     sizeBytes: z$1.ZodNumber;
@@ -5303,13 +5295,9 @@ declare const hostDaemonCommandRegistry: {
         type: z$1.ZodLiteral<"host.delete_skill">;
         scope: z$1.ZodEnum<{
             "bb-project": "bb-project";
+            "provider-project": "provider-project";
+            "provider-user": "provider-user";
             "bb-user": "bb-user";
-            "claude-user": "claude-user";
-            "claude-project": "claude-project";
-            "codex-user": "codex-user";
-            "codex-project": "codex-project";
-            "cursor-user": "cursor-user";
-            "cursor-project": "cursor-project";
         }>;
         name: z$1.ZodString;
         cwd: z$1.ZodNullable<z$1.ZodString>;
@@ -6510,8 +6498,8 @@ declare const installedPluginSchema: z$1.ZodObject<{
     status: z$1.ZodEnum<{
         error: "error";
         running: "running";
-        incompatible: "incompatible";
         missing: "missing";
+        incompatible: "incompatible";
         disabled: "disabled";
         degraded: "degraded";
         "needs-configuration": "needs-configuration";
@@ -6617,8 +6605,8 @@ declare const pluginListResponseSchema: z$1.ZodObject<{
         status: z$1.ZodEnum<{
             error: "error";
             running: "running";
-            incompatible: "incompatible";
             missing: "missing";
+            incompatible: "incompatible";
             disabled: "disabled";
             degraded: "degraded";
             "needs-configuration": "needs-configuration";
@@ -6726,8 +6714,8 @@ declare const pluginReloadResponseSchema: z$1.ZodObject<{
         status: z$1.ZodEnum<{
             error: "error";
             running: "running";
-            incompatible: "incompatible";
             missing: "missing";
+            incompatible: "incompatible";
             disabled: "disabled";
             degraded: "degraded";
             "needs-configuration": "needs-configuration";

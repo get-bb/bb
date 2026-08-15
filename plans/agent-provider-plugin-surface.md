@@ -759,7 +759,25 @@ their level, never to flatten them toward a common denominator.
   agent, same precedence as the launch spec). Deliberate behavior change:
   a custom agent that shadows `acp-opencode` must now declare compaction
   itself instead of inheriting it from the id.
-- `skillProviderSchema` closed enum → open provider id.
+- DONE (wave 4) — `skillProviderSchema` closed enum → open provider id.
+  Widening the provider field alone would have been cosmetic, because the
+  scope vocabulary spelled the provider out a second time
+  (`claude-user`/`codex-project`/`cursor-*`), so both moved: `SkillScope`
+  and `EditableSkillScope` (server contract) and `deletableSkillScopeSchema`
+  (daemon contract) collapse those six members to `provider-user` /
+  `provider-project`. The daemon only ever distinguished bb roots from a
+  server-supplied provider `rootPath`, so its handler is unchanged; wire
+  change rides the unshipped v124 with a ledger entry.
+  `mapSkillScope` loses both provider if/else chains, and the app composes
+  the scope label from the skill's own `provider` field
+  (`skillScopeLabel`) instead of a `Record<SkillScope, string>`.
+  Deliberate UI change: the skills filter menu derives its provider rows
+  from the listed skills (plus any selected filter) rather than a hardcoded
+  four-entry table, so a provider with zero skills no longer gets a
+  permanently greyed row. `SKILL_COMMAND_SURFACE_PROVIDERS` (which
+  providers the server queries for skills) stays a server-side list — it
+  becomes registry-driven with the `skills/scanRoots` item below, which is
+  what actually teaches the daemon a new provider's roots.
 - Daemon per-provider CLI tables (`provider-cli-health.ts`,
   `known_acp_agents.status`) → the optional `provider/health` /
   `provider/install` / `provider/update` bridge methods. The existing daemon
