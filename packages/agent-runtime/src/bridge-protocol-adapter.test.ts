@@ -84,6 +84,57 @@ describe("handshake gating", () => {
   });
 });
 
+describe("fork narrowing", () => {
+  const forkCommand = {
+    type: "thread/fork",
+    threadId: "thr_2",
+    cwd: "/w",
+    sourceProviderThreadId: "p_1",
+    options: fullModeOptions,
+    instructionMode: "replace",
+  } as const;
+
+  it("refuses a fork the handshake does not support, however the declaration reads", () => {
+    // The declaration says supportsFork: true (makeAdapter), so only the
+    // handshake can stop the request from reaching a bridge that cannot fork.
+    const adapter = makeAdapter();
+    completeHandshake(adapter, {});
+    expect(() => adapter.buildCommandPlan(forkCommand)).toThrow(
+      /does not support forking/u,
+    );
+  });
+
+  it("refuses a checkpoint fork on a tip-only bridge but allows a tip fork", () => {
+    const adapter = makeAdapter();
+    completeHandshake(adapter, { fork: "tip" });
+    expect(() =>
+      adapter.buildCommandPlan({
+        ...forkCommand,
+        sourceProviderCheckpointId: "ckpt_1",
+      }),
+    ).toThrow(/only fork at the end of a session/u);
+    expect(adapter.buildCommandPlan(forkCommand)).toMatchObject({
+      kind: "request",
+      method: "thread/fork",
+    });
+  });
+
+  it("allows a checkpoint fork on a checkpoint bridge", () => {
+    const adapter = makeAdapter();
+    completeHandshake(adapter, { fork: "checkpoint" });
+    expect(
+      adapter.buildCommandPlan({
+        ...forkCommand,
+        sourceProviderCheckpointId: "ckpt_1",
+      }),
+    ).toMatchObject({
+      kind: "request",
+      method: "thread/fork",
+      params: { sourceProviderCheckpointId: "ckpt_1" },
+    });
+  });
+});
+
 describe("thread/stop intent", () => {
   it("derives interrupt for an active turn and release for an idle stop", () => {
     const adapter = makeAdapter();

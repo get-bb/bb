@@ -1537,14 +1537,16 @@ function createAgentRuntimeInternal(
                 instructionMode,
                 ...(outputSchema !== undefined ? { outputSchema } : {}),
               };
-          const cmd = requireProviderRequestPlan({
-            commandType: adapterCommand.type,
-            plan: proc.adapter.buildCommandPlan(adapterCommand),
-            providerId,
-          });
-
           let resolved: string;
           try {
+            // Inside the try: building the plan can itself reject the command
+            // (a fork the bridge's handshake says it cannot perform), and that
+            // is a failed session construction like any other.
+            const cmd = requireProviderRequestPlan({
+              commandType: adapterCommand.type,
+              plan: proc.adapter.buildCommandPlan(adapterCommand),
+              providerId,
+            });
             const result = await sendCommand({
               proc,
               message: cmd,

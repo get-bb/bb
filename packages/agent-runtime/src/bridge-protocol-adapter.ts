@@ -281,6 +281,26 @@ export function createBridgeProtocolAdapter(
             },
           };
         case "thread/fork":
+          // The declaration advertises fork coarsely for UI affordances; the
+          // handshake is the operative truth and may only narrow it. Without
+          // this gate a bridge that cannot fork (or can only fork at the tip)
+          // is sent the request anyway and answers however it likes — ACP
+          // rejects a checkpoint fork with FORK_CHECKPOINT_UNSUPPORTED, but a
+          // bridge that never advertised fork at all has no obligation to
+          // reject and may silently hand back a fresh, empty session.
+          if (handshake.fork === "none") {
+            throw new Error(
+              `Provider "${options.id}" does not support forking a thread`,
+            );
+          }
+          if (
+            handshake.fork === "tip" &&
+            command.sourceProviderCheckpointId !== undefined
+          ) {
+            throw new Error(
+              `Provider "${options.id}" can only fork at the end of a session, not from an earlier point in it`,
+            );
+          }
           return {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.threadFork,
