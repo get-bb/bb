@@ -124,12 +124,57 @@ Landed on this branch, every commit green:
   native subagent (and a claude session whose only live work is an opaque
   monitor task) looks idle to the runtime's reaper. That is the phase-6
   generic-adapter hook below, not a regression.
-- **Remaining (phase 6)**: the runtime codex special cases; core-seed
-  deletion
-  and @bb/agent-providers removal from agent-runtime; the consolidation
+- **WAVE 3 DONE (2026-08-15)**: the `providerBridge` experiment, its
+  settings toggle, and the whole `/internal/provider-bridge-policy`
+  endpoint are deleted — the response carried only the prefix list, and
+  plugin routing always rode the per-command `bridgeLaunch`, so nothing
+  survived the endpoint. With it went the daemon's policy cache/startup
+  backoff/reaper piggyback, the runtime-manager capture, the
+  accepted-and-ignored `bridgeProtocolProviderPrefixes` option, and a
+  second dead field, `ProviderAdapterFactoryOptions.turnIdPrefix` (minted
+  per adapter, read by none; the translation-layer `turnIdPrefix` is a
+  different, live option). v124 is unshipped, so no further protocol bump;
+  the v123-compat fixtures never referenced the route.
+  The server's **core catalog seed is deleted**: plugin declarations are
+  the sole source, so disabling a provider plugin now removes its provider
+  instead of degrading it to a core entry, and the takeover /
+  restore-on-dispose machinery is gone. The blocker was the takeover's
+  transitional merge, which preserved facts the declaration could not
+  express; three of them (`supportsThreadArchive`, `supportsThreadRename`,
+  `supportsWorkflows`) became declared capabilities, and the fourth
+  (`supportsSessionRestore`) turned out to have no server consumer at all
+  and was dropped from the server-side shape. Listing order became
+  explicit (`PRODUCT_PROVIDER_ORDER`) because it would otherwise fall out
+  of plugin load order — alphabetical by plugin id, and re-ordered by a
+  disable/re-enable; `PRODUCT_DEFAULT_PROVIDER_ID` is now its head rather
+  than a second hardcoded id. An install with every provider plugin
+  disabled is reachable now, so it answers 409 `no_provider_available`.
+  **@bb/agent-providers is deleted.** The dynamic ACP tier became a server
+  module (`services/providers/acp-provider-tier.ts`); the daemon got
+  `provider-catalog.ts` for the bundled bridges' pre-handshake capability
+  baselines (the role `acp/launch-specs.ts` plays for launch data), plus
+  the Claude Code model catalog and the pi default-model map beside their
+  consumers. Two consumers took a documented duplicate over a worse
+  coupling: the server's probe-failure Claude Code fallback rows (the app
+  already keeps its own copy; all three converge in wave 5) and
+  @bb/config's bundled-id list (config parses before plugins load).
+  **The runtime codex special cases were audited and KEPT.** The bridge
+  adapter still reports `providerId === "codex"` and the codex bridge
+  reuses the same translator, so the account-restart set, the
+  archived-session regex, the empty-rollout rename retry, and the archive
+  idempotency strings are all still fed — the bridge preserves those error
+  texts verbatim *on purpose*, with comments saying so. Thread-scoped
+  process keys are redundant for isolation (the bridge supervises one
+  app-server child per thread) but load-bearing for the restart and the
+  pre-experiment reap, so collapsing them is a later refactor. Only one
+  line was actually stale: the comment claiming codex speaks direct
+  notifications while others wrap them.
+- **Remaining (phase 6)**: the consolidation
   sweep (scattered enums, usage surfaces, provider-scoped options for
   workflows/memory toggles); hasOpenThreadWork generic-adapter hook;
-  interim icon fallbacks and inlined placeholders move server-side.
+  interim icon fallbacks and inlined placeholders move server-side;
+  collapsing the codex thread-scoped process keys onto
+  `thread/stop {release}` + resume.
   The former KNOWN GAP is FIXED: the codex bridge now settles a prompt
   the provider accepts without emitting turn/started, so
   turn/settles-without-activity passes and codex/bridge/
@@ -153,10 +198,10 @@ next starts; commits structured so a later PR split stays mechanical:
    shared-module invariants and MOVE them before deleting).
 2. DONE — claude-code, then codex legacy deletions (same discipline). No
    legacy adapter remains anywhere.
-3. Flag retirement (providerBridge experiment, prefix policy plumbing,
-   daemon prefix capture — no protocol bump needed, v124 unshipped),
-   core-seed deletion, @bb/agent-providers removal, runtime codex
-   special cases.
+3. DONE — flag retirement (providerBridge experiment, the whole
+   provider-bridge-policy endpoint, daemon prefix capture — no protocol
+   bump needed, v124 unshipped), core-seed deletion, @bb/agent-providers
+   removal, runtime codex special-case audit (kept, one stale comment).
 4. Phase-6 consolidation sweep, batched by subsystem.
 5. First-party artifact migration: move the four bridge sources into
    their plugin directories and ship them through the content-addressed
