@@ -459,6 +459,7 @@ const threadArchiveCommandSchema = hostDaemonThreadWorkspaceTargetSchema
     type: z.literal("thread.archive"),
     providerId: z.string().min(1),
     providerThreadId: z.string().min(1),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema.optional(),
   })
   .strict();
 
@@ -471,6 +472,7 @@ const threadUnarchiveCommandSchema = hostDaemonThreadTargetSchema
     type: z.literal("thread.unarchive"),
     providerId: z.string().min(1),
     providerThreadId: z.string().min(1),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema.optional(),
   })
   .strict();
 

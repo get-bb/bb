@@ -76,6 +76,7 @@ export interface FakeRuntimeThreadControls {
 }
 
 interface FakeRuntimeState {
+  archivedBridgeLaunch: AgentRuntimeBridgeLaunch | undefined;
   archivedProviderId: string | undefined;
   archivedProviderThreadId: string | undefined;
   archivedThreadId: string | undefined;
@@ -114,6 +115,7 @@ interface FakeRuntimeState {
   steeredTurnInstructions: string | undefined;
   steeredTurnOptions: AgentRuntimeExecutionOptions | undefined;
   stoppedThreadId: string | undefined;
+  unarchivedBridgeLaunch: AgentRuntimeBridgeLaunch | undefined;
   unarchivedProviderId: string | undefined;
   unarchivedProviderThreadId: string | undefined;
   unarchivedThreadId: string | undefined;
@@ -265,6 +267,7 @@ export function createFakeWorkspace(pathname: string) {
 
 export function createFakeRuntime() {
   const state: FakeRuntimeState = {
+    archivedBridgeLaunch: undefined,
     archivedProviderId: undefined,
     archivedProviderThreadId: undefined,
     archivedThreadId: undefined,
@@ -303,6 +306,7 @@ export function createFakeRuntime() {
     steeredTurnInstructions: undefined,
     steeredTurnOptions: undefined,
     stoppedThreadId: undefined,
+    unarchivedBridgeLaunch: undefined,
     unarchivedProviderId: undefined,
     unarchivedProviderThreadId: undefined,
     unarchivedThreadId: undefined,
@@ -415,6 +419,7 @@ export function createFakeRuntime() {
       state.archivedThreadId = args.threadId;
       state.archivedProviderId = args.providerId;
       state.archivedProviderThreadId = args.providerThreadId;
+      state.archivedBridgeLaunch = args.bridgeLaunch;
       activeTurnsByThreadId.delete(args.threadId);
       providerSessionsByThreadId.delete(args.threadId);
     },
@@ -422,6 +427,7 @@ export function createFakeRuntime() {
       state.unarchivedThreadId = args.threadId;
       state.unarchivedProviderId = args.providerId;
       state.unarchivedProviderThreadId = args.providerThreadId;
+      state.unarchivedBridgeLaunch = args.bridgeLaunch;
     },
     listRunningProviders() {
       return state.runningProviders;

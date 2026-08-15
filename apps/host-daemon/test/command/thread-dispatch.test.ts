@@ -434,6 +434,74 @@ describe("thread command dispatch", () => {
     await expect(fs.readFile(artifactPath)).resolves.toEqual(bridgeBytes);
   });
 
+  it("hands archive and unarchive their bridge launch so a graduated provider can spawn", async () => {
+    const { createHash } = await import("node:crypto");
+    const dataDir = await makeTempDir("bb-bridge-launch-archive-");
+    const bridgeBytes = Buffer.from("export const archiveBridge = true;\n");
+    const sha256 = createHash("sha256").update(bridgeBytes).digest("hex");
+    const harness = createHarness({ workspacePath: "/tmp/env-bridge-archive" });
+    const fetchProviderBridge = vi.fn(async () => new Uint8Array(bridgeBytes));
+    const bridgeLaunch = {
+      source: {
+        kind: "artifact",
+        sha256,
+        byteLength: bridgeBytes.byteLength,
+      },
+      capabilities: {
+        supportsServiceTier: false,
+        supportedPermissionModes: ["full"] as const,
+        supportsArchive: true,
+        supportsRename: false,
+        supportsFork: false,
+      },
+    } as const;
+    const expectedRuntimeLaunch = {
+      sha256,
+      artifactPath: path.join(dataDir, "provider-bridges", `${sha256}.mjs`),
+      capabilities: {
+        supportsServiceTier: false,
+        supportedPermissionModes: ["full"],
+        supportsArchive: true,
+        supportsRename: false,
+        supportsFork: false,
+      },
+    };
+
+    await dispatchCommand(
+      {
+        type: "thread.archive",
+        environmentId: "env-bridge-archive",
+        threadId: "thread-bridge-archive",
+        workspaceContext: {
+          workspacePath: "/tmp/env-bridge-archive",
+          workspaceProvisionType: "unmanaged",
+        },
+        providerId: "echo-agent",
+        providerThreadId: "provider-bridge-archive",
+        bridgeLaunch,
+      },
+      { ...harness.dispatchOptions({ dataDir }), fetchProviderBridge },
+    );
+    await dispatchCommand(
+      {
+        type: "thread.unarchive",
+        environmentId: "env-bridge-archive",
+        threadId: "thread-bridge-archive",
+        providerId: "echo-agent",
+        providerThreadId: "provider-bridge-archive",
+        bridgeLaunch,
+      },
+      { ...harness.dispatchOptions({ dataDir }), fetchProviderBridge },
+    );
+
+    expect(harness.runtimeState.archivedBridgeLaunch).toEqual(
+      expectedRuntimeLaunch,
+    );
+    expect(harness.runtimeState.unarchivedBridgeLaunch).toEqual(
+      expectedRuntimeLaunch,
+    );
+  });
+
   it("resolves resume-context bridge launches for turn.submit resumes", async () => {
     const { createHash } = await import("node:crypto");
     const dataDir = await makeTempDir("bb-bridge-launch-resume-");

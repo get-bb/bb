@@ -19,7 +19,7 @@ import {
   waitForRuntimeThreadEvent,
   waitForThreadTurnStarted,
 } from "./test/runtime-test-harness.js";
-import type { AgentRuntime } from "./types.js";
+import type { AgentRuntime, AgentRuntimeBridgeLaunch } from "./types.js";
 
 type RuntimeEventHandler = (event: ThreadEvent) => void;
 
@@ -40,6 +40,17 @@ interface WriteArchiveProviderScriptArgs {
 const missingProviderThreadId = "t-missing";
 const missingProviderThreadIdError =
   /No provider thread id available for t-missing/;
+const bridgeLaunch: AgentRuntimeBridgeLaunch = {
+  sha256: "b".repeat(64),
+  artifactPath: "/tmp/graduated-provider-bridge.mjs",
+  capabilities: {
+    supportsServiceTier: false,
+    supportedPermissionModes: ["full"],
+    supportsArchive: true,
+    supportsRename: false,
+    supportsFork: false,
+  },
+};
 const acpLaunchSpec: HostDaemonAcpLaunchSpec = {
   displayName: "Custom ACP",
   command: "custom-agent",
@@ -256,6 +267,46 @@ describe("createAgentRuntime command contracts", () => {
     // Spawns the fake ACP agent three times (model list now adds a discovery
     // session), so allow extra headroom over the 5s default on slower CI.
   }, 30000);
+
+  // Archive/unarchive spawn the provider themselves (unarchive always runs on
+  // a fresh provider-maintenance runtime), so a graduated provider only
+  // resolves if the caller's bridge launch reaches adapter construction.
+  it("passes bridge launches to adapter construction for archive and unarchive", async () => {
+    const archiveScriptPath = join(tmpDir, "archive-bridge-launch.cjs");
+    writeArchiveProviderScript(archiveScriptPath, {
+      expectedProviderThreadId: "provider-explicit",
+      threadId: "t-archive-bridge",
+    });
+    const captured: Array<AgentRuntimeBridgeLaunch | undefined> = [];
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: () => {},
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: (_providerId, options) => {
+        captured.push(options.bridgeLaunch);
+        return createFakeAdapter(archiveScriptPath);
+      },
+    });
+
+    await runtime.archiveThread({
+      bridgeLaunch,
+      threadId: "t-archive-bridge",
+      providerId: "graduated",
+      providerThreadId: "provider-explicit",
+    });
+    await runtime.unarchiveThread({
+      bridgeLaunch,
+      threadId: "t-archive-bridge",
+      providerId: "graduated",
+      providerThreadId: "provider-explicit",
+    });
+    await runtime.shutdown();
+
+    expect(captured).toEqual([bridgeLaunch]);
+  });
 
   it("uses a new provider process cache entry when the acp launch spec changes", async () => {
     const seenModelListMarkers: string[] = [];

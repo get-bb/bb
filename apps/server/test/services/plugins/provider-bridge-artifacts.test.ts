@@ -15,9 +15,15 @@ import { encodeClientTurnRequestIdNumber } from "@bb/domain";
 import type { PromptInput } from "@bb/domain";
 import {
   buildThreadStartCommand,
+  dispatchArchivedThreadProviderArchiveCommand,
+  dispatchThreadUnarchiveCommand,
   prepareTurnSubmitCommandPayload,
 } from "../../../src/services/threads/thread-commands.js";
-import { internalAuthHeaders } from "../../helpers/commands.js";
+import {
+  internalAuthHeaders,
+  waitForQueuedCommand,
+} from "../../helpers/commands.js";
+import { archiveThread } from "@bb/db";
 import {
   seedEnvironment,
   seedHostSession,
@@ -304,6 +310,73 @@ describe("provider bridge artifact delivery (server)", () => {
       // registration, so the field is absent and daemon-local (bundled)
       // bridge resolution applies.
       expect(startCommand).not.toHaveProperty("bridgeLaunch");
+    });
+  });
+
+  // Archive and unarchive spawn the provider bridge on their own: unarchive
+  // always runs on a fresh provider-maintenance runtime, and archive has no
+  // live process once the thread's session was reaped. Without the launch spec
+  // the daemon has no bridge for a graduated provider at all.
+  it("attaches bridgeLaunch to thread.archive and thread.unarchive", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-archive-bridge-launch",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/archive-bridge-launch",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-codex-archive",
+        threadId: thread.id,
+      });
+      harness.deps.providerBridgeArtifacts.set("provider-codex", {
+        sha256: "a".repeat(64),
+        byteLength: 42,
+        path: "/tmp/provider-codex/dist/provider-bridge.mjs",
+      });
+      const expectedBridgeLaunch = {
+        bridgeLaunch: {
+          source: { kind: "artifact", sha256: "a".repeat(64), byteLength: 42 },
+        },
+      };
+
+      archiveThread(harness.db, harness.hub, thread.id);
+      expect(
+        dispatchArchivedThreadProviderArchiveCommand(harness.deps, {
+          threadId: thread.id,
+        }),
+      ).toBe(true);
+      expect(
+        dispatchThreadUnarchiveCommand(harness.deps, {
+          environment,
+          providerThreadId: "provider-codex-archive",
+          thread,
+        }),
+      ).toBe(true);
+
+      const archiveCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.archive" && command.threadId === thread.id,
+      );
+      const unarchiveCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.unarchive" && command.threadId === thread.id,
+      );
+      expect(archiveCommand.command).toMatchObject(expectedBridgeLaunch);
+      expect(unarchiveCommand.command).toMatchObject(expectedBridgeLaunch);
     });
   });
 });

@@ -600,6 +600,13 @@ export function dispatchArchivedThreadProviderArchiveCommand(
     workspaceProvisionType: environment.workspaceProvisionType,
   });
 
+  // Archive can have to spawn the provider bridge from scratch (fresh daemon,
+  // reaped idle session), so it carries the same launch spec as thread.start.
+  const bridgeLaunch = resolveBridgeLaunchForProviderId(
+    deps,
+    thread.providerId,
+  );
+
   startLiveHostCommand(deps, {
     command: {
       type: "thread.archive",
@@ -608,6 +615,7 @@ export function dispatchArchivedThreadProviderArchiveCommand(
       workspaceContext,
       providerId: thread.providerId,
       providerThreadId,
+      ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
     },
     hostId: environment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
@@ -637,6 +645,13 @@ export function dispatchThreadUnarchiveCommand(
     return false;
   }
 
+  // Unarchive always runs on a fresh provider-maintenance runtime, so it can
+  // never reuse a live process and must carry its own launch spec.
+  const bridgeLaunch = resolveBridgeLaunchForProviderId(
+    deps,
+    args.thread.providerId,
+  );
+
   startLiveHostCommand(deps, {
     command: {
       type: "thread.unarchive",
@@ -644,6 +659,7 @@ export function dispatchThreadUnarchiveCommand(
       threadId: args.thread.id,
       providerId: args.thread.providerId,
       providerThreadId: args.providerThreadId,
+      ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
     },
     hostId: args.environment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,

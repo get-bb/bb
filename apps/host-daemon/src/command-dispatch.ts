@@ -503,12 +503,17 @@ const commandHandlers: CommandHandlerMap = {
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
     });
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
     // Archive works on stored provider state, not on the live session, so it
     // must not stop a turn in the environment the thread left.
     await entry.runtime.archiveThread({
       threadId: command.threadId,
       providerId: command.providerId,
       providerThreadId: command.providerThreadId,
+      ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
     });
     return {};
   },
@@ -517,10 +522,15 @@ const commandHandlers: CommandHandlerMap = {
       await options.runtimeManager.ensureProviderMaintenanceRuntime({
         dataDir: options.dataDir,
       });
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
     await runtime.unarchiveThread({
       threadId: command.threadId,
       providerId: command.providerId,
       providerThreadId: command.providerThreadId,
+      ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
     });
     return {};
   },

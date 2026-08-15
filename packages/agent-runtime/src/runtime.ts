@@ -150,6 +150,7 @@ interface RequireProviderProcessArgs {
 }
 
 interface ArchiveOrUnarchiveThreadArgs {
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
   commandType: "thread/archive" | "thread/unarchive";
   providerId: string;
   providerThreadId: string;
@@ -926,11 +927,20 @@ function createAgentRuntimeInternal(
   async function archiveOrUnarchiveThread(
     args: ArchiveOrUnarchiveThreadArgs,
   ): Promise<void> {
-    const { commandType, providerId, providerThreadId, threadId } = args;
+    const { bridgeLaunch, commandType, providerId, providerThreadId, threadId } =
+      args;
     const processKey =
       threadRuntimeConfigs.get(threadId)?.processKey ??
-      resolveProviderProcessKey({ providerId, threadId });
-    await providerProcesses.ensureProvider({ processKey, providerId });
+      resolveProviderProcessKey({
+        ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+        providerId,
+        threadId,
+      });
+    await providerProcesses.ensureProvider({
+      processKey,
+      providerId,
+      ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+    });
     const proc = requireProviderProcess({ processKey, providerId });
     if (!proc.adapter.capabilities.supportsArchive) {
       throw new Error(
@@ -2243,11 +2253,17 @@ function createAgentRuntimeInternal(
       });
     },
 
-    async archiveThread({ threadId, providerId, providerThreadId }) {
+    async archiveThread({
+      threadId,
+      providerId,
+      providerThreadId,
+      bridgeLaunch,
+    }) {
       return runThreadOperation({
         threadId,
         work: async () => {
           await archiveOrUnarchiveThread({
+            ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
             commandType: "thread/archive",
             providerId,
             providerThreadId,
@@ -2257,11 +2273,17 @@ function createAgentRuntimeInternal(
       });
     },
 
-    async unarchiveThread({ threadId, providerId, providerThreadId }) {
+    async unarchiveThread({
+      threadId,
+      providerId,
+      providerThreadId,
+      bridgeLaunch,
+    }) {
       return runThreadOperation({
         threadId,
         work: async () => {
           await archiveOrUnarchiveThread({
+            ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
             commandType: "thread/unarchive",
             providerId,
             providerThreadId,

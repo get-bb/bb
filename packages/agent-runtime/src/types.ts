@@ -325,12 +325,14 @@ export interface ClearThreadGoalArgs {
 }
 
 export interface ArchiveThreadArgs {
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
   providerId: string;
   providerThreadId: string;
   threadId: string;
 }
 
 export interface UnarchiveThreadArgs {
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
   providerId: string;
   providerThreadId: string;
   threadId: string;
