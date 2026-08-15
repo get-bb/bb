@@ -1,6 +1,7 @@
 import {
   createAgentRuntime,
   fingerprintAcpLaunchSpec,
+  fingerprintBridgeLaunchDeclaration,
   type AgentRuntime,
   type AgentRuntimeBridgeLaunch,
   type AgentRuntimeOptions,
@@ -181,7 +182,7 @@ export async function defaultListModels(
   const runtimeKey =
     `${options.bridgeBundleDir ?? ""}` +
     (args.bridgeLaunch !== undefined
-      ? `#bridge:${args.bridgeLaunch.sha256.slice(0, 16)}`
+      ? `#bridge:${args.bridgeLaunch.sha256.slice(0, 16)}.${fingerprintBridgeLaunchDeclaration(args.bridgeLaunch)}`
       : "") +
     (args.acpLaunchSpec !== undefined
       ? `#acp:${fingerprintAcpLaunchSpec(args.acpLaunchSpec)}`

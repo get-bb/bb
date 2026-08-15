@@ -534,6 +534,64 @@ rl.on("line", (line) => {
     await manager.shutdown();
   });
 
+  // The sweep above only runs when a process is ensured, so the process kept
+  // alive by its threads is never revisited. Releasing its last thread is the
+  // one moment it becomes retirable.
+  it("retires an old-hash bridge process when it loses its last thread", async () => {
+    const manager = createProviderProcessManager({
+      onProcessExit: vi.fn(),
+      scriptPath,
+      workspacePath: tmpDir,
+    });
+
+    const staleKey = "fake#bridge:aaaaaaaaaaaaaaaa";
+    await manager.ensureProvider({ processKey: staleKey, providerId: "fake" });
+    const staleProcess = manager.requireProviderProcess({
+      processKey: staleKey,
+      providerId: "fake",
+    });
+    staleProcess.identity.threadIds.add("thread-live");
+
+    await manager.ensureProvider({
+      processKey: "fake#bridge:bbbbbbbbbbbbbbbb",
+      providerId: "fake",
+    });
+    expect(staleProcess.child.killed).toBe(false);
+
+    // Still owns the thread: releasing anything else changes nothing.
+    await manager.retireSupersededBridgeProcessIfIdle(staleProcess);
+    expect(staleProcess.child.killed).toBe(false);
+
+    staleProcess.identity.threadIds.delete("thread-live");
+    await manager.retireSupersededBridgeProcessIfIdle(staleProcess);
+    expect(staleProcess.child.killed).toBe(true);
+
+    await manager.shutdown();
+  });
+
+  it("keeps the current-hash bridge process when a thread is released", async () => {
+    const manager = createProviderProcessManager({
+      onProcessExit: vi.fn(),
+      scriptPath,
+      workspacePath: tmpDir,
+    });
+
+    const currentKey = "fake#bridge:aaaaaaaaaaaaaaaa";
+    await manager.ensureProvider({
+      processKey: currentKey,
+      providerId: "fake",
+    });
+    const providerProcess = manager.requireProviderProcess({
+      processKey: currentKey,
+      providerId: "fake",
+    });
+
+    await manager.retireSupersededBridgeProcessIfIdle(providerProcess);
+    expect(providerProcess.child.killed).toBe(false);
+
+    await manager.shutdown();
+  });
+
   it("bounds provider stderr while data arrives without a newline", async () => {
     const exitInfo = vi.fn<NonNullable<AgentRuntimeOptions["onProcessExit"]>>();
     const stderrLines: string[] = [];
@@ -1280,6 +1338,92 @@ rl.on("line", (line) => {
 
       // Both the original session and the restart resolve the same bridge.
       expect(capturedBridgeLaunches).toEqual([bridgeLaunch, bridgeLaunch]);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  // A plugin can change its declaration without rebuilding its bundle: same
+  // artifact hash, different capabilities or provider options. The adapter is
+  // built from those once, at spawn, so a process keyed only by the hash would
+  // serve the new declaration from the old adapter.
+  it("gives a changed declaration its own bridge process at the same artifact hash", async () => {
+    const capturedBridgeLaunches: Array<AgentRuntimeBridgeLaunch | undefined> =
+      [];
+    const bridgeLaunch: AgentRuntimeBridgeLaunch = {
+      sha256: "d".repeat(64),
+      artifactPath: join(tmpDir, "declaration-provider-bridge.mjs"),
+      capabilities: {
+        supportsServiceTier: true,
+        supportedPermissionModes: ["full"],
+        supportsArchive: false,
+        supportsRename: false,
+        supportsFork: false,
+      },
+    };
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: () => {},
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: (_providerId, options) => {
+        capturedBridgeLaunches.push(options.bridgeLaunch);
+        return createFakeAdapter(scriptPath);
+      },
+    });
+
+    try {
+      await runtime.startThread({
+        bridgeLaunch,
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      // Same bundle, same declaration: one process, one adapter.
+      await runtime.startThread({
+        bridgeLaunch,
+        environmentId: "env-1",
+        threadId: "t2",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      expect(capturedBridgeLaunches).toHaveLength(1);
+
+      const updatedDeclaration: AgentRuntimeBridgeLaunch = {
+        ...bridgeLaunch,
+        capabilities: { ...bridgeLaunch.capabilities, supportsArchive: true },
+      };
+      await runtime.startThread({
+        bridgeLaunch: updatedDeclaration,
+        environmentId: "env-1",
+        threadId: "t3",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      expect(capturedBridgeLaunches).toEqual([
+        bridgeLaunch,
+        updatedDeclaration,
+      ]);
+
+      const withOptions: AgentRuntimeBridgeLaunch = {
+        ...updatedDeclaration,
+        providerOptions: { flavor: "beta" },
+      };
+      await runtime.startThread({
+        bridgeLaunch: withOptions,
+        environmentId: "env-1",
+        threadId: "t4",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      expect(capturedBridgeLaunches).toHaveLength(3);
     } finally {
       await runtime.shutdown();
     }

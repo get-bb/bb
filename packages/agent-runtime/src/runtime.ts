@@ -74,7 +74,10 @@ import {
   resolveThreadIdentityResult,
   threadIdentityResultSchema,
 } from "./thread-identity.js";
-import { fingerprintAcpLaunchSpec } from "./acp-launch-spec-fingerprint.js";
+import {
+  fingerprintAcpLaunchSpec,
+  fingerprintBridgeLaunchDeclaration,
+} from "./acp-launch-spec-fingerprint.js";
 
 interface ReconfigureThreadIfNeededArgs {
   options: AgentRuntimeExecutionOptions;
@@ -466,12 +469,14 @@ function createAgentRuntimeInternal(
       args.providerId !== CODEX_PROVIDER_ID || args.threadId === undefined
         ? args.providerId
         : `${CODEX_THREAD_PROCESS_KEY_PREFIX}${args.threadId}`;
-    // A plugin-delivered bridge keys process identity by its artifact hash so
-    // a plugin update (new artifact) gets a fresh bridge process.
+    // A plugin-delivered bridge keys process identity by its artifact hash AND
+    // by the declaration facts baked into the adapter at spawn (capabilities,
+    // static provider options): a plugin can change either one alone, and
+    // whichever changed, the running adapter is the superseded one.
     const bridgeKey =
       args.bridgeLaunch === undefined
         ? baseKey
-        : `${baseKey}#bridge:${args.bridgeLaunch.sha256.slice(0, 16)}`;
+        : `${baseKey}#bridge:${args.bridgeLaunch.sha256.slice(0, 16)}.${fingerprintBridgeLaunchDeclaration(args.bridgeLaunch)}`;
     if (args.acpLaunchSpec === undefined) {
       return bridgeKey;
     }
@@ -499,16 +504,23 @@ function createAgentRuntimeInternal(
     );
   }
 
-  async function shutdownThreadScopedCodexProcessIfIdle(
+  /**
+   * Releasing a thread is the moment a process can become retirable: a
+   * thread-scoped codex process has nothing left to serve, and a bridge
+   * process superseded by a plugin update was only being kept alive by the
+   * threads still running on it.
+   */
+  async function releaseIdleProviderProcess(
     proc: ProviderProcess,
   ): Promise<void> {
-    if (!isThreadScopedCodexProcess(proc) || proc.identity.threadIds.size > 0) {
+    if (isThreadScopedCodexProcess(proc) && proc.identity.threadIds.size === 0) {
+      await providerProcesses.shutdownProvider({
+        processKey: proc.processKey,
+        providerId: proc.providerId,
+      });
       return;
     }
-    await providerProcesses.shutdownProvider({
-      processKey: proc.processKey,
-      providerId: proc.providerId,
-    });
+    await providerProcesses.retireSupersededBridgeProcessIfIdle(proc);
   }
 
   async function sendCommand<TResult>(args: {
@@ -999,7 +1011,7 @@ function createAgentRuntimeInternal(
       // must resume it (after unarchive) instead of reusing stale state.
       forgetThreadRuntimeState(proc, threadId);
     }
-    await shutdownThreadScopedCodexProcessIfIdle(proc);
+    await releaseIdleProviderProcess(proc);
   }
 
   function isCodexArchivedSessionError(
@@ -1392,7 +1404,7 @@ function createAgentRuntimeInternal(
       forgetThreadRuntimeState(proc, prepared.stagingThreadId);
       finishPreparedThreadRewindCleanup(leaseId, prepared);
       try {
-        await shutdownThreadScopedCodexProcessIfIdle(proc);
+        await releaseIdleProviderProcess(proc);
       } catch (error) {
         options.onStderr?.(
           `Failed to stop the idle provider after discarding staged rewind ${leaseId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -1599,7 +1611,7 @@ function createAgentRuntimeInternal(
             // session stays live for a retry.
             forgetThreadRuntimeState(proc, threadId);
             try {
-              await shutdownThreadScopedCodexProcessIfIdle(proc);
+              await releaseIdleProviderProcess(proc);
             } catch (shutdownError) {
               options.onStderr?.(
                 `Failed to stop the provider after thread "${threadId}" session construction failed: ${shutdownError instanceof Error ? shutdownError.message : String(shutdownError)}`,
@@ -2165,7 +2177,7 @@ function createAgentRuntimeInternal(
               );
             }
             forgetThreadRuntimeState(proc, threadId);
-            await shutdownThreadScopedCodexProcessIfIdle(proc);
+            await releaseIdleProviderProcess(proc);
             return { providerCheckpointId: null };
           }
 
@@ -2180,7 +2192,7 @@ function createAgentRuntimeInternal(
             sourceThreadId: threadId,
           });
           forgetThreadRuntimeState(proc, threadId);
-          await shutdownThreadScopedCodexProcessIfIdle(proc);
+          await releaseIdleProviderProcess(proc);
           return {
             providerCheckpointId: result.providerCheckpointId ?? null,
           };

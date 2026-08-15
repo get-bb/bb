@@ -3,6 +3,7 @@ import {
   normalizeHostDaemonAcpLaunchSpec,
   type HostDaemonAcpLaunchSpec,
 } from "@bb/host-daemon-contract";
+import type { AgentRuntimeBridgeLaunch } from "./types.js";
 
 type StableJsonValue =
   | string
@@ -32,18 +33,35 @@ function toStableJsonValue(value: unknown): StableJsonValue {
         .map(([key, entryValue]) => [key, toStableJsonValue(entryValue)]),
     );
   }
-  throw new Error(
-    `Cannot fingerprint ACP launch spec value of type ${typeof value}.`,
-  );
+  throw new Error(`Cannot fingerprint value of type ${typeof value}.`);
+}
+
+function fingerprintStableJson(value: unknown): string {
+  return createHash("sha256")
+    .update(JSON.stringify(toStableJsonValue(value)))
+    .digest("hex")
+    .slice(0, 16);
 }
 
 export function fingerprintAcpLaunchSpec(
   spec: HostDaemonAcpLaunchSpec,
 ): string {
-  const stableSpec = toStableJsonValue(normalizeHostDaemonAcpLaunchSpec(spec));
+  return fingerprintStableJson(normalizeHostDaemonAcpLaunchSpec(spec));
+}
 
-  return createHash("sha256")
-    .update(JSON.stringify(stableSpec))
-    .digest("hex")
-    .slice(0, 16);
+/**
+ * The declaration facts a bridge adapter is built from and then keeps for the
+ * life of its process: the capabilities it enforces and the static option bag
+ * every command carries. They come from the plugin's declaration, not from its
+ * bundle, so editing a declaration changes them while the artifact hash stays
+ * put — without this in the process key the next thread reuses an adapter
+ * built from the superseded declaration.
+ */
+export function fingerprintBridgeLaunchDeclaration(
+  bridgeLaunch: AgentRuntimeBridgeLaunch,
+): string {
+  return fingerprintStableJson({
+    capabilities: bridgeLaunch.capabilities,
+    providerOptions: bridgeLaunch.providerOptions ?? {},
+  });
 }
