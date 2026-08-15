@@ -2225,6 +2225,26 @@ function decodeCanonicalLaunchProfile(
   return acpProfileFromLaunchSpec(launchSpec.data, ACP_CANONICAL_PROVIDER_ID);
 }
 
+const canonicalAcpProviderOptionsSchema = z
+  .object({
+    /**
+     * Environment-level extra write roots. Rides the opaque provider-options
+     * bag (packed by the registry) because the canonical wire has no core
+     * field for it — same delivery as the ACP launch spec.
+     */
+    additionalWorkspaceWriteRoots: z.array(z.string()).optional(),
+  })
+  .passthrough();
+
+function decodeCanonicalAdditionalWorkspaceWriteRoots(
+  providerOptions: Record<string, unknown> | undefined,
+): string[] {
+  return (
+    canonicalAcpProviderOptionsSchema.parse(providerOptions ?? {})
+      .additionalWorkspaceWriteRoots ?? []
+  );
+}
+
 function sendMissingLaunchSpecError(
   id: string | number,
   method: string,
@@ -2298,7 +2318,10 @@ async function handleRequest(
             kind: "start",
             params: acpBridgeThreadStartParamsSchema.parse(
               buildAcpSessionParams({
-                additionalWorkspaceWriteRoots: [],
+                additionalWorkspaceWriteRoots:
+                  decodeCanonicalAdditionalWorkspaceWriteRoots(
+                    params.options.providerOptions,
+                  ),
                 cwd: params.cwd,
                 dynamicTools: params.dynamicTools,
                 options: {
@@ -2345,7 +2368,10 @@ async function handleRequest(
             kind: "resume",
             params: acpBridgeThreadResumeParamsSchema.parse({
               ...buildAcpSessionParams({
-                additionalWorkspaceWriteRoots: [],
+                additionalWorkspaceWriteRoots:
+                  decodeCanonicalAdditionalWorkspaceWriteRoots(
+                    params.options.providerOptions,
+                  ),
                 cwd: params.cwd,
                 dynamicTools: params.dynamicTools,
                 options: {
@@ -2404,7 +2430,10 @@ async function handleRequest(
             kind: "fork",
             params: acpBridgeThreadForkParamsSchema.parse({
               ...buildAcpSessionParams({
-                additionalWorkspaceWriteRoots: [],
+                additionalWorkspaceWriteRoots:
+                  decodeCanonicalAdditionalWorkspaceWriteRoots(
+                    params.options.providerOptions,
+                  ),
                 cwd: params.cwd,
                 dynamicTools: params.dynamicTools,
                 options: {

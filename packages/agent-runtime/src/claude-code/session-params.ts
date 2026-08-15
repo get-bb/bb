@@ -12,11 +12,13 @@ import {
   claudeCodeMockCliTrafficConfigSchema,
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   jsonValueSchema,
+  removeCommandMentionsFromPromptInput,
 } from "@bb/domain";
 import type {
   ClaudeCodeMockCliTrafficConfig,
   DynamicTool,
   InstructionMode,
+  PromptInput,
   ReasoningLevel,
   RuntimePermissionPolicy,
 } from "@bb/domain";
@@ -197,6 +199,12 @@ const claudeProviderOptionsSchema = z
     workflowsEnabled: z.boolean().optional(),
     memoryEnabled: z.boolean().optional(),
     providerSubagentsEnabled: z.boolean().optional(),
+    /**
+     * Environment-level extra write roots. Rides the opaque provider-options
+     * bag (packed by the registry) because the canonical wire has no core
+     * field for it — same delivery as the ACP launch spec.
+     */
+    additionalWorkspaceWriteRoots: z.array(z.string()).optional(),
   })
   .passthrough();
 
@@ -231,10 +239,10 @@ export interface BuildClaudeCanonicalSessionParamsArgs {
 /**
  * The bridge's internal session-construction params built from canonical
  * Provider Bridge Protocol session params. Skill roots come from the
- * process-scoped `skills/configure` latch rather than the session options, and
- * canonical sessions carry no daemon-level additional workspace write roots.
- * A missing providerOptions bag falls back to the provider defaults
- * (workflows off, mock CLI traffic disabled).
+ * process-scoped `skills/configure` latch rather than the session options;
+ * the daemon's extra workspace write roots ride the providerOptions bag. A
+ * missing providerOptions bag falls back to the provider defaults (workflows
+ * off, mock CLI traffic disabled).
  */
 export function buildClaudeCanonicalSessionParams(
   args: BuildClaudeCanonicalSessionParamsArgs,
@@ -243,7 +251,8 @@ export function buildClaudeCanonicalSessionParams(
     args.options.providerOptions ?? {},
   );
   return buildClaudeSessionParams({
-    additionalWorkspaceWriteRoots: [],
+    additionalWorkspaceWriteRoots:
+      providerOptions.additionalWorkspaceWriteRoots ?? [],
     cwd: args.cwd,
     disallowedTools: args.disallowedTools,
     dynamicTools: args.dynamicTools,
@@ -265,11 +274,30 @@ export function buildClaudeCanonicalSessionParams(
   });
 }
 
+/**
+ * Plan mode is delivered as a session option, not as prompt text: the Claude
+ * CLI would treat a literal `/plan` in the prompt as a second, redundant
+ * command. Both dialects strip the mention that opened plan mode before the
+ * input reaches the SDK.
+ */
+export function stripClaudePlanCommandMentions(args: {
+  input: readonly PromptInput[];
+  claudeCodePermissionMode: "plan" | undefined;
+}): PromptInput[] {
+  if (args.claudeCodePermissionMode !== "plan") {
+    return [...args.input];
+  }
+  return removeCommandMentionsFromPromptInput(args.input, {
+    trigger: "/",
+    name: "plan",
+  });
+}
+
 export interface BuildClaudeCanonicalTurnParamsArgs {
   threadId: string;
   providerThreadId: string | null;
   expectedTurnId?: string | undefined;
-  input: readonly unknown[];
+  input: readonly PromptInput[];
   options: ClaudeCanonicalExecutionOptions;
 }
 
@@ -292,7 +320,10 @@ export function buildClaudeCanonicalTurnParams(
     ...(args.expectedTurnId !== undefined
       ? { expectedTurnId: args.expectedTurnId }
       : {}),
-    input: [...args.input],
+    input: stripClaudePlanCommandMentions({
+      input: args.input,
+      claudeCodePermissionMode: providerOptions.claudeCodePermissionMode,
+    }),
     ...(args.options.model ? { model: args.options.model } : {}),
     ...(args.options.reasoningLevel
       ? { reasoningLevel: args.options.reasoningLevel }

@@ -82,6 +82,44 @@ describe("provider registry", () => {
     });
   });
 
+  it.each([
+    { providerId: "claude-code", prefix: "claude-code" },
+    { providerId: "acp-cursor", prefix: "acp-" },
+  ])(
+    "carries environment write roots to the $providerId bridge via provider options",
+    ({ providerId, prefix }) => {
+      const provider = createProviderForId(providerId, {
+        additionalWorkspaceWriteRoots: ["/extra-root"],
+        bridgeProtocolProviderPrefixes: [prefix],
+      });
+      const plan = provider.buildCommandPlan({
+        type: "thread/start",
+        threadId: "thread-1",
+        cwd: "/workspace",
+        options: {
+          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+          workflowsEnabled: false,
+          permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
+          permissionEscalation: null,
+        },
+        instructionMode: "append",
+      });
+      expect(plan).toMatchObject({
+        kind: "request",
+        method: "thread/start",
+        params: {
+          options: {
+            providerOptions: {
+              additionalWorkspaceWriteRoots: ["/extra-root"],
+            },
+          },
+        },
+      });
+    },
+  );
+
   it("creates claude-code provider with expected process config", () => {
     const provider = createProviderForId("claude-code");
     expect(provider.id).toBe("claude-code");

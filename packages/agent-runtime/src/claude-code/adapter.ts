@@ -11,7 +11,6 @@
 
 import { getBuiltInAgentProviderInfo } from "@bb/agent-providers";
 import type { PromptInput } from "@bb/domain";
-import { removeCommandMentionsFromPromptInput } from "@bb/domain";
 import { resolveBridgeProcessArgs } from "../shared/bridge-path.js";
 import { createStandardAdapterMembers } from "../shared/standard-adapter-members.js";
 import { finishOpenProviderTurn } from "../shared/turn-state.js";
@@ -38,7 +37,10 @@ import {
   buildClaudeInteractiveResponse,
   buildClaudeUserQuestionPayload,
 } from "./interactions.js";
-import { buildClaudeSessionParams } from "./session-params.js";
+import {
+  buildClaudeSessionParams,
+  stripClaudePlanCommandMentions,
+} from "./session-params.js";
 import {
   buildInterruptedClaudeTaskEvents,
   hasOpenClaudeBackgroundTasks,
@@ -52,12 +54,9 @@ function stripClaudePlanCommandInput(
   input: readonly PromptInput[],
   options: ProviderExecutionContext,
 ): PromptInput[] {
-  if (options.claudeCodePermissionMode !== "plan") {
-    return [...input];
-  }
-  return removeCommandMentionsFromPromptInput(input, {
-    trigger: "/",
-    name: "plan",
+  return stripClaudePlanCommandMentions({
+    input,
+    claudeCodePermissionMode: options.claudeCodePermissionMode,
   });
 }
 

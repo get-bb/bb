@@ -1669,6 +1669,68 @@ describe("acp bridge", () => {
     }
   });
 
+  // The canonical wire has no core field for the daemon's extra write roots;
+  // they ride the provider-scoped options bag. Without them a canonical
+  // accept-edits session sandboxes to cwd alone and denies writes the legacy
+  // dialect allowed (thread storage, a second workspace root).
+  it("allows canonical accept-edits writes into a configured extra write root", async () => {
+    const outsideDir = mkdtempSync(join(tmpdir(), "bb-acp-extra-root-"));
+    const targetPath = join(outsideDir, "outside.txt");
+    try {
+      const threadId = "thread-canonical-extra-root";
+      const startId = sendRequest("thread/start", {
+        threadId,
+        cwd: workspaceDir,
+        instructionMode: "append",
+        options: {
+          envVars: { FAKE_ACP_WRITE_PATH: targetPath },
+          permissionMode: "accept-edits",
+          permissionScope: "workspace",
+          approvalReviewer: "user",
+          permissionEscalation: "ask",
+          providerOptions: {
+            additionalWorkspaceWriteRoots: [outsideDir],
+            acpLaunchSpec: {
+              displayName: "Fake ACP Agent",
+              command: process.execPath,
+              args: [FAKE_AGENT_PATH],
+              env: {},
+            },
+          },
+        },
+      });
+      const startResponse = await waitForResponse(startId);
+      expect(startResponse.error).toBeUndefined();
+      const providerThreadId =
+        typeof startResponse.result === "object" &&
+        startResponse.result !== null &&
+        !Array.isArray(startResponse.result) &&
+        typeof startResponse.result.providerThreadId === "string"
+          ? startResponse.result.providerThreadId
+          : "";
+      startedProviderThreadIds.push(providerThreadId);
+
+      const turnId = sendRequest("turn/start", {
+        threadId,
+        providerThreadId,
+        clientRequestId: "creq_abcdefghjk",
+        input: [{ type: "text", text: "write-file", mentions: [] }],
+        options: {
+          permissionMode: "accept-edits",
+          permissionScope: "workspace",
+          approvalReviewer: "user",
+          permissionEscalation: "ask",
+        },
+      });
+      await waitForResponse(turnId);
+      await waitForFileWithRealTimer(targetPath);
+
+      expect(readFileSync(targetPath, "utf8")).toBe("hello from agent\n");
+    } finally {
+      rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+
   it("cancels a hung prompt and continues the same turn with steer input", async () => {
     const { bbThreadId, providerThreadId } = await startThread();
     const turnId = sendRequest("turn/start", {

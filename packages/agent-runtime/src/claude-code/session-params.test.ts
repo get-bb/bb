@@ -85,6 +85,39 @@ describe("buildClaudeCanonicalSessionParams", () => {
     );
   });
 
+  // The daemon's environment-level extra write roots have no core canonical
+  // field; they ride the providerOptions bag. Losing them silently narrows a
+  // canonical workspace-scope session to cwd alone.
+  it("passes the daemon's extra workspace write roots from the providerOptions bag", () => {
+    const shared = {
+      threadId: "thread-1",
+      cwd: "/tmp/worktree",
+      instructionMode: "append" as const,
+    };
+    const additionalWorkspaceWriteRoots = ["/tmp/thread-storage"];
+    const canonical = buildClaudeCanonicalSessionParams({
+      ...shared,
+      options: {
+        ...toCanonicalWireOptions(EXECUTION_CONTEXT),
+        providerOptions: {
+          ...toCanonicalWireOptions(EXECUTION_CONTEXT).providerOptions,
+          additionalWorkspaceWriteRoots,
+        },
+      },
+    });
+
+    expect(canonical.additionalWorkspaceWriteRoots).toEqual(
+      additionalWorkspaceWriteRoots,
+    );
+    expect(canonical).toEqual(
+      buildClaudeSessionParams({
+        ...shared,
+        additionalWorkspaceWriteRoots,
+        options: EXECUTION_CONTEXT,
+      }),
+    );
+  });
+
   it("falls back to provider defaults when the providerOptions bag is absent", () => {
     const params = buildClaudeCanonicalSessionParams({
       threadId: "thread-1",
@@ -111,7 +144,7 @@ describe("buildClaudeCanonicalTurnParams", () => {
     const params = buildClaudeCanonicalTurnParams({
       threadId: "thread-1",
       providerThreadId: "provider-1",
-      input: [{ type: "text", text: "hi" }],
+      input: [{ type: "text", text: "hi", mentions: [] }],
       options: {
         permissionMode: "full",
         permissionScope: "full",
@@ -123,5 +156,47 @@ describe("buildClaudeCanonicalTurnParams", () => {
     expect(params.memoryEnabled).toBeUndefined();
     expect(params.providerSubagentsEnabled).toBeUndefined();
     expect(params.permissionEscalation).toBeNull();
+  });
+
+  // Plan mode rides the session options; a literal "/plan" left in the prompt
+  // would reach the CLI as a second, redundant command. The legacy adapter
+  // strips it, so the canonical path must too.
+  it("strips the /plan command mention that opened plan mode", () => {
+    const params = buildClaudeCanonicalTurnParams({
+      threadId: "thread-1",
+      providerThreadId: "provider-1",
+      input: [
+        {
+          type: "text",
+          text: "/plan inspect the failing test",
+          mentions: [
+            {
+              start: 0,
+              end: 5,
+              resource: {
+                kind: "command",
+                trigger: "/",
+                name: "plan",
+                source: "command",
+                origin: "user",
+                label: "plan",
+                argumentHint: null,
+              },
+            },
+          ],
+        },
+      ],
+      options: {
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+        providerOptions: { claudeCodePermissionMode: "plan" },
+      },
+    });
+
+    expect(params.input).toEqual([
+      { type: "text", text: "inspect the failing test", mentions: [] },
+    ]);
   });
 });

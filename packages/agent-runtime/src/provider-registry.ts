@@ -171,6 +171,8 @@ function createBridgeProtocolAdapterForId(
   }
   if (providerId === "claude-code") {
     const info = getBuiltInAgentProviderInfo("claude-code");
+    const additionalWorkspaceWriteRoots =
+      options.additionalWorkspaceWriteRoots ?? [];
     return createBridgeProtocolAdapter({
       id: providerId,
       displayName: info.displayName,
@@ -187,6 +189,17 @@ function createBridgeProtocolAdapterForId(
           ? { env: options.bridgeNodeEnv }
           : {}),
       },
+      // Same delivery as codex: the canonical wire has no core field for
+      // environment-level extra write roots, so they ride the provider-scoped
+      // options bag and reach session construction exactly as the legacy
+      // adapter delivered them.
+      ...(additionalWorkspaceWriteRoots.length > 0
+        ? {
+            staticProviderOptions: {
+              additionalWorkspaceWriteRoots: [...additionalWorkspaceWriteRoots],
+            },
+          }
+        : {}),
     });
   }
   if (providerId === "pi") {
@@ -236,10 +249,32 @@ function createBridgeProtocolAdapterForId(
         ? { env: options.bridgeNodeEnv }
         : {}),
     },
-    ...(options.acpLaunchSpec !== undefined
-      ? { staticProviderOptions: { acpLaunchSpec: options.acpLaunchSpec } }
-      : {}),
+    ...buildAcpStaticProviderOptions(options),
   });
+}
+
+/**
+ * The ACP bridge's provider-scoped statics: the launch spec it constructs the
+ * agent from, plus the environment-level extra write roots (no core canonical
+ * field exists for either), so canonical sessions sandbox the same roots the
+ * legacy adapter passed at construction.
+ */
+function buildAcpStaticProviderOptions(
+  options: ProviderAdapterFactoryOptions,
+): { staticProviderOptions?: Record<string, unknown> } {
+  const additionalWorkspaceWriteRoots =
+    options.additionalWorkspaceWriteRoots ?? [];
+  const staticProviderOptions = {
+    ...(options.acpLaunchSpec !== undefined
+      ? { acpLaunchSpec: options.acpLaunchSpec }
+      : {}),
+    ...(additionalWorkspaceWriteRoots.length > 0
+      ? { additionalWorkspaceWriteRoots: [...additionalWorkspaceWriteRoots] }
+      : {}),
+  };
+  return Object.keys(staticProviderOptions).length > 0
+    ? { staticProviderOptions }
+    : {};
 }
 
 export function createProviderForId(
