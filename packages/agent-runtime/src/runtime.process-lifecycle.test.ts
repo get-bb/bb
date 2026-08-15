@@ -447,6 +447,84 @@ rl.on("line", (line) => {
     await runtime.shutdown();
   });
 
+  // A plugin update changes the bridge artifact hash, which is part of the
+  // process key, so the new artifact spawns a fresh process. Nothing releases
+  // a threadless model-list/maintenance process, so without retirement every
+  // superseded artifact leaks a node process until daemon shutdown.
+  it("retires a threadless bridge process superseded by a new artifact hash", async () => {
+    const manager = createProviderProcessManager({
+      onProcessExit: vi.fn(),
+      scriptPath,
+      workspacePath: tmpDir,
+    });
+
+    const staleKey = "fake#bridge:aaaaaaaaaaaaaaaa";
+    const freshKey = "fake#bridge:bbbbbbbbbbbbbbbb";
+    await manager.ensureProvider({
+      processKey: staleKey,
+      providerId: "fake",
+    });
+    const staleProcess = manager.requireProviderProcess({
+      processKey: staleKey,
+      providerId: "fake",
+    });
+
+    await manager.ensureProvider({
+      processKey: freshKey,
+      providerId: "fake",
+    });
+
+    expect(staleProcess.child.killed).toBe(true);
+    expect(() =>
+      manager.requireProviderProcess({
+        processKey: staleKey,
+        providerId: "fake",
+      }),
+    ).toThrow();
+    expect(
+      manager.requireProviderProcess({
+        processKey: freshKey,
+        providerId: "fake",
+      }).child.killed,
+    ).toBe(false);
+
+    await manager.shutdown();
+  });
+
+  it("keeps an old-hash bridge process that still owns a thread", async () => {
+    const manager = createProviderProcessManager({
+      onProcessExit: vi.fn(),
+      scriptPath,
+      workspacePath: tmpDir,
+    });
+
+    const staleKey = "fake#bridge:aaaaaaaaaaaaaaaa";
+    await manager.ensureProvider({
+      processKey: staleKey,
+      providerId: "fake",
+    });
+    const staleProcess = manager.requireProviderProcess({
+      processKey: staleKey,
+      providerId: "fake",
+    });
+    staleProcess.identity.threadIds.add("thread-live");
+
+    await manager.ensureProvider({
+      processKey: "fake#bridge:bbbbbbbbbbbbbbbb",
+      providerId: "fake",
+    });
+
+    expect(staleProcess.child.killed).toBe(false);
+    expect(
+      manager.requireProviderProcess({
+        processKey: staleKey,
+        providerId: "fake",
+      }),
+    ).toBe(staleProcess);
+
+    await manager.shutdown();
+  });
+
   it("bounds provider stderr while data arrives without a newline", async () => {
     const exitInfo = vi.fn<NonNullable<AgentRuntimeOptions["onProcessExit"]>>();
     const stderrLines: string[] = [];

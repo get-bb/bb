@@ -128,6 +128,42 @@ interface ProviderProcessExitedErrorArgs {
 const PROVIDER_STDERR_TAIL_MAX_BYTES = 4_000;
 const PROVIDER_PROCESS_CLOSE_GRACE_MS = 1_000;
 
+const BRIDGE_PROCESS_KEY_MARKER = "#bridge:";
+
+interface BridgeProcessKeyParts {
+  /** Everything before the artifact hash (provider id, thread-scoped prefix). */
+  base: string;
+  /** The plugin artifact hash the process was spawned from. */
+  hash: string;
+  /** Any launch-fingerprint suffix that follows the hash (e.g. `#acp:…`). */
+  suffix: string;
+}
+
+/**
+ * Split a plugin-bridge process key into the parts that identify the same
+ * provider configuration (`base` + `suffix`) and the artifact it was spawned
+ * from (`hash`). Non-bridge keys return null.
+ */
+function parseBridgeProcessKey(
+  processKey: string,
+): BridgeProcessKeyParts | null {
+  const markerIndex = processKey.indexOf(BRIDGE_PROCESS_KEY_MARKER);
+  if (markerIndex === -1) {
+    return null;
+  }
+  const base = processKey.slice(0, markerIndex);
+  const rest = processKey.slice(markerIndex + BRIDGE_PROCESS_KEY_MARKER.length);
+  const suffixIndex = rest.indexOf("#");
+  if (suffixIndex === -1) {
+    return { base, hash: rest, suffix: "" };
+  }
+  return {
+    base,
+    hash: rest.slice(0, suffixIndex),
+    suffix: rest.slice(suffixIndex),
+  };
+}
+
 function createAdapterTurnIdPrefix(): string {
   const adapterId = randomUUID().replaceAll("-", "").slice(0, 16);
   return `turn_${adapterId}_`;
@@ -265,6 +301,46 @@ export class RuntimeProviderProcessManager {
       if (this.providerStarting.get(args.processKey) === startPromise) {
         this.providerStarting.delete(args.processKey);
       }
+    }
+    await this.retireStaleBridgeProcesses(args);
+  }
+
+  /**
+   * A plugin update changes the bridge artifact hash, which is part of the
+   * process key, so the new artifact spawns a fresh process beside the old
+   * one. Threads keep their process until they are released, but a process
+   * that owns no thread (model listing, maintenance) has nothing left to
+   * retire it — it would leak one node process per superseded artifact until
+   * daemon shutdown. Retire those here.
+   */
+  private async retireStaleBridgeProcesses(
+    args: EnsureRuntimeProviderArgs,
+  ): Promise<void> {
+    const current = parseBridgeProcessKey(args.processKey);
+    if (current === null) {
+      return;
+    }
+    const staleKeys = [...this.processes.entries()]
+      .filter(([processKey, providerProcess]) => {
+        if (
+          processKey === args.processKey ||
+          providerProcess.providerId !== args.providerId ||
+          providerProcess.identity.threadIds.size > 0
+        ) {
+          return false;
+        }
+        const other = parseBridgeProcessKey(processKey);
+        return (
+          other !== null &&
+          other.base === current.base &&
+          other.suffix === current.suffix &&
+          other.hash !== current.hash
+        );
+      })
+      .map(([processKey]) => processKey);
+
+    for (const processKey of staleKeys) {
+      await this.shutdownProvider({ processKey, providerId: args.providerId });
     }
   }
 
