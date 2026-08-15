@@ -1,9 +1,9 @@
 // Generates the self-contained `.d.ts` bundles that `bb plugin new` ships into
 // a scaffolded plugin's `types/` directory, so authors get real BbPluginApi /
-// @bb/plugin-sdk/app types WITHOUT the (unpublished) @bb/* workspace packages
+// @get-bb/plugin-sdk/app types WITHOUT the (unpublished) @bb/* workspace packages
 // on disk.
 //
-// rollup-plugin-dts flattens @bb/plugin-sdk's own contracts plus every @bb/*
+// rollup-plugin-dts flattens @get-bb/plugin-sdk's own contracts plus every @bb/*
 // type it references (BbSdk, PromptInput, ThreadResponse, …) into the root
 // file. Testing subpaths reuse that already-portable root declaration through
 // the package's own public name instead of flattening the same contracts a
@@ -36,6 +36,10 @@ const outputs = {
     pkgRoot,
     "src/internal/composer-view.ts",
   ),
+  "bb-plugin-sdk-internal-host-policy.d.ts": path.join(
+    pkgRoot,
+    "src/internal/host-policy.ts",
+  ),
   "bb-plugin-sdk-testing.d.ts": path.join(pkgRoot, "src/testing/index.ts"),
   "bb-plugin-sdk-testing-app.d.ts": path.join(pkgRoot, "src/testing/app.tsx"),
 };
@@ -43,7 +47,7 @@ const outputs = {
 // Real npm packages the bundle imports from — kept external so they resolve
 // from the scaffold's devDependencies rather than being inlined.
 const EXTERNAL = [
-  /^@bb\/plugin-sdk$/,
+  /^@get-bb\/plugin-sdk$/,
   /^@testing-library\/react($|\/)/,
   /^better-sqlite3/,
   /^hono($|\/)/,
@@ -104,7 +108,7 @@ async function bundle(input) {
 }
 
 const HEADER = [
-  "// Portable type declarations for `@bb/plugin-sdk`. Unpublished BB",
+  "// Portable type declarations for `@get-bb/plugin-sdk`. Unpublished BB",
   "// workspace contracts are flattened; public subpaths may reuse the",
   "// package root without requiring any other @bb/* package.",
   "//",
@@ -148,7 +152,7 @@ for (const [fileName, content] of Object.entries(generated)) {
   if (check) {
     if (!unchanged) {
       console.error(
-        `bundled-types/${fileName} is stale. Run \`pnpm --filter @bb/plugin-sdk build\`.`,
+        `bundled-types/${fileName} is stale. Run \`pnpm --filter @get-bb/plugin-sdk build\`.`,
       );
       stale = true;
     }

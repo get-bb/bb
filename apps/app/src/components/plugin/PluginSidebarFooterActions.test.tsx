@@ -13,7 +13,6 @@ import {
   resetPluginLogoStoreForTest,
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
-import { ToolsHubExperimentProvider } from "@/components/tools/tools-experiment-context";
 import { PluginSidebarFooterActions } from "./PluginSidebarFooterActions";
 
 function registrationSet(
@@ -32,18 +31,22 @@ function registrationSet(
 }
 
 function LocationProbe() {
-  return <output aria-label="Current path">{useLocation().pathname}</output>;
+  const location = useLocation();
+  return (
+    <output aria-label="Current path">
+      {location.pathname}
+      {location.hash}
+    </output>
+  );
 }
 
-function renderWithProviders(ui: ReactNode, toolsHubEnabled = false) {
+function renderWithProviders(ui: ReactNode) {
   return render(
     <MemoryRouter>
-      <ToolsHubExperimentProvider enabled={toolsHubEnabled}>
-        <SidebarProvider>
-          {ui}
-          <LocationProbe />
-        </SidebarProvider>
-      </ToolsHubExperimentProvider>
+      <SidebarProvider>
+        {ui}
+        <LocationProbe />
+      </SidebarProvider>
     </MemoryRouter>,
   );
 }
@@ -118,29 +121,26 @@ describe("PluginSidebarFooterActions", () => {
     );
   });
 
-  it.each([false, true] as const)(
-    "opens Settings with Tools Hub set to %s",
-    (toolsHubEnabled) => {
-      setPluginSlotRegistrations(
-        "remote",
-        registrationSet({
-          sidebarFooterActions: [
-            {
-              id: "settings",
-              title: "Remote settings",
-              icon: "Settings",
-              run: ({ openSettings }) => openSettings(),
-            },
-          ],
-        }),
-      );
+  it("opens plugin Settings", () => {
+    setPluginSlotRegistrations(
+      "remote",
+      registrationSet({
+        sidebarFooterActions: [
+          {
+            id: "settings",
+            title: "Remote settings",
+            icon: "Settings",
+            run: ({ openSettings }) => openSettings(),
+          },
+        ],
+      }),
+    );
 
-      renderWithProviders(<PluginSidebarFooterActions />, toolsHubEnabled);
-      fireEvent.click(screen.getByRole("button", { name: "Remote settings" }));
+    renderWithProviders(<PluginSidebarFooterActions />);
+    fireEvent.click(screen.getByRole("button", { name: "Remote settings" }));
 
-      expect(screen.getByLabelText("Current path").textContent).toBe(
-        "/settings/plugins/remote",
-      );
-    },
-  );
+    expect(screen.getByLabelText("Current path").textContent).toBe(
+      "/settings/plugins/remote",
+    );
+  });
 });

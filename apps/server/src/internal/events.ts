@@ -211,6 +211,7 @@ function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
     case "thread/started":
     case "client/thread/start":
     case "client/turn/requested":
+    case "client/turn/rejected":
     case "client/turn/start":
     case "system/error":
     case "system/manager/user_message":
@@ -228,6 +229,8 @@ function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
     case "provider/rateLimits/updated":
       return { providerThreadId: event.providerThreadId };
     case "thread/compacted":
+      return { providerThreadId: event.providerThreadId };
+    case "thread/context/cleared":
       return { providerThreadId: event.providerThreadId };
     case "thread/goal/updated":
     case "thread/goal/cleared":

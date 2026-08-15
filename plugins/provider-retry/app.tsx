@@ -5,7 +5,7 @@ import {
   useRealtime,
   useRealtimeConnectionState,
   useRpc,
-} from "@bb/plugin-sdk/app";
+} from "@get-bb/plugin-sdk/app";
 import { ProviderRetryBannerView } from "./banner.js";
 import type {
   providerRetryRpcContract,

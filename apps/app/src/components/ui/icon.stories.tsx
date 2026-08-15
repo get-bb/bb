@@ -38,7 +38,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   ChevronsUp: "Git diff toolbar expand-all",
   Circle: "Radio item indicator in menus",
   CircleCheck: "Auth callback success state",
-  CircleDashed: "Child-thread busy section indicator",
+  CircleDashed: "Dashed status circle",
   CircleQuestion: "Thread needs user input and timeline question rows",
   CircleX: "Auth callback failure state",
   ClosePluginPane: "Close a split pane containing a plugin surface",
@@ -100,7 +100,8 @@ const USAGE: Partial<Record<IconName, string>> = {
   Square: "Stop button while running, in-progress and pending todo glyphs",
   TextWrap: "Line-wrap toggle for diff cards and source file previews",
   Trash2: "Delete queued message, remove project source",
-  UserRound: "Parent-thread indicator in sidebar and prompt banner",
+  UserRound:
+    "Thread mentions, parent-thread indicators, and active child-thread banner",
   UserRoundPlus: "unused legacy parent-action icon",
   Workflow: "Workflow card indicator in the prompt stack",
   X: "Close dialogs/drawers, clear search input, remove attachment, close metadata panel",

@@ -36,6 +36,32 @@ vi.mock("@/hooks/queries/system-queries", () => ({
       generalSettings: { ...defaultAppSettings },
       keybindings: [
         {
+          command: "thread.previous" as const,
+          desktopOnly: false,
+          shortcut: {
+            key: "ArrowUp",
+            mod: true,
+            meta: false,
+            control: false,
+            alt: false,
+            shift: true,
+          },
+          when: { all: ["mainSurface" as const], none: [] },
+        },
+        {
+          command: "thread.next" as const,
+          desktopOnly: false,
+          shortcut: {
+            key: "ArrowDown",
+            mod: true,
+            meta: false,
+            control: false,
+            alt: false,
+            shift: true,
+          },
+          when: { all: ["mainSurface" as const], none: [] },
+        },
+        {
           command: "sidebar.toggle" as const,
           desktopOnly: false,
           shortcut: testState.sidebarShortcut,
@@ -59,6 +85,18 @@ function SidebarToggleHandler() {
   useAppCommandHandler("sidebar.toggle", () => {
     testState.calls.push("sidebar.toggle");
     return testState.sidebarHandlerResult;
+  });
+  return null;
+}
+
+function ThreadNavigationHandlers() {
+  useAppCommandHandler("thread.previous", () => {
+    testState.calls.push("thread.previous");
+    return true;
+  });
+  useAppCommandHandler("thread.next", () => {
+    testState.calls.push("thread.next");
+    return true;
   });
   return null;
 }
@@ -117,6 +155,7 @@ function pressInEditor(
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   testState.calls.length = 0;
   testState.composerInputLocked = false;
   testState.sidebarHandlerResult = true;
@@ -131,6 +170,24 @@ afterEach(() => {
 });
 
 describe("prompt editor app shortcuts", () => {
+  it.each([
+    ["ArrowUp", "thread.previous"],
+    ["ArrowDown", "thread.next"],
+  ])("runs the configured Meta+Shift+%s app shortcut", (key, command) => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    const editor = renderComposer(<ThreadNavigationHandlers />);
+
+    const event = pressInEditor(editor, {
+      key,
+      metaKey: true,
+      shiftKey: true,
+    });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(testState.calls).toEqual([command]);
+    expect(document.activeElement).toBe(editor);
+  });
+
   it("runs the sidebar shortcut while the composer has focus", () => {
     const editor = renderComposer();
 

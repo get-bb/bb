@@ -37,14 +37,14 @@ export const toolUseBlockSchema = z.object({
   input: z.unknown(),
 });
 
-export const claudeToolUseProcessResultSchema = z
+const claudeToolUseProcessResultSchema = z
   .object({
     stdout: z.string().optional(),
     stderr: z.string().optional(),
   })
   .passthrough();
 
-export const claudeToolUseResultSchema = z.union([
+const claudeToolUseResultSchema = z.union([
   claudeToolUseProcessResultSchema,
   z.string(),
 ]);
@@ -127,7 +127,7 @@ export const streamEventSchema = z.union([
   contentBlockStartSchema,
 ]);
 
-export const claudeAssistantMessageErrorSchema = z.enum([
+const claudeAssistantMessageErrorSchema = z.enum([
   "authentication_failed",
   "oauth_org_not_allowed",
   "billing_error",
@@ -146,12 +146,19 @@ export const claudeSdkMessageTypeSchema = z
   .object({
     type: z.enum([
       "assistant",
+      "conversation_reset",
       "rate_limit_event",
       "result",
       "stream_event",
       "system",
       "user",
     ]),
+  })
+  .passthrough();
+
+export const claudeConversationResetMessageSchema = z
+  .object({
+    type: z.literal("conversation_reset"),
   })
   .passthrough();
 
@@ -380,7 +387,7 @@ export const claudeUserMessageSchema = z
   .passthrough();
 export type ClaudeUserMessage = z.infer<typeof claudeUserMessageSchema>;
 
-export const claudeResultSubtypeSchema = z.enum([
+const claudeResultSubtypeSchema = z.enum([
   "success",
   "error_during_execution",
   "error_max_turns",

@@ -15,7 +15,7 @@ import type {
   ThreadRuntimeDisplayStatus,
   ThreadTimelineActivePromptMode,
 } from "@bb/domain";
-import type { ComposerView, PluginComposerScope } from "@bb/plugin-sdk";
+import type { ComposerView, PluginComposerScope } from "@get-bb/plugin-sdk";
 import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { PluginComposerBanners } from "@/components/plugin/PluginComposerBanners";
 import {
@@ -286,7 +286,7 @@ function FollowUpPromptBoxStackOnly({
     <PluginComposerViewProvider value={composerView}>
       <PluginComposerHostProvider value={pluginComposerHost ?? null}>
         <div data-promptbox-shell="" className="space-y-2">
-          <div className="space-y-2">
+          <div className="grid gap-2">
             {composerScope ? <PluginComposerBanners /> : null}
             {stack}
           </div>
@@ -701,6 +701,7 @@ function FollowUpPromptBoxWithComposer({
         mentionRanges={composer.mentionRanges}
         onChange={composer.onChangeMessage}
         onSubmit={onPrimarySubmit}
+        blurOnPointerSubmit={isCompactViewport && isPointerCoarse}
         textEffects={textEffects}
         onComposerLayoutChange={setComposerLayout}
         scrollToBottomOnSubmit={
@@ -793,7 +794,7 @@ function FollowUpPromptBoxWithComposer({
             data-promptbox-shell=""
             className="space-y-2"
           >
-            <div ref={stackRef} className="space-y-2">
+            <div ref={stackRef} className="grid gap-2">
               {composerScope ? <PluginComposerBanners /> : null}
               {stack}
             </div>

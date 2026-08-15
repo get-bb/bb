@@ -169,14 +169,6 @@ export type PullRequestMergeMethod = z.infer<
   typeof pullRequestMergeMethodSchema
 >;
 
-export const environmentActionTypeSchema = z.enum([
-  "commit",
-  "squash_merge",
-  "pull_request_ready",
-  "pull_request_merge",
-  "pull_request_draft",
-]);
-
 export const squashMergeOptionsSchema = z
   .object({
     mergeBaseBranch: gitBranchNameSchema,
@@ -465,7 +457,7 @@ export const diffFileEntrySchema = z.object({
   binary: z.boolean(),
   /**
    * Whether the entry originates from an untracked working-tree file. Drives
-   * the daemon's patch invocation (untracked files need the `--no-index` form).
+   * the daemon's alternate-index patch handling.
    */
   origin: z.enum(["tracked", "untracked"]),
   /** Server-computed tiering decision. */
@@ -482,18 +474,6 @@ export const diffPatchEntrySchema = z.object({
 });
 export type DiffPatchEntry = z.infer<typeof diffPatchEntrySchema>;
 
-// `too_many_files` is specific to the diff table of contents: the server
-// declines to enumerate a diff whose TOC exceeds the server's `DIFF_FILES_MAX_COUNT`
-// entry cap. `/status` and `/diff` never produce it, so it stays off the shared
-// `environmentWorkspaceNotApplicableReasonSchema`.
-const diffFilesNotApplicableOutcomeSchema = z
-  .object({
-    outcome: z.literal("not_applicable"),
-    reason: z.enum(["non_git_environment", "too_many_files"]),
-    message: z.string().min(1),
-  })
-  .strict();
-
 export const environmentDiffFilesResponseSchema = z.discriminatedUnion(
   "outcome",
   [
@@ -501,6 +481,8 @@ export const environmentDiffFilesResponseSchema = z.discriminatedUnion(
       .object({
         outcome: z.literal("available"),
         files: z.array(diffFileEntrySchema),
+        /** True when the response contains only the bounded leading file slice. */
+        truncated: z.boolean(),
         shortstat: z.string(),
         /** Required + nullable: null = no merge-base for the current target. */
         mergeBaseRef: z.string().nullable(),
@@ -514,7 +496,7 @@ export const environmentDiffFilesResponseSchema = z.discriminatedUnion(
         initialPatches: z.array(diffPatchEntrySchema),
       })
       .strict(),
-    diffFilesNotApplicableOutcomeSchema,
+    environmentWorkspaceNotApplicableOutcomeSchema,
     z
       .object({
         outcome: z.literal("unavailable"),

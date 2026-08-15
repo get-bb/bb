@@ -1,4 +1,5 @@
 import {
+  blob,
   check,
   index,
   integer,
@@ -10,10 +11,7 @@ import {
 import { sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { threadStatusValues } from "@bb/domain/thread-status";
-import {
-  threadChildOriginValues,
-  threadOriginKindValues,
-} from "@bb/domain/thread-child-origin";
+import { threadOriginKindValues } from "@bb/domain/thread-origin-kind";
 import { threadVisibilityValues } from "@bb/domain/thread-visibility";
 import type {
   EnvironmentStatus,
@@ -218,6 +216,8 @@ export const installedPlugins = sqliteTable("plugins", {
     .notNull()
     .default("direct"),
   catalogEntryId: text("catalog_entry_id"),
+  /** Marketplace that listed the entry; non-null exactly for catalog rows. */
+  catalogMarketplaceName: text("catalog_marketplace_name"),
   sourceKind: text("source_kind", {
     enum: ["path", "builtin", "npm", "git"],
   })
@@ -233,10 +233,18 @@ export const installedPlugins = sqliteTable("plugins", {
   }),
   sourceGitUrl: text("source_git_url"),
   sourceGitSubdirectory: text("source_git_subdirectory"),
+  // A git source names either one ref or a semver range over release tags.
+  // The ref pair is null for a range install and the range trio is null for a
+  // ref install; exactly one pair is set.
   sourceGitRequestedRef: text("source_git_requested_ref"),
   sourceGitRefKind: text("source_git_ref_kind", {
     enum: ["branch", "tag", "commit"],
   }),
+  sourceGitRange: text("source_git_range"),
+  /** "" means repository-wide `vX.Y.Z` tags; a prefix versions one plugin. */
+  sourceGitTagPrefix: text("source_git_tag_prefix"),
+  /** Tag the range resolved to; `git_resolved_commit` is what it pointed at. */
+  sourceGitResolvedTag: text("source_git_resolved_tag"),
   npmResolvedVersion: text("npm_resolved_version"),
   npmIntegrity: text("npm_integrity"),
   gitResolvedCommit: text("git_resolved_commit"),
@@ -276,6 +284,13 @@ export const pluginArtifacts = sqliteTable(
     sourceKind: text("source_kind", { enum: ["npm", "git"] }).notNull(),
     npmResolvedVersion: text("npm_resolved_version"),
     gitResolvedCommit: text("git_resolved_commit"),
+    /**
+     * Directory of the shared checkout that holds this git artifact. A
+     * multi-plugin repository keeps one checkout per commit, so `path` can be
+     * a nested plugin root below this value. Path parsing cannot recover it:
+     * a nested directory can carry the same name as the commit.
+     */
+    gitCheckoutRoot: text("git_checkout_root"),
     path: text("path").notNull(),
     integrity: text("integrity"),
     contentHash: text("content_hash"),
@@ -287,6 +302,57 @@ export const pluginArtifacts = sqliteTable(
     validatedAt: integer("validated_at"),
   },
   (table) => [index("plugin_artifacts_plugin_idx").on(table.pluginId)],
+);
+
+// Last-known-good marketplace catalogs, one row per marketplace name
+// ("bb-community" is reserved). The row holds the validated manifest document
+// plus the conditional-request validators the refresh loop replays. A failed
+// refresh updates only the attempt/error columns, so the stored manifest keeps
+// serving the store offline.
+export const pluginMarketplaces = sqliteTable("plugin_marketplaces", {
+  name: text("name").primaryKey(),
+  /** How bb reads the manifest: over HTTPS, from a git checkout, or from a directory. */
+  sourceKind: text("source_kind", { enum: ["https", "git", "path"] })
+    .notNull()
+    .default("https"),
+  /**
+   * Where the stored document came from: the manifest URL for an "https"
+   * marketplace, the clone URL for a "git" one, the absolute directory for a
+   * "path" one. An https marketplace resolves relative icon URLs against it.
+   */
+  manifestUrl: text("manifest_url").notNull(),
+  /** Requested git ref of a "git" marketplace; null for every other kind. */
+  sourceGitRef: text("source_git_ref"),
+  /** Commit the last successful "git" refresh read the manifest from. */
+  sourceGitCommit: text("source_git_commit"),
+  manifestJson: text("manifest_json").notNull(),
+  etag: text("etag"),
+  lastModified: text("last_modified"),
+  lastSuccessfulRefreshAt: integer("last_successful_refresh_at"),
+  lastAttemptedRefreshAt: integer("last_attempted_refresh_at"),
+  lastError: text("last_error"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+// Marketplace entry icons the server fetched and validated during a refresh.
+// The app renders these bytes from BB's own origin, so it never requests a
+// third-party URL.
+export const pluginMarketplaceIcons = sqliteTable(
+  "plugin_marketplace_icons",
+  {
+    marketplaceName: text("marketplace_name").notNull(),
+    entryId: text("entry_id").notNull(),
+    /** Absolute URL the bytes came from; a changed URL forces a refetch. */
+    sourceUrl: text("source_url").notNull(),
+    contentType: text("content_type").notNull(),
+    etag: text("etag"),
+    /** Content hash; the asset route uses it as the cache-busting token. */
+    contentHash: text("content_hash").notNull(),
+    bytes: blob("bytes", { mode: "buffer" }).notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.marketplaceName, table.entryId] })],
 );
 
 export const pluginStateSnapshots = sqliteTable(
@@ -511,11 +577,6 @@ export const threads = sqliteTable(
     ),
     originKind: text("origin_kind", {
       enum: threadOriginKindValues,
-    }),
-    // Deprecated compatibility column for older migrated data. New fork and
-    // side-chat provenance uses source_thread_id + origin_kind.
-    childOrigin: text("child_origin", {
-      enum: threadChildOriginValues,
     }),
     // Id of the plugin that spawned this thread (create origin "plugin").
     // NULL for every other origin.

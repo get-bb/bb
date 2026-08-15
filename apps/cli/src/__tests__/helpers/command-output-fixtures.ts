@@ -120,7 +120,6 @@ export function makeThread(overrides: MakeThreadArgs): Thread {
     parentThreadId: null,
     sourceThreadId: null,
     originKind: null,
-    childOrigin: null,
     originPluginId: null,
     visibility: "visible",
     archivedAt: null,

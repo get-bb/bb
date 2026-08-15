@@ -38,6 +38,7 @@ function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
     provenance: "direct",
     isOrphanedBuiltin: false,
     catalogEntryId: null,
+    publisherLabel: null,
     sourceDisplay: "npm · @bb-plugins/linear · pinned",
     updateState: EMPTY_PLUGIN_UPDATE_STATE,
     handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },

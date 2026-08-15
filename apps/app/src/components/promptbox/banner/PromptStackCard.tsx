@@ -11,14 +11,6 @@ export const PROMPT_STACK_INLAY_SEGMENT_CLASS = cn(
   "min-h-6 px-2 py-1",
   PROMPT_STACK_INLAY_RADIUS_CLASS,
 );
-// Compact inlays use a 2px inset. With an 8px parent radius, rounded-md keeps
-// the inner corner arc aligned at 6px without adding extra header height.
-export const PROMPT_STACK_COMPACT_INLAY_INSET_CLASS = "p-0.5";
-export const PROMPT_STACK_COMPACT_INLAY_SEGMENT_CLASS = cn(
-  "min-h-6 px-2 py-0.5",
-  "rounded-md",
-);
-
 const BASE_CHROME = cn(
   PROMPT_STACK_CARD_RADIUS_CLASS,
   "border border-border bg-surface-raised-solid",

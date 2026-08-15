@@ -223,9 +223,9 @@ export function useLocalOpenTargets(
     workspaceOpenTargets,
   } = useWorkspaceOpenTargets(args);
   const [preferredDirectoryTargetId, setPreferredDirectoryTargetId] =
-    useWorkspaceOpenTargetPreference();
+    useWorkspaceOpenTargetPreference(workspaceOpenTargets);
   const [preferredFileTargetId, setPreferredFileTargetId] =
-    useFileOpenTargetPreference();
+    useFileOpenTargetPreference(workspaceOpenTargets);
   const {
     directoryOpenTargets,
     fileOpenTargets,

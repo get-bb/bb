@@ -1,7 +1,7 @@
 import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import { getThreadEventScopeTurnId, turnScope } from "@bb/domain";
 import { createAgentRuntimeWithAdapters } from "./runtime.js";
@@ -309,6 +309,118 @@ rl.on("line", (line) => {
       }),
     ).rejects.toThrow(/No active session/);
 
+    expect(events.some((event) => event.type === "turn/input/accepted")).toBe(
+      false,
+    );
+
+    await runtime.shutdown();
+  });
+
+  it("maps a bridge no-active-turn error to a stale steer", async () => {
+    const events: ThreadEvent[] = [];
+    const clearActiveTurnState = vi.fn();
+    const staleSteerScriptPath = join(tmpDir, "stale-steer-provider.cjs");
+    writeFileSync(
+      staleSteerScriptPath,
+      `
+const readline = require("node:readline");
+function send(message) { process.stdout.write(JSON.stringify(message) + "\\n"); }
+const rl = readline.createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+  const message = JSON.parse(line);
+  if (message.method === "initialize") {
+    send({ jsonrpc: "2.0", id: message.id, result: { ok: true } });
+    return;
+  }
+  if (message.method === "thread/start") {
+    send({ jsonrpc: "2.0", id: message.id, result: { providerThreadId: "prov-thread-1" } });
+    send({
+      jsonrpc: "2.0",
+      method: "thread/identity",
+      params: { threadId: message.params.threadId, providerThreadId: "prov-thread-1" },
+    });
+    return;
+  }
+  if (message.method === "turn/start") {
+    send({ jsonrpc: "2.0", id: message.id, result: { ok: true } });
+    send({
+      jsonrpc: "2.0",
+      method: "turn/started",
+      params: {
+        threadId: message.params.threadId,
+        providerThreadId: "prov-thread-1",
+        turnId: "turn-1",
+      },
+    });
+    return;
+  }
+  if (message.method === "turn/steer") {
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      error: { code: -32001, message: "No active turn to steer" },
+    });
+  }
+});
+`,
+      "utf8",
+    );
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: (event) => events.push(event),
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: () => ({
+        ...createFakeAdapter({
+          id: "acp-cursor",
+          scriptPath: staleSteerScriptPath,
+        }),
+        clearActiveTurnState,
+      }),
+    });
+
+    await runtime.startThread({
+      environmentId: "env-1",
+      threadId: "t1",
+      projectId: "p1",
+      providerId: "acp-cursor",
+      options: fullRuntimeOptions,
+    });
+    await runtime.runTurn({
+      clientRequestId: "creq_222222222x",
+      threadId: "t1",
+      input: [promptTextInput({ text: "active turn" })],
+      options: fullRuntimeOptions,
+    });
+    await waitForThreadTurnStarted({
+      events,
+      providerId: "acp-cursor",
+      runtime,
+      threadId: "t1",
+      turnId: "turn-1",
+    });
+
+    await expect(
+      runtime.steerTurn({
+        clientRequestId: "creq_222222222y",
+        threadId: "t1",
+        expectedTurnId: "turn-1",
+        input: [promptTextInput({ text: "late steer" })],
+        options: fullRuntimeOptions,
+      }),
+    ).resolves.toEqual({ status: "stale", activeTurnId: null });
+    expect(clearActiveTurnState).toHaveBeenCalledWith("t1");
+    await expect(
+      runtime.steerTurn({
+        clientRequestId: "creq_222222222z",
+        threadId: "t1",
+        expectedTurnId: "turn-1",
+        input: [promptTextInput({ text: "still late" })],
+        options: fullRuntimeOptions,
+      }),
+    ).resolves.toEqual({ status: "stale", activeTurnId: null });
     expect(events.some((event) => event.type === "turn/input/accepted")).toBe(
       false,
     );

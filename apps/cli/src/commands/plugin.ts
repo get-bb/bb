@@ -1,7 +1,7 @@
 import { watch } from "node:fs";
 import { homedir } from "node:os";
 import { access, readFile, realpath } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import { Command } from "commander";
@@ -10,13 +10,23 @@ import { derivePluginId } from "@bb/domain";
 import type {
   InstalledPlugin as PluginEntry,
   PluginApplyUpdateResult,
+  PluginCatalogInstallPlan,
+  PluginCatalogResolvedSource,
   PluginCatalogSearchResult,
   PluginUpdateCheckEntry as PluginUpdateResult,
 } from "@bb/server-contract";
 import { installedPluginSchema } from "@bb/server-contract";
+import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import { BbHttpError } from "@bb/sdk";
 import { parseDataDirEnvValue, resolveProdDataDir } from "@bb/config/runtime";
-import { scaffoldPlugin, syncPluginTypes } from "@bb/templates/plugin-scaffold";
+import {
+  migratePluginToPackageLayout,
+  resolvePluginSdkLayout,
+  scaffoldPlugin,
+  setPluginSdkPin,
+  syncPluginTypes,
+  type PluginPackageLayoutMigration,
+} from "@bb/templates/plugin-scaffold";
 import { action } from "../action.js";
 import { cliFetch, createCliBbSdk } from "../client.js";
 import {
@@ -166,11 +176,24 @@ async function readPluginManifest(
  * typechecks against declarations older than the bb they run. A failure here
  * is reported and swallowed: a read-only or otherwise unwritable `types/`
  * must not fail a build.
+ *
+ * Plugins that resolve the SDK from npm (the layout `bb plugin new` writes)
+ * have no `types/` to refresh, and creating one would shadow the installed
+ * package — those return silently.
+ *
+ * A vendored plugin also gets a single line pointing at `bb plugin migrate`.
+ * The legacy layout keeps working, so this is a mention and never a prompt:
+ * build and dev each call this once per invocation.
  */
 async function refreshPluginTypes(
   rootDir: string,
   hasApp: boolean,
 ): Promise<void> {
+  const layout = await resolvePluginSdkLayout(rootDir);
+  if (layout.kind === "package") {
+    warnIfSdkPinIsStale(layout.pin);
+    return;
+  }
   let files: Awaited<ReturnType<typeof syncPluginTypes>>;
   try {
     files = await syncPluginTypes({ rootDir, app: hasApp });
@@ -181,10 +204,315 @@ async function refreshPluginTypes(
     return;
   }
   const written = files.filter((file) => file.outcome === "written");
-  if (written.length === 0) return;
+  if (written.length > 0) {
+    console.log(
+      `Refreshed SDK declarations: ${written.map((file) => file.path).join(", ")}`,
+    );
+  }
   console.log(
-    `Refreshed SDK declarations: ${written.map((file) => file.path).join(", ")}`,
+    "This plugin vendors types/ — `bb plugin migrate` switches it to the @get-bb/plugin-sdk npm package.",
   );
+}
+
+/**
+ * An exact `major.minor.patch[-prerelease]` version, as opposed to a range.
+ * Only an exact pin can be compared against the running host's SDK version
+ * without resolving semver: `^0.4.0` may well admit it.
+ */
+const EXACT_VERSION_PATTERN = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)*$/;
+
+/**
+ * Tell a package-layout author, once per `bb plugin build`/`dev`, that their
+ * pinned SDK declarations describe a different bb than the one they are
+ * running — the package-layout equivalent of the vendored refresh those
+ * commands do, which cannot happen automatically here because the fix is an
+ * `npm install`, not a file write.
+ *
+ * Only an exact pin earns the line. A range is left to `bb plugin types
+ * --check`: this is a build-time aside, and warning about a range the host
+ * already satisfies would be noise on every build.
+ */
+function warnIfSdkPinIsStale(pin: string | null): void {
+  if (pin === null || !EXACT_VERSION_PATTERN.test(pin)) return;
+  if (pin === PLUGIN_SDK_VERSION) return;
+  console.warn(
+    `This plugin pins @get-bb/plugin-sdk ${pin}; this bb's SDK is ${PLUGIN_SDK_VERSION} — \`bb plugin types\` updates the pin.`,
+  );
+}
+
+/**
+ * Print what `bb plugin migrate` would change, one line per edit.
+ *
+ * This is the consent gate's whole substance: the author sees every file the
+ * migration touches before answering, and the same plan text is what a
+ * non-interactive run prints before refusing.
+ */
+function printMigrationPlan(plan: PluginPackageLayoutMigration): void {
+  if (plan.pin !== null) {
+    console.log(
+      `  package.json   devDependencies "@get-bb/plugin-sdk": ${plan.pin.from ?? "(none)"} → ${plan.pin.to}`,
+    );
+  }
+  if (plan.movedFromDependencies) {
+    console.log(
+      '  package.json   move "@get-bb/plugin-sdk" from dependencies to devDependencies',
+    );
+  }
+  if (plan.enginesFloor !== null) {
+    console.log(
+      `  package.json   engines.bbPluginSdk: ${plan.enginesFloor.from ?? "(none)"} → ${plan.enginesFloor.to}`,
+    );
+  }
+  for (const key of plan.removedPathMaps) {
+    console.log(`  tsconfig.json  remove compilerOptions.paths "${key}"`);
+  }
+  for (const entry of plan.removedIncludes) {
+    console.log(`  tsconfig.json  remove include entry "${entry}"`);
+  }
+  for (const file of plan.deletedFiles) {
+    console.log(`  delete         ${file}`);
+  }
+  if (plan.removedTypesDir) {
+    console.log("  delete         types/ (empty after the deletions above)");
+  }
+  for (const file of plan.rewrittenImports) {
+    console.log(
+      `  rewrite        ${file.path} (${file.imports} import${file.imports === 1 ? "" : "s"} of "@bb/plugin-sdk" → "@get-bb/plugin-sdk")`,
+    );
+  }
+}
+
+/**
+ * Whether two dry-run plans describe the same edits. Field order is fixed by
+ * the transform and every value is JSON data, so a serialized comparison is
+ * the whole check.
+ */
+function samePlan(
+  approved: PluginPackageLayoutMigration,
+  current: PluginPackageLayoutMigration,
+): boolean {
+  return JSON.stringify(approved) === JSON.stringify(current);
+}
+
+/**
+ * Read the manifest of a directory the user named as a plugin, exiting with
+ * the reason when it is not one. Shared by the commands that operate on a
+ * plugin directory rather than an installed plugin (`types`, `migrate`,
+ * `dev`), so they reject the same directories with the same message.
+ */
+async function requirePluginManifest(
+  rootDir: string,
+): Promise<z.infer<typeof pluginManifestSchema>> {
+  const manifest = await readPluginManifest(rootDir);
+  if (!manifest) {
+    console.error(
+      `No readable package.json in ${rootDir} — run from a plugin directory or pass its path.`,
+    );
+    process.exit(1);
+  }
+  if (typeof manifest.bb?.server !== "string") {
+    console.error(
+      `${rootDir} is not a bb plugin — package.json has no "bb.server" entry.`,
+    );
+    process.exit(1);
+  }
+  return manifest;
+}
+
+/** The npm tree a generated scaffold declares — what its install must land. */
+const scaffoldPackageSchema = z.object({
+  dependencies: z.record(z.string(), z.string()).default({}),
+  devDependencies: z.record(z.string(), z.string()).default({}),
+});
+
+/**
+ * Why a scaffold's install cannot be trusted, or null when every declared
+ * package resolved.
+ *
+ * npm's exit code reports only that npm did what its resolved config told it
+ * to, so it stays 0 for an install that skipped packages the plugin needs to
+ * build — which is exactly the failure this guards (issue #1133).
+ */
+async function unresolvedScaffoldPackages(
+  targetDir: string,
+): Promise<string | null> {
+  let declared: string[];
+  try {
+    const manifest = scaffoldPackageSchema.parse(
+      JSON.parse(await readFile(join(targetDir, "package.json"), "utf8")),
+    );
+    declared = [
+      ...Object.keys(manifest.dependencies),
+      ...Object.keys(manifest.devDependencies),
+    ];
+  } catch {
+    return "the generated package.json could not be read back";
+  }
+  const missing: string[] = [];
+  for (const name of declared) {
+    if (!(await isPackageInstalled(targetDir, name))) {
+      missing.push(name);
+    }
+  }
+  return missing.length === 0
+    ? null
+    : `${missing.sort().join(", ")} missing from node_modules`;
+}
+
+/**
+ * Whether `name` resolves for a plugin at `targetDir`, following node's own
+ * lookup up the directory chain.
+ *
+ * Scaffolding inside an npm workspace makes npm install the whole workspace
+ * and hoist to its root, so the plugin's own node_modules can be legitimately
+ * empty. Checking only the plugin directory would report a healthy install as
+ * broken and send the author back to an `npm install` that hoists again.
+ */
+async function isPackageInstalled(
+  targetDir: string,
+  name: string,
+): Promise<boolean> {
+  const segments = name.split("/");
+  let dir = targetDir;
+  for (;;) {
+    try {
+      await access(join(dir, "node_modules", ...segments));
+      return true;
+    } catch {
+      const parent = dirname(dir);
+      if (parent === dir) return false;
+      dir = parent;
+    }
+  }
+}
+
+/**
+ * Warn when this bb's SDK version is not on the public npm registry yet.
+ *
+ * The scaffold pins `@get-bb/plugin-sdk` to `PLUGIN_SDK_VERSION` exactly, so a
+ * developer build (or the window between cutting a version and publishing it)
+ * produces a plugin whose `npm install` cannot resolve. That is a legible
+ * warning with a workaround, never a scaffolding failure: the sources are
+ * already written and correct, and a registry that is slow or unreachable must
+ * not change the outcome. A registry that positively lacks the version gets
+ * the firm warning; a check that could not complete — offline, proxy,
+ * timeout, npm missing — only says the pin is unverified, because claiming the
+ * install will fail on a network hiccup would be a lie.
+ */
+async function warnIfSdkVersionUnpublished(): Promise<void> {
+  const status = await probeSdkVersionPublished();
+  if (status === "published") return;
+  if (status === "unknown") {
+    console.warn(
+      `Warning: could not reach the npm registry to verify that @get-bb/plugin-sdk ${PLUGIN_SDK_VERSION} — this bb's SDK version — is published.`,
+    );
+    console.warn(
+      "  If `npm install` fails to resolve it, the version may not be on your registry yet.",
+    );
+    return;
+  }
+  console.warn(
+    `Warning: @get-bb/plugin-sdk ${PLUGIN_SDK_VERSION} — this bb's SDK version — was not found on npm.`,
+  );
+  console.warn(
+    "  `npm install` in the new plugin will fail until that version publishes.",
+  );
+  console.warn(
+    "  To work around it, pack the SDK from a bb checkout and point the",
+  );
+  console.warn("  devDependency at the tarball:");
+  console.warn("    (cd <bb-repo>/packages/plugin-sdk && npm pack)");
+  console.warn(
+    '    npm pkg set devDependencies.@get-bb/plugin-sdk="file:/abs/path/to/get-bb-plugin-sdk-' +
+      `${PLUGIN_SDK_VERSION}.tgz"`,
+  );
+}
+
+/**
+ * Ask npm itself whether this bb's SDK version resolves, rather than fetching
+ * registry.npmjs.org directly.
+ *
+ * npm is the tool that will actually install the pin, so it is the only thing
+ * that reads the config deciding whether the install can work: a `registry=`
+ * in `.npmrc`, a scoped `@get-bb:registry`, a corporate proxy, auth. A direct
+ * fetch of the public registry answers a question nobody asked and, behind a
+ * private mirror, answers it wrong in both directions.
+ *
+ * `npm view <pkg>@<version> version` exits 0 and prints nothing when the
+ * package exists but that version does not — the common case here, a version
+ * cut but not yet published — and exits non-zero with E404 when the package
+ * itself is unknown. Both are positive misses. Anything else (a timeout, npm
+ * not installed, a network or auth error) is `unknown`: never fatal, never
+ * interactive.
+ */
+async function probeSdkVersionPublished(): Promise<
+  "published" | "missing" | "unknown"
+> {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  try {
+    const { stdout } = await promisify(execFile)(
+      "npm",
+      ["view", `@get-bb/plugin-sdk@${PLUGIN_SDK_VERSION}`, "version", "--json"],
+      { timeout: 5_000, killSignal: "SIGKILL" },
+    );
+    // Empty output from a successful `npm view` means the spec matched no
+    // published version.
+    return stdout.trim().length === 0 ? "missing" : "published";
+  } catch (error) {
+    const detail = [
+      (error as { stderr?: unknown }).stderr,
+      (error as { stdout?: unknown }).stdout,
+      error instanceof Error ? error.message : "",
+    ]
+      .map((part) => (typeof part === "string" ? part : ""))
+      .join("\n");
+    return detail.includes("E404") || detail.includes("404 Not Found")
+      ? "missing"
+      : "unknown";
+  }
+}
+
+/**
+ * Install a fresh scaffold's npm tree, reporting whether it is usable.
+ *
+ * Generated source imports packages `bb plugin build` inlines into dist/ (zod;
+ * with --app, the vendored components' deps), and path: installs run server.ts
+ * from source, so the tree must exist before the plugin can build or load.
+ *
+ * `--include=dev` rather than a bare `npm install`: the packaged CLI runs with
+ * NODE_ENV=production — bb-app's launcher sets it for every `bb` invocation —
+ * which npm reads as `omit=dev`. A command-line flag outranks both that and an
+ * inherited `npm_config_omit`, so the install no longer depends on how bb was
+ * started. Best-effort overall: authors need npm anyway (design §5.5), so a
+ * failure surfaces the manual step rather than failing the scaffold.
+ */
+async function installScaffoldDependencies(
+  targetDir: string,
+): Promise<boolean> {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  try {
+    await promisify(execFile)(
+      "npm",
+      ["install", "--include=dev", "--no-fund", "--no-audit"],
+      { cwd: targetDir },
+    );
+  } catch {
+    console.warn(
+      "Could not run npm install — run it in the plugin directory before `bb plugin build`.",
+    );
+    return false;
+  }
+  const problem = await unresolvedScaffoldPackages(targetDir);
+  if (problem !== null) {
+    console.warn(
+      `npm install reported success but ${problem} — run \`npm install --include=dev\` in the plugin directory before \`bb plugin build\`.`,
+    );
+    return false;
+  }
+  console.log("Installed dependencies (npm install).");
+  return true;
 }
 
 type PluginSettingDescriptor = z.infer<typeof pluginSettingDescriptorSchema>;
@@ -272,8 +600,34 @@ function formatAbsoluteDate(value: string | number | undefined): string {
 function dualInterpretationError(source: string): string {
   return (
     `Could not resolve "${source}" as either a catalog plugin or a path on disk. ` +
-    "Use a Git repository URL, path:<path>, npm:<package>, or git:<url>[@<ref>] to choose an interpretation explicitly."
+    "Use a Git repository URL, path:<path>, npm:<package>, git:<url>[@<ref>], or " +
+    "git:<url>@<semver-range> to choose an interpretation explicitly."
   );
+}
+
+/**
+ * Rewrite a `git:<url>@<range>` spec into the explicit `semver:` form that
+ * carries a tag prefix. The prefix only means something for a range, so a spec
+ * that is already explicit — or that names a ref — is refused rather than
+ * silently reinterpreted.
+ */
+function withGitTagPrefix(source: string, tagPrefix: string): string {
+  const at = source.lastIndexOf("@");
+  const spec = at <= 0 ? "" : source.slice(at + 1);
+  if (
+    (!source.startsWith("git:") && !/^https?:\/\//iu.test(source)) ||
+    spec.length === 0
+  ) {
+    throw new Error(
+      "--tag-prefix applies to a git: source with a semver range, such as git:github.com/acme/repo@^1.2.0.",
+    );
+  }
+  if (spec.startsWith("semver:") || spec.startsWith("ref:")) {
+    throw new Error(
+      `Use --tag-prefix or an explicit "${spec.split(":")[0] ?? ""}:" spec, not both.`,
+    );
+  }
+  return `${source.slice(0, at)}@semver:${tagPrefix}:${spec}`;
 }
 
 function hasPathSyntax(source: string): boolean {
@@ -296,7 +650,17 @@ async function existsOnDisk(source: string): Promise<boolean> {
 
 type InstallIntent =
   | { kind: "source"; source: string; summary: string }
-  | { kind: "catalog"; entry: PluginCatalogSearchResult };
+  | { kind: "catalog"; plan: PluginCatalogInstallPlan };
+
+/** `<entry-id>@<marketplace>`, both lowercase kebab-case. */
+const QUALIFIED_ENTRY_PATTERN = /^([a-z0-9][a-z0-9-]*)@([a-z0-9][a-z0-9-]*)$/u;
+
+function installPlan(
+  baseUrl: string,
+  args: { entryId: string; marketplace?: string },
+): Promise<PluginCatalogInstallPlan> {
+  return createCliBbSdk(baseUrl).plugins.catalog.installPlan(args);
+}
 
 async function resolveInstallIntent(
   baseUrl: string,
@@ -329,11 +693,32 @@ async function resolveInstallIntent(
     };
   }
 
+  // `<id>@<marketplace>` names one marketplace's entry. Every other source
+  // form is already handled above, so this shape cannot be anything else.
+  const qualified = QUALIFIED_ENTRY_PATTERN.exec(input);
+  if (qualified !== null) {
+    const [, entryId, marketplace] = qualified;
+    return {
+      kind: "catalog",
+      plan: await installPlan(baseUrl, {
+        entryId: entryId ?? "",
+        marketplace: marketplace ?? "",
+      }),
+    };
+  }
   if (!input.includes("@")) {
-    const entry = (await searchCatalog(baseUrl, input)).find(
+    const listed = (await searchCatalog(baseUrl, input)).some(
       (candidate) => candidate.entryId === input,
     );
-    if (entry !== undefined) return { kind: "catalog", entry };
+    // The server owns the routing: it installs the single match, falls back to
+    // the bundled plugin of that name, or refuses an id several marketplaces
+    // list. Asking it here is what makes the confirmation show the real plan.
+    if (listed) {
+      return {
+        kind: "catalog",
+        plan: await installPlan(baseUrl, { entryId: input }),
+      };
+    }
   }
   if (!(await existsOnDisk(input)))
     throw new Error(dualInterpretationError(input));
@@ -344,6 +729,63 @@ async function resolveInstallIntent(
     source: `path:${path}`,
     summary: `Installing ${path}`,
   };
+}
+
+/** The npm or git source line of an install confirmation. */
+function resolvedSourceLines(source: PluginCatalogResolvedSource): string[] {
+  if (source.kind === "npm") {
+    const spec = source.range ?? source.tag ?? "latest";
+    return [
+      `  npm package: ${source.package}@${spec}`,
+      ...(source.registry === undefined
+        ? []
+        : [`  registry: ${source.registry}`]),
+    ];
+  }
+  const lines = [`  git repository: ${source.url}`];
+  if (source.subdir !== undefined) {
+    lines.push(`  subdirectory: ${source.subdir}`);
+  }
+  if (source.ref !== undefined) lines.push(`  ref: ${source.ref}`);
+  if (source.range !== undefined) {
+    const prefix =
+      source.tagPrefix === undefined ? "" : ` (tags ${source.tagPrefix}vX.Y.Z)`;
+    lines.push(`  semver range: ${source.range}${prefix}`);
+  }
+  if (source.resolvedTag !== undefined) {
+    lines.push(`  resolves to tag: ${source.resolvedTag}`);
+  }
+  if (source.resolvedCommit !== undefined) {
+    lines.push(`  resolves to commit: ${source.resolvedCommit}`);
+  }
+  if (source.unresolvedReason !== undefined) {
+    lines.push(`  not resolved right now: ${source.unresolvedReason}`);
+  }
+  return lines;
+}
+
+/**
+ * What the install will actually do. A third-party listing shows its
+ * marketplace, its author, and the true resolved source — the listing's own
+ * description is not evidence of what the install fetches.
+ */
+function installPlanSummary(plan: PluginCatalogInstallPlan): string {
+  if (plan.kind === "bundled") {
+    return `Installing ${plan.displayName}, bundled with BB (${plan.source})`;
+  }
+  if (plan.official) {
+    return `Installing ${plan.displayName} from the ${plan.marketplaceDisplayName} marketplace, reviewed by BB (${plan.source})`;
+  }
+  const author =
+    plan.author.url === null
+      ? plan.author.name
+      : `${plan.author.name} (${plan.author.url})`;
+  return [
+    `Installing ${plan.displayName} (${plan.entryId}@${plan.marketplace})`,
+    `  marketplace: ${plan.marketplaceDisplayName} — a third-party marketplace, not reviewed by BB`,
+    `  author: ${author}`,
+    ...resolvedSourceLines(plan.resolvedSource),
+  ].join("\n");
 }
 
 function printPlugin(plugin: PluginEntry): void {
@@ -454,7 +896,9 @@ export function registerPluginCommands(
 
   plugin
     .command("search <query>")
-    .description("Search BB's official plugins (bundled with the app)")
+    .description(
+      "Search every plugin the store lists: the plugins bundled with the app, the reserved bb-community marketplace catalog BB reviews, and any third-party marketplace added on this host. The Marketplace column names the source; only bb-community is reviewed by BB",
+    )
     .option("--json", "Output JSON")
     .action(
       action(async (query: string, opts: JsonOutputOptions) => {
@@ -463,9 +907,13 @@ export function registerPluginCommands(
           outputJson(opts, results);
           return;
         }
+        // Where a listing came from only matters once something other than
+        // BB's own catalog is registered; until then the column is noise.
+        const showMarketplace = results.some((result) => !result.official);
         const rows = results.map((result) => [
           result.displayName,
           result.description,
+          ...(showMarketplace ? [result.marketplaceDisplayName] : []),
           result.installed
             ? "✓ installed"
             : result.compatible
@@ -475,8 +923,13 @@ export function registerPluginCommands(
         console.log(
           renderBorderlessTable(
             {
-              head: ["Name", "Description", "Status"],
-              colWidths: [28, 54, 48],
+              head: [
+                "Name",
+                "Description",
+                ...(showMarketplace ? ["Marketplace"] : []),
+                "Status",
+              ],
+              colWidths: showMarketplace ? [26, 42, 22, 40] : [28, 54, 48],
               trimTrailingWhitespace: true,
             },
             rows,
@@ -522,6 +975,16 @@ export function registerPluginCommands(
         console.log(`${id}`);
         console.log(`  requested: ${source.requested}`);
         console.log(`  resolved: ${source.resolved}`);
+        if (source.subdirectory !== undefined) {
+          console.log(`  subdirectory: ${source.subdirectory}`);
+        }
+        if (source.range !== undefined) console.log(`  range: ${source.range}`);
+        if (source.tagPrefix !== undefined) {
+          console.log(`  tag prefix: ${source.tagPrefix}`);
+        }
+        if (source.resolvedTag !== undefined) {
+          console.log(`  tag: ${source.resolvedTag}`);
+        }
         if (source.registry) console.log(`  registry: ${source.registry}`);
         if (source.integrity) console.log(`  integrity: ${source.integrity}`);
         if (source.engines.bb) {
@@ -549,18 +1012,63 @@ export function registerPluginCommands(
   plugin
     .command("install <source>")
     .description(
-      "Install a bundled official plugin by name, Git repository URL, local path, builtin:<name>, git:<url>[@<ref>], or npm:<name>@<version> (managed sources validate engines ranges and build artifacts; bundled plugin ids are reserved)",
+      "Install a catalog entry by name or <entry>@<marketplace>, a Git repository URL, a local path, builtin:<name>, git:<url>[@<ref|semver-range>], or npm:<name>@<version>. A catalog entry from a third-party marketplace is not reviewed by BB, so its confirmation names the marketplace, the author, and the exact resolved source (managed sources validate engines ranges and build artifacts; bundled plugin ids are reserved)",
+    )
+    .option(
+      "--subdirectory <path>",
+      "Install one plugin directory of a multi-plugin git:/path: repository",
+    )
+    .option(
+      "--plugin <name>",
+      "Install the .bb/plugins.json entry with this name (git:/path: repositories)",
+    )
+    .option(
+      "--tag-prefix <prefix>",
+      "Resolve a git: semver range over <prefix>vX.Y.Z tags (monorepo tagging)",
     )
     .option("--yes", "Skip the confirmation prompt")
     .option("--json", "Output JSON")
     .action(
       action(
-        async (source: string, opts: JsonOutputOptions & { yes?: boolean }) => {
-          const intent = await resolveInstallIntent(getUrl(), source);
+        async (
+          source: string,
+          opts: JsonOutputOptions & {
+            yes?: boolean;
+            subdirectory?: string;
+            plugin?: string;
+            tagPrefix?: string;
+          },
+        ) => {
+          if (opts.subdirectory !== undefined && opts.plugin !== undefined) {
+            throw new Error(
+              "Use --subdirectory or --plugin, not both: --plugin resolves a name from .bb/plugins.json to a subdirectory.",
+            );
+          }
+          const requested =
+            opts.tagPrefix === undefined
+              ? source
+              : withGitTagPrefix(source, opts.tagPrefix);
+          const intent = await resolveInstallIntent(getUrl(), requested);
+          if (intent.kind === "catalog" && opts.tagPrefix !== undefined) {
+            throw new Error(
+              `"${source}" is a catalog entry; --tag-prefix applies to git: sources only.`,
+            );
+          }
+          if (
+            intent.kind === "catalog" &&
+            (opts.subdirectory !== undefined || opts.plugin !== undefined)
+          ) {
+            throw new Error(
+              `"${source}" is a catalog entry; --subdirectory and --plugin apply to git: and path: repositories only.`,
+            );
+          }
+          // Catalog entries split by source kind: `builtin:` plugins ship
+          // inside the app, marketplace entries install from their listed
+          // source — the preamble must not claim one is the other.
           let summary =
             intent.kind === "source"
               ? intent.summary
-              : `Installing ${intent.entry.displayName}, bundled with BB (${intent.entry.source})`;
+              : installPlanSummary(intent.plan);
           if (intent.kind === "source" && intent.source.startsWith("path:")) {
             const path = intent.source.slice(5);
             // Best effort — a missing/invalid manifest is the server's
@@ -576,6 +1084,12 @@ export function registerPluginCommands(
             } catch {
               // fall through to the bare path summary
             }
+          }
+          if (opts.subdirectory !== undefined) {
+            summary = `${summary} (subdirectory ${opts.subdirectory})`;
+          }
+          if (opts.plugin !== undefined) {
+            summary = `${summary} (collection plugin ${opts.plugin})`;
           }
           if (!opts.json) {
             console.log(summary);
@@ -608,10 +1122,22 @@ export function registerPluginCommands(
             intent.kind === "source"
               ? await createCliBbSdk(getUrl()).plugins.install({
                   source: intent.source,
+                  ...(opts.subdirectory === undefined
+                    ? {}
+                    : { subdirectory: opts.subdirectory }),
+                  ...(opts.plugin === undefined ? {} : { plugin: opts.plugin }),
                 })
-              : await createCliBbSdk(getUrl()).plugins.catalog.install({
-                  entryId: intent.entry.entryId,
-                });
+              : await createCliBbSdk(getUrl()).plugins.catalog.install(
+                  intent.plan.kind === "marketplace"
+                    ? {
+                        entryId: intent.plan.entryId,
+                        marketplace: intent.plan.marketplace,
+                        ...(intent.plan.official
+                          ? {}
+                          : { confirmedSource: intent.plan.resolvedSource }),
+                      }
+                    : { entryId: intent.plan.entryId },
+                );
           const result = { ok: true as const, plugin };
           if (opts.json) {
             outputJson(opts, result);
@@ -697,7 +1223,7 @@ export function registerPluginCommands(
             if (!shouldAttempt) {
               if (result.outcome === "pinned") {
                 console.log(
-                  `${result.id}: skipped — pinned${detail ? ` (${detail})` : ""}; remove and reinstall with a tracking npm range or git branch to receive updates.`,
+                  `${result.id}: skipped — pinned${detail ? ` (${detail})` : ""}; remove and reinstall with a tracking npm range, git branch, or git semver range to receive updates.`,
                 );
               } else if (result.outcome === "incompatible") {
                 console.log(
@@ -774,32 +1300,14 @@ export function registerPluginCommands(
           app: opts.app ?? false,
         });
         console.log(`Created ${directoryName}/ (${packageName}).`);
-        // App scaffolds vendor components whose npm deps must be installed
-        // before `bb plugin build` bundles them. Best-effort: authors need
-        // npm anyway (design §5.5); a failure here just surfaces the manual
-        // step.
-        let installed = false;
-        if (opts.app) {
-          const { execFile } = await import("node:child_process");
-          const { promisify } = await import("node:util");
-          try {
-            await promisify(execFile)(
-              "npm",
-              ["install", "--no-fund", "--no-audit"],
-              { cwd: targetDir },
-            );
-            installed = true;
-            console.log("Installed component dependencies (npm install).");
-          } catch {
-            console.warn(
-              "Could not run npm install — run it in the plugin directory before `bb plugin build`.",
-            );
-          }
-        }
+        // Before the install, so a resolution failure below reads as expected
+        // rather than as a broken scaffold.
+        await warnIfSdkVersionUnpublished();
+        const installed = await installScaffoldDependencies(targetDir);
         console.log("Next steps:");
         console.log(`  cd ${directoryName}`);
-        if (opts.app && !installed) {
-          console.log("  npm install");
+        if (!installed) {
+          console.log("  npm install --include=dev");
         }
         console.log("  bb plugin install .");
       }),
@@ -808,26 +1316,80 @@ export function registerPluginCommands(
   plugin
     .command("types [path]")
     .description(
-      "Write this bb's @bb/plugin-sdk declarations into the plugin's types/ directory (default: cwd); the authoritative, readable API surface for editors, tsc, and agents",
+      "Sync a plugin's @get-bb/plugin-sdk surface to the running bb (default: cwd): repin the npm devDependency for plugins that depend on the package, or rewrite the vendored types/ declarations for plugins that still carry them",
     )
-    .option("--check", "Report whether types/ is current; write nothing")
+    .option(
+      "--check",
+      "Report whether the SDK surface is current; write nothing",
+    )
     .action(
       action(async (path: string | undefined, opts: { check?: boolean }) => {
         const rootDir = resolve(process.cwd(), path ?? ".");
-        const manifest = await readPluginManifest(rootDir);
-        if (!manifest) {
-          console.error(
-            `No readable package.json in ${rootDir} — run from a plugin directory or pass its path.`,
+        const manifest = await requirePluginManifest(rootDir);
+        const hasApp = typeof manifest.bb?.app === "string";
+        const layout = await resolvePluginSdkLayout(rootDir);
+        if (layout.kind === "package") {
+          // The declarations live in the installed package, so syncing this
+          // plugin to the running bb means moving the pin — the same job the
+          // vendored branch below does by rewriting types/.
+          if (opts.check) {
+            console.log(
+              `This plugin uses the npm package @get-bb/plugin-sdk; pin is ${layout.pin ?? "not declared"}, host is ${PLUGIN_SDK_VERSION}.`,
+            );
+            // Ask the writer, not just the version: an exact pin sitting in
+            // dependencies is still a manifest `bb plugin types` would edit,
+            // so CI must not report it as current.
+            const pending = await setPluginSdkPin({
+              rootDir,
+              sdkVersion: PLUGIN_SDK_VERSION,
+              dryRun: true,
+            });
+            if (pending === null) {
+              console.log(
+                "The declarations are in node_modules/@get-bb/plugin-sdk/bundled-types/ — read them for exact signatures.",
+              );
+              return;
+            }
+            console.error(
+              pending.pin === null
+                ? 'Move "@get-bb/plugin-sdk" from dependencies to devDependencies — bb provides its runtime (`bb plugin types` does it for you).'
+                : `Set "@get-bb/plugin-sdk" to ${PLUGIN_SDK_VERSION} in devDependencies and re-run npm install (\`bb plugin types\` does it for you).`,
+            );
+            process.exit(1);
+          }
+          const changed = await setPluginSdkPin({
+            rootDir,
+            sdkVersion: PLUGIN_SDK_VERSION,
+          });
+          if (changed === null) {
+            console.log(
+              `@get-bb/plugin-sdk is already pinned to ${PLUGIN_SDK_VERSION} — this bb's SDK version.`,
+            );
+            console.log(
+              "The declarations are in node_modules/@get-bb/plugin-sdk/bundled-types/ — read them for exact signatures.",
+            );
+            return;
+          }
+          if (changed.pin !== null) {
+            console.log(
+              `@get-bb/plugin-sdk: ${changed.pin.from ?? "(not declared)"} → ${changed.pin.to} in devDependencies.`,
+            );
+          }
+          if (changed.movedFromDependencies) {
+            // bb provides the SDK runtime, so a dependencies entry only makes
+            // npm install a second copy that shadows the pinned one.
+            console.log(
+              "Moved @get-bb/plugin-sdk from dependencies to devDependencies.",
+            );
+          }
+          // The new pin has to resolve for the declarations to land, so the
+          // same unpublished-version warning the scaffold prints applies.
+          await warnIfSdkVersionUnpublished();
+          console.log(
+            "Run `npm install` in the plugin directory to install the pinned declarations.",
           );
-          process.exit(1);
+          return;
         }
-        if (typeof manifest.bb?.server !== "string") {
-          console.error(
-            `${rootDir} is not a bb plugin — package.json has no "bb.server" entry.`,
-          );
-          process.exit(1);
-        }
-        const hasApp = typeof manifest.bb.app === "string";
         const files = await syncPluginTypes({
           rootDir,
           app: hasApp,
@@ -847,6 +1409,80 @@ export function registerPluginCommands(
         }
         console.log(
           "These declarations are the full plugin API — read them for exact signatures.",
+        );
+      }),
+    );
+
+  plugin
+    .command("migrate [path]")
+    .description(
+      "Switch a plugin that vendors types/ to the @get-bb/plugin-sdk npm package (default: cwd): pin the devDependency, drop the tsconfig path map, delete the vendored declarations, and rewrite pre-rename @bb/plugin-sdk imports in the plugin's sources; prints the plan and asks first",
+    )
+    .option("--yes", "Skip the confirmation prompt")
+    .action(
+      action(async (path: string | undefined, opts: { yes?: boolean }) => {
+        const rootDir = resolve(process.cwd(), path ?? ".");
+        await requirePluginManifest(rootDir);
+        const layout = await resolvePluginSdkLayout(rootDir);
+        // The plan, not the detected layout, decides whether there is work:
+        // a plugin that already dropped types/ and the path maps but never
+        // gained the pin reads as `package` and still needs migrating.
+        const plan = await migratePluginToPackageLayout({
+          rootDir,
+          sdkVersion: PLUGIN_SDK_VERSION,
+          dryRun: true,
+        });
+        if (!plan.changed) {
+          console.log(
+            `Already migrated: this plugin uses the @get-bb/plugin-sdk npm package (pin ${layout.pin ?? "not declared"}).`,
+          );
+          return;
+        }
+        console.log(
+          layout.kind === "vendored"
+            ? `${rootDir} vendors its SDK declarations. Migrating to the @get-bb/plugin-sdk npm package will:`
+            : `${rootDir} is missing part of the @get-bb/plugin-sdk npm package layout. Completing the migration will:`,
+        );
+        printMigrationPlan(plan);
+        // The legacy layout keeps working this release, so this never runs
+        // unattended: a non-TTY without --yes has now printed the plan and
+        // changes nothing.
+        await confirmPluginAction(
+          "Apply these changes?",
+          "Refusing to migrate without confirmation — re-run with --yes to apply the plan above.",
+          opts.yes ?? false,
+        );
+        // The author consented to the plan above, not to whatever the plugin
+        // looks like now. Anything edited while the prompt was open (an editor
+        // save, a concurrent `npm install`) would otherwise be migrated on the
+        // strength of a plan that never described it.
+        const confirmedPlan = await migratePluginToPackageLayout({
+          rootDir,
+          sdkVersion: PLUGIN_SDK_VERSION,
+          dryRun: true,
+        });
+        if (!samePlan(plan, confirmedPlan)) {
+          console.error(
+            "The plugin changed while awaiting confirmation — nothing was written. Re-run `bb plugin migrate` to see the current plan.",
+          );
+          process.exit(1);
+        }
+        const applied = await migratePluginToPackageLayout({
+          rootDir,
+          sdkVersion: PLUGIN_SDK_VERSION,
+        });
+        console.log("Migrated to the @get-bb/plugin-sdk npm package.");
+        // The plan said `types/` would go and it did not: something landed in
+        // it between the plan and the removal. The tsconfig `types` include was
+        // kept for that file, so this is a report, not a failure.
+        if (plan.removedTypesDir && !applied.removedTypesDir) {
+          console.warn(
+            `Warning: ${join(rootDir, "types")} still exists — a file appeared in it during the migration, so it was left in place along with the tsconfig "types" include.`,
+          );
+        }
+        await warnIfSdkVersionUnpublished();
+        console.log(
+          "Run `npm install` in the plugin directory to install the pinned declarations.",
         );
       }),
     );
@@ -893,20 +1529,8 @@ export function registerPluginCommands(
     .action(
       action(async (path: string | undefined) => {
         const rootDir = resolve(process.cwd(), path ?? ".");
-        const manifest = await readPluginManifest(rootDir);
-        if (!manifest) {
-          console.error(
-            `No readable package.json in ${rootDir} — run from a plugin directory or pass its path.`,
-          );
-          process.exit(1);
-        }
-        if (typeof manifest.bb?.server !== "string") {
-          console.error(
-            `${rootDir} is not a bb plugin — package.json has no "bb.server" entry.`,
-          );
-          process.exit(1);
-        }
-        const hasApp = typeof manifest.bb.app === "string";
+        const manifest = await requirePluginManifest(rootDir);
+        const hasApp = typeof manifest.bb?.app === "string";
         // Refresh before the watcher starts, so writing types/ cannot feed
         // the loop its own change event.
         await refreshPluginTypes(rootDir, hasApp);

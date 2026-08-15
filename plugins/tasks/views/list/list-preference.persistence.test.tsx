@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type { Task } from "../../shared/contract.js";
 import { LIST_PREFERENCE_STORAGE_KEY } from "./list-preference.js";
@@ -212,7 +212,7 @@ async function selectSort(
   fireEvent.click(slot.getByRole("button", { name: /Sort/ }));
   const drawer = await slot.findByRole("dialog", { name: "Sort tasks" });
   fireEvent.click(
-    within(drawer).getByRole("menuitemcheckbox", { name: label }),
+    await within(drawer).findByRole("menuitemcheckbox", { name: label }),
   );
 }
 

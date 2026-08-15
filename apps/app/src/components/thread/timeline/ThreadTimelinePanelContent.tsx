@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { ThreadChildOrigin } from "@bb/domain";
+import type { ThreadOriginKind } from "@bb/domain";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
@@ -38,7 +38,7 @@ export interface ThreadTimelinePanelContentProps {
   rowFilter?: ThreadTimelineRowFilter;
   showLoadOlderRows?: boolean;
   surfaceKey?: string;
-  threadChildOrigin?: ThreadChildOrigin | null;
+  threadOriginKind?: ThreadOriginKind | null;
   threadId: string;
   timeline?: UseThreadTimelineControllerResult;
   timelineErrorLabel?: string;
@@ -66,7 +66,7 @@ export function ThreadTimelinePanelContent({
   rowFilter,
   showLoadOlderRows = true,
   surfaceKey,
-  threadChildOrigin = null,
+  threadOriginKind = null,
   threadId,
   timeline,
   timelineErrorLabel = "Failed to load timeline",
@@ -85,7 +85,8 @@ export function ThreadTimelinePanelContent({
     displayStatus === "provisioning" || displayStatus === "starting";
   const hasActiveBackgroundWork =
     resolvedTimeline.activeWorkflows.length > 0 ||
-    resolvedTimeline.activeBackgroundCommands.length > 0;
+    resolvedTimeline.activeBackgroundCommands.length > 0 ||
+    (threadQuery.data?.activeBackgroundAgentCount ?? 0) > 0;
   const backgroundOnlyIndicatorLabel =
     displayStatus === "idle" && hasActiveBackgroundWork
       ? "Background work running"
@@ -123,7 +124,7 @@ export function ThreadTimelinePanelContent({
     <ThreadTimelineSurface
       activeThinking={resolvedTimeline.activeThinking}
       canSpawnChild={canSpawnChild}
-      threadChildOrigin={threadChildOrigin}
+      threadOriginKind={threadOriginKind}
       hasOlderTimelineRows={
         showLoadOlderRows ? resolvedTimeline.hasOlderTimelineRows : false
       }

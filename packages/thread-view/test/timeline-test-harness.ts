@@ -116,6 +116,12 @@ interface AssistantCompletedArgs extends ProviderTurnEventOptions {
   text: string;
 }
 
+interface ClientTurnRejectedArgs extends EventFactoryRowOptions {
+  message?: string;
+  reason?: string;
+  requestId: ClientTurnRequestId;
+}
+
 interface ReasoningCompletedArgs extends ProviderTurnEventOptions {
   itemId?: string;
   text: string;
@@ -275,6 +281,9 @@ export interface TimelineEventFactory {
   clientTurnRequested(
     args: ClientTurnRequestedArgs,
   ): ThreadEventRowOfType<"client/turn/requested">;
+  clientTurnRejected(
+    args: ClientTurnRejectedArgs,
+  ): ThreadEventRowOfType<"client/turn/rejected">;
   commandCompleted(
     args: CommandCompletedArgs,
   ): ThreadEventRowOfType<"item/completed">;
@@ -342,6 +351,9 @@ export interface TimelineEventFactory {
   threadCompacted(
     args?: ProviderTurnEventOptions,
   ): ThreadEventRowOfType<"thread/compacted">;
+  threadContextCleared(
+    args?: ProviderTurnEventOptions,
+  ): ThreadEventRowOfType<"thread/context/cleared">;
   turnCompleted(
     args?: ProviderTurnEventOptions & {
       status?: "completed" | "failed" | "interrupted";
@@ -582,6 +594,18 @@ export function createTimelineEventFactory(
             params: {},
           },
           execution: args.execution ?? defaultExecution,
+        },
+      };
+    },
+    clientTurnRejected(args) {
+      const base = nextThreadScopedRowBase("client-turn-rejected", args);
+      return {
+        ...base,
+        type: "client/turn/rejected",
+        data: {
+          requestId: args.requestId,
+          reason: args.reason ?? "command_failed",
+          message: args.message ?? "The command failed",
         },
       };
     },
@@ -903,6 +927,20 @@ export function createTimelineEventFactory(
       return {
         ...base,
         type: "thread/compacted",
+        data: {
+          ...providerFields(args),
+          threadId: args.threadId ?? defaults.threadId,
+        },
+      };
+    },
+    threadContextCleared(args = {}) {
+      const base = nextProviderTurnScopedRowBase(
+        "thread-context-cleared",
+        args,
+      );
+      return {
+        ...base,
+        type: "thread/context/cleared",
         data: {
           ...providerFields(args),
           threadId: args.threadId ?? defaults.threadId,

@@ -1,6 +1,10 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
-import { createTabScopedStorage, type SyncStorage } from "@/lib/browser-storage";
+import {
+  createBooleanPreferenceAtom,
+  createTabScopedStorage,
+  type SyncStorage,
+} from "@/lib/browser-storage";
 import type { ThreadRoutePathArgs } from "@/lib/route-paths";
 import { findPane, listPanes, removePane } from "./ops";
 import {
@@ -60,6 +64,18 @@ export const maximizedPaneIdAtom = atomWithStorage<string | null>(
     serialize: (value) => value ?? "",
   }),
   { getOnInit: true },
+);
+
+export const DIM_INACTIVE_SPLITS_STORAGE_KEY =
+  "bb.splitLayout.dimInactiveSplits";
+
+/**
+ * User preference for visually receding every split except the focused one.
+ * Unlike the arrangement itself, this is shared across tabs and sessions.
+ */
+export const dimInactiveSplitsAtom = createBooleanPreferenceAtom(
+  DIM_INACTIVE_SPLITS_STORAGE_KEY,
+  true,
 );
 
 export interface ClosePanesForThreadsResult {

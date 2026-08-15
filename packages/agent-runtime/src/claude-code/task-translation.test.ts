@@ -336,6 +336,54 @@ describe("claude-code background task translation", () => {
     expect(events).toHaveLength(0);
   });
 
+  it("tracks monitors as open work without timeline rows", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const context = { threadId: "bb-thread-monitor" };
+
+    const started = adapter.translateEvent(
+      {
+        type: "system",
+        subtype: "task_started",
+        task_id: "monitor-1",
+        description: "Watch the build",
+        task_type: "monitor",
+        uuid: "u-monitor-1",
+        session_id: "s-monitor-1",
+      },
+      context,
+    );
+
+    expect(started).toEqual([]);
+    expect(
+      adapter.hasOpenThreadWork?.({
+        providerThreadId: "s-monitor-1",
+        threadId: context.threadId,
+      }),
+    ).toBe(true);
+
+    const completed = adapter.translateEvent(
+      {
+        type: "system",
+        subtype: "task_notification",
+        task_id: "monitor-1",
+        status: "completed",
+        output_file: "",
+        summary: "Build complete",
+        uuid: "u-monitor-2",
+        session_id: "s-monitor-1",
+      },
+      context,
+    );
+
+    expect(completed).toEqual([]);
+    expect(
+      adapter.hasOpenThreadWork?.({
+        providerThreadId: "s-monitor-1",
+        threadId: context.threadId,
+      }),
+    ).toBe(false);
+  });
+
   it("preserves skip_transcript on the item", () => {
     const adapter = createClaudeCodeProviderAdapter();
     const started = adapter.translateEvent(
@@ -477,7 +525,7 @@ describe("claude-code background task translation", () => {
     ).toEqual([]);
   });
 
-  it("settled tasks ignore late events; a repeated start reopens a new generation", () => {
+  it("preserves the parent link when a settled Claude task restarts", () => {
     const adapter = createClaudeCodeProviderAdapter();
     const context = { threadId: "bb-thread-1" };
 
@@ -497,14 +545,20 @@ describe("claude-code background task translation", () => {
 
     // A fresh task_started for the same id starts a new item generation.
     const reopened = adapter.translateEvent(
-      loadFixture("task-started-workflow.json"),
+      {
+        ...loadFixture("task-started-workflow.json"),
+        tool_use_id: "toolu_send_message_1",
+      },
       context,
     );
     const reopenedStarted = collectTaskEvents(reopened).filter(
       (event) => event.type === "item/started",
     );
     expect(reopenedStarted).toHaveLength(1);
-    expect(backgroundTaskItem(reopenedStarted[0]!).id).toBe("task:wu7ol9ras#2");
+    expect(backgroundTaskItem(reopenedStarted[0]!)).toMatchObject({
+      id: "task:wu7ol9ras#2",
+      parentToolCallId: "toolu_send_message_1",
+    });
   });
 
   it("materializes a backgrounded shell command (task_type local_bash)", () => {

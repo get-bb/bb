@@ -24,7 +24,10 @@ message agents, or inspect projects, providers, and environments.
   connect or a private Tailscale Serve URL for remote browsers and execution
   machines. `--server-bind-host 0.0.0.0` is a compatibility escape hatch only:
   the public API is unauthenticated and permits command execution and file
-  reads, so wildcard binding requires a trusted network boundary.
+  reads, so wildcard binding requires a trusted network boundary. The startup
+  listener and `app` rows then show `http://0.0.0.0:<port>`; health checks and
+  the colocated daemon still use loopback. This opt-in is IPv4-only. Containers
+  must also publish the port to the host.
 
 ## Environment Setup Script
 
@@ -97,16 +100,16 @@ message agents, or inspect projects, providers, and environments.
   inspect or change these server-backed values from agents. Pass
   `bb settings usage --machine <id-or-name>` to read provider limits from a
   specific connected machine instead of the primary machine.
-- The default-off `toolsHub` experiment exposes the unified Skills, Plugins,
-  and Automations management UI. Change it with
-  `bb settings experiment toolsHub <true|false>`. It does not load or unload
-  tools.
+- Extensions provides the unified Skills and Plugins management UI, while
+  Automations stays in the Plugins section beside threads.
 - The default-off `newOnboarding` experiment exposes the first-run agent and
   project setup guide. Change it with
   `bb settings experiment newOnboarding <true|false>`. Use
   `bb settings replay-onboarding` to enable it and show the guide again.
-- The default-off `editMessages` experiment allows completed user messages in
-  Codex, Claude Code, and Pi threads to be replaced and rerun. Change it with
+- The default-on `editMessages` experiment allows accepted root user messages
+  in Codex, Claude Code, and Pi threads to be replaced and rerun, including
+  failed or incomplete turns. Submitting an edit to a running thread stops and
+  settles the current turn first. Change it with:
   `bb settings experiment editMessages <true|false>`.
 - Thread timeline windows are capped by event count as well as by user-message
   count (`BB_FF_TIMELINE_WINDOW_EVENT_BUDGET`, default 1500), because a thread
@@ -143,8 +146,17 @@ message agents, or inspect projects, providers, and environments.
 - `bb skill show <skill-id> --json` returns the revision. Pass that revision,
   plus `--file`, to `bb skill update <skill-id>`. Use update or delete only when
   the list says editable.
-- Use `bb skill search [query]` for live skills.sh results. Inspect metadata and
-  the bounded file preview with `bb skill registry detail <registry-skill-id>`.
+- Use `bb skill search [query]` for live skills.sh results. With no query it
+  lists what is trending; `ranking` in the response says which leaderboard you
+  got. Install counts match the Skills browse page — lifetime totals, resolved
+  per skill on the trending ranking, where the leaderboard's own number counts
+  only a 24h window. Resolution is capped at 48 rows per page and a detail page
+  can fail to fetch, so read the two surfaces differently: the `INSTALLS`
+  column prints `—` for a row it could not resolve, while `--json` lists those
+  ids in `unresolvedInstallIds` and leaves their `installs` holding the 24h
+  figure. Every other row's `installs` is the lifetime total. Use
+  `--per-page 48` or less to avoid unresolved rows. Inspect metadata and the
+  bounded file preview with `bb skill registry detail <registry-skill-id>`.
   Install with `bb skill install <registry-skill-id>`; never infer an install
   source from a display name.
 - `bb skill install-cli-skills` copies bb's built-in CLI skills into a machine's
@@ -182,6 +194,9 @@ isolated|reuse`, or anchor with `--source-seq-end`. Permission mode inherits
   inherited value. A hidden child still reports its turns and blockers to its
   parent thread; only forks and side chats stay silent. Promote or hide an
   existing thread with `bb thread update <id> --visibility visible|hidden`.
+- Stop a finished hidden worker with `bb thread stop <id>` to release its agent
+  runtime promptly. Archive it first when it no longer belongs in active thread
+  lists. Stop preserves the thread and supports a later resume.
 - `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
   server for browser access at `<handle>.getbb.app` (get the code from
   https://getbb.app). Pairing returns immediately — the
@@ -212,13 +227,14 @@ isolated|reuse`, or anchor with `--source-seq-end`. Permission mode inherits
   installer stores the bb connect machine credential locally and configures
   both the daemon protocol and agent-launched `bb` CLI to traverse the account
   gate; revoke a lost machine from the getbb.app dashboard. The installer uses
-  the server's exact `/install/bb-app.tgz` artifact (npm only on a 404) and
-  enables daemon `--auto-update`; newer protocol mismatches update from that
-  artifact with a persisted exponential retry backoff from 5 seconds to 5
-  minutes, then let launchd/systemd restart the daemon. Auto-update never
-  downgrades. Use `bb machine retry-update <id-or-name>` to bypass the current
-  backoff after a transient failure. Remove `--auto-update` from the service
-  definition and reload it to opt out.
+  the server's exact `/install/bb-app.tgz` artifact and uses the npm registry
+  only on a 404. It installs under the enrollment's bb data directory, without
+  `sudo` or a global npm configuration, and enables daemon `--auto-update`.
+  Newer protocol mismatches update that private install with a persisted
+  exponential retry backoff from 5 seconds to 5 minutes, then let
+  launchd/systemd restart the daemon. Auto-update never downgrades. To bypass a
+  transient backoff, use `bb machine retry-update <id-or-name>`. Remove
+  `--auto-update` from the service definition and reload it to opt out.
 - Run `bb machine list` to see machine names, IDs, connection status, and last
   seen time (`--json` returns the raw host list). Use `--machine <id-or-name>`
   (alias `--host`) on `bb thread spawn` to run in a personal or unmanaged
@@ -276,16 +292,16 @@ environment pull-request show <id>`. Diff commands require an explicit target
 - `bb environment pull-request ready|draft|merge` manages pull-request state;
   `bb environment archive-threads` bulk-archives an environment's threads.
 - Spawned child threads inherit permission from explicit flags, then the
-  parent thread's last execution, then project defaults.
+  parent thread's last execution, then project defaults. The parent's mode is
+  a hard ceiling: an explicit flag can lower it but never exceed it.
 - Public permission modes are `accept-edits`, `auto`, and `full`.
   `accept-edits` keeps workspace sandboxing and asks the user to review
   escalations. `auto` keeps the same workspace sandbox while using the
   provider's automatic reviewer. `full` explicitly bypasses sandbox and
   approval protections. Plan mode remains separate. The product default is
   `auto` when no inherited or project default applies.
-- Subagents inherit the parent's permission mode by default; pass
-  `--permission-mode full` only when the user or task needs unsandboxed
-  execution.
+- Subagents inherit the parent's permission mode by default; `--permission-mode
+  full` only takes effect when the parent itself runs full.
 - Use `--parent-self` inside a thread to parent the new thread to the current
   thread.
 - Use `--parent-thread <thread-id>` to choose another specific parent.
@@ -344,12 +360,14 @@ or artifacts, validation performed, and blockers.
 - Use `bb thread tell <thread-id> "..."` when requirements change, a blocker
   needs clarification, or follow-up work is needed.
 - Use `bb thread edit-message <thread-id> --message "..."` to replace and rerun
-  the latest completed user message in an idle Codex, Claude Code, or Pi thread.
-  Pass `--expected-request-sequence <sequence>` to select an earlier message.
-  Opening edit mode in the app is non-destructive; history changes only when the
-  edit is submitted successfully, and workspace changes remain. When an agent
-  edits another thread, the CLI carries its `BB_THREAD_ID` so the replacement
-  runs under agent permission policy.
+  the latest eligible user message in a Codex, Claude Code, or Pi thread. Pass
+  `--expected-request-sequence <sequence>` to select an earlier message. Failed
+  and incomplete turns are eligible; submitting against a running thread stops
+  and settles its current turn first. Opening edit mode in the app is
+  non-destructive; history changes only when the edit is submitted successfully,
+  and workspace changes remain. When an agent edits another thread, the CLI
+  carries its `BB_THREAD_ID` so the replacement runs under agent permission
+  policy.
 - `bb thread tell` steers by default, delivering the message immediately into
   the active turn. Use `--mode queue` when the message is non-urgent and the
   agent can finish its current work first. Steer is especially important for a
@@ -442,15 +460,20 @@ For review or fix pipelines, get the environment ID from
   configure longer waits with
   `bb plugin config provider-retry set maximumWait "24 hours"` or select
   `No limit` in the plugin settings. Resets beyond the configured horizon are
-  not scheduled.
+  not scheduled. Each reported reset window is attempted automatically at most
+  once during that process. A later failed turn that omits a fresh rate-limit
+  update can still inherit the last blocked window.
 - Use `bb thread retry [id] [--request-id <id>]` for the same core
   continuation when no plugin timer remains. It sends agent-only “Please
-  continue.” on the existing provider conversation and declines when input was
-  not accepted, execution settings are unavailable, a newer request exists, or
-  the provider still owns the retry.
+  continue.” on the existing provider conversation, records the continuation
+  as manually requested, and declines when input was not accepted, execution
+  settings are unavailable, a newer request exists, or the provider still owns
+  the retry.
 - For interrupted or stopped threads, inspect first. If the user stopped the
   thread, treat that as intentional unless they ask you to continue.
 - Use `bb thread stop <id>` when a thread is stuck or no longer needed.
+- `bb thread stop <id>` also releases an idle or stuck agent runtime. The
+  command is idempotent and preserves thread history.
 - Use `bb thread compact <id>` to send the built-in `/compact` command to an idle or errored thread. Completion or failure appears in the timeline. Codex, Claude Code, Pi, and OpenCode ACP support it; Cursor ACP does not expose compatible compaction through ACP.
 - Use `bb thread cancel-plan <id>` to exit an active Plan turn without
   optimistically clearing its banner. Use `bb thread clear-goal <id>` to clear
@@ -669,6 +692,17 @@ This is the BB habit: custom app-theme work belongs in
    id). To edit an existing theme, change its `theme.css` in place.
 3. Activate it: `bb theme set <name>`. Changes apply live to every open window.
 
+Code colors follow the active palette. Built-in palettes use the matching
+Shiki pair (Nord, Dracula, Solarized, Gruvbox, Catppuccin). To restyle diffs
+for a custom palette, put Pierre / VS Code theme JSON next to the stylesheet:
+
+- `pierre-dark.json` and `pierre-light.json` in the same folder, or
+- `theme.json` with `{ "codeTheme": { "dark": "…", "light": "…" } }` — each
+  side is a bundled Shiki name (`github-dark`) or a folder-relative `.json`
+  file.
+
+See [Pierre theme authoring](https://diffs.com/theme) for the JSON shape.
+
 To author the stylesheet, **read `references/theming.md` (in this skill's
 directory) first.** It is the full design-token reference — what every CSS
 variable drives, which tokens to set vs. which auto-derive — plus the two-block
@@ -692,20 +726,66 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - BB's official plugins (GitHub, Docs, Memory, and Tasks) ship
     bundled inside the app and install from the local copy — no network. Installed official
     plugins are pinned to the bundled copy and update with BB app releases.
+  - The store also lists the **BB Community marketplace** catalog: a manifest
+    the server re-reads at startup and every six hours from
+    `https://getbb.app/marketplace/v1/marketplace.json`
+    (override with `BB_MARKETPLACE_URL`, which the server reads only at
+    startup). Its entries install from their listed
+    git or npm source through the normal install pipeline. A refresh only
+    updates discovery metadata and icons; it never installs, updates, or runs
+    plugin code, and a failed refresh keeps the last catalog bb validated.
   - `bb plugin search <query> [--json]` — search the official plugins by id,
-    name, description, or category; status shows installed / compatible /
+    name, description, category, or tag; status shows installed / compatible /
     requires newer bb.
+- **Third-party marketplaces** (routes under `/api/v1/marketplaces`):
+  - `bb marketplace add <source>` — add a marketplace from an https manifest
+    URL, `git:<url>[@<ref>]` (bb reads `marketplace.json` from the checkout),
+    or `path:<directory>` on the bb server's machine. bb validates the
+    manifest, caches the catalog, and fetches its icons. **Adding a
+    marketplace installs nothing.** The manifest's own `name` is the
+    marketplace's identity, so a name collision is refused; `bb-community` is
+    reserved and can be neither added nor removed.
+  - `bb marketplace list [--json]` — name, source, entry count, last refresh.
+  - `bb marketplace refresh [name] [--json]` — re-read one catalog or every
+    one of them. Discovery metadata and icons only. A failed refresh keeps the
+    last catalog bb validated and exits non-zero.
+  - `bb marketplace remove <name> [--json]` — forget a marketplace. Its
+    catalog rows and cached icons are deleted; every plugin it listed keeps
+    running as a direct install with its full source intent and exact
+    resolution, so `bb plugin outdated`/`update` keep working from the
+    recorded source.
+  - Install a specific marketplace's entry with
+    `bb plugin install <entry-id>@<marketplace>`. A bare entry id resolves
+    across every marketplace: exactly one match installs, no match falls back
+    to the bundled official plugin of that name, and several matches fail and
+    list the `id@marketplace` choices.
+  - Installing from a marketplace other than `bb-community` first resolves and
+    prints the true source — npm package with its range or dist-tag, or git
+    URL with its ref or semver range, subdirectory, and the exact release tag
+    and commit that range currently lands on — plus the marketplace and the
+    entry's author. `--yes` skips the prompt, not the resolution. The install
+    fails if the listing or its resolved git commit changes after confirmation.
 - Commands:
   - `bb plugin install <src>` — official plugin name (github, docs, memory,
-    tasks), HTTP(S) Git repository URL, local path, `builtin:<name>`,
-    `git:<url>[@<ref>]`, or `npm:<package>[@<version|tag|range>]` (npm on PATH
-    required for `npm:`). Repository URLs and prefixes `path:` / `npm:` /
-    `git:` / `builtin:` skip official-plugin resolution. To pin or range an
-    npm package, install with `npm:<package>@…`.
+    tasks), `<entry-id>@<marketplace>`, HTTP(S) Git repository URL, local
+    path, `builtin:<name>`,
+    `git:<url>[@<ref|semver-range>]`, or `npm:<package>[@<version|tag|range>]`
+    (npm on PATH required for `npm:`). Repository URLs and prefixes `path:` /
+    `npm:` / `git:` / `builtin:` skip official-plugin resolution. To pin or
+    range an npm package, install with `npm:<package>@…`.
     Omit the npm spec to track compatible stable releases; ranges and dist-tags
     track, while exact versions are pinned. Omit the Git ref to track the
     repository's default branch; explicit branches track, while tags and
-    commits are pinned. Installs prompt for confirmation (plugins are full-trust code);
+    commits are pinned. A Git semver range
+    (`git:github.com/acme/repo@^1.2.0`) tracks the repository's `vX.Y.Z` tags,
+    picking the highest release the range allows and excluding prereleases
+    unless the range names one. `--tag-prefix <prefix>` ranges over
+    `<prefix>vX.Y.Z` tags instead, for a repository that versions each plugin
+    on its own. bb records the selected tag and its commit and refuses to
+    resolve that tag again if it moved. A bare spec that reads as a range
+    resolves over tags only when no branch or tag has that literal name; when
+    both exist the install fails — write `@semver:<range>` or `@ref:<name>`.
+    Installs prompt for confirmation (plugins are full-trust code);
     pass `--yes` to skip. Reinstalling an already-installed managed plugin is
     refused — use `bb plugin update`. Plugins that declare a frontend (`bb.app`)
     are built at install time for path sources and git sources without a
@@ -714,45 +794,85 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     npm packages must. Managed git/npm installs refuse `engines.bb` /
     `engines.bbPluginSdk` mismatches, manifest vs. artifact identity mismatches,
     and ids reserved by bundled plugins.
+    A `git:`/`path:` repository can hold several plugins. Install one with
+    `--subdirectory <relative-path>`, or with `--plugin <name>` to resolve an
+    entry of the repository's `.bb/plugins.json` collection manifest (the two
+    flags are mutually exclusive, and neither applies to `npm:`/`builtin:`
+    sources). Installs from one repository and commit share a single checkout.
+    A repository that has a collection manifest and is not a plugin itself
+    refuses an unselected install and lists its entry names.
   - `bb plugin outdated` — check installed plugins for compatible updates
     (table; `--json` for raw results). Shows latest compatible candidate and
     any blocked incompatible newer release. Dev builds (bb `0.0.0`) annotate
     that `engines.bb` is not enforced.
   - `bb plugin update <id>` / `bb plugin update --all` — apply compatible
-    updates for tracking sources. Same full-trust confirmation as install
-    (`--yes` skips; non-TTY refuses without it). Use `bb plugin outdated` to
-    preview available updates; changing a pinned source requires reinstalling
-    it after removal.
+    updates for tracking sources, including newer tags that satisfy a Git
+    semver range. Same full-trust confirmation as install (`--yes` skips;
+    non-TTY refuses without it). Use `bb plugin outdated` to preview available
+    updates; changing a pinned source requires reinstalling it after removal.
   - `bb plugin list` — status, background services, schedules, handler timings,
     and each plugin's contributed `bb` command.
-  - `bb plugin source <id> [--json]` — requested and resolved source, engine
-    ranges, install time, integrity/registry details, and recent activation
-    history.
+  - `bb plugin source <id> [--json]` — requested and resolved source, the
+    repository subdirectory for a nested plugin, the semver range with its tag
+    prefix and resolved tag for a Git range install, engine ranges, install
+    time, integrity/registry details, and recent activation history.
   - `bb plugin enable|disable <id>`, `bb plugin reload [id]`,
     `bb plugin remove <id>` (builtin removals are remembered).
   - `bb plugin config <id> [set <key> <value> | unset <key>]` — declared
     settings. Reload the plugin after configuring (`bb plugin reload <id>`).
   - `bb plugin logs <id> [-n N] [-f]` — the plugin's `bb.log` output.
   - `bb plugin run <id> [args...]` — explicit form of a plugin's CLI command.
-  - `bb plugin new <name> [--app]` — scaffold a plugin (`--app` adds a frontend
-    entry plus a typecheck-only `tsconfig.json`; scaffold sets
-    `engines.bbPluginSdk` to `^0.4.1`); `bb plugin build [path]` —
+  - `bb plugin new <name> [--app]` — scaffold a plugin and install its npm
+    dependencies (`--app` adds a frontend entry plus a typecheck-only
+    `tsconfig.json`; scaffold sets `engines.bbPluginSdk` to `>=0.4.3`). The
+    scaffold depends on `@get-bb/plugin-sdk`, pinned to this bb's exact SDK
+    version in `devDependencies`, so the API declarations arrive with
+    `npm install` at `node_modules/@get-bb/plugin-sdk/bundled-types/*.d.ts`
+    (no vendored `types/`). If that version is not on npm yet, it warns and
+    still scaffolds. The
+    install is best-effort and verified: if npm is missing or leaves a package
+    out, it says so and prints the manual `npm install --include=dev` step
+    rather than reporting success; `bb plugin build [path]` —
     compile the plugin into `dist/`: the backend bundle (`server.js` +
     `server.meta.json` stamped with SDK/identity metadata; preferred by
     git/npm installs over source) and, when `bb.app` is declared, `app.js` +
     `app.css` + `app.meta.json`. Neither needs the server.
-  - `bb plugin types [path]` — rewrite the plugin's `types/*.d.ts` from the
-    running bb's `@bb/plugin-sdk` declarations, creating `types/` when absent.
-    Run it in a cloned or older plugin: the scaffold seeds those files once and
-    the SDK surface grows every release. `--check` reports staleness and exits
-    non-zero without writing (for CI). `bb plugin build` and `bb plugin dev`
-    refresh them automatically. Needs no server.
+  - `bb plugin types [path]` — sync the plugin's `@get-bb/plugin-sdk` surface
+    to the running bb (default: cwd). For a plugin that depends on the npm
+    package it rewrites the exact `devDependencies` pin to this bb's SDK
+    version (reporting old → new, and reminding you to `npm install`); for a
+    plugin that still vendors declarations it rewrites `types/*.d.ts`, creating
+    `types/` when absent. Run it in a cloned or older plugin: the SDK surface
+    grows every release. `--check` writes nothing and exits non-zero on a
+    mismatch (for CI). `bb plugin build` and `bb plugin dev` refresh vendored
+    declarations automatically and leave npm-package plugins alone. Needs no
+    server.
+  - `bb plugin migrate [path] [--yes]` — convert a plugin that still vendors
+    `types/` to the `@get-bb/plugin-sdk` npm package (default: cwd): add the
+    exact `devDependencies` pin, raise `engines.bbPluginSdk` when this bb's SDK
+    is newer than the declared floor, move an SDK entry declared in
+    `dependencies` into `devDependencies`, drop the `@get-bb/plugin-sdk` (and
+    pre-rename `@bb/plugin-sdk`) entries from `compilerOptions.paths` (other
+    paths like `@/*` are untouched), and delete `types/bb-plugin-sdk*.d.ts`
+    plus `types/` if that empties it — a `types/` still holding your own
+    declarations is kept, along with the `include` entries that compile it. It
+    also rewrites quoted `@bb/plugin-sdk` import/export specifiers (and their
+    subpaths) in the plugin's own `.ts`/`.tsx` sources to `@get-bb/plugin-sdk`,
+    skipping `node_modules/`, `dist/`, and `types/`; the path map was what made
+    the old name resolve, so the imports move with it. A
+    half-migrated plugin that has no vendored artifacts left but never gained
+    the pin is completed the same way. It
+    prints the exact plan and asks before touching anything; `--yes` is
+    required when stdin is not a terminal, where it otherwise prints the plan
+    and exits non-zero having changed nothing. Run `npm install` afterwards.
+    The vendored layout keeps working, so nothing migrates unless you ask.
+    Re-running on a migrated plugin is a no-op. Needs no server.
   - `bb plugin dev [path]` — watch loop for an installed plugin (default:
     cwd): on every change it rebuilds the frontend bundle (when `bb.app` is
     declared) and reloads the plugin; open app pages pick the new UI up live.
     Build/reload failures print and keep watching; Ctrl+C stops.
   - Frontend entries default-export `definePluginApp` from
-    `@bb/plugin-sdk/app` and register UI slots (homepageSection,
+    `@get-bb/plugin-sdk/app` and register UI slots (homepageSection,
     settingsSection, navPanel, threadPanelAction, fileOpener) with hooks
     (useRpc, useRealtime, useRealtimeConnectionState,
     useSettings, useBbContext,
@@ -772,5 +892,5 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   authoring reference for the backend `BbPluginApi` (settings, storage, sdk,
   http/rpc/realtime, background services and schedules, CLI commands, agent
   tools and context, host-rendered UI, lifecycle) and the frontend
-  `@bb/plugin-sdk/app` contract (slots, hooks, UI kit), with working patterns
+  `@get-bb/plugin-sdk/app` contract (slots, hooks, UI kit), with working patterns
   and gotchas. `bb guide plugins` has the short walkthrough.

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { ComposerView } from "@bb/plugin-sdk";
+import type { ComposerView } from "@get-bb/plugin-sdk";
 import {
   cleanup,
   fireEvent,
@@ -21,7 +21,11 @@ import {
   resetPluginLogoStoreForTest,
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
-import { PromptBoxActionsMenu } from "./PromptBoxActionsMenu";
+import {
+  CREATE_PLUGIN_PROMPT_ACTION,
+  PromptBoxActionsMenu,
+  withAppPromptActions,
+} from "./PromptBoxActionsMenu";
 
 afterEach(() => {
   cleanup();
@@ -61,6 +65,44 @@ describe("PromptBoxActionsMenu", () => {
 
     const trigger = screen.getByRole("button", { name: "Prompt actions" });
     expect(trigger.querySelector('[data-icon="Spinner"]')).not.toBeNull();
+  });
+
+  it("seeds the composer with the plugin prompt after the provider actions", async () => {
+    const onAction = vi.fn();
+    render(
+      <PromptBoxActionsMenu
+        actions={withAppPromptActions([{ kind: "plan", text: "/plan " }])}
+        onAction={onAction}
+      />,
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Prompt actions" }),
+      { button: 0 },
+    );
+    const menuItems = await screen.findAllByRole("menuitem");
+    expect(menuItems.map((item) => item.textContent)).toEqual([
+      "Plan",
+      "Automation",
+      "Plugin",
+    ]);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Plugin" }));
+
+    expect(onAction).toHaveBeenCalledWith(CREATE_PLUGIN_PROMPT_ACTION);
+  });
+
+  it("keeps a provider-owned action instead of the app copy", () => {
+    const providerPlugin = { kind: "plugin", text: "/plugin " } as const;
+
+    expect(withAppPromptActions([providerPlugin])).toEqual([
+      providerPlugin,
+      {
+        kind: "automation",
+        command: { trigger: "/", name: "automation", trailingText: " " },
+        text: "/automation ",
+      },
+    ]);
   });
 
   it("restores composer focus after an update-only plugin item", async () => {

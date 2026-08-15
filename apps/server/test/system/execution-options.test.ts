@@ -87,7 +87,8 @@ describe("appendCustomModels", () => {
       piModels[0].supportedReasoningEfforts.map(
         (effort) => effort.reasoningEffort,
       ),
-    ).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    ).toEqual(["none", "low", "medium", "high", "xhigh", "max"]);
+    expect(piModels[0].defaultReasoningEffort).toBe("medium");
   });
 
   it("appends dynamic ACP custom models with the agent-managed effort", () => {
@@ -952,7 +953,7 @@ describe("resolveSystemExecutionOptions", () => {
               available: true,
               composerActions: [{ kind: "skills", trigger: "/" }],
               capabilities: expect.objectContaining({
-                supportsFork: false,
+                supportsFork: true,
                 supportsServiceTier: true,
                 supportedPermissionModes: ["accept-edits", "full"],
               }),

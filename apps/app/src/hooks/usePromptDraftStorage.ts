@@ -241,6 +241,26 @@ function getPromptDraftStorageKey(scope: PromptDraftScope): string {
   return `${PROMPT_DRAFT_STORAGE_PREFIX}-${normalizedProjectId}-${normalizedThreadId}-${PROMPT_DRAFT_STORAGE_VERSION}`;
 }
 
+/**
+ * Imperative access to a scope's stored draft without subscribing to it.
+ *
+ * For components that only need to read or replace the draft at event time
+ * (e.g. the browse hero seeding the composer): `usePromptDraftStorage` is a
+ * `useSyncExternalStore` subscription, so it re-renders its caller on every
+ * keystroke a mounted composer writes — pure waste when the caller never
+ * renders the draft.
+ */
+export function getPromptDraftAccessor(scope: PromptDraftScope): {
+  getCurrent: () => PromptDraftState;
+  setDraft: (draft: PromptDraftState) => void;
+} {
+  const storageKey = getPromptDraftStorageKey(scope);
+  return {
+    getCurrent: () => readPromptDraft(storageKey),
+    setDraft: (draft) => writePromptDraft(storageKey, draft),
+  };
+}
+
 export function usePromptDraftStorage(scope: PromptDraftScope) {
   const storageKey = getPromptDraftStorageKey(scope);
   const draft = useSyncExternalStore(

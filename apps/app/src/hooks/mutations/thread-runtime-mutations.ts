@@ -2,12 +2,12 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import type {
   CreateQueuedMessageRequest,
-  CreateThreadRequest,
   SendQueuedMessageMode,
   SendQueuedMessageResponse,
   ThreadQueuedMessageListResponse,
   UpdateQueuedMessageRequest,
 } from "@bb/server-contract";
+import type { AppCreateThreadRequest } from "@/lib/api-types";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { wsManager } from "@/lib/ws";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
@@ -62,17 +62,6 @@ interface UpdateThreadQueuedMessageMutationRequest extends UpdateQueuedMessageRe
   id: string;
   queuedMessageId: string;
 }
-
-type AppCreateThreadRequest = Omit<
-  CreateThreadRequest,
-  "origin" | "startedOnBehalfOf" | "originKind" | "childOrigin"
-> &
-  Partial<
-    Pick<
-      CreateThreadRequest,
-      "startedOnBehalfOf" | "originKind" | "childOrigin"
-    >
-  >;
 
 interface SendThreadQueuedMessageMutationRequest {
   id: string;
@@ -142,9 +131,8 @@ export function useCreateThread() {
     mutationFn: (request: AppCreateThreadRequest) =>
       sdk.threads.spawn({
         ...request,
-        childOrigin: request.childOrigin ?? null,
         origin: "app",
-        originKind: request.originKind ?? request.childOrigin ?? null,
+        originKind: request.originKind ?? null,
         startedOnBehalfOf: request.startedOnBehalfOf ?? null,
       }),
     onMutate: async () => beginCreateThreadTransaction({ queryClient }),

@@ -18,6 +18,84 @@ server_url=
 machine_code=
 requested_host_daemon_port=
 
+CURL_CONNECT_TIMEOUT_SECONDS=10
+PACKAGE_DOWNLOAD_TIMEOUT_SECONDS=300
+MACHINE_CODE_REDEEM_TIMEOUT_SECONDS=30
+DAEMON_WAIT_ATTEMPTS=60
+WAIT_PROGRESS_EVERY_ATTEMPTS=5
+
+use_color=no
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+  use_color=yes
+fi
+
+color() {
+  color_code=$1
+  shift
+  if [ "$use_color" = yes ]; then
+    printf '\033[%sm%s\033[0m' "$color_code" "$*"
+  else
+    printf '%s' "$*"
+  fi
+}
+
+bold() {
+  color 1 "$1"
+}
+
+cyan() {
+  color 36 "$1"
+}
+
+dim() {
+  color 2 "$1"
+}
+
+green() {
+  color 32 "$1"
+}
+
+red() {
+  color 31 "$1"
+}
+
+yellow() {
+  color 33 "$1"
+}
+
+log() {
+  printf '  %s  %s\n' "$1" "$2"
+}
+
+log_error() {
+  printf '  %s  %s\n' "$1" "$2" >&2
+}
+
+active_step() {
+  log "$(dim "○")" "$1"
+}
+
+complete_step() {
+  log "$(green "✓")" "$1"
+}
+
+warning_step() {
+  log_error "$(yellow "!")" "$1"
+}
+
+fail_step() {
+  log_error "$(red "✗")" "$1"
+}
+
+detail() {
+  log " " "$(dim "$1")"
+}
+
+ready_row() {
+  ready_label=$(printf '%-7s' "$1")
+  log " " "$(dim "$ready_label") $2"
+}
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --join-code|--host-id|--server|--machine-code|--host-daemon-port)
@@ -34,7 +112,7 @@ while [ "$#" -gt 0 ]; do
       ;;
     -h|--help) usage ;;
     *)
-      echo "Unknown option: $1" >&2
+      fail_step "Unknown option: $1"
       usage
       ;;
   esac
@@ -44,17 +122,20 @@ done
 [ -n "$host_id" ] || usage
 [ -n "$server_url" ] || usage
 
+printf '\n  %s\n\n' "$(bold "bb machine setup")"
+active_step "Setting up this machine as $host_id for $server_url"
+
 case "$(uname -s)" in
   Darwin) platform=darwin ;;
   Linux) platform=linux ;;
   *)
-    echo "bb machine installation supports macOS and Linux only." >&2
+    fail_step "bb machine installation supports macOS and Linux only."
     exit 1
     ;;
 esac
 
 if ! command -v node >/dev/null 2>&1; then
-  echo "bb-app requires Node.js 22.19 or newer (22.19, 24, and 26 are tested), but node is not on PATH." >&2
+  fail_step "bb-app requires Node.js 22.19 or newer (22.19, 24, and 26 are tested), but node is not on PATH."
   exit 1
 fi
 node_version=$(node -p 'process.versions.node')
@@ -67,14 +148,14 @@ node_supported=$(node -e '
   process.exit(supported ? 0 : 1);
 ' && echo yes || echo no)
 if [ "$node_supported" != yes ]; then
-  echo "Node.js $node_version is too old; bb-app requires Node.js 22.19 or newer (22.19, 24, and 26 are tested)." >&2
+  fail_step "Node.js $node_version is too old; bb-app requires Node.js 22.19 or newer (22.19, 24, and 26 are tested)."
   exit 1
 fi
 node_bin=$(command -v node)
 
 require_npm() {
   if ! command -v npm >/dev/null 2>&1; then
-    echo "bb-app installation requires npm." >&2
+    fail_step "bb-app installation requires npm."
     exit 1
   fi
 }
@@ -82,8 +163,8 @@ require_npm() {
 server_host=$(node -e '
   const url = new URL(process.argv[1]);
   process.stdout.write(url.host.replace(/[^a-zA-Z0-9.-]/gu, "-"));
-' "$server_url") || {
-  echo "Could not parse the server URL $server_url." >&2
+' "$server_url" 2>/dev/null) || {
+  fail_step "Could not parse the server URL $server_url."
   exit 1
 }
 service_slug=$(printf '%s' "$server_host" | tr '.' '-')
@@ -97,6 +178,9 @@ canonical_data_dir=$(node -e '
   const fs = require("node:fs");
   process.stdout.write(fs.realpathSync(process.argv[1]));
 ' "$data_dir")
+# Keep the package private to this enrollment. Besides avoiding system-prefix
+# permissions, this lets one machine follow servers running different builds.
+machine_npm_prefix="$canonical_data_dir/npm"
 port_registry_dir="$HOME/.bb-machines/host-daemon-ports"
 mkdir -p "$port_registry_dir"
 
@@ -145,15 +229,26 @@ daemon_status_matches() {
 }
 
 wait_for_daemon_connection() {
+  wait_subject=$1
+  active_step "Waiting for $wait_subject to connect (up to about 2 minutes)"
   attempts=0
-  while [ "$attempts" -lt 60 ]; do
+  while [ "$attempts" -lt "$DAEMON_WAIT_ATTEMPTS" ]; do
     if daemon_status_matches "$host_daemon_port" yes; then
       return 0
     fi
     attempts=$((attempts + 1))
+    report_wait_progress "$attempts" "$wait_subject"
     sleep 1
   done
   return 1
+}
+
+report_wait_progress() {
+  progress_attempt=$1
+  progress_subject=$2
+  if [ $((progress_attempt % WAIT_PROGRESS_EVERY_ATTEMPTS)) -eq 0 ]; then
+    active_step "Still waiting for $progress_subject ($progress_attempt/$DAEMON_WAIT_ATTEMPTS checks)"
+  fi
 }
 
 reservation_owner() {
@@ -213,7 +308,7 @@ find_and_claim_available_host_daemon_port() {
     fi
     candidate_port=$((candidate_port + 1))
   done
-  echo "Could not find an available host-daemon port." >&2
+  fail_step "Could not find an available host-daemon port."
   return 1
 }
 
@@ -226,19 +321,19 @@ fi
 host_daemon_port=
 if [ -n "$requested_host_daemon_port" ]; then
   if ! valid_port "$requested_host_daemon_port"; then
-    echo "--host-daemon-port must be an integer between 1 and 65535." >&2
+    fail_step "--host-daemon-port must be an integer between 1 and 65535."
     exit 2
   fi
   if ! claim_port_for_data_dir "$requested_host_daemon_port" "$canonical_data_dir"; then
-    echo "Host daemon local API port $requested_host_daemon_port is reserved by another bb enrollment." >&2
-    echo "Choose another value for --host-daemon-port and rerun this command." >&2
+    fail_step "Host daemon local API port $requested_host_daemon_port is reserved by another bb enrollment."
+    detail "Choose another value for --host-daemon-port and rerun this command." >&2
     exit 1
   fi
   if ! port_is_available "$requested_host_daemon_port" && \
      ! daemon_status_matches "$requested_host_daemon_port" no; then
     release_port_for_data_dir "$requested_host_daemon_port" "$canonical_data_dir"
-    echo "Host daemon local API port $requested_host_daemon_port is already in use." >&2
-    echo "Choose another value for --host-daemon-port and rerun this command." >&2
+    fail_step "Host daemon local API port $requested_host_daemon_port is already in use."
+    detail "Choose another value for --host-daemon-port and rerun this command." >&2
     exit 1
   fi
   host_daemon_port=$requested_host_daemon_port
@@ -252,7 +347,7 @@ elif [ -f "$host_daemon_port_file" ]; then
     if valid_port "$stored_host_daemon_port"; then
       release_port_for_data_dir "$stored_host_daemon_port" "$canonical_data_dir"
     fi
-    echo "Stored host-daemon port $stored_host_daemon_port is unavailable; assigning a new port." >&2
+    warning_step "Stored host-daemon port $stored_host_daemon_port is unavailable; assigning a new port."
   fi
 fi
 
@@ -265,7 +360,7 @@ mv "$host_daemon_port_temp" "$host_daemon_port_file"
 if valid_port "$previous_host_daemon_port" && [ "$previous_host_daemon_port" != "$host_daemon_port" ]; then
   release_port_for_data_dir "$previous_host_daemon_port" "$canonical_data_dir"
 fi
-echo "Using local host-daemon port $host_daemon_port."
+complete_step "Using local host-daemon port $host_daemon_port"
 
 # The server's own build is always installed when it offers one: version
 # strings cannot distinguish unpublished builds, so an existing bb-app is
@@ -273,46 +368,64 @@ echo "Using local host-daemon port $host_daemon_port."
 package_url="${server_url%/}/install/bb-app.tgz"
 package_dir=$(mktemp -d "${TMPDIR:-/tmp}/bb-app.XXXXXX")
 package_file="$package_dir/bb-app.tgz"
-package_status=$(curl -sS -L -o "$package_file" -w '%{http_code}' "$package_url" 2>/dev/null) || package_status=000
+# curl's numeric meter shows bytes, rate, percentage, and ETA without the
+# animated ASCII bar. Keep redirected installs quiet while preserving errors.
+curl_output_mode=--progress-meter
+if [ ! -t 2 ]; then
+  curl_output_mode=--silent
+fi
+active_step "Downloading the server's bb-app package (timeout: 5 minutes)"
+package_status=$(curl "$curl_output_mode" --show-error --location \
+  --connect-timeout "$CURL_CONNECT_TIMEOUT_SECONDS" \
+  --max-time "$PACKAGE_DOWNLOAD_TIMEOUT_SECONDS" \
+  --output "$package_file" \
+  --write-out '%{http_code}' \
+  "$package_url") || package_status=000
 
 bb_app=
+bb_app_npm_prefix=
 if [ "$package_status" -ge 200 ] && [ "$package_status" -lt 300 ]; then
   require_npm
-  echo "Installing the server's bb-app build..."
-  if ! npm install -g "$package_file"; then
+  complete_step "Downloaded the server's bb-app package"
+  active_step "Installing the server's bb-app build"
+  if ! npm install -g --prefix "$machine_npm_prefix" "$package_file"; then
     rm -rf "$package_dir"
-    echo "Could not install bb-app globally. Fix npm global-install permissions, then rerun this command." >&2
+    fail_step "Could not install bb-app for this machine. Check the npm error above, then rerun this command."
     exit 1
   fi
+  bb_app_npm_prefix=$machine_npm_prefix
+  complete_step "Installed the server's bb-app build"
 elif command -v bb-app >/dev/null 2>&1; then
   bb_app=$(command -v bb-app)
   if [ "$package_status" = 404 ]; then
-    echo "The server does not provide its bb-app package; using bb-app at $bb_app"
+    warning_step "The server does not provide its bb-app package; using bb-app at $bb_app"
   else
-    echo "Warning: could not download the server's bb-app package (HTTP $package_status); using bb-app at $bb_app" >&2
+    warning_step "Could not download the server's bb-app package (HTTP $package_status); using bb-app at $bb_app"
   fi
 elif [ "$package_status" = 404 ]; then
   require_npm
-  echo "The server does not provide its bb-app package; installing bb-app from the npm registry..."
-  if ! npm install -g bb-app; then
+  warning_step "The server does not provide its bb-app package"
+  active_step "Installing bb-app from the npm registry"
+  if ! npm install -g --prefix "$machine_npm_prefix" bb-app; then
     rm -rf "$package_dir"
-    echo "Could not install bb-app globally. Fix npm global-install permissions, then rerun this command." >&2
+    fail_step "Could not install bb-app for this machine. Check the npm error above, then rerun this command."
     exit 1
   fi
+  bb_app_npm_prefix=$machine_npm_prefix
+  complete_step "Installed bb-app from the npm registry"
 else
   rm -rf "$package_dir"
-  echo "Could not download the server's bb-app package from $package_url (HTTP $package_status)." >&2
+  fail_step "Could not download the server's bb-app package from $package_url (HTTP $package_status)."
   exit 1
 fi
 rm -rf "$package_dir"
 
-if [ -z "$bb_app" ]; then
-  if ! command -v bb-app >/dev/null 2>&1; then
-    echo "npm installed bb-app, but its global bin directory is not on PATH." >&2
-    echo "Add npm's global bin directory to PATH, then rerun this command." >&2
+if [ -n "$bb_app_npm_prefix" ]; then
+  bb_app="$bb_app_npm_prefix/bin/bb-app"
+  if [ ! -x "$bb_app" ]; then
+    fail_step "npm installed bb-app, but did not create the expected executable at $bb_app."
     exit 1
   fi
-  bb_app=$(command -v bb-app)
 fi
 
 if [ -n "$machine_code" ]; then
@@ -325,17 +438,19 @@ if [ -n "$machine_code" ]; then
     url.search = "";
     url.hash = "";
     process.stdout.write(url.origin);
-  ' "$server_url") || {
-    echo "Could not derive the bb connect apex from $server_url." >&2
+  ' "$server_url" 2>/dev/null) || {
+    fail_step "Could not derive the bb connect apex from $server_url."
     exit 1
   }
-  echo "Authorizing this machine with bb connect..."
+  active_step "Authorizing this machine with bb connect"
   redeem_response=$(curl -fsS \
+    --connect-timeout "$CURL_CONNECT_TIMEOUT_SECONDS" \
+    --max-time "$MACHINE_CODE_REDEEM_TIMEOUT_SECONDS" \
     -X POST \
     -H 'content-type: application/json' \
     --data "{\"code\":\"$machine_code\"}" \
     "$connect_apex/api/connect/redeem-machine") || {
-    echo "Could not redeem the bb connect machine code." >&2
+    fail_step "Could not redeem the bb connect machine code."
     exit 1
   }
   printf '%s' "$redeem_response" | node -e '
@@ -365,9 +480,10 @@ if [ -n "$machine_code" ]; then
       fs.renameSync(temporary, configPath);
     });
   ' "$data_dir" "$server_url" || {
-    echo "The bb connect machine-code response was invalid." >&2
+    fail_step "The bb connect machine-code response was invalid."
     exit 1
   }
+  complete_step "Authorized this machine with bb connect"
 fi
 
 auth_matches_host() {
@@ -382,8 +498,8 @@ auth_matches_host() {
 already_joined=no
 if [ -f "$data_dir/auth.json" ]; then
   if ! auth_matches_host; then
-    echo "$data_dir already holds credentials for a different host, not $host_id." >&2
-    echo "If this machine was removed from the server, delete $data_dir and rerun this command." >&2
+    fail_step "$data_dir already holds credentials for a different host, not $host_id."
+    detail "If this machine was removed from the server, delete $data_dir and rerun this command." >&2
     exit 1
   fi
   if [ -f "$data_dir/config.json" ] && node -e '
@@ -394,15 +510,17 @@ if [ -f "$data_dir/auth.json" ]; then
     process.exit(normalize(config.serverUrl) === normalize(expectedServer) ? 0 : 1);
   ' "$data_dir" "$server_url" 2>/dev/null; then
     already_joined=yes
-    echo "This machine is already joined to $server_url as $host_id."
+    complete_step "This machine is already joined to $server_url as $host_id"
   fi
 fi
 
 join_pid=
 if [ "$already_joined" = no ]; then
   join_log="$data_dir/install-join.log"
-  echo "Joining $server_url as $host_id..."
-  BB_DATA_DIR="$data_dir" nohup "$bb_app" host-daemon join \
+  active_step "Joining $server_url as $host_id"
+  detail "Join progress is logged to $join_log"
+  # The daemon passes this prefix back to npm during protocol self-updates.
+  BB_APP_NPM_PREFIX="$bb_app_npm_prefix" BB_DATA_DIR="$data_dir" nohup "$bb_app" host-daemon join \
     --auto-update \
     --host-daemon-port "$host_daemon_port" \
     --join-code "$join_code" \
@@ -413,7 +531,8 @@ if [ "$already_joined" = no ]; then
 
   joined=no
   attempts=0
-  while [ "$attempts" -lt 60 ]; do
+  active_step "Waiting for the temporary host daemon to connect (up to about 2 minutes)"
+  while [ "$attempts" -lt "$DAEMON_WAIT_ATTEMPTS" ]; do
     if [ -f "$data_dir/auth.json" ] && auth_matches_host && \
        daemon_status_matches "$host_daemon_port" yes; then
       joined=yes
@@ -421,28 +540,31 @@ if [ "$already_joined" = no ]; then
     fi
     if ! kill -0 "$join_pid" 2>/dev/null; then
       wait "$join_pid" || true
-      echo "bb host daemon exited before it connected to $server_url. See $join_log" >&2
+      fail_step "bb host daemon exited before it connected to $server_url."
+      detail "See $join_log" >&2
       exit 1
     fi
     attempts=$((attempts + 1))
+    report_wait_progress "$attempts" "the temporary host daemon"
     sleep 1
   done
   if [ "$joined" != yes ]; then
     kill "$join_pid" 2>/dev/null || true
     wait "$join_pid" 2>/dev/null || true
-    echo "Timed out waiting for host daemon $host_id to connect to $server_url. See $join_log" >&2
+    fail_step "Timed out waiting for host daemon $host_id to connect to $server_url."
+    detail "See $join_log" >&2
     exit 1
   fi
-  echo "Joined successfully."
+  complete_step "Joined successfully"
 fi
 
 # Tests and source-development smoke runs can leave the enrolled daemon in the
 # foreground-supervised process without modifying the user's service manager.
 if [ "${BB_INSTALL_SKIP_SERVICE:-0}" = 1 ]; then
   if [ -n "$join_pid" ]; then
-    echo "Service installation skipped; daemon PID $join_pid is still running."
+    warning_step "Service installation skipped; daemon PID $join_pid is still running."
   else
-    echo "Service installation skipped."
+    warning_step "Service installation skipped."
   fi
   exit 0
 fi
@@ -452,6 +574,8 @@ if [ -n "$join_pid" ]; then
   wait "$join_pid" 2>/dev/null || true
 fi
 rm -f "$data_dir/install-daemon.pid"
+
+active_step "Installing the persistent bb host daemon service"
 
 xml_escape() {
   printf '%s' "$1" | sed \
@@ -473,6 +597,7 @@ if [ "$platform" = darwin ]; then
   mkdir -p "$service_dir"
   escaped_node_bin=$(xml_escape "$node_bin")
   escaped_bb_app=$(xml_escape "$bb_app")
+  escaped_bb_app_npm_prefix=$(xml_escape "$bb_app_npm_prefix")
   escaped_server=$(xml_escape "$server_url")
   escaped_data_dir=$(xml_escape "$data_dir")
   cat >"$service_file" <<EOF
@@ -493,7 +618,10 @@ if [ "$platform" = darwin ]; then
     <string>$escaped_server</string>
   </array>
   <key>EnvironmentVariables</key>
-  <dict><key>BB_DATA_DIR</key><string>$escaped_data_dir</string></dict>
+  <dict>
+    <key>BB_APP_NPM_PREFIX</key><string>$escaped_bb_app_npm_prefix</string>
+    <key>BB_DATA_DIR</key><string>$escaped_data_dir</string>
+  </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>$escaped_data_dir/logs/launchd.log</string>
@@ -503,24 +631,31 @@ if [ "$platform" = darwin ]; then
 EOF
   launchctl bootout "gui/$(id -u)" "$service_file" >/dev/null 2>&1 || true
   if ! launchctl_error=$(launchctl bootstrap "gui/$(id -u)" "$service_file" 2>&1); then
-    echo "Could not register the bb host-daemon launch agent $service_label." >&2
-    [ -z "$launchctl_error" ] || echo "launchctl: $launchctl_error" >&2
+    fail_step "Could not register the bb host-daemon launch agent $service_label."
+    [ -z "$launchctl_error" ] || detail "launchctl: $launchctl_error" >&2
     exit 1
   fi
   if ! launchctl_error=$(launchctl kickstart -k "gui/$(id -u)/$service_label" 2>&1); then
-    echo "The bb host-daemon launch agent was registered, but the daemon did not start." >&2
-    [ -z "$launchctl_error" ] || echo "launchctl: $launchctl_error" >&2
-    echo "See $data_dir/logs/launchd.log for the daemon error." >&2
+    fail_step "The bb host-daemon launch agent was registered, but the daemon did not start."
+    [ -z "$launchctl_error" ] || detail "launchctl: $launchctl_error" >&2
+    detail "See $data_dir/logs/launchd.log for the daemon error." >&2
     exit 1
   fi
-  if ! wait_for_daemon_connection; then
-    echo "The bb host-daemon launch agent started but did not connect to $server_url." >&2
-    echo "See $data_dir/logs/launchd.log for the daemon error." >&2
+  if ! wait_for_daemon_connection "the launch agent"; then
+    fail_step "The bb host-daemon launch agent started but did not connect to $server_url."
+    detail "See $data_dir/logs/launchd.log for the daemon error." >&2
     exit 1
   fi
-  echo "Installed and started launch agent: $service_file"
-  echo "Host daemon local API: http://127.0.0.1:$host_daemon_port"
-  echo "Uninstall: launchctl bootout gui/$(id -u) '$service_file' && rm '$service_file'"
+  complete_step "Installed and started the launch agent"
+  printf '\n'
+  log "$(green "●")" "$(bold "bb machine is ready")"
+  printf '\n'
+  ready_row "server" "$(cyan "$server_url")"
+  ready_row "daemon" "http://127.0.0.1:$host_daemon_port"
+  ready_row "data" "$data_dir"
+  ready_row "service" "$service_file"
+  printf '\n'
+  detail "Uninstall: launchctl bootout gui/$(id -u) '$service_file' && rm '$service_file'"
 else
   service_dir="$HOME/.config/systemd/user"
   service_name="bb-host-daemon-$service_slug"
@@ -528,6 +663,7 @@ else
   mkdir -p "$service_dir"
   escaped_node_bin=$(systemd_escape "$node_bin")
   escaped_bb_app=$(systemd_escape "$bb_app")
+  escaped_bb_app_npm_prefix=$(systemd_escape "$bb_app_npm_prefix")
   escaped_server=$(systemd_escape "$server_url")
   escaped_data_dir=$(systemd_escape "$data_dir")
   cat >"$service_file" <<EOF
@@ -538,6 +674,7 @@ Wants=network-online.target
 
 [Service]
 ExecStart="$escaped_node_bin" "$escaped_bb_app" host-daemon --auto-update --host-daemon-port "$host_daemon_port" --server-url "$escaped_server"
+Environment="BB_APP_NPM_PREFIX=$escaped_bb_app_npm_prefix"
 Environment="BB_DATA_DIR=$escaped_data_dir"
 Restart=always
 RestartSec=2
@@ -547,24 +684,31 @@ WantedBy=default.target
 EOF
   systemctl --user daemon-reload
   if ! systemctl_error=$(systemctl --user enable "$service_name.service" 2>&1); then
-    echo "The bb host-daemon systemd service could not be enabled." >&2
-    [ -z "$systemctl_error" ] || echo "systemctl: $systemctl_error" >&2
-    echo "Inspect it with: journalctl --user -u $service_name.service" >&2
+    fail_step "The bb host-daemon systemd service could not be enabled."
+    [ -z "$systemctl_error" ] || detail "systemctl: $systemctl_error" >&2
+    detail "Inspect it with: journalctl --user -u $service_name.service" >&2
     exit 1
   fi
   if ! systemctl_error=$(systemctl --user restart "$service_name.service" 2>&1); then
-    echo "The bb host-daemon systemd service was enabled, but it could not be restarted." >&2
-    [ -z "$systemctl_error" ] || echo "systemctl: $systemctl_error" >&2
-    echo "Inspect it with: journalctl --user -u $service_name.service" >&2
+    fail_step "The bb host-daemon systemd service was enabled, but it could not be restarted."
+    [ -z "$systemctl_error" ] || detail "systemctl: $systemctl_error" >&2
+    detail "Inspect it with: journalctl --user -u $service_name.service" >&2
     exit 1
   fi
-  if ! wait_for_daemon_connection; then
-    echo "The bb host-daemon systemd service started but did not connect to $server_url." >&2
-    echo "Inspect it with: journalctl --user -u $service_name.service" >&2
+  if ! wait_for_daemon_connection "the systemd service"; then
+    fail_step "The bb host-daemon systemd service started but did not connect to $server_url."
+    detail "Inspect it with: journalctl --user -u $service_name.service" >&2
     exit 1
   fi
-  echo "Installed and started systemd user service: $service_file"
-  echo "Host daemon local API: http://127.0.0.1:$host_daemon_port"
-  echo "It starts with your systemd user session."
-  echo "Uninstall: systemctl --user disable --now $service_name.service && rm '$service_file' && systemctl --user daemon-reload"
+  complete_step "Installed and started the systemd user service"
+  printf '\n'
+  log "$(green "●")" "$(bold "bb machine is ready")"
+  printf '\n'
+  ready_row "server" "$(cyan "$server_url")"
+  ready_row "daemon" "http://127.0.0.1:$host_daemon_port"
+  ready_row "data" "$data_dir"
+  ready_row "service" "$service_file"
+  printf '\n'
+  detail "Starts with your systemd user session."
+  detail "Uninstall: systemctl --user disable --now $service_name.service && rm '$service_file' && systemctl --user daemon-reload"
 fi

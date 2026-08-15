@@ -23,7 +23,7 @@ describe("packaged CLI plugin build", () => {
 
   it("includes a newly generated SDK app export when the facade package is not resolvable", async () => {
     // Keep the bundle below apps/cli so its external build dependencies
-    // resolve exactly as they do for dist/index.js. @bb/plugin-sdk is not a
+    // resolve exactly as they do for dist/index.js. @get-bb/plugin-sdk is not a
     // CLI dependency, so import.meta.resolve in this bundle takes the
     // packaged fallback that the source-level plugin-build tests do not.
     const tempRoot = await mkdtemp(join(cliRoot, ".packaged-plugin-build-"));
@@ -69,7 +69,7 @@ describe("packaged CLI plugin build", () => {
     await writeFile(
       join(pluginRoot, "app.ts"),
       [
-        'import { definePluginApp, useComposerView } from "@bb/plugin-sdk/app";',
+        'import { definePluginApp, useComposerView } from "@get-bb/plugin-sdk/app";',
         "function ComposerProbe() {",
         "  return useComposerView().layout;",
         "}",

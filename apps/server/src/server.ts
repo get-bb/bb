@@ -57,6 +57,7 @@ import {
   requireClientSocketSession,
   resolveRequestAppSurface,
 } from "./request-context.js";
+import { runEventLoopWork } from "./services/system/event-loop-work.js";
 import { runWithTelemetryAppSurface } from "./services/system/telemetry.js";
 import {
   createClientSocketProtocol,
@@ -84,6 +85,12 @@ import {
 } from "./services/plugin-catalog/plugin-catalog-service.js";
 import { callHostRetryableOnlineRpc } from "./services/hosts/online-rpc.js";
 import { browserRequestProblem } from "./browser-request-guard.js";
+
+/**
+ * `/api/v1/plugins/<id>/http/...` — the plugin-owned wire, whose auth mode is
+ * declared per route by the plugin itself.
+ */
+const PLUGIN_WIRE_HTTP_PATH = /^\/api\/v1\/plugins\/[^/]+\/http(?:\/|$)/u;
 import { rankAcceptedAssetEncodings } from "./asset-content-encoding.js";
 import { registerRoomDistributionHttpRoutes } from "./room-distribution/room-distribution-http.js";
 import type { WorkTogetherRoomDistributionV1 } from "./room-distribution/room-distribution-port.js";
@@ -360,6 +367,13 @@ export function createApp(
     );
     return runWithTelemetryAppSurface(appSurface, next);
   });
+  app.use("*", async (context, next) => {
+    const path = context.req.path;
+    if (!path.startsWith("/api/v1/") && !path.startsWith("/internal/")) {
+      return next();
+    }
+    return runEventLoopWork(`${context.req.method} ${path}`, next);
+  });
   app.use(
     "*",
     cors({
@@ -504,10 +518,40 @@ export function createApp(
   // Bridge runtime-config assembly to plugin skills + context (§4.4).
   setPluginAgentContributions(pluginService);
   const publicApi = new Hono();
+  // CORS decides whether a browser may *read* a response; it does not stop the
+  // request being sent and acted on. A `no-cors` POST with a simple content
+  // type skips the preflight entirely, and the typed route parser reads the
+  // body with `c.req.json()` regardless of content type — so a page on any
+  // origin could drive this API blind. Reject a foreign browser origin here
+  // instead. `requireJsonForMutation` is deliberately NOT set: it answers 415
+  // to any mutation without `application/json`, which would break every
+  // existing `curl -d` caller. The origin check alone stops browser CSRF,
+  // because a browser always sends `Origin` on a cross-origin mutation.
+  // Non-browser callers (curl, the `bb` CLI, the SDK) send no `Origin` and pass
+  // through untouched.
+  publicApi.use("*", async (context, next) => {
+    // A plugin's own HTTP routes declare their auth mode (`local` | `token` |
+    // `none`). `none` is deliberately reachable from any origin, and `token`
+    // authenticates with a secret rather than an origin, so this blanket check
+    // must not pre-empt the per-route one `registerPluginRoutes` applies.
+    if (PLUGIN_WIRE_HTTP_PATH.test(context.req.path)) {
+      return next();
+    }
+    const problem = browserRequestProblem(context, deps);
+    if (problem !== null) {
+      throw new ApiError(problem.status, "forbidden_origin", problem.error);
+    }
+    return next();
+  });
   const pluginCatalogService = createPluginCatalogService({
     db: deps.db,
     appVersion: deps.config.appVersion,
+    marketplaceUrl: deps.config.marketplaceUrl,
+    dataDir: deps.config.dataDir,
     plugins: pluginService,
+    // The store's installed/compatible flags ride the plugin-list broadcast,
+    // so a refreshed catalog reaches open windows without polling.
+    notifyCatalogChanged: () => deps.hub.notifySystem(["plugins-changed"]),
     warn: (message) => deps.logger.warn(message),
   });
   registerProjectRoutes(publicApi, deps);

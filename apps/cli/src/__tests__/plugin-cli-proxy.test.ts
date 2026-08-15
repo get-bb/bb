@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Command } from "commander";
+import { RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
 
 import { registerEnvironmentCommands } from "../commands/environment.js";
 import { registerGuideCommand } from "../commands/guide.js";
@@ -20,23 +21,6 @@ import {
   runPluginCliCommand,
   type PluginCliContributionEntry,
 } from "../plugin-cli-proxy.js";
-
-// Mirror of RESERVED_BB_CLI_COMMANDS in
-// apps/server/src/services/plugins/plugin-api.ts — the server rejects plugin
-// CLI commands shadowing core bb commands. Update both together.
-const RESERVED_BB_CLI_COMMANDS = [
-  "environment",
-  "guide",
-  "help",
-  "manager",
-  "plugin",
-  "project",
-  "provider",
-  "skill",
-  "status",
-  "theme",
-  "thread",
-];
 
 function buildProgram(): Command {
   const program = new Command();
@@ -134,6 +118,8 @@ describe("fetchPluginCliContributions", () => {
     ).resolves.toEqual({
       outcome: "unreachable",
       cause: thrown,
+      attempts: 1,
+      lastTimeoutMs: 2000,
     });
 
     // Old server without the route: silent fallback to commander's error.
@@ -176,6 +162,159 @@ describe("fetchPluginCliContributions", () => {
         { pluginId: "connect", name: "connect", summary: "s", commands: [] },
       ],
     });
+  });
+});
+
+describe("fetchPluginCliContributions retries", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const okResponse = () =>
+    new Response(JSON.stringify({ cliCommands: [] }), { status: 200 });
+
+  function timeoutError(): Error {
+    return Object.assign(
+      new Error("The operation was aborted due to timeout"),
+      {
+        name: "TimeoutError",
+      },
+    );
+  }
+
+  function connectError(code: string): Error {
+    return new TypeError("fetch failed", {
+      cause: Object.assign(new Error(`connect ${code} 127.0.0.1:38886`), {
+        code,
+      }),
+    });
+  }
+
+  /** Record the sleeps instead of taking them, so the test stays instant. */
+  function recordingSleep() {
+    const slept: number[] = [];
+    return {
+      slept,
+      sleep: async (ms: number) => {
+        slept.push(ms);
+      },
+    };
+  }
+
+  it("recovers when a busy server answers on a later attempt", async () => {
+    // The regression: a single stalled probe used to fail the whole command,
+    // so `bb memory add` reported bb down and the write was simply lost.
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(timeoutError())
+      .mockResolvedValueOnce(okResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    const { slept, sleep } = recordingSleep();
+
+    await expect(
+      fetchPluginCliContributions("http://localhost", 2000, { sleep }),
+    ).resolves.toEqual({ outcome: "ok", contributions: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(slept).toEqual([150]);
+  });
+
+  it("retries when the response body transport fails", async () => {
+    const bodyFailedResponse = new Response("{}");
+    vi.spyOn(bodyFailedResponse, "json").mockRejectedValue(
+      connectError("UND_ERR_SOCKET"),
+    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(bodyFailedResponse)
+      .mockResolvedValueOnce(okResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    const { slept, sleep } = recordingSleep();
+
+    await expect(
+      fetchPluginCliContributions("http://localhost", 2000, { sleep }),
+    ).resolves.toEqual({ outcome: "ok", contributions: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(slept).toEqual([150]);
+  });
+
+  it("does not retry malformed response JSON", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("not json", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { slept, sleep } = recordingSleep();
+
+    await expect(
+      fetchPluginCliContributions("http://localhost", 2000, { sleep }),
+    ).resolves.toEqual({ outcome: "invalid" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(slept).toEqual([]);
+  });
+
+  it("widens the probe window on each retry before giving up", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(timeoutError());
+    vi.stubGlobal("fetch", fetchMock);
+    const { slept, sleep } = recordingSleep();
+
+    const result = await fetchPluginCliContributions("http://localhost", 2000, {
+      sleep,
+    });
+    expect(result).toMatchObject({
+      outcome: "unreachable",
+      attempts: 3,
+      lastTimeoutMs: 4000,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(slept).toEqual([150, 500]);
+  });
+
+  it("fails fast when nothing is listening", async () => {
+    // ECONNREFUSED is the one cause that really does mean bb is down;
+    // retrying it would only delay a correct, actionable answer.
+    const fetchMock = vi.fn().mockRejectedValue(connectError("ECONNREFUSED"));
+    vi.stubGlobal("fetch", fetchMock);
+    const { slept, sleep } = recordingSleep();
+
+    const result = await fetchPluginCliContributions("http://localhost", 2000, {
+      sleep,
+    });
+    expect(result).toMatchObject({ outcome: "unreachable", attempts: 1 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(slept).toEqual([]);
+  });
+
+  it("fails fast when the shell is sandboxed", async () => {
+    for (const code of ["EPERM", "EACCES"]) {
+      const fetchMock = vi.fn().mockRejectedValue(connectError(code));
+      vi.stubGlobal("fetch", fetchMock);
+      const { slept, sleep } = recordingSleep();
+
+      const result = await fetchPluginCliContributions(
+        "http://localhost",
+        2000,
+        { sleep },
+      );
+      expect(result).toMatchObject({ outcome: "unreachable", attempts: 1 });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(slept).toEqual([]);
+    }
+  });
+
+  it("retries a dropped socket", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(connectError("ECONNRESET"))
+      .mockResolvedValueOnce(okResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    const { sleep } = recordingSleep();
+
+    await expect(
+      fetchPluginCliContributions("http://localhost", 2000, { sleep }),
+    ).resolves.toEqual({ outcome: "ok", contributions: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -243,9 +382,23 @@ describe("describeUnreachableServer", () => {
     const timeout = Object.assign(new Error("The operation timed out"), {
       name: "TimeoutError",
     });
-    expect(describeUnreachableServer(url, timeout, 2000)).toBe(
-      `bb did not respond at ${url} within 2000ms — it may be busy or unreachable.`,
-    );
+    const message = describeUnreachableServer(url, timeout, 2000);
+    expect(message).toContain(`bb did not respond at ${url} within 2000ms`);
+    expect(message).toContain("it may be busy or temporarily unreachable");
+    // The reader is usually an agent: a timeout must never read as "bb is
+    // down", and must say the work is still pending so it is not dropped.
+    expect(message).not.toContain("not running at");
+    expect(message).not.toContain("bb is running");
+    expect(message).toContain("re-run it");
+  });
+
+  it("names the attempt count once the probe was retried", () => {
+    const timeout = Object.assign(new Error("The operation timed out"), {
+      name: "TimeoutError",
+    });
+    const message = describeUnreachableServer(url, timeout, 4000, 3);
+    expect(message).toContain("after 3 attempts (last window 4000ms)");
+    expect(message).not.toContain("not running at");
   });
 
   it("falls back to the unwrapped cause chain", () => {

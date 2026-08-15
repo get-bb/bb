@@ -13,15 +13,25 @@
       "types": "./src/thread-status.ts",
       "default": "./src/thread-status.ts"
     },
-    "./thread-child-origin": {
-      "source": "./src/thread-child-origin.ts",
-      "types": "./src/thread-child-origin.ts",
-      "default": "./src/thread-child-origin.ts"
+    "./thread-origin-kind": {
+      "source": "./src/thread-origin-kind.ts",
+      "types": "./src/thread-origin-kind.ts",
+      "default": "./src/thread-origin-kind.ts"
     },
     "./thread-visibility": {
       "source": "./src/thread-visibility.ts",
       "types": "./src/thread-visibility.ts",
       "default": "./src/thread-visibility.ts"
+    },
+    "./plugin-cli": {
+      "source": "./src/plugin-cli.ts",
+      "types": "./src/plugin-cli.ts",
+      "default": "./src/plugin-cli.ts"
+    },
+    "./plugin-interaction-limits": {
+      "source": "./src/plugin-interaction-limits.ts",
+      "types": "./src/plugin-interaction-limits.ts",
+      "default": "./src/plugin-interaction-limits.ts"
     }
   },
   "types": "./src/index.ts",

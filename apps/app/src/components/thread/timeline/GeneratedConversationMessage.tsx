@@ -4,7 +4,7 @@ import type {
   PromptTextMention,
   SystemMessageKind,
   SystemMessageSubject,
-  ThreadChildOrigin,
+  ThreadOriginKind,
 } from "@bb/domain";
 import type { TimelineTitle, TimelineTitleSegment } from "@bb/thread-view";
 import { type IconName } from "@bb/shared-ui/icon";
@@ -19,7 +19,6 @@ import {
 import { computeMutedPrefixLength } from "./compute-muted-prefix-length.js";
 import {
   clipMentionTextToVisibleRange,
-  renderMentionTextSegments,
   shiftMentionsToTextRange,
 } from "./ConversationMessageMentions.js";
 import { ExpandableTimelineRow } from "./ExpandableTimelineRow.js";
@@ -37,15 +36,21 @@ import { TurnRequestLabel } from "./TurnRequestLabel.js";
 import { useOverflowMeasurement } from "./conversation-message-overflow.js";
 import { PromptMentionPill } from "./ConversationMessageMentions.js";
 import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions.js";
+import {
+  boundedMarkdownPreview,
+  closeUnterminatedMarkdownCodeSpan,
+  endsInsideExactRawThreadIdCodeSpan,
+  GENERATED_MESSAGE_COLLAPSED_PREVIEW_CHAR_CAP,
+} from "./conversation-message-limits.js";
 
 interface GeneratedConversationMessageProps {
   attachmentItems: ConversationAttachmentItems;
   /**
-   * `childOrigin` of the thread this generated row belongs to. A fork's
+   * `originKind` of the thread this generated row belongs to. A fork's
    * seed-without-run anchor (`"fork"`) renders the Fork leading icon for
    * consistency with the Fork action; otherwise the per-`sourceKind` icon.
    */
-  childOrigin: ThreadChildOrigin | null;
+  originKind: ThreadOriginKind | null;
   mentions: readonly PromptTextMention[];
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
@@ -81,6 +86,13 @@ interface GeneratedConversationBodySlice {
   text: string;
 }
 
+interface GeneratedConversationCollapsedPreview {
+  hasAdditionalBodyLines: boolean;
+  parseAsMarkdown: boolean;
+  text: string;
+  wasCapped: boolean;
+}
+
 interface TimelineTitleSegmentArgs {
   em: boolean;
   link: TimelineTitleSegment["link"] | null;
@@ -90,7 +102,7 @@ interface TimelineTitleSegmentArgs {
 }
 
 interface GeneratedConversationTitleArgs {
-  childOrigin: ThreadChildOrigin | null;
+  originKind: ThreadOriginKind | null;
   sourceKind: GeneratedConversationSourceKind;
   sourceName: string;
   sourceThreadId: string | null;
@@ -114,6 +126,40 @@ export function generatedConversationBodySlice({
   return {
     startOffset: prefixLength + trimStartLength,
     text: textAfterPrefix.slice(trimStartLength),
+  };
+}
+
+/**
+ * Bounds the initial generated-message parse without manufacturing a complete
+ * token at the cut. When the cap lands inside a token, retreat to the previous
+ * whitespace boundary; a solid unbroken token falls back to plain text for the
+ * collapsed row and is parsed only after explicit expansion.
+ */
+export function generatedConversationCollapsedPreview(
+  text: string,
+): GeneratedConversationCollapsedPreview {
+  const previewWindow = text.slice(
+    0,
+    GENERATED_MESSAGE_COLLAPSED_PREVIEW_CHAR_CAP + 1,
+  );
+  const lineBreakMatch = /\r\n|\r|\n/u.exec(previewWindow);
+  if (lineBreakMatch !== null) {
+    const text = previewWindow.slice(0, lineBreakMatch.index);
+    return {
+      hasAdditionalBodyLines: true,
+      parseAsMarkdown: !endsInsideExactRawThreadIdCodeSpan(text),
+      text,
+      wasCapped: false,
+    };
+  }
+
+  const bounded = boundedMarkdownPreview(
+    text,
+    GENERATED_MESSAGE_COLLAPSED_PREVIEW_CHAR_CAP,
+  );
+  return {
+    hasAdditionalBodyLines: false,
+    ...bounded,
   };
 }
 
@@ -216,7 +262,7 @@ function systemMessageTitleSegments(
 }
 
 export function generatedConversationTitle({
-  childOrigin,
+  originKind,
   sourceKind,
   sourceName,
   sourceThreadId,
@@ -230,7 +276,7 @@ export function generatedConversationTitle({
   // so it is tested first.
   const agentLeadIn = sourceIsPluginSideChat
     ? "Replying to"
-    : childOrigin === "fork"
+    : originKind === "fork"
       ? "Forked from"
       : "Message from";
   // A side-chat source opens in the plugin's panel tab (a title action), so its
@@ -310,12 +356,12 @@ export function systemMessageIconName(
 
 function generatedConversationIconName(
   sourceKind: GeneratedConversationSourceKind,
-  childOrigin: ThreadChildOrigin | null,
+  originKind: ThreadOriginKind | null,
   systemMessageKind: SystemMessageKind,
 ): IconName {
   // A fork's anchor uses the Fork icon (matching the Fork action) regardless of
   // source kind; in practice fork anchors are always agent-initiated.
-  if (childOrigin === "fork") {
+  if (originKind === "fork") {
     return "Fork";
   }
   switch (sourceKind) {
@@ -415,7 +461,7 @@ const COLLAPSED_MARKDOWN_PREVIEW_CLASS = cn(
 export const GeneratedConversationMessage = memo(
   function GeneratedConversationMessage({
     attachmentItems,
-    childOrigin,
+    originKind,
     mentions,
     onOpenLink,
     onOpenLocalFileLink,
@@ -450,7 +496,7 @@ export const GeneratedConversationMessage = memo(
     const title = useMemo(
       () =>
         generatedConversationTitle({
-          childOrigin,
+          originKind,
           sourceKind,
           sourceName,
           sourceThreadId,
@@ -459,7 +505,7 @@ export const GeneratedConversationMessage = memo(
           systemMessageSubject,
         }),
       [
-        childOrigin,
+        originKind,
         sourceKind,
         sourceName,
         sourceThreadId,
@@ -481,21 +527,18 @@ export const GeneratedConversationMessage = memo(
       ) : undefined;
     const leadingIcon = generatedConversationIconName(
       sourceKind,
-      childOrigin,
+      originKind,
       systemMessageKind,
     );
     // Title-only rows (ownership assigned/removed) restate their body in the
     // title; suppress the body, the collapsed preview, and expansion entirely.
     const titleOnly = systemMessageIsTitleOnly(sourceKind, systemMessageKind);
-    const renderMessageMarkdown =
-      sourceKind === "system" || sourceIsPluginSideChat;
     const hasExpandedOnlyContent =
       attachmentItems.filePaths.length > 0 ||
       attachmentItems.imageItems.length > 0 ||
       requestLabel !== null;
-    const collapsedPreviewLine = messageText.split(/\r\n|\r|\n/u, 1)[0] ?? "";
-    const hasAdditionalBodyLines =
-      collapsedPreviewLine.length < messageText.length;
+    const collapsedPreviewSource =
+      generatedConversationCollapsedPreview(messageText);
     const collapsedPreviewTextRef = useRef<HTMLElement | null>(null);
     const setCollapsedPreviewTextRef = useCallback(
       (element: HTMLElement | null) => {
@@ -511,7 +554,8 @@ export const GeneratedConversationMessage = memo(
     const expandable =
       !titleOnly &&
       (hasExpandedOnlyContent ||
-        hasAdditionalBodyLines ||
+        collapsedPreviewSource.hasAdditionalBodyLines ||
+        collapsedPreviewSource.wasCapped ||
         collapsedPreviewOverflowMeasurement === "overflowing");
     // Keep the continuation marker mounted once the row is expandable. If we
     // remove it when the preview overflows, its reclaimed width can make the
@@ -524,51 +568,48 @@ export const GeneratedConversationMessage = memo(
     const collapsedPreviewBody = clipMentionTextToVisibleRange({
       mentions: messageMentions,
       rangeStart: 0,
-      text: collapsedPreviewLine,
+      text: collapsedPreviewSource.text,
     });
+    const collapsedPreviewMarkdown =
+      collapsedPreviewSource.wasCapped ||
+      collapsedPreviewSource.hasAdditionalBodyLines
+        ? closeUnterminatedMarkdownCodeSpan(collapsedPreviewBody.text)
+        : collapsedPreviewBody.text;
+    const suppressGeneratedAgentImages =
+      sourceKind === "agent" && !sourceIsPluginSideChat;
     const collapsedPreview =
       !titleOnly && collapsedPreviewBody.text ? (
         <div
           className={`${NESTED_TIMELINE_GROUP_LINE_CLASS_NAME} max-w-full min-w-0`}
         >
           <div className="flex min-w-0 items-baseline truncate pl-2 text-sm leading-relaxed text-foreground">
-            {renderMessageMarkdown ? (
-              // Render the collapsed first line as markdown too (inline
-              // formatting + @thread pills), clamped to a single line, so a
-              // not-yet-expanded system or side-chat message shows formatted
-              // text rather than raw markdown. Block nodes are flattened to inline via
-              // COLLAPSED_MARKDOWN_PREVIEW_CLASS.
-              <div
-                ref={setCollapsedPreviewTextRef}
-                className="min-w-0 truncate"
-              >
+            {/* Render every generated preview through the combined Markdown
+                mention pipeline. Offset mentions preserve paths and commands;
+                token mentions also recognize raw persisted thread ids. */}
+            <div ref={setCollapsedPreviewTextRef} className="min-w-0 truncate">
+              {collapsedPreviewSource.parseAsMarkdown ? (
                 <MarkdownPreview
-                  content={collapsedPreviewLine}
-                  linkRouting={linkRouting}
-                  threadMentions={
-                    resolveSegmentLinkHref
-                      ? {
-                          mentions: collapsedPreviewBody.mentions,
-                          preserveSoftBreaks: true,
-                          resolveLinkHref: resolveSegmentLinkHref,
-                        }
-                      : undefined
+                  content={collapsedPreviewMarkdown}
+                  imagePolicy={
+                    suppressGeneratedAgentImages ? "alt-text" : "render"
                   }
+                  linkRouting={linkRouting}
+                  promptMentions={{
+                    mentions: collapsedPreviewBody.mentions,
+                    resolveLinkHref: resolveSegmentLinkHref,
+                    resolveMentionLink,
+                  }}
+                  threadMentions={{
+                    mentions: collapsedPreviewBody.mentions,
+                    preserveSoftBreaks: true,
+                    resolveLinkHref: resolveSegmentLinkHref,
+                  }}
                   className={COLLAPSED_MARKDOWN_PREVIEW_CLASS}
                 />
-              </div>
-            ) : (
-              <span
-                ref={setCollapsedPreviewTextRef}
-                className="min-w-0 truncate"
-              >
-                {renderMentionTextSegments({
-                  mentions: collapsedPreviewBody.mentions,
-                  resolveMentionLink,
-                  text: collapsedPreviewBody.text,
-                })}
-              </span>
-            )}
+              ) : (
+                <span>{collapsedPreviewBody.text}</span>
+              )}
+            </div>
             {renderManualContinuation ? (
               <span
                 className={cn(
@@ -587,33 +628,23 @@ export const GeneratedConversationMessage = memo(
         <div className={NESTED_TIMELINE_GROUP_LINE_CLASS_NAME}>
           <div className="pl-2 text-sm leading-relaxed text-foreground">
             {messageText ? (
-              // System and side-chat handoffs render markdown while preserving
-              // `@thread:<id>` pills. Other generated agent messages stay on
-              // the offset-based renderer because their path mentions cannot
-              // be represented by the markdown mention transport.
-              renderMessageMarkdown ? (
-                <MarkdownPreview
-                  content={messageText}
-                  linkRouting={linkRouting}
-                  threadMentions={
-                    resolveSegmentLinkHref
-                      ? {
-                          mentions: messageMentions,
-                          preserveSoftBreaks: true,
-                          resolveLinkHref: resolveSegmentLinkHref,
-                        }
-                      : undefined
-                  }
-                />
-              ) : (
-                <p className="whitespace-pre-wrap break-words">
-                  {renderMentionTextSegments({
-                    mentions: messageMentions,
-                    resolveMentionLink,
-                    text: messageText,
-                  })}
-                </p>
-              )
+              <MarkdownPreview
+                content={messageText}
+                imagePolicy={
+                  suppressGeneratedAgentImages ? "alt-text" : "render"
+                }
+                linkRouting={linkRouting}
+                promptMentions={{
+                  mentions: messageMentions,
+                  resolveLinkHref: resolveSegmentLinkHref,
+                  resolveMentionLink,
+                }}
+                threadMentions={{
+                  mentions: messageMentions,
+                  preserveSoftBreaks: true,
+                  resolveLinkHref: resolveSegmentLinkHref,
+                }}
+              />
             ) : (
               <p className="text-muted-foreground">
                 {generatedConversationEmptyText(sourceKind)}
@@ -644,8 +675,8 @@ export const GeneratedConversationMessage = memo(
         projectId,
         resolveSegmentLinkHref,
         resolveMentionLink,
-        renderMessageMarkdown,
         sourceKind,
+        suppressGeneratedAgentImages,
         requestLabel,
         turnRequest,
       ],

@@ -48,15 +48,6 @@ export async function fetchHostStatus(
   }
 }
 
-/** Fetch the local connected server-session host ID from the daemon. */
-export async function fetchHostId(port: number): Promise<string | null> {
-  const status = await fetchHostStatus(port);
-  if (!status?.connected) {
-    return null;
-  }
-  return status.hostId;
-}
-
 export async function fetchWorkspaceOpenTargets(
   port: number,
   options: { path?: string } = {},

@@ -12,7 +12,7 @@ export interface SlowDbQueryLogFields {
 }
 
 export interface SlowDbQueryLogger {
-  debug(fields: SlowDbQueryLogFields, message: string): void;
+  info(fields: SlowDbQueryLogFields, message: string): void;
 }
 
 export interface CreateConnectionOptions {
@@ -41,6 +41,11 @@ interface TimedStatementOperationArgs<TValue> {
 }
 
 const DEFAULT_SLOW_DB_QUERY_LOG_THRESHOLD_MS = 100;
+/** 256 MiB page cache. Negative cache_size is kibibytes. */
+export const SQLITE_CACHE_SIZE_KIB = 262_144;
+/** Memory-map the first 1 GiB of the database file. */
+export const SQLITE_MMAP_SIZE_BYTES = 1_073_741_824;
+export const SQLITE_BUSY_TIMEOUT_MS = 5_000;
 const MAX_LOGGED_SQL_LENGTH = 1_000;
 const SQL_TRUNCATION_SUFFIX = "...";
 // Keep ORM-generated quoted identifiers intact. SQLite accepts double-quoted
@@ -74,7 +79,9 @@ function runTimedStatementOperation<TValue>(
   } finally {
     const durationMs = performance.now() - startedAt;
     if (durationMs >= args.config.thresholdMs) {
-      args.config.logger.debug(
+      // `info`, not `debug`: the packaged app runs at `info`, so a debug
+      // line never appears next to the stall reports it is meant to explain.
+      args.config.logger.info(
         {
           bindingArgumentCount: args.bindingArgumentCount,
           durationMs: roundDurationMs(durationMs),
@@ -169,6 +176,13 @@ export function createConnection(
   sqlite.pragma("journal_mode = WAL");
   // Enable foreign keys
   sqlite.pragma("foreign_keys = ON");
+  // WAL + NORMAL: no fsync per commit. Power loss can drop the last
+  // transactions; it cannot corrupt the file. cache_size/mmap_size replace
+  // the 2 MiB default cache so a multi-GB database is not re-read per query.
+  sqlite.pragma("synchronous = NORMAL");
+  sqlite.pragma(`cache_size = -${SQLITE_CACHE_SIZE_KIB}`);
+  sqlite.pragma(`mmap_size = ${SQLITE_MMAP_SIZE_BYTES}`);
+  sqlite.pragma(`busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
   instrumentSqliteClient(sqlite, options);
 
   const db = drizzle({ client: sqlite, schema });

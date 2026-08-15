@@ -48,6 +48,7 @@ import {
 } from "./accepted-client-request-context.js";
 import {
   parseAcceptedSteersFromClientRequest,
+  parseRejectedUsersFromClientRequest,
   parseUsersFromClientRequest,
   parseLegacyUserMessage,
 } from "./user-message-parsing.js";
@@ -83,6 +84,7 @@ import {
   createProjectionState,
   finalizeProjectionState,
   flushProjectionBufferedOutputs,
+  flushProjectionBufferedOutputsAfterTurnCompleted,
   onThreadInterrupted,
   onTurnCompleted,
   onTurnStarted,
@@ -259,6 +261,18 @@ function buildClientTurnRequestById(
     });
   }
   return requestById;
+}
+
+function buildRejectedClientRequestIds(
+  events: ThreadEventWithMeta[],
+): ReadonlySet<string> {
+  const requestIds = new Set<string>();
+  for (const { event } of events) {
+    if (event.type === "client/turn/rejected") {
+      requestIds.add(event.requestId);
+    }
+  }
+  return requestIds;
 }
 
 function buildSelectedStartedTurnIds(
@@ -513,6 +527,7 @@ function buildFlatProjectionData(
     events: orderedEvents,
   });
   const clientRequestById = buildClientTurnRequestById(orderedEvents);
+  const rejectedClientRequestIds = buildRejectedClientRequestIds(orderedEvents);
   const selectedStartedTurnIds = buildSelectedStartedTurnIds(orderedEvents);
   const acceptedRootClientTurnIds = buildAcceptedRootClientTurnIds(
     orderedEvents,
@@ -600,22 +615,27 @@ function buildFlatProjectionData(
 
     if (isTerminalBufferedTextFlushEvent(eventType)) {
       if (decoded.type === "turn/completed") {
+        const completedTurnId = requireThreadEventScopeTurnId({
+          type: decoded.type,
+          scope: decoded.scope,
+        });
         onTurnCompleted({
           completedAt: meta.createdAt,
           state,
-          turnId: requireThreadEventScopeTurnId({
-            type: decoded.type,
-            scope: decoded.scope,
-          }),
+          turnId: completedTurnId,
           status: decoded.status,
         });
+        flushProjectionBufferedOutputsAfterTurnCompleted(
+          state,
+          completedTurnId,
+        );
       } else {
         onThreadInterrupted({
           completedAt: meta.createdAt,
           state,
         });
+        flushProjectionBufferedOutputs(state);
       }
-      flushProjectionBufferedOutputs(state);
     }
 
     if (decoded.type === "turn/input/accepted") {
@@ -635,6 +655,27 @@ function buildFlatProjectionData(
       for (const acceptedSteer of acceptedSteers) {
         appendProjectedUserMessage(state, acceptedSteer);
       }
+      continue;
+    }
+
+    if (decoded.type === "client/turn/rejected") {
+      const clientRequest = clientRequestById.get(decoded.requestId);
+      if (clientRequest) {
+        for (const rejectedMessage of parseRejectedUsersFromClientRequest({
+          decoded: clientRequest.event,
+          meta,
+          options: args.options,
+        })) {
+          appendProjectedUserMessage(state, rejectedMessage);
+        }
+      }
+      continue;
+    }
+
+    if (
+      decoded.type === "client/turn/requested" &&
+      rejectedClientRequestIds.has(decoded.requestId)
+    ) {
       continue;
     }
 
@@ -946,16 +987,19 @@ function buildDetailedProjection(
     events: args.events,
     messages: args.messages,
   });
-  const semanticProjection = normalizeEventProjection({
-    ...projection,
-    state: {
-      activeThinking: args.activeThinking,
-      activeWorkflows: args.activeWorkflows,
-      activeBackgroundCommands: args.activeBackgroundCommands,
+  const semanticProjection = normalizeEventProjection(
+    {
+      ...projection,
+      state: {
+        activeThinking: args.activeThinking,
+        activeWorkflows: args.activeWorkflows,
+        activeBackgroundCommands: args.activeBackgroundCommands,
+      },
     },
-  }, {
-    contextOnlyToolCallIds: args.contextOnlyToolCallIds,
-  });
+    {
+      contextOnlyToolCallIds: args.contextOnlyToolCallIds,
+    },
+  );
   return applyProjectionTurnMessageDetail(
     semanticProjection,
     args.turnMessageDetail,

@@ -231,6 +231,9 @@ async function startIntegrationServer(
     inferenceFallbackModel: "test/mock-fallback-model",
     inferenceModel: "test/mock-model",
     inheritedSkillsRootPaths: [],
+    // Integration tests never refresh the catalog; an unroutable host keeps
+    // an accidental refresh off the network.
+    marketplaceUrl: "https://marketplace.invalid/marketplace.json",
     openAiApiKey: process.env.OPENAI_API_KEY ?? "test-openai-key",
     appUrl: "https://bb.example.test",
     serverPort: 0,

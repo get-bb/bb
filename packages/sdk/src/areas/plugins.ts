@@ -1,8 +1,16 @@
 import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import {
+  pluginCatalogInstallPlanResponseSchema,
   pluginCatalogInstallRequestSchema,
   pluginCatalogSearchResponseSchema,
   pluginCatalogStatusResponseSchema,
+  pluginMarketplaceAddRequestSchema,
+  pluginMarketplaceListResponseSchema,
+  pluginMarketplaceMutationResponseSchema,
+  pluginMarketplaceNameSchema,
+  pluginMarketplaceRefreshRequestSchema,
+  pluginMarketplaceRefreshResponseSchema,
+  pluginMarketplaceRemoveResponseSchema,
   pluginApplyUpdateRequestSchema,
   pluginApplyUpdateResultSchema,
   pluginInstallResponseSchema,
@@ -18,7 +26,11 @@ import {
   pluginUpdateCheckRequestSchema,
   pluginUpdateCheckResponseSchema,
   type InstalledPlugin,
+  type PluginCatalogInstallPlan as PluginCatalogInstallPlanContract,
+  type PluginCatalogResolvedSource,
   type PluginCatalogSearchResult as PluginCatalogSearchContract,
+  type PluginMarketplace as PluginMarketplaceContract,
+  type PluginMarketplaceRefreshResult as PluginMarketplaceRefreshContract,
   type PluginCatalogStatus as PluginCatalogStatusContract,
   type PluginApplyUpdateResult as PluginApplyUpdateContract,
   type PluginListResponse,
@@ -26,6 +38,7 @@ import {
   type PluginRemoveResponse,
   type PluginSettingsResponse,
   type PluginSourceDetail,
+  type PluginSourceSelection,
   type PluginTokenResponse,
   type PluginUpdateCheckEntry,
 } from "@bb/server-contract";
@@ -38,12 +51,68 @@ export interface PluginIdArgs {
 
 /** Install directly from a path:, git:, npm:, or builtin: source spec. */
 export interface PluginInstallArgs {
+  /**
+   * `path:<dir>`, `builtin:<name>`, `npm:<package>[@<version|tag|range>]`, or
+   * `git:<url>[@<spec>]`. A git spec is one ref, or a semver range resolved
+   * over the repository's `[<tagPrefix>]vX.Y.Z` release tags:
+   * `git:<url>@semver:<range>` and `git:<url>@semver:<tagPrefix>:<range>` say
+   * range explicitly, `git:<url>@ref:<name>` says ref explicitly, and a bare
+   * `^1.2.0` resolves over tags unless the repository also has a ref of that
+   * literal name (which is refused as ambiguous).
+   */
+  source: string;
+  /**
+   * Directory of a multi-plugin repository to install, relative to the
+   * repository root (`git:` and `path:` sources only).
+   */
+  subdirectory?: string;
+  /**
+   * Name of a `.bb/plugins.json` collection entry to install, resolved to its
+   * directory in the repository. Mutually exclusive with `subdirectory`.
+   */
+  plugin?: string;
+}
+
+/** Install a catalog entry, from BB's official catalog or another marketplace. */
+export interface PluginCatalogInstallArgs {
+  entryId: string;
+  /**
+   * Marketplace that lists the entry. Omitted resolves across every
+   * marketplace: exactly one match installs, none falls back to the bundled
+   * official plugin of that name, and several are refused as ambiguous.
+   */
+  marketplace?: string;
+  /**
+   * Source facts returned by installPlan for a third-party entry. The server
+   * refuses the install when the listing or its git commit changed afterward.
+   */
+  confirmedSource?: PluginCatalogResolvedSource;
+}
+
+/** Ask what an install would do before confirming it. */
+export interface PluginCatalogInstallPlanArgs {
+  entryId: string;
+  marketplace?: string;
+  signal?: AbortSignal;
+}
+
+/** Add a marketplace by `https:` manifest URL, `git:<url>[@ref]`, or `path:<dir>`. */
+export interface PluginMarketplaceAddArgs {
   source: string;
 }
 
-/** Install an entry from BB's official catalog. */
-export interface PluginCatalogInstallArgs {
-  entryId: string;
+export interface PluginMarketplaceListArgs {
+  signal?: AbortSignal;
+}
+
+export interface PluginMarketplaceRefreshArgs {
+  /** One marketplace to refresh; omitted refreshes every one of them. */
+  name?: string;
+  signal?: AbortSignal;
+}
+
+export interface PluginMarketplaceRemoveArgs {
+  name: string;
 }
 
 export interface PluginReloadArgs {
@@ -109,11 +178,36 @@ export type PluginApplyUpdateResult = PluginApplyUpdateContract;
 
 export type PluginCatalogStatusResult = PluginCatalogStatusContract;
 export type PluginCatalogSearchResult = PluginCatalogSearchContract[];
+export type PluginCatalogInstallPlanResult = PluginCatalogInstallPlanContract;
+export type PluginMarketplaceListResult = PluginMarketplaceContract[];
+export type PluginMarketplaceAddResult = PluginMarketplaceContract;
+export type PluginMarketplaceRefreshResult = PluginMarketplaceRefreshContract[];
+
+export interface PluginMarketplaceRemoveResult {
+  /** Installs whose provenance became `direct`; they keep running as before. */
+  convertedPluginIds: string[];
+}
 
 export interface PluginCatalogArea {
   install(args: PluginCatalogInstallArgs): Promise<PluginInstallResult>;
+  /** The true resolved source an install would use, before anything runs. */
+  installPlan(
+    args: PluginCatalogInstallPlanArgs,
+  ): Promise<PluginCatalogInstallPlanResult>;
   search(args: PluginCatalogSearchArgs): Promise<PluginCatalogSearchResult>;
   status(args?: PluginCatalogStatusArgs): Promise<PluginCatalogStatusResult>;
+}
+
+/** Registered marketplaces. Adding one installs nothing; removing one uninstalls nothing. */
+export interface PluginMarketplacesArea {
+  add(args: PluginMarketplaceAddArgs): Promise<PluginMarketplaceAddResult>;
+  list(args?: PluginMarketplaceListArgs): Promise<PluginMarketplaceListResult>;
+  refresh(
+    args?: PluginMarketplaceRefreshArgs,
+  ): Promise<PluginMarketplaceRefreshResult>;
+  remove(
+    args: PluginMarketplaceRemoveArgs,
+  ): Promise<PluginMarketplaceRemoveResult>;
 }
 
 export interface PluginsArea {
@@ -123,6 +217,7 @@ export interface PluginsArea {
     args?: PluginCheckUpdatesArgs,
   ): Promise<PluginCheckUpdatesResult>;
   catalog: PluginCatalogArea;
+  marketplaces: PluginMarketplacesArea;
   disable(args: PluginIdArgs): Promise<PluginDisableResult>;
   enable(args: PluginIdArgs): Promise<PluginEnableResult>;
   getSettings(args: PluginGetSettingsArgs): Promise<PluginGetSettingsResult>;
@@ -138,6 +233,14 @@ export interface PluginsArea {
   updateSettings(
     args: PluginSettingsUpdateArgs,
   ): Promise<PluginUpdateSettingsResult>;
+}
+
+function pluginSourceSelection(args: PluginInstallArgs): PluginSourceSelection {
+  if (args.subdirectory !== undefined) {
+    return { kind: "subdirectory", path: args.subdirectory };
+  }
+  if (args.plugin !== undefined) return { kind: "entry", name: args.plugin };
+  return { kind: "root" };
 }
 
 function pluginPath(pluginId: string, suffix = ""): string {
@@ -179,6 +282,23 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       );
       return response.plugin;
     },
+    async installPlan(input) {
+      const body = pluginCatalogInstallRequestSchema.parse(
+        input.marketplace === undefined
+          ? { entryId: input.entryId }
+          : { entryId: input.entryId, marketplace: input.marketplace },
+      );
+      const query = new URLSearchParams({ entryId: body.entryId });
+      if (body.marketplace !== undefined) {
+        query.set("marketplace", body.marketplace);
+      }
+      const response = await requestParsed(
+        `/api/v1/plugin-catalog/install-plan?${query.toString()}`,
+        pluginCatalogInstallPlanResponseSchema,
+        { signal: input.signal },
+      );
+      return response.plan;
+    },
     async search(input) {
       const query = z.string().parse(input.query);
       const response = await requestParsed(
@@ -195,6 +315,46 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
         { signal: input.signal },
       );
       return response.catalog;
+    },
+  };
+
+  const marketplaces: PluginMarketplacesArea = {
+    async add(input) {
+      const body = pluginMarketplaceAddRequestSchema.parse(input);
+      const response = await requestParsed(
+        "/api/v1/marketplaces",
+        pluginMarketplaceMutationResponseSchema,
+        jsonInit("POST", body),
+      );
+      return response.marketplace;
+    },
+    async list(input = {}) {
+      const response = await requestParsed(
+        "/api/v1/marketplaces",
+        pluginMarketplaceListResponseSchema,
+        { signal: input.signal },
+      );
+      return response.marketplaces;
+    },
+    async refresh(input = {}) {
+      const body = pluginMarketplaceRefreshRequestSchema.parse(
+        input.name === undefined ? {} : { name: input.name },
+      );
+      const response = await requestParsed(
+        "/api/v1/marketplaces/refresh",
+        pluginMarketplaceRefreshResponseSchema,
+        { ...jsonInit("POST", body), signal: input.signal },
+      );
+      return response.results;
+    },
+    async remove(input) {
+      const name = pluginMarketplaceNameSchema.parse(input.name);
+      const response = await requestParsed(
+        `/api/v1/marketplaces/${encodeURIComponent(name)}`,
+        pluginMarketplaceRemoveResponseSchema,
+        { method: "DELETE" },
+      );
+      return { convertedPluginIds: response.convertedPluginIds };
     },
   };
 
@@ -227,6 +387,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       return response.results;
     },
     catalog,
+    marketplaces,
     async disable(input) {
       const response = await requestParsed(
         pluginPath(input.pluginId, "/disable"),
@@ -258,7 +419,15 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       );
     },
     async install(input) {
-      const body = pluginInstallSourceRequestSchema.parse(input);
+      if (input.subdirectory !== undefined && input.plugin !== undefined) {
+        throw new Error(
+          "plugin install accepts subdirectory or plugin, not both",
+        );
+      }
+      const body = pluginInstallSourceRequestSchema.parse({
+        source: input.source,
+        selection: pluginSourceSelection(input),
+      });
       const response = await requestParsed(
         "/api/v1/plugins/install",
         pluginInstallResponseSchema,

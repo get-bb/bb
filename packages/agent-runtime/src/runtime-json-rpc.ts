@@ -48,6 +48,16 @@ export class ProviderResponseEncodeError extends Error {
   }
 }
 
+export class JsonRpcResponseError extends Error {
+  readonly code: number;
+
+  constructor(code: number, message: string) {
+    super(message);
+    this.name = "JsonRpcResponseError";
+    this.code = code;
+  }
+}
+
 export interface PendingJsonRpcRequest {
   resolve: (result: unknown) => void;
   reject: (error: Error) => void;
@@ -129,10 +139,7 @@ interface SettleJsonRpcResponseArgs {
   response: JsonRpcObject;
 }
 
-const closedJsonRpcStdinErrorCodes = new Set([
-  "EPIPE",
-  "ERR_STREAM_DESTROYED",
-]);
+const closedJsonRpcStdinErrorCodes = new Set(["EPIPE", "ERR_STREAM_DESTROYED"]);
 const jsonRpcStdinErrorHandledStreams = new WeakSet<Writable>();
 
 function isJsonRpcObject(value: unknown): value is JsonRpcObject {
@@ -148,6 +155,17 @@ function formatJsonRpcErrorMessage(error: unknown): string {
     return error.message;
   }
   return JSON.stringify(error);
+}
+
+function jsonRpcResponseError(error: unknown): Error {
+  if (
+    isJsonRpcObject(error) &&
+    typeof error.code === "number" &&
+    typeof error.message === "string"
+  ) {
+    return new JsonRpcResponseError(error.code, error.message);
+  }
+  return new Error(formatJsonRpcErrorMessage(error));
 }
 
 function isClosedJsonRpcStdinError(error: Error): boolean {
@@ -250,7 +268,7 @@ export function settleJsonRpcResponse(args: SettleJsonRpcResponseArgs): void {
 
   args.pending.delete(args.id);
   if (args.response.error) {
-    pending.reject(new Error(formatJsonRpcErrorMessage(args.response.error)));
+    pending.reject(jsonRpcResponseError(args.response.error));
     return;
   }
 

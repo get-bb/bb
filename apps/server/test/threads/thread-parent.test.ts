@@ -255,24 +255,15 @@ describe("isParentNotifiableChildThread", () => {
   it("is true for a hidden delegated child", () => {
     expect(
       isParentNotifiableChildThread({
-        childOrigin: null,
         originKind: null,
         parentThreadId: "thr_parent",
       }),
     ).toBe(true);
   });
 
-  it("is false for a legacy fork that kept a parent id", () => {
+  it("is false for a fork that kept a parent id", () => {
     expect(
       isParentNotifiableChildThread({
-        childOrigin: "fork",
-        originKind: null,
-        parentThreadId: "thr_parent",
-      }),
-    ).toBe(false);
-    expect(
-      isParentNotifiableChildThread({
-        childOrigin: null,
         originKind: "fork",
         parentThreadId: "thr_parent",
       }),
@@ -282,14 +273,12 @@ describe("isParentNotifiableChildThread", () => {
   it("is false for a source-derived fork and for a root thread", () => {
     expect(
       isParentNotifiableChildThread({
-        childOrigin: null,
         originKind: "fork",
         parentThreadId: "thr_parent",
       }),
     ).toBe(false);
     expect(
       isParentNotifiableChildThread({
-        childOrigin: null,
         originKind: null,
         parentThreadId: null,
       }),

@@ -90,14 +90,14 @@ describe("resolvePreferredWorkspaceOpenTarget", () => {
     ).toBeNull();
   });
 
-  it("preserves stale stored preferences by falling back at runtime", () => {
+  it("uses Default App when a stored target is no longer available", () => {
     expect(
       resolvePreferredWorkspaceOpenTarget({
         capability: "openDirectory",
-        preferredTargetId: "cursor",
-        targets: [finderTarget],
+        preferredTargetId: "removed-editor",
+        targets: [finderTarget, defaultAppTarget],
       }),
-    ).toBe(finderTarget);
+    ).toBe(defaultAppTarget);
   });
 
   it("uses remote SSH capabilities when resolving remote targets", () => {
@@ -150,6 +150,16 @@ describe("resolvePreferredWorkspaceOpenFileTarget", () => {
         targets: [defaultAppTarget, terminalTarget, vscodeTarget],
       }),
     ).toBe(vscodeTarget);
+  });
+
+  it("uses Default App for source files when a stored target is unavailable", () => {
+    expect(
+      resolvePreferredWorkspaceOpenFileTarget({
+        path: "/tmp/src/file.ts",
+        preferredTargetId: "removed-editor",
+        targets: [vscodeTarget, defaultAppTarget],
+      }),
+    ).toBe(defaultAppTarget);
   });
 
   it("prefers editors for line-targeted opens even when the extension is viewable", () => {

@@ -1,7 +1,7 @@
 import type {
   ComposerCustomization,
   PluginComposerThreadRowStatus,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 
 export const PLUGIN_SLOT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;

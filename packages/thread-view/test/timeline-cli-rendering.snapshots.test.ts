@@ -517,10 +517,7 @@ describe("timeline CLI rendering snapshots", () => {
     const pendingSteerRow = timeline.rows.find(
       (
         row,
-      ): row is Extract<
-        TimelineRow,
-        { kind: "conversation"; role: "user" }
-      > =>
+      ): row is Extract<TimelineRow, { kind: "conversation"; role: "user" }> =>
         row.kind === "conversation" &&
         row.role === "user" &&
         row.turnRequest.status === "pending",
@@ -546,6 +543,102 @@ describe("timeline CLI rendering snapshots", () => {
       Please account for the restart
       steer pending"
     `);
+  });
+
+  it("shows a rejected steer as failed instead of pending", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const request = event.clientTurnRequested({
+      target: { kind: "auto", expectedTurnId: "turn-1" },
+      text: "Please account for the restart",
+    });
+    const timeline = renderIdleTimeline([
+      event.turnStarted(),
+      request,
+      event.clientTurnRejected({ requestId: request.data.requestId }),
+      event.turnCompleted({ status: "failed" }),
+    ]);
+
+    const rejectedSteerRow = timeline.rows.find(
+      (
+        row,
+      ): row is Extract<TimelineRow, { kind: "conversation"; role: "user" }> =>
+        row.kind === "conversation" && row.role === "user",
+    );
+    expect(rejectedSteerRow?.turnRequest).toEqual({
+      isGrouped: false,
+      kind: "steer",
+      status: "rejected",
+    });
+    expect(timeline.text).toContain("steer failed");
+    expect(timeline.text).not.toContain("steer pending");
+  });
+
+  it("closes a legacy unmatched steer after its command failure", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderIdleTimeline([
+      event.turnStarted(),
+      event.clientTurnRequested({
+        target: { kind: "auto", expectedTurnId: "turn-1" },
+        text: "Late steer",
+      }),
+      event.systemError({
+        code: "thread_command_failed",
+        message: "Command turn.submit failed",
+      }),
+      event.turnCompleted(),
+    ]);
+
+    const legacySteerRow = timeline.rows.find(
+      (
+        row,
+      ): row is Extract<TimelineRow, { kind: "conversation"; role: "user" }> =>
+        row.kind === "conversation" && row.role === "user",
+    );
+    expect(legacySteerRow?.turnRequest.status).toBe("rejected");
+    expect(timeline.text).toContain("steer failed");
+    expect(timeline.text).not.toContain("steer pending");
+  });
+
+  it("does not apply an explicit rejection error to the next steer", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const turnStarted = event.turnStarted();
+    const firstRequest = event.clientTurnRequested({
+      target: { kind: "steer", expectedTurnId: "turn-1" },
+      text: "First steer",
+    });
+    const secondRequest = event.clientTurnRequested({
+      target: { kind: "steer", expectedTurnId: "turn-1" },
+      text: "Second steer",
+    });
+    const timeline = renderActiveTimeline([
+      turnStarted,
+      firstRequest,
+      secondRequest,
+      event.clientTurnRejected({ requestId: firstRequest.data.requestId }),
+      event.systemError({
+        code: "thread_command_failed",
+        message: "Command turn.submit failed",
+      }),
+    ]);
+
+    const userRows = timeline.rows.filter(
+      (
+        row,
+      ): row is Extract<TimelineRow, { kind: "conversation"; role: "user" }> =>
+        row.kind === "conversation" && row.role === "user",
+    );
+    expect(userRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          text: "First steer",
+          turnRequest: expect.objectContaining({ status: "rejected" }),
+        }),
+        expect.objectContaining({
+          text: "Second steer",
+          turnRequest: expect.objectContaining({ status: "pending" }),
+        }),
+      ]),
+    );
   });
 
   it("places accepted active-turn steers at the acceptance position", () => {
@@ -899,6 +992,29 @@ describe("timeline CLI rendering snapshots", () => {
     expect(timeline.text).not.toContain("Worked for");
   });
 
+  it("shows a context clear as its own completed timeline row", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderTimelineFixture({
+      events: [
+        event.turnStarted(),
+        event.threadContextCleared(),
+        event.turnCompleted(),
+      ],
+      includeNestedRows: false,
+      projectionOptions: {
+        threadStatus: "idle",
+        turnMessageDetail: "summary",
+      },
+    });
+
+    expect(messageKinds(timeline.messages)).toEqual(["operation"]);
+    expect(timeline.turnRows).toHaveLength(0);
+    expect(timeline.text).toMatchInlineSnapshot(`
+      "── Context cleared ─────────────────────────────────────────"
+    `);
+    expect(timeline.text).not.toContain("Worked for");
+  });
+
   it("unwraps failed context compaction from a singleton turn summary", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const timeline = renderTimelineFixture({
@@ -1091,9 +1207,9 @@ describe("timeline CLI rendering snapshots", () => {
     // Delegation children render flat — no synthetic turn wrapper. Each
     // child row carries the delegation's scoped id prefix so it does not
     // collide with rows from the root turn.
-    expect(
-      delegation?.childRows.some((row) => row.kind === "turn"),
-    ).toBe(false);
+    expect(delegation?.childRows.some((row) => row.kind === "turn")).toBe(
+      false,
+    );
     expect(delegation?.childRows.length ?? 0).toBeGreaterThan(0);
     for (const childRow of delegation?.childRows ?? []) {
       expect(childRow.id.startsWith(`${delegation?.id}:child:`)).toBe(true);
@@ -1215,6 +1331,97 @@ describe("timeline CLI rendering snapshots", () => {
     ).toBe(false);
   });
 
+  it("preserves a root assistant stream when a nested turn completes first", () => {
+    const event = createTimelineEventFactory({
+      providerThreadId: "root-provider",
+      threadId: "thread-1",
+      turnId: "root-turn",
+    });
+    const timeline = renderIdleTimeline([
+      event.turnStarted(),
+      event.toolCallStarted({
+        itemId: "delegation-1",
+        tool: "spawnAgent",
+        arguments: {
+          prompt: "Research the issue",
+          receiverThreadIds: ["child-provider"],
+        },
+      }),
+      event.turnStarted({
+        parentToolCallId: "delegation-1",
+        turnId: "child-turn",
+      }),
+      event.assistantDelta({
+        delta: "I",
+        itemId: "root-assistant",
+      }),
+      event.assistantCompleted({
+        itemId: "child-assistant",
+        text: "Child research complete.",
+        turnId: "child-turn",
+      }),
+      event.turnCompleted({ turnId: "child-turn" }),
+      event.toolCallCompleted({
+        itemId: "delegation-1",
+        tool: "spawnAgent",
+        arguments: {
+          prompt: "Research the issue",
+          receiverThreadIds: ["child-provider"],
+        },
+      }),
+      event.assistantCompleted({
+        itemId: "root-assistant",
+        text: "I recommend applying the focused fix.",
+      }),
+      event.turnCompleted(),
+    ]);
+
+    const rootAssistantRows = timeline.rows.filter(
+      (row) =>
+        row.kind === "conversation" &&
+        row.role === "assistant" &&
+        row.turnId === "root-turn",
+    );
+    expect(rootAssistantRows).toEqual([
+      expect.objectContaining({
+        text: "I recommend applying the focused fix.",
+      }),
+    ]);
+  });
+
+  it("keeps root reasoning active when a nested turn completes first", () => {
+    const event = createTimelineEventFactory({
+      providerThreadId: "root-provider",
+      threadId: "thread-1",
+      turnId: "root-turn",
+    });
+    const timeline = renderActiveTimeline([
+      event.turnStarted(),
+      event.toolCallStarted({
+        itemId: "delegation-1",
+        tool: "spawnAgent",
+        arguments: {
+          prompt: "Research the issue",
+          receiverThreadIds: ["child-provider"],
+        },
+      }),
+      event.turnStarted({
+        parentToolCallId: "delegation-1",
+        turnId: "child-turn",
+      }),
+      event.reasoningDelta({
+        delta: "Root is still thinking.\n",
+        itemId: "root-reasoning",
+      }),
+      event.turnCompleted({ turnId: "child-turn" }),
+    ]);
+
+    expect(timeline.projection.state.activeThinking).toMatchObject({
+      id: "root-reasoning",
+      text: "Root is still thinking.\n",
+    });
+  });
+
   it("does not attach later root turns to Claude receiver-thread delegations", () => {
     const event = createTimelineEventFactory({
       providerThreadId: "root-provider",
@@ -1270,9 +1477,9 @@ describe("timeline CLI rendering snapshots", () => {
         }),
       ]),
     );
-    expect(
-      delegation?.childRows.some((row) => row.turnId === "turn-2"),
-    ).toBe(false);
+    expect(delegation?.childRows.some((row) => row.turnId === "turn-2")).toBe(
+      false,
+    );
     expect(rootFollowUp).toMatchObject({
       kind: "conversation",
       role: "assistant",
@@ -1856,9 +2063,9 @@ describe("timeline CLI rendering snapshots", () => {
         }),
       ]),
     );
-    expect(
-      delegation?.childRows.some((row) => row.turnId === "turn-2"),
-    ).toBe(false);
+    expect(delegation?.childRows.some((row) => row.turnId === "turn-2")).toBe(
+      false,
+    );
     expect(rootFollowUp).toMatchObject({
       kind: "conversation",
       role: "assistant",
@@ -1920,9 +2127,9 @@ describe("timeline CLI rendering snapshots", () => {
 
     expect(delegation).toBeDefined();
     expect(delegation?.status).toBe("pending");
-    expect(
-      delegation?.childRows.some((row) => row.kind === "turn"),
-    ).toBe(false);
+    expect(delegation?.childRows.some((row) => row.kind === "turn")).toBe(
+      false,
+    );
     expect(delegation?.childRows.length ?? 0).toBeGreaterThanOrEqual(3);
     // A regression that re-introduces a synthetic turn wrapper would
     // produce a "Worked for X" or "Working for X" label inside the

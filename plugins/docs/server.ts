@@ -1,5 +1,5 @@
 // Docs — filesystem-first, multi-host Markdown and HTML vaults.
-import { watch, type FSWatcher } from "node:fs";
+import { watch } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { parseMarkdownDocument } from "./markdown-document.js";
@@ -8,7 +8,7 @@ import {
   type BbPluginApi,
   type PluginCliContext,
   type PluginRpcHandlers,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 const DEFAULT_DIR = "~/Notes";
@@ -64,6 +64,23 @@ interface Vault {
   hostId: string | null;
   rootPath: string;
 }
+
+interface VaultWatcher {
+  close(): void;
+  on(event: "error", listener: () => void): void;
+}
+
+type WatchVault = (rootPath: string, onChange: () => void) => VaultWatcher;
+
+const watchNativeVault: WatchVault = (rootPath, onChange) => {
+  const watcher = watch(rootPath, { recursive: true }, onChange);
+  return {
+    close: () => watcher.close(),
+    on: (event, listener) => {
+      watcher.on(event, listener);
+    },
+  };
+};
 
 interface VaultEntry {
   kind: "file" | "directory";
@@ -760,7 +777,10 @@ function waitForDelay(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-export default async function plugin(bb: BbPluginApi) {
+export default async function plugin(
+  bb: BbPluginApi,
+  watchVault: WatchVault = watchNativeVault,
+) {
   const db = bb.storage.database();
   bb.storage.migrate(db, [
     `CREATE TABLE IF NOT EXISTS vaults (
@@ -2872,7 +2892,7 @@ export default async function plugin(bb: BbPluginApi) {
 
   bb.background.service("watch-vaults", {
     async start(signal) {
-      const watchers = new Map<string, FSWatcher>();
+      const watchers = new Map<string, VaultWatcher>();
       const retryNative = new Set<string>();
       let debounce: NodeJS.Timeout | null = null;
       let previous = "";
@@ -2891,7 +2911,7 @@ export default async function plugin(bb: BbPluginApi) {
           for (const vault of vaults) {
             if (vault.hostId || watchers.has(vault.id)) continue;
             try {
-              const watcher = watch(vault.rootPath, { recursive: true }, () => {
+              const watcher = watchVault(vault.rootPath, () => {
                 if (debounce) clearTimeout(debounce);
                 debounce = setTimeout(() => {
                   bb.realtime.publish("vault-changed", {

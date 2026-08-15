@@ -1,7 +1,19 @@
 {
-  "name": "@bb/plugin-sdk",
-  "version": "0.4.1",
+  "name": "@get-bb/plugin-sdk",
+  "version": "0.4.6",
+  "homepage": "https://github.com/get-bb/bb#readme",
+  "bugs": {
+    "url": "https://github.com/get-bb/bb/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/get-bb/bb.git",
+    "directory": "packages/plugin-sdk"
+  },
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "bundled-types",
     "dist",
@@ -31,6 +43,12 @@
       "types": "./bundled-types/bb-plugin-sdk-internal-composer-view.d.ts",
       "import": "./dist/internal/composer-view.js",
       "default": "./dist/internal/composer-view.js"
+    },
+    "./internal/host-policy": {
+      "source": "./src/internal/host-policy.ts",
+      "types": "./bundled-types/bb-plugin-sdk-internal-host-policy.d.ts",
+      "import": "./dist/internal/host-policy.js",
+      "default": "./dist/internal/host-policy.js"
     },
     "./testing": {
       "source": "./src/testing/index.ts",

@@ -191,6 +191,7 @@ function createRuntime(): FakeDispatchRuntime {
     stopThread: vi.fn(async (args: { threadId: string }) => {
       activeTurnsByThreadId.delete(args.threadId);
       hostedThreadIds.delete(args.threadId);
+      return { providerCheckpointId: null };
     }),
     clearThreadGoal: vi.fn(async () => ({ cleared: true })),
     renameThread: vi.fn(async () => undefined),
@@ -202,8 +203,9 @@ function createRuntime(): FakeDispatchRuntime {
     })),
     listRunningProviders: vi.fn(() => ["fake"]),
     getActiveTurnId: (threadId) => activeTurnsByThreadId.get(threadId) ?? null,
-    waitForActiveTurn: async (threadId) =>
-      activeTurnsByThreadId.get(threadId) ?? null,
+    waitForActiveTurn: vi.fn(
+      async (threadId: string) => activeTurnsByThreadId.get(threadId) ?? null,
+    ),
     getProviderSession: (threadId) =>
       hostedThreadIds.has(threadId)
         ? { providerId: "fake", providerThreadId: "provider-thread-1" }
@@ -238,6 +240,86 @@ function createProviderCliInstallEventStream(
   });
 }
 
+function claudeCodeStatus(args: {
+  currentVersion: string;
+  latestVersion: string | null;
+}): ProviderCliStatus {
+  return {
+    displayName: "Claude Code",
+    executableName: "claude",
+    executablePath: "/Users/me/.local/bin/claude",
+    installed: true,
+    installSource: "external",
+    currentVersion: args.currentVersion,
+    latestVersion: args.latestVersion,
+    minimumSupportedVersion: null,
+    npmPackageName: "@anthropic-ai/claude-code",
+    npmGlobalPackageVersion: null,
+    installAction: {
+      kind: "update",
+      label: "Update",
+      commandKind: "exec",
+      command: "claude update",
+    },
+    needsUpdate:
+      args.latestVersion === null || args.currentVersion !== args.latestVersion,
+    versionUnsupported: false,
+  };
+}
+
+async function runSuccessfulClaudeCodeUpdateVerification(args: {
+  before: ProviderCliStatus;
+  after: ProviderCliStatus;
+}) {
+  const dataDir = await makeTempDir("bb-command-dispatch-provider-cli-");
+  const manager = new RuntimeManager({
+    dataDir,
+    createRuntime,
+    provisionWorkspace: async () => createWorkspace(),
+  });
+  const getProviderCliStatusForProvider = vi
+    .fn()
+    .mockResolvedValueOnce(args.before)
+    .mockResolvedValueOnce(args.after);
+  const events: ProviderCliInstallEvent[] = [
+    {
+      type: "started",
+      provider: "claudeCode",
+      command: "claude update",
+    },
+    {
+      type: "completed",
+      provider: "claudeCode",
+      exitCode: 0,
+      signal: null,
+      success: true,
+    },
+  ];
+  const result = await dispatchOnlineRpcCommand(
+    {
+      type: "provider_cli.install",
+      provider: "claudeCode",
+      actionKind: "update",
+    },
+    {
+      dataDir,
+      eventSink: {
+        emit: vi.fn(),
+        flush: vi.fn(async () => undefined),
+      },
+      fetchProjectAttachment: async () => {
+        throw new Error("Unexpected project attachment fetch");
+      },
+      getProviderCliStatusForProvider,
+      runtimeManager: manager,
+      streamProviderCliInstall: () =>
+        createProviderCliInstallEventStream(events),
+      threadStorageRootPath: "/tmp/bb-thread-storage",
+    },
+  );
+  return { events, getProviderCliStatusForProvider, result };
+}
+
 describe("dispatchCommand", () => {
   it("flushes buffered events before reporting thread.stop success", async () => {
     const runtime = createRuntime();
@@ -255,6 +337,7 @@ describe("dispatchCommand", () => {
     const flush = vi.fn(async () => flushDeferred.promise);
     const command: CommandOf<"thread.stop"> = {
       type: "thread.stop",
+      intent: "interrupt",
       environmentId: "env-1",
       threadId: "thread-1",
     };
@@ -270,8 +353,9 @@ describe("dispatchCommand", () => {
       },
       runtimeManager: manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
-    }).then(() => {
+    }).then((result) => {
       resolved = true;
+      return result;
     });
 
     await vi.waitFor(() => {
@@ -281,7 +365,9 @@ describe("dispatchCommand", () => {
     expect(resolved).toBe(false);
 
     flushDeferred.resolve(undefined);
-    await dispatchPromise;
+    await expect(dispatchPromise).resolves.toEqual({
+      providerCheckpointId: null,
+    });
 
     expect(resolved).toBe(true);
     expect(runtime.hasThread("thread-1")).toBe(false);
@@ -553,11 +639,15 @@ describe("dispatchCommand", () => {
       workspacePath: "/tmp/bb-stop-old",
     });
     oldRuntime.setActiveTurn("thread-1", "turn-old");
+    (oldRuntime.stopThread as Mock).mockResolvedValueOnce({
+      providerCheckpointId: "pi-entry-at-stop",
+    });
 
     // The thread already points at its new environment, which the daemon has
     // never loaded. The stop must still reach the turn in the old runtime.
     const command: CommandOf<"thread.stop"> = {
       type: "thread.stop",
+      intent: "interrupt",
       environmentId: "env-new",
       threadId: "thread-1",
     };
@@ -573,20 +663,113 @@ describe("dispatchCommand", () => {
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ providerCheckpointId: "pi-entry-at-stop" });
     expect(oldRuntime.stopThread).toHaveBeenCalledWith({
       threadId: "thread-1",
     });
     expect(flush).toHaveBeenCalledOnce();
   });
 
-  it("rejects thread.stop when no runtime holds the thread", async () => {
+  it("releases an idle runtime without the active-turn wait", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace("/tmp/bb-release"),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-release",
+      workspacePath: "/tmp/bb-release",
+    });
+    runtime.setIdle("thread-1");
+
+    const options = {
+      dataDir: "/tmp/bb-data",
+      eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+      fetchProjectAttachment: async () => {
+        throw new Error("Unexpected project attachment fetch");
+      },
+      runtimeManager: manager,
+      threadStorageRootPath: "/tmp/bb-thread-storage",
+    };
+
+    // The server already settled this thread as idle. Waiting for an active
+    // turn would burn the full stop timeout on every runtime released.
+    await dispatchCommand(
+      {
+        type: "thread.stop",
+        intent: "release",
+        environmentId: "env-release",
+        threadId: "thread-1",
+      },
+      options,
+    );
+    expect(runtime.waitForActiveTurn).not.toHaveBeenCalled();
+    expect(runtime.stopThread).toHaveBeenCalledWith({ threadId: "thread-1" });
+
+    // An interrupt keeps the wait: the stop can race a start whose
+    // turn/started event the runtime has not observed yet.
+    runtime.setIdle("thread-1");
+    await dispatchCommand(
+      {
+        type: "thread.stop",
+        intent: "interrupt",
+        environmentId: "env-release",
+        threadId: "thread-1",
+      },
+      options,
+    );
+    expect(runtime.waitForActiveTurn).toHaveBeenCalledWith("thread-1", {
+      timeoutMs: expect.any(Number),
+    });
+  });
+
+  it("skips a release when a turn started after the server read the thread", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace("/tmp/bb-release-race"),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-release-race",
+      workspacePath: "/tmp/bb-release-race",
+    });
+    // The server chose a release from an idle read. A send won the race and
+    // started a turn before this command reached the daemon.
+    runtime.setActiveTurn("thread-1", "turn-new");
+
+    const result = await dispatchCommand(
+      {
+        type: "thread.stop",
+        intent: "release",
+        environmentId: "env-release-race",
+        threadId: "thread-1",
+      },
+      {
+        dataDir: "/tmp/bb-data",
+        eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        runtimeManager: manager,
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      },
+    );
+
+    // Stopping here would end accepted work and leave the server holding an
+    // active thread with no runtime.
+    expect(runtime.stopThread).not.toHaveBeenCalled();
+    expect(runtime.getActiveTurnId("thread-1")).toBe("turn-new");
+    expect(result).toEqual({ providerCheckpointId: null });
+  });
+
+  it("treats thread.stop as successful when no runtime holds the thread", async () => {
     const manager = new RuntimeManager({
       createRuntime: () => createRuntime(),
       provisionWorkspace: async () => createWorkspace(),
     });
     const command: CommandOf<"thread.stop"> = {
       type: "thread.stop",
+      intent: "interrupt",
       environmentId: "env-missing-runtime",
       threadId: "thread-1",
     };
@@ -601,7 +784,7 @@ describe("dispatchCommand", () => {
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       }),
-    ).rejects.toMatchObject({ code: "unknown_environment" });
+    ).resolves.toEqual({ providerCheckpointId: null });
   });
 
   it("cancels a plan in the environment the thread moved away from", async () => {
@@ -1182,6 +1365,23 @@ describe("dispatchCommand", () => {
       const streamProviderCliInstall = vi.fn(() =>
         createProviderCliInstallEventStream(testCase.events),
       );
+      const getProviderCliStatusForProvider =
+        testCase.provider === "claudeCode"
+          ? vi
+              .fn()
+              .mockResolvedValueOnce(
+                claudeCodeStatus({
+                  currentVersion: "2.1.220",
+                  latestVersion: "2.1.227",
+                }),
+              )
+              .mockResolvedValueOnce(
+                claudeCodeStatus({
+                  currentVersion: "2.1.227",
+                  latestVersion: "2.1.227",
+                }),
+              )
+          : undefined;
 
       const result = await dispatchOnlineRpcCommand(
         {
@@ -1198,6 +1398,9 @@ describe("dispatchCommand", () => {
           fetchProjectAttachment: async () => {
             throw new Error("Unexpected project attachment fetch");
           },
+          ...(getProviderCliStatusForProvider === undefined
+            ? {}
+            : { getProviderCliStatusForProvider }),
           runtimeManager: manager,
           streamProviderCliInstall,
           threadStorageRootPath: "/tmp/bb-thread-storage",
@@ -1211,6 +1414,214 @@ describe("dispatchCommand", () => {
       ).resolves.toBe(runtime);
       expect(createRuntimeSpy).toHaveBeenCalledTimes(1);
     }
+  });
+
+  it("reports a successful Claude update command as failed when the active executable stays old", async () => {
+    const dataDir = await makeTempDir("bb-command-dispatch-provider-cli-");
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      dataDir,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    const getProviderCliStatusForProvider = vi
+      .fn()
+      .mockResolvedValueOnce(
+        claudeCodeStatus({
+          currentVersion: "2.1.220",
+          latestVersion: "2.1.227",
+        }),
+      )
+      .mockResolvedValueOnce(
+        claudeCodeStatus({
+          currentVersion: "2.1.220",
+          latestVersion: "2.1.227",
+        }),
+      );
+
+    const result = await dispatchOnlineRpcCommand(
+      {
+        type: "provider_cli.install",
+        provider: "claudeCode",
+        actionKind: "update",
+      },
+      {
+        dataDir,
+        eventSink: {
+          emit: vi.fn(),
+          flush: vi.fn(async () => undefined),
+        },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        getProviderCliStatusForProvider,
+        runtimeManager: manager,
+        streamProviderCliInstall: () =>
+          createProviderCliInstallEventStream([
+            {
+              type: "started",
+              provider: "claudeCode",
+              command: "claude update",
+            },
+            {
+              type: "output",
+              provider: "claudeCode",
+              stream: "stdout",
+              text: "Successfully updated from 2.1.220 to version 2.1.227\n",
+            },
+            {
+              type: "completed",
+              provider: "claudeCode",
+              exitCode: 0,
+              signal: null,
+              success: true,
+            },
+          ]),
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      },
+    );
+
+    expect(getProviderCliStatusForProvider).toHaveBeenCalledTimes(2);
+    expect(result.events).toEqual([
+      expect.objectContaining({ type: "started" }),
+      expect.objectContaining({ type: "output" }),
+      expect.objectContaining({
+        type: "error",
+        provider: "claudeCode",
+        message: expect.stringContaining(
+          "still reports 2.1.220 (expected 2.1.227)",
+        ),
+      }),
+      {
+        type: "completed",
+        provider: "claudeCode",
+        exitCode: 0,
+        signal: null,
+        success: false,
+      },
+    ]);
+  });
+
+  it("reports a successful Claude update as unverified when the pre-update version check fails", async () => {
+    const dataDir = await makeTempDir("bb-command-dispatch-provider-cli-");
+    const manager = new RuntimeManager({
+      createRuntime,
+      dataDir,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    const getProviderCliStatusForProvider = vi
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(
+        claudeCodeStatus({
+          currentVersion: "2.1.220",
+          latestVersion: "2.1.227",
+        }),
+      );
+
+    const result = await dispatchOnlineRpcCommand(
+      {
+        type: "provider_cli.install",
+        provider: "claudeCode",
+        actionKind: "update",
+      },
+      {
+        dataDir,
+        eventSink: {
+          emit: vi.fn(),
+          flush: vi.fn(async () => undefined),
+        },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        getProviderCliStatusForProvider,
+        runtimeManager: manager,
+        streamProviderCliInstall: () =>
+          createProviderCliInstallEventStream([
+            {
+              type: "started",
+              provider: "claudeCode",
+              command: "claude update",
+            },
+            {
+              type: "completed",
+              provider: "claudeCode",
+              exitCode: 0,
+              signal: null,
+              success: true,
+            },
+          ]),
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      },
+    );
+
+    expect(getProviderCliStatusForProvider).toHaveBeenCalledTimes(2);
+    expect(result.events).toEqual([
+      expect.objectContaining({ type: "started" }),
+      expect.objectContaining({
+        type: "error",
+        provider: "claudeCode",
+        message: expect.stringContaining(
+          "bb could not read /Users/me/.local/bin/claude's version before the update",
+        ),
+      }),
+      {
+        type: "completed",
+        provider: "claudeCode",
+        exitCode: 0,
+        signal: null,
+        success: false,
+      },
+    ]);
+  });
+
+  it("accepts a Claude update that advances when the release channel is unknown", async () => {
+    const verification = await runSuccessfulClaudeCodeUpdateVerification({
+      before: claudeCodeStatus({
+        currentVersion: "2.1.69",
+        latestVersion: null,
+      }),
+      after: claudeCodeStatus({
+        currentVersion: "2.1.221",
+        latestVersion: null,
+      }),
+    });
+
+    expect(verification.getProviderCliStatusForProvider).toHaveBeenCalledTimes(
+      2,
+    );
+    expect(verification.result).toEqual({ events: verification.events });
+  });
+
+  it("rejects a Claude update that does not advance when the release channel is unknown", async () => {
+    const verification = await runSuccessfulClaudeCodeUpdateVerification({
+      before: claudeCodeStatus({
+        currentVersion: "2.1.69",
+        latestVersion: null,
+      }),
+      after: claudeCodeStatus({
+        currentVersion: "2.1.69",
+        latestVersion: null,
+      }),
+    });
+
+    expect(verification.result.events).toEqual([
+      expect.objectContaining({ type: "started" }),
+      expect.objectContaining({
+        type: "error",
+        provider: "claudeCode",
+        message: expect.stringContaining(
+          "still reports 2.1.69 (expected a version newer than 2.1.69)",
+        ),
+      }),
+      {
+        type: "completed",
+        provider: "claudeCode",
+        exitCode: 0,
+        signal: null,
+        success: false,
+      },
+    ]);
   });
 
   // Regression: a thread.start whose freshly staged skill catalog differed
@@ -1336,5 +1747,55 @@ describe("dispatchCommand", () => {
     expect(fixture.manager.get("env-1")?.skillCatalogHash).toBe(
       fixture.originalCatalogHash,
     );
+  });
+
+  it("detects known ACP agents on the resolved user shell PATH, not the daemon's process PATH", async () => {
+    // Regression: known_acp_agents.status must query `which` with the user's
+    // resolved login-shell PATH (like provider_cli.status), otherwise ACP CLIs
+    // installed only on the login PATH — e.g. Hermes' `hermes` under
+    // ~/.local/bin — are invisible to a daemon launched by launchd/systemd with
+    // a stripped PATH.
+    const binDir = await makeTempDir("bb-acp-shell-path-");
+    const executableName = `bb-acp-probe-${process.pid}`;
+    const executablePath = path.join(binDir, executableName);
+    await fs.writeFile(executablePath, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    // The probe executable exists ONLY on the shell PATH the manager reports,
+    // never on process.env.PATH, so a detection that ignores the shell env
+    // fails to find it. System bin dirs stay on PATH so `which` itself resolves;
+    // only binDir (the stand-in for ~/.local/bin) is exclusive to the shell env.
+    manager.replaceManagedShellEnv({ PATH: `${binDir}:/usr/bin:/bin` });
+
+    const result = await dispatchOnlineRpcCommand(
+      {
+        type: "known_acp_agents.status",
+        agents: [{ id: "acp-probe", executableName }],
+      },
+      {
+        dataDir: "/tmp/bb-data",
+        eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        runtimeManager: manager,
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      },
+    );
+
+    expect(result).toEqual({
+      agents: [
+        {
+          id: "acp-probe",
+          executableName,
+          installed: true,
+          executablePath,
+        },
+      ],
+    });
   });
 });

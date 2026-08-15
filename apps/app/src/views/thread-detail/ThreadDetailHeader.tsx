@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useContext,
   useLayoutEffect,
   useRef,
@@ -7,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { Button } from "@bb/shared-ui/button";
+import { useAtomValue } from "jotai";
 import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
 import { Pill } from "@bb/shared-ui/pill";
@@ -26,9 +28,12 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
+import { useInlineThreadTitle } from "@/components/thread/InlineThreadTitle";
+import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { ThreadTitleMentions } from "@/components/thread/ThreadTitleMentions";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
+import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
 import {
   CONTEXT_INACTIVE_TEXT_CLASS,
   CONTEXT_SELECTION_SURFACE_CLASS,
@@ -63,6 +68,7 @@ interface ThreadDetailHeaderProps {
   /** Plugin-contributed thread action buttons (design §4.9); optional. */
   pluginActions?: ReactNode;
   threadHeaderGitActions: ThreadHeaderGitAction[];
+  threadId: string;
   threadTitle: string;
   workspaceOpenButton?: ReactNode;
 }
@@ -76,12 +82,26 @@ export function ThreadDetailHeader({
   onToggleSecondaryPanel,
   pluginActions,
   threadHeaderGitActions,
+  threadId,
   threadTitle,
   workspaceOpenButton,
 }: ThreadDetailHeaderProps) {
   const [primaryAction, ...secondaryActions] = threadHeaderGitActions;
+  const { renameThread } = useThreadActions();
+  const handleRename = useCallback(
+    (nextTitle: string) => {
+      renameThread(threadId, nextTitle);
+    },
+    [renameThread, threadId],
+  );
+  const { editor, isEditing, startEditing } = useInlineThreadTitle({
+    onCommit: handleRename,
+    resetKey: threadId,
+    title: threadTitle,
+  });
   const renderAsDrawer = useIsCompactViewport();
   const [desktopInfo] = useState(getBbDesktopInfo);
+  const dimsInactiveSplits = useAtomValue(dimInactiveSplitsAtom);
   const panelShortcut = useAppCommandShortcut("panel.toggle");
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const headerRef = useRef<HTMLElement>(null!);
@@ -125,10 +145,16 @@ export function ThreadDetailHeader({
     };
   }, [isSplitPaneHeader]);
   const handleTitlePointerDown = (event: ReactPointerEvent) => {
-    if (!beginPaneDrag || event.button !== 0) {
+    if (isEditing || !beginPaneDrag || event.button !== 0) {
       return;
     }
     beginPaneDrag(event, threadTitle);
+  };
+  const handleTitleDoubleClick = () => {
+    if (isEditing) {
+      return;
+    }
+    startEditing();
   };
   const rightPanelLabel = isSecondaryPanelOpen
     ? "Hide right panel"
@@ -154,9 +180,14 @@ export function ThreadDetailHeader({
       >
         <p
           className={cn(
-            "relative min-w-0 truncate text-sm font-normal transition-colors",
-            isSplitPaneHeader && !isFocused && CONTEXT_INACTIVE_TEXT_CLASS,
+            "relative min-w-0 text-sm font-normal transition-colors",
+            isEditing ? "overflow-visible" : "truncate",
+            isSplitPaneHeader &&
+              !isFocused &&
+              dimsInactiveSplits &&
+              CONTEXT_INACTIVE_TEXT_CLASS,
             beginPaneDrag &&
+              !isEditing &&
               cn(
                 "cursor-grab touch-none select-none",
                 // Opt the drag handle out of the macOS title-bar drag region so a
@@ -164,9 +195,10 @@ export function ThreadDetailHeader({
                 usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
               ),
           )}
+          onDoubleClick={handleTitleDoubleClick}
           onPointerDown={beginPaneDrag ? handleTitlePointerDown : undefined}
         >
-          <ThreadTitleMentions title={threadTitle} />
+          {isEditing ? editor : <ThreadTitleMentions title={threadTitle} />}
         </p>
       </div>
       {childPillLabel ? (

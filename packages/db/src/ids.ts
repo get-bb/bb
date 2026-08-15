@@ -1,11 +1,9 @@
 import { customAlphabet } from "nanoid";
-
-const PRETTY_ID_ALPHABET = "23456789abcdefghijkmnpqrstuvwxyz";
-const PRETTY_ID_SUFFIX_LENGTH = 10;
+import { GENERATED_ID_ALPHABET, GENERATED_ID_SUFFIX_LENGTH } from "@bb/domain";
 
 const generatePrettyIdSuffix = customAlphabet(
-  PRETTY_ID_ALPHABET,
-  PRETTY_ID_SUFFIX_LENGTH,
+  GENERATED_ID_ALPHABET,
+  GENERATED_ID_SUFFIX_LENGTH,
 );
 
 function createId(prefix: string): string {

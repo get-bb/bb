@@ -1,15 +1,7 @@
-import type { PermissionEscalation, RuntimePermissionPolicy } from "@bb/domain";
-
-export type ResolvedAdapterPermissionPolicy = RuntimePermissionPolicy;
+import type { PermissionEscalation } from "@bb/domain";
 
 export interface InteractiveRequestPolicyInput {
   permissionEscalation: PermissionEscalation | null;
-}
-
-export function resolveAdapterPermissionPolicy(
-  input: RuntimePermissionPolicy,
-): ResolvedAdapterPermissionPolicy {
-  return input;
 }
 
 export function shouldAutoDenyInteractiveRequest(

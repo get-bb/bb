@@ -18,7 +18,6 @@ describe("experiments", () => {
       const experiments = {
         ...defaultExperiments,
         claudeCodeMockCliTraffic: true,
-        toolsHub: true,
       };
       setExperiments(db, experiments);
       db.$client
@@ -40,7 +39,7 @@ describe("experiments", () => {
         "editMessages",
         "futureExperiment",
         "newOnboarding",
-        "toolsHub",
+        "providerSessionReaping",
       ]);
     } finally {
       db.$client.close();

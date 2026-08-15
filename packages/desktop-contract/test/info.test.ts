@@ -30,4 +30,22 @@ describe("bbDesktopInfoSchema", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("accepts linux", () => {
+    expect(
+      bbDesktopInfoSchema.safeParse({
+        ...baseInfo,
+        platform: "linux",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects win32", () => {
+    expect(
+      bbDesktopInfoSchema.safeParse({
+        ...baseInfo,
+        platform: "win32",
+      }).success,
+    ).toBe(false);
+  });
 });

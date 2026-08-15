@@ -1,6 +1,6 @@
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createConnection, migrate, type DbConnection } from "@bb/db";
 import type { SystemChangeKind } from "@bb/domain";
@@ -119,7 +119,7 @@ describe("plugin service", () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-greeter",
       serverSource: `
-        import type { BbPluginApi } from "@bb/plugin-sdk";
+        import type { BbPluginApi } from "@get-bb/plugin-sdk";
         export default function plugin(bb: any) {
           (globalThis as any).__greeterLoads = ((globalThis as any).__greeterLoads ?? 0) + 1;
           bb.log.info("hello from greeter");
@@ -595,19 +595,44 @@ describe("plugin service", () => {
       name: "bb-plugin-reinstalled",
       serverSource: `export default function plugin() {}`,
     });
-    await service.install(rootDir);
+    await service.install(rootDir, { kind: "root" });
     expect(await service.setEnabled("reinstalled", false)).toMatchObject({
       enabled: false,
       status: "disabled",
     });
 
-    const reinstalled = await service.install(rootDir);
+    const reinstalled = await service.install(rootDir, { kind: "root" });
 
     expect(reinstalled).toMatchObject({
       enabled: true,
       status: "running",
     });
     expect(service.getApi("reinstalled")).toBeDefined();
+  });
+
+  it("warns when a path plugin is installed from inside a managed workspace", async () => {
+    const warnSpy = vi.spyOn(logger, "warn");
+    // dataDir is <workDir>/data; install from <dataDir>/personal-workspaces/env_X/...
+    const managedRoot = join(
+      workDir,
+      "data",
+      "personal-workspaces",
+      "env_test",
+      "bb-plugin-managed",
+    );
+    const written = await writePlugin(workDir, {
+      name: "bb-plugin-managed",
+      serverSource: `export default function plugin() {}`,
+    });
+    // Move the written plugin into the managed workspace path so the install
+    // source resolves under <dataDir>/personal-workspaces/.
+    await mkdir(dirname(managedRoot), { recursive: true });
+    await rename(written, managedRoot);
+
+    await service.installPath(managedRoot);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("bb-managed workspace"),
+    );
   });
 });
 

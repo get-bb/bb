@@ -29,7 +29,7 @@ import {
 // Runtime → bridge commands
 // ---------------------------------------------------------------------------
 
-export const acpBridgeAgentCommandSchema = z.object({
+const acpBridgeAgentCommandSchema = z.object({
   command: z.string().min(1),
   args: z.array(z.string()),
   cwd: z.string().min(1).optional(),
@@ -136,25 +136,32 @@ const acpBridgeSessionParamsSchema = z.object({
   dynamicTools: z.array(dynamicToolSchema).optional(),
 });
 
-export const acpBridgeThreadStartParamsSchema = acpBridgeSessionParamsSchema;
+const acpBridgeThreadStartParamsSchema = acpBridgeSessionParamsSchema;
 export type AcpBridgeThreadStartParams = z.infer<
   typeof acpBridgeThreadStartParamsSchema
 >;
 
-export const acpBridgeThreadResumeParamsSchema =
-  acpBridgeSessionParamsSchema.extend({
-    providerThreadId: z.string().min(1),
-  });
+const acpBridgeThreadResumeParamsSchema = acpBridgeSessionParamsSchema.extend({
+  providerThreadId: z.string().min(1),
+});
 export type AcpBridgeThreadResumeParams = z.infer<
   typeof acpBridgeThreadResumeParamsSchema
 >;
 
-export const acpBridgeTurnStartParamsSchema = z.object({
+const acpBridgeThreadForkParamsSchema = acpBridgeSessionParamsSchema.extend({
+  sourceProviderThreadId: z.string().min(1),
+  sourceProviderCheckpointId: z.string().min(1).optional(),
+});
+export type AcpBridgeThreadForkParams = z.infer<
+  typeof acpBridgeThreadForkParamsSchema
+>;
+
+const acpBridgeTurnStartParamsSchema = z.object({
   threadId: z.string().min(1),
   input: z.array(promptInputSchema),
 });
 
-export const acpBridgeTurnSteerParamsSchema = z.object({
+const acpBridgeTurnSteerParamsSchema = z.object({
   threadId: z.string().min(1),
   expectedTurnId: z.string().min(1),
   input: z.array(promptInputSchema),
@@ -182,6 +189,10 @@ export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("thread/resume"),
     params: acpBridgeThreadResumeParamsSchema,
+  }),
+  z.object({
+    method: z.literal("thread/fork"),
+    params: acpBridgeThreadForkParamsSchema,
   }),
   z.object({
     method: z.literal("turn/start"),
@@ -213,6 +224,9 @@ export const ACP_COMPACTION_COMPLETED_METHOD = "acp/compaction/completed";
 export const ACP_UPDATE_METHOD = "acp/update";
 export const ACP_FS_WRITE_METHOD = "acp/fs/write";
 export const ACP_WARNING_METHOD = "acp/warning";
+
+/** The bridge has a session, but its agent prompt has already ended. */
+export const ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE = -32001;
 
 export const acpTurnStartedNotificationParamsSchema = z
   .object({

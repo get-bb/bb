@@ -35,6 +35,7 @@ import type {
   MacBundledExecutableAdapter,
   ListWorkspaceOpenTargetsOptions,
   MacRemoteSshOpenCommandAdapter,
+  MacCommandExecutableAdapter,
   OpenPathInTargetArgs,
   PlatformOpenInvocationArgs,
   PlatformRemoteSshOpenInvocationArgs,
@@ -45,9 +46,8 @@ import type {
   WorkspaceOpenTargetRuntime,
 } from "./types.js";
 
-interface MacCommandAdapter {
-  bundledExecutable?: MacBundledExecutableAdapter;
-  executable: string;
+interface MacCommandAdapter extends MacCommandExecutableAdapter {
+  fallbackExecutables?: MacCommandExecutableAdapter[];
 }
 
 interface ResolvedMacCommandExecutable {
@@ -1058,22 +1058,22 @@ async function resolveMacCommandExecutable(
   command: MacCommandAdapter,
   runtime: WorkspaceOpenTargetRuntime,
 ): Promise<ResolvedMacCommandExecutable | null> {
-  if (await isExecutableAvailable(command.executable, runtime)) {
-    return {
-      file: command.executable,
-      argsPrefix: [],
-    };
+  for (const candidate of [command, ...(command.fallbackExecutables ?? [])]) {
+    if (await isExecutableAvailable(candidate.executable, runtime)) {
+      return { file: candidate.executable, argsPrefix: [] };
+    }
+    if (candidate.bundledExecutable !== undefined) {
+      const resolved = await resolveMacBundledExecutable(
+        definition,
+        candidate.bundledExecutable,
+        runtime,
+      );
+      if (resolved !== null) {
+        return resolved;
+      }
+    }
   }
-
-  if (command.bundledExecutable === undefined) {
-    return null;
-  }
-
-  return resolveMacBundledExecutable(
-    definition,
-    command.bundledExecutable,
-    runtime,
-  );
+  return null;
 }
 
 async function resolveTerminalEditorCommand(

@@ -7,6 +7,7 @@ import androidStudioIcon from "@/assets/workspace-open-target-icons/android-stud
 import antigravityIcon from "@/assets/workspace-open-target-icons/antigravity.png";
 import bbeditIcon from "@/assets/workspace-open-target-icons/bbedit.png";
 import cursorIcon from "@/assets/workspace-open-target-icons/cursor.png";
+import devinDesktopIcon from "@/assets/workspace-open-target-icons/devin-desktop.png";
 import emacsIcon from "@/assets/workspace-open-target-icons/emacs.png";
 import finderIcon from "@/assets/workspace-open-target-icons/finder.png";
 import ghosttyIcon from "@/assets/workspace-open-target-icons/ghostty.png";
@@ -24,7 +25,6 @@ import vscodeInsidersIcon from "@/assets/workspace-open-target-icons/vscode-insi
 import vscodeIcon from "@/assets/workspace-open-target-icons/vscode.png";
 import warpIcon from "@/assets/workspace-open-target-icons/warp.png";
 import webstormIcon from "@/assets/workspace-open-target-icons/webstorm.svg";
-import windsurfIcon from "@/assets/workspace-open-target-icons/windsurf.png";
 import xcodeIcon from "@/assets/workspace-open-target-icons/xcode.png";
 import zedIcon from "@/assets/workspace-open-target-icons/zed.png";
 import { Icon } from "@bb/shared-ui/icon";
@@ -36,6 +36,7 @@ const WORKSPACE_OPEN_TARGET_ICONS: Record<string, string | undefined> = {
   antigravity: antigravityIcon,
   bbedit: bbeditIcon,
   cursor: cursorIcon,
+  "devin-desktop": devinDesktopIcon,
   emacs: emacsIcon,
   finder: finderIcon,
   ghostty: ghosttyIcon,
@@ -54,7 +55,6 @@ const WORKSPACE_OPEN_TARGET_ICONS: Record<string, string | undefined> = {
   vscode: vscodeIcon,
   warp: warpIcon,
   webstorm: webstormIcon,
-  windsurf: windsurfIcon,
   xcode: xcodeIcon,
   zed: zedIcon,
 };

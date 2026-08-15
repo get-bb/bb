@@ -287,7 +287,7 @@ describe("WebSocketManager thread-open signals", () => {
       type: "thread-pane-action",
       projectId: "proj_1",
       threadId: "thr_1",
-      action: "maximize",
+      action: "spotlight",
     } as const;
     dispatchRaw(signal);
 

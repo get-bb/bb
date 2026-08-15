@@ -62,7 +62,6 @@ const THREAD_WITH_INCLUDES = {
   parentThreadId: null,
   sourceThreadId: null,
   originKind: null,
-  childOrigin: null,
   originPluginId: null,
   visibility: "visible",
   archivedAt: null,

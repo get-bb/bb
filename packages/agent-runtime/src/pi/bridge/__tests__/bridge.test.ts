@@ -127,14 +127,18 @@ const originalPiBridgeSessionDir = process.env[PI_BRIDGE_SESSION_DIR_ENV];
 
 interface ControlledPiAgentSession {
   abort: ReturnType<typeof vi.fn>;
+  bindExtensions: ReturnType<typeof vi.fn>;
   compact: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
   emit(event: AgentSessionEvent): void;
+  extensionRunner: { emit: ReturnType<typeof vi.fn> };
   finishAbort(): void;
   getActiveToolNames: ReturnType<typeof vi.fn>;
   getContextUsage: ReturnType<typeof vi.fn>;
+  hasExtensionHandlers: ReturnType<typeof vi.fn>;
   isStreaming: boolean;
   prompt: ReturnType<typeof vi.fn>;
+  requestExtensionShutdown(): void;
   sessionManager: { getLeafId: ReturnType<typeof vi.fn> };
   setActiveToolsByName: ReturnType<typeof vi.fn>;
   subscribe: ReturnType<typeof vi.fn>;
@@ -142,6 +146,7 @@ interface ControlledPiAgentSession {
 
 function createControlledPiAgentSession(): ControlledPiAgentSession {
   let finishAbort: (() => void) | undefined;
+  let extensionShutdownHandler: (() => void) | undefined;
   const listeners: ControlledPiAgentSessionListener[] = [];
   const abort = vi.fn(
     () =>
@@ -151,6 +156,11 @@ function createControlledPiAgentSession(): ControlledPiAgentSession {
   );
   return {
     abort,
+    bindExtensions: vi.fn(
+      async (bindings: { shutdownHandler?: () => void }) => {
+        extensionShutdownHandler = bindings.shutdownHandler;
+      },
+    ),
     compact: vi.fn(async () => undefined),
     dispose: vi.fn(),
     emit(event: AgentSessionEvent): void {
@@ -158,6 +168,7 @@ function createControlledPiAgentSession(): ControlledPiAgentSession {
         listener(event);
       }
     },
+    extensionRunner: { emit: vi.fn(async () => undefined) },
     finishAbort() {
       if (!finishAbort) {
         throw new Error("Expected Pi abort to be waiting");
@@ -167,8 +178,15 @@ function createControlledPiAgentSession(): ControlledPiAgentSession {
     },
     getActiveToolNames: vi.fn(() => []),
     getContextUsage: vi.fn(() => undefined),
+    hasExtensionHandlers: vi.fn(() => false),
     isStreaming: false,
     prompt: vi.fn(async () => {}),
+    requestExtensionShutdown(): void {
+      if (!extensionShutdownHandler) {
+        throw new Error("Expected Pi extension shutdown handler to be bound");
+      }
+      extensionShutdownHandler();
+    },
     sessionManager: { getLeafId: vi.fn(() => "pi-entry-checkpoint") },
     setActiveToolsByName: vi.fn(),
     subscribe: vi.fn((listener: ControlledPiAgentSessionListener) => {
@@ -378,29 +396,32 @@ describe("pi bridge", () => {
     }
   });
 
-  it("passes thread/start max reasoningLevel through to Pi thinkingLevel", async () => {
-    const bridge = createBridgeJsonRpcTestHarness(handleLine);
-    mockCreateAgentSession.mockImplementation(async () => ({
-      session: createControlledPiAgentSession(),
-    }));
+  it.each(["off", "max"] as const)(
+    "passes thread/start %s reasoningLevel through to Pi thinkingLevel",
+    async (reasoningLevel) => {
+      const bridge = createBridgeJsonRpcTestHarness(handleLine);
+      mockCreateAgentSession.mockImplementation(async () => ({
+        session: createControlledPiAgentSession(),
+      }));
 
-    try {
-      bridge.sendRequest(3, "thread/start", {
-        cwd: "/tmp/worktree",
-        threadId: "thread-reasoning",
-        reasoningLevel: "max",
-      });
-      await bridge.waitForResponse(3);
+      try {
+        bridge.sendRequest(3, "thread/start", {
+          cwd: "/tmp/worktree",
+          threadId: `thread-reasoning-${reasoningLevel}`,
+          reasoningLevel,
+        });
+        await bridge.waitForResponse(3);
 
-      expect(mockCreateAgentSession).toHaveBeenCalledWith(
-        expect.objectContaining({
-          thinkingLevel: "max",
-        }),
-      );
-    } finally {
-      bridge.restore();
-    }
-  });
+        expect(mockCreateAgentSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            thinkingLevel: reasoningLevel,
+          }),
+        );
+      } finally {
+        bridge.restore();
+      }
+    },
+  );
 
   it("uses the configured bridge session directory for default Pi sessions", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
@@ -652,10 +673,16 @@ describe("pi bridge", () => {
       expect(sessions[0]?.abort).toHaveBeenCalledTimes(1);
       expect(sessions[0]?.dispose).not.toHaveBeenCalled();
 
+      sessions[0]?.sessionManager.getLeafId.mockReturnValue(
+        "pi-entry-after-abort",
+      );
       sessions[0]?.finishAbort();
       await expect(bridge.waitForResponse(2)).resolves.toMatchObject({
         id: 2,
-        result: { ok: true },
+        result: {
+          ok: true,
+          providerCheckpointId: "pi-entry-after-abort",
+        },
       });
       expect(sessions[0]?.dispose).toHaveBeenCalledTimes(1);
     } finally {
@@ -770,6 +797,60 @@ describe("pi bridge", () => {
     }
   });
 
+  it("shuts down extensions before disposing a replaced thread session", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const sessions: ControlledPiAgentSession[] = [];
+    mockCreateAgentSession.mockImplementation(async () => {
+      const session = createControlledPiAgentSession();
+      sessions.push(session);
+      return { session };
+    });
+
+    try {
+      bridge.sendRequest(15, "thread/start", {
+        cwd: "/tmp/worktree",
+        threadId: "thread-replaced",
+      });
+      await bridge.waitForResponse(15);
+      sessions[0]?.hasExtensionHandlers.mockReturnValue(true);
+
+      bridge.sendRequest(16, "thread/resume", {
+        cwd: "/tmp/worktree",
+        threadId: "thread-replaced",
+      });
+      await bridge.flushWork();
+
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0]?.abort).toHaveBeenCalledOnce();
+      expect(sessions[0]?.extensionRunner.emit).not.toHaveBeenCalled();
+      expect(sessions[0]?.dispose).not.toHaveBeenCalled();
+
+      sessions[0]?.finishAbort();
+      await bridge.waitForResponse(16);
+
+      expect(sessions).toHaveLength(2);
+      expect(sessions[0]?.extensionRunner.emit).toHaveBeenCalledWith({
+        type: "session_shutdown",
+        reason: "quit",
+      });
+      expect(sessions[0]?.dispose).toHaveBeenCalledOnce();
+      expect(
+        sessions[0]?.extensionRunner.emit.mock.invocationCallOrder[0],
+      ).toBeLessThan(sessions[0]?.dispose.mock.invocationCallOrder[0] ?? 0);
+
+      sessions[0]?.requestExtensionShutdown();
+      await bridge.flushWork();
+      expect(sessions[1]?.abort).not.toHaveBeenCalled();
+
+      bridge.sendRequest(17, "thread/stop", { threadId: "thread-replaced" });
+      await bridge.flushWork();
+      sessions[1]?.finishAbort();
+      await bridge.waitForResponse(17);
+    } finally {
+      bridge.restore();
+    }
+  });
+
   it("responds to turn/steer after the SDK accepts queued steer input", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const piSession = createControlledPiAgentSession();
@@ -801,6 +882,38 @@ describe("pi bridge", () => {
       await expect(bridge.waitForResponse(22)).resolves.toMatchObject({
         id: 22,
         result: { threadId: "thread-steer-consumption" },
+      });
+    } finally {
+      bridge.restore();
+    }
+  });
+
+  it("reports when a turn/start prompt settles without SDK turn events", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const piSession = createControlledPiAgentSession();
+    mockCreateAgentSession.mockResolvedValue({ session: piSession });
+
+    try {
+      bridge.sendRequest(50, "thread/start", {
+        cwd: "/tmp/worktree",
+        threadId: "thread-zero-work",
+      });
+      await bridge.waitForResponse(50);
+
+      bridge.sendRequest(51, "turn/start", {
+        threadId: "thread-zero-work",
+        input: [{ type: "text", text: "/local-extension-command" }],
+      });
+      await bridge.waitForResponse(51);
+      await bridge.flushWork();
+
+      expect(bridge.messages).toContainEqual({
+        jsonrpc: "2.0",
+        method: "pi/prompt/settled",
+        params: {
+          threadId: "thread-zero-work",
+          status: "completed",
+        },
       });
     } finally {
       bridge.restore();

@@ -61,9 +61,7 @@ function seedActiveThreadStopFixture(
   return { environment, thread };
 }
 
-async function waitForStopRpcIdle(
-  args: WaitForStopRpcIdleArgs,
-): Promise<void> {
+async function waitForStopRpcIdle(args: WaitForStopRpcIdleArgs): Promise<void> {
   const deadline = Date.now() + 1_000;
   while (Date.now() < deadline) {
     if (!hasLiveThreadStopInFlight(args.threadId)) {
@@ -176,7 +174,9 @@ describe("thread stop dispatch", () => {
         ({ command }) =>
           command.type === "thread.stop" && command.threadId === thread.id,
       );
-      await reportQueuedCommandSuccess(harness, stopCommand, {});
+      await reportQueuedCommandSuccess(harness, stopCommand, {
+        providerCheckpointId: "pi-entry-at-stop",
+      });
       const settled = getThread(harness.db, thread.id);
       expect(settled).toMatchObject({
         status: "idle",
@@ -194,6 +194,14 @@ describe("thread stop dispatch", () => {
       expect(
         threadEvents.filter((event) => event.type === "turn/completed"),
       ).toHaveLength(1);
+      const completion = threadEvents.find(
+        (event) => event.type === "turn/completed",
+      );
+      expect(completion).toBeDefined();
+      expect(JSON.parse(completion?.data ?? "{}")).toMatchObject({
+        providerCheckpointId: "pi-entry-at-stop",
+        status: "interrupted",
+      });
       expect(
         threadEvents.filter(
           (event) => event.type === "system/thread/interrupted",
@@ -226,7 +234,9 @@ describe("thread stop dispatch", () => {
         listQueuedThreadCommands(harness, "thread.stop", thread.id),
       ).toHaveLength(1);
 
-      await reportQueuedCommandSuccess(harness, firstStopCommand, {});
+      await reportQueuedCommandSuccess(harness, firstStopCommand, {
+        providerCheckpointId: null,
+      });
       await waitForStopRpcIdle({ threadId: thread.id });
     });
   });

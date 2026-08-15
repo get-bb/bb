@@ -1,4 +1,4 @@
-import type { PluginSidebarThread } from "@bb/plugin-sdk/app";
+import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 
 /**
  * A per-thread dot. Colour comes from the thread's id so the same thread keeps

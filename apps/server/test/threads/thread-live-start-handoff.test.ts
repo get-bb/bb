@@ -141,7 +141,9 @@ describe("live thread start handoff", () => {
         expect(getThread(harness.db, fixture.thread.id)?.status).toBe(
           "stopping",
         );
-        await reportQueuedCommandSuccess(harness, stopCommand, {});
+        await reportQueuedCommandSuccess(harness, stopCommand, {
+          providerCheckpointId: null,
+        });
       } finally {
         await failLiveStartRpc({
           harness,
@@ -185,7 +187,9 @@ describe("live thread start handoff", () => {
             fixture.thread.id,
           ),
         ).toEqual([]);
-        await reportQueuedCommandSuccess(harness, stopCommand, {});
+        await reportQueuedCommandSuccess(harness, stopCommand, {
+          providerCheckpointId: null,
+        });
       } finally {
         await failLiveStartRpc({
           harness,
@@ -224,7 +228,9 @@ describe("live thread start handoff", () => {
           threadId: fixture.thread.id,
         });
         expect(getThread(harness.db, fixture.thread.id)).toBeNull();
-        await reportQueuedCommandSuccess(harness, stopCommand, {});
+        await reportQueuedCommandSuccess(harness, stopCommand, {
+          providerCheckpointId: null,
+        });
       } finally {
         await failLiveStartRpc({
           harness,
@@ -252,7 +258,9 @@ describe("live thread start handoff", () => {
           command.type === "thread.stop" &&
           command.threadId === fixture.thread.id,
       );
-      await reportQueuedCommandSuccess(harness, stopCommand, {});
+      await reportQueuedCommandSuccess(harness, stopCommand, {
+        providerCheckpointId: null,
+      });
       expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
         status: "idle",
       });
@@ -301,7 +309,9 @@ describe("live thread start handoff", () => {
         status: "stopping",
       });
 
-      await reportQueuedCommandSuccess(harness, stopCommand, {});
+      await reportQueuedCommandSuccess(harness, stopCommand, {
+        providerCheckpointId: null,
+      });
       expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
         status: "idle",
       });
@@ -391,7 +401,9 @@ describe("live thread start handoff", () => {
           command.type === "thread.stop" &&
           command.threadId === fixture.thread.id,
       );
-      await reportQueuedCommandSuccess(harness, stopCommand, {});
+      await reportQueuedCommandSuccess(harness, stopCommand, {
+        providerCheckpointId: null,
+      });
       expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
         archivedAt: expect.any(Number),
         status: "idle",

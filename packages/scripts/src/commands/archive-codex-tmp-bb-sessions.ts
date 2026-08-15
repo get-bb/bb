@@ -6,6 +6,7 @@ import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import readline from "node:readline/promises";
 import type { ChildProcessByStdio } from "node:child_process";
+import { resolveCodexHome } from "@bb/config/codex-home";
 import { bold, cyan, dim, green, yellow, log } from "../lib/script-helpers.js";
 
 const DEFAULT_TMP_BB_PATTERNS: readonly string[] = [
@@ -124,18 +125,6 @@ function resolvePathOption(pathValue: string, homeDirectory: string): string {
   return resolve(expandHomePath(pathValue, homeDirectory));
 }
 
-function resolveDefaultCodexHome(
-  env: NodeJS.ProcessEnv,
-  homeDirectory: string,
-): string {
-  const configuredHome = env.CODEX_HOME?.trim();
-  if (configuredHome && configuredHome.length > 0) {
-    return resolvePathOption(configuredHome, homeDirectory);
-  }
-
-  return join(homeDirectory, ".codex");
-}
-
 function resolveDefaultCodexBin(
   env: NodeJS.ProcessEnv,
   homeDirectory: string,
@@ -237,7 +226,10 @@ export function parseArchiveTmpBbSessionsArgs(
 ): ParseArchiveTmpBbSessionsArgsResult {
   const options: ArchiveTmpBbSessionsOptions = {
     codexBin: resolveDefaultCodexBin(env, homeDirectory),
-    codexHome: resolveDefaultCodexHome(env, homeDirectory),
+    codexHome: resolvePathOption(
+      resolveCodexHome(homeDirectory, env),
+      homeDirectory,
+    ),
     concurrency: DEFAULT_ARCHIVE_CONCURRENCY,
     dryRun: false,
     patterns: [...DEFAULT_TMP_BB_PATTERNS],

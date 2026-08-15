@@ -14,7 +14,7 @@ import { useState, type ComponentProps, type ReactElement } from "react";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
-import type { PluginMessageActionRegistration } from "@bb/plugin-sdk";
+import type { PluginMessageActionRegistration } from "@get-bb/plugin-sdk";
 import {
   conversationRow,
   delegationRow,
@@ -101,7 +101,6 @@ function EditActionAvailabilityHarness({
     ComponentProps<typeof ThreadTimelineRows>["onEditMessage"]
   >;
 }) {
-  const [isIdle, setIsIdle] = useState(false);
   const [rows] = useState(() => [
     conversationRow({
       id: "earlier_user_message",
@@ -117,17 +116,12 @@ function EditActionAvailabilityHarness({
     }),
   ]);
   return (
-    <>
-      <button type="button" onClick={() => setIsIdle(true)}>
-        Complete turn
-      </button>
-      <ThreadTimelineRows
-        timelineRows={rows}
-        onEditMessage={isIdle ? onEditMessage : undefined}
-        threadRuntimeDisplayStatus={isIdle ? "idle" : "active"}
-        workspaceRootPath={undefined}
-      />
-    </>
+    <ThreadTimelineRows
+      timelineRows={rows}
+      onEditMessage={onEditMessage}
+      threadRuntimeDisplayStatus="active"
+      workspaceRootPath={undefined}
+    />
   );
 }
 
@@ -359,17 +353,11 @@ describe("ThreadTimelineRows actions", () => {
     ).toContain("max-md:pointer-coarse:size-7");
   });
 
-  it("restores edit actions on every cached message after an active turn becomes idle", () => {
+  it("keeps edit actions available while the thread is active", () => {
     const onEditMessage = vi.fn();
     renderWithRouter(
       <EditActionAvailabilityHarness onEditMessage={onEditMessage} />,
     );
-    expect(
-      screen.queryAllByRole("button", { name: "Edit message" }),
-    ).toHaveLength(0);
-
-    fireEvent.click(screen.getByRole("button", { name: "Complete turn" }));
-
     const editButtons = screen.getAllByRole("button", {
       name: "Edit message",
     });

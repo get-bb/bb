@@ -1,5 +1,6 @@
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
+import { useEffect } from "react";
 import {
   workspaceOpenTargetIdSchema,
   type WorkspaceOpenTarget,
@@ -15,6 +16,11 @@ export type StoredWorkspaceOpenTargetPreference = WorkspaceOpenTargetId | null;
 export type WorkspaceOpenTargetCapability =
   keyof WorkspaceOpenTargetCapabilities;
 export type WorkspaceOpenTargetContextKind = "local" | "remote-ssh";
+
+const RENAMED_WORKSPACE_OPEN_TARGET_IDS: Record<
+  string,
+  WorkspaceOpenTargetId | undefined
+> = { windsurf: "devin-desktop" };
 
 const NATIVE_VIEWABLE_FILE_EXTENSIONS = new Set([
   ".avif",
@@ -84,44 +90,6 @@ export function supportsWorkspaceOpenTargetCapability(
   return args.target.capabilities[args.capability] ?? false;
 }
 
-export function isWorkspaceDirectoryOpenTarget(
-  target: WorkspaceOpenTarget,
-): boolean {
-  return supportsWorkspaceOpenTargetCapability({
-    capability: "openDirectory",
-    target,
-  });
-}
-
-export function isWorkspaceFileOpenTarget(
-  target: WorkspaceOpenTarget,
-): boolean {
-  return supportsWorkspaceOpenTargetCapability({
-    capability: "openFile",
-    target,
-  });
-}
-
-export function isRemoteSshWorkspaceDirectoryOpenTarget(
-  target: WorkspaceOpenTarget,
-): boolean {
-  return supportsWorkspaceOpenTargetCapability({
-    capability: "openDirectory",
-    contextKind: "remote-ssh",
-    target,
-  });
-}
-
-export function isRemoteSshWorkspaceFileOpenTarget(
-  target: WorkspaceOpenTarget,
-): boolean {
-  return supportsWorkspaceOpenTargetCapability({
-    capability: "openFile",
-    contextKind: "remote-ssh",
-    target,
-  });
-}
-
 function resolveFallbackWorkspaceOpenTarget(
   capability: WorkspaceOpenTargetCapability,
   contextKind: WorkspaceOpenTargetContextKind,
@@ -134,6 +102,24 @@ function resolveFallbackWorkspaceOpenTarget(
         contextKind,
         target,
       }),
+    ) ?? null
+  );
+}
+
+function resolveDefaultAppWorkspaceOpenTarget(
+  capability: WorkspaceOpenTargetCapability,
+  contextKind: WorkspaceOpenTargetContextKind,
+  targets: WorkspaceOpenTarget[],
+): WorkspaceOpenTarget | null {
+  return (
+    targets.find(
+      (target) =>
+        target.id === "default-app" &&
+        supportsWorkspaceOpenTargetCapability({
+          capability,
+          contextKind,
+          target,
+        }),
     ) ?? null
   );
 }
@@ -244,16 +230,27 @@ export function resolvePreferredWorkspaceOpenTarget(
   const contextKind = args.contextKind ?? "local";
   if (args.preferredTargetId !== null) {
     const preferredTarget = args.targets.find(
-      (target) =>
-        target.id === args.preferredTargetId &&
-        supportsWorkspaceOpenTargetCapability({
-          capability: args.capability,
-          contextKind,
-          target,
-        }),
+      (target) => target.id === args.preferredTargetId,
     );
-    if (preferredTarget) {
+    if (
+      preferredTarget &&
+      supportsWorkspaceOpenTargetCapability({
+        capability: args.capability,
+        contextKind,
+        target: preferredTarget,
+      })
+    ) {
       return preferredTarget;
+    }
+    if (!preferredTarget) {
+      const defaultAppTarget = resolveDefaultAppWorkspaceOpenTarget(
+        args.capability,
+        contextKind,
+        args.targets,
+      );
+      if (defaultAppTarget) {
+        return defaultAppTarget;
+      }
     }
   }
 
@@ -272,16 +269,27 @@ export function resolvePreferredWorkspaceOpenFileTarget(
   const contextKind = args.contextKind ?? "local";
   if (args.preferredTargetId !== null) {
     const preferredTarget = args.targets.find(
-      (target) =>
-        target.id === args.preferredTargetId &&
-        supportsWorkspaceOpenTargetCapability({
-          capability: "openFile",
-          contextKind,
-          target,
-        }),
+      (target) => target.id === args.preferredTargetId,
     );
-    if (preferredTarget) {
+    if (
+      preferredTarget &&
+      supportsWorkspaceOpenTargetCapability({
+        capability: "openFile",
+        contextKind,
+        target: preferredTarget,
+      })
+    ) {
       return preferredTarget;
+    }
+    if (!preferredTarget) {
+      const defaultAppTarget = resolveDefaultAppWorkspaceOpenTarget(
+        "openFile",
+        contextKind,
+        args.targets,
+      );
+      if (defaultAppTarget) {
+        return defaultAppTarget;
+      }
     }
   }
 
@@ -293,10 +301,57 @@ export function resolvePreferredWorkspaceOpenFileTarget(
   });
 }
 
-export function useWorkspaceOpenTargetPreference() {
-  return useAtom(workspaceOpenTargetPreferenceAtom);
+function useOverrideUnknownOpenTargetPreference(
+  preferredTargetId: StoredWorkspaceOpenTargetPreference,
+  setPreferredTargetId: (targetId: StoredWorkspaceOpenTargetPreference) => void,
+  targets: WorkspaceOpenTarget[] | undefined,
+): void {
+  useEffect(() => {
+    const renamedTargetId =
+      preferredTargetId === null
+        ? undefined
+        : RENAMED_WORKSPACE_OPEN_TARGET_IDS[preferredTargetId];
+    if (
+      renamedTargetId !== undefined &&
+      targets?.some((target) => target.id === renamedTargetId)
+    ) {
+      setPreferredTargetId(renamedTargetId);
+      return;
+    }
+    if (
+      preferredTargetId === null ||
+      targets === undefined ||
+      targets.some((target) => target.id === preferredTargetId) ||
+      !targets.some((target) => target.id === "default-app")
+    ) {
+      return;
+    }
+    setPreferredTargetId("default-app");
+  }, [preferredTargetId, setPreferredTargetId, targets]);
 }
 
-export function useFileOpenTargetPreference() {
-  return useAtom(fileOpenTargetPreferenceAtom);
+export function useWorkspaceOpenTargetPreference(
+  targets?: WorkspaceOpenTarget[],
+) {
+  const [preferredTargetId, setPreferredTargetId] = useAtom(
+    workspaceOpenTargetPreferenceAtom,
+  );
+  useOverrideUnknownOpenTargetPreference(
+    preferredTargetId,
+    setPreferredTargetId,
+    targets,
+  );
+  return [preferredTargetId, setPreferredTargetId] as const;
+}
+
+export function useFileOpenTargetPreference(targets?: WorkspaceOpenTarget[]) {
+  const [preferredTargetId, setPreferredTargetId] = useAtom(
+    fileOpenTargetPreferenceAtom,
+  );
+  useOverrideUnknownOpenTargetPreference(
+    preferredTargetId,
+    setPreferredTargetId,
+    targets,
+  );
+  return [preferredTargetId, setPreferredTargetId] as const;
 }

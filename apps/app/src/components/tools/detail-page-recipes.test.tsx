@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 /**
- * The Tools Hub detail pages share a shell, but the thing that actually keeps
+ * The Extensions detail pages share a shell, but the thing that actually keeps
  * them consistent is each tool type's *recipe*: which semantic sections appear,
  * in which order, under which label, and which of them are allowed to
  * disappear. These tests read the recipe straight off the rendered DOM via
@@ -19,6 +19,8 @@ import {
 import { useState, type ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import type { SkillSummary } from "@bb/server-contract";
 import type {
   AgentExecutionUpdate,
   AutomationExecutionOptionsResponse,
@@ -39,11 +41,14 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { PluginDetail } from "./PluginDetail";
-import { SkillDetailView } from "./SkillDetailView";
+import { SkillDetailView, splitMarkdownIntoChunks } from "./SkillDetailView";
+import { projectSkillsQueryKey } from "@/hooks/queries/query-keys";
+import { sdk } from "@/lib/sdk";
 
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
+  vi.restoreAllMocks();
 });
 
 /** The rendered recipe: each section's kind and its visible label, in order. */
@@ -80,12 +85,22 @@ const PLUGIN: PluginListItem = {
   provenance: "catalog",
   isOrphanedBuiltin: false,
   catalogEntryId: "github",
+  publisherLabel: "BB Community",
   sourceDisplay: "BB Official · GitHub",
   updateState: EMPTY_PLUGIN_UPDATE_STATE,
 };
 
-function renderPlugin(plugin: PluginListItem) {
-  const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+function renderPlugin(
+  plugin: PluginListItem,
+  options?: { skills?: SkillSummary[]; seedSkillsCache?: boolean },
+) {
+  const { wrapper: QueryClientWrapper, queryClient } =
+    createQueryClientTestHarness();
+  if (options?.seedSkillsCache !== false) {
+    queryClient.setQueryData(projectSkillsQueryKey(PERSONAL_PROJECT_ID), {
+      skills: options?.skills ?? [],
+    });
+  }
   return render(
     <MemoryRouter>
       <QueryClientWrapper>
@@ -117,7 +132,6 @@ describe("Plugin detail recipe", () => {
   it("names each activity section after its own object, with no Health wrapper", () => {
     const { container } = renderPlugin({
       ...PLUGIN,
-      hasSettings: true,
       services: [{ name: "sync", state: "running" }],
       schedules: [
         {
@@ -250,9 +264,12 @@ describe("Plugin detail recipe", () => {
       expect(screen.getByText(item).className).toContain("text-xs");
     }
     const skillName = screen.getByText("review");
+    const skillRowContent = skillName.closest("th")?.firstElementChild;
     expect(skillName.closest("th")?.className).toContain("items-center");
-    expect(skillName.parentElement?.className).toContain("items-center");
-    expect(skillName.previousElementSibling?.className).not.toContain("mt-px");
+    expect(skillRowContent?.className).toContain("items-center");
+    expect(skillRowContent?.firstElementChild?.className).not.toContain(
+      "mt-px",
+    );
   });
 
   it("collapses long capability descriptions until requested", () => {
@@ -309,6 +326,152 @@ describe("Plugin detail recipe", () => {
     renderPlugin({ ...PLUGIN, app: { hasApp: true, bundle: null } });
 
     expect(screen.getByText("Issues")).toBeTruthy();
+  });
+
+  it("links every capability with a stable destination to its owning surface", () => {
+    const listSkills = vi
+      .spyOn(sdk.skills, "list")
+      .mockResolvedValue({ skills: [] });
+    setPluginSlotRegistrations("github", {
+      homepageSections: [
+        {
+          id: "dashboard",
+          title: "GitHub dashboard",
+          component: () => null,
+        },
+      ],
+      settingsSections: [
+        {
+          id: "advanced",
+          title: "Advanced settings",
+          component: () => null,
+        },
+      ],
+      navPanels: [
+        {
+          id: "issues",
+          title: "Issues",
+          icon: "Github",
+          path: "issues",
+          component: () => null,
+        },
+      ],
+      threadPanelActions: [
+        {
+          id: "inspect",
+          title: "Inspect issue",
+          component: () => null,
+        },
+      ],
+      sidebarFooterActions: [],
+      threadLists: [
+        {
+          id: "github-threads",
+          title: "GitHub threads",
+          component: () => null,
+        },
+      ],
+      threadHeaderActions: [
+        {
+          id: "sync",
+          title: "Sync status",
+          component: () => null,
+        },
+      ],
+      fileOpeners: [
+        {
+          id: "markdown",
+          title: "Markdown viewer",
+          extensions: ["md"],
+          component: () => null,
+        },
+      ],
+      messageDirectives: [],
+    });
+    const { container } = renderPlugin(
+      {
+        ...PLUGIN,
+        app: { hasApp: true, bundle: null },
+        capabilities: [
+          {
+            kind: "theme",
+            id: "github.dark",
+            label: "GitHub Dark",
+            detail: null,
+          },
+          {
+            kind: "skill",
+            id: "review",
+            label: "review",
+            detail: "Reviews pull requests.",
+          },
+        ],
+      },
+      {
+        skills: [
+          {
+            id: `skill_${"a".repeat(64)}`,
+            name: "review",
+            description: "Reviews pull requests.",
+            provider: null,
+            scope: "plugin",
+            pluginId: "github",
+            filePath: "/plugins/github/skills/review/SKILL.md",
+            manageable: false,
+            registrySkillId: null,
+          },
+        ],
+      },
+    );
+
+    const destinations = [
+      ["Settings", "/settings/plugins/github"],
+      ["Issues", "/plugins/github/issues"],
+      ["GitHub dashboard", "/#plugin-homepage:github:dashboard"],
+      ["GitHub threads", "/settings/appearance"],
+      ["Markdown viewer", "/settings/files"],
+      ["GitHub Dark", "/settings/appearance"],
+      ["review", `/extensions/skills/library/skill_${"a".repeat(64)}`],
+    ] as const;
+    for (const [name, href] of destinations) {
+      expect(screen.getByRole("link", { name }).getAttribute("href")).toBe(
+        href,
+      );
+    }
+    expect(renderedRecipe(container)).toContainEqual([
+      "configuration",
+      "Configuration",
+    ]);
+    expect(screen.getAllByRole("link", { name: "Settings" })).toHaveLength(1);
+    expect(screen.queryByRole("link", { name: "Inspect issue" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Sync status" })).toBeNull();
+    expect(listSkills).not.toHaveBeenCalled();
+  });
+
+  it("links uncached plugin skills to the library without discovering skills", () => {
+    const listSkills = vi
+      .spyOn(sdk.skills, "list")
+      .mockResolvedValue({ skills: [] });
+
+    renderPlugin(
+      {
+        ...PLUGIN,
+        capabilities: [
+          {
+            kind: "skill",
+            id: "review",
+            label: "review",
+            detail: "Reviews pull requests.",
+          },
+        ],
+      },
+      { seedSkillsCache: false },
+    );
+
+    expect(
+      screen.getByRole("link", { name: "review" }).getAttribute("href"),
+    ).toBe("/extensions/skills?view=library");
+    expect(listSkills).not.toHaveBeenCalled();
   });
 
   it("does not preview an unloaded frontend app as a capability", () => {
@@ -545,147 +708,98 @@ describe("Skill detail recipe", () => {
     ).toContain("text-destructive");
   });
 
-  it("keeps short skill content on one page without pagination chrome", () => {
+  it("keeps short skill content in one chunk with no sentinel or pager", () => {
     const { container } = renderSkill(["/skills/writing-voice/SKILL.md"]);
     const viewport = container.querySelector<HTMLElement>(
       "[data-skill-content-viewport]",
     );
-    const content = container.querySelector<HTMLElement>(
-      "[data-skill-content-pages]",
-    );
     expect(viewport).not.toBeNull();
-    expect(content).not.toBeNull();
-    Object.defineProperty(viewport, "clientHeight", {
-      configurable: true,
-      value: 240,
-    });
-    Object.defineProperty(content, "scrollHeight", {
-      configurable: true,
-      value: 120,
-    });
-    act(() => window.dispatchEvent(new Event("resize")));
-
     expect(viewport?.className).toContain("max-h-[60dvh]");
+    expect(viewport?.className).toContain("overflow-y-auto");
     expect(
       screen.queryByRole("navigation", { name: "Skill content pagination" }),
     ).toBeNull();
+    expect(
+      container.querySelector("[data-resource-infinite-sentinel]"),
+    ).toBeNull();
   });
 
-  it("pages through long skill content with first and last page controls", () => {
-    const { container } = renderSkill(["/skills/writing-voice/SKILL.md"]);
-    const viewport = container.querySelector<HTMLElement>(
-      "[data-skill-content-viewport]",
+  it("loads more chunks as the sentinel is reached, with no page buttons", () => {
+    const intersectionCallbacks = new Set<IntersectionObserverCallback>();
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class IntersectionObserverMock {
+        constructor(private readonly callback: IntersectionObserverCallback) {
+          intersectionCallbacks.add(this.callback);
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {
+          intersectionCallbacks.delete(this.callback);
+        }
+      },
     );
-    const content = container.querySelector<HTMLElement>(
-      "[data-skill-content-pages]",
-    );
-    expect(viewport).not.toBeNull();
-    expect(content).not.toBeNull();
-
-    Object.defineProperty(viewport, "clientHeight", {
-      configurable: true,
-      value: 240,
-    });
-    Object.defineProperty(content, "scrollHeight", {
-      configurable: true,
-      value: 720,
-    });
-    act(() => window.dispatchEvent(new Event("resize")));
-
-    const pagination = screen.getByRole("navigation", {
-      name: "Skill content pagination",
-    });
-    const previous = screen.getByRole("button", { name: /Previous/ });
-    const next = screen.getByRole("button", { name: /Next/ });
-    expect(pagination.textContent).toContain("Page 1 of 3");
-    expect(previous.getAttribute("disabled")).not.toBeNull();
-    expect(next.getAttribute("disabled")).toBeNull();
-
-    fireEvent.click(next);
-    expect(pagination.textContent).toContain("Page 2 of 3");
-    expect(content?.style.transform).toBe("translateY(-240px)");
-
-    fireEvent.click(next);
-    expect(pagination.textContent).toContain("Page 3 of 3");
-    expect(previous.getAttribute("disabled")).toBeNull();
-    expect(next.getAttribute("disabled")).not.toBeNull();
-
-    Object.defineProperty(viewport, "clientHeight", {
-      configurable: true,
-      value: 180,
-    });
-    act(() => window.dispatchEvent(new Event("resize")));
-    expect(pagination.textContent).toContain("Page 3 of 4");
-    expect(next.getAttribute("disabled")).toBeNull();
-
-    fireEvent.click(next);
-    expect(pagination.textContent).toContain("Page 4 of 4");
-    expect(content?.style.transform).toBe("translateY(-540px)");
-    expect(next.getAttribute("disabled")).not.toBeNull();
-  });
-
-  it("pages once per vertical wheel or trackpad gesture", () => {
-    vi.useFakeTimers();
     try {
-      const { container } = renderSkill(["/skills/writing-voice/SKILL.md"]);
-      const viewport = container.querySelector<HTMLElement>(
-        "[data-skill-content-viewport]",
+      // Two 121+ line sections separated by blank lines → two chunks.
+      const section = (marker: string) =>
+        `## ${marker}\n${Array.from({ length: 125 }, (_, i) => `${marker} line ${i}`).join("\n")}\n`;
+      const content = `${section("alpha")}\n${section("omega")}`;
+      const { container } = render(
+        <SkillDetailView
+          title="writing-voice"
+          path="/skills/writing-voice/SKILL.md"
+          files={["/skills/writing-voice/SKILL.md"]}
+          selectedPath="/skills/writing-voice/SKILL.md"
+          onSelectFile={() => {}}
+          contentState={{ kind: "ready", content }}
+        />,
       );
-      const content = container.querySelector<HTMLElement>(
-        "[data-skill-content-pages]",
-      );
-      expect(viewport).not.toBeNull();
-      expect(content).not.toBeNull();
 
-      Object.defineProperty(viewport, "clientHeight", {
-        configurable: true,
-        value: 240,
-      });
-      Object.defineProperty(content, "scrollHeight", {
-        configurable: true,
-        value: 720,
-      });
-      act(() => window.dispatchEvent(new Event("resize")));
-
-      const pagination = screen.getByRole("navigation", {
-        name: "Skill content pagination",
-      });
-      fireEvent.wheel(viewport!, { deltaY: -100 });
-      expect(pagination.textContent).toContain("Page 1 of 3");
-
-      // Trackpads emit several small pixel deltas. Accumulate them, then move
-      // exactly one page for the gesture even if momentum events continue.
-      fireEvent.wheel(viewport!, { deltaY: 24 });
-      expect(pagination.textContent).toContain("Page 1 of 3");
-      fireEvent.wheel(viewport!, { deltaY: 24 });
-      expect(pagination.textContent).toContain("Page 2 of 3");
-      fireEvent.wheel(viewport!, { deltaY: 100 });
-      expect(pagination.textContent).toContain("Page 2 of 3");
+      expect(screen.getByText(/alpha line 0/)).toBeTruthy();
+      expect(screen.queryByText(/omega line 0/)).toBeNull();
+      expect(
+        container.querySelector("[data-resource-infinite-sentinel]"),
+      ).not.toBeNull();
+      expect(screen.queryByRole("button", { name: /Next/ })).toBeNull();
 
       act(() => {
-        vi.advanceTimersByTime(161);
+        for (const callback of intersectionCallbacks) {
+          callback(
+            [{ isIntersecting: true } as IntersectionObserverEntry],
+            {} as IntersectionObserver,
+          );
+        }
       });
-      // Line-mode wheel input is normalized to pixels and uses the same
-      // threshold and one-page-per-gesture behavior.
-      fireEvent.wheel(viewport!, { deltaY: 3, deltaMode: 1 });
-      expect(pagination.textContent).toContain("Page 3 of 3");
 
-      // Momentum can keep moving toward the boundary, then briefly rebound in
-      // the opposite direction. Both events are still part of the gesture that
-      // moved from page 2 to page 3, so the rebound must not navigate back.
-      fireEvent.wheel(viewport!, { deltaY: 100 });
-      expect(pagination.textContent).toContain("Page 3 of 3");
-      fireEvent.wheel(viewport!, { deltaY: -40 });
-      expect(pagination.textContent).toContain("Page 3 of 3");
-
-      act(() => {
-        vi.advanceTimersByTime(161);
-      });
-      fireEvent.wheel(viewport!, { deltaY: -40 });
-      expect(pagination.textContent).toContain("Page 2 of 3");
+      expect(screen.getByText(/omega line 0/)).toBeTruthy();
+      // Everything is shown: the sentinel retires.
+      expect(
+        container.querySelector("[data-resource-infinite-sentinel]"),
+      ).toBeNull();
     } finally {
-      vi.useRealTimers();
+      vi.unstubAllGlobals();
     }
+  });
+
+  it("never splits a chunk inside a code fence", () => {
+    // A fence spanning the would-be boundary must hold the chunk open.
+    const fenced = [
+      "intro",
+      "",
+      "```bash",
+      ...Array.from({ length: 200 }, (_, i) => `command ${i}`),
+      "```",
+      "",
+      "outro",
+    ].join("\n");
+    const chunks = splitMarkdownIntoChunks(fenced);
+    for (const chunk of chunks) {
+      const fenceCount = chunk
+        .split("\n")
+        .filter((line) => line.startsWith("```")).length;
+      expect(fenceCount % 2).toBe(0);
+    }
+    expect(chunks.join("\n")).toBe(fenced);
   });
 });
 

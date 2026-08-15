@@ -5,6 +5,13 @@ import type { HostDaemonStatusSnapshot } from "./api-host-daemon";
 import type { SystemConfigResponse } from "@bb/server-contract";
 import { apiClient } from "./api-server";
 import { fetchHostStatus, fetchWorkspaceOpenTargets } from "./api-host-daemon";
+import { getBbDesktopInfo } from "./bb-desktop";
+import {
+  getBrowserLocalNetworkPermissionQuery,
+  resolveLocalHostDaemonAccess,
+  resolveLocalHostDaemonProbePort,
+  type LocalHostDaemonAccessState,
+} from "./local-host-daemon-access";
 import { wsManager } from "./ws";
 
 // Offline/unavailable app behavior should fail closed independently of server defaults.
@@ -17,7 +24,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
     claudeCodeMockCliTraffic: false,
     editMessages: false,
     newOnboarding: false,
-    toolsHub: false,
+    providerSessionReaping: false,
   },
   appearance: defaultAppTheme,
   customThemes: [],
@@ -158,6 +165,47 @@ localHostStatusRefreshTickAtom.onMount = (setRefreshTick) => {
   };
 };
 
+const localHostDaemonAccessRefreshTickAtom = atom(0);
+const localHostDaemonSessionAccessGrantedAtom = atom(false);
+
+export const localHostDaemonAccessStateAtom = atom<
+  Promise<LocalHostDaemonAccessState>
+>(async (get) => {
+  get(localHostDaemonAccessRefreshTickAtom);
+  const sessionAccessGranted = get(localHostDaemonSessionAccessGrantedAtom);
+  const config = await get(systemConfigAtom);
+  return resolveLocalHostDaemonAccess({
+    configuredPort: config.hostDaemonPort,
+    hostname: typeof window === "undefined" ? null : window.location.hostname,
+    isDesktop: getBbDesktopInfo() !== null,
+    permissions: getBrowserLocalNetworkPermissionQuery(),
+    sessionAccessGranted,
+  });
+});
+
+/**
+ * Deliberately request browser-local helper access from a user interaction.
+ * The status request is what causes browsers to offer the loopback permission;
+ * no permission API exists that can request it directly.
+ */
+export const requestLocalHostDaemonAccessAtom = atom(
+  null,
+  async (get, set): Promise<boolean> => {
+    const config = await get(systemConfigAtom);
+    if (config.hostDaemonPort === null) {
+      return false;
+    }
+
+    const status = await fetchHostStatus(config.hostDaemonPort);
+    if (status !== null) {
+      set(localHostDaemonSessionAccessGrantedAtom, true);
+    }
+    set(localHostDaemonAccessRefreshTickAtom, (count) => count + 1);
+    set(localHostStatusRefreshTickAtom, (count) => count + 1);
+    return status !== null;
+  },
+);
+
 /** The local daemon status, or null if no daemon is reachable. */
 export const localHostStatusAtom = atom<
   Promise<HostDaemonStatusSnapshot | null>
@@ -218,11 +266,12 @@ export const localWorkspaceOpenTargetsAtom = atom<
 // ---------------------------------------------------------------------------
 
 /**
- * The local helper port to probe from this browser, or null when the server
- * does not expose one. The helper is reached through browser-local loopback,
- * so a remote app origin still probes this client's `127.0.0.1`.
+ * The local helper port this browser may probe, or null when unavailable. A
+ * remote web origin only receives the port after loopback access was already
+ * granted or explicitly requested by the user.
  */
 export const hostDaemonPortAtom = atom<Promise<number | null>>(async (get) => {
   const config = await get(systemConfigAtom);
-  return config.hostDaemonPort;
+  const accessState = await get(localHostDaemonAccessStateAtom);
+  return resolveLocalHostDaemonProbePort(config.hostDaemonPort, accessState);
 });

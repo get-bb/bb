@@ -155,6 +155,7 @@ function rowPlugin(
     provenance: "direct" as const,
     isOrphanedBuiltin: false,
     catalogEntryId: null,
+    publisherLabel: null,
     sourceDisplay: "path · /plugins/linear",
     updateState: EMPTY_PLUGIN_UPDATE_STATE,
   };
@@ -294,7 +295,12 @@ describe("PluginSettingsDetail settings gating", () => {
       { wrapper },
     );
 
-    expect(await screen.findByText("Remote access")).toBeDefined();
+    expect(
+      await screen.findByRole("heading", {
+        level: 3,
+        name: "Remote access",
+      }),
+    ).toBeDefined();
     expect(screen.getByText("Custom connect settings")).toBeDefined();
     expect(screen.queryByText("This plugin declares no settings.")).toBeNull();
   });

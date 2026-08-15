@@ -1,9 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { Thread } from "@bb/domain";
 import {
   isThreadRead,
   type ThreadReadState,
 } from "@/lib/thread-read-state";
+import {
+  isDocumentVisible,
+  useDocumentVisibilityRevision,
+} from "@/lib/document-visibility";
 
 type ThreadReadTrackingState = ThreadReadState & Pick<Thread, "id">;
 
@@ -26,33 +30,6 @@ interface ReadTrackingSnapshot {
   threadId: string | null;
 }
 
-function isDocumentVisible(): boolean {
-  return (
-    typeof document === "undefined" || document.visibilityState === "visible"
-  );
-}
-
-function useDocumentVisible(): boolean {
-  const [visible, setVisible] = useState(isDocumentVisible);
-
-  useEffect(() => {
-    if (typeof document === "undefined") {
-      return;
-    }
-
-    const handleVisibilityChange = () => {
-      setVisible(isDocumentVisible());
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, []);
-
-  return visible;
-}
-
 export function useThreadReadTracking({
   markThreadRead,
   thread,
@@ -61,7 +38,8 @@ export function useThreadReadTracking({
   const pendingReadKeysRef = useRef<Set<string>>(new Set());
   const suppressedManualUnreadKeysRef = useRef<Set<string>>(new Set());
   const previousSnapshotRef = useRef<ReadTrackingSnapshot | null>(null);
-  const isVisible = useDocumentVisible();
+  const visibilityRevision = useDocumentVisibilityRevision();
+  const isVisible = isDocumentVisible();
 
   useEffect(() => {
     const previousSnapshot = previousSnapshotRef.current;
@@ -138,5 +116,5 @@ export function useThreadReadTracking({
         pendingReadKeysRef.current.delete(marker);
       },
     });
-  }, [isVisible, markThreadRead, thread]);
+  }, [isVisible, markThreadRead, thread, visibilityRevision]);
 }

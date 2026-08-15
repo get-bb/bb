@@ -49,11 +49,6 @@ export function buildOpenInEditorHandler(
   };
 }
 
-export interface ResolveThreadLocalWorkspaceRootPathArgs {
-  environment: Environment | null | undefined;
-  threadEnvironmentIsLocal: boolean;
-}
-
 export interface ResolveThreadWorkspacePreviewRootPathArgs {
   environment: Environment | null | undefined;
 }
@@ -100,16 +95,6 @@ export function resolveWorkspaceChangedFileOpenTarget(
   }
 
   return { kind: "diff" };
-}
-
-export function resolveThreadLocalWorkspaceRootPath(
-  args: ResolveThreadLocalWorkspaceRootPathArgs,
-): string | null {
-  if (!args.threadEnvironmentIsLocal) {
-    return null;
-  }
-
-  return args.environment?.path ?? null;
 }
 
 /**

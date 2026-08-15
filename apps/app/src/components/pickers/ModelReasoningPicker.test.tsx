@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import type { AvailableModel, ReasoningLevel } from "@bb/domain";
 import type {
   SystemExecutionOptionsResponse,
@@ -9,6 +15,11 @@ import type {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { systemExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
+import {
+  PaneContext,
+  type PaneContextValue,
+} from "@/views/thread-detail/PaneContext";
 import {
   buildFuzzyRegex,
   buildModelNavRows,
@@ -17,8 +28,36 @@ import {
 import type { PickerOption } from "./OptionPicker";
 import type { ModelPickerOption } from "./model-picker-option";
 
+type CapturedCommandHandler = (invocation: {
+  target: EventTarget | null;
+}) => boolean;
+
+const commandHandlers = vi.hoisted(
+  () => new Map<string, CapturedCommandHandler>(),
+);
+
 vi.mock("@/lib/sdk", () => ({
   sdk: { system: { executionOptions: vi.fn() } },
+}));
+
+vi.mock("@/components/commands/AppCommandProvider", () => ({
+  useAppCommandContext: () => undefined,
+  useAppCommandHandler: (command: string, handler: CapturedCommandHandler) => {
+    commandHandlers.set(command, handler);
+  },
+  useIndexedAppCommandHandlers: (
+    commands: readonly string[],
+    handler: (
+      index: number,
+      invocation: { target: EventTarget | null },
+    ) => boolean,
+  ) => {
+    commands.forEach((command, index) => {
+      commandHandlers.set(command, (invocation) => handler(index, invocation));
+    });
+  },
+  useAppCommandShortcut: () => null,
+  useIsAppCommandModifierHeld: () => false,
 }));
 
 const providerOptions: readonly PickerOption<string>[] = [
@@ -44,6 +83,21 @@ const reasoningOptions: readonly PickerOption<ReasoningLevel>[] = [
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
 ];
+
+const splitPaneContext: PaneContextValue = {
+  paneId: "test-pane",
+  isFocused: true,
+  isSplitPane: true,
+  secondaryPanelHost: null,
+  reservesWindowPanelToggle: false,
+  onRequestClose: null,
+  isMaximized: false,
+  onToggleMaximize: null,
+  isBoundedPane: true,
+  isTopRow: true,
+  ownsWindowTopLeft: true,
+  navigateInPane: () => undefined,
+};
 
 function availableModel({
   value,
@@ -89,20 +143,30 @@ function renderPicker({
   onReasoningChange = vi.fn(),
   modelOptions = codexModels,
   modelValue = modelOptions[0]?.value ?? "",
+  pickerReasoningOptions = reasoningOptions,
+  reasoningValue = "medium",
   moreModelOptions = [],
   pickerProviderOptions = providerOptions,
+  alternateProviderModels,
   providerRouting,
   selectedProviderId = "codex",
+  compact = false,
+  splitPane = false,
 }: {
-  onSelectedProviderChange?: (value: string) => void;
+  onSelectedProviderChange?: ((value: string) => void) | null;
   onModelChange?: (value: string) => void;
   onReasoningChange?: (value: ReasoningLevel) => void;
   modelOptions?: readonly ModelPickerOption[];
   modelValue?: string;
+  pickerReasoningOptions?: readonly PickerOption<ReasoningLevel>[];
+  reasoningValue?: ReasoningLevel;
   moreModelOptions?: readonly ModelPickerOption[];
   pickerProviderOptions?: readonly PickerOption<string>[];
+  alternateProviderModels?: AvailableModel[];
   providerRouting?: SystemProvidersQuery;
   selectedProviderId?: string;
+  compact?: boolean;
+  splitPane?: boolean;
 } = {}) {
   const { queryClient, wrapper } = createQueryClientTestHarness();
   queryClient.setQueryData(
@@ -112,7 +176,7 @@ function renderPicker({
       providerId: "claude-code",
     }),
     executionOptions({
-      models: [
+      models: alternateProviderModels ?? [
         availableModel({
           value: "claude-opus-4-7",
           label: "Claude Opus 4.7",
@@ -122,25 +186,44 @@ function renderPicker({
     }),
   );
 
+  const picker = (
+    <div data-app-composer>
+      <ModelReasoningPicker
+        providerOptions={pickerProviderOptions}
+        providerRouting={providerRouting}
+        selectedProviderId={selectedProviderId}
+        onSelectedProviderChange={onSelectedProviderChange ?? undefined}
+        hasMultipleProviders
+        modelValue={modelValue}
+        modelOptions={modelOptions}
+        moreModelOptions={moreModelOptions}
+        onModelChange={onModelChange}
+        reasoningValue={reasoningValue}
+        reasoningOptions={pickerReasoningOptions}
+        onReasoningChange={onReasoningChange}
+        fastModeEnabled={false}
+        onFastModeChange={vi.fn()}
+        showFastModeToggle={false}
+        modal={false}
+      />
+      <button type="button">Composer action</button>
+    </div>
+  );
+  const pickerWithPane = splitPane ? (
+    <PaneContext.Provider value={splitPaneContext}>
+      {picker}
+    </PaneContext.Provider>
+  ) : (
+    picker
+  );
   render(
-    <ModelReasoningPicker
-      providerOptions={pickerProviderOptions}
-      providerRouting={providerRouting}
-      selectedProviderId={selectedProviderId}
-      onSelectedProviderChange={onSelectedProviderChange}
-      hasMultipleProviders
-      modelValue={modelValue}
-      modelOptions={modelOptions}
-      moreModelOptions={moreModelOptions}
-      onModelChange={onModelChange}
-      reasoningValue="medium"
-      reasoningOptions={reasoningOptions}
-      onReasoningChange={onReasoningChange}
-      fastModeEnabled={false}
-      onFastModeChange={vi.fn()}
-      showFastModeToggle={false}
-      modal={false}
-    />,
+    compact ? (
+      <CompactViewportOverrideProvider isCompactViewport>
+        {pickerWithPane}
+      </CompactViewportOverrideProvider>
+    ) : (
+      pickerWithPane
+    ),
     { wrapper },
   );
 
@@ -149,10 +232,161 @@ function renderPicker({
 
 afterEach(() => {
   cleanup();
+  commandHandlers.clear();
   vi.clearAllMocks();
 });
 
 describe("ModelReasoningPicker", () => {
+  it("cycles models backward from a Tab-focused composer control", () => {
+    const { onModelChange } = renderPicker({
+      modelOptions: [
+        { value: "gpt-5.5", label: "GPT-5.5" },
+        { value: "gpt-5.2", label: "GPT-5.2" },
+      ],
+    });
+    const target = screen.getByRole("button", {
+      name: "Composer action",
+    });
+
+    expect(
+      commandHandlers.get("modelPicker.cycleModelBackward")?.({ target }),
+    ).toBe(true);
+    expect(onModelChange).toHaveBeenCalledWith("gpt-5.2");
+  });
+
+  it("cycles reasoning backward in canonical order and wraps", () => {
+    const { onReasoningChange } = renderPicker({
+      pickerReasoningOptions: [
+        { value: "max", label: "Max" },
+        { value: "low", label: "Low" },
+        { value: "high", label: "High" },
+      ],
+      reasoningValue: "low",
+    });
+    const target = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+
+    expect(
+      commandHandlers.get("modelPicker.cycleReasoningBackward")?.({ target }),
+    ).toBe(true);
+    expect(onReasoningChange).toHaveBeenCalledWith("max");
+  });
+
+  it("swallows the provider cycle chord when provider switching is locked", () => {
+    renderPicker({ onSelectedProviderChange: null });
+    const lockedTarget = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+    // Owning the chord with nowhere to rotate is the correct no-op. Returning
+    // false lets the command provider skip `preventDefault()`, and macOS would
+    // then insert the composed Option+P character into the prompt.
+    expect(
+      commandHandlers.get("modelPicker.cycleProvider")?.({
+        target: lockedTarget,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not swallow the provider cycle chord outside its composer", () => {
+    renderPicker({ onSelectedProviderChange: null, splitPane: true });
+    const outsideTarget = document.createElement("textarea");
+    document.body.append(outsideTarget);
+
+    expect(
+      commandHandlers.get("modelPicker.cycleProvider")?.({
+        target: outsideTarget,
+      }),
+    ).toBe(false);
+  });
+
+  it("still opens the split pane's picker from an unrelated editable", () => {
+    renderPicker({ splitPane: true });
+    const outsideTarget = document.createElement("textarea");
+    document.body.append(outsideTarget);
+
+    act(() => {
+      expect(
+        commandHandlers.get("modelPicker.toggle")?.({ target: outsideTarget }),
+      ).toBe(true);
+    });
+    expect(screen.getByRole("dialog")).not.toBeNull();
+  });
+
+  it("cycles the provider while the picker popover is open", () => {
+    const { onSelectedProviderChange } = renderPicker();
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+    fireEvent.click(trigger);
+
+    expect(
+      commandHandlers.get("modelPicker.cycleProvider")?.({ target: trigger }),
+    ).toBe(true);
+    expect(onSelectedProviderChange).toHaveBeenCalledWith("claude-code");
+  });
+
+  it("clears the previous provider's search and highlight when cycling", () => {
+    const alternateProviderModels = [
+      "claude-opus-4-7",
+      "claude-sonnet-4-7",
+      "claude-haiku-4-6",
+      "claude-opus-4-6",
+      "claude-sonnet-4-6",
+      "claude-haiku-4-5",
+    ].map((value, index) =>
+      availableModel({
+        value,
+        label: value,
+        isDefault: index === 0,
+      }),
+    );
+    const { onSelectedProviderChange, onModelChange } = renderPicker({
+      modelOptions: manyCodexModels,
+      alternateProviderModels,
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+    const search = screen.getByPlaceholderText("Search models");
+    fireEvent.change(search, { target: { value: "o4" } });
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+
+    act(() => {
+      expect(
+        commandHandlers.get("modelPicker.cycleProvider")?.({ target: search }),
+      ).toBe(true);
+    });
+
+    expect(onSelectedProviderChange).toHaveBeenCalledWith("claude-code");
+    const nextSearch = screen.getByPlaceholderText(
+      "Search models",
+    ) as HTMLInputElement;
+    expect(nextSearch.value).toBe("");
+    fireEvent.keyDown(nextSearch, { key: "Enter" });
+    expect(onModelChange).not.toHaveBeenCalled();
+  });
+
+  it("cycles the provider backward while the picker popover is open", () => {
+    const { onSelectedProviderChange } = renderPicker({
+      pickerProviderOptions: [
+        ...providerOptions,
+        { value: "cursor", label: "Cursor" },
+      ],
+    });
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+    fireEvent.click(trigger);
+
+    expect(
+      commandHandlers.get("modelPicker.cycleProviderBackward")?.({
+        target: trigger,
+      }),
+    ).toBe(true);
+    expect(onSelectedProviderChange).toHaveBeenCalledWith("cursor");
+  });
+
   it("stays open while changing both the model and reasoning effort", () => {
     const { onModelChange, onReasoningChange } = renderPicker({
       modelOptions: [...codexModels, { value: "gpt-5.2", label: "GPT-5.2" }],
@@ -274,6 +508,41 @@ describe("ModelReasoningPicker", () => {
     fireEvent.keyDown(search, { key: "Enter" });
 
     expect(onModelChange).toHaveBeenCalledWith("o4-mini");
+  });
+
+  it("resets retained mobile browse state after the drawer closes", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    renderPicker({ compact: true, modelOptions: manyCodexModels });
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+
+    fireEvent.click(trigger);
+    act(() => frames.shift()?.(0));
+    act(() => frames.shift()?.(16));
+    const search = screen.getByPlaceholderText(
+      "Search models",
+    ) as HTMLInputElement;
+    fireEvent.change(search, { target: { value: "o4" } });
+    expect(search.value).toBe("o4");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    const drawer = document.querySelector<HTMLElement>(
+      "[data-persistent-drawer-content]",
+    );
+    fireEvent.transitionEnd(drawer as HTMLElement, {
+      propertyName: "transform",
+    });
+    fireEvent.click(trigger);
+
+    expect(
+      (screen.getByPlaceholderText("Search models") as HTMLInputElement).value,
+    ).toBe("");
+    expect(screen.getByText("o4-mini")).not.toBeNull();
   });
 
   it("reaches selected-only models by keyboard once a search flattens them", () => {

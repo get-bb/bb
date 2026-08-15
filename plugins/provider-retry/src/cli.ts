@@ -1,4 +1,4 @@
-import type { BbPluginApi, PluginCliContext } from "@bb/plugin-sdk";
+import type { BbPluginApi, PluginCliContext } from "@get-bb/plugin-sdk";
 import type { ProviderRetryView } from "./contract.js";
 import type { ProviderRetryService } from "./service.js";
 
@@ -38,7 +38,7 @@ export function registerProviderRetryCli(
         usage: "bb provider-retry cancel <thread-id> [--json]",
       },
     ],
-    run(argv, context) {
+    async run(argv, context) {
       const [command, ...args] = argv;
       if (command !== "status" && command !== "cancel") {
         return {
@@ -57,7 +57,7 @@ export function registerProviderRetryCli(
               "A thread id is required: bb provider-retry cancel <thread-id>\n",
           };
         }
-        const cancelled = service.cancel(threadId);
+        const cancelled = await service.cancel(threadId);
         if (args.includes("--json")) {
           return {
             exitCode: cancelled ? 0 : 1,

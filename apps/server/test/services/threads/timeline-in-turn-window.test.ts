@@ -525,6 +525,41 @@ describe("in-turn timeline windows", () => {
     );
   });
 
+  it("pages a compact byte slice with hundreds of item identities", () => {
+    const { db, thread } = setup();
+    // One early large command pushes the 1,000 compact commands after it into a
+    // separate byte-budget page. Querying every scoped identity in that page
+    // as its own OR branch exceeds SQLite's expression-depth limit even though
+    // the page itself is correctly bounded.
+    seedTurns(db, thread, {
+      commandChars: THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT - 500_000,
+      completeLastTurn: false,
+      itemsPerTurn: [1],
+    });
+    appendCommandItems(db, thread, {
+      commandChars: 1,
+      count: 1_000,
+      itemStart: 1,
+    });
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: getLatestThreadSequence(db, { threadId: thread.id }) + 1,
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        data: JSON.stringify({ status: "completed", providerThreadId }),
+      },
+    ]);
+
+    const walked = walkAllPages(db, thread, LARGE_BUDGET);
+
+    expect(walked.pages).toBeGreaterThan(1);
+    expect(walked.rows).not.toHaveLength(0);
+  });
+
   it("pages back through a running oversized turn to exactly the unbudgeted rows", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, {
@@ -832,6 +867,62 @@ describe("in-turn timeline windows", () => {
     expect(matches[0]).toContain("late output 0");
   });
 
+  it("gives a straddling item to exactly one byte page's details, completed", () => {
+    const { db, thread } = setup();
+    // Item 0 starts at the top of the finished turn and completes at its very
+    // end, so it straddles every byte cut inside the turn.
+    seedTurns(db, thread, {
+      commandChars: 25_000,
+      completeLastTurn: true,
+      itemsPerTurn: [650],
+      longRunningItemIndexes: [0],
+    });
+
+    const straddlingCallId = "turn-1-item-0";
+    const straddlingDetailRows: TimelineRow[] = [];
+    let cursor: TimelinePaginationCursor | null = null;
+    let pages = 0;
+    for (;;) {
+      const page = buildNestedPage(db, thread, LARGE_BUDGET, cursor);
+      pages += 1;
+      for (const row of page.response.rows) {
+        if (row.kind !== "turn") {
+          continue;
+        }
+        const details = buildTimelineTurnSummaryDetails(db, thread, {
+          includeProviderUnhandledOperations: false,
+          sourceSeqEnd: row.sourceSeqEnd,
+          sourceSeqStart: row.sourceSeqStart,
+          turnId: row.turnId,
+        });
+        for (const detailRow of details.rows) {
+          if (
+            detailRow.kind === "work" &&
+            detailRow.workKind === "command" &&
+            detailRow.callId === straddlingCallId
+          ) {
+            straddlingDetailRows.push(detailRow);
+          }
+        }
+      }
+      if (!page.response.timelinePage.hasOlderRows) {
+        break;
+      }
+      cursor = page.response.timelinePage.olderCursor;
+      expect(cursor).not.toBeNull();
+      expect(pages).toBeLessThan(10);
+    }
+
+    expect(pages).toBeGreaterThan(1);
+    expect(straddlingDetailRows).toHaveLength(1);
+    expect(straddlingDetailRows[0]).toEqual(
+      expect.objectContaining({
+        output: expect.stringContaining("late output 0"),
+        status: "completed",
+      }),
+    );
+  }, 15_000);
+
   it("rejects a sequence cursor whose id and sequence disagree", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, { completeLastTurn: false, itemsPerTurn: [300] });
@@ -1084,86 +1175,100 @@ describe("in-turn windows and items that only stream", () => {
     expect(matches[0]).toContain('"status":"completed"');
   });
 
-  it("keeps an unfinished assistant message whole as its deltas cross the cut", () => {
-    const { db, thread } = setup();
-    const itemId = "assistant-1";
-    const turnId = "turn-1";
-    seedTurns(db, thread, {
-      completeLastTurn: false,
-      itemsPerTurn: [100],
-    });
-    const events: EventInput[] = [
-      {
-        threadId: thread.id,
-        sequence: 204,
-        type: "item/started",
-        scope: turnScope(turnId),
-        providerThreadId,
-        itemId,
-        itemKind: "agentMessage",
-        data: JSON.stringify({
-          item: { type: "agentMessage", id: itemId, text: "" },
-          providerThreadId,
-        }),
-      },
-    ];
-    const chunks = Array.from({ length: 200 }, (_, index) => `[${index}]\n`);
-    chunks.forEach((delta, index) => {
-      events.push({
-        threadId: thread.id,
-        sequence: index + 205,
-        type: "item/agentMessage/delta",
-        scope: turnScope(turnId),
-        providerThreadId,
-        itemId,
-        itemKind: null,
-        data: JSON.stringify({
-          delta,
-          itemId,
-          providerThreadId,
-        }),
+  it.each([
+    { includeStartedEvent: false, providerShape: "without item/started" },
+    { includeStartedEvent: true, providerShape: "with item/started" },
+  ])(
+    "keeps an unfinished assistant message whole across the cut $providerShape",
+    ({ includeStartedEvent }) => {
+      const { db, thread } = setup();
+      const itemId = "assistant-1";
+      const turnId = "turn-1";
+      seedTurns(db, thread, {
+        completeLastTurn: false,
+        itemsPerTurn: [100],
       });
-    });
-    insertEvents(db, noopNotifier, events);
-
-    const budgeted = buildPage(db, thread, 100, null);
-    const assistant = budgeted.response.rows.find(
-      (row) => row.kind === "conversation" && row.role === "assistant",
-    );
-
-    expect(budgeted.response.timelinePage.hasOlderRows).toBe(true);
-    expect(assistant?.text).toBe(chunks.join(""));
-    const laterChunks = Array.from(
-      { length: 25 },
-      (_, index) => `[later-${index}]\n`,
-    );
-    insertEvents(
-      db,
-      noopNotifier,
-      laterChunks.map((delta, index) => ({
-        threadId: thread.id,
-        sequence: index + 405,
-        type: "item/agentMessage/delta",
-        scope: turnScope(turnId),
-        providerThreadId,
-        itemId,
-        itemKind: null,
-        data: JSON.stringify({
-          delta,
-          itemId,
+      // Pi, Claude, and ACP may begin an assistant item with its first delta,
+      // while other provider paths emit item/started first. Both shapes must
+      // preserve the buffered prefix when the event budget cuts through it.
+      const events: EventInput[] = includeStartedEvent
+        ? [
+            {
+              threadId: thread.id,
+              sequence: 204,
+              type: "item/started",
+              scope: turnScope(turnId),
+              providerThreadId,
+              itemId,
+              itemKind: "agentMessage",
+              data: JSON.stringify({
+                item: { type: "agentMessage", id: itemId, text: "" },
+                providerThreadId,
+              }),
+            },
+          ]
+        : [];
+      const firstDeltaSequence = includeStartedEvent ? 205 : 204;
+      const chunks = Array.from({ length: 200 }, (_, index) => `[${index}]\n`);
+      chunks.forEach((delta, index) => {
+        events.push({
+          threadId: thread.id,
+          sequence: index + firstDeltaSequence,
+          type: "item/agentMessage/delta",
+          scope: turnScope(turnId),
           providerThreadId,
-        }),
-      })),
-    );
+          itemId,
+          itemKind: null,
+          data: JSON.stringify({
+            delta,
+            itemId,
+            providerThreadId,
+          }),
+        });
+      });
+      insertEvents(db, noopNotifier, events);
 
-    const refreshed = buildPage(db, thread, 100, null);
-    const refreshedAssistant = refreshed.response.rows.find(
-      (row) => row.kind === "conversation" && row.role === "assistant",
-    );
-    expect(refreshedAssistant?.text).toBe([...chunks, ...laterChunks].join(""));
-    const unbudgeted = buildPage(db, thread, LARGE_BUDGET, null);
-    expect(walkAllPages(db, thread, 100).rows).toEqual(
-      unbudgeted.response.rows.map((row) => JSON.stringify(row)),
-    );
-  });
+      const budgeted = buildPage(db, thread, 100, null);
+      const assistant = budgeted.response.rows.find(
+        (row) => row.kind === "conversation" && row.role === "assistant",
+      );
+
+      expect(budgeted.response.timelinePage.hasOlderRows).toBe(true);
+      expect(assistant?.text).toBe(chunks.join(""));
+      const laterChunks = Array.from(
+        { length: 25 },
+        (_, index) => `[later-${index}]\n`,
+      );
+      insertEvents(
+        db,
+        noopNotifier,
+        laterChunks.map((delta, index) => ({
+          threadId: thread.id,
+          sequence: index + firstDeltaSequence + chunks.length,
+          type: "item/agentMessage/delta",
+          scope: turnScope(turnId),
+          providerThreadId,
+          itemId,
+          itemKind: null,
+          data: JSON.stringify({
+            delta,
+            itemId,
+            providerThreadId,
+          }),
+        })),
+      );
+
+      const refreshed = buildPage(db, thread, 100, null);
+      const refreshedAssistant = refreshed.response.rows.find(
+        (row) => row.kind === "conversation" && row.role === "assistant",
+      );
+      expect(refreshedAssistant?.text).toBe(
+        [...chunks, ...laterChunks].join(""),
+      );
+      const unbudgeted = buildPage(db, thread, LARGE_BUDGET, null);
+      expect(walkAllPages(db, thread, 100).rows).toEqual(
+        unbudgeted.response.rows.map((row) => JSON.stringify(row)),
+      );
+    },
+  );
 });

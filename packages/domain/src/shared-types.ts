@@ -3,7 +3,8 @@ import { z } from "zod";
 /**
  * Order is load-bearing: `reasoningRank` (index) drives model-switch
  * reconciliation. "none" (no extended thinking) sits at the bottom — only
- * providers that expose a thinking-off variant list it (currently Cursor).
+ * providers that expose a thinking-off variant list it (currently Cursor and
+ * Pi models whose `thinkingLevelMap` advertises `off`).
  * "ultracode" sits between "xhigh" and "max" because its underlying effort IS
  * xhigh (plus standing workflow orchestration) — a model without ultracode
  * support should reconcile down to xhigh, not up to max.

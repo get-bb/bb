@@ -8,7 +8,6 @@ import { describe, expect, it } from "vitest";
 import {
   resolveWorkspaceChangedFileOpenTarget,
   resolveEnvironmentOpenContext,
-  resolveThreadLocalWorkspaceRootPath,
   resolveThreadWorkspacePreviewRootPath,
   resolveThreadWorkspaceOpenPath,
 } from "./threadWorkspaceOpenPath";
@@ -59,6 +58,7 @@ function makeWorkspaceChangedFilesSection(
       files: [file],
       insertions: 1,
       deletions: 1,
+      lineStatsComplete: true,
     },
     ...overrides,
   };
@@ -98,12 +98,6 @@ describe("resolveThreadWorkspaceOpenPath", () => {
 
   it("hides when workspace open preconditions are missing", () => {
     expect(
-      resolveThreadLocalWorkspaceRootPath({
-        environment: makeEnvironment(),
-        threadEnvironmentIsLocal: false,
-      }),
-    ).toBeNull();
-    expect(
       resolveThreadWorkspaceOpenPath({
         canOpenWorkspace: true,
         environment: makeEnvironment(),
@@ -134,26 +128,12 @@ describe("resolveThreadWorkspaceOpenPath", () => {
   });
 
   it("keeps the workspace preview root independent from local editor availability", () => {
-    const environment = makeEnvironment();
-
     expect(
-      resolveThreadLocalWorkspaceRootPath({
-        environment,
-        threadEnvironmentIsLocal: false,
-      }),
-    ).toBeNull();
-    expect(resolveThreadWorkspacePreviewRootPath({ environment })).toBe(
-      "/tmp/workspace",
-    );
+      resolveThreadWorkspacePreviewRootPath({ environment: makeEnvironment() }),
+    ).toBe("/tmp/workspace");
   });
 
   it("still resolves when the environment is not ready, as long as it has a path", () => {
-    expect(
-      resolveThreadLocalWorkspaceRootPath({
-        environment: makeEnvironment({ status: "destroyed" }),
-        threadEnvironmentIsLocal: true,
-      }),
-    ).toBe("/tmp/workspace");
     expect(
       resolveThreadWorkspaceOpenPath({
         canOpenWorkspace: true,

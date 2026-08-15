@@ -48,6 +48,7 @@ import { hasLiveThreadStartInFlight } from "../threads/thread-lifecycle.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import { runQueuedMessageAutoSendSweep } from "../threads/queued-messages.js";
 import { LIVE_DAEMON_COMMAND_TIMEOUT_MS } from "../hosts/live-command.js";
+import { runEventLoopWork } from "./event-loop-work.js";
 
 export type DatabaseMaintenanceSweepDeps = Pick<AppDeps, "db" | "logger">;
 
@@ -150,7 +151,7 @@ async function runPeriodicSweepJob(
   state.lastStartedAt = now;
   state.running = true;
   try {
-    await job.run(deps, now);
+    await runEventLoopWork(`sweep:${job.name}`, () => job.run(deps, now));
   } catch (error) {
     deps.logger.error(
       {

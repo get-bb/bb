@@ -16,8 +16,10 @@ vi.mock("@bb/agent-runtime", async (importOriginal) => {
 });
 
 import {
+  CommandDispatchError,
   defaultListModels,
   getErrorCode,
+  isExpectedOnlineRpcFailureError,
   shutdownDefaultListModelsRuntimes,
 } from "./command-dispatch-support.js";
 
@@ -59,7 +61,9 @@ function makeRuntime(args: MakeRuntimeArgs): AgentRuntime {
     async steerTurn() {
       return { status: "steered" };
     },
-    async stopThread() {},
+    async stopThread() {
+      return { providerCheckpointId: null };
+    },
     async clearThreadGoal() {
       return { cleared: true };
     },
@@ -115,6 +119,14 @@ describe("command dispatch support", () => {
         ),
       ),
     ).toBe("auth_required");
+  });
+
+  it("classifies oversized file reads as expected RPC failures", () => {
+    expect(
+      isExpectedOnlineRpcFailureError(
+        new CommandDispatchError("file_too_large", "File exceeds the limit"),
+      ),
+    ).toBe(true);
   });
 
   it("reuses the default model list runtime until shutdown", async () => {

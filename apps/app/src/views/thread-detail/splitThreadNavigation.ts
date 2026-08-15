@@ -92,50 +92,6 @@ export function focusedPaneRoute(layout: SplitLayout): string | null {
   return focused === null ? null : paneContentRoute(focused.content);
 }
 
-/**
- * Folds an external route (initial load, sidebar click, deep link) into the
- * layout, per the binding navigation policy:
- *  - no layout yet => a single pane from the route;
- *  - the route thread is already open in a pane => focus that pane, never
- *    duplicate it;
- *  - otherwise => replace the focused pane's content, never dismantling the
- *    rest of the layout.
- * Returns the same reference when nothing changes so the driving effect stays
- * idempotent (no history spam, no render loop).
- */
-export function reconcileLayoutForRoute(
-  layout: SplitLayout | null,
-  thread: ThreadRoutePathArgs,
-): SplitLayout {
-  if (layout === null) {
-    return createSinglePaneLayout(thread);
-  }
-  const existing = findPaneByThread(
-    layout.root,
-    thread.projectId,
-    thread.threadId,
-  );
-  if (existing !== null) {
-    return layout.focusedPaneId === existing.paneId
-      ? layout
-      : setFocus(layout, existing.paneId);
-  }
-  const focused = findPane(layout.root, layout.focusedPaneId);
-  if (
-    focused !== null &&
-    focused.content.kind === "thread" &&
-    focused.content.projectId === thread.projectId &&
-    focused.content.threadId === thread.threadId
-  ) {
-    return layout;
-  }
-  return replacePaneContent(
-    layout,
-    layout.focusedPaneId,
-    threadPaneContent(thread),
-  );
-}
-
 function threadOpenSplitZone(split: ThreadOpenSplit): SplitZone {
   return split === "replace" ? "center" : split === "down" ? "bottom" : split;
 }
@@ -177,6 +133,8 @@ export function applyThreadOpenToLayout(
 export interface ThreadPaneActionLayoutResult {
   layout: SplitLayout;
   maximizedPaneId: string | null;
+  /** Explicit preference update requested by the action, or null when unchanged. */
+  dimInactiveSplits: boolean | null;
 }
 
 /** Apply one CLI/SDK pane action without creating or replacing pane content. */
@@ -188,16 +146,27 @@ export function applyThreadPaneActionToLayout(
 ): ThreadPaneActionLayoutResult {
   const pane = findPaneByThread(layout.root, thread.projectId, thread.threadId);
   if (pane === null || countPanes(layout.root) < 2) {
-    return { layout, maximizedPaneId };
+    return { layout, maximizedPaneId, dimInactiveSplits: null };
+  }
+  if (action === "spotlight" || action === "clear-spotlight") {
+    return {
+      layout:
+        layout.focusedPaneId === pane.paneId
+          ? layout
+          : setFocus(layout, pane.paneId),
+      maximizedPaneId,
+      dimInactiveSplits: action === "spotlight",
+    };
   }
   if (action === "restore") {
     return {
       layout,
       maximizedPaneId: maximizedPaneId === pane.paneId ? null : maximizedPaneId,
+      dimInactiveSplits: null,
     };
   }
   if (action === "toggle" && maximizedPaneId === pane.paneId) {
-    return { layout, maximizedPaneId: null };
+    return { layout, maximizedPaneId: null, dimInactiveSplits: null };
   }
   return {
     layout:
@@ -205,22 +174,6 @@ export function applyThreadPaneActionToLayout(
         ? layout
         : setFocus(layout, pane.paneId),
     maximizedPaneId: pane.paneId,
-  };
-}
-
-/**
- * The focused pane's thread as route args, or null when it isn't a thread pane.
- * Drives URL sync: the focused pane owns the address bar.
- */
-export function focusedThreadRoute(
-  layout: SplitLayout,
-): ThreadRoutePathArgs | null {
-  const focused = findPane(layout.root, layout.focusedPaneId);
-  if (focused === null || focused.content.kind !== "thread") {
-    return null;
-  }
-  return {
-    projectId: focused.content.projectId,
-    threadId: focused.content.threadId,
+    dimInactiveSplits: null,
   };
 }

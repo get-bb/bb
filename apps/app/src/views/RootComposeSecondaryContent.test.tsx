@@ -84,10 +84,12 @@ vi.mock("react-resizable-panels", async () => {
   return { Panel, PanelGroup };
 });
 
-vi.mock("@bb/shared-ui/responsive-overlay", async () => {
+vi.mock("@bb/shared-ui/responsive-overlay", async (importOriginal) => {
   const React = await import("react");
+  const actual =
+    await importOriginal<typeof import("@bb/shared-ui/responsive-overlay")>();
 
-  const ResponsiveDrawerShell = ({
+  const PersistentResponsiveDrawerShell = ({
     children,
     open,
   }: {
@@ -103,7 +105,7 @@ vi.mock("@bb/shared-ui/responsive-overlay", async () => {
       children,
     );
 
-  return { ResponsiveDrawerShell };
+  return { ...actual, PersistentResponsiveDrawerShell };
 });
 
 vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", async () => {
@@ -113,15 +115,18 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", async () => {
     browserDeck,
     isOpen,
     renderAsDrawer,
+    showNewTabButton,
   }: {
     browserDeck?: ReactNode;
     isOpen: boolean;
     renderAsDrawer: boolean;
+    showNewTabButton?: boolean;
   }) =>
     React.createElement(
       "section",
       {
         "data-open": String(isOpen),
+        "data-show-new-tab-button": String(showNewTabButton),
         "data-testid": renderAsDrawer
           ? "drawer-secondary-panel"
           : "inline-secondary-panel",
@@ -130,6 +135,14 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", async () => {
     );
 
   return { ThreadSecondaryPanel };
+});
+
+vi.mock("@/components/plugin/PluginHomepageSections", async () => {
+  const React = await import("react");
+  return {
+    PluginHomepageSections: () =>
+      React.createElement("div", { "data-testid": "plugin-homepage-sections" }),
+  };
 });
 
 function createSecondaryPanel(
@@ -230,6 +243,21 @@ afterEach(() => {
 });
 
 describe("RootComposeSecondaryContent desktop layout", () => {
+  it("always offers a new tab from the new-thread right panel", () => {
+    renderRootCompose({
+      isCompactViewport: false,
+      isSecondaryPanelOpen: true,
+    });
+
+    expect(
+      screen
+        .getByTestId("inline-secondary-panel")
+        .getAttribute("data-show-new-tab-button"),
+    ).toBe("true");
+    expect(screen.getByTestId("root-compose-content")).not.toBeNull();
+    expect(screen.getByTestId("plugin-homepage-sections")).not.toBeNull();
+  });
+
   it("marks the root compose top strip as a macOS window drag region", () => {
     setMacosDesktopChrome();
 
@@ -315,65 +343,45 @@ describe("RootComposeSecondaryContent desktop layout", () => {
     ).toBeNull();
   });
 
-  it("syncs the panel group when persisted open state arrives after mount", () => {
+  it("forwards root panel open and close state to the shared desktop layout", () => {
     const view = renderRootCompose({
       isCompactViewport: false,
       isSecondaryPanelOpen: false,
     });
 
+    expect(panelGroupState.setLayout).toHaveBeenCalledTimes(1);
     expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([100, 0]);
     panelGroupState.setLayout.mockClear();
 
     view.rerenderWith({ isSecondaryPanelOpen: true });
-
     expect(panelGroupState.setLayout).toHaveBeenCalledTimes(1);
     expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([60, 40]);
-    expect(
-      screen.getByTestId("inline-secondary-panel").getAttribute("data-open"),
-    ).toBe("true");
-  });
 
-  it("syncs the panel group when the desktop root panel closes", () => {
-    const view = renderRootCompose({
-      isCompactViewport: false,
-      isSecondaryPanelOpen: true,
-    });
-
-    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([60, 40]);
     panelGroupState.setLayout.mockClear();
-
     view.rerenderWith({ isSecondaryPanelOpen: false });
-
     expect(panelGroupState.setLayout).toHaveBeenCalledTimes(1);
     expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([100, 0]);
   });
 
-  it("leaves the panel group alone while the root panel renders as a drawer", () => {
+  it("shows the root fallback before realizing compact drawer content", () => {
     vi.useFakeTimers();
     try {
-      const view = renderRootCompose({
+      renderRootCompose({
         isCompactViewport: true,
-        isSecondaryPanelOpen: false,
+        isSecondaryPanelOpen: true,
       });
 
       expect(panelGroupState.setLayout).not.toHaveBeenCalled();
-
-      view.rerenderWith({ isSecondaryPanelOpen: true });
-
-      expect(panelGroupState.setLayout).not.toHaveBeenCalled();
-      // The panel mounts only after the drawer settles; a skeleton fills
-      // the sheet during the entrance so the mount cannot block it. The
-      // fallback timer stands in for the animation-end signal here.
       expect(screen.queryByTestId("drawer-secondary-panel")).toBeNull();
       expect(
-        screen.queryByTestId("drawer-panel-loading-skeleton"),
+        screen.getByTestId("drawer-panel-loading-skeleton"),
       ).not.toBeNull();
+
       act(() => {
-        vi.advanceTimersByTime(700);
+        vi.advanceTimersByTime(120);
       });
-      expect(
-        screen.getByTestId("drawer-secondary-panel").getAttribute("data-open"),
-      ).toBe("true");
+
+      expect(screen.getByTestId("drawer-secondary-panel")).not.toBeNull();
     } finally {
       vi.useRealTimers();
     }

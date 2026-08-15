@@ -22,6 +22,10 @@ interface MockPierreFileProps {
     contents: string;
     name: string;
   };
+  selectedLines?: {
+    end: number;
+    start: number;
+  } | null;
 }
 
 const pierreMock = vi.hoisted(() => {
@@ -86,21 +90,67 @@ vi.mock("@pierre/diffs/react", async () => {
   const React = await import("react");
 
   return {
-    File: ({ file }: MockPierreFileProps) => {
+    File: ({ file, selectedLines = null }: MockPierreFileProps) => {
       const [instanceId] = React.useState(() => {
         pierreMock.state.mountCount += 1;
         return pierreMock.state.mountCount;
       });
+      const hostRef = React.useRef<HTMLElement>(null);
       pierreMock.state.lastFile = file;
       pierreMock.state.renderCount += 1;
+
+      React.useLayoutEffect(() => {
+        const host = hostRef.current;
+        if (host === null) return;
+        const shadowRoot = host.shadowRoot ?? host.attachShadow({ mode: "open" });
+        const code = document.createElement("code");
+        code.dataset.code = "";
+        code.scrollLeft = 240;
+        code.replaceChildren(
+          ...file.contents.split("\n").map((lineContents, index) => {
+            const lineNumber = index + 1;
+            const line = document.createElement("div");
+            line.dataset.line = String(lineNumber);
+            line.dataset.lineIndex = String(index);
+            line.textContent = lineContents;
+            line.getBoundingClientRect = () => ({
+              bottom: 718 + index * 18,
+              height: 18,
+              left: 0,
+              right: 800,
+              top: 700 + index * 18,
+              width: 800,
+              x: 0,
+              y: 700 + index * 18,
+              toJSON: () => ({}),
+            });
+            // Model the native behavior that caused the regression: asking a
+            // long line to scroll into view can also move Pierre's horizontal
+            // code scroller.
+            line.scrollIntoView = () => {
+              code.scrollLeft = 0;
+            };
+            if (
+              selectedLines !== null &&
+              lineNumber >= selectedLines.start &&
+              lineNumber <= selectedLines.end
+            ) {
+              line.dataset.selectedLine = "single";
+            }
+            return line;
+          }),
+        );
+        shadowRoot.replaceChildren(code);
+      }, [file.contents, selectedLines]);
+
       return React.createElement(
-        "pre",
+        "diffs-container",
         {
+          ref: hostRef,
           "data-instance-id": String(instanceId),
           "data-render-count": String(pierreMock.state.renderCount),
           "data-testid": "pierre-file",
         },
-        file.contents,
       );
     },
     useWorkerPool: () => pierreMock.workerPool,
@@ -239,6 +289,55 @@ describe("FilePreview", () => {
     });
 
     await screen.findByTestId("pierre-file");
+  });
+
+  it("scrolls vertically to a target line without changing the horizontal offset", async () => {
+    const scrollViewport = document.createElement("div");
+    scrollViewport.style.overflowY = "auto";
+    scrollViewport.scrollTop = 100;
+    scrollViewport.getBoundingClientRect = () => ({
+      bottom: 450,
+      height: 400,
+      left: 0,
+      right: 500,
+      top: 50,
+      width: 500,
+      x: 0,
+      y: 50,
+      toJSON: () => ({}),
+    });
+    document.body.append(scrollViewport);
+
+    render(
+      <FilePreview
+        headerMode="none"
+        path="apps/app/src/lib/thread-read-state.ts"
+        state={{
+          kind: "ready",
+          file: {
+            name: "thread-read-state.ts",
+            contents: ["first", "second", "third"].join("\n"),
+          },
+          lineRange: { startLineNumber: 2, endLineNumber: 2 },
+          textPreviewKind: null,
+        }}
+      />,
+      { container: scrollViewport },
+    );
+
+    const pierreFile = await screen.findByTestId("pierre-file");
+    await waitFor(() => {
+      expect(scrollViewport.scrollTop).toBe(577);
+    });
+    expect(
+      pierreFile.shadowRoot?.querySelector<HTMLElement>("[data-code]")
+        ?.scrollLeft,
+    ).toBe(240);
+    expect(
+      pierreFile.shadowRoot
+        ?.querySelector('[data-line="2"]')
+        ?.hasAttribute("data-file-preview-target-line"),
+    ).toBe(true);
   });
 
   it("remounts the code view when the highlighted file cache resolves", async () => {

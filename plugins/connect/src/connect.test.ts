@@ -5,7 +5,7 @@ import { WebSocket as NodeWebSocket, WebSocketServer } from "ws";
 import {
   createFakePluginHost,
   type FakePluginHost,
-} from "@bb/plugin-sdk/testing";
+} from "@get-bb/plugin-sdk/testing";
 import { decodeFrame, encodeFrame, type Frame } from "@bb/tunnel-contract";
 import {
   headersForLoopbackRequest,

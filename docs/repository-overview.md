@@ -5,7 +5,7 @@ This monorepo contains the packaged app plus the runtime services it bundles:
 | Package or app                                                      | Role                                                                                                |
 | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | [`packages/bb-app`](../packages/bb-app)                             | Published npm package, `npx bb-app@latest` launcher, bundled `bb` CLI entry, and public SDK export. |
-| [`apps/desktop`](../apps/desktop)                                   | macOS Electron shell that supervises the packaged runtime and loads the bb web UI.                  |
+| [`apps/desktop`](../apps/desktop)                                   | macOS/Linux Electron shell that supervises the packaged runtime and loads the bb web UI.            |
 | [`apps/app`](../apps/app)                                           | Web UI for inspecting projects, threads, environments, and running work.                            |
 | [`apps/server`](../apps/server)                                     | HTTP API, WebSocket notifications, state management, and server-owned product policy.               |
 | [`apps/host-daemon`](../apps/host-daemon)                           | Host-local runtime that provisions workspaces and runs provider processes.                          |

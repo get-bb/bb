@@ -89,6 +89,7 @@ const dirtyUncommittedStatus: WorkspaceStatus = {
     files: promptboxBannerFiles,
     insertions: 312,
     deletions: 47,
+    lineStatsComplete: true,
   },
   branch: {
     currentBranch: "bb/promptbox-stories",
@@ -226,6 +227,7 @@ const dirtyUncommittedManyStatus: WorkspaceStatus = {
     files: dirtyUncommittedManyFiles,
     insertions: 1284,
     deletions: 312,
+    lineStatsComplete: true,
   },
   branch: {
     currentBranch: "bb/promptbox-stories",
@@ -247,18 +249,19 @@ const untrackedOnlyStatus: WorkspaceStatus = {
       {
         path: "apps/app/notes/triage.md",
         status: "??",
-        insertions: 18,
-        deletions: 0,
+        insertions: null,
+        deletions: null,
       },
       {
         path: "apps/app/scripts/dev-bb-worktree.sh",
         status: "??",
-        insertions: 42,
-        deletions: 0,
+        insertions: null,
+        deletions: null,
       },
     ],
-    insertions: 60,
+    insertions: 0,
     deletions: 0,
+    lineStatsComplete: false,
   },
   branch: {
     currentBranch: "bb/promptbox-stories",
@@ -279,6 +282,7 @@ const committedUnmergedStatus: WorkspaceStatus = {
     files: [],
     insertions: 0,
     deletions: 0,
+    lineStatsComplete: true,
   },
   branch: {
     currentBranch: "bb/promptbox-stories",
@@ -299,6 +303,7 @@ const committedUnmergedStatus: WorkspaceStatus = {
     files: promptboxBannerFiles.slice(0, 3),
     insertions: 128,
     deletions: 24,
+    lineStatsComplete: true,
   },
 };
 
@@ -343,23 +348,44 @@ const childThreadsFixture: ThreadPromptChildThreadsSection = {
       id: "thr_a",
       title: "Investigate Safari auth flake on staging",
       href: "/projects/proj-1/threads/thr_a",
+      hasPendingInteraction: false,
     },
     {
       id: "thr_b",
       title: "Review PR #4521 reviewer comments",
       href: "/projects/proj-1/threads/thr_b",
+      hasPendingInteraction: false,
     },
     {
       id: "thr_c",
       title: "Refactor email pipeline retry logic",
       href: "/projects/proj-1/threads/thr_c",
+      hasPendingInteraction: false,
     },
     {
       id: "thr_d",
       title: "Backfill workspace-status invalidation cache",
       href: "/projects/proj-1/threads/thr_d",
+      hasPendingInteraction: false,
     },
   ],
+};
+
+const childThreadsPendingFixture: ThreadPromptChildThreadsSection = {
+  items: [
+    {
+      id: "thr_blocked",
+      title: "Install workspace tools",
+      href: "/projects/proj-1/threads/thr_blocked",
+      hasPendingInteraction: true,
+    },
+  ],
+};
+
+const childThreadsMixedFixture: ThreadPromptChildThreadsSection = {
+  items: childThreadsFixture.items.map((item, index) =>
+    index === 1 ? { ...item, hasPendingInteraction: true } : item,
+  ),
 };
 
 const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
@@ -367,6 +393,7 @@ const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
     id: `thr_large_${i}`,
     title: `Child work item ${i + 1} that is busy doing thing-${i}`,
     href: `/projects/proj-1/threads/thr_large_${i}`,
+    hasPendingInteraction: i === 1,
   })),
 };
 
@@ -731,8 +758,14 @@ export function Overview() {
         <Row parentThread={sideChatFromFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
+        label="parent thread with a child waiting for approval"
+        hint="the parent banner names the blocked child and drops the active shimmer"
+      >
+        <Row childThreads={childThreadsPendingFixture} mergeBase={null} />
+      </StoryRow>
+      <StoryRow
         label="parent thread with active children (collapsed)"
-        hint="spinning icon signals active work; click to expand the child list"
+        hint="the primary child mirrors other background-work banners without an animated flash; click to expand the child list"
       >
         <Row childThreads={childThreadsFixture} mergeBase={null} />
       </StoryRow>
@@ -741,7 +774,7 @@ export function Overview() {
         hint="list of children with status + pending-approval marker on item 2"
       >
         <Row
-          childThreads={childThreadsFixture}
+          childThreads={childThreadsMixedFixture}
           mergeBase={null}
           initiallyExpandedSection="childThreads"
         />
@@ -803,7 +836,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="untracked only"
-        hint='workingTree.state = "untracked" with synthesized insertion stats'
+        hint='workingTree.state = "untracked" with intentionally unavailable line stats'
       >
         <Row section={untrackedSection} initiallyExpandedSection="git" />
       </StoryRow>

@@ -196,4 +196,25 @@ describe("bb updates command output", () => {
       "Everything is up to date.",
     ]);
   });
+
+  it("bb updates reports but does not apply manual provider updates", async () => {
+    const status = providerStatus({ codexNeedsUpdate: true });
+    status.codex.installAction = null;
+    stubServerApi({
+      "v1.system.version.$get": vi.fn(async () => version),
+      "v1.hosts.$get": vi.fn(async () => hosts),
+      "v1.hosts.:id.provider-clis.status.$get": vi.fn(async () => status),
+    });
+
+    await runCommand(["updates"], register);
+    expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
+      "update manually",
+    );
+
+    vi.mocked(console.log).mockClear();
+    await runCommand(["updates", "apply"], register);
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "No updates bb can apply. Run bb updates status for manual updates.",
+    ]);
+  });
 });

@@ -44,17 +44,13 @@ export function isAcpProviderId(value: string): boolean {
  * `BUILT_IN_AGENT_PROVIDER_CATALOG`.
  */
 export interface ProviderServerCapabilities {
+  /** Whether a stopped provider session can resume from its persisted id. */
+  supportsSessionRestore: boolean;
   /**
    * Whether sessions get the Workflows feature (dynamic multi-agent
    * orchestration). The Workflow tool's own opt-in rules govern actual use.
    */
   supportsWorkflows: boolean;
-  /**
-   * Whether the provider applies a changed model/reasoning level in place on
-   * `thread/resume` while preserving context (sticky execution override).
-   * Providers without verified in-place swap require respawning the thread.
-   */
-  supportsExecutionOverride: boolean;
   /**
    * Whether this provider backs host-daemon-routed AI services (voice
    * transcription and structured inference) via its `*.voice.transcribe` /
@@ -148,6 +144,9 @@ const ACP_COMPOSER_ACTIONS: ProviderComposerAction[] = [
 // its own model selection, tool execution, and session naming, so BB-side
 // capabilities stay minimal. Permission modes are enforced cooperatively by
 // the ACP bridge (permission-request policy + client fs write policy).
+// Fork support is negotiated with each agent before the bridge sends the
+// unstable ACP session/fork request; agents that do not advertise it fail the
+// fork without falling back to a fresh session.
 // Cursor exposes a `-fast` service tail per model; the bridge resolves it from
 // the serviceTier (the "Fast mode" toggle), so service tier is supported here
 // rather than fanning fast variants out as separate model-list entries.
@@ -156,15 +155,13 @@ const ACP_CAPABILITIES: ProviderCapabilities = {
   supportsRename: false,
   supportsServiceTier: true,
   supportsUserQuestion: false,
-  // ACP has no session-fork primitive; the adapter has no thread/fork handler,
-  // so forks are blocked at the server boundary rather than failing at runtime.
-  supportsFork: false,
+  supportsFork: true,
   supportedPermissionModes: ["accept-edits", "full"],
 };
 
 const CODEX_SERVER_CAPABILITIES: ProviderServerCapabilities = {
+  supportsSessionRestore: true,
   supportsWorkflows: false,
-  supportsExecutionOverride: false,
   backsHostDaemonAiServices: true,
   // Per-model list from app-server is authoritative; this ladder is the
   // fallback for custom models / missing catalogs. "ultra" is Codex-only.
@@ -172,24 +169,32 @@ const CODEX_SERVER_CAPABILITIES: ProviderServerCapabilities = {
 };
 
 const CLAUDE_SERVER_CAPABILITIES: ProviderServerCapabilities = {
+  supportsSessionRestore: true,
   supportsWorkflows: true,
-  supportsExecutionOverride: true,
   backsHostDaemonAiServices: false,
   reasoningLevels: ["low", "medium", "high", "xhigh", "ultracode", "max"],
 };
 
 const PI_SERVER_CAPABILITIES: ProviderServerCapabilities = {
+  supportsSessionRestore: true,
   supportsWorkflows: false,
-  supportsExecutionOverride: false,
   backsHostDaemonAiServices: false,
-  reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
+  // "none" is the thinking-off level: some Pi models (e.g. Ollama Cloud models
+  // whose `thinkingLevelMap` advertises `off`, and non-reasoning models) expose
+  // it per-model via `supportedReasoningEfforts`. Daemon-backed models only
+  // offer it when their precise catalog entry does; server-defined custom
+  // models inherit this coarse fallback ladder. The ladder must include it so
+  // plan-path validation accepts a `none` selection the daemon legitimately
+  // offered.
+  reasoningLevels: ["none", "low", "medium", "high", "xhigh", "max"],
 };
 
 // ACP agents manage reasoning effort internally; "medium" is the single
 // synthetic level so execution-option resolution has a valid value to carry.
 const ACP_SERVER_CAPABILITIES: ProviderServerCapabilities = {
+  // The ACP initialize result supplies the precise loadSession capability.
+  supportsSessionRestore: false,
   supportsWorkflows: false,
-  supportsExecutionOverride: false,
   backsHostDaemonAiServices: false,
   // Cursor encodes reasoning effort in its model ids (`gpt-5.3-codex-high`);
   // the ACP bridge resolves (model, level) to the exact variant id at session
@@ -207,7 +212,7 @@ const ACP_SERVER_CAPABILITIES: ProviderServerCapabilities = {
  *   3. `info.composerActions` (wire-facing composer affordances): skills,
  *      plan, goal, or an explicit empty array.
  *   4. `serverCapabilities` (`ProviderServerCapabilities`, backend-only):
- *      workflows, execution override, host-daemon AI services, reasoning ladder.
+ *      workflows, host-daemon AI services, reasoning ladder.
  *   5. Its adapter + factory in `@bb/agent-runtime` (`provider-registry.ts`).
  * Host-local specifics stay with the daemon: provider CLI executable/install
  * metadata (`provider-cli-health.ts`) and injected-skill root layout
@@ -385,12 +390,18 @@ export function isAgentProviderId(value: string): value is AgentProviderId {
   return agentProviderIdSchema.safeParse(value).success;
 }
 
-/** Whether this provider can clone a session at a branch point (native fork). */
+/** Whether BB can route this provider through its native session-fork path. */
 export function supportsNativeFork(providerId: string): boolean {
-  return (
-    isAgentProviderId(providerId) &&
-    getBuiltInAgentProviderInfo(providerId).capabilities.supportsFork
-  );
+  const provider = isAgentProviderId(providerId)
+    ? getBuiltInAgentProviderInfo(providerId)
+    : isAcpProviderId(providerId)
+      ? buildAcpProviderInfo({
+          id: providerId,
+          displayName: providerId,
+          logoUrl: null,
+        })
+      : null;
+  return provider?.capabilities.supportsFork ?? false;
 }
 
 /** Whether BB can explicitly request context compaction for this provider. */

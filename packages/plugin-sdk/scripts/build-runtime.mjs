@@ -22,6 +22,11 @@ const entries = [
     external: [],
   },
   {
+    source: "src/internal/host-policy.ts",
+    output: "dist/internal/host-policy.js",
+    external: ["zod", "zod/*"],
+  },
+  {
     source: "src/testing/index.ts",
     output: "dist/testing/index.js",
     external: [
@@ -64,5 +69,5 @@ for (const entry of entries) {
 }
 
 process.stdout.write(
-  `Built ${entries.length} @bb/plugin-sdk runtime entries.\n`,
+  `Built ${entries.length} @get-bb/plugin-sdk runtime entries.\n`,
 );

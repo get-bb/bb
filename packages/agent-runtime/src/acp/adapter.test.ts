@@ -8,7 +8,7 @@ import {
 import type { ProviderExecutionContext } from "../provider-adapter.js";
 import { promptTextInput } from "../test/prompt-input.js";
 import { createAcpProviderAdapter } from "./adapter.js";
-import { getAcpAgentProfile } from "./profiles.js";
+import { ACP_AGENT_PROFILES } from "./profiles.js";
 
 const fullProviderExecutionContext = {
   claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
@@ -22,8 +22,12 @@ const fullProviderExecutionContext = {
 type AcpProviderAdapter = ReturnType<typeof createAcpProviderAdapter>;
 
 function createAdapter(turnIdPrefix?: string): AcpProviderAdapter {
+  const profile = ACP_AGENT_PROFILES[0];
+  if (!profile) {
+    throw new Error("Expected the built-in Cursor ACP profile");
+  }
   return createAcpProviderAdapter({
-    profile: getAcpAgentProfile("acp-cursor"),
+    profile,
     additionalWorkspaceWriteRoots: ["/extra-root"],
     ...(turnIdPrefix !== undefined ? { turnIdPrefix } : {}),
   });
@@ -81,8 +85,10 @@ function countChangedLines(diff: string | undefined): {
 }
 
 describe("acp adapter command plans", () => {
-  it("advertises accept-edits and full without automatic review", () => {
-    expect(createAdapter().capabilities.supportedPermissionModes).toEqual([
+  it("advertises fork plus accept-edits and full without automatic review", () => {
+    const capabilities = createAdapter().capabilities;
+    expect(capabilities.supportsFork).toBe(true);
+    expect(capabilities.supportedPermissionModes).toEqual([
       "accept-edits",
       "full",
     ]);
@@ -278,6 +284,28 @@ describe("acp adapter command plans", () => {
         "Available bb skills:",
         "- debugging: Use when debugging runtime state. (SKILL.md: /tmp/bb/runtime/global-skills/def456/skills/debugging/SKILL.md)",
       ].join("\n"),
+    });
+  });
+
+  it("builds thread/fork with the source provider session", () => {
+    const adapter = createAdapter();
+    const plan = adapter.buildCommandPlan({
+      type: "thread/fork",
+      threadId: "thread-fork",
+      sourceProviderThreadId: "sess-source",
+      cwd: "/fork-workspace",
+      options: fullProviderExecutionContext,
+      instructionMode: "append",
+    });
+
+    expect(plan).toMatchObject({
+      kind: "request",
+      method: "thread/fork",
+      params: {
+        threadId: "thread-fork",
+        sourceProviderThreadId: "sess-source",
+        cwd: "/fork-workspace",
+      },
     });
   });
 
@@ -768,6 +796,40 @@ describe("acp adapter event translation", () => {
         status: "completed",
       },
     ]);
+  });
+
+  it("settles accepted input when completion arrives before an update", () => {
+    const adapter = createAdapter();
+    adapter.translateAcceptedCommand({
+      command: {
+        type: "turn/start",
+        clientRequestId: "creq_222222228e",
+        input: [promptTextInput({ text: "/agent-local-command" })],
+        options: fullProviderExecutionContext,
+        providerThreadId: "sess-1",
+        threadId: "thread-1",
+      },
+    });
+
+    const events = adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "acp/turn/completed",
+        params: { threadId: "thread-1", stopReason: "end_turn" },
+      },
+      THREAD_CONTEXT,
+    );
+
+    expect(events.map((event) => event.type)).toEqual([
+      "turn/started",
+      "turn/input/accepted",
+      "turn/completed",
+    ]);
+    expect(events.at(-1)).toMatchObject({
+      type: "turn/completed",
+      scope: turnScope("turn-1"),
+      status: "completed",
+    });
   });
 
   it("translates ACP usage updates into exact context-window usage", () => {
@@ -1325,6 +1387,97 @@ describe("acp adapter event translation", () => {
         status: "failed",
         error: { message: "Agent stopped the turn: refusal" },
       },
+    ]);
+  });
+
+  it("keeps late updates outside completed turns", () => {
+    const adapter = createAdapter();
+    startTurn(adapter);
+    adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "acp/turn/completed",
+        params: { threadId: "thread-1", stopReason: "end_turn" },
+      },
+      THREAD_CONTEXT,
+    );
+
+    const lateEvents = [
+      updateNotification({
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "late message" },
+      }),
+      updateNotification({
+        sessionUpdate: "agent_thought_chunk",
+        content: { type: "text", text: "late thought" },
+      }),
+      updateNotification({
+        sessionUpdate: "tool_call",
+        toolCallId: "late-tool",
+        title: "Late tool",
+        kind: "other",
+        status: "pending",
+      }),
+      updateNotification({
+        sessionUpdate: "plan",
+        entries: [{ content: "Late plan", status: "pending" }],
+      }),
+      {
+        jsonrpc: "2.0" as const,
+        method: "acp/fs/write",
+        params: {
+          threadId: "thread-1",
+          path: "/workspace/late.ts",
+          kind: "add",
+        },
+      },
+    ].flatMap((event) => adapter.translateEvent(event, THREAD_CONTEXT));
+
+    expect(lateEvents).toHaveLength(5);
+    expect(lateEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "provider/unhandled",
+          rawType: "acp/update:agent_message_chunk",
+          scope: threadScope(),
+        }),
+        expect.objectContaining({
+          type: "provider/unhandled",
+          rawType: "acp/update:agent_thought_chunk",
+          scope: threadScope(),
+        }),
+        expect.objectContaining({
+          type: "provider/unhandled",
+          rawType: "acp/update:tool_call",
+          scope: threadScope(),
+        }),
+        expect.objectContaining({
+          type: "provider/unhandled",
+          rawType: "acp/update:plan",
+          scope: threadScope(),
+        }),
+        expect.objectContaining({
+          type: "provider/unhandled",
+          rawType: "acp/fs/write",
+          scope: threadScope(),
+        }),
+      ]),
+    );
+    expect(startTurn(adapter)).toMatchObject([
+      { type: "turn/started", scope: turnScope("turn-2") },
+    ]);
+  });
+
+  it("clears adapter turn state after the bridge reports no active turn", () => {
+    const adapter = createAdapter();
+    expect(startTurn(adapter)).toMatchObject([
+      { type: "turn/started", scope: turnScope("turn-1") },
+    ]);
+
+    adapter.clearActiveTurnState?.("thread-1");
+
+    expect(startTurn(adapter)).toMatchObject([
+      { type: "turn/started", scope: turnScope("turn-2") },
     ]);
   });
 

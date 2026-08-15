@@ -49,19 +49,6 @@ export function hasActiveGoalActivity(
   return thread.activity.activeGoalCount > 0;
 }
 
-export function isBusyThread(
-  thread: ThreadRuntimeShape & ThreadActivityStateShape,
-): boolean {
-  return (
-    isRuntimeBusyThread(thread) ||
-    hasActiveWorkflowActivity(thread) ||
-    hasActiveBackgroundAgentActivity(thread) ||
-    hasActiveBackgroundCommandActivity(thread) ||
-    hasActivePlanModeActivity(thread) ||
-    hasActiveGoalActivity(thread)
-  );
-}
-
 export interface ThreadListIndicatorState {
   hasPendingInteraction: boolean;
   hasUnsubmittedDraft: boolean;

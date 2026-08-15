@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type { Task, TaskMutationResult } from "../../shared/contract.js";
 
@@ -129,7 +129,9 @@ describe("inline row editing", () => {
       }),
     );
     const drawer = await slot.findByRole("dialog", { name: "Change status" });
-    fireEvent.click(within(drawer).getByRole("menuitem", { name: /Done/ }));
+    fireEvent.click(
+      await within(drawer).findByRole("menuitem", { name: /Done/ }),
+    );
 
     // Persisted with exactly the changed field...
     await waitFor(() =>
@@ -161,7 +163,9 @@ describe("inline row editing", () => {
       }),
     );
     const drawer = await slot.findByRole("dialog", { name: "Set priority" });
-    fireEvent.click(within(drawer).getByRole("menuitem", { name: /Urgent/ }));
+    fireEvent.click(
+      await within(drawer).findByRole("menuitem", { name: /Urgent/ }),
+    );
 
     await waitFor(() =>
       expect(
@@ -196,7 +200,9 @@ describe("inline row editing", () => {
       }),
     );
     const drawer = await slot.findByRole("dialog", { name: "Change status" });
-    fireEvent.click(within(drawer).getByRole("menuitem", { name: /Done/ }));
+    fireEvent.click(
+      await within(drawer).findByRole("menuitem", { name: /Done/ }),
+    );
 
     // The error is surfaced...
     await slot.findByText("Server rejected it");
@@ -223,7 +229,9 @@ describe("inline row editing", () => {
     );
     const drawer = await slot.findByRole("dialog", { name: "Change status" });
     // Re-selecting the current status is a no-op.
-    fireEvent.click(within(drawer).getByRole("menuitem", { name: /Todo/ }));
+    fireEvent.click(
+      await within(drawer).findByRole("menuitem", { name: /Todo/ }),
+    );
 
     await waitFor(() => expect(slot.queryByRole("dialog")).toBeNull());
     expect(slot.rpcCalls.some((call) => call.method === "updateTask")).toBe(

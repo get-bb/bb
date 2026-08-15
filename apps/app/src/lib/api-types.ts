@@ -1,16 +1,11 @@
-import type { ThreadChildOrigin } from "@bb/domain";
+import type { ThreadOriginKind } from "@bb/domain";
 import type { CreateThreadRequest } from "@bb/server-contract";
 
 export type AppCreateThreadRequest = Omit<
   CreateThreadRequest,
-  "origin" | "startedOnBehalfOf" | "originKind" | "childOrigin"
+  "origin" | "startedOnBehalfOf" | "originKind"
 > &
-  Partial<
-    Pick<
-      CreateThreadRequest,
-      "startedOnBehalfOf" | "originKind" | "childOrigin"
-    >
-  >;
+  Partial<Pick<CreateThreadRequest, "startedOnBehalfOf" | "originKind">>;
 
 export interface ThreadListFilters {
   projectId?: string;
@@ -22,9 +17,7 @@ export interface ThreadListFilters {
   unsectioned?: boolean;
   hasParent?: boolean;
   /** Restrict to threads spawned with this origin. */
-  originKind?: ThreadChildOrigin;
-  /** @deprecated Use originKind. */
-  childOrigin?: ThreadChildOrigin;
+  originKind?: ThreadOriginKind;
   /** App callers must choose active or archived; server omission intentionally means both. */
   archived: boolean;
   limit?: number;

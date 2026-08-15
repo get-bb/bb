@@ -88,6 +88,7 @@ export const threadEventScopeDefinitionByType = {
       "Thread metadata event; names are not part of a specific turn transcript.",
   },
   "thread/compacted": { policy: "turn" },
+  "thread/context/cleared": { policy: "turn" },
   "thread/goal/updated": {
     policy: "thread",
     rationale:
@@ -160,6 +161,11 @@ export const threadEventScopeDefinitionByType = {
     policy: "thread",
     rationale:
       "Outbound client lifecycle event; it records the request before provider turn acceptance.",
+  },
+  "client/turn/rejected": {
+    policy: "thread",
+    rationale:
+      "Client request rejection occurs before provider turn acceptance and identifies the request at thread scope.",
   },
   "client/turn/start": {
     policy: "thread",

@@ -4,7 +4,7 @@
 // The idea it is built around: the list NEVER re-orders itself. Threads sort
 // by creation time, newest first, and hold that place. Status is carried by
 // each card, not by position, so the sidebar only moves when you act.
-import { definePluginApp } from "@bb/plugin-sdk/app";
+import { definePluginApp } from "@get-bb/plugin-sdk/app";
 import { ThreadInbox } from "./src/ThreadInbox";
 import { ParentChip } from "./src/ParentChip";
 import { SubagentsChip } from "./src/SubagentsChip";

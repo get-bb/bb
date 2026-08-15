@@ -25,8 +25,11 @@ function gitPersistence(url: string, requestedRef: string) {
       kind: "git" as const,
       url,
       subdirectory: null,
-      requestedRef,
-      refKind: "branch" as const,
+      selector: {
+        kind: "ref" as const,
+        ref: requestedRef,
+        refKind: "branch" as const,
+      },
     },
     exactResolution: { kind: "git" as const, commit: "test-commit" },
     updateState: {

@@ -1,10 +1,11 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { resolveCodexHome } from "@bb/config/codex-home";
 import { jsonValueSchema, type JsonObject, type JsonValue } from "@bb/domain";
 import { ExpectedCommandDispatchError } from "./command-dispatch-support.js";
 
-const CODEX_AUTH_RELATIVE_PATH = [".codex", "auth.json"] as const;
+const CODEX_AUTH_FILE_NAME = "auth.json";
 const CHATGPT_AUTH_CLAIM_PATH = "https://api.openai.com/auth";
 
 interface CodexAuthJson {
@@ -37,7 +38,7 @@ export type CodexAuthCredentials =
   | CodexOpenAiApiKeyCredentials;
 
 function codexAuthPath(): string {
-  return path.join(os.homedir(), ...CODEX_AUTH_RELATIVE_PATH);
+  return path.join(resolveCodexHome(os.homedir()), CODEX_AUTH_FILE_NAME);
 }
 
 function toJsonObject(value: JsonValue): JsonObject | null {

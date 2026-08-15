@@ -368,8 +368,12 @@ export function registerEnvironmentCommands(
         console.log(`Branch: ${status.branch.currentBranch ?? "(detached)"}`);
         console.log(`Default branch: ${status.branch.defaultBranch}`);
         console.log(`Changed files: ${status.workingTree.files.length}`);
-        console.log(`Insertions: +${status.workingTree.insertions}`);
-        console.log(`Deletions: -${status.workingTree.deletions}`);
+        if (status.workingTree.lineStatsComplete) {
+          console.log(`Insertions: +${status.workingTree.insertions}`);
+          console.log(`Deletions: -${status.workingTree.deletions}`);
+        } else {
+          console.log("Line stats: unavailable for untracked files");
+        }
         if (status.mergeBase) {
           console.log(`Merge base: ${status.mergeBase.mergeBaseBranch}`);
           console.log(`Ahead: ${status.mergeBase.aheadCount}`);
@@ -509,6 +513,9 @@ export function registerEnvironmentCommands(
         }
         if (result.shortstat.trim().length > 0) {
           console.log(result.shortstat.trim());
+        }
+        if (result.truncated) {
+          console.log("(additional changed files omitted)");
         }
       }),
     );

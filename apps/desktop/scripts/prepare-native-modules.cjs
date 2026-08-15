@@ -22,8 +22,6 @@ const PACKAGED_NATIVE_PACKAGE_NAMES = [
 // `npmRebuild` is disabled and we fetch the Electron prebuild into the packaged
 // copy here, leaving the shared store untouched. Desktop dev runs bb-app with
 // the host Node executable so it can use the workspace's normal Node-ABI binary.
-const NATIVE_MODULE_PLATFORM = "darwin";
-
 const NODE_PTY_PREBUILD_PLATFORMS = ["darwin-arm64", "darwin-x64"];
 const NODE_PTY_SPAWN_HELPER_RELATIVE_PATHS = [
   path.join("build", "Release", "spawn-helper"),
@@ -151,12 +149,16 @@ async function prepareNodePtyPackageDirectory(packageDirectory) {
   );
 }
 
-function resolveBetterSqlite3PrebuildArguments({ electronVersion, arch }) {
+function resolveBetterSqlite3PrebuildArguments({
+  electronVersion,
+  arch,
+  platform,
+}) {
   return [
     "--runtime=electron",
     `--target=${electronVersion}`,
     `--arch=${arch}`,
-    `--platform=${NATIVE_MODULE_PLATFORM}`,
+    `--platform=${platform}`,
   ];
 }
 
@@ -234,6 +236,7 @@ async function preparePackagedNativeModules(appOutDir, options = {}) {
       prepareBetterSqlite3PackageDirectory(packageDirectory, {
         arch: options.arch,
         electronVersion: options.electronVersion,
+        platform: options.platform,
       }),
     ),
   );
@@ -266,6 +269,7 @@ async function afterPack(context) {
   await preparePackagedNativeModules(context.appOutDir, {
     arch: resolveArchName(context),
     electronVersion: resolveElectronVersion(),
+    platform: context.electronPlatformName ?? process.platform,
   });
 }
 
@@ -284,11 +288,19 @@ function parseStandaloneArguments(argv) {
       options.arch = archMatch[1];
       continue;
     }
+    const platformMatch = argument.match(/^--platform=(.+)$/);
+    if (platformMatch) {
+      options.platform = platformMatch[1];
+      continue;
+    }
     appOutDir = argument;
   }
 
   if (options.arch === undefined) {
     options.arch = process.arch;
+  }
+  if (options.platform === undefined) {
+    options.platform = process.platform;
   }
 
   return { appOutDir, options };
@@ -301,7 +313,7 @@ async function main() {
   if (appOutDir === undefined || appOutDir.length === 0) {
     throw new Error(
       "Usage: node apps/desktop/scripts/prepare-native-modules.cjs <appOutDir> " +
-        "[--electron-version=<version>] [--arch=<arch>]",
+        "[--electron-version=<version>] [--arch=<arch>] [--platform=<platform>]",
     );
   }
 
@@ -314,6 +326,7 @@ module.exports.prepareNodePtyPackageDirectory = prepareNodePtyPackageDirectory;
 module.exports.prepareBetterSqlite3PackageDirectory =
   prepareBetterSqlite3PackageDirectory;
 module.exports.preparePackagedNativeModules = preparePackagedNativeModules;
+module.exports.parseStandaloneArguments = parseStandaloneArguments;
 module.exports.resolveBetterSqlite3PrebuildArguments =
   resolveBetterSqlite3PrebuildArguments;
 

@@ -56,12 +56,6 @@ export function serializedProviderCommand(
   return `${command.trigger}${command.name}${command.trailingText}`;
 }
 
-export function commandTriggerForComposerActions(
-  composerActions: readonly ProviderComposerAction[],
-): PromptMentionCommandTrigger | null {
-  return buildProviderPromptActionProps(composerActions).skillsTrigger;
-}
-
 /**
  * A selected command is a one-position mention atom in the editor doc. The
  * dismissed range is based on that rendered node width plus any space inserted

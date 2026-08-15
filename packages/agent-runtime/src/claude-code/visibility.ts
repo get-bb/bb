@@ -98,6 +98,10 @@ interface ClaudeCommandLifecycleRawEvent {
   kind: "sdk/command_lifecycle";
 }
 
+interface ClaudeConversationResetRawEvent {
+  kind: "sdk/conversation_reset";
+}
+
 interface ClaudeAssistantRawEvent {
   contentTypes: ClaudeMessageContentType[];
   kind: "sdk/assistant";
@@ -156,6 +160,7 @@ interface ClaudeSimpleStreamRawEvent {
 type ClaudeRawEvent =
   | ClaudeAssistantRawEvent
   | ClaudeCommandLifecycleRawEvent
+  | ClaudeConversationResetRawEvent
   | ClaudeErrorRawEvent
   | ClaudeNonSdkRawEvent
   | ClaudeRateLimitRawEvent
@@ -306,6 +311,9 @@ function parseClaudeRawEvent(event: JsonRpcMessage): ClaudeRawEvent {
     case "command_lifecycle":
       return { kind: "sdk/command_lifecycle" };
 
+    case "conversation_reset":
+      return { kind: "sdk/conversation_reset" };
+
     case "rate_limit_event":
       return { kind: "sdk/rate_limit_event" };
 
@@ -435,6 +443,9 @@ function describeParsedClaudeRawEvent(
     // lifecycle acknowledgements. It has no transcript or turn semantics.
     case "sdk/command_lifecycle":
       return { kind: "sdk/command_lifecycle", coverage: "noise" };
+
+    case "sdk/conversation_reset":
+      return { kind: "sdk/conversation_reset", coverage: "normalized" };
 
     case "sdk/user": {
       const kind = toClaudeMessageKind("sdk/user", event.contentTypes);

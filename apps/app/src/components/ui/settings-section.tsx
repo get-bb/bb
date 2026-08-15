@@ -69,7 +69,7 @@ export function SettingsRow({ children, className }: SettingsRowProps) {
 export interface SettingsWithControlProps {
   label: string;
   labelBadge?: string;
-  description?: string;
+  description?: ReactNode;
   children: ReactNode;
 }
 

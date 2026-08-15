@@ -43,7 +43,9 @@ import {
 const ENVIRONMENT_ID = "env-stop-race";
 const THREAD_STOP_ACTIVE_TURN_WAIT_MS = 5_000;
 
-type RecordedAdapterCommand = Parameters<ProviderAdapter["buildCommandPlan"]>[0];
+type RecordedAdapterCommand = Parameters<
+  ProviderAdapter["buildCommandPlan"]
+>[0];
 
 interface RaceHarnessArgs {
   adapterFactory?: ProviderAdapterFactory;
@@ -161,7 +163,8 @@ async function createRaceHarness(
     args.adapterFactory ?? (() => createFakeAdapter());
   let runtime: AgentRuntime | null = null;
   const manager = new RuntimeManager({
-    provisionWorkspace: async () => createFakeWorkspace(workspacePath).workspace,
+    provisionWorkspace: async () =>
+      createFakeWorkspace(workspacePath).workspace,
     createRuntime: (options) => {
       runtime = createAgentRuntimeWithAdapters({
         ...options,
@@ -274,14 +277,13 @@ function turnSubmitCommand(
 function threadStopCommand(threadId: string): CommandOf<"thread.stop"> {
   return {
     type: "thread.stop",
+    intent: "interrupt",
     environmentId: ENVIRONMENT_ID,
     threadId,
   };
 }
 
-function recordedThreadStops(
-  harness: RaceHarness,
-): RecordedAdapterCommand[] {
+function recordedThreadStops(harness: RaceHarness): RecordedAdapterCommand[] {
   return harness.recordedCommands.filter(
     (command) => command.type === "thread/stop",
   );
@@ -322,10 +324,13 @@ describe("thread.stop race semantics", () => {
 
     // The turn now starts; its turn/started observation must release the stop.
     const submitPromise = dispatchCommand(
-      turnSubmitCommand(harness, { threadId: "t-race", inputText: "delay:60000" }),
+      turnSubmitCommand(harness, {
+        threadId: "t-race",
+        inputText: "delay:60000",
+      }),
       harness.dispatchOptions,
     );
-    await expect(stopPromise).resolves.toEqual({});
+    await expect(stopPromise).resolves.toEqual({ providerCheckpointId: null });
     await expect(submitPromise).resolves.toEqual({ appliedAs: "new-turn" });
 
     expect(recordedThreadStops(harness)).toEqual([
@@ -366,7 +371,7 @@ describe("thread.stop race semantics", () => {
     await vi.advanceTimersByTimeAsync(THREAD_STOP_ACTIVE_TURN_WAIT_MS);
     vi.useRealTimers();
 
-    await expect(stopPromise).resolves.toEqual({});
+    await expect(stopPromise).resolves.toEqual({ providerCheckpointId: null });
     // The stop reached the provider as a no-turn stop and released the thread.
     expect(recordedThreadStops(harness)).toEqual([
       expect.objectContaining({
@@ -440,7 +445,7 @@ describe("thread.stop race semantics", () => {
 
     await expect(
       dispatchCommand(threadStopCommand("t-crash"), harness.dispatchOptions),
-    ).resolves.toEqual({});
+    ).resolves.toEqual({ providerCheckpointId: null });
     // The stop never reached a provider: the crashed thread is unknown.
     expect(recordedThreadStops(harness)).toHaveLength(0);
   });

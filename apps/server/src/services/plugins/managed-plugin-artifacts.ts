@@ -1,28 +1,45 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import {
   createPluginArtifact,
   getInstalledPlugin,
   getPluginArtifactByResolution,
+  listPluginArtifactsAtOrUnderPath,
+  listPluginArtifactsUnderPath,
+  setPluginArtifactGitCheckoutRoot,
   setPluginArtifactValidation,
   type InstalledPluginRow,
   type PluginExactResolution,
+  type PluginGitSelector,
   type PluginProvenance,
   type PluginSourceIntent,
 } from "@bb/db";
 import { buildPluginApp, buildPluginServer } from "@bb/plugin-build";
+import {
+  assertPublicMarketplaceUrl,
+  boundedResponseJson,
+  publicMarketplaceFetch,
+  MARKETPLACE_FETCH_TIMEOUT_MS,
+  MARKETPLACE_PACKUMENT_MAX_BYTES,
+} from "../plugin-catalog/marketplace-http.js";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { validatePluginArtifactMeta } from "./app-bundle.js";
+import type { PluginSourceSelection } from "@bb/server-contract";
+import { resolveSelectedSubdirectory } from "./collection-manifest.js";
 import {
   gitArtifactCacheDir,
   hashInstallDir,
+  nestedPluginRoots,
   npmArtifactCacheDir,
   parsePluginSource,
+  pluginRootDir,
+  promoteGitPluginArtifact,
   promoteImmutableDir,
   realPathInside,
   runInstallCommand,
 } from "./install-sources.js";
+import { gitSelectorRefName } from "./git-source-intent.js";
 import {
   derivePluginId,
   readPluginManifest,
@@ -35,12 +52,15 @@ import type {
 import {
   createNpmResolverRun,
   evaluateCompatibility,
+  resolveGitRange,
   resolveGitRef,
   selectNpmCandidate,
   type CompatibilityProblem,
-  type GitRefKind,
+  type GitCandidateProbeResult,
+  type GitSemverTag,
   type NpmResolvedCandidate,
   type NpmSourceIntentForResolution,
+  type NpmSpecKind,
 } from "./update-resolver.js";
 
 export interface InstallRegistrationIdentity {
@@ -61,6 +81,25 @@ export interface RegisterInstalledArgs extends InstallRegistrationIdentity {
 
 export interface InstallContext {
   provenance: PluginProvenance;
+  /**
+   * Manifest id the caller expects (catalog installs). Present means the
+   * install must abort before build or load when the fetched manifest
+   * declares any other id; absent means direct installs with no expectation.
+   */
+  expectedPluginId?: string;
+  /** Git commit shown in the third-party install confirmation. */
+  expectedGitCommit?: string;
+  /** npm registry a listing pins, replacing the host's npm configuration. */
+  npmRegistry?: string;
+  /**
+   * Exact npm version the user confirmed for a third-party listing. Present
+   * means the install must refuse when the registry now resolves the same
+   * range or dist-tag to another version — the npm counterpart of
+   * {@link InstallContext.expectedGitCommit}.
+   */
+  expectedNpmVersion?: string;
+  /** Integrity confirmed with that version, when the registry published one. */
+  expectedNpmIntegrity?: string;
 }
 
 interface ActivateManagedUpdateArgs {
@@ -156,6 +195,7 @@ async function installNpmCandidate(args: {
       "--no-fund",
       "--registry",
       args.registry,
+      "--",
       `${args.packageName}@${args.candidate.version}`,
     ],
     { notFoundHint: args.notFoundHint },
@@ -180,6 +220,41 @@ export function createManagedPluginArtifacts(
   const directInstallContext: InstallContext = {
     provenance: { kind: "direct" },
   };
+
+  /** Use the guarded network and byte policy only for a listing's registry. */
+  function npmResolverRun(listedRegistry: string | undefined) {
+    if (listedRegistry === undefined) return createNpmResolverRun();
+    assertPublicMarketplaceUrl(listedRegistry);
+    return createNpmResolverRun({
+      fetch: (input, init) =>
+        publicMarketplaceFetch(input, {
+          ...init,
+          redirect: "error",
+          signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
+        }),
+      readJson: (response) =>
+        boundedResponseJson(
+          response,
+          MARKETPLACE_PACKUMENT_MAX_BYTES,
+          "npm registry metadata",
+        ),
+    });
+  }
+
+  function assertExpectedPluginId(
+    context: InstallContext,
+    manifestId: string,
+    source: string,
+  ): void {
+    if (
+      context.expectedPluginId !== undefined &&
+      context.expectedPluginId !== manifestId
+    ) {
+      throw new Error(
+        `install refused: ${source} declares plugin id "${manifestId}" but the catalog entry expects "${context.expectedPluginId}"`,
+      );
+    }
+  }
 
   /**
    * Manifest and engine checks only — no npm, no bundling, no plugin code and
@@ -379,29 +454,263 @@ export function createManagedPluginArtifacts(
     throw new Error(`npm did not resolve a registry for ${packageName}`);
   }
 
+  /**
+   * Plugin roots of other plugins that live inside `root`. A multi-plugin
+   * repository shares one checkout per commit, so a promote of `root` must
+   * carry these trees over instead of replacing them with pristine sources.
+   */
+  function preservedNestedRoots(root: string): string[] {
+    return nestedPluginRoots(
+      root,
+      listPluginArtifactsUnderPath(deps.db, root, sep).map(
+        (artifact) => artifact.path,
+      ),
+    );
+  }
+
+  async function refreshAncestorArtifactHashes(args: {
+    checkoutRoot: string;
+    changedRoot: string;
+    changedArtifactId: string;
+  }): Promise<void> {
+    const artifacts = listPluginArtifactsAtOrUnderPath(
+      deps.db,
+      args.checkoutRoot,
+      sep,
+    );
+    for (const artifact of artifacts) {
+      if (artifact.id === args.changedArtifactId) continue;
+      const pathFromArtifact = relative(artifact.path, args.changedRoot);
+      if (
+        pathFromArtifact.length === 0 ||
+        pathFromArtifact === ".." ||
+        pathFromArtifact.startsWith(`..${sep}`)
+      ) {
+        continue;
+      }
+      const contentHash = await hashInstallDir(artifact.path);
+      if (artifact.validationResult === "pending") {
+        if (
+          !setPluginArtifactValidation(deps.db, artifact.id, {
+            contentHash,
+            validationResult: "pending",
+            validatedAt: null,
+          })
+        ) {
+          throw new Error(`plugin artifact disappeared: ${artifact.id}`);
+        }
+      } else {
+        if (
+          !setPluginArtifactValidation(deps.db, artifact.id, {
+            contentHash,
+            validationResult: "valid",
+            validatedAt: artifact.validatedAt ?? Date.now(),
+          })
+        ) {
+          throw new Error(`plugin artifact disappeared: ${artifact.id}`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Decide what a `git:` spec resolves to.
+   *
+   * An implicit spec such as `1.x` reads as a semver range, but a repository
+   * can also name a branch `1.x`. Classification decides: with no ref of that
+   * name the spec is a range; with one, the install stops and asks the user to
+   * choose. bb does not guess, because each answer installs different code.
+   */
+  async function resolveGitSelector(
+    parsed: Extract<ReturnType<typeof parsePluginSource>, { kind: "git" }>,
+    source: string,
+    selection: PluginSourceSelection,
+    context: InstallContext,
+  ): Promise<{ selector: PluginGitSelector; commit: string }> {
+    const { selector } = parsed;
+    if (selector.kind !== "range") {
+      const literal = await resolveGitRef({
+        url: parsed.url,
+        ref: selector.ref,
+      });
+      if (selector.kind === "ref") {
+        if (literal.outcome === "unavailable") {
+          throw new Error(`install failed: ${literal.detail}`);
+        }
+        return {
+          selector: {
+            kind: "ref",
+            ref: selector.ref,
+            refKind: literal.refKind,
+          },
+          commit: literal.commit,
+        };
+      }
+      if (literal.outcome === "resolved") {
+        throw new Error(
+          `install refused: "${selector.ref}" is both a semver range and a ${literal.refKind} of ${parsed.url}. ` +
+            `Install \`git:${parsed.url}@ref:${selector.ref}\` for the ${literal.refKind}, or ` +
+            `\`git:${parsed.url}@semver:${selector.range}\` to resolve the range over release tags`,
+        );
+      }
+      return resolveGitRangeSelector({
+        url: parsed.url,
+        range: selector.range,
+        tagPrefix: "",
+        probeCandidate: (candidate) =>
+          probeGitInstallCandidate({
+            parsed,
+            source,
+            selection,
+            context,
+            candidate,
+          }),
+      });
+    }
+    return resolveGitRangeSelector({
+      url: parsed.url,
+      range: selector.range,
+      tagPrefix: selector.tagPrefix,
+      probeCandidate: (candidate) =>
+        probeGitInstallCandidate({
+          parsed,
+          source,
+          selection,
+          context,
+          candidate,
+        }),
+    });
+  }
+
+  async function probeGitInstallCandidate(args: {
+    parsed: Extract<ReturnType<typeof parsePluginSource>, { kind: "git" }>;
+    source: string;
+    selection: PluginSourceSelection;
+    context: InstallContext;
+    candidate: GitSemverTag;
+  }): Promise<GitCandidateProbeResult> {
+    const targetDir = gitArtifactCacheDir(
+      deps.dataDir,
+      args.parsed.cachePath,
+      args.candidate.commit,
+    );
+    const stagingDir = `${targetDir}.install-probe-${randomUUID()}`;
+    await mkdir(dirname(stagingDir), { recursive: true });
+    try {
+      deps.onArtifactMaterialize?.({ path: targetDir });
+      await runInstallCommand("git", [
+        "clone",
+        "--quiet",
+        args.parsed.url,
+        stagingDir,
+      ]);
+      await runInstallCommand("git", [
+        "-C",
+        stagingDir,
+        "checkout",
+        "--quiet",
+        "--detach",
+        args.candidate.commit,
+      ]);
+      const subdirectory = await resolveSelectedSubdirectory({
+        checkoutDir: stagingDir,
+        selection: args.selection,
+        sourceLabel: args.source,
+      });
+      const root = pluginRootDir(stagingDir, subdirectory);
+      const realRoot = await realPathInside(
+        stagingDir,
+        root,
+        "git plugin subdirectory",
+        subdirectory === null,
+      );
+      const manifest = await readPluginManifest(realRoot);
+      assertExpectedPluginId(args.context, manifest.id, args.source);
+      const compatibility = evaluateCompatibility({
+        bbRange: manifest.bbEngineRange,
+        sdkRange: manifest.bbPluginSdkRange,
+        appVersion: deps.appVersion,
+      });
+      return compatibility.effective.length > 0
+        ? {
+            outcome: "incompatible",
+            reasons: compatibility.effective,
+            devMode: compatibility.devMode,
+          }
+        : {
+            outcome: "compatible",
+            devMode: compatibility.devMode,
+            packagedBuildProblems: compatibility.packaged,
+          };
+    } catch (error) {
+      return {
+        outcome: "invalid",
+        detail: error instanceof Error ? error.message : String(error),
+      };
+    } finally {
+      await rm(stagingDir, { recursive: true, force: true });
+    }
+  }
+
+  async function resolveGitRangeSelector(args: {
+    url: string;
+    range: string;
+    tagPrefix: string;
+    probeCandidate: (
+      candidate: GitSemverTag,
+    ) => Promise<GitCandidateProbeResult>;
+  }): Promise<{ selector: PluginGitSelector; commit: string }> {
+    const resolved = await resolveGitRange(args);
+    if (resolved.outcome === "unavailable") {
+      throw new Error(`install failed: ${resolved.detail}`);
+    }
+    return {
+      selector: {
+        kind: "range",
+        range: args.range,
+        tagPrefix: args.tagPrefix,
+        resolvedTag: resolved.tag,
+      },
+      commit: resolved.commit,
+    };
+  }
+
   async function installGitSource(
     parsed: Extract<ReturnType<typeof parsePluginSource>, { kind: "git" }>,
     source: string,
+    selection: PluginSourceSelection,
     context: InstallContext = directInstallContext,
   ): Promise<PluginListEntry> {
-    const resolution = await resolveGitRef({
-      url: parsed.url,
-      ref: parsed.ref,
-    });
-    if (resolution.outcome === "unavailable") {
-      throw new Error(`install failed: ${resolution.detail}`);
-    }
+    const resolution = await resolveGitSelector(
+      parsed,
+      source,
+      selection,
+      context,
+    );
     const resolvedCommit = resolution.commit;
-    const registrationIdentity: InstallRegistrationIdentity = {
-      provenance: context.provenance,
-      sourceIntent: {
-        kind: "git",
-        url: parsed.url,
-        subdirectory: null,
-        requestedRef: parsed.ref,
-        refKind: resolution.refKind,
-      },
-    };
+    if (
+      context.expectedGitCommit !== undefined &&
+      resolvedCommit !== context.expectedGitCommit
+    ) {
+      throw new Error(
+        `install refused: the git source changed after confirmation; expected ${context.expectedGitCommit}, resolved ${resolvedCommit}`,
+      );
+    }
+    const resolvedSelector = resolution.selector;
+    const checkoutRef = gitSelectorRefName(resolvedSelector);
+    function identityFor(
+      subdirectory: string | null,
+    ): InstallRegistrationIdentity {
+      return {
+        provenance: context.provenance,
+        sourceIntent: {
+          kind: "git",
+          url: parsed.url,
+          subdirectory,
+          selector: resolvedSelector,
+        },
+      };
+    }
     const targetDir = gitArtifactCacheDir(
       deps.dataDir,
       parsed.cachePath,
@@ -410,20 +719,41 @@ export function createManagedPluginArtifacts(
     return withArtifactLock(targetDir, async () => {
       const stagingDir = `${targetDir}.staging`;
       await rm(stagingDir, { recursive: true, force: true });
-      const targetRoot = targetDir;
-      const cachedRealRoot = await realPathInside(
-        targetDir,
-        targetRoot,
-        "git plugin subdirectory",
-      ).catch(() => null);
+      // The cache holds one checkout per repository+commit, so a plugin the
+      // selection names may already be there — including one a sibling
+      // install of the same commit cloned. A selection this checkout cannot
+      // answer falls through to the clone, which reports the real problem.
+      const cachedSubdirectory = await resolveSelectedSubdirectory({
+        checkoutDir: targetDir,
+        selection,
+        sourceLabel: source,
+      }).catch(() => undefined);
+      const cachedRegistrationIdentity =
+        cachedSubdirectory === undefined
+          ? null
+          : identityFor(cachedSubdirectory);
+      const targetRoot =
+        cachedSubdirectory === undefined
+          ? targetDir
+          : pluginRootDir(targetDir, cachedSubdirectory);
+      const cachedRealRoot =
+        cachedSubdirectory === undefined
+          ? null
+          : await realPathInside(
+              targetDir,
+              targetRoot,
+              "git plugin subdirectory",
+              cachedSubdirectory === null,
+            ).catch(() => null);
       const cachedManifest =
         cachedRealRoot === null
           ? null
           : await readPluginManifest(cachedRealRoot).catch(() => null);
-      if (cachedManifest !== null) {
+      if (cachedManifest !== null && cachedRegistrationIdentity !== null) {
+        assertExpectedPluginId(context, cachedManifest.id, source);
         assertInstallRegistrationAvailable(
           getInstalledPlugin(deps.db, cachedManifest.id),
-          registrationIdentity,
+          cachedRegistrationIdentity,
           cachedManifest.id,
         );
       }
@@ -437,11 +767,12 @@ export function createManagedPluginArtifacts(
               commit: resolvedCommit,
             });
       if (
+        cachedRegistrationIdentity !== null &&
         (existingArtifact?.validationResult === "valid" ||
           existingArtifact?.validationResult === "pending") &&
         existingArtifact.contentHash !== null
       ) {
-        const currentHash = await hashInstallDir(targetDir).catch(() => null);
+        const currentHash = await hashInstallDir(targetRoot).catch(() => null);
         if (currentHash === existingArtifact.contentHash) {
           if (existingArtifact.validationResult === "pending") {
             setPluginArtifactValidation(deps.db, existingArtifact.id, {
@@ -453,7 +784,7 @@ export function createManagedPluginArtifacts(
           return registerInstalled({
             rootDir: targetRoot,
             source,
-            ...registrationIdentity,
+            ...cachedRegistrationIdentity,
             exactResolution: { kind: "git", commit: resolvedCommit },
             refuseEngineMismatch: true,
             validated: true,
@@ -479,16 +810,24 @@ export function createManagedPluginArtifacts(
           "--detach",
           resolvedCommit,
         ]);
-        const stagedRoot = stagingDir;
+        const stagedSubdirectory = await resolveSelectedSubdirectory({
+          checkoutDir: stagingDir,
+          selection,
+          sourceLabel: source,
+        });
+        const stagedRegistrationIdentity = identityFor(stagedSubdirectory);
+        const stagedTargetRoot = pluginRootDir(targetDir, stagedSubdirectory);
         const stagedRealRoot = await realPathInside(
           stagingDir,
-          stagedRoot,
+          pluginRootDir(stagingDir, stagedSubdirectory),
           "git plugin subdirectory",
+          stagedSubdirectory === null,
         );
         const stagedManifest = await readPluginManifest(stagedRealRoot);
+        assertExpectedPluginId(context, stagedManifest.id, source);
         assertInstallRegistrationAvailable(
           getInstalledPlugin(deps.db, stagedManifest.id),
-          registrationIdentity,
+          stagedRegistrationIdentity,
           stagedManifest.id,
         );
         refuseBuiltinShadow(stagedManifest.id);
@@ -500,7 +839,7 @@ export function createManagedPluginArtifacts(
         ]);
         if (!checkedOutCommit.startsWith(resolvedCommit)) {
           throw new Error(
-            `git resolved ${parsed.ref} to ${resolvedCommit}, but checked out ${checkedOutCommit}`,
+            `git resolved ${checkoutRef} to ${resolvedCommit}, but checked out ${checkedOutCommit}`,
           );
         }
         await validateInstallDir({
@@ -508,15 +847,15 @@ export function createManagedPluginArtifacts(
           source,
           refuseEngineMismatch: true,
         });
-        const contentHash = await hashInstallDir(stagingDir);
-        const ownedArtifact =
-          existingArtifact ??
-          getPluginArtifactByResolution(deps.db, {
-            sourceKind: "git",
-            pluginId: stagedManifest.id,
-            path: targetRoot,
-            commit: resolvedCommit,
-          });
+        // The hash covers the plugin root, not the whole checkout: siblings
+        // from the same commit build into the same clone.
+        const contentHash = await hashInstallDir(stagedRealRoot);
+        const ownedArtifact = getPluginArtifactByResolution(deps.db, {
+          sourceKind: "git",
+          pluginId: stagedManifest.id,
+          path: stagedTargetRoot,
+          commit: resolvedCommit,
+        });
         const artifact =
           ownedArtifact ??
           createPluginArtifact(deps.db, {
@@ -525,13 +864,15 @@ export function createManagedPluginArtifacts(
             sourceKind: "git",
             npmResolvedVersion: null,
             gitResolvedCommit: resolvedCommit,
-            path: targetRoot,
+            gitCheckoutRoot: targetDir,
+            path: stagedTargetRoot,
             integrity: null,
             contentHash,
             validationResult: "pending",
             validatedAt: null,
           });
         if (ownedArtifact !== undefined) {
+          setPluginArtifactGitCheckoutRoot(deps.db, artifact.id, targetDir);
           setPluginArtifactValidation(deps.db, artifact.id, {
             contentHash,
             validationResult: "pending",
@@ -539,24 +880,35 @@ export function createManagedPluginArtifacts(
           });
         }
         return registerInstalled({
-          rootDir: targetRoot,
+          rootDir: stagedTargetRoot,
           source,
-          ...registrationIdentity,
+          ...stagedRegistrationIdentity,
           exactResolution: { kind: "git", commit: resolvedCommit },
           refuseEngineMismatch: true,
           validated: true,
           activeArtifactId: artifact.id,
           preparedManifest: stagedManifest,
           beforePersist: async () => {
-            await promoteImmutableDir({ stagingDir, targetDir, contentHash });
+            const promotedHash = await promoteGitPluginArtifact({
+              stagingDir,
+              targetDir,
+              subdirectory: stagedSubdirectory,
+              contentHash,
+              preserveNestedRoots: preservedNestedRoots(stagedTargetRoot),
+            });
+            await refreshAncestorArtifactHashes({
+              checkoutRoot: targetDir,
+              changedRoot: stagedTargetRoot,
+              changedArtifactId: artifact.id,
+            });
             await deps.afterArtifactPromoted?.({
               pluginId: stagedManifest.id,
               artifactId: artifact.id,
-              path: targetRoot,
+              path: stagedTargetRoot,
             });
             if (
               !setPluginArtifactValidation(deps.db, artifact.id, {
-                contentHash,
+                contentHash: promotedHash,
                 validationResult: "valid",
                 validatedAt: Date.now(),
               })
@@ -573,6 +925,53 @@ export function createManagedPluginArtifacts(
     });
   }
 
+  /**
+   * The exact version and integrity a listing's npm spec resolves to now.
+   * The install confirmation needs this before anything runs, and it must
+   * resolve through the same registry and the same selection rules the
+   * install itself will use, or the two would disagree by construction.
+   */
+  async function resolveNpmCandidateForPlan(args: {
+    packageName: string;
+    /** Registry the listing pins; absent uses the host's npm configuration. */
+    registry?: string;
+    requestedSpec: string;
+    specKind: NpmSpecKind;
+  }): Promise<
+    | { outcome: "resolved"; version: string; integrity: string }
+    | { outcome: "unavailable"; detail: string }
+  > {
+    const registryProbe = join(deps.dataDir, "plugins", "npm", ".registry");
+    await mkdir(registryProbe, { recursive: true });
+    const registry =
+      args.registry ??
+      (await resolveNpmRegistry(registryProbe, args.packageName));
+    const selected = await selectNpmCandidate({
+      intent: {
+        packageName: args.packageName,
+        registry,
+        requestedSpec: args.requestedSpec,
+        specKind: args.specKind,
+      },
+      appVersion: deps.appVersion,
+      run: npmResolverRun(args.registry),
+    });
+    if (selected.outcome === "selected") {
+      return {
+        outcome: "resolved",
+        version: selected.candidate.version,
+        integrity: selected.candidate.integrity,
+      };
+    }
+    return {
+      outcome: "unavailable",
+      detail:
+        selected.outcome === "unavailable"
+          ? selected.detail
+          : `${selected.newest.display} ${selected.reasons.map((problem) => problem.message).join("; ")}`,
+    };
+  }
+
   async function installNpmSource(
     parsed: Extract<ReturnType<typeof parsePluginSource>, { kind: "npm" }>,
     source: string,
@@ -580,7 +979,14 @@ export function createManagedPluginArtifacts(
   ): Promise<PluginListEntry> {
     const registryProbe = join(deps.dataDir, "plugins", "npm", ".registry");
     await mkdir(registryProbe, { recursive: true });
-    const registry = await resolveNpmRegistry(registryProbe, parsed.name);
+    // A listing that pins its own registry wins over the host's npm config;
+    // the pinned value is persisted, so updates re-resolve against it too.
+    // The host's own configured registry is the operator's choice, but a
+    // listing is untrusted input: it gets the marketplace network policy, so
+    // it cannot aim BB at an internal service.
+    const listedRegistry = context.npmRegistry;
+    const registry =
+      listedRegistry ?? (await resolveNpmRegistry(registryProbe, parsed.name));
     const intent: NpmSourceIntentForResolution = {
       packageName: parsed.name,
       registry,
@@ -592,6 +998,9 @@ export function createManagedPluginArtifacts(
       sourceIntent: { kind: "npm", ...intent },
     };
     const pluginId = derivePluginId(parsed.name);
+    // An npm plugin's id comes from its package name, so a listing that names
+    // the wrong plugin fails before any registry request.
+    assertExpectedPluginId(context, pluginId, source);
     assertInstallRegistrationAvailable(
       getInstalledPlugin(deps.db, pluginId),
       registrationIdentity,
@@ -600,7 +1009,9 @@ export function createManagedPluginArtifacts(
     const selected = await selectNpmCandidate({
       intent,
       appVersion: deps.appVersion,
-      run: createNpmResolverRun(),
+      // A listed registry is contacted through the guarded socket, so a
+      // hostile DNS answer cannot reach a private host either.
+      run: npmResolverRun(listedRegistry),
     });
     if (selected.outcome === "unavailable") {
       throw new Error(`install failed: ${selected.detail}`);
@@ -611,6 +1022,22 @@ export function createManagedPluginArtifacts(
       );
     }
     const candidate = selected.candidate;
+    if (
+      context.expectedNpmVersion !== undefined &&
+      candidate.version !== context.expectedNpmVersion
+    ) {
+      throw new Error(
+        `install refused: the npm source changed after confirmation; expected ${parsed.name}@${context.expectedNpmVersion}, resolved ${candidate.display}`,
+      );
+    }
+    if (
+      context.expectedNpmIntegrity !== undefined &&
+      candidate.integrity !== context.expectedNpmIntegrity
+    ) {
+      throw new Error(
+        `install refused: the npm integrity changed after confirmation; expected ${context.expectedNpmIntegrity}, resolved ${candidate.integrity}`,
+      );
+    }
     const prefix = npmArtifactCacheDir(
       deps.dataDir,
       parsed.name,
@@ -689,6 +1116,7 @@ export function createManagedPluginArtifacts(
           parsed.name,
         );
         if (
+          candidate.integrity.length > 0 &&
           installedIntegrity !== null &&
           installedIntegrity !== candidate.integrity
         ) {
@@ -720,6 +1148,7 @@ export function createManagedPluginArtifacts(
             sourceKind: "npm",
             npmResolvedVersion: candidate.version,
             gitResolvedCommit: null,
+            gitCheckoutRoot: null,
             path: rootDir,
             integrity: candidate.integrity,
             contentHash,
@@ -780,7 +1209,12 @@ export function createManagedPluginArtifacts(
     row: InstalledPluginRow;
     commit: string;
     promote: boolean;
-    activationRefKind?: GitRefKind;
+    /**
+     * Source intent to persist when the candidate activates. A range install
+     * records the tag this commit came from, so it must be the tag the update
+     * resolved, not the one the row still holds.
+     */
+    activationSelector?: PluginGitSelector;
     artifactLocked?: boolean;
   }): Promise<
     | {
@@ -804,9 +1238,8 @@ export function createManagedPluginArtifacts(
         `plugin "${args.row.id}" has corrupt normalized git state`,
       );
     }
-    const cacheSource = parsePluginSource(
-      `git:${args.row.sourceGitUrl}@${args.commit}`,
-    );
+    const url = args.row.sourceGitUrl;
+    const cacheSource = parsePluginSource(`git:${url}@${args.commit}`);
     if (cacheSource.kind !== "git") {
       throw new Error(`plugin "${args.row.id}" has corrupt git source`);
     }
@@ -815,10 +1248,7 @@ export function createManagedPluginArtifacts(
       cacheSource.cachePath,
       args.commit,
     );
-    const targetRoot =
-      args.row.sourceGitSubdirectory === null
-        ? targetDir
-        : join(targetDir, args.row.sourceGitSubdirectory);
+    const targetRoot = pluginRootDir(targetDir, args.row.sourceGitSubdirectory);
     if (args.promote && !args.artifactLocked) {
       return withArtifactLock(targetDir, () =>
         stageGitCandidate({ ...args, artifactLocked: true }),
@@ -835,13 +1265,14 @@ export function createManagedPluginArtifacts(
       (existingArtifact?.validationResult === "valid" ||
         existingArtifact?.validationResult === "pending") &&
       existingArtifact.contentHash !== null &&
-      (await hashInstallDir(targetDir).catch(() => null)) ===
+      (await hashInstallDir(targetRoot).catch(() => null)) ===
         existingArtifact.contentHash
     ) {
       const targetRealRoot = await realPathInside(
         targetDir,
         targetRoot,
         "git plugin subdirectory",
+        args.row.sourceGitSubdirectory === null,
       );
       const manifest = await readPluginManifest(targetRealRoot);
       const compatibility = evaluateCompatibility({
@@ -849,10 +1280,7 @@ export function createManagedPluginArtifacts(
         sdkRange: manifest.bbPluginSdkRange,
         appVersion: deps.appVersion,
       });
-      if (args.activationRefKind === undefined) {
-        throw new Error(`plugin "${args.row.id}" update lacks git ref kind`);
-      }
-      if (args.row.sourceGitRequestedRef === null) {
+      if (args.activationSelector === undefined) {
         throw new Error(`plugin "${args.row.id}" update lacks git intent`);
       }
       if (existingArtifact.validationResult === "pending") {
@@ -869,10 +1297,9 @@ export function createManagedPluginArtifacts(
         source: args.row.source,
         sourceIntent: {
           kind: "git",
-          url: args.row.sourceGitUrl,
+          url,
           subdirectory: args.row.sourceGitSubdirectory,
-          requestedRef: args.row.sourceGitRequestedRef,
-          refKind: args.activationRefKind,
+          selector: args.activationSelector,
         },
         exactResolution: { kind: "git", commit: args.commit },
         artifactId: existingArtifact.id,
@@ -886,21 +1313,20 @@ export function createManagedPluginArtifacts(
         artifactId: existingArtifact.id,
       };
     }
+    // Both staging trees stay beside the checkout, never inside it: a nested
+    // plugin root is a directory of the checkout, and a clone dropped in there
+    // would join the plugin root of the repository root plugin.
     const stagingDir = args.promote
       ? `${targetDir}.staging`
-      : `${args.row.rootDir}.update-staging-${randomUUID()}`;
+      : `${targetDir}.update-staging-${randomUUID()}`;
     await rm(stagingDir, { recursive: true, force: true });
     await mkdir(dirname(stagingDir), { recursive: true });
     try {
       deps.onArtifactMaterialize?.({ path: targetRoot });
-      await runInstallCommand(
-        "git",
-        ["clone", "--quiet", args.row.sourceGitUrl, stagingDir],
-        {
-          notFoundHint:
-            '"git" was not found on PATH — git plugin updates require git',
-        },
-      );
+      await runInstallCommand("git", ["clone", "--quiet", url, stagingDir], {
+        notFoundHint:
+          '"git" was not found on PATH — git plugin updates require git',
+      });
       await runInstallCommand("git", [
         "-C",
         stagingDir,
@@ -909,16 +1335,17 @@ export function createManagedPluginArtifacts(
         "--detach",
         args.commit,
       ]);
-      const pluginRoot =
-        args.row.sourceGitSubdirectory === null
-          ? stagingDir
-          : join(stagingDir, args.row.sourceGitSubdirectory);
+      const pluginRoot = pluginRootDir(
+        stagingDir,
+        args.row.sourceGitSubdirectory,
+      );
       let realPluginRoot: string;
       try {
         realPluginRoot = await realPathInside(
           stagingDir,
           pluginRoot,
           "git plugin subdirectory",
+          args.row.sourceGitSubdirectory === null,
         );
       } catch (error) {
         return {
@@ -970,13 +1397,11 @@ export function createManagedPluginArtifacts(
       }
       let artifactId: string | null = null;
       if (args.promote) {
-        if (
-          args.activationRefKind === undefined ||
-          args.row.sourceGitRequestedRef === null
-        ) {
+        if (args.activationSelector === undefined) {
           throw new Error(`plugin "${args.row.id}" update lacks git intent`);
         }
-        const contentHash = await hashInstallDir(stagingDir);
+        const activationSelector = args.activationSelector;
+        const contentHash = await hashInstallDir(realPluginRoot);
         const artifact =
           existingArtifact ??
           createPluginArtifact(deps.db, {
@@ -985,6 +1410,7 @@ export function createManagedPluginArtifacts(
             sourceKind: "git",
             npmResolvedVersion: null,
             gitResolvedCommit: args.commit,
+            gitCheckoutRoot: targetDir,
             path: targetRoot,
             integrity: null,
             contentHash,
@@ -992,6 +1418,11 @@ export function createManagedPluginArtifacts(
             validatedAt: null,
           });
         if (existingArtifact !== undefined) {
+          setPluginArtifactGitCheckoutRoot(
+            deps.db,
+            existingArtifact.id,
+            targetDir,
+          );
           setPluginArtifactValidation(deps.db, existingArtifact.id, {
             contentHash,
             validationResult: "pending",
@@ -1005,15 +1436,25 @@ export function createManagedPluginArtifacts(
           source: args.row.source,
           sourceIntent: {
             kind: "git",
-            url: args.row.sourceGitUrl,
+            url,
             subdirectory: args.row.sourceGitSubdirectory,
-            requestedRef: args.row.sourceGitRequestedRef,
-            refKind: args.activationRefKind,
+            selector: activationSelector,
           },
           exactResolution: { kind: "git", commit: args.commit },
           artifactId: artifact.id,
           beforePersist: async () => {
-            await promoteImmutableDir({ stagingDir, targetDir, contentHash });
+            const promotedHash = await promoteGitPluginArtifact({
+              stagingDir,
+              targetDir,
+              subdirectory: args.row.sourceGitSubdirectory,
+              contentHash,
+              preserveNestedRoots: preservedNestedRoots(targetRoot),
+            });
+            await refreshAncestorArtifactHashes({
+              checkoutRoot: targetDir,
+              changedRoot: targetRoot,
+              changedArtifactId: artifact.id,
+            });
             await deps.afterArtifactPromoted?.({
               pluginId: args.row.id,
               artifactId: artifact.id,
@@ -1021,7 +1462,7 @@ export function createManagedPluginArtifacts(
             });
             if (
               !setPluginArtifactValidation(deps.db, artifact.id, {
-                contentHash,
+                contentHash: promotedHash,
                 validationResult: "valid",
                 validatedAt: Date.now(),
               })
@@ -1135,6 +1576,7 @@ export function createManagedPluginArtifacts(
           args.selectionIntent.packageName,
         );
         if (
+          args.candidate.integrity.length > 0 &&
           installedIntegrity !== null &&
           installedIntegrity !== args.candidate.integrity
         ) {
@@ -1151,6 +1593,7 @@ export function createManagedPluginArtifacts(
             sourceKind: "npm",
             npmResolvedVersion: args.candidate.version,
             gitResolvedCommit: null,
+            gitCheckoutRoot: null,
             path: targetRoot,
             integrity: args.candidate.integrity,
             contentHash,
@@ -1205,6 +1648,7 @@ export function createManagedPluginArtifacts(
     applyNpmCandidate,
     installGitSource,
     installNpmSource,
+    resolveNpmCandidateForPlan,
     stageGitCandidate,
     validateInstallDir,
   };

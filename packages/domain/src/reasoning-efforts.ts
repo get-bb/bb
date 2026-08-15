@@ -34,16 +34,6 @@ export const ULTRA_REASONING_EFFORT: ModelReasoningEffort = {
   description: "Maximum reasoning with automatic task delegation",
 };
 
-export const ALL_REASONING_EFFORTS: readonly ModelReasoningEffort[] = [
-  LOW_REASONING_EFFORT,
-  MEDIUM_REASONING_EFFORT,
-  HIGH_REASONING_EFFORT,
-  XHIGH_REASONING_EFFORT,
-  ULTRACODE_REASONING_EFFORT,
-  MAX_REASONING_EFFORT,
-  ULTRA_REASONING_EFFORT,
-];
-
 const REASONING_EFFORT_BY_LEVEL: Record<ReasoningLevel, ModelReasoningEffort> =
   {
     none: NONE_REASONING_EFFORT,

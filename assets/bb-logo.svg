@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-8 -8 507 405" role="img" aria-labelledby="title desc">
+  <title id="title">bb</title>
+  <desc id="desc">The bb mark rendered as two interwoven graphite surfaces with a continuous directional gradient.</desc>
+  <defs>
+    <path id="mark" fill-rule="evenodd" d="M243.173 132.901C209.16 110.325 161.732 109.355 117.39 127.537L138.53 49.419C143.962 29.344 132.062 8.673 111.974 3.291 91.943-2.077 71.348 9.793 65.95 29.816L8.449 243.115 8.431 243.11C-5.35 287.398 2.824 332.057 34.741 360.27 81.38 401.497 162.048 392.94 221.66 343.061 226.111 349.8 231.053 354.963 237.39 360.565 287.404 404.775 376.886 391.327 437.242 330.885 497.598 270.443 506.288 185.578 456.275 141.368 422.463 111.479 370.582 107.952 321.904 127.469L342.81 49.115C348.113 29.238 336.312 8.822 316.441 3.498 296.555-1.831 276.113 9.971 270.785 29.857L243.173 132.901ZM279.815 258.612C282.467 247.201 289.832 224.61 297.282 213.521 323.555 175.201 369.028 158.632 398.847 176.515 428.666 194.398 431.54 239.961 405.266 278.281L404.647 279.174C378.283 316.857 333.288 333.029 303.702 315.286 285.262 304.227 277.126 282.582 279.815 258.612ZM219.168 226.258C218.73 242.98 212.813 261.289 201.226 278.189L200.608 279.083C174.244 316.766 129.249 332.936 99.663 315.193 70.077 297.449 67.626 251.559 93.243 213.428 119.516 175.108 164.988 158.541 194.807 176.423 210.476 185.82 218.698 206.643 219.168 226.258Z"/>
+
+    <clipPath id="mark-clip">
+      <use href="#mark" clip-rule="evenodd"/>
+    </clipPath>
+
+    <!-- Closed filled contours; the mark clip supplies the exact outer and counter edges. -->
+    <path id="foreground-lower" d="
+      M8.431 243.11
+      C-5.35 287.398 2.824 332.057 34.741 360.27
+      C81.38 401.497 162.048 392.94 221.66 343.061
+      C246 322 262 286 263 249
+      C243 258 220 270 201.226 278.189
+      L200.608 279.083
+      C174.244 316.766 129.249 332.936 99.663 315.193
+      C79 302.8 70.1 276.5 77.2 251.4
+      C51 258 27 256 8.431 243.11Z"/>
+    <path id="foreground-center" d="
+      M243.173 132.901
+      L270.785 29.857
+      C276.113 9.971 296.555-1.831 316.441 3.498
+      C336.312 8.822 348.113 29.238 342.81 49.115
+      L321.904 127.469
+      C315 149 306 184 297.282 213.521
+      C289.832 224.61 282.467 247.201 279.815 258.612
+      C271.888 283.856 256.827 308.983 234.942 330.899
+      C230.9 334.947 225.944 339.439 221.66 343.061
+      C191 349 176 322 183 292
+      C206 274 220 250 219.168 226.258
+      L243.173 132.901Z"/>
+    <path id="foreground-upper" d="
+      M321.904 127.469
+      C360 112 406 109 437 129
+      C430 149 420 168 408 183
+      C405 180 402 178 398.847 176.515
+      C369.028 158.632 323.555 175.201 297.282 213.521
+      C302 180 310 149 321.904 127.469Z"/>
+
+    <path id="upper-seam" d="M243.173 132.901 219.168 226.258"/>
+    <path id="lower-seam" d="M221.66 343.061C247.234 321.797 270.309 286.682 279.815 258.612"/>
+
+    <linearGradient id="background-fill" x1="74" y1="18" x2="424" y2="377" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#424242"/>
+      <stop offset=".28" stop-color="#303030"/>
+      <stop offset=".57" stop-color="#1b1b1b"/>
+      <stop offset=".82" stop-color="#0b0b0b"/>
+      <stop offset="1" stop-color="#030303"/>
+    </linearGradient>
+    <linearGradient id="foreground-fill" x1="74" y1="18" x2="424" y2="377" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4c4c4c"/>
+      <stop offset=".28" stop-color="#373737"/>
+      <stop offset=".57" stop-color="#212121"/>
+      <stop offset=".82" stop-color="#0f0f0f"/>
+      <stop offset="1" stop-color="#050505"/>
+    </linearGradient>
+    <linearGradient id="lower-fade" x1="8" y1="0" x2="118" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff" stop-opacity="0"/>
+      <stop offset=".58" stop-color="#fff" stop-opacity=".72"/>
+      <stop offset="1" stop-color="#fff"/>
+    </linearGradient>
+    <linearGradient id="upper-fade" x1="355" y1="0" x2="439" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff"/>
+      <stop offset=".42" stop-color="#fff" stop-opacity=".88"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <mask id="lower-mask" maskUnits="userSpaceOnUse" x="-16" y="190" width="292" height="210">
+      <rect x="-16" y="190" width="292" height="210" fill="url(#lower-fade)"/>
+    </mask>
+    <mask id="upper-mask" maskUnits="userSpaceOnUse" x="286" y="96" width="170" height="128">
+      <rect x="286" y="96" width="170" height="128" fill="url(#upper-fade)"/>
+    </mask>
+    <linearGradient id="outline" x1="62" y1="10" x2="438" y2="382" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff" stop-opacity=".23"/>
+      <stop offset=".4" stop-color="#fff" stop-opacity=".06"/>
+      <stop offset=".66" stop-color="#000" stop-opacity=".42"/>
+      <stop offset="1" stop-color="#000" stop-opacity=".72"/>
+    </linearGradient>
+    <linearGradient id="upper-shadow" x1="241" y1="141" x2="223" y2="211" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#000" stop-opacity="0"/>
+      <stop offset=".2" stop-color="#000" stop-opacity=".48"/>
+      <stop offset=".78" stop-color="#000" stop-opacity=".5"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="lower-shadow" x1="229" y1="336" x2="275" y2="270" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#000" stop-opacity="0"/>
+      <stop offset=".22" stop-color="#000" stop-opacity=".5"/>
+      <stop offset=".76" stop-color="#000" stop-opacity=".54"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="upper-rim" x1="243.173" y1="132.901" x2="219.168" y2="226.258" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff" stop-opacity="0"/>
+      <stop offset=".16" stop-color="#fff" stop-opacity=".2"/>
+      <stop offset=".82" stop-color="#fff" stop-opacity=".13"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="lower-rim" x1="221.66" y1="343.061" x2="279.815" y2="258.612" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff" stop-opacity="0"/>
+      <stop offset=".16" stop-color="#fff" stop-opacity=".16"/>
+      <stop offset=".8" stop-color="#fff" stop-opacity=".11"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+
+    <clipPath id="upper-underlap">
+      <path d="M-40-40H243.173L219.168 226.258-40 440Z"/>
+    </clipPath>
+    <clipPath id="lower-underlap">
+      <path d="M221.66 343.061C247.234 321.797 270.309 286.682 279.815 258.612L540-40V440H-40Z"/>
+    </clipPath>
+    <filter id="seam-blur" x="-45%" y="-45%" width="190%" height="190%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="2.1"/>
+    </filter>
+  </defs>
+
+  <use href="#mark" fill="url(#background-fill)" fill-rule="evenodd"/>
+
+  <g clip-path="url(#mark-clip)">
+    <use href="#foreground-lower" fill="url(#foreground-fill)" mask="url(#lower-mask)"/>
+    <use href="#foreground-center" fill="url(#foreground-fill)"/>
+    <use href="#foreground-upper" fill="url(#foreground-fill)" mask="url(#upper-mask)"/>
+  </g>
+
+  <!-- Shadows are cast only onto the surface that passes underneath. -->
+  <g clip-path="url(#mark-clip)">
+    <g clip-path="url(#upper-underlap)">
+      <path d="M240.8 142.2 224.2 207.2" fill="none" stroke="url(#upper-shadow)" stroke-width="8" stroke-linecap="butt" filter="url(#seam-blur)"/>
+    </g>
+    <g clip-path="url(#lower-underlap)">
+      <path d="M228.5 335.5C246 320 263 294 274.5 270.5" fill="none" stroke="url(#lower-shadow)" stroke-width="9" stroke-linecap="butt" filter="url(#seam-blur)"/>
+    </g>
+  </g>
+
+  <use href="#upper-seam" fill="none" stroke="url(#upper-rim)" stroke-width=".8"/>
+  <use href="#lower-seam" fill="none" stroke="url(#lower-rim)" stroke-width=".8"/>
+  <use href="#mark" fill="none" stroke="url(#outline)" stroke-width=".8" stroke-linejoin="round" fill-rule="evenodd"/>
+</svg>

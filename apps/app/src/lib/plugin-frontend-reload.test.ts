@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 
-import type { PluginComposerThreadRowStatus } from "@bb/plugin-sdk";
+import type { PluginComposerThreadRowStatus } from "@get-bb/plugin-sdk";
+import { createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { act } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  installForeignDomMutationGuard,
+  uninstallForeignDomMutationGuardForTest,
+} from "./foreign-dom-mutation-guard";
 import { definePluginApp } from "./plugin-app-definition";
 import {
   applyPluginCss,
@@ -63,6 +70,7 @@ function contentScriptModule(
 
 afterEach(() => {
   resetPluginThreadRowStatusesForTest();
+  uninstallForeignDomMutationGuardForTest();
 });
 
 function makeDeps(initial: PluginFrontendCandidate[] = []) {
@@ -687,6 +695,110 @@ describe("reconcilePluginFrontends", () => {
     ]);
     await reconcilePluginFrontends(state, deps);
     expect(deps.applyCss).toHaveBeenLastCalledWith("hello", null);
+  });
+
+  it("does not let a content script steal a React-owned host node", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    installForeignDomMutationGuard();
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => {
+      root.render(
+        createElement(
+          "a",
+          { href: "?path=src/app.ts", "data-testid": "file-link" },
+          "src/app.ts",
+        ),
+      );
+    });
+    const link = container.querySelector("[data-testid='file-link']");
+    expect(link).toBeInstanceOf(HTMLAnchorElement);
+    const reactParent = link!.parentNode;
+
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("file-reveal", "v1")]);
+    deps.importModule.mockResolvedValue(
+      contentScriptModule((app) => {
+        app.contentScripts.register({
+          id: "file-reveal-buttons",
+          mount() {
+            const control = document.querySelector("[data-testid='file-link']");
+            if (
+              !(control instanceof HTMLElement) ||
+              control.parentNode === null
+            ) {
+              return;
+            }
+            const group = document.createElement("span");
+            const button = document.createElement("button");
+            control.parentNode.insertBefore(group, control);
+            group.append(control, button);
+          },
+        });
+      }),
+    );
+
+    await reconcilePluginFrontends(state, deps);
+    expect(link!.parentNode).toBe(reactParent);
+    expect(container.querySelector("button")).not.toBeNull();
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("does not let an async content-script mount steal a React-owned node", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    installForeignDomMutationGuard();
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => {
+      root.render(
+        createElement(
+          "a",
+          { href: "?path=src/app.ts", "data-testid": "async-file-link" },
+          "src/app.ts",
+        ),
+      );
+    });
+    const link = container.querySelector("[data-testid='async-file-link']");
+    expect(link).toBeInstanceOf(HTMLAnchorElement);
+    const reactParent = link!.parentNode;
+
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("file-reveal", "v1")]);
+    deps.importModule.mockResolvedValue(
+      contentScriptModule((app) => {
+        app.contentScripts.register({
+          id: "file-reveal-buttons",
+          async mount() {
+            await Promise.resolve();
+            const control = document.querySelector(
+              "[data-testid='async-file-link']",
+            );
+            if (
+              !(control instanceof HTMLElement) ||
+              control.parentNode === null
+            ) {
+              return;
+            }
+            const group = document.createElement("span");
+            const button = document.createElement("button");
+            control.parentNode.insertBefore(group, control);
+            group.append(control, button);
+          },
+        });
+      }),
+    );
+
+    await reconcilePluginFrontends(state, deps);
+    expect(link!.parentNode).toBe(reactParent);
+
+    act(() => root.unmount());
+    container.remove();
   });
 });
 

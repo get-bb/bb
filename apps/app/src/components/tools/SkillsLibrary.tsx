@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { buildSkillEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
 import type { EditableSkillScope, SkillSummary } from "@bb/server-contract";
@@ -18,10 +23,11 @@ import {
   SkillsOverview,
 } from "@/components/tools/SkillsCollection";
 import { isSkillEditable } from "@/components/tools/skill-taxonomy";
-import { CREATE_SKILL_PROMPT } from "@/lib/automation-prompt";
+import { CREATE_SKILL_PROMPT } from "@/lib/create-resource-prompts";
 import {
   buildRegistrySkillReferencePrompt,
   fetchRegistrySkillDetail,
+  fetchRegistrySkillEntries,
   fetchRegistrySkillEntry,
   fetchRegistryRepositoryStars,
   fetchRegistrySkills,
@@ -29,7 +35,7 @@ import {
   registryRepositoryKey,
   resolveInstalledRegistrySkill,
 } from "@/lib/skills-registry";
-import type { RegistryPagination, RegistrySkill } from "@/lib/skills-registry";
+import type { RegistryRanking, RegistrySkill } from "@/lib/skills-registry";
 import {
   getRegistrySkillDetailRoutePath,
   getRegistrySkillsRoutePath,
@@ -38,23 +44,17 @@ import {
   getSkillsRoutePath,
 } from "@/lib/route-paths";
 import {
+  prefetchSkillDetail,
   useDeleteSkill,
   useProjectSkills,
   useSkillContent,
   useSkillFiles,
 } from "@/hooks/queries/skills-queries";
+import { CreateWithTemplatesButton } from "@/components/create-via-prompt-examples";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 
 const EMPTY_SKILLS: readonly SkillSummary[] = [];
-const EMPTY_REGISTRY_PAGINATION: RegistryPagination = {
-  page: 0,
-  perPage: REGISTRY_PAGE_SIZE,
-  total: 0,
-  hasMore: false,
-};
 const REGISTRY_LIST_STALE_TIME_MS = 30 * 60_000;
-
-type SkillsCollectionMode = "library" | "browse";
 
 /**
  * View a skill's SKILL.md. Writable user-owned local skills can start an edit
@@ -128,6 +128,7 @@ function SkillDetailPage({
 }
 
 export function SkillsLibrary() {
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
   const { skillId: routeSkillId, registrySkillId: routeRegistrySkillId } =
@@ -164,9 +165,51 @@ export function SkillsLibrary() {
     refetchOnWindowFocus: false,
     staleTime: REGISTRY_LIST_STALE_TIME_MS,
   });
+  // Loaded pages accumulate for infinite scroll; a new search starts a fresh
+  // accumulation, and so does a ranking change — the server can fall back from
+  // trending to all-time mid-scroll, and the two rankings' `installs` count
+  // different windows, so their pages must never mix in one grid. Dedupe by id
+  // so a refetched page cannot double its rows.
+  const trimmedRegistrySearch = registrySearch.trim();
+  const [loadedRegistry, setLoadedRegistry] = useState<{
+    ranking: RegistryRanking;
+    search: string;
+    skills: RegistrySkill[];
+    hasMore: boolean;
+  }>({
+    ranking: "trending",
+    search: trimmedRegistrySearch,
+    skills: [],
+    hasMore: false,
+  });
+  useEffect(() => {
+    const data = registryQuery.data;
+    if (data === undefined) return;
+    setLoadedRegistry((current) => {
+      const matches =
+        current.ranking === data.ranking &&
+        current.search === trimmedRegistrySearch;
+      const base = matches ? current.skills : [];
+      const seen = new Set(base.map((skill) => skill.id));
+      const fresh = data.skills.filter((skill) => !seen.has(skill.id));
+      return {
+        ranking: data.ranking,
+        search: trimmedRegistrySearch,
+        skills: fresh.length === 0 && matches ? base : [...base, ...fresh],
+        hasMore: data.pagination.hasMore,
+      };
+    });
+  }, [registryQuery.data, trimmedRegistrySearch]);
+  const loadedRegistrySkills = useMemo(
+    () =>
+      loadedRegistry.search === trimmedRegistrySearch
+        ? loadedRegistry.skills
+        : [],
+    [loadedRegistry, trimmedRegistrySearch],
+  );
   const registryRepositorySources = useMemo(() => {
     const sources = new Map<string, string>();
-    for (const skill of registryQuery.data?.skills ?? []) {
+    for (const skill of loadedRegistrySkills) {
       if (skill.stars === null) {
         const repositoryKey = registryRepositoryKey(skill.source);
         if (!sources.has(repositoryKey)) {
@@ -178,7 +221,7 @@ export function SkillsLibrary() {
       repositoryKey,
       source,
     }));
-  }, [registryQuery.data?.skills]);
+  }, [loadedRegistrySkills]);
   const registryRepositoryStars = useQueries({
     queries: registryRepositorySources.map(({ repositoryKey, source }) => ({
       queryKey: ["skills-registry-repository-stars", repositoryKey],
@@ -212,45 +255,78 @@ export function SkillsLibrary() {
       ),
     }),
   });
-  const registryDescriptionSkills = useMemo(
+  // The meaning of a displayed row's `installs` follows the accumulated
+  // ranking — the one those rows were actually served under — not whatever the
+  // latest response happens to report.
+  const registryRanking = loadedRegistry.ranking;
+  /**
+   * Skills needing an entry lookup. A missing description is the usual reason,
+   * but on the trending ranking the entry is also the only source of a
+   * lifetime install count — so ask for every card there rather than letting
+   * install correctness depend on whether the list happened to carry a summary.
+   * The lookups travel as one batch request per loaded set, not one per card;
+   * `keepPreviousData` keeps already-resolved entries rendered while a newly
+   * loaded page's batch is in flight.
+   */
+  const registryDescriptionSkillIds = useMemo(
     () =>
-      (registryQuery.data?.skills ?? []).filter(
-        (skill) => skill.summary === null,
-      ),
-    [registryQuery.data?.skills],
+      loadedRegistrySkills
+        .filter(
+          (skill) => skill.summary === null || registryRanking === "trending",
+        )
+        .map((skill) => skill.id)
+        .sort(),
+    [loadedRegistrySkills, registryRanking],
   );
-  const registryDescriptions = useQueries({
-    queries: registryDescriptionSkills.map((skill) => ({
-      queryKey: ["skills-registry-entry", skill.id],
-      queryFn: ({ signal }: { signal: AbortSignal }) =>
-        fetchRegistrySkillEntry(skill.id, signal),
-      enabled: isRegistryBrowseRoute,
-      staleTime: 30 * 60_000,
-      retry: false,
-      refetchOnWindowFocus: false,
-    })),
-    combine: (results) => ({
-      values: new Map(
-        registryDescriptionSkills.flatMap((skill, index) => {
-          const entry = results[index]?.data;
-          return entry === undefined ? [] : ([[skill.id, entry]] as const);
-        }),
-      ),
-      pendingSkillIds: new Set(
-        registryDescriptionSkills.flatMap((skill, index) =>
-          results[index]?.isPending ? [skill.id] : [],
-        ),
-      ),
-    }),
+  const registryEntriesQuery = useQuery({
+    queryKey: ["skills-registry-entries", registryDescriptionSkillIds],
+    queryFn: ({ signal }) =>
+      fetchRegistrySkillEntries(registryDescriptionSkillIds, signal),
+    enabled: isRegistryBrowseRoute && registryDescriptionSkillIds.length > 0,
+    staleTime: 30 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
   });
+  const registryDescriptions = useMemo(() => {
+    const values = new Map(
+      (registryEntriesQuery.data ?? []).map(
+        (entry) => [entry.id, entry] as const,
+      ),
+    );
+    return {
+      values,
+      pendingSkillIds: new Set(
+        registryEntriesQuery.isFetching
+          ? registryDescriptionSkillIds.filter((id) => !values.has(id))
+          : [],
+      ),
+    };
+  }, [
+    registryEntriesQuery.data,
+    registryEntriesQuery.isFetching,
+    registryDescriptionSkillIds,
+  ]);
   const registrySkills = useMemo(
     () =>
-      (registryQuery.data?.skills ?? []).map((skill) => {
+      loadedRegistrySkills.map((skill) => {
         const entry = registryDescriptions.values.get(skill.id);
+        // Only the trending ranking needs the override: there the list's
+        // `installs` counts a 24h window, and the entry carries the lifetime
+        // count. On the all-time ranking the list value is already the
+        // lifetime one and is the authoritative number, so taking the scraped
+        // detail-page figure instead would mix two sources in one grid.
         const describedSkill =
           entry === undefined
             ? skill
-            : { ...skill, topic: entry.topic, summary: entry.summary };
+            : {
+                ...skill,
+                ...(registryRanking === "trending"
+                  ? { installs: entry.installs }
+                  : {}),
+                topic: entry.topic,
+                summary: entry.summary,
+              };
         if (describedSkill.stars !== null) return describedSkill;
         const stars = registryRepositoryStars.values.get(
           registryRepositoryKey(describedSkill.source),
@@ -260,15 +336,34 @@ export function SkillsLibrary() {
           : { ...describedSkill, stars };
       }),
     [
-      registryQuery.data?.skills,
+      loadedRegistrySkills,
       registryDescriptions.values,
       registryRepositoryStars.values,
+      registryRanking,
     ],
+  );
+  /**
+   * Cards whose lifetime install count could not be resolved. Only possible on
+   * the trending ranking, where the list number means something else entirely
+   * — a card here would otherwise show a 24h figure formatted exactly like its
+   * neighbours' lifetime totals, understating by up to two orders of
+   * magnitude. Showing nothing is the honest reading of "we don't know yet".
+   */
+  const unknownInstallSkillIds = useMemo(
+    () =>
+      new Set(
+        registryRanking === "trending"
+          ? loadedRegistrySkills.flatMap((skill) =>
+              registryDescriptions.values.has(skill.id) ? [] : [skill.id],
+            )
+          : [],
+      ),
+    [registryRanking, loadedRegistrySkills, registryDescriptions.values],
   );
   const pendingRegistrySkillIds = useMemo(
     () =>
       new Set(
-        (registryQuery.data?.skills ?? []).flatMap((skill) =>
+        loadedRegistrySkills.flatMap((skill) =>
           registryDescriptions.pendingSkillIds.has(skill.id) ||
           registryRepositoryStars.pendingRepositoryKeys.has(
             registryRepositoryKey(skill.source),
@@ -279,7 +374,7 @@ export function SkillsLibrary() {
       ),
     [
       registryDescriptions.pendingSkillIds,
-      registryQuery.data?.skills,
+      loadedRegistrySkills,
       registryRepositoryStars.pendingRepositoryKeys,
     ],
   );
@@ -373,17 +468,6 @@ export function SkillsLibrary() {
     setRegistrySearch(nextQuery);
     setRegistryPage(0);
   }, []);
-  const changeCollectionMode = useCallback(
-    (mode: SkillsCollectionMode) => {
-      if (mode === "browse") {
-        setRegistryPage(0);
-        navigate(getSkillsRoutePath());
-        return;
-      }
-      navigate(getToolsOwnedCollectionRoutePath("skills"));
-    },
-    [navigate],
-  );
   const closeSkillDetail = useCallback(() => {
     navigate(getToolsOwnedCollectionRoutePath("skills"));
   }, [navigate]);
@@ -490,31 +574,46 @@ export function SkillsLibrary() {
           hasError={hasError}
           query={libraryQuery}
           activeMode={isRegistryBrowseRoute ? "browse" : "library"}
-          onModeChange={changeCollectionMode}
           browseContent={
             <RegistrySkillsBrowsePage
               skills={registrySkills}
-              pendingSkillIds={pendingRegistrySkillIds}
-              pagination={
-                registryQuery.data?.pagination ?? {
-                  ...EMPTY_REGISTRY_PAGINATION,
-                  page: registryRequestPage,
-                }
+              action={
+                <CreateWithTemplatesButton
+                  kind="skill"
+                  label="New bb skill"
+                  onCreate={handleCreateSkill}
+                />
               }
+              pendingSkillIds={pendingRegistrySkillIds}
+              unknownInstallSkillIds={unknownInstallSkillIds}
               isLoading={
-                registryQuery.isFetching && registryQuery.data === undefined
+                registryQuery.isFetching && loadedRegistrySkills.length === 0
+              }
+              loadingMore={
+                registryQuery.isFetching && loadedRegistrySkills.length > 0
+              }
+              hasMore={
+                loadedRegistry.search === trimmedRegistrySearch &&
+                loadedRegistry.hasMore
               }
               hasError={registryQuery.isError}
               query={registrySearch}
               onRetry={() => void registryQuery.refetch()}
               onQueryChange={handleRegistryQueryChange}
-              onPageChange={setRegistryPage}
+              onLoadMore={() => {
+                if (!registryQuery.isFetching) {
+                  setRegistryPage((current) => current + 1);
+                }
+              }}
               onFork={forkRegistrySkill}
               onSelect={openRegistrySkill}
             />
           }
           onCreateSkill={handleCreateSkill}
           onSelectSkill={openSkill}
+          onPrefetchSkill={(skill) =>
+            prefetchSkillDetail(queryClient, PERSONAL_PROJECT_ID, skill)
+          }
           onQueryChange={setLibraryQuery}
           onRetry={() => void skillsQuery.refetch()}
         />

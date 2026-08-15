@@ -8,23 +8,15 @@ import {
   serviceTierSchema,
 } from "./shared-types.js";
 import { threadStatusSchema, threadStatusValues } from "./thread-status.js";
-import {
-  threadChildOriginSchema,
-  threadOriginKindSchema,
-} from "./thread-child-origin.js";
+import { threadOriginKindSchema } from "./thread-origin-kind.js";
 import { threadVisibilitySchema } from "./thread-visibility.js";
 export { threadStatusSchema, threadStatusValues } from "./thread-status.js";
 export type { ThreadStatus } from "./thread-status.js";
 export {
-  threadChildOriginSchema,
-  threadChildOriginValues,
   threadOriginKindSchema,
   threadOriginKindValues,
-} from "./thread-child-origin.js";
-export type {
-  ThreadChildOrigin,
-  ThreadOriginKind,
-} from "./thread-child-origin.js";
+} from "./thread-origin-kind.js";
+export type { ThreadOriginKind } from "./thread-origin-kind.js";
 export {
   threadVisibilitySchema,
   threadVisibilityValues,
@@ -112,14 +104,15 @@ export type WorkspaceCommitSummary = z.infer<
 >;
 
 /**
- * Fields shared by any surface that reports a set of changed files plus the
- * line-level totals across them. Both `workspaceWorkingTreeSchema` and
- * `workspaceMergeBaseSchema` embed these so their file list and stats stay
- * in lockstep.
+ * Fields shared by any surface that reports changed files plus the line totals
+ * Git computed for them. `lineStatsComplete` distinguishes exact totals from
+ * tracked-only totals that intentionally omit untracked file contents.
  */
 export const workspaceChangeStatsSchema = z.object({
   insertions: z.number(),
   deletions: z.number(),
+  /** False when line totals omit files whose contents were intentionally not read. */
+  lineStatsComplete: z.boolean(),
   files: z.array(workspaceFileStatusSchema),
 });
 export type WorkspaceChangeStats = z.infer<typeof workspaceChangeStatsSchema>;
@@ -391,8 +384,6 @@ export const threadSchema = z.object({
   parentThreadId: z.string().nullable(),
   sourceThreadId: z.string().nullable(),
   originKind: threadOriginKindSchema.nullable(),
-  /** @deprecated Use originKind. */
-  childOrigin: threadChildOriginSchema.nullable(),
   /** Id of the plugin that spawned this thread; null for non-plugin origins. */
   originPluginId: z.string().nullable(),
   visibility: threadVisibilitySchema,

@@ -1,5 +1,5 @@
 {
-  "version": "7",
+  "version": "6",
   "dialect": "sqlite",
   "entries": [
     {
@@ -672,6 +672,48 @@
       "version": "6",
       "when": 1786540591130,
       "tag": "0095_glorious_paper_doll",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "6",
+      "when": 1786565524902,
+      "tag": "0096_drop_thread_child_origin",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "6",
+      "when": 1786719546233,
+      "tag": "0097_plugin_artifact_git_checkout_root",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "6",
+      "when": 1786722013088,
+      "tag": "0098_plugin_marketplaces",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "6",
+      "when": 1786722089647,
+      "tag": "0099_plugin_source_git_range",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "6",
+      "when": 1786722321775,
+      "tag": "0100_plugin_marketplace_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "6",
+      "when": 1786745604262,
+      "tag": "0101_rename_curated_marketplace",
       "breakpoints": true
     }
   ]

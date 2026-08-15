@@ -1,98 +1,77 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
-import { MemoryRouter, useLocation } from "react-router-dom";
-import { SidebarProvider } from "@/components/ui/sidebar";
 import { ToolsSidebar } from "./ToolsSidebar";
+import { SidebarProvider } from "@/components/ui/sidebar";
 
-function CurrentPath() {
-  const location = useLocation();
-  return (
-    <output aria-label="Current path">
-      {location.pathname}
-      {location.search}
-      {location.hash}
-    </output>
-  );
-}
+afterEach(cleanup);
 
-function renderToolsSidebar(path: string) {
+const PAGE_ROWS = [
+  "Browse plugins",
+  "Installed plugins",
+  "Browse skills",
+  "My skills",
+];
+
+function renderAt(path: string, appRoutePath = "/") {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <SidebarProvider>
         <ToolsSidebar
-          appRoutePath="/projects/proj_one/threads/thr_one"
+          appRoutePath={appRoutePath}
           isResizing={false}
           onResizeMouseDown={() => {}}
           showTopReserve={false}
         />
-        <CurrentPath />
       </SidebarProvider>
     </MemoryRouter>,
   );
 }
 
-afterEach(cleanup);
+const row = (name: string) => screen.getByRole("link", { name });
 
 describe("ToolsSidebar", () => {
-  it("keeps the owning tool selected for a deep-linked detail route", () => {
-    renderToolsSidebar("/tools/plugins/ui-patterns");
+  it("lists every Extensions page under its section and keeps the back target", () => {
+    renderAt("/extensions/plugins", "/projects/proj_one");
 
-    expect(
-      screen
-        .getByRole("link", { name: "Plugins" })
-        .getAttribute("aria-current"),
-    ).toBe("location");
-    expect(
-      screen.getByRole("link", { name: "Skills" }).getAttribute("aria-current"),
-    ).toBeNull();
-    expect(screen.queryByRole("link", { name: "Automations" })).toBeNull();
-
-    fireEvent.click(screen.getByRole("link", { name: "Plugins" }));
-    expect(screen.getByLabelText("Current path").textContent).toBe(
-      "/tools/plugins",
+    expect(screen.getByText("Plugins")).toBeTruthy();
+    expect(screen.getByText("Skills")).toBeTruthy();
+    expect(row("Browse plugins").getAttribute("href")).toBe(
+      "/extensions/plugins",
     );
+    expect(row("Installed plugins").getAttribute("href")).toBe(
+      "/extensions/plugins?view=installed",
+    );
+    expect(row("Browse skills").getAttribute("href")).toBe(
+      "/extensions/skills",
+    );
+    expect(row("My skills").getAttribute("href")).toBe(
+      "/extensions/skills?view=library",
+    );
+    // The back row must point at the remembered app route, not merely exist.
+    expect(row("Back to app").getAttribute("href")).toBe("/projects/proj_one");
   });
 
-  it("contains only Plugins and Skills and navigates back to the app", () => {
-    renderToolsSidebar("/tools/skills");
-
-    expect(screen.getByText("Extensions")).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "Automations" })).toBeNull();
-
-    fireEvent.click(screen.getByRole("link", { name: "Plugins" }));
-    expect(screen.getByLabelText("Current path").textContent).toBe(
-      "/tools/plugins",
+  it.each([
+    ["/extensions/plugins", "Browse plugins"],
+    ["/extensions/plugins?view=installed", "Installed plugins"],
+    ["/extensions/plugins/github", "Browse plugins"],
+    ["/extensions/plugins/github?view=installed", "Installed plugins"],
+    ["/extensions/skills", "Browse skills"],
+    ["/extensions/skills/registry", "Browse skills"],
+    ["/extensions/skills?view=library", "My skills"],
+    ["/extensions/skills/library/my-skill", "My skills"],
+    // The pre-Library detail path still resolves during its redirect window.
+    ["/extensions/skills/installed/my-skill", "My skills"],
+    ["/extensions/skills/registry/owner%2Frepo%2Fskill", "Browse skills"],
+  ])("marks exactly one active page for %s", (path, expected) => {
+    renderAt(path);
+    // Exclusivity: two lit rows must fail, not just a missing expected row.
+    const activeRows = PAGE_ROWS.filter(
+      (name) => row(name).getAttribute("aria-current") === "page",
     );
-    expect(
-      screen
-        .getByRole("link", { name: "Plugins" })
-        .getAttribute("aria-current"),
-    ).toBe("page");
-
-    fireEvent.click(screen.getByRole("link", { name: "Back to app" }));
-    expect(screen.getByLabelText("Current path").textContent).toBe(
-      "/projects/proj_one/threads/thr_one",
-    );
-  });
-
-  it("preserves each section route while navigating within Extensions", () => {
-    renderToolsSidebar("/tools/plugins?view=installed#installed-list");
-
-    fireEvent.click(screen.getByRole("link", { name: "Skills" }));
-    expect(screen.getByLabelText("Current path").textContent).toBe(
-      "/tools/skills",
-    );
-
-    fireEvent.click(screen.getByRole("link", { name: "Plugins" }));
-    expect(screen.getByLabelText("Current path").textContent).toBe(
-      "/tools/plugins?view=installed#installed-list",
-    );
-
-    fireEvent.click(screen.getByRole("link", { name: "Skills" }));
-    expect(screen.getByLabelText("Current path").textContent).toBe(
-      "/tools/skills",
-    );
+    expect(activeRows).toEqual([expected]);
   });
 });

@@ -65,11 +65,6 @@ interface BeginThreadReadStateTransactionArgs extends ThreadIdCacheArgs {
   lastReadAt: number | null;
 }
 
-interface BeginThreadTitleTransactionArgs extends ThreadIdCacheArgs {
-  sectionId?: string | null;
-  title: string | null;
-}
-
 interface BeginThreadMetadataTransactionArgs extends ThreadIdCacheArgs {
   sectionId?: string | null;
   title?: string | null;
@@ -392,20 +387,6 @@ export function beginThreadReadStateTransaction({
     }),
     queryClient,
     threadId,
-  });
-}
-
-export function beginThreadTitleTransaction({
-  sectionId,
-  queryClient,
-  threadId,
-  title,
-}: BeginThreadTitleTransactionArgs): Promise<ThreadListMutationTransaction> {
-  return beginThreadMetadataTransaction({
-    sectionId,
-    queryClient,
-    threadId,
-    title,
   });
 }
 

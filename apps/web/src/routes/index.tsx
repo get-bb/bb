@@ -17,6 +17,8 @@ import {
   MessageQuestionIcon,
   Mic02Icon,
   MoreHorizontalIcon,
+  PauseIcon,
+  PlayIcon,
   PlusMinusSquare01Icon,
   SentIcon,
   Settings01Icon,
@@ -26,12 +28,23 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
 import { initAnalytics, trackLandingEvent } from "../landing/analytics";
 import bbIcon from "../assets/bb-icon.png";
+import blackstoneLogo from "../assets/company-logos/blackstone.png";
+import datadogLogo from "../assets/company-logos/datadog.svg";
+import figmaLogo from "../assets/company-logos/figma.svg";
+import metaLogo from "../assets/company-logos/meta.svg";
+import moodysLogo from "../assets/company-logos/moodys.png";
+import notionLogo from "../assets/company-logos/notion.png";
+import ownerLogo from "../assets/company-logos/owner.png";
+import pendoLogo from "../assets/company-logos/pendo.svg";
+import renderLogo from "../assets/company-logos/render.svg";
+import shortcutLogo from "../assets/company-logos/shortcut.svg";
+import simileLogo from "../assets/company-logos/simile.svg";
 import hermesAvatar from "../assets/hermes-avatar.jpg";
 import vscodeIcon from "../assets/vscode.png";
 import { RELEASE_META, parseChangelog } from "../landing/changelog";
@@ -42,7 +55,7 @@ import {
   GitHubLink,
   ProductHuntCallout,
 } from "../landing/cta";
-import { DASHBOARD_PATH } from "../lib/connect-return-to";
+import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import {
   ClaudeIcon,
   CursorIcon,
@@ -64,6 +77,33 @@ import {
 } from "../landing/site";
 import interWoff2 from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
 import landingCss from "../landing/landing.css?url";
+
+const COMPANY_PROOF = [
+  ["Meta", metaLogo],
+  ["Figma", figmaLogo],
+  ["Notion", notionLogo],
+  ["Datadog", datadogLogo],
+  ["Owner.com", ownerLogo],
+  ["Pendo", pendoLogo],
+  ["Blackstone", blackstoneLogo],
+  ["Moody's", moodysLogo],
+  ["Shortcut", shortcutLogo],
+  ["Render", renderLogo],
+  ["Simile", simileLogo],
+] as const;
+
+function CompanyProofLogos({ duplicate = false }: { duplicate?: boolean }) {
+  return (
+    <ul className="company-proof-logos" aria-hidden={duplicate || undefined}>
+      {COMPANY_PROOF.map(([name, logo]) => (
+        <li key={name} className="company-proof-company">
+          <img src={logo} alt={duplicate ? "" : name} width={20} height={20} />
+          <span aria-hidden="true">{name}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 const [LATEST_RELEASE] = parseChangelog(changelogMd);
 if (!LATEST_RELEASE) {
@@ -1677,24 +1717,53 @@ function SpawnSidebar() {
 /* ── Page ─────────────────────────────────────────────────────────── */
 
 function LandingPage() {
+  const [companyProofPaused, setCompanyProofPaused] = useState(false);
+  const [companyProofInView, setCompanyProofInView] = useState(false);
+  // Start with enough copies to cover a 5K display before hydration: one
+  // copy is ~1300px, and coverage needs (copies - 1) * copyWidth >= viewport.
+  // The measurement below trims the count once JavaScript runs.
+  const [companyProofCopies, setCompanyProofCopies] = useState(5);
+  const companyProofRef = useRef<HTMLElement>(null);
+  const companyProofMarqueeRef = useRef<HTMLDivElement>(null);
   useScrollReveal();
   useConstructMock();
   useFitMock();
+
+  useEffect(() => {
+    const companyProof = companyProofRef.current;
+    if (!companyProof) return;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      setCompanyProofInView(entry?.isIntersecting ?? false);
+    });
+    observer.observe(companyProof);
+    return () => observer.disconnect();
+  }, []);
+
+  // The track scrolls left by one logo-list copy per animation cycle, so the
+  // copies after the first must cover the full marquee width or the viewport
+  // runs out of content near the end of each cycle on wide screens.
+  useEffect(() => {
+    const marquee = companyProofMarqueeRef.current;
+    const firstCopy = marquee?.querySelector(".company-proof-logos");
+    if (!marquee || !firstCopy) return;
+
+    const measure = () => {
+      const copyWidth = firstCopy.getBoundingClientRect().width;
+      if (copyWidth === 0) return;
+      setCompanyProofCopies(
+        Math.max(2, Math.ceil(marquee.clientWidth / copyWidth) + 1),
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(marquee);
+    observer.observe(firstCopy);
+    return () => observer.disconnect();
+  }, []);
   return (
     <div className="wrap">
-      <nav className="nav">
-        <a className="logo" href="/">
-          <img src={bbIcon} alt="bb" width={36} height={36} />
-        </a>
-        <div className="nav-links">
-          <a href="/changelog">Changelog</a>
-          <GitHubLink placement="nav">GitHub</GitHubLink>
-          <a href={DASHBOARD_PATH}>Sign in</a>
-          <DownloadLink placement="nav" className="btn btn-primary btn-sm">
-            Download for macOS
-          </DownloadLink>
-        </div>
-      </nav>
+      <SiteNav />
 
       <header className="hero">
         {PRODUCT_HUNT_LAUNCH_ACTIVE ? (
@@ -1723,6 +1792,44 @@ function LandingPage() {
       </header>
 
       <HeroAppMock />
+
+      <section
+        ref={companyProofRef}
+        className={`company-proof${companyProofPaused ? " is-paused" : ""}${companyProofInView ? "" : " is-offscreen"}`}
+        aria-labelledby="company-proof-title"
+      >
+        <div className="company-proof-heading">
+          <h2 id="company-proof-title">Used by builders at</h2>
+          <button
+            type="button"
+            className="company-proof-toggle"
+            aria-label={
+              companyProofPaused
+                ? "Resume company logos"
+                : "Pause company logos"
+            }
+            onClick={() => setCompanyProofPaused((paused) => !paused)}
+          >
+            <HugeiconsIcon
+              icon={companyProofPaused ? PlayIcon : PauseIcon}
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+        <div className="company-proof-marquee" ref={companyProofMarqueeRef}>
+          <div
+            className="company-proof-track"
+            style={
+              { "--company-proof-copies": companyProofCopies } as CSSProperties
+            }
+          >
+            <CompanyProofLogos />
+            {Array.from({ length: companyProofCopies - 1 }, (_, i) => (
+              <CompanyProofLogos key={i} duplicate />
+            ))}
+          </div>
+        </div>
+      </section>
 
       <Band title="Fully customizable." flip visual={<CustomizeBuild />}>
         <p>
@@ -1799,18 +1906,7 @@ function LandingPage() {
         <EmailSignup placement="footer" />
       </section>
 
-      <footer className="footer">
-        <span>bb is free and open source (MIT)</span>
-        <span>
-          <a href="/changelog">Changelog</a>
-          {" · "}
-          <GitHubLink placement="footer">GitHub</GitHubLink>
-          {" · "}
-          <DiscordLink placement="footer">Discord</DiscordLink>
-          {" · "}
-          <DownloadLink placement="footer">Download</DownloadLink>
-        </span>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

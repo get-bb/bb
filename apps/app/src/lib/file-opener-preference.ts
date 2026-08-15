@@ -44,15 +44,6 @@ export function buildFileOpenerRef(opener: {
   return `${opener.pluginId}:${opener.id}`;
 }
 
-export function findFileOpenersForPath(
-  openers: readonly PluginFileOpenerSlot[],
-  path: string,
-): PluginFileOpenerSlot[] {
-  const extension = getFileExtension(path);
-  if (extension === null) return [];
-  return openers.filter((opener) => opener.extensions.includes(extension));
-}
-
 /**
  * The opener the given path should open with, or null for the built-in
  * preview (no preference, an unknown extension, or a preferred opener that

@@ -155,11 +155,17 @@ export function createParcelWatcherProxy(
   }
 
   function replaySubscriptions(rescan: boolean): void {
-    if (channel === null) {
+    // Bind the channel once. A send that fails reports the child gone from
+    // inside this call, which nulls `channel` and may respawn onto a new one —
+    // so re-reading it per iteration would either dereference null or replay
+    // the rest of the subscriptions onto a child that is not ready yet. Sends
+    // to an already-gone channel are no-ops, so the dead target is harmless.
+    const target = channel;
+    if (target === null) {
       return;
     }
     for (const record of subscriptions.values()) {
-      channel.send({
+      target.send({
         kind: "subscribe",
         id: record.id,
         dir: record.dir,

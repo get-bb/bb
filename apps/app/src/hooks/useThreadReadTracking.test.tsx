@@ -48,6 +48,35 @@ describe("useThreadReadTracking", () => {
     expect(markThreadRead.mutate).not.toHaveBeenCalled();
   });
 
+  it("marks an unread thread read after a mobile pageshow restore", () => {
+    setDocumentVisibilityState("hidden");
+    const markThreadRead = makeMarkThreadRead();
+
+    renderHook(() =>
+      useThreadReadTracking({
+        markThreadRead,
+        thread: {
+          id: "thr_mobile_restore",
+          lastReadAt: 10,
+          latestAttentionAt: 20,
+        },
+      }),
+    );
+
+    expect(markThreadRead.mutate).not.toHaveBeenCalled();
+
+    act(() => {
+      setDocumentVisibilityState("visible");
+      window.dispatchEvent(new Event("pageshow"));
+    });
+
+    expect(markThreadRead.mutate).toHaveBeenCalledTimes(1);
+    expect(markThreadRead.mutate).toHaveBeenLastCalledWith(
+      "thr_mobile_restore",
+      expect.objectContaining({ onError: expect.any(Function) }),
+    );
+  });
+
   it("marks an unread thread once per attention timestamp", () => {
     const markThreadRead = makeMarkThreadRead();
     const { rerender } = renderHook(
@@ -76,9 +105,9 @@ describe("useThreadReadTracking", () => {
     expect(markThreadRead.mutate).toHaveBeenCalledTimes(2);
   });
 
-  it("allows retrying a failed read marker", () => {
+  it("retries a failed read after pageshow while already visible", () => {
     const markThreadRead = makeMarkThreadRead();
-    const { rerender } = renderHook(() =>
+    renderHook(() =>
       useThreadReadTracking({
         markThreadRead,
         thread: {
@@ -92,7 +121,9 @@ describe("useThreadReadTracking", () => {
       markThreadRead.mutate.mock.calls[0]?.[1];
 
     options?.onError?.();
-    rerender();
+    act(() => {
+      window.dispatchEvent(new Event("pageshow"));
+    });
 
     expect(markThreadRead.mutate).toHaveBeenCalledTimes(2);
   });

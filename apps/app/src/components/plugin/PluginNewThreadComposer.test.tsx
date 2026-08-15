@@ -9,14 +9,40 @@
  * environment to project defaults.
  */
 
-import { act, cleanup, render, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { useEffect, type ReactNode } from "react";
+import { Provider } from "jotai";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import {
+  createMemoryRouter,
+  MemoryRouter,
+  RouterProvider,
+} from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { NewThreadRequest } from "@bb/plugin-sdk";
+import type { NewThreadRequest } from "@get-bb/plugin-sdk";
+import {
+  NewThreadComposer,
+  type NewThreadComposerState,
+} from "@/components/promptbox/NewThreadComposer";
+import { encodeReuseValue } from "@/components/pickers/environment-picker-value";
+import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
+import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
+import { buildThreadHandoffLocationState } from "@/lib/thread-handoff-request";
+import { RootComposeView } from "@/views/RootComposeView";
 import { PluginNewThreadComposer } from "./PluginNewThreadComposer";
 
 const mocks = vi.hoisted(() => ({
   promptBoxProps: [] as Array<Record<string, any>>,
+  copyAttachments: vi.fn(),
+  uploadAttachment: vi.fn(),
+  threadsLoading: false,
 }));
 
 vi.mock("@/components/promptbox/NewThreadPromptBox", () => ({
@@ -27,7 +53,7 @@ vi.mock("@/components/promptbox/NewThreadPromptBox", () => ({
 }));
 
 vi.mock("@/lib/sdk", () => ({
-  sdk: { projects: { attachments: { copy: vi.fn() } } },
+  sdk: { projects: { attachments: { copy: mocks.copyAttachments } } },
 }));
 
 const PROJECT = {
@@ -52,6 +78,7 @@ const PROJECT = {
       updatedAt: 0,
     },
   ],
+  threads: [],
 };
 
 // A second project on the same host, so a record switch can differ ONLY by
@@ -65,7 +92,17 @@ const OTHER_PROJECT = {
 
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
   useSidebarNavigation: () => ({
-    data: { projects: [PROJECT, OTHER_PROJECT], personalProject: undefined },
+    data: {
+      projects: [PROJECT, OTHER_PROJECT],
+      personalProject: {
+        id: "personal",
+        name: "Personal",
+        sources: [],
+        threads: [],
+      },
+    },
+    isError: false,
+    isSuccess: true,
   }),
 }));
 
@@ -79,6 +116,7 @@ vi.mock("@/hooks/queries/host-queries", () => ({
 
 vi.mock("@/hooks/queries/system-queries", () => ({
   useOnboardingAgents: () => ({ data: undefined, isPending: false }),
+  useHostProviderCliStatus: () => ({ data: undefined }),
   useSystemConfig: () => ({ data: { primaryHostId: "host_1" } }),
   useSystemExecutionOptions: () => ({
     data: {
@@ -135,7 +173,18 @@ vi.mock("@/hooks/queries/system-queries", () => ({
 }));
 
 vi.mock("@/hooks/queries/thread-queries", () => ({
-  useThreads: () => ({ data: [], isLoading: false }),
+  useThreads: () => ({ data: [], isLoading: mocks.threadsLoading }),
+  useThreadStorageFiles: () => ({
+    data: undefined,
+    error: null,
+    isLoading: false,
+    refetch: vi.fn(),
+  }),
+  useThreadStorageFilePreview: () => ({
+    data: undefined,
+    error: null,
+    isLoading: false,
+  }),
 }));
 
 vi.mock("@/hooks/queries/project-queries", () => ({
@@ -167,7 +216,10 @@ vi.mock("@/hooks/queries/project-default-execution-options-query", () => ({
 }));
 
 vi.mock("@/hooks/mutations/project-mutations", () => ({
-  useUploadPromptAttachment: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUploadPromptAttachment: () => ({
+    mutateAsync: mocks.uploadAttachment,
+    isPending: false,
+  }),
 }));
 
 vi.mock("@/hooks/usePromptMentions", () => ({
@@ -192,10 +244,61 @@ vi.mock("@/hooks/useCommandSuggestions", () => ({
   }),
 }));
 
+vi.mock("@/hooks/useQuickCreateProject", () => ({
+  useQuickCreateProjectController: () => ({
+    hostId: null,
+    hostName: null,
+    hosts: [],
+    isAvailable: false,
+    isCreating: false,
+    openCreateDialog: vi.fn(),
+    platform: null,
+    projectPathDialog: {
+      isOpen: false,
+      onOpenChange: vi.fn(),
+      target: null,
+    },
+    submitProjectPath: vi.fn(),
+  }),
+}));
+
+vi.mock("@/components/dialogs/ProjectMachineSetupDialog", () => ({
+  ProjectMachineSetupDialog: () => null,
+}));
+
+vi.mock("@/views/RootComposeSecondaryContent", () => ({
+  ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS: "",
+  RootComposeSecondaryContent: ({ children }: { children: ReactNode }) =>
+    children,
+}));
+
 function latestPromptBoxProps(): Record<string, any> {
   const props = mocks.promptBoxProps.at(-1);
   expect(props).toBeDefined();
   return props as Record<string, any>;
+}
+
+function RootReuseProbe() {
+  const [reuseEnvironment, setReuseEnvironment] =
+    useRootComposeReuseEnvironment();
+  return (
+    <button
+      type="button"
+      data-testid="root-reuse-probe"
+      data-value={reuseEnvironment}
+      onClick={() => setReuseEnvironment("reuse:env-root")}
+    />
+  );
+}
+
+function ForkSeedSurface({ composer }: { composer: NewThreadComposerState }) {
+  const { seedEnvironmentSelectionValue } = composer;
+  useEffect(() => {
+    seedEnvironmentSelectionValue(encodeReuseValue("env-source"));
+  }, [seedEnvironmentSelectionValue]);
+  return composer.renderPromptBox({
+    zenModeStorageKey: "bb.promptbox.zen-mode.test-root-fork",
+  });
 }
 
 function composerElement(
@@ -264,7 +367,15 @@ async function submit(): Promise<void> {
 describe("PluginNewThreadComposer seeding", () => {
   beforeEach(() => {
     mocks.promptBoxProps.length = 0;
+    mocks.copyAttachments.mockReset();
+    mocks.uploadAttachment.mockReset();
+    mocks.threadsLoading = false;
     window.localStorage.clear();
+    getPromptDraftAccessor({ kind: "new-thread" }).setDraft({
+      text: "",
+      mentions: [],
+      attachments: [],
+    });
   });
 
   afterEach(() => {
@@ -288,6 +399,9 @@ describe("PluginNewThreadComposer seeding", () => {
 
     expect(submitted).toHaveLength(1);
     expect(submitted[0]).toEqual(STORED_REQUEST);
+    await waitFor(() => {
+      expect(latestPromptBoxProps().value).toBe("");
+    });
   });
 
   it("re-seeds every selection when the seed props change, even after a user pick", async () => {
@@ -450,5 +564,222 @@ describe("PluginNewThreadComposer seeding", () => {
         workspace: { type: "unmanaged", path: null },
       },
     });
+  });
+
+  it("does not clear the root reuse selection after a plugin submission", async () => {
+    render(
+      <Provider>
+        <MemoryRouter>
+          <RootReuseProbe />
+          <PluginNewThreadComposer
+            draftKey="root-reuse-isolation"
+            defaultProjectId={STORED_REQUEST.projectId}
+            defaultProviderId={STORED_REQUEST.providerId}
+            defaultModel={STORED_REQUEST.model}
+            defaultReasoningLevel={STORED_REQUEST.reasoningLevel}
+            defaultPermissionMode={STORED_REQUEST.permissionMode}
+            defaultEnvironment={STORED_REQUEST.environment}
+            initialPrompt="plugin prompt"
+            onSubmit={() => undefined}
+          />
+        </MemoryRouter>
+      </Provider>,
+    );
+    fireEvent.click(screen.getByTestId("root-reuse-probe"));
+    expect(screen.getByTestId("root-reuse-probe").dataset.value).toBe(
+      "reuse:env-root",
+    );
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+
+    await submit();
+
+    expect(screen.getByTestId("root-reuse-probe").dataset.value).toBe(
+      "reuse:env-root",
+    );
+  });
+
+  it("submits a fork with its seeded environment while reuse options load", async () => {
+    mocks.threadsLoading = true;
+    const submitted: NewThreadRequest[] = [];
+    render(
+      <Provider>
+        <MemoryRouter>
+          <NewThreadComposer
+            projectId="proj_1"
+            onProjectChange={() => undefined}
+            draftStorage={{ kind: "new-thread" }}
+            selectionScope="new-thread"
+            seed={{
+              initialPrompt: "fork prompt",
+              environment: {
+                type: "reuse",
+                environmentId: "env-source",
+              },
+            }}
+            resetKey="thr_source"
+            onSubmit={(request) => {
+              submitted.push(request);
+            }}
+          >
+            {(composer) => <ForkSeedSurface composer={composer} />}
+          </NewThreadComposer>
+        </MemoryRouter>
+      </Provider>,
+    );
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0].environment).toEqual({
+      type: "reuse",
+      environmentId: "env-source",
+    });
+  });
+
+  it("keeps an unrelated draft attachment out of a RootComposeView handoff", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
+    getPromptDraftAccessor({ kind: "new-thread" }).setDraft({
+      text: "unrelated draft",
+      mentions: [],
+      attachments: [
+        {
+          type: "localFile",
+          name: "unrelated.txt",
+          path: ".bb/attachments/unrelated.txt",
+          mimeType: "text/plain",
+          sizeBytes: 5,
+        },
+      ],
+    });
+    const router = createMemoryRouter(
+      [{ path: "/", element: <RootComposeView /> }],
+      {
+        initialEntries: [
+          {
+            pathname: "/",
+            state: buildThreadHandoffLocationState({
+              environmentId: "env-handoff",
+              projectId: "proj_1",
+              sourceThreadId: "thr_source",
+              sourceThreadTitle: "Source thread",
+            }),
+          },
+        ],
+      },
+    );
+    render(
+      <Provider>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </Provider>,
+    );
+
+    expect(mocks.promptBoxProps[0]?.modeConfig.environment.value).toBe(
+      "host:host_1:local",
+    );
+    expect(mocks.promptBoxProps[0]?.value).toBe("unrelated draft");
+    expect(mocks.promptBoxProps[0]?.attachments.items).toHaveLength(1);
+    await waitFor(() => {
+      expect(latestPromptBoxProps().value).toBe(
+        "Continue from @thread:thr_source",
+      );
+    });
+    await waitFor(() => {
+      expect(router.state.location.state).toBeNull();
+    });
+    // The snapshotting environment setter can reattach the old file for one
+    // render before the route settles, so checking only the last render would
+    // let the real RootComposeView wiring regress unnoticed.
+    expect(
+      mocks.promptBoxProps.some(
+        (props) =>
+          props.value === "Continue from @thread:thr_source" &&
+          props.attachments.items.length > 0,
+      ),
+    ).toBe(false);
+    expect(latestPromptBoxProps().attachments.items).toEqual([]);
+  });
+
+  it("ignores a repeated submit while the first submission is pending", async () => {
+    let finishSubmit: (() => void) | null = null;
+    const onSubmit = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishSubmit = resolve;
+        }),
+    );
+    renderComposer(STORED_REQUEST, onSubmit, "repeated-submit");
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+
+    act(() => {
+      latestPromptBoxProps().onSubmit();
+      latestPromptBoxProps().onSubmit();
+    });
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      finishSubmit?.();
+    });
+  });
+
+  it("preserves the draft when submission fails", async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new Error("create failed"));
+    renderComposer(STORED_REQUEST, onSubmit, "failed-submit");
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+
+    act(() => latestPromptBoxProps().onSubmit());
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      expect(latestPromptBoxProps().isSubmitting).toBe(false);
+    });
+    expect(latestPromptBoxProps().value).toBe("review every PR for slop");
+  });
+
+  it("keeps the old project when attachment copying fails", async () => {
+    mocks.uploadAttachment.mockResolvedValue({
+      type: "localFile",
+      name: "notes.txt",
+      path: ".bb/attachments/notes.txt",
+      mimeType: "text/plain",
+      sizeBytes: 5,
+    });
+    mocks.copyAttachments.mockRejectedValue(new Error("copy failed"));
+    renderComposer(STORED_REQUEST, vi.fn(), "copy-failure");
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+
+    await act(async () => {
+      await latestPromptBoxProps().attachments.onAttachFiles([
+        new File(["notes"], "notes.txt", { type: "text/plain" }),
+      ]);
+    });
+    await waitFor(() => {
+      expect(latestPromptBoxProps().attachments.items).toHaveLength(1);
+    });
+    await act(async () => {
+      await latestPromptBoxProps().project.onChange("proj_2");
+    });
+
+    expect(mocks.copyAttachments).toHaveBeenCalledWith({
+      projectId: "proj_2",
+      sourceProjectId: "proj_1",
+      paths: [".bb/attachments/notes.txt"],
+    });
+    expect(latestPromptBoxProps().project.value).toBe("proj_1");
+    expect(latestPromptBoxProps().attachments.items).toHaveLength(1);
   });
 });

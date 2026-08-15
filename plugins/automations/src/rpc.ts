@@ -14,7 +14,7 @@ import {
   updateAutomationInputSchema,
 } from "./rpc-types.js";
 import { z } from "zod";
-import { defineRpcContract } from "@bb/plugin-sdk";
+import { defineRpcContract } from "@get-bb/plugin-sdk";
 import type { AutomationService } from "./service.js";
 
 // The bb plugin host restricts rpc method names to /^[a-zA-Z0-9_-]+$/ (they

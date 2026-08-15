@@ -3,17 +3,46 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { pluginCatalogSearchQueryKey } from "@/hooks/queries/plugin-catalog-queries";
+import type { PluginListResult } from "@/hooks/queries/plugin-settings-queries";
 import {
+  pluginCatalogSearchQueryKey,
   pluginListQueryKey,
-  type PluginListResult,
-} from "@/hooks/queries/plugin-settings-queries";
+} from "@/hooks/queries/query-keys";
 import { appToast } from "@/components/ui/app-toast.js";
 import { AddPluginDialog } from "./AddPluginDialog";
 
 interface RecordedRequest {
   url: string;
   init: RequestInit | undefined;
+}
+
+/** The install-plan the dialog resolves before confirming a catalog entry. */
+function installPlanFor(url: string): unknown {
+  const params = new URL(url, "https://bb.test").searchParams;
+  const entryId = params.get("entryId") ?? "";
+  const marketplace = params.get("marketplace") ?? "bb-community";
+  const official = marketplace === "bb-community";
+  return {
+    kind: "marketplace",
+    entryId,
+    pluginId: entryId,
+    displayName: entryId,
+    marketplace,
+    marketplaceDisplayName: official ? "BB Official" : "Acme Plugins",
+    publisherLabel: official ? "BB Official" : "Acme Plugins",
+    official,
+    author: { name: "Acme", url: "https://github.com/acme" },
+    source: "git:https://github.com/acme/plugins.git@semver:^1.0.0",
+    resolvedSource: {
+      kind: "git",
+      url: "https://github.com/acme/plugins.git",
+      range: "^1.0.0",
+      resolvedTag: "v1.2.3",
+      resolvedCommit: "a".repeat(40),
+    },
+    compatible: true,
+    incompatibleReason: null,
+  };
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -31,6 +60,7 @@ const INSTALLED_PLUGIN_RESPONSE = {
     rootDir: "/plugins/linear",
     version: "1.6.2",
     provenance: "direct",
+    publisherLabel: null,
     isOrphanedBuiltin: false,
     sourceDisplay: "npm · @bb-plugins/linear · pinned",
     updateState: {},
@@ -74,6 +104,9 @@ function stubFetch(
       ) {
         return jsonResponse(installBody, installStatus);
       }
+      if (url.startsWith("/api/v1/plugin-catalog/install-plan")) {
+        return jsonResponse({ plan: installPlanFor(url) });
+      }
       return jsonResponse({ error: "not found" }, 404);
     }),
   );
@@ -112,7 +145,10 @@ describe("AddPluginDialog", () => {
       const post = requests.find(
         (request) => request.url === "/api/v1/plugins/install",
       );
-      expect(JSON.parse(String(post?.init?.body))).toEqual({ source });
+      expect(JSON.parse(String(post?.init?.body))).toEqual({
+        source,
+        selection: { kind: "root" },
+      });
     });
   });
 
@@ -141,6 +177,7 @@ describe("AddPluginDialog", () => {
       expect(post).toBeDefined();
       expect(JSON.parse(String(post?.init?.body))).toEqual({
         source: "./plugins/linear",
+        selection: { kind: "root" },
       });
     });
   });
@@ -178,12 +215,88 @@ describe("AddPluginDialog", () => {
     });
   });
 
+  it("describes each catalog source kind truthfully", () => {
+    stubFetch();
+    const { unmount } = renderDialog({
+      entryId: "linear",
+      marketplace: "bb-community",
+      publisherLabel: "BB Community",
+      displayName: "Linear",
+      icon: "Github",
+      iconUrl: null,
+      source: "builtin:linear",
+    });
+    expect(
+      screen.getByText("Install this plugin, bundled with BB."),
+    ).not.toBeNull();
+    unmount();
+
+    // Git catalog entries install from their listed repository, not the app
+    // bundle. A ref can be a branch, so the dialog must not call it pinned.
+    const git = renderDialog({
+      entryId: "thread-hover-cards",
+      marketplace: "bb-community",
+      publisherLabel: "BB Community",
+      displayName: "Thread Hover Cards",
+      icon: "Github",
+      iconUrl: null,
+      source: "git:https://github.com/brsbl/bb-plugins@b173b67",
+    });
+    expect(
+      screen.getByText(
+        "Install this BB Community plugin from its listed source repository.",
+      ),
+    ).not.toBeNull();
+    expect(screen.queryByText(/bundled with BB/)).toBeNull();
+    git.unmount();
+
+    renderDialog({
+      entryId: "widgets",
+      marketplace: "bb-community",
+      publisherLabel: "BB Community",
+      displayName: "Widgets",
+      icon: "Zap",
+      iconUrl: null,
+      source: "npm:bb-plugin-widgets@^1.0.0",
+    });
+    expect(
+      screen.getByText(
+        "Install this BB Community plugin from its listed npm package.",
+      ),
+    ).not.toBeNull();
+  });
+
+  it("shows the exact source, including a pinned npm registry", () => {
+    stubFetch();
+    // A listing can send BB to another registry. The confirmation names it,
+    // so nobody confirms an install whose code comes from an unseen host.
+    renderDialog({
+      entryId: "widgets",
+      displayName: "Widgets",
+      icon: "Zap",
+      iconUrl: null,
+      marketplace: "bb-community",
+      publisherLabel: "BB Community",
+      source: "npm:bb-plugin-widgets@^1.0.0 (registry https://npm.acme.test)",
+    });
+
+    expect(
+      screen.getByText(
+        "npm:bb-plugin-widgets@^1.0.0 (registry https://npm.acme.test)",
+      ),
+    ).not.toBeNull();
+  });
+
   it("installs official catalog entries through the catalog endpoint", async () => {
     const requests = stubFetch();
     renderDialog({
       entryId: "linear",
+      marketplace: "bb-community",
+      publisherLabel: "BB Community",
       displayName: "Linear",
       icon: "Github",
+      iconUrl: null,
+      source: "builtin:linear",
     });
 
     expect(document.querySelector('[data-icon="Github"]')).not.toBeNull();
@@ -198,8 +311,26 @@ describe("AddPluginDialog", () => {
       expect(post).toBeDefined();
       expect(JSON.parse(String(post?.init?.body))).toEqual({
         entryId: "linear",
+        marketplace: "bb-community",
       });
     });
+  });
+
+  it("shows the cached marketplace icon in the confirmation", () => {
+    stubFetch();
+    const iconUrl =
+      "/api/v1/plugin-catalog/icons/bb-community/widgets?h=icon-hash";
+    renderDialog({
+      entryId: "widgets",
+      marketplace: "bb-community",
+      publisherLabel: "BB Community",
+      displayName: "Widgets",
+      icon: null,
+      iconUrl,
+      source: "npm:bb-plugin-widgets@1.0.0",
+    });
+
+    expect(document.querySelector(`img[src="${iconUrl}"]`)).not.toBeNull();
   });
 
   it("returns the installed plugin so the caller can open canonical details", async () => {
@@ -215,8 +346,12 @@ describe("AddPluginDialog", () => {
         onOpenChange={() => {}}
         initial={{
           entryId: "linear",
+          marketplace: "bb-community",
+          publisherLabel: "BB Community",
           displayName: "Linear",
           icon: "Github",
+          iconUrl: null,
+          source: "builtin:linear",
         }}
         onInstalled={(plugin) => {
           onInstalled(plugin);
@@ -260,6 +395,80 @@ describe("AddPluginDialog", () => {
         }),
       );
     });
+  });
+
+  it("shows a third-party listing's resolved source before confirming", async () => {
+    const requests = stubFetch();
+    renderDialog({
+      entryId: "notes",
+      marketplace: "acme-plugins",
+      publisherLabel: "Acme Plugins",
+      displayName: "Acme Notes",
+      icon: "Zap",
+      iconUrl: null,
+      source: "git:https://github.com/acme/plugins.git@semver:^1.0.0",
+    });
+
+    // The resolved tag and commit are the point: the listing's own copy is not
+    // evidence of what the install fetches.
+    await vi.waitFor(() => {
+      expect(screen.getByText("v1.2.3")).toBeTruthy();
+    });
+    expect(screen.getByText("a".repeat(40))).toBeTruthy();
+    expect(screen.getByText("https://github.com/acme/plugins.git")).toBeTruthy();
+    expect(screen.getByText("^1.0.0")).toBeTruthy();
+    expect(screen.getByText(/third-party marketplace/)).toBeTruthy();
+    expect(screen.getByText("Acme Plugins")).toBeTruthy();
+    expect(
+      requests.some((request) =>
+        request.url.startsWith("/api/v1/plugin-catalog/install-plan"),
+      ),
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: /install acme notes/i }));
+    await vi.waitFor(() => {
+      const post = requests.find(
+        (request) => request.url === "/api/v1/plugin-catalog/install",
+      );
+      expect(JSON.parse(String(post?.init?.body))).toEqual({
+        entryId: "notes",
+        marketplace: "acme-plugins",
+        confirmedSource: {
+          kind: "git",
+          url: "https://github.com/acme/plugins.git",
+          range: "^1.0.0",
+          resolvedTag: "v1.2.3",
+          resolvedCommit: "a".repeat(40),
+        },
+      });
+    });
+  });
+
+  it("does not resolve a plan for an official catalog entry", async () => {
+    const requests = stubFetch();
+    renderDialog({
+      entryId: "linear",
+      marketplace: "bb-community",
+      publisherLabel: "BB Community",
+      displayName: "Linear",
+      icon: "Github",
+      iconUrl: null,
+      source: "builtin:linear",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /install linear/i }));
+    await vi.waitFor(() => {
+      expect(
+        requests.some(
+          (request) => request.url === "/api/v1/plugin-catalog/install",
+        ),
+      ).toBe(true);
+    });
+    expect(
+      requests.some((request) =>
+        request.url.startsWith("/api/v1/plugin-catalog/install-plan"),
+      ),
+    ).toBe(false);
   });
 
   it("invalidates catalog-search queries after a successful install", async () => {

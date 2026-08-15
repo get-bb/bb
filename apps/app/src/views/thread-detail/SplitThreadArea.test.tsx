@@ -17,7 +17,13 @@ import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { maximizedPaneIdAtom, splitLayoutAtom } from "@/lib/split-layout/atoms";
+import {
+  DIM_INACTIVE_SPLITS_STORAGE_KEY,
+  dimInactiveSplitsAtom,
+  maximizedPaneIdAtom,
+  splitLayoutAtom,
+} from "@/lib/split-layout/atoms";
+import { wsManager } from "@/lib/ws";
 import {
   listPanes,
   movePane,
@@ -516,7 +522,7 @@ function renderSplitArea(options: {
     store.set(maximizedPaneIdAtom, options.maximizedPaneId);
   }
   render(
-    <TooltipProvider>
+    <TooltipProvider delayDuration={0}>
       <JotaiProvider store={store}>
         <QueryClientProvider client={queryClient}>
           <MemoryRouter initialEntries={[options.path]}>
@@ -561,6 +567,55 @@ afterEach(() => {
 });
 
 describe("SplitThreadArea", () => {
+  it("applies spotlight pane actions to the targeted open split and preference", async () => {
+    const store = renderSplitArea({
+      path: threadPath("thr-b"),
+      layout: twoPaneLayout("pane-2"),
+    });
+    store.set(dimInactiveSplitsAtom, false);
+
+    act(() => {
+      wsManager.handleIncomingMessage(
+        JSON.stringify({
+          type: "thread-pane-action",
+          projectId: PERSONAL_PROJECT_ID,
+          threadId: "thr-a",
+          action: "spotlight",
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(store.get(splitLayoutAtom)?.focusedPaneId).toBe("pane-1");
+      expect(store.get(dimInactiveSplitsAtom)).toBe(true);
+      expect(screen.getByTestId("location").textContent).toBe(
+        threadPath("thr-a"),
+      );
+    });
+
+    act(() => {
+      wsManager.handleIncomingMessage(
+        JSON.stringify({
+          type: "thread-pane-action",
+          projectId: PERSONAL_PROJECT_ID,
+          threadId: "thr-b",
+          action: "clear-spotlight",
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(store.get(splitLayoutAtom)?.focusedPaneId).toBe("pane-2");
+      expect(store.get(dimInactiveSplitsAtom)).toBe(false);
+      expect(screen.getByTestId("location").textContent).toBe(
+        threadPath("thr-b"),
+      );
+    });
+    expect(window.localStorage.getItem(DIM_INACTIVE_SPLITS_STORAGE_KEY)).toBe(
+      "false",
+    );
+  });
+
   it("maximizes without changing the split tree and restores mounted pane state", async () => {
     const initialLayout = twoPaneLayout("pane-1");
     const store = renderSplitArea({

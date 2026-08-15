@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
   type FakePluginHost,
-} from "@bb/plugin-sdk/testing";
-import type { PluginAgentConfigurationContext } from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk/testing";
+import type { PluginAgentConfigurationContext } from "@get-bb/plugin-sdk";
 import plugin, { RENDERER_ID, TOOL_NAME } from "./server.js";
 import { TOOL_INPUT_JSON_SCHEMA } from "./tool-definition.js";
 import type { InteractionPayload, ToolResult } from "./contracts.js";

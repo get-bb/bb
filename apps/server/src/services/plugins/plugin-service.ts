@@ -7,26 +7,40 @@ import type { Context } from "hono";
 import {
   CUSTOM_THEME_CSS_MAX_LENGTH,
   formatPluginThemeId,
+  type DeclaredCodeTheme,
   type JsonValue,
   type PluginThemeMeta,
   type ToolCallResponse,
 } from "@bb/domain";
 import {
-  PLUGIN_CLI_OUTPUT_MAX_BYTES,
   type PluginCliExecutionResult,
-  type PluginCliOutputLimitError,
   type PluginRpcError,
   type PluginRpcValidationIssue,
   type StandardSchemaV1,
   type StandardSchemaV1Issue,
   type StandardSchemaV1Result,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
+import {
+  enforcePluginCliOutputLimit,
+  PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
+  PLUGIN_AGENT_SELECTION_MAX_IDS,
+  PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES,
+  RESERVED_AGENT_TOOL_NAMES,
+} from "@get-bb/plugin-sdk/internal/host-policy";
 // The build engine's natives (esbuild, Tailwind oxide) are dynamically
 // imported inside buildPluginApp — importing this loads nothing heavy.
 import { buildPluginApp, createPluginDevLoop } from "@bb/plugin-build";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
+import {
+  marketplacePublisherLabels,
+  pluginPublisherLabel,
+} from "../plugin-catalog/marketplace-publishers.js";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
-import type { PluginCapabilitySummary } from "@bb/server-contract";
+import {
+  ROOT_PLUGIN_SOURCE_SELECTION,
+  type PluginCapabilitySummary,
+  type PluginSourceSelection,
+} from "@bb/server-contract";
 import {
   claimPluginScheduledRun,
   deleteAllPluginSettings,
@@ -36,6 +50,7 @@ import {
   getThread,
   listDuePluginSchedules,
   listInstalledPlugins,
+  listPendingGitPluginArtifacts,
   listPluginSchedules,
   markInstalledPluginRemoved,
   recordPluginScheduleResult,
@@ -48,7 +63,12 @@ import {
   getLastThreadOutput,
 } from "../threads/thread-data.js";
 import type { PluginBrandingAssetVariant } from "./app-bundle.js";
-import { npmInstallPrefix, parsePluginSource } from "./install-sources.js";
+import { readPluginThemeCodeTheme } from "../system/code-themes.js";
+import {
+  npmInstallPrefix,
+  parsePluginSource,
+  recoverInterruptedGitPluginPromotion,
+} from "./install-sources.js";
 import {
   derivePluginId,
   readPluginManifest,
@@ -56,7 +76,6 @@ import {
 } from "./manifest.js";
 import { listBundledPluginRegistrations } from "./builtin-registry.js";
 import {
-  RESERVED_AGENT_TOOL_NAMES,
   type BbPluginApi,
   type PluginAgentConfigurationContext,
   type PluginAgentToolContext,
@@ -83,6 +102,7 @@ import {
 import { createPluginActivation } from "./plugin-activation.js";
 import {
   createManagedPluginArtifacts,
+  type InstallContext,
   type RegisterInstalledArgs,
 } from "./managed-plugin-artifacts.js";
 import { createPluginRegistration } from "./plugin-registration.js";
@@ -155,6 +175,8 @@ export interface PluginService {
   listThemes(): PluginThemeMeta[];
   /** Read a loaded plugin palette by its globally namespaced id. */
   readThemeCss(themeId: string): Promise<string | null>;
+  /** Load a plugin theme's declared Pierre / VS Code code theme, if any. */
+  readThemeCodeTheme(themeId: string): DeclaredCodeTheme | null;
   /**
    * Install from a source spec: `path:<dir>` (bare paths accepted),
    * `git:<url-ish>@<ref>` (ref required; cloned into the managed dir under
@@ -162,13 +184,56 @@ export interface PluginService {
    * with npm --ignore-scripts under <dataDir>/plugins/npm). git/npm installs
    * hard-fail on an engines.bb mismatch and refuse already-registered ids;
    * use update for an existing managed plugin.
+   *
+   * `selection` picks one plugin out of a multi-plugin `git:`/`path:`
+   * repository, either by directory or by `.bb/plugins.json` entry name.
    */
-  install(source: string): Promise<PluginListEntry>;
+  install(
+    source: string,
+    selection: PluginSourceSelection,
+  ): Promise<PluginListEntry>;
   /**
    * Install a bundled official plugin by its registry name (store install).
    * Registers with catalog provenance so the opt-in survives reconciliation.
    */
   installOfficialPlugin(name: string): Promise<PluginListEntry>;
+  /**
+   * Install a marketplace catalog entry (store install). Installs from the
+   * entry's listed source through the normal pipeline and stamps catalog
+   * provenance, so the plugin traces back to the marketplace that listed it.
+   */
+  installCatalogPlugin(args: {
+    /** Marketplace that listed the entry, e.g. `bb-community`. */
+    marketplace: string;
+    entryId: string;
+    /** Manifest id the catalog entry promises; the install aborts on mismatch. */
+    pluginId: string;
+    source: string;
+    /** Which plugin of a multi-plugin repository the entry lists. */
+    selection: PluginSourceSelection;
+    /** npm registry the listing pins. */
+    npmRegistry?: string;
+    /** Git commit the user confirmed before a third-party install. */
+    expectedGitCommit?: string;
+    /** npm version the user confirmed before a third-party install. */
+    expectedNpmVersion?: string;
+    /** Integrity confirmed with that version, when the registry published one. */
+    expectedNpmIntegrity?: string;
+  }): Promise<PluginListEntry>;
+  /**
+   * The exact npm version and integrity a listing's spec resolves to now.
+   * The catalog shows this in the install confirmation, and the install then
+   * refuses anything else.
+   */
+  resolveCatalogNpmSource(args: {
+    packageName: string;
+    registry?: string;
+    requestedSpec: string;
+    specKind: "default" | "exact" | "tag" | "range";
+  }): Promise<
+    | { outcome: "resolved"; version: string; integrity: string }
+    | { outcome: "unavailable"; detail: string }
+  >;
   installPath(path: string): Promise<PluginListEntry>;
   checkForUpdates(id?: string): Promise<PluginUpdateCheckEntry[]>;
   listUpdateResults(): PluginUpdateCheckEntry[];
@@ -369,35 +434,6 @@ const DEFAULT_MENTION_RESOLVE_TIMEOUT_MS = 10_000;
 const DEFAULT_STABILIZATION_WINDOW_MS = 30_000;
 const DEFAULT_ARTIFACT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const SCHEDULE_SWEEP_BATCH_SIZE = 100;
-
-function enforcePluginCliOutputLimit(
-  result: Omit<PluginCliExecutionResult, "error">,
-  jsonOutput: boolean,
-): PluginCliExecutionResult {
-  const stdoutBytes = Buffer.byteLength(result.stdout, "utf8");
-  const stderrBytes = Buffer.byteLength(result.stderr, "utf8");
-  const totalBytes = stdoutBytes + stderrBytes;
-  if (totalBytes <= PLUGIN_CLI_OUTPUT_MAX_BYTES) return result;
-
-  const error: PluginCliOutputLimitError = {
-    code: "plugin_cli_output_too_large",
-    message:
-      `Plugin CLI output is ${totalBytes} bytes (${stdoutBytes} stdout + ${stderrBytes} stderr), ` +
-      `exceeding the ${PLUGIN_CLI_OUTPUT_MAX_BYTES}-byte limit. Narrow the query, request a smaller page, or use a file/streaming command.`,
-    maxBytes: PLUGIN_CLI_OUTPUT_MAX_BYTES,
-    stdoutBytes,
-    stderrBytes,
-    totalBytes,
-  };
-  return jsonOutput
-    ? {
-        exitCode: 1,
-        stdout: JSON.stringify({ error }),
-        stderr: "",
-        error,
-      }
-    : { exitCode: 1, stdout: "", stderr: error.message, error };
-}
 
 /** Next cron occurrence strictly after `now` (server-local time). */
 function nextCronRunAt(cron: string, now: number): number {
@@ -671,10 +707,6 @@ function normalizeMentionSearchItems(
     };
   });
 }
-
-const PLUGIN_AGENT_SELECTION_MAX_IDS = 256;
-const PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS = 4096;
-const PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES = 128 * 1024;
 
 interface NormalizedPluginAgentConfiguration {
   toolIds: string[];
@@ -973,6 +1005,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     disposeOne,
     loadOne,
     validateInstallDir: (args) => managedValidateInstallDir(args),
+    checkEngineRange,
+    checkPluginSdkRange,
     syncCliSkill,
     notifyPluginsChanged,
     list,
@@ -1105,7 +1139,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   function updateTrackingForRow(row: InstalledPluginRow): string {
     return (row.sourceKind === "npm" && row.sourceNpmSpecKind !== "exact") ||
-      (row.sourceKind === "git" && row.sourceGitRefKind === "branch")
+      (row.sourceKind === "git" &&
+        (row.sourceGitRefKind === "branch" || row.sourceGitRange !== null))
       ? "tracks compatible"
       : "pinned";
   }
@@ -1118,7 +1153,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     if (row.sourceKind === "npm") {
       return `npm · ${row.sourceNpmPackage ?? row.id} · ${updateTrackingForRow(row)}`;
     }
-    return `git · ${row.sourceGitUrl ?? row.source} · ${updateTrackingForRow(row)}`;
+    const range = row.sourceGitRange === null ? "" : ` · ${row.sourceGitRange}`;
+    return `git · ${row.sourceGitUrl ?? row.source}${range} · ${updateTrackingForRow(row)}`;
   }
 
   function updateStateForRow(
@@ -1149,6 +1185,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         : undefined;
     return {
       ...(persisted === undefined ? {} : { outcome: persisted.outcome }),
+      ...(persisted?.outcome === "unavailable"
+        ? { detail: persisted.detail }
+        : {}),
       ...(row.availableCompatibleVersion === null
         ? {}
         : { availableVersion: row.availableCompatibleVersion }),
@@ -1216,7 +1255,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   function list(): PluginListEntry[] {
     const scheduleRows = listPluginSchedules(deps.db);
-    return listInstalledPlugins(deps.db)
+    const rows = listInstalledPlugins(deps.db);
+    // Resolving labels parses every marketplace's stored manifest, so it only
+    // runs when a plugin actually traces back to one. The common case — every
+    // plugin bundled or added from a source — reads no manifest at all.
+    const publisherLabels = rows.some((row) => row.provenance === "catalog")
+      ? marketplacePublisherLabels(deps.db)
+      : new Map<string, string>();
+    return rows
       .sort((a, b) => a.id.localeCompare(b.id))
       .map((row) => {
         const runtime = statuses.get(row.id);
@@ -1237,6 +1283,15 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           ...(row.catalogEntryId === null
             ? {}
             : { catalogEntryId: row.catalogEntryId }),
+          ...(row.catalogMarketplaceName === null
+            ? {}
+            : { catalogMarketplaceName: row.catalogMarketplaceName }),
+          publisherLabel: pluginPublisherLabel({
+            sourceKind: row.sourceKind,
+            provenance: row.provenance,
+            catalogMarketplaceName: row.catalogMarketplaceName,
+            labels: publisherLabels,
+          }),
           isOrphanedBuiltin:
             row.sourceKind === "builtin" &&
             !bundledPlugins.some(
@@ -1340,6 +1395,22 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       return null;
     },
 
+    readThemeCodeTheme(themeId) {
+      for (const [pluginId, plugin] of loaded) {
+        const theme = plugin.manifest.themes.find(
+          (entry) => formatPluginThemeId(pluginId, entry.id) === themeId,
+        );
+        if (!theme) continue;
+        return readPluginThemeCodeTheme(
+          themeId,
+          plugin.manifest.rootDir,
+          theme.codeTheme ?? undefined,
+          theme.codeThemePaths,
+        );
+      }
+      return null;
+    },
+
     events: {
       emitThreadCreated(thread) {
         emitThreadEvent("thread.created", () => ({
@@ -1379,10 +1450,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async start() {
       await backfillNormalizedPluginRegistrations();
-      await withPluginOperationLock(
-        REGISTRATION_MUTATION_KEY,
-        recoverIncompletePluginRollbacks,
-      );
+      await withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
+        for (const artifact of listPendingGitPluginArtifacts(deps.db)) {
+          await withArtifactLock(artifact.path, () =>
+            recoverInterruptedGitPluginPromotion(artifact.path),
+          );
+        }
+        await recoverIncompletePluginRollbacks();
+      });
       await reconcileBundled();
       await loadAll();
       await withPluginOperationLock(REGISTRATION_MUTATION_KEY, runArtifactGc);
@@ -1454,16 +1529,25 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     list,
 
-    async install(source) {
+    async install(source, selection) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
         const parsed = parsePluginSource(source);
-        if (parsed.kind === "builtin") return installBuiltinSource(parsed);
-        if (parsed.kind === "git") return installGitSource(parsed, source);
-        if (parsed.kind === "npm") {
-          refuseBuiltinShadow(derivePluginId(parsed.name));
-          return installNpmSource(parsed, source);
+        if (parsed.kind === "git") {
+          return installGitSource(parsed, source, selection);
         }
-        return installPathSource(parsed.path);
+        if (parsed.kind === "path") {
+          return installPathSource(parsed.path, selection);
+        }
+        // Only a repository holds several plugins; npm and builtin sources
+        // are one package each.
+        if (selection.kind !== "root") {
+          throw new Error(
+            `install refused: ${selection.kind === "entry" ? "--plugin" : "--subdirectory"} applies to git: and path: sources only`,
+          );
+        }
+        if (parsed.kind === "builtin") return installBuiltinSource(parsed);
+        refuseBuiltinShadow(derivePluginId(parsed.name));
+        return installNpmSource(parsed, source);
       });
     },
 
@@ -1479,9 +1563,59 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       });
     },
 
+    async installCatalogPlugin(entry) {
+      return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
+        const parsed = parsePluginSource(entry.source);
+        const context: InstallContext = {
+          provenance: {
+            kind: "catalog",
+            marketplace: entry.marketplace,
+            entryId: entry.entryId,
+          },
+          expectedPluginId: entry.pluginId,
+          ...(entry.npmRegistry === undefined
+            ? {}
+            : { npmRegistry: entry.npmRegistry }),
+          ...(entry.expectedGitCommit === undefined
+            ? {}
+            : { expectedGitCommit: entry.expectedGitCommit }),
+          ...(entry.expectedNpmVersion === undefined
+            ? {}
+            : { expectedNpmVersion: entry.expectedNpmVersion }),
+          ...(entry.expectedNpmIntegrity === undefined
+            ? {}
+            : { expectedNpmIntegrity: entry.expectedNpmIntegrity }),
+        };
+        if (parsed.kind === "git") {
+          return installGitSource(
+            parsed,
+            entry.source,
+            entry.selection,
+            context,
+          );
+        }
+        if (parsed.kind === "npm") {
+          // Only a repository holds several plugins.
+          if (entry.selection.kind !== "root") {
+            throw new Error(
+              `catalog entry "${entry.entryId}" selects a subdirectory of an npm package`,
+            );
+          }
+          refuseBuiltinShadow(derivePluginId(parsed.name));
+          return installNpmSource(parsed, entry.source, context);
+        }
+        throw new Error(
+          `catalog entry "${entry.entryId}" has an unsupported source "${entry.source}"`,
+        );
+      });
+    },
+
+    resolveCatalogNpmSource: (args) =>
+      managedPluginArtifacts.resolveNpmCandidateForPlan(args),
+
     installPath: (path) =>
       withPluginOperationLock(REGISTRATION_MUTATION_KEY, () =>
-        installPathSource(path),
+        installPathSource(path, ROOT_PLUGIN_SOURCE_SELECTION),
       ),
 
     ...pluginUpdates,

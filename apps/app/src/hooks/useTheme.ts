@@ -1,6 +1,11 @@
 import * as React from "react";
 import { getDefaultStore } from "jotai";
 import { atomWithStorage } from "jotai/utils";
+import {
+  DARK_COLOR_SCHEME_QUERY,
+  getMediaQuerySnapshot,
+  subscribeMediaQuery,
+} from "@bb/shared-ui/hooks/use-media-query";
 import { createLocalStorageEnumStorage } from "@/lib/browser-storage";
 
 export const THEME_STORAGE_KEY = "bb.theme";
@@ -59,11 +64,7 @@ export function refreshThemeColorMeta(): void {
 }
 
 function getSystemTheme(): Theme {
-  if (typeof window === "undefined") return "light";
-  if (typeof window.matchMedia !== "function") return "light";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
+  return getMediaQuerySnapshot(DARK_COLOR_SCHEME_QUERY) ? "dark" : "light";
 }
 
 function getPreferredTheme(): Theme {
@@ -111,9 +112,7 @@ function ensureThemeObserver() {
   applyThemeClass(currentTheme);
   getDefaultStore().sub(themePreferenceAtom, emitTheme);
 
-  if (typeof window.matchMedia !== "function") return;
-  const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-  mediaQuery.addEventListener("change", emitTheme);
+  subscribeMediaQuery(DARK_COLOR_SCHEME_QUERY, emitTheme);
 }
 
 export function initializePreferredTheme(): void {

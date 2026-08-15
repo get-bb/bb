@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
+import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
 import {
   formatChangeSummary,
   renderChangeSummary,
@@ -144,6 +145,8 @@ export interface GitDiffToolbarProps {
   isSelectorDisabled: boolean;
 
   stats: GitDiffStats;
+  /** True when stats cover only the bounded leading file slice. */
+  isTruncated: boolean;
 
   /** Whether the collapse-all action would expand or collapse next. */
   areAllFilesCollapsed: boolean;
@@ -164,6 +167,7 @@ export function GitDiffToolbar({
   onSelectionChange,
   isSelectorDisabled,
   stats,
+  isTruncated,
   areAllFilesCollapsed,
   isCollapseAllDisabled,
   onToggleAllCollapsed,
@@ -177,6 +181,10 @@ export function GitDiffToolbar({
     ref: rootRef,
     box: "content-box",
   });
+  const changeTally = { ...stats, lineStatsComplete: true };
+  const completeSummary = formatChangeSummary(changeTally);
+  const truncatedFilesLabel = `${stats.filesCount}+ file${stats.filesCount === 1 ? "" : "s"}`;
+  const hasShownLineChanges = stats.insertions > 0 || stats.deletions > 0;
 
   return (
     <div ref={rootRef} className="px-4 pb-3 pt-3">
@@ -195,9 +203,28 @@ export function GitDiffToolbar({
             "min-w-0 shrink truncate text-muted-foreground",
             COARSE_POINTER_TEXT_SM_CLASS,
           )}
-          title={formatChangeSummary(stats)}
+          title={
+            isTruncated
+              ? `Showing the first ${stats.filesCount} changed file${stats.filesCount === 1 ? "" : "s"}; shown slice: ${stats.insertions} insertion${stats.insertions === 1 ? "" : "s"}, ${stats.deletions} deletion${stats.deletions === 1 ? "" : "s"}`
+              : completeSummary
+          }
         >
-          {renderChangeSummary(stats)}
+          {isTruncated ? (
+            <>
+              {truncatedFilesLabel}
+              {hasShownLineChanges ? (
+                <>
+                  {" · shown "}
+                  <DiffStatsTally
+                    insertions={stats.insertions}
+                    deletions={stats.deletions}
+                  />
+                </>
+              ) : null}
+            </>
+          ) : (
+            renderChangeSummary(changeTally)
+          )}
         </span>
         <div className="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-1">
           <Button

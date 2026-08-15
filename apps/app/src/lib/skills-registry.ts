@@ -1,6 +1,8 @@
+import { REGISTRY_ENTRY_BATCH_LIMIT } from "@bb/server-contract";
 import type { SkillSummary } from "@bb/server-contract";
 import type {
   RegistryPagination,
+  RegistryRanking,
   RegistrySkill,
   RegistrySkillDetail,
   RegistrySkillFile,
@@ -11,6 +13,7 @@ import { BbHttpError, sdk } from "@/lib/sdk";
 
 export type {
   RegistryPagination,
+  RegistryRanking,
   RegistrySkill,
   RegistrySkillDetail,
   RegistrySkillFile,
@@ -54,6 +57,28 @@ export async function fetchRegistrySkillEntry(
   signal?: AbortSignal,
 ): Promise<RegistrySkill> {
   return sdk.skills.registry.get({ registrySkillId: id, signal });
+}
+
+/**
+ * Resolves many registry entries in one request per {@link
+ * REGISTRY_ENTRY_BATCH_LIMIT}-sized chunk instead of one per card. Ids the
+ * server could not resolve are absent from the result; callers treat a missing
+ * id as "unknown".
+ */
+export async function fetchRegistrySkillEntries(
+  ids: readonly string[],
+  signal?: AbortSignal,
+): Promise<RegistrySkill[]> {
+  const chunks: string[][] = [];
+  for (let start = 0; start < ids.length; start += REGISTRY_ENTRY_BATCH_LIMIT) {
+    chunks.push(ids.slice(start, start + REGISTRY_ENTRY_BATCH_LIMIT));
+  }
+  const responses = await Promise.all(
+    chunks.map((chunk) =>
+      sdk.skills.registry.entries({ registrySkillIds: chunk, signal }),
+    ),
+  );
+  return responses.flatMap((response) => response.entries);
 }
 
 export async function fetchRegistryRepositoryStars(

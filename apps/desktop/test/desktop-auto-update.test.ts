@@ -218,6 +218,7 @@ describe("desktop auto-update service", () => {
       forceDevUpdateConfig: false,
       logger: createLogger(messages),
       now: () => Date.parse(checkedAt),
+      platform: "macos",
       updater,
     });
 
@@ -237,6 +238,7 @@ describe("desktop auto-update service", () => {
       forceDevUpdateConfig: false,
       logger: createLogger(messages),
       now: () => Date.parse(checkedAt),
+      platform: "macos",
       updater,
     });
 
@@ -284,6 +286,7 @@ describe("desktop auto-update service", () => {
       forceDevUpdateConfig: false,
       logger: createLogger(createLoggerMessages()),
       now: () => Date.parse(checkedAt),
+      platform: "macos",
       updater,
     });
 
@@ -311,6 +314,7 @@ describe("desktop auto-update service", () => {
       forceDevUpdateConfig: false,
       logger: createLogger(messages),
       now: () => Date.parse(checkedAt),
+      platform: "macos",
       updater,
     });
 
@@ -344,6 +348,7 @@ describe("desktop auto-update service", () => {
       forceDevUpdateConfig: false,
       logger: createLogger(createLoggerMessages()),
       now: () => Date.parse(checkedAt),
+      platform: "macos",
       updater,
     });
 
@@ -374,6 +379,7 @@ describe("desktop auto-update service", () => {
       forceDevUpdateConfig: false,
       logger: createLogger(createLoggerMessages()),
       now: () => Date.parse(checkedAt),
+      platform: "macos",
       updater,
     });
 

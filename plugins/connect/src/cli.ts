@@ -1,4 +1,4 @@
-import type { BbPluginApi, PluginCliResult } from "@bb/plugin-sdk";
+import type { BbPluginApi, PluginCliResult } from "@get-bb/plugin-sdk";
 import type { ShareHostResolver } from "./hosts.js";
 import { parseSharePort } from "./shares.js";
 import type { ConnectTunnel } from "./tunnel.js";

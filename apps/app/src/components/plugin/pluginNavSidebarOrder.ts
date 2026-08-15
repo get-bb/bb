@@ -27,7 +27,9 @@ interface ArrangePluginNavPanelsArgs<TPanel extends PluginNavPanelIdentity> {
   hiddenKeys: readonly string[];
 }
 
-export interface ArrangedPluginNavPanels<TPanel extends PluginNavPanelIdentity> {
+export interface ArrangedPluginNavPanels<
+  TPanel extends PluginNavPanelIdentity,
+> {
   /** Panels rendered in the sidebar proper, in user order. */
   visible: TPanel[];
   /** Panels parked in the "More" disclosure, in user order. */
@@ -159,6 +161,7 @@ export function havePluginNavPanelOrdersDiverged(
   right: readonly string[],
 ): boolean {
   return (
-    left.length !== right.length || left.some((key, index) => key !== right[index])
+    left.length !== right.length ||
+    left.some((key, index) => key !== right[index])
   );
 }

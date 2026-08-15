@@ -12,6 +12,7 @@ import {
 import { threadTabsResponseSchema } from "@bb/server-contract";
 import type {
   CreateQueuedMessageRequest,
+  ContinueAfterProviderRateLimitRequest,
   ContinueAfterProviderRateLimitResponse,
   CreateThreadRequest,
   EditMessageRequest,
@@ -43,6 +44,8 @@ import type {
   PromptHistoryQuery,
   ReorderPinnedThreadRequest,
   ReorderQueuedMessageRequest,
+  ResolveThreadMentionsRequest,
+  ResolveThreadMentionsResponse,
   SendMessageRequest,
   SendQueuedMessageRequest,
   SetQueuedMessageGroupBoundaryRequest,
@@ -84,6 +87,10 @@ export interface ThreadSearchArgs extends ThreadSearchQuery {
   signal?: AbortSignal;
 }
 
+export interface ThreadResolveMentionsArgs extends ResolveThreadMentionsRequest {
+  signal?: AbortSignal;
+}
+
 export interface ThreadGetArgs {
   include?: ThreadGetQuery["include"];
   signal?: AbortSignal;
@@ -93,6 +100,7 @@ export interface ThreadGetArgs {
 export type ThreadGetResult = ThreadResponse | ThreadWithIncludesResponse;
 export type ThreadListResult = ThreadListResponse;
 export type ThreadSearchResult = ThreadSearchResponse;
+export type ThreadResolveMentionsResult = ResolveThreadMentionsResponse;
 export interface ThreadOutputResponse {
   output: string | null;
 }
@@ -145,9 +153,8 @@ export type ThreadTimelineTurnSummaryDetailsResult =
 
 export interface ThreadSpawnBaseArgs extends Omit<
   CreateThreadRequest,
-  "childOrigin" | "input" | "origin" | "originKind" | "startedOnBehalfOf"
+  "input" | "origin" | "originKind" | "startedOnBehalfOf"
 > {
-  childOrigin?: CreateThreadRequest["childOrigin"];
   origin?: CreateThreadRequest["origin"];
   originKind?: CreateThreadRequest["originKind"];
   startedOnBehalfOf?: CreateThreadRequest["startedOnBehalfOf"];
@@ -196,6 +203,7 @@ export interface ThreadActionArgs {
 
 export interface ThreadContinueAfterRateLimitArgs extends ThreadActionArgs {
   failedRequestId: string;
+  mode: NonNullable<ContinueAfterProviderRateLimitRequest["mode"]>;
 }
 
 export interface ThreadStatusArgs extends ThreadActionArgs {
@@ -458,9 +466,16 @@ export interface ThreadsArea {
     args: ThreadStatusArgs,
   ): Promise<ThreadRateLimitRecoveryResult>;
   reorderPinned(args: ThreadPinOrderArgs): Promise<ThreadPinOrderResult>;
+  resolveMentions(
+    args: ThreadResolveMentionsArgs,
+  ): Promise<ThreadResolveMentionsResult>;
   search(args: ThreadSearchArgs): Promise<ThreadSearchResult>;
   send(args: ThreadSendArgs): Promise<ThreadSendResult>;
   spawn(args: ThreadSpawnArgs): Promise<ThreadSpawnResult>;
+  /**
+   * Stop active work and release the loaded agent runtime. This operation is
+   * idempotent and preserves thread history for a later resume.
+   */
   stop(args: ThreadActionArgs): Promise<ThreadStopResult>;
   tabs: ThreadTabsArea;
   timeline(args: ThreadTimelineArgs): Promise<ThreadTimelineResult>;
@@ -536,7 +551,6 @@ function spawnInput(input: ThreadSpawnArgs): PromptInput[] {
 
 function spawnJson(args: ThreadSpawnArgs): CreateThreadRequest {
   const {
-    childOrigin,
     input: _input,
     origin,
     originKind,
@@ -550,7 +564,6 @@ function spawnJson(args: ThreadSpawnArgs): CreateThreadRequest {
     origin: origin ?? "sdk",
     startedOnBehalfOf: startedOnBehalfOf ?? null,
     originKind: originKind ?? null,
-    childOrigin: childOrigin ?? null,
   };
 }
 
@@ -983,7 +996,10 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return transport.readJson(
         transport.api.v1.threads[":id"]["rate-limit-recovery"].continue.$post({
           param: { id: input.threadId },
-          json: { failedRequestId: input.failedRequestId },
+          json: {
+            failedRequestId: input.failedRequestId,
+            mode: input.mode,
+          },
         }),
       );
     },
@@ -1042,6 +1058,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
             nextThreadId: input.nextThreadId,
           },
         }),
+      );
+    },
+    async resolveMentions(input) {
+      return transport.readJson(
+        transport.api.v1.threads["resolve-mentions"].$post(
+          { json: { threadIds: input.threadIds } },
+          ...signalRequestArgs(input.signal),
+        ),
       );
     },
     async search(input) {

@@ -19,6 +19,10 @@ import type {
 } from "@/components/provider-cli/provider-cli-install";
 import { useProviderCliInstallRunner } from "@/components/provider-cli/provider-cli-install";
 import { resetAppUpdateCheckStoreForTests } from "@/components/settings/app-update-check-store";
+import {
+  getProviderCliInstallSnapshot,
+  resetProviderCliInstallStoreForTests,
+} from "@/components/provider-cli/provider-cli-install-store";
 import { sdk } from "@/lib/sdk";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
 import {
@@ -71,6 +75,7 @@ vi.mock("@/components/provider-cli/provider-cli-install", async (original) => {
   return {
     ...actual,
     useProviderCliInstallRunner: vi.fn(() => ({
+      failuresByJobKey: new Map(),
       queuedJobKeys: new Set<string>(),
       runningJobKey: null,
       startInstall: startInstallMock,
@@ -123,6 +128,21 @@ function makeUpdateIssue(args: {
     title: `${displayName} update available`,
     description: "1.0.0 -> 1.0.1",
     fingerprint: `${args.provider}:outdated`,
+  };
+}
+
+function makeManualUpdateIssue(args: {
+  provider: "codex" | "claudeCode";
+}): ProviderCliIssue {
+  const issue = makeUpdateIssue(args);
+  return {
+    ...issue,
+    action: null,
+    status: {
+      ...issue.status,
+      installSource: "external",
+      installAction: null,
+    },
   };
 }
 
@@ -215,6 +235,7 @@ const useProviderCliInstallRunnerMock = vi.mocked(useProviderCliInstallRunner);
 
 beforeEach(() => {
   useProviderCliInstallRunnerMock.mockReturnValue({
+    failuresByJobKey: new Map(),
     queuedJobKeys: new Set<string>(),
     runningJobKey: null,
     startInstall: startInstallMock,
@@ -224,6 +245,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   resetAppUpdateCheckStoreForTests();
+  resetProviderCliInstallStoreForTests();
   vi.clearAllMocks();
 });
 
@@ -348,6 +370,7 @@ describe("UpdatesSettingsSection", () => {
       }),
     );
     useProviderCliInstallRunnerMock.mockReturnValue({
+      failuresByJobKey: new Map(),
       queuedJobKeys: new Set(["host_1:claudeCode"]),
       runningJobKey: "host_1:codex",
       startInstall: startInstallMock,
@@ -359,6 +382,50 @@ describe("UpdatesSettingsSection", () => {
     expect(screen.getByText("2 updates in progress")).toBeDefined();
     expect(screen.getByText("Running…")).toBeDefined();
     expect(screen.getByText("Queued")).toBeDefined();
+  });
+
+  it("keeps a provider update failure and its command log on the row", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const host = makeHost({ id: "host_1", name: "workstation" });
+    const issue = makeUpdateIssue({ provider: "claudeCode" });
+    const logDialogState = {
+      displayName: "Claude Code",
+      log: "$ claude update\npermission denied\n",
+      message: "Command exited with code 1",
+      title: "Claude Code update log",
+    };
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [makeMachine({ host, issues: [issue] })],
+      }),
+    );
+    useProviderCliInstallRunnerMock.mockReturnValue({
+      failuresByJobKey: new Map([
+        [
+          "host_1:claudeCode",
+          { issueFingerprint: issue.fingerprint, logDialogState },
+        ],
+      ]),
+      queuedJobKeys: new Set(),
+      runningJobKey: null,
+      startInstall: startInstallMock,
+    });
+
+    renderSection();
+
+    expect(screen.getByText("Failed")).toBeDefined();
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Command exited with code 1",
+    );
+    expect(screen.getByRole("button", { name: "Retry" })).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "View log" }));
+    expect(getProviderCliInstallSnapshot().logDialogState).toEqual(
+      logDialogState,
+    );
   });
 
   it("forces the web update check and shows the upgrade command inline", async () => {
@@ -515,5 +582,29 @@ describe("UpdatesSettingsSection", () => {
       hostId: "host_2",
       issue: homelabIssue,
     });
+  });
+
+  it("shows an external Claude installation as a manual update without an update button", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const host = makeHost({ id: "host_1", name: "workstation" });
+    const issue = makeManualUpdateIssue({ provider: "claudeCode" });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [makeMachine({ host, issues: [issue] })],
+        actionableCount: 1,
+        hasAttention: true,
+      }),
+    );
+
+    renderSection();
+
+    expect(screen.getByText("Update manually")).toBeDefined();
+    expect(screen.getByText("1 update needs manual action")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Update" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Update all/ })).toBeNull();
   });
 });

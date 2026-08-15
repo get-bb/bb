@@ -49,7 +49,6 @@ function createThreadListEntry({
       activeGoalCount: 0,
     },
     archivedAt: null,
-    childOrigin: null,
     createdAt: 1000,
     deletedAt: null,
     environmentBranchName: null,

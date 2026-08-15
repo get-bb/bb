@@ -7,7 +7,7 @@ import {
   type BbDesktopVersionFeed,
 } from "@bb/desktop-contract";
 
-export { DESKTOP_UPDATE_FEED_URL } from "./desktop-update-provider.js";
+export { createDesktopUpdateFeedUrl } from "./desktop-update-provider.js";
 export const DESKTOP_UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 export const DESKTOP_UPDATE_CHECK_TIMEOUT_MS = 5_000;
 export const DESKTOP_UPDATE_ACTIVE_MIN_INTERVAL_MS = 15 * 60 * 1000;
@@ -19,9 +19,11 @@ export interface DesktopUpdateLogger {
 }
 
 export interface ParseDesktopVersionFeedArgs {
+  channel: BbDesktopVersionFeed["channel"];
   checkedAt: string;
   currentVersion: string;
   payloadText: string;
+  platform: BbDesktopInfo["platform"];
 }
 
 interface ValidDesktopVersionFeedParseResult {
@@ -40,12 +42,14 @@ export type DesktopVersionFeedParseResult =
   | ValidDesktopVersionFeedParseResult;
 
 export interface CreateDesktopUpdateServiceArgs {
+  channel: BbDesktopVersionFeed["channel"];
   currentVersion: string;
   enabled: boolean;
   feedUrl: string;
   fetchImpl?: typeof fetch;
   logger?: DesktopUpdateLogger;
   now?: () => number;
+  platform: BbDesktopInfo["platform"];
 }
 
 export interface DesktopUpdateService {
@@ -67,12 +71,15 @@ interface ApplyFailureArgs {
   message: string;
 }
 
-function createBaseInfo(currentVersion: string): BbDesktopInfo {
+function createBaseInfo(
+  currentVersion: string,
+  platform: BbDesktopInfo["platform"],
+): BbDesktopInfo {
   return {
     lastCheckedAt: null,
     latestVersion: null,
     pendingVersion: null,
-    platform: "macos",
+    platform,
     updateAvailable: false,
     updateDownloaded: false,
     version: currentVersion,
@@ -111,7 +118,7 @@ export function parseDesktopVersionFeed(
   } catch (error) {
     return {
       kind: "malformed",
-      reason: `desktop-version.json was not valid JSON: ${formatErrorMessage(
+      reason: `The desktop version feed was not valid JSON: ${formatErrorMessage(
         error,
       )}`,
     };
@@ -121,7 +128,23 @@ export function parseDesktopVersionFeed(
   if (!parsedFeed.success) {
     return {
       kind: "malformed",
-      reason: `desktop-version.json did not match schema: ${parsedFeed.error.message}`,
+      reason: `The desktop version feed did not match schema: ${parsedFeed.error.message}`,
+    };
+  }
+
+  // Both platforms publish a feed into the same release tag, so a swapped or
+  // mis-uploaded asset is now possible where it was not before. A feed that
+  // does not describe this build must never raise an update prompt.
+  if (parsedFeed.data.platform !== args.platform) {
+    return {
+      kind: "malformed",
+      reason: `The desktop version feed is for another platform: expected ${args.platform}, got ${parsedFeed.data.platform}`,
+    };
+  }
+  if (parsedFeed.data.channel !== args.channel) {
+    return {
+      kind: "malformed",
+      reason: `The desktop version feed is for another channel: expected ${args.channel}, got ${parsedFeed.data.channel}`,
     };
   }
 
@@ -130,7 +153,7 @@ export function parseDesktopVersionFeed(
   if (parsedCurrentVersion === null || parsedFeedVersion === null) {
     return {
       kind: "malformed",
-      reason: `desktop-version.json contained an invalid version: current=${args.currentVersion} feed=${parsedFeed.data.version}`,
+      reason: `The desktop version feed contained an invalid version: current=${args.currentVersion} feed=${parsedFeed.data.version}`,
     };
   }
 
@@ -140,7 +163,7 @@ export function parseDesktopVersionFeed(
       lastCheckedAt: args.checkedAt,
       latestVersion: parsedFeed.data.version,
       pendingVersion: null,
-      platform: "macos",
+      platform: args.platform,
       updateAvailable: semver.gt(parsedFeedVersion, parsedCurrentVersion),
       updateDownloaded: false,
       version: args.currentVersion,
@@ -179,7 +202,7 @@ export function createDesktopUpdateService(
   const logger = args.logger ?? console;
   const now = args.now ?? (() => Date.now());
 
-  let currentInfo = createBaseInfo(args.currentVersion);
+  let currentInfo = createBaseInfo(args.currentVersion, args.platform);
   let inflight: Promise<BbDesktopInfo> | null = null;
   let intervalHandle: DesktopUpdateIntervalHandle | null = null;
   let lastAttemptedAt: number | null = null;
@@ -232,9 +255,11 @@ export function createDesktopUpdateService(
       }
 
       const parsed = parseDesktopVersionFeed({
+        channel: args.channel,
         checkedAt,
         currentVersion: args.currentVersion,
         payloadText,
+        platform: args.platform,
       });
       if (parsed.kind === "malformed") {
         return applyFailure({

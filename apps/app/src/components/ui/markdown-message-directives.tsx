@@ -7,7 +7,10 @@ import {
 import type { Nodes, Parent, RootContent } from "mdast";
 // Side-effect import: augments mdast's `Data` with `hName`/`hProperties`.
 import type {} from "mdast-util-to-hast";
-import type { BbNavigate, PluginMessageDirectiveProps } from "@bb/plugin-sdk";
+import type {
+  BbNavigate,
+  PluginMessageDirectiveProps,
+} from "@get-bb/plugin-sdk";
 import { visit } from "unist-util-visit";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount.js";
 import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation.js";

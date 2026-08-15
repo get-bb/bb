@@ -30,7 +30,10 @@ import {
   type PromptBoxAction,
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
-import { AUTOMATION_PROMPT_ACTION } from "@/components/promptbox/PromptBoxActionsMenu";
+import {
+  AUTOMATION_PROMPT_ACTION,
+  CREATE_PLUGIN_PROMPT_ACTION,
+} from "@/components/promptbox/PromptBoxActionsMenu";
 import { ThreadPromptContextBanner } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import {
   QueuedMessagesList,
@@ -138,6 +141,7 @@ const promptActions: readonly PromptBoxAction[] = [
     text: "/goal ",
   },
   AUTOMATION_PROMPT_ACTION,
+  CREATE_PLUGIN_PROMPT_ACTION,
 ];
 
 // Fully read-only footer example: renders the SAME model/reasoning and
@@ -441,6 +445,7 @@ const dirtyWorkspaceStatus: WorkspaceStatus = {
     ],
     insertions: 128,
     deletions: 24,
+    lineStatsComplete: true,
   },
   branch: {
     currentBranch: STORY_BRANCH_NAME,
