@@ -59,6 +59,14 @@ const ZERO_WORK_PROMPT_TEXT = "/clear";
 const LATE_TURN_START_PROMPT_TEXT = "/late-start";
 const LATE_TURN_START_DELAY_MS = 60;
 
+/**
+ * A prompt that spawns a native subagent (open thread work) and then dies with
+ * the subagent still running — the crash/OOM shape. The bridge has to settle
+ * the open turn AND retract the open-work claim, or the runtime never reaps
+ * the thread.
+ */
+const SUBAGENT_THEN_CRASH_PROMPT_TEXT = "/subagent-then-crash";
+
 function firstInputText(input) {
   const first = Array.isArray(input) ? input[0] : undefined;
   return first && first.type === "text" ? first.text : undefined;
@@ -200,6 +208,29 @@ async function handleRequest(message) {
       // output can open or settle a bb turn (#1431).
       if (firstInputText(params.input) === ZERO_WORK_PROMPT_TEXT) {
         respond(id, {});
+        return;
+      }
+      if (firstInputText(params.input) === SUBAGENT_THEN_CRASH_PROMPT_TEXT) {
+        turnCounter += 1;
+        const turnId = `turn-fx-${turnCounter}`;
+        openTurnIdsByThreadId.set(params.threadId, turnId);
+        notify("turn/started", {
+          threadId: params.threadId,
+          turn: { id: turnId, status: "inProgress" },
+        });
+        notify("item/completed", {
+          threadId: params.threadId,
+          turnId,
+          item: {
+            type: "subAgentActivity",
+            id: `call-fx-${turnCounter}`,
+            kind: "started",
+            agentThreadId: `codex-fx-sub-${turnCounter}`,
+            agentPath: "reviewer",
+          },
+        });
+        respond(id, {});
+        setTimeout(() => process.exit(1), 20);
         return;
       }
       if (firstInputText(params.input) === LATE_TURN_START_PROMPT_TEXT) {

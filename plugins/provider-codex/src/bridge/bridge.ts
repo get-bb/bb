@@ -958,6 +958,16 @@ function handleChildExit(
       : {}),
     message,
   });
+  // Nothing runs behind a dead child, so drop its live state and retract the
+  // open-work claim. The runtime's open-work view is level-triggered: without
+  // this the thread is never idle-reaped, and a stale tracked subagent would
+  // re-raise the claim on the next report.
+  if (session.codexThreadId !== null) {
+    session.translator.clearExitedChildThreadState({
+      providerThreadId: session.codexThreadId,
+    });
+  }
+  reportOpenThreadWork(session);
   // The session entry stays (with its identity) so the next turn/start can
   // restore the thread from its rollout via session/replaced.
 }

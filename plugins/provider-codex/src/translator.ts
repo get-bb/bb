@@ -528,11 +528,28 @@ export function createCodexEventTranslator(
     if (!paramsResult.success) {
       return;
     }
-    rawCommandOutputStateByProviderThreadId.delete(paramsResult.data.threadId);
-    clearCodexDelegationParentState(paramsResult.data.threadId);
+    clearExitedChildThreadState({
+      providerThreadId: paramsResult.data.threadId,
+    });
     clearGitWritableRootsByProviderThreadId({
       providerThreadId: paramsResult.data.threadId,
     });
+  }
+
+  /**
+   * Drop the state that only describes a live `codex app-server` child: raw
+   * command output in flight and the native-subagent tracking that answers
+   * `hasOpenThreadWork`. Called when the thread closes and when the child dies
+   * — otherwise a non-terminal tracked subagent keeps claiming open work for a
+   * process that no longer exists, and the runtime never reaps the thread.
+   */
+  function clearExitedChildThreadState({
+    providerThreadId,
+  }: {
+    providerThreadId: string;
+  }): void {
+    rawCommandOutputStateByProviderThreadId.delete(providerThreadId);
+    clearCodexDelegationParentState(providerThreadId);
   }
 
   function clearCodexDelegationParentState(providerThreadId: string): void {
@@ -1349,6 +1366,7 @@ export function createCodexEventTranslator(
   return {
     activateThreadGitWritableRoots,
     buildPostInitializeRequests,
+    clearExitedChildThreadState,
     getThreadGitWritableRoots,
     hasOpenThreadWork,
     prepareTurnStart: queueNativeTurnStartClientRequestId,
