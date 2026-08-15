@@ -87,7 +87,13 @@ Landed on this branch, every commit green:
   sweep (scattered enums, usage surfaces, provider-scoped options for
   workflows/memory toggles); hasOpenThreadWork generic-adapter hook;
   interim icon fallbacks and inlined placeholders move server-side.
-  Graduation prerequisite from the historical-bug audit: several shared
+  KNOWN GAP (pinned as the sole non-green conformance rule in
+  codex/bridge/bridge.conformance.test.ts): the codex bridge does not
+  settle a prompt the provider accepts without emitting turn/started —
+  the zero-work turn/settles-without-activity rule fails; fixing it needs
+  a dispatch-ownership seam and must not fabricate turns from late
+  signals (the acp bug 0c2f4cc9a). Flipping it to pass is a graduation
+  prerequisite. Graduation prerequisite from the historical-bug audit: several shared
   translator invariants are pinned only by the legacy adapter tests, so
   before each deletion PR the relevant cases move to bridge-path suites —
   a codex translator.test.ts (output capture across reordering, subagent
