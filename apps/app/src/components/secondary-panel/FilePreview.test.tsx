@@ -412,6 +412,36 @@ describe("FilePreview", () => {
     ).toBe("false");
   });
 
+  it("opens line-linked HTML files in rendered preview mode", () => {
+    const { container } = render(
+      <FilePreview
+        path="docs/report.html"
+        state={{
+          kind: "html",
+          file: {
+            name: "report.html",
+            contents: "<!doctype html><h1>Report</h1>",
+          },
+          iframe: {
+            sandbox: "allow-scripts",
+            title: "docs/report.html",
+            url: "/preview/docs/report.html",
+          },
+          lineRange: { startLineNumber: 1023, endLineNumber: 1023 },
+        }}
+      />,
+    );
+
+    expect(
+      screen
+        .getByRole("button", { name: "Preview" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    const iframe = container.querySelector("iframe");
+    expect(iframe?.getAttribute("src")).toBe("/preview/docs/report.html");
+    expect(iframe?.closest('[aria-hidden="true"]')).toBeNull();
+  });
+
   it("renders CSV previews as a table by default", () => {
     render(
       <FilePreview

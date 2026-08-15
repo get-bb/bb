@@ -295,7 +295,11 @@ function getInitialFilePreviewViewMode({
   lineRange,
   toggleKind,
 }: GetInitialFilePreviewViewModeArgs): FilePreviewViewMode {
-  if (toggleKind === "csv" || toggleKind === "markdown") {
+  if (
+    toggleKind === "csv" ||
+    toggleKind === "html" ||
+    toggleKind === "markdown"
+  ) {
     return "preview";
   }
   return lineRange === null ? "preview" : "source";
