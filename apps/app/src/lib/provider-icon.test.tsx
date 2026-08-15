@@ -42,4 +42,23 @@ describe("getProviderIconInfo", () => {
     expect(view.container.querySelector("img")).toBeNull();
     expect(view.container.querySelector("svg")).not.toBeNull();
   });
+
+  it("keeps vendored theme-aware brand marks over a server logoUrl", () => {
+    // An SVG rendered through <img> is a separate document: currentColor
+    // resolves to black there, invisible on dark themes. Known ids must keep
+    // their inline React marks even when the server provides a logoUrl.
+    for (const providerId of ["codex", "claude-code", "pi", "acp-opencode"]) {
+      const iconInfo = getProviderIconInfo(
+        providerId,
+        `/api/v1/system/providers/${providerId}/logo`,
+      );
+      if (iconInfo === undefined) {
+        throw new Error(`Expected icon info for ${providerId}`);
+      }
+      const view = render(createElement(iconInfo.icon, {}));
+      expect(view.container.querySelector("img"), providerId).toBeNull();
+      expect(view.container.querySelector("svg"), providerId).not.toBeNull();
+      view.unmount();
+    }
+  });
 });

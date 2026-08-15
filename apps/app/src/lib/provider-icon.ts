@@ -90,10 +90,13 @@ function getConfiguredProviderLogoIcon(
 /**
  * Resolves a provider's icon. Resolution order:
  *
- * 1. A caller-supplied `logoUrl` (from a server-provided `ProviderInfo`)
- *    renders as an `<img>` logo, falling back to the vendored brand mark if
- *    the image fails to load.
- * 2. The vendored brand maps (built-ins plus well-known ACP slugs).
+ * 1. The vendored brand maps (built-ins plus well-known ACP slugs). These are
+ *    theme-aware React components (`currentColor` cascades), so they must win
+ *    over a server `logoUrl`: an SVG rendered through `<img>` is a separate
+ *    document where `currentColor` resolves to black — invisible on dark
+ *    themes — and page CSS cannot reach it.
+ * 2. A caller-supplied `logoUrl` (from a server-provided `ProviderInfo`) for
+ *    providers without a vendored mark — plugin-registered third parties.
  * 3. The generic glyph for unrecognized ACP providers.
  *
  * Returns undefined for unknown non-ACP providers so callers can fall back
@@ -103,13 +106,6 @@ export function getProviderIconInfo(
   providerId: string,
   logoUrl: string | null = null,
 ): ProviderIconInfo | undefined {
-  if (logoUrl !== null) {
-    return {
-      icon: getConfiguredProviderLogoIcon(providerId, logoUrl),
-      ariaLabel: "Provider logo",
-    };
-  }
-
   const builtInBrand = BUILT_IN_BRAND_ICONS[providerId];
   if (builtInBrand !== undefined) {
     return builtInBrand;
@@ -118,10 +114,20 @@ export function getProviderIconInfo(
   if (isAcpProviderId(providerId)) {
     const slug = providerId.slice(ACP_ID_PREFIX.length);
     const brandIcon = KNOWN_ACP_BRAND_ICONS[slug];
+    if (brandIcon !== undefined) {
+      return { icon: brandIcon, ariaLabel: slug };
+    }
+  }
+
+  if (logoUrl !== null) {
     return {
-      icon: brandIcon ?? GenericAcpIcon,
-      ariaLabel: brandIcon ? slug : "ACP provider",
+      icon: getConfiguredProviderLogoIcon(providerId, logoUrl),
+      ariaLabel: "Provider logo",
     };
+  }
+
+  if (isAcpProviderId(providerId)) {
+    return { icon: GenericAcpIcon, ariaLabel: "ACP provider" };
   }
 
   return undefined;
