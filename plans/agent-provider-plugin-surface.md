@@ -105,6 +105,36 @@ Landed on this branch, every commit green:
   retry classification. Calibration replay suites for pi/claude-code/
   codex (acp has one) are the other graduation gate.
 
+## Graduation execution (started 2026-08-15)
+
+Waves, each ending with a full board (typecheck + all suites) before the
+next starts; commits structured so a later PR split stays mechanical:
+
+1. Codex zero-work-prompt settlement fix (the pinned gap) + acp/pi legacy
+   adapter deletions (scan adapter tests for uncovered shared-module
+   invariants and MOVE them before deleting).
+2. claude-code, then codex legacy deletions (same discipline).
+3. Flag retirement (providerBridge experiment, prefix policy plumbing,
+   daemon prefix capture — no protocol bump needed, v124 unshipped),
+   core-seed deletion, @bb/agent-providers removal, runtime codex
+   special cases.
+4. Phase-6 consolidation sweep, batched by subsystem.
+5. First-party artifact migration: move the four bridge sources into
+   their plugin directories and ship them through the content-addressed
+   artifact pipeline (echo-provider is the template). After this, every
+   provider-specific line lives in plugins/provider-*; agent-runtime
+   keeps only the protocol, generic adapter, and supervision.
+
+FINAL VALIDATION GATE (mandatory before calling graduation done): full
+multi-agent adversarial review of the graduation diff; conformance all
+green for all five bridges (the codex pin must be flipped, not deleted);
+calibration suites re-run as bridge-only self-consistency checks; a full
+live QA matrix with real CLIs covering the previously-missed paths
+(skills, accept-edits write roots to thread storage, steer/stop/resume,
+fork, archived resume, models) plus plugin disable/re-enable and a
+plugin-update (new artifact hash) mid-session; a fresh-install QA pass
+(empty data dir); process-tree and orphan sweeps; and CI green.
+
 ## Design notes from the #1641 prototype comparison (thr_fxnmqjf9a4)
 
 The provider-driver prototype (#1641) was reviewed side by side with this
