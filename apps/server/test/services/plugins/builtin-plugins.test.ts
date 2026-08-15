@@ -856,7 +856,7 @@ describe("builtin plugin reconciliation", () => {
     );
   });
 
-  it("loads the builtin connect plugin like other builtins", async () =>
+  it("loads the builtin connect plugin like other builtins", async () => {
     service = createService({
       db,
       dataDir: join(workDir, "data"),
