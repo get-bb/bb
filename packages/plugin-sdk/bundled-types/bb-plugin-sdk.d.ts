@@ -230,9 +230,9 @@ declare const environmentSchema: z$1.ZodObject<{
     isGitRepo: z$1.ZodBoolean;
     isWorktree: z$1.ZodBoolean;
     workspaceProvisionType: z$1.ZodEnum<{
-        personal: "personal";
-        "managed-worktree": "managed-worktree";
         unmanaged: "unmanaged";
+        "managed-worktree": "managed-worktree";
+        personal: "personal";
     }>;
     branchName: z$1.ZodNullable<z$1.ZodString>;
     baseBranch: z$1.ZodNullable<z$1.ZodString>;
@@ -270,9 +270,9 @@ declare const hostSchema: z$1.ZodObject<{
         disconnected: "disconnected";
     }>;
     maxPermissionMode: z$1.ZodEnum<{
+        full: "full";
         auto: "auto";
         "accept-edits": "accept-edits";
-        full: "full";
     }>;
     lastSeenAt: z$1.ZodNullable<z$1.ZodNumber>;
     lastRejectedProtocolVersion: z$1.ZodNullable<z$1.ZodNumber>;
@@ -518,9 +518,9 @@ declare const serviceTierSchema: z$1.ZodEnum<{
 }>;
 type ServiceTier = z$1.infer<typeof serviceTierSchema>;
 declare const permissionModeSchema: z$1.ZodEnum<{
+    full: "full";
     auto: "auto";
     "accept-edits": "accept-edits";
-    full: "full";
 }>;
 type PermissionMode = z$1.infer<typeof permissionModeSchema>;
 declare const promptInputSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
@@ -623,9 +623,9 @@ declare const resolvedThreadExecutionOptionsSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>;
     permissionMode: z$1.ZodEnum<{
+        full: "full";
         auto: "auto";
         "accept-edits": "accept-edits";
-        full: "full";
     }>;
     source: z$1.ZodEnum<{
         "client/thread/start": "client/thread/start";
@@ -652,9 +652,9 @@ declare const projectExecutionDefaultsSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>;
     permissionMode: z$1.ZodEnum<{
+        full: "full";
         auto: "auto";
         "accept-edits": "accept-edits";
-        full: "full";
     }>;
 }, z$1.core.$strip>;
 type ProjectExecutionDefaults = z$1.infer<typeof projectExecutionDefaultsSchema>;
@@ -1562,8 +1562,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         tell: "tell";
     }>;
     initiator: z$1.ZodEnum<{
-        system: "system";
         user: "user";
+        system: "system";
         agent: "agent";
     }>;
     request: z$1.ZodObject<{
@@ -1584,8 +1584,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         tell: "tell";
     }>;
     initiator: z$1.ZodEnum<{
-        system: "system";
         user: "user";
+        system: "system";
         agent: "agent";
     }>;
     senderThreadId: z$1.ZodNullable<z$1.ZodString>;
@@ -1811,9 +1811,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         }>;
         permissionMode: z$1.ZodEnum<{
             readonly: "readonly";
+            full: "full";
             auto: "auto";
             "accept-edits": "accept-edits";
-            full: "full";
             "workspace-write": "workspace-write";
         }>;
     }, z$1.core.$strip>;
@@ -1832,8 +1832,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         tell: "tell";
     }>;
     initiator: z$1.ZodEnum<{
-        system: "system";
         user: "user";
+        system: "system";
         agent: "agent";
     }>;
     request: z$1.ZodObject<{
@@ -2023,9 +2023,9 @@ declare const providerInfoSchema: z$1.ZodObject<{
         supportsFork: z$1.ZodBoolean;
         supportsSessionRewind: z$1.ZodBoolean;
         supportedPermissionModes: z$1.ZodArray<z$1.ZodEnum<{
+            full: "full";
             auto: "auto";
             "accept-edits": "accept-edits";
-            full: "full";
         }>>;
     }, z$1.core.$strip>;
     composerActions: z$1.ZodArray<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
@@ -2206,9 +2206,9 @@ declare const threadQueuedMessageSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>;
     permissionMode: z$1.ZodEnum<{
+        full: "full";
         auto: "auto";
         "accept-edits": "accept-edits";
-        full: "full";
     }>;
     serviceTier: z$1.ZodEnum<{
         default: "default";
@@ -2922,8 +2922,8 @@ declare const environmentDiffFileResponseSchema: z$1.ZodObject<{
     path: z$1.ZodString;
     content: z$1.ZodString;
     contentEncoding: z$1.ZodEnum<{
-        base64: "base64";
         utf8: "utf8";
+        base64: "base64";
     }>;
     mimeType: z$1.ZodOptional<z$1.ZodString>;
     sizeBytes: z$1.ZodNumber;
@@ -4915,6 +4915,25 @@ declare const hostDaemonCommandRegistry: {
         type: z$1.ZodLiteral<"thread.archive">;
         providerId: z$1.ZodString;
         providerThreadId: z$1.ZodString;
+        bridgeLaunch: z$1.ZodOptional<z$1.ZodObject<{
+            source: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"artifact">;
+                sha256: z$1.ZodString;
+                byteLength: z$1.ZodNumber;
+            }, z$1.core.$strict>], "kind">;
+            providerOptions: z$1.ZodOptional<z$1.ZodRecord<z$1.ZodString, z$1.ZodUnknown>>;
+            capabilities: z$1.ZodObject<{
+                supportsServiceTier: z$1.ZodBoolean;
+                supportedPermissionModes: z$1.ZodArray<z$1.ZodEnum<{
+                    full: "full";
+                    "accept-edits": "accept-edits";
+                    auto: "auto";
+                }>>;
+                supportsArchive: z$1.ZodBoolean;
+                supportsRename: z$1.ZodBoolean;
+                supportsFork: z$1.ZodBoolean;
+            }, z$1.core.$strict>;
+        }, z$1.core.$strict>>;
     }, z$1.core.$strict>, z$1.ZodObject<{}, z$1.core.$strip>, "settled", false>;
     "thread.unarchive": HostDaemonCommandDescriptor<"thread.unarchive", z$1.ZodObject<{
         environmentId: z$1.ZodString;
@@ -4922,6 +4941,25 @@ declare const hostDaemonCommandRegistry: {
         type: z$1.ZodLiteral<"thread.unarchive">;
         providerId: z$1.ZodString;
         providerThreadId: z$1.ZodString;
+        bridgeLaunch: z$1.ZodOptional<z$1.ZodObject<{
+            source: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"artifact">;
+                sha256: z$1.ZodString;
+                byteLength: z$1.ZodNumber;
+            }, z$1.core.$strict>], "kind">;
+            providerOptions: z$1.ZodOptional<z$1.ZodRecord<z$1.ZodString, z$1.ZodUnknown>>;
+            capabilities: z$1.ZodObject<{
+                supportsServiceTier: z$1.ZodBoolean;
+                supportedPermissionModes: z$1.ZodArray<z$1.ZodEnum<{
+                    full: "full";
+                    "accept-edits": "accept-edits";
+                    auto: "auto";
+                }>>;
+                supportsArchive: z$1.ZodBoolean;
+                supportsRename: z$1.ZodBoolean;
+                supportsFork: z$1.ZodBoolean;
+            }, z$1.core.$strict>;
+        }, z$1.core.$strict>>;
     }, z$1.core.$strict>, z$1.ZodObject<{}, z$1.core.$strip>, "settled", false>;
     "interactive.resolve": HostDaemonCommandDescriptor<"interactive.resolve", z$1.ZodObject<{
         environmentId: z$1.ZodString;

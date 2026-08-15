@@ -3,6 +3,7 @@ import path from "node:path";
 import type { AgentRuntimeOptions } from "@bb/agent-runtime";
 import type {
   HostDaemonAcpLaunchSpec,
+  HostDaemonBridgeLaunch,
   HostDaemonCommand,
 } from "@bb/host-daemon-contract";
 import {
@@ -441,7 +442,7 @@ describe("thread command dispatch", () => {
     const sha256 = createHash("sha256").update(bridgeBytes).digest("hex");
     const harness = createHarness({ workspacePath: "/tmp/env-bridge-archive" });
     const fetchProviderBridge = vi.fn(async () => new Uint8Array(bridgeBytes));
-    const bridgeLaunch = {
+    const bridgeLaunch: HostDaemonBridgeLaunch = {
       source: {
         kind: "artifact",
         sha256,
@@ -449,12 +450,12 @@ describe("thread command dispatch", () => {
       },
       capabilities: {
         supportsServiceTier: false,
-        supportedPermissionModes: ["full"] as const,
+        supportedPermissionModes: ["full"],
         supportsArchive: true,
         supportsRename: false,
         supportsFork: false,
       },
-    } as const;
+    };
     const expectedRuntimeLaunch = {
       sha256,
       artifactPath: path.join(dataDir, "provider-bridges", `${sha256}.mjs`),
