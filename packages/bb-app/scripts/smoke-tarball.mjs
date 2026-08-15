@@ -32,6 +32,15 @@ const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
   "inline-vis",
   "secrets",
 ];
+// The smoke drives every bridge as a canonical Provider Bridge Protocol
+// client, which is the only dialect the bridges still speak. Mirrors
+// PROVIDER_BRIDGE_PROTOCOL_VERSION (packages/provider-bridge-protocol/src/
+// version.ts); this script imports nothing from the workspace so it can run
+// against a packed tarball.
+const PROVIDER_BRIDGE_PROTOCOL_VERSION = 1;
+// A canonical turn/start carries a client request id (`creq_` + ten
+// Crockford-ish characters, @bb/domain's clientTurnRequestIdSchema).
+const SMOKE_CLIENT_REQUEST_ID = "creq_smkptest23";
 const BRIDGE_WAIT_TIMEOUT_MS = 10_000;
 const PROCESS_STOP_TIMEOUT_MS = 5_000;
 const DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST = "127.0.0.1";
@@ -358,7 +367,10 @@ async function smokeBridgeModelList({
       jsonrpc: "2.0",
       id: 1,
       method: "initialize",
-      params: { clientInfo: { name: "bb-app-smoke", version: "0.0.0" } },
+      params: {
+        protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
+        client: { name: "bb-app-smoke", version: "0.0.0" },
+      },
     })}\n`,
   );
   childProcess.stdin.write(
@@ -511,15 +523,30 @@ function sendBridgeRequest(childProcess, id, method, params) {
   );
 }
 
-function isSdkEvent(message, eventType) {
-  return (
-    isRecord(message) &&
-    message.method === "sdk/message" &&
-    isRecord(message.params) &&
-    isRecord(message.params.message) &&
-    message.params.message.type === eventType
-  );
+/** The canonical thread/event payload, or undefined for anything else. */
+function threadEvent(message) {
+  if (
+    !isRecord(message) ||
+    message.method !== "thread/event" ||
+    !isRecord(message.params) ||
+    !isRecord(message.params.event)
+  ) {
+    return undefined;
+  }
+  return message.params.event;
 }
+
+function isThreadEventOfType(message, eventType) {
+  return threadEvent(message)?.type === eventType;
+}
+
+/** The full permission policy a canonical request carries in `options`. */
+const SMOKE_EXECUTION_OPTIONS = {
+  permissionMode: "full",
+  permissionScope: "full",
+  approvalReviewer: null,
+  permissionEscalation: null,
+};
 
 async function smokePiUserConfiguration(packageDir) {
   const testRoot = join(tempRoot, "pi-user-config");
@@ -605,7 +632,8 @@ async function smokePiUserConfiguration(packageDir) {
 
   try {
     sendBridgeRequest(childProcess, 101, "initialize", {
-      clientInfo: { name: "bb-app-smoke", version: "0.0.0" },
+      protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
+      client: { name: "bb-app-smoke", version: "0.0.0" },
     });
     sendBridgeRequest(childProcess, 105, "model/list", { cwd: workspaceDir });
     const modelListResponse = await waitForBridgeMessage({
@@ -640,6 +668,8 @@ async function smokePiUserConfiguration(packageDir) {
           },
         },
       ],
+      instructionMode: "append",
+      options: SMOKE_EXECUTION_OPTIONS,
       threadId: "pi-config-e2e-thread",
     });
     await waitForBridgeMessage({
@@ -651,15 +681,23 @@ async function smokePiUserConfiguration(packageDir) {
     });
 
     sendBridgeRequest(childProcess, 103, "turn/start", {
+      clientRequestId: SMOKE_CLIENT_REQUEST_ID,
       input: [{ type: "text", text: "Run both configured tools." }],
+      options: SMOKE_EXECUTION_OPTIONS,
+      providerThreadId: "pi-config-e2e-thread",
       threadId: "pi-config-e2e-thread",
     });
+    // The turn must reach the canonical "completed" terminal state: an
+    // interrupted or failed settlement would otherwise satisfy a bare
+    // turn/completed wait and hide a broken configuration.
     await waitForBridgeMessage({
       childProcess,
       label,
       messages,
       output,
-      predicate: (message) => isSdkEvent(message, "agent_end"),
+      predicate: (message) =>
+        isThreadEventOfType(message, "turn/completed") &&
+        threadEvent(message).status === "completed",
     });
 
     const errors = messages.filter(
@@ -686,9 +724,13 @@ async function smokePiUserConfiguration(packageDir) {
       );
     }
 
+    // Neither tool is a pi command/file-change tool, so both settle as generic
+    // `toolCall` items whose name rides `item.tool`.
     const completedToolNames = messages
-      .filter((message) => isSdkEvent(message, "tool_execution_end"))
-      .map((message) => message.params.message.toolName);
+      .filter((message) => isThreadEventOfType(message, "item/completed"))
+      .map((message) => threadEvent(message).item)
+      .filter((item) => isRecord(item) && item.type === "toolCall")
+      .map((item) => item.tool);
     if (
       !completedToolNames.includes("configured_tool") ||
       !completedToolNames.includes("bb_dynamic_tool")
@@ -714,6 +756,9 @@ async function smokePiUserConfiguration(packageDir) {
     }
 
     sendBridgeRequest(childProcess, 104, "thread/stop", {
+      activeTurnId: null,
+      intent: "release",
+      providerThreadId: "pi-config-e2e-thread",
       threadId: "pi-config-e2e-thread",
     });
     await waitForBridgeMessage({

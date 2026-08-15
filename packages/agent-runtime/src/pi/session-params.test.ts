@@ -1,37 +1,36 @@
 import { describe, expect, it } from "vitest";
-import { buildPiCanonicalSessionParams } from "./session-params.js";
+import { buildPiSessionParams } from "./session-params.js";
 
 /**
- * Pi session parameter mapping. The shell-environment and thinking-level
- * cases moved here from the deleted legacy Pi adapter suite, which was the
- * only place asserting them.
+ * Pi session parameter mapping: the canonical wire options in, the pi bridge's
+ * session-construction params out.
  */
 
-describe("buildPiCanonicalSessionParams", () => {
+describe("buildPiSessionParams", () => {
   it("injects the bb thread id into the shell env and drops invalid keys", () => {
     expect(
-      buildPiCanonicalSessionParams({
+      buildPiSessionParams({
         threadId: "bb-thread-1",
         cwd: "/tmp/worktree",
         instructionMode: "append",
         options: {
           envVars: {
-            // Pi keys the policy by env-var name; a dotted key would nest and
-            // silently become a different config path.
+            // Pi applies these as its shell environment policy, which keys by
+            // env-var name; a dotted key is not a name a shell can carry.
             "BAD.KEY": "ignored",
             TEST_VAR: "123",
           },
         },
-      }).config,
+      }).shellEnvOverrides,
     ).toEqual({
-      "shell_environment_policy.set.BB_THREAD_ID": "bb-thread-1",
-      "shell_environment_policy.set.TEST_VAR": "123",
+      BB_THREAD_ID: "bb-thread-1",
+      TEST_VAR: "123",
     });
   });
 
   it("maps the bb reasoning ladder onto Pi thinking levels", () => {
     const params = (reasoningLevel: "none" | "high" | "ultracode") =>
-      buildPiCanonicalSessionParams({
+      buildPiSessionParams({
         threadId: "bb-thread-1",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -40,14 +39,14 @@ describe("buildPiCanonicalSessionParams", () => {
 
     // bb's "none" is Pi's "off"; levels Pi has no name for are dropped rather
     // than sent as a value the bridge schema would reject.
-    expect(params("none").reasoningLevel).toBe("off");
-    expect(params("high").reasoningLevel).toBe("high");
-    expect(params("ultracode")).not.toHaveProperty("reasoningLevel");
+    expect(params("none").thinkingLevel).toBe("off");
+    expect(params("high").thinkingLevel).toBe("high");
+    expect(params("ultracode")).not.toHaveProperty("thinkingLevel");
   });
 
   it("routes instructions by mode", () => {
     const withMode = (instructionMode: "append" | "replace") =>
-      buildPiCanonicalSessionParams({
+      buildPiSessionParams({
         threadId: "bb-thread-1",
         cwd: "/tmp/worktree",
         instructionMode,

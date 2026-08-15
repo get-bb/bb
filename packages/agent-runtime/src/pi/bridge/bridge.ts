@@ -16,12 +16,15 @@ import {
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
-  threadForkParamsSchema as canonicalThreadForkParamsSchema,
-  threadResumeParamsSchema as canonicalThreadResumeParamsSchema,
-  threadStartParamsSchema as canonicalThreadStartParamsSchema,
-  threadStopParamsSchema as canonicalThreadStopParamsSchema,
-  turnStartParamsSchema as canonicalTurnStartParamsSchema,
-  turnSteerParamsSchema as canonicalTurnSteerParamsSchema,
+  modelListParamsSchema,
+  threadCompactParamsSchema,
+  threadDiscardParamsSchema,
+  threadForkParamsSchema,
+  threadResumeParamsSchema,
+  threadStartParamsSchema,
+  threadStopParamsSchema,
+  turnStartParamsSchema,
+  turnSteerParamsSchema,
   skillsConfigureParamsSchema,
 } from "@bb/provider-bridge-protocol";
 import {
@@ -32,7 +35,6 @@ import {
   createBridgeLineHandler,
   createBridgeSessionRegistry,
   decodeBridgeJsonRpcResponse,
-  extractEnvOverrides,
   mimeTypeFromExtension,
   queueAcceptedUserMessage,
   runBridgeRequest,
@@ -53,15 +55,10 @@ import {
   type PiEventTranslator,
 } from "../event-translation.js";
 import {
-  buildPiCanonicalSessionParams,
-  piReasoningLevelSchema,
-  type PiReasoningLevel,
+  buildPiSessionParams,
+  type PiSessionParams,
 } from "../session-params.js";
-import {
-  PiSdkSession,
-  type PiSdkSessionOptions,
-  type ShellEnvOverrides,
-} from "./sdk-session.js";
+import { PiSdkSession, type PiSdkSessionOptions } from "./sdk-session.js";
 import {
   resolvePiBridgeSessionDir,
   resolvePiSessionFilePath,
@@ -78,210 +75,62 @@ import {
 // Command schema — defines what JSON-RPC requests this bridge accepts
 // ---------------------------------------------------------------------------
 
-interface PiInstructionOverrideParams {
-  baseInstructions?: string;
-  appendSystemPrompt?: string;
-}
-
-interface BuildPiSessionOptionsParams extends PiInstructionOverrideParams {
-  additionalSkillPaths?: readonly string[];
-  cwd: string;
-  model?: string;
-  sessionPath?: string;
-  thinkingLevel?: PiReasoningLevel;
-}
-
 interface BuildPiSessionOptionsArgs {
-  params: BuildPiSessionOptionsParams;
-  shellEnvOverrides: ShellEnvOverrides;
+  params: PiSessionParams;
   threadId: string;
 }
 
-function hasAtMostOnePiInstructionOverride(
-  params: PiInstructionOverrideParams,
-): boolean {
-  return (
-    params.baseInstructions === undefined ||
-    params.appendSystemPrompt === undefined
-  );
-}
-
-const piInstructionOverrideSchemaOptions = {
-  message: "Provide either baseInstructions or appendSystemPrompt, not both",
-  path: ["appendSystemPrompt"],
-};
-
-const piAdditionalSkillPathsSchema = z.array(z.string()).optional();
-
-const piThreadStartParamsSchema = z
-  .object({
-    threadId: z.string().optional(),
-    cwd: z.string(),
-    additionalSkillPaths: piAdditionalSkillPathsSchema,
-    baseInstructions: z.string().optional(),
-    appendSystemPrompt: z.string().optional(),
-    config: z.record(z.string(), z.unknown()).optional(),
-    model: z.string().optional(),
-    reasoningLevel: piReasoningLevelSchema.optional(),
-    input: z.array(z.unknown()).optional(),
-    dynamicTools: z
-      .array(
-        z.object({
-          name: z.string(),
-          description: z.string(),
-          inputSchema: z.unknown(),
-        }),
-      )
-      .optional(),
-  })
-  .refine(
-    hasAtMostOnePiInstructionOverride,
-    piInstructionOverrideSchemaOptions,
-  );
-
-const piThreadResumeParamsSchema = z
-  .object({
-    threadId: z.string(),
-    cwd: z.string(),
-    sessionPath: z.string().optional(),
-    additionalSkillPaths: piAdditionalSkillPathsSchema,
-    baseInstructions: z.string().optional(),
-    appendSystemPrompt: z.string().optional(),
-    config: z.record(z.string(), z.unknown()).optional(),
-    model: z.string().optional(),
-    reasoningLevel: piReasoningLevelSchema.optional(),
-    dynamicTools: z
-      .array(
-        z.object({
-          name: z.string(),
-          description: z.string(),
-          inputSchema: z.unknown(),
-        }),
-      )
-      .optional(),
-  })
-  .refine(
-    hasAtMostOnePiInstructionOverride,
-    piInstructionOverrideSchemaOptions,
-  );
-
-const piThreadForkParamsSchema = z
-  .object({
-    threadId: z.string(),
-    sourceProviderThreadId: z.string(),
-    cwd: z.string(),
-    providerCheckpointId: z.string().min(1).optional(),
-    additionalSkillPaths: piAdditionalSkillPathsSchema,
-    baseInstructions: z.string().optional(),
-    appendSystemPrompt: z.string().optional(),
-    config: z.record(z.string(), z.unknown()).optional(),
-    model: z.string().optional(),
-    reasoningLevel: piReasoningLevelSchema.optional(),
-    dynamicTools: z
-      .array(
-        z.object({
-          name: z.string(),
-          description: z.string(),
-          inputSchema: z.unknown(),
-        }),
-      )
-      .optional(),
-  })
-  .refine(
-    hasAtMostOnePiInstructionOverride,
-    piInstructionOverrideSchemaOptions,
-  );
-
-const piThreadIdParamsSchema = z.object({
-  threadId: z.string(),
-});
-
-const piTurnStartParamsSchema = z.object({
-  threadId: z.string(),
-  input: z.array(z.unknown()),
-  model: z.string().optional(),
-});
-
-const piTurnSteerParamsSchema = z.object({
-  threadId: z.string(),
-  expectedTurnId: z.string(),
-  input: z.array(z.unknown()),
-});
-
 /**
- * Per-method params accept both dialects during the phase-2b migration: the
- * canonical Provider Bridge Protocol shapes (imported from
- * `@bb/provider-bridge-protocol`, listed first — required fields such as
- * `options` or `intent` discriminate them from the legacy shapes) and the
- * legacy adapter shapes. Handlers narrow on the same fields. `model/list`,
- * `thread/compact`, and `thread/discard` keep one schema: the canonical
- * params parse under the legacy shape (pi's provider identity is the bb
- * thread id, so `threadId` addresses the same session in both dialects).
+ * The canonical Provider Bridge Protocol params, per method. `model/list`,
+ * `thread/compact`, and `thread/discard` address the session by bb thread id
+ * — pi's provider identity is that id, so it carries `providerThreadId`
+ * without reading it.
  */
 const piCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("initialize"),
-    // Accepts both the legacy shape ({clientInfo}) and the canonical
-    // Provider Bridge Protocol shape ({protocolVersion, client}); the reply
-    // is always the canonical handshake, which the legacy adapter ignores.
-    params: z.union([
-      z.object({
-        clientInfo: z.object({ name: z.string(), version: z.string() }),
-      }),
-      z
-        .object({
-          protocolVersion: z.number().int().positive(),
-          client: z.object({ name: z.string(), version: z.string() }),
-        })
-        .passthrough(),
-    ]),
+    params: z
+      .object({
+        protocolVersion: z.number().int().positive(),
+        client: z.object({ name: z.string(), version: z.string() }),
+      })
+      .passthrough(),
   }),
   z.object({
     method: z.literal("model/list"),
-    params: z.object({ cwd: z.string().optional() }),
+    params: modelListParamsSchema,
   }),
   z.object({
     method: z.literal("thread/start"),
-    params: z.union([
-      canonicalThreadStartParamsSchema,
-      piThreadStartParamsSchema,
-    ]),
+    params: threadStartParamsSchema,
   }),
   z.object({
     method: z.literal("thread/resume"),
-    params: z.union([
-      canonicalThreadResumeParamsSchema,
-      piThreadResumeParamsSchema,
-    ]),
+    params: threadResumeParamsSchema,
   }),
   z.object({
     method: z.literal("thread/fork"),
-    params: z.union([
-      canonicalThreadForkParamsSchema,
-      piThreadForkParamsSchema,
-    ]),
+    params: threadForkParamsSchema,
   }),
   z.object({
     method: z.literal("turn/start"),
-    params: z.union([canonicalTurnStartParamsSchema, piTurnStartParamsSchema]),
+    params: turnStartParamsSchema,
   }),
   z.object({
     method: z.literal("turn/steer"),
-    params: z.union([canonicalTurnSteerParamsSchema, piTurnSteerParamsSchema]),
+    params: turnSteerParamsSchema,
   }),
   z.object({
     method: z.literal("thread/stop"),
-    params: z.union([canonicalThreadStopParamsSchema, piThreadIdParamsSchema]),
+    params: threadStopParamsSchema,
   }),
   z.object({
     method: z.literal("thread/compact"),
-    params: piThreadIdParamsSchema,
+    params: threadCompactParamsSchema,
   }),
   z.object({
     method: z.literal("thread/discard"),
-    params: z.object({
-      threadId: z.string(),
-    }),
+    params: threadDiscardParamsSchema,
   }),
   z.object({
     method: z.literal("skills/configure"),
@@ -348,12 +197,6 @@ function decodePiJsonRpcRequest(raw: unknown): DecodedPiBridgeRequest {
   };
 }
 
-interface SdkEventNotification {
-  jsonrpc: "2.0";
-  method: "sdk/message";
-  params: { threadId: string; message: AgentSessionEvent };
-}
-
 interface BridgeEventNotification {
   jsonrpc: "2.0";
   method: string;
@@ -370,29 +213,13 @@ interface CreateSessionCallbackArgs {
   threadId: string;
 }
 
-/**
- * Which wire dialect the session's runtime speaks. "legacy" keeps today's
- * `sdk/message` (and other pi-flavored) notifications translated
- * adapter-side; "canonical" runs every session-scoped notification through
- * the bridge-held translator and emits finished `ThreadEvent`s as
- * `thread/event` per the Provider Bridge Protocol.
- */
-type PiSessionDialect = "legacy" | "canonical";
-
 interface ThreadSession {
   session: PiSdkSession;
   sessionSerial: number;
   closing: boolean;
-  dialect: PiSessionDialect;
-  /** Per-session translator; non-null exactly for canonical sessions. */
-  translator: PiEventTranslator | null;
+  /** Every session-scoped notification is translated through this. */
+  translator: PiEventTranslator;
   pendingToolCalls: Map<string | number, PendingBridgeToolCall>;
-}
-
-interface StartPiThreadSessionArgs {
-  dialect: PiSessionDialect;
-  params: PiSessionParams;
-  threadId: string;
 }
 
 interface PiThreadStopResult {
@@ -411,7 +238,7 @@ let sessionSerialCounter = 0;
 const THREAD_STOP_CLOSE_TIMEOUT_MS = 4_000;
 
 const { send, sendResult, sendError } = createBridgeIo<
-  SdkEventNotification | BridgeEventNotification | BridgeToolCallRequest
+  BridgeEventNotification | BridgeToolCallRequest
 >({ write: writePiBridgeProtocol });
 
 const {
@@ -428,30 +255,30 @@ const {
 });
 
 // ---------------------------------------------------------------------------
-// Canonical-dialect emission
+// Thread-event emission
 // ---------------------------------------------------------------------------
 
 /**
- * Per-process entropy for canonical turn/item id prefixes (#1224): combined
- * with a per-session serial below, ids never collide across process restarts
- * or session resumes.
+ * Per-process entropy for turn/item id prefixes (#1224): combined with a
+ * per-session serial below, ids never collide across process restarts or
+ * session resumes.
  */
-const canonicalIdEntropyPrefix = `bt${randomUUID().slice(0, 8)}-`;
-let canonicalSessionSerial = 0;
+const sessionIdEntropyPrefix = `bt${randomUUID().slice(0, 8)}-`;
+let translatorSessionSerial = 0;
 /**
- * Skill directories latched by the canonical `skills/configure` request. Pi
- * takes additional skill paths at session construction only, so the payload is
+ * Skill directories latched by the `skills/configure` request. Pi takes
+ * additional skill paths at session construction only, so the payload is
  * applied to every session started afterwards. `null` means the runtime never
  * configured skills for this process.
  */
 let configuredSkillPaths: string[] | null = null;
-const PI_CANONICAL_PROVIDER_ID = "pi";
+const PI_PROVIDER_ID = "pi";
 
-function createCanonicalSessionTranslator(): PiEventTranslator {
-  canonicalSessionSerial += 1;
-  const idPrefix = `${canonicalIdEntropyPrefix}${canonicalSessionSerial}-`;
+function createSessionTranslator(): PiEventTranslator {
+  translatorSessionSerial += 1;
+  const idPrefix = `${sessionIdEntropyPrefix}${translatorSessionSerial}-`;
   return createPiEventTranslator({
-    providerId: PI_CANONICAL_PROVIDER_ID,
+    providerId: PI_PROVIDER_ID,
     turnIdPrefix: idPrefix,
     itemIdPrefix: idPrefix,
     synthesizeItemStarted: true,
@@ -472,9 +299,10 @@ function sendThreadEvents(
 }
 
 /**
- * The one session-scoped emitter. Legacy sessions get today's notification
- * verbatim; canonical sessions run it through the session translator and emit
- * the finished `ThreadEvent`s as `thread/event` notifications.
+ * The one session-scoped emitter: it runs the pi-flavored notification through
+ * the session translator and emits the finished `ThreadEvent`s as
+ * `thread/event` notifications. The pi-flavored envelope never reaches the
+ * wire — it is only the translator's input vocabulary.
  */
 function emitForSession(
   threadSession: ThreadSession,
@@ -482,10 +310,6 @@ function emitForSession(
   method: string,
   params: Record<string, unknown>,
 ): void {
-  if (threadSession.dialect === "legacy" || threadSession.translator === null) {
-    send({ jsonrpc: "2.0", method, params });
-    return;
-  }
   sendThreadEvents(
     threadId,
     threadSession.translator.translatePiEvent(
@@ -496,11 +320,11 @@ function emitForSession(
 }
 
 /**
- * Canonical sessions announce identity before any `thread/event`; pi's
- * provider identity is the bb threadId and pi sessions always persist to a
- * session file, so every session is restorable.
+ * A session announces identity before any `thread/event`; pi's provider
+ * identity is the bb threadId and pi sessions always persist to a session
+ * file, so every session is restorable.
  */
-function sendCanonicalThreadIdentity(threadId: string): void {
+function sendThreadIdentity(threadId: string): void {
   send({
     jsonrpc: "2.0",
     method: BRIDGE_NOTIFICATION_METHODS.threadIdentity,
@@ -509,18 +333,10 @@ function sendCanonicalThreadIdentity(threadId: string): void {
 }
 
 function sendSessionScopedError(threadId: string, message: string): void {
-  if (sessions.get(threadId)?.dialect === "canonical") {
-    send({
-      jsonrpc: "2.0",
-      method: BRIDGE_NOTIFICATION_METHODS.error,
-      params: { threadId, providerThreadId: threadId, message },
-    });
-    return;
-  }
   send({
     jsonrpc: "2.0",
-    method: "error",
-    params: { threadId, message },
+    method: BRIDGE_NOTIFICATION_METHODS.error,
+    params: { threadId, providerThreadId: threadId, message },
   });
 }
 
@@ -529,26 +345,15 @@ function emitSessionError(
   threadId: string,
   message: string,
 ): void {
-  if (
-    threadSession.dialect === "canonical" &&
-    threadSession.translator !== null
-  ) {
-    // Settle any open translator turn first: every accepted turn reaches
-    // exactly one terminal state, and settlement events precede the error
-    // signal. Without an open turn the error stays a runtime notification —
-    // translating it would fabricate a failed turn bb never accepted.
-    const state = threadSession.translator.resolveState({ threadId });
-    if (state.currentTurnId !== undefined) {
-      emitForSession(threadSession, threadId, "error", { threadId, message });
-    }
-    send({
-      jsonrpc: "2.0",
-      method: BRIDGE_NOTIFICATION_METHODS.error,
-      params: { threadId, providerThreadId: threadId, message },
-    });
-    return;
+  // Settle any open translator turn first: every accepted turn reaches
+  // exactly one terminal state, and settlement events precede the error
+  // signal. Without an open turn the error stays a runtime notification —
+  // translating it would fabricate a failed turn bb never accepted.
+  const state = threadSession.translator.resolveState({ threadId });
+  if (state.currentTurnId !== undefined) {
+    emitForSession(threadSession, threadId, "error", { threadId, message });
   }
-  send({ jsonrpc: "2.0", method: "error", params: { threadId, message } });
+  sendSessionScopedError(threadId, message);
 }
 
 function toContextWindowUsagePayload(
@@ -701,34 +506,22 @@ function reportSessionError(
   emitSessionError(threadSession, args.threadId, message);
 }
 
-function normalizeShellEnvOverrides(
-  shellEnvOverrides: ShellEnvOverrides,
-): ShellEnvOverrides | undefined {
-  return Object.keys(shellEnvOverrides).length > 0
-    ? shellEnvOverrides
-    : undefined;
-}
-
 function buildSessionOptions(
   args: BuildPiSessionOptionsArgs,
 ): PiSdkSessionOptions {
-  const shellEnvOverrides = normalizeShellEnvOverrides(args.shellEnvOverrides);
-  const sessionFilePath = resolvePiSessionFilePath({
-    env: process.env,
-    sessionPath: args.params.sessionPath,
-    threadId: args.threadId,
-  });
-
   return {
     cwd: args.params.cwd,
     model: args.params.model,
-    sessionFilePath,
+    sessionFilePath: resolvePiSessionFilePath({
+      env: process.env,
+      threadId: args.threadId,
+    }),
     systemPrompt: args.params.baseInstructions,
     appendSystemPrompt: args.params.appendSystemPrompt,
+    shellEnvOverrides: args.params.shellEnvOverrides,
     ...(args.params.additionalSkillPaths
-      ? { additionalSkillPaths: args.params.additionalSkillPaths }
+      ? { additionalSkillPaths: [...args.params.additionalSkillPaths] }
       : {}),
-    ...(shellEnvOverrides ? { shellEnvOverrides } : {}),
     ...(args.params.thinkingLevel
       ? { thinkingLevel: args.params.thinkingLevel }
       : {}),
@@ -737,7 +530,7 @@ function buildSessionOptions(
 
 function applyDynamicTools(
   sessionOptions: PiSdkSessionOptions,
-  dynamicTools: DynamicToolDefinition[] | undefined,
+  dynamicTools: readonly DynamicToolDefinition[] | undefined,
   threadId: string,
 ): void {
   if (dynamicTools && dynamicTools.length > 0) {
@@ -760,10 +553,8 @@ async function handleRequest(
       // "checkpoint" — thread/fork accepts providerCheckpointId and
       // materializes the source history up to that entry
       // (SessionManager.createBranchedSession). manualCompaction is true —
-      // thread/compact is implemented below. The legacy adapter ignores this
-      // result (plus `ok` for its historical shape).
+      // thread/compact is implemented below.
       sendResult(request.id, {
-        ok: true,
         protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
         capabilities: {
           sessionRestore: true,
@@ -777,107 +568,34 @@ async function handleRequest(
       });
       break;
     case "model/list":
-      // Pi model listing needs no launch spec; the canonical params carry
-      // the same optional cwd as the legacy shape.
+      // Pi model listing needs no launch spec, only the cwd whose project
+      // configuration decides which providers are configured.
       await handleModelList(request.id, request.params);
       break;
-    case "thread/start": {
-      if ("options" in request.params) {
-        const params = request.params;
-        await handleThreadStart(
-          request.id,
-          piThreadStartParamsSchema.parse(
-            buildPiCanonicalSessionParams({
-              threadId: params.threadId,
-              cwd: params.cwd,
-              options: params.options,
-              instructionMode: params.instructionMode,
-              dynamicTools: params.dynamicTools,
-              additionalSkillPaths: configuredSkillPaths ?? undefined,
-            }),
-          ),
-          "canonical",
-        );
-        break;
-      }
-      await handleThreadStart(request.id, request.params, "legacy");
+    // Pi's provider identity is the bb threadId (the canonical
+    // providerThreadId equals it for sessions this bridge minted), so a resume
+    // is a start that reopens the deterministic session file for that id.
+    case "thread/start":
+    case "thread/resume":
+      await handleThreadConstruction(
+        request.id,
+        request.params.threadId,
+        toPiSessionParams(request.params),
+      );
       break;
-    }
-    case "thread/resume": {
-      if ("options" in request.params) {
-        const params = request.params;
-        // Pi's provider identity is the bb threadId (the canonical
-        // providerThreadId equals it for sessions this bridge minted), so
-        // resume reopens the deterministic session file for the thread id.
-        await handleThreadResume(
-          request.id,
-          piThreadResumeParamsSchema.parse(
-            buildPiCanonicalSessionParams({
-              threadId: params.threadId,
-              cwd: params.cwd,
-              options: params.options,
-              instructionMode: params.instructionMode,
-              dynamicTools: params.dynamicTools,
-              additionalSkillPaths: configuredSkillPaths ?? undefined,
-            }),
-          ),
-          "canonical",
-        );
-        break;
-      }
-      await handleThreadResume(request.id, request.params, "legacy");
+    case "thread/fork":
+      // Pi supports checkpoint forks natively.
+      await handleThreadFork(request.id, request.params);
       break;
-    }
-    case "thread/fork": {
-      if ("options" in request.params) {
-        const params = request.params;
-        // Pi supports checkpoint forks natively: sourceProviderCheckpointId
-        // maps onto the legacy providerCheckpointId param.
-        await handleThreadFork(
-          request.id,
-          piThreadForkParamsSchema.parse({
-            ...buildPiCanonicalSessionParams({
-              threadId: params.threadId,
-              cwd: params.cwd,
-              options: params.options,
-              instructionMode: params.instructionMode,
-              dynamicTools: params.dynamicTools,
-              additionalSkillPaths: configuredSkillPaths ?? undefined,
-            }),
-            sourceProviderThreadId: params.sourceProviderThreadId,
-            ...(params.sourceProviderCheckpointId !== undefined
-              ? { providerCheckpointId: params.sourceProviderCheckpointId }
-              : {}),
-          }),
-          "canonical",
-        );
-        break;
-      }
-      await handleThreadFork(request.id, request.params, "legacy");
-      break;
-    }
     case "turn/start":
-      if ("options" in request.params) {
-        handleCanonicalTurnStart(request.id, request.params);
-        break;
-      }
-      await handleTurnStart(request.id, request.params);
+      handleTurnStart(request.id, request.params);
       break;
     case "turn/steer":
-      if ("options" in request.params) {
-        await handleCanonicalTurnSteer(request.id, request.params);
-        break;
-      }
       await handleTurnSteer(request.id, request.params);
       break;
-    case "thread/stop": {
-      if ("intent" in request.params) {
-        await handleCanonicalThreadStop(request.id, request.params);
-        break;
-      }
-      sendResult(request.id, await handleThreadStop(request.params));
+    case "thread/stop":
+      await handleThreadStop(request.id, request.params);
       break;
-    }
     case "thread/compact":
       handleThreadCompact(request.id, request.params);
       break;
@@ -894,46 +612,27 @@ async function handleRequest(
   }
 }
 
-type ThreadStartParams = z.infer<typeof piThreadStartParamsSchema>;
-type ThreadResumeParams = z.infer<typeof piThreadResumeParamsSchema>;
-type ThreadForkParams = z.infer<typeof piThreadForkParamsSchema>;
-type TurnStartParams = z.infer<typeof piTurnStartParamsSchema>;
-type TurnSteerParams = z.infer<typeof piTurnSteerParamsSchema>;
-type CanonicalTurnStartParams = z.infer<typeof canonicalTurnStartParamsSchema>;
-type CanonicalTurnSteerParams = z.infer<typeof canonicalTurnSteerParamsSchema>;
-type CanonicalThreadStopParams = z.infer<
-  typeof canonicalThreadStopParamsSchema
->;
-type ThreadIdParams = z.infer<typeof piThreadIdParamsSchema>;
-type ThreadDiscardParams = Extract<
-  PiCommand,
-  { method: "thread/discard" }
->["params"];
-type PiSessionParams =
-  | ThreadStartParams
-  | ThreadResumeParams
-  | ThreadForkParams;
+type ThreadForkParams = z.infer<typeof threadForkParamsSchema>;
+type TurnStartParams = z.infer<typeof turnStartParamsSchema>;
+type TurnSteerParams = z.infer<typeof turnSteerParamsSchema>;
+type ThreadStopParams = z.infer<typeof threadStopParamsSchema>;
+type ThreadRefParams = z.infer<typeof threadCompactParamsSchema>;
 
-function buildPiSessionParams(
-  params: PiSessionParams,
-): BuildPiSessionOptionsParams {
-  return {
-    ...(params.additionalSkillPaths && params.additionalSkillPaths.length > 0
-      ? { additionalSkillPaths: [...params.additionalSkillPaths] }
-      : {}),
+/**
+ * The session-construction fields every constructing method carries, mapped
+ * onto pi session params with this process's latched skill paths.
+ */
+function toPiSessionParams(
+  params: z.infer<typeof threadStartParamsSchema>,
+): PiSessionParams {
+  return buildPiSessionParams({
+    threadId: params.threadId,
     cwd: params.cwd,
-    ...(params.model ? { model: params.model } : {}),
-    ...("sessionPath" in params && params.sessionPath
-      ? { sessionPath: params.sessionPath }
-      : {}),
-    ...(params.baseInstructions
-      ? { baseInstructions: params.baseInstructions }
-      : {}),
-    ...(params.appendSystemPrompt
-      ? { appendSystemPrompt: params.appendSystemPrompt }
-      : {}),
-    ...(params.reasoningLevel ? { thinkingLevel: params.reasoningLevel } : {}),
-  };
+    options: params.options,
+    instructionMode: params.instructionMode,
+    dynamicTools: params.dynamicTools,
+    additionalSkillPaths: configuredSkillPaths ?? undefined,
+  });
 }
 
 async function handleModelList(
@@ -951,11 +650,10 @@ async function handleModelList(
   }
 }
 
-async function startPiThreadSession({
-  dialect,
-  params,
-  threadId,
-}: StartPiThreadSessionArgs): Promise<void> {
+async function startPiThreadSession(
+  threadId: string,
+  params: PiSessionParams,
+): Promise<void> {
   // Stop existing session for this thread if any
   const existing = sessions.get(threadId);
   if (existing) {
@@ -965,12 +663,7 @@ async function startPiThreadSession({
     });
   }
 
-  const shellEnvOverrides = extractEnvOverrides(params.config);
-  const sessionOptions = buildSessionOptions({
-    params: buildPiSessionParams(params),
-    shellEnvOverrides,
-    threadId,
-  });
+  const sessionOptions = buildSessionOptions({ params, threadId });
   applyDynamicTools(sessionOptions, params.dynamicTools, threadId);
 
   const sessionSerial = nextSessionSerial();
@@ -984,9 +677,7 @@ async function startPiThreadSession({
     session,
     sessionSerial,
     closing: false,
-    dialect,
-    translator:
-      dialect === "canonical" ? createCanonicalSessionTranslator() : null,
+    translator: createSessionTranslator(),
     pendingToolCalls: new Map(),
   };
   sessions.set(threadId, threadSession);
@@ -1000,48 +691,23 @@ async function startPiThreadSession({
 }
 
 /**
- * Send the session-construction result for the dialect. Pi has no separately
- * minted session id: its provider identity is the BB thread id. Return that
- * identity synchronously so callers do not have to race the thread/identity
+ * Announce the constructed session. Pi has no separately minted session id:
+ * its provider identity is the BB thread id. The result returns that identity
+ * synchronously so callers do not have to race the thread/identity
  * notification.
  */
-function sendThreadSessionResult(
+function sendThreadSessionResult(id: string | number, threadId: string): void {
+  sendThreadIdentity(threadId);
+  sendResult(id, { providerThreadId: threadId, sessionRestorable: true });
+}
+
+async function handleThreadConstruction(
   id: string | number,
   threadId: string,
-  dialect: PiSessionDialect,
-): void {
-  if (dialect === "canonical") {
-    sendCanonicalThreadIdentity(threadId);
-    sendResult(id, { providerThreadId: threadId, sessionRestorable: true });
-    return;
-  }
-  sendResult(id, { threadId, providerThreadId: threadId });
-}
-
-async function handleThreadStart(
-  id: string | number,
-  params: ThreadStartParams,
-  dialect: PiSessionDialect,
+  params: PiSessionParams,
 ): Promise<void> {
-  const threadId = params.threadId ?? `pi-${Date.now()}`;
-  await startPiThreadSession({ dialect, params, threadId });
-  sendThreadSessionResult(id, threadId, dialect);
-  if (dialect === "legacy") {
-    send({
-      jsonrpc: "2.0",
-      method: "thread/identity",
-      params: { threadId, providerThreadId: threadId },
-    });
-  }
-}
-
-async function handleThreadResume(
-  id: string | number,
-  params: ThreadResumeParams,
-  dialect: PiSessionDialect,
-): Promise<void> {
-  await startPiThreadSession({ dialect, params, threadId: params.threadId });
-  sendThreadSessionResult(id, params.threadId, dialect);
+  await startPiThreadSession(threadId, params);
+  sendThreadSessionResult(id, threadId);
 }
 
 // Pi keeps no provider-minted session id: provider identity == bb threadId, and
@@ -1057,7 +723,6 @@ async function handleThreadResume(
 async function handleThreadFork(
   id: string | number,
   params: ThreadForkParams,
-  dialect: PiSessionDialect,
 ): Promise<void> {
   const sourceSessionFile = resolvePiSessionFilePath({
     env: process.env,
@@ -1079,7 +744,7 @@ async function handleThreadFork(
 
   const bridgeSessionDir = resolvePiBridgeSessionDir({ env: process.env });
   const forkedFile =
-    params.providerCheckpointId === undefined
+    params.sourceProviderCheckpointId === undefined
       ? SessionManager.forkFrom(
           sourceSessionFile,
           params.cwd,
@@ -1089,7 +754,7 @@ async function handleThreadFork(
           sourceSessionFile,
           bridgeSessionDir,
           params.cwd,
-        ).createBranchedSession(params.providerCheckpointId);
+        ).createBranchedSession(params.sourceProviderCheckpointId);
   if (!forkedFile) {
     sendError(id, -32000, "Cannot fork: forked pi session was not persisted");
     return;
@@ -1112,15 +777,11 @@ async function handleThreadFork(
     return;
   }
 
-  await startPiThreadSession({ dialect, params, threadId: params.threadId });
-  sendThreadSessionResult(id, params.threadId, dialect);
-  if (dialect === "legacy") {
-    send({
-      jsonrpc: "2.0",
-      method: "thread/identity",
-      params: { threadId: params.threadId, providerThreadId: params.threadId },
-    });
-  }
+  await handleThreadConstruction(
+    id,
+    params.threadId,
+    toPiSessionParams(params),
+  );
 }
 
 function startPiPrompt(
@@ -1146,38 +807,10 @@ function startPiPrompt(
     );
 }
 
-async function handleTurnStart(
-  id: string | number,
-  params: TurnStartParams,
-): Promise<void> {
+function handleTurnStart(id: string | number, params: TurnStartParams): void {
+  // Requests resolve the session by bb threadId — pi's stable session handle.
   const threadSession = sessions.get(params.threadId);
   if (!threadSession || threadSession.closing) {
-    sendError(id, -32000, "No active pi session");
-    return;
-  }
-
-  const { text, images } = extractInput(params.input);
-  if (!text) {
-    sendError(id, -32602, "Missing input text");
-    return;
-  }
-
-  startPiPrompt(threadSession, params.threadId, text, images);
-  sendResult(id, { threadId: params.threadId });
-}
-
-function handleCanonicalTurnStart(
-  id: string | number,
-  params: CanonicalTurnStartParams,
-): void {
-  // Canonical requests resolve the session by bb threadId — pi's stable
-  // session handle in both dialects.
-  const threadSession = sessions.get(params.threadId);
-  if (
-    !threadSession ||
-    threadSession.closing ||
-    threadSession.translator === null
-  ) {
     sendError(id, -32000, "No active pi session");
     return;
   }
@@ -1227,39 +860,6 @@ async function handleTurnSteer(
 
   const { text, images } = extractInput(params.input);
   if (!text) {
-    sendError(id, -32602, "Missing input text");
-    return;
-  }
-
-  if (threadSession.session.getIsCompacting()) {
-    sendError(id, -32000, "Cannot steer while context compaction is active");
-    return;
-  }
-
-  try {
-    await threadSession.session.steer(
-      text,
-      images.length > 0 ? images : undefined,
-    );
-    sendResult(id, { threadId: params.threadId });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    sendError(id, -32000, message);
-  }
-}
-
-async function handleCanonicalTurnSteer(
-  id: string | number,
-  params: CanonicalTurnSteerParams,
-): Promise<void> {
-  const threadSession = sessions.get(params.threadId);
-  if (!threadSession || threadSession.closing) {
-    sendError(id, -32000, "No active pi session");
-    return;
-  }
-
-  const { text, images } = extractInput(params.input);
-  if (!text) {
     sendError(id, BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS, "Missing input text");
     return;
   }
@@ -1292,27 +892,26 @@ async function handleCanonicalTurnSteer(
   }
 }
 
-async function handleThreadStop(
-  params: ThreadIdParams,
+async function closePiThreadSession(
+  threadId: string,
 ): Promise<PiThreadStopResult> {
   const providerCheckpointId =
     (await closeThreadSession({
       message: "Pi thread stopped while tool call was pending",
-      threadId: params.threadId,
+      threadId,
     })) ?? null;
   return { ok: true, providerCheckpointId };
 }
 
-async function handleCanonicalThreadStop(
+async function handleThreadStop(
   id: string | number,
-  params: CanonicalThreadStopParams,
+  params: ThreadStopParams,
 ): Promise<void> {
   const threadSession = sessions.get(params.threadId);
   if (
     params.intent === "interrupt" &&
     threadSession !== undefined &&
-    !threadSession.closing &&
-    threadSession.translator !== null
+    !threadSession.closing
   ) {
     // An interrupt settles the active turn as interrupted before teardown;
     // the SDK session is detached on close, so no further events flow.
@@ -1337,12 +936,12 @@ async function handleCanonicalThreadStop(
   }
   // A release detaches the idle session and must not fabricate an
   // interruption (#1584): the close path emits no turn events.
-  sendResult(id, await handleThreadStop({ threadId: params.threadId }));
+  sendResult(id, await closePiThreadSession(params.threadId));
 }
 
 function handleThreadCompact(
   id: string | number,
-  params: ThreadIdParams,
+  params: ThreadRefParams,
 ): void {
   const threadSession = sessions.get(params.threadId);
   if (!threadSession || threadSession.closing) {
@@ -1366,7 +965,7 @@ function handleThreadCompact(
 }
 
 async function handleThreadDiscard(
-  params: ThreadDiscardParams,
+  params: ThreadRefParams,
 ): Promise<PiCommandOkResult> {
   await closeThreadSession({
     message: "Pi staged thread discarded while tool call was pending",

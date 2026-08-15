@@ -1,14 +1,11 @@
 /**
- * Pi session parameter mapping.
- *
- * Shared helpers that build the pi bridge's internal session-construction
- * params from canonical Provider Bridge Protocol session params, the same
- * pattern as `acp/session-params.ts`.
+ * Pi session parameter mapping: canonical Provider Bridge Protocol session
+ * params in, the pi bridge's session-construction params out.
  */
 
 import type { DynamicTool, InstructionMode, ReasoningLevel } from "@bb/domain";
 import { z } from "zod";
-import { buildShellEnvironmentPolicyConfig } from "@bb/provider-bridge-protocol/bridge-kit";
+import { buildShellEnvOverrides } from "@bb/provider-bridge-protocol/bridge-kit";
 
 export const piReasoningLevelValues = [
   "off",
@@ -24,8 +21,8 @@ export type PiReasoningLevel = z.infer<typeof piReasoningLevelSchema>;
 // BB's reasoning ladder is a superset of Pi's thinking levels. The only name
 // that differs is BB's "none" (no extended thinking), which Pi calls "off".
 // Levels Pi does not support ("ultracode", "ultra") are dropped so the bridge
-// schema never receives a value it would reject; reconciliation picks the
-// closest supported level before this point, so this is a defensive floor.
+// never receives a value it would reject; reconciliation picks the closest
+// supported level before this point, so this is a defensive floor.
 function toPiThinkingLevel(
   reasoningLevel: ReasoningLevel | undefined,
 ): PiReasoningLevel | undefined {
@@ -45,37 +42,22 @@ function toPiThinkingLevel(
   }
 }
 
-function buildPiConfig(
-  threadId: string,
-  options?: { envVars?: Record<string, string> | undefined },
-): Record<string, unknown> | undefined {
-  const config: Record<string, unknown> = {};
-  if (threadId) config["shell_environment_policy.set.BB_THREAD_ID"] = threadId;
-  const shellEnvironmentConfig = buildShellEnvironmentPolicyConfig(
-    options?.envVars,
-  );
-  if (shellEnvironmentConfig) {
-    Object.assign(config, shellEnvironmentConfig);
-  }
-  return Object.keys(config).length > 0 ? config : undefined;
-}
-
 /**
- * The execution-option subset the canonical pi session mapping reads.
- * Structurally satisfied by the canonical wire options
- * (`bridgeExecutionOptionsSchema` output).
+ * The execution-option subset the pi session mapping reads. Structurally
+ * satisfied by the canonical wire options (`bridgeExecutionOptionsSchema`
+ * output).
  */
-export interface PiCanonicalSessionOptions {
+export interface PiSessionOptions {
   model?: string | undefined;
   reasoningLevel?: ReasoningLevel | undefined;
   instructions?: string | undefined;
   envVars?: Record<string, string> | undefined;
 }
 
-export interface BuildPiCanonicalSessionParamsArgs {
+export interface BuildPiSessionParamsArgs {
   threadId: string;
   cwd: string;
-  options: PiCanonicalSessionOptions;
+  options: PiSessionOptions;
   instructionMode: InstructionMode;
   dynamicTools?: readonly DynamicTool[] | undefined;
   /**
@@ -86,29 +68,37 @@ export interface BuildPiCanonicalSessionParamsArgs {
   additionalSkillPaths?: readonly string[] | undefined;
 }
 
-/**
- * The pi bridge's internal session-construction params (the legacy
- * `thread/start` shape) built from canonical Provider Bridge Protocol
- * session params. Skill paths come from the process-scoped
- * `skills/configure` latch rather than the session options.
- */
-export function buildPiCanonicalSessionParams(
-  args: BuildPiCanonicalSessionParamsArgs,
-): Record<string, unknown> {
+/** Everything the bridge needs to construct one Pi SDK session. */
+export interface PiSessionParams {
+  additionalSkillPaths?: readonly string[];
+  appendSystemPrompt?: string;
+  baseInstructions?: string;
+  cwd: string;
+  dynamicTools?: readonly DynamicTool[];
+  model?: string;
+  /** Always carries BB_THREAD_ID; pi applies it as its shell env policy. */
+  shellEnvOverrides: Record<string, string>;
+  thinkingLevel?: PiReasoningLevel;
+}
+
+export function buildPiSessionParams(
+  args: BuildPiSessionParamsArgs,
+): PiSessionParams {
   const instructions = args.options.instructions?.trim();
-  const config = buildPiConfig(args.threadId, args.options);
-  const reasoningLevel = toPiThinkingLevel(args.options.reasoningLevel);
+  const thinkingLevel = toPiThinkingLevel(args.options.reasoningLevel);
   return {
-    threadId: args.threadId,
     cwd: args.cwd,
+    shellEnvOverrides: {
+      BB_THREAD_ID: args.threadId,
+      ...buildShellEnvOverrides(args.options.envVars),
+    },
     ...(instructions
       ? args.instructionMode === "replace"
         ? { baseInstructions: instructions }
         : { appendSystemPrompt: instructions }
       : {}),
-    ...(config ? { config } : {}),
     ...(args.options.model ? { model: args.options.model } : {}),
-    ...(reasoningLevel ? { reasoningLevel } : {}),
+    ...(thinkingLevel ? { thinkingLevel } : {}),
     ...(args.dynamicTools && args.dynamicTools.length > 0
       ? { dynamicTools: args.dynamicTools }
       : {}),

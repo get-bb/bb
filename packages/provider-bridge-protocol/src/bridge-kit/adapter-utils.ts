@@ -256,21 +256,40 @@ export function withParentToolCallId<TItem extends ThreadEventItem>(
   };
 }
 
+/**
+ * The environment overrides a bridge may hand its provider: the requested
+ * variables minus any name a shell would refuse. A rejected name is dropped,
+ * never passed through — a provider that inherits an unquotable name can fail
+ * its whole session on one bad key.
+ */
+export function buildShellEnvOverrides(
+  envVars?: Record<string, string>,
+): Record<string, string> {
+  const overrides: Record<string, string> = {};
+  for (const [key, value] of Object.entries(envVars ?? {})) {
+    if (!shellEnvironmentVariableKeySchema.safeParse(key).success) {
+      continue;
+    }
+    overrides[key] = value;
+  }
+  return overrides;
+}
+
+/**
+ * The same overrides expressed as a codex/pi-style `shell_environment_policy`
+ * config bag, for providers whose session construction takes config keys
+ * rather than an environment map.
+ */
 export function buildShellEnvironmentPolicyConfig(
   envVars?: Record<string, string>,
 ): Record<string, string> | undefined {
   if (!envVars) {
     return undefined;
   }
-
   const config: Record<string, string> = {};
-  for (const [key, value] of Object.entries(envVars)) {
-    if (!shellEnvironmentVariableKeySchema.safeParse(key).success) {
-      continue;
-    }
+  for (const [key, value] of Object.entries(buildShellEnvOverrides(envVars))) {
     config[`shell_environment_policy.set.${key}`] = value;
   }
-
   return Object.keys(config).length > 0 ? config : undefined;
 }
 

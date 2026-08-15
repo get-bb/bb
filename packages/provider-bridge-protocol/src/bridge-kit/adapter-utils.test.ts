@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildEditDiff,
+  buildShellEnvOverrides,
   buildShellEnvironmentPolicyConfig,
   diffCumulativeText,
   extractEnvOverrides,
@@ -22,6 +23,17 @@ describe("adapter-utils", () => {
     }
     return { added, removed };
   }
+
+  // A name a shell cannot carry must be dropped, not passed through: one bad
+  // key would otherwise become a config path of its own inside the provider.
+  it("drops environment names a shell would refuse", () => {
+    expect(
+      buildShellEnvOverrides({
+        "BAD.KEY": "ignored",
+        API_URL: "https://example.com",
+      }),
+    ).toEqual({ API_URL: "https://example.com" });
+  });
 
   it("round-trips shell environment policy overrides", () => {
     expect(

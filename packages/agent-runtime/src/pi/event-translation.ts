@@ -427,21 +427,18 @@ export interface CreatePiEventTranslatorOptions {
   /** Prefix for bb-owned turn ids emitted by this translator instance. */
   turnIdPrefix?: string;
   /**
-   * Prefix for bb-owned assistant/reasoning item ids. The legacy adapter keeps
-   * one translator per thread for the process lifetime, so its per-session
-   * counters ("pi-assistant-N") stay unique. A per-session translator (the
-   * canonical bridge surface) restarts those counters on resume, so it must
-   * inject per-session entropy here — a bare counter is the #1224 cross-resume
-   * collision.
+   * Prefix for bb-owned assistant/reasoning item ids. The bridge builds one
+   * translator per session, which restarts the "pi-assistant-N" counters on
+   * resume, so it injects per-session entropy here — a bare counter is the
+   * #1224 cross-resume collision.
    */
   itemIdPrefix?: string;
   /**
    * Emit a synthetic `item/started` when an assistant-message or reasoning
    * item opens delta-first. Pi streams bare `message_update` deltas; the
    * canonical event grammar requires every item's first event to be
-   * `item/started`, so the protocol-pure surface opts in while the legacy
-   * adapter keeps its delta-first shape (the projection backfill covers
-   * persisted history).
+   * `item/started`, so the bridge opts in (the projection backfill covers
+   * persisted history recorded before it did).
    */
   synthesizeItemStarted?: boolean;
   /** Override context-window resolution. Used by unit tests to avoid real catalogs. */
