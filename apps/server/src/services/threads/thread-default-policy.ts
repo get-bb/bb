@@ -342,7 +342,7 @@ export function resolveThreadExecutionPermissionMode(
     args.parentThreadExecutionPermissionMode,
   );
   const supported = args.thread.providerId
-    ? getSupportedPermissionModes(args.thread.providerId)
+    ? registry.getSupportedPermissionModes(args.thread.providerId)
     : null;
   // A null clamp means the provider supports nothing at or below the parent's
   // mode; returning the ceiling lets provider validation reject the pairing.
