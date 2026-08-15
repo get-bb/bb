@@ -43,7 +43,6 @@ import {
   withoutBridgeRuntimeEnv,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import type { BridgeJsonRpcResponse } from "@bb/provider-bridge-protocol/bridge-kit";
-import type { AgentRuntimeAcpSkillRoot } from "../../types.js";
 import {
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
@@ -90,6 +89,7 @@ import { acpProfileFromLaunchSpec, type AcpAgentProfile } from "../profiles.js";
 import {
   buildAcpModelListParams,
   buildAcpSessionParams,
+  type AcpSkillRoot,
 } from "../session-params.js";
 import {
   ACP_PROTOCOL_VERSION,
@@ -272,7 +272,7 @@ let canonicalSessionSerial = 0;
  * instructions — which are fixed at session construction, hence the latch.
  * `null` means the runtime never configured skills for this process.
  */
-let configuredSkillRoots: AgentRuntimeAcpSkillRoot[] | null = null;
+let configuredSkillRoots: AcpSkillRoot[] | null = null;
 const ACP_CANONICAL_PROVIDER_ID = "acp";
 
 function createCanonicalSessionTranslator(): AcpEventTranslator {
@@ -2616,7 +2616,6 @@ async function handleRequest(
     case "skills/configure":
       configuredSkillRoots = request.params.roots.map((root) => ({
         id: root.id,
-        providerId: "acp",
         skillDirectoryRootPath: root.path,
         skills: root.skills.map((skill) => ({
           name: skill.name,

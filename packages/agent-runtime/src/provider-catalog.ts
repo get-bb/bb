@@ -1,19 +1,17 @@
 /**
- * Capability baselines for the bundled first-party bridges.
+ * Capability baseline for the one bridge bb still delivers in the daemon
+ * bundle: Pi, whose agent tree cannot be inlined into a relocatable artifact.
  *
- * Providers are declared server-side by plugins; the daemon does not see those
- * declarations for bundled bridges, whose adapters are constructed locally.
- * This table is what those adapters advertise until the initialize handshake
- * narrows it — the same role `acp/launch-specs.ts` plays for ACP launch data.
+ * Providers are declared server-side by plugins; the daemon does not see that
+ * declaration for a bundled bridge, whose adapter is constructed locally. This
+ * is what that adapter advertises until the initialize handshake narrows it —
+ * the same role `acp-launch-specs.ts` plays for ACP launch data.
  *
  * A plugin-delivered bridge never reads this: its validated capabilities ride
  * the verified `bridgeLaunch`.
  *
- * DEBT: this duplicates the declarations in plugins/provider-*. Each entry
- * disappears when that bridge moves into its plugin directory and ships
- * through the artifact pipeline (wave 5 of the graduation plan), at which
- * point its capabilities arrive on the launch like every other plugin's.
- * Codex and claude-code have already made that move; pi and acp have not.
+ * DEBT: this duplicates the declaration in plugins/provider-pi. It disappears
+ * only if pi ever ships as an artifact (see the graduation plan's pi verdict).
  */
 import type { ProviderCapabilities, ProviderInfo } from "@bb/domain";
 
@@ -33,26 +31,10 @@ const PI_CAPABILITIES: ProviderCapabilities = {
 };
 
 /**
- * Shared by every ACP provider: the external agent owns model selection, tool
- * execution, and session naming, so BB-side capabilities stay minimal. Fork
- * support is the declared offer; each agent's real answer is negotiated at the
- * handshake. Cursor's `-fast` model tail is resolved by the bridge from the
- * service tier, so service tier is supported here.
- */
-const ACP_CAPABILITIES: ProviderCapabilities = {
-  supportsArchive: false,
-  supportsRename: false,
-  supportsServiceTier: true,
-  supportsUserQuestion: false,
-  supportsFork: true,
-  supportsSessionRewind: false,
-  supportedPermissionModes: ["accept-edits", "full"],
-};
-
-/**
  * Whether a stopped session of this provider can resume from its persisted id.
- * The runtime stamps it into the thread's shell environment; ACP's real answer
- * comes from the agent's initialize result, so the static claim is false.
+ * The runtime stamps it into the thread's shell environment. This is only a
+ * pre-first-result seed: every bridge reports its real answer per session on
+ * `thread/start`, which is the sole source for a graduated provider.
  */
 const SESSION_RESTORABLE_BY_PROVIDER_ID: Readonly<Record<string, boolean>> = {
   pi: true,
@@ -65,7 +47,6 @@ interface BundledProvider {
 
 const BUNDLED_PROVIDERS: Readonly<Record<string, BundledProvider>> = {
   pi: { displayName: "Pi", capabilities: PI_CAPABILITIES },
-  "acp-cursor": { displayName: "Cursor", capabilities: ACP_CAPABILITIES },
 };
 
 function cloneCapabilities(
@@ -101,20 +82,6 @@ export function getBundledProviderInfo(
 ): ProviderInfo | null {
   const provider = BUNDLED_PROVIDERS[providerId];
   return provider === undefined ? null : toInfo(providerId, provider);
-}
-
-/** Baseline info for an ACP id with no bundled entry (custom/known agents). */
-export function buildAcpProviderInfo(args: {
-  id: string;
-  displayName: string;
-}): ProviderInfo {
-  if (!isAcpProviderId(args.id)) {
-    throw new Error(`ACP provider id "${args.id}" must start with "acp-".`);
-  }
-  return toInfo(args.id, {
-    displayName: args.displayName,
-    capabilities: ACP_CAPABILITIES,
-  });
 }
 
 /** Whether a stopped session of this provider resumes from its persisted id. */

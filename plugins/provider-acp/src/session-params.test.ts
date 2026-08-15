@@ -338,7 +338,6 @@ describe("buildAcpSessionParams skill instructions", () => {
         skillRoots: [
           {
             id: "global-skills:abc123:acp",
-            providerId: "acp",
             skillDirectoryRootPath:
               "/tmp/bb/runtime/global-skills/abc123/skills",
             skills: [
@@ -376,7 +375,6 @@ describe("buildAcpSessionParams skill instructions", () => {
         skillRoots: [
           {
             id: "global-skills:def456:acp",
-            providerId: "acp",
             skillDirectoryRootPath:
               "/tmp/bb/runtime/global-skills/def456/skills",
             skills: [

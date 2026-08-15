@@ -27,7 +27,10 @@ import { PendingInteractionLifecycle } from "../../../apps/server/src/services/i
 import { createMachineAuthService } from "../../../apps/server/src/services/machine-auth.js";
 import { createProviderRegistryService } from "../../../apps/server/src/services/providers/provider-registry.js";
 import { resolveAcpAgentCapabilitiesForProviderId } from "../../../apps/server/src/services/system/acp-launch-spec.js";
-import { registerFirstPartyProviders } from "../../../apps/server/test/helpers/provider-registry.js";
+import {
+  recordFirstPartyProviderBridgeArtifacts,
+  registerFirstPartyProviders,
+} from "../../../apps/server/test/helpers/provider-registry.js";
 import {
   copyBuiltinSkills,
   resolveBuiltinSkillsRootPath,
@@ -282,6 +285,12 @@ async function startIntegrationServer(
   // their plugins would.
   await registerFirstPartyProviders(providerRegistry);
   const providerBridgeArtifacts = new ProviderBridgeArtifactRegistry();
+  // Every first-party bridge except Pi's ships as a plugin artifact, and the
+  // daemon has no bridge for those providers without one on the wire. The
+  // dynamic ACP tier depends on it most: `acp-<slug>` ids are never
+  // registered, so the ACP plugin's artifact is the only thing that launches
+  // a configured agent.
+  await recordFirstPartyProviderBridgeArtifacts(providerBridgeArtifacts);
   const pendingInteractions = new PendingInteractionLifecycle({
     config,
     db,

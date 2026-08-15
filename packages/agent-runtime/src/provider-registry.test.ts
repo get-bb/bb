@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG } from "@bb/domain";
 import { createProviderForId } from "./provider-registry.js";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
+import type { AgentRuntimeBridgeLaunch } from "./types.js";
 
 const dynamicAcpLaunchSpec: HostDaemonAcpLaunchSpec = {
   displayName: "Custom ACP",
@@ -17,40 +18,52 @@ const dynamicAcpLaunchSpec: HostDaemonAcpLaunchSpec = {
   },
 };
 
+/** What the server sends for any acp-* id: the ACP plugin's artifact plus the
+ * shared ACP tier capabilities. */
+const ACP_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch = {
+  sha256: "e".repeat(64),
+  artifactPath: "/data/provider-bridges/acp.mjs",
+  capabilities: {
+    supportsServiceTier: true,
+    supportedPermissionModes: ["accept-edits", "full"],
+    supportsArchive: false,
+    supportsRename: false,
+    supportsFork: true,
+  },
+};
+
 describe("provider registry", () => {
-  it.each([{ providerId: "acp-cursor" }])(
-    "carries environment write roots to the $providerId bridge via provider options",
-    ({ providerId }) => {
-      const provider = createProviderForId(providerId, {
-        additionalWorkspaceWriteRoots: ["/extra-root"],
-      });
-      const plan = provider.buildCommandPlan({
-        type: "thread/start",
-        threadId: "thread-1",
-        cwd: "/workspace",
+  it("carries environment write roots to the acp bridge via provider options", () => {
+    const provider = createProviderForId("acp-cursor", {
+      additionalWorkspaceWriteRoots: ["/extra-root"],
+      bridgeLaunch: ACP_BRIDGE_LAUNCH,
+    });
+    const plan = provider.buildCommandPlan({
+      type: "thread/start",
+      threadId: "thread-1",
+      cwd: "/workspace",
+      options: {
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        workflowsEnabled: false,
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+      },
+      instructionMode: "append",
+    });
+    expect(plan).toMatchObject({
+      kind: "request",
+      method: "thread/start",
+      params: {
         options: {
-          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-          workflowsEnabled: false,
-          permissionMode: "full",
-          permissionScope: "full",
-          approvalReviewer: null,
-          permissionEscalation: null,
-        },
-        instructionMode: "append",
-      });
-      expect(plan).toMatchObject({
-        kind: "request",
-        method: "thread/start",
-        params: {
-          options: {
-            providerOptions: {
-              additionalWorkspaceWriteRoots: ["/extra-root"],
-            },
+          providerOptions: {
+            additionalWorkspaceWriteRoots: ["/extra-root"],
           },
         },
-      });
-    },
-  );
+      },
+    });
+  });
 
   it("passes the configured bridge bundle directory to bundled providers", () => {
     const piProvider = createProviderForId("pi", {
@@ -70,6 +83,7 @@ describe("provider registry", () => {
     });
     const acpProvider = createProviderForId("acp-cursor", {
       additionalWorkspaceWriteRoots: [],
+      bridgeLaunch: ACP_BRIDGE_LAUNCH,
       bridgeNodeEnv,
       bridgeNodeExecutablePath: "/Applications/bb.app/Contents/MacOS/bb",
     });
@@ -114,29 +128,36 @@ describe("provider registry", () => {
     });
   });
 
-  it("creates the acp cursor provider with the bridge process config", () => {
-    const provider = createProviderForId("acp-cursor");
-    expect(provider.id).toBe("acp-cursor");
-    expect(provider.process.command).toBe("node");
-    expect(provider.process.args.at(-1)).toMatch(
-      /agent-runtime\/src\/acp\/bridge\/bridge\.ts$/,
-    );
-    expect(existsSync(provider.process.args.at(-1) ?? "")).toBe(true);
-  });
-
-  it("passes the configured bridge bundle directory to the acp provider", () => {
-    const provider = createProviderForId("acp-cursor", {
-      additionalWorkspaceWriteRoots: [],
-      bridgeBundleDir: "/tmp",
-    });
-    expect(provider.process.args[0]).toBe("/tmp/bb-acp-bridge.mjs");
+  it("runs every acp id on the acp plugin's verified artifact", () => {
+    // Only `acp-cursor` is plugin-declared; known and custom ACP agents are
+    // resolved from launch specs at request time and never registered. The
+    // server serves the ACP plugin's artifact for all of them, so the daemon
+    // must route each one onto the generic artifact adapter.
+    for (const providerId of ["acp-cursor", "acp-opencode", "acp-custom"]) {
+      const provider = createProviderForId(providerId, {
+        additionalWorkspaceWriteRoots: [],
+        acpLaunchSpec: dynamicAcpLaunchSpec,
+        bridgeLaunch: ACP_BRIDGE_LAUNCH,
+      });
+      expect(provider.id).toBe(providerId);
+      expect(provider.process.args).toEqual(["/data/provider-bridges/acp.mjs"]);
+      expect(provider.capabilities).toMatchObject({
+        supportsServiceTier: true,
+        supportsFork: true,
+        supportedPermissionModes: ["accept-edits", "full"],
+      });
+    }
   });
 
   it("carries the built-in cursor launch spec to the acp bridge", () => {
     // The server resolves launch specs only for configured and known ACP
-    // agents; the bundled cursor provider has none, so the registry's built-in
-    // table is the only thing that tells the bridge what to spawn.
-    const provider = createProviderForId("acp-cursor");
+    // agents; bb's own cursor provider has none, so the registry's built-in
+    // table is the only thing that tells the bridge what to spawn — and it has
+    // to survive the move onto the generic artifact route.
+    const provider = createProviderForId("acp-cursor", {
+      additionalWorkspaceWriteRoots: [],
+      bridgeLaunch: ACP_BRIDGE_LAUNCH,
+    });
     const plan = provider.buildCommandPlan({
       type: "thread/start",
       threadId: "thread-1",
@@ -172,10 +193,10 @@ describe("provider registry", () => {
     const provider = createProviderForId("acp-custom", {
       additionalWorkspaceWriteRoots: ["/extra-root"],
       acpLaunchSpec: dynamicAcpLaunchSpec,
+      bridgeLaunch: ACP_BRIDGE_LAUNCH,
     });
 
     expect(provider.id).toBe("acp-custom");
-    expect(provider.displayName).toBe("Custom ACP");
     // Model listing has no session, so the bridge only sees the static
     // provider options; the launch spec must ride them too.
     expect(provider.buildCommandPlan({ type: "model/list" })).toMatchObject({
@@ -215,28 +236,18 @@ describe("provider registry", () => {
     });
   });
 
-  // Every provider is graduated: no legacy adapter remains, so an empty prefix
-  // list must still route each bundled id to its canonical bridge. This is the
-  // regression that would fire if the retired experiment gate came back.
-  it.each([
-    { providerId: "pi", bridgeDir: "pi" },
-    { providerId: "acp-custom", bridgeDir: "acp" },
-  ])(
-    "routes $providerId to its bundled canonical bridge",
-    ({ providerId, bridgeDir }) => {
-      const provider = createProviderForId(providerId, {
-        additionalWorkspaceWriteRoots: [],
-        acpLaunchSpec: dynamicAcpLaunchSpec,
-      });
+  // Pi is the last bridge bb delivers in the daemon bundle: with no
+  // bridgeLaunch it must still route to its canonical bridge source.
+  it("routes pi to its bundled canonical bridge", () => {
+    const provider = createProviderForId("pi", {
+      additionalWorkspaceWriteRoots: [],
+    });
 
-      expect(provider.process.command).toBe("node");
-      const bridgeEntry = provider.process.args.at(-1) ?? "";
-      expect(bridgeEntry).toMatch(
-        new RegExp(`agent-runtime/src/${bridgeDir}/bridge/bridge\\.ts$`),
-      );
-      expect(existsSync(bridgeEntry)).toBe(true);
-    },
-  );
+    expect(provider.process.command).toBe("node");
+    const bridgeEntry = provider.process.args.at(-1) ?? "";
+    expect(bridgeEntry).toMatch(/agent-runtime\/src\/pi\/bridge\/bridge\.ts$/);
+    expect(existsSync(bridgeEntry)).toBe(true);
+  });
 
   it("rejects unsupported adapters", () => {
     expect(() => createProviderForId("pi-mono")).toThrow(

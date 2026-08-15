@@ -2302,9 +2302,9 @@ describe("host-daemon command schemas", () => {
     // Version-124 compat: the same version-123 payloads (no bridgeLaunch)
     // must round-trip byte-identically — the parses above already assert
     // that, and no default may materialize the new field.
-    expect(hostDaemonCommandSchema.parse(threadStartRoundTrip)).not.toHaveProperty(
-      "bridgeLaunch",
-    );
+    expect(
+      hostDaemonCommandSchema.parse(threadStartRoundTrip),
+    ).not.toHaveProperty("bridgeLaunch");
     const parsedTurnSubmit = hostDaemonCommandSchema.parse(turnSubmitRoundTrip);
     expect(parsedTurnSubmit).not.toHaveProperty("bridgeLaunch");
     expect(
@@ -2323,6 +2323,9 @@ describe("host-daemon command schemas", () => {
       capabilities: {
         supportsServiceTier: true,
         supportedPermissionModes: ["accept-edits", "full"],
+        supportsArchive: false,
+        supportsRename: false,
+        supportsFork: true,
       },
     };
 
@@ -2367,7 +2370,9 @@ describe("host-daemon command schemas", () => {
       instructionMode: "append",
     };
     expect(
-      hostDaemonCommandSchema.parse(JSON.parse(JSON.stringify(threadStartCommand))),
+      hostDaemonCommandSchema.parse(
+        JSON.parse(JSON.stringify(threadStartCommand)),
+      ),
     ).toEqual(threadStartCommand);
 
     // resumeContext carries the field too (turn.submit / thread.goal.clear).
@@ -2390,7 +2395,9 @@ describe("host-daemon command schemas", () => {
       },
     };
     expect(
-      hostDaemonCommandSchema.parse(JSON.parse(JSON.stringify(goalClearCommand))),
+      hostDaemonCommandSchema.parse(
+        JSON.parse(JSON.stringify(goalClearCommand)),
+      ),
     ).toEqual(goalClearCommand);
 
     // Never execute unverifiable bytes: a malformed hash, a non-positive

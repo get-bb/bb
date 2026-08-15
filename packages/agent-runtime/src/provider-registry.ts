@@ -6,9 +6,7 @@
  */
 
 import {
-  buildAcpProviderInfo,
   getBundledProviderInfo,
-  isAcpProviderId,
   isBundledProviderId,
   listBundledProviderIds,
   listBundledProviderInfos,
@@ -17,7 +15,7 @@ import type { ProviderInfo } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import { createBridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
 import { resolveBridgeProcessArgs } from "./shared/bridge-path.js";
-import { BUILT_IN_ACP_LAUNCH_SPECS } from "./acp/launch-specs.js";
+import { BUILT_IN_ACP_LAUNCH_SPECS } from "./acp-launch-specs.js";
 import type {
   ProviderAdapter,
   ProviderAdapterFactoryOptions,
@@ -32,13 +30,8 @@ import type {
  * Provider Bridge Protocol.
  *
  * Every provider is graduated: no legacy adapter remains, so every id routes
- * here unconditionally.
- *
- * The ACP launch spec travels opaquely via staticProviderOptions; the
- * plugin-shipped bridges need no launch spec, since their provider-flavored
- * knobs ride the per-command providerOptions the generic adapter packs and
- * their static entry carries the environment's extra write roots.
- * Transitional wiring — phase 3 provider declarations replace this table.
+ * here unconditionally. Pi is the only bridge still delivered in the daemon
+ * bundle; every other provider arrives as a hash-verified plugin artifact.
  */
 function createBridgeProtocolAdapterForId(
   providerId: string,
@@ -47,11 +40,9 @@ function createBridgeProtocolAdapterForId(
   // A hash-verified plugin artifact is its own routing authority: the server
   // only attaches a bridgeLaunch to commands for providers it has routed onto
   // the bridge protocol, and the daemon has already verified the artifact
-  // bytes. It is matched before the bundled first-party bridges so a plugin
-  // provider can never be shadowed by one of their ids.
-  const isBundledBridgeId =
-    isBundledProviderId(providerId) || isAcpProviderId(providerId);
-  if (options.bridgeLaunch !== undefined && !isBundledBridgeId) {
+  // bytes. It is matched before the bundled first-party bridge so a plugin
+  // provider can never be shadowed by its id.
+  if (options.bridgeLaunch !== undefined && !isBundledProviderId(providerId)) {
     return createBridgeProtocolAdapter({
       id: providerId,
       displayName: providerId,
@@ -80,11 +71,8 @@ function createBridgeProtocolAdapterForId(
           ? { env: options.bridgeNodeEnv }
           : {}),
       },
-      ...buildPluginStaticProviderOptions(options),
+      ...buildPluginStaticProviderOptions(providerId, options),
     });
-  }
-  if (isAcpProviderId(providerId)) {
-    return createAcpBridgeAdapter(providerId, options);
   }
   if (providerId === "pi") {
     const info = requireBundledProviderInfo("pi");
@@ -110,17 +98,22 @@ function createBridgeProtocolAdapterForId(
 }
 
 /**
- * A plugin bridge's provider-scoped statics: its own declared option bag plus
- * the environment-level extra write roots, which have no core field on the
- * canonical wire and are a host-local fact the server cannot supply.
+ * A plugin bridge's provider-scoped statics: its own declared option bag, the
+ * environment-level extra write roots, and — for the ACP tier — the launch
+ * spec the bridge constructs its agent from. None of the three has a core
+ * field on the canonical wire, and the write roots are a host-local fact the
+ * server cannot supply at all.
  */
 function buildPluginStaticProviderOptions(
+  providerId: string,
   options: ProviderAdapterFactoryOptions,
 ): { staticProviderOptions?: Record<string, unknown> } {
   const additionalWorkspaceWriteRoots =
     options.additionalWorkspaceWriteRoots ?? [];
+  const acpLaunchSpec = resolveAcpLaunchSpec(providerId, options);
   const staticProviderOptions = {
     ...(options.bridgeLaunch?.providerOptions ?? {}),
+    ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
     ...(additionalWorkspaceWriteRoots.length > 0
       ? { additionalWorkspaceWriteRoots: [...additionalWorkspaceWriteRoots] }
       : {}),
@@ -130,50 +123,10 @@ function buildPluginStaticProviderOptions(
     : {};
 }
 
-function requireBundledProviderInfo(providerId: string): ProviderInfo {
-  const info = getBundledProviderInfo(providerId);
-  if (info === null) {
-    throw new Error(`"${providerId}" has no bundled provider baseline.`);
-  }
-  return info;
-}
-
-function createAcpBridgeAdapter(
-  providerId: string,
-  options: ProviderAdapterFactoryOptions,
-): ProviderAdapter {
-  const launchSpec = resolveAcpLaunchSpec(providerId, options);
-  const info =
-    getBundledProviderInfo(providerId) ??
-    buildAcpProviderInfo({
-      id: providerId,
-      displayName: launchSpec?.displayName ?? providerId,
-    });
-  return createBridgeProtocolAdapter({
-    id: providerId,
-    displayName: info.displayName,
-    capabilities: info.capabilities,
-    process: {
-      command: options.bridgeNodeExecutablePath ?? "node",
-      args: resolveBridgeProcessArgs({
-        bridgeBundleDir: options.bridgeBundleDir,
-        bundleFileName: "bb-acp-bridge.mjs",
-        importMetaUrl: import.meta.url,
-        bridgeRelativePath: "acp/bridge/bridge.js",
-      }),
-      ...(options.bridgeNodeEnv !== undefined
-        ? { env: options.bridgeNodeEnv }
-        : {}),
-    },
-    ...buildAcpStaticProviderOptions(launchSpec, options),
-  });
-}
-
 /**
  * The launch spec the ACP bridge constructs the agent from. Configured and
- * known agents arrive with one on the command; the bundled first-party ACP
- * providers have no server-side entry, so their spec comes from the built-in
- * table.
+ * known agents arrive with one on the command; bb's own bundled ACP providers
+ * have no server-side entry, so their spec comes from the built-in table.
  */
 function resolveAcpLaunchSpec(
   providerId: string,
@@ -182,27 +135,12 @@ function resolveAcpLaunchSpec(
   return options.acpLaunchSpec ?? BUILT_IN_ACP_LAUNCH_SPECS[providerId];
 }
 
-/**
- * The ACP bridge's provider-scoped statics: the launch spec it constructs the
- * agent from, plus the environment-level extra write roots (no core canonical
- * field exists for either), so canonical sessions sandbox the same roots the
- * legacy adapter passed at construction.
- */
-function buildAcpStaticProviderOptions(
-  launchSpec: HostDaemonAcpLaunchSpec | undefined,
-  options: ProviderAdapterFactoryOptions,
-): { staticProviderOptions?: Record<string, unknown> } {
-  const additionalWorkspaceWriteRoots =
-    options.additionalWorkspaceWriteRoots ?? [];
-  const staticProviderOptions = {
-    ...(launchSpec !== undefined ? { acpLaunchSpec: launchSpec } : {}),
-    ...(additionalWorkspaceWriteRoots.length > 0
-      ? { additionalWorkspaceWriteRoots: [...additionalWorkspaceWriteRoots] }
-      : {}),
-  };
-  return Object.keys(staticProviderOptions).length > 0
-    ? { staticProviderOptions }
-    : {};
+function requireBundledProviderInfo(providerId: string): ProviderInfo {
+  const info = getBundledProviderInfo(providerId);
+  if (info === null) {
+    throw new Error(`"${providerId}" has no bundled provider baseline.`);
+  }
+  return info;
 }
 
 export function createProviderForId(

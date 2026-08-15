@@ -16,10 +16,7 @@ import type {
   ReasoningLevel,
   ServiceTier,
 } from "@bb/domain";
-import type {
-  AgentRuntimeAcpSkillRoot,
-  AgentRuntimeSkillRoot,
-} from "../types.js";
+
 import { ACP_DEFAULT_MODEL_ID } from "./bridge-protocol.js";
 import type { AcpAgentProfile } from "./profiles.js";
 
@@ -36,7 +33,18 @@ export interface AcpSessionExecutionOptions {
   envVars?: Record<string, string> | undefined;
   permissionMode: PermissionMode;
   permissionEscalation: PermissionEscalation | null;
-  skillRoots?: readonly AgentRuntimeSkillRoot[] | undefined;
+  skillRoots?: readonly AcpSkillRoot[] | undefined;
+}
+
+/**
+ * A staged skill root in ACP's native form. ACP agents have no skill-directory
+ * concept, so each root's skills are named inline in the session instructions;
+ * the bridge maps the canonical `skills/configure` payload onto this.
+ */
+export interface AcpSkillRoot {
+  id: string;
+  skillDirectoryRootPath: string;
+  skills: readonly { name: string; description: string }[];
 }
 
 interface AcpAgentCommandParam {
@@ -44,17 +52,6 @@ interface AcpAgentCommandParam {
   args: string[];
   cwd?: string;
   envVars?: Record<string, string>;
-}
-
-function requireAcpSkillRoot(
-  skillRoot: AgentRuntimeSkillRoot,
-): AgentRuntimeAcpSkillRoot {
-  if (skillRoot.providerId !== "acp") {
-    throw new Error(
-      `ACP cannot configure ${skillRoot.providerId} skill root "${skillRoot.id}".`,
-    );
-  }
-  return skillRoot;
 }
 
 function sanitizeAcpSkillDescription(description: string): string {
@@ -67,17 +64,16 @@ function sanitizeAcpSkillDescription(description: string): string {
 }
 
 function buildAcpSkillsInstructions(
-  skillRoots: readonly AgentRuntimeSkillRoot[] | undefined,
+  skillRoots: readonly AcpSkillRoot[] | undefined,
 ): string | undefined {
   if (!skillRoots || skillRoots.length === 0) {
     return undefined;
   }
 
   const skillLines = skillRoots.flatMap((skillRoot) => {
-    const acpSkillRoot = requireAcpSkillRoot(skillRoot);
-    return acpSkillRoot.skills.map((skill) => {
+    return skillRoot.skills.map((skill) => {
       const skillFilePath = path.join(
-        acpSkillRoot.skillDirectoryRootPath,
+        skillRoot.skillDirectoryRootPath,
         skill.name,
         "SKILL.md",
       );

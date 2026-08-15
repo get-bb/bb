@@ -24,6 +24,7 @@ const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
   "automations",
   // Providers whose bridge ships as a plugin artifact: if the plugin does not
   // load, its provider disappears from the install entirely.
+  "provider-acp",
   "provider-claude-code",
   "provider-codex",
   "connect",
@@ -424,8 +425,20 @@ async function smokeProviderBridgeBundles(packageDir) {
     label: "Pi bridge model/list",
   });
   await smokeBridgeModelList({
-    bridgePath: join(packageDir, "host-daemon", "dist", "bb-acp-bridge.mjs"),
-    label: "ACP bridge model/list",
+    // ACP ships its bridge as a plugin artifact (graduation wave 5). With no
+    // launch spec in the provider options it serves its synthetic "Agent
+    // default" model rather than spawning an agent, which is the whole point
+    // of the smoke: the packed artifact runs standalone.
+    bridgePath: join(
+      packageDir,
+      "server",
+      "dist",
+      "builtin-plugins",
+      "provider-acp",
+      "dist",
+      "provider-bridge.mjs",
+    ),
+    label: "ACP provider-bridge artifact model/list",
   });
   await smokeBridgeModelList({
     // Codex ships its bridge as a plugin artifact (graduation wave 5), so the

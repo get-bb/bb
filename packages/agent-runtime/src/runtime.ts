@@ -20,6 +20,7 @@ import type {
   ProviderAdapter,
   ProviderAdapterFactory,
 } from "./provider-adapter.js";
+import { BRIDGE_JSON_RPC_ERRORS } from "@bb/provider-bridge-protocol";
 import {
   JsonRpcResponseError,
   getJsonRpcStringParam,
@@ -39,7 +40,6 @@ import {
   assertProviderSupportsExecutionOptions,
   toProviderExecutionContext,
 } from "./execution-options.js";
-import { ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE } from "./acp/bridge-protocol.js";
 import {
   handleRuntimeProviderRequest,
   type ResolveRuntimeProviderRequestThreadIdArgs,
@@ -2097,7 +2097,7 @@ function createAgentRuntimeInternal(
             if (
               error instanceof JsonRpcResponseError &&
               isAcpProviderId(pid) &&
-              error.code === ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE
+              error.code === BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN
             ) {
               turnState.clearThread(threadId);
               proc.adapter.clearActiveTurnState?.(threadId);

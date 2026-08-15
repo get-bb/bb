@@ -14,13 +14,28 @@
  * runtime, which also imports them as untyped modules and validates what comes
  * back.
  */
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  buildPluginProviderBridge,
+  resolvePluginBuildToolchain,
+} from "@bb/plugin-build";
 import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
-import type { BbPluginApi, PluginProviderDeclaration } from "@get-bb/plugin-sdk";
+import type {
+  BbPluginApi,
+  PluginProviderDeclaration,
+} from "@get-bb/plugin-sdk";
 import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
 import {
   createProviderRegistryService,
   type ProviderRegistryService,
 } from "../../src/services/providers/provider-registry.js";
+import {
+  readPluginProviderBridgeArtifact,
+  type ProviderBridgeArtifactRegistry,
+} from "../../src/services/plugins/provider-bridge-artifacts.js";
 
 const FIRST_PARTY_PROVIDER_PLUGIN_IDS = [
   "provider-codex",
@@ -28,6 +43,14 @@ const FIRST_PARTY_PROVIDER_PLUGIN_IDS = [
   "provider-pi",
   "provider-acp",
 ] as const;
+
+function pluginRootDir(pluginId: string): string {
+  // No trailing slash: the plugin build's directory-escape checks compare
+  // against `rootDir + "/"`.
+  return fileURLToPath(
+    new URL(`../../../../plugins/${pluginId}`, import.meta.url),
+  );
+}
 
 async function loadDeclaration(
   pluginId: string,
@@ -72,6 +95,47 @@ export async function registerFirstPartyProviders(
       pluginId,
     });
   }
+}
+
+/**
+ * Builds and records the first-party provider bridge artifacts, exactly as the
+ * plugin runtime does on load. Without this a graduated provider has no
+ * `bridgeLaunch`, so the daemon has no bridge for it at all — which is the
+ * whole point of the artifact route and therefore worth exercising rather
+ * than stubbing. Bridges are rebuilt from source so a stale `dist/` cannot
+ * make a test pass against yesterday's bridge.
+ */
+export async function recordFirstPartyProviderBridgeArtifacts(
+  artifacts: ProviderBridgeArtifactRegistry,
+): Promise<void> {
+  const toolchain = await resolvePluginBuildToolchain(
+    join(tmpdir(), "bb-plugin-build-toolchain"),
+  );
+  for (const pluginId of FIRST_PARTY_PROVIDER_PLUGIN_IDS) {
+    const rootDir = pluginRootDir(pluginId);
+    // Pi has no `bb.providerBridge`: its bridge stays in the daemon bundle.
+    if (!(await hasProviderBridgeEntry(rootDir))) {
+      continue;
+    }
+    await buildPluginProviderBridge(rootDir, toolchain);
+    const artifact = await readPluginProviderBridgeArtifact(rootDir);
+    if (artifact === null) {
+      throw new Error(`${pluginId} produced no readable provider bridge`);
+    }
+    artifacts.set(pluginId, artifact);
+  }
+}
+
+async function hasProviderBridgeEntry(rootDir: string): Promise<boolean> {
+  const raw = await readFile(join(rootDir, "package.json"), "utf8");
+  const parsed: unknown = JSON.parse(raw);
+  return (
+    typeof parsed === "object" &&
+    parsed !== null &&
+    typeof (parsed as { bb?: unknown }).bb === "object" &&
+    (parsed as { bb: { providerBridge?: unknown } }).bb.providerBridge !==
+      undefined
+  );
 }
 
 /** A registry holding the first-party providers, in product order. */
