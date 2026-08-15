@@ -46,7 +46,10 @@ const SEED_PROVIDER_IDS = FIRST_PARTY_PROVIDER_PLUGINS.map(
 function expectedLogoUrl(
   plugin: (typeof FIRST_PARTY_PROVIDER_PLUGINS)[number],
 ): string {
-  return `/api/v1/plugins/${plugin.pluginId}/assets/${plugin.iconAsset}`;
+  // Served from the icon byte snapshot on the registration by the
+  // provider-logo route (the raw plugin-assets route serves only branding
+  // variants and built bundles).
+  return `/api/v1/system/providers/${plugin.providerId}/logo`;
 }
 
 async function installFirstPartyProviderPlugins(

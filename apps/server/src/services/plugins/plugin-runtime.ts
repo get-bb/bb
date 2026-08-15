@@ -2,11 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   createReadStream,
   existsSync,
+  readFileSync,
   realpathSync,
   type FSWatcher,
 } from "node:fs";
 import { readFile, readdir, stat } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire, registerHooks } from "node:module";
 import { performance } from "node:perf_hooks";
@@ -182,6 +183,42 @@ function registerMutableRootHooks(): void {
  * must be the real path — otherwise a symlinked install never matches and
  * reload silently serves cached code.
  */
+const PROVIDER_ICON_CONTENT_TYPES: Record<string, string> = {
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".webp": "image/webp",
+};
+
+/**
+ * Byte snapshot of a declared provider icon. Null on any failure (missing
+ * file, unsupported extension, path escaping the plugin root) — the provider
+ * registers without a servable icon rather than failing the plugin load.
+ */
+function readPluginProviderIcon(
+  rootDir: string,
+  asset: string | undefined,
+): { bytes: Uint8Array; contentType: string } | null {
+  if (asset === undefined) {
+    return null;
+  }
+  const contentType =
+    PROVIDER_ICON_CONTENT_TYPES[extname(asset).toLowerCase()];
+  if (contentType === undefined) {
+    return null;
+  }
+  const resolved = resolve(rootDir, asset);
+  // host-policy already rejects traversal in declarations; this containment
+  // check is defense in depth for identity-backed roots.
+  if (!resolved.startsWith(resolve(rootDir) + sep)) {
+    return null;
+  }
+  try {
+    return { bytes: new Uint8Array(readFileSync(resolved)), contentType };
+  } catch {
+    return null;
+  }
+}
+
 function mutableRootDir(rootDir: string): string {
   try {
     return realpathSync(rootDir);
@@ -1345,6 +1382,19 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
             pluginId: row.id,
             declaration,
           }),
+          ...(() => {
+            // Snapshot the declared icon bytes at registration so the
+            // provider-logo route can serve them without plugin-root
+            // plumbing; an unreadable or unsupported icon degrades to
+            // logoUrl-with-404 → the app's vendored fallback, never a load
+            // failure. The asset path was already traversal-validated by
+            // host-policy.
+            const icon = readPluginProviderIcon(
+              row.rootDir,
+              declaration.icon?.asset,
+            );
+            return icon === null ? {} : { icon };
+          })(),
           pluginId: row.id,
           // Builtin first-party plugins take over their core-seed entry in
           // place (restored on disable); third-party plugins never shadow.

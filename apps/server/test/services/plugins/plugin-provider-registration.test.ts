@@ -83,7 +83,7 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
           id: "my-remote-agent",
           displayName: "My Remote Agent",
           available: true,
-          logoUrl: `/api/v1/plugins/${entry.id}/assets/icons/agent.svg`,
+          logoUrl: "/api/v1/system/providers/my-remote-agent/logo",
           capabilities: {
             supportsArchive: false,
             supportsRename: false,

@@ -42,6 +42,13 @@ export interface ProviderRegistration {
    * it by the compaction accessor below.
    */
   declaration?: PluginProviderDeclaration;
+  /**
+   * Immutable byte snapshot of the declared provider icon, read from the
+   * plugin root at registration time and served by the provider-logo route.
+   * Present only for plugin-sourced entries whose declaration has an icon
+   * that resolved to a readable file with a supported extension.
+   */
+  icon?: { bytes: Uint8Array; contentType: string };
 }
 
 export interface ProviderRegistryService {
@@ -205,6 +212,9 @@ export function createProviderRegistryService(): ProviderRegistryService {
           ...(registration.declaration !== undefined
             ? { declaration: registration.declaration }
             : {}),
+          ...(registration.icon !== undefined
+            ? { icon: registration.icon }
+            : {}),
           source: { kind: "plugin", pluginId: registration.pluginId },
         };
         coreSeed[seedIndex] = entry;
@@ -229,6 +239,7 @@ export function createProviderRegistryService(): ProviderRegistryService {
         ...(registration.declaration === undefined
           ? {}
           : { declaration: registration.declaration }),
+        ...(registration.icon === undefined ? {} : { icon: registration.icon }),
       };
       pluginRegistrations.set(providerId, entry);
       return {

@@ -39,7 +39,7 @@ describe("buildPluginProviderRegistration", () => {
       id: "my-remote-agent",
       displayName: "My Remote Agent",
       available: true,
-      logoUrl: "/api/v1/plugins/acme-agent/assets/icons/agent.svg",
+      logoUrl: "/api/v1/system/providers/my-remote-agent/logo",
       capabilities: {
         supportsArchive: false,
         supportsRename: false,

@@ -20,7 +20,7 @@ export function buildPluginProviderRegistration(args: {
   pluginId: string;
   declaration: PluginProviderDeclaration;
 }): Omit<ProviderRegistration, "source"> {
-  const { pluginId, declaration } = args;
+  const { declaration } = args;
   const { capabilities } = declaration;
 
   // Skills slash-command typeahead is universal (BB injects skills into every
@@ -47,10 +47,14 @@ export function buildPluginProviderRegistration(args: {
     id: declaration.id,
     displayName: declaration.displayName,
     available: true,
+    // Served by the provider-logo route from the icon byte snapshot on the
+    // registration (see registerProvider in plugin-runtime.ts). The raw
+    // plugin-assets route serves only branding variants and built bundles,
+    // so declared icon paths are never exposed as URLs directly.
     logoUrl:
       declaration.icon === undefined
         ? null
-        : `/api/v1/plugins/${pluginId}/assets/${declaration.icon.asset}`,
+        : `/api/v1/system/providers/${declaration.id}/logo`,
     capabilities: {
       // Archive/name sync are bridge-handshake facts (reported at
       // `initialize`), never declared — plugin providers start without them.
