@@ -25,7 +25,22 @@ export function isTimelineUngroupableMessage(
   if (message.kind === "assistant-text") {
     return message.isLegacyUserMessage === true;
   }
+  if (message.kind === "user-question-lifecycle") {
+    return message.lifecycle === "answered";
+  }
   return message.kind === "debug/raw-event";
+}
+
+export function isTimelineUserInputBoundaryMessage(
+  message: EventProjectionMessage,
+): boolean {
+  if (message.kind === "user") {
+    return message.initiator === "user";
+  }
+  return (
+    message.kind === "user-question-lifecycle" &&
+    message.lifecycle === "answered"
+  );
 }
 
 export function isTimelineSummaryCountedMessage(
