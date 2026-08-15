@@ -837,6 +837,7 @@ function settleThreadCommandFailure(
   }
   if (args.command.type === "turn.submit") {
     appendThreadEventInTransaction(args.deps.db, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       environmentId: thread.environmentId,
       type: "client/turn/rejected",

@@ -12,6 +12,19 @@ import { z as z$1 } from 'zod';
 import Database from 'better-sqlite3';
 import { Context } from 'hono';
 
+declare const principalKindValues: readonly ["human", "agent", "machine", "system"];
+type PrincipalKind = (typeof principalKindValues)[number];
+
+/**
+ * Immutable snapshot of who authored a durable mutation or event.
+ * Server-derived only — never accepted from browser/plugin/daemon payloads.
+ */
+type ActorStamp = {
+    readonly principalId: string;
+    readonly principalKind: PrincipalKind;
+    readonly displayName: string;
+};
+
 /**
  * App-wide server-backed preferences.
  * Client-local settings stay in the frontend localStorage helpers instead.
@@ -1563,8 +1576,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
     }>;
     initiator: z$1.ZodEnum<{
         user: "user";
-        system: "system";
         agent: "agent";
+        system: "system";
     }>;
     request: z$1.ZodObject<{
         method: z$1.ZodEnum<{
@@ -1585,8 +1598,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
     }>;
     initiator: z$1.ZodEnum<{
         user: "user";
-        system: "system";
         agent: "agent";
+        system: "system";
     }>;
     senderThreadId: z$1.ZodNullable<z$1.ZodString>;
     systemMessageKind: z$1.ZodOptional<z$1.ZodEnum<{
@@ -1607,6 +1620,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         kind: z$1.ZodLiteral<"thread-batch">;
         count: z$1.ZodNumber;
     }, z$1.core.$strip>], "kind">>>;
+    admissionSequence: z$1.ZodOptional<z$1.ZodNumber>;
+    requestFingerprint: z$1.ZodOptional<z$1.core.$ZodBranded<z$1.ZodString, "ThreadCommandRequestFingerprint", "out">>;
     input: z$1.ZodArray<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         visibility: z$1.ZodOptional<z$1.ZodEnum<{
             "agent-only": "agent-only";
@@ -1833,8 +1848,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
     }>;
     initiator: z$1.ZodEnum<{
         user: "user";
-        system: "system";
         agent: "agent";
+        system: "system";
     }>;
     request: z$1.ZodObject<{
         method: z$1.ZodEnum<{
@@ -2076,6 +2091,12 @@ interface ThreadEventRowBase {
     threadId: string;
     seq: number;
     createdAt: number;
+    /**
+     * Server-derived actor snapshot for this stored event. Pre-actor / older
+     * serialized servers omit this field; parsers default to the explicit legacy
+     * system stamp rather than guessing a human.
+     */
+    actor?: ActorStamp;
 }
 type ThreadEventRowFromEvent<TEvent extends ThreadEvent> = ThreadEventRowBase & {
     type: TEvent["type"];
@@ -2943,8 +2964,8 @@ declare const environmentArchiveThreadsResponseSchema: z$1.ZodObject<{
 type EnvironmentArchiveThreadsResponse = z$1.infer<typeof environmentArchiveThreadsResponseSchema>;
 declare const pullRequestMergeMethodSchema: z$1.ZodEnum<{
     merge: "merge";
-    rebase: "rebase";
     squash: "squash";
+    rebase: "rebase";
 }>;
 type PullRequestMergeMethod = z$1.infer<typeof pullRequestMergeMethodSchema>;
 declare const commitActionResponseSchema: z$1.ZodObject<{
@@ -2975,8 +2996,8 @@ declare const pullRequestMergeActionResponseSchema: z$1.ZodObject<{
     action: z$1.ZodLiteral<"pull_request_merge">;
     method: z$1.ZodEnum<{
         merge: "merge";
-        rebase: "rebase";
         squash: "squash";
+        rebase: "rebase";
     }>;
     message: z$1.ZodString;
 }, z$1.core.$strip>;
@@ -3625,8 +3646,8 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strict>], "kind">>;
         disallowedTools: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
         instructionMode: z$1.ZodEnum<{
-            append: "append";
             replace: "replace";
+            append: "append";
         }>;
         type: z$1.ZodLiteral<"thread.rewind.prepare">;
         leaseId: z$1.ZodString;
@@ -3826,8 +3847,8 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strict>], "kind">>;
         disallowedTools: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
         instructionMode: z$1.ZodEnum<{
-            append: "append";
             replace: "replace";
+            append: "append";
         }>;
         type: z$1.ZodLiteral<"thread.start">;
         requestId: z$1.ZodString;
@@ -3876,9 +3897,9 @@ declare const hostDaemonCommandRegistry: {
                         skill: "skill";
                     }>;
                     origin: z$1.ZodEnum<{
+                        builtin: "builtin";
                         user: "user";
                         project: "project";
-                        builtin: "builtin";
                     }>;
                     label: z$1.ZodString;
                     argumentHint: z$1.ZodNullable<z$1.ZodString>;
@@ -3957,9 +3978,9 @@ declare const hostDaemonCommandRegistry: {
                         skill: "skill";
                     }>;
                     origin: z$1.ZodEnum<{
+                        builtin: "builtin";
                         user: "user";
                         project: "project";
-                        builtin: "builtin";
                     }>;
                     label: z$1.ZodString;
                     argumentHint: z$1.ZodNullable<z$1.ZodString>;
@@ -4050,9 +4071,9 @@ declare const hostDaemonCommandRegistry: {
                         skill: "skill";
                     }>;
                     origin: z$1.ZodEnum<{
+                        builtin: "builtin";
                         user: "user";
                         project: "project";
-                        builtin: "builtin";
                     }>;
                     label: z$1.ZodString;
                     argumentHint: z$1.ZodNullable<z$1.ZodString>;
@@ -4131,9 +4152,9 @@ declare const hostDaemonCommandRegistry: {
                         skill: "skill";
                     }>;
                     origin: z$1.ZodEnum<{
+                        builtin: "builtin";
                         user: "user";
                         project: "project";
-                        builtin: "builtin";
                     }>;
                     label: z$1.ZodString;
                     argumentHint: z$1.ZodNullable<z$1.ZodString>;
@@ -4322,8 +4343,8 @@ declare const hostDaemonCommandRegistry: {
             providerThreadId: z$1.ZodString;
             providerId: z$1.ZodString;
             instructionMode: z$1.ZodEnum<{
-                append: "append";
                 replace: "replace";
+                append: "append";
             }>;
             acpLaunchSpec: z$1.ZodOptional<z$1.ZodObject<{
                 displayName: z$1.ZodString;
@@ -4465,6 +4486,9 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strip>, z$1.ZodObject<{
             mode: z$1.ZodLiteral<"steer">;
             expectedTurnId: z$1.ZodNullable<z$1.ZodString>;
+        }, z$1.core.$strip>, z$1.ZodObject<{
+            mode: z$1.ZodLiteral<"exact-steer">;
+            expectedTurnId: z$1.ZodString;
         }, z$1.core.$strip>], "mode">;
     }, z$1.core.$strict>, z$1.ZodObject<{
         appliedAs: z$1.ZodEnum<{
@@ -4480,8 +4504,13 @@ declare const hostDaemonCommandRegistry: {
             interrupt: "interrupt";
             release: "release";
         }>;
+        expectedTurnId: z$1.ZodOptional<z$1.ZodString>;
     }, z$1.core.$strict>, z$1.ZodObject<{
         providerCheckpointId: z$1.ZodNullable<z$1.ZodString>;
+        outcome: z$1.ZodOptional<z$1.ZodEnum<{
+            applied: "applied";
+            stale: "stale";
+        }>>;
     }, z$1.core.$strict>, "settled", false>;
     "thread.goal.clear": HostDaemonCommandDescriptor<"thread.goal.clear", z$1.ZodObject<{
         environmentId: z$1.ZodString;
@@ -4642,8 +4671,8 @@ declare const hostDaemonCommandRegistry: {
             providerThreadId: z$1.ZodString;
             providerId: z$1.ZodString;
             instructionMode: z$1.ZodEnum<{
-                append: "append";
                 replace: "replace";
+                append: "append";
             }>;
             acpLaunchSpec: z$1.ZodOptional<z$1.ZodObject<{
                 displayName: z$1.ZodString;
@@ -4935,9 +4964,9 @@ declare const hostDaemonCommandRegistry: {
             text: z$1.ZodString;
             startedAt: z$1.ZodOptional<z$1.ZodNumber>;
             status: z$1.ZodOptional<z$1.ZodEnum<{
+                started: "started";
                 completed: "completed";
                 failed: "failed";
-                started: "started";
             }>>;
             metadata: z$1.ZodOptional<z$1.ZodRecord<z$1.ZodString, z$1.ZodUnknown>>;
         }, z$1.core.$strip>>;
@@ -4984,6 +5013,24 @@ declare const hostDaemonCommandRegistry: {
     }, z$1.core.$strict>, z$1.ZodObject<{
         commitSha: z$1.ZodString;
         commitSubject: z$1.ZodString;
+    }, z$1.core.$strip>, "settled", false>;
+    "workspace.push": HostDaemonCommandDescriptor<"workspace.push", z$1.ZodObject<{
+        environmentId: z$1.ZodString;
+        workspaceContext: z$1.ZodObject<{
+            workspacePath: z$1.ZodString;
+            workspaceProvisionType: z$1.ZodEnum<{
+                unmanaged: "unmanaged";
+                "managed-worktree": "managed-worktree";
+                personal: "personal";
+            }>;
+        }, z$1.core.$strip>;
+        type: z$1.ZodLiteral<"workspace.push">;
+        branch: z$1.ZodString;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        pushedBranch: z$1.ZodString;
+        remote: z$1.ZodString;
+        upstreamSet: z$1.ZodBoolean;
+        alreadyUpToDate: z$1.ZodBoolean;
     }, z$1.core.$strip>, "settled", false>;
     "workspace.squash_merge": HostDaemonCommandDescriptor<"workspace.squash_merge", z$1.ZodObject<{
         environmentId: z$1.ZodString;
@@ -5045,6 +5092,26 @@ declare const hostDaemonCommandRegistry: {
             rebase: "rebase";
         }>;
     }, z$1.core.$strict>], "operation">, z$1.ZodObject<{}, z$1.core.$strict>, "settled", false>;
+    "workspace.pull_request_create": HostDaemonCommandDescriptor<"workspace.pull_request_create", z$1.ZodObject<{
+        environmentId: z$1.ZodString;
+        workspaceContext: z$1.ZodObject<{
+            workspacePath: z$1.ZodString;
+            workspaceProvisionType: z$1.ZodEnum<{
+                unmanaged: "unmanaged";
+                "managed-worktree": "managed-worktree";
+                personal: "personal";
+            }>;
+        }, z$1.core.$strip>;
+        type: z$1.ZodLiteral<"workspace.pull_request_create">;
+        base: z$1.ZodString;
+        head: z$1.ZodString;
+        title: z$1.ZodString;
+        body: z$1.ZodOptional<z$1.ZodString>;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        provider: z$1.ZodLiteral<"github">;
+        number: z$1.ZodNumber;
+        url: z$1.ZodString;
+    }, z$1.core.$strip>, "settled", false>;
     "host.list_files": HostDaemonCommandDescriptor<"host.list_files", z$1.ZodObject<{
         type: z$1.ZodLiteral<"host.list_files">;
         path: z$1.ZodString;
@@ -5676,9 +5743,9 @@ declare const hostDaemonCommandRegistry: {
         executablePath: z$1.ZodNullable<z$1.ZodString>;
         installed: z$1.ZodBoolean;
         installSource: z$1.ZodEnum<{
-            external: "external";
             notInstalled: "notInstalled";
             npmGlobal: "npmGlobal";
+            external: "external";
         }>;
         currentVersion: z$1.ZodNullable<z$1.ZodString>;
         latestVersion: z$1.ZodNullable<z$1.ZodString>;
@@ -5687,8 +5754,8 @@ declare const hostDaemonCommandRegistry: {
         npmGlobalPackageVersion: z$1.ZodNullable<z$1.ZodString>;
         installAction: z$1.ZodNullable<z$1.ZodObject<{
             kind: z$1.ZodEnum<{
-                update: "update";
                 install: "install";
+                update: "update";
             }>;
             label: z$1.ZodEnum<{
                 Install: "Install";
@@ -5710,8 +5777,8 @@ declare const hostDaemonCommandRegistry: {
             cursor: "cursor";
         }>;
         actionKind: z$1.ZodEnum<{
-            update: "update";
             install: "install";
+            update: "update";
         }>;
         type: z$1.ZodLiteral<"provider_cli.install">;
     }, z$1.core.$strict>, z$1.ZodObject<{
@@ -6069,12 +6136,12 @@ declare const hostDaemonCommandRegistry: {
                     success: "success";
                     skipped: "skipped";
                     cancelled: "cancelled";
+                    stale: "stale";
                     failure: "failure";
                     neutral: "neutral";
                     timed_out: "timed_out";
                     action_required: "action_required";
                     startup_failure: "startup_failure";
-                    stale: "stale";
                 }>>;
                 url: z$1.ZodNullable<z$1.ZodString>;
                 startedAt: z$1.ZodNullable<z$1.ZodString>;
@@ -6143,9 +6210,9 @@ declare const providerCliStatusResponseSchema: z$1.ZodRecord<z$1.ZodEnum<{
     executablePath: z$1.ZodNullable<z$1.ZodString>;
     installed: z$1.ZodBoolean;
     installSource: z$1.ZodEnum<{
-        external: "external";
         notInstalled: "notInstalled";
         npmGlobal: "npmGlobal";
+        external: "external";
     }>;
     currentVersion: z$1.ZodNullable<z$1.ZodString>;
     latestVersion: z$1.ZodNullable<z$1.ZodString>;
@@ -6154,8 +6221,8 @@ declare const providerCliStatusResponseSchema: z$1.ZodRecord<z$1.ZodEnum<{
     npmGlobalPackageVersion: z$1.ZodNullable<z$1.ZodString>;
     installAction: z$1.ZodNullable<z$1.ZodObject<{
         kind: z$1.ZodEnum<{
-            update: "update";
             install: "install";
+            update: "update";
         }>;
         label: z$1.ZodEnum<{
             Install: "Install";
@@ -6178,8 +6245,8 @@ declare const providerCliInstallRequestSchema: z$1.ZodObject<{
         cursor: "cursor";
     }>;
     actionKind: z$1.ZodEnum<{
-        update: "update";
         install: "install";
+        update: "update";
     }>;
 }, z$1.core.$strip>;
 type ProviderCliInstallRequest = z$1.infer<typeof providerCliInstallRequestSchema>;
@@ -7650,6 +7717,16 @@ declare const timelineConversationRowSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodO
         system: "system";
     }>;
     senderThreadId: z$1.ZodNullable<z$1.ZodString>;
+    actor: z$1.ZodDefault<z$1.ZodObject<{
+        principalId: z$1.ZodString;
+        principalKind: z$1.ZodEnum<{
+            agent: "agent";
+            system: "system";
+            human: "human";
+            machine: "machine";
+        }>;
+        displayName: z$1.ZodString;
+    }, z$1.core.$strict>>;
     systemMessageKind: z$1.ZodEnum<{
         "ownership-assigned": "ownership-assigned";
         "ownership-removed": "ownership-removed";
@@ -13415,9 +13492,12 @@ interface PluginRpc {
 interface PluginRealtime {
     /**
      * Broadcast an ephemeral `plugin-signal` WS message
-     * `{ pluginId, channel, payload }` to every connected client (V1 has no
-     * per-channel subscriptions). `payload` must be JSON-serializable;
-     * `undefined` is normalized to `null`. Nothing is persisted.
+     * `{ pluginId, channel, payload }`. Unrestricted local-owner clients receive
+     * every signal (V1 broadcast). Scoped Work Together clients receive only
+     * signals for exact `plugin-channel` subscriptions they authorized.
+     * `channel` must be a string of 1..128 characters. `payload` must be
+     * JSON-serializable; `undefined` is normalized to `null`. Nothing is
+     * persisted.
      */
     publish(channel: string, payload: unknown): void;
 }
@@ -13796,6 +13876,17 @@ interface PluginStatusApi {
     needsConfiguration(message: string): void;
 }
 /**
+ * Read-only identity snapshot of the Principal bound to the currently
+ * executing plugin callback. Plain data — not an authorization capability.
+ * See `bb.experimental_currentPrincipal` and docs/api_to_audit.md.
+ */
+type PluginExecutionPrincipalKind = "human" | "agent" | "machine" | "system";
+type PluginExecutionPrincipal = {
+    readonly id: string;
+    readonly kind: PluginExecutionPrincipalKind;
+    readonly displayName: string;
+};
+/**
  * The API object handed to a plugin's factory (design §4). Implemented by
  * the BB server; this contract is what plugin `server.ts` files compile
  * against.
@@ -13833,14 +13924,22 @@ interface BbPluginApi {
     readonly hosts: PluginHosts;
     /**
      * The full BB SDK, bound to this server over loopback (design §4.1).
-     * Bind-gated: reading this before the host binds the SDK throws. The real
-     * server binds it before loading plugins, so it is available from the
-     * moment factories run there — but isolated harnesses may not, so prefer
-     * using it from handlers, services, and timers for portability.
+     * Bind-gated: reading this before the host binds the SDK throws. Calls from
+     * factory evaluation are rejected because no execution Principal exists;
+     * use it from request handlers, services, schedules, events, or agent
+     * callbacks, where the host supplies the appropriate scoped Principal.
      * `threads.spawn` defaults `origin` to "plugin" and `originPluginId` to
      * this plugin's id so spawned threads are attributed automatically.
      */
     readonly sdk: BbSdk;
+    /**
+     * Experimental: frozen `{ id, kind, displayName }` snapshot of the
+     * server-bound Principal for the currently executing callback. Intended for
+     * durable actor stamps in plugin-owned storage — not an authorization
+     * handle. Factory evaluation and settled/leaked descendants fail closed.
+     * See docs/api_to_audit.md.
+     */
+    experimental_currentPrincipal(): PluginExecutionPrincipal;
     /**
      * Register cleanup to run on reload/disable/shutdown. Hooks run LIFO.
      * The sanctioned place to clear timers and close connections.
@@ -13849,4 +13948,4 @@ interface BbPluginApi {
 }
 
 export { PLUGIN_CLI_OUTPUT_MAX_BYTES, defineRpcContract };
-export type { BbContext, BbNavigate, BbPluginApi, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolExperimentalStatusLabels, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginStatusApi, PluginStorage, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export type { BbContext, BbNavigate, BbPluginApi, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolExperimentalStatusLabels, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginEvents, PluginExecutionPrincipal, PluginExecutionPrincipalKind, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginStatusApi, PluginStorage, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };

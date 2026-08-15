@@ -5,7 +5,7 @@
 // Confused by the API, or need a symbol that isn't here? Clone the BB repo
 // and read the real source: https://github.com/get-bb/bb
 
-import { BbPluginApi, PluginSettingValue, PluginSharedPortTunnelIdentity, PluginAgentToolExperimentalStatusLabels, PluginAgentToolContext, PluginAgentToolResult, PluginCliCommandInfo, PluginCliContext, PluginCliResult, PluginHttpAuthMode, PluginHttpHandler, PluginMentionTrigger, PluginMentionSearchContext, PluginMentionItem, JsonValue, PluginCliExecutionResult, PluginThreadEventName, PluginThreadEventPayloads, PluginAgentConfigurationContext, PluginSettingDescriptors, PluginAgentConfiguration, PluginInteractionRequest } from '@get-bb/plugin-sdk';
+import { BbPluginApi, PluginExecutionPrincipal, PluginSettingValue, PluginSharedPortTunnelIdentity, PluginAgentToolExperimentalStatusLabels, PluginAgentToolContext, PluginAgentToolResult, PluginCliCommandInfo, PluginCliContext, PluginCliResult, PluginHttpAuthMode, PluginHttpHandler, PluginMentionTrigger, PluginMentionSearchContext, PluginMentionItem, JsonValue, PluginCliExecutionResult, PluginThreadEventName, PluginThreadEventPayloads, PluginAgentConfigurationContext, PluginSettingDescriptors, PluginAgentConfiguration, PluginInteractionRequest } from '@get-bb/plugin-sdk';
 
 type BbSdk = BbPluginApi["sdk"];
 /**
@@ -70,6 +70,10 @@ declare function createFakeSdk(options: {
  *   the host's shared file), secret settings alongside plain values (no files).
  * - `bb.sdk` is always bound (no listen gate) and every unstubbed method
  *   throws instead of hitting a server.
+ * - `bb.experimental_currentPrincipal()` returns a fixed inert test snapshot
+ *   (`executionPrincipal`, defaulting to stock local-owner) rather than an
+ *   ALS-backed live Principal. It is a deterministic test input, not a
+ *   mutable caller-selected identity on handler contexts.
  * - http auth modes are recorded but not enforced — signature checks and
  *   token handling inside handlers still run.
  * - background services/schedules never run on timers; `harness.runService`
@@ -276,6 +280,14 @@ interface CreateFakePluginHostOptions {
      * `bb.sdk`). Defaults to "http://127.0.0.1:38886".
      */
     loopbackBaseUrl?: string;
+    /**
+     * Fixed inert Principal snapshot returned by
+     * `bb.experimental_currentPrincipal()`. Deterministic test input — not a
+     * live ALS-backed identity and not a mutable field on handler contexts.
+     * Defaults to stock local-owner `{ id: "local-owner", kind: "human",
+     * displayName: "Local Owner" }`.
+     */
+    executionPrincipal?: PluginExecutionPrincipal;
     /**
      * Pre-seeded stored settings values (as if saved before this load) —
      * including secret ones, which the fake keeps in memory instead of

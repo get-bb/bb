@@ -513,19 +513,19 @@ const pluginArtifactCheckoutRootMigrationPath = resolve(
   __dirname,
   "..",
   "drizzle",
-  "0094_mighty_polaris.sql",
+  "0097_plugin_artifact_git_checkout_root.sql",
 );
 const namedMarketplaceCatalogMigrationPath = resolve(
   __dirname,
   "..",
   "drizzle",
-  "0095_normal_elektra.sql",
+  "0098_plugin_marketplaces.sql",
 );
 const curatedMarketplaceRenameMigrationPath = resolve(
   __dirname,
   "..",
   "drizzle",
-  "0098_rename_curated_marketplace.sql",
+  "0101_rename_curated_marketplace.sql",
 );
 const sidebarOrderingMigrationPath = resolve(
   __dirname,
@@ -586,7 +586,7 @@ function dropSideChatPluginExperimentColumn(db: DbConnection): void {
 
 // Current schemas no longer have the legacy provenance column. Replay tests
 // that clear later migration rows must reconstruct the historical schema so
-// older migrations can run before 0093 removes the column again.
+// older migrations can run before 0096 removes the column again.
 function restoreLegacyThreadOriginColumn(db: DbConnection): void {
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
@@ -692,8 +692,8 @@ function resetMigrationsAfterThreadSearch(db: DbConnection): void {
 }
 
 /**
- * Migration 0094 adds the marketplace catalog tables and the plugins
- * marketplace-name column, and 0095 adds the git tag-range columns. Rewind
+ * Migration 0098 adds the marketplace catalog tables and the plugins
+ * marketplace-name column, and 0099 adds the git tag-range columns. Rewind
  * scenarios that clear those journal rows must remove all of them, or
  * migrate() replays the CREATE/ADD against a DB that has them.
  */
@@ -730,7 +730,7 @@ function dropEnvironmentDestroyAttemptIdColumn(db: DbConnection): void {
 
 // Migration 0095 adds the dedicated archive-grace clock. Rewind scenarios
 // that clear its journal row must remove the column before replaying the ADD.
-// Migration 0094 records the git checkout root on each artifact. Rewind
+// Migration 0097 records the git checkout root on each artifact. Rewind
 // scenarios that clear its journal row must remove the column before replaying
 // the ADD.
 function dropPluginArtifactGitCheckoutRootColumn(db: DbConnection): void {
@@ -1719,6 +1719,9 @@ describe("migrate", () => {
       dropQueuedMessageAdmissionReferenceSchema(db);
       restoreWideExperimentsTable(db);
       dropEnvironmentRetireRequestedAtColumn(db);
+      dropPluginArtifactGitCheckoutRootColumn(db);
+      dropMarketplaceCatalogSchema(db);
+      restoreLegacyThreadOriginColumn(db);
       db.$client
         .prepare<DeleteMigrationParameters>(
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",

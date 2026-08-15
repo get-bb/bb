@@ -1119,6 +1119,7 @@ rl.on("line", (line) => {
       ).resolves.toEqual({
         outcome: "stale",
         activeTurnId: "turn-1",
+        providerCheckpointId: null,
       });
       expect(runtime.hasThread("t1")).toBe(true);
       expect(runtime.getActiveTurnId("t1")).toBe("turn-1");

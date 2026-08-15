@@ -406,7 +406,9 @@ describe("plugin bb.sdk against a running server", () => {
           ],
         ),
       ).resolves.toEqual({ ok: true });
-      const stopPromise = api.sdk.threads.stop({ threadId: operable.id });
+      const stopPromise = pluginSdk(["threads", "stop"], [
+        { threadId: operable.id },
+      ]);
       const stop = await waitForQueuedCommand(
         server,
         ({ command }) =>

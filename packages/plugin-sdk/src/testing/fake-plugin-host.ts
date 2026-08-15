@@ -7,7 +7,6 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { PLUGIN_REALTIME_CHANNEL_MAX_LENGTH } from "@bb/domain";
 import { PLUGIN_INTERACTION_MAX_TITLE_LENGTH } from "@bb/domain/plugin-interaction-limits";
-import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "../backend-contract.js";
 import {
   AGENT_TOOL_NAME_PATTERN,
   BACKGROUND_NAME_PATTERN,
@@ -125,6 +124,44 @@ export class PluginContextStaleError extends Error {
     );
     this.name = "PluginContextStaleError";
   }
+}
+
+const EXECUTION_PRINCIPAL_KINDS = new Set<PluginExecutionPrincipal["kind"]>([
+  "human",
+  "agent",
+  "machine",
+  "system",
+]);
+
+/** Stock single-operator Principal used when tests omit `executionPrincipal`. */
+const DEFAULT_FAKE_EXECUTION_PRINCIPAL: PluginExecutionPrincipal =
+  Object.freeze({
+    id: "local-owner",
+    kind: "human",
+    displayName: "Local Owner",
+  });
+
+function freezeExecutionPrincipal(
+  principal: PluginExecutionPrincipal,
+): PluginExecutionPrincipal {
+  if (
+    principal === null ||
+    typeof principal !== "object" ||
+    typeof principal.id !== "string" ||
+    principal.id.trim().length === 0 ||
+    typeof principal.displayName !== "string" ||
+    principal.displayName.trim().length === 0 ||
+    !EXECUTION_PRINCIPAL_KINDS.has(principal.kind)
+  ) {
+    throw new Error(
+      "executionPrincipal must be a plain { id, kind, displayName } snapshot",
+    );
+  }
+  return Object.freeze({
+    id: principal.id,
+    kind: principal.kind,
+    displayName: principal.displayName,
+  });
 }
 
 export type FakeLogLevel = "debug" | "info" | "warn" | "error";

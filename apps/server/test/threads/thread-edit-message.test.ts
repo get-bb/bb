@@ -790,6 +790,7 @@ describe("editThreadMessage", () => {
         throw new Error("Expected stopped Pi thread");
       }
       const editPromise = editThreadMessage(harness.deps, {
+        actor: EDIT_MESSAGE_TEST_ACTOR,
         environment,
         thread: stoppedThread,
         payload: {

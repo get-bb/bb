@@ -291,6 +291,7 @@ describe("turn submit failure settlement", () => {
       if (!activeThread) throw new Error("Expected an active thread");
 
       await sendThreadMessage(harness.deps, {
+        actor: SYSTEM_ACTOR_STAMP,
         environment,
         payload: {
           input: textInput("failed steer"),
@@ -347,6 +348,7 @@ describe("turn submit failure settlement", () => {
       if (!activeThread) throw new Error("Expected an active thread");
 
       await sendThreadMessage(harness.deps, {
+        actor: SYSTEM_ACTOR_STAMP,
         environment,
         payload: {
           input: textInput("late failed steer"),
@@ -411,6 +413,7 @@ describe("turn submit failure settlement", () => {
       if (!activeThread) throw new Error("Expected an active thread");
 
       await sendThreadMessage(harness.deps, {
+        actor: SYSTEM_ACTOR_STAMP,
         environment,
         payload: {
           input: textInput("accepted steer"),
@@ -648,7 +651,7 @@ describe("queued message admission identity preservation", () => {
 
   it("preserves admitted identity on the idle-provider queued fast path", async () => {
     await withTestHarness(async (harness) => {
-      const { thread } = seedIdleProviderThreadFixture({ harness, value: 21 });
+      const { thread } = seedProviderThreadFixture({ harness, value: 21 });
       const requestId = encodeClientTurnRequestIdNumber({ value: 2101 });
       const queued = seedAdmittedQueuedMessage({
         harness,
@@ -724,7 +727,7 @@ describe("queued message admission identity preservation", () => {
 
   it("rolls back a failed claimed deletion without minting a new request identity", async () => {
     await withTestHarness(async (harness) => {
-      const { thread } = seedIdleProviderThreadFixture({ harness, value: 23 });
+      const { thread } = seedProviderThreadFixture({ harness, value: 23 });
       const requestId = encodeClientTurnRequestIdNumber({ value: 2303 });
       const queued = seedAdmittedQueuedMessage({
         harness,
@@ -767,7 +770,7 @@ describe("queued message admission identity preservation", () => {
 
   it("legacy queued dispatch mints a fresh request id without admission metadata", async () => {
     await withTestHarness(async (harness) => {
-      const { thread } = seedIdleProviderThreadFixture({ harness, value: 24 });
+      const { thread } = seedProviderThreadFixture({ harness, value: 24 });
       const queued = seedQueuedMessage(harness.deps, {
         threadId: thread.id,
         content: textInput("legacy queued"),
