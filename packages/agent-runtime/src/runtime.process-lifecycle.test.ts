@@ -22,7 +22,10 @@ import {
   waitForThreadAgentMessageText,
 } from "./test/runtime-test-harness.js";
 import { promptTextInput } from "./test/prompt-input.js";
-import type { AgentRuntimeOptions } from "./types.js";
+import type {
+  AgentRuntimeBridgeLaunch,
+  AgentRuntimeOptions,
+} from "./types.js";
 import type { ProviderRuntimeEvent } from "@bb/provider-bridge-protocol/bridge-kit";
 
 interface CreateProviderProcessManagerArgs {
@@ -1184,6 +1187,99 @@ rl.on("line", (line) => {
       const accountErrorProcessId = accountErrorTurn.split(":")[1];
       const afterReauthProcessId = afterReauthTurn.split(":")[1];
       expect(afterReauthProcessId).not.toBe(accountErrorProcessId);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  // A graduated provider's bridge only exists behind its launch spec, so the
+  // account restart must re-resume with the launch the session started with —
+  // otherwise the restart kills the process and fails to rebuild the adapter.
+  it("re-resumes the codex account restart with the thread's bridge launch", async () => {
+    const events: ThreadEvent[] = [];
+    const processLogPath = join(tmpDir, "account-restart-bridge-provider.log");
+    const threadScopedProviderScript = join(
+      tmpDir,
+      "account-restart-bridge-provider.cjs",
+    );
+    writeThreadScopedProviderScript({
+      logPath: processLogPath,
+      scriptPath: threadScopedProviderScript,
+    });
+    const bridgeLaunch: AgentRuntimeBridgeLaunch = {
+      sha256: "c".repeat(64),
+      artifactPath: join(tmpDir, "codex-provider-bridge.mjs"),
+      capabilities: {
+        supportsServiceTier: true,
+        supportedPermissionModes: ["full"],
+        supportsArchive: true,
+        supportsRename: false,
+        supportsFork: false,
+      },
+    };
+    const capturedBridgeLaunches: Array<AgentRuntimeBridgeLaunch | undefined> =
+      [];
+
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: (event) => {
+        events.push(event);
+      },
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: (_providerId, options) => {
+        capturedBridgeLaunches.push(options.bridgeLaunch);
+        return createCodexAccountErrorAdapter(threadScopedProviderScript);
+      },
+    });
+
+    try {
+      await runtime.startThread({
+        bridgeLaunch,
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "codex",
+        options: fullRuntimeOptions,
+      });
+
+      await runtime.runTurn({
+        clientRequestId: "creq_2222222271",
+        threadId: "t1",
+        input: [promptTextInput({ text: "account_error" })],
+        options: fullRuntimeOptions,
+      });
+      await waitForRuntimeState({
+        label: "terminal codex account error turn",
+        predicate: () =>
+          events.some(
+            (event) =>
+              event.type === "turn/completed" &&
+              event.threadId === "t1" &&
+              event.status === "failed",
+          ),
+        runtime,
+      });
+      events.splice(0, events.length);
+
+      await runtime.runTurn({
+        clientRequestId: "creq_2222222272",
+        threadId: "t1",
+        input: [promptTextInput({ text: "after reauth" })],
+        options: fullRuntimeOptions,
+      });
+      await waitForThreadAgentMessageText({
+        events,
+        providerId: "codex",
+        runtime,
+        text: "after reauth",
+        threadId: "t1",
+      });
+
+      // Both the original session and the restart resolve the same bridge.
+      expect(capturedBridgeLaunches).toEqual([bridgeLaunch, bridgeLaunch]);
     } finally {
       await runtime.shutdown();
     }

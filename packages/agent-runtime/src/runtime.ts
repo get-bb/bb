@@ -201,6 +201,13 @@ const PREPARED_THREAD_REWIND_TTL_MS = 5 * 60_000;
 const PREPARED_THREAD_REWIND_RETRY_MS = 30_000;
 
 interface ThreadRuntimeConfig {
+  /**
+   * The launch spec the live provider session was constructed with. Kept so a
+   * runtime-internal re-resume (the codex account restart) can rebuild the
+   * same process key and adapter for a plugin-delivered bridge, which cannot
+   * be resolved from the provider id alone.
+   */
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
   dynamicTools?: DynamicTool[];
   disallowedTools?: readonly string[];
   environmentId: string;
@@ -893,6 +900,11 @@ function createAgentRuntimeInternal(
 
     const resumeInstructions = args.instructions ?? currentConfig.instructions;
     await runtime.resumeThread({
+      // A graduated provider has no daemon-bundled bridge, so the restart can
+      // only rebuild the session from the launch the session started with.
+      ...(currentConfig.bridgeLaunch !== undefined
+        ? { bridgeLaunch: currentConfig.bridgeLaunch }
+        : {}),
       environmentId: currentConfig.environmentId,
       threadId: args.threadId,
       ...(currentConfig.projectId !== undefined
@@ -927,10 +939,11 @@ function createAgentRuntimeInternal(
   async function archiveOrUnarchiveThread(
     args: ArchiveOrUnarchiveThreadArgs,
   ): Promise<void> {
-    const { bridgeLaunch, commandType, providerId, providerThreadId, threadId } =
-      args;
+    const { commandType, providerId, providerThreadId, threadId } = args;
+    const threadConfig = threadRuntimeConfigs.get(threadId);
+    const bridgeLaunch = args.bridgeLaunch ?? threadConfig?.bridgeLaunch;
     const processKey =
-      threadRuntimeConfigs.get(threadId)?.processKey ??
+      threadConfig?.processKey ??
       resolveProviderProcessKey({
         ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
         providerId,
@@ -1471,6 +1484,7 @@ function createAgentRuntimeInternal(
             threadId,
           });
           setThreadRuntimeConfig(threadId, {
+            ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
             dynamicTools,
             disallowedTools,
             environmentId,
@@ -1849,6 +1863,7 @@ function createAgentRuntimeInternal(
             threadId,
           });
           setThreadRuntimeConfig(threadId, {
+            ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
             dynamicTools,
             disallowedTools,
             environmentId,
