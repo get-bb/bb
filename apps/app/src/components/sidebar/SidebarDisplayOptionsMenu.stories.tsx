@@ -9,7 +9,7 @@ import {
 } from "./sidebarCollapsedAtoms";
 
 export default {
-  title: "sidebar/View options menu",
+  title: "sidebar/Display options menu",
 };
 
 // Live readout of the atoms the menu drives, so the effect of each click is

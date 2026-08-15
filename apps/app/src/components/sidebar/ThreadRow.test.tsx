@@ -924,6 +924,20 @@ describe("ThreadRow", () => {
     expect(document.querySelector("[data-sidebar-thread-number]")).toBeNull();
   });
 
+  it("shows its navigation number and Command shortcut together", () => {
+    renderThreadRow({ numberKey: "3", shortcutKey: "3" });
+
+    expect(
+      document.querySelector("[data-sidebar-thread-number]")?.textContent,
+    ).toBe("3");
+    expect(screen.getByText("⌘3")).not.toBeNull();
+    expect(
+      screen
+        .getByRole("link", { name: "Open Thread" })
+        .getAttribute("aria-keyshortcuts"),
+    ).toBe("Meta+3");
+  });
+
   it("shows its Command shortcut in place of an active indicator", () => {
     renderThreadRow({
       shortcutKey: "3",

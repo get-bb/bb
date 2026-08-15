@@ -303,7 +303,11 @@ export function AppSidebar({
       true,
       refreshThreadShortcutAssignments,
     );
-  }, [assignSidebarThreadShortcuts, refreshThreadShortcutAssignments]);
+  }, [
+    assignSidebarThreadShortcuts,
+    isCompactViewport,
+    refreshThreadShortcutAssignments,
+  ]);
 
   // Keep this object identity stable across unrelated re-renders (opening
   // the mobile drawer flips useSidebar context and re-renders AppSidebar):
