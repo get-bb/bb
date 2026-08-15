@@ -14,7 +14,6 @@ export const experimentKeys = [
   "claudeCodeMockCliTraffic",
   "editMessages",
   "newOnboarding",
-  "providerBridge",
   "providerSessionReaping",
 ] as const;
 export const experimentKeySchema = z.enum(experimentKeys);
@@ -31,9 +30,5 @@ export const defaultExperiments: Experiments = {
   claudeCodeMockCliTraffic: false,
   editMessages: true,
   newOnboarding: false,
-  // Default-on: the canonical provider bridge path carries all four
-  // built-in providers; the legacy adapters remain the flag-off fallback
-  // until graduation deletes them.
-  providerBridge: true,
   providerSessionReaping: false,
 };

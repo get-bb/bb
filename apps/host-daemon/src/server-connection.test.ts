@@ -85,7 +85,6 @@ function createServerClientFixture(args: CreateServerClientFixtureArgs = {}) {
   const serverClient = {
     openSession,
     getRuntimePolicy: unused,
-    getProviderBridgePolicy: unused,
     fetchProjectAttachment: unused,
     fetchProviderBridge: unused,
     fetchSkillTree: unused,

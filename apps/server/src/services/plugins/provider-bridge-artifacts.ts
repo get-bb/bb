@@ -22,8 +22,7 @@ export interface PluginProviderBridgeArtifact {
  * presence means "this plugin's runtime is live and its bridge is servable".
  * Consumers: the internal `/provider-bridges/:sha256` route (bytes) and
  * thread commands (the `bridgeLaunch` attach point, which is what routes a
- * plugin provider onto the bridge — it never rides the
- * `/provider-bridge-policy` prefixes).
+ * plugin provider onto the bridge).
  */
 export class ProviderBridgeArtifactRegistry {
   readonly #byPluginId = new Map<string, PluginProviderBridgeArtifact>();

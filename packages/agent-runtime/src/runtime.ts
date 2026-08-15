@@ -392,8 +392,6 @@ function createAgentRuntimeInternal(
     additionalWorkspaceWriteRoots,
     adapterFactory: options.adapterFactory,
     bridgeBundleDir: options.bridgeBundleDir,
-    bridgeProtocolProviderPrefixes:
-      options.bridgeProtocolProviderPrefixes ?? [],
     ...(bridgeNodeEnv !== undefined ? { bridgeNodeEnv } : {}),
     bridgeNodeExecutablePath:
       options.bridgeNodeExecutablePath ?? process.execPath,

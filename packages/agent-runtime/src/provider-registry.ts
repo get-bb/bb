@@ -31,10 +31,7 @@ import type {
  * Provider Bridge Protocol.
  *
  * Every provider is graduated: no legacy adapter remains, so every id routes
- * here unconditionally. The providerBridge experiment's prefix list no longer
- * gates anything (`bridgeProtocolProviderPrefixes` is now an accepted-and-
- * ignored option; retiring the field itself is wave 3, since it is plumbed
- * through the daemon).
+ * here unconditionally.
  *
  * The ACP launch spec travels opaquely via staticProviderOptions (claude-code
  * needs no launch spec — its provider-flavored knobs ride the per-command

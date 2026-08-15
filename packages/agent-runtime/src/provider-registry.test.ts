@@ -57,14 +57,11 @@ describe("provider registry", () => {
     });
   });
 
-  // Both providers are graduated, so neither needs an enabled prefix to reach
-  // the canonical bridge.
   it.each([{ providerId: "claude-code" }, { providerId: "acp-cursor" }])(
     "carries environment write roots to the $providerId bridge via provider options",
     ({ providerId }) => {
       const provider = createProviderForId(providerId, {
         additionalWorkspaceWriteRoots: ["/extra-root"],
-        bridgeProtocolProviderPrefixes: [],
       });
       const plan = provider.buildCommandPlan({
         type: "thread/start",
@@ -318,12 +315,11 @@ describe("provider registry", () => {
     { providerId: "pi", bridgeDir: "pi" },
     { providerId: "acp-custom", bridgeDir: "acp" },
   ])(
-    "routes $providerId canonically without an enabled bridge prefix",
+    "routes $providerId to its bundled canonical bridge",
     ({ providerId, bridgeDir }) => {
       const provider = createProviderForId(providerId, {
         additionalWorkspaceWriteRoots: [],
         acpLaunchSpec: dynamicAcpLaunchSpec,
-        bridgeProtocolProviderPrefixes: [],
       });
 
       expect(provider.process.command).toBe("node");
@@ -344,7 +340,6 @@ describe("provider registry", () => {
   it("routes a plugin-delivered bridge artifact onto the generic adapter", () => {
     const provider = createProviderForId("echo-agent", {
       additionalWorkspaceWriteRoots: [],
-      bridgeProtocolProviderPrefixes: ["echo-agent"],
       bridgeLaunch: {
         sha256: "a".repeat(64),
         artifactPath: "/data/provider-bridges/artifact.mjs",
@@ -390,7 +385,6 @@ describe("provider registry", () => {
     const bridgeNodeEnv = { ELECTRON_RUN_AS_NODE: "1" };
     const provider = createProviderForId("echo-agent", {
       additionalWorkspaceWriteRoots: [],
-      bridgeProtocolProviderPrefixes: ["echo-agent"],
       bridgeNodeEnv,
       bridgeNodeExecutablePath: "/Applications/bb.app/Contents/MacOS/bb",
       bridgeLaunch: {
@@ -411,7 +405,6 @@ describe("provider registry", () => {
   it("keeps first-party bundled bridges untouched even when a bridge launch rides along", () => {
     const provider = createProviderForId("pi", {
       additionalWorkspaceWriteRoots: [],
-      bridgeProtocolProviderPrefixes: ["pi"],
       bridgeBundleDir: "/tmp",
       bridgeLaunch: {
         sha256: "c".repeat(64),
@@ -431,7 +424,6 @@ describe("provider registry", () => {
     // protocol, and the daemon has already verified the artifact bytes.
     const provider = createProviderForId("echo-agent", {
       additionalWorkspaceWriteRoots: [],
-      bridgeProtocolProviderPrefixes: [],
       bridgeLaunch: {
         sha256: "d".repeat(64),
         artifactPath: "/data/provider-bridges/artifact.mjs",

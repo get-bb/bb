@@ -99,8 +99,6 @@ export interface AgentRuntimeOptions {
 
   /** Optional directory containing bundled provider bridges. */
   bridgeBundleDir?: string;
-  /** Provider-id prefixes routed to the canonical bridge-protocol adapter. */
-  bridgeProtocolProviderPrefixes?: readonly string[];
   /**
    * Bounds for the turn-start watchdog (visible system/error when an
    * accepted turn never starts). Defaults: 120s threshold, 15s sweep.

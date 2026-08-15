@@ -187,12 +187,6 @@ export async function defaultListModels(
   if (!runtime) {
     runtime = createAgentRuntime({
       bridgeBundleDir: options.bridgeBundleDir,
-      // A bridgeLaunch only ever rides commands for providers the server has
-      // routed onto the bridge protocol, so its presence stands in for the
-      // policy prefixes this fallback runtime has no session to fetch.
-      ...(args.bridgeLaunch !== undefined
-        ? { bridgeProtocolProviderPrefixes: [args.providerId] }
-        : {}),
       workspacePath: process.cwd(),
       onEvent: () => {},
       onToolCall: async () => ({

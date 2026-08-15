@@ -47,7 +47,6 @@ export interface RuntimeProviderProcessLineArgs {
 export interface RuntimeProviderProcessManagerArgs {
   additionalWorkspaceWriteRoots: readonly string[];
   adapterFactory?: ProviderAdapterFactory;
-  bridgeProtocolProviderPrefixes: readonly string[];
   bridgeBundleDir: string | undefined;
   bridgeNodeEnv?: Record<string, string>;
   bridgeNodeExecutablePath?: string;
@@ -162,11 +161,6 @@ function parseBridgeProcessKey(
     hash: rest.slice(0, suffixIndex),
     suffix: rest.slice(suffixIndex),
   };
-}
-
-function createAdapterTurnIdPrefix(): string {
-  const adapterId = randomUUID().replaceAll("-", "").slice(0, 16);
-  return `turn_${adapterId}_`;
 }
 
 export class ProviderProcessExitedError extends Error {
@@ -436,7 +430,6 @@ export class RuntimeProviderProcessManager {
       additionalWorkspaceWriteRoots: this.args.additionalWorkspaceWriteRoots,
       ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
       ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
-      bridgeProtocolProviderPrefixes: this.args.bridgeProtocolProviderPrefixes,
       bridgeBundleDir: this.args.bridgeBundleDir,
       ...(this.args.bridgeNodeEnv !== undefined
         ? { bridgeNodeEnv: this.args.bridgeNodeEnv }
@@ -444,7 +437,6 @@ export class RuntimeProviderProcessManager {
       ...(this.args.bridgeNodeExecutablePath !== undefined
         ? { bridgeNodeExecutablePath: this.args.bridgeNodeExecutablePath }
         : {}),
-      turnIdPrefix: createAdapterTurnIdPrefix(),
     };
 
     if (this.args.adapterFactory) {

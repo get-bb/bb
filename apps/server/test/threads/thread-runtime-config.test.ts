@@ -862,7 +862,6 @@ describe("thread runtime config", () => {
         claudeCodeMockCliTraffic: true,
         editMessages: false,
         newOnboarding: false,
-        providerBridge: false,
         providerSessionReaping: false,
       });
 

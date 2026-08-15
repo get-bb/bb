@@ -1,4 +1,3 @@
-import { setTimeout as sleep } from "node:timers/promises";
 import { CommandRouter } from "./command-router.js";
 import { createDaemon, type HostDaemon } from "./daemon.js";
 import {
@@ -67,15 +66,6 @@ const INTERACTIVE_INTERRUPT_RETRY_DELAY_MS = 1_000;
 const IDLE_PROVIDER_SESSION_REAP_AFTER_MS = 30 * 60 * 1000;
 const IDLE_PROVIDER_SESSION_REAP_INTERVAL_MS = 5 * 60 * 1000;
 const RUNTIME_SHELL_ENV_REFRESH_TTL_MS = 10_000;
-/**
- * Backoff for the eager provider-bridge policy read at startup. A daemon that
- * comes up before (or alongside) the server would otherwise run with an empty
- * prefix list until the first maintenance sweep minutes later, and every
- * runtime created in that window captures the empty list permanently.
- */
-const PROVIDER_BRIDGE_POLICY_STARTUP_RETRY_DELAYS_MS = [
-  250, 500, 1_000, 2_000, 4_000,
-];
 
 type RuntimeShellEnv = NonNullable<AgentRuntimeOptions["shellEnv"]>;
 
@@ -515,31 +505,8 @@ export async function createHostDaemonApp(
       );
     },
   });
-  let bridgeProtocolProviderPrefixes: readonly string[] = [];
-  /**
-   * Refreshes the cached policy, keeping the last known-good value when the
-   * server cannot answer. A runtime captures the prefixes at creation, so
-   * clobbering a good list with an empty one on a transient failure would bake
-   * "bridge disabled" into every runtime created until the next success.
-   * Resolves whether the policy is now known.
-   */
-  const refreshProviderBridgePolicy = async (): Promise<boolean> => {
-    const policy = await serverClient.getProviderBridgePolicy();
-    if (policy === undefined) {
-      options.logger.debug(
-        { bridgeProtocolProviderPrefixes },
-        "Provider bridge policy refresh failed; keeping last known policy",
-      );
-      return false;
-    }
-    bridgeProtocolProviderPrefixes = policy.bridgeProtocolProviderPrefixes;
-    return true;
-  };
-
   runtimeManager = new RuntimeManager({
     bridgeBundleDir: options.bridgeBundleDir,
-    resolveBridgeProtocolProviderPrefixes: () =>
-      bridgeProtocolProviderPrefixes,
     createRuntime: options.createRuntime,
     dataDir: options.dataDir,
     dataDirSkillsRootPath,
@@ -744,25 +711,11 @@ export async function createHostDaemonApp(
       throw error;
     }
   };
-  // Eager first read so runtimes created before the first maintenance sweep
-  // see the policy, retried briefly so a server that is still starting does
-  // not leave the daemon (and the runtimes it creates) on an empty policy.
-  void (async () => {
-    if (await refreshProviderBridgePolicy()) return;
-    for (const delayMs of PROVIDER_BRIDGE_POLICY_STARTUP_RETRY_DELAYS_MS) {
-      await sleep(delayMs, undefined, { ref: false });
-      if (await refreshProviderBridgePolicy()) return;
-    }
-  })();
   const idleProviderSessionReaper = startIdleProviderSessionReaper({
     logger: options.logger,
     nowMs: Date.now,
-    resolveProviderSessionReapingEnabled: async () => {
-      // Piggyback the provider-bridge policy refresh on the same sweep; its
-      // client method never throws.
-      void refreshProviderBridgePolicy();
-      return (await serverClient.getRuntimePolicy()).providerSessionReaping;
-    },
+    resolveProviderSessionReapingEnabled: async () =>
+      (await serverClient.getRuntimePolicy()).providerSessionReaping,
     runtimeManager,
     setIntervalFn: (callback, intervalMs) => {
       const timer = setInterval(callback, intervalMs);

@@ -191,7 +191,6 @@ export interface RuntimeManagerOptions {
    * Reads the daemon's cached provider-bridge policy at runtime creation.
    * Per-runtime static: a policy flip applies to runtimes created after it.
    */
-  resolveBridgeProtocolProviderPrefixes?: () => readonly string[];
   createRuntime?: (options: AgentRuntimeOptions) => AgentRuntime;
   dataDir?: string;
   dataDirSkillsRootPath?: string | null;
@@ -1288,8 +1287,6 @@ export class RuntimeManager {
       shellEnv,
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
       bridgeBundleDir: this.options.bridgeBundleDir,
-      bridgeProtocolProviderPrefixes:
-        this.options.resolveBridgeProtocolProviderPrefixes?.() ?? [],
       onEvent: (event) => {
         this.options.onStderr?.(
           `Dropping provider maintenance event ${event.type}; no environment owns provider-only maintenance commands.`,
@@ -1363,8 +1360,6 @@ export class RuntimeManager {
       shellEnv,
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
       bridgeBundleDir: this.options.bridgeBundleDir,
-      bridgeProtocolProviderPrefixes:
-        this.options.resolveBridgeProtocolProviderPrefixes?.() ?? [],
       onEvent: (event) => {
         this.options.onEvent?.({
           environmentId: args.environmentId,

@@ -39,7 +39,6 @@ describe("experiments", () => {
         "editMessages",
         "futureExperiment",
         "newOnboarding",
-        "providerBridge",
         "providerSessionReaping",
       ]);
     } finally {

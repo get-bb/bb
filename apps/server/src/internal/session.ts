@@ -44,23 +44,6 @@ export function registerInternalSessionRoutes(
     });
   });
 
-  get("/provider-bridge-policy", (context) => {
-    getAuthenticatedDaemon(context);
-    const experiments = getExperiments(deps.db);
-    // Exact-id prefixes are safe: registry routing rejects non-matching ids
-    // (e.g. "pi" cannot match a hypothetical "pi-x" because the routing also
-    // requires a known provider).
-    // Plugin providers are deliberately absent: the daemon matches this list
-    // with startsWith, so a plugin id like "co" would hijack "codex" onto the
-    // bridge with the experiment off. They need no entry — the verified
-    // bridgeLaunch that rides their commands is its own routing authority in
-    // the agent-runtime provider registry.
-    const prefixes = experiments.providerBridge
-      ? ["acp-", "claude-code", "codex", "pi"]
-      : [];
-    return context.json({ bridgeProtocolProviderPrefixes: prefixes });
-  });
-
   post(
     "/session/open",
     hostDaemonSessionOpenRequestSchema,

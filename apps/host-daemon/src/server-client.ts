@@ -4,9 +4,7 @@ import {
   hostDaemonEventBatchResponseSchema,
   hostDaemonInteractiveInterruptResponseSchema,
   hostDaemonInteractiveRequestResponseSchema,
-  hostDaemonProviderBridgePolicySchema,
   hostDaemonRuntimePolicySchema,
-  type HostDaemonProviderBridgePolicy,
   hostDaemonSessionOpenResponseSchema,
   hostDaemonSkillTreeSchema,
   hostDaemonToolCallResponseSchema,
@@ -184,15 +182,6 @@ interface OpenSessionArgs {
 
 export interface ServerClient {
   getRuntimePolicy(): Promise<HostDaemonRuntimePolicy>;
-  /**
-   * Providers running the canonical bridge protocol. Tolerates every failure
-   * (older server without the route, transport errors, schema drift) by
-   * resolving `undefined` — never throwing, because the experiment must not
-   * take a daemon down. `undefined` means "unknown", not "empty": callers keep
-   * their last known-good policy instead of downgrading a live prefix list to
-   * nothing on a transient server hiccup.
-   */
-  getProviderBridgePolicy(): Promise<HostDaemonProviderBridgePolicy | undefined>;
   openSession(args: OpenSessionArgs): Promise<HostDaemonSessionOpenResponse>;
   fetchProjectAttachment(
     args: FetchProjectAttachmentArgs,
@@ -443,25 +432,6 @@ export function createServerClient(
         throw await createResponseError("get runtime policy", response);
       }
       return hostDaemonRuntimePolicySchema.parse(await response.json());
-    },
-
-    async getProviderBridgePolicy(): Promise<
-      HostDaemonProviderBridgePolicy | undefined
-    > {
-      try {
-        const response = await fetchFn(
-          buildInternalUrl("/provider-bridge-policy"),
-          { method: "GET", headers: headers() },
-        );
-        if (!response.ok) {
-          return undefined;
-        }
-        return hostDaemonProviderBridgePolicySchema.parse(
-          await response.json(),
-        );
-      } catch {
-        return undefined;
-      }
     },
 
     async openSession(

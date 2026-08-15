@@ -15,10 +15,8 @@ function renderSection(overrides?: {
       disabled={false}
       editMessagesEnabled={false}
       newOnboardingEnabled={false}
-      providerBridgeEnabled={false}
       providerSessionReapingEnabled={false}
       onClaudeCodeMockCliTrafficEnabledChange={vi.fn()}
-      onProviderBridgeEnabledChange={vi.fn()}
       onEditMessagesEnabledChange={vi.fn()}
       onNewOnboardingEnabledChange={
         overrides?.onNewOnboardingEnabledChange ?? vi.fn()

@@ -63,58 +63,6 @@ describe("createServerClient", () => {
     });
   });
 
-  // An empty prefix list is a legitimate policy ("no bridge providers"), so a
-  // failed read must not be reported as one: runtimes capture the prefixes at
-  // creation and would bake the downgrade in permanently.
-  it.each([
-    [
-      "an error response",
-      async () => Response.json({ message: "nope" }, { status: 503 }),
-    ],
-    [
-      "a transport error",
-      async () => {
-        throw new Error("connection refused");
-      },
-    ],
-    [
-      "an unparseable body",
-      async () => Response.json({ bridgeProtocolProviderPrefixes: "codex" }),
-    ],
-  ])(
-    "reports an unknown provider bridge policy on %s, not an empty one",
-    async (_label, respond: () => Promise<Response>) => {
-      const client = createServerClient({
-        fetchFn: vi.fn<FetchFn>(respond),
-        getSessionId: () => "session-1",
-        hostKey: "host-key",
-        logger: createLogger(),
-        serverUrl: "https://bb.example.test",
-      });
-
-      await expect(client.getProviderBridgePolicy()).resolves.toBeUndefined();
-    },
-  );
-
-  it("reads the provider bridge policy when the server answers", async () => {
-    const client = createServerClient({
-      fetchFn: vi.fn<FetchFn>(async (input) => {
-        expect(String(input)).toBe(
-          "https://bb.example.test/internal/provider-bridge-policy",
-        );
-        return Response.json({ bridgeProtocolProviderPrefixes: ["codex"] });
-      }),
-      getSessionId: () => "session-1",
-      hostKey: "host-key",
-      logger: createLogger(),
-      serverUrl: "https://bb.example.test",
-    });
-
-    await expect(client.getProviderBridgePolicy()).resolves.toEqual({
-      bridgeProtocolProviderPrefixes: ["codex"],
-    });
-  });
-
   it("narrows a protocol update retry request from error details", async () => {
     const fetchFn = vi.fn<FetchFn>(async () =>
       Response.json(

@@ -43,16 +43,9 @@ export interface ProviderAdapterFactoryOptions {
    * generic bridge-protocol adapter running that artifact.
    */
   bridgeLaunch?: AgentRuntimeBridgeLaunch;
-  /**
-   * Provider-id prefixes running on the canonical bridge protocol (the
-   * generic adapter) instead of their bespoke adapters. Experiment-gated;
-   * evaluated per provider-process spawn.
-   */
-  bridgeProtocolProviderPrefixes?: readonly string[];
   bridgeBundleDir?: string;
   bridgeNodeEnv?: Record<string, string>;
   bridgeNodeExecutablePath?: string;
-  turnIdPrefix?: string;
 }
 
 export type ProviderAdapterFactory = (
