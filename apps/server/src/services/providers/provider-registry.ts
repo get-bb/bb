@@ -180,9 +180,28 @@ export function createProviderRegistryService(): ProviderRegistryService {
       );
       if (registration.takeover === true && seedIndex !== -1) {
         const replaced = coreSeed[seedIndex] as ProviderRegistration;
+        // Transitional merge: the plugin declaration has no slots for
+        // session-behavior facts (archive/name sync live in the bridge
+        // handshake; workflows moves to the claude plugin's own settings;
+        // session restore is handshake-reported). Until each field's proper
+        // consumer repoint ships, a takeover preserves the replaced entry's
+        // values so flipping a first-party plugin on cannot regress the
+        // flagship behaviors (codex archive mirroring, claude workflows).
         const entry: ProviderRegistration = {
-          info: registration.info,
-          serverCapabilities: registration.serverCapabilities,
+          info: {
+            ...registration.info,
+            capabilities: {
+              ...registration.info.capabilities,
+              supportsArchive: replaced.info.capabilities.supportsArchive,
+              supportsRename: replaced.info.capabilities.supportsRename,
+            },
+          },
+          serverCapabilities: {
+            ...registration.serverCapabilities,
+            supportsWorkflows: replaced.serverCapabilities.supportsWorkflows,
+            supportsSessionRestore:
+              replaced.serverCapabilities.supportsSessionRestore,
+          },
           ...(registration.declaration !== undefined
             ? { declaration: registration.declaration }
             : {}),
