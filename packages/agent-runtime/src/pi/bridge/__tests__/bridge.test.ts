@@ -96,6 +96,10 @@ vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
       actual.SessionManager.open(path, sessionDir, cwdOverride),
   );
   return {
+    // Keep every other export real: the canonical session dialect reaches
+    // tool-definition helpers (defineTool, createBashToolDefinition, ...)
+    // that the mocked construction seams do not touch.
+    ...actual,
     createAgentSessionFromServices: mockCreateAgentSession,
     createAgentSessionServices: mockCreateAgentSessionServices,
     getAgentDir: vi.fn(() => "/tmp/pi-agent"),
@@ -422,6 +426,70 @@ describe("pi bridge", () => {
       }
     },
   );
+
+  // Historical fix 21c6e391f: bb's "none" is the one reasoning-ladder name Pi
+  // spells differently ("off"). Dropping it (like unsupported levels) would
+  // silently leave extended thinking at Pi's default instead of disabling it.
+  it('maps canonical reasoningLevel "none" to Pi thinkingLevel "off" on thread/start', async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    mockCreateAgentSession.mockImplementation(async () => ({
+      session: createControlledPiAgentSession(),
+    }));
+
+    try {
+      bridge.sendRequest(60, "thread/start", {
+        cwd: "/tmp/worktree",
+        threadId: "thread-canonical-none",
+        instructionMode: "append",
+        options: {
+          reasoningLevel: "none",
+          permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
+          permissionEscalation: null,
+        },
+      });
+      const response = await bridge.waitForResponse(60);
+
+      expect(response.error).toBeUndefined();
+      expect(mockCreateAgentSession).toHaveBeenCalledWith(
+        expect.objectContaining({ thinkingLevel: "off" }),
+      );
+    } finally {
+      bridge.restore();
+    }
+  });
+
+  it('maps canonical reasoningLevel "none" to Pi thinkingLevel "off" on thread/resume', async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    mockCreateAgentSession.mockImplementation(async () => ({
+      session: createControlledPiAgentSession(),
+    }));
+
+    try {
+      bridge.sendRequest(61, "thread/resume", {
+        cwd: "/tmp/worktree",
+        threadId: "thread-canonical-none-resume",
+        providerThreadId: "thread-canonical-none-resume",
+        instructionMode: "append",
+        options: {
+          reasoningLevel: "none",
+          permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
+          permissionEscalation: null,
+        },
+      });
+      const response = await bridge.waitForResponse(61);
+
+      expect(response.error).toBeUndefined();
+      expect(mockCreateAgentSession).toHaveBeenCalledWith(
+        expect.objectContaining({ thinkingLevel: "off" }),
+      );
+    } finally {
+      bridge.restore();
+    }
+  });
 
   it("uses the configured bridge session directory for default Pi sessions", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);

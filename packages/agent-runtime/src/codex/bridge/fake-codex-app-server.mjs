@@ -81,6 +81,17 @@ function handleRequest(message) {
       return;
     }
     case "thread/resume": {
+      // Scripted archived-session rejection: the real app-server refuses to
+      // resume an archived thread with an error naming the session. Tests use
+      // an `archived-` provider-thread-id prefix to trigger it.
+      if (String(params.threadId).startsWith("archived-")) {
+        respondError(
+          id,
+          -32603,
+          `session ${params.threadId} is archived; unarchive it and retry`,
+        );
+        return;
+      }
       respond(id, { thread: { id: params.threadId } });
       return;
     }
