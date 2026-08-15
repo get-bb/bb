@@ -4,7 +4,7 @@ import type {
   ThreadEventItemStatus,
 } from "@bb/domain";
 import { turnScope } from "@bb/domain";
-import type { ProviderRuntimeEvent } from "../runtime-json-rpc.js";
+import type { ProviderRuntimeEvent } from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   codexBridgeEnvelopeSchema,
   codexSubAgentActivityItemSchema,

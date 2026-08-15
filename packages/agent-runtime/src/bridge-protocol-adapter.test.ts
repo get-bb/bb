@@ -94,7 +94,9 @@ describe("thread/stop intent", () => {
         providerThreadId: "p_1",
         activeTurnId: "turn_9",
       }),
-    ).toMatchObject({ params: { intent: "interrupt", activeTurnId: "turn_9" } });
+    ).toMatchObject({
+      params: { intent: "interrupt", activeTurnId: "turn_9" },
+    });
     expect(
       adapter.buildCommandPlan({
         type: "thread/stop",
@@ -131,14 +133,14 @@ describe("options mapping", () => {
           providerOptions: {
             workflowsEnabled: true,
             memoryEnabled: false,
-            claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+            claudeCodeMockCliTraffic:
+              DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
           },
         },
       },
     });
-    const options = (
-      plan as { params: { options: Record<string, unknown> } }
-    ).params.options;
+    const options = (plan as { params: { options: Record<string, unknown> } })
+      .params.options;
     expect(options).not.toHaveProperty("workflowsEnabled");
     expect(options).not.toHaveProperty("skillRoots");
   });

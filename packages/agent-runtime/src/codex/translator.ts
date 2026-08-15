@@ -17,15 +17,15 @@ import {
   turnScope,
 } from "@bb/domain";
 import type { ClientTurnRequestId, ThreadEvent } from "@bb/domain";
-import { extractResultText } from "../shared/adapter-utils.js";
-import type {
-  PreparedProviderCommandDispatch,
-  ProviderPostInitializeRequest,
-} from "../provider-adapter.js";
+import { extractResultText } from "@bb/provider-bridge-protocol/bridge-kit";
 import type {
   JsonRpcMessage,
   ProviderRuntimeEvent,
-} from "../runtime-json-rpc.js";
+} from "@bb/provider-bridge-protocol/bridge-kit";
+import type {
+  PreparedProviderCommandDispatch,
+  ProviderPostInitializeRequest,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   applyCodexRateLimitUpdate,
   createCodexEventTranslationState,

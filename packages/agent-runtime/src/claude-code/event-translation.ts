@@ -25,41 +25,33 @@ import {
   turnScope,
 } from "@bb/domain";
 import {
+  UNSTAMPED_THREAD_ID,
+  bashArgsSchema,
+  buildToolResultItem,
+  buildToolUseItem,
+  buildUnhandledProviderEvents,
+  createProviderTurnStateRegistry,
+  createScopedItemIdFactory,
+  createUnhandledProviderEvent,
+  drainAcceptedUserMessages,
+  errorEnvelopeSchema,
   extractResultText,
+  jsonRpcEnvelopeSchema,
+  resolveProviderTerminalTurn,
+  sdkMessageEnvelopeSchema,
+  threadIdentityEnvelopeSchema,
   toOptionalRecord,
   toOptionalString,
   withParentToolCallId,
-} from "../shared/adapter-utils.js";
-import {
-  drainAcceptedUserMessages,
-  type AcceptedUserMessageState,
-} from "../shared/accepted-user-messages.js";
-import { bashArgsSchema } from "../shared/tool-arg-schemas.js";
-import {
-  buildToolResultItem,
-  buildToolUseItem,
-  type ToolUseTranslationInput,
-} from "../shared/tool-item-translation.js";
-import {
-  createProviderTurnStateRegistry,
-  type EnsureProviderTurnStartedArgs,
-  type ProviderTurnStateRegistry,
-} from "../shared/turn-state.js";
-import { createScopedItemIdFactory } from "../shared/scoped-item-ids.js";
-import { resolveProviderTerminalTurn } from "../shared/provider-terminal-turn.js";
-import {
-  buildUnhandledProviderEvents,
-  createUnhandledProviderEvent,
-} from "../shared/provider-unhandled-event.js";
-import { UNSTAMPED_THREAD_ID } from "../shared/unstamped-thread-id.js";
-import {
-  errorEnvelopeSchema,
-  jsonRpcEnvelopeSchema,
-  sdkMessageEnvelopeSchema,
-  threadIdentityEnvelopeSchema,
-} from "../shared/json-rpc-envelope.js";
+} from "@bb/provider-bridge-protocol/bridge-kit";
+import type {
+  AcceptedUserMessageState,
+  EnsureProviderTurnStartedArgs,
+  JsonRpcMessage,
+  ProviderTurnStateRegistry,
+  ToolUseTranslationInput,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import type { ProviderTranslationContext } from "../provider-adapter.js";
-import type { JsonRpcMessage } from "../runtime-json-rpc.js";
 import {
   claudeApiRetryMessageSchema,
   claudeAssistantMessageSchema,

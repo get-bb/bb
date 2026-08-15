@@ -24,28 +24,24 @@ import {
   turnSteerParamsSchema as canonicalTurnSteerParamsSchema,
   skillsConfigureParamsSchema,
 } from "@bb/provider-bridge-protocol";
-import { extractEnvOverrides } from "../../shared/adapter-utils.js";
 import {
+  UNSTAMPED_THREAD_ID,
   buildAcceptedUserMessageEvent,
-  queueAcceptedUserMessage,
-} from "../../shared/accepted-user-messages.js";
-import {
-  decodeBridgeJsonRpcResponse,
-  jsonRpcEnvelopeSchema,
-  type BridgeToolCallRequest,
-} from "../../shared/bridge-tool-calls.js";
-import {
   createBridgeIo,
   createBridgeLineHandler,
+  createBridgeSessionRegistry,
+  decodeBridgeJsonRpcResponse,
+  extractEnvOverrides,
+  bridgeRequestEnvelopeSchema,
+  mimeTypeFromExtension,
+  queueAcceptedUserMessage,
   runBridgeRequest,
   startBridgeStdio,
-} from "../../shared/bridge-harness.js";
-import {
-  createBridgeSessionRegistry,
-  type PendingBridgeToolCall,
-} from "../../shared/bridge-session-registry.js";
-import { mimeTypeFromExtension } from "../../shared/mime-types.js";
-import { UNSTAMPED_THREAD_ID } from "../../shared/unstamped-thread-id.js";
+} from "@bb/provider-bridge-protocol/bridge-kit";
+import type {
+  BridgeToolCallRequest,
+  PendingBridgeToolCall,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   SessionManager,
   type AgentSessionEvent,
@@ -316,7 +312,7 @@ type DecodedPiBridgeRequest =
   | { kind: "ignored" };
 
 function decodePiJsonRpcRequest(raw: unknown): DecodedPiBridgeRequest {
-  const envelope = jsonRpcEnvelopeSchema.safeParse(raw);
+  const envelope = bridgeRequestEnvelopeSchema.safeParse(raw);
   if (!envelope.success) {
     return { kind: "ignored" };
   }
@@ -333,7 +329,9 @@ function decodePiJsonRpcRequest(raw: unknown): DecodedPiBridgeRequest {
   }
   // Reply, never drop (#853): a silently dropped request is an undebuggable
   // 30-second timeout on the runtime side.
-  if (!(piCommandMethodValues as readonly string[]).includes(envelope.data.method)) {
+  if (
+    !(piCommandMethodValues as readonly string[]).includes(envelope.data.method)
+  ) {
     return {
       kind: "unknown-method",
       id: envelope.data.id,
@@ -531,7 +529,10 @@ function emitSessionError(
   threadId: string,
   message: string,
 ): void {
-  if (threadSession.dialect === "canonical" && threadSession.translator !== null) {
+  if (
+    threadSession.dialect === "canonical" &&
+    threadSession.translator !== null
+  ) {
     // Settle any open translator turn first: every accepted turn reaches
     // exactly one terminal state, and settlement events precede the error
     // signal. Without an open turn the error stays a runtime notification —
@@ -900,7 +901,9 @@ type TurnStartParams = z.infer<typeof piTurnStartParamsSchema>;
 type TurnSteerParams = z.infer<typeof piTurnSteerParamsSchema>;
 type CanonicalTurnStartParams = z.infer<typeof canonicalTurnStartParamsSchema>;
 type CanonicalTurnSteerParams = z.infer<typeof canonicalTurnSteerParamsSchema>;
-type CanonicalThreadStopParams = z.infer<typeof canonicalThreadStopParamsSchema>;
+type CanonicalThreadStopParams = z.infer<
+  typeof canonicalThreadStopParamsSchema
+>;
 type ThreadIdParams = z.infer<typeof piThreadIdParamsSchema>;
 type ThreadDiscardParams = Extract<
   PiCommand,
@@ -982,7 +985,8 @@ async function startPiThreadSession({
     sessionSerial,
     closing: false,
     dialect,
-    translator: dialect === "canonical" ? createCanonicalSessionTranslator() : null,
+    translator:
+      dialect === "canonical" ? createCanonicalSessionTranslator() : null,
     pendingToolCalls: new Map(),
   };
   sessions.set(threadId, threadSession);

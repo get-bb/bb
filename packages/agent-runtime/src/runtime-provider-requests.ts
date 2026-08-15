@@ -18,7 +18,7 @@ import {
   sendJsonRpcResult,
   sendProviderRequestDecodeErrorIfKnown,
   sendProviderResponseEncodeErrorIfKnown,
-} from "./runtime-json-rpc.js";
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import { shouldAutoDenyInteractiveRequest } from "./shared/permission-policy.js";
 
 export type RuntimeProviderRequestKind = "interactive request" | "tool call";

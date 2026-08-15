@@ -7,8 +7,7 @@ export interface ResolvePiBridgeSessionDirArgs {
   env: NodeJS.ProcessEnv;
 }
 
-export interface ResolvePiSessionFilePathArgs
-  extends ResolvePiBridgeSessionDirArgs {
+export interface ResolvePiSessionFilePathArgs extends ResolvePiBridgeSessionDirArgs {
   sessionPath?: string;
   threadId: string;
 }

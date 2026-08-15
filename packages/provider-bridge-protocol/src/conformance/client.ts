@@ -41,7 +41,11 @@ export class ConformanceClient {
 
   notify(method: string, params?: unknown): void {
     this.transport.send(
-      JSON.stringify({ jsonrpc: "2.0", method, ...(params !== undefined ? { params } : {}) }),
+      JSON.stringify({
+        jsonrpc: "2.0",
+        method,
+        ...(params !== undefined ? { params } : {}),
+      }),
     );
   }
 

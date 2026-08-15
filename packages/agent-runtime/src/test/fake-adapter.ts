@@ -14,25 +14,28 @@ import {
 import type {
   AdapterCommand,
   BuildInteractiveResponseArgs,
+  ProviderAdapter,
+} from "../provider-adapter.js";
+import type {
   DecodedInteractiveRequest,
   DecodedToolCallRequest,
-  ProviderAdapter,
   ProviderCommandPlan,
   ProviderInteractiveResponse,
-} from "../provider-adapter.js";
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   flattenPromptInputGroups,
   noPreparedProviderCommandDispatch,
 } from "../provider-adapter.js";
+import {
+  ProviderResponseEncodeError,
+  decodeNormalizedProviderToolCallRequest,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import type {
   ProviderInboundRequest,
   ProviderRuntimeEvent,
-} from "../runtime-json-rpc.js";
-import { ProviderResponseEncodeError } from "../runtime-json-rpc.js";
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import { parseAvailableModelList } from "../shared/available-models.js";
 import { classifySessionExecutionSettingsChange } from "../execution-options.js";
-import { decodeNormalizedProviderToolCallRequest } from "../shared/provider-tool-call-contract.js";
-
 type FakeUserQuestionCapability = ProviderCapabilities["supportsUserQuestion"];
 
 export interface CreateFakeProviderExecutionContext {

@@ -41,7 +41,10 @@ export function buildBridgeMcpServer(
     if (def === undefined) {
       return {
         content: [
-          { type: "text" as const, text: `Unknown tool: ${request.params.name}` },
+          {
+            type: "text" as const,
+            text: `Unknown tool: ${request.params.name}`,
+          },
         ],
         isError: true,
       };

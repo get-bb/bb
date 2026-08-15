@@ -119,8 +119,10 @@ export function createCodexAppServerConnection(
   let nextRequestId = 1;
   let finalized = false;
   let spawnFailed = false;
-  let exitStatus: { code: number | null; signal: NodeJS.Signals | null } | null =
-    null;
+  let exitStatus: {
+    code: number | null;
+    signal: NodeJS.Signals | null;
+  } | null = null;
   let closeGraceTimer: NodeJS.Timeout | null = null;
   let stdoutLines: Interface | null = null;
 
@@ -269,9 +271,7 @@ export function createCodexAppServerConnection(
   });
 
   child.on("close", (code, signal) => {
-    finalizeExit(
-      exitStatus ?? { code: code ?? null, signal: signal ?? null },
-    );
+    finalizeExit(exitStatus ?? { code: code ?? null, signal: signal ?? null });
   });
 
   return {

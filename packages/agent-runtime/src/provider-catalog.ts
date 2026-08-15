@@ -122,7 +122,9 @@ export function isBundledProviderId(value: string): boolean {
 }
 
 /** Baseline info for a bundled provider, or null for any other id. */
-export function getBundledProviderInfo(providerId: string): ProviderInfo | null {
+export function getBundledProviderInfo(
+  providerId: string,
+): ProviderInfo | null {
   const provider = BUNDLED_PROVIDERS[providerId];
   return provider === undefined ? null : toInfo(providerId, provider);
 }

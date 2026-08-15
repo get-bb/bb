@@ -27,7 +27,7 @@ import {
   isUserQuestionPendingInteractionPayload,
   isUserQuestionPendingInteractionResolution,
 } from "@bb/domain";
-import { ProviderResponseEncodeError } from "../runtime-json-rpc.js";
+import { ProviderResponseEncodeError } from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   buildClaudePlanRejectionMessage,
   buildClaudeSessionPermissionUpdates,

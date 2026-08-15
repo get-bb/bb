@@ -6,10 +6,7 @@ import type { ThreadEvent } from "@bb/domain";
 import { createAgentRuntimeWithAdapters } from "./runtime.js";
 import type { AgentRuntime } from "./types.js";
 import { createFakeAdapter, fakeProviderScriptPath } from "./test/index.js";
-import {
-  fullRuntimeOptions,
-  wait,
-} from "./test/runtime-test-harness.js";
+import { fullRuntimeOptions, wait } from "./test/runtime-test-harness.js";
 import { promptTextInput } from "./test/prompt-input.js";
 
 describe("turn-start watchdog", () => {
@@ -106,7 +103,8 @@ describe("turn-start watchdog", () => {
       onEvent: (event) => events.push(event),
       onToolCall: async () => ({ contentItems: [], success: true }),
       turnStartWatchdog: { thresholdMs: 150, intervalMs: 25 },
-      adapterFactory: () => createFakeAdapter({ scriptPath: fakeProviderScriptPath }),
+      adapterFactory: () =>
+        createFakeAdapter({ scriptPath: fakeProviderScriptPath }),
     });
 
     await runtime.startThread({
@@ -123,9 +121,7 @@ describe("turn-start watchdog", () => {
       options: fullRuntimeOptions,
     });
 
-    await waitFor(() =>
-      events.find((event) => event.type === "turn/started"),
-    );
+    await waitFor(() => events.find((event) => event.type === "turn/started"));
     await wait(250);
     expect(
       events.some(

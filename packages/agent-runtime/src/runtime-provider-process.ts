@@ -16,7 +16,7 @@ import {
   ignoredJsonRpcResultSchema,
   type PendingJsonRpcRequest,
   sendJsonRpcRequest,
-} from "./runtime-json-rpc.js";
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import type { RuntimeProviderIdentityState } from "./runtime-thread-identity.js";
 import type {
   AgentRuntimeBridgeLaunch,

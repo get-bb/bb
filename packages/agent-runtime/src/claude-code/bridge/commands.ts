@@ -16,7 +16,7 @@ import {
   skillsConfigureParamsSchema,
 } from "@bb/provider-bridge-protocol";
 import { z } from "zod";
-import { jsonRpcEnvelopeSchema } from "../../shared/bridge-tool-calls.js";
+import { bridgeRequestEnvelopeSchema } from "@bb/provider-bridge-protocol/bridge-kit";
 import { claudePermissionModeSchema } from "../interactive-contract.js";
 
 const bridgeInstructionModeSchema = z.enum(instructionModeValues);
@@ -291,7 +291,7 @@ function formatZodIssues(error: z.ZodError, canonicalDialect: boolean): string {
 export function decodeClaudeCodeJsonRpcRequest(
   raw: unknown,
 ): ClaudeCodeJsonRpcRequestDecodeResult {
-  const envelope = jsonRpcEnvelopeSchema.safeParse(raw);
+  const envelope = bridgeRequestEnvelopeSchema.safeParse(raw);
   if (!envelope.success) return { kind: "not_a_request" };
 
   const { id, method } = envelope.data;

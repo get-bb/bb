@@ -28,7 +28,7 @@ import type { UserInput as CodexUserInput } from "./generated/codex-app-server/s
 import type { AskForApproval } from "./generated/codex-app-server/schema/v2/AskForApproval.js";
 import type { ApprovalsReviewer } from "./generated/codex-app-server/schema/v2/ApprovalsReviewer.js";
 import { mapBbReasoningLevelToCodex } from "./models.js";
-import { buildShellEnvironmentPolicyConfig } from "../shared/adapter-utils.js";
+import { buildShellEnvironmentPolicyConfig } from "@bb/provider-bridge-protocol/bridge-kit";
 
 /**
  * The execution facts Codex param building actually reads. The legacy
@@ -422,7 +422,9 @@ function addDetachedHeadWritableRoots(
   );
 }
 
-export function gitWritableRootsForWorkspace(cwd: string | undefined): string[] {
+export function gitWritableRootsForWorkspace(
+  cwd: string | undefined,
+): string[] {
   const workspacePath = cwd ? realpathDirectoryIfPresent(cwd) : null;
   if (!workspacePath) {
     return [];

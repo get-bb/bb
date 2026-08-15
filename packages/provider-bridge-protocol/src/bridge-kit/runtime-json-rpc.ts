@@ -1,7 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 import type { Writable } from "node:stream";
 import { z } from "zod";
-import type { ProviderRequestCommandPlan } from "./provider-adapter.js";
+import type { ProviderRequestCommandPlan } from "./contracts.js";
 
 export type JsonRpcObject = Record<string, unknown>;
 

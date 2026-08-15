@@ -23,7 +23,7 @@ import {
 } from "./test/runtime-test-harness.js";
 import { promptTextInput } from "./test/prompt-input.js";
 import type { AgentRuntimeOptions } from "./types.js";
-import type { ProviderRuntimeEvent } from "./runtime-json-rpc.js";
+import type { ProviderRuntimeEvent } from "@bb/provider-bridge-protocol/bridge-kit";
 
 interface CreateProviderProcessManagerArgs {
   adapterProcessEnv?: Record<string, string>;

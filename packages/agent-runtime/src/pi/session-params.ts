@@ -8,7 +8,7 @@
 
 import type { DynamicTool, InstructionMode, ReasoningLevel } from "@bb/domain";
 import { z } from "zod";
-import { buildShellEnvironmentPolicyConfig } from "../shared/adapter-utils.js";
+import { buildShellEnvironmentPolicyConfig } from "@bb/provider-bridge-protocol/bridge-kit";
 
 export const piReasoningLevelValues = [
   "off",

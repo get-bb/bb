@@ -8,6 +8,11 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./bridge-kit": {
+      "source": "./src/bridge-kit/index.ts",
+      "types": "./src/bridge-kit/index.ts",
+      "default": "./src/bridge-kit/index.ts"
+    },
     "./conformance": {
       "source": "./src/conformance/index.ts",
       "types": "./src/conformance/index.ts",

@@ -11,8 +11,8 @@ import {
   type ThreadEvent,
 } from "@bb/domain";
 import type { ProviderUnhandledEvent } from "@bb/domain";
-import type { ProviderVisibilityMetadata } from "../provider-visibility.js";
-import type { JsonRpcMessage } from "../runtime-json-rpc.js";
+import type { JsonRpcMessage } from "./runtime-json-rpc.js";
+import type { ProviderVisibilityMetadata } from "./provider-visibility.js";
 import { getStringProperty, isRecord } from "./provider-visibility-helpers.js";
 import { UNSTAMPED_THREAD_ID } from "./unstamped-thread-id.js";
 

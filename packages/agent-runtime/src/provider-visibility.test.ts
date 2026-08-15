@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { claudeCodeVisibilityMetadata } from "./claude-code/visibility.js";
 import { codexVisibilityMetadata } from "./codex/visibility.js";
 import { piVisibilityMetadata } from "./pi/visibility.js";
-import type { JsonRpcMessage } from "./runtime-json-rpc.js";
+import type { JsonRpcMessage } from "@bb/provider-bridge-protocol/bridge-kit";
 
 describe("provider visibility raw events", () => {
   it("classifies shared handled non-sdk envelopes as normalized", () => {

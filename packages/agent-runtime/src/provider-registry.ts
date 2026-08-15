@@ -62,7 +62,8 @@ function createBridgeProtocolAdapterForId(
       capabilities: {
         supportsArchive: false,
         supportsRename: false,
-        supportsServiceTier: options.bridgeLaunch.capabilities.supportsServiceTier,
+        supportsServiceTier:
+          options.bridgeLaunch.capabilities.supportsServiceTier,
         supportsUserQuestion: false,
         supportsFork: false,
         supportsSessionRewind: false,

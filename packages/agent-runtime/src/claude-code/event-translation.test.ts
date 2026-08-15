@@ -4,9 +4,11 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
-import { queueAcceptedUserMessage } from "../shared/accepted-user-messages.js";
-import { finishOpenProviderTurn } from "../shared/turn-state.js";
-import type { ProviderRuntimeEvent } from "../runtime-json-rpc.js";
+import {
+  finishOpenProviderTurn,
+  queueAcceptedUserMessage,
+} from "@bb/provider-bridge-protocol/bridge-kit";
+import type { ProviderRuntimeEvent } from "@bb/provider-bridge-protocol/bridge-kit";
 import { createClaudeEventTranslator } from "./event-translation.js";
 
 /**

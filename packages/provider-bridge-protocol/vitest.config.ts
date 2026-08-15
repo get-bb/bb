@@ -4,7 +4,7 @@ export default defineWorkspaceTestConfig({
   test: {
     silent: "passed-only",
     name: "@bb/provider-bridge-protocol",
-    include: ["test/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "test/**/*.test.ts"],
     exclude: ["dist/**", "node_modules/**"],
   },
 });

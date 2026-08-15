@@ -19,9 +19,11 @@ import type {
   AdapterCommand,
   ProviderAdapter,
   ProviderAdapterFactory,
+} from "./provider-adapter.js";
+import type {
   ProviderCommandPlan,
   ProviderRequestCommandPlan,
-} from "./provider-adapter.js";
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   assertProviderSupportsExecutionOptions,
   toProviderExecutionContext,
@@ -36,7 +38,7 @@ import {
   sendJsonRpcError,
   sendJsonRpcRequest,
   settleJsonRpcResponse,
-} from "./runtime-json-rpc.js";
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import { ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE } from "./acp/bridge-protocol.js";
 import {
   handleRuntimeProviderRequest,
@@ -363,28 +365,25 @@ function createAgentRuntimeInternal(
   };
   const turnStartWatchdogThresholdMs =
     options.turnStartWatchdog?.thresholdMs ?? 120_000;
-  const turnStartWatchdogTimer = setInterval(
-    () => {
-      const nowMs = Date.now();
-      for (const [threadId, entry] of pendingTurnStarts) {
-        if (
-          entry.watchdogFired ||
-          nowMs - entry.sinceMs < turnStartWatchdogThresholdMs
-        ) {
-          continue;
-        }
-        entry.watchdogFired = true;
-        options.onEvent({
-          type: "system/error",
-          threadId,
-          scope: { kind: "thread" },
-          code: "provider_turn_start_timeout",
-          message: `The provider accepted a turn but did not start it within ${Math.round(turnStartWatchdogThresholdMs / 1000)}s. The request may be stalled; stopping the thread interrupts it.`,
-        });
+  const turnStartWatchdogTimer = setInterval(() => {
+    const nowMs = Date.now();
+    for (const [threadId, entry] of pendingTurnStarts) {
+      if (
+        entry.watchdogFired ||
+        nowMs - entry.sinceMs < turnStartWatchdogThresholdMs
+      ) {
+        continue;
       }
-    },
-    options.turnStartWatchdog?.intervalMs ?? 15_000,
-  );
+      entry.watchdogFired = true;
+      options.onEvent({
+        type: "system/error",
+        threadId,
+        scope: { kind: "thread" },
+        code: "provider_turn_start_timeout",
+        message: `The provider accepted a turn but did not start it within ${Math.round(turnStartWatchdogThresholdMs / 1000)}s. The request may be stalled; stopping the thread interrupts it.`,
+      });
+    }
+  }, options.turnStartWatchdog?.intervalMs ?? 15_000);
   turnStartWatchdogTimer.unref?.();
   const threadOperationCounts = new Map<string, number>();
   const stagedThreadRewinds = new Map<string, StagedThreadRewind>();
@@ -1471,8 +1470,7 @@ function createAgentRuntimeInternal(
             processKey,
             projectId,
             providerId,
-            sessionRestorable:
-              isSessionRestorableProvider(providerId),
+            sessionRestorable: isSessionRestorableProvider(providerId),
             skillRoots: providerSkillRoots,
             workspacePath: options.workspacePath,
           });
@@ -1850,8 +1848,7 @@ function createAgentRuntimeInternal(
             processKey,
             projectId,
             providerId,
-            sessionRestorable:
-              isSessionRestorableProvider(providerId),
+            sessionRestorable: isSessionRestorableProvider(providerId),
             skillRoots: providerSkillRoots,
             workspacePath: options.workspacePath,
           });

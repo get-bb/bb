@@ -739,8 +739,8 @@ describe("interactive request scenarios", () => {
         });
 
         expect(
-          ctx.interactiveRequests.some(
-            (request) => hasApprovalSubjectKind(request, "command"),
+          ctx.interactiveRequests.some((request) =>
+            hasApprovalSubjectKind(request, "command"),
           ),
         ).toBe(true);
         expect(hasDeniedCommandExecution(ctx.events)).toBe(true);
@@ -1104,22 +1104,18 @@ describe("interactive request scenarios", () => {
 
         const firstRequestCount = ctx.interactiveRequests.length;
         expect(
-          ctx.interactiveRequests.some(
-            (request) => {
-              if (
-                !isApprovalPendingInteractionPayload(request.payload) ||
-                request.payload.subject.kind !== "permission_grant"
-              ) {
-                return false;
-              }
-              return (
-                request.payload.subject.toolName === "WebFetch" &&
-                request.payload.availableDecisions.includes(
-                  "allow_for_session",
-                )
-              );
-            },
-          ),
+          ctx.interactiveRequests.some((request) => {
+            if (
+              !isApprovalPendingInteractionPayload(request.payload) ||
+              request.payload.subject.kind !== "permission_grant"
+            ) {
+              return false;
+            }
+            return (
+              request.payload.subject.toolName === "WebFetch" &&
+              request.payload.availableDecisions.includes("allow_for_session")
+            );
+          }),
           `Expected a session-capable WebFetch permission approval; got ${JSON.stringify(
             ctx.interactiveRequests.map((request) => request.payload),
           )}`,
@@ -1220,8 +1216,8 @@ describe("interactive request scenarios", () => {
         });
 
         expect(
-          ctx.interactiveRequests.some(
-            (request) => hasApprovalSubjectKind(request, "command"),
+          ctx.interactiveRequests.some((request) =>
+            hasApprovalSubjectKind(request, "command"),
           ),
         ).toBe(true);
         expect(existsSync(filePath)).toBe(false);

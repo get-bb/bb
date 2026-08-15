@@ -1,16 +1,15 @@
-import type { JsonRpcMessage } from "../runtime-json-rpc.js";
 import {
   createProviderVisibilityMetadata,
-  type ProviderRawEventDescription,
-  type ProviderVisibilityMetadata,
-} from "../provider-visibility.js";
-import {
   getMessageContentTypes,
   getRawSdkMessage,
   getRecordProperty,
   getStringProperty,
-} from "../shared/provider-visibility-helpers.js";
-
+} from "@bb/provider-bridge-protocol/bridge-kit";
+import type {
+  JsonRpcMessage,
+  ProviderRawEventDescription,
+  ProviderVisibilityMetadata,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 const CLAUDE_NORMALIZED_ASSISTANT_CONTENT_TYPES = new Set([
   "fallback",
   "text",

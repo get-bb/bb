@@ -27,7 +27,22 @@ import {
   type ThreadEvent,
 } from "@bb/domain";
 import { hostDaemonAcpLaunchSpecSchema } from "@bb/host-daemon-contract";
-import { buildEditDiff } from "../../shared/adapter-utils.js";
+import {
+  buildAcceptedUserMessageEvent,
+  buildEditDiff,
+  createBridgeIo,
+  createBridgeLineHandler,
+  decodeBridgeJsonRpcResponse,
+  decodeToolCallResponsePayload,
+  isMainModule,
+  bridgeRequestEnvelopeSchema,
+  mimeTypeFromExtension,
+  queueAcceptedUserMessage,
+  runBridgeRequest,
+  startBridgeStdio,
+  withoutBridgeRuntimeEnv,
+} from "@bb/provider-bridge-protocol/bridge-kit";
+import type { BridgeJsonRpcResponse } from "@bb/provider-bridge-protocol/bridge-kit";
 import type { AgentRuntimeAcpSkillRoot } from "../../types.js";
 import {
   BRIDGE_INBOUND_REQUEST_METHODS,
@@ -35,25 +50,6 @@ import {
   BRIDGE_NOTIFICATION_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
 } from "@bb/provider-bridge-protocol";
-import {
-  buildAcceptedUserMessageEvent,
-  queueAcceptedUserMessage,
-} from "../../shared/accepted-user-messages.js";
-import {
-  createBridgeIo,
-  createBridgeLineHandler,
-  isMainModule,
-  runBridgeRequest,
-  startBridgeStdio,
-} from "../../shared/bridge-harness.js";
-import {
-  decodeToolCallResponsePayload,
-  type BridgeJsonRpcResponse,
-  decodeBridgeJsonRpcResponse,
-  jsonRpcEnvelopeSchema,
-} from "../../shared/bridge-tool-calls.js";
-import { withoutBridgeRuntimeEnv } from "../../shared/bridge-runtime-env.js";
-import { mimeTypeFromExtension } from "../../shared/mime-types.js";
 import {
   ACP_COMPACTION_COMPLETED_METHOD,
   ACP_COMPACTION_STARTED_METHOD,
@@ -2122,11 +2118,16 @@ function handleAgentNotification(
 type DecodedAcpBridgeRequest =
   | { kind: "request"; request: AcpBridgeCommand & { id: string | number } }
   | { kind: "unknown-method"; id: string | number; method: string }
-  | { kind: "invalid-params"; id: string | number; method: string; issues: string }
+  | {
+      kind: "invalid-params";
+      id: string | number;
+      method: string;
+      issues: string;
+    }
   | { kind: "ignored" };
 
 function decodeAcpBridgeJsonRpcRequest(raw: unknown): DecodedAcpBridgeRequest {
-  const envelope = jsonRpcEnvelopeSchema.safeParse(raw);
+  const envelope = bridgeRequestEnvelopeSchema.safeParse(raw);
   if (!envelope.success || envelope.data.id === undefined) {
     return { kind: "ignored" };
   }
@@ -2245,10 +2246,7 @@ function decodeCanonicalAdditionalWorkspaceWriteRoots(
   );
 }
 
-function sendMissingLaunchSpecError(
-  id: string | number,
-  method: string,
-): void {
+function sendMissingLaunchSpecError(id: string | number, method: string): void {
   sendError(
     id,
     BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS,

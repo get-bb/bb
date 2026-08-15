@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { DecodedToolCallRequest } from "../provider-adapter.js";
+import type { DecodedToolCallRequest } from "./contracts.js";
 
 const normalizedToolCallRequestSchema = z.object({
   providerThreadId: z.string().min(1),

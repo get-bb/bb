@@ -47,27 +47,23 @@ import {
 } from "@bb/provider-bridge-protocol";
 import { z } from "zod";
 import type { AgentRuntimeClaudeCodeSkillRoot } from "../../types.js";
-import { extractEnvOverrides } from "../../shared/adapter-utils.js";
 import {
+  UNSTAMPED_THREAD_ID,
   buildAcceptedUserMessageEvent,
-  queueAcceptedUserMessage,
-} from "../../shared/accepted-user-messages.js";
-import { UNSTAMPED_THREAD_ID } from "../../shared/unstamped-thread-id.js";
-import {
-  decodeBridgeJsonRpcResponse,
-  type BridgeToolCallRequest,
-} from "../../shared/bridge-tool-calls.js";
-import {
   createBridgeIo,
   createBridgeLineHandler,
+  createBridgeSessionRegistry,
+  decodeBridgeJsonRpcResponse,
+  extractEnvOverrides,
+  queueAcceptedUserMessage,
   runBridgeRequest,
   startBridgeStdio,
-} from "../../shared/bridge-harness.js";
-import {
-  createBridgeSessionRegistry,
-  type PendingBridgeToolCall,
-} from "../../shared/bridge-session-registry.js";
-import { withoutBridgeRuntimeEnv } from "../../shared/bridge-runtime-env.js";
+  withoutBridgeRuntimeEnv,
+} from "@bb/provider-bridge-protocol/bridge-kit";
+import type {
+  BridgeToolCallRequest,
+  PendingBridgeToolCall,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import { shouldAutoDenyInteractiveRequest } from "../../shared/permission-policy.js";
 import {
   createClaudeEventTranslator,

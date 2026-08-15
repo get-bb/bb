@@ -5,12 +5,12 @@ import type {
   ThreadEventTokenUsageBreakdown,
 } from "@bb/domain";
 import { toPositiveNumber } from "@bb/domain";
-import { textBlockSchema } from "../shared/tool-arg-schemas.js";
 import {
   extractResultText,
   normalizeProviderCommandOutput,
+  textBlockSchema,
   toNonNegativeNumber,
-} from "../shared/adapter-utils.js";
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   claudeAssistantUsageMessageSchema,
   claudeModelUsageSchema,
@@ -85,9 +85,7 @@ const LARGE_CLAUDE_CONTEXT_MODELS = new Set([
   "fable",
 ]);
 
-export function getNestedParentToolUseId(
-  message: unknown,
-): string | undefined {
+export function getNestedParentToolUseId(message: unknown): string | undefined {
   if (typeof message !== "object" || message === null) {
     return undefined;
   }

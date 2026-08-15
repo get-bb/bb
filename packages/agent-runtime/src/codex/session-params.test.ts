@@ -286,11 +286,11 @@ describe("gitWritableRootsForWorkspace", () => {
       expect(gitWritableRootsForWorkspace(fixture.workspacePath)).toEqual(
         expectedWritableRoots,
       );
-      expect(workspaceConfigForCwd({ cwd: fixture.workspacePath })).toMatchObject(
-        {
-          "sandbox_workspace_write.writable_roots": expectedWritableRoots,
-        },
-      );
+      expect(
+        workspaceConfigForCwd({ cwd: fixture.workspacePath }),
+      ).toMatchObject({
+        "sandbox_workspace_write.writable_roots": expectedWritableRoots,
+      });
     } finally {
       fixture.cleanup();
     }
@@ -333,11 +333,11 @@ describe("gitWritableRootsForWorkspace", () => {
       expect(gitWritableRootsForWorkspace(fixture.workspacePath)).toEqual(
         expectedWritableRoots,
       );
-      expect(workspaceConfigForCwd({ cwd: fixture.workspacePath })).toMatchObject(
-        {
-          "sandbox_workspace_write.writable_roots": expectedWritableRoots,
-        },
-      );
+      expect(
+        workspaceConfigForCwd({ cwd: fixture.workspacePath }),
+      ).toMatchObject({
+        "sandbox_workspace_write.writable_roots": expectedWritableRoots,
+      });
     } finally {
       fixture.cleanup();
     }
@@ -465,12 +465,11 @@ describe("gitWritableRootsForWorkspace", () => {
       expect(gitWritableRootsForWorkspace(fixture.workspacePath)).toEqual(
         fixture.expectedWritableRoots,
       );
-      expect(workspaceConfigForCwd({ cwd: fixture.workspacePath })).toMatchObject(
-        {
-          "sandbox_workspace_write.writable_roots":
-            fixture.expectedWritableRoots,
-        },
-      );
+      expect(
+        workspaceConfigForCwd({ cwd: fixture.workspacePath }),
+      ).toMatchObject({
+        "sandbox_workspace_write.writable_roots": fixture.expectedWritableRoots,
+      });
     } finally {
       fixture.cleanup();
     }
@@ -579,12 +578,12 @@ describe("codex permission settings", () => {
   });
 
   it("maps deny escalation to no approval prompts while staying workspace-write", () => {
-    expect(toCodexThreadPermissionSettings(WORKSPACE_DENY_OPTIONS)).toMatchObject(
-      {
-        approvalPolicy: "never",
-        sandbox: "workspace-write",
-      },
-    );
+    expect(
+      toCodexThreadPermissionSettings(WORKSPACE_DENY_OPTIONS),
+    ).toMatchObject({
+      approvalPolicy: "never",
+      sandbox: "workspace-write",
+    });
   });
 
   it("maps workspace-write to the full workspaceWrite sandbox policy", () => {
@@ -698,9 +697,11 @@ describe("buildCodexConfig", () => {
     expect(
       configFor({ ...FULL_OPTIONS, reasoningLevel: "high" }),
     ).toMatchObject({ model_reasoning_effort: "high" });
-    expect(configFor({ ...FULL_OPTIONS, reasoningLevel: "max" })).toMatchObject({
-      model_reasoning_effort: "max",
-    });
+    expect(configFor({ ...FULL_OPTIONS, reasoningLevel: "max" })).toMatchObject(
+      {
+        model_reasoning_effort: "max",
+      },
+    );
     expect(
       configFor({ ...FULL_OPTIONS, reasoningLevel: "ultra" }),
     ).toMatchObject({ model_reasoning_effort: "ultra" });

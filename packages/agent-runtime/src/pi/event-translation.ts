@@ -22,41 +22,36 @@ import type {
   ThreadEventTokenUsageBreakdown,
 } from "@bb/domain";
 import { threadScope, toPositiveNumber, turnScope } from "@bb/domain";
-import { bashArgsSchema, textBlockSchema } from "../shared/tool-arg-schemas.js";
 import {
+  UNSTAMPED_THREAD_ID,
+  bashArgsSchema,
+  buildToolResultItem,
+  buildToolUseItem,
+  buildUnhandledProviderEvents,
+  createProviderTurnStateRegistry,
+  createScopedItemIdFactory,
+  createUnhandledProviderEvent,
   diffCumulativeText,
+  drainAcceptedUserMessages,
+  errorEnvelopeSchema,
   extractResultText,
+  jsonRpcEnvelopeSchema,
   normalizeProviderCommandOutput,
+  resolveProviderTerminalTurn,
+  sdkMessageEnvelopeSchema,
+  textBlockSchema,
+  threadContextWindowUsageEnvelopeSchema,
+  threadIdentityEnvelopeSchema,
   toNonNegativeNumber,
   toOptionalString,
   withParentToolCallId,
-} from "../shared/adapter-utils.js";
-import {
-  buildToolResultItem,
-  buildToolUseItem,
-  type ToolUseTranslationInput,
-} from "../shared/tool-item-translation.js";
-import {
-  drainAcceptedUserMessages,
-  type AcceptedUserMessageState,
-} from "../shared/accepted-user-messages.js";
-import { createProviderTurnStateRegistry } from "../shared/turn-state.js";
-import { createScopedItemIdFactory } from "../shared/scoped-item-ids.js";
-import { resolveProviderTerminalTurn } from "../shared/provider-terminal-turn.js";
-import {
-  buildUnhandledProviderEvents,
-  createUnhandledProviderEvent,
-} from "../shared/provider-unhandled-event.js";
-import { UNSTAMPED_THREAD_ID } from "../shared/unstamped-thread-id.js";
-import {
-  errorEnvelopeSchema,
-  jsonRpcEnvelopeSchema,
-  sdkMessageEnvelopeSchema,
-  threadContextWindowUsageEnvelopeSchema,
-  threadIdentityEnvelopeSchema,
-} from "../shared/json-rpc-envelope.js";
+} from "@bb/provider-bridge-protocol/bridge-kit";
+import type {
+  AcceptedUserMessageState,
+  JsonRpcMessage,
+  ToolUseTranslationInput,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import type { ProviderTranslationContext } from "../provider-adapter.js";
-import type { JsonRpcMessage } from "../runtime-json-rpc.js";
 import { toCanonicalPiModelId } from "./model-list.js";
 import { piVisibilityMetadata } from "./visibility.js";
 
@@ -453,7 +448,9 @@ export interface CreatePiEventTranslatorOptions {
   resolveModelContextWindow?: PiModelContextWindowResolver;
 }
 
-export function createPiEventTranslator(options: CreatePiEventTranslatorOptions) {
+export function createPiEventTranslator(
+  options: CreatePiEventTranslatorOptions,
+) {
   const assistantIdPrefix =
     options.itemIdPrefix === undefined
       ? "pi-assistant"

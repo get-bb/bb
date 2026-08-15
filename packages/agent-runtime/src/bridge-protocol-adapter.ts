@@ -29,19 +29,21 @@ import { z } from "zod";
 import type {
   AdapterCommand,
   BuildInteractiveResponseArgs,
+  ProviderAdapter,
+  ProviderExecutionContext,
+} from "./provider-adapter.js";
+import type {
   DecodedInteractiveRequest,
   DecodedToolCallRequest,
-  ProviderAdapter,
   ProviderCommandPlan,
-  ProviderExecutionContext,
   ProviderInteractiveResponse,
   ProviderPostInitializeRequest,
-} from "./provider-adapter.js";
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import { noPreparedProviderCommandDispatch } from "./provider-adapter.js";
 import type {
   ProviderInboundRequest,
   ProviderRuntimeEvent,
-} from "./runtime-json-rpc.js";
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import { parseAvailableModelList } from "./shared/available-models.js";
 import type { AgentRuntimeSkillRoot } from "./types.js";
 
@@ -246,7 +248,10 @@ export function createBridgeProtocolAdapter(
               threadId: command.threadId,
               cwd: command.cwd,
               ...(command.input !== undefined ? { input: command.input } : {}),
-              options: toBridgeWireOptions(command.options, options.staticProviderOptions),
+              options: toBridgeWireOptions(
+                command.options,
+                options.staticProviderOptions,
+              ),
               ...(command.dynamicTools !== undefined
                 ? { dynamicTools: command.dynamicTools }
                 : {}),
@@ -264,7 +269,10 @@ export function createBridgeProtocolAdapter(
               threadId: command.threadId,
               cwd: command.cwd,
               providerThreadId: command.providerThreadId,
-              options: toBridgeWireOptions(command.options, options.staticProviderOptions),
+              options: toBridgeWireOptions(
+                command.options,
+                options.staticProviderOptions,
+              ),
               ...(command.dynamicTools !== undefined
                 ? { dynamicTools: command.dynamicTools }
                 : {}),
@@ -288,7 +296,10 @@ export function createBridgeProtocolAdapter(
                       command.sourceProviderCheckpointId,
                   }
                 : {}),
-              options: toBridgeWireOptions(command.options, options.staticProviderOptions),
+              options: toBridgeWireOptions(
+                command.options,
+                options.staticProviderOptions,
+              ),
               ...(command.dynamicTools !== undefined
                 ? { dynamicTools: command.dynamicTools }
                 : {}),
@@ -307,7 +318,10 @@ export function createBridgeProtocolAdapter(
               providerThreadId: command.providerThreadId,
               input: command.input,
               clientRequestId: command.clientRequestId,
-              options: toBridgeWireOptions(command.options, options.staticProviderOptions),
+              options: toBridgeWireOptions(
+                command.options,
+                options.staticProviderOptions,
+              ),
             },
           };
         case "turn/steer":
@@ -320,7 +334,10 @@ export function createBridgeProtocolAdapter(
               expectedTurnId: command.expectedTurnId,
               input: command.input,
               clientRequestId: command.clientRequestId,
-              options: toBridgeWireOptions(command.options, options.staticProviderOptions),
+              options: toBridgeWireOptions(
+                command.options,
+                options.staticProviderOptions,
+              ),
             },
           };
         case "thread/stop":

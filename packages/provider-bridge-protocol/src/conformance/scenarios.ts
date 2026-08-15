@@ -46,7 +46,11 @@ function pass(id: string, title: string): ConformanceCheckResult {
   return { id, title, status: "pass", detail: "" };
 }
 
-function fail(id: string, title: string, detail: string): ConformanceCheckResult {
+function fail(
+  id: string,
+  title: string,
+  detail: string,
+): ConformanceCheckResult {
   return { id, title, status: "fail", detail };
 }
 
@@ -71,7 +75,10 @@ function defaultOptions(
   );
 }
 
-function threadEvents(context: ScenarioContext, threadId: string): ThreadEvent[] {
+function threadEvents(
+  context: ScenarioContext,
+  threadId: string,
+): ThreadEvent[] {
   context.client.drainIntoLog();
   const events: ThreadEvent[] = [];
   for (const message of context.client.notifications("thread/event")) {
@@ -107,7 +114,8 @@ const ITEM_STREAMING_EVENT_TYPES = new Set<ThreadEvent["type"]>([
   "item/toolCall/progress",
 ]);
 
-const ITEM_OPENS_BEFORE_DELTA_TITLE = "every item's first event is item/started";
+const ITEM_OPENS_BEFORE_DELTA_TITLE =
+  "every item's first event is item/started";
 
 /**
  * item/opens-before-delta: no event may stream into an item id that no
@@ -167,7 +175,9 @@ export async function runRpcHygieneScenarios(
       results.push(
         fail("rpc/unknown-method", title, "request was silently dropped"),
       );
-    } else if (errorCode(response) === BRIDGE_JSON_RPC_ERRORS.METHOD_NOT_FOUND) {
+    } else if (
+      errorCode(response) === BRIDGE_JSON_RPC_ERRORS.METHOD_NOT_FOUND
+    ) {
       unknownMethodsAnswered = true;
       results.push(pass("rpc/unknown-method", title));
     } else {
@@ -285,7 +295,9 @@ export async function runHandshakeScenario(
         title,
         `result did not parse: ${parsed.error.issues
           .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
-          .join("; ")} (got ${JSON.stringify(response.result ?? response.error)})`,
+          .join(
+            "; ",
+          )} (got ${JSON.stringify(response.result ?? response.error)})`,
       ),
     ];
   }
@@ -341,7 +353,11 @@ export async function runSessionLifecycleScenarios(
   // turn/lifecycle + events/schema-valid + item/opens-before-delta
   if (context.providerThreadId === undefined) {
     results.push(
-      skipped("turn/lifecycle", "an accepted turn starts and settles", startSkipDetail),
+      skipped(
+        "turn/lifecycle",
+        "an accepted turn starts and settles",
+        startSkipDetail,
+      ),
       skipped(
         "events/schema-valid",
         "every thread/event payload is a valid ThreadEvent",
@@ -393,7 +409,8 @@ export async function runSessionLifecycleScenarios(
       client.drainIntoLog();
       const raw = client.notifications("thread/event");
       const invalid = raw.filter(
-        (message) => !threadEventNotificationSchema.safeParse(message.params).success,
+        (message) =>
+          !threadEventNotificationSchema.safeParse(message.params).success,
       );
       const title2 = "every thread/event payload is a valid ThreadEvent";
       results.push(
@@ -439,7 +456,11 @@ export async function runSessionLifecycleScenarios(
     const title = "a release stop never fabricates an interruption";
     if (response === null) {
       results.push(
-        fail("stop/release-not-interrupted", title, "no response to thread/stop"),
+        fail(
+          "stop/release-not-interrupted",
+          title,
+          "no response to thread/stop",
+        ),
       );
     } else if (response.error !== undefined) {
       results.push(

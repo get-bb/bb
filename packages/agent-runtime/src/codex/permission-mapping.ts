@@ -7,8 +7,10 @@ import type {
 import type { CommandExecutionRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/CommandExecutionRequestApprovalResponse.js";
 import type { FileChangeRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/FileChangeRequestApprovalResponse.js";
 import type { PermissionsRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/PermissionsRequestApprovalResponse.js";
-import { normalizePendingInteractionRequestedPermissionProfile } from "../shared/pending-interaction-normalization.js";
-import { ProviderRequestDecodeError } from "../runtime-json-rpc.js";
+import {
+  ProviderRequestDecodeError,
+  normalizePendingInteractionRequestedPermissionProfile,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import type {
   CodexAdditionalPermissions,
   CodexCommandApprovalDecision,

@@ -538,9 +538,7 @@ describe("acp configOptions model catalog", () => {
 
     const support = buildAcpNativeReasoningSupport(thoughtLevel);
     expect(support.defaultReasoningEffort).toBe("low");
-    expect(acpNativeReasoningLevelToValue("low", thoughtLevel)).toBe(
-      "minimal",
-    );
+    expect(acpNativeReasoningLevelToValue("low", thoughtLevel)).toBe("minimal");
   });
 
   it("falls back to the first model when currentValue is absent or stale", () => {

@@ -37,7 +37,6 @@ import { BRIDGE_INBOUND_REQUEST_METHODS } from "@bb/provider-bridge-protocol";
  * stream, so they are asserted separately from the golden.
  */
 
-
 const { forkSessionMock, queryMock } = vi.hoisted(() => ({
   forkSessionMock: vi.fn(),
   queryMock: vi.fn(),
@@ -365,7 +364,9 @@ async function replay(args: { workspaceDir: string }): Promise<ReplayResult> {
     await settle(bridge, collect);
 
     const method = BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest;
-    const request = bridge.messages.find((message) => message.method === method);
+    const request = bridge.messages.find(
+      (message) => message.method === method,
+    );
     if (request?.id === undefined || !isRecord(request.params)) {
       throw new Error(`Expected a forwarded ${method} request`);
     }
@@ -388,16 +389,12 @@ async function replay(args: { workspaceDir: string }): Promise<ReplayResult> {
 
   let approval: ApprovalExchange;
   try {
-    bridge.sendRequest(
-      1,
-      "thread/start",
-      {
-        threadId: THREAD_ID,
-        cwd: args.workspaceDir,
-        options: CANONICAL_OPTIONS,
-        instructionMode: "append",
-      },
-    );
+    bridge.sendRequest(1, "thread/start", {
+      threadId: THREAD_ID,
+      cwd: args.workspaceDir,
+      options: CANONICAL_OPTIONS,
+      instructionMode: "append",
+    });
     const startResponse = await bridge.waitForResponse(1);
     const startResult = startResponse.result;
     if (
@@ -410,17 +407,13 @@ async function replay(args: { workspaceDir: string }): Promise<ReplayResult> {
     }
     collect();
 
-    bridge.sendRequest(
-      2,
-      "turn/start",
-      {
-        threadId: THREAD_ID,
-        providerThreadId,
-        input: promptInput(FIRST_PROMPT_TEXT),
-        clientRequestId: FIRST_REQUEST_ID,
-        options: CANONICAL_OPTIONS,
-      },
-    );
+    bridge.sendRequest(2, "turn/start", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      input: promptInput(FIRST_PROMPT_TEXT),
+      clientRequestId: FIRST_REQUEST_ID,
+      options: CANONICAL_OPTIONS,
+    });
     await bridge.waitForResponse(2);
     await settle(bridge, collect);
 
@@ -429,32 +422,24 @@ async function replay(args: { workspaceDir: string }): Promise<ReplayResult> {
     await settle(bridge, collect);
 
     const expectedTurnId = lastTurnId(events) ?? "turn-1";
-    bridge.sendRequest(
-      3,
-      "turn/steer",
-      {
-        threadId: THREAD_ID,
-        providerThreadId,
-        expectedTurnId,
-        input: promptInput(STEER_PROMPT_TEXT),
-        clientRequestId: STEER_REQUEST_ID,
-        options: CANONICAL_OPTIONS,
-      },
-    );
+    bridge.sendRequest(3, "turn/steer", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      expectedTurnId,
+      input: promptInput(STEER_PROMPT_TEXT),
+      clientRequestId: STEER_REQUEST_ID,
+      options: CANONICAL_OPTIONS,
+    });
     await bridge.waitForResponse(3);
     await settle(bridge, collect);
 
-    bridge.sendRequest(
-      4,
-      "turn/start",
-      {
-        threadId: THREAD_ID,
-        providerThreadId,
-        input: promptInput(SECOND_PROMPT_TEXT),
-        clientRequestId: SECOND_REQUEST_ID,
-        options: CANONICAL_OPTIONS,
-      },
-    );
+    bridge.sendRequest(4, "turn/start", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      input: promptInput(SECOND_PROMPT_TEXT),
+      clientRequestId: SECOND_REQUEST_ID,
+      options: CANONICAL_OPTIONS,
+    });
     await bridge.waitForResponse(4);
     await settle(bridge, collect);
 
@@ -463,44 +448,32 @@ async function replay(args: { workspaceDir: string }): Promise<ReplayResult> {
     // post-resume turn must still translate identically. Claude reports
     // `supportsArchive: false`, so resume — not archive — is the reattachment
     // path worth pinning.
-    bridge.sendRequest(
-      5,
-      "thread/resume",
-      {
-        threadId: THREAD_ID,
-        cwd: args.workspaceDir,
-        providerThreadId,
-        options: CANONICAL_OPTIONS,
-        instructionMode: "append",
-      },
-    );
+    bridge.sendRequest(5, "thread/resume", {
+      threadId: THREAD_ID,
+      cwd: args.workspaceDir,
+      providerThreadId,
+      options: CANONICAL_OPTIONS,
+      instructionMode: "append",
+    });
     await bridge.waitForResponse(5);
     collect();
 
-    bridge.sendRequest(
-      6,
-      "turn/start",
-      {
-        threadId: THREAD_ID,
-        providerThreadId,
-        input: promptInput(RESUMED_PROMPT_TEXT),
-        clientRequestId: RESUMED_REQUEST_ID,
-        options: CANONICAL_OPTIONS,
-      },
-    );
+    bridge.sendRequest(6, "turn/start", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      input: promptInput(RESUMED_PROMPT_TEXT),
+      clientRequestId: RESUMED_REQUEST_ID,
+      options: CANONICAL_OPTIONS,
+    });
     await bridge.waitForResponse(6);
     await settle(bridge, collect);
 
-    bridge.sendRequest(
-      7,
-      "thread/stop",
-      {
-        threadId: THREAD_ID,
-        providerThreadId,
-        intent: "release",
-        activeTurnId: null,
-      },
-    );
+    bridge.sendRequest(7, "thread/stop", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      intent: "release",
+      activeTurnId: null,
+    });
     await bridge.waitForResponse(7);
     collect();
   } finally {

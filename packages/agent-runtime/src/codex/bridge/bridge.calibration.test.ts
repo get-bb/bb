@@ -286,7 +286,9 @@ function answerBridgeRequests(
     ) {
       continue;
     }
-    approvals.push(interactionRequestParamsSchema.parse(message.params).payload);
+    approvals.push(
+      interactionRequestParamsSchema.parse(message.params).payload,
+    );
     handleLine(
       JSON.stringify({
         jsonrpc: "2.0",

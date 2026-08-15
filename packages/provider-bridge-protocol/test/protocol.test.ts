@@ -33,9 +33,9 @@ describe("handshake", () => {
       futureCapability: { anything: true },
     });
     expect(parsed.sessionRestore).toBe(true);
-    expect(
-      (parsed as Record<string, unknown>).futureCapability,
-    ).toStrictEqual({ anything: true });
+    expect((parsed as Record<string, unknown>).futureCapability).toStrictEqual({
+      anything: true,
+    });
   });
 });
 
@@ -309,7 +309,10 @@ describe("conformance turn/settles-without-activity", () => {
       transport: createStubBridge(options),
       session: options.withFixture
         ? zeroWorkFixture
-        : { cwd: zeroWorkFixture.cwd, promptInput: zeroWorkFixture.promptInput },
+        : {
+            cwd: zeroWorkFixture.cwd,
+            promptInput: zeroWorkFixture.promptInput,
+          },
       timeoutMs: 300,
     });
     return report.results.find(

@@ -3,10 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
-import type {
-  AdapterCommand,
-  ProviderCommandPlan,
-} from "./provider-adapter.js";
+import type { AdapterCommand } from "./provider-adapter.js";
+import type { ProviderCommandPlan } from "@bb/provider-bridge-protocol/bridge-kit";
 import { promptTextInput } from "./test/prompt-input.js";
 import { createAgentRuntimeWithAdapters } from "./runtime.js";
 import {

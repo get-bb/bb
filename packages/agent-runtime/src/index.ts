@@ -35,8 +35,3 @@ export type {
   StopThreadResult,
   WaitForActiveTurnArgs,
 } from "./types.js";
-export type {
-  ProviderRawEventCoverage,
-  ProviderRawEventDescription,
-  ProviderVisibilityMetadata,
-} from "./provider-visibility.js";

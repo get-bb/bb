@@ -33,7 +33,7 @@ export interface BridgeToolCallRequest {
 // JSON-RPC envelope schema — shared by both bridges for request decoding
 // ---------------------------------------------------------------------------
 
-export const jsonRpcEnvelopeSchema = z.object({
+export const bridgeRequestEnvelopeSchema = z.object({
   jsonrpc: z.literal("2.0"),
   id: z.union([z.string(), z.number()]),
   method: z.string(),

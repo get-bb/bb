@@ -1,15 +1,15 @@
-import type { JsonRpcMessage } from "../runtime-json-rpc.js";
 import {
   createProviderVisibilityMetadata,
-  type ProviderRawEventCoverage,
-  type ProviderRawEventDescription,
-  type ProviderVisibilityMetadata,
-} from "../provider-visibility.js";
-import {
   getRecordProperty,
   getStringProperty,
   isRecord,
-} from "../shared/provider-visibility-helpers.js";
+} from "@bb/provider-bridge-protocol/bridge-kit";
+import type {
+  JsonRpcMessage,
+  ProviderRawEventCoverage,
+  ProviderRawEventDescription,
+  ProviderVisibilityMetadata,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import type { ServerNotification } from "./generated/codex-app-server/schema/ServerNotification.js";
 
 type CodexServerNotificationMethod =

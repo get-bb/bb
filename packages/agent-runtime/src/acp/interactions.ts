@@ -17,7 +17,7 @@ import {
   isApprovalPendingInteractionPayload,
   isApprovalPendingInteractionResolution,
 } from "@bb/domain";
-import { toOptionalString } from "../shared/adapter-utils.js";
+import { toOptionalString } from "@bb/provider-bridge-protocol/bridge-kit";
 import type { AcpPermissionResponse } from "./bridge-protocol.js";
 import type { AcpPermissionOptionKind } from "./wire.js";
 

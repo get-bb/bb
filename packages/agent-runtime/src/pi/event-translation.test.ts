@@ -120,7 +120,10 @@ interface SeedPiBashSnapshotArgs {
 }
 
 function seedPiBashOutputSnapshot(args: SeedPiBashSnapshotArgs): void {
-  args.translator.translatePiEvent(loadFixture("agent-start.json"), args.context);
+  args.translator.translatePiEvent(
+    loadFixture("agent-start.json"),
+    args.context,
+  );
   args.translator.translatePiEvent(
     createPiBashStartEvent({
       toolCallId: args.toolCallId,
@@ -147,7 +150,10 @@ interface ExpectPiBashSnapshotResetArgs {
 
 function expectPiBashSnapshotReset(args: ExpectPiBashSnapshotResetArgs): void {
   args.reset();
-  args.translator.translatePiEvent(loadFixture("agent-start.json"), args.context);
+  args.translator.translatePiEvent(
+    loadFixture("agent-start.json"),
+    args.context,
+  );
   args.translator.translatePiEvent(
     createPiBashStartEvent({
       toolCallId: args.toolCallId,
@@ -819,7 +825,10 @@ describe("pi event translation", () => {
     const translator = createTranslator();
     const context = { threadId: "pi-thread-1" };
     translator.translatePiEvent(loadFixture("agent-start.json"), context);
-    translator.translatePiEvent(loadFixture("agent-end-with-message.json"), context);
+    translator.translatePiEvent(
+      loadFixture("agent-end-with-message.json"),
+      context,
+    );
 
     const events = translator.translatePiEvent(
       {

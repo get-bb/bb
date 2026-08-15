@@ -1,14 +1,13 @@
 import { threadScope, turnScope } from "@bb/domain";
+import type { AdapterCommand, ProviderAdapter } from "../provider-adapter.js";
 import type {
-  AdapterCommand,
   DecodedInteractiveRequest,
   DecodedToolCallRequest,
-  ProviderAdapter,
   ProviderCommandPlan,
-} from "../provider-adapter.js";
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import { noPreparedProviderCommandDispatch } from "../provider-adapter.js";
 import { classifySessionExecutionSettingsChange } from "../execution-options.js";
-import { ProviderRequestDecodeError } from "../runtime-json-rpc.js";
+import { ProviderRequestDecodeError } from "@bb/provider-bridge-protocol/bridge-kit";
 import { parseAvailableModelList } from "../shared/available-models.js";
 import type { AgentRuntimeExecutionOptions } from "../types.js";
 import {

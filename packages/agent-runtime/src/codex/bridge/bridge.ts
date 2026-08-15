@@ -65,24 +65,24 @@ import {
   type BridgeExecutionOptions,
 } from "@bb/provider-bridge-protocol";
 import {
+  buildAcceptedUserMessageEvent,
   createBridgeIo,
   createBridgeLineHandler,
+  decodeBridgeJsonRpcResponse,
+  bridgeRequestEnvelopeSchema,
   runBridgeRequest,
   startBridgeStdio,
-} from "../../shared/bridge-harness.js";
-import {
-  decodeBridgeJsonRpcResponse,
-  jsonRpcEnvelopeSchema,
-  type BridgeJsonRpcResponse,
-} from "../../shared/bridge-tool-calls.js";
-import { withoutBridgeRuntimeEnv } from "../../shared/bridge-runtime-env.js";
-import { buildAcceptedUserMessageEvent } from "../../shared/accepted-user-messages.js";
+  withoutBridgeRuntimeEnv,
+} from "@bb/provider-bridge-protocol/bridge-kit";
+import type {
+  BridgeJsonRpcResponse,
+  ProviderRuntimeEvent,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import type {
   DecodedInteractiveRequest,
   PreparedProviderCommandDispatch,
   ProviderPostInitializeRequest,
-} from "../../provider-adapter.js";
-import type { ProviderRuntimeEvent } from "../../runtime-json-rpc.js";
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   buildCodexInteractiveResponse,
   decodeCodexInteractiveRequest,
@@ -202,7 +202,7 @@ type DecodedCodexBridgeRequest =
 function decodeCodexBridgeJsonRpcRequest(
   raw: unknown,
 ): DecodedCodexBridgeRequest {
-  const envelope = jsonRpcEnvelopeSchema.safeParse(raw);
+  const envelope = bridgeRequestEnvelopeSchema.safeParse(raw);
   if (!envelope.success) {
     return { kind: "ignored" };
   }

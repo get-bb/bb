@@ -9,14 +9,14 @@ import type {
   ToolCallResponse,
 } from "@bb/domain";
 import { promptTextInput } from "./test/prompt-input.js";
-import type { DecodedInteractiveRequest } from "./provider-adapter.js";
+import type { DecodedInteractiveRequest } from "@bb/provider-bridge-protocol/bridge-kit";
 import { createAgentRuntimeWithAdapters } from "./runtime.js";
 import { handleRuntimeProviderRequest } from "./runtime-provider-requests.js";
 import {
   parseJsonRpcLine,
   type JsonRpcMessage,
   type ProviderInboundRequest,
-} from "./runtime-json-rpc.js";
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   createInteractiveRequestAdapter,
   createInvalidInteractiveRequestAdapter,

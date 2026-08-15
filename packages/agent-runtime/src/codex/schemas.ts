@@ -6,7 +6,7 @@ import {
   pendingInteractionNetworkPermissionsSchema,
 } from "@bb/domain";
 import type { PendingInteractionCommandAction } from "@bb/domain";
-import { jsonRpcEnvelopeSchema } from "../shared/json-rpc-envelope.js";
+import { jsonRpcEnvelopeSchema } from "@bb/provider-bridge-protocol/bridge-kit";
 
 const codexTurnStatusSchema = z.enum([
   "completed",

@@ -160,7 +160,9 @@ export function diffCalibrationStreams(
 }
 
 /** Compact `type` (+ item type) rendering for asserting a known-divergence list. */
-export function describeCalibrationEvents(events: readonly unknown[]): string[] {
+export function describeCalibrationEvents(
+  events: readonly unknown[],
+): string[] {
   return events.map((event) => {
     if (event === null || typeof event !== "object") {
       return String(event);

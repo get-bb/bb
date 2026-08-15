@@ -3,7 +3,6 @@ import type {
   ClientTurnRequestId,
   DynamicTool,
   InstructionMode,
-  PendingInteractionPayload,
   PendingInteractionResolution,
   PromptInput,
   ClaudeCodeMockCliTrafficConfig,
@@ -17,7 +16,13 @@ import type {
 import type {
   ProviderInboundRequest,
   ProviderRuntimeEvent,
-} from "./runtime-json-rpc.js";
+  DecodedInteractiveRequest,
+  DecodedToolCallRequest,
+  PreparedProviderCommandDispatch,
+  ProviderCommandPlan,
+  ProviderInteractiveResponse,
+  ProviderPostInitializeRequest,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import type {
   AgentRuntimeBridgeLaunch,
   AgentRuntimeSkillRoot,
@@ -52,66 +57,6 @@ export type ProviderAdapterFactory = (
   providerId: string,
   options: ProviderAdapterFactoryOptions,
 ) => ProviderAdapter;
-
-export interface ProviderRequestCommandPlan {
-  kind: "request";
-  method: string;
-  params?: object;
-}
-
-export interface ProviderNoopCommandPlan {
-  kind: "noop";
-  method?: never;
-  params?: never;
-  reason: string;
-}
-
-export type ProviderCommandPlan =
-  | ProviderRequestCommandPlan
-  | ProviderNoopCommandPlan;
-
-export interface ProviderPostInitializeRequest {
-  plan: ProviderRequestCommandPlan;
-  required: boolean;
-  onResult(result: unknown): void;
-}
-
-export type ProviderInteractiveResponse =
-  | boolean
-  | number
-  | string
-  | null
-  | ProviderInteractiveResponse[]
-  | { [key: string]: ProviderInteractiveResponse | undefined };
-
-export interface DecodedToolCallRequest {
-  requestId: string | number;
-  providerThreadId: string;
-  /**
-   * Non-empty BB turn id when known. Use null as the canonical unresolved
-   * value so the runtime can resolve from the active turn; empty strings are
-   * malformed adapter output.
-   */
-  turnId: string | null;
-  callId: string;
-  tool: string;
-  arguments?: unknown;
-  threadId?: string;
-}
-
-export interface DecodedInteractiveRequest {
-  requestId: string | number;
-  method: string;
-  providerThreadId: string;
-  /**
-   * Non-empty BB turn id when known. Use null as the canonical unresolved
-   * value so the runtime can resolve from the active turn; empty strings are
-   * malformed adapter output.
-   */
-  turnId: string | null;
-  payload: PendingInteractionPayload;
-  threadId?: string;
-}
 
 // ---------------------------------------------------------------------------
 // AdapterCommand — what the runtime asks the adapter to build
@@ -248,19 +193,6 @@ export function flattenPromptInputGroups(
       ? group
       : [{ type: "text" as const, text: "\n\n", mentions: [] }, ...group],
   );
-}
-
-export interface PreparedProviderCommandDispatch {
-  rollback(): void;
-  /**
-   * Claims the prepared correlation if no provider event has consumed it yet,
-   * proving this dispatch still owns unstarted work. Returns true (and drops
-   * the correlation, so nothing can consume it twice) when the provider never
-   * started a turn for this dispatch; false once it did. Callers use it to
-   * settle a prompt the provider accepted and finished without emitting any
-   * turn activity, without fabricating a turn from a late signal.
-   */
-  claim(): boolean;
 }
 
 export function noPreparedProviderCommandDispatch(

@@ -15,13 +15,15 @@ import type {
   ThreadEventUserContent,
 } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
-import { toOptionalRecord } from "../shared/adapter-utils.js";
-import { createUnhandledProviderEvent } from "../shared/provider-unhandled-event.js";
-import { UNSTAMPED_THREAD_ID } from "../shared/unstamped-thread-id.js";
+import {
+  UNSTAMPED_THREAD_ID,
+  createUnhandledProviderEvent,
+  toOptionalRecord,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import type {
   JsonRpcMessage,
   ProviderRuntimeEvent,
-} from "../runtime-json-rpc.js";
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   codexBridgeEnvelopeSchema,
   codexHandledEventSchema,

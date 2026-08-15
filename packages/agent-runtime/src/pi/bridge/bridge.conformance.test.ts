@@ -27,38 +27,41 @@ import {
  * (each canonical session gets a fresh entropy-prefixed translator).
  */
 
-const { mockCreateAgentSession, mockCreateAgentSessionServices, mockGetPiModelRuntime } =
-  vi.hoisted(() => {
-    const mockModelRuntime = {
-      getAvailable: vi.fn(async () => []),
-      getModel: vi.fn(() => undefined),
-      getModels: vi.fn(() => []),
-      hasConfiguredAuth: vi.fn(() => false),
-      refresh: vi.fn(async () => ({ aborted: false, errors: new Map() })),
-    };
-    const mockSettingsManager = {
-      getShellCommandPrefix: vi.fn(() => undefined),
-      getShellPath: vi.fn(() => undefined),
-    };
-    return {
-      mockCreateAgentSession: vi.fn(),
-      mockCreateAgentSessionServices: vi.fn(
-        async (options: {
-          agentDir?: string;
-          cwd: string;
-          resourceLoaderOptions: Record<string, unknown>;
-        }) => ({
-          agentDir: options.agentDir ?? "/tmp/pi-agent",
-          cwd: options.cwd,
-          diagnostics: [],
-          modelRuntime: mockModelRuntime,
-          resourceLoader: { options: options.resourceLoaderOptions },
-          settingsManager: mockSettingsManager,
-        }),
-      ),
-      mockGetPiModelRuntime: vi.fn(async () => mockModelRuntime),
-    };
-  });
+const {
+  mockCreateAgentSession,
+  mockCreateAgentSessionServices,
+  mockGetPiModelRuntime,
+} = vi.hoisted(() => {
+  const mockModelRuntime = {
+    getAvailable: vi.fn(async () => []),
+    getModel: vi.fn(() => undefined),
+    getModels: vi.fn(() => []),
+    hasConfiguredAuth: vi.fn(() => false),
+    refresh: vi.fn(async () => ({ aborted: false, errors: new Map() })),
+  };
+  const mockSettingsManager = {
+    getShellCommandPrefix: vi.fn(() => undefined),
+    getShellPath: vi.fn(() => undefined),
+  };
+  return {
+    mockCreateAgentSession: vi.fn(),
+    mockCreateAgentSessionServices: vi.fn(
+      async (options: {
+        agentDir?: string;
+        cwd: string;
+        resourceLoaderOptions: Record<string, unknown>;
+      }) => ({
+        agentDir: options.agentDir ?? "/tmp/pi-agent",
+        cwd: options.cwd,
+        diagnostics: [],
+        modelRuntime: mockModelRuntime,
+        resourceLoader: { options: options.resourceLoaderOptions },
+        settingsManager: mockSettingsManager,
+      }),
+    ),
+    mockGetPiModelRuntime: vi.fn(async () => mockModelRuntime),
+  };
+});
 
 vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
   const actual =

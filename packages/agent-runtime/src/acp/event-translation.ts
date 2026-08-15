@@ -16,28 +16,26 @@ import type {
 import { threadScope, turnScope } from "@bb/domain";
 import { z } from "zod";
 import type { ProviderTranslationContext } from "../provider-adapter.js";
-import type { ProviderRuntimeEvent } from "../runtime-json-rpc.js";
 import {
-  drainAcceptedUserMessages,
-  type AcceptedUserMessageState,
-} from "../shared/accepted-user-messages.js";
-import {
+  UNSTAMPED_THREAD_ID,
   buildEditDiff,
+  buildUnhandledProviderEvents,
+  completeStartedToolItem,
+  createProviderTurnStateRegistry,
+  createScopedItemIdFactory,
+  drainAcceptedUserMessages,
+  errorEnvelopeSchema,
   extractResultText,
+  jsonRpcEnvelopeSchema,
+  resolveProviderTerminalTurn,
+  threadIdentityEnvelopeSchema,
   toOptionalString,
   withParentToolCallId,
-} from "../shared/adapter-utils.js";
-import {
-  errorEnvelopeSchema,
-  jsonRpcEnvelopeSchema,
-  threadIdentityEnvelopeSchema,
-} from "../shared/json-rpc-envelope.js";
-import { completeStartedToolItem } from "../shared/tool-item-translation.js";
-import { buildUnhandledProviderEvents } from "../shared/provider-unhandled-event.js";
-import { createScopedItemIdFactory } from "../shared/scoped-item-ids.js";
-import { resolveProviderTerminalTurn } from "../shared/provider-terminal-turn.js";
-import { createProviderTurnStateRegistry } from "../shared/turn-state.js";
-import { UNSTAMPED_THREAD_ID } from "../shared/unstamped-thread-id.js";
+} from "@bb/provider-bridge-protocol/bridge-kit";
+import type {
+  AcceptedUserMessageState,
+  ProviderRuntimeEvent,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   ACP_COMPACTION_COMPLETED_METHOD,
   ACP_COMPACTION_STARTED_METHOD,
@@ -365,7 +363,9 @@ export interface CreateAcpEventTranslatorOptions {
   synthesizeItemStarted?: boolean;
 }
 
-export function createAcpEventTranslator(options: CreateAcpEventTranslatorOptions) {
+export function createAcpEventTranslator(
+  options: CreateAcpEventTranslatorOptions,
+) {
   const assistantIdPrefix =
     options.itemIdPrefix === undefined
       ? "acp-assistant"

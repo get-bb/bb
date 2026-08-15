@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { threadScope, turnScope, type ThreadEvent } from "@bb/domain";
-import type { ProviderRuntimeEvent } from "../runtime-json-rpc.js";
+import type { ProviderRuntimeEvent } from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   ACP_COMPACTION_COMPLETED_METHOD,
   ACP_COMPACTION_STARTED_METHOD,
