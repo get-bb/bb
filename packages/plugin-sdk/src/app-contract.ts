@@ -743,6 +743,31 @@ export interface PluginMessageActionRegistration {
   run(context: PluginMessageActionContext): void | Promise<void>;
 }
 
+/**
+ * Supply the inline React mark bb draws for one agent provider.
+ *
+ * A manifest `branding.icon` (or a provider's `logoUrl`) is fetched and drawn
+ * through `<img>`, a separate document where `currentColor` resolves to black
+ * — invisible on dark themes and unreachable from app CSS. A component is
+ * rendered inline, so it inherits the app's theme colors and the host's sizing
+ * classes. Register a static color logo as a file and a theme-aware mark here.
+ *
+ * The host passes only `className` (sizing plus the provider's color class);
+ * the component must render an inline SVG (or other inline markup) and must
+ * not fetch. One registration per provider id per plugin; when two plugins
+ * claim the same provider id the host keeps the first by plugin id and warns.
+ */
+export interface PluginProviderIconRegistration {
+  /**
+   * The provider this mark is for — the id bb knows the provider by (the
+   * provider declaration's id, e.g. `codex` or `acp-cursor`), not the plugin
+   * id. Letters, digits, `-`, `_`.
+   */
+  providerId: string;
+  /** Inline, theme-aware mark. Receives the host's sizing/color className. */
+  icon: ComponentType<{ className?: string }>;
+}
+
 // ---------------------------------------------------------------------------
 // definePluginApp
 // ---------------------------------------------------------------------------
@@ -785,6 +810,13 @@ export interface PluginAppSlots {
   fileOpener(registration: PluginFileOpenerRegistration): void;
   messageDirective(registration: PluginMessageDirectiveRegistration): void;
   messageAction(registration: PluginMessageActionRegistration): void;
+  /**
+   * Draw one agent provider's icon with an inline React component instead of
+   * its `<img>`-rendered logo file (see
+   * {@link PluginProviderIconRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_providerIcon(registration: PluginProviderIconRegistration): void;
 }
 
 export interface PluginAppComposer {

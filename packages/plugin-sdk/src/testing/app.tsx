@@ -32,6 +32,7 @@ import {
   type PluginNavPanelRegistration,
   type PluginNewThreadPanelActionRegistration,
   type PluginPendingInteractionRegistration,
+  type PluginProviderIconRegistration,
   type PluginRealtimeConnectionState,
   type PluginRpcClient,
   type PluginSdkApp,
@@ -63,6 +64,7 @@ import {
   requireMessageDirectiveId,
   requireNonEmptyString,
   requireOptionalString,
+  requireProviderId,
   requireSlotId,
   requireUniqueId,
 } from "../internal/composer-customization-validation.js";
@@ -526,6 +528,7 @@ export interface CapturedPluginApp {
   fileOpeners: PluginFileOpenerRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
+  providerIcons: PluginProviderIconRegistration[];
   contentScripts: PluginContentScriptRegistration[];
 }
 
@@ -557,6 +560,7 @@ function collectRegistrations(
     fileOpeners: [],
     messageDirectives: [],
     messageActions: [],
+    providerIcons: [],
     contentScripts: [],
   };
   const seenIds = {
@@ -573,6 +577,7 @@ function collectRegistrations(
     fileOpener: new Set<string>(),
     messageDirective: new Set<string>(),
     messageAction: new Set<string>(),
+    providerIcon: new Set<string>(),
     contentScript: new Set<string>(),
   };
 
@@ -805,6 +810,15 @@ function collectRegistrations(
             ? { icon: requireNonEmptyString(kind, "icon", registration.icon) }
             : {}),
           run: registration.run,
+        });
+      },
+      experimental_providerIcon(registration) {
+        const kind = "slots.experimental_providerIcon";
+        const providerId = requireProviderId(kind, registration?.providerId);
+        requireUniqueId(kind, seenIds.providerIcon, providerId);
+        captured.providerIcons.push({
+          providerId,
+          icon: requireComponent(kind, registration.icon),
         });
       },
     },

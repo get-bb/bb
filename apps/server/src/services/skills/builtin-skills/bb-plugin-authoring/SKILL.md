@@ -1088,6 +1088,13 @@ bb.agents.experimental_registerProvider({
 });
 ```
 
+**The icon.** `icon: { asset: … }` is served to clients as a `logoUrl` and
+drawn through `<img>`, so its `currentColor` cannot follow the bb theme. For a
+monochrome mark, ship an `app.tsx` too and register the same artwork with
+`app.slots.experimental_providerIcon({ providerId, icon })` — it renders
+inline and inherits the theme. The four first-party provider plugins do
+exactly this (`plugins/provider-codex/app.tsx`).
+
 Ids are collision-rejected against core providers and other plugins'
 registrations; registrations replace wholesale on reload like every other
 surface. Disabling the plugin removes the provider (open threads show a
@@ -1609,6 +1616,19 @@ openWorkspaceFile }` — register a leaf
   `useBbNavigate().openThreadPanel`. Errors from `run` (sync or
   async) are contained and
   logged, never breaking the timeline.
+- `experimental_providerIcon` → the React component bb draws as one agent
+  provider's icon. Registration: `{ providerId, icon }`, where `providerId` is
+  the provider's id (`"codex"`, `"acp-cursor"`) — not the plugin id — and
+  `icon` is a component receiving only `className` (host sizing plus the
+  provider color class). Use it for a theme-aware mark: a file logo
+  (`bb.branding.icon`, or a provider declaration's `icon.asset`) is drawn
+  through `<img>`, a separate document where `currentColor` resolves to black
+  and is invisible on dark themes, so keep files for intentionally colored
+  logos and register a component for anything that should follow the theme.
+  A component beats the file logo for that provider; disabling the plugin
+  falls back to it. One registration per provider id per plugin; if two
+  plugins claim one provider id the host keeps the first by plugin id and
+  warns. Reference: `plugins/provider-codex/app.tsx`.
 
 Host components:
 

@@ -198,6 +198,47 @@ dropped.
    audit `providerOptions` on `bridgeLaunch` (schema'd but not yet populated
    by any server path).
 
+## `app.slots.experimental_providerIcon` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Lets a plugin frontend supply the React component bb draws
+as one agent provider's icon: `{ providerId, icon }`, where `icon` receives
+only the host's `className` (sizing plus the provider color class). The
+component wins over the app's vendored brand map and over the provider's
+`logoUrl`; a file logo (manifest `branding.icon`, provider `icon.asset`) stays
+the right home for static color logos, because it is fetched through `<img>`,
+a separate document where `currentColor` resolves to black — invisible on dark
+themes. Registrations are replaced wholesale with the rest of the plugin's
+slot set, so disable/uninstall/failed reload falls back to the vendored map,
+then `logoUrl`, then the generic glyph. The four first-party provider plugins
+register their own marks through this slot.
+
+**Audit before stabilizing.**
+
+1. **Id squatting and scoping.** `providerId` names a provider in a shared
+   namespace, not a per-plugin slot id, and nothing checks that the plugin
+   registering it also declared that provider. Today the host keeps the first
+   claim by sorted plugin id and warns. Before stabilizing, decide whether the
+   host should reject an icon for a provider the plugin does not own (the
+   frontend does not currently know the registry's provider→plugin mapping),
+   and whether the picker should surface a rejected claim to the user.
+2. **Bundle size and boot ordering.** An icon now costs a frontend bundle: a
+   provider plugin that previously shipped only a server entry pays esbuild +
+   Tailwind on install and an extra module fetch at boot, and the vendored map
+   covers the window before the bundle loads. Confirm the cost is acceptable
+   for icon-only plugins, or add a lighter delivery path (e.g. a declared
+   inline SVG string sanitized by the host) before freezing the shape.
+3. **Disposal and identity.** The icon component is resolved through a cached
+   host wrapper keyed by provider id and `logoUrl`; the wrapper subscribes to
+   the slot store so a disposed registration falls back mid-render. Audit that
+   a crashing plugin icon is contained the way other slot components are (it
+   renders inside host chrome, sometimes outside a slot error boundary), and
+   that no host surface caches the resolved component across a reload.
+4. **Rendering contract.** The host promises only `className` and expects
+   inline markup. Decide whether to enforce that (no fetches, no portals, no
+   interactive content) before plugins rely on richer components, and confirm
+   the accessible label story: the host derives `ariaLabel` from its own
+   provider data, falling back to the provider id, and the slot supplies none.
+
 ## `experimental_NewThreadComposer` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** The host-owned new-thread compose surface, the create-side

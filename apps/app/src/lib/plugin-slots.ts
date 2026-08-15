@@ -8,6 +8,7 @@ import type {
   PluginMessageDirectiveRegistration,
   PluginNavPanelRegistration,
   PluginNewThreadPanelActionRegistration,
+  PluginProviderIconRegistration,
   PluginSettingsSectionRegistration,
   PluginSidebarFooterActionRegistration,
   PluginThreadHeaderActionRegistration,
@@ -43,6 +44,8 @@ export interface PluginRegistrationSet {
   fileOpeners: readonly PluginFileOpenerRegistration[];
   messageDirectives: readonly PluginMessageDirectiveRegistration[];
   messageActions?: readonly PluginMessageActionRegistration[];
+  /** Optional for the same reason as `threadLists`: bundles built earlier. */
+  providerIcons?: readonly PluginProviderIconRegistration[];
 }
 
 interface PluginSlotBase {
@@ -82,6 +85,8 @@ export interface PluginMessageDirectiveSlot
   extends PluginMessageDirectiveRegistration, PluginSlotBase {}
 export interface PluginMessageActionSlot
   extends PluginMessageActionRegistration, PluginSlotBase {}
+export interface PluginProviderIconSlot
+  extends PluginProviderIconRegistration, PluginSlotBase {}
 
 /** Flattened view across plugins, ordered by plugin id (deterministic). */
 export interface PluginSlotSnapshot {
@@ -98,6 +103,7 @@ export interface PluginSlotSnapshot {
   fileOpeners: readonly PluginFileOpenerSlot[];
   messageDirectives: readonly PluginMessageDirectiveSlot[];
   messageActions: readonly PluginMessageActionSlot[];
+  providerIcons: readonly PluginProviderIconSlot[];
 }
 
 export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
@@ -114,6 +120,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   fileOpeners: [],
   messageDirectives: [],
   messageActions: [],
+  providerIcons: [],
 };
 
 const registrationsByPluginId = new Map<string, PluginRegistrationSet>();
@@ -137,6 +144,7 @@ function buildSnapshot(): PluginSlotSnapshot {
     fileOpeners: PluginFileOpenerSlot[];
     messageDirectives: PluginMessageDirectiveSlot[];
     messageActions: PluginMessageActionSlot[];
+    providerIcons: PluginProviderIconSlot[];
   } = {
     homepageSections: [],
     settingsSections: [],
@@ -151,6 +159,7 @@ function buildSnapshot(): PluginSlotSnapshot {
     fileOpeners: [],
     messageDirectives: [],
     messageActions: [],
+    providerIcons: [],
   };
   for (const pluginId of pluginIds) {
     const set = registrationsByPluginId.get(pluginId);
@@ -206,6 +215,22 @@ function buildSnapshot(): PluginSlotSnapshot {
     }
     for (const registration of set.messageActions ?? []) {
       next.messageActions.push({ ...registration, pluginId, generation });
+    }
+    for (const registration of set.providerIcons ?? []) {
+      const claimed = next.providerIcons.find(
+        (slot) => slot.providerId === registration.providerId,
+      );
+      if (claimed !== undefined) {
+        // Provider ids are a shared namespace: nothing stops a second plugin
+        // from claiming an id it does not own. Plugin ids are iterated in
+        // sorted order, so keeping the first claim makes the winner stable
+        // across reloads instead of depending on load timing.
+        console.warn(
+          `plugin ${pluginId}: provider icon for "${registration.providerId}" ignored — already registered by plugin ${claimed.pluginId}`,
+        );
+        continue;
+      }
+      next.providerIcons.push({ ...registration, pluginId, generation });
     }
   }
   return next;

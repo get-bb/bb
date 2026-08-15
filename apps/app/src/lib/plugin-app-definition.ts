@@ -10,6 +10,7 @@ import {
   type PluginNavPanelRegistration,
   type PluginNewThreadPanelActionRegistration,
   type PluginPendingInteractionRegistration,
+  type PluginProviderIconRegistration,
   type PluginSettingsSectionRegistration,
   type PluginSidebarFooterActionRegistration,
   type PluginThreadListRegistration,
@@ -23,6 +24,7 @@ import {
   requireMessageDirectiveId,
   requireNonEmptyString,
   requireOptionalString,
+  requireProviderId,
   requireSlotId,
   requireUniqueId,
 } from "@get-bb/plugin-sdk/internal/composer-customization-validation";
@@ -83,6 +85,7 @@ export function collectPluginAppRegistrations(
   const fileOpeners: PluginFileOpenerRegistration[] = [];
   const messageDirectives: PluginMessageDirectiveRegistration[] = [];
   const messageActions: PluginMessageActionRegistration[] = [];
+  const providerIcons: PluginProviderIconRegistration[] = [];
   const contentScripts: PluginContentScriptRegistration[] = [];
   const seenIds = {
     homepageSection: new Set<string>(),
@@ -98,6 +101,7 @@ export function collectPluginAppRegistrations(
     fileOpener: new Set<string>(),
     messageDirective: new Set<string>(),
     messageAction: new Set<string>(),
+    providerIcon: new Set<string>(),
     contentScript: new Set<string>(),
   };
 
@@ -338,6 +342,15 @@ export function collectPluginAppRegistrations(
           run: registration.run,
         });
       },
+      experimental_providerIcon(registration) {
+        const kind = "slots.experimental_providerIcon";
+        const providerId = requireProviderId(kind, registration?.providerId);
+        requireUniqueId(kind, seenIds.providerIcon, providerId);
+        providerIcons.push({
+          providerId,
+          icon: requireComponent(kind, registration.icon),
+        });
+      },
     },
     composer: {
       customize(registration) {
@@ -378,6 +391,7 @@ export function collectPluginAppRegistrations(
     fileOpeners,
     messageDirectives,
     messageActions,
+    providerIcons,
     contentScripts,
   };
 }

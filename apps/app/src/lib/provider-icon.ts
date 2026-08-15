@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { createElement, useState } from "react";
+import { createElement, useState, useSyncExternalStore } from "react";
 import { ClaudeIcon } from "@/components/icons/ClaudeIcon";
 import { CursorIcon } from "@/components/icons/CursorIcon";
 import { GrokIcon } from "@/components/icons/GrokIcon";
@@ -9,6 +9,7 @@ import { OpencodeIcon } from "@/components/icons/OpencodeIcon";
 import { OmpIcon } from "@/components/icons/OmpIcon";
 import { PiIcon } from "@/components/icons/PiIcon";
 import { Icon } from "@bb/shared-ui/icon";
+import { getPluginSlotSnapshot, subscribePluginSlots } from "./plugin-slots";
 
 const ACP_ID_PREFIX = "acp-";
 
@@ -24,12 +25,15 @@ function isAcpProviderId(providerId: string): boolean {
 const GenericAcpIcon: ComponentType<{ className?: string }> = ({ className }) =>
   createElement(Icon, { name: "Code", className, "aria-hidden": "true" });
 
-// Vendored brand marks for the built-in providers, keyed by provider id. This
-// is the interim fallback for callers whose data carries no `logoUrl`: until
-// the first-party provider plugins populate `ProviderInfo.logoUrl`, built-ins
-// must keep rendering their real brand marks, never the generic glyph. Once
-// every call site receives a populated `logoUrl`, this map (and the vendored
-// SVG components behind it) graduates to dead code and can be deleted.
+// Vendored brand marks for the built-in providers, keyed by provider id. The
+// first-party provider plugins now register these same marks through
+// `app.slots.experimental_providerIcon`, so this map is the fallback for the
+// window before plugin frontends boot and for a disabled/failed provider
+// plugin: built-ins must keep rendering their real brand marks, never the
+// generic glyph and never a black-on-black `<img>` logo. It graduates to dead
+// code — deletable along with the vendored SVG components — once the plugin
+// icons have soaked and a disabled provider plugin no longer leaves its
+// provider in the picker.
 const BUILT_IN_BRAND_ICONS: Record<string, ProviderIconInfo> = {
   codex: { icon: OpenAiIcon, ariaLabel: "Codex" },
   "claude-code": { icon: ClaudeIcon, ariaLabel: "Claude Code" },
@@ -65,7 +69,7 @@ function getConfiguredProviderLogoIcon(
     return cached;
   }
 
-  const fallbackIcon = getProviderIconInfo(providerId)?.icon;
+  const fallbackIcon = resolveStaticProviderIconInfo(providerId, null)?.icon;
   const ProviderLogoIcon: ComponentType<{ className?: string }> = ({
     className,
   }) => {
@@ -87,17 +91,66 @@ function getConfiguredProviderLogoIcon(
   return ProviderLogoIcon;
 }
 
+function getRegisteredPluginProviderIcon(
+  providerId: string,
+): ComponentType<{ className?: string }> | undefined {
+  return getPluginSlotSnapshot().providerIcons.find(
+    (slot) => slot.providerId === providerId,
+  )?.icon;
+}
+
+const pluginAwareProviderIcons = new Map<
+  string,
+  ComponentType<{ className?: string }>
+>();
+
+/**
+ * Wraps a resolved static icon so a plugin's `experimental_providerIcon`
+ * registration takes over live. The subscription lives in the icon component
+ * rather than in every call site: plugin frontends boot (and reload, disable,
+ * or crash) after the sidebar and settings rows have already rendered, and a
+ * disposed registration must fall straight back to the static chain.
+ */
+function getPluginAwareProviderIcon(
+  providerId: string,
+  logoUrl: string | null,
+  staticIcon: ComponentType<{ className?: string }> | undefined,
+): ComponentType<{ className?: string }> {
+  const cacheKey = `${providerId}\0${logoUrl ?? ""}`;
+  const cached = pluginAwareProviderIcons.get(cacheKey);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const ProviderIcon: ComponentType<{ className?: string }> = ({
+    className,
+  }) => {
+    const pluginIcon = useSyncExternalStore(subscribePluginSlots, () =>
+      getRegisteredPluginProviderIcon(providerId),
+    );
+    const ResolvedIcon = pluginIcon ?? staticIcon;
+    return ResolvedIcon === undefined
+      ? null
+      : createElement(ResolvedIcon, { className });
+  };
+  pluginAwareProviderIcons.set(cacheKey, ProviderIcon);
+  return ProviderIcon;
+}
+
 /**
  * Resolves a provider's icon. Resolution order:
  *
- * 1. The vendored brand maps (built-ins plus well-known ACP slugs). These are
+ * 1. A plugin-registered `app.slots.experimental_providerIcon` component. It
+ *    is inline React, so it inherits the app theme, and the owning plugin
+ *    ships it alongside the provider declaration itself.
+ * 2. The vendored brand maps (built-ins plus well-known ACP slugs). These are
  *    theme-aware React components (`currentColor` cascades), so they must win
  *    over a server `logoUrl`: an SVG rendered through `<img>` is a separate
  *    document where `currentColor` resolves to black — invisible on dark
  *    themes — and page CSS cannot reach it.
- * 2. A caller-supplied `logoUrl` (from a server-provided `ProviderInfo`) for
- *    providers without a vendored mark — plugin-registered third parties.
- * 3. The generic glyph for unrecognized ACP providers.
+ * 3. A caller-supplied `logoUrl` (from a server-provided `ProviderInfo`) for
+ *    providers without a vendored mark — plugin-registered third parties, and
+ *    the right home for static color logos.
+ * 4. The generic glyph for unrecognized ACP providers.
  *
  * Returns undefined for unknown non-ACP providers so callers can fall back
  * gracefully.
@@ -105,6 +158,21 @@ function getConfiguredProviderLogoIcon(
 export function getProviderIconInfo(
   providerId: string,
   logoUrl: string | null = null,
+): ProviderIconInfo | undefined {
+  const staticInfo = resolveStaticProviderIconInfo(providerId, logoUrl);
+  const pluginIcon = getRegisteredPluginProviderIcon(providerId);
+  if (staticInfo === undefined && pluginIcon === undefined) {
+    return undefined;
+  }
+  return {
+    icon: getPluginAwareProviderIcon(providerId, logoUrl, staticInfo?.icon),
+    ariaLabel: staticInfo?.ariaLabel ?? providerId,
+  };
+}
+
+function resolveStaticProviderIconInfo(
+  providerId: string,
+  logoUrl: string | null,
 ): ProviderIconInfo | undefined {
   const builtInBrand = BUILT_IN_BRAND_ICONS[providerId];
   if (builtInBrand !== undefined) {

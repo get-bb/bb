@@ -755,6 +755,46 @@ describe("loadPluginApp", () => {
     ).rejects.toThrow('slots.messageAction: duplicate id "dup"');
   });
 
+  it("validates experimental_providerIcon registrations like the host", async () => {
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.experimental_providerIcon({
+          providerId: "acp-cursor",
+          icon: () => null,
+        });
+      }),
+    );
+    expect(captured.providerIcons).toHaveLength(1);
+    expect(captured.providerIcons[0]?.providerId).toBe("acp-cursor");
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          // A provider id, not a plugin id: `bb-plugin-x/codex` is not one.
+          builder.slots.experimental_providerIcon({
+            providerId: "bb-plugin-x/codex",
+            icon: () => null,
+          });
+        }),
+      ),
+    ).rejects.toThrow(
+      'slots.experimental_providerIcon: "providerId" must match',
+    );
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_providerIcon({
+            providerId: "codex",
+            icon: () => null,
+          });
+          builder.slots.experimental_providerIcon({
+            providerId: "codex",
+            icon: () => null,
+          });
+        }),
+      ),
+    ).rejects.toThrow('slots.experimental_providerIcon: duplicate id "codex"');
+  });
+
   it("invokes a captured messageAction run with a plugin-authored context", () => {
     const openPanel = (options: { actionId: string }) =>
       options.actionId === "panel";
