@@ -201,7 +201,25 @@ next starts; commits structured so a later PR split stays mechanical:
    provider-bridge-policy endpoint, daemon prefix capture — no protocol
    bump needed, v124 unshipped), core-seed deletion, @bb/agent-providers
    removal, runtime codex special-case audit (kept, one stale comment).
-4. Phase-6 consolidation sweep, batched by subsystem.
+4. PARTLY DONE (2026-08-15) — phase-6 consolidation sweep. Landed, one
+   commit per item, each with its own red-verify: ACP manual compaction as
+   a per-agent declaration; the skill provider id opened and the six
+   per-provider skill scopes collapsed to `provider-user`/`provider-project`;
+   ask-user-question reading `supportsNativeUserQuestion` off the
+   configuration context; edit-message eligibility reading the already-
+   declared `supportsNativeSessionRewind`; plan mode gating on the declared
+   `plan` composer action (widening the prompt-mode enum) plus deleting the
+   thread-view display-name switch; and the `thread/openWork` notification
+   that finally gives `hasOpenThreadWork` a canonical implementation and
+   stops the reaper killing codex native subagents.
+   Deferred with reasons on each checklist entry above, in two groups:
+   (a) the three sessionless daemon→bridge reads — `skills/scanRoots`,
+   `provider/health|install|update`, `provider/usage` — which share one
+   transport and should land as their own wave; and (b) the four surfaces
+   blocked on new plugin API rather than on consolidation — provider-scoped
+   settings toggles, onboarding/settings entries, the provider-retry banner
+   label, and provider icon colors. Both groups want a plugin-facing
+   provider directory, which does not exist on either SDK surface today.
 5. First-party artifact migration: move the four bridge sources into
    their plugin directories and ship them through the content-addressed
    artifact pipeline (echo-provider is the template). After this, every
@@ -781,6 +799,16 @@ their level, never to flatten them toward a common denominator.
   `known_acp_agents.status`) → the optional `provider/health` /
   `provider/install` / `provider/update` bridge methods. The existing daemon
   tables keep working untouched through phases 1–5 and are deleted here.
+
+  **DEFERRED from wave 4.** Same shape as `skills/scanRoots` and should ride
+  with it: both are sessionless daemon→bridge reads over the maintenance
+  runtime, both are currently daemon-local tables with no bridge involvement,
+  and doing them in one pass means introducing the sessionless
+  provider-query surface once instead of twice. Health/install/update is the
+  more delicate half — install and update *mutate the host* (`npm i -g`,
+  `claude doctor`), and v118 already tightened update results to reject
+  unverifiable successes, so moving that into plugin-supplied bridge code is
+  a trust-boundary change, not just code motion.
 - `PROVIDER_SKILL_SPECS` + `resolveProviderExtraRoots` → the optional
   `skills/scanRoots` bridge method with daemon-side caching. (The injection
   side is not deferred to this phase: the canonical `skills/configure`
@@ -788,9 +816,61 @@ their level, never to flatten them toward a common denominator.
   transformation moves in with the rest of its translation in phase 2,
   deleting `buildSkillRoots`, the runtime skill-root filter, and the
   skill-root union then.)
+
+  **DEFERRED from wave 4 — this is a wave of its own, not a checklist
+  item.** Scoped on the branch; the seam is clear and the sizing is not.
+  What is actually there today, all in
+  `apps/host-daemon/src/command-handlers/list-commands.ts`:
+  `PROVIDER_SKILL_SPECS` is ~120 lines of declarative per-provider layout
+  across 8 ids (user locations, project dirs, ancestor-walk lists,
+  recursive vs flat, seeded vs unseeded identities), read by
+  `resolveNativeSkillScanRoots` and `resolveParentSkillScanRoots`;
+  `resolveProviderExtraRoots` is a SECOND ~55-line provider switch over a
+  *different* provider set for roots that cannot be static paths (codex and
+  claude plugin-command roots, pi/omp/grok/hermes configured roots, the
+  grok↔claude compat kill-switch); and `resolveProviderCommandScanRoots`
+  branches root *ordering* on `codex || claude-code`. Add the daemon-side
+  `disabledDirectories` compat filtering and this is ~350 lines of
+  provider-specific behavior, comparable to a phase-2 provider migration —
+  except it must move into FIVE bridges at once, because a partial move
+  leaves two discovery paths for one composer menu.
+  The transport is not the hard part and is already precedented: a
+  sessionless bridge call has a working path in
+  `runtime-manager.ts::ensureProviderMaintenanceRuntime` +
+  `runtime.listModels`, which `provider.list_models` already uses with the
+  same `bridgeLaunch`/`acpLaunchSpec` plumbing; `skills/scanRoots` slots in
+  1:1 there. What is unbudgeted is the fanout (five bridges), the caching
+  policy (scan roots are consulted on every command/skill listing — today
+  they cost no process), and the fallback when a bridge is unreachable.
+  Also note the coupling recorded under `skillProviderSchema` above:
+  `SKILL_COMMAND_SURFACE_PROVIDERS` cannot become registry-driven until
+  this lands, because the daemon has no other way to learn a new
+  provider's roots.
 - `providerCliKeyValues` / fixed-key `providerUsageResponseSchema` → generic
   per-provider-id map backed by an optional `provider/usage` bridge method;
-  usage-limits and CLI-install UI become registry-driven.
+  usage-limits and CLI-install UI become registry-driven. **DEFERRED from
+  wave 4** — third member of the sessionless daemon→bridge family above; do
+  all three together.
+
+- **DEFERRED from wave 4 — `getProviderIconColorClass` hardcoded colors →
+  plugin icon components.** This one is genuinely blocked on new plugin-SDK
+  surface, not on effort: the app-side deletion is 20 lines and 3 call
+  sites, but every icon that reaches those call sites paints with
+  `fill="currentColor"` and relies on the host's color class. Deleting the
+  class means each plugin's icon must self-color, which contradicts what
+  `PluginProviderIconRegistration` advertises ("receives the host's
+  sizing/color className") and cannot express `acp-cursor`'s
+  light/dark pair (`text-[#111827] dark:text-[#F5F5F5]`) without either a
+  tint field on the registration (light+dark, a real contract question:
+  format, validation, theme model) or a theme hook exposed to the app SDK.
+  Either is an `experimental_` surface addition with a
+  `docs/api_to_audit.md` entry. Flattening to monochrome instead would
+  breach the phase-6 guardrail on exactly the two flagships.
+  Two things ARE separable and cheap when this is picked up:
+  `plugins/automations/lib/provider-icon.tsx` has no colors to preserve and
+  no `logoUrl` support at all — 75 lines of inlined SVG that plain `logoUrl`
+  support deletes; and `SkillsCollection.tsx`'s one-off
+  `providerId === "codex" && "text-white"` dark-tooltip override.
 - Host-daemon AI services (voice/inference, codex-only daemon commands) →
   optional protocol capability on the bridge.
 - DONE (wave 4) — `hasOpenThreadWork` generic-adapter hook. The optional
@@ -842,6 +922,40 @@ their level, never to flatten them toward a common denominator.
   forty lines above it already made. It stays separate from
   `supportsFork` on purpose: ACP forks tip-only.
 - Onboarding and `SETTINGS_PROVIDER_ENTRIES` → registry-driven.
+
+  **DEFERRED from wave 4 — needs product design, not consolidation.**
+  Shares the missing piece with the provider-retry banner above and with
+  the provider-scoped toggles below: there is no plugin-facing provider
+  directory on either SDK surface, and a registry-driven settings page has
+  to answer what a provider plugin may contribute to it. The guardrail bites
+  hardest here — the Codex and Claude Code settings panes are the richest
+  provider surfaces bb has, and a generic registry-driven pane that renders
+  a flat capability list would flatten them. The likely shape is the
+  opposite of a generic pane: each provider plugin owns its settings section
+  through the existing settings-section slot, and the registry supplies only
+  the entry (id, display name, icon, order). That is a phase-4/5 follow-on,
+  not an enum cleanup.
+
+- **DEFERRED from wave 4 — provider-scoped options for the claude/codex
+  workflows, memory, and subagent toggles.** Still special-cased, and the
+  special case is in the *storage shape*, not in a lookup that could be
+  swapped for a capability: `appSettings` has five provider-named boolean
+  COLUMNS (`codexMemoryEnabled`, `claudeCodeMemoryEnabled`,
+  `codexSubagentsDisabled`, `claudeCodeSubagentsDisabled`,
+  `claudeCodeWorkflowsDisabled`), read by three `providerId === …` helpers
+  in `thread-commands.ts`. Generalizing means a per-provider settings map:
+  a DB migration, an `AppSettings` wire change, a settings UI that renders
+  declared toggles, a `bb settings` CLI surface, and — the actual design
+  question — what a provider plugin is allowed to declare as a toggle and
+  who owns rendering it. Same unanswered question as the settings entries
+  above, so they should land together.
+  One concrete inconsistency to fix when they do:
+  `resolveProviderWorkflowsEnabled` gates on the declared
+  `supportsWorkflows` capability but then reads
+  `claudeCodeWorkflowsDisabled`, so a plugin provider that declares
+  `supportsWorkflows: true` today silently inherits a Claude-named user
+  preference. It is currently unreachable (claude-code is the only declarer)
+  but it is a live trap for the first third-party provider.
 - PARTLY DONE (wave 4) — Plugin-side provider id lists → capabilities read
   off `ProviderInfo`. The ask-user-question plugin's
   `NATIVE_TOOL_PROVIDER_IDS` is DELETED: `PluginAgentConfigurationContext`
