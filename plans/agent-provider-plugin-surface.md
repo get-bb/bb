@@ -29,7 +29,8 @@ Landed on this branch, every commit green:
   11/11 conformance each, per-session dialects, shared (not duplicated)
   translators, honest stop intents, reply-never-drop hygiene (which fixed a
   real latent bug: #859 never implemented #853's replies in the acp bridge;
-  same finding in pi). The `providerBridgeAcp` experiment is wired end to
+  same finding in pi). The `providerBridge` experiment (initially four
+  per-provider keys, later collapsed into one toggle) is wired end to
   end via a new additive `/provider-bridge-policy` endpoint — zero wire
   schema changes, no protocol bump. Pi capabilities verified with evidence:
   sessionRestore true, fork "checkpoint".
@@ -48,9 +49,10 @@ Landed on this branch, every commit green:
   (7bf1844e0): the one new bridge, canonical-only, owning per-thread
   app-server children with the #1402 supervision rules; structural
   bridge-minted ids reverse-map legacy-persisted codex ids;
-  archived-session resumes reply SESSION_NOT_RESTORABLE. Per-provider
-  experiment toggles exist for all four providers (default off). The
-  turn-start watchdog shipped (system/error, no wire change).
+  archived-session resumes reply SESSION_NOT_RESTORABLE. One `providerBridge`
+  experiment toggle (default off) routes all four providers onto the
+  canonical protocol. The turn-start watchdog shipped (system/error, no
+  wire change).
 - **Phase 4 complete**: the four first-party provider plugins are builtin
   and enabled by default, taking over their core-seed entries in place
   (position-preserving, restored on disable; the takeover merge preserves
@@ -62,11 +64,23 @@ Landed on this branch, every commit green:
 - **Phase 5 complete**: bb.providerBridge plugins build self-contained
   bridge artifacts, the server stores and serves them content-addressed,
   the daemon caches by verified hash, and an optional strict bridgeLaunch
-  rides beside acpLaunchSpec — HOST_DAEMON_PROTOCOL_VERSION 122 → 123,
-  the plan's one bump, with v122 compat fixtures. First-party providers
+  rides beside acpLaunchSpec — HOST_DAEMON_PROTOCOL_VERSION 123 → 124
+  after the rebase onto main (which took 123 for artifact engine ranges),
+  the plan's one bump, with prior-version compat fixtures. First-party providers
   stay bundled (wire-identical payloads) until graduation.
   examples/plugins/echo-provider proves the third-party path end to end,
   passing the same 11-scenario conformance gate as the first-party four.
+- **Live QA (real CLIs against a dev server)**: full matrix passed for
+  codex / claude-code / pi / acp-opencode — canonical process trees, two
+  turns each, steer/stop/resume, models lists, flag-off legacy regression.
+  Two real bugs found and fixed with regression tests: the codex bridge's
+  construction signature included envVars the runtime never sends on
+  turns (every first turn rebuilt the session and died on the missing
+  rollout), and a failed session construction leaked the thread-scoped
+  bridge process. Known open design item for phase 6: bridge adapters
+  classify every settings change as "live", but the runtime never carries
+  envVars on turn options, so an env-var change cannot rebuild a live
+  bridge session (legacy classified it as a session change).
 - **Remaining (graduation + phase 6)**: legacy adapter deletions and the
   runtime codex special cases after experiment soak; core-seed deletion
   and @bb/agent-providers removal from agent-runtime; the consolidation
