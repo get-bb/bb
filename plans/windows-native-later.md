@@ -79,7 +79,7 @@ Protocol bump required.
 
 #1206 §5.4. GUI-launched Desktop has a stripped PATH. #1392 solved this on Linux with a login-shell `-ilc`. Windows reads HKCU/HKLM environment, not `pwsh -ilc`.
 
-Extend the packaged PATH hydrator that #1392 already parameterized. Do not add a third spawn helper.
+Status: packaged hydrator (`apps/desktop/src/desktop-shell-path.ts`) now reads HKLM then HKCU `Path` on `win32`. Do not add a third spawn helper. Remaining later work here is hydrating the rest of the user environment block, not Path.
 
 ### PowerShell setup hook
 

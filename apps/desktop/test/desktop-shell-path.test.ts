@@ -206,13 +206,13 @@ describe("desktop shell PATH loading", () => {
   });
 
   it("skips unsupported platforms", () => {
-    const env: NodeJS.ProcessEnv = { PATH: "C:\\Windows\\System32" };
+    const env: NodeJS.ProcessEnv = { PATH: "/usr/bin" };
 
     const result = ensurePackagedUserShellPath({
       env,
       isPackaged: true,
       logger: createWarningLogger().logger,
-      platform: "win32",
+      platform: "freebsd",
       spawnLoginShellPath: failIfSpawned(),
     });
 
@@ -220,6 +220,145 @@ describe("desktop shell PATH loading", () => {
       kind: "skipped",
       reason: "unsupported-platform",
     });
+    expect(env.PATH).toBe("/usr/bin");
+  });
+
+  it("uses HKLM then HKCU Path for packaged Windows launches", () => {
+    const env: NodeJS.ProcessEnv = {
+      PATH: "C:\\Windows\\System32",
+      SystemRoot: "C:\\Windows",
+      USERPROFILE: "C:\\Users\\sawyer",
+    };
+    const warningLogger = createWarningLogger();
+
+    const result = ensurePackagedUserShellPath({
+      env,
+      isPackaged: true,
+      logger: warningLogger.logger,
+      platform: "win32",
+      readWindowsEnvironmentPath: () => ({
+        kind: "ok",
+        systemPath: "%SystemRoot%\\System32;C:\\Windows",
+        userPath: "%USERPROFILE%\\.local\\bin;C:\\Users\\sawyer\\AppData\\Roaming\\npm",
+      }),
+      spawnLoginShellPath: failIfSpawned(),
+    });
+
+    const path =
+      "C:\\Windows\\System32;C:\\Windows;C:\\Users\\sawyer\\.local\\bin;C:\\Users\\sawyer\\AppData\\Roaming\\npm";
+    expect(result).toEqual({ kind: "updated", path });
+    expect(env.PATH).toBe(path);
+    expect(warningLogger.warnings).toEqual([]);
+  });
+
+  it("does not expand %PATH% from the stripped inherited value", () => {
+    const env: NodeJS.ProcessEnv = {
+      PATH: "C:\\Windows\\System32",
+    };
+
+    const result = ensurePackagedUserShellPath({
+      env,
+      isPackaged: true,
+      logger: createWarningLogger().logger,
+      platform: "win32",
+      readWindowsEnvironmentPath: () => ({
+        kind: "ok",
+        systemPath: "%PATH%;C:\\Windows",
+        userPath: "",
+      }),
+      spawnLoginShellPath: failIfSpawned(),
+    });
+
+    expect(result).toEqual({
+      kind: "updated",
+      path: "%PATH%;C:\\Windows",
+    });
+  });
+
+  it("keeps system Path when the user Path is missing", () => {
+    const env: NodeJS.ProcessEnv = { PATH: "C:\\Windows\\System32" };
+
+    const result = ensurePackagedUserShellPath({
+      env,
+      isPackaged: true,
+      logger: createWarningLogger().logger,
+      platform: "win32",
+      readWindowsEnvironmentPath: () => ({
+        kind: "ok",
+        systemPath: "C:\\Windows\\System32;C:\\Windows",
+        userPath: "",
+      }),
+      spawnLoginShellPath: failIfSpawned(),
+    });
+
+    expect(result).toEqual({
+      kind: "updated",
+      path: "C:\\Windows\\System32;C:\\Windows",
+    });
+  });
+
+  it("falls back to the inherited PATH when the Windows registry read fails", () => {
+    const env: NodeJS.ProcessEnv = { PATH: "C:\\Windows\\System32" };
+    const warningLogger = createWarningLogger();
+
+    const result = ensurePackagedUserShellPath({
+      env,
+      isPackaged: true,
+      logger: warningLogger.logger,
+      platform: "win32",
+      readWindowsEnvironmentPath: () => ({
+        kind: "error",
+        message: "reg.exe ENOENT",
+      }),
+      spawnLoginShellPath: failIfSpawned(),
+    });
+
+    expect(result).toEqual({ kind: "unchanged", reason: "registry-error" });
+    expect(env.PATH).toBe("C:\\Windows\\System32");
+    expect(warningLogger.warnings).toEqual([
+      "Could not load the user shell PATH for the packaged desktop app: Windows registry PATH: reg.exe ENOENT. Continuing with the inherited PATH.",
+    ]);
+  });
+
+  it("leaves PATH alone in Windows desktop dev mode", () => {
+    const env: NodeJS.ProcessEnv = { PATH: "C:\\Windows\\System32" };
+
+    const result = ensurePackagedUserShellPath({
+      env,
+      isPackaged: false,
+      logger: createWarningLogger().logger,
+      platform: "win32",
+      readWindowsEnvironmentPath: () => {
+        throw new Error("registry read should not run");
+      },
+      spawnLoginShellPath: failIfSpawned(),
+    });
+
+    expect(result).toEqual({ kind: "skipped", reason: "not-packaged" });
     expect(env.PATH).toBe("C:\\Windows\\System32");
   });
+
+  it.skipIf(process.platform !== "win32")(
+    "reads a non-empty Path from the live Windows registry",
+    () => {
+      const env: NodeJS.ProcessEnv = { ...process.env };
+      const warningLogger = createWarningLogger();
+
+      const result = ensurePackagedUserShellPath({
+        env,
+        isPackaged: true,
+        logger: warningLogger.logger,
+        platform: "win32",
+        spawnLoginShellPath: failIfSpawned(),
+      });
+
+      expect(result.kind).toBe("updated");
+      if (result.kind !== "updated") {
+        return;
+      }
+      expect(result.path.toLowerCase()).toContain("system32");
+      expect(env.PATH).toBe(result.path);
+      expect(warningLogger.warnings).toEqual([]);
+    },
+  );
 });
