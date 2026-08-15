@@ -17,7 +17,7 @@ describe("experiments settings", () => {
         claudeCodeMockCliTraffic: false,
         editMessages: true,
         newOnboarding: false,
-        providerBridge: false,
+        providerBridge: true,
         providerSessionReaping: false,
       });
     });
@@ -84,8 +84,10 @@ describe("experiments settings", () => {
         { headers },
       );
       expect(initialBridgePolicy.status).toBe(200);
+      // Default-on: a fresh install routes all four built-ins onto the
+      // canonical bridge protocol.
       await expect(readJson(initialBridgePolicy)).resolves.toEqual({
-        bridgeProtocolProviderPrefixes: [],
+        bridgeProtocolProviderPrefixes: ["acp-", "claude-code", "codex", "pi"],
       });
 
       await harness.app.request("/api/v1/settings/experiments", {
