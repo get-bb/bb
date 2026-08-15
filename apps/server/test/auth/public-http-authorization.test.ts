@@ -245,7 +245,7 @@ function scanUntypedRouteRegistrations(): Array<{
 }
 
 describe("public HTTP authorization inventory", () => {
-  it("contains exactly 150 typed + 28 untyped operations with unique names and pairs", () => {
+  it("contains exactly 150 typed + 35 untyped operations with unique names and pairs", () => {
     const typed = PUBLIC_HTTP_INVENTORY.filter(
       (entry) => entry.source === "typed",
     );
@@ -253,9 +253,9 @@ describe("public HTTP authorization inventory", () => {
       (entry) => entry.source === "untyped",
     );
     expect(typed).toHaveLength(150);
-    expect(untyped).toHaveLength(28);
-    expect(PUBLIC_HTTP_INVENTORY).toHaveLength(178);
-    expect(UNTYPED_PUBLIC_HTTP_INVENTORY).toHaveLength(28);
+    expect(untyped).toHaveLength(35);
+    expect(PUBLIC_HTTP_INVENTORY).toHaveLength(185);
+    expect(UNTYPED_PUBLIC_HTTP_INVENTORY).toHaveLength(35);
 
     const names = PUBLIC_HTTP_INVENTORY.map((entry) => entry.operationName);
     expect(new Set(names).size).toBe(names.length);
@@ -296,16 +296,16 @@ describe("public HTTP authorization inventory", () => {
 
   it("matches untyped route registrations in plugins/catalog/skills sources", () => {
     const registered = scanUntypedRouteRegistrations();
-    expect(registered).toHaveLength(28);
+    expect(registered).toHaveLength(35);
     expect(
       registered.filter((entry) => entry.file === "routes/plugins.ts"),
     ).toHaveLength(20);
     expect(
       registered.filter((entry) => entry.file === "routes/plugin-catalog.ts"),
-    ).toHaveLength(3);
+    ).toHaveLength(9);
     expect(
       registered.filter((entry) => entry.file === "routes/skills-registry.ts"),
-    ).toHaveLength(5);
+    ).toHaveLength(6);
 
     const inventoryPairs = UNTYPED_PUBLIC_HTTP_INVENTORY.map(
       (entry) => `${entry.method} ${entry.pattern}`,
@@ -570,6 +570,10 @@ describe("public HTTP authorization predicates", () => {
       "system.config",
       "system.attention",
       "projects.copyAttachments",
+      "pluginCatalog.install",
+      "pluginCatalog.marketplacesAdd",
+      "pluginCatalog.marketplacesDelete",
+      "skillsRegistry.install",
     ];
     for (const operationName of forbidden) {
       expect(PUBLIC_HTTP_MEMBER_OPERATION_NAMES).not.toContain(operationName);

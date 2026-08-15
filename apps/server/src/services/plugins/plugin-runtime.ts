@@ -86,11 +86,27 @@ export function pluginSdkAliasFor(
   };
 }
 
-const pluginSdkAlias: Record<string, string> | undefined = existsSync(
-  pluginSdkRuntimePath,
-)
-  ? pluginSdkAliasFor(pluginSdkRuntimePath)
-  : undefined;
+function resolvePluginSdkAlias(): Record<string, string> | undefined {
+  if (existsSync(pluginSdkRuntimePath)) {
+    return pluginSdkAliasFor(pluginSdkRuntimePath);
+  }
+  // Source/test checkouts have no packaged runtime bundle next to this
+  // module. `@get-bb/plugin-sdk` still resolves through the workspace, but
+  // pre-rename plugin sources import `@bb/plugin-sdk` and need the same
+  // module.
+  try {
+    return {
+      [LEGACY_PLUGIN_SDK_SPECIFIER]: createRequire(import.meta.url).resolve(
+        PLUGIN_SDK_SPECIFIER,
+      ),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+const pluginSdkAlias: Record<string, string> | undefined =
+  resolvePluginSdkAlias();
 
 /**
  * Per-root reload generation for mutable (path:/source-builtin) plugin trees.
