@@ -585,6 +585,14 @@ export function parseOperationMessage(
     };
   }
 
+  if (decoded.type === "thread/context/cleared") {
+    return op(decoded, meta, "context-clear", {
+      opType: "context-clear",
+      title: "Context cleared",
+      status: "completed",
+    });
+  }
+
   return null;
 }
 
@@ -604,6 +612,9 @@ export function interruptOperationMessage(
       return;
     case "compaction":
       message.title = "Context compaction interrupted";
+      return;
+    case "context-clear":
+      message.title = "Context clear interrupted";
       return;
     default:
       return;

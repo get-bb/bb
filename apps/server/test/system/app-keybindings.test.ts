@@ -5,12 +5,89 @@ import {
   THREAD_JUMP_APP_COMMAND_IDS,
   applyAppKeybindingOverrides,
   appKeybindingOverridesSchema,
+  isAppKeybindingAvailableForClient,
 } from "@bb/domain";
 import { systemConfigResponseSchema } from "@bb/server-contract";
+import { DEFAULT_APP_KEYBINDINGS } from "../../src/services/system/app-keybindings.js";
 import { readJson } from "../helpers/json.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
+const DEFAULT_KEYBINDING_CLIENTS = [
+  { name: "desktop-mac", isDesktop: true, isMac: true },
+  { name: "desktop-other", isDesktop: true, isMac: false },
+  { name: "web-mac", isDesktop: false, isMac: true },
+  { name: "web-other", isDesktop: false, isMac: false },
+] as const;
+
+function shortcutIdentity(
+  binding: ReturnType<typeof applyAppKeybindingOverrides>[number],
+  isMac: boolean,
+): string {
+  const { shortcut } = binding;
+  return JSON.stringify({
+    key: shortcut.key.toLowerCase(),
+    meta: shortcut.meta || (shortcut.mod && isMac),
+    control: shortcut.control || (shortcut.mod && !isMac),
+    alt: shortcut.alt,
+    shift: shortcut.shift,
+  });
+}
+
+function bindingContextsOverlap(
+  left: ReturnType<typeof applyAppKeybindingOverrides>[number],
+  right: ReturnType<typeof applyAppKeybindingOverrides>[number],
+): boolean {
+  const leftAll = new Set(left.when.all);
+  const rightAll = new Set(right.when.all);
+  return (
+    !left.when.none.some((context) => rightAll.has(context)) &&
+    !right.when.none.some((context) => leftAll.has(context))
+  );
+}
+
+function commandPair(left: string, right: string): string {
+  return [left, right].sort().join("+");
+}
+
 describe("app keybindings", () => {
+  it("limits overlapping default chords to intentional scoped navigation", () => {
+    const assignedDefaults = applyAppKeybindingOverrides(
+      DEFAULT_APP_KEYBINDINGS,
+      [],
+    );
+    const actualCollisions = new Set<string>();
+
+    for (const client of DEFAULT_KEYBINDING_CLIENTS) {
+      const availableBindings = assignedDefaults.filter((binding) =>
+        isAppKeybindingAvailableForClient(binding, client),
+      );
+      for (const [index, left] of availableBindings.entries()) {
+        for (const right of availableBindings.slice(index + 1)) {
+          if (
+            left.command === right.command ||
+            shortcutIdentity(left, client.isMac) !==
+              shortcutIdentity(right, client.isMac) ||
+            !bindingContextsOverlap(left, right)
+          ) {
+            continue;
+          }
+          actualCollisions.add(
+            `${client.name}:${commandPair(left.command, right.command)}`,
+          );
+        }
+      }
+    }
+
+    const intentionalCommandPairs = PANE_FOCUS_APP_COMMAND_IDS.map(
+      (paneCommand, index) =>
+        commandPair(paneCommand, THREAD_JUMP_APP_COMMAND_IDS[index]),
+    );
+    const allowedCollisions = DEFAULT_KEYBINDING_CLIENTS.flatMap((client) =>
+      intentionalCommandPairs.map((pair) => `${client.name}:${pair}`),
+    );
+    expect([...actualCollisions].sort()).toEqual(allowedCollisions.sort());
+  });
+
   it("serves validated explicit defaults from system config", async () => {
     await withTestHarness(async (harness) => {
       const response = await harness.app.request("/api/v1/system/config");
@@ -31,6 +108,26 @@ describe("app keybindings", () => {
           desktopOnly: false,
           shortcut: null,
           when: { all: ["mainSurface"], none: ["modalOpen"] },
+        });
+        expect(
+          config.keybindings.some((binding) => binding.command === command),
+        ).toBe(false);
+      }
+      for (const command of [
+        "pane.focus.previous",
+        "pane.focus.next",
+      ] as const) {
+        expect(
+          config.defaultKeybindings.find(
+            (binding) => binding.command === command,
+          ),
+        ).toMatchObject({
+          desktopOnly: false,
+          shortcut: null,
+          when: {
+            all: ["mainSurface", "splitActive"],
+            none: ["modalOpen"],
+          },
         });
         expect(
           config.keybindings.some((binding) => binding.command === command),
@@ -60,10 +157,31 @@ describe("app keybindings", () => {
           .map((binding) => ({
             desktopOnly: binding.desktopOnly,
             key: binding.shortcut.key,
+            mod: binding.shortcut.mod,
+            control: binding.shortcut.control,
+            shift: binding.shortcut.shift,
+            when: binding.when,
           })),
       ).toEqual([
-        { desktopOnly: false, key: "ArrowUp" },
-        { desktopOnly: true, key: "[" },
+        {
+          desktopOnly: false,
+          key: "[",
+          mod: false,
+          control: true,
+          shift: true,
+          when: {
+            all: ["mainSurface", "webSurface"],
+            none: ["modalOpen"],
+          },
+        },
+        {
+          desktopOnly: true,
+          key: "[",
+          mod: true,
+          control: false,
+          shift: true,
+          when: { all: ["mainSurface"], none: ["modalOpen"] },
+        },
       ]);
       expect(
         assignedDefaultKeybindings
@@ -71,10 +189,31 @@ describe("app keybindings", () => {
           .map((binding) => ({
             desktopOnly: binding.desktopOnly,
             key: binding.shortcut.key,
+            mod: binding.shortcut.mod,
+            control: binding.shortcut.control,
+            shift: binding.shortcut.shift,
+            when: binding.when,
           })),
       ).toEqual([
-        { desktopOnly: false, key: "ArrowDown" },
-        { desktopOnly: true, key: "]" },
+        {
+          desktopOnly: false,
+          key: "]",
+          mod: false,
+          control: true,
+          shift: true,
+          when: {
+            all: ["mainSurface", "webSurface"],
+            none: ["modalOpen"],
+          },
+        },
+        {
+          desktopOnly: true,
+          key: "]",
+          mod: true,
+          control: false,
+          shift: true,
+          when: { all: ["mainSurface"], none: ["modalOpen"] },
+        },
       ]);
       expect(
         assignedDefaultKeybindings
@@ -151,9 +290,34 @@ describe("app keybindings", () => {
           none: ["modalOpen", "terminalFocus", "browserFocus"],
         },
       });
-      // The cycle chords must stay on plain Alt and share the scope of
-      // `modelPicker.toggle`. Alt is unused elsewhere in bb, so nothing shadows
-      // them and they shadow nothing.
+      const composerWhen = {
+        all: ["mainSurface", "promptAvailable"],
+        none: ["modalOpen", "terminalFocus", "browserFocus"],
+      };
+      const pickerOpenWhen = {
+        all: ["mainSurface", "modelPickerOpen"],
+        none: [],
+      };
+      const altChord = (
+        command: string,
+        key: string,
+        shift: boolean,
+        when: { all: string[]; none: string[] },
+      ) => ({
+        command,
+        shortcut: {
+          key,
+          mod: false,
+          meta: false,
+          control: false,
+          alt: true,
+          shift,
+        },
+        when,
+      });
+      // Forward cycles use Alt and backward cycles add Shift. Both directions
+      // share the scope of `modelPicker.toggle` and keep working in the open
+      // picker.
       expect(
         assignedDefaultKeybindings
           .filter((binding) => binding.command.startsWith("modelPicker.cycle"))
@@ -163,74 +327,53 @@ describe("app keybindings", () => {
             when: binding.when,
           })),
       ).toEqual([
-        {
-          command: "modelPicker.cycleModel",
-          shortcut: {
-            key: "m",
-            mod: false,
-            meta: false,
-            control: false,
-            alt: true,
-            shift: false,
-          },
-          when: {
-            all: ["mainSurface", "promptAvailable"],
-            none: ["modalOpen", "terminalFocus", "browserFocus"],
-          },
-        },
-        {
-          command: "modelPicker.cycleReasoning",
-          shortcut: {
-            key: "t",
-            mod: false,
-            meta: false,
-            control: false,
-            alt: true,
-            shift: false,
-          },
-          when: {
-            all: ["mainSurface", "promptAvailable"],
-            none: ["modalOpen", "terminalFocus", "browserFocus"],
-          },
-        },
+        altChord("modelPicker.cycleModel", "m", false, composerWhen),
+        altChord("modelPicker.cycleModelBackward", "m", true, composerWhen),
+        altChord("modelPicker.cycleProvider", "p", false, composerWhen),
+        altChord("modelPicker.cycleProviderBackward", "p", true, composerWhen),
+        altChord("modelPicker.cycleReasoning", "t", false, composerWhen),
+        altChord("modelPicker.cycleReasoningBackward", "t", true, composerWhen),
         // The picker popover is modal, so a second scoped copy of each chord
         // keeps cycling alive while it is open.
-        {
-          command: "modelPicker.cycleModel",
-          shortcut: {
-            key: "m",
-            mod: false,
-            meta: false,
-            control: false,
-            alt: true,
-            shift: false,
-          },
-          when: { all: ["mainSurface", "modelPickerOpen"], none: [] },
-        },
-        {
-          command: "modelPicker.cycleReasoning",
-          shortcut: {
-            key: "t",
-            mod: false,
-            meta: false,
-            control: false,
-            alt: true,
-            shift: false,
-          },
-          when: { all: ["mainSurface", "modelPickerOpen"], none: [] },
-        },
+        altChord("modelPicker.cycleModel", "m", false, pickerOpenWhen),
+        altChord("modelPicker.cycleModelBackward", "m", true, pickerOpenWhen),
+        altChord("modelPicker.cycleProvider", "p", false, pickerOpenWhen),
+        altChord(
+          "modelPicker.cycleProviderBackward",
+          "p",
+          true,
+          pickerOpenWhen,
+        ),
+        altChord("modelPicker.cycleReasoning", "t", false, pickerOpenWhen),
+        altChord(
+          "modelPicker.cycleReasoningBackward",
+          "t",
+          true,
+          pickerOpenWhen,
+        ),
       ]);
-      // No other default binding may use Alt, so the cycle chords cannot be
-      // shadowed by an earlier binding for the same chord.
+      // Alt defaults remain confined to composer cycling commands, so unrelated
+      // actions cannot shadow these chords.
       expect(
         assignedDefaultKeybindings
           .filter((binding) => binding.shortcut.alt)
-          .map((binding) => binding.command),
+          .map((binding) => ({
+            command: binding.command,
+            shift: binding.shortcut.shift,
+          })),
       ).toEqual([
-        "modelPicker.cycleModel",
-        "modelPicker.cycleReasoning",
-        "modelPicker.cycleModel",
-        "modelPicker.cycleReasoning",
+        { command: "modelPicker.cycleModel", shift: false },
+        { command: "modelPicker.cycleModelBackward", shift: true },
+        { command: "modelPicker.cycleProvider", shift: false },
+        { command: "modelPicker.cycleProviderBackward", shift: true },
+        { command: "modelPicker.cycleReasoning", shift: false },
+        { command: "modelPicker.cycleReasoningBackward", shift: true },
+        { command: "modelPicker.cycleModel", shift: false },
+        { command: "modelPicker.cycleModelBackward", shift: true },
+        { command: "modelPicker.cycleProvider", shift: false },
+        { command: "modelPicker.cycleProviderBackward", shift: true },
+        { command: "modelPicker.cycleReasoning", shift: false },
+        { command: "modelPicker.cycleReasoningBackward", shift: true },
       ]);
       expect(
         assignedDefaultKeybindings
@@ -245,24 +388,6 @@ describe("app keybindings", () => {
             when: binding.when,
           })),
       ).toEqual([
-        {
-          command: "pane.focus.previous",
-          desktopOnly: false,
-          key: "[",
-          mod: true,
-          control: false,
-          shift: true,
-          when: { all: ["mainSurface", "splitActive"], none: ["modalOpen"] },
-        },
-        {
-          command: "pane.focus.next",
-          desktopOnly: false,
-          key: "]",
-          mod: true,
-          control: false,
-          shift: true,
-          when: { all: ["mainSurface", "splitActive"], none: ["modalOpen"] },
-        },
         ...PANE_FOCUS_APP_COMMAND_IDS.flatMap((command, index) => [
           {
             command,

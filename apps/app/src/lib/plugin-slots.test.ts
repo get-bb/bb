@@ -3,7 +3,7 @@ import type {
   PluginHomepageSectionProps,
   PluginMessageDirectiveProps,
   PluginNavPanelProps,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 import {
   getPluginSlotSnapshot,
   removePluginSlotRegistrations,
@@ -103,6 +103,29 @@ describe("plugin slot store", () => {
     // The generation bumps per replacement so mount sites can remount slot
     // components (fresh error-boundary state) on reload.
     expect(snapshot.homepageSections[0]?.generation).toBe(2);
+  });
+
+  it("keeps New thread actions separate from thread-scoped actions", () => {
+    const ActionComponent = () => null;
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        threadPanelActions: [
+          { id: "thread", title: "Thread", component: ActionComponent },
+        ],
+        newThreadPanelActions: [
+          { id: "compose", title: "Compose", component: ActionComponent },
+        ],
+      }),
+    );
+
+    const snapshot = getPluginSlotSnapshot();
+    expect(snapshot.threadPanelActions.map((action) => action.id)).toEqual([
+      "thread",
+    ]);
+    expect(snapshot.newThreadPanelActions.map((action) => action.id)).toEqual([
+      "compose",
+    ]);
   });
 
   it("replaces composer customizations wholesale with generation metadata", () => {

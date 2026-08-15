@@ -34,8 +34,9 @@ The recommended way to start using bb is the desktop app:
 
 **[Download the latest desktop app](https://github.com/get-bb/bb/releases/tag/desktop-latest)**
 
-The desktop build is currently macOS Apple Silicon (arm64) only. Intel Mac and
-Linux users should run bb with `npx` instead. On Windows, run bb inside
+The desktop app supports macOS on Apple Silicon (arm64). The Linux x64 AppImage
+is alpha: expect problems, and please report them. Intel Mac users should run bb
+with `npx` instead. On Windows, run bb inside
 [WSL2 (Windows Subsystem for Linux)](https://learn.microsoft.com/windows/wsl/install):
 install WSL2 first, then run the same `npx` command below from your WSL2 (Linux)
 shell. Native Windows PowerShell and CMD are not supported.

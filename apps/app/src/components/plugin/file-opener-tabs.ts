@@ -1,4 +1,7 @@
-import type { PluginFileOpenerProps, PluginFileOpenerSource } from "@bb/plugin-sdk";
+import type {
+  PluginFileOpenerProps,
+  PluginFileOpenerSource,
+} from "@get-bb/plugin-sdk";
 import {
   createPluginPanelFixedPanelTab,
   type PluginPanelFixedPanelTab,
@@ -17,10 +20,6 @@ import type { OpenSecondaryPanelTabRequest } from "@/components/secondary-panel/
  * action tabs — same opener + same file focuses the existing tab.
  */
 export const FILE_OPENER_ACTION_ID_PREFIX = "file-opener:";
-
-export function isFileOpenerPanelTab(tab: PluginPanelFixedPanelTab): boolean {
-  return tab.actionId.startsWith(FILE_OPENER_ACTION_ID_PREFIX);
-}
 
 export function fileOpenerIdFromActionId(actionId: string): string | null {
   return actionId.startsWith(FILE_OPENER_ACTION_ID_PREFIX)
@@ -138,9 +137,10 @@ function fileForOpenRequest({
   request,
   resolvedEnvironmentId,
   threadId,
-}: Omit<CreateFileOpenerTabForRequestArgs, "fileOpeners" | "preference">):
-  | PluginFileOpenerProps
-  | null {
+}: Omit<
+  CreateFileOpenerTabForRequestArgs,
+  "fileOpeners" | "preference"
+>): PluginFileOpenerProps | null {
   switch (request.kind) {
     case "workspace-file-preview": {
       // Same guard as the built-in path, plus live-content-only rules.

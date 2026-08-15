@@ -13,6 +13,7 @@ import type {
   SelectedLineRange,
   SelectionSide,
 } from "@pierre/diffs";
+import { useResolvedCodeThemePair } from "@/lib/code-theme";
 import { FileDiff as DiffView } from "@pierre/diffs/react";
 import { useIntersectionObserver } from "usehooks-ts";
 import { Button } from "@bb/shared-ui/button";
@@ -607,9 +608,11 @@ function GitDiffCardImageBody({
   );
 }
 
+type DiffViewOptions = FileDiffOptions<undefined>;
+
 interface GitDiffCardRawDiffBodyProps {
   fileDiff: ParsedGitDiffFile;
-  fileDiffOptions: Record<string, string | boolean | number>;
+  fileDiffOptions: DiffViewOptions;
   onSelectionAddToChat?: (text: string) => void;
 }
 
@@ -628,7 +631,7 @@ interface DiffPatchLine {
 }
 
 function getDiffPatchDisplayStyle(
-  fileDiffOptions: Record<string, string | boolean | number>,
+  fileDiffOptions: DiffViewOptions,
 ): DiffPatchDisplayStyle {
   return fileDiffOptions.diffStyle === "split" ? "split" : "unified";
 }
@@ -1190,7 +1193,7 @@ interface GitDiffCardSvgBodyProps {
   enrichment: DiffFileEnrichmentState;
   fileDiff: ParsedGitDiffFile;
   fileDiffLabel: string;
-  fileDiffOptions: Record<string, string | boolean | number>;
+  fileDiffOptions: DiffViewOptions;
   onSelectionAddToChat?: (text: string) => void;
 }
 
@@ -1256,9 +1259,14 @@ export function GitDiffCardBody({
     shouldRenderDiffView,
     loadDeletedDiff,
   } = state;
-  const fileDiffOptions = useMemo(
-    () => ({ ...diffViewOptions, disableFileHeader: true }),
-    [diffViewOptions],
+  const codeTheme = useResolvedCodeThemePair();
+  const fileDiffOptions = useMemo<DiffViewOptions>(
+    () => ({
+      ...diffViewOptions,
+      disableFileHeader: true,
+      theme: codeTheme,
+    }),
+    [codeTheme, diffViewOptions],
   );
 
   return (

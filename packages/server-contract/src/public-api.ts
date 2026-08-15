@@ -138,6 +138,8 @@ import type {
   ReorderProjectRequest,
   ReorderQueuedMessageRequest,
   ResolvePendingInteractionRequest,
+  ResolveThreadMentionsRequest,
+  ResolveThreadMentionsResponse,
   RespondPluginInteractionRequest,
   AdmitInterruptThreadRequest,
   AdmitSendMessageRequest,
@@ -178,7 +180,6 @@ import type {
   TerminalResizeRequest,
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
-  ThreadComposerBootstrapResponse,
   ThreadEventWaitQuery,
   ThreadEventsQuery,
   ThreadSectionMutationResponse,
@@ -281,6 +282,7 @@ import {
   reorderProjectRequestSchema,
   reorderQueuedMessageRequestSchema,
   resolvePendingInteractionRequestSchema,
+  resolveThreadMentionsRequestSchema,
   respondPluginInteractionRequestSchema,
   admitInterruptThreadRequestSchema,
   admitSendMessageRequestSchema,
@@ -929,6 +931,14 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<ThreadSearchResponse>(),
     }),
+    resolveMentions: defineRoute({
+      path: "/threads/resolve-mentions",
+      method: "post",
+      request: jsonRequest<EmptyInput, ResolveThreadMentionsRequest>(
+        resolveThreadMentionsRequestSchema,
+      ),
+      response: jsonResponse<ResolveThreadMentionsResponse>(),
+    }),
     create: defineRoute({
       path: "/threads",
       method: "post",
@@ -1050,6 +1060,10 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<ContinueAfterProviderRateLimitResponse>(),
     }),
+    /**
+     * Replace an accepted root user turn and every later turn. A running
+     * thread is stopped and allowed to settle before history is rewritten.
+     */
     editMessage: defineRoute({
       path: "/threads/:id/edit-message",
       method: "post",
@@ -1057,13 +1071,6 @@ export const publicApiRoutes = {
         editMessageRequestSchema,
       ),
       response: jsonResponse<EditMessageResponse>(),
-    }),
-    /** @deprecated App code uses dedicated composer queries. */
-    composerBootstrap: defineRoute({
-      path: "/threads/:id/composer-bootstrap",
-      method: "get",
-      request: noRequest<PathId>(),
-      response: jsonResponse<ThreadComposerBootstrapResponse>(),
     }),
     queuedMessages: defineRoute({
       path: "/threads/:id/queued-messages",

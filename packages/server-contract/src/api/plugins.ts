@@ -83,6 +83,14 @@ export type PluginSourceHistoryEntry = z.infer<
 export const pluginSourceDetailSchema = z.object({
   requested: z.string(),
   resolved: z.string(),
+  /** Repository-relative plugin directory; absent for a root install. */
+  subdirectory: z.string().optional(),
+  /** Semver range over git tags; absent when the source names one ref. */
+  range: z.string().optional(),
+  /** Tag prefix the range matches; absent for repository-wide `vX.Y.Z` tags. */
+  tagPrefix: z.string().optional(),
+  /** Git tag the range resolved to; absent when the source names one ref. */
+  resolvedTag: z.string().optional(),
   integrity: z.string().optional(),
   registry: z.string().optional(),
   engines: z.object({
@@ -96,6 +104,8 @@ export type PluginSourceDetail = z.infer<typeof pluginSourceDetailSchema>;
 
 export const pluginUpdateStateSchema = z.object({
   outcome: pluginUpdateOutcomeSchema.optional(),
+  /** Actionable reason when bb could not verify the update source. */
+  detail: z.string().optional(),
   availableVersion: z.string().optional(),
   blockedVersion: z.string().optional(),
   blockedReasons: z.array(z.string()).optional(),
@@ -176,6 +186,14 @@ export const installedPluginSchema = z.object({
   provenance: z.enum(["builtin", "direct", "catalog"]),
   isOrphanedBuiltin: z.boolean(),
   catalogEntryId: z.string().optional(),
+  /** Marketplace that listed the entry; present only on catalog installs. */
+  catalogMarketplaceName: z.string().optional(),
+  /**
+   * Publisher badge: `BB Official` for a bundled plugin, the listing
+   * marketplace's display name for a catalog install, and null for a plugin
+   * the user added from a source, which has no publisher bb can vouch for.
+   */
+  publisherLabel: z.string().nullable(),
   sourceDisplay: z.string(),
   updateState: pluginUpdateStateSchema,
   enabled: z.boolean(),
@@ -203,15 +221,64 @@ export const pluginListResponseSchema = z.object({
 });
 export type PluginListResponse = z.infer<typeof pluginListResponseSchema>;
 
+/**
+ * Which plugin of a source an install selects. A repository can hold several
+ * plugins, indexed by a `.bb/plugins.json` collection manifest: "subdirectory"
+ * is the primitive, "entry" resolves a manifest entry name, and "root" installs
+ * the source directory itself.
+ */
+export const pluginSourceSelectionSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("root") }).strict(),
+  z
+    .object({ kind: z.literal("subdirectory"), path: z.string().min(1) })
+    .strict(),
+  z.object({ kind: z.literal("entry"), name: z.string().min(1) }).strict(),
+]);
+export type PluginSourceSelection = z.infer<typeof pluginSourceSelectionSchema>;
+
+export const ROOT_PLUGIN_SOURCE_SELECTION: PluginSourceSelection = {
+  kind: "root",
+};
+
 export const pluginInstallSourceRequestSchema = z
-  .object({ source: z.string().min(1) })
+  .object({
+    source: z.string().min(1),
+    selection: pluginSourceSelectionSchema.default(
+      ROOT_PLUGIN_SOURCE_SELECTION,
+    ),
+  })
   .strict();
 export type PluginInstallSourceRequest = z.infer<
   typeof pluginInstallSourceRequestSchema
 >;
 
+/** Marketplace names and entry ids share one shape: lowercase kebab-case. */
+export const PLUGIN_MARKETPLACE_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
+
+/**
+ * Reserved name of the marketplace BB curates. It cannot be added, cannot be
+ * removed, and is the only marketplace whose listings BB reviews.
+ */
+export const CURATED_PLUGIN_MARKETPLACE_NAME = "bb-community";
+
+export const pluginMarketplaceNameSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(PLUGIN_MARKETPLACE_NAME_PATTERN);
+
 export const pluginCatalogInstallRequestSchema = z
-  .object({ entryId: z.string().min(1) })
+  .object({
+    entryId: z.string().min(1),
+    /**
+     * Which marketplace lists the entry. Omitted resolves across every
+     * marketplace: exactly one match installs, none falls back to the bundled
+     * official plugin of that name, and several are refused as ambiguous.
+     */
+    marketplace: pluginMarketplaceNameSchema.optional(),
+    /** Source facts the user confirmed for a third-party marketplace entry. */
+    confirmedSource: z.lazy(() => pluginCatalogResolvedSourceSchema).optional(),
+  })
   .strict();
 export type PluginCatalogInstallRequest = z.infer<
   typeof pluginCatalogInstallRequestSchema
@@ -322,14 +389,48 @@ export type PluginCatalogStatusResponse = z.infer<
   typeof pluginCatalogStatusResponseSchema
 >;
 
+/** Display metadata of the person or organization behind a catalog entry. */
+export const pluginCatalogAuthorSchema = z.object({
+  name: z.string(),
+  /** The author's own URL, or their GitHub profile; null when neither is listed. */
+  url: z.string().nullable(),
+});
+export type PluginCatalogAuthor = z.infer<typeof pluginCatalogAuthorSchema>;
+
 export const pluginCatalogSearchResultSchema = z.object({
   entryId: z.string(),
   pluginId: z.string(),
   displayName: z.string(),
   description: z.string(),
   icon: z.string().nullable(),
+  /**
+   * BB-hosted URL of a cached marketplace icon image, or null when the entry
+   * names a host icon. The app never requests the marketplace's own URL.
+   */
+  iconUrl: z.string().nullable(),
   category: z.string(),
   source: z.string(),
+  /** Marketplace that lists the entry; plugins bundled with the app use `bb-community`. */
+  marketplace: z.string(),
+  marketplaceDisplayName: z.string(),
+  /**
+   * Stable identity of the publisher, for grouping. A marketplace names itself,
+   * so grouping on the label alone let a third-party marketplace merge its
+   * entries into another publisher's group by copying its display name.
+   * `builtin` for plugins bundled with the app; otherwise the marketplace name.
+   */
+  publisherKey: z.string(),
+  /**
+   * Publisher badge for the entry: the listing marketplace's display name, or
+   * `BB Official` for plugins bundled with the app. It is separate from
+   * `marketplaceDisplayName` because bundled plugins are grouped under the
+   * curated marketplace but are not published through it.
+   */
+  publisherLabel: z.string(),
+  /** Whether the listing marketplace is the reserved `bb-community` one. */
+  official: z.boolean(),
+  /** Null for plugins bundled with the app, which list no separate author. */
+  author: pluginCatalogAuthorSchema.nullable(),
   installed: z.boolean(),
   compatible: z.boolean(),
   incompatibleReason: z.string().nullable(),
@@ -343,4 +444,191 @@ export const pluginCatalogSearchResponseSchema = z.object({
 });
 export type PluginCatalogSearchResponse = z.infer<
   typeof pluginCatalogSearchResponseSchema
+>;
+
+/**
+ * The true source an install will run against, resolved before anything runs.
+ * Both kinds report the exact artifact they resolve to right now — a commit
+ * for git, a version and its integrity for npm — so a range or tag install is
+ * confirmed against the exact code it will fetch.
+ */
+export const pluginCatalogResolvedSourceSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("npm"),
+      package: z.string(),
+      /** Version range the listing tracks; absent when it names a dist-tag. */
+      range: z.string().optional(),
+      /** npm dist-tag the listing tracks; absent when it names a range. */
+      tag: z.string().optional(),
+      /** Registry override the listing pins; absent uses bb's default. */
+      registry: z.string().optional(),
+      /** Exact version the range or tag resolves to now; absent when unresolved. */
+      resolvedVersion: z.string().optional(),
+      /**
+       * Subresource integrity the registry publishes for that version; absent
+       * when the registry omits it, which bb reports rather than invents.
+       */
+      resolvedIntegrity: z.string().optional(),
+      /** Why bb could not resolve the version; absent once it resolved. */
+      unresolvedReason: z.string().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("git"),
+      url: z.string(),
+      /** Repository directory the entry lists; absent installs the root. */
+      subdir: z.string().optional(),
+      /** The single ref the listing pins; absent when it lists a range. */
+      ref: z.string().optional(),
+      /** Semver range over release tags; absent when the listing pins a ref. */
+      range: z.string().optional(),
+      /** Tag prefix the range matches; absent for repository-wide `vX.Y.Z` tags. */
+      tagPrefix: z.string().optional(),
+      /** Release tag the range resolves to now; absent when unresolved. */
+      resolvedTag: z.string().optional(),
+      /** Commit the ref or resolved tag points at now; absent when unresolved. */
+      resolvedCommit: z.string().optional(),
+      /** Why bb could not resolve the source; absent once it resolved. */
+      unresolvedReason: z.string().optional(),
+    })
+    .strict(),
+]);
+export type PluginCatalogResolvedSource = z.infer<
+  typeof pluginCatalogResolvedSourceSchema
+>;
+
+/**
+ * What `POST /plugin-catalog/install` would do with the same arguments, shown
+ * to the user before anything runs. `bundled` entries install from the copy
+ * inside the app; `marketplace` entries install from their listed source.
+ */
+export const pluginCatalogInstallPlanSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("bundled"),
+    entryId: z.string(),
+    pluginId: z.string(),
+    displayName: z.string(),
+    source: z.string(),
+    compatible: z.boolean(),
+    incompatibleReason: z.string().nullable(),
+  }),
+  z.object({
+    kind: z.literal("marketplace"),
+    entryId: z.string(),
+    pluginId: z.string(),
+    displayName: z.string(),
+    marketplace: z.string(),
+    marketplaceDisplayName: z.string(),
+    official: z.boolean(),
+    author: pluginCatalogAuthorSchema,
+    /** Install-pipeline spec bb runs for this entry. */
+    source: z.string(),
+    resolvedSource: pluginCatalogResolvedSourceSchema,
+    compatible: z.boolean(),
+    incompatibleReason: z.string().nullable(),
+  }),
+]);
+export type PluginCatalogInstallPlan = z.infer<
+  typeof pluginCatalogInstallPlanSchema
+>;
+
+export const pluginCatalogInstallPlanResponseSchema = z.object({
+  plan: pluginCatalogInstallPlanSchema,
+});
+export type PluginCatalogInstallPlanResponse = z.infer<
+  typeof pluginCatalogInstallPlanResponseSchema
+>;
+
+export const pluginMarketplaceSourceKindSchema = z.enum([
+  "https",
+  "git",
+  "path",
+]);
+export type PluginMarketplaceSourceKind = z.infer<
+  typeof pluginMarketplaceSourceKindSchema
+>;
+
+export const pluginMarketplaceSchema = z.object({
+  name: z.string(),
+  displayName: z.string(),
+  description: z.string().nullable(),
+  /** The reserved `bb-community` marketplace, which cannot be removed. */
+  official: z.boolean(),
+  sourceKind: pluginMarketplaceSourceKindSchema,
+  /** Canonical spec that re-adds this marketplace. */
+  source: z.string(),
+  /** Commit the last successful git refresh read; null for other kinds. */
+  resolvedCommit: z.string().nullable(),
+  entryCount: z.number(),
+  lastRefreshAt: z.number().nullable(),
+  lastAttemptAt: z.number().nullable(),
+  lastError: z.string().nullable(),
+});
+export type PluginMarketplace = z.infer<typeof pluginMarketplaceSchema>;
+
+export const pluginMarketplaceListResponseSchema = z.object({
+  marketplaces: z.array(pluginMarketplaceSchema),
+});
+export type PluginMarketplaceListResponse = z.infer<
+  typeof pluginMarketplaceListResponseSchema
+>;
+
+export const pluginMarketplaceAddRequestSchema = z
+  .object({
+    /**
+     * `https://<manifest-url>`, `git:<url>[@<ref>]`, or `path:<directory>`.
+     * The manifest's own `name` becomes the marketplace's identity.
+     */
+    source: z.string().min(1),
+  })
+  .strict();
+export type PluginMarketplaceAddRequest = z.infer<
+  typeof pluginMarketplaceAddRequestSchema
+>;
+
+export const pluginMarketplaceMutationResponseSchema = z.object({
+  ok: z.literal(true),
+  marketplace: pluginMarketplaceSchema,
+});
+export type PluginMarketplaceMutationResponse = z.infer<
+  typeof pluginMarketplaceMutationResponseSchema
+>;
+
+export const pluginMarketplaceRemoveResponseSchema = z.object({
+  ok: z.literal(true),
+  /** Installs whose provenance became `direct`; they keep running as before. */
+  convertedPluginIds: z.array(z.string()),
+});
+export type PluginMarketplaceRemoveResponse = z.infer<
+  typeof pluginMarketplaceRemoveResponseSchema
+>;
+
+export const pluginMarketplaceRefreshRequestSchema = z
+  .object({
+    /** One marketplace to refresh; omitted refreshes every one of them. */
+    name: pluginMarketplaceNameSchema.optional(),
+  })
+  .strict();
+export type PluginMarketplaceRefreshRequest = z.infer<
+  typeof pluginMarketplaceRefreshRequestSchema
+>;
+
+export const pluginMarketplaceRefreshResultSchema = z.object({
+  name: z.string(),
+  ok: z.boolean(),
+  error: z.string().nullable(),
+  /** State after the attempt; a failure keeps the last-known-good catalog. */
+  marketplace: pluginMarketplaceSchema,
+});
+export type PluginMarketplaceRefreshResult = z.infer<
+  typeof pluginMarketplaceRefreshResultSchema
+>;
+
+export const pluginMarketplaceRefreshResponseSchema = z.object({
+  results: z.array(pluginMarketplaceRefreshResultSchema),
+});
+export type PluginMarketplaceRefreshResponse = z.infer<
+  typeof pluginMarketplaceRefreshResponseSchema
 >;

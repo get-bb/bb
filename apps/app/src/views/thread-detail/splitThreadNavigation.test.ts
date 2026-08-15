@@ -12,9 +12,7 @@ import {
   applyThreadPaneActionToLayout,
   createSinglePaneLayout,
   focusedPaneRoute,
-  focusedThreadRoute,
   reconcileLayoutForContent,
-  reconcileLayoutForRoute,
 } from "./splitThreadNavigation";
 
 function twoPaneLayout(): SplitLayout {
@@ -43,66 +41,6 @@ function eightPaneLayout(): SplitLayout {
   }
   return layout;
 }
-
-describe("reconcileLayoutForRoute", () => {
-  it("seeds a single pane from the route when there is no layout (restore fallback)", () => {
-    const layout = reconcileLayoutForRoute(null, {
-      projectId: "p1",
-      threadId: "thread-1",
-    });
-
-    expect(listPanes(layout.root)).toHaveLength(1);
-    expect(layout.focusedPaneId).toBe("pane-1");
-    expect(findPaneByThread(layout.root, "p1", "thread-1")?.paneId).toBe(
-      "pane-1",
-    );
-  });
-
-  it("replaces only the focused pane's content, preserving the rest of the split", () => {
-    const before = twoPaneLayout();
-
-    const after = reconcileLayoutForRoute(before, {
-      projectId: "p1",
-      threadId: "thread-3",
-    });
-
-    // Layout shape preserved (still two panes); focused pane now shows thread-3.
-    expect(listPanes(after.root)).toHaveLength(2);
-    expect(after.focusedPaneId).toBe("pane-2");
-    expect(findPaneByThread(after.root, "p1", "thread-3")?.paneId).toBe(
-      "pane-2",
-    );
-    // The other pane is untouched.
-    expect(findPaneByThread(after.root, "p1", "thread-1")?.paneId).toBe(
-      "pane-1",
-    );
-    // thread-2 was displaced from the focused pane.
-    expect(findPaneByThread(after.root, "p1", "thread-2")).toBeNull();
-  });
-
-  it("focuses an existing pane instead of duplicating an already-open thread", () => {
-    const before = twoPaneLayout();
-
-    const after = reconcileLayoutForRoute(before, {
-      projectId: "p1",
-      threadId: "thread-1",
-    });
-
-    expect(listPanes(after.root)).toHaveLength(2);
-    expect(after.focusedPaneId).toBe("pane-1");
-  });
-
-  it("is a no-op when the route already matches the focused pane", () => {
-    const before = twoPaneLayout();
-
-    const after = reconcileLayoutForRoute(before, {
-      projectId: "p1",
-      threadId: "thread-2",
-    });
-
-    expect(after).toBe(before);
-  });
-});
 
 describe("mixed page navigation", () => {
   it("keeps New Thread as a singleton and focuses its existing pane", () => {
@@ -144,27 +82,6 @@ describe("mixed page navigation", () => {
   });
 });
 
-describe("focusedThreadRoute", () => {
-  it("reports the focused pane's thread so URL sync targets it", () => {
-    const layout = twoPaneLayout();
-
-    expect(focusedThreadRoute(layout)).toEqual({
-      projectId: "p1",
-      threadId: "thread-2",
-    });
-
-    // Reconciling to the other open thread focuses it, and URL sync follows.
-    const focusedOther = reconcileLayoutForRoute(layout, {
-      projectId: "p1",
-      threadId: "thread-1",
-    });
-    expect(focusedThreadRoute(focusedOther)).toEqual({
-      projectId: "p1",
-      threadId: "thread-1",
-    });
-  });
-});
-
 describe("applyThreadOpenToLayout", () => {
   it("splits from the focused pane and focuses the opened thread", () => {
     const before = twoPaneLayout();
@@ -175,10 +92,9 @@ describe("applyThreadOpenToLayout", () => {
     );
 
     expect(listPanes(after.root)).toHaveLength(3);
-    expect(focusedThreadRoute(after)).toEqual({
-      projectId: "p2",
-      threadId: "thread-3",
-    });
+    expect(findPaneByThread(after.root, "p2", "thread-3")?.paneId).toBe(
+      after.focusedPaneId,
+    );
   });
 
   it("focuses an already-open thread instead of duplicating it", () => {
@@ -237,6 +153,7 @@ describe("applyThreadPaneActionToLayout", () => {
     expect(result.layout.root).toEqual(before.root);
     expect(result.layout.focusedPaneId).toBe("pane-1");
     expect(result.maximizedPaneId).toBe("pane-1");
+    expect(result.dimInactiveSplits).toBeNull();
   });
 
   it("restores only the targeted maximized pane and toggles it back", () => {
@@ -247,7 +164,11 @@ describe("applyThreadPaneActionToLayout", () => {
       { projectId: "p1", threadId: "thread-2" },
       "restore",
     );
-    expect(restored).toEqual({ layout: before, maximizedPaneId: null });
+    expect(restored).toEqual({
+      layout: before,
+      maximizedPaneId: null,
+      dimInactiveSplits: null,
+    });
 
     const toggled = applyThreadPaneActionToLayout(
       restored.layout,
@@ -258,6 +179,27 @@ describe("applyThreadPaneActionToLayout", () => {
     expect(toggled.maximizedPaneId).toBe("pane-2");
   });
 
+  it.each([
+    ["spotlight", true],
+    ["clear-spotlight", false],
+  ] as const)(
+    "focuses the target for %s and returns the preference",
+    (action, expected) => {
+      const before = twoPaneLayout();
+      const result = applyThreadPaneActionToLayout(
+        before,
+        null,
+        { projectId: "p1", threadId: "thread-1" },
+        action,
+      );
+
+      expect(result.layout.root).toEqual(before.root);
+      expect(result.layout.focusedPaneId).toBe("pane-1");
+      expect(result.maximizedPaneId).toBeNull();
+      expect(result.dimInactiveSplits).toBe(expected);
+    },
+  );
+
   it("is a no-op when the target is not open", () => {
     const before = twoPaneLayout();
     expect(
@@ -267,6 +209,10 @@ describe("applyThreadPaneActionToLayout", () => {
         { projectId: "p1", threadId: "missing" },
         "maximize",
       ),
-    ).toEqual({ layout: before, maximizedPaneId: "pane-2" });
+    ).toEqual({
+      layout: before,
+      maximizedPaneId: "pane-2",
+      dimInactiveSplits: null,
+    });
   });
 });

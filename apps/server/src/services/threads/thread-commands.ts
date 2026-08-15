@@ -27,6 +27,7 @@ import {
 } from "@bb/domain";
 import {
   type HostDaemonCommand,
+  type ThreadStopIntent,
   type TurnSubmitTarget,
 } from "@bb/host-daemon-contract";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
@@ -58,6 +59,7 @@ export type ExecutionOptionsRequest = ExistingThreadExecutionInputRequest;
 export interface ThreadStopCommandArgs {
   environmentId: string;
   hostId: string;
+  intent: ThreadStopIntent;
   threadId: string;
   expectedTurnId?: string;
 }
@@ -638,6 +640,7 @@ export function buildThreadStopCommand(
   return {
     type: "thread.stop",
     environmentId: args.environmentId,
+    intent: args.intent,
     threadId: args.threadId,
     ...(args.expectedTurnId !== undefined
       ? { expectedTurnId: args.expectedTurnId }

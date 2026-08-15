@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { Task } from "../../shared/contract.js";
 
 // jsdom lacks ResizeObserver; cmdk's list observes its size on mount.

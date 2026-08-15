@@ -16,10 +16,12 @@
  */
 export {
   buildPluginApp,
+  RUNTIME_SLOT_BY_SPECIFIER,
   type PluginAppBuildResult,
 } from "./build-plugin-app.js";
 export {
   buildPluginServer,
+  PLUGIN_SERVER_EXTERNALS,
   type PluginServerBuildResult,
 } from "./build-plugin-server.js";
 export * from "./plugin-dev-loop.js";

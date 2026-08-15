@@ -1,6 +1,10 @@
 import path from "node:path";
 import { z } from "zod";
 import {
+  getAgentProviderServerCapabilities,
+  isAcpProviderId,
+} from "@bb/agent-providers";
+import {
   normalizeProviderThreadNameEvent,
   toProviderExternalThreadName,
 } from "@bb/domain";
@@ -25,6 +29,7 @@ import {
 import {
   getJsonRpcStringParam,
   ignoredJsonRpcResultSchema,
+  JsonRpcResponseError,
   type JsonRpcObject,
   parseJsonRpcLine,
   type SendJsonRpcRequestArgs,
@@ -32,6 +37,7 @@ import {
   sendJsonRpcRequest,
   settleJsonRpcResponse,
 } from "./runtime-json-rpc.js";
+import { ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE } from "./acp/bridge-protocol.js";
 import {
   handleRuntimeProviderRequest,
   type ResolveRuntimeProviderRequestThreadIdArgs,
@@ -124,6 +130,7 @@ interface ReapIdleProviderSessionCandidate {
 interface FindReapableIdleProviderSessionArgs {
   idleForMs: number;
   nowMs: number;
+  providerSessionReapingEnabled: boolean;
   threadId: string;
 }
 
@@ -164,6 +171,12 @@ interface ResolveThreadStoragePathArgs {
   threadId: string;
 }
 
+const providerThreadStopResultSchema = z
+  .object({
+    providerCheckpointId: z.string().min(1).nullable().optional(),
+  })
+  .passthrough();
+
 function defaultBridgeNodeEnv(): Record<string, string> | undefined {
   if (process.versions.electron === undefined) {
     return undefined;
@@ -196,6 +209,7 @@ interface ThreadRuntimeConfig {
   processKey: string;
   projectId?: string;
   providerId: string;
+  sessionRestorable: boolean;
   skillRoots: readonly AgentRuntimeSkillRoot[];
   workspacePath: string;
 }
@@ -237,6 +251,51 @@ const CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_TEXT_PATTERN =
   /\b(?:40[19]|429|auth(?:entication|orization)?|credits?|quota|rate[-\s]?limit(?:ed)?|unauthori[sz]ed|usage limit)\b/i;
 const CODEX_ARCHIVED_SESSION_ERROR_PATTERN =
   /\b(?:session|thread)\s+\S+\s+is archived\b/i;
+const CODEX_EMPTY_ROLLOUT_RENAME_ERROR_PATTERN = /\brollout at .+ is empty\b/i;
+const CODEX_RENAME_RETRY_DELAYS_MS = [50, 200] as const;
+
+async function delay(ms: number): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+interface SendRenameWithRolloutRetriesArgs {
+  onStderr: AgentRuntimeOptions["onStderr"];
+  providerId: string;
+  send: () => Promise<void>;
+  threadId: string;
+}
+
+/**
+ * A brand-new Codex rollout file can exist before its first record is written,
+ * and a rename landing in that window fails until Codex flushes. Retry only
+ * that error, backing off after each attempt, then make one final attempt
+ * whose failure propagates. Every other error fails immediately.
+ */
+async function sendRenameWithRolloutRetries(
+  args: SendRenameWithRolloutRetriesArgs,
+): Promise<void> {
+  for (const retryDelayMs of CODEX_RENAME_RETRY_DELAYS_MS) {
+    try {
+      await args.send();
+      return;
+    } catch (error) {
+      if (
+        args.providerId !== CODEX_PROVIDER_ID ||
+        !(error instanceof Error) ||
+        !CODEX_EMPTY_ROLLOUT_RENAME_ERROR_PATTERN.test(error.message)
+      ) {
+        throw error;
+      }
+      args.onStderr?.(
+        `Codex session rollout is not ready; retrying rename for thread "${args.threadId}" in ${retryDelayMs}ms.`,
+      );
+      await delay(retryDelayMs);
+    }
+  }
+  await args.send();
+}
 
 function resolveThreadStoragePath(
   args: ResolveThreadStoragePathArgs,
@@ -295,6 +354,7 @@ function createAgentRuntimeInternal(
       options.bridgeNodeExecutablePath ?? process.execPath,
     captureThreadExitState: (threadId) => ({
       activeTurnId: turnState.getActiveTurnId(threadId),
+      pendingTurnStart: pendingTurnStartThreadIds.has(threadId),
       providerThreadId:
         threadIdentityRegistry.getProviderThreadId(threadId) ?? null,
       threadId,
@@ -512,6 +572,19 @@ function createAgentRuntimeInternal(
     threadRuntimeConfigs.set(threadId, config);
   }
 
+  function updateSessionRestoreCapability(
+    threadId: string,
+    sessionRestorable: boolean | undefined,
+  ): void {
+    if (sessionRestorable === undefined) {
+      return;
+    }
+    const current = threadRuntimeConfigs.get(threadId);
+    if (current) {
+      threadRuntimeConfigs.set(threadId, { ...current, sessionRestorable });
+    }
+  }
+
   function clearThreadRuntimeConfig(threadId: string): void {
     codexThreadsRequiringAccountRestart.delete(threadId);
     idleProviderSessionSinceMsByThreadId.delete(threadId);
@@ -649,7 +722,15 @@ function createAgentRuntimeInternal(
     }
 
     const runtimeConfig = threadRuntimeConfigs.get(args.threadId);
-    if (runtimeConfig?.providerId !== CODEX_PROVIDER_ID) {
+    if (
+      !runtimeConfig ||
+      // The experiment extends release to every restorable provider. It does
+      // not gate release: Codex idle sessions are released without it, which
+      // is the behavior BB shipped before the experiment.
+      (args.providerSessionReapingEnabled
+        ? !runtimeConfig.sessionRestorable
+        : runtimeConfig.providerId !== CODEX_PROVIDER_ID)
+    ) {
       return null;
     }
 
@@ -907,6 +988,10 @@ function createAgentRuntimeInternal(
       instructionMode: currentConfig.instructionMode,
     };
     const plan = proc.adapter.buildCommandPlan(adapterCommand);
+    // The replacement session reports its own restore support. An updated
+    // agent can drop loadSession, and a stale `true` would let the idle sweep
+    // release a session that can no longer resume.
+    let sessionRestorable = currentConfig.sessionRestorable;
     if (plan.kind === "request") {
       const result = await sendCommand({
         proc,
@@ -925,6 +1010,9 @@ function createAgentRuntimeInternal(
       if (providerThreadId) {
         recordProviderThreadIdentity(proc, args.threadId, providerThreadId);
       }
+      if (result.sessionRestorable !== undefined) {
+        sessionRestorable = result.sessionRestorable;
+      }
       emitAcceptedCommandEvents({
         command: adapterCommand,
         proc,
@@ -936,6 +1024,7 @@ function createAgentRuntimeInternal(
     setThreadRuntimeConfig(args.threadId, {
       ...currentConfig,
       options: nextOptions,
+      sessionRestorable,
     });
   }
 
@@ -1308,6 +1397,9 @@ function createAgentRuntimeInternal(
             processKey,
             projectId,
             providerId,
+            sessionRestorable:
+              getAgentProviderServerCapabilities(providerId)
+                ?.supportsSessionRestore ?? false,
             skillRoots: providerSkillRoots,
             workspacePath: options.workspacePath,
           });
@@ -1377,6 +1469,7 @@ function createAgentRuntimeInternal(
             result,
             threadId,
           });
+          updateSessionRestoreCapability(threadId, result.sessionRestorable);
           if (providerThreadId) {
             recordProviderThreadIdentity(proc, threadId, providerThreadId);
           }
@@ -1658,6 +1751,9 @@ function createAgentRuntimeInternal(
             processKey,
             projectId,
             providerId,
+            sessionRestorable:
+              getAgentProviderServerCapabilities(providerId)
+                ?.supportsSessionRestore ?? false,
             skillRoots: providerSkillRoots,
             workspacePath: options.workspacePath,
           });
@@ -1727,6 +1823,7 @@ function createAgentRuntimeInternal(
             );
           }
           recordProviderThreadIdentity(proc, threadId, resolvedId);
+          updateSessionRestoreCapability(threadId, result.sessionRestorable);
           emitAcceptedCommandEvents({
             command: adapterCommand,
             proc,
@@ -1890,16 +1987,29 @@ function createAgentRuntimeInternal(
             plan: proc.adapter.buildCommandPlan(adapterCommand),
             providerId: pid,
           });
-          await sendCommand({
-            proc,
-            message: cmd,
-            resultSchema: ignoredJsonRpcResultSchema,
-            recovery: {
-              providerId: pid,
-              providerThreadId: adapterCommand.providerThreadId,
-              threadId,
-            },
-          });
+          try {
+            await sendCommand({
+              proc,
+              message: cmd,
+              resultSchema: ignoredJsonRpcResultSchema,
+              recovery: {
+                providerId: pid,
+                providerThreadId: adapterCommand.providerThreadId,
+                threadId,
+              },
+            });
+          } catch (error) {
+            if (
+              error instanceof JsonRpcResponseError &&
+              isAcpProviderId(pid) &&
+              error.code === ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE
+            ) {
+              turnState.clearThread(threadId);
+              proc.adapter.clearActiveTurnState?.(threadId);
+              return { status: "stale", activeTurnId: null };
+            }
+            throw error;
+          }
           emitAcceptedCommandEvents({
             command: adapterCommand,
             proc,
@@ -1916,7 +2026,11 @@ function createAgentRuntimeInternal(
         work: async () => {
           const activeTurnId = turnState.getActiveTurnId(threadId);
           if (expectedTurnId !== undefined && activeTurnId !== expectedTurnId) {
-            return { outcome: "stale" as const, activeTurnId };
+            return {
+              outcome: "stale" as const,
+              activeTurnId,
+              providerCheckpointId: null,
+            };
           }
           const pid = resolveProviderForThread(threadId);
           const proc = requireProviderProcessForThread(threadId);
@@ -1937,15 +2051,18 @@ function createAgentRuntimeInternal(
             }
             forgetThreadRuntimeState(proc, threadId);
             await shutdownThreadScopedCodexProcessIfIdle(proc);
-            return expectedTurnId === undefined
-              ? undefined
-              : { outcome: "applied" as const };
+            return {
+              providerCheckpointId: null,
+              ...(expectedTurnId === undefined
+                ? {}
+                : { outcome: "applied" as const }),
+            };
           }
 
-          await sendCommand({
+          const result = await sendCommand({
             proc,
             message: cmd,
-            resultSchema: ignoredJsonRpcResultSchema,
+            resultSchema: providerThreadStopResultSchema,
           });
           emitAcceptedCommandEvents({
             command: adapterCommand,
@@ -1954,9 +2071,12 @@ function createAgentRuntimeInternal(
           });
           forgetThreadRuntimeState(proc, threadId);
           await shutdownThreadScopedCodexProcessIfIdle(proc);
-          return expectedTurnId === undefined
-            ? undefined
-            : { outcome: "applied" as const };
+          return {
+            providerCheckpointId: result.providerCheckpointId ?? null,
+            ...(expectedTurnId === undefined
+              ? {}
+              : { outcome: "applied" as const }),
+          };
         },
       });
     },
@@ -2022,10 +2142,17 @@ function createAgentRuntimeInternal(
             plan: proc.adapter.buildCommandPlan(adapterCommand),
             providerId: pid,
           });
-          await sendCommand({
-            proc,
-            message: cmd,
-            resultSchema: ignoredJsonRpcResultSchema,
+          await sendRenameWithRolloutRetries({
+            onStderr: options.onStderr,
+            providerId: pid,
+            send: async () => {
+              await sendCommand({
+                proc,
+                message: cmd,
+                resultSchema: ignoredJsonRpcResultSchema,
+              });
+            },
+            threadId,
           });
           emitAcceptedCommandEvents({
             command: adapterCommand,
@@ -2111,39 +2238,72 @@ function createAgentRuntimeInternal(
       return threadIdentityRegistry.getProviderSession(threadId);
     },
 
-    async reapIdleProviderSessions({ idleForMs, nowMs }) {
+    async reapIdleProviderSessions({
+      idleForMs,
+      nowMs,
+      providerSessionReapingEnabled,
+      runThreadExclusive,
+    }) {
       const reapedSessions: ReapedIdleProviderSession[] = [];
       for (const threadId of [...threadRuntimeConfigs.keys()]) {
-        const candidate = findReapableIdleProviderSession({
-          idleForMs,
-          nowMs,
-          threadId,
-        });
-        if (!candidate) {
-          continue;
-        }
-
-        let proc: ProviderProcess;
-        try {
-          proc = requireProviderProcess({
-            processKey: candidate.runtimeConfig.processKey,
-            providerId: candidate.runtimeConfig.providerId,
+        const release = async (): Promise<ReapedIdleProviderSession | null> => {
+          const candidate = findReapableIdleProviderSession({
+            idleForMs,
+            nowMs,
+            providerSessionReapingEnabled,
+            threadId,
           });
-        } catch {
-          continue;
-        }
-        if (!isThreadScopedCodexProcess(proc)) {
-          continue;
-        }
+          if (!candidate) {
+            return null;
+          }
 
-        forgetThreadRuntimeState(proc, candidate.threadId);
-        await shutdownThreadScopedCodexProcessIfIdle(proc);
-        reapedSessions.push({
-          idleForMs: Math.max(0, nowMs - candidate.idleSinceMs),
-          providerId: candidate.runtimeConfig.providerId,
-          providerThreadId: candidate.providerThreadId,
-          threadId: candidate.threadId,
-        });
+          let proc: ProviderProcess;
+          try {
+            proc = requireProviderProcess({
+              processKey: candidate.runtimeConfig.processKey,
+              providerId: candidate.runtimeConfig.providerId,
+            });
+          } catch {
+            return null;
+          }
+          if (
+            providerSessionReapingEnabled
+              ? backgroundWorkState.hasOpenThreadWork(candidate.threadId) ||
+                (proc.adapter.hasOpenThreadWork?.({
+                  providerThreadId: candidate.providerThreadId,
+                  threadId: candidate.threadId,
+                }) ??
+                  false)
+              : !isThreadScopedCodexProcess(proc)
+          ) {
+            return null;
+          }
+
+          try {
+            await runtime.stopThread({ threadId: candidate.threadId });
+          } catch (error) {
+            // One damaged session must not block every later candidate, so
+            // report the failure and let the next pass retry this thread.
+            options.onStderr?.(
+              `Provider session release failed for ${candidate.threadId}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+            return null;
+          }
+          return {
+            idleForMs: Math.max(0, nowMs - candidate.idleSinceMs),
+            providerId: candidate.runtimeConfig.providerId,
+            providerThreadId: candidate.providerThreadId,
+            threadId: candidate.threadId,
+          };
+        };
+        const reaped = runThreadExclusive
+          ? await runThreadExclusive(threadId, release)
+          : await release();
+        if (reaped) {
+          reapedSessions.push(reaped);
+        }
       }
 
       return { reapedSessions };

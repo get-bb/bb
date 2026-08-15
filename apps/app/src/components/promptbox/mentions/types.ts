@@ -135,19 +135,24 @@ function commandSuggestionSearchNames(
 }
 
 /**
- * How directly the query names a command. Lower wins: the whole name, then a
- * name prefix, then a row that only matched through its description or argument
- * hint. An empty query prefix-matches everything, so it ranks every row alike.
+ * How directly the query names a command. Lower wins: the whole canonical
+ * name, then a namespaced skill's bare alias, then a name prefix, then a row
+ * that only matched through its description or argument hint. An empty query
+ * prefix-matches everything, so it ranks every row alike.
  */
 function commandSuggestionMatchRank(
   suggestion: ComposerCommandSuggestion,
   normalizedQuery: string,
 ): number {
-  const names = commandSuggestionSearchNames(suggestion);
-  if (names.includes(normalizedQuery)) {
+  const canonicalName = suggestion.name.toLowerCase();
+  if (canonicalName === normalizedQuery) {
     return 0;
   }
-  return names.some((name) => name.startsWith(normalizedQuery)) ? 1 : 2;
+  const names = commandSuggestionSearchNames(suggestion);
+  if (names.includes(normalizedQuery)) {
+    return 1;
+  }
+  return names.some((name) => name.startsWith(normalizedQuery)) ? 2 : 3;
 }
 
 /**

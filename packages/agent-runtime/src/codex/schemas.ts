@@ -8,7 +8,7 @@ import {
 import type { PendingInteractionCommandAction } from "@bb/domain";
 import { jsonRpcEnvelopeSchema } from "../shared/json-rpc-envelope.js";
 
-export const codexTurnStatusSchema = z.enum([
+const codexTurnStatusSchema = z.enum([
   "completed",
   "failed",
   "interrupted",
@@ -16,7 +16,7 @@ export const codexTurnStatusSchema = z.enum([
 ]);
 export type CodexTurnStatus = z.infer<typeof codexTurnStatusSchema>;
 
-export const codexItemStatusSchema = z.enum([
+const codexItemStatusSchema = z.enum([
   "inProgress",
   "completed",
   "failed",
@@ -52,7 +52,7 @@ type ZodObjectSchema = z.ZodObject<z.ZodRawShape>;
 
 const codexStringArraySchema = z.array(z.string());
 
-export const codexUserInputSchema = z.discriminatedUnion("type", [
+const codexUserInputSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("text"),
@@ -115,23 +115,20 @@ const codexFileChangeSchema = z
   })
   .passthrough();
 
-export const codexDynamicToolCallContentItemSchema = z.discriminatedUnion(
-  "type",
-  [
-    z
-      .object({
-        type: z.literal("inputText"),
-        text: z.string(),
-      })
-      .passthrough(),
-    z
-      .object({
-        type: z.literal("inputImage"),
-        imageUrl: z.string(),
-      })
-      .passthrough(),
-  ],
-);
+const codexDynamicToolCallContentItemSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("inputText"),
+      text: z.string(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("inputImage"),
+      imageUrl: z.string(),
+    })
+    .passthrough(),
+]);
 export type CodexDynamicToolCallContentItem = z.infer<
   typeof codexDynamicToolCallContentItemSchema
 >;
@@ -164,7 +161,7 @@ const codexWebSearchActionSchema = z.discriminatedUnion("type", [
     .passthrough(),
 ]);
 
-export const codexSimpleCommandApprovalDecisionSchema = z.enum([
+const codexSimpleCommandApprovalDecisionSchema = z.enum([
   "accept",
   "acceptForSession",
   "decline",
@@ -189,7 +186,7 @@ const codexNetworkPolicyAmendmentDecisionSchema = z.object({
   }),
 });
 
-export const codexCommandApprovalDecisionSchema = z.union([
+const codexCommandApprovalDecisionSchema = z.union([
   codexSimpleCommandApprovalDecisionSchema,
   codexExecPolicyAmendmentDecisionSchema,
   codexNetworkPolicyAmendmentDecisionSchema,
@@ -243,7 +240,7 @@ const codexAdditionalMacOsPermissionsSchema = z
   })
   .transform((value) => pendingInteractionMacOsPermissionsSchema.parse(value));
 
-export const codexAdditionalPermissionsSchema = z.object({
+const codexAdditionalPermissionsSchema = z.object({
   network: codexNetworkPermissionsSchema.nullable(),
   fileSystem: codexFileSystemPermissionsSchema.nullable(),
   macos: codexAdditionalMacOsPermissionsSchema.nullable().optional(),
@@ -252,7 +249,7 @@ export type CodexAdditionalPermissions = z.infer<
   typeof codexAdditionalPermissionsSchema
 >;
 
-export const codexRequestPermissionsSchema = z.object({
+const codexRequestPermissionsSchema = z.object({
   network: codexNetworkPermissionsSchema.nullable(),
   fileSystem: codexFileSystemPermissionsSchema.nullable(),
 });
@@ -480,7 +477,7 @@ const codexErrorHttpStatusSchema = z
   })
   .strip();
 
-export const codexErrorInfoSchema = z.union([
+const codexErrorInfoSchema = z.union([
   z.literal("contextWindowExceeded"),
   z.literal("usageLimitExceeded"),
   z.literal("serverOverloaded"),
@@ -686,7 +683,7 @@ const codexRawOtherResponseItemSchema = z
   })
   .passthrough();
 
-export const codexRawResponseItemSchema = z.discriminatedUnion("type", [
+const codexRawResponseItemSchema = z.discriminatedUnion("type", [
   codexRawMessageResponseItemSchema,
   codexRawReasoningResponseItemSchema,
   codexRawLocalShellCallResponseItemSchema,
@@ -772,7 +769,7 @@ const codexSpendControlLimitSnapshotSchema = z
   })
   .passthrough();
 
-export const codexRateLimitSnapshotUpdateSchema = z
+const codexRateLimitSnapshotUpdateSchema = z
   .object({
     limitId: z.string().nullable().optional(),
     limitName: z.string().nullable().optional(),

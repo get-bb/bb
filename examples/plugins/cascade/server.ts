@@ -7,8 +7,8 @@
 //
 // It deliberately does NOT proxy thread content: the frontend renders the
 // host's own `ThreadChat`, which loads and streams its own timeline.
-import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
-import type { NewThreadRequest } from "@bb/plugin-sdk/app";
+import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
+import type { NewThreadRequest } from "@get-bb/plugin-sdk/app";
 import { z } from "zod";
 
 const LAYOUT_KEY = "layout";
@@ -126,7 +126,10 @@ export const rpcContract = defineRpcContract({
     }),
     output: okSchema,
   },
-  archiveThread: { input: z.object({ threadId: z.string().min(1) }), output: okSchema },
+  archiveThread: {
+    input: z.object({ threadId: z.string().min(1) }),
+    output: okSchema,
+  },
   unarchiveThread: {
     input: z.object({ threadId: z.string().min(1) }),
     output: okSchema,
@@ -143,12 +146,18 @@ export const rpcContract = defineRpcContract({
     }),
     output: z.object({ threadId: z.string() }),
   },
-  createSection: { input: z.object({ name: z.string().min(1) }), output: namedSchema },
+  createSection: {
+    input: z.object({ name: z.string().min(1) }),
+    output: namedSchema,
+  },
   renameSection: {
     input: z.object({ id: z.string().min(1), name: z.string().min(1) }),
     output: okSchema,
   },
-  deleteSection: { input: z.object({ id: z.string().min(1) }), output: okSchema },
+  deleteSection: {
+    input: z.object({ id: z.string().min(1) }),
+    output: okSchema,
+  },
 });
 
 export default async function plugin(bb: BbPluginApi) {

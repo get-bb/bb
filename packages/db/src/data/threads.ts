@@ -18,7 +18,6 @@ import type {
   EnvironmentWorkspaceDisplayKind,
   ReasoningLevel,
   ThreadChangeKind,
-  ThreadChildOrigin,
   ThreadLifecycleEvent,
   ThreadLifecycleNoopReason,
   ThreadOriginKind,
@@ -38,6 +37,7 @@ import type { DbNotifier } from "../notifier.js";
 import {
   environments,
   pendingInteractions,
+  projects,
   threadSearchSegments,
   threads,
 } from "../schema.js";
@@ -285,8 +285,6 @@ export interface CreateThreadInput {
   parentThreadId?: string | null;
   sourceThreadId?: string | null;
   originKind?: ThreadOriginKind | null;
-  /** @deprecated Use originKind. */
-  childOrigin?: ThreadChildOrigin | null;
   /** Plugin attribution for create origin "plugin". */
   originPluginId?: string | null;
   visibility?: ThreadVisibility;
@@ -300,7 +298,7 @@ export function createThread(
   const visibility = input.visibility ?? "visible";
   const now = Date.now();
   const id = input.id ?? createThreadId();
-  const originKind = input.originKind ?? input.childOrigin ?? null;
+  const originKind = input.originKind ?? null;
   const thread = db.transaction(
     (tx) => {
       const createdThread = tx
@@ -320,7 +318,6 @@ export function createThread(
             input.sourceThreadId ??
             (originKind === null ? null : input.parentThreadId ?? null),
           originKind,
-          childOrigin: null,
           originPluginId: input.originPluginId ?? null,
           visibility,
           lastReadAt: now,
@@ -351,6 +348,43 @@ export function getThread(db: ThreadWriteConnection, id: string) {
   return db.select().from(threads).where(eq(threads.id, id)).get() ?? null;
 }
 
+export interface ThreadMentionRow {
+  id: string;
+  projectId: string;
+  title: string | null;
+  titleFallback: string | null;
+}
+
+/**
+ * Resolves an exact bounded ID set without loading unrelated threads. Deleted
+ * threads and threads whose project was deleted are intentionally absent.
+ */
+export function listThreadMentionRowsByIds(
+  db: DbQueryConnection,
+  threadIds: readonly string[],
+): ThreadMentionRow[] {
+  if (threadIds.length === 0) {
+    return [];
+  }
+  return db
+    .select({
+      id: threads.id,
+      projectId: threads.projectId,
+      title: threads.title,
+      titleFallback: threads.titleFallback,
+    })
+    .from(threads)
+    .innerJoin(projects, eq(projects.id, threads.projectId))
+    .where(
+      and(
+        inArray(threads.id, [...threadIds]),
+        isNull(threads.deletedAt),
+        isNull(projects.deletedAt),
+      ),
+    )
+    .all();
+}
+
 export interface ListThreadsOptions {
   projectId?: string;
   archived?: boolean;
@@ -367,8 +401,6 @@ export interface ListThreadsOptions {
   originKind?: ThreadOriginKind;
   /** Restrict to threads spawned by this plugin. */
   originPluginId?: string;
-  /** @deprecated Use originKind. */
-  childOrigin?: ThreadChildOrigin;
   limit?: number;
   offset?: number;
   /** Hidden threads are excluded unless explicitly opted in. */
@@ -615,10 +647,6 @@ export interface ListHostThreadIdsArgs {
   hostId: string;
 }
 
-export interface ListTrackedThreadStorageTargetsOnHostArgs {
-  hostId: string;
-}
-
 export interface ThreadEnvironmentAssignmentRow {
   environmentId: string;
   threadId: string;
@@ -659,7 +687,6 @@ function statusTransitionNeedsAttention(args: StatusTransition): boolean {
 }
 
 function buildListThreadsFilters(options: ListThreadsOptions) {
-  const originKind = options.originKind ?? options.childOrigin;
   return [
     options.projectId ? eq(threads.projectId, options.projectId) : undefined,
     options.sectionId ? eq(threads.sectionId, options.sectionId) : undefined,
@@ -672,8 +699,8 @@ function buildListThreadsFilters(options: ListThreadsOptions) {
     options.sourceThreadId
       ? eq(threads.sourceThreadId, options.sourceThreadId)
       : undefined,
-    originKind
-      ? eq(threads.originKind, originKind)
+    options.originKind
+      ? eq(threads.originKind, options.originKind)
       : undefined,
     options.originPluginId
       ? eq(threads.originPluginId, options.originPluginId)
@@ -1355,32 +1382,6 @@ export function listHostThreadIds(
     .where(eq(environments.hostId, args.hostId))
     .all()
     .map((row) => row.id);
-}
-
-/**
- * Threads whose storage the daemon should track for a host. Archived
- * and deleted thread storage can be reaped, so those rows must not trigger
- * reprime work.
- */
-export function listTrackedThreadStorageTargetsOnHost(
-  db: DbConnection,
-  args: ListTrackedThreadStorageTargetsOnHostArgs,
-): ThreadEnvironmentAssignmentRow[] {
-  return db
-    .select({
-      threadId: threads.id,
-      environmentId: environments.id,
-    })
-    .from(threads)
-    .innerJoin(environments, eq(threads.environmentId, environments.id))
-    .where(
-      and(
-        eq(environments.hostId, args.hostId),
-        ne(environments.status, "destroyed"),
-        liveThreads(),
-      ),
-    )
-    .all();
 }
 
 export function hasPendingThreadShutdownInEnvironment(

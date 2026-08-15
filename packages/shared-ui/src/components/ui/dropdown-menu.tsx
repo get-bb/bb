@@ -158,7 +158,7 @@ const DropdownMenuContent = React.forwardRef<
   ) => {
     const { isCompactViewport, open, onOpenChange } = useResponsiveMenu();
     // Unconditional (rules of hooks — the compact branch returns early); the
-    // compact drawer path is covered by DrawerContent's own stamp.
+    // compact drawer path is covered by the persistent drawer shell.
     const scopeProps = usePortalScopeProps();
 
     if (isCompactViewport) {
@@ -168,7 +168,6 @@ const DropdownMenuContent = React.forwardRef<
           open={open}
           onOpenChange={onOpenChange}
           srLabel={mobileTitle ?? "Menu"}
-          repositionInputs={false}
         >
           <div
             ref={ref}

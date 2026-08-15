@@ -48,6 +48,12 @@
       }
     ]
   },
+  "linux": {
+    "category": "Development",
+    "executableName": "bb",
+    "icon": "assets/icon.png",
+    "target": [{ "target": "AppImage", "arch": ["x64"] }]
+  },
   "dmg": {
     "sign": false
   },

@@ -87,6 +87,7 @@ export interface CreateDesktopWindowFactoryArgs {
   createWindowStateKey(): WindowStateKey;
   displayWorkAreas: DisplayWorkArea[] | null;
   icon: DesktopWindowIcon;
+  isMac: boolean;
   isQuitting(): boolean;
   openExternalUrl(args: OpenExternalUrlArgs): void;
   preloadPath: string;
@@ -136,6 +137,7 @@ interface LoadUrlIntoWindowArgs {
 interface CreateWindowOptionsArgs {
   bounds: WindowBounds;
   icon: DesktopWindowIcon;
+  isMac: boolean;
   preloadPath: string;
 }
 
@@ -166,15 +168,19 @@ function createWindowOptions(
   args: CreateWindowOptionsArgs,
 ): BrowserWindowConstructorOptions {
   return {
-    frame: false,
+    ...(args.isMac
+      ? {
+          frame: false,
+          titleBarStyle: "hiddenInset" as const,
+          trafficLightPosition: MACOS_TRAFFIC_LIGHT_POSITION,
+        }
+      : {}),
     height: args.bounds.height,
     icon: args.icon,
     minHeight: MIN_WINDOW_HEIGHT,
     minWidth: MIN_WINDOW_WIDTH,
     show: false,
     title: "bb",
-    titleBarStyle: "hiddenInset",
-    trafficLightPosition: MACOS_TRAFFIC_LIGHT_POSITION,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -231,6 +237,7 @@ export function createDesktopWindowFactory(
         createWindowOptions({
           bounds: restoredState.bounds,
           icon: args.icon,
+          isMac: args.isMac,
           preloadPath: args.preloadPath,
         }),
       );

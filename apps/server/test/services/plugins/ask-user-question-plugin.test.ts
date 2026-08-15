@@ -32,6 +32,7 @@ describe("ask-user-question builtin plugin", () => {
     harness = await createTestAppHarness();
     const entry = await harness.pluginService.install(
       builtinPluginSource("ask-user-question"),
+      { kind: "root" },
     );
     expect(entry.statusDetail ?? "").toBe("");
     expect(entry.status).toBe("running");

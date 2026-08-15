@@ -17,6 +17,7 @@ import {
   type CapturedBridgeJsonRpcOutput,
 } from "../../test/bridge-json-rpc-test-helpers.js";
 import { handleLine } from "./bridge.js";
+import { ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE } from "../bridge-protocol.js";
 import { ACP_BRIDGE_MCP_SERVER_NAME } from "./tool-proxy-mcp.js";
 
 const FAKE_AGENT_PATH = resolve(
@@ -1706,8 +1707,34 @@ describe("acp bridge", () => {
     }
   });
 
-  it("chains steer input onto the active turn", async () => {
-    const { providerThreadId } = await startThread();
+  it("cancels a hung prompt and continues the same turn with steer input", async () => {
+    const { bbThreadId, providerThreadId } = await startThread();
+    const turnId = sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "hang", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+
+    const steerId = sendRequest("turn/steer", {
+      threadId: providerThreadId,
+      expectedTurnId: "turn-1",
+      input: [{ type: "text", text: "steered", mentions: [] }],
+    });
+    await waitForResponse(steerId);
+
+    const completed = await waitForTurnCompleted();
+    expect(completed.params).toEqual({
+      threadId: bbThreadId,
+      stopReason: "end_turn",
+    });
+    expect(agentMessageTexts()).toContain("echo:steered");
+    expect(agentMessageTexts()).not.toContain("echo:hang");
+    expect(notifications("acp/turn/started")).toHaveLength(1);
+    expect(notifications("acp/turn/completed")).toHaveLength(1);
+  });
+
+  it("keeps partial output from the cancelled prompt then continues", async () => {
+    const { bbThreadId, providerThreadId } = await startThread();
     const turnId = sendRequest("turn/start", {
       threadId: providerThreadId,
       input: [{ type: "text", text: "slow first", mentions: [] }],
@@ -1726,9 +1753,78 @@ describe("acp bridge", () => {
     });
     await waitForResponse(steerId);
 
-    await waitForTurnCompleted();
+    const completed = await waitForTurnCompleted();
+    expect(completed.params).toEqual({
+      threadId: bbThreadId,
+      stopReason: "end_turn",
+    });
+    expect(agentMessageTexts()).toContain("echo:slow first");
     expect(agentMessageTexts()).toContain("echo:steered");
-    // One bb turn spans both prompts.
+    expect(notifications("acp/turn/started")).toHaveLength(1);
+    expect(notifications("acp/turn/completed")).toHaveLength(1);
+  });
+
+  it("delivers stacked steers on the same turn", async () => {
+    const { bbThreadId, providerThreadId } = await startThread();
+    const turnId = sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "hang", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+
+    const firstSteerId = sendRequest("turn/steer", {
+      threadId: providerThreadId,
+      expectedTurnId: "turn-1",
+      input: [{ type: "text", text: "first-steer", mentions: [] }],
+    });
+    const secondSteerId = sendRequest("turn/steer", {
+      threadId: providerThreadId,
+      expectedTurnId: "turn-1",
+      input: [{ type: "text", text: "second-steer", mentions: [] }],
+    });
+    await waitForResponse(firstSteerId);
+    await waitForResponse(secondSteerId);
+
+    const completed = await waitForTurnCompleted();
+    expect(completed.params).toEqual({
+      threadId: bbThreadId,
+      stopReason: "end_turn",
+    });
+    expect(agentMessageTexts()).toContain("echo:first-steer");
+    expect(agentMessageTexts()).toContain("echo:second-steer");
+    expect(notifications("acp/turn/started")).toHaveLength(1);
+    expect(notifications("acp/turn/completed")).toHaveLength(1);
+  });
+
+  it("cancels a stacked steer prompt that also hangs", async () => {
+    const { bbThreadId, providerThreadId } = await startThread();
+    const turnId = sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "hang", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+
+    // The first steer also hangs, so the second steer must trigger a second
+    // cancel instead of waiting for a prompt that never finishes.
+    const firstSteerId = sendRequest("turn/steer", {
+      threadId: providerThreadId,
+      expectedTurnId: "turn-1",
+      input: [{ type: "text", text: "hang again", mentions: [] }],
+    });
+    const secondSteerId = sendRequest("turn/steer", {
+      threadId: providerThreadId,
+      expectedTurnId: "turn-1",
+      input: [{ type: "text", text: "second-steer", mentions: [] }],
+    });
+    await waitForResponse(firstSteerId);
+    await waitForResponse(secondSteerId);
+
+    const completed = await waitForTurnCompleted();
+    expect(completed.params).toEqual({
+      threadId: bbThreadId,
+      stopReason: "end_turn",
+    });
+    expect(agentMessageTexts()).toContain("echo:second-steer");
     expect(notifications("acp/turn/started")).toHaveLength(1);
     expect(notifications("acp/turn/completed")).toHaveLength(1);
   });
@@ -1741,6 +1837,7 @@ describe("acp bridge", () => {
       input: [{ type: "text", text: "late", mentions: [] }],
     });
     const response = await waitForResponse(steerId);
+    expect(response.error?.code).toBe(ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE);
     expect(response.error?.message).toMatch(/No active turn/);
   });
 
@@ -1764,6 +1861,143 @@ describe("acp bridge", () => {
     startedProviderThreadIds.pop();
   });
 
+  it("forks an advertised ACP session with the target cwd and MCP servers", async () => {
+    const forkLog = join(workspaceDir, "fork-params.json");
+    const forkId = sendRequest("thread/fork", {
+      threadId: "thread-fork",
+      sourceProviderThreadId: "source-session",
+      cwd: workspaceDir,
+      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
+      permissionMode: "full",
+      permissionEscalation: null,
+      workspaceWriteRoots: [workspaceDir],
+      envVars: {
+        FAKE_ACP_FORK_SESSION: "1",
+        FAKE_ACP_FORK_LOG: forkLog,
+        FAKE_ACP_MODELS_FIELD: "1",
+      },
+      modelSelection: { modelId: "fake/strong" },
+      dynamicTools: [
+        {
+          name: "fork_tool",
+          description: "Tool available to the fork",
+          inputSchema: { type: "object" },
+        },
+      ],
+    });
+    const response = await waitForResponse(forkId);
+    const result = response.result;
+    if (
+      typeof result !== "object" ||
+      result === null ||
+      Array.isArray(result) ||
+      typeof result.providerThreadId !== "string"
+    ) {
+      throw new Error("thread/fork did not return a providerThreadId");
+    }
+    startedProviderThreadIds.push(result.providerThreadId);
+    expect(result.providerThreadId).toMatch(/^fake-fork-/u);
+
+    await waitForFileWithRealTimer(forkLog);
+    expect(JSON.parse(readFileSync(forkLog, "utf8"))).toMatchObject({
+      sessionId: "source-session",
+      cwd: workspaceDir,
+      mcpServers: [{ name: ACP_BRIDGE_MCP_SERVER_NAME }],
+    });
+    expect(notifications("thread/identity").at(-1)?.params).toEqual({
+      threadId: "thread-fork",
+      providerThreadId: result.providerThreadId,
+    });
+
+    sendRequest("turn/start", {
+      threadId: result.providerThreadId,
+      input: [{ type: "text", text: "echo-mcp-servers", mentions: [] }],
+    });
+    await waitForTurnCompleted();
+    expect(agentMessageTexts()).toContain(
+      `mcp-servers:${ACP_BRIDGE_MCP_SERVER_NAME}`,
+    );
+
+    const completedTurnCount = notifications("acp/turn/completed").length;
+    sendRequest("turn/start", {
+      threadId: result.providerThreadId,
+      input: [{ type: "text", text: "echo-selected-model", mentions: [] }],
+    });
+    await waitFor(
+      () =>
+        notifications("acp/turn/completed").length > completedTurnCount
+          ? notifications("acp/turn/completed").at(-1)
+          : undefined,
+      "second acp/turn/completed notification",
+    );
+    expect(agentMessageTexts()).toContain("selected-model:fake/strong");
+  });
+
+  it("rejects a checkpoint fork before session/fork", async () => {
+    const forkLog = join(workspaceDir, "checkpoint-fork-params.json");
+    const forkId = sendRequest("thread/fork", {
+      threadId: "thread-checkpoint-fork",
+      sourceProviderThreadId: "source-session",
+      sourceProviderCheckpointId: "message-7",
+      cwd: workspaceDir,
+      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
+      permissionMode: "full",
+      permissionEscalation: null,
+      workspaceWriteRoots: [workspaceDir],
+      envVars: { FAKE_ACP_FORK_SESSION: "1", FAKE_ACP_FORK_LOG: forkLog },
+    });
+
+    const response = await waitForResponse(forkId);
+    expect(response.error?.message).toMatch(
+      /does not support a session\/fork checkpoint/u,
+    );
+    expect(existsSync(forkLog)).toBe(false);
+    expect(notifications("thread/identity")).toEqual([]);
+  });
+
+  it("rejects a fork result that reuses the source session id", async () => {
+    const forkId = sendRequest("thread/fork", {
+      threadId: "thread-colliding-fork",
+      sourceProviderThreadId: "source-session",
+      cwd: workspaceDir,
+      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
+      permissionMode: "full",
+      permissionEscalation: null,
+      workspaceWriteRoots: [workspaceDir],
+      envVars: {
+        FAKE_ACP_FORK_SESSION: "1",
+        FAKE_ACP_FORK_REUSE_SOURCE_ID: "1",
+      },
+    });
+
+    const response = await waitForResponse(forkId);
+    expect(response.error?.message).toMatch(
+      /returned an active session ID for session\/fork/u,
+    );
+    expect(notifications("thread/identity")).toEqual([]);
+  });
+
+  it("rejects fork before session/fork when the agent omits the capability", async () => {
+    const forkLog = join(workspaceDir, "unsupported-fork-params.json");
+    const forkId = sendRequest("thread/fork", {
+      threadId: "thread-unsupported-fork",
+      sourceProviderThreadId: "source-session",
+      cwd: workspaceDir,
+      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
+      permissionMode: "full",
+      permissionEscalation: null,
+      workspaceWriteRoots: [workspaceDir],
+      envVars: { FAKE_ACP_FORK_LOG: forkLog },
+    });
+
+    const response = await waitForResponse(forkId);
+    expect(response.error?.message).toMatch(
+      /does not advertise session\/fork support/u,
+    );
+    expect(existsSync(forkLog)).toBe(false);
+    expect(notifications("thread/identity")).toEqual([]);
+  });
+
   it("resumes via session/load when the agent supports it", async () => {
     const first = await startThread({
       envVars: { FAKE_ACP_LOAD_SESSION: "1" },
@@ -1784,6 +2018,7 @@ describe("acp bridge", () => {
     const response = await waitForResponse(resumeId);
     expect(response.result).toEqual({
       providerThreadId: first.providerThreadId,
+      sessionRestorable: true,
     });
     expect(notifications("acp/warning")).toHaveLength(0);
     startedProviderThreadIds.push(first.providerThreadId);
@@ -1812,6 +2047,7 @@ describe("acp bridge", () => {
     const response = await waitForResponse(resumeId);
     expect(response.result).toEqual({
       providerThreadId: first.providerThreadId,
+      sessionRestorable: true,
     });
     expect(notifications("acp/update").at(-1)?.params).toEqual({
       threadId: first.bbThreadId,
@@ -1848,6 +2084,7 @@ describe("acp bridge", () => {
     const response = await waitForResponse(resumeId);
     expect(response.result).toEqual({
       providerThreadId: first.providerThreadId,
+      sessionRestorable: true,
     });
     expect(notifications("acp/update")).toEqual([]);
     startedProviderThreadIds.push(first.providerThreadId);
@@ -1920,6 +2157,7 @@ describe("acp bridge", () => {
     const response = await waitForResponse(resumeId);
     expect(response.result).toEqual({
       providerThreadId: first.providerThreadId,
+      sessionRestorable: true,
     });
     startedProviderThreadIds.push(first.providerThreadId);
 

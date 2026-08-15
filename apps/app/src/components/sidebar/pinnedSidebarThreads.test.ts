@@ -21,7 +21,6 @@ function createThread(
     originKind: null,
     originPluginId: null,
     visibility: "visible",
-    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     pinSortKey: null,

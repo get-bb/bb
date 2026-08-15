@@ -1,6 +1,7 @@
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { roundDurationMs } from "../lib/duration.js";
 import type { ServerLogger } from "../../types.js";
+import { takeEventLoopWorkWindowSnapshot } from "./event-loop-work.js";
 
 export interface EventLoopStallMonitorOptions {
   logger: Pick<ServerLogger, "info">;
@@ -29,6 +30,7 @@ export function startEventLoopStallMonitor(
 
   const interval = setInterval(() => {
     const maxDelayMs = nanosecondsToMilliseconds(histogram.max);
+    const work = takeEventLoopWorkWindowSnapshot();
     if (maxDelayMs >= DEFAULT_EVENT_LOOP_STALL_LOG_THRESHOLD_MS) {
       // `info`, not `debug`: the packaged app runs at `info`, so a `debug` line
       // here is unreachable in production — which is exactly where a stalled
@@ -37,6 +39,9 @@ export function startEventLoopStallMonitor(
       // dynamic tool call and interactive request, so it delays real agent
       // work, not just UI refreshes. Threshold-gated, so a healthy server
       // stays silent.
+      // currentWork is still in flight. lastWork is the latest finish.
+      // slowestWork is the longest unit in this histogram window, so a later
+      // heartbeat cannot hide the block that produced histogram.max.
       options.logger.info(
         {
           intervalMs: DEFAULT_EVENT_LOOP_STALL_MONITOR_INTERVAL_MS,
@@ -49,6 +54,7 @@ export function startEventLoopStallMonitor(
           ),
           resolutionMs: DEFAULT_EVENT_LOOP_STALL_MONITOR_RESOLUTION_MS,
           thresholdMs: DEFAULT_EVENT_LOOP_STALL_LOG_THRESHOLD_MS,
+          ...work,
         },
         "Event loop stalled",
       );

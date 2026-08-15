@@ -25,6 +25,10 @@ export type LandingEvent =
       properties: { placement: CtaPlacement };
     }
   | {
+      name: "landing_x_clicked";
+      properties: { placement: CtaPlacement };
+    }
+  | {
       name: "landing_cli_command_copied";
       properties: { placement: CtaPlacement; command: string };
     }

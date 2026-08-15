@@ -146,6 +146,32 @@ describe("theme.css neutral ramp", () => {
     );
   });
 
+  it("resolves the open-in-split thread tint to an opaque sidebar color", () => {
+    const rule = css.match(
+      /\.bb-sidebar-open-in-split-row\s*\{([^}]*)\}/s,
+    )?.[1];
+
+    expect(rule).toContain("color-mix(");
+    expect(rule).toContain("in oklch");
+    expect(rule).toContain("var(--sidebar-accent) 50%");
+    expect(rule).toContain("var(--sidebar)");
+    expect(rule).not.toContain("transparent");
+
+    const stickyRule = css.match(
+      /\[data-sidebar-sticky-tier\]\.bb-sidebar-open-in-split-row\s*\{([^}]*)\}/s,
+    )?.[1];
+    expect(stickyRule).toContain("background-image: linear-gradient(");
+    expect(
+      stickyRule?.match(/var\(--bb-sidebar-open-in-split-background\)/g),
+    ).toHaveLength(2);
+
+    const interactiveRule = css.match(
+      /\[data-sidebar-sticky-tier\]\.bb-sidebar-open-in-split-row:is\([^{]+\)\s*\{([^}]*)\}/s,
+    )?.[1];
+    expect(interactiveRule).toContain("background-image: linear-gradient(");
+    expect(interactiveRule?.match(/var\(--sidebar-accent\)/g)).toHaveLength(2);
+  });
+
   for (const mode of MODES) {
     describe(mode, () => {
       const block = modeBlock(mode);

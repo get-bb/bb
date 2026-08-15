@@ -46,6 +46,7 @@ function seedFailedRateLimitedTurn(
   harness: TestAppHarness,
   options: {
     environmentStatus?: "ready" | "retiring";
+    rateLimitBeforeTurn?: boolean;
     rateLimits?: ProviderRateLimitState;
     steeredAfterOutput?: boolean;
     withOutput?: boolean;
@@ -104,25 +105,39 @@ function seedFailedRateLimitedTurn(
       },
     },
   });
+  let nextSequence = 3;
+  if (options.rateLimitBeforeTurn) {
+    seedEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId: environment.id,
+      providerThreadId,
+      sequence: nextSequence,
+      type: "provider/rateLimits/updated",
+      scope: threadScope(),
+      data: { providerThreadId, rateLimits },
+    });
+    nextSequence += 1;
+  }
   seedEvent(harness.deps, {
     threadId: thread.id,
     environmentId: environment.id,
     providerThreadId,
-    sequence: 3,
+    sequence: nextSequence,
     type: "turn/started",
     scope: turnScope(turnId),
     data: { providerThreadId },
   });
+  nextSequence += 1;
   seedEvent(harness.deps, {
     threadId: thread.id,
     environmentId: environment.id,
     providerThreadId,
-    sequence: 4,
+    sequence: nextSequence,
     type: "turn/input/accepted",
     scope: turnScope(turnId),
     data: { providerThreadId, clientRequestId: FAILED_REQUEST_ID },
   });
-  let nextSequence = 5;
+  nextSequence += 1;
   if (options.steeredAfterOutput) {
     seedEvent(harness.deps, {
       threadId: thread.id,
@@ -173,16 +188,18 @@ function seedFailedRateLimitedTurn(
     });
     nextSequence += 1;
   }
-  seedEvent(harness.deps, {
-    threadId: thread.id,
-    environmentId: environment.id,
-    providerThreadId,
-    sequence: nextSequence,
-    type: "provider/rateLimits/updated",
-    scope: threadScope(),
-    data: { providerThreadId, rateLimits },
-  });
-  nextSequence += 1;
+  if (!options.rateLimitBeforeTurn) {
+    seedEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId: environment.id,
+      providerThreadId,
+      sequence: nextSequence,
+      type: "provider/rateLimits/updated",
+      scope: threadScope(),
+      data: { providerThreadId, rateLimits },
+    });
+    nextSequence += 1;
+  }
   if (!options.withoutRateLimitError) {
     seedEvent(harness.deps, {
       threadId: thread.id,
@@ -253,6 +270,29 @@ describe("provider rate-limit recovery", () => {
           automatic: true,
           resetsAtMs: RESET_AT_MS,
           rateLimits: RATE_LIMITS,
+        },
+      });
+    });
+  });
+
+  it("inherits the last blocked state when a later 429 has no rate-limit update", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedFailedRateLimitedTurn(harness, {
+        rateLimitBeforeTurn: true,
+      });
+
+      expect(
+        getProviderRateLimitRecoveryStatus(harness.deps, {
+          environment: fixture.environment,
+          thread: fixture.thread,
+        }),
+      ).toMatchObject({
+        reason: "eligible",
+        rateLimits: RATE_LIMITS,
+        candidate: {
+          failedRequestId: FAILED_REQUEST_ID,
+          rateLimits: RATE_LIMITS,
+          resetsAtMs: RESET_AT_MS,
         },
       });
     });
@@ -349,6 +389,36 @@ describe("provider rate-limit recovery", () => {
     });
   });
 
+  it("rejects automatic recovery when the current candidate is manual-only", async () => {
+    await withTestHarness(async (harness) => {
+      const creditsRateLimits: ProviderRateLimitState = {
+        ...RATE_LIMITS,
+        kind: "credits",
+        windows: [],
+      };
+      const fixture = seedFailedRateLimitedTurn(harness, {
+        rateLimits: creditsRateLimits,
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${fixture.thread.id}/rate-limit-recovery/continue`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            failedRequestId: FAILED_REQUEST_ID,
+            mode: "automatic",
+          }),
+        },
+      );
+
+      expect(response.status).toBe(409);
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", fixture.thread.id),
+      ).toHaveLength(0);
+    });
+  });
+
   it("keeps the safe candidate when a later observation reports allowed", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedFailedRateLimitedTurn(harness);
@@ -406,26 +476,25 @@ describe("provider rate-limit recovery", () => {
 
       const thread = getThread(harness.db, fixture.thread.id);
       expect(thread?.status).toBe("active");
-      const continuation = listEvents(harness.db, {
+      const events = listEvents(harness.db, {
         threadId: fixture.thread.id,
-      })
-        .map((row) =>
-          parseStoredThreadEvent({
-            type: row.type,
-            data: JSON.parse(row.data) as Record<string, unknown>,
-            providerThreadId: row.providerThreadId,
-            scope:
-              row.scopeKind === "turn" && row.turnId
-                ? turnScope(row.turnId)
-                : threadScope(),
-            threadId: row.threadId,
-          }),
-        )
-        .find(
-          (event) =>
-            event.type === "client/turn/requested" &&
-            event.continuationOfRequestId === FAILED_REQUEST_ID,
-        );
+      }).map((row) =>
+        parseStoredThreadEvent({
+          type: row.type,
+          data: JSON.parse(row.data) as Record<string, unknown>,
+          providerThreadId: row.providerThreadId,
+          scope:
+            row.scopeKind === "turn" && row.turnId
+              ? turnScope(row.turnId)
+              : threadScope(),
+          threadId: row.threadId,
+        }),
+      );
+      const continuation = events.find(
+        (event) =>
+          event.type === "client/turn/requested" &&
+          event.continuationOfRequestId === FAILED_REQUEST_ID,
+      );
       expect(continuation).toMatchObject({
         type: "client/turn/requested",
         initiator: "system",
@@ -437,6 +506,20 @@ describe("provider rate-limit recovery", () => {
             visibility: "agent-only",
           },
         ],
+      });
+      expect(
+        events.find(
+          (event) =>
+            event.type === "system/operation" &&
+            event.operation === "provider_rate_limit_recovery",
+        ),
+      ).toMatchObject({
+        message: "Provider rate limit retry requested manually",
+        metadata: {
+          mode: "manual",
+          failedRequestId: FAILED_REQUEST_ID,
+          resetsAtMs: RESET_AT_MS,
+        },
       });
       const [command] = listQueuedThreadCommands(
         harness,
@@ -469,7 +552,10 @@ describe("provider rate-limit recovery", () => {
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ failedRequestId: FAILED_REQUEST_ID }),
+          body: JSON.stringify({
+            failedRequestId: FAILED_REQUEST_ID,
+            mode: "manual",
+          }),
         },
       );
       expect(repeated.status).toBe(409);
@@ -489,7 +575,10 @@ describe("provider rate-limit recovery", () => {
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ failedRequestId: FAILED_REQUEST_ID }),
+          body: JSON.stringify({
+            failedRequestId: FAILED_REQUEST_ID,
+            mode: "automatic",
+          }),
         },
       );
 

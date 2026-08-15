@@ -1,5 +1,7 @@
 import {
   registrySkillDetailSchema,
+  registrySkillEntriesRequestSchema,
+  registrySkillEntriesResponseSchema,
   registrySkillInstallRequestSchema,
   registrySkillInstallResponseSchema,
   registryRepositoryStarsSchema,
@@ -9,6 +11,7 @@ import {
   type RegistryRepositoryStars,
   type RegistrySkill,
   type RegistrySkillDetail,
+  type RegistrySkillEntriesResponse,
   type RegistrySkillInstallResponse,
   type RegistrySkillsPage,
   type SkillContentResponse,
@@ -63,6 +66,10 @@ export interface RegistrySkillIdArgs extends AbortableArgs {
   registrySkillId: string;
 }
 
+export interface RegistrySkillEntriesArgs extends AbortableArgs {
+  registrySkillIds: readonly string[];
+}
+
 export interface RegistrySkillSourceArgs extends AbortableArgs {
   source: string;
   skillId: string;
@@ -82,6 +89,7 @@ export interface RegistrySkillInstallArgs {
 
 export interface SkillsRegistryArea {
   detail(args: RegistrySkillSourceArgs): Promise<RegistrySkillDetail>;
+  entries(args: RegistrySkillEntriesArgs): Promise<RegistrySkillEntriesResponse>;
   get(args: RegistrySkillIdArgs): Promise<RegistrySkill>;
   install(
     args: RegistrySkillInstallArgs,
@@ -128,6 +136,21 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
         `/api/v1/skills-registry/detail?${query.toString()}`,
         registrySkillDetailSchema,
         { signal: input.signal },
+      );
+    },
+    async entries(input) {
+      const body = registrySkillEntriesRequestSchema.parse({
+        ids: [...input.registrySkillIds],
+      });
+      return requestParsed(
+        "/api/v1/skills-registry/entries",
+        registrySkillEntriesResponseSchema,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+          signal: input.signal,
+        },
       );
     },
     async get(input) {

@@ -1,4 +1,4 @@
-import { defineRpcContract } from "@bb/plugin-sdk";
+import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   TASK_SORTS,
@@ -790,6 +790,12 @@ export const tasksRpcContract = defineRpcContract({
             .strict(),
         ),
       })
+      .strict(),
+  },
+  sidebarOpenTaskCount: {
+    input: z.null(),
+    output: z
+      .object({ openTaskCount: z.number().int().nonnegative() })
       .strict(),
   },
   sidebarSummary: {

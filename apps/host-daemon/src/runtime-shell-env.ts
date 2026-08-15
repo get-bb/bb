@@ -1,12 +1,12 @@
 import { spawn } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
-import { basename, delimiter, dirname, resolve } from "node:path";
+import { basename, delimiter, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentRuntimeOptions } from "@bb/agent-runtime";
 import { assignIfDefined } from "@bb/config/objects";
 
-interface ResolveLocalBbExecutableDirectoryOptions {
+interface ResolveLocalBbExecutablePathOptions {
   cliExecutablePath?: string;
 }
 
@@ -336,19 +336,11 @@ export async function resolveUserShellPath(
   return null;
 }
 
-export async function resolveLocalBbExecutableDirectory(
-  options: ResolveLocalBbExecutableDirectoryOptions = {},
-): Promise<string> {
-  const cliEntryPath = await resolveLocalBbExecutablePath(options);
-  return dirname(cliEntryPath);
-}
-
 /**
  * Absolute path to the local bb CLI entry used for agent shell injection.
- * Prefer this over directory-only resolution when setting `BB_CLI`.
  */
 export async function resolveLocalBbExecutablePath(
-  options: ResolveLocalBbExecutableDirectoryOptions = {},
+  options: ResolveLocalBbExecutablePathOptions = {},
 ): Promise<string> {
   const resolvedCliExecutablePath =
     options.cliExecutablePath ?? getDefaultCliExecutablePath();

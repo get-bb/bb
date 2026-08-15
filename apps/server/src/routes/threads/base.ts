@@ -4,6 +4,7 @@ import {
   countNonDeletedAssignedChildThreads,
   getEnvironment,
   getThreadSectionById,
+  listThreadMentionRowsByIds,
   listThreadsWithPendingInteractionState,
   markThreadDeleted,
   searchThreadsWithPendingInteractionState,
@@ -22,6 +23,7 @@ import {
   type ThreadSearchResponse,
   type ThreadWithIncludesResponse,
   type PublicApiSchema,
+  type ResolveThreadMentionsResponse,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
 import type { AppDeps } from "../../types.js";
@@ -126,6 +128,20 @@ function buildThreadResponse(
 
 function countNonWhitespaceChars(value: string): number {
   return value.replaceAll(/\s/gu, "").length;
+}
+
+function threadMentionLabel(thread: {
+  id: string;
+  title: string | null;
+  titleFallback: string | null;
+}): string {
+  if (thread.title && thread.title.trim().length > 0) {
+    return thread.title;
+  }
+  if (thread.titleFallback && thread.titleFallback.trim().length > 0) {
+    return thread.titleFallback;
+  }
+  return `Thread ${thread.id.slice(0, 8)}`;
 }
 
 function parseSearchLimitPerGroup(value: string | undefined): number {
@@ -238,7 +254,6 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       ...(query.unsectioned === "true" ? { unsectioned: true } : {}),
       ...(query.originKind ? { originKind: query.originKind } : {}),
       ...(query.originPluginId ? { originPluginId: query.originPluginId } : {}),
-      ...(query.childOrigin ? { childOrigin: query.childOrigin } : {}),
       includeHidden: query.includeHidden === "true",
       archived:
         query.archived === undefined ? undefined : query.archived === "true",
@@ -274,6 +289,30 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
         }),
       }) satisfies ThreadSearchResponse,
     );
+  });
+
+  post(routes.resolveMentions, (context, payload) => {
+    const uniqueThreadIds = [...new Set(payload.threadIds)];
+    const rowsById = new Map(
+      listThreadMentionRowsByIds(deps.db, uniqueThreadIds).map((thread) => [
+        thread.id,
+        thread,
+      ]),
+    );
+    const resolved = uniqueThreadIds.flatMap((threadId) => {
+      const thread = rowsById.get(threadId);
+      if (thread === undefined) {
+        return [];
+      }
+      return [
+        {
+          threadId: thread.id,
+          projectId: thread.projectId,
+          label: threadMentionLabel(thread),
+        },
+      ];
+    });
+    return context.json(resolved satisfies ResolveThreadMentionsResponse);
   });
 
   post(routes.create, async (context, payload) => {

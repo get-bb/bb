@@ -6,8 +6,11 @@ import {
   mkdir,
   readFile,
   readdir,
+  realpath,
+  rename,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
@@ -17,19 +20,24 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createConnection,
+  getInstalledPlugin,
   getInstalledPluginRegistration,
   listPluginArtifacts,
   migrate,
   type DbConnection,
 } from "@bb/db";
+import { ROOT_PLUGIN_SOURCE_SELECTION } from "@bb/server-contract";
 import type { Logger } from "@bb/logger";
 import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import { validatePluginArtifactMeta } from "../../../src/services/plugins/app-bundle.js";
 import {
   gitArtifactCacheDir,
+  gitRangeSourceSpec,
+  hashInstallDir,
   npmArtifactCacheDir,
   parsePluginSource,
+  runInstallCommand,
 } from "../../../src/services/plugins/install-sources.js";
 import {
   createPluginService,
@@ -143,8 +151,8 @@ describe("plugin install sources", () => {
     expect(parsePluginSource("git:github.com/acme/bb-plugin-foo@v1")).toEqual({
       kind: "git",
       url: "https://github.com/acme/bb-plugin-foo",
-      ref: "v1",
-      installDir: "github.com/acme/bb-plugin-foo@v1",
+      spec: "v1",
+      selector: { kind: "ref", ref: "v1" },
       cachePath: "github.com/acme/bb-plugin-foo",
     });
     expect(
@@ -158,20 +166,20 @@ describe("plugin install sources", () => {
     expect(parsePluginSource("https://github.com/acme/bb-plugin-foo")).toEqual({
       kind: "git",
       url: "https://github.com/acme/bb-plugin-foo",
-      ref: "HEAD",
-      installDir: "github.com/acme/bb-plugin-foo@HEAD",
+      spec: "HEAD",
+      selector: { kind: "ref", ref: "HEAD" },
       cachePath: "github.com/acme/bb-plugin-foo",
     });
     expect(
       parsePluginSource("https://github.com/acme/bb-plugin-foo/"),
     ).toMatchObject({
       kind: "git",
-      ref: "HEAD",
+      spec: "HEAD",
       cachePath: "github.com/acme/bb-plugin-foo",
     });
     expect(parsePluginSource("git:github.com/acme/repo")).toMatchObject({
       kind: "git",
-      ref: "HEAD",
+      spec: "HEAD",
     });
     expect(() => parsePluginSource("git:github.com/acme/repo@")).toThrowError(
       /empty ref/,
@@ -185,6 +193,55 @@ describe("plugin install sources", () => {
     expect(() =>
       parsePluginSource("git:github.com/acme/repo@-evil"),
     ).toThrowError(/invalid git ref/);
+  });
+
+  it("reads git semver ranges, explicit selectors, and tag prefixes", () => {
+    // A range operator means a range; a bare version token stays the tag it
+    // almost always is.
+    for (const spec of ["^1.2.0", "~1.2", "1.x", ">=1.0.0 <2.0.0", "*"]) {
+      expect(
+        parsePluginSource(`git:github.com/acme/repo@${spec}`),
+      ).toMatchObject({
+        selector: { kind: "ref-or-range", ref: spec, range: spec },
+      });
+    }
+    for (const spec of ["v1", "v1.2", "1.2.3", "main", "release/next"]) {
+      expect(
+        parsePluginSource(`git:github.com/acme/repo@${spec}`),
+      ).toMatchObject({ selector: { kind: "ref", ref: spec } });
+    }
+    expect(
+      parsePluginSource("git:github.com/acme/repo@semver:^1.2.0"),
+    ).toMatchObject({
+      spec: "semver:^1.2.0",
+      selector: { kind: "range", range: "^1.2.0", tagPrefix: "" },
+    });
+    expect(
+      parsePluginSource("git:github.com/acme/repo@semver:notes/:^1.2.0"),
+    ).toMatchObject({
+      selector: { kind: "range", range: "^1.2.0", tagPrefix: "notes/" },
+    });
+    expect(parsePluginSource("git:github.com/acme/repo@ref:1.x")).toMatchObject(
+      { selector: { kind: "ref", ref: "1.x" } },
+    );
+    expect(
+      gitRangeSourceSpec({
+        url: "https://github.com/acme/repo.git",
+        range: "^1.2.0",
+        tagPrefix: "notes/",
+      }),
+    ).toBe("git:https://github.com/acme/repo.git@semver:notes/:^1.2.0");
+    for (const spec of [
+      "semver:not a range",
+      "semver:a:b:^1.0.0",
+      "semver:../evil/:^1.0.0",
+      "ref:",
+      "weird:ref",
+    ]) {
+      expect(() =>
+        parsePluginSource(`git:github.com/acme/repo@${spec}`),
+      ).toThrow();
+    }
   });
 
   it("classifies omitted, exact, range, and dist-tag npm specs", () => {
@@ -217,6 +274,9 @@ describe("plugin install sources", () => {
       spec: "",
       specKind: "default",
     });
+    expect(() => parsePluginSource("npm:--registry@latest")).toThrow(
+      /invalid npm package name/,
+    );
   });
 
   it("treats bare non-URL strings and path: as local paths with no managed dir", () => {
@@ -228,6 +288,16 @@ describe("plugin install sources", () => {
       kind: "path",
       path: "/tmp/my-plugin",
     });
+  });
+
+  it("enforces parsed command output limits in UTF-8 bytes", async () => {
+    await expect(
+      runInstallCommand(
+        process.execPath,
+        ["-e", "process.stdout.write('é'.repeat(3))"],
+        { maxStdoutBytes: 5 },
+      ),
+    ).rejects.toThrow(/more than 5 bytes/);
   });
 
   it("keeps scoped npm and nested git cache paths inside their roots", () => {
@@ -307,7 +377,7 @@ describe("plugin install flows", () => {
       const commit = await commitAll(repoDir, "init");
 
       const source = `git:${repoDir}`;
-      const entry = await service.install(source);
+      const entry = await service.install(source, { kind: "root" });
 
       expect(entry).toMatchObject({
         id: "default-branch",
@@ -325,6 +395,143 @@ describe("plugin install flows", () => {
       });
     });
 
+    it("stamps catalog provenance for a git official catalog entry", async () => {
+      const repoDir = join(workDir, "repo-catalog");
+      await writePluginFixture(repoDir, { name: "bb-plugin-catalog-git" });
+      await initGitRepo(repoDir);
+      const commit = await commitAll(repoDir, "init");
+      await git(repoDir, ["branch", "plugin/catalog-git"]);
+
+      const source = `git:${repoDir}@plugin/catalog-git`;
+      const entry = await service.installCatalogPlugin({
+        marketplace: "bb-community",
+        entryId: "catalog-git-entry",
+        pluginId: "catalog-git",
+        source,
+        selection: ROOT_PLUGIN_SOURCE_SELECTION,
+      });
+
+      expect(entry).toMatchObject({
+        id: "catalog-git",
+        source,
+        provenance: "catalog",
+        catalogEntryId: "catalog-git-entry",
+        catalogMarketplaceName: "bb-community",
+        status: "running",
+      });
+      expect(getInstalledPluginRegistration(db, "catalog-git")).toMatchObject({
+        provenance: "catalog",
+        catalogEntryId: "catalog-git-entry",
+        catalogMarketplaceName: "bb-community",
+        sourceKind: "git",
+        sourceGitUrl: repoDir,
+        sourceGitRequestedRef: "plugin/catalog-git",
+        sourceGitRefKind: "branch",
+        gitResolvedCommit: commit,
+      });
+    });
+
+    it("refuses a git commit that changed after marketplace confirmation", async () => {
+      const repoDir = join(workDir, "repo-catalog-confirmed");
+      await writePluginFixture(repoDir, { name: "bb-plugin-confirmed" });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "initial");
+
+      await expect(
+        service.installCatalogPlugin({
+          marketplace: "acme-plugins",
+          entryId: "confirmed",
+          pluginId: "confirmed",
+          source: `git:${repoDir}@main`,
+          selection: { kind: "root" },
+          expectedGitCommit: "f".repeat(40),
+        }),
+      ).rejects.toThrow(/git source changed after confirmation/u);
+      expect(getInstalledPlugin(db, "confirmed")).toBeUndefined();
+    });
+
+    // A listing declares no ranges, so nothing rejects this entry before the
+    // clone. The plugin's own package.json is the only source of truth, and
+    // the install pipeline must read it and refuse.
+    it("refuses a catalog entry whose plugin requires another plugin SDK", async () => {
+      const repoDir = join(workDir, "repo-catalog-sdk-too-new");
+      await writePluginFixture(repoDir, {
+        name: "bb-plugin-sdk-listed",
+        pluginSdkRange: ">=99.0.0",
+      });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "init");
+      await git(repoDir, ["branch", "plugin/listed"]);
+
+      await expect(
+        service.installCatalogPlugin({
+          marketplace: "bb-community",
+          entryId: "sdk-listed",
+          pluginId: "sdk-listed",
+          source: `git:${repoDir}@plugin/listed`,
+          selection: ROOT_PLUGIN_SOURCE_SELECTION,
+        }),
+      ).rejects.toThrow(
+        new RegExp(
+          `install refused.*requires bb plugin SDK >=99\\.0\\.0, running SDK is ${PLUGIN_SDK_VERSION.replaceAll(".", "\\.")}`,
+          "u",
+        ),
+      );
+      expect(getInstalledPluginRegistration(db, "sdk-listed")).toBeUndefined();
+    });
+
+    it("refuses a listed npm registry that is not a public https host", async () => {
+      for (const registry of [
+        "https://127.0.0.1/registry",
+        "https://localhost/registry",
+        "https://registry.acme.test:8443/",
+        "https://user:secret@registry.acme.test/",
+      ]) {
+        await expect(
+          service.installCatalogPlugin({
+            marketplace: "bb-community",
+            entryId: "catalog-npm-entry",
+            pluginId: "registry",
+            source: "npm:bb-plugin-registry@^1.0.0",
+            selection: ROOT_PLUGIN_SOURCE_SELECTION,
+            npmRegistry: registry,
+          }),
+        ).rejects.toThrow(/marketplace/);
+      }
+      expect(
+        getInstalledPluginRegistration(db, "registry"),
+      ).toBeUndefined();
+    });
+
+    it("guards a listed npm registry while it resolves an install plan", async () => {
+      await expect(
+        service.resolveCatalogNpmSource({
+          packageName: "bb-plugin-registry",
+          registry: "https://localhost/registry",
+          requestedSpec: "latest",
+          specKind: "tag",
+        }),
+      ).rejects.toThrow(/not public/u);
+    });
+
+    it("refuses a git catalog install whose manifest id differs from the entry", async () => {
+      const repoDir = join(workDir, "repo-catalog-mismatch");
+      await writePluginFixture(repoDir, { name: "bb-plugin-imposter" });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "init");
+      await git(repoDir, ["branch", "plugin/imposter"]);
+
+      await expect(
+        service.installCatalogPlugin({
+          marketplace: "bb-community",
+          entryId: "catalog-git-entry",
+          pluginId: "expected-id",
+          source: `git:${repoDir}@plugin/imposter`,
+          selection: ROOT_PLUGIN_SOURCE_SELECTION,
+        }),
+      ).rejects.toThrow(/expects "expected-id"/);
+    });
+
     it("clones a pinned tag into its exact immutable cache dir and loads it", async () => {
       const repoDir = join(workDir, "repo");
       await writePluginFixture(repoDir, { name: "bb-plugin-gitty" });
@@ -333,7 +540,7 @@ describe("plugin install flows", () => {
       await git(repoDir, ["tag", "v1"]);
 
       const source = `git:${repoDir}@v1`;
-      const entry = await service.install(source);
+      const entry = await service.install(source, { kind: "root" });
       expect(entry.id).toBe("gitty");
       expect(entry.status).toBe("running");
       expect(entry.source).toBe(source);
@@ -359,15 +566,141 @@ describe("plugin install flows", () => {
       });
     });
 
+    it("resolves a semver range over release tags and tracks compatible", async () => {
+      const repoDir = join(workDir, "repo-range");
+      await writePluginFixture(repoDir, { name: "bb-plugin-ranger" });
+      await initGitRepo(repoDir);
+      const first = await commitAll(repoDir, "init");
+      await git(repoDir, ["tag", "v1.0.0"]);
+      await writeFile(join(repoDir, "note.txt"), "1.1.0");
+      const second = await commitAll(repoDir, "1.1.0");
+      await git(repoDir, ["tag", "-a", "v1.1.0", "-m", "1.1.0"]);
+      await writeFile(join(repoDir, "note.txt"), "2.0.0");
+      await commitAll(repoDir, "2.0.0");
+      await git(repoDir, ["tag", "v2.0.0"]);
+      await writeFile(join(repoDir, "note.txt"), "1.2.0-beta.1");
+      await commitAll(repoDir, "1.2.0-beta.1");
+      await git(repoDir, ["tag", "v1.2.0-beta.1"]);
+
+      const source = `git:${repoDir}@^1.0.0`;
+      const entry = await service.install(source, { kind: "root" });
+
+      // The highest stable release inside the range wins: not 2.0.0, and not
+      // the 1.2.0 prerelease the range does not name.
+      expect(entry).toMatchObject({ id: "ranger", status: "running" });
+      expect(entry.sourceDisplay).toContain("tracks compatible");
+      expect(getInstalledPluginRegistration(db, "ranger")).toMatchObject({
+        sourceKind: "git",
+        sourceGitUrl: repoDir,
+        sourceGitRange: "^1.0.0",
+        sourceGitTagPrefix: "",
+        sourceGitResolvedTag: "v1.1.0",
+        sourceGitRequestedRef: null,
+        sourceGitRefKind: null,
+        gitResolvedCommit: second,
+      });
+      expect(second).not.toBe(first);
+      const view = await service.getSource("ranger");
+      expect(view).toMatchObject({ range: "^1.0.0", resolvedTag: "v1.1.0" });
+    });
+
+    it("refuses a range spec that is also a ref, and honors the explicit forms", async () => {
+      const repoDir = join(workDir, "repo-ambiguous");
+      await writePluginFixture(repoDir, { name: "bb-plugin-ambiguous" });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "init");
+      await git(repoDir, ["tag", "v1.0.0"]);
+      // A branch literally named like a range: bb must not guess which one
+      // the user meant.
+      await git(repoDir, ["branch", "1.x"]);
+
+      await expect(
+        service.install(`git:${repoDir}@1.x`, { kind: "root" }),
+      ).rejects.toThrow(/both a semver range and a branch/);
+      expect(getInstalledPluginRegistration(db, "ambiguous")).toBeUndefined();
+
+      await service.install(`git:${repoDir}@semver:1.x`, { kind: "root" });
+      expect(getInstalledPluginRegistration(db, "ambiguous")).toMatchObject({
+        sourceGitRange: "1.x",
+        sourceGitResolvedTag: "v1.0.0",
+      });
+      expect(await service.remove("ambiguous")).toBe(true);
+
+      await service.install(`git:${repoDir}@ref:1.x`, { kind: "root" });
+      expect(getInstalledPluginRegistration(db, "ambiguous")).toMatchObject({
+        sourceGitRange: null,
+        sourceGitRequestedRef: "1.x",
+        sourceGitRefKind: "branch",
+      });
+    });
+
+    it("resolves a prefixed range and reports one with no matching tag", async () => {
+      const repoDir = join(workDir, "repo-prefixed");
+      await writePluginFixture(repoDir, { name: "bb-plugin-prefixed" });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "init");
+      // Repository-wide tags must not answer a prefixed range.
+      await git(repoDir, ["tag", "v9.0.0"]);
+      await writeFile(join(repoDir, "note.txt"), "prefixed");
+      const tagged = await commitAll(repoDir, "prefixed release");
+      await git(repoDir, ["tag", "prefixed/v1.4.2"]);
+
+      await expect(
+        service.install(`git:${repoDir}@semver:missing/:^1.0.0`, {
+          kind: "root",
+        }),
+      ).rejects.toThrow(/no tag of .* matches \^1\.0\.0/);
+
+      await service.install(`git:${repoDir}@semver:prefixed/:^1.0.0`, {
+        kind: "root",
+      });
+      expect(getInstalledPluginRegistration(db, "prefixed")).toMatchObject({
+        sourceGitRange: "^1.0.0",
+        sourceGitTagPrefix: "prefixed/",
+        sourceGitResolvedTag: "prefixed/v1.4.2",
+        gitResolvedCommit: tagged,
+      });
+    });
+
+    it("installs a catalog entry that lists a semver range", async () => {
+      const repoDir = join(workDir, "repo-catalog-range");
+      await writePluginFixture(repoDir, { name: "bb-plugin-catalog-range" });
+      await initGitRepo(repoDir);
+      const commit = await commitAll(repoDir, "init");
+      await git(repoDir, ["tag", "v1.3.0"]);
+
+      const entry = await service.installCatalogPlugin({
+        marketplace: "bb-community",
+        entryId: "catalog-range",
+        pluginId: "catalog-range",
+        source: `git:${repoDir}@semver:^1.0.0`,
+        selection: ROOT_PLUGIN_SOURCE_SELECTION,
+      });
+
+      expect(entry).toMatchObject({
+        id: "catalog-range",
+        provenance: "catalog",
+        status: "running",
+      });
+      expect(getInstalledPluginRegistration(db, "catalog-range")).toMatchObject(
+        {
+          catalogEntryId: "catalog-range",
+          sourceGitRange: "^1.0.0",
+          sourceGitResolvedTag: "v1.3.0",
+          gitResolvedCommit: commit,
+        },
+      );
+    });
+
     it("refuses a git plugin that shadows a builtin after materialization", async () => {
       const repoDir = join(workDir, "repo-connect");
       await writePluginFixture(repoDir, { name: "bb-plugin-connect" });
       await initGitRepo(repoDir);
       await commitAll(repoDir, "init");
 
-      await expect(service.install(`git:${repoDir}@main`)).rejects.toThrowError(
-        /reserved by the bundled plugin.*builtin:connect/,
-      );
+      await expect(
+        service.install(`git:${repoDir}@main`, { kind: "root" }),
+      ).rejects.toThrowError(/reserved by the bundled plugin.*builtin:connect/);
       expect(getInstalledPluginRegistration(db, "connect")).toBeUndefined();
     });
 
@@ -383,7 +716,9 @@ describe("plugin install flows", () => {
       });
       await commitAll(repoDir, "later");
 
-      const entry = await service.install(`git:${repoDir}@${sha}`);
+      const entry = await service.install(`git:${repoDir}@${sha}`, {
+        kind: "root",
+      });
       expect(entry.status).toBe("running");
       expect(entry.version).toBe("0.1.0");
     });
@@ -395,7 +730,7 @@ describe("plugin install flows", () => {
       await commitAll(repoDir, "init");
       await git(repoDir, ["tag", "v1"]);
       const source = `git:${repoDir}@v1`;
-      await service.install(source);
+      await service.install(source, { kind: "root" });
       const original = listPluginArtifacts(db, "owner")[0];
       if (original === undefined) throw new Error("missing owner artifact");
       await service.remove("owner");
@@ -403,7 +738,7 @@ describe("plugin install flows", () => {
         .prepare("UPDATE plugin_artifacts SET plugin_id = ? WHERE id = ?")
         .run("different-plugin", original.id);
 
-      const reinstalled = await service.install(source);
+      const reinstalled = await service.install(source, { kind: "root" });
       const activeId = getInstalledPluginRegistration(
         db,
         "owner",
@@ -424,8 +759,8 @@ describe("plugin install flows", () => {
       const source = `git:${repoDir}@v1`;
 
       const results = await Promise.allSettled([
-        service.install(source),
-        service.install(source),
+        service.install(source, { kind: "root" }),
+        service.install(source, { kind: "root" }),
       ]);
       expect(results).toEqual(
         expect.arrayContaining([
@@ -448,7 +783,7 @@ describe("plugin install flows", () => {
       await initGitRepo(repoDir);
       await commitAll(repoDir, "v0.1.0");
       const source = `git:${repoDir}@main`;
-      const first = await service.install(source);
+      const first = await service.install(source, { kind: "root" });
       expect(first.version).toBe("0.1.0");
 
       await writePluginFixture(repoDir, {
@@ -456,7 +791,7 @@ describe("plugin install flows", () => {
         version: "0.2.0",
       });
       await commitAll(repoDir, "v0.2.0");
-      await expect(service.install(source)).rejects.toThrow(
+      await expect(service.install(source, { kind: "root" })).rejects.toThrow(
         "bb plugin update fresh",
       );
       expect(
@@ -474,7 +809,7 @@ describe("plugin install flows", () => {
       await initGitRepo(repoDir);
       await commitAll(repoDir, "working frontend");
       const source = `git:${repoDir}@main`;
-      const first = await service.install(source);
+      const first = await service.install(source, { kind: "root" });
       expect(first).toMatchObject({
         id: "managed-frontend",
         version: "0.1.0",
@@ -494,7 +829,7 @@ describe("plugin install flows", () => {
       });
       await commitAll(repoDir, "broken frontend");
 
-      await expect(service.install(source)).rejects.toThrow(
+      await expect(service.install(source, { kind: "root" })).rejects.toThrow(
         "bb plugin update managed-frontend",
       );
       expect(getInstalledPluginRegistration(db, "managed-frontend")).toEqual(
@@ -514,14 +849,16 @@ describe("plugin install flows", () => {
       await initGitRepo(repoDir);
       await commitAll(repoDir, "v1");
       const source = `git:${repoDir}@main`;
-      const first = await service.install(source);
+      const first = await service.install(source, { kind: "root" });
       expect(first.status).toBe("running");
 
       // The tip now carries a broken manifest: the refresh clone fails
       // validation in its staging dir, so the live install must survive.
       await writeFile(join(repoDir, "package.json"), "{ not json");
       await commitAll(repoDir, "broken manifest");
-      await expect(service.install(source)).rejects.toThrowError();
+      await expect(
+        service.install(source, { kind: "root" }),
+      ).rejects.toThrowError();
 
       // The registration still points at real, loadable files.
       await stat(join(first.rootDir, "package.json"));
@@ -549,13 +886,12 @@ describe("plugin install flows", () => {
       await initGitRepo(identityRepo);
       await commitAll(identityRepo, "mismatched artifact identity");
 
-      const entry = await service.install(`git:${identityRepo}@main`);
+      const entry = await service.install(`git:${identityRepo}@main`, {
+        kind: "root",
+      });
       expect(entry.status).toBe("running");
       const meta: unknown = JSON.parse(
-        await readFile(
-          join(entry.rootDir, "dist", "server.meta.json"),
-          "utf8",
-        ),
+        await readFile(join(entry.rootDir, "dist", "server.meta.json"), "utf8"),
       );
       expect(meta).toMatchObject({
         pluginId: "artifact-identity",
@@ -574,9 +910,9 @@ describe("plugin install flows", () => {
       await commitAll(repoDir, "init");
 
       const source = `git:${repoDir}@main`;
-      await expect(service.install(source)).rejects.toThrowError(
-        /install refused.*requires bb >=99\.0\.0/,
-      );
+      await expect(
+        service.install(source, { kind: "root" }),
+      ).rejects.toThrowError(/install refused.*requires bb >=99\.0\.0/);
       expect(service.list()).toHaveLength(0);
       const managed = join(
         dataDir,
@@ -597,7 +933,9 @@ describe("plugin install flows", () => {
       await initGitRepo(repoDir);
       await commitAll(repoDir, "init");
 
-      await expect(service.install(`git:${repoDir}@main`)).rejects.toThrowError(
+      await expect(
+        service.install(`git:${repoDir}@main`, { kind: "root" }),
+      ).rejects.toThrowError(
         new RegExp(
           `install refused.*requires bb plugin SDK >=99\\.0\\.0, running SDK is ${PLUGIN_SDK_VERSION.replaceAll(".", "\\.")}`,
         ),
@@ -609,11 +947,13 @@ describe("plugin install flows", () => {
       await writePluginFixture(repoDir, { name: "bb-plugin-managed" });
       await initGitRepo(repoDir);
       await commitAll(repoDir, "init");
-      const managedEntry = await service.install(`git:${repoDir}@main`);
+      const managedEntry = await service.install(`git:${repoDir}@main`, {
+        kind: "root",
+      });
 
       const pathDir = join(workDir, "local-plugin");
       await writePluginFixture(pathDir, { name: "bb-plugin-localdir" });
-      await service.install(pathDir);
+      await service.install(pathDir, { kind: "root" });
 
       expect(await service.remove("managed")).toBe(true);
       await stat(managedEntry.rootDir);
@@ -624,8 +964,56 @@ describe("plugin install flows", () => {
       await stat(join(pathDir, "package.json"));
     });
 
+    // A cache hit registers with `validated: true`, which skips
+    // `validateInstallDir` and the engine checks inside it. The cached bytes
+    // were compatible when bb first accepted them, so nothing re-reads the
+    // range — and after a bb version change the same artifact can register
+    // while this build cannot run it.
+    it("refuses a cached artifact whose engine range no longer matches", async () => {
+      const repoDir = join(workDir, "repo-cached-engine");
+      await writePluginFixture(repoDir, {
+        name: "bb-plugin-cached-engine",
+        engines: ">=0.9.0",
+      });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "init");
+      const source = `git:${repoDir}@main`;
+
+      await service.install(source, { kind: "root" });
+      expect(await service.remove("cached-engine")).toBe(true);
+      const clonesBefore = materializationCount;
+      await service.stop();
+
+      // The same db and dataDir, so the checkout and its artifact row survive.
+      service = createPluginService({
+        db,
+        hub: {
+          getDaemonSessionIdForHost: () => null,
+          notifyPluginSignal: () => 0,
+          notifySystem: () => {},
+        },
+        logger,
+        dataDir,
+        appVersion: "0.5.0",
+        loadTimeoutMs: 2000,
+        onArtifactMaterialize: () => {
+          materializationCount += 1;
+        },
+      });
+
+      await expect(
+        service.install(source, { kind: "root" }),
+      ).rejects.toThrowError(/install refused.*requires bb >=0\.9\.0/u);
+      // No re-clone: the refusal came from the cache-hit path, not a fresh
+      // materialization that would have run the checks anyway.
+      expect(materializationCount).toBe(clonesBefore);
+      expect(getInstalledPluginRegistration(db, "cached-engine")).toBeUndefined();
+    });
+
     it("refuses a git url without the git binary being asked to run arbitrary flags", async () => {
-      await expect(service.install("git:@main")).rejects.toThrowError();
+      await expect(
+        service.install("git:@main", { kind: "root" }),
+      ).rejects.toThrowError();
     });
 
     it("builds both bundles for a git plugin", async () => {
@@ -634,12 +1022,63 @@ describe("plugin install flows", () => {
       await initGitRepo(repoDir);
       await commitAll(repoDir, "init");
 
-      const entry = await service.install(`git:${repoDir}@main`);
+      const entry = await service.install(`git:${repoDir}@main`, {
+        kind: "root",
+      });
       expect(entry.status).toBe("running");
       // Built here rather than committed, so the loader prefers a bundle
       // stamped for this exact SDK over the TypeScript source.
       await stat(join(entry.rootDir, "dist", "server.js"));
       await stat(join(entry.rootDir, "dist", "server.meta.json"));
+    });
+
+    it("restores a target moved aside by an interrupted promotion", async () => {
+      const repoDir = join(workDir, "repo-interrupted-promotion");
+      await writePluginFixture(repoDir, {
+        name: "bb-plugin-interrupted-promotion",
+      });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "init");
+      const entry = await service.install(`git:${repoDir}@main`, {
+        kind: "root",
+      });
+      const artifact = listPluginArtifacts(db, entry.id)[0];
+      if (artifact === undefined) throw new Error("missing plugin artifact");
+
+      await service.stop();
+      db.$client
+        .prepare(
+          "UPDATE plugin_artifacts SET validation_result = 'pending', validated_at = NULL WHERE id = ?",
+        )
+        .run(artifact.id);
+      await rename(entry.rootDir, `${entry.rootDir}.corrupt`);
+      await mkdir(`${entry.rootDir}.promoting`, { recursive: true });
+      await writeFile(join(`${entry.rootDir}.promoting`, "partial"), "copy");
+      service = createPluginService({
+        db,
+        hub: {
+          getDaemonSessionIdForHost: () => null,
+          notifyPluginSignal: () => 0,
+          notifySystem: () => {},
+        },
+        logger,
+        dataDir,
+        appVersion: "0.9.0",
+        loadTimeoutMs: 2000,
+      });
+
+      await service.start();
+
+      await stat(join(entry.rootDir, "dist", "server.js"));
+      await expect(stat(`${entry.rootDir}.corrupt`)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      await expect(stat(`${entry.rootDir}.promoting`)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      expect(
+        service.list().find((plugin) => plugin.id === "interrupted-promotion"),
+      ).toMatchObject({ id: "interrupted-promotion", status: "running" });
     });
 
     it("ignores a repository .npmrc when installing dependencies", async () => {
@@ -655,7 +1094,9 @@ describe("plugin install flows", () => {
       await initGitRepo(repoDir);
       await commitAll(repoDir, "init");
 
-      const entry = await service.install(`git:${repoDir}@main`);
+      const entry = await service.install(`git:${repoDir}@main`, {
+        kind: "root",
+      });
 
       expect(entry.status).toBe("running");
       await expect(stat(join(entry.rootDir, ".npmrc"))).rejects.toThrowError();
@@ -700,7 +1141,9 @@ describe("plugin install flows", () => {
         await initGitRepo(repoDir);
         await commitAll(repoDir, "init");
 
-        const entry = await service.install(`git:${repoDir}@main`);
+        const entry = await service.install(`git:${repoDir}@main`, {
+          kind: "root",
+        });
         expect(entry.status).toBe("running");
         const bundle = await readFile(
           join(entry.rootDir, "dist", "server.js"),
@@ -713,6 +1156,328 @@ describe("plugin install flows", () => {
       },
     );
   });
+
+  describe.skipIf(!hasGit)(
+    "multi-plugin repositories",
+    { timeout: 60_000 },
+    () => {
+      async function writeCollectionRepo(repoDir: string): Promise<string> {
+        await writePluginFixture(join(repoDir, "plugins", "alpha"), {
+          name: "bb-plugin-collection-alpha",
+        });
+        await writePluginFixture(join(repoDir, "plugins", "beta"), {
+          name: "bb-plugin-collection-beta",
+        });
+        await mkdir(join(repoDir, ".bb"), { recursive: true });
+        await writeFile(
+          join(repoDir, ".bb", "plugins.json"),
+          JSON.stringify({
+            schemaVersion: 1,
+            name: "collection",
+            plugins: [
+              { name: "alpha", source: "./plugins/alpha" },
+              { name: "beta", source: "./plugins/beta" },
+            ],
+          }),
+        );
+        await initGitRepo(repoDir);
+        return commitAll(repoDir, "init");
+      }
+
+      it("installs two plugins of one repository into one shared checkout", async () => {
+        const repoDir = join(workDir, "repo-collection");
+        const commit = await writeCollectionRepo(repoDir);
+
+        const alpha = await service.install(`git:${repoDir}@main`, {
+          kind: "entry",
+          name: "alpha",
+        });
+        const alphaBundle = await readFile(
+          join(alpha.rootDir, "dist", "server.js"),
+          "utf8",
+        );
+        const beta = await service.install(`git:${repoDir}@main`, {
+          kind: "subdirectory",
+          path: "./plugins/beta",
+        });
+
+        expect(alpha.status).toBe("running");
+        expect(beta.status).toBe("running");
+        const checkout = gitArtifactCacheDir(
+          dataDir,
+          `local${repoDir}`,
+          commit,
+        );
+        expect(alpha.rootDir).toBe(join(checkout, "plugins", "alpha"));
+        expect(beta.rootDir).toBe(join(checkout, "plugins", "beta"));
+        expect(
+          getInstalledPluginRegistration(db, "collection-alpha"),
+        ).toMatchObject({
+          sourceKind: "git",
+          sourceGitUrl: repoDir,
+          sourceGitSubdirectory: "plugins/alpha",
+          gitResolvedCommit: commit,
+        });
+        expect(
+          getInstalledPluginRegistration(db, "collection-beta"),
+        ).toMatchObject({ sourceGitSubdirectory: "plugins/beta" });
+        // The second install must not replace the checkout the first one
+        // built into: its bundle and dependencies stay untouched.
+        expect(
+          await readFile(join(alpha.rootDir, "dist", "server.js"), "utf8"),
+        ).toBe(alphaBundle);
+        expect(listPluginArtifacts(db, "collection-alpha")).toHaveLength(1);
+      });
+
+      it("promotes an in-repository symlinked plugin after a sibling", async () => {
+        const repoDir = join(workDir, "repo-collection-symlinked-entry");
+        await writePluginFixture(join(repoDir, "plugins", "actual"), {
+          name: "bb-plugin-collection-linked",
+        });
+        await writePluginFixture(join(repoDir, "plugins", "sibling"), {
+          name: "bb-plugin-collection-sibling",
+        });
+        await symlink("actual", join(repoDir, "plugins", "linked"));
+        await mkdir(join(repoDir, ".bb"), { recursive: true });
+        await writeFile(
+          join(repoDir, ".bb", "plugins.json"),
+          JSON.stringify({
+            schemaVersion: 1,
+            name: "collection",
+            plugins: [
+              { name: "linked", source: "./plugins/linked" },
+              { name: "sibling", source: "./plugins/sibling" },
+            ],
+          }),
+        );
+        await initGitRepo(repoDir);
+        await commitAll(repoDir, "init");
+
+        await service.install(`git:${repoDir}@main`, {
+          kind: "entry",
+          name: "sibling",
+        });
+        const linked = await service.install(`git:${repoDir}@main`, {
+          kind: "entry",
+          name: "linked",
+        });
+
+        expect(linked.status).toBe("running");
+        await stat(join(linked.rootDir, "dist", "server.js"));
+      });
+
+      it("keeps a nested sibling intact when the repository root installs too", async () => {
+        const repoDir = join(workDir, "repo-collection-root");
+        await writePluginFixture(join(repoDir, "plugins", "alpha"), {
+          name: "bb-plugin-collection-alpha",
+        });
+        await writePluginFixture(repoDir, { name: "bb-plugin-collection-top" });
+        await initGitRepo(repoDir);
+        await commitAll(repoDir, "init");
+
+        const alpha = await service.install(`git:${repoDir}@main`, {
+          kind: "subdirectory",
+          path: "./plugins/alpha",
+        });
+        const alphaBundle = await readFile(
+          join(alpha.rootDir, "dist", "server.js"),
+          "utf8",
+        );
+        const top = await service.install(`git:${repoDir}@main`, {
+          kind: "root",
+        });
+
+        expect(top.status).toBe("running");
+        // The root install owns the checkout the nested sibling already built
+        // into, so it must not replace it wholesale.
+        expect(
+          await readFile(join(alpha.rootDir, "dist", "server.js"), "utf8"),
+        ).toBe(alphaBundle);
+        await stat(join(top.rootDir, "dist", "server.js"));
+        expect(
+          service
+            .list()
+            .filter((plugin) => plugin.id.startsWith("collection-"))
+            .map((plugin) => plugin.status),
+        ).toEqual(["running", "running"]);
+      });
+
+      it("refreshes a root artifact hash after a nested install", async () => {
+        const repoDir = join(workDir, "repo-collection-root-first");
+        await writePluginFixture(join(repoDir, "plugins", "alpha"), {
+          name: "bb-plugin-collection-root-first-alpha",
+        });
+        await writePluginFixture(repoDir, {
+          name: "bb-plugin-collection-root-first-top",
+        });
+        await initGitRepo(repoDir);
+        await commitAll(repoDir, "init");
+
+        const top = await service.install(`git:${repoDir}@main`, {
+          kind: "root",
+        });
+        await service.install(`git:${repoDir}@main`, {
+          kind: "subdirectory",
+          path: "plugins/alpha",
+        });
+
+        expect(listPluginArtifacts(db, top.id)).toMatchObject([
+          { contentHash: await hashInstallDir(top.rootDir) },
+        ]);
+      });
+
+      it("keeps a symlinked nested plugin when the repository root installs", async () => {
+        const repoDir = join(workDir, "repo-collection-root-symlink");
+        await writePluginFixture(join(repoDir, "plugins", "actual"), {
+          name: "bb-plugin-collection-linked-root",
+        });
+        await symlink("actual", join(repoDir, "plugins", "linked"));
+        await writePluginFixture(repoDir, {
+          name: "bb-plugin-collection-top-linked",
+        });
+        await initGitRepo(repoDir);
+        await commitAll(repoDir, "init");
+
+        const linked = await service.install(`git:${repoDir}@main`, {
+          kind: "subdirectory",
+          path: "plugins/linked",
+        });
+        await stat(join(linked.rootDir, "dist", "server.js"));
+        const top = await service.install(`git:${repoDir}@main`, {
+          kind: "root",
+        });
+
+        expect(top.status).toBe("running");
+        await stat(join(linked.rootDir, "dist", "server.js"));
+        expect(
+          service
+            .list()
+            .filter((plugin) => plugin.id.includes("collection-"))
+            .map((plugin) => plugin.status),
+        ).toEqual(["running", "running"]);
+      });
+
+      it("reinstalls a nested plugin whose directory was collected", async () => {
+        const repoDir = join(workDir, "repo-collection-recollected");
+        const commit = await writeCollectionRepo(repoDir);
+        const alpha = await service.install(`git:${repoDir}@main`, {
+          kind: "entry",
+          name: "alpha",
+        });
+        expect(await service.remove("collection-alpha")).toBe(true);
+        // Garbage collection removes the plugin root and then its now empty
+        // parent, while the shared checkout stays for the siblings.
+        const checkout = gitArtifactCacheDir(
+          dataDir,
+          `local${repoDir}`,
+          commit,
+        );
+        await rm(join(checkout, "plugins"), { recursive: true, force: true });
+
+        const again = await service.install(`git:${repoDir}@main`, {
+          kind: "entry",
+          name: "alpha",
+        });
+        expect(again.status).toBe("running");
+        expect(again.rootDir).toBe(alpha.rootDir);
+        await stat(join(again.rootDir, "dist", "server.js"));
+      });
+
+      it("lists the collection entries when no plugin is selected", async () => {
+        const repoDir = join(workDir, "repo-collection-unselected");
+        await writeCollectionRepo(repoDir);
+
+        await expect(
+          service.install(`git:${repoDir}@main`, { kind: "root" }),
+        ).rejects.toThrowError(/--plugin <name> \(alpha, beta\)/);
+      });
+
+      it("refuses an unknown entry name and an escaping subdirectory", async () => {
+        const repoDir = join(workDir, "repo-collection-bad-selection");
+        await writeCollectionRepo(repoDir);
+
+        await expect(
+          service.install(`git:${repoDir}@main`, {
+            kind: "entry",
+            name: "gamma",
+          }),
+        ).rejects.toThrowError(/no plugin "gamma" — available: alpha, beta/);
+        await expect(
+          service.install(`git:${repoDir}@main`, {
+            kind: "subdirectory",
+            path: "../../etc",
+          }),
+        ).rejects.toThrowError(/invalid plugin subdirectory/);
+      });
+
+      it("installs a collection entry from a local path repository", async () => {
+        const repoDir = join(workDir, "repo-collection-path");
+        await writeCollectionRepo(repoDir);
+
+        const entry = await service.install(`path:${repoDir}`, {
+          kind: "entry",
+          name: "beta",
+        });
+
+        // The service records the canonical path. macOS resolves the temporary
+        // directory through /private, so the expectation must canonicalize too.
+        const betaRoot = await realpath(join(repoDir, "plugins", "beta"));
+        expect(entry.rootDir).toBe(betaRoot);
+        expect(
+          getInstalledPluginRegistration(db, "collection-beta"),
+        ).toMatchObject({
+          sourceKind: "path",
+          sourcePath: betaRoot,
+        });
+      });
+
+      it("refuses a collection entry whose directory leaves the repository", async () => {
+        const outsideDir = join(workDir, "outside-plugin");
+        await writePluginFixture(outsideDir, { name: "bb-plugin-outside" });
+        const repoDir = join(workDir, "repo-collection-symlink");
+        await mkdir(join(repoDir, "plugins"), { recursive: true });
+        await mkdir(join(repoDir, ".bb"), { recursive: true });
+        await writeFile(
+          join(repoDir, ".bb", "plugins.json"),
+          JSON.stringify({
+            schemaVersion: 1,
+            name: "collection",
+            plugins: [{ name: "escape", source: "./plugins/escape" }],
+          }),
+        );
+        await symlink(outsideDir, join(repoDir, "plugins", "escape"));
+
+        await expect(
+          service.install(`path:${repoDir}`, { kind: "entry", name: "escape" }),
+        ).rejects.toThrowError(/resolves outside its root/);
+      });
+
+      it("refuses a collection entry symlinked to the repository root", async () => {
+        const repoDir = join(workDir, "repo-collection-root-link");
+        await writePluginFixture(repoDir, {
+          name: "bb-plugin-collection-root-link",
+        });
+        await mkdir(join(repoDir, "plugins"), { recursive: true });
+        await mkdir(join(repoDir, ".bb"), { recursive: true });
+        await writeFile(
+          join(repoDir, ".bb", "plugins.json"),
+          JSON.stringify({
+            schemaVersion: 1,
+            name: "collection",
+            plugins: [{ name: "root-link", source: "./plugins/root-link" }],
+          }),
+        );
+        await symlink("..", join(repoDir, "plugins", "root-link"));
+
+        await expect(
+          service.install(`path:${repoDir}`, {
+            kind: "entry",
+            name: "root-link",
+          }),
+        ).rejects.toThrowError(/resolves to its root/);
+      });
+    },
+  );
 
   describe("plugin artifact metadata validation", () => {
     // Guards npm artifacts, which bb never builds. Covered directly because
@@ -870,7 +1635,7 @@ describe("plugin install flows", () => {
         process.env.npm_config_package_lock = "false";
         try {
           const source = `npm:${name}@${version}`;
-          const entry = await service.install(source);
+          const entry = await service.install(source, { kind: "root" });
           expect(tarballRequests).toBe(1);
           expect(entry.id).toBe("npmhero");
           expect(entry.status).toBe("running");
@@ -941,7 +1706,7 @@ describe("plugin install flows", () => {
 
   it("refuses an npm package whose derived id shadows a builtin before install", async () => {
     await expect(
-      service.install("npm:bb-plugin-connect@1.2.3"),
+      service.install("npm:bb-plugin-connect@1.2.3", { kind: "root" }),
     ).rejects.toThrowError(/reserved by the bundled plugin.*builtin:connect/);
     expect(getInstalledPluginRegistration(db, "connect")).toBeUndefined();
   });
@@ -966,7 +1731,7 @@ describe("plugin install flows", () => {
     await stat(join(targetDir, ".gitignore"));
     await stat(join(targetDir, "README.md"));
 
-    const entry = await service.install(`path:${targetDir}`);
+    const entry = await service.install(`path:${targetDir}`, { kind: "root" });
     expect(entry.id).toBe("scaffolded");
     expect(entry.status).toBe("running");
     expect(entry.statusDetail).toBeNull();

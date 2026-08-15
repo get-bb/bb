@@ -4,7 +4,7 @@ import path, { delimiter } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   prepareRuntimeShellEnv,
-  resolveLocalBbExecutableDirectory,
+  resolveLocalBbExecutablePath,
   resolveUserShellPath,
   type SpawnUserShellEnv,
   type SpawnUserShellEnvArgs,
@@ -144,17 +144,17 @@ afterEach(async () => {
   );
 });
 
-describe("resolveLocalBbExecutableDirectory", () => {
-  it("returns the built CLI executable directory", async () => {
+describe("resolveLocalBbExecutablePath", () => {
+  it("returns the built CLI executable path", async () => {
     const { cliEntryPath } = await createFakeCliPackage({
       executable: true,
     });
 
     await expect(
-      resolveLocalBbExecutableDirectory({
+      resolveLocalBbExecutablePath({
         cliExecutablePath: cliEntryPath,
       }),
-    ).resolves.toBe(path.dirname(cliEntryPath));
+    ).resolves.toBe(cliEntryPath);
   });
 
   it("fails clearly when the built CLI entry is missing", async () => {
@@ -163,7 +163,7 @@ describe("resolveLocalBbExecutableDirectory", () => {
     });
 
     await expect(
-      resolveLocalBbExecutableDirectory({
+      resolveLocalBbExecutablePath({
         cliExecutablePath: cliEntryPath,
       }),
     ).rejects.toThrow(
@@ -177,7 +177,7 @@ describe("resolveLocalBbExecutableDirectory", () => {
     });
 
     await expect(
-      resolveLocalBbExecutableDirectory({
+      resolveLocalBbExecutablePath({
         cliExecutablePath: cliEntryPath,
       }),
     ).rejects.toThrow(
@@ -192,11 +192,11 @@ describe("resolveLocalBbExecutableDirectory", () => {
 
     await expect(
       withPlatform("win32", () =>
-        resolveLocalBbExecutableDirectory({
+        resolveLocalBbExecutablePath({
           cliExecutablePath: cliEntryPath,
         }),
       ),
-    ).resolves.toBe(path.dirname(cliEntryPath));
+    ).resolves.toBe(cliEntryPath);
   });
 });
 

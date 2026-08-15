@@ -63,6 +63,19 @@ const testState = vi.hoisted(() => ({
       when: { all: ["mainSurface" as const], none: [] },
     },
     {
+      command: "thread.next" as const,
+      desktopOnly: false,
+      shortcut: {
+        key: "ArrowDown",
+        mod: true,
+        meta: false,
+        control: false,
+        alt: false,
+        shift: true,
+      },
+      when: { all: ["mainSurface" as const], none: [] },
+    },
+    {
       command: "thread.previous" as const,
       desktopOnly: true,
       shortcut: {
@@ -431,6 +444,37 @@ describe("AppCommandProvider", () => {
     window.dispatchEvent(nativeTabShortcut);
     expect(nativeTabShortcut.defaultPrevented).toBe(false);
   });
+
+  it.each([
+    ["thread.previous" as const, "ArrowUp"],
+    ["thread.next" as const, "ArrowDown"],
+  ])(
+    "dispatches configured %s shortcuts from a focused editable control",
+    (command, key) => {
+      vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+      renderProvider(
+        <>
+          <Handler command={command} name={command} result={true} />
+          <textarea aria-label="Composer" />
+        </>,
+      );
+      const composer = screen.getByLabelText("Composer");
+      composer.focus();
+      const event = new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key,
+        metaKey: true,
+        shiftKey: true,
+      });
+
+      composer.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(testState.calls).toEqual([command]);
+      expect(document.activeElement).toBe(composer);
+    },
+  );
 
   it("falls through declining handlers in priority order", () => {
     renderProvider(

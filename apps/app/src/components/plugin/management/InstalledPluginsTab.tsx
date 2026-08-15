@@ -16,7 +16,6 @@ import {
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import { getPluginDetailRoutePath } from "@/lib/route-paths";
-import { isOfficialProvenance } from "../plugin-provenance";
 import { pluginRowSignal } from "./plugin-status";
 import { PluginRowSignalView, PluginSignalLogo } from "./PluginRowSignal";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
@@ -43,7 +42,7 @@ export function InstalledPluginsTab({
 
   if (plugins.length === 0) {
     return (
-      <EmptyState message="No plugins installed. Browse BB Official, create a plugin, or run bb plugin install <source>." />
+      <EmptyState message="No plugins installed. Browse the catalog, create a plugin, or run bb plugin install <source>." />
     );
   }
 
@@ -62,7 +61,6 @@ export function InstalledPluginsTab({
       </ResourceListPanel>
       {updateTarget !== null ? (
         <UpdatePluginDialog
-          failureStateLabel="Update failed"
           plugin={updateTarget}
           open
           onOpenChange={(open) => {
@@ -104,7 +102,9 @@ export function InstalledPluginRow({
   const updateSignal = signal?.kind === "update" ? signal : null;
 
   const openDetail = () =>
-    navigate(getPluginDetailRoutePath({ pluginId: plugin.id }));
+    navigate(
+      getPluginDetailRoutePath({ pluginId: plugin.id, view: "installed" }),
+    );
   return (
     <div data-testid={`plugin-row-${plugin.id}`}>
       <ResourceRow
@@ -115,9 +115,9 @@ export function InstalledPluginRow({
         }
         title={plugin.name ?? plugin.id}
         titleMeta={
-          isOfficialProvenance(plugin.provenance) ? (
-            <ProvenancePill label="BB Official" />
-          ) : undefined
+          plugin.publisherLabel === null ? undefined : (
+            <ProvenancePill label={plugin.publisherLabel} />
+          )
         }
         description={plugin.description}
         openLabel={`${plugin.name ?? plugin.id} plugin details`}

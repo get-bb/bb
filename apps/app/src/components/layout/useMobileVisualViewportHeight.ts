@@ -44,20 +44,26 @@ function isKeyboardFocusTarget(target: EventTarget | null): boolean {
  */
 export function useMobileVisualViewportHeight(
   shellRef: RefObject<AppShellElement | null>,
+  shellHeightRootRef: RefObject<AppShellElement | null>,
   enabled: boolean,
   restoreImmediatelyOnKeyboardDismissal: boolean,
 ) {
   useEffect(() => {
     const shell = shellRef.current;
+    const shellHeightRoot = shellHeightRootRef.current;
     const visualViewport = window.visualViewport;
-    if (!shell || !enabled || !visualViewport) return;
+    if (!shell || !shellHeightRoot || !enabled || !visualViewport) return;
 
     let animationFrame: number | null = null;
+    const clearViewportOverride = () => {
+      shell.style.removeProperty("top");
+      shell.style.removeProperty("height");
+      shellHeightRoot.style.removeProperty("--bb-shell-height");
+    };
     const updateHeight = () => {
       animationFrame = null;
       if (visualViewport.scale !== 1) {
-        shell.style.removeProperty("top");
-        shell.style.removeProperty("height");
+        clearViewportOverride();
         return;
       }
 
@@ -76,8 +82,7 @@ export function useMobileVisualViewportHeight(
       ) {
         // Avoid an unnecessary JS override when native layout resizing
         // already matches the visible viewport.
-        shell.style.removeProperty("top");
-        shell.style.removeProperty("height");
+        clearViewportOverride();
         return;
       }
 
@@ -88,6 +93,14 @@ export function useMobileVisualViewportHeight(
       }
       shell.style.top = `${getVisualViewportPageTop(visualViewport)}px`;
       shell.style.height = `${visualViewportHeight}px`;
+      // Fixed-position descendants cannot inherit the shell element's pixel
+      // height. Publish the same correction through the existing shell-height
+      // switch so the mobile sidebar footer stays inside embedded browsers'
+      // visual viewport too.
+      shellHeightRoot.style.setProperty(
+        "--bb-shell-height",
+        `${visualViewportHeight}px`,
+      );
     };
     const scheduleUpdate = () => {
       if (animationFrame !== null) {
@@ -107,8 +120,7 @@ export function useMobileVisualViewportHeight(
         window.cancelAnimationFrame(animationFrame);
         animationFrame = null;
       }
-      shell.style.removeProperty("top");
-      shell.style.removeProperty("height");
+      clearViewportOverride();
     };
     const handleFocusIn = (event: FocusEvent) => {
       if (!isKeyboardFocusTarget(event.target)) return;
@@ -135,8 +147,12 @@ export function useMobileVisualViewportHeight(
       if (animationFrame !== null) {
         window.cancelAnimationFrame(animationFrame);
       }
-      shell.style.removeProperty("top");
-      shell.style.removeProperty("height");
+      clearViewportOverride();
     };
-  }, [enabled, restoreImmediatelyOnKeyboardDismissal, shellRef]);
+  }, [
+    enabled,
+    restoreImmediatelyOnKeyboardDismissal,
+    shellHeightRootRef,
+    shellRef,
+  ]);
 }

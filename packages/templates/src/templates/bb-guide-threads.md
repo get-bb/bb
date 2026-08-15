@@ -43,7 +43,7 @@ Spawning:
   accept-edits uses workspace sandboxing with user-reviewed escalation. auto uses
   the same workspace sandbox with provider-native automatic review. full is the
   explicit sandbox and approval bypass. Plan mode is separate from permissions.
-  Subagents inherit the parent's permission mode by default; pass --permission-mode full only when the user or task needs unsandboxed execution.
+  Subagents inherit the parent's permission mode by default, and the parent's mode is a hard ceiling: a child's requested mode can lower it but never exceed it, so a sandboxed parent cannot spawn a full-access child.
   Parenting is opt-in. Inside a thread, pass --parent-self to parent the new thread to the current thread.
   Hidden threads are for plugin/background workers. They remain addressable by
   ID while staying out of sidebar organization and unread/pending favicon
@@ -77,7 +77,7 @@ Forking:
   create a fresh managed worktree (or personal workspace for personal threads);
   reuse attaches the source environment. Omit --prompt to create an idle fork.
 
-Editing a sent message (requires the `editMessages` experiment):
+Editing a sent message (requires the default-on `editMessages` experiment):
 
   bb thread edit-message <id> --message "Replacement text"
     --self                              Target the current thread (BB_THREAD_ID)
@@ -86,7 +86,9 @@ Editing a sent message (requires the `editMessages` experiment):
   Without --expected-request-sequence, the latest eligible message is edited.
   Codex, Claude Code, and Pi threads are supported. The original conversation
   remains unchanged until the provider prepares the replacement history.
-  Submitting replaces that turn and every later turn while retaining workspace
+  Failed and incomplete turns are eligible. If the thread is running,
+  submission stops the current turn and waits for it to settle. It then
+  replaces the selected turn and every later turn while retaining workspace
   changes. From an agent thread, the command carries `BB_THREAD_ID` so the
   replacement runs under agent permission policy.
 
@@ -144,7 +146,7 @@ Opening threads and files in the app:
   bb thread open <thread-id> [path]        Open a thread, optionally with a panel file
     --line <number>                        Line number to focus
     --split <placement>                    right, down, left, top, or replace
-  bb thread pane <action> [thread-id]      Maximize, restore, or toggle an open thread pane
+  bb thread pane <action> [thread-id]      Maximize, restore, toggle, spotlight, or clear spotlight
 
   Inside a BB thread, BB_THREAD_ID selects the current thread automatically and
   the thread ID argument is omitted for file-only opens. Pass an explicit thread
@@ -153,7 +155,8 @@ Opening threads and files in the app:
   duplicated. Edge placement creates panes through the eighth pane; at eight
   panes, it replaces the focused pane.
   Pane actions broadcast to connected BB app windows and affect the matching
-  already-open pane without changing its split tree.
+  already-open pane without changing its split tree. Spotlight focuses that
+  pane and dims the others; clear-spotlight focuses it and removes split dimming.
   Paths can be thread-relative workspace paths, or absolute paths inside the
   target thread workspace. Absolute paths under BB_THREAD_STORAGE open as
   thread-storage files for the current thread. Use this for Markdown or HTML
@@ -172,7 +175,7 @@ Messaging:
   turn. Use --mode queue for non-urgent follow-ups that can wait until the agent
   is free.
 
-  bb thread stop [id]                      Stop an active or provisioning thread
+  bb thread stop [id]                      Stop work and release the agent runtime
   bb thread retry [id]                     Continue a subscription-limited turn
     --self                                 Target current thread
     --request-id <id>                      Require an exact failed request id
@@ -201,7 +204,13 @@ Ownership:
     --clear-parent-thread                  Remove parent assignment
     --section <id>                         Move into a section
     --clear-section                        Remove section assignment
+    --model <model>                        Set the sticky model for the next and later turns
+    --reasoning-level <level>              Set the sticky reasoning level (provider-dependent)
     --visibility <visibility>              Set visible or hidden
+
+  Model and reasoning updates stay within the thread's current provider. BB
+  validates them against that provider's current model catalog, applies them on
+  the next turn, and keeps using them on later turns until changed.
 
   bb thread read [id]                      Mark read
   bb thread unread [id]                    Mark unread
@@ -226,6 +235,13 @@ Lifecycle:
 
   bb thread archive [id]                   Archive a thread (and children/hidden forks)
     --self                                 Archive current thread
+
+  `thread stop` preserves the thread history, metadata, environment, and future
+  resume behavior. It stops active work and releases an idle agent runtime.
+  The command succeeds when no runtime is loaded. Archive a finished hidden
+  worker first, then stop it to release memory promptly. A stop that only
+  releases an idle runtime adds no interruption: it leaves the timeline and any
+  pending interaction of that thread untouched.
 
   bb thread unarchive [id]                 Unarchive a thread
     --self                                 Unarchive current thread

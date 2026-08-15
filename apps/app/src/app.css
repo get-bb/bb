@@ -6,14 +6,11 @@
    * Keep the real app shell from becoming a second scroll container. These
    * selectors are class-scoped because Ladle imports app.css but does not use
    * the Vite index.html shell classes.
-   */
-  html.bb-app-shell-root,
-  body.bb-app-shell,
-  body.bb-app-shell #root {
-    height: 100%;
-  }
-
-  /*
+   *
+   * Use the dynamic viewport height in browser tabs so native/in-app browser
+   * chrome cannot leave the percentage-height containing block taller than
+   * the visible window.
+   *
    * iOS standalone subtracts the top safe-area inset from the small and
    * dynamic viewports but not from the large one. On a 852pt screen with a
    * 59pt inset, innerHeight/100svh/100dvh/height:100% all report 793 while
@@ -33,13 +30,18 @@
     --bb-shell-height: 100dvh;
   }
 
+  html.bb-app-shell-root {
+    height: var(--bb-shell-height);
+  }
+
+  body.bb-app-shell,
+  body.bb-app-shell #root {
+    height: 100%;
+  }
+
   @media (display-mode: standalone) {
     :root {
       --bb-shell-height: 100lvh;
-    }
-
-    html.bb-app-shell-root {
-      height: var(--bb-shell-height);
     }
   }
 
@@ -393,17 +395,8 @@
     position: static;
   }
 
-  [data-follow-up-composer] [data-promptbox-action-row] {
-    /* The submit group owns the edge inset in this mode. Neutralize the
-     * compact React layout's matching right inset so the two do not stack. */
-    right: 0;
-    padding-right: 3rem;
-  }
-
   [data-follow-up-composer] [data-promptbox-submit-group] {
-    position: absolute;
-    right: 0.5rem;
-    bottom: 0.5rem;
+    position: static;
     z-index: 1;
   }
 
@@ -427,6 +420,18 @@
       [data-promptbox-voice-active]
     ) {
     overflow: hidden;
+  }
+
+  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
+    [data-promptbox]:not([data-promptbox-zen]):not(
+      [data-promptbox-voice-active]
+    )
+    [data-promptbox-action-row] {
+    position: absolute;
+    inset-block: 0;
+    right: 0.5rem;
+    gap: 0;
+    padding: 0;
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
@@ -740,5 +745,60 @@
 @media (prefers-reduced-motion: reduce) {
   .bb-search-flash {
     animation: none;
+  }
+}
+
+/* Browse hero (Extensions → Browse): the archetype chips orbiting the mini bb
+ * window drift slowly so the hero reads as alive without competing with the
+ * composer sitting in the middle of it. Duration and delay are per-chip custom
+ * properties so each chip drifts out of phase with its neighbours from one
+ * shared rule. */
+@keyframes bb-hero-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -6px, 0);
+  }
+}
+
+.bb-hero-chip {
+  animation: bb-hero-drift var(--bb-hero-drift-duration, 6s) ease-in-out
+    infinite;
+  animation-delay: var(--bb-hero-drift-delay, 0s);
+}
+
+/* Autoplay progress for the active slide segment. The element is keyed by slide
+ * in React, so a slide change remounts it and restarts the animation from zero
+ * rather than needing an imperative reset. */
+@keyframes bb-hero-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.bb-hero-progress-fill {
+  transform-origin: left center;
+  animation: bb-hero-progress var(--bb-hero-slide-duration, 5s) linear forwards;
+}
+
+.bb-hero-progress-fill[data-paused="true"] {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bb-hero-chip {
+    animation: none;
+  }
+
+  /* No autoplay under reduced motion, so the segment shows a resting full
+   * state instead of an animation frozen at zero width. */
+  .bb-hero-progress-fill {
+    animation: none;
+    transform: scaleX(1);
   }
 }

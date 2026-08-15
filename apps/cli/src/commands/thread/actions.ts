@@ -366,7 +366,7 @@ export function registerActionsCommands(
 
   parent
     .command("edit-message [id]")
-    .description("Replace a completed user message and rerun from that point")
+    .description("Replace an accepted user message and rerun from that point")
     .requiredOption("--message <text>", "Replacement message text")
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option(
@@ -490,17 +490,20 @@ export function registerActionsCommands(
           const result = await sdk.threads.continueAfterRateLimit({
             threadId,
             failedRequestId,
+            mode: "manual",
           });
           const output = { threadId, failedRequestId, ...result };
           if (outputJson(opts, output)) return;
-          console.log(`Thread ${threadId} continued after provider rate limit`);
+          console.log(
+            `Thread ${threadId} provider rate limit retry requested manually`,
+          );
         },
       ),
     );
 
   parent
     .command("stop [id]")
-    .description("Stop an active or starting thread")
+    .description("Stop work and release the loaded agent runtime")
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
     .action(

@@ -2,11 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   collectPluginAppRegistrations,
   definePluginApp,
-  interpretPluginFrontends,
   isPluginAppDefinition,
 } from "./plugin-app-definition";
-import type { PluginFrontendRecord } from "./plugin-frontend";
-import type { PluginRegistrationSet } from "./plugin-slots";
 
 function Component() {
   return null;
@@ -186,6 +183,14 @@ describe("collectPluginAppRegistrations", () => {
         component: Component,
         run,
       });
+      app.slots.experimental_newThreadPanelAction({
+        id: "template",
+        title: "Apply template",
+        icon: "Wand",
+        component: Component,
+        layout: "flush",
+        run,
+      });
       app.slots.sidebarFooterAction({
         id: "remote",
         title: "Remote access",
@@ -245,6 +250,16 @@ describe("collectPluginAppRegistrations", () => {
         title: "Issue",
         icon: "Columns",
         component: Component,
+        run,
+      },
+    ]);
+    expect(registrations.newThreadPanelActions).toEqual([
+      {
+        id: "template",
+        title: "Apply template",
+        icon: "Wand",
+        component: Component,
+        layout: "flush",
         run,
       },
     ]);
@@ -575,6 +590,19 @@ describe("collectPluginAppRegistrations", () => {
       /"run" must be a function/,
     ],
     [
+      "new thread panel action with a non-function run",
+      () =>
+        definePluginApp((app) => {
+          app.slots.experimental_newThreadPanelAction({
+            id: "x",
+            title: "X",
+            component: Component,
+            run: "nope" as never,
+          });
+        }),
+      /"run" must be a function/,
+    ],
+    [
       "missing component",
       () =>
         definePluginApp((app) => {
@@ -600,6 +628,21 @@ describe("collectPluginAppRegistrations", () => {
           });
         }),
       /"headerContent" must be a React component/,
+    ],
+    [
+      "nav panel with a non-component experimental sidebar accessory",
+      () =>
+        definePluginApp((app) => {
+          app.slots.navPanel({
+            id: "x",
+            title: "X",
+            icon: "columns",
+            path: "x",
+            component: Component,
+            experimental_sidebarAccessory: "nope" as never,
+          });
+        }),
+      /"experimental_sidebarAccessory" must be a React component/,
     ],
     [
       "message directive with uppercase id",
@@ -684,144 +727,25 @@ describe("collectPluginAppRegistrations", () => {
       headerContent: Accessory,
     });
   });
-});
 
-describe("interpretPluginFrontends", () => {
-  function loadedRecord(
-    pluginId: string,
-    defaultExport: unknown,
-  ): PluginFrontendRecord {
-    return {
-      pluginId,
-      status: "loaded",
-      module: { default: defaultExport },
-    };
-  }
-
-  it("stores a valid app's registrations and leaves the record loaded", () => {
-    const setRegistrations =
-      vi.fn<(pluginId: string, set: PluginRegistrationSet) => void>();
-    const records = new Map<string, PluginFrontendRecord>([
-      [
-        "good",
-        loadedRecord(
-          "good",
-          definePluginApp((app) => {
-            app.composer.customize({
-              id: "a",
-              actions: [{ id: "a", component: Component }],
-            });
-          }),
-        ),
-      ],
-    ]);
-
-    interpretPluginFrontends(records, {
-      setRegistrations,
-      warn: () => {},
+  it("keeps an experimental_sidebarAccessory registration", () => {
+    function SidebarAccessory() {
+      return null;
+    }
+    const definition = definePluginApp((app) => {
+      app.slots.navPanel({
+        id: "board",
+        title: "Board",
+        icon: "columns",
+        path: "board",
+        component: Component,
+        experimental_sidebarAccessory: SidebarAccessory,
+      });
     });
-
-    expect(records.get("good")?.status).toBe("loaded");
-    expect(setRegistrations).toHaveBeenCalledWith(
-      "good",
-      expect.objectContaining({
-        composerCustomizations: [
-          {
-            id: "a",
-            actions: [{ id: "a", component: Component }],
-          },
-        ],
-      }),
-    );
-  });
-
-  it("contains a junk default export to that plugin only", () => {
-    const setRegistrations = vi.fn();
-    const warn = vi.fn();
-    const records = new Map<string, PluginFrontendRecord>([
-      ["junk", loadedRecord("junk", { not: "an app" })],
-      [
-        "good",
-        loadedRecord(
-          "good",
-          definePluginApp((app) => {
-            app.composer.customize({
-              id: "a",
-              actions: [{ id: "a", component: Component }],
-            });
-          }),
-        ),
-      ],
-      ["broken", { pluginId: "broken", status: "failed", error: "boom" }],
-    ]);
-
-    interpretPluginFrontends(records, { setRegistrations, warn });
-
-    expect(records.get("junk")).toEqual({
-      pluginId: "junk",
-      status: "failed",
-      error: expect.stringContaining("definePluginApp"),
+    expect(
+      collectPluginAppRegistrations(definition).navPanels[0],
+    ).toMatchObject({
+      experimental_sidebarAccessory: SidebarAccessory,
     });
-    expect(records.get("good")?.status).toBe("loaded");
-    expect(records.get("broken")?.status).toBe("failed");
-    expect(setRegistrations).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("[plugin:junk]"));
-  });
-
-  it("contains a throwing setup", () => {
-    const setRegistrations = vi.fn();
-    const records = new Map<string, PluginFrontendRecord>([
-      [
-        "thrower",
-        loadedRecord(
-          "thrower",
-          definePluginApp(() => {
-            throw new Error("setup exploded");
-          }),
-        ),
-      ],
-    ]);
-
-    interpretPluginFrontends(records, {
-      setRegistrations,
-      warn: () => {},
-    });
-
-    expect(records.get("thrower")).toEqual({
-      pluginId: "thrower",
-      status: "failed",
-      error: "setup exploded",
-    });
-    expect(setRegistrations).not.toHaveBeenCalled();
-  });
-
-  it("logs an invalid composer customization without failing the plugin", () => {
-    const setRegistrations = vi.fn();
-    const warn = vi.fn();
-    const records = new Map<string, PluginFrontendRecord>([
-      [
-        "composer-plugin",
-        loadedRecord(
-          "composer-plugin",
-          definePluginApp((app) => {
-            app.composer.customize({ id: "bad id" });
-            app.composer.customize({ id: "good" });
-          }),
-        ),
-      ],
-    ]);
-
-    interpretPluginFrontends(records, { setRegistrations, warn });
-
-    expect(records.get("composer-plugin")?.status).toBe("loaded");
-    expect(setRegistrations).toHaveBeenCalledWith(
-      "composer-plugin",
-      expect.objectContaining({ composerCustomizations: [{ id: "good" }] }),
-    );
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "[plugin:composer-plugin] composer customization rejected",
-      ),
-    );
   });
 });

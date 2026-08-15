@@ -24,7 +24,7 @@
     "APP_URL": "https://vibecodethis.site",
     // Resend audience that /api/subscribe adds emails to ("bb users").
     // Not a secret — only the API key is.
-    "RESEND_AUDIENCE_ID": "299db4ee-f3db-476d-9847-0bf4344d9c44"
+    "RESEND_AUDIENCE_ID": "299db4ee-f3db-476d-9847-0bf4344d9c44",
   },
   "secrets": {
     "required": [
@@ -32,25 +32,35 @@
       "GITHUB_CLIENT_SECRET",
       "BETTER_AUTH_SECRET",
       "LANDING_POSTHOG_KEY",
-      "RESEND_API_KEY"
-    ]
+      "RESEND_API_KEY",
+    ],
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "bb-connect-staging",
-      "database_id": "1aaa5562-457d-43a7-b11f-18b4f19bd62c"
-    }
+      "database_id": "1aaa5562-457d-43a7-b11f-18b4f19bd62c",
+    },
   ],
   "durable_objects": {
     "bindings": [
       {
         "name": "TUNNEL_DO",
         "class_name": "TunnelDO",
-        "script_name": "bb-connect-staging"
-      }
-    ]
+        "script_name": "bb-connect-staging",
+      },
+    ],
   },
+  // BB Official plugin marketplace. The registry repo (get-bb/marketplace)
+  // uploads marketplace.json + icons here; /marketplace/v1/* serves them.
+  // The route answers 404 until the bucket exists, so this binding can land
+  // before the bucket is provisioned.
+  "r2_buckets": [
+    {
+      "binding": "MARKETPLACE",
+      "bucket_name": "bb-marketplace-staging",
+    },
+  ],
   "routes": [{ "pattern": "vibecodethis.site", "custom_domain": true }],
   "env": {
     // Production (getbb.app). Cutover note: the getbb.app + www custom domains
@@ -70,30 +80,36 @@
           "GITHUB_CLIENT_SECRET",
           "BETTER_AUTH_SECRET",
           "LANDING_POSTHOG_KEY",
-          "RESEND_API_KEY"
-        ]
+          "RESEND_API_KEY",
+        ],
       },
       "vars": {
         "BASE_DOMAIN": "getbb.app",
         "APP_URL": "https://getbb.app",
-        "RESEND_AUDIENCE_ID": "299db4ee-f3db-476d-9847-0bf4344d9c44"
+        "RESEND_AUDIENCE_ID": "299db4ee-f3db-476d-9847-0bf4344d9c44",
       },
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "bb-connect-prod",
-          "database_id": "5e37a076-93e9-4dcf-933f-761c22f7cf8b"
-        }
+          "database_id": "5e37a076-93e9-4dcf-933f-761c22f7cf8b",
+        },
       ],
       "durable_objects": {
         "bindings": [
           {
             "name": "TUNNEL_DO",
             "class_name": "TunnelDO",
-            "script_name": "bb-connect"
-          }
-        ]
-      }
-    }
-  }
+            "script_name": "bb-connect",
+          },
+        ],
+      },
+      "r2_buckets": [
+        {
+          "binding": "MARKETPLACE",
+          "bucket_name": "bb-marketplace",
+        },
+      ],
+    },
+  },
 }

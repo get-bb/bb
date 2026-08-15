@@ -29,7 +29,7 @@
 
 ## Plugin API
 
-- Any new public plugin API member (a `@bb/plugin-sdk/app` export, an `app.slots.*` method, or a `BbPluginApi` property) ships with an `experimental_` name prefix and an entry in [docs/api_to_audit.md](docs/api_to_audit.md) describing what it does and what to audit before stabilizing. Dropping the prefix is the deliberate stabilization step: audit the entry, rename project-wide, and remove it from the doc in the same change.
+- Any new public plugin API member (a `@get-bb/plugin-sdk/app` export, an `app.slots.*` method, or a `BbPluginApi` property) ships with an `experimental_` name prefix and an entry in [docs/api_to_audit.md](docs/api_to_audit.md) describing what it does and what to audit before stabilizing. Dropping the prefix is the deliberate stabilization step: audit the entry, rename project-wide, and remove it from the doc in the same change.
 
 ## Data Access
 
@@ -42,6 +42,7 @@
 
 - Prefer sanctioned typography tokens over arbitrary `text-[Npx]` classes.
 - Derive theme color tokens from the `--canvas`/`--ink` anchors (`color-mix(in oklch, var(--ink) N%, var(--canvas))`) or from another derived token — never hand-set an `oklch(L 0 0)` literal. Achromatic literals don't follow custom palettes (Nord, Dracula, …), which re-anchor only `--canvas`/`--ink`, so a hardcoded token strands a neutral-gray element in an otherwise tinted UI. Mix opaque steps `in oklch`; mix translucent steps (a `transparent` pole) `in oklab` so the hue survives. `apps/app/src/components/ui/theme.css` is the source of truth and `theme.test.ts` guards it.
+- Use the shared persistent responsive drawer for every compact slide-out menu, picker, popover, and dialog. Do not use modal drawer primitives that add `inert` or `aria-hidden` to the app root: iOS Safari can recalculate styles for the full app tree and stall the interaction. Start the drawer transform before heavy content, realize that content after two animation frames with a timeout fallback, and retain it after the first open. Verify representative drawers in iOS Simulator Safari and protect the app-root and deferred-realization behavior with tests.
 
 ## Build And Typecheck
 

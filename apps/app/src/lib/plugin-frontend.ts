@@ -28,9 +28,10 @@ import type {
   PluginContentScriptDisposer,
   PluginContentScriptRegistration,
   PluginSdkApp,
-} from "@bb/plugin-sdk";
-import { normalizePluginThreadRowStatus } from "@bb/plugin-sdk/internal/composer-customization-validation";
+} from "@get-bb/plugin-sdk";
+import { normalizePluginThreadRowStatus } from "@get-bb/plugin-sdk/internal/composer-customization-validation";
 import { resetCrashedPluginSlots } from "@/components/plugin/PluginSlotMount";
+import { runWithPluginDomIsolationAsync } from "./foreign-dom-mutation-guard";
 import {
   collectPluginAppRegistrations,
   isPluginAppDefinition,
@@ -236,7 +237,7 @@ export function installPluginRuntime(): void {
     reactDomClient,
     jsxRuntime,
     jsxDevRuntime,
-    // The real `@bb/plugin-sdk/app` surface: definePluginApp, the hooks, and
+    // The real `@get-bb/plugin-sdk/app` surface: definePluginApp, the hooks, and
     // the curated UI kit. Kept in type-sync with the facade package via
     // `satisfies PluginSdkApp` in plugin-sdk-app-impl.
     pluginSdkApp: pluginSdkAppImplementation,
@@ -442,7 +443,7 @@ async function callDisposer(
   deps: PluginFrontendReconcileDeps,
 ): Promise<PluginFrontendFailure | null> {
   try {
-    await disposer();
+    await runWithPluginDomIsolationAsync(() => disposer(), pluginId);
     return null;
   } catch (error) {
     const message = errorMessage(error);
@@ -506,38 +507,46 @@ async function mountWithTimeout(
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   let timedOut = false;
   const mountPromise = Promise.resolve().then(() =>
-    registration.mount({
-      pluginId,
-      generation,
-      signal: controller.signal,
-      experimental_setThreadRowStatus: (threadId: unknown, status: unknown) => {
-        if (controller.signal.aborted) return;
-        if (typeof threadId !== "string") {
-          deps.warn(
-            `bb plugin "${pluginId}": contentScript.experimental_setThreadRowStatus: "threadId" must be a non-empty string`,
-          );
-          return;
-        }
-        const normalizedThreadId = threadId.trim();
-        if (normalizedThreadId.length === 0) {
-          deps.warn(
-            `bb plugin "${pluginId}": contentScript.experimental_setThreadRowStatus: "threadId" must be a non-empty string`,
-          );
-          return;
-        }
-        const normalizedStatus = normalizePluginThreadRowStatus(
-          status,
-          (reason) => deps.warn(`bb plugin "${pluginId}": ${reason}`),
-        );
-        if (normalizedStatus === undefined) return;
-        setPluginThreadRowStatus(
-          normalizedThreadId,
+    runWithPluginDomIsolationAsync(
+      () =>
+        registration.mount({
           pluginId,
-          normalizedStatus,
-          statusOwner,
-        );
-      },
-    }),
+          generation,
+          signal: controller.signal,
+          experimental_setThreadRowStatus: (
+            threadId: unknown,
+            status: unknown,
+          ) => {
+            if (controller.signal.aborted) return;
+            if (typeof threadId !== "string") {
+              deps.warn(
+                `bb plugin "${pluginId}": contentScript.experimental_setThreadRowStatus: "threadId" must be a non-empty string`,
+              );
+              return;
+            }
+            const normalizedThreadId = threadId.trim();
+            if (normalizedThreadId.length === 0) {
+              deps.warn(
+                `bb plugin "${pluginId}": contentScript.experimental_setThreadRowStatus: "threadId" must be a non-empty string`,
+              );
+              return;
+            }
+            const normalizedStatus = normalizePluginThreadRowStatus(
+              status,
+              (reason) => deps.warn(`bb plugin "${pluginId}": ${reason}`),
+            );
+            if (normalizedStatus === undefined) return;
+            setPluginThreadRowStatus(
+              normalizedThreadId,
+              pluginId,
+              normalizedStatus,
+              statusOwner,
+            );
+          },
+        }),
+      pluginId,
+      controller.signal,
+    ),
   );
   const timeoutMs =
     deps.mountTimeoutMs ?? DEFAULT_CONTENT_SCRIPT_MOUNT_TIMEOUT_MS;
@@ -719,7 +728,7 @@ export async function reconcilePluginFrontends(
         const definition = record.module.default;
         if (!isPluginAppDefinition(definition)) {
           throw new Error(
-            "the bundle's default export is not definePluginApp(...) from @bb/plugin-sdk/app",
+            "the bundle's default export is not definePluginApp(...) from @get-bb/plugin-sdk/app",
           );
         }
         collected = collectPluginAppRegistrations(definition, (reason) => {
@@ -913,14 +922,6 @@ const browserReconcileDeps: PluginFrontendReconcileDeps = {
   warn: (message) => console.warn(message),
   diagnosticsChanged: publishBrowserDiagnostics,
 };
-
-/** Load state of every plugin frontend this page load, keyed by plugin id. */
-export function getPluginFrontendRecords(): ReadonlyMap<
-  string,
-  PluginFrontendRecord
-> {
-  return state.records;
-}
 
 /** Current per-window lifecycle diagnostics for plugin frontend generations. */
 export function getPluginFrontendDiagnostics(): ReadonlyMap<

@@ -35,7 +35,7 @@ import {
   threadTimelineQueryKey,
   threadTimelineTurnSummaryDetailsQueryKey,
 } from "./queries/query-keys";
-import { pluginContributionsQueryKey } from "./queries/plugin-contribution-queries";
+import { pluginContributionsQueryKey } from "./queries/query-keys";
 import { createRealtimeCacheEffects } from "./realtime-cache-effects";
 import {
   REALTIME_ENVIRONMENT_CHANGE_REGISTRY,
@@ -1031,6 +1031,52 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
+  it("invalidates thread detail when background activity starts or settles", () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const threadKey = threadQueryKey("thr_1");
+    queryClient.setQueryData(threadKey, {
+      activeBackgroundAgentCount: 0,
+      id: "thr_1",
+    });
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: {
+        backgroundActivityChanged: true,
+        eventTypes: ["item/started"],
+        projectId: "project-1",
+      },
+      changes: ["events-appended"],
+    });
+    vi.advanceTimersByTime(50);
+
+    expect(queryClient.getQueryState(threadKey)?.isInvalidated).toBe(true);
+
+    queryClient.setQueryData(threadKey, {
+      activeBackgroundAgentCount: 1,
+      id: "thr_1",
+    });
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: {
+        backgroundActivityChanged: true,
+        eventTypes: ["item/completed"],
+        projectId: "project-1",
+      },
+      changes: ["events-appended"],
+    });
+    vi.advanceTimersByTime(50);
+
+    expect(queryClient.getQueryState(threadKey)?.isInvalidated).toBe(true);
+
+    effects.dispose();
+  });
+
   it("does not cancel active timeline refetches for repeated event invalidations", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
@@ -1100,6 +1146,78 @@ describe("createRealtimeCacheEffects", () => {
         olderCursor: null,
       },
     });
+
+    unsubscribeTimeline();
+    effects.dispose();
+  });
+
+  it("supersedes an in-flight timeline read when a turn completes", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const timelineKey = threadTimelineQueryKey("thr_1");
+    const signals: AbortSignal[] = [];
+    const resolveFetches: Array<(value: unknown) => void> = [];
+    const timelineQueryFn = vi.fn(({ signal }: { signal: AbortSignal }) => {
+      signals.push(signal);
+      return new Promise((resolve) => {
+        resolveFetches.push(resolve);
+      });
+    });
+    const timelineObserver = new QueryObserver(queryClient, {
+      queryKey: timelineKey,
+      queryFn: timelineQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribeTimeline = timelineObserver.subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(timelineQueryFn).toHaveBeenCalledTimes(1);
+
+    // A normal streaming event arms the paced trailing refetch without
+    // canceling the read already in flight.
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { eventTypes: ["item/agentMessage/delta"] },
+      changes: ["events-appended"],
+    });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(signals[0]?.aborted).toBe(false);
+
+    // The server sends events-appended before its immediate status-changed
+    // notification. The latter flushes both buffered changes together.
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { eventTypes: ["turn/completed"] },
+      changes: ["events-appended"],
+    });
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      changes: ["status-changed"],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(signals[0]?.aborted).toBe(true);
+    expect(timelineQueryFn).toHaveBeenCalledTimes(2);
+
+    resolveFetches[1]?.({
+      rows: [],
+      timelinePage: {
+        kind: "latest",
+        topLevelLimit: 100,
+        returnedOlderTopLevelRowCount: 0,
+        hasOlderRows: false,
+        olderCursor: null,
+      },
+    });
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    // Completion also clears the trailing refetch armed by the earlier delta.
+    expect(timelineQueryFn).toHaveBeenCalledTimes(2);
 
     unsubscribeTimeline();
     effects.dispose();

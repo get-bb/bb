@@ -12,6 +12,13 @@ import type {
 import { describe, expect, it } from "vitest";
 import { parseEnvironmentValue } from "@/components/pickers/environment-picker-value";
 import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
+import {
+  hasPromptBranchSelectionChanged,
+  hasPromptOptionValueChanged,
+  mergeMissingPromptDraftAttachments,
+  resolveNewThreadProjectDefaultsState,
+  restorePromptDraftAfterOptionChange,
+} from "@/components/promptbox/NewThreadComposer";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { getProjectStoredPromptAttachmentPaths } from "@/lib/prompt-draft";
 import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-handoff-request";
@@ -19,23 +26,18 @@ import {
   buildRootComposeTerminalSessions,
   buildMobileRecentThreads,
   canCreateRootComposeTerminal,
-  hasPromptBranchSelectionChanged,
-  hasPromptOptionValueChanged,
   hasSingleUseRootComposeTargetState,
-  mergeMissingPromptDraftAttachments,
   readSectionIdFromLocationState,
   readRootComposeSectionTargetFromLocationState,
   readInitialPromptFromLocationState,
   requestRootComposePluginFocus,
-  resolveRootComposeProjectDefaultsState,
-  restorePromptDraftAfterOptionChange,
   resolveRootComposePanelThreadId,
   shouldReplaceInitialPromptFromLocationState,
   shouldStartComposingFromLocationState,
   shouldNavigateAfterThreadCreate,
 } from "./RootComposeView";
 import {
-  isProjectSourceWorktreeUnavailable,
+  resolveProjectSourceWorktreeDisabledReason,
   resolveComposeHostId,
   resolveRootComposeEffectiveEnvironmentValue,
   resolveRootComposeProjectRouting,
@@ -59,7 +61,7 @@ describe("requestRootComposePluginFocus", () => {
   });
 });
 
-describe("resolveRootComposeProjectDefaultsState", () => {
+describe("resolveNewThreadProjectDefaultsState", () => {
   const storedDefaults = {
     providerId: "codex",
     model: "gpt-5.6-sol",
@@ -70,7 +72,7 @@ describe("resolveRootComposeProjectDefaultsState", () => {
 
   it("keeps optimistic null defaults unresolved while the fallback query is pending", () => {
     expect(
-      resolveRootComposeProjectDefaultsState({
+      resolveNewThreadProjectDefaultsState({
         cachedDefaults: null,
         projectFound: true,
         queryData: undefined,
@@ -83,7 +85,7 @@ describe("resolveRootComposeProjectDefaultsState", () => {
 
   it("uses the authoritative saved defaults when the delayed query resolves", () => {
     expect(
-      resolveRootComposeProjectDefaultsState({
+      resolveNewThreadProjectDefaultsState({
         cachedDefaults: null,
         projectFound: true,
         queryData: storedDefaults,
@@ -96,7 +98,7 @@ describe("resolveRootComposeProjectDefaultsState", () => {
 
   it("only confirms absence after the fallback query succeeds with null", () => {
     expect(
-      resolveRootComposeProjectDefaultsState({
+      resolveNewThreadProjectDefaultsState({
         cachedDefaults: null,
         projectFound: true,
         queryData: null,
@@ -109,7 +111,7 @@ describe("resolveRootComposeProjectDefaultsState", () => {
 
   it("does not treat a previous project's placeholder as authoritative", () => {
     expect(
-      resolveRootComposeProjectDefaultsState({
+      resolveNewThreadProjectDefaultsState({
         cachedDefaults: null,
         projectFound: true,
         queryData: storedDefaults,
@@ -170,7 +172,6 @@ function makeThread(args: MakeThreadArgs): ThreadListEntry {
     originKind: null,
     originPluginId: null,
     visibility: "visible",
-    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     pinSortKey: null,
@@ -702,14 +703,16 @@ describe("shouldNavigateAfterThreadCreate", () => {
   });
 });
 
-describe("isProjectSourceWorktreeUnavailable", () => {
-  it("treats unknown checkout metadata as unavailable for worktree creation", () => {
-    expect(isProjectSourceWorktreeUnavailable(undefined)).toBe(false);
+describe("resolveProjectSourceWorktreeDisabledReason", () => {
+  it("explains why non-git and commitless sources cannot create worktrees", () => {
+    expect(resolveProjectSourceWorktreeDisabledReason(undefined)).toBeNull();
     expect(
-      isProjectSourceWorktreeUnavailable(makeProjectBranchesResponse({})),
-    ).toBe(false);
+      resolveProjectSourceWorktreeDisabledReason(
+        makeProjectBranchesResponse({}),
+      ),
+    ).toBeNull();
     expect(
-      isProjectSourceWorktreeUnavailable(
+      resolveProjectSourceWorktreeDisabledReason(
         makeProjectBranchesResponse({
           checkout: {
             kind: "unknown",
@@ -721,7 +724,20 @@ describe("isProjectSourceWorktreeUnavailable", () => {
           originDefaultBranch: null,
         }),
       ),
-    ).toBe(true);
+    ).toBe("New worktrees require a Git repository with at least one commit");
+    expect(
+      resolveProjectSourceWorktreeDisabledReason(
+        makeProjectBranchesResponse({
+          checkout: { kind: "unborn", branchName: "main" },
+          defaultBranch: null,
+          defaultBranchRelation: null,
+          defaultWorktreeBaseBranch: null,
+          originDefaultBranch: null,
+        }),
+      ),
+    ).toBe(
+      "Project source has no commits. Create an initial commit before creating a worktree",
+    );
   });
 });
 

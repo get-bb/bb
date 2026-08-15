@@ -134,6 +134,11 @@ code,
   color: var(--ink);
 }
 
+.nav-links .nav-current {
+  color: var(--ink);
+  font-weight: 500;
+}
+
 /* ── Buttons ────────────────────────────────────────────────────── */
 
 .btn {
@@ -576,6 +581,149 @@ code,
 /* No divider directly beneath the interactive demo. */
 .mockup-wrap + .band {
   border-top: none;
+}
+
+/* Individual public users, not corporate endorsements. This sits after the
+   product demo so it supports trust without competing with the hero CTA or
+   being confused with the provider compatibility row above. */
+.company-proof {
+  --company-proof-gap: 40px;
+  --company-proof-edge-gap: 20px;
+  position: relative;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100vw;
+  margin-left: -50vw;
+  gap: 20px;
+  padding: 40px 0 44px;
+  border-bottom: 1px solid var(--border-soft);
+  overflow: hidden;
+}
+
+.company-proof + .band {
+  border-top: none;
+}
+
+.company-proof-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.company-proof h2 {
+  flex-shrink: 0;
+  color: var(--subtle);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.company-proof-toggle {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--subtle);
+  cursor: pointer;
+}
+
+.company-proof-toggle:hover {
+  background: var(--state-hover);
+  color: var(--ink);
+}
+
+.company-proof-toggle:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.company-proof-toggle svg {
+  width: 12px;
+  height: 12px;
+}
+
+.company-proof-marquee {
+  width: 100%;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent,
+    black 5%,
+    black 95%,
+    transparent
+  );
+  mask-image: linear-gradient(
+    90deg,
+    transparent,
+    black 5%,
+    black 95%,
+    transparent
+  );
+}
+
+.company-proof-track {
+  display: flex;
+  align-items: center;
+  width: max-content;
+  animation: company-proof-scroll 42s linear infinite;
+  will-change: transform;
+}
+
+.company-proof.is-paused .company-proof-track {
+  animation-play-state: paused;
+}
+
+.company-proof.is-offscreen .company-proof-track {
+  animation-play-state: paused;
+  will-change: auto;
+}
+
+.company-proof-logos {
+  display: flex;
+  align-items: center;
+  width: max-content;
+  flex: none;
+  gap: var(--company-proof-gap);
+  padding: 0 var(--company-proof-edge-gap);
+  list-style: none;
+}
+
+.company-proof-company {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--dim);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+/* Preserve each official mark's proportions while making the social-proof
+   band intentionally quieter than the product content around it. */
+.company-proof-company img {
+  display: block;
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  border-radius: 5px;
+  filter: grayscale(1);
+  opacity: 0.52;
+}
+
+/* One cycle travels exactly one logo-list copy. The track holds
+   --company-proof-copies identical copies, so -100% / copies keeps the loop
+   seamless at every viewport width. */
+@keyframes company-proof-scroll {
+  to {
+    transform: translate3d(calc(-100% / var(--company-proof-copies, 5)), 0, 0);
+  }
 }
 
 .mock {
@@ -2607,6 +2755,23 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     gap: 14px;
   }
 
+  .company-proof {
+    --company-proof-gap: 26px;
+    --company-proof-edge-gap: 13px;
+    gap: 16px;
+    padding: 34px 0 38px;
+  }
+
+  .company-proof-company {
+    gap: 6px;
+    font-size: 12px;
+  }
+
+  .company-proof-company img {
+    width: 17px;
+    height: 17px;
+  }
+
   .plogo-more {
     display: none;
   }
@@ -2732,6 +2897,33 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 /* ── Reduced motion ─────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
+  .company-proof-toggle {
+    display: none;
+  }
+
+  .company-proof-marquee {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  .company-proof-track {
+    width: 100%;
+    animation: none;
+    will-change: auto;
+  }
+
+  .company-proof-logos {
+    min-width: 0;
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: center;
+    padding: 0 28px;
+  }
+
+  .company-proof-logos[aria-hidden="true"] {
+    display: none;
+  }
+
   .nav,
   .hero > * {
     animation: none;

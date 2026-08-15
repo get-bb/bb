@@ -1,11 +1,11 @@
-// Portable type declarations for `@bb/plugin-sdk`. Unpublished BB
+// Portable type declarations for `@get-bb/plugin-sdk`. Unpublished BB
 // workspace contracts are flattened; public subpaths may reuse the
 // package root without requiring any other @bb/* package.
 //
 // Confused by the API, or need a symbol that isn't here? Clone the BB repo
 // and read the real source: https://github.com/get-bb/bb
 
-import { ComposerCustomization, PluginComposerThreadRowStatus } from '@bb/plugin-sdk';
+import { ComposerCustomization, PluginComposerThreadRowStatus } from '@get-bb/plugin-sdk';
 
 declare const PLUGIN_SLOT_ID_PATTERN: RegExp;
 type RejectionReporter = (reason: string) => void;

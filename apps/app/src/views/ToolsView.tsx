@@ -86,6 +86,17 @@ export function ToolsScrollPage({
     aboveOverflow,
     belowOverflow,
   } = useScrollOverflowState<HTMLDivElement>({ measureOverflow: true });
+  if (fillViewport) {
+    // The child owns the only scrollable region (a ResourceCollectionViewport),
+    // so this page must NOT constrain its width: the scroller has to span the
+    // whole pane for the wheel to work from the gutters, and each band inside
+    // it centers itself with TOOLS_PAGE_BAND_CLASSES instead.
+    return (
+      <div className="box-border h-full w-full pb-4 pt-3 md:pt-4">
+        {children}
+      </div>
+    );
+  }
   return (
     <div className="relative h-full overflow-hidden">
       <div ref={scrollRef} className="h-full overflow-y-auto">
@@ -93,7 +104,6 @@ export function ToolsScrollPage({
         <div
           className={cn(
             "mx-auto box-border min-h-full w-full space-y-4 px-4 pb-4 pt-3 md:px-5 md:pt-4",
-            fillViewport && "h-full",
             maxWidthClassName,
           )}
         >
@@ -370,8 +380,12 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
                 ? null
                 : {
                     entryId: installTarget.entryId,
+                    marketplace: installTarget.marketplace,
+                    publisherLabel: installTarget.publisherLabel,
                     displayName: installTarget.displayName,
                     icon: installTarget.icon,
+                    iconUrl: installTarget.iconUrl,
+                    source: installTarget.source,
                   }
             }
             onOpenChange={(open) => {

@@ -4,7 +4,7 @@ import type {
   PromptMentionCommandTrigger,
   PromptTextMention,
 } from "@bb/domain";
-import type { ComposerView } from "@bb/plugin-sdk";
+import type { ComposerView } from "@get-bb/plugin-sdk";
 import type { Node as ProseMirrorNode, Slice } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
@@ -63,6 +63,10 @@ import {
   COARSE_POINTER_TEXT_BASE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import {
+  getMediaQuerySnapshot,
+  REDUCED_MOTION_QUERY,
+} from "@bb/shared-ui/hooks/use-media-query";
 import { blurActiveKeyboardInputWithin } from "@bb/shared-ui/overlay-trigger";
 import { createJsonLocalStorage } from "@/lib/browser-storage";
 import {
@@ -196,6 +200,23 @@ const PROMPTBOX_MAX_HEIGHT_BY_LAYOUT: Record<ZenModeLayout, string> = {
 
 const COLLAPSING_GRID_CLASS =
   "grid transition-[grid-template-rows] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none";
+const VOICE_ACTION_TRANSITION_MS = 180;
+type VoiceActionTransition = "entering" | "active" | "exiting";
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+function shouldFinishVoiceCompletionTransitionImmediately(): boolean {
+  return (
+    prefersReducedMotion() ||
+    (typeof document !== "undefined" && document.visibilityState === "hidden")
+  );
+}
 
 export interface PromptBoxSubmissionConfig {
   isSubmitting?: boolean;
@@ -327,6 +348,8 @@ export interface PromptBoxHandle {
   insertTextAtCursor: (text: string) => void;
   /** Return the trimmed text before the cursor, used as voice transcript context. */
   getTextBeforeCursor: () => string | undefined;
+  /** Exit the voice controls before inserting a completed transcript. */
+  playVoiceCompletionTransition: () => Promise<void>;
 }
 
 export type { PromptBoxAction } from "./PromptBoxActionsMenu";
@@ -339,6 +362,8 @@ export interface PromptBoxInternalProps {
   mentionRanges: readonly PromptTextMention[];
   onChange: (value: string, mentionRanges: PromptTextMention[]) => void;
   onSubmit: () => void;
+  /** Blur the editor after a pointer-activated primary submission. */
+  blurOnPointerSubmit?: boolean;
   placeholder?: string;
   /**
    * Whether the editor should take passive focus when it mounts or its history
@@ -1094,6 +1119,7 @@ export function PromptBoxInternal({
   mentionRanges,
   onChange,
   onSubmit,
+  blurOnPointerSubmit = false,
   placeholder = "Ask anything. @ to mention files, folders, or sections",
   autoFocus = true,
   className,
@@ -1165,6 +1191,7 @@ export function PromptBoxInternal({
   // Passive text autofocus opens the soft keyboard on coarse-pointer devices.
   const shouldAvoidSoftKeyboardAutofocus = isPointerCoarse;
   const formRef = useRef<HTMLFormElement>(null);
+  const blurAfterPointerSubmitRef = useRef(false);
   const heightAnimationFromRef = useRef<number | null>(null);
   const capturePromptBoxHeight = useCallback(() => {
     const formElement = formRef.current;
@@ -1247,9 +1274,126 @@ export function PromptBoxInternal({
   const isVoiceProcessing = voice?.state === "transcribing";
   const showVoiceActionGroup = isVoiceRecording || isVoiceProcessing;
   const isVoiceBusy = showVoiceActionGroup;
-  // Zen styling is suppressed while the voice bar shows, since the box
-  // collapses to the pill instead.
-  const showZenLayout = isZenMode && !showVoiceActionGroup;
+  const voiceActionState = isVoiceRecording
+    ? "recording"
+    : isVoiceProcessing
+      ? "transcribing"
+      : null;
+  const lastVoiceActionStateRef = useRef<"recording" | "transcribing">(
+    voiceActionState ?? "recording",
+  );
+  const renderedVoiceActionState =
+    voiceActionState ?? lastVoiceActionStateRef.current;
+  useLayoutEffect(() => {
+    if (voiceActionState !== null) {
+      lastVoiceActionStateRef.current = voiceActionState;
+    }
+  }, [voiceActionState]);
+  const [isVoiceActionPresent, setIsVoiceActionPresent] =
+    useState(showVoiceActionGroup);
+  const [voiceActionTransition, setVoiceActionTransition] =
+    useState<VoiceActionTransition>(
+      showVoiceActionGroup ? "active" : "exiting",
+    );
+  const isVoiceActionVisible = voiceActionTransition === "active";
+  const wasVoiceActionShownRef = useRef(showVoiceActionGroup);
+  const voiceActionRevealFrameRef = useRef<number | null>(null);
+  const voiceActionRemovalTimeoutRef = useRef<number | null>(null);
+  const voiceCompletionTimeoutRef = useRef<number | null>(null);
+  const voiceCompletionPromiseRef = useRef<Promise<void> | null>(null);
+  const voiceCompletionResolveRef = useRef<(() => void) | null>(null);
+
+  useLayoutEffect(() => {
+    const wasVoiceActionShown = wasVoiceActionShownRef.current;
+    wasVoiceActionShownRef.current = showVoiceActionGroup;
+    if (voiceActionRevealFrameRef.current !== null) {
+      window.cancelAnimationFrame(voiceActionRevealFrameRef.current);
+      voiceActionRevealFrameRef.current = null;
+    }
+    if (voiceActionRemovalTimeoutRef.current !== null) {
+      window.clearTimeout(voiceActionRemovalTimeoutRef.current);
+      voiceActionRemovalTimeoutRef.current = null;
+    }
+
+    if (showVoiceActionGroup) {
+      setIsVoiceActionPresent(true);
+      if (wasVoiceActionShown || prefersReducedMotion()) {
+        setVoiceActionTransition("active");
+        return;
+      }
+      setVoiceActionTransition("entering");
+      voiceActionRevealFrameRef.current = window.requestAnimationFrame(() => {
+        voiceActionRevealFrameRef.current = null;
+        setVoiceActionTransition("active");
+      });
+      return;
+    }
+
+    setVoiceActionTransition("exiting");
+    if (!wasVoiceActionShown) {
+      setIsVoiceActionPresent(false);
+      return;
+    }
+    if (prefersReducedMotion()) {
+      setIsVoiceActionPresent(false);
+      return;
+    }
+    voiceActionRemovalTimeoutRef.current = window.setTimeout(() => {
+      voiceActionRemovalTimeoutRef.current = null;
+      setIsVoiceActionPresent(false);
+    }, VOICE_ACTION_TRANSITION_MS);
+  }, [showVoiceActionGroup]);
+
+  useEffect(
+    () => () => {
+      if (voiceActionRevealFrameRef.current !== null) {
+        window.cancelAnimationFrame(voiceActionRevealFrameRef.current);
+      }
+      if (voiceActionRemovalTimeoutRef.current !== null) {
+        window.clearTimeout(voiceActionRemovalTimeoutRef.current);
+      }
+      if (voiceCompletionTimeoutRef.current !== null) {
+        window.clearTimeout(voiceCompletionTimeoutRef.current);
+      }
+      voiceCompletionResolveRef.current?.();
+    },
+    [],
+  );
+
+  const playVoiceCompletionTransition = useCallback((): Promise<void> => {
+    if (voiceActionRevealFrameRef.current !== null) {
+      window.cancelAnimationFrame(voiceActionRevealFrameRef.current);
+      voiceActionRevealFrameRef.current = null;
+    }
+    setVoiceActionTransition("exiting");
+    if (shouldFinishVoiceCompletionTransitionImmediately()) {
+      if (voiceCompletionTimeoutRef.current !== null) {
+        window.clearTimeout(voiceCompletionTimeoutRef.current);
+        voiceCompletionTimeoutRef.current = null;
+      }
+      const resolvePendingTransition = voiceCompletionResolveRef.current;
+      voiceCompletionPromiseRef.current = null;
+      voiceCompletionResolveRef.current = null;
+      resolvePendingTransition?.();
+      return Promise.resolve();
+    }
+    if (voiceCompletionPromiseRef.current) {
+      return voiceCompletionPromiseRef.current;
+    }
+
+    const transition = new Promise<void>((resolve) => {
+      voiceCompletionResolveRef.current = resolve;
+      voiceCompletionTimeoutRef.current = window.setTimeout(() => {
+        voiceCompletionTimeoutRef.current = null;
+        voiceCompletionPromiseRef.current = null;
+        voiceCompletionResolveRef.current = null;
+        resolve();
+      }, VOICE_ACTION_TRANSITION_MS);
+    });
+    voiceCompletionPromiseRef.current = transition;
+    return transition;
+  }, []);
+  const showZenLayout = isZenMode;
   const showCompactLayout =
     compact?.isCompact === true && !showVoiceActionGroup && !isZenMode;
   const effectivePlaceholder = showCompactLayout
@@ -1700,9 +1844,15 @@ export function PromptBoxInternal({
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
-    const editable = !composerInputLocked;
+    const editable = !composerInputLocked && !isVoiceBusy;
     if (editor.isEditable !== editable) editor.setEditable(editable);
-  }, [composerInputLocked, editor]);
+    editor.view.dom.tabIndex = editable ? 0 : -1;
+    if (editable) {
+      editor.view.dom.removeAttribute("aria-readonly");
+    } else {
+      editor.view.dom.setAttribute("aria-readonly", "true");
+    }
+  }, [composerInputLocked, editor, isVoiceBusy]);
 
   useEffect(() => {
     editorRef.current = editor;
@@ -1892,7 +2042,7 @@ export function PromptBoxInternal({
     const formElement = formRef.current;
     if (fromHeight === null || !formElement) return;
     heightAnimationFromRef.current = null;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (getMediaQuerySnapshot(REDUCED_MOTION_QUERY)) return;
 
     const previousTransition = formElement.style.transition;
     const previousWillChange = formElement.style.willChange;
@@ -2003,6 +2153,7 @@ export function PromptBoxInternal({
     activeTrigger.char !== DEFAULT_PLUGIN_MENTION_TRIGGER &&
     activeMentionQuery.length === 0;
   const showTypeaheadMenu =
+    !isVoiceBusy &&
     activeTrigger !== null &&
     !isCommandTriggerLiteral &&
     !isBareNonDefaultMentionTrigger;
@@ -2393,8 +2544,15 @@ export function PromptBoxInternal({
       focusEnd,
       insertTextAtCursor,
       getTextBeforeCursor,
+      playVoiceCompletionTransition,
     }),
-    [capturePromptBoxHeight, focusEnd, insertTextAtCursor, getTextBeforeCursor],
+    [
+      capturePromptBoxHeight,
+      focusEnd,
+      getTextBeforeCursor,
+      insertTextAtCursor,
+      playVoiceCompletionTransition,
+    ],
   );
 
   const canSubmit =
@@ -2428,6 +2586,14 @@ export function PromptBoxInternal({
     }
     void voice?.start();
   }, [isPointerCoarse, voice]);
+  const cancelVoiceInput = useCallback(() => {
+    if (voiceActionRevealFrameRef.current !== null) {
+      window.cancelAnimationFrame(voiceActionRevealFrameRef.current);
+      voiceActionRevealFrameRef.current = null;
+    }
+    setVoiceActionTransition("exiting");
+    voice?.cancel();
+  }, [voice]);
   const effectiveSubmitTitle = isZenMode
     ? submitTitle.replace(/^Submit\s+/, "")
     : submitTitle;
@@ -2455,10 +2621,26 @@ export function PromptBoxInternal({
   ]);
 
   const submitPrompt = useCallback(() => {
+    const shouldBlurAfterSubmit = blurAfterPointerSubmitRef.current;
+    blurAfterPointerSubmitRef.current = false;
     if (!canSubmit) return;
     onSubmit();
+    if (shouldBlurAfterSubmit) {
+      blurPromptEditor(editorRef.current);
+    }
     resetZenModeAfterSubmit();
   }, [canSubmit, onSubmit, resetZenModeAfterSubmit]);
+
+  const handleSubmitClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      // Pointer-generated click events have a positive click count. Keyboard
+      // activation and programmatic clicks use detail=0, so hardware Enter
+      // submissions retain the caret for the next follow-up.
+      blurAfterPointerSubmitRef.current =
+        blurOnPointerSubmit && event.detail > 0;
+    },
+    [blurOnPointerSubmit],
+  );
 
   const handleSubmitPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -2872,16 +3054,15 @@ export function PromptBoxInternal({
   // whole box), instead of leaking to the collapsed editor.
   useEffect(() => {
     if (!showVoiceActionGroup || !voice) return;
-    const cancelVoice = voice.cancel;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
       event.stopPropagation();
-      cancelVoice();
+      cancelVoiceInput();
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [showVoiceActionGroup, voice]);
+  }, [cancelVoiceInput, showVoiceActionGroup, voice]);
 
   return (
     <form
@@ -2905,8 +3086,6 @@ export function PromptBoxInternal({
       }}
       className={cn(
         "group/promptbox relative w-full rounded-xl border border-border bg-background shadow-lift",
-        "transition-[border-radius] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
-        showVoiceActionGroup && "rounded-3xl",
         showCompactLayout && "overflow-hidden",
         // Zen toggles only the *height* of the box; the inset padding stays
         // identical so the placeholder/text doesn't jump when toggling.
@@ -2926,7 +3105,7 @@ export function PromptBoxInternal({
       <div
         data-promptbox-layout=""
         className={cn(COLLAPSING_GRID_CLASS, showZenLayout && "min-h-0 flex-1")}
-        style={{ gridTemplateRows: showVoiceActionGroup ? "0fr" : "1fr" }}
+        style={{ gridTemplateRows: "1fr" }}
       >
         <div
           data-promptbox-main=""
@@ -2934,7 +3113,7 @@ export function PromptBoxInternal({
             "min-h-0 overflow-hidden transition-opacity duration-[180ms] motion-reduce:transition-none",
             isZenMode && "flex flex-col",
             showCompactLayout && "relative h-12",
-            showVoiceActionGroup && "pointer-events-none opacity-0",
+            showVoiceActionGroup && "pointer-events-none",
           )}
         >
           {header && !showCompactLayout ? (
@@ -2945,12 +3124,14 @@ export function PromptBoxInternal({
             // mode also gets more top room since the card fills the viewport.
             <div
               data-promptbox-expanded-only=""
+              inert={showVoiceActionGroup ? true : undefined}
               className={cn("pl-4 pr-14 pt-3", compact && "pr-14")}
             >
               {header}
             </div>
           ) : null}
           <div
+            data-promptbox-input-region=""
             className={cn(
               "relative",
               isZenMode && "min-h-0 flex flex-1 flex-col",
@@ -2966,6 +3147,8 @@ export function PromptBoxInternal({
                 </div>
                 <div
                   data-promptbox-expanded-only=""
+                  data-promptbox-standard-actions=""
+                  inert={showVoiceActionGroup ? true : undefined}
                   className="absolute right-2 top-2 z-20 flex items-center gap-0.5"
                 >
                   {isZenMode ? (
@@ -3122,7 +3305,10 @@ export function PromptBoxInternal({
 
           {!showCompactLayout ? (
             <>
-              <div data-promptbox-expanded-only="">
+              <div
+                data-promptbox-expanded-only=""
+                inert={showVoiceActionGroup ? true : undefined}
+              >
                 <AttachmentPreview
                   attachments={attachments}
                   attachmentProjectId={attachmentProjectId}
@@ -3144,14 +3330,42 @@ export function PromptBoxInternal({
             <div
               data-promptbox-action-row=""
               className={cn(
-                "flex shrink-0 flex-row items-center gap-3 pb-2 pl-3.5 pr-2 pt-1.5",
+                "relative flex shrink-0 flex-row items-center gap-3 pb-2 pl-3.5 pr-2 pt-1.5",
                 showCompactLayout && "absolute inset-y-0 right-2 gap-0 p-0",
               )}
             >
+              {voice && isVoiceActionPresent ? (
+                <div
+                  data-promptbox-voice-controls=""
+                  data-voice-transition={voiceActionTransition}
+                  inert={isVoiceActionVisible ? undefined : true}
+                  aria-hidden={isVoiceActionVisible ? undefined : true}
+                  className={cn(
+                    "absolute inset-0 z-10 min-w-0 origin-center transition-[opacity,transform] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[opacity,transform] motion-reduce:transition-none",
+                    isVoiceActionVisible
+                      ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
+                      : "pointer-events-none translate-y-1 scale-[0.985] opacity-0",
+                  )}
+                >
+                  <VoiceRecordingBar
+                    state={renderedVoiceActionState}
+                    stream={voice.stream}
+                    onConfirm={voice.stop}
+                    onCancel={cancelVoiceInput}
+                  />
+                </div>
+              ) : null}
               {!showCompactLayout ? (
                 <div
                   data-promptbox-expanded-only=""
-                  className="flex min-w-0 flex-1 flex-row items-center gap-1"
+                  data-promptbox-standard-actions=""
+                  className={cn(
+                    "flex min-w-0 flex-1 flex-row items-center gap-1 transition-[opacity,transform] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
+                    showVoiceActionGroup
+                      ? "pointer-events-none translate-y-1 opacity-0"
+                      : "translate-y-0 opacity-100",
+                  )}
+                  inert={showVoiceActionGroup ? true : undefined}
                   aria-live="polite"
                 >
                   <PromptBoxActionsMenu
@@ -3172,7 +3386,16 @@ export function PromptBoxInternal({
                   {footerStart}
                 </div>
               ) : null}
-              <div className="flex shrink-0 flex-row items-center gap-1">
+              <div
+                data-promptbox-standard-actions=""
+                className={cn(
+                  "flex shrink-0 flex-row items-center gap-1 transition-[opacity,transform] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
+                  showVoiceActionGroup
+                    ? "pointer-events-none translate-y-1 opacity-0"
+                    : "translate-y-0 opacity-100",
+                )}
+                inert={showVoiceActionGroup ? true : undefined}
+              >
                 {!showCompactLayout ? (
                   <>
                     {!suppressPluginComposerCustomizations ? (
@@ -3253,6 +3476,7 @@ export function PromptBoxInternal({
                       aria-label={effectiveSubmitTitle}
                       disabled={!canSubmit}
                       onPointerDown={handleSubmitPointerDown}
+                      onClick={handleSubmitClick}
                       className={cn(
                         showCompactLayout
                           ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
@@ -3277,21 +3501,6 @@ export function PromptBoxInternal({
               </div>
             </div>
           </PluginComposerViewProvider>
-        </div>
-      </div>
-      <div
-        className={COLLAPSING_GRID_CLASS}
-        style={{ gridTemplateRows: showVoiceActionGroup ? "1fr" : "0fr" }}
-      >
-        <div className="min-h-0 overflow-hidden">
-          {voice && showVoiceActionGroup ? (
-            <VoiceRecordingBar
-              state={isVoiceRecording ? "recording" : "transcribing"}
-              stream={voice.stream}
-              onConfirm={voice.stop}
-              onCancel={voice.cancel}
-            />
-          ) : null}
         </div>
       </div>
     </form>

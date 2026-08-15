@@ -35,6 +35,7 @@ export function makeFakeHostWorkspace(
       files: [] as never[],
       shortstat: "",
       mergeBaseRef: null as string | null,
+      truncated: false,
     }),
     diffPatch: async () => [] as never[],
     getPullRequest: async () => ({ outcome: "none" as const }),

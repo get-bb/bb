@@ -6,7 +6,14 @@ import {
   setInstalledPluginSourceClassification,
   setInstalledPluginUpdateState,
   type InstalledPluginRow,
+  type PluginGitSelector,
 } from "@bb/db";
+import { gitSelectorForRow } from "./git-source-intent.js";
+import {
+  gitArtifactCacheDir,
+  parsePluginSource,
+  runInstallCommand,
+} from "./install-sources.js";
 import { readPluginManifest } from "./manifest.js";
 import {
   createNpmResolverRun,
@@ -15,6 +22,8 @@ import {
   resolveNpmUpdate,
   selectNpmCandidate,
   type CompatibilityProblem,
+  type GitCandidateProbe,
+  type GitCandidateProbeResult,
   type NpmSourceIntentForResolution,
   type PluginResolvedUpdateVersion,
   type PluginUpdateResolution,
@@ -68,6 +77,9 @@ export function createPluginUpdates(
     managedArtifacts: { applyNpmCandidate, stageGitCandidate },
     runArtifactGc,
   } = context;
+  // A commit is immutable. Keep its manifest compatibility result for this
+  // server process so the six-hour sweep does not clone the same releases.
+  const gitCandidateProbeCache = new Map<string, GitCandidateProbeResult>();
 
   function problemMessages(problems: CompatibilityProblem[]): string[] {
     return problems.map((problem) => problem.message);
@@ -125,6 +137,133 @@ export function createPluginUpdates(
     }
   }
 
+  /**
+   * What the install-time clone says a legacy ref was. `git clone` copies
+   * every ref, so the cached checkout still holds the tags and branches the
+   * remote published when bb installed the plugin. "unknown" means the
+   * checkout or its refs are gone, which is not evidence of anything.
+   */
+  async function legacyGitRefEvidence(args: {
+    url: string;
+    commit: string | null;
+    ref: string;
+  }): Promise<"tag" | "branch" | "unknown"> {
+    if (args.commit === null) return "unknown";
+    const parsed = parsePluginSource(`git:${args.url}@${args.commit}`);
+    if (parsed.kind !== "git") return "unknown";
+    let checkoutDir: string;
+    try {
+      checkoutDir = gitArtifactCacheDir(
+        deps.dataDir,
+        parsed.cachePath,
+        args.commit,
+      );
+    } catch {
+      return "unknown";
+    }
+    const hasRef = async (candidate: string): Promise<boolean> => {
+      try {
+        await runInstallCommand("git", [
+          "-C",
+          checkoutDir,
+          "rev-parse",
+          "--verify",
+          "--quiet",
+          candidate,
+        ]);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    if (await hasRef(`refs/tags/${args.ref}`)) return "tag";
+    if (await hasRef(`refs/remotes/origin/${args.ref}`)) return "branch";
+    if (await hasRef(`refs/heads/${args.ref}`)) return "branch";
+    return "unknown";
+  }
+
+  /**
+   * The git intent of a row, classifying a legacy ref that was persisted
+   * before bb recorded whether it names a branch, a tag, or a commit.
+   */
+  async function classifiedGitIntentForRow(
+    row: InstalledPluginRow,
+  ): Promise<
+    | { outcome: "resolved"; url: string; selector: PluginGitSelector }
+    | { outcome: "unavailable"; detail: string }
+  > {
+    if (row.sourceGitUrl === null) {
+      throw new Error(`plugin "${row.id}" has corrupt normalized git state`);
+    }
+    const url = row.sourceGitUrl;
+    const selector = gitSelectorForRow(row);
+    if (selector !== null) return { outcome: "resolved", url, selector };
+    if (row.sourceGitRequestedRef === null) {
+      throw new Error(`plugin "${row.id}" has corrupt normalized git state`);
+    }
+    const ref = row.sourceGitRequestedRef;
+    const classified = await resolveGitRef({ url, ref });
+    if (classified.outcome === "unavailable") return classified;
+    // A tag is a pin; a branch tracks whatever the remote later publishes.
+    // The remote alone cannot decide which one a legacy row installed: an
+    // attacker who deletes a tag and pushes a same-name branch would turn the
+    // pin into tracking and get the next update installed as trusted code.
+    // The install-time clone is the local evidence, and it is not on the
+    // network.
+    if (classified.refKind === "branch") {
+      const evidence = await legacyGitRefEvidence({
+        url,
+        commit: row.gitResolvedCommit,
+        ref,
+      });
+      if (evidence !== "branch") {
+        return {
+          outcome: "unavailable",
+          detail:
+            `security check failed: ${url} now publishes "${ref}" as a branch, but this install ` +
+            `${evidence === "tag" ? "recorded it as a tag" : "has no local record of its ref kind"}. ` +
+            `bb keeps the plugin pinned to ${row.gitResolvedCommit ?? "its recorded commit"} rather than ` +
+            "tracking that branch. Remove the plugin and install it again to accept the new ref",
+        };
+      }
+    }
+    if (
+      !setInstalledPluginSourceClassification(deps.db, row.id, {
+        kind: "git",
+        refKind: classified.refKind,
+      })
+    ) {
+      throw new Error(`plugin "${row.id}" disappeared during normalization`);
+    }
+    return {
+      outcome: "resolved",
+      url,
+      selector: { kind: "ref", ref, refKind: classified.refKind },
+    };
+  }
+
+  /**
+   * The selector to persist when a git candidate activates. The resolution
+   * carries the exact tag it selected and displayed, so activation stores
+   * that pair. A second tag query here would be a window: a higher tag added
+   * to the same commit between approval and activation would be recorded as
+   * the installed release, and the stored release would differ from the one
+   * the user approved.
+   */
+  function activationSelectorForCandidate(args: {
+    selector: PluginGitSelector;
+    candidateCommit: string;
+    candidateTag: string | undefined;
+  }): PluginGitSelector {
+    if (args.selector.kind === "ref") return args.selector;
+    if (args.candidateTag === undefined) {
+      throw new Error(
+        `git candidate for ${args.candidateCommit} carries no resolved release tag`,
+      );
+    }
+    return { ...args.selector, resolvedTag: args.candidateTag };
+  }
+
   async function resolveUpdateForRow(args: {
     row: InstalledPluginRow;
     npmRun: ReturnType<typeof createNpmResolverRun>;
@@ -145,7 +284,7 @@ export function createPluginUpdates(
       return {
         outcome: "unavailable",
         detail:
-          "installed from the retired remote marketplace — remove it and reinstall from Tools → Plugins → Browse to switch to the bundled copy",
+          "installed from the retired remote marketplace — remove it and reinstall from Extensions → Plugins → Browse to switch to the bundled copy",
       };
     }
     if (args.row.sourceKind === "npm") {
@@ -157,41 +296,56 @@ export function createPluginUpdates(
         includePinned: args.npmIntentOverride !== undefined,
       });
     }
-    if (
-      args.row.sourceGitUrl === null ||
-      args.row.sourceGitRequestedRef === null ||
-      args.row.gitResolvedCommit === null
-    ) {
+    if (args.row.gitResolvedCommit === null) {
       throw new Error(
         `plugin "${args.row.id}" has corrupt normalized git state`,
       );
     }
-    let refKind = args.row.sourceGitRefKind;
-    if (refKind === null) {
-      const classified = await resolveGitRef({
-        url: args.row.sourceGitUrl,
-        ref: args.row.sourceGitRequestedRef,
+    const intent = await classifiedGitIntentForRow(args.row);
+    if (intent.outcome === "unavailable") return intent;
+    const row = args.row;
+    const probeGitCandidate: GitCandidateProbe = async (candidate) => {
+      const cacheKey = JSON.stringify([
+        row.id,
+        row.sourceGitUrl,
+        row.sourceGitSubdirectory,
+        candidate.commit,
+        deps.appVersion,
+      ]);
+      const cached = gitCandidateProbeCache.get(cacheKey);
+      if (cached !== undefined) return cached;
+      const probed = await stageGitCandidate({
+        row,
+        commit: candidate.commit,
+        promote: false,
       });
-      if (classified.outcome === "unavailable") return classified;
-      refKind = classified.refKind;
-      if (
-        !setInstalledPluginSourceClassification(deps.db, args.row.id, {
-          kind: "git",
-          refKind,
-        })
-      ) {
-        throw new Error(
-          `plugin "${args.row.id}" disappeared during normalization`,
-        );
+      const result: GitCandidateProbeResult =
+        probed.outcome === "valid"
+          ? {
+              outcome: "compatible",
+              devMode: probed.devMode,
+              packagedBuildProblems: probed.packagedBuildProblems,
+            }
+          : probed;
+      // A transient clone or parse failure can recover. Compatibility is a
+      // property of this immutable commit and the running bb version.
+      if (result.outcome !== "invalid") {
+        gitCandidateProbeCache.set(cacheKey, result);
       }
-    }
+      return result;
+    };
+    // A range tracks whatever release this bb can run, so the resolver walks
+    // its matching tags. A ref names one commit, so it is staged once here.
     const remote = await resolveGitUpdate({
-      url: args.row.sourceGitUrl,
-      ref: args.row.sourceGitRequestedRef,
-      refKind,
+      url: intent.url,
+      intent: intent.selector,
       currentCommit: args.row.gitResolvedCommit,
+      ...(intent.selector.kind === "range"
+        ? { probeCandidate: probeGitCandidate }
+        : {}),
     });
     if (remote.outcome !== "update-available") return remote;
+    if (intent.selector.kind === "range") return remote;
     const staged = await stageGitCandidate({
       row: args.row,
       commit: remote.candidate.version,
@@ -300,6 +454,17 @@ export function createPluginUpdates(
       return {
         requested: row.source,
         resolved: installedUpdateVersion(row).display,
+        ...(row.sourceGitSubdirectory === null
+          ? {}
+          : { subdirectory: row.sourceGitSubdirectory }),
+        ...(row.sourceGitRange === null ? {} : { range: row.sourceGitRange }),
+        ...(row.sourceGitTagPrefix === null ||
+        row.sourceGitTagPrefix.length === 0
+          ? {}
+          : { tagPrefix: row.sourceGitTagPrefix }),
+        ...(row.sourceGitResolvedTag === null
+          ? {}
+          : { resolvedTag: row.sourceGitResolvedTag }),
         ...(row.npmIntegrity === null ? {} : { integrity: row.npmIntegrity }),
         ...(row.sourceNpmRegistry === null
           ? {}
@@ -341,7 +506,7 @@ export function createPluginUpdates(
         if (resolution.outcome === "pinned") {
           return {
             ok: false,
-            error: `plugin "${id}" is pinned by its source intent; remove and reinstall it with an npm range or git branch to track updates`,
+            error: `plugin "${id}" is pinned by its source intent; remove and reinstall it with an npm range, a git branch, or a git semver range to track updates`,
           };
         }
         if (resolution.outcome === "incompatible") {
@@ -399,28 +564,25 @@ export function createPluginUpdates(
             row.sourceKind === "git" &&
             resolution.outcome === "update-available"
           ) {
-            const persistedRefKind =
-              row.sourceGitRefKind ??
-              getInstalledPlugin(deps.db, id)?.sourceGitRefKind ??
-              null;
-            if (
-              row.sourceGitUrl === null ||
-              row.sourceGitRequestedRef === null ||
-              persistedRefKind === null
-            ) {
-              throw new Error(
-                `plugin "${id}" has corrupt normalized git state`,
-              );
-            }
             const activationRow = getInstalledPlugin(deps.db, id);
             if (activationRow === undefined) {
               throw new Error(`plugin "${id}" disappeared before activation`);
+            }
+            // resolveUpdateForRow classified the row a moment ago, so this
+            // reads the persisted intent rather than reaching the network.
+            const intent = await classifiedGitIntentForRow(activationRow);
+            if (intent.outcome === "unavailable") {
+              return { ok: false, error: intent.detail };
             }
             const staged = await stageGitCandidate({
               row: activationRow,
               commit: resolution.candidate.version,
               promote: true,
-              activationRefKind: persistedRefKind,
+              activationSelector: activationSelectorForCandidate({
+                selector: intent.selector,
+                candidateCommit: resolution.candidate.version,
+                candidateTag: resolution.candidateGitTag,
+              }),
             });
             if (staged.outcome !== "valid") {
               const detail =

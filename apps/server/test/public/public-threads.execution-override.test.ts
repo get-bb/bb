@@ -11,21 +11,23 @@ import {
 import { withTestHarness } from "../helpers/test-app.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
 
-function stubClaudeCodeCatalog(
+function stubProviderCatalog(
   harness: TestAppHarness,
   hostId: string,
   sessionId: string,
+  providerId: string,
+  model: string,
 ): void {
   registerProviderHostRpcResponder(harness, {
     hostId,
     sessionId,
     modelsByProviderId: {
-      "claude-code": {
+      [providerId]: {
         models: [
           {
-            id: "claude-opus-4-8",
-            model: "claude-opus-4-8",
-            displayName: "Opus 4.8",
+            id: model,
+            model,
+            displayName: model,
             description: "",
             supportedReasoningEfforts: [
               { reasoningEffort: "low", description: "" },
@@ -44,7 +46,7 @@ function stubClaudeCodeCatalog(
   });
 }
 
-function seedClaudeCodeThread(
+function seedProviderThread(
   harness: TestAppHarness,
   providerId = "claude-code",
 ) {
@@ -73,28 +75,50 @@ function patchThread(harness: TestAppHarness, threadId: string, body: unknown) {
 }
 
 describe("PATCH /threads/:id execution override", () => {
-  it("persists a model + reasoning override after catalog validation", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session, thread } = seedClaudeCodeThread(harness);
-      stubClaudeCodeCatalog(harness, host.id, session.id);
+  for (const provider of [
+    { id: "codex", model: "gpt-5.6-sol" },
+    { id: "claude-code", model: "claude-opus-4-8" },
+    { id: "pi", model: "openai/gpt-5.4" },
+    { id: "acp-cursor", model: "gpt-5.3-codex" },
+  ]) {
+    it(`persists a catalog-scoped model + reasoning override for ${provider.id}`, async () => {
+      await withTestHarness(async (harness) => {
+        const { host, session, thread } = seedProviderThread(
+          harness,
+          provider.id,
+        );
+        stubProviderCatalog(
+          harness,
+          host.id,
+          session.id,
+          provider.id,
+          provider.model,
+        );
 
-      const response = await patchThread(harness, thread.id, {
-        model: "claude-opus-4-8",
-        reasoningLevel: "high",
-      });
+        const response = await patchThread(harness, thread.id, {
+          model: provider.model,
+          reasoningLevel: "high",
+        });
 
-      expect(response.status).toBe(200);
-      expect(getThreadExecutionOverride(harness.db, thread.id)).toEqual({
-        modelOverride: "claude-opus-4-8",
-        reasoningLevelOverride: "high",
+        expect(response.status).toBe(200);
+        expect(getThreadExecutionOverride(harness.db, thread.id)).toEqual({
+          modelOverride: provider.model,
+          reasoningLevelOverride: "high",
+        });
       });
     });
-  });
+  }
 
   it("rejects a model that is not in the provider's catalog", async () => {
     await withTestHarness(async (harness) => {
-      const { host, session, thread } = seedClaudeCodeThread(harness);
-      stubClaudeCodeCatalog(harness, host.id, session.id);
+      const { host, session, thread } = seedProviderThread(harness);
+      stubProviderCatalog(
+        harness,
+        host.id,
+        session.id,
+        "claude-code",
+        "claude-opus-4-8",
+      );
 
       const response = await patchThread(harness, thread.id, {
         model: "gpt-5",
@@ -103,27 +127,8 @@ describe("PATCH /threads/:id execution override", () => {
       expect(response.status).toBe(400);
       const body = await readJson(response);
       expect(JSON.stringify(body)).toContain(
-        "not available for provider claude-code",
+        "not available in this thread's claude-code model catalog",
       );
-      expect(getThreadExecutionOverride(harness.db, thread.id)).toEqual({
-        modelOverride: null,
-        reasoningLevelOverride: null,
-      });
-    });
-  });
-
-  it("rejects an in-place override for a non-claude-code thread", async () => {
-    await withTestHarness(async (harness) => {
-      const { thread } = seedClaudeCodeThread(harness, "codex");
-
-      // The provider gate rejects before catalog lookup.
-      const response = await patchThread(harness, thread.id, {
-        model: "gpt-5",
-      });
-
-      expect(response.status).toBe(400);
-      const body = await readJson(response);
-      expect(JSON.stringify(body)).toContain("only supported for claude-code");
       expect(getThreadExecutionOverride(harness.db, thread.id)).toEqual({
         modelOverride: null,
         reasoningLevelOverride: null,

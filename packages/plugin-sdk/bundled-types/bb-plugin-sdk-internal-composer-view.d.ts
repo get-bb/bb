@@ -1,4 +1,4 @@
-// Portable type declarations for `@bb/plugin-sdk`. Unpublished BB
+// Portable type declarations for `@get-bb/plugin-sdk`. Unpublished BB
 // workspace contracts are flattened; public subpaths may reuse the
 // package root without requiring any other @bb/* package.
 //

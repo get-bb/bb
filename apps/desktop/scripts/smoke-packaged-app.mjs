@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { access, readFile, readdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,20 +8,13 @@ import {
   createDesktopReleaseConfig,
   resolveDesktopReleaseChannel,
 } from "./desktop-release-channel.mjs";
+import { resolvePackagedAppBinary } from "./packaged-app-paths.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const desktopPackageRoot = resolve(scriptDirectory, "..");
 const releaseDir = join(desktopPackageRoot, "release");
-const releaseConfig = createDesktopReleaseConfig(
-  resolveDesktopReleaseChannel(process.env),
-);
-const appBundleName = `${releaseConfig.applicationName}.app`;
-const appBinaryRelativePath = join(
-  appBundleName,
-  "Contents",
-  "MacOS",
-  releaseConfig.applicationName,
-);
+const releaseChannel = resolveDesktopReleaseChannel(process.env);
+const releaseConfig = createDesktopReleaseConfig(releaseChannel);
 const startupTimeoutMs = 20_000;
 const exitTimeoutMs = 5_000;
 const postReadySettleMs = 300;
@@ -48,11 +41,13 @@ function writeNotFound(response) {
   response.end(JSON.stringify({ message: "not found" }));
 }
 
-function createDesktopVersionFeed(version) {
+function createDesktopVersionFeed(platform, version) {
   return {
     schemaVersion: 1,
-    channel: "latest",
-    platform: "macos",
+    // The app rejects a feed whose channel is not its own, so a nightly
+    // packaged build must be smoked against a nightly feed.
+    channel: releaseChannel,
+    platform,
     version,
     releaseDate: new Date(0).toISOString(),
     releaseName: `bb desktop ${version}`,
@@ -71,7 +66,7 @@ function createDesktopVersionFeed(version) {
   };
 }
 
-function renderSmokePage(expectedDesktopVersion) {
+function renderSmokePage(expectedDesktopPlatform, expectedDesktopVersion) {
   return `<!doctype html>
 <meta charset="utf-8">
 <title>bb packaged desktop smoke</title>
@@ -87,9 +82,10 @@ function renderSmokePage(expectedDesktopVersion) {
       reason = "missing window.bbDesktop.getInfo";
     } else {
       const info = await window.bbDesktop.getInfo();
+      const expectedPlatform = ${JSON.stringify(expectedDesktopPlatform)};
       const expectedVersion = ${JSON.stringify(expectedDesktopVersion)};
       ok =
-        window.bbDesktop.platform === "macos" &&
+        window.bbDesktop.platform === expectedPlatform &&
         window.bbDesktop.version === expectedVersion &&
         info.version === expectedVersion;
       reason = ok ? "" : "unexpected desktop bridge info";
@@ -123,27 +119,11 @@ async function readDesktopPackageVersion() {
   return packageJson.version;
 }
 
-async function resolvePackagedAppBinary() {
-  const entries = await readdir(releaseDir, { withFileTypes: true });
-  const macOutputDirectories = entries
-    .filter((entry) => entry.isDirectory() && entry.name.startsWith("mac"))
-    .map((entry) => entry.name)
-    .sort();
-
-  for (const directory of macOutputDirectories) {
-    const appBinary = join(releaseDir, directory, appBinaryRelativePath);
-    try {
-      await access(appBinary);
-      return appBinary;
-    } catch {
-      continue;
-    }
-  }
-
-  throw new Error(`No packaged ${appBundleName} found under ${releaseDir}`);
-}
-
-async function startSmokeServer({ dataDir, expectedDesktopVersion }) {
+async function startSmokeServer({
+  dataDir,
+  expectedDesktopPlatform,
+  expectedDesktopVersion,
+}) {
   let resolvePreloadReady = () => {};
   const preloadReady = new Promise((resolvePromise) => {
     resolvePreloadReady = resolvePromise;
@@ -166,7 +146,7 @@ async function startSmokeServer({ dataDir, expectedDesktopVersion }) {
         experiments: {
           claudeCodeMockCliTraffic: false,
           newOnboarding: false,
-          toolsHub: false,
+          providerSessionReaping: false,
         },
         featureFlags: {
           placeholder: false,
@@ -182,12 +162,21 @@ async function startSmokeServer({ dataDir, expectedDesktopVersion }) {
     }
 
     if (request.url === "/desktop-version.json") {
-      writeJson(response, createDesktopVersionFeed(expectedDesktopVersion));
+      writeJson(
+        response,
+        createDesktopVersionFeed(
+          expectedDesktopPlatform,
+          expectedDesktopVersion,
+        ),
+      );
       return;
     }
 
     if (request.url === "/" || request.url === "/index.html") {
-      writeHtml(response, renderSmokePage(expectedDesktopVersion));
+      writeHtml(
+        response,
+        renderSmokePage(expectedDesktopPlatform, expectedDesktopVersion),
+      );
       return;
     }
 
@@ -354,17 +343,24 @@ async function stopPackagedApp(child) {
 }
 
 async function smokePackagedApp() {
-  if (process.platform !== "darwin") {
-    throw new Error("Packaged desktop smoke only runs on macOS.");
+  if (process.platform !== "darwin" && process.platform !== "linux") {
+    throw new Error("Packaged desktop smoke only runs on macOS or Linux.");
   }
 
   const desktopVersion = await readDesktopPackageVersion();
-  const appBinary = await resolvePackagedAppBinary();
+  const desktopPlatform = process.platform === "darwin" ? "macos" : "linux";
+  const appBinary = await resolvePackagedAppBinary({
+    executableName: releaseConfig.linuxExecutableName,
+    platform: process.platform,
+    productName: releaseConfig.applicationName,
+    releaseDir,
+  });
   const smokeRoot = await mkdtemp(join(tmpdir(), "bb-desktop-packaged-smoke-"));
   const dataDir = join(smokeRoot, "data");
   const userDataDir = join(smokeRoot, "user-data");
   const smokeServer = await startSmokeServer({
     dataDir,
+    expectedDesktopPlatform: desktopPlatform,
     expectedDesktopVersion: desktopVersion,
   });
   const serverUrl = `http://127.0.0.1:${smokeServer.port}`;

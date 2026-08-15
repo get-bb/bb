@@ -1,7 +1,8 @@
 # @bb/desktop
 
-macOS Electron shell for bb. The desktop app loads the existing bb web UI and
-uses the packaged `bb-app` launcher for server and host-daemon lifecycle.
+macOS and Linux Electron shell for bb. The desktop app loads the existing bb
+web UI and uses the packaged `bb-app` launcher for server and host-daemon
+lifecycle.
 
 ## Development
 
@@ -72,8 +73,8 @@ pnpm exec turbo run desktop:build --filter=@bb/desktop
 pnpm exec turbo run smoke:packaged --filter=@bb/desktop
 ```
 
-Artifacts are written under `apps/desktop/release/`. The desktop build is
-macOS-only and Apple Silicon arm64-only. Without signing secrets, local builds
+Artifacts are written under `apps/desktop/release/`. The macOS build is Apple
+Silicon arm64-only; Intel Macs are not a target. Without signing secrets, local builds
 sign with a code-signing identity auto-discovered from the keychain and skip
 notarization. A valid signature matters even for local builds: macOS
 provenance-tracks unsigned apps, forcing syspolicyd to evaluate every exec in
@@ -81,6 +82,49 @@ the app's process tree, which can stall process launches system-wide. On
 machines with no keychain identity (or with `CSC_IDENTITY_AUTO_DISCOVERY=false`,
 as CI sets for workflow-artifact-only builds), artifacts remain unsigned and
 macOS shows the normal Gatekeeper warning on first launch.
+
+### Linux (AppImage, x64)
+
+Linux packaging targets x64 glibc-based distributions. Install `python3`,
+`make`, and `g++` so node-gyp can build node-pty during dependency installation.
+
+From the repo root, build an unpacked app, an AppImage distribution, or smoke
+test the current packaged output with:
+
+```bash
+pnpm --filter @bb/desktop run package:linux
+pnpm --filter @bb/desktop run dist:linux
+pnpm --filter @bb/desktop run smoke:packaged
+```
+
+Running an AppImage normally requires FUSE and, on some distributions, the
+`libfuse2` compatibility package. If FUSE is unavailable, launch it with
+`--appimage-extract-and-run` instead.
+
+CI builds Linux artifacts on the pinned `ubuntu-22.04` runner. The AppImage
+links against the build machine's glibc, so that pin sets the oldest
+distribution that can run a published build. Raise it deliberately.
+
+Linux gets both update paths, but they are not equivalent:
+
+- The JSON version feed (`desktop-version-linux.json`) is polled on every Linux
+  install and reports that a newer release exists.
+- Self-installing auto-update runs only inside an AppImage whose directory the
+  app can write to. electron-updater detects the AppImage through the `APPIMAGE`
+  environment variable, and its install step unlinks the running file *before*
+  moving the replacement in — so a read-only directory would delete the app and
+  leave nothing behind. Both the startup check and the install handler verify
+  write and search access on the parent directory first.
+- Everything else — an extracted directory, a distribution package, or an
+  AppImage in a read-only location — reports new versions without installing
+  them.
+
+The Linux AppImage is unsigned, and electron-updater performs no signature
+check on Linux: it verifies only the SHA-512 recorded in the update metadata
+that ships beside it. macOS installs through Squirrel, which additionally
+requires the replacement to satisfy the running app's code-signing
+requirement. Write access to the release assets is therefore sufficient to
+push code to Linux clients. Treat the release token accordingly.
 
 ## Releasing
 
@@ -105,6 +149,21 @@ release; use `scripts/bump-version.mjs` so both files move together.
 The desktop release tag uses the locked version: `desktop-v<version>` for
 immutable releases and `desktop-latest` for the moving pointer.
 
+`build-desktop.yml` builds macOS and Linux in parallel jobs, then publishes
+both from one job. The moving release resets all of its assets on each publish,
+so a single publisher is what keeps one platform from deleting the other's
+binaries. Each platform has its own update feed file inside the same release
+tag:
+
+| Platform | Artifacts               | electron-updater metadata | Version feed                 |
+| -------- | ----------------------- | ------------------------- | ---------------------------- |
+| macOS    | `.dmg`, `.zip` (arm64)  | `latest-mac.yml`          | `desktop-version.json`       |
+| Linux    | `.AppImage` (x64)       | `latest-linux.yml`        | `desktop-version-linux.json` |
+
+macOS keeps the unsuffixed feed name because released macOS builds already
+request it. Linux artifacts are unsigned; only the macOS binaries wait on the
+Apple signing secrets.
+
 ## Nightly channel
 
 The scheduled `publish-bb-app.yml` workflow runs from `main` every day at
@@ -121,8 +180,11 @@ The nightly desktop is a separate installation:
 
 - product name: `bb Nightly`
 - bundle identifier: `dev.bb.desktop.nightly`
+- Linux binary name: `bb-nightly`, so it never shadows stable `bb` on PATH
 - app/update release: `desktop-nightly`
-- update metadata: `nightly-mac.yml`
+- update metadata: `nightly-mac.yml` and `nightly-linux.yml`
+- version feeds: `desktop-version.json` (macOS) and
+  `desktop-version-linux.json` (Linux)
 - icon: `assets/icon-nightly.icns` and `assets/icon-nightly.png`
 
 Download it from

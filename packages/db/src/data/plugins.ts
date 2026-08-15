@@ -1,11 +1,12 @@
 import { and, eq, isNull } from "drizzle-orm";
-import type { DbConnection } from "../connection.js";
+import type { DbConnection, DbQueryConnection } from "../connection.js";
 import { installedPlugins, pluginArtifacts } from "../schema.js";
 
 export type PluginProvenance =
   | { kind: "builtin" }
   | { kind: "direct" }
-  | { kind: "catalog"; entryId: string };
+  /** Installed from a marketplace listing; `marketplace` names the catalog. */
+  | { kind: "catalog"; marketplace: string; entryId: string };
 
 export type PluginSourceIntent =
   | { kind: "path"; canonicalPath: string }
@@ -21,8 +22,23 @@ export type PluginSourceIntent =
       kind: "git";
       url: string;
       subdirectory: string | null;
-      requestedRef: string;
-      refKind: "branch" | "tag" | "commit";
+      selector: PluginGitSelector;
+    };
+
+/**
+ * What a git plugin tracks. A "ref" install follows one branch, tag, or
+ * commit. A "range" install follows a semver range over `[tagPrefix]vX.Y.Z`
+ * release tags and records the tag it resolved to, so a tag that later moves
+ * is detectable.
+ */
+export type PluginGitSelector =
+  | { kind: "ref"; ref: string; refKind: "branch" | "tag" | "commit" }
+  | {
+      kind: "range";
+      range: string;
+      /** "" for repository-wide `vX.Y.Z` tags. */
+      tagPrefix: string;
+      resolvedTag: string;
     };
 
 export type PluginExactResolution =
@@ -47,6 +63,7 @@ export interface InstalledPluginRow {
   source: string;
   provenance: "builtin" | "direct" | "catalog";
   catalogEntryId: string | null;
+  catalogMarketplaceName: string | null;
   sourceKind: "path" | "builtin" | "npm" | "git";
   sourcePath: string | null;
   sourceBuiltinName: string | null;
@@ -58,6 +75,9 @@ export interface InstalledPluginRow {
   sourceGitSubdirectory: string | null;
   sourceGitRequestedRef: string | null;
   sourceGitRefKind: "branch" | "tag" | "commit" | null;
+  sourceGitRange: string | null;
+  sourceGitTagPrefix: string | null;
+  sourceGitResolvedTag: string | null;
   npmResolvedVersion: string | null;
   npmIntegrity: string | null;
   gitResolvedCommit: string | null;
@@ -99,10 +119,52 @@ export interface LegacyInstalledPluginRegistration {
   enabled: boolean;
 }
 
+type NormalizeLegacyPluginSourceIntent =
+  | Exclude<PluginSourceIntent, { kind: "git" }>
+  | {
+      kind: "git";
+      url: string;
+      subdirectory: string | null;
+      /** An offline backfill cannot safely guess whether a ref is a tag. */
+      selector: {
+        kind: "ref";
+        ref: string;
+        refKind: "branch" | "tag" | "commit" | null;
+      };
+    };
+
 export type NormalizeLegacyInstalledPluginInput = Omit<
   UpsertInstalledPluginInput,
-  "exactResolution"
-> & { exactResolution: LegacyPluginExactResolution };
+  "exactResolution" | "sourceIntent"
+> & {
+  sourceIntent: NormalizeLegacyPluginSourceIntent;
+  exactResolution: LegacyPluginExactResolution;
+};
+
+/** The five git selector columns, of which exactly one group is non-null. */
+function gitSelectorColumns(
+  selector:
+    | PluginGitSelector
+    | Extract<NormalizeLegacyPluginSourceIntent, { kind: "git" }>["selector"]
+    | null,
+) {
+  return {
+    sourceGitRequestedRef:
+      selector?.kind === "ref" ? selector.ref : (null as string | null),
+    sourceGitRefKind:
+      selector?.kind === "ref"
+        ? selector.refKind
+        : (null as "branch" | "tag" | "commit" | null),
+    sourceGitRange:
+      selector?.kind === "range" ? selector.range : (null as string | null),
+    sourceGitTagPrefix:
+      selector?.kind === "range" ? selector.tagPrefix : (null as string | null),
+    sourceGitResolvedTag:
+      selector?.kind === "range"
+        ? selector.resolvedTag
+        : (null as string | null),
+  } as const;
+}
 
 function normalizedColumns(
   plugin: UpsertInstalledPluginInput | NormalizeLegacyInstalledPluginInput,
@@ -116,6 +178,10 @@ function normalizedColumns(
     provenance: plugin.provenance.kind,
     catalogEntryId:
       plugin.provenance.kind === "catalog" ? plugin.provenance.entryId : null,
+    catalogMarketplaceName:
+      plugin.provenance.kind === "catalog"
+        ? plugin.provenance.marketplace
+        : null,
     sourceKind: plugin.sourceIntent.kind,
     sourcePath:
       plugin.sourceIntent.kind === "path"
@@ -143,12 +209,9 @@ function normalizedColumns(
       plugin.sourceIntent.kind === "git"
         ? plugin.sourceIntent.subdirectory
         : null,
-    sourceGitRequestedRef:
-      plugin.sourceIntent.kind === "git"
-        ? plugin.sourceIntent.requestedRef
-        : null,
-    sourceGitRefKind:
-      plugin.sourceIntent.kind === "git" ? plugin.sourceIntent.refKind : null,
+    ...gitSelectorColumns(
+      plugin.sourceIntent.kind === "git" ? plugin.sourceIntent.selector : null,
+    ),
     npmResolvedVersion:
       plugin.exactResolution.kind === "npm"
         ? plugin.exactResolution.version
@@ -289,6 +352,46 @@ export function upsertInstalledPlugin(
   const row = getInstalledPlugin(db, plugin.id);
   if (!row) throw new Error(`plugin row missing after upsert: ${plugin.id}`);
   return row;
+}
+
+/** Live installs a marketplace listed, used when that marketplace is removed. */
+export function listInstalledPluginsFromMarketplace(
+  db: DbQueryConnection,
+  marketplaceName: string,
+): { id: string }[] {
+  return db
+    .select({ id: installedPlugins.id })
+    .from(installedPlugins)
+    .where(
+      and(
+        eq(installedPlugins.provenance, "catalog"),
+        eq(installedPlugins.catalogMarketplaceName, marketplaceName),
+        isNull(installedPlugins.removedAt),
+      ),
+    )
+    .all();
+}
+
+/**
+ * Convert a catalog install into a direct one, keeping its source intent and
+ * exact resolution. Removing a marketplace drops the discovery layer only: the
+ * plugin keeps running and keeps checking for updates from its recorded source.
+ */
+export function setInstalledPluginDirectProvenance(
+  db: DbQueryConnection,
+  id: string,
+): boolean {
+  const result = db
+    .update(installedPlugins)
+    .set({
+      provenance: "direct",
+      catalogEntryId: null,
+      catalogMarketplaceName: null,
+      updatedAt: Date.now(),
+    })
+    .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
+    .run();
+  return result.changes > 0;
 }
 
 export function setInstalledPluginEnabled(

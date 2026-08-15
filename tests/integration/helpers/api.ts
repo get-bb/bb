@@ -201,7 +201,6 @@ export async function createHostThread(
       title: options.title,
       startedOnBehalfOf: null,
       originKind: null,
-      childOrigin: null,
     },
   });
   await expectStatus(response, 201, "create host thread");
@@ -231,7 +230,6 @@ export async function createReuseThread(
       title: options.title,
       startedOnBehalfOf: null,
       originKind: null,
-      childOrigin: null,
     },
   });
   await expectStatus(response, 201, "create reuse thread");

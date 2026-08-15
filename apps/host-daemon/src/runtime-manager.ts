@@ -15,7 +15,7 @@ import type {
   ThreadEvent,
   WorkspaceProvisionType,
 } from "@bb/domain";
-import { turnScope } from "@bb/domain";
+import { threadScope, turnScope } from "@bb/domain";
 import type {
   HostDaemonActiveThread,
   HostDaemonEnvironmentChange,
@@ -218,6 +218,7 @@ export interface RuntimeManagerOptions {
 export interface RuntimeManagerReapIdleProviderSessionsArgs {
   idleForMs: number;
   nowMs: number;
+  providerSessionReapingEnabled: boolean;
 }
 
 export interface RuntimeManagerReapedIdleProviderSession extends ReapedIdleProviderSession {
@@ -237,6 +238,8 @@ export type ReleaseThreadActiveTurnPolicy = "interrupt" | "keep";
 export interface ReleaseThreadFromOtherEnvironmentsResult {
   /** Environments that still run a turn for the thread under `keep`. */
   activeTurnEnvironmentIds: string[];
+  /** Provider checkpoint retained by a stopped runtime, when one reported it. */
+  providerCheckpointId: string | null;
   /** Environments whose runtime released the thread. */
   releasedEnvironmentIds: string[];
 }
@@ -443,13 +446,24 @@ export class RuntimeManager {
       (entry) => !keptEntries.includes(entry),
     );
 
-    await Promise.all(
+    const stopResults = await Promise.all(
       releasedEntries.map((entry) =>
         entry.runtime.stopThread({ threadId: args.threadId }),
       ),
     );
+    const providerCheckpointIds = new Set(
+      stopResults.flatMap((result) =>
+        result.providerCheckpointId === null
+          ? []
+          : [result.providerCheckpointId],
+      ),
+    );
     return {
       activeTurnEnvironmentIds: keptEntries.map((entry) => entry.environmentId),
+      providerCheckpointId:
+        providerCheckpointIds.size === 1
+          ? (providerCheckpointIds.values().next().value ?? null)
+          : null,
       releasedEnvironmentIds: releasedEntries.map(
         (entry) => entry.environmentId,
       ),
@@ -579,7 +593,16 @@ export class RuntimeManager {
   ): Promise<RuntimeManagerReapIdleProviderSessionsResult> {
     const reapedSessions: RuntimeManagerReapedIdleProviderSession[] = [];
     for (const entry of this.entries.values()) {
-      const result = await entry.runtime.reapIdleProviderSessions(args);
+      const result = await entry.runtime.reapIdleProviderSessions({
+        ...args,
+        runThreadExclusive: (threadId, work) =>
+          this.enqueueThreadControl(threadId, () => {
+            if (this.entryHasInFlightThreadCommand(entry, threadId)) {
+              return null;
+            }
+            return work();
+          }),
+      });
       for (const session of result.reapedSessions) {
         reapedSessions.push({
           ...session,
@@ -664,6 +687,17 @@ export class RuntimeManager {
     }
     return [...commandsByThreadId.keys()].some(
       (threadId) => threadId !== excludingThreadId,
+    );
+  }
+
+  private entryHasInFlightThreadCommand(
+    entry: RuntimeEntry,
+    threadId: string,
+  ): boolean {
+    return (
+      this.inFlightThreadCommandsByEnvironmentId
+        .get(entry.environmentId)
+        ?.has(threadId) ?? false
     );
   }
 
@@ -1178,9 +1212,10 @@ export class RuntimeManager {
   /**
    * Synthesizes failure events for threads that were mid-turn when their
    * provider process died, from the runtime's final per-thread snapshot.
-   * Threads without an active turn need no synthesized events: in-flight
-   * RPCs fail through the command result path, and idle resident threads
-   * simply resume on their next turn.
+   * A process can also die after a turn request is sent but before the
+   * provider emits turn/started. That request has already made the server
+   * thread active, so synthesize a thread-scoped error to settle it instead
+   * of waiting for the live-command timeout.
    */
   private buildUnexpectedProviderExitEvents(
     info: AgentRuntimeProcessExitInfo,
@@ -1190,7 +1225,21 @@ export class RuntimeManager {
     const events: ThreadEvent[] = [];
 
     for (const thread of info.threads) {
-      if (thread.activeTurnId === null || thread.providerThreadId === null) {
+      if (thread.activeTurnId === null) {
+        if (thread.pendingTurnStart) {
+          events.push({
+            type: "system/error",
+            threadId: thread.threadId,
+            scope: threadScope(),
+            code: "provider_process_exited",
+            message,
+            ...(detail ? { detail } : {}),
+          });
+        }
+        continue;
+      }
+
+      if (thread.providerThreadId === null) {
         continue;
       }
 

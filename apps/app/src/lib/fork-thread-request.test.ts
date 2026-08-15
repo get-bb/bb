@@ -8,7 +8,6 @@ import {
 function makeThread(overrides: Partial<Thread> = {}): Thread {
   const base: Thread = {
     archivedAt: null,
-    childOrigin: null,
     createdAt: 1,
     deletedAt: null,
     environmentId: "env_source",
@@ -82,7 +81,7 @@ describe("buildForkThreadRequest", () => {
     expect(request).not.toHaveProperty("serviceTier");
   });
 
-  it("returns null when the provider cannot fork sessions", () => {
+  it("builds a fork request for a generic ACP provider", () => {
     expect(
       buildForkThreadRequest({
         environmentId: "env_source",
@@ -90,7 +89,29 @@ describe("buildForkThreadRequest", () => {
         model: "gpt-5",
         permissionMode: "auto",
         projectId: "proj_test",
-        providerId: "acp-cursor",
+        providerId: "acp-amp",
+        reasoningLevel: "medium",
+        serviceTier: undefined,
+        sourceSeqEnd: undefined,
+        sourceThreadId: "thr_source",
+        sourceThreadTitle: "Investigate flaky test",
+      }),
+    ).toMatchObject({
+      originKind: "fork",
+      providerId: "acp-amp",
+      sourceThreadId: "thr_source",
+    });
+  });
+
+  it("returns null when the provider cannot fork sessions", () => {
+    expect(
+      buildForkThreadRequest({
+        environmentId: "env_source",
+        input: [{ type: "text", text: "Continue from here", mentions: [] }],
+        model: "unknown-model",
+        permissionMode: "auto",
+        projectId: "proj_test",
+        providerId: "not-a-provider",
         reasoningLevel: "medium",
         serviceTier: undefined,
         sourceSeqEnd: undefined,
@@ -107,9 +128,7 @@ describe("isThreadForkable", () => {
       true,
     );
     expect(isThreadForkable(makeThread({ environmentId: null }))).toBe(false);
-    expect(isThreadForkable(makeThread({ providerId: "acp-cursor" }))).toBe(
-      false,
-    );
+    expect(isThreadForkable(makeThread({ providerId: "acp-amp" }))).toBe(true);
     expect(isThreadForkable(makeThread({ providerId: "not-a-provider" }))).toBe(
       false,
     );

@@ -25,7 +25,7 @@ async function buildRuntimeArtifacts() {
       turboEntrypoint,
       "run",
       "build",
-      "--filter=@bb/plugin-sdk",
+      "--filter=@get-bb/plugin-sdk",
       "--filter=@bb/app",
       "--filter=@bb/server",
       "--filter=@bb/host-daemon",

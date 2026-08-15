@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
+  getPluginConfigurationRoutePath,
   getPluginDetailRoutePath,
   getPluginsRoutePath,
   getRegistrySkillDetailRoutePath,
@@ -10,7 +11,6 @@ import {
   getSkillDetailRoutePath,
   getSkillsRoutePath,
   getThreadRoutePath,
-  getToolsRoutePath,
   isRoutePath,
   isProjectlessProjectId,
   LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
@@ -61,31 +61,39 @@ describe("route path helpers", () => {
   });
 
   it("builds and recognizes the Extensions routes", () => {
-    expect(getToolsRoutePath()).toBe("/tools");
-    expect(getSkillsRoutePath()).toBe("/tools/skills");
+    expect(getSkillsRoutePath()).toBe("/extensions/skills");
     expect(
       getSkillDetailRoutePath({
         skillId: "skill_abc123",
       }),
-    ).toBe("/tools/skills/library/skill_abc123");
+    ).toBe("/extensions/skills/library/skill_abc123");
     expect(
       getRegistrySkillDetailRoutePath({
         registrySkillId: "moss-skills/moss-notes",
       }),
-    ).toBe("/tools/skills/registry/moss-skills%2Fmoss-notes");
-    expect(getPluginsRoutePath()).toBe("/tools/plugins");
+    ).toBe("/extensions/skills/registry/moss-skills%2Fmoss-notes");
+    expect(getPluginsRoutePath()).toBe("/extensions/plugins");
     expect(getPluginDetailRoutePath({ pluginId: "github" })).toBe(
-      "/tools/plugins/github",
+      "/extensions/plugins/github",
+    );
+    expect(
+      getPluginDetailRoutePath({ pluginId: "github", view: "installed" }),
+    ).toBe("/extensions/plugins/github?view=installed");
+    expect(getPluginConfigurationRoutePath({ pluginId: "github" })).toBe(
+      "/settings/plugins/github",
     );
     for (const path of [
+      "/extensions",
+      // Legacy prefix: old /tools links stay routable so they can redirect.
       "/tools",
-      "/tools/skills",
-      "/tools/skills/library/skill_abc123",
-      "/tools/skills/installed/skill_abc123",
-      "/tools/skills/registry/moss-skills%2Fmoss-notes",
-      "/tools/plugins",
-      "/tools/plugins/browse",
       "/tools/plugins/github",
+      "/extensions/skills",
+      "/extensions/skills/library/skill_abc123",
+      "/extensions/skills/installed/skill_abc123",
+      "/extensions/skills/registry/moss-skills%2Fmoss-notes",
+      "/extensions/plugins",
+      "/extensions/plugins/browse",
+      "/extensions/plugins/github",
     ]) {
       expect(isRoutePath({ path })).toBe(true);
     }

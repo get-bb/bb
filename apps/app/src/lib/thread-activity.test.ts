@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   getCollapsedChildActivity,
   hasThreadListWorkingActivity,
-  isBusyThread,
   isUnreadDoneThread,
   resolveThreadListIndicator,
   type ThreadListIndicatorState,
@@ -208,115 +207,6 @@ describe("thread-activity", () => {
   });
 
   it("exposes shared running/unread helpers", () => {
-    expect(
-      isBusyThread({
-        activity: {
-          activeWorkflowCount: 0,
-          activeBackgroundAgentCount: 0,
-          activeBackgroundCommandCount: 0,
-          activePlanModeCount: 0,
-          activeGoalCount: 0,
-        },
-        runtime: {
-          displayStatus: "active",
-          hostReconnectGraceExpiresAt: null,
-        },
-      }),
-    ).toBe(true);
-    expect(
-      isBusyThread({
-        activity: {
-          activeWorkflowCount: 0,
-          activeBackgroundAgentCount: 0,
-          activeBackgroundCommandCount: 0,
-          activePlanModeCount: 0,
-          activeGoalCount: 0,
-        },
-        runtime: {
-          displayStatus: "host-reconnecting",
-          hostReconnectGraceExpiresAt: 100,
-        },
-      }),
-    ).toBe(true);
-    expect(
-      isBusyThread({
-        activity: {
-          activeWorkflowCount: 0,
-          activeBackgroundAgentCount: 0,
-          activeBackgroundCommandCount: 0,
-          activePlanModeCount: 0,
-          activeGoalCount: 0,
-        },
-        runtime: {
-          displayStatus: "provisioning",
-          hostReconnectGraceExpiresAt: null,
-        },
-      }),
-    ).toBe(true);
-    expect(
-      isBusyThread({
-        activity: {
-          activeWorkflowCount: 0,
-          activeBackgroundAgentCount: 0,
-          activeBackgroundCommandCount: 0,
-          activePlanModeCount: 0,
-          activeGoalCount: 0,
-        },
-        runtime: {
-          displayStatus: "waiting-for-host",
-          hostReconnectGraceExpiresAt: null,
-        },
-      }),
-    ).toBe(false);
-
-    expect(
-      isBusyThread({
-        activity: {
-          activeWorkflowCount: 1,
-          activeBackgroundAgentCount: 0,
-          activeBackgroundCommandCount: 0,
-          activePlanModeCount: 0,
-          activeGoalCount: 0,
-        },
-        runtime: {
-          displayStatus: "idle",
-          hostReconnectGraceExpiresAt: null,
-        },
-      }),
-    ).toBe(true);
-
-    expect(
-      isBusyThread({
-        activity: {
-          activeWorkflowCount: 0,
-          activeBackgroundAgentCount: 0,
-          activeBackgroundCommandCount: 1,
-          activePlanModeCount: 0,
-          activeGoalCount: 0,
-        },
-        runtime: {
-          displayStatus: "idle",
-          hostReconnectGraceExpiresAt: null,
-        },
-      }),
-    ).toBe(true);
-
-    expect(
-      isBusyThread({
-        activity: {
-          activeWorkflowCount: 0,
-          activeBackgroundAgentCount: 1,
-          activeBackgroundCommandCount: 0,
-          activePlanModeCount: 0,
-          activeGoalCount: 0,
-        },
-        runtime: {
-          displayStatus: "idle",
-          hostReconnectGraceExpiresAt: null,
-        },
-      }),
-    ).toBe(true);
-
     expect(
       isUnreadDoneThread({
         status: "idle",

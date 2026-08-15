@@ -1,4 +1,4 @@
-import type { ComposerView } from "@bb/plugin-sdk";
+import type { ComposerView } from "@get-bb/plugin-sdk";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { PluginSlotMount } from "./PluginSlotMount";

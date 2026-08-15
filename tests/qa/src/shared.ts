@@ -819,12 +819,20 @@ export async function cleanupStandaloneOrphans(): Promise<CleanupStandaloneResul
 export function buildDaemonRestartCommand(
   args: BuildDaemonRestartCommandArgs,
 ): string {
-  const shutdownCommand = args.daemonPid
-    ? [
-        `(kill ${shellQuote(String(args.daemonPid))} >/dev/null 2>&1 || true)`,
-        `while kill -0 ${shellQuote(String(args.daemonPid))} 2>/dev/null; do sleep 1; done`,
-      ]
-    : [];
+  const fallbackDaemonPid = args.daemonPid
+    ? shellQuote(String(args.daemonPid))
+    : "''";
+  const pidPath = shellQuote(args.pidPath);
+  const resolveCurrentPidCommand = [
+    `daemon_pid=${fallbackDaemonPid}`,
+    `if [ -s ${pidPath} ]; then daemon_pid=$(cat ${pidPath}); fi`,
+    "daemon_pid_valid=1",
+    `case "$daemon_pid" in '' ) ;; *[!0-9]*) echo "Invalid daemon PID: $daemon_pid" >&2; daemon_pid_valid=0 ;; *) if ! [ "$daemon_pid" -gt 0 ]; then echo "Invalid daemon PID: $daemon_pid" >&2; daemon_pid_valid=0; fi ;; esac`,
+  ].join("; ");
+  const shutdownCommand = [
+    `(kill "$daemon_pid" >/dev/null 2>&1 || true)`,
+    `while kill -0 "$daemon_pid" 2>/dev/null; do sleep 1; done`,
+  ].join("; ");
 
   const envFileCommand = args.envFilePath
     ? `[ ! -f ${shellQuote(args.envFilePath)} ] || . ${shellQuote(args.envFilePath)}`
@@ -861,7 +869,12 @@ export function buildDaemonRestartCommand(
   ].join("; ");
   const startAndWaitCommand = `${startCommand}; ${waitForReconnectCommand}`;
 
-  return [...shutdownCommand, startAndWaitCommand].join("; ");
+  return (
+    `${resolveCurrentPidCommand}; ` +
+    `if [ "$daemon_pid_valid" = 1 ]; then ` +
+    `if [ -n "$daemon_pid" ]; then ${shutdownCommand}; fi; ` +
+    `${startAndWaitCommand}; else false; fi`
+  );
 }
 
 export async function waitFor<TResult>(

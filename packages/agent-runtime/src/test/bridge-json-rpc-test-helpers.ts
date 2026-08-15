@@ -111,9 +111,7 @@ export function captureBridgeJsonRpcOutput(): CapturedBridgeJsonRpcOutput {
   };
 }
 
-export function sendBridgeJsonRpcRequest(
-  args: SendBridgeJsonRpcRequestArgs,
-): void {
+function sendBridgeJsonRpcRequest(args: SendBridgeJsonRpcRequestArgs): void {
   args.handleLine(
     JSON.stringify({
       jsonrpc: "2.0",
@@ -124,7 +122,7 @@ export function sendBridgeJsonRpcRequest(
   );
 }
 
-export async function waitForBridgeJsonRpcResponse(
+async function waitForBridgeJsonRpcResponse(
   args: WaitForBridgeJsonRpcResponseArgs,
 ): Promise<BridgeJsonRpcOutputMessage> {
   for (let attempt = 0; attempt < 50; attempt += 1) {
@@ -139,11 +137,11 @@ export async function waitForBridgeJsonRpcResponse(
   throw new Error(`Timed out waiting for JSON-RPC response ${String(args.id)}`);
 }
 
-export async function flushBridgeJsonRpcWork(): Promise<void> {
+async function flushBridgeJsonRpcWork(): Promise<void> {
   await waitForNextBridgeTick();
 }
 
-export function bridgeJsonRpcResponseExists(
+function bridgeJsonRpcResponseExists(
   args: BridgeJsonRpcResponseExistsArgs,
 ): boolean {
   return args.output.messages.some((message) => message.id === args.id);

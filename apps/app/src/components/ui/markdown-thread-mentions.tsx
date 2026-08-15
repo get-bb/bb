@@ -1,24 +1,34 @@
 import type { ComponentType } from "react";
-import type { Nodes, Parent, PhrasingContent, Text } from "mdast";
+import type { InlineCode, Nodes, Parent, PhrasingContent, Text } from "mdast";
 // Side-effect import: augments mdast's `Data` with `hName`/`hProperties` so a
 // plain `text` node can carry the custom element instructions below.
 import type {} from "mdast-util-to-hast";
 import { visit } from "unist-util-visit";
-import type { PromptTextMention } from "@bb/domain";
+import {
+  isRawThreadId,
+  RAW_THREAD_ID_PATTERN_SOURCE,
+  type PromptTextMention,
+} from "@bb/domain";
 import type { TimelineTitleLink } from "@bb/thread-view";
 import {
   PromptMentionPill,
   resolveThreadMentionResource,
 } from "@/components/thread/timeline/ConversationMessageMentions.js";
 import {
+  useRawThreadMentionResource,
   useSidebarThreadMentionResource,
   useThreadMentionResource,
 } from "@/components/thread/ThreadTitleMentions.js";
 import type { TimelineTitleLinkResolver } from "@/components/thread/timeline/TimelineTitleView.js";
 
-// Literal token the generated-message body uses to reference a thread:
-// `@thread:<id>`. The id is the trailing run of id-safe characters.
-const THREAD_MENTION_PATTERN = /@thread:([A-Za-z0-9_-]+)/gu;
+// Matches both the serialized generated-message token (`@thread:<id>`) and a
+// raw persisted thread id. Raw ids deliberately use the exact db alphabet and
+// suffix length so lookalike words and other entity ids remain ordinary text.
+const THREAD_MENTION_PATTERN = new RegExp(
+  `@thread:([A-Za-z0-9_-]+)|(${RAW_THREAD_ID_PATTERN_SOURCE})`,
+  "gu",
+);
+const RAW_THREAD_ID_PATTERN = new RegExp(RAW_THREAD_ID_PATTERN_SOURCE, "gu");
 const THREAD_MENTION_PREFIX = "@thread";
 const THREAD_MENTION_ID_PATTERN = /^[A-Za-z0-9_-]+$/u;
 
@@ -29,36 +39,104 @@ const THREAD_MENTION_HAST_NAME = "bb-thread-mention";
 // hast property key — `mdast-util-to-hast` lowercases it into the
 // `data-thread-id` DOM attribute that the component reads back.
 const THREAD_MENTION_THREAD_ID_PROPERTY = "dataThreadId";
+const RAW_THREAD_ID_PROPERTY = "dataRawThreadId";
+const RAW_THREAD_INLINE_CODE_PROPERTY = "dataRawThreadInlineCode";
 
 // Builds a real mdast `text` node that, via `data.hName`, renders as the custom
 // element rather than its (empty) text value. `mdast-util-to-hast` honours
 // `data.hName`/`data.hProperties` for any node.
-function threadMentionNode(threadId: string): Text {
+function threadMentionNode(
+  threadId: string,
+  rawThreadId = false,
+  rawThreadInlineCode = false,
+): Text {
   return {
     type: "text",
     value: "",
     data: {
       hName: THREAD_MENTION_HAST_NAME,
-      hProperties: { [THREAD_MENTION_THREAD_ID_PROPERTY]: threadId },
+      hProperties: {
+        [THREAD_MENTION_THREAD_ID_PROPERTY]: threadId,
+        ...(rawThreadId ? { [RAW_THREAD_ID_PROPERTY]: threadId } : {}),
+        ...(rawThreadInlineCode
+          ? { [RAW_THREAD_INLINE_CODE_PROPERTY]: "true" }
+          : {}),
+      },
     },
   };
 }
 
-// Splits a text node on the `@thread:<id>` token, returning the original node
-// when no token is present so untouched text stays a plain text node.
-function splitTextNodeOnMentions(node: Text): PhrasingContent[] {
+// Splits a text node on serialized mentions and raw thread ids, returning the
+// original node when neither is present so untouched text stays plain.
+interface PhrasingTextContext {
+  offset: number;
+  text: string;
+}
+
+function collectPhrasingTextContexts(
+  tree: Nodes,
+): WeakMap<object, PhrasingTextContext> {
+  const contexts = new WeakMap<object, PhrasingTextContext>();
+  visit(tree, (node) => {
+    if (
+      node.type !== "paragraph" &&
+      node.type !== "heading" &&
+      node.type !== "tableCell"
+    ) {
+      return;
+    }
+
+    const leaves: Array<{ node: InlineCode | Text; offset: number }> = [];
+    let visibleText = "";
+    visit(node, (descendant) => {
+      if (descendant.type === "text" || descendant.type === "inlineCode") {
+        leaves.push({ node: descendant, offset: visibleText.length });
+        visibleText += descendant.value;
+        return;
+      }
+      if (descendant.type === "image" || descendant.type === "imageReference") {
+        visibleText += descendant.alt ?? "";
+        return;
+      }
+      if (descendant.type === "break") {
+        visibleText += "\n";
+      }
+    });
+    for (const leaf of leaves) {
+      contexts.set(leaf.node, { offset: leaf.offset, text: visibleText });
+    }
+  });
+  return contexts;
+}
+
+function splitTextNodeOnMentions(
+  node: Text,
+  context: PhrasingTextContext | undefined,
+): PhrasingContent[] {
   const { value } = node;
   THREAD_MENTION_PATTERN.lastIndex = 0;
   const replacements: PhrasingContent[] = [];
   let cursor = 0;
   let match: RegExpExecArray | null;
   while ((match = THREAD_MENTION_PATTERN.exec(value)) !== null) {
-    const threadId = match[1];
+    const serializedThreadId = match[1];
+    const rawThreadId = match[2];
+    const threadId = serializedThreadId ?? rawThreadId;
     const matchEnd = match.index + match[0].length;
+    const boundaryText = rawThreadId === undefined ? value : context?.text;
+    const boundaryStart =
+      rawThreadId === undefined
+        ? match.index
+        : (context?.offset ?? 0) + match.index;
+    const boundaryEnd = boundaryStart + match[0].length;
     if (
       threadId === undefined ||
-      !isMentionBoundary(value, match.index) ||
-      !isMentionEndBoundary(value, matchEnd)
+      !(rawThreadId === undefined
+        ? isMentionBoundary(value, match.index)
+        : isRawThreadIdBoundary(boundaryText ?? value, boundaryStart)) ||
+      !(rawThreadId === undefined
+        ? isMentionEndBoundary(value, matchEnd)
+        : isRawThreadIdEndBoundary(boundaryText ?? value, boundaryEnd))
     ) {
       continue;
     }
@@ -68,7 +146,7 @@ function splitTextNodeOnMentions(node: Text): PhrasingContent[] {
         value: value.slice(cursor, match.index),
       });
     }
-    replacements.push(threadMentionNode(threadId));
+    replacements.push(threadMentionNode(threadId, rawThreadId !== undefined));
     cursor = match.index + match[0].length;
   }
   if (replacements.length === 0) {
@@ -137,14 +215,64 @@ function isMentionBoundary(text: string, index: number): boolean {
   return previous === undefined || !/[\p{L}\p{N}_.+-]/u.test(previous);
 }
 
+function isRawThreadIdBoundary(text: string, index: number): boolean {
+  const previous = text[index - 1];
+  return (
+    previous !== "/" && previous !== "\\" && isMentionBoundary(text, index)
+  );
+}
+
 function isMentionEndBoundary(text: string, index: number): boolean {
   const next = text[index];
   if (next === undefined) return true;
   if (next === ".") {
     const afterPeriod = text[index + 1];
-    return afterPeriod === undefined || /[\s,;:!?)}\]]/u.test(afterPeriod);
+    return afterPeriod === undefined || /[\s,;:!?)}\]"'’”]/u.test(afterPeriod);
   }
   return !/[\p{L}\p{N}_.+\/-]/u.test(next);
+}
+
+function isRawThreadIdEndBoundary(text: string, index: number): boolean {
+  return text[index] !== "\\" && isMentionEndBoundary(text, index);
+}
+
+export interface RawThreadIdTextSegment {
+  rawThreadId: string | null;
+  text: string;
+}
+
+/** Splits prose-only text using the same exact raw-id boundaries as Markdown. */
+export function splitRawThreadIdsInText(
+  text: string,
+): RawThreadIdTextSegment[] {
+  RAW_THREAD_ID_PATTERN.lastIndex = 0;
+  const segments: RawThreadIdTextSegment[] = [];
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  while ((match = RAW_THREAD_ID_PATTERN.exec(text)) !== null) {
+    const matchEnd = match.index + match[0].length;
+    if (
+      !isRawThreadIdBoundary(text, match.index) ||
+      !isRawThreadIdEndBoundary(text, matchEnd)
+    ) {
+      continue;
+    }
+    if (match.index > cursor) {
+      segments.push({
+        rawThreadId: null,
+        text: text.slice(cursor, match.index),
+      });
+    }
+    segments.push({ rawThreadId: match[0], text: match[0] });
+    cursor = matchEnd;
+  }
+  if (segments.length === 0) {
+    return [{ rawThreadId: null, text }];
+  }
+  if (cursor < text.length) {
+    segments.push({ rawThreadId: null, text: text.slice(cursor) });
+  }
+  return segments;
 }
 
 function isDirectiveMentionEndBoundary(parent: Parent, index: number): boolean {
@@ -153,16 +281,47 @@ function isDirectiveMentionEndBoundary(parent: Parent, index: number): boolean {
 }
 
 /**
- * Remark plugin that rewrites the literal `@thread:<id>` token inside text
- * nodes into custom inline nodes the `components` map renders as the canonical
- * thread-mention pill. When `remark-directive` is active, its parser splits the
- * same source into an `@thread` text suffix plus a `:<id>` text directive; the
- * second pass rejoins that exact pair before the directive renderer sees it.
- * No-op for bodies without the token.
+ * Remark plugin that rewrites serialized thread mentions and raw persisted
+ * thread ids into custom inline nodes the `components` map renders as the
+ * canonical thread-mention pill. An inline-code node is eligible only when its
+ * complete value is one exact raw thread id; mixed inline code, fenced code,
+ * and inline code used as an authored Markdown link label remain literal. When
+ * `remark-directive` is active, its parser splits `@thread:<id>` into an
+ * `@thread` text suffix plus a `:<id>` text directive; the second pass rejoins
+ * that exact pair before the directive renderer sees it.
  */
 export function remarkThreadMentions() {
   return (tree: Nodes): void => {
     const authoredMarkdownLinkNodes = collectAuthoredMarkdownLinkNodes(tree);
+    const phrasingTextContexts = collectPhrasingTextContexts(tree);
+    visit(
+      tree,
+      "inlineCode",
+      (node: InlineCode, index, parent: Parent | undefined) => {
+        if (
+          parent === undefined ||
+          index === undefined ||
+          authoredMarkdownLinkNodes.has(node) ||
+          !isRawThreadId(node.value) ||
+          !isRawThreadIdBoundary(
+            phrasingTextContexts.get(node)?.text ?? node.value,
+            phrasingTextContexts.get(node)?.offset ?? 0,
+          ) ||
+          !isRawThreadIdEndBoundary(
+            phrasingTextContexts.get(node)?.text ?? node.value,
+            (phrasingTextContexts.get(node)?.offset ?? 0) + node.value.length,
+          )
+        ) {
+          return;
+        }
+        parent.children.splice(
+          index,
+          1,
+          threadMentionNode(node.value, true, true),
+        );
+        return index + 1;
+      },
+    );
     visit(tree, "text", (node: Text, index, parent: Parent | undefined) => {
       if (
         parent === undefined ||
@@ -171,7 +330,10 @@ export function remarkThreadMentions() {
       ) {
         return;
       }
-      const replacements = splitTextNodeOnMentions(node);
+      const replacements = splitTextNodeOnMentions(
+        node,
+        phrasingTextContexts.get(node),
+      );
       if (replacements.length === 1 && replacements[0] === node) {
         return;
       }
@@ -229,6 +391,8 @@ interface BuildThreadMentionComponentArgs {
 }
 
 interface ThreadMentionElementProps {
+  "data-raw-thread-id"?: string;
+  "data-raw-thread-inline-code"?: string;
   "data-thread-id"?: string;
 }
 
@@ -257,13 +421,33 @@ function resolveThreadMentionHref(
 /**
  * The `components` renderer for thread mentions, keyed (by the caller) on the
  * custom hast element the remark plugin emits. Resolves the mention's display
- * resource from the body `mentions` array and routes the link through
- * `resolveSegmentLinkHref`, reusing the canonical `PromptMentionPill`.
+ * resource and reuses the canonical `PromptMentionPill`. Serialized mentions
+ * retain timeline-resolver routing; raw ids use their resolved target project.
  */
 export function buildThreadMentionComponent({
   mentions,
   resolveSegmentLinkHref,
 }: BuildThreadMentionComponentArgs): ComponentType<ThreadMentionElementProps> {
+  function RawThreadMentionPillWithQuery({
+    inlineCode,
+    threadId,
+  }: {
+    inlineCode: boolean;
+    threadId: string;
+  }) {
+    const resource = useRawThreadMentionResource(threadId);
+    if (resource === null) {
+      return inlineCode ? (
+        <code className="rounded bg-muted/70 px-1.5 py-0.5 font-mono text-xs">
+          {threadId}
+        </code>
+      ) : (
+        threadId
+      );
+    }
+    return <PromptMentionPill resource={resource} serializedText={threadId} />;
+  }
+
   function ThreadMentionPillWithQuery({ threadId }: { threadId: string }) {
     const liveResource = useThreadMentionResource(threadId);
     const resource =
@@ -279,9 +463,21 @@ export function buildThreadMentionComponent({
 
   function ThreadMentionElement(props: ThreadMentionElementProps) {
     const threadId = props["data-thread-id"] ?? "";
+    const rawThreadId = props["data-raw-thread-id"];
     const sidebarResource = useSidebarThreadMentionResource(threadId);
     if (threadId.length === 0) {
       return null;
+    }
+    // A raw id has no persisted mention contract. Always resolve it through
+    // the authoritative thread lookup so its pill routes through the target
+    // thread's project rather than the project owning the current timeline.
+    if (rawThreadId !== undefined) {
+      return (
+        <RawThreadMentionPillWithQuery
+          inlineCode={props["data-raw-thread-inline-code"] !== undefined}
+          threadId={threadId}
+        />
+      );
     }
     const persistedResource = mentions.find(
       (mention) =>

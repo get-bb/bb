@@ -41,7 +41,6 @@ vi.mock("@/lib/root-compose-selection", () => ({
 function makeThread(overrides: Partial<Thread> = {}): Thread {
   const base: Thread = {
     archivedAt: null,
-    childOrigin: null,
     createdAt: 1,
     deletedAt: null,
     environmentId: "env_source",

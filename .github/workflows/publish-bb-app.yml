@@ -31,9 +31,10 @@ on:
 
 run-name: ${{ github.event_name == 'schedule' && 'Publish bb-app + desktop nightly' || format('Publish bb-app ({0}{1})', inputs.npm_tag, inputs.dry_run && ', dry run' || '') }}
 
+# Only the npm publish job gets id-token: write, for npm trusted publishing.
+# The desktop build jobs must not inherit an OIDC token they never use.
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: publish-bb-app-${{ (github.event_name == 'schedule' || inputs.npm_tag == 'nightly') && 'nightly' || github.ref }}
@@ -50,25 +51,30 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: npm-release
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      version: ${{ steps.release.outputs.version }}
 
     steps:
       - name: Require main branch
-        if: ${{ github.ref_name != 'main' }}
+        if: ${{ github.ref != 'refs/heads/main' }}
         run: |
-          echo "::error::Publish bb-app must run from main, got ${GITHUB_REF_NAME}."
+          echo "::error::Publish bb-app must run from the main branch, got ${GITHUB_REF}."
           exit 1
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 9.15.0
           run_install: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
@@ -218,30 +224,166 @@ jobs:
             echo "- commit: \`${GITHUB_SHA}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  nightly-desktop:
-    name: Publish bb Nightly desktop
+  # Rides the same release train as bb-app but stays independent of it: the SDK
+  # version is settled in the repo (packages/domain/src/plugin-sdk-version.ts,
+  # mirrored in packages/plugin-sdk/package.json), never computed here. Every
+  # run publishes only when that exact version is missing from npm, so a run
+  # where it already exists skips and succeeds. Nothing needs this job and it
+  # needs nothing, so a failure here cannot hold back the app or desktop
+  # release.
+  #
+  # BOOTSTRAP: until @get-bb/plugin-sdk has been published once by hand and its
+  # npm trusted publisher is configured (this repo, this workflow file, the
+  # npm-release environment), the publish step below will fail with a 404/auth
+  # error. That is expected and does not affect the bb-app jobs. See
+  # docs/bb-release-process.md#publishing-the-plugin-sdk.
+  publish-plugin-sdk:
+    name: Publish @get-bb/plugin-sdk
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: npm-release
+    permissions:
+      contents: read
+      id-token: write
+    # Its own group, separate from the workflow-level one: that group splits
+    # nightly from ref, so the cron and a manual dispatch on main land in
+    # different groups and can run at the same time. Both would then reach
+    # `npm publish` for the same immutable version, and the loser fails red.
+    # Serializing this job lets the second run observe the first one's publish
+    # and skip. Job-level concurrency does not affect the bb-app jobs.
+    concurrency:
+      group: publish-plugin-sdk
+      cancel-in-progress: false
+
+    steps:
+      - name: Require main branch
+        if: ${{ github.ref != 'refs/heads/main' }}
+        run: |
+          echo "::error::Publish @get-bb/plugin-sdk must run from the main branch, got ${GITHUB_REF}."
+          exit 1
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 9.15.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Ensure npm supports trusted publishing
+        run: |
+          npm_version="$(npm --version)"
+          node - "$npm_version" <<'NODE' || npm install --global npm@latest
+          const version = process.argv[2];
+          const [major, minor, patch] = version.split(".").map(Number);
+          const supported =
+            major > 11 ||
+            (major === 11 && (minor > 5 || (minor === 5 && patch >= 1)));
+          process.exit(supported ? 0 : 1);
+          NODE
+          npm --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the SDK
+        run: pnpm exec turbo run build --filter=@get-bb/plugin-sdk --output-logs=new-only
+
+      - name: Resolve the settled SDK version
+        id: sdk_version
+        run: |
+          set -euo pipefail
+
+          # The version is whatever the repo already says it is. Never bump or
+          # derive one at publish time.
+          sdk_version="$(node -p "require('./packages/plugin-sdk/package.json').version")"
+          echo "SDK_VERSION=${sdk_version}" >> "$GITHUB_ENV"
+          echo "version=${sdk_version}" >> "$GITHUB_OUTPUT"
+          echo "Local @get-bb/plugin-sdk version is ${sdk_version}."
+
+      - name: Check whether this version is already on npm
+        id: published
+        run: |
+          set -euo pipefail
+
+          # `npm view` exits non-zero both for "no such version" and for real
+          # registry errors, so distinguish them from the captured output
+          # rather than from the exit code alone.
+          if view_output="$(npm view "@get-bb/plugin-sdk@${SDK_VERSION}" version 2>&1)"; then
+            if [[ -n "$view_output" ]]; then
+              echo "@get-bb/plugin-sdk@${SDK_VERSION} already published, skipping."
+              echo "already_published=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          elif ! grep -qiE "E404|no match(ing)? version|is not in this registry" <<<"$view_output"; then
+            echo "::error::Could not query npm for @get-bb/plugin-sdk@${SDK_VERSION}: ${view_output}"
+            exit 1
+          fi
+
+          echo "@get-bb/plugin-sdk@${SDK_VERSION} is not on npm; it will be published."
+          echo "already_published=false" >> "$GITHUB_OUTPUT"
+
+      - name: Preview npm package
+        if: ${{ steps.published.outputs.already_published == 'false' }}
+        working-directory: packages/plugin-sdk
+        run: npm pack --dry-run
+
+      - name: npm publish dry run
+        if: ${{ steps.published.outputs.already_published == 'false' && env.RELEASE_DRY_RUN == 'true' }}
+        working-directory: packages/plugin-sdk
+        run: npm publish --dry-run
+
+      - name: Publish to npm
+        if: ${{ steps.published.outputs.already_published == 'false' && env.RELEASE_DRY_RUN != 'true' }}
+        working-directory: packages/plugin-sdk
+        # prepack rebuilds bundled-types and dist; publishConfig.access is
+        # already public in the manifest, so no --access flag is needed.
+        run: npm publish
+
+      - name: Summarize the SDK release
+        env:
+          ALREADY_PUBLISHED: ${{ steps.published.outputs.already_published }}
+        run: |
+          {
+            echo "## @get-bb/plugin-sdk"
+            echo
+            echo "- version: \`$SDK_VERSION\`"
+            echo "- already published: \`$ALREADY_PUBLISHED\`"
+            echo "- dry run: \`$RELEASE_DRY_RUN\`"
+            echo "- commit: \`${GITHUB_SHA}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  nightly-desktop-macos:
+    name: Build bb Nightly desktop (macOS)
     if: ${{ github.event_name == 'schedule' || (inputs.npm_tag == 'nightly' && inputs.dry_run == false) }}
     needs: publish
     runs-on: macos-15
     timeout-minutes: 45
-    permissions:
-      contents: write
+    outputs:
+      version: ${{ steps.nightly_version.outputs.version }}
     env:
       BB_DESKTOP_RELEASE_CHANNEL: nightly
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 9.15.0
           run_install: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22.x
           cache: pnpm
@@ -252,12 +394,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
 
-      - name: Prepare nightly version
+      - name: Apply the nightly version
         id: nightly_version
+        env:
+          NIGHTLY_VERSION: ${{ needs.publish.outputs.version }}
         run: |
-          nightly_version="$(node scripts/prepare-nightly-version.mjs)"
-          echo "version=${nightly_version}" >> "$GITHUB_OUTPUT"
-          echo "Prepared bb-app and desktop version ${nightly_version}."
+          set -euo pipefail
+
+          # Reuse the npm job's version rather than deriving one per platform.
+          # prepare-nightly-version.mjs embeds GITHUB_RUN_ATTEMPT, so re-running
+          # only the failed jobs would otherwise build macOS and Linux at
+          # different versions and publish them into one release.
+          if [[ -z "$NIGHTLY_VERSION" ]]; then
+            echo "::error::The npm publish job reported no version."
+            exit 1
+          fi
+
+          node scripts/bump-version.mjs "$NIGHTLY_VERSION"
+          echo "version=${NIGHTLY_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Applied bb-app and desktop version ${NIGHTLY_VERSION}."
 
       - name: Typecheck desktop and launcher
         run: pnpm exec turbo run typecheck --filter=@bb/desktop --filter=bb-app --output-logs=new-only
@@ -315,7 +470,7 @@ jobs:
         run: pnpm --dir apps/desktop run desktop:version-feed
 
       - name: Upload nightly desktop workflow artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bb-nightly-desktop-macos-arm64-${{ steps.nightly_version.outputs.version }}
           retention-days: 14
@@ -327,22 +482,178 @@ jobs:
             apps/desktop/release/desktop-version.json
           if-no-files-found: error
 
+  nightly-desktop-linux:
+    name: Build bb Nightly desktop (Linux)
+    if: ${{ github.event_name == 'schedule' || (inputs.npm_tag == 'nightly' && inputs.dry_run == false) }}
+    needs: publish
+    # Pinned rather than ubuntu-latest so the glibc the AppImage links against
+    # changes only when we choose it: the build machine's glibc sets the
+    # minimum distro version users need.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.nightly_version.outputs.version }}
+    env:
+      BB_DESKTOP_RELEASE_CHANNEL: nightly
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 9.15.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.x
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Apply the nightly version
+        id: nightly_version
+        env:
+          NIGHTLY_VERSION: ${{ needs.publish.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          # One version for every platform: see the macOS job for why deriving
+          # it per job is unsafe across a partial re-run.
+          if [[ -z "$NIGHTLY_VERSION" ]]; then
+            echo "::error::The npm publish job reported no version."
+            exit 1
+          fi
+
+          node scripts/bump-version.mjs "$NIGHTLY_VERSION"
+          echo "version=${NIGHTLY_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Applied bb-app and desktop version ${NIGHTLY_VERSION}."
+
+      - name: Typecheck desktop and launcher
+        run: pnpm exec turbo run typecheck --filter=@bb/desktop --filter=bb-app --output-logs=new-only
+
+      - name: Build desktop
+        run: pnpm exec turbo run build --filter=@bb/desktop --output-logs=new-only
+
+      - name: Test desktop and launcher
+        run: pnpm exec turbo run test --filter=@bb/desktop --filter=bb-app --force --output-logs=new-only
+
+      - name: Package x64 nightly AppImage
+        # No --force: the packaging task is already cache: false, and forcing also
+        # rebuilds its cached bb-app/@bb/desktop dependencies a second time.
+        run: pnpm exec turbo run desktop:build:linux --filter=@bb/desktop --output-logs=new-only
+
+      - name: Smoke test packaged nightly desktop app
+        # The packaged app opens a real BrowserWindow, so the headless runner
+        # needs a virtual display.
+        run: xvfb-run -a pnpm exec turbo run smoke:packaged --filter=@bb/desktop --force --output-logs=new-only
+
+      - name: Generate nightly desktop version feed
+        run: pnpm --dir apps/desktop run desktop:version-feed
+
+      - name: Upload nightly desktop workflow artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bb-nightly-desktop-linux-x64-${{ steps.nightly_version.outputs.version }}
+          retention-days: 14
+          path: |
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/nightly-linux.yml
+            apps/desktop/release/desktop-version-linux.json
+          if-no-files-found: error
+
+  nightly-desktop-publish:
+    name: Publish bb Nightly desktop
+    needs:
+      - nightly-desktop-macos
+      - nightly-desktop-linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Require one version across platforms
+        env:
+          LINUX_VERSION: ${{ needs.nightly-desktop-linux.outputs.version }}
+          MACOS_VERSION: ${{ needs.nightly-desktop-macos.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          # Both jobs take the version from the npm publish job, so a mismatch
+          # means that assumption broke. Refuse rather than publish a release
+          # whose two platforms disagree about what version they are.
+          if [[ -z "$MACOS_VERSION" || "$MACOS_VERSION" != "$LINUX_VERSION" ]]; then
+            echo "::error::Platform versions disagree. macOS: '${MACOS_VERSION}'. Linux: '${LINUX_VERSION}'."
+            exit 1
+          fi
+
+          echo "Publishing bb Nightly ${MACOS_VERSION} for macOS and Linux."
+
+      - name: Download macOS nightly desktop artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bb-nightly-desktop-macos-arm64-${{ needs.nightly-desktop-macos.outputs.version }}
+          path: release/macos
+
+      - name: Download Linux nightly desktop artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bb-nightly-desktop-linux-x64-${{ needs.nightly-desktop-linux.outputs.version }}
+          path: release/linux
+
       - name: Publish moving nightly desktop release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.nightly_version.outputs.version }}
+          VERSION: ${{ needs.nightly-desktop-macos.outputs.version }}
         run: |
           set -euo pipefail
 
           nightly_tag="desktop-nightly"
-          release_dir="apps/desktop/release"
-          release_assets=(
-            "$release_dir/desktop-version.json"
-            "$release_dir/nightly-mac.yml"
-            "$release_dir"/*.dmg
-            "$release_dir"/*.zip
-            "$release_dir"/*.blockmap
-          )
+          macos_dir="release/macos"
+          linux_dir="release/linux"
+
+          release_assets=()
+
+          # An unmatched glob would otherwise reach gh as a literal pattern and
+          # fail the upload, so each expansion states whether it is required.
+          add_required_glob() {
+            local matches=("$@")
+            if [[ ! -e "${matches[0]}" ]]; then
+              echo "::error::No release artifact matched ${matches[0]}."
+              exit 1
+            fi
+            release_assets+=("${matches[@]}")
+          }
+
+          add_optional_glob() {
+            local matches=("$@")
+            if [[ -e "${matches[0]}" ]]; then
+              release_assets+=("${matches[@]}")
+            fi
+          }
+
+          # Both platforms reset the same moving release, so a single job
+          # assembles every asset. Splitting the reset across platform jobs
+          # would let whichever finished last delete the other's binaries.
+          add_required_glob "$macos_dir/desktop-version.json"
+          add_required_glob "$macos_dir/nightly-mac.yml"
+          add_required_glob "$macos_dir"/*.dmg
+          add_required_glob "$macos_dir"/*.zip
+          add_required_glob "$macos_dir"/*.blockmap
+          add_required_glob "$linux_dir/desktop-version-linux.json"
+          add_required_glob "$linux_dir/nightly-linux.yml"
+          add_required_glob "$linux_dir"/*.AppImage
+          # AppImage embeds its block map, so a sidecar file is not guaranteed.
+          add_optional_glob "$linux_dir"/*.blockmap
 
           git tag -f "$nightly_tag" "$GITHUB_SHA"
           git push --force origin "refs/tags/${nightly_tag}"
@@ -373,14 +684,16 @@ jobs:
 
       - name: Summarize nightly desktop release
         env:
-          VERSION: ${{ steps.nightly_version.outputs.version }}
+          VERSION: ${{ needs.nightly-desktop-macos.outputs.version }}
         run: |
           {
             echo "## bb Nightly desktop"
             echo
             echo "- version: \`$VERSION\`"
             echo "- app identity: \`dev.bb.desktop.nightly\`"
+            echo "- platforms: macOS arm64 (signed), Linux x64 AppImage"
             echo "- release: https://github.com/get-bb/bb/releases/tag/desktop-nightly"
-            echo "- update feed: https://github.com/get-bb/bb/releases/download/desktop-nightly/desktop-version.json"
+            echo "- macOS update feed: https://github.com/get-bb/bb/releases/download/desktop-nightly/desktop-version.json"
+            echo "- Linux update feed: https://github.com/get-bb/bb/releases/download/desktop-nightly/desktop-version-linux.json"
             echo "- retention for workflow artifacts: 14 days"
           } >> "$GITHUB_STEP_SUMMARY"

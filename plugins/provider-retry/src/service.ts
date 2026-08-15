@@ -1,4 +1,4 @@
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { ProviderRetryView } from "./contract.js";
 
 type RecoveryStatus = Awaited<
@@ -12,6 +12,11 @@ export const RELEASE_PACE_MS = 1_000;
 export const DEFAULT_MAXIMUM_WAIT_MS = 6 * 60 * 60 * 1_000;
 const MAX_TIMER_DELAY_MS = 2_147_000_000;
 const REALTIME_CHANNEL = "provider-retry";
+
+interface AttemptedWindow {
+  resetsAtMs: number;
+  scopeKey: string;
+}
 
 export interface ProviderRetrySources {
   now(): number;
@@ -58,10 +63,31 @@ function toView(entry: WaitingEntry): ProviderRetryView | null {
 }
 
 export class ProviderRetryService {
+  private readonly attemptedWindows = new Map<string, AttemptedWindow>();
   private readonly entries = new Map<string, WaitingEntry>();
   private readonly scopes = new Map<string, ScopeQueue>();
-  private readonly reconcileLocks = new Map<string, Promise<void>>();
+  private readonly threadLocks = new Map<string, Promise<void>>();
   private disposed = false;
+
+  private async withThreadLock<T>(
+    threadId: string,
+    operation: () => T | Promise<T>,
+  ): Promise<T> {
+    const previous = this.threadLocks.get(threadId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(operation);
+    const lock = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.threadLocks.set(threadId, lock);
+    try {
+      return await next;
+    } finally {
+      if (this.threadLocks.get(threadId) === lock) {
+        this.threadLocks.delete(threadId);
+      }
+    }
+  }
 
   constructor(
     private readonly bb: BbPluginApi,
@@ -132,30 +158,17 @@ export class ProviderRetryService {
     return entry === undefined ? null : toView(entry);
   }
 
-  cancel(threadId: string): boolean {
-    const entry = this.entries.get(threadId);
-    if (entry === undefined || entry.releasing) return false;
-    this.remove(threadId);
-    return true;
+  async cancel(threadId: string): Promise<boolean> {
+    return this.withThreadLock(threadId, () => {
+      const entry = this.entries.get(threadId);
+      if (entry === undefined || entry.releasing) return false;
+      this.remove(threadId);
+      return true;
+    });
   }
 
   async reconcile(threadId: string): Promise<ProviderRetryView | null> {
-    const previous = this.reconcileLocks.get(threadId) ?? Promise.resolve();
-    const next = previous
-      .catch(() => undefined)
-      .then(() => this.reconcileDirect(threadId));
-    const lock = next.then(
-      () => undefined,
-      () => undefined,
-    );
-    this.reconcileLocks.set(threadId, lock);
-    try {
-      return await next;
-    } finally {
-      if (this.reconcileLocks.get(threadId) === lock) {
-        this.reconcileLocks.delete(threadId);
-      }
-    }
+    return this.withThreadLock(threadId, () => this.reconcileDirect(threadId));
   }
 
   private async reconcileDirect(
@@ -169,6 +182,15 @@ export class ProviderRetryService {
 
     const candidate = status.candidate;
     if (candidate?.automatic !== true || candidate.resetsAtMs === null) {
+      this.remove(threadId);
+      return null;
+    }
+
+    const attemptedWindow = this.attemptedWindows.get(threadId);
+    if (
+      attemptedWindow?.scopeKey === status.scopeKey &&
+      attemptedWindow.resetsAtMs === candidate.resetsAtMs
+    ) {
       this.remove(threadId);
       return null;
     }
@@ -209,9 +231,17 @@ export class ProviderRetryService {
     return this.status(threadId);
   }
 
-  supersede(threadId: string): void {
-    if (this.entries.get(threadId)?.releasing) return;
-    this.remove(threadId);
+  async supersede(threadId: string): Promise<void> {
+    await this.withThreadLock(threadId, () => {
+      this.remove(threadId);
+    });
+  }
+
+  async deleteThread(threadId: string): Promise<void> {
+    await this.withThreadLock(threadId, () => {
+      this.remove(threadId);
+      this.attemptedWindows.delete(threadId);
+    });
   }
 
   hostChanged(hostId: string): void {
@@ -349,6 +379,10 @@ export class ProviderRetryService {
   }
 
   private async release(threadId: string): Promise<boolean> {
+    return this.withThreadLock(threadId, () => this.releaseDirect(threadId));
+  }
+
+  private async releaseDirect(threadId: string): Promise<boolean> {
     const entry = this.entries.get(threadId);
     if (!entry || this.disposed) return false;
     const failedRequestId = entry.candidate.failedRequestId;
@@ -356,13 +390,24 @@ export class ProviderRetryService {
     this.publish(threadId);
     try {
       const status = await this.bb.sdk.threads.rateLimitRecovery({ threadId });
-      if (status.candidate?.failedRequestId !== failedRequestId) {
+      if (this.disposed) return false;
+      const candidate = status.candidate;
+      if (
+        candidate?.failedRequestId !== failedRequestId ||
+        candidate.automatic !== true ||
+        candidate.resetsAtMs === null
+      ) {
         this.remove(threadId);
         return false;
       }
       await this.bb.sdk.threads.continueAfterRateLimit({
         threadId,
         failedRequestId,
+        mode: "automatic",
+      });
+      this.attemptedWindows.set(threadId, {
+        resetsAtMs: candidate.resetsAtMs,
+        scopeKey: status.scopeKey,
       });
       this.remove(threadId);
       return true;
@@ -380,7 +425,9 @@ export class ProviderRetryService {
       }
       if (
         status !== null &&
-        status.candidate?.failedRequestId !== failedRequestId
+        (status.candidate?.failedRequestId !== failedRequestId ||
+          status.candidate.automatic !== true ||
+          status.candidate.resetsAtMs === null)
       ) {
         this.remove(threadId);
         return false;
@@ -409,6 +456,7 @@ export class ProviderRetryService {
     }
     this.scopes.clear();
     this.entries.clear();
-    this.reconcileLocks.clear();
+    this.attemptedWindows.clear();
+    this.threadLocks.clear();
   }
 }

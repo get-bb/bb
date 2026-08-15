@@ -18,7 +18,7 @@ import {
   type PluginMessageDirectiveProps,
   type PluginNavPanelProps,
   type PluginThreadPanelProps,
-} from "@bb/plugin-sdk/app";
+} from "@get-bb/plugin-sdk/app";
 import type { docsRpcContract } from "./server.js";
 import { parseMarkdownDocument } from "./markdown-document.js";
 import {

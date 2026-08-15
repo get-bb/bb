@@ -4,6 +4,7 @@ import {
   LOW_REASONING_EFFORT,
   MAX_REASONING_EFFORT,
   MEDIUM_REASONING_EFFORT,
+  NONE_REASONING_EFFORT,
   XHIGH_REASONING_EFFORT,
   type AvailableModel,
   type ModelReasoningEffort,
@@ -52,8 +53,11 @@ function buildPiAvailableModel(model: PiCatalogModel): AvailableModel {
     supportedReasoningEfforts.find(
       ({ reasoningEffort }) => reasoningEffort === "medium",
     )?.reasoningEffort ??
+    supportedReasoningEfforts.find(
+      ({ reasoningEffort }) => reasoningEffort !== "none",
+    )?.reasoningEffort ??
     supportedReasoningEfforts[0]?.reasoningEffort ??
-    "low";
+    "none";
   return {
     id: canonicalId,
     model: canonicalId,
@@ -111,18 +115,22 @@ export function toCanonicalPiModelId(
 }
 
 function getPiReasoningEfforts(model: PiCatalogModel): ModelReasoningEffort[] {
-  if (!model.reasoning) {
-    return [LOW_REASONING_EFFORT];
-  }
-
+  // Derive the picker ladder from the model's supported thinking levels rather
+  // than treating non-reasoning models specially: a non-reasoning model reports
+  // only "off", so it surfaces a single "No extended thinking" entry, and a
+  // reasoning model that can disable thinking (e.g. Ollama Cloud's
+  // `kimi-k2.7-code` with `off: "none"`) gets "none" at the bottom of its
+  // ladder. Pi's `getSupportedThinkingLevels` is the source of truth for which
+  // levels are usable, so honor "off" here instead of silently dropping it.
   const supportedLevels = new Set(model.supportedThinkingLevels);
   const efforts: ModelReasoningEffort[] = [];
+  if (supportedLevels.has("off")) efforts.push(NONE_REASONING_EFFORT);
   if (supportedLevels.has("low")) efforts.push(LOW_REASONING_EFFORT);
   if (supportedLevels.has("medium")) efforts.push(MEDIUM_REASONING_EFFORT);
   if (supportedLevels.has("high")) efforts.push(HIGH_REASONING_EFFORT);
   if (supportedLevels.has("xhigh")) efforts.push(XHIGH_REASONING_EFFORT);
   if (supportedLevels.has("max")) efforts.push(MAX_REASONING_EFFORT);
-  return efforts.length > 0 ? efforts : [LOW_REASONING_EFFORT];
+  return efforts.length > 0 ? efforts : [NONE_REASONING_EFFORT];
 }
 
 function describePiModel(model: PiCatalogModel): string {

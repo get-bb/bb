@@ -173,7 +173,6 @@ function toPublicThread(thread: Thread, lastReadAt: number | null): Thread {
     parentThreadId: thread.parentThreadId,
     sourceThreadId: thread.sourceThreadId,
     originKind: thread.originKind,
-    childOrigin: thread.originKind ?? thread.childOrigin,
     originPluginId: thread.originPluginId,
     visibility: thread.visibility,
     archivedAt: thread.archivedAt,

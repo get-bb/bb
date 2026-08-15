@@ -28,15 +28,19 @@ function VisualViewportShell({
   restoreImmediatelyOnKeyboardDismissal?: boolean;
 }) {
   const shellRef = useRef<HTMLDivElement>(null);
+  const shellHeightRootRef = useRef<HTMLDivElement>(null);
   useMobileVisualViewportHeight(
     shellRef,
+    shellHeightRootRef,
     enabled,
     restoreImmediatelyOnKeyboardDismissal,
   );
   return (
-    <div ref={shellRef} data-testid="shell">
-      <textarea data-testid="editor" />
-      <textarea data-testid="other-editor" />
+    <div ref={shellHeightRootRef} data-testid="shell-height-root">
+      <div ref={shellRef} data-testid="shell">
+        <textarea data-testid="editor" />
+        <textarea data-testid="other-editor" />
+      </div>
     </div>
   );
 }
@@ -119,18 +123,28 @@ describe("useMobileVisualViewportHeight", () => {
     await withFakeVisualViewport(visualViewport, async () => {
       const { rerender } = render(<VisualViewportShell enabled />);
       const shell = screen.getByTestId("shell");
+      const shellHeightRoot = screen.getByTestId("shell-height-root");
       expect(shell.style.top).toBe("20px");
       expect(shell.style.height).toBe("500px");
+      expect(shellHeightRoot.style.getPropertyValue("--bb-shell-height")).toBe(
+        "500px",
+      );
 
       act(() => {
         visualViewport.height = 300;
         visualViewport.dispatchEvent(new Event("resize"));
       });
       await waitFor(() => expect(shell.style.height).toBe("300px"));
+      expect(shellHeightRoot.style.getPropertyValue("--bb-shell-height")).toBe(
+        "300px",
+      );
 
       rerender(<VisualViewportShell enabled={false} />);
       expect(shell.style.top).toBe("");
       expect(shell.style.height).toBe("");
+      expect(shellHeightRoot.style.getPropertyValue("--bb-shell-height")).toBe(
+        "",
+      );
     });
   });
 
@@ -154,9 +168,13 @@ describe("useMobileVisualViewportHeight", () => {
                 />,
               );
               const shell = screen.getByTestId("shell");
+              const shellHeightRoot = screen.getByTestId("shell-height-root");
               const editor = screen.getByTestId("editor");
               expect(shell.style.top).toBe("");
               expect(shell.style.height).toBe("");
+              expect(
+                shellHeightRoot.style.getPropertyValue("--bb-shell-height"),
+              ).toBe("");
 
               act(() => {
                 // Android's root clientHeight can equal the visible viewport
@@ -166,12 +184,18 @@ describe("useMobileVisualViewportHeight", () => {
               });
               await waitFor(() => expect(shell.style.height).toBe("500px"));
               expect(shell.style.top).toBe("0px");
+              expect(
+                shellHeightRoot.style.getPropertyValue("--bb-shell-height"),
+              ).toBe("500px");
 
               act(() => {
                 shellContainingBlockHeight = 500;
                 window.dispatchEvent(new Event("resize"));
               });
               await waitFor(() => expect(shell.style.height).toBe(""));
+              expect(
+                shellHeightRoot.style.getPropertyValue("--bb-shell-height"),
+              ).toBe("");
 
               act(() => {
                 visualViewport.height = 300;
@@ -179,6 +203,9 @@ describe("useMobileVisualViewportHeight", () => {
               });
               await waitFor(() => expect(shell.style.height).toBe("300px"));
               expect(shell.style.top).toBe("0px");
+              expect(
+                shellHeightRoot.style.getPropertyValue("--bb-shell-height"),
+              ).toBe("300px");
 
               act(() => editor.focus());
               act(() => editor.blur());
@@ -190,6 +217,9 @@ describe("useMobileVisualViewportHeight", () => {
               });
               await waitFor(() => expect(shell.style.height).toBe(""));
               expect(shell.style.top).toBe("");
+              expect(
+                shellHeightRoot.style.getPropertyValue("--bb-shell-height"),
+              ).toBe("");
             }),
         ),
     );

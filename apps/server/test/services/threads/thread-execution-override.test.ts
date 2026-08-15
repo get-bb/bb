@@ -36,7 +36,7 @@ describe("resolveThreadExecutionOverrideUpdate", () => {
         providerId: "claude-code",
         fallbackModel: null,
       }),
-    ).toThrow(/not available for provider claude-code/);
+    ).toThrow(/not available in this thread's claude-code model catalog/);
   });
 
   it("accepts an explicit reasoning level supported by the target model", () => {
@@ -63,7 +63,9 @@ describe("resolveThreadExecutionOverrideUpdate", () => {
         providerId: "claude-code",
         fallbackModel: null,
       }),
-    ).toThrow(/Reasoning level "max" is not supported by model "claude-haiku-4-5"/);
+    ).toThrow(
+      /Reasoning level "max" is not supported by model "claude-haiku-4-5"/,
+    );
   });
 
   it("reconciles an incompatible stored reasoning level on a model-only change", () => {
@@ -71,7 +73,10 @@ describe("resolveThreadExecutionOverrideUpdate", () => {
     // reconciles down to the closest supported level rather than failing.
     expect(
       resolveThreadExecutionOverrideUpdate({
-        existing: { modelOverride: "claude-opus-4-8", reasoningLevelOverride: "max" },
+        existing: {
+          modelOverride: "claude-opus-4-8",
+          reasoningLevelOverride: "max",
+        },
         patch: { model: "claude-haiku-4-5" },
         models: CATALOG,
         providerId: "claude-code",
@@ -86,7 +91,10 @@ describe("resolveThreadExecutionOverrideUpdate", () => {
   it("keeps a compatible stored reasoning level on a model-only change", () => {
     expect(
       resolveThreadExecutionOverrideUpdate({
-        existing: { modelOverride: "claude-haiku-4-5", reasoningLevelOverride: "high" },
+        existing: {
+          modelOverride: "claude-haiku-4-5",
+          reasoningLevelOverride: "high",
+        },
         patch: { model: "claude-opus-4-8" },
         models: CATALOG,
         providerId: "claude-code",
@@ -101,7 +109,10 @@ describe("resolveThreadExecutionOverrideUpdate", () => {
   it("clears both overrides when both are set to null", () => {
     expect(
       resolveThreadExecutionOverrideUpdate({
-        existing: { modelOverride: "claude-opus-4-8", reasoningLevelOverride: "high" },
+        existing: {
+          modelOverride: "claude-opus-4-8",
+          reasoningLevelOverride: "high",
+        },
         patch: { model: null, reasoningLevel: null },
         models: CATALOG,
         providerId: "claude-code",
@@ -137,7 +148,10 @@ describe("resolveThreadExecutionOverrideUpdate", () => {
   it("leaves an unspecified field unchanged", () => {
     expect(
       resolveThreadExecutionOverrideUpdate({
-        existing: { modelOverride: "claude-opus-4-8", reasoningLevelOverride: "high" },
+        existing: {
+          modelOverride: "claude-opus-4-8",
+          reasoningLevelOverride: "high",
+        },
         patch: { reasoningLevel: "max" },
         models: CATALOG,
         providerId: "claude-code",

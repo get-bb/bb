@@ -48,6 +48,7 @@ beforeEach(() => {
   mocks.useHostProviderCliStatus.mockReturnValue({ data: undefined });
   mocks.usePrimaryHost.mockReturnValue({ id: "host-1" });
   mocks.useProviderCliInstallRunner.mockReturnValue({
+    failuresByJobKey: new Map(),
     queuedJobKeys: new Set(),
     runningJobKey: null,
     startInstall: vi.fn(),

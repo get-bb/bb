@@ -67,6 +67,7 @@ function createRuntimeConfig(): ServerRuntimeConfig {
     customAcpAgents: [],
     customModels: [],
     dataDir: "/tmp/bb-test",
+    marketplaceUrl: "https://marketplace.invalid/marketplace.json",
     featureFlags: defaultFeatureFlags,
     hostDaemonPort: 38887,
     inheritedSkillsRootPaths: [],

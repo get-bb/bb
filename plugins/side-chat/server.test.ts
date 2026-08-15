@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
   makeThreadResponse,
-} from "@bb/plugin-sdk/testing";
+} from "@get-bb/plugin-sdk/testing";
 import plugin, {
   EMPTY_FORK_MAX_AGE_MS,
   EMPTY_FORK_SWEEP_PAGE_SIZE,

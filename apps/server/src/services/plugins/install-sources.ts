@@ -3,6 +3,7 @@ import { constants } from "node:fs";
 import {
   cp,
   lstat,
+  mkdir,
   open,
   readdir,
   readFile,
@@ -10,10 +11,26 @@ import {
   realpath,
   rename,
   rm,
+  stat,
 } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import semver from "semver";
 import { spawnPortableOutputProcess } from "@bb/process-utils";
+
+/**
+ * What a `git:` spec asks for.
+ *
+ * - "ref" is one branch, tag, or commit, classified later with ls-remote.
+ * - "range" is a semver range resolved over `[tagPrefix]vX.Y.Z` tags.
+ * - "ref-or-range" is the implicit form: the spec reads as a semver range,
+ *   but a repository is free to name a branch `1.x`. Classification decides,
+ *   and a spec that is both is refused rather than guessed. See
+ *   {@link isGitSemverRangeSpec}.
+ */
+export type ParsedGitSelector =
+  | { kind: "ref"; ref: string }
+  | { kind: "range"; range: string; tagPrefix: string }
+  | { kind: "ref-or-range"; ref: string; range: string };
 
 /**
  * Parsed `bb plugin install` source spec (design §6). The original spec is
@@ -26,10 +43,9 @@ export type ParsedPluginSource =
       kind: "git";
       /** Clone URL (https, or an on-disk repo path). */
       url: string;
-      /** Requested branch, tag, or commit. Classified with ls-remote. */
-      ref: string;
-      /** Managed dir relative to <dataDir>/plugins/git: "<host>/<path>@<ref>". */
-      installDir: string;
+      /** The spec as written after "@"; "HEAD" when it was omitted. */
+      spec: string;
+      selector: ParsedGitSelector;
       /** Cache namespace relative to plugins/cache/git: "<host>/<path>". */
       cachePath: string;
     }
@@ -43,9 +59,16 @@ export type ParsedPluginSource =
 
 const COMMIT_SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
 export const DEFAULT_GIT_REF = "HEAD";
+/** Forces the rest of a git spec to read as a semver range: `semver:^1.2.0`. */
+const GIT_RANGE_SPEC_PREFIX = "semver:";
+/** Forces the rest of a git spec to read as a literal ref: `ref:1.x`. */
+const GIT_REF_SPEC_PREFIX = "ref:";
+/** `v1`, `1.2`, and `v1.2.3` are ordinary tag names, not ranges. */
+const BARE_VERSION_SPEC_PATTERN = /^v?\d+(?:\.\d+)*$/u;
+const GIT_TAG_PREFIX_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/u;
+const MAX_GIT_TAG_PREFIX_LENGTH = 128;
 // Loose npm package-name shape; enough to keep names safe as path segments.
-const NPM_NAME_PATTERN =
-  /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
+const NPM_NAME_PATTERN = /^(@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/;
 const BUILTIN_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
 export function isCommitSha(ref: string): boolean {
@@ -63,6 +86,115 @@ function assertSafeSegments(value: string, label: string): void {
   }
 }
 
+/**
+ * Whether a git spec reads as a semver range rather than as a ref name.
+ *
+ * A bare version token is excluded: `v1`, `v1.2`, and `v1.2.3` all parse as
+ * semver ranges, but they are how repositories actually name tags, so they
+ * keep resolving as the literal tag. Write `semver:v1` to range over them.
+ */
+export function isGitSemverRangeSpec(spec: string): boolean {
+  return (
+    semver.validRange(spec) !== null &&
+    semver.valid(spec) === null &&
+    !BARE_VERSION_SPEC_PATTERN.test(spec)
+  );
+}
+
+/**
+ * Validate a monorepo tag prefix such as `thread-hover-cards/`, which
+ * versions one plugin of a repository with `thread-hover-cards/vX.Y.Z` tags.
+ * An empty prefix means repository-wide `vX.Y.Z` tags.
+ */
+export function normalizeGitTagPrefix(value: string): string {
+  if (value.length === 0) return value;
+  if (
+    value.length > MAX_GIT_TAG_PREFIX_LENGTH ||
+    !GIT_TAG_PREFIX_PATTERN.test(value) ||
+    value.includes("..") ||
+    value.includes("//") ||
+    value.endsWith(".") ||
+    value
+      .split("/")
+      .some((segment) => segment.startsWith(".") || segment.endsWith(".lock"))
+  ) {
+    throw new Error(`invalid git tag prefix "${value}"`);
+  }
+  return value;
+}
+
+/**
+ * The canonical install spec for a semver range over tags. The explicit
+ * `semver:` form never collides with a ref of the same name, so generated
+ * specs (marketplace entries, `--tag-prefix`) always use it.
+ */
+export function gitRangeSourceSpec(args: {
+  url: string;
+  range: string;
+  tagPrefix: string;
+}): string {
+  const prefix =
+    args.tagPrefix.length === 0
+      ? ""
+      : `${normalizeGitTagPrefix(args.tagPrefix)}:`;
+  return `git:${args.url}@${GIT_RANGE_SPEC_PREFIX}${prefix}${args.range}`;
+}
+
+/** The tag a released `version` carries under `tagPrefix`. */
+export function gitSemverTagName(tagPrefix: string, version: string): string {
+  return `${tagPrefix}v${version}`;
+}
+
+/**
+ * The release a tag names under `tagPrefix`, or null when the tag is not a
+ * `[tagPrefix]vX.Y.Z` release tag. The version must be canonical semver, so
+ * `v1.2` and `v1.2.3+build` are not releases of this scheme.
+ */
+export function gitSemverTagVersion(
+  tag: string,
+  tagPrefix: string,
+): string | null {
+  if (!tag.startsWith(tagPrefix)) return null;
+  const rest = tag.slice(tagPrefix.length);
+  if (!rest.startsWith("v")) return null;
+  const version = rest.slice(1);
+  return semver.parse(version)?.version === version ? version : null;
+}
+
+function parseGitSelector(spec: string): ParsedGitSelector {
+  if (spec.startsWith(GIT_REF_SPEC_PREFIX)) {
+    const ref = spec.slice(GIT_REF_SPEC_PREFIX.length);
+    if (ref.length === 0) throw new Error("git source has an empty ref");
+    return { kind: "ref", ref };
+  }
+  if (spec.startsWith(GIT_RANGE_SPEC_PREFIX)) {
+    // "semver:<range>" or "semver:<tagPrefix>:<range>". Neither a range nor a
+    // ref name can contain ":", so the split is unambiguous.
+    const parts = spec.slice(GIT_RANGE_SPEC_PREFIX.length).split(":");
+    if (parts.length > 2) {
+      throw new Error(`invalid git semver spec "${spec}"`);
+    }
+    const range = parts[parts.length - 1] ?? "";
+    const tagPrefix = normalizeGitTagPrefix(
+      parts.length === 2 ? (parts[0] ?? "") : "",
+    );
+    if (semver.validRange(range) === null) {
+      throw new Error(`invalid git semver range "${range}"`);
+    }
+    return { kind: "range", range, tagPrefix };
+  }
+  // Git ref names cannot contain ":", so the only specs that legitimately
+  // carry one are the selector prefixes handled above.
+  if (spec.includes(":")) {
+    throw new Error(
+      `invalid git spec "${spec}" — use "ref:<name>" or "semver:[<tagPrefix>:]<range>"`,
+    );
+  }
+  return isGitSemverRangeSpec(spec)
+    ? { kind: "ref-or-range", ref: spec, range: spec }
+    : { kind: "ref", ref: spec };
+}
+
 function parseGitSource(spec: string): ParsedPluginSource {
   const at = spec.lastIndexOf("@");
   if (at === spec.length - 1) {
@@ -73,6 +205,7 @@ function parseGitSource(spec: string): ParsedPluginSource {
   if (ref.startsWith("-") || ref.includes("..")) {
     throw new Error(`invalid git ref "${ref}"`);
   }
+  const selector = parseGitSelector(ref);
   let url: string;
   let host: string;
   let repoPath: string;
@@ -114,8 +247,8 @@ function parseGitSource(spec: string): ParsedPluginSource {
   return {
     kind: "git",
     url,
-    ref,
-    installDir: `${host}/${repoPath}@${ref}`,
+    spec: ref,
+    selector,
     cachePath: `${host}/${repoPath}`,
   };
 }
@@ -166,6 +299,63 @@ export function parsePluginSource(source: string): ParsedPluginSource {
   return { kind: "path", path };
 }
 
+/**
+ * Normalize a nested-plugin selector to a POSIX relative path inside a
+ * repository. A leading "./" is accepted; absolute paths, backslashes, empty
+ * segments, "." and ".." are rejected. The repository root itself is never a
+ * nested plugin, so a selector that normalizes to nothing is rejected too.
+ */
+export function normalizePluginSubdirectory(value: string): string {
+  const trimmed = value.startsWith("./") ? value.slice(2) : value;
+  if (
+    trimmed.length === 0 ||
+    trimmed.startsWith("/") ||
+    trimmed.includes("\\") ||
+    /^[a-zA-Z]:/.test(trimmed)
+  ) {
+    throw new Error(`invalid plugin subdirectory "${value}"`);
+  }
+  assertSafeSegments(trimmed, "plugin subdirectory");
+  if (trimmed.split("/").includes(".git")) {
+    throw new Error(`invalid plugin subdirectory "${value}"`);
+  }
+  return trimmed;
+}
+
+/**
+ * Plugin roots that live inside `root`, as paths relative to it. Ancestors
+ * win: moving a directory moves everything under it, so a root nested inside
+ * another preserved root is dropped. `root` itself is never returned.
+ */
+export function nestedPluginRoots(root: string, paths: string[]): string[] {
+  const relatives = paths
+    .map((path) => relative(root, path))
+    .filter(
+      (path) =>
+        path.length > 0 && path !== ".." && !path.startsWith(`..${sep}`),
+    )
+    .sort((left, right) => left.length - right.length);
+  const kept: string[] = [];
+  for (const candidate of relatives) {
+    if (kept.includes(candidate)) continue;
+    if (kept.some((parent) => candidate.startsWith(`${parent}${sep}`))) {
+      continue;
+    }
+    kept.push(candidate);
+  }
+  return kept;
+}
+
+/** Plugin root inside a checkout: the checkout itself for a root install. */
+export function pluginRootDir(
+  checkoutDir: string,
+  subdirectory: string | null,
+): string {
+  return subdirectory === null
+    ? checkoutDir
+    : join(checkoutDir, ...subdirectory.split("/"));
+}
+
 /** Managed npm install prefix; the plugin root is <prefix>/node_modules/<name>. */
 export function npmInstallPrefix(
   dataDir: string,
@@ -175,7 +365,11 @@ export function npmInstallPrefix(
   return join(dataDir, "plugins", "npm", ...`${name}@${version}`.split("/"));
 }
 
-function resolveInside(root: string, segments: string[], label: string): string {
+function resolveInside(
+  root: string,
+  segments: string[],
+  label: string,
+): string {
   for (const segment of segments) assertSafeSegments(segment, label);
   const absoluteRoot = resolve(root);
   const target = resolve(absoluteRoot, ...segments);
@@ -195,12 +389,16 @@ export async function realPathInside(
   root: string,
   target: string,
   label: string,
+  allowRoot = false,
 ): Promise<string> {
   const [realRoot, realTarget] = await Promise.all([
     realpath(root),
     realpath(target),
   ]);
   const fromRoot = relative(realRoot, realTarget);
+  if (fromRoot === "" && !allowRoot) {
+    throw new Error(`${label} resolves to its root`);
+  }
   if (fromRoot === ".." || fromRoot.startsWith(`..${sep}`)) {
     throw new Error(`${label} resolves outside its root`);
   }
@@ -284,6 +482,43 @@ async function fsyncTree(rootDir: string): Promise<void> {
   }
 }
 
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await lstat(path);
+    return true;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error.code === "ENOENT" || error.code === "ENOTDIR")
+    ) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+/** Restore or clean the backup left by a process stop during promotion. */
+export async function recoverInterruptedGitPluginPromotion(
+  targetDir: string,
+): Promise<void> {
+  const corruptDir = `${targetDir}.corrupt`;
+  const promotingDir = `${targetDir}.promoting`;
+  const corruptExists = await pathExists(corruptDir);
+  if (!corruptExists) {
+    await rm(promotingDir, { recursive: true, force: true });
+    return;
+  }
+  const targetExists = await pathExists(targetDir);
+  if (targetExists) {
+    await rm(corruptDir, { recursive: true, force: true });
+  } else {
+    await mkdir(dirname(targetDir), { recursive: true });
+    await rename(corruptDir, targetDir);
+  }
+  await rm(promotingDir, { recursive: true, force: true });
+}
+
 /**
  * Promote staged bytes into a never-overwritten cache path. EXDEV falls back
  * to a fully fsynced sibling copy followed by an atomic rename. An identical
@@ -312,13 +547,20 @@ export async function promoteImmutableDir(args: {
   try {
     await rename(args.stagingDir, args.targetDir);
   } catch (error) {
-    if (!(error instanceof Error) || !("code" in error) || error.code !== "EXDEV") {
+    if (
+      !(error instanceof Error) ||
+      !("code" in error) ||
+      error.code !== "EXDEV"
+    ) {
       if (movedCorruptTarget) await rename(corruptDir, args.targetDir);
       throw error;
     }
     const copyDir = `${args.targetDir}.promoting`;
     try {
-      await cp(args.stagingDir, copyDir, { recursive: true, preserveTimestamps: true });
+      await cp(args.stagingDir, copyDir, {
+        recursive: true,
+        preserveTimestamps: true,
+      });
       await fsyncTree(copyDir);
       await rename(copyDir, args.targetDir);
       const parent = await open(dirname(args.targetDir), constants.O_RDONLY);
@@ -341,37 +583,93 @@ export async function promoteImmutableDir(args: {
 }
 
 /**
- * Promote a fully-materialized staging directory to its final location:
- * the previous install (if any) moves aside, the staging dir is renamed
- * into place, then the old copy is deleted. If the promotion rename fails,
- * the previous install is restored — a failed reinstall must never strand
- * a plugins row pointing at a deleted root.
+ * Promote a git plugin from its staged checkout into the repo+commit cache.
+ *
+ * One checkout serves every plugin of a multi-plugin repository, so a promote
+ * must never replace a tree another plugin already built into. Only the
+ * selected plugin root moves, and copies of the built trees that live inside
+ * that root ride along from the target. Copying leaves the live checkout whole
+ * until the final promotion if the process stops during preservation. The
+ * content hash covers the plugin root alone for the same reason.
+ *
+ * Returns the content hash of the promoted plugin root, which differs from
+ * the staged hash when a nested plugin was carried over.
  */
-export async function swapDirIntoPlace(
-  stagingDir: string,
-  targetDir: string,
-): Promise<void> {
-  const previousDir = `${targetDir}.previous`;
-  await rm(previousDir, { recursive: true, force: true });
-  let hadPrevious = true;
-  try {
-    await rename(targetDir, previousDir);
-  } catch {
-    hadPrevious = false; // first install: nothing to move aside
+export async function promoteGitPluginArtifact(args: {
+  stagingDir: string;
+  targetDir: string;
+  subdirectory: string | null;
+  contentHash: string;
+  /**
+   * Plugin roots inside this plugin's root, relative to it, whose built files
+   * belong to another plugin. See `nestedPluginRoots`.
+   */
+  preserveNestedRoots: string[];
+}): Promise<string> {
+  const targetExists = await stat(args.targetDir)
+    .then(() => true)
+    .catch(() => false);
+  if (!targetExists) {
+    await promoteImmutableDir({
+      stagingDir: args.stagingDir,
+      targetDir: args.targetDir,
+      contentHash: args.contentHash,
+    });
+    return args.contentHash;
   }
+  // A selected path can be an in-repository symlink. Move the directory that
+  // validation built, not the symlink whose target the staging cleanup removes.
+  const stagingRoot = await realPathInside(
+    args.stagingDir,
+    pluginRootDir(args.stagingDir, args.subdirectory),
+    "git plugin subdirectory",
+    args.subdirectory === null,
+  );
+  const targetRoot = pluginRootDir(args.targetDir, args.subdirectory);
+  let preservedCount = 0;
   try {
-    await rename(stagingDir, targetDir);
-  } catch (error) {
-    if (hadPrevious) {
-      try {
-        await rename(previousDir, targetDir);
-      } catch {
-        // Restore failed too; the .previous dir is left for manual recovery.
-      }
+    // An identical target is settled before anything moves: `promoteImmutableDir`
+    // drops the staging tree in that case, and the carried-over plugins are in
+    // it by then.
+    if (
+      (await hashInstallDir(targetRoot).catch(() => null)) === args.contentHash
+    ) {
+      await rm(args.stagingDir, { recursive: true, force: true });
+      return args.contentHash;
     }
-    throw error;
+    // Garbage collection of a nested plugin can leave its parent directories
+    // behind or empty, so the plugin root of a reinstall needs one.
+    await mkdir(dirname(targetRoot), { recursive: true });
+    for (const nested of args.preserveNestedRoots) {
+      const from = join(targetRoot, nested);
+      const exists = await stat(from)
+        .then(() => true)
+        .catch(() => false);
+      if (!exists) continue;
+      const to = join(stagingRoot, nested);
+      await rm(to, { recursive: true, force: true });
+      const resolvedFrom = await realPathInside(
+        args.targetDir,
+        from,
+        "nested git plugin root",
+      );
+      await cp(resolvedFrom, to, {
+        recursive: true,
+        preserveTimestamps: true,
+      });
+      preservedCount += 1;
+    }
+    await promoteImmutableDir({
+      stagingDir: stagingRoot,
+      targetDir: targetRoot,
+      contentHash: args.contentHash,
+    });
+  } finally {
+    await rm(args.stagingDir, { recursive: true, force: true });
   }
-  if (hadPrevious) await rm(previousDir, { recursive: true, force: true });
+  return preservedCount === 0
+    ? args.contentHash
+    : await hashInstallDir(targetRoot);
 }
 
 export const INSTALL_COMMAND_TIMEOUT_MS = 5 * 60_000;
@@ -384,15 +682,33 @@ export const INSTALL_COMMAND_TIMEOUT_MS = 5 * 60_000;
 export async function runInstallCommand(
   command: string,
   args: string[],
-  options?: { timeoutMs?: number; notFoundHint?: string },
+  options?: {
+    timeoutMs?: number;
+    notFoundHint?: string;
+    /**
+     * Keep the whole output up to this size and fail past it, for commands
+     * whose full stdout is parsed. Without it only the last 8 KB survives,
+     * which is enough to explain a failure but not to read a tag listing.
+     */
+    maxStdoutBytes?: number;
+  },
 ): Promise<string> {
   const timeoutMs = options?.timeoutMs ?? INSTALL_COMMAND_TIMEOUT_MS;
   const child = spawnPortableOutputProcess({ command, args });
   let stderr = "";
   let stdout = "";
+  let stdoutBytes = 0;
+  let overflowed = false;
   child.stdout.on("data", (chunk: Buffer) => {
     stdout += chunk.toString("utf8");
-    if (stdout.length > 8192) stdout = stdout.slice(-8192);
+    stdoutBytes += chunk.byteLength;
+    const limit = options?.maxStdoutBytes;
+    if (limit === undefined) {
+      if (stdout.length > 8192) stdout = stdout.slice(-8192);
+    } else if (stdoutBytes > limit && !overflowed) {
+      overflowed = true;
+      child.kill("SIGKILL");
+    }
   });
   child.stderr.on("data", (chunk: Buffer) => {
     stderr += chunk.toString("utf8");
@@ -418,6 +734,14 @@ export async function runInstallCommand(
     });
     child.on("close", (code) => {
       clearTimeout(timer);
+      if (overflowed) {
+        reject(
+          new Error(
+            `${command} ${args[0]} produced more than ${options?.maxStdoutBytes} bytes of output`,
+          ),
+        );
+        return;
+      }
       if (code === 0) {
         resolve();
         return;

@@ -64,6 +64,7 @@ import {
   resolveDataDirDatabasePath,
   resolvePortFromEnv,
   resolveProdDataDir,
+  stripThreadContextEnv,
 } from "@bb/config/runtime";
 import { z } from "zod";
 
@@ -546,6 +547,11 @@ interface ResolveServerUrlArgs {
   optionServerUrl?: string;
 }
 
+interface ResolveServerListenerUrlArgs {
+  bindHost: string | undefined;
+  port: number;
+}
+
 interface ApplyManagedConfigEnvArgs {
   config: ManagedConfig;
   env: NodeJS.ProcessEnv;
@@ -845,6 +851,13 @@ function resolveServerUrl(args: ResolveServerUrlArgs): string {
     trimToUndefined(args.env.BB_SERVER_URL) ??
     args.defaultServerUrl
   );
+}
+
+export function resolveServerListenerUrl(
+  args: ResolveServerListenerUrlArgs,
+): string {
+  const bindHost = parseServerBindHost(args.bindHost ?? BB_LOOPBACK_HOST);
+  return `http://${bindHost}:${String(args.port)}`;
 }
 
 function applyManagedConfigEnv(
@@ -1304,12 +1317,14 @@ export async function resolveBbAppRuntimeState(
 
   if (args.serverUrlMode === "local") {
     const localEnv = { ...managedEnv };
-    const localServerEnv = createServerBaseEnv({
-      config,
-      envFile,
-      env: initialEnv,
-      serverBindHostOverride: args.options.serverBindHost,
-    });
+    const localServerEnv = stripThreadContextEnv(
+      createServerBaseEnv({
+        config,
+        envFile,
+        env: initialEnv,
+        serverBindHostOverride: args.options.serverBindHost,
+      }),
+    );
     delete localEnv.BB_SERVER_URL;
     delete localServerEnv.BB_SERVER_URL;
     return {
@@ -1341,12 +1356,14 @@ export async function resolveBbAppRuntimeState(
       homeDir: args.homeDir,
     }),
     env: finalEnv,
-    serverEnv: createServerBaseEnv({
-      config,
-      envFile,
-      env: initialEnv,
-      serverBindHostOverride: args.options.serverBindHost,
-    }),
+    serverEnv: stripThreadContextEnv(
+      createServerBaseEnv({
+        config,
+        envFile,
+        env: initialEnv,
+        serverBindHostOverride: args.options.serverBindHost,
+      }),
+    ),
   };
 }
 
@@ -2441,12 +2458,12 @@ function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
   };
 }
 
-function createDaemonEnv(
+export function createDaemonEnv(
   context: BbAppStartContext,
   autoJoinEnv: NodeJS.ProcessEnv,
 ): NodeJS.ProcessEnv {
   return {
-    ...autoJoinEnv,
+    ...stripThreadContextEnv(autoJoinEnv),
     BB_APP_VERSION: context.appVersion,
     BB_BRIDGE_DIR: context.daemonBundleDir,
     BB_CLI_DIR: context.daemonBundleDir,
@@ -2482,7 +2499,7 @@ function createHostDaemonOnlyEnv(
   args: CreateHostDaemonOnlyEnvArgs,
 ): NodeJS.ProcessEnv {
   return {
-    ...args.env,
+    ...stripThreadContextEnv(args.env),
     BB_APP_VERSION: args.context.appVersion,
     BB_BRIDGE_DIR: args.context.daemonBundleDir,
     BB_CLI_DIR: args.context.daemonBundleDir,
@@ -2576,7 +2593,7 @@ export async function createHostDaemonJoinEnv(
   };
 }
 
-async function runBundledCliCommand(
+export async function runBundledCliCommand(
   args: RunBundledCliCommandArgs,
 ): Promise<number> {
   // Prefer the daemon-injected absolute CLI when present so packaged `bb`
@@ -3243,6 +3260,12 @@ export async function runBbApp(
   }
 
   const context = runtime.context;
+  // context.serverUrl is deliberately loopback-reachable for health checks and
+  // the colocated daemon. Report the distinct socket address users exposed.
+  const serverListenerUrl = resolveServerListenerUrl({
+    bindHost: runtime.serverEnv.BB_SERVER_BIND_HOST,
+    port: context.serverPort,
+  });
   const outputBuffer = createOutputBuffer();
   const serverEnv = createServerEnv({
     context,
@@ -3250,7 +3273,7 @@ export async function runBbApp(
   });
   const sharedEnv = createSharedEnv({
     context,
-    env: runtime.env,
+    env: stripThreadContextEnv(runtime.env),
   });
 
   process.stdout.write(`\n  ${bold("bb")}\n\n`);
@@ -3327,7 +3350,7 @@ export async function runBbApp(
       return;
     }
 
-    endStep(green("✓"), `Server listening on ${cyan(context.serverUrl)}`);
+    endStep(green("✓"), `Server listening on ${cyan(serverListenerUrl)}`);
 
     beginStep("Starting host daemon");
     const autoJoinEnv = await maybeAddAutoJoinEnv({
@@ -3362,7 +3385,7 @@ export async function runBbApp(
     process.stdout.write("\n");
     log(green("●"), bold("bb is ready"));
     process.stdout.write("\n");
-    log(" ", formatReadyOutputRow("app", cyan(context.serverUrl)));
+    log(" ", formatReadyOutputRow("app", cyan(serverListenerUrl)));
     log(" ", formatReadyOutputRow("daemon", String(context.daemonPort)));
     log(" ", formatReadyOutputRow("data", context.dataDir));
     log(" ", formatReadyOutputRow("db", context.dbPath));

@@ -31,6 +31,7 @@ describe("bb environment command output", () => {
       ],
       insertions: 3,
       deletions: 1,
+      lineStatsComplete: true,
     },
     checkout: {
       kind: "branch",
@@ -51,6 +52,7 @@ describe("bb environment command output", () => {
       files: [],
       insertions: 0,
       deletions: 0,
+      lineStatsComplete: true,
     },
   };
 
@@ -144,6 +146,28 @@ describe("bb environment command output", () => {
     expect(
       JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
     ).toEqual(response);
+  });
+
+  it("does not print incomplete line totals for untracked files", async () => {
+    stubServerApi({
+      "v1.environments.:id.status.$get": vi.fn(async () => ({
+        outcome: "available",
+        workspace: {
+          ...workspaceStatus,
+          workingTree: {
+            ...workspaceStatus.workingTree,
+            lineStatsComplete: false,
+          },
+        },
+      })),
+    });
+
+    await runCommand(["environment", "status", "env-untracked"], register);
+
+    const lines = collectLogLines(vi.mocked(console.log));
+    expect(lines).toContain("Line stats: unavailable for untracked files");
+    expect(lines.some((line) => line.startsWith("Insertions:"))).toBe(false);
+    expect(lines.some((line) => line.startsWith("Deletions:"))).toBe(false);
   });
 
   it("bb environment status explains non-git environments", async () => {
@@ -370,6 +394,7 @@ describe("bb environment command output", () => {
       ],
       shortstat: "1 file changed",
       mergeBaseRef: null,
+      truncated: false,
       initialPatches: [
         {
           path: "assets/logo.png",
@@ -400,6 +425,47 @@ describe("bb environment command output", () => {
     expect(
       JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
     ).toEqual(response);
+  });
+
+  it("bb environment diff-files reports a truncated file list", async () => {
+    stubServerApi({
+      "v1.environments.:id.diff.files.$get": vi.fn(async () => ({
+        outcome: "available",
+        files: [
+          {
+            path: "one.txt",
+            previousPath: null,
+            changeKind: "added",
+            additions: 1,
+            deletions: 0,
+            binary: false,
+            origin: "untracked",
+            loadMode: "auto",
+          },
+        ],
+        shortstat: "1 file changed, 1 insertion(+)",
+        mergeBaseRef: null,
+        initialPatches: [],
+        truncated: true,
+      })),
+    });
+
+    await runCommand(
+      [
+        "environment",
+        "diff-files",
+        "env-diff-files-truncated",
+        "--target",
+        "uncommitted",
+      ],
+      register,
+    );
+
+    expect(collectLogLines(vi.mocked(console.log))).toEqual([
+      "added\t+1 -0\tuntracked\tauto\tone.txt",
+      "1 file changed, 1 insertion(+)",
+      "(additional changed files omitted)",
+    ]);
   });
 
   it("bb environment diff-file distinguishes text and binary content", async () => {

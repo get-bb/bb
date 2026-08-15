@@ -1,4 +1,4 @@
-import type { BbPluginApi, PluginMentionItem } from "@bb/plugin-sdk";
+import type { BbPluginApi, PluginMentionItem } from "@get-bb/plugin-sdk";
 
 import type { TasksApiStore } from "../api";
 import type { Attachment, Comment, Task, TaskThread } from "../db";

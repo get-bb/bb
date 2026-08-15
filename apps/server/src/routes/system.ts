@@ -17,6 +17,7 @@ import {
   applyAppKeybindingOverrides,
   customThemeNameSchema,
   isBuiltInThemeId,
+  resolveCodeTheme,
   type AppKeybindingOverrides,
   type AppTheme,
 } from "@bb/domain";
@@ -141,8 +142,17 @@ export function registerSystemRoutes(
     faviconColor: AppTheme["faviconColor"],
   ): Promise<AppTheme> {
     const pluginCss = await pluginService.readThemeCss(themeId);
-    if (pluginCss !== null)
-      return { themeId, customCss: pluginCss, faviconColor };
+    if (pluginCss !== null) {
+      return {
+        themeId,
+        customCss: pluginCss,
+        faviconColor,
+        resolvedCodeTheme: resolveCodeTheme(
+          pluginService.readThemeCodeTheme(themeId),
+          themeId,
+        ),
+      };
+    }
     return resolveAppTheme(themeRoot, themeId, faviconColor);
   }
 
@@ -229,11 +239,7 @@ export function registerSystemRoutes(
     // Broadcast like experiments: every window re-reads /system/config and
     // re-applies the active palette.
     deps.hub.notifySystem(["config-changed"]);
-    return context.json(
-      pluginCss === null
-        ? resolveAppTheme(themeRoot, themeId, faviconColor)
-        : { themeId, customCss: pluginCss, faviconColor },
-    );
+    return context.json(await resolveSelectedTheme(themeId, faviconColor));
   });
 
   get(routes.themes, async (context) =>

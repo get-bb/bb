@@ -13,7 +13,10 @@ import {
   type PromptBoxSubmissionConfig,
   type PromptVoiceConfig,
 } from "@/components/promptbox/PromptBoxInternal";
-import { AUTOMATION_PROMPT_ACTION } from "@/components/promptbox/PromptBoxActionsMenu";
+import {
+  AUTOMATION_PROMPT_ACTION,
+  CREATE_PLUGIN_PROMPT_ACTION,
+} from "@/components/promptbox/PromptBoxActionsMenu";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   makeAttachmentsConfig as makeAttachments,
@@ -41,6 +44,7 @@ const promptActions: readonly PromptBoxAction[] = [
     text: "/goal ",
   },
   AUTOMATION_PROMPT_ACTION,
+  CREATE_PLUGIN_PROMPT_ACTION,
 ];
 
 // ---------------------------------------------------------------------------
@@ -923,6 +927,27 @@ function RecordingActiveRow() {
   );
 }
 
+function RecordingWithExistingDraftRow() {
+  const { value, mentionRanges, onChange } = useControlledValue(
+    "Keep this existing prompt visible while I dictate the rest of the request.",
+  );
+  return (
+    <PromptBoxInternal
+      value={value}
+      mentionRanges={mentionRanges}
+      onChange={onChange}
+      onSubmit={noop}
+      typeahead={makeTypeahead()}
+      mentionMenuPlacement="bottom"
+      attachments={makeAttachments()}
+      history={baseHistory}
+      submission={makeSubmission()}
+      voice={recordingVoice}
+      footerStart={<ExecutionControls {...mockExecution} />}
+    />
+  );
+}
+
 function RecordingProcessingRow() {
   const { value, mentionRanges, onChange } = useControlledValue("");
   return (
@@ -1002,6 +1027,21 @@ export function PromptActions() {
           fixture={planGoalCommandPillsFixture}
           placeholder="Plan or goal command pill"
         />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function VoiceActionRowRecommendation() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="recording with existing draft"
+        hint="The editor stays visible while the bottom action row becomes cancel, waveform, and confirm."
+      >
+        <div className="w-full max-w-4xl">
+          <RecordingWithExistingDraftRow />
+        </div>
       </StoryRow>
     </StoryCard>
   );

@@ -310,7 +310,7 @@ export function registerSpawnCommand(
             ...(visibility ? { visibility } : {}),
             environment,
             // The typed $post client types this body against the schema's
-            // output shape, where startedOnBehalfOf/originKind/childOrigin
+            // output shape, where startedOnBehalfOf/originKind
             // (`.default(null)`) are required — so a normal spawn passes the
             // explicit null the server would otherwise fill. (A fork sets
             // these; the CLI never does. z.input would re-optionalize the
@@ -318,7 +318,6 @@ export function registerSpawnCommand(
             // null lives here.)
             startedOnBehalfOf: null,
             originKind: opts.originKind ?? null,
-            childOrigin: null,
             ...(parentThreadId ? { parentThreadId } : {}),
             ...(opts.section ? { sectionId: opts.section } : {}),
             ...(opts.sourceThread ? { sourceThreadId: opts.sourceThread } : {}),

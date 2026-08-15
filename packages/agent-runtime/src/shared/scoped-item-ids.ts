@@ -13,6 +13,18 @@ export interface ResolveCompletedScopedItemIdArgs {
   scopeId: string;
 }
 
+interface CounterScopedItemIdState {
+  openReasoningItemIdsByScope: Map<string, string>;
+  reasoningItemCounter: number;
+}
+
+interface CounterScopedItemIdArgs<TState extends CounterScopedItemIdState> {
+  parentToolCallId?: string;
+  providerItemId?: string;
+  scopeId: string | number;
+  state: TState;
+}
+
 function toScopedItemKey(
   parentToolCallId: string | undefined,
   scopeId: string,
@@ -45,4 +57,41 @@ export function resolveCompletedScopedItemId(
   }
 
   return args.providerItemId ?? args.createItemId();
+}
+
+export function createScopedItemIdFactory(args: { prefix: string }) {
+  const createId = (scopeId?: string | number): string => {
+    const suffix = scopeId === undefined ? "" : String(scopeId);
+    return suffix.length > 0 ? `${args.prefix}-${suffix}` : args.prefix;
+  };
+  const createCounterId = <TState extends CounterScopedItemIdState>(
+    state: TState,
+  ): string => {
+    state.reasoningItemCounter += 1;
+    return createId(state.reasoningItemCounter);
+  };
+  return {
+    createId,
+    getOrCreate<TState extends CounterScopedItemIdState>(
+      item: CounterScopedItemIdArgs<TState>,
+    ): string {
+      return getOrCreateScopedItemId({
+        createItemId: () => createCounterId(item.state),
+        openItemIdsByScope: item.state.openReasoningItemIdsByScope,
+        parentToolCallId: item.parentToolCallId,
+        scopeId: String(item.scopeId),
+      });
+    },
+    resolveCompleted<TState extends CounterScopedItemIdState>(
+      item: CounterScopedItemIdArgs<TState>,
+    ): string {
+      return resolveCompletedScopedItemId({
+        createItemId: () => createCounterId(item.state),
+        openItemIdsByScope: item.state.openReasoningItemIdsByScope,
+        parentToolCallId: item.parentToolCallId,
+        providerItemId: item.providerItemId,
+        scopeId: String(item.scopeId),
+      });
+    },
+  };
 }

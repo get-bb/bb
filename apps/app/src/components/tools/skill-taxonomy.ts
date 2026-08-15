@@ -19,12 +19,6 @@ export const SKILL_SCOPE_LABELS: Record<SkillScope, string> = {
   plugin: "Plugin",
 };
 
-export function isKnownSkillScope(
-  value: string | undefined,
-): value is SkillScope {
-  return value !== undefined && value in SKILL_SCOPE_LABELS;
-}
-
 export function isSkillEditable(
   skill: SkillSummary,
 ): skill is SkillSummary & { scope: EditableSkillScope } {

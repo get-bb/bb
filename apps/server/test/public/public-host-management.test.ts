@@ -9,7 +9,10 @@ import {
   createHostJoinCodeResponseSchema,
   type CreateHostJoinCodeResponse,
 } from "@bb/server-contract";
-import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import {
+  HOST_DAEMON_PROTOCOL_VERSION,
+  hostDaemonSessionOpenResponseSchema,
+} from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { readJson } from "../helpers/json.js";
@@ -46,7 +49,7 @@ function requestJoinCode(app: {
 }
 
 describe("public host management", () => {
-  it("mints a join code that enrolls through the existing internal route", async () => {
+  it("preserves a renamed host across a daemon reconnect", async () => {
     await withTestHarness(async (harness) => {
       const issued = await createJoinCode(harness.app);
       expect(issued.joinCode).toMatch(/^bbde_/u);
@@ -82,6 +85,20 @@ describe("public host management", () => {
         type: "persistent",
       });
 
+      const renameResponse = await harness.app.request(
+        `${API}/hosts/${issued.hostId}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: "My Build Box" }),
+        },
+      );
+      expect(renameResponse.status).toBe(200);
+      expect(await readJson(renameResponse)).toMatchObject({
+        id: issued.hostId,
+        name: "My Build Box",
+      });
+
       const sessionResponse = await harness.app.request(
         "/internal/session/open",
         {
@@ -106,9 +123,25 @@ describe("public host management", () => {
         },
       );
       expect(sessionResponse.status).toBe(201);
-      expect(getHost(harness.db, issued.hostId)?.connectMachineId).toBe(
-        "machine-cloud-2",
+      const openedSession = hostDaemonSessionOpenResponseSchema.parse(
+        await readJson(sessionResponse),
       );
+      expect(getHost(harness.db, issued.hostId)).toMatchObject({
+        connectMachineId: "machine-cloud-2",
+        name: "My Build Box",
+      });
+      expect(
+        getSessionById(harness.db, { sessionId: openedSession.sessionId }),
+      ).toMatchObject({ hostName: "Build Machine" });
+
+      const publicHostResponse = await harness.app.request(
+        `${API}/hosts/${issued.hostId}`,
+      );
+      expect(publicHostResponse.status).toBe(200);
+      expect(await readJson(publicHostResponse)).toMatchObject({
+        id: issued.hostId,
+        name: "My Build Box",
+      });
     });
   });
 

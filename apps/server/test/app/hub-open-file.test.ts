@@ -51,7 +51,7 @@ describe("NotificationHub.notifyThreadOpen", () => {
     expect(
       hub.notifyThreadPaneAction(
         { projectId: "proj_1", threadId: "thr_1" },
-        "toggle",
+        "clear-spotlight",
       ),
     ).toBe(2);
     for (const socket of [first, second]) {
@@ -59,7 +59,7 @@ describe("NotificationHub.notifyThreadOpen", () => {
         type: "thread-pane-action",
         projectId: "proj_1",
         threadId: "thr_1",
-        action: "toggle",
+        action: "clear-spotlight",
       });
     }
   });

@@ -18,6 +18,12 @@ export interface Env {
   LANDING_POSTHOG_KEY?: string;
   RESEND_API_KEY?: string;
   RESEND_AUDIENCE_ID?: string;
+  /**
+   * bb-marketplace R2 bucket holding the bb-community plugin catalog. Optional:
+   * the bucket is provisioned outside this deploy, and /marketplace/v1/*
+   * answers 404 until it exists.
+   */
+  MARKETPLACE?: R2Bucket;
 }
 
 export function getEnv(): Env {

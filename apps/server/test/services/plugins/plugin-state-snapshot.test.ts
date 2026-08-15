@@ -134,7 +134,11 @@ describe("plugin activation snapshots and garbage collection", () => {
     upsertInstalledPlugin(db, {
       id: "legacy-snapshot",
       source: "npm:bb-plugin-legacy@^1.0.0",
-      provenance: { kind: "catalog", entryId: "legacy-entry" },
+      provenance: {
+        kind: "catalog",
+        marketplace: "bb-community",
+        entryId: "legacy-entry",
+      },
       sourceIntent: {
         kind: "npm",
         packageName: "bb-plugin-legacy",
@@ -173,14 +177,35 @@ describe("plugin activation snapshots and garbage collection", () => {
     if (snapshot.registrationPath === null) {
       throw new Error("missing snapshot registration path");
     }
-    const { catalogEntryId: _catalogEntryId, ...legacyRegistration } =
-      registration;
+    const {
+      catalogEntryId: _catalogEntryId,
+      catalogMarketplaceName: _catalogMarketplaceName,
+      ...legacyRegistration
+    } = registration;
+    const {
+      catalogMarketplaceName: _preNamedMarketplace,
+      ...preNamedMarketplaceRegistration
+    } = registration;
+    await writeFile(
+      snapshot.registrationPath,
+      JSON.stringify(preNamedMarketplaceRegistration),
+    );
+    await expect(
+      readPluginSnapshotRegistration({ db, snapshotId: snapshot.id }),
+    ).resolves.toMatchObject({
+      provenance: "catalog",
+      catalogEntryId: "legacy-entry",
+      catalogMarketplaceName: null,
+      sourceNpmRequestedSpec: "^1.0.0",
+      npmResolvedVersion: "1.2.0",
+    });
+
     await writeFile(
       snapshot.registrationPath,
       JSON.stringify({
         ...legacyRegistration,
         provenance: "marketplace",
-        marketplaceId: "bb-official",
+        marketplaceId: "bb-community",
         marketplaceEntryId: "legacy-entry",
       }),
     );
@@ -221,7 +246,7 @@ describe("plugin activation snapshots and garbage collection", () => {
       JSON.stringify({
         ...legacyRegistration,
         provenance: "marketplace",
-        marketplaceId: "bb-official",
+        marketplaceId: "bb-community",
         marketplaceEntryId: "legacy-entry",
       }),
     );
@@ -233,6 +258,253 @@ describe("plugin activation snapshots and garbage collection", () => {
       sourceNpmRequestedSpec: "^1.0.0",
       npmResolvedVersion: "1.2.0",
     });
+  });
+
+  it("keeps a shared checkout while a nested plugin still lives in it", async () => {
+    const commit = "a".repeat(40);
+    const checkout = join(
+      dataDir,
+      "plugins",
+      "cache",
+      "git",
+      "host",
+      "repo",
+      commit,
+    );
+    const nestedPath = join(checkout, "plugins", "nested");
+    await mkdir(nestedPath, { recursive: true });
+    await writeFile(join(nestedPath, "sentinel"), "keep");
+    const makeArtifact = (id: string, pluginId: string, path: string) =>
+      createPluginArtifact(db, {
+        id,
+        pluginId,
+        sourceKind: "git",
+        npmResolvedVersion: null,
+        gitResolvedCommit: commit,
+        gitCheckoutRoot: checkout,
+        path,
+        integrity: null,
+        contentHash: "hash",
+        validationResult: "valid",
+        validatedAt: 1,
+      });
+    // The root plugin is collectable; the nested plugin of the same checkout
+    // is not, and its files are inside the root's storage directory.
+    makeArtifact("root", "gc-root", checkout);
+    makeArtifact("nested", "gc-nested", nestedPath);
+    upsertInstalledPlugin(db, {
+      id: "gc-nested",
+      source: `git:https://example.test/repo.git@main`,
+      provenance: { kind: "direct" },
+      sourceIntent: {
+        kind: "git",
+        url: "https://example.test/repo.git",
+        subdirectory: "plugins/nested",
+        selector: { kind: "ref", ref: "main", refKind: "branch" },
+      },
+      exactResolution: { kind: "git", commit },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: "nested",
+      rootDir: nestedPath,
+      version: "1.0.0",
+      enabled: true,
+    });
+
+    const warnings: string[] = [];
+    await garbageCollectPluginArtifacts({
+      db,
+      dataDir,
+      now: Date.now() + 1_000,
+      retentionMs: 0,
+      warn: (message) => warnings.push(message),
+    });
+
+    await stat(join(nestedPath, "sentinel"));
+    expect(listPluginArtifacts(db, "gc-root")).toHaveLength(1);
+    expect(warnings).toEqual([]);
+  });
+
+  it("keeps a nested directory while a root plugin still owns it", async () => {
+    const commit = "c".repeat(40);
+    const checkout = join(
+      dataDir,
+      "plugins",
+      "cache",
+      "git",
+      "host",
+      "repo",
+      commit,
+    );
+    const nestedPath = join(checkout, "plugins", "nested");
+    await mkdir(nestedPath, { recursive: true });
+    await writeFile(join(nestedPath, "sentinel"), "keep");
+    const makeArtifact = (id: string, pluginId: string, path: string) =>
+      createPluginArtifact(db, {
+        id,
+        pluginId,
+        sourceKind: "git",
+        npmResolvedVersion: null,
+        gitResolvedCommit: commit,
+        gitCheckoutRoot: checkout,
+        path,
+        integrity: null,
+        contentHash: "hash",
+        validationResult: "valid",
+        validatedAt: 1,
+      });
+    makeArtifact("active-root", "gc-active-root", checkout);
+    makeArtifact("nested-old", "gc-nested-old", nestedPath);
+    upsertInstalledPlugin(db, {
+      id: "gc-active-root",
+      source: "git:https://example.test/repo.git@main",
+      provenance: { kind: "direct" },
+      sourceIntent: {
+        kind: "git",
+        url: "https://example.test/repo.git",
+        subdirectory: null,
+        selector: { kind: "ref", ref: "main", refKind: "branch" },
+      },
+      exactResolution: { kind: "git", commit },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: "active-root",
+      rootDir: checkout,
+      version: "1.0.0",
+      enabled: true,
+    });
+
+    const warnings: string[] = [];
+    await garbageCollectPluginArtifacts({
+      db,
+      dataDir,
+      now: Date.now() + 1_000,
+      retentionMs: 0,
+      warn: (message) => warnings.push(message),
+    });
+
+    await stat(join(nestedPath, "sentinel"));
+    expect(listPluginArtifacts(db, "gc-nested-old")).toHaveLength(1);
+    expect(warnings).toEqual([]);
+  });
+
+  it("keeps a nested directory that carries the commit name", async () => {
+    const commit = "d".repeat(40);
+    const checkout = join(
+      dataDir,
+      "plugins",
+      "cache",
+      "git",
+      "host",
+      "repo",
+      commit,
+    );
+    // The repository holds a directory named like the commit. Path parsing
+    // would treat it as the checkout root and miss the active root plugin.
+    const nestedPath = join(checkout, "vendor", commit);
+    await mkdir(nestedPath, { recursive: true });
+    await writeFile(join(nestedPath, "sentinel"), "keep");
+    const makeArtifact = (id: string, pluginId: string, path: string) =>
+      createPluginArtifact(db, {
+        id,
+        pluginId,
+        sourceKind: "git",
+        npmResolvedVersion: null,
+        gitResolvedCommit: commit,
+        gitCheckoutRoot: checkout,
+        path,
+        integrity: null,
+        contentHash: "hash",
+        validationResult: "valid",
+        validatedAt: 1,
+      });
+    makeArtifact("collision-root", "gc-collision-root", checkout);
+    makeArtifact("collision-nested", "gc-collision-nested", nestedPath);
+    upsertInstalledPlugin(db, {
+      id: "gc-collision-root",
+      source: "git:https://example.test/repo.git@main",
+      provenance: { kind: "direct" },
+      sourceIntent: {
+        kind: "git",
+        url: "https://example.test/repo.git",
+        subdirectory: null,
+        selector: { kind: "ref", ref: "main", refKind: "branch" },
+      },
+      exactResolution: { kind: "git", commit },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: "collision-root",
+      rootDir: checkout,
+      version: "1.0.0",
+      enabled: true,
+    });
+
+    const warnings: string[] = [];
+    await garbageCollectPluginArtifacts({
+      db,
+      dataDir,
+      now: Date.now() + 1_000,
+      retentionMs: 0,
+      warn: (message) => warnings.push(message),
+    });
+
+    await stat(join(nestedPath, "sentinel"));
+    expect(listPluginArtifacts(db, "gc-collision-nested")).toHaveLength(1);
+    expect(warnings).toEqual([]);
+  });
+
+  it("collects the shared checkout after its last nested plugin", async () => {
+    const commit = "b".repeat(40);
+    const checkout = join(
+      dataDir,
+      "plugins",
+      "cache",
+      "git",
+      "host",
+      "repo",
+      commit,
+    );
+    const nestedPath = join(checkout, "plugins", "nested");
+    await mkdir(nestedPath, { recursive: true });
+    await writeFile(join(checkout, "repository-file"), "remove");
+    createPluginArtifact(db, {
+      id: "last-nested",
+      pluginId: "gc-last-nested",
+      sourceKind: "git",
+      npmResolvedVersion: null,
+      gitResolvedCommit: commit,
+      gitCheckoutRoot: checkout,
+      path: nestedPath,
+      integrity: null,
+      contentHash: "hash",
+      validationResult: "valid",
+      validatedAt: 1,
+    });
+
+    const warnings: string[] = [];
+    await garbageCollectPluginArtifacts({
+      db,
+      dataDir,
+      now: Date.now() + 1_000,
+      retentionMs: 0,
+      warn: (message) => warnings.push(message),
+    });
+
+    await expect(stat(checkout)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(listPluginArtifacts(db, "gc-last-nested")).toHaveLength(0);
+    expect(warnings).toEqual([]);
   });
 
   it("never removes active, snapshot-retained, or unmanaged artifact roots", async () => {
@@ -253,6 +525,7 @@ describe("plugin activation snapshots and garbage collection", () => {
         sourceKind: "git",
         npmResolvedVersion: null,
         gitResolvedCommit: commit,
+        gitCheckoutRoot: path,
         path,
         integrity: null,
         contentHash: "hash",
@@ -270,8 +543,7 @@ describe("plugin activation snapshots and garbage collection", () => {
         kind: "git",
         url: "https://example.test/plugin.git",
         subdirectory: null,
-        requestedRef: "main",
-        refKind: "branch",
+        selector: { kind: "ref", ref: "main", refKind: "branch" },
       },
       exactResolution: { kind: "git", commit: "active" },
       updateState: {

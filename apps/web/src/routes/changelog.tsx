@@ -5,18 +5,16 @@ import { Fragment, useEffect } from "react";
 import type { ReactNode } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
-import bbIcon from "../assets/bb-icon.png";
 import { initAnalytics } from "../landing/analytics";
 import type { Release, ReleaseBlock } from "../landing/changelog";
 import { RELEASE_META, parseChangelog } from "../landing/changelog";
 import { ChangelogInline } from "../landing/changelog-inline";
 import {
-  DiscordLink,
-  DownloadLink,
   EmailSignup,
-  GitHubLink,
+  focusSubscribeEmail,
+  SUBSCRIBE_EMAIL_ID,
 } from "../landing/cta";
-import { DASHBOARD_PATH } from "../lib/connect-return-to";
+import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import { unfurlMeta } from "../landing/site";
 import interWoff2 from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
 import landingCss from "../landing/landing.css?url";
@@ -186,27 +184,13 @@ function ReleaseEntry({ release }: { release: Release }) {
 function ChangelogPage() {
   return (
     <div className="wrap">
-      <nav className="nav">
-        <a className="logo" href="/">
-          <img src={bbIcon} alt="bb" width={36} height={36} />
-        </a>
-        <div className="nav-links">
-          <a className="nav-current" href="/changelog">
-            Changelog
-          </a>
-          <GitHubLink placement="nav">GitHub</GitHubLink>
-          <a href={DASHBOARD_PATH}>Sign in</a>
-          <DownloadLink placement="nav" className="btn btn-primary btn-sm">
-            Download for macOS
-          </DownloadLink>
-        </div>
-      </nav>
+      <SiteNav current="changelog" />
 
       <header className="page-head">
         <h1>Changelog</h1>
         <p className="sub">{PAGE_DESCRIPTION}</p>
         <div className="meta-row">
-          <a href="#subscribe">
+          <a href={`#${SUBSCRIBE_EMAIL_ID}`} onClick={focusSubscribeEmail}>
             <HugeiconsIcon icon={Mail01Icon} className="ri" />
             Get release notes by email
           </a>
@@ -223,16 +207,7 @@ function ChangelogPage() {
         <EmailSignup placement="footer" />
       </section>
 
-      <footer className="footer">
-        <span>bb is free and open source (MIT)</span>
-        <span>
-          <GitHubLink placement="footer">GitHub</GitHubLink>
-          {" · "}
-          <DiscordLink placement="footer">Discord</DiscordLink>
-          {" · "}
-          <DownloadLink placement="footer">Download</DownloadLink>
-        </span>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

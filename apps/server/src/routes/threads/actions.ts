@@ -70,7 +70,6 @@ import {
 import { editThreadMessage } from "../../services/threads/thread-edit-message.js";
 import {
   buildExecutionOptions,
-  buildThreadStopCommand,
   dispatchThreadUnarchiveCommand,
   prepareTurnSubmitCommandPayload,
 } from "../../services/threads/thread-commands.js";
@@ -78,7 +77,7 @@ import {
   getLastProviderThreadId,
   isManualCompactionActive,
 } from "../../services/threads/thread-events.js";
-import { requestThreadStopForCurrentState } from "../../services/threads/thread-lifecycle.js";
+import { stopThreadForCurrentState } from "../../services/threads/thread-lifecycle.js";
 import {
   getThreadPromptBannerActivity,
   toThreadListEntryResponses,
@@ -493,6 +492,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       await continueThreadAfterProviderRateLimit(deps, {
         environment,
         failedRequestId: payload.failedRequestId,
+        mode: payload.mode ?? "manual",
         thread,
       }),
     );
@@ -631,7 +631,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
             db: deps.db,
             thread,
           });
-    requestThreadStopForCurrentState(
+    await stopThreadForCurrentState(
       deps,
       thread,
       environment,
@@ -669,12 +669,9 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     });
     await runLiveHostCommand(deps, {
       command: {
-        ...buildThreadStopCommand({
-          environmentId: environment.id,
-          hostId: environment.hostId,
-          threadId: thread.id,
-        }),
         type: "thread.plan.cancel",
+        environmentId: environment.id,
+        threadId: thread.id,
         expectedTurnId: activity.activePlanTurnId,
       },
       hostId: environment.hostId,

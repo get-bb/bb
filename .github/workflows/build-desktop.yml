@@ -23,7 +23,7 @@ env:
   PNPM_VERSION: "9.15.0"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: build-desktop-${{ github.ref }}
@@ -34,19 +34,21 @@ jobs:
     name: macOS arm64 desktop artifacts
     runs-on: macos-15
     timeout-minutes: 45
+    outputs:
+      has_signing_secrets: ${{ steps.signing.outputs.has_signing_secrets }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -67,6 +69,7 @@ jobs:
         run: pnpm exec turbo run test --filter=@bb/desktop --filter=bb-app --force --output-logs=new-only
 
       - name: Validate macOS signing secrets
+        id: signing
         env:
           MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -94,14 +97,18 @@ jobs:
             fi
           done
 
+          HAS_SIGNING_SECRETS="false"
           if [[ "${#PRESENT_SECRET_NAMES[@]}" -eq 0 ]]; then
-            echo "::warning::macOS signing/notarization secrets are not configured; building unsigned workflow artifacts and publishing desktop-version.json only."
+            echo "::warning::macOS signing/notarization secrets are not configured; building unsigned macOS workflow artifacts that a publish run will withhold. Both version feeds and the Linux AppImage still publish."
           elif [[ "${#MISSING_SECRET_NAMES[@]}" -eq 0 ]]; then
             echo "macOS signing/notarization secrets are complete; signed and notarized artifacts will be produced."
+            HAS_SIGNING_SECRETS="true"
           else
             echo "::error::Incomplete macOS signing/notarization secret set. Present: ${PRESENT_SECRET_NAMES[*]}. Missing: ${MISSING_SECRET_NAMES[*]}."
             exit 1
           fi
+
+          echo "has_signing_secrets=$HAS_SIGNING_SECRETS" >> "$GITHUB_OUTPUT"
 
       - name: Package arm64 desktop artifacts
         env:
@@ -119,16 +126,100 @@ jobs:
       - name: Generate desktop version feed
         run: pnpm --dir apps/desktop run desktop:version-feed
 
+      - name: Upload desktop workflow artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bb-desktop-macos-arm64
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/latest-mac.yml
+            apps/desktop/release/desktop-version.json
+          if-no-files-found: error
+
+  linux:
+    name: Linux x64 desktop artifacts
+    # Pinned rather than ubuntu-latest so the glibc the AppImage links against
+    # changes only when we choose it: the build machine's glibc sets the
+    # minimum distro version users need.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Typecheck desktop and launcher
+        run: pnpm exec turbo run typecheck --filter=@bb/desktop --filter=bb-app --output-logs=new-only
+
+      - name: Build desktop
+        run: pnpm exec turbo run build --filter=@bb/desktop --output-logs=new-only
+
+      - name: Test desktop and launcher
+        run: pnpm exec turbo run test --filter=@bb/desktop --filter=bb-app --force --output-logs=new-only
+
+      - name: Package x64 AppImage
+        # No --force: the packaging task is already cache: false, and forcing also
+        # rebuilds its cached bb-app/@bb/desktop dependencies a second time.
+        run: pnpm exec turbo run desktop:build:linux --filter=@bb/desktop --output-logs=new-only
+
+      - name: Smoke test packaged desktop app
+        # The packaged app opens a real BrowserWindow, so the headless runner
+        # needs a virtual display.
+        run: xvfb-run -a pnpm exec turbo run smoke:packaged --filter=@bb/desktop --force --output-logs=new-only
+
+      - name: Generate desktop version feed
+        run: pnpm --dir apps/desktop run desktop:version-feed
+
+      - name: Upload desktop workflow artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bb-desktop-linux-x64
+          path: |
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/latest-linux.yml
+            apps/desktop/release/desktop-version-linux.json
+          if-no-files-found: error
+
+  publish:
+    name: Publish stable desktop release
+    needs:
+      - macos
+      - linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The plan runs before the downloads: a qa or publish=false run has no use
+      # for several hundred MB of binaries it will never upload.
       - name: Plan release publication
         id: release_plan
         env:
+          HAS_SIGNING_SECRETS: ${{ needs.macos.outputs.has_signing_secrets }}
           INPUT_PUBLISH: ${{ inputs.publish }}
           RELEASE_CHANNEL: ${{ inputs.release_channel }}
-          CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_P12 }}
-          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
 
@@ -143,60 +234,87 @@ jobs:
             SHOULD_PUBLISH="true"
           fi
 
-          HAS_SIGNING_SECRETS="false"
-          if [[ -n "${CSC_LINK:-}" && -n "${CSC_KEY_PASSWORD:-}" && -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
-            HAS_SIGNING_SECRETS="true"
-          fi
-
-          PUBLISH_BINARIES="false"
+          # Linux AppImages have no notarization equivalent, so they publish on
+          # their own. Only the macOS binaries wait on the Apple secrets.
+          PUBLISH_MACOS_BINARIES="false"
           if [[ "$HAS_SIGNING_SECRETS" == "true" ]]; then
-            PUBLISH_BINARIES="true"
+            PUBLISH_MACOS_BINARIES="true"
           elif [[ "$SHOULD_PUBLISH" == "true" ]]; then
-            echo "::warning::macOS signing/notarization secrets are missing; publishing desktop-version.json only and withholding unsigned .dmg/.zip artifacts."
+            echo "::warning::macOS signing/notarization secrets are missing; publishing the version feeds and Linux AppImage only, and withholding unsigned .dmg/.zip artifacts."
           fi
 
           {
             echo "version=$VERSION"
             echo "is_prerelease=$IS_PRERELEASE"
             echo "should_publish=$SHOULD_PUBLISH"
-            echo "publish_binaries=$PUBLISH_BINARIES"
-            echo "has_signing_secrets=$HAS_SIGNING_SECRETS"
+            echo "publish_macos_binaries=$PUBLISH_MACOS_BINARIES"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Upload desktop workflow artifacts
-        uses: actions/upload-artifact@v4
+      - name: Download macOS desktop artifacts
+        if: steps.release_plan.outputs.should_publish == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: bb-desktop-macos-arm64
-          path: |
-            apps/desktop/release/*.dmg
-            apps/desktop/release/*.zip
-            apps/desktop/release/*.blockmap
-            apps/desktop/release/latest-mac.yml
-            apps/desktop/release/desktop-version.json
-          if-no-files-found: error
+          path: release/macos
+
+      - name: Download Linux desktop artifacts
+        if: steps.release_plan.outputs.should_publish == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bb-desktop-linux-x64
+          path: release/linux
 
       - name: Publish stable desktop release feed
         if: steps.release_plan.outputs.should_publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.release_plan.outputs.version }}
-          PUBLISH_BINARIES: ${{ steps.release_plan.outputs.publish_binaries }}
+          PUBLISH_MACOS_BINARIES: ${{ steps.release_plan.outputs.publish_macos_binaries }}
         run: |
           set -euo pipefail
 
           VERSION_TAG="desktop-v${VERSION}"
           LATEST_TAG="desktop-latest"
-          RELEASE_DIR="apps/desktop/release"
-          METADATA_ASSETS=("$RELEASE_DIR/desktop-version.json")
-          RELEASE_ASSETS=("${METADATA_ASSETS[@]}")
+          MACOS_DIR="release/macos"
+          LINUX_DIR="release/linux"
 
-          if [[ "$PUBLISH_BINARIES" == "true" ]]; then
-            RELEASE_ASSETS+=("$RELEASE_DIR/latest-mac.yml")
-            RELEASE_ASSETS+=("$RELEASE_DIR"/*.dmg)
-            RELEASE_ASSETS+=("$RELEASE_DIR"/*.zip)
-            RELEASE_ASSETS+=("$RELEASE_DIR"/*.blockmap)
+          RELEASE_ASSETS=()
+
+          # An unmatched glob would otherwise reach gh as a literal pattern and
+          # fail the upload, so each expansion states whether it is required.
+          add_required_glob() {
+            local matches=("$@")
+            if [[ ! -e "${matches[0]}" ]]; then
+              echo "::error::No release artifact matched ${matches[0]}."
+              exit 1
+            fi
+            RELEASE_ASSETS+=("${matches[@]}")
+          }
+
+          add_optional_glob() {
+            local matches=("$@")
+            if [[ -e "${matches[0]}" ]]; then
+              RELEASE_ASSETS+=("${matches[@]}")
+            fi
+          }
+
+          # Both platforms reset the same moving release, so a single job
+          # assembles every asset. Splitting the reset across platform jobs
+          # would let whichever finished last delete the other's binaries.
+          add_required_glob "$MACOS_DIR/desktop-version.json"
+          add_required_glob "$LINUX_DIR/desktop-version-linux.json"
+          add_required_glob "$LINUX_DIR/latest-linux.yml"
+          add_required_glob "$LINUX_DIR"/*.AppImage
+          # AppImage embeds its block map, so a sidecar file is not guaranteed.
+          add_optional_glob "$LINUX_DIR"/*.blockmap
+
+          if [[ "$PUBLISH_MACOS_BINARIES" == "true" ]]; then
+            add_required_glob "$MACOS_DIR/latest-mac.yml"
+            add_required_glob "$MACOS_DIR"/*.dmg
+            add_required_glob "$MACOS_DIR"/*.zip
+            add_required_glob "$MACOS_DIR"/*.blockmap
           else
-            echo "Signing/notarization gate is closed; publishing desktop-version.json only."
+            echo "Signing/notarization gate is closed; publishing the macOS version feed without macOS binaries."
           fi
 
           if gh release view "$VERSION_TAG" >/dev/null 2>&1; then
@@ -243,7 +361,7 @@ jobs:
       - name: Summarize
         env:
           IS_PRERELEASE: ${{ steps.release_plan.outputs.is_prerelease }}
-          PUBLISH_BINARIES: ${{ steps.release_plan.outputs.publish_binaries }}
+          PUBLISH_MACOS_BINARIES: ${{ steps.release_plan.outputs.publish_macos_binaries }}
           SHOULD_PUBLISH: ${{ steps.release_plan.outputs.should_publish }}
           VERSION: ${{ steps.release_plan.outputs.version }}
         run: |
@@ -251,9 +369,11 @@ jobs:
             echo "## bb desktop artifacts"
             echo
             echo "- arm64 macOS .dmg, .zip, latest-mac.yml, and desktop-version.json uploaded as workflow artifacts"
+            echo "- x64 Linux .AppImage, latest-linux.yml, and desktop-version-linux.json uploaded as workflow artifacts"
             echo "- version: ${VERSION}"
             echo "- prerelease version: ${IS_PRERELEASE}"
             echo "- stable release publication requested and allowed: ${SHOULD_PUBLISH}"
-            echo "- release binary upload enabled: ${PUBLISH_BINARIES}"
-            echo "- desktop feed URL: https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version.json"
+            echo "- macOS release binary upload enabled: ${PUBLISH_MACOS_BINARIES}"
+            echo "- macOS feed URL: https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version.json"
+            echo "- Linux feed URL: https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version-linux.json"
           } >> "$GITHUB_STEP_SUMMARY"

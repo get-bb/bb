@@ -30,6 +30,7 @@ const ROW = {
   status: "running",
   statusDetail: null,
   provenance: "direct",
+  publisherLabel: null,
   isOrphanedBuiltin: false,
   sourceDisplay: "npm · @bb-plugins/linear · pinned",
   updateState: {

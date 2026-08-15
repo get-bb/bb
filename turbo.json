@@ -95,7 +95,7 @@
     },
     "bb-app#build": {
       // copy-builtin-plugins bundles every plugin in BUNDLED_PLUGINS; the
-      // tasks plugin's app bundle imports the @bb/plugin-sdk root at runtime
+      // tasks plugin's app bundle imports the @get-bb/plugin-sdk root at runtime
       // (shared RPC contract), so the SDK dist must exist first.
       "dependsOn": [
         "@bb/app#build",
@@ -103,7 +103,7 @@
         "@bb/host-daemon#build",
         "@bb/cli#build",
         "@bb/sdk#build",
-        "@bb/plugin-sdk#build"
+        "@get-bb/plugin-sdk#build"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -134,11 +134,11 @@
       ]
     },
     "bb-plugin-tasks#build": {
-      // The tasks plugin's app bundle imports the @bb/plugin-sdk root at
+      // The tasks plugin's app bundle imports the @get-bb/plugin-sdk root at
       // runtime (shared RPC contract), so the SDK dist must exist first.
       "dependsOn": [
         "topo",
-        "@bb/plugin-sdk#build"
+        "@get-bb/plugin-sdk#build"
       ]
     },
     "@bb/desktop#build": {
@@ -165,6 +165,19 @@
       ]
     },
     "@bb/desktop#desktop:build": {
+      "dependsOn": [
+        "bb-app#build",
+        "@bb/desktop#build"
+      ],
+      "cache": false,
+      "outputs": [
+        "release/**"
+      ],
+      "passThroughEnv": [
+        "*"
+      ]
+    },
+    "@bb/desktop#desktop:build:linux": {
       "dependsOn": [
         "bb-app#build",
         "@bb/desktop#build"
@@ -302,7 +315,7 @@
       // Keep the check from racing the SDK build without adding a package edge,
       // which would create a dependency cycle through @bb/sdk.
       "dependsOn": [
-        "@bb/plugin-sdk#build",
+        "@get-bb/plugin-sdk#build",
         "topo"
       ]
     },
@@ -334,7 +347,7 @@
     "@bb/templates#test": {
       "dependsOn": [
         "//#ensure-native-modules",
-        "@bb/plugin-sdk#build",
+        "@get-bb/plugin-sdk#build",
         "topo"
       ],
       "inputs": [
@@ -418,7 +431,7 @@
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
-    "@bb/plugin-sdk#build": {
+    "@get-bb/plugin-sdk#build": {
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/*/package.json",

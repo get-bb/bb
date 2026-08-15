@@ -274,6 +274,22 @@ export function buildShellEnvironmentPolicyConfig(
   return Object.keys(config).length > 0 ? config : undefined;
 }
 
+export function extractEnvOverrides(
+  config: Record<string, unknown> | undefined,
+): Record<string, string> {
+  const envOverrides: Record<string, string> = {};
+  for (const [key, value] of Object.entries(config ?? {})) {
+    if (
+      key.startsWith("shell_environment_policy.set.") &&
+      typeof value === "string"
+    ) {
+      const envVar = key.slice("shell_environment_policy.set.".length);
+      envOverrides[envVar] = value;
+    }
+  }
+  return envOverrides;
+}
+
 // ---------------------------------------------------------------------------
 // Numeric helpers
 // ---------------------------------------------------------------------------
@@ -290,7 +306,9 @@ export function normalizeProviderCommandOutput(
   // Compare placeholders against trimmed provider text, but preserve the
   // original bytes for real process output so downstream rendering stays exact.
   const trimmedText = args.text.trim();
-  if (args.emptyPlaceholders.some((placeholder) => placeholder === trimmedText)) {
+  if (
+    args.emptyPlaceholders.some((placeholder) => placeholder === trimmedText)
+  ) {
     return undefined;
   }
   return args.text.length > 0 ? args.text : undefined;

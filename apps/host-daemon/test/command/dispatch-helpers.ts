@@ -194,6 +194,17 @@ export function createFakeWorkspace(pathname: string) {
         mergeBaseRef: null,
       };
     },
+    async diffFiles() {
+      return {
+        files: [],
+        shortstat: "",
+        mergeBaseRef: null,
+        truncated: false,
+      };
+    },
+    async diffPatch() {
+      return [];
+    },
     async getPullRequest() {
       if (state.pullRequestLookupError !== null) {
         return {
@@ -398,6 +409,7 @@ export function createFakeRuntime() {
       state.stoppedThreadId = args.threadId;
       activeTurnsByThreadId.delete(args.threadId);
       providerSessionsByThreadId.delete(args.threadId);
+      return { providerCheckpointId: null };
     },
     async clearThreadGoal() {
       return { cleared: true };

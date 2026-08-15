@@ -457,12 +457,10 @@ export function ThreadSecondaryPanel({
   const isDiffPanelActive = activeFixedPanel === "git-diff";
   const showsGitDiffToolbar = isDiffPanelActive && !hasActiveFileTab;
   const shouldShowGitDiffTab = canUseGitUi && showGitDiffTab !== false;
-  // Inline, the panel slides out at a fixed width (clipped by the panel), so the
-  // body content must stay mounted through the close animation (and across
-  // open/close) instead of unmounting the instant `isOpen` flips — otherwise
-  // everything but the tab strip vanishes while the panel is still sliding. The
-  // drawer mounts its content only while open.
-  const shouldRenderFileTabContent = isOpen || !renderAsDrawer;
+  // Keep file content mounted across every close. The compact views defer the
+  // first full panel mount, then retain it inside their persistent drawer.
+  // Removing only this subtree would lose terminal and plugin state and move
+  // the later mount cost back into the next open action.
   const {
     gitDiffTarget,
     gitDiffSelectOptions,
@@ -500,6 +498,8 @@ export function ThreadSecondaryPanel({
     diffFilesResponse?.outcome === "available"
       ? diffFilesResponse.mergeBaseRef
       : null;
+  const isGitDiffTruncated =
+    diffFilesResponse?.outcome === "available" && diffFilesResponse.truncated;
   const diffIdentity = useMemo(
     () =>
       buildGitDiffIdentity({
@@ -784,6 +784,7 @@ export function ThreadSecondaryPanel({
               isDiffFilesLoading || gitDiffTarget === undefined
             }
             stats={gitDiffStats}
+            isTruncated={isGitDiffTruncated}
             areAllFilesCollapsed={areAllCollapsed}
             isCollapseAllDisabled={!hasFiles || isDiffFilesLoading}
             onToggleAllCollapsed={toggleAllCollapsed}
@@ -812,13 +813,11 @@ export function ThreadSecondaryPanel({
               isTerminalTabActive || fileTabContentFillsRegion ? undefined : ""
             }
           >
-            {shouldRenderFileTabContent
-              ? (fileTabContent ?? (
-                  <EmptyStatePanel className="mx-4 rounded-lg">
-                    No file preview content provided.
-                  </EmptyStatePanel>
-                ))
-              : null}
+            {fileTabContent ?? (
+              <EmptyStatePanel className="mx-4 rounded-lg">
+                No file preview content provided.
+              </EmptyStatePanel>
+            )}
           </div>
         ) : isDiffPanelActive ? (
           <GitDiffTabContent

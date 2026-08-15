@@ -1,4 +1,5 @@
 import type { MouseEvent as ReactMouseEvent } from "react";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {
   SectionSidebar,
   SectionSidebarIcon,
@@ -8,12 +9,12 @@ import {
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   SETTINGS_ROUTE_PATH,
-  getSettingsPluginRoutePath,
+  getPluginConfigurationRoutePath,
   getSettingsProviderRoutePath,
   getSettingsRoutePath,
 } from "@/lib/route-paths";
 import { getProviderIconInfo } from "@/lib/provider-icon";
-import { PluginNavIcon, useSettingsNavState } from "./settings-nav";
+import { useSettingsNavState } from "./settings-nav";
 
 interface SettingsSidebarProps {
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
@@ -94,14 +95,18 @@ export function SettingsSidebar({
             <SectionSidebarLabel>Plugins</SectionSidebarLabel>
           </div>
           <div className="mt-1 space-y-0.5">
-            {pluginEntries.map((plugin) => (
+            {pluginEntries.map((entry) => (
               <SectionSidebarRow
-                key={plugin.id}
-                active={activePluginId === plugin.id}
-                label={plugin.name ?? plugin.id}
-                to={getSettingsPluginRoutePath(plugin.id)}
+                key={entry.id}
+                active={activePluginId === entry.id}
+                label={entry.label}
+                to={getPluginConfigurationRoutePath({ pluginId: entry.id })}
               >
-                <PluginNavIcon plugin={plugin} />
+                <PluginIcon
+                  pluginId={entry.id}
+                  icon={entry.icon}
+                  className="size-4 shrink-0"
+                />
               </SectionSidebarRow>
             ))}
           </div>

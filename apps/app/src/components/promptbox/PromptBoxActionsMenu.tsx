@@ -15,9 +15,15 @@ import {
 } from "@/components/plugin/PluginComposerActions";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { CREATE_PLUGIN_PROMPT } from "@/lib/create-resource-prompts";
 import type { ProviderPromptActionCommand } from "./mentions/command-trigger";
 
-export type PromptBoxActionKind = "skills" | "plan" | "goal" | "automation";
+export type PromptBoxActionKind =
+  | "skills"
+  | "plan"
+  | "goal"
+  | "automation"
+  | "plugin";
 
 export interface PromptBoxAction {
   kind: PromptBoxActionKind;
@@ -41,11 +47,22 @@ export const AUTOMATION_PROMPT_ACTION: PromptBoxAction = {
   text: "/automation ",
 };
 
+/**
+ * Seeds the composer with the plugin prompt prefix the plugin library uses, so
+ * the user finishes one sentence and the agent reaches the plugin-authoring
+ * skill. There is no provider command for it, so the text is inserted as is.
+ */
+export const CREATE_PLUGIN_PROMPT_ACTION: PromptBoxAction = {
+  kind: "plugin",
+  text: CREATE_PLUGIN_PROMPT,
+};
+
 const PROMPT_ACTION_ORDER: readonly PromptBoxActionKind[] = [
   "skills",
   "plan",
   "goal",
   "automation",
+  "plugin",
 ];
 
 const PROMPT_ACTION_PRESENTATION = {
@@ -65,18 +82,32 @@ const PROMPT_ACTION_PRESENTATION = {
     label: "Automation",
     icon: "Repeat",
   },
+  // The icons follow the Tools navigation sections, so "Skills" and "Plugin"
+  // read the same here as they do in the sidebar. See tools-navigation.ts.
+  plugin: {
+    label: "Plugin",
+    icon: "ElectricPlugs",
+  },
 } as const satisfies Record<
   PromptBoxActionKind,
   { label: string; icon: IconName }
 >;
 
-export function withAutomationPromptAction(
+/**
+ * Adds the app-owned prompt actions to the provider-owned ones. Providers
+ * describe only their own composer commands, so bb appends the actions it owns
+ * itself and keeps a provider entry when the provider already supplies one.
+ */
+export function withAppPromptActions(
   actions: readonly PromptBoxAction[],
 ): PromptBoxAction[] {
-  if (actions.some((action) => action.kind === "automation")) {
-    return [...actions];
-  }
-  return [...actions, AUTOMATION_PROMPT_ACTION];
+  const appActions = [AUTOMATION_PROMPT_ACTION, CREATE_PLUGIN_PROMPT_ACTION];
+  return [
+    ...actions,
+    ...appActions.filter(
+      (appAction) => !actions.some((action) => action.kind === appAction.kind),
+    ),
+  ];
 }
 
 function orderedPromptActions(

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type { Task } from "../../shared/contract.js";
 
@@ -129,7 +129,7 @@ async function selectSort(slot: ReturnType<typeof renderList>, label: string) {
   fireEvent.click(slot.getByRole("button", { name: /Sort/ }));
   const drawer = await slot.findByRole("dialog", { name: "Sort tasks" });
   fireEvent.click(
-    within(drawer).getByRole("menuitemcheckbox", { name: label }),
+    await within(drawer).findByRole("menuitemcheckbox", { name: label }),
   );
 }
 
@@ -165,7 +165,7 @@ describe("list sorting (compact viewport)", () => {
 
     fireEvent.click(slot.getByRole("button", { name: /Sort/ }));
     const drawer = await slot.findByRole("dialog", { name: "Sort tasks" });
-    const options = within(drawer).getAllByRole("menuitemcheckbox");
+    const options = await within(drawer).findAllByRole("menuitemcheckbox");
     expect(options.map((option) => option.textContent)).toEqual([
       "Manual",
       "Priority",
@@ -176,7 +176,9 @@ describe("list sorting (compact viewport)", () => {
     ).toEqual(["true", "false", "false"]);
 
     fireEvent.click(
-      within(drawer).getByRole("menuitemcheckbox", { name: "Priority" }),
+      await within(drawer).findByRole("menuitemcheckbox", {
+        name: "Priority",
+      }),
     );
     await waitFor(() =>
       expect(slot.getByRole("button", { name: /Sort/ }).textContent).toContain(

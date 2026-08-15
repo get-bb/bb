@@ -4,21 +4,28 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  realpathSync,
   renameSync,
   rmSync,
 } from "node:fs";
-import { dirname, extname } from "node:path";
-import { resolve } from "node:path";
-import { createInterface } from "node:readline";
-import { fileURLToPath } from "node:url";
+import { dirname } from "node:path";
 import { z } from "zod";
+import { extractEnvOverrides } from "../../shared/adapter-utils.js";
 import {
   decodeBridgeJsonRpcResponse,
-  decodeToolCallResponsePayload,
   jsonRpcEnvelopeSchema,
   type BridgeToolCallRequest,
 } from "../../shared/bridge-tool-calls.js";
+import {
+  createBridgeIo,
+  createBridgeLineHandler,
+  runBridgeRequest,
+  startBridgeStdio,
+} from "../../shared/bridge-harness.js";
+import {
+  createBridgeSessionRegistry,
+  type PendingBridgeToolCall,
+} from "../../shared/bridge-session-registry.js";
+import { mimeTypeFromExtension } from "../../shared/mime-types.js";
 import type { ThreadEventContextWindowUsage } from "@bb/domain";
 import {
   SessionManager,
@@ -35,11 +42,7 @@ import {
   resolvePiBridgeSessionDir,
   resolvePiSessionFilePath,
 } from "./session-paths.js";
-import {
-  buildDynamicTools,
-  type DynamicToolDefinition,
-  type ToolCallForwarder,
-} from "./tool-proxy.js";
+import { buildDynamicTools, type DynamicToolDefinition } from "./tool-proxy.js";
 import { listPiBridgeModels } from "./model-list.js";
 import { getPiModelRuntime } from "./model-runtime.js";
 import {
@@ -85,6 +88,7 @@ const piInstructionOverrideSchemaOptions = {
 };
 
 const piReasoningLevelValues = [
+  "off",
   "low",
   "medium",
   "high",
@@ -92,7 +96,7 @@ const piReasoningLevelValues = [
   "max",
 ] as const;
 const piReasoningLevelSchema = z.enum(piReasoningLevelValues);
-type PiReasoningLevel = z.infer<typeof piReasoningLevelSchema>;
+export type PiReasoningLevel = z.infer<typeof piReasoningLevelSchema>;
 const piAdditionalSkillPathsSchema = z.array(z.string()).optional();
 
 const piThreadStartParamsSchema = z
@@ -250,13 +254,6 @@ function decodePiJsonRpcRequest(
   return { ...command.data, jsonrpc: "2.0", id: envelope.data.id };
 }
 
-interface JsonRpcResponse {
-  jsonrpc: "2.0";
-  id: string | number;
-  result?: unknown;
-  error?: { code: number; message: string };
-}
-
 interface SdkEventNotification {
   jsonrpc: "2.0";
   method: "sdk/message";
@@ -267,10 +264,6 @@ interface BridgeEventNotification {
   jsonrpc: "2.0";
   method: string;
   params: Record<string, unknown>;
-}
-
-interface PendingToolCall {
-  resolve: (value: { content: string; isError?: boolean }) => void;
 }
 
 interface CurrentThreadSessionArgs {
@@ -286,13 +279,8 @@ interface CreateSessionCallbackArgs {
 interface ThreadSession {
   session: PiSdkSession;
   sessionSerial: number;
-  stopping: boolean;
-  pendingToolCalls: Map<string | number, PendingToolCall>;
-}
-
-interface CloseThreadSessionArgs {
-  message: string;
-  threadId: string;
+  closing: boolean;
+  pendingToolCalls: Map<string | number, PendingBridgeToolCall>;
 }
 
 interface StartPiThreadSessionArgs {
@@ -303,34 +291,35 @@ interface StartPiThreadSessionArgs {
 
 interface PiThreadStopResult {
   ok: true;
+  providerCheckpointId: string | null;
 }
 
-const sessions = new Map<string, ThreadSession>();
-const closingSessions = new Map<string, Promise<void>>();
+interface PiCommandOkResult {
+  ok: true;
+}
+
 let sessionSerialCounter = 0;
-let toolCallRequestIdCounter = 0;
 
 // Runtime waits on thread/stop until Pi aborts the active operation or this
 // timeout forces disposal. Stop remains a best-effort success boundary.
 const THREAD_STOP_CLOSE_TIMEOUT_MS = 4_000;
 
-function send(
-  msg:
-    | JsonRpcResponse
-    | SdkEventNotification
-    | BridgeEventNotification
-    | BridgeToolCallRequest,
-): void {
-  writePiBridgeProtocol(JSON.stringify(msg) + "\n");
-}
+const { send, sendResult, sendError } = createBridgeIo<
+  SdkEventNotification | BridgeEventNotification | BridgeToolCallRequest
+>({ write: writePiBridgeProtocol });
 
-function sendResult(id: string | number, result: unknown): void {
-  send({ jsonrpc: "2.0", id, result });
-}
-
-function sendError(id: string | number, code: number, message: string): void {
-  send({ jsonrpc: "2.0", id, error: { code, message } });
-}
+const {
+  closeThreadSession,
+  closeThreadSessionsGracefully,
+  createForwardToolCall,
+  handleToolCallResponse,
+  sessions,
+} = createBridgeSessionRegistry<ThreadSession, string | undefined>({
+  closeSessionGracefully: (threadSession) =>
+    threadSession.session.closeGracefully(THREAD_STOP_CLOSE_TIMEOUT_MS),
+  getProviderThreadId: (_threadSession, threadId) => threadId,
+  sendToolCall: send,
+});
 
 function toContextWindowUsagePayload(
   contextUsage: ContextUsage | undefined,
@@ -380,10 +369,10 @@ function getCurrentThreadSession(
 ): ThreadSession | undefined {
   const threadSession = sessions.get(args.threadId);
   // Runtime treats stop as a terminal boundary for pending acks and active turn
-  // state, so callbacks from a stopping session must not leak stale SDK events.
+  // state, so callbacks from a closing session must not leak stale SDK events.
   if (
     !threadSession ||
-    threadSession.stopping ||
+    threadSession.closing ||
     threadSession.sessionSerial !== args.sessionSerial
   ) {
     return undefined;
@@ -432,9 +421,54 @@ function createOnSessionDone(
   args: CreateSessionCallbackArgs,
 ): (error?: unknown) => void {
   return (error?: unknown) => {
-    if (!error) return;
-    reportSessionError({ ...args, error });
+    if (error) {
+      reportSessionError({ ...args, error });
+      return;
+    }
+    if (!getCurrentThreadSession(args)) {
+      return;
+    }
+    void closeThreadSession({
+      message:
+        "Pi extension requested thread shutdown while tool call was pending",
+      threadId: args.threadId,
+    }).catch((shutdownError: unknown) => {
+      const message =
+        shutdownError instanceof Error
+          ? shutdownError.message
+          : String(shutdownError);
+      send({
+        jsonrpc: "2.0",
+        method: "error",
+        params: { threadId: args.threadId, message },
+      });
+    });
   };
+}
+
+function reportPromptSettled(args: {
+  error?: unknown;
+  sessionSerial: number;
+  threadId: string;
+}): void {
+  if (!getCurrentThreadSession(args)) {
+    return;
+  }
+  const errorMessage =
+    args.error === undefined
+      ? undefined
+      : args.error instanceof Error
+        ? args.error.message
+        : String(args.error);
+  send({
+    jsonrpc: "2.0",
+    method: "pi/prompt/settled",
+    params: {
+      threadId: args.threadId,
+      status: errorMessage === undefined ? "completed" : "failed",
+      ...(errorMessage !== undefined ? { error: errorMessage } : {}),
+    },
+  });
 }
 
 function reportSessionError(
@@ -454,105 +488,6 @@ function reportSessionError(
     method: "error",
     params: { threadId: args.threadId, message },
   });
-}
-
-function createForwardToolCall(threadId: string): ToolCallForwarder {
-  return (toolName, args) => {
-    return new Promise<{ content: string; isError?: boolean }>((resolve) => {
-      const threadSession = sessions.get(threadId);
-      if (!threadSession || threadSession.stopping) {
-        resolve({ content: "Thread session not found", isError: true });
-        return;
-      }
-      toolCallRequestIdCounter += 1;
-      const requestId = toolCallRequestIdCounter;
-      threadSession.pendingToolCalls.set(requestId, { resolve });
-      send({
-        jsonrpc: "2.0",
-        id: requestId,
-        method: "item/tool/call",
-        params: {
-          threadId,
-          providerThreadId: threadId,
-          turnId: null,
-          callId: `call-${requestId}`,
-          tool: toolName,
-          arguments: args,
-        },
-      });
-    });
-  };
-}
-
-function findSessionByPendingToolCall(
-  id: string | number,
-): ThreadSession | undefined {
-  for (const session of sessions.values()) {
-    if (session.pendingToolCalls.has(id)) return session;
-  }
-  return undefined;
-}
-
-function resolvePendingToolCalls(
-  threadSession: ThreadSession,
-  message: string,
-): void {
-  for (const [requestId, pending] of threadSession.pendingToolCalls) {
-    threadSession.pendingToolCalls.delete(requestId);
-    pending.resolve({ content: message, isError: true });
-  }
-}
-
-async function closeThreadSession(args: CloseThreadSessionArgs): Promise<void> {
-  const existingClose = closingSessions.get(args.threadId);
-  if (existingClose) {
-    await existingClose;
-    return;
-  }
-
-  const threadSession = sessions.get(args.threadId);
-  if (!threadSession) {
-    return;
-  }
-
-  threadSession.stopping = true;
-  resolvePendingToolCalls(threadSession, args.message);
-  const closePromise = (async () => {
-    await threadSession.session.closeGracefully(THREAD_STOP_CLOSE_TIMEOUT_MS);
-  })().finally(() => {
-    if (sessions.get(args.threadId) === threadSession) {
-      sessions.delete(args.threadId);
-    }
-    closingSessions.delete(args.threadId);
-  });
-  closingSessions.set(args.threadId, closePromise);
-  await closePromise;
-}
-
-async function closeThreadSessionsGracefully(message: string): Promise<void> {
-  await Promise.all(
-    Array.from(sessions.keys()).map((threadId) =>
-      closeThreadSession({ message, threadId }),
-    ),
-  );
-}
-
-function extractEnvOverrides(
-  config: Record<string, unknown> | undefined,
-): ShellEnvOverrides {
-  const envOverrides: ShellEnvOverrides = {};
-  if (config) {
-    for (const [key, value] of Object.entries(config)) {
-      if (
-        key.startsWith("shell_environment_policy.set.") &&
-        typeof value === "string"
-      ) {
-        const envVar = key.slice("shell_environment_policy.set.".length);
-        envOverrides[envVar] = value;
-      }
-    }
-  }
-  return envOverrides;
 }
 
 function normalizeShellEnvOverrides(
@@ -597,7 +532,7 @@ function applyDynamicTools(
   if (dynamicTools && dynamicTools.length > 0) {
     sessionOptions.customTools = buildDynamicTools(
       dynamicTools,
-      createForwardToolCall(threadId),
+      createForwardToolCall(() => threadId),
     );
   }
 }
@@ -729,7 +664,7 @@ async function startPiThreadSession({
   const threadSession: ThreadSession = {
     session,
     sessionSerial,
-    stopping: false,
+    closing: false,
     pendingToolCalls: new Map(),
   };
   sessions.set(threadId, threadSession);
@@ -847,7 +782,7 @@ async function handleTurnStart(
   params: TurnStartParams,
 ): Promise<void> {
   const threadSession = sessions.get(params.threadId);
-  if (!threadSession || threadSession.stopping) {
+  if (!threadSession || threadSession.closing) {
     sendError(id, -32000, "No active pi session");
     return;
   }
@@ -858,10 +793,21 @@ async function handleTurnStart(
     return;
   }
 
-  void threadSession.session.prompt(
-    text,
-    images.length > 0 ? images : undefined,
-  );
+  void threadSession.session
+    .prompt(text, images.length > 0 ? images : undefined)
+    .then(
+      () =>
+        reportPromptSettled({
+          sessionSerial: threadSession.sessionSerial,
+          threadId: params.threadId,
+        }),
+      (error: unknown) =>
+        reportPromptSettled({
+          error,
+          sessionSerial: threadSession.sessionSerial,
+          threadId: params.threadId,
+        }),
+    );
   sendResult(id, { threadId: params.threadId });
 }
 
@@ -870,7 +816,7 @@ async function handleTurnSteer(
   params: TurnSteerParams,
 ): Promise<void> {
   const threadSession = sessions.get(params.threadId);
-  if (!threadSession || threadSession.stopping) {
+  if (!threadSession || threadSession.closing) {
     sendError(id, -32000, "No active pi session");
     return;
   }
@@ -901,11 +847,12 @@ async function handleTurnSteer(
 async function handleThreadStop(
   params: ThreadIdParams,
 ): Promise<PiThreadStopResult> {
-  await closeThreadSession({
-    message: "Pi thread stopped while tool call was pending",
-    threadId: params.threadId,
-  });
-  return { ok: true };
+  const providerCheckpointId =
+    (await closeThreadSession({
+      message: "Pi thread stopped while tool call was pending",
+      threadId: params.threadId,
+    })) ?? null;
+  return { ok: true, providerCheckpointId };
 }
 
 function handleThreadCompact(
@@ -913,7 +860,7 @@ function handleThreadCompact(
   params: ThreadIdParams,
 ): void {
   const threadSession = sessions.get(params.threadId);
-  if (!threadSession || threadSession.stopping) {
+  if (!threadSession || threadSession.closing) {
     sendError(id, -32000, "No active pi session");
     return;
   }
@@ -935,7 +882,7 @@ function handleThreadCompact(
 
 async function handleThreadDiscard(
   params: ThreadDiscardParams,
-): Promise<PiThreadStopResult> {
+): Promise<PiCommandOkResult> {
   await closeThreadSession({
     message: "Pi staged thread discarded while tool call was pending",
     threadId: params.threadId,
@@ -950,25 +897,6 @@ async function handleThreadDiscard(
 interface ExtractedInput {
   text?: string;
   images: ImageContent[];
-}
-
-function mimeTypeFromExtension(filePath: string): string {
-  const ext = extname(filePath).toLowerCase();
-  switch (ext) {
-    case ".png":
-      return "image/png";
-    case ".jpg":
-    case ".jpeg":
-      return "image/jpeg";
-    case ".gif":
-      return "image/gif";
-    case ".webp":
-      return "image/webp";
-    case ".svg":
-      return "image/svg+xml";
-    default:
-      return "image/png";
-  }
 }
 
 function extractInput(input: unknown): ExtractedInput {
@@ -1007,59 +935,24 @@ function extractInput(input: unknown): ExtractedInput {
   };
 }
 
-export function handleLine(line: string): void {
-  const trimmed = line.trim();
-  if (!trimmed) return;
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch {
-    return;
-  }
-
+function handleParsedMessage(parsed: unknown): void {
   const response = decodeBridgeJsonRpcResponse(parsed);
-  if (response && findSessionByPendingToolCall(response.id)) {
-    const threadSession = findSessionByPendingToolCall(response.id)!;
-    const pending = threadSession.pendingToolCalls.get(response.id)!;
-    threadSession.pendingToolCalls.delete(response.id);
-    if ("error" in response) {
-      pending.resolve({
-        content: response.error.message ?? "Tool call failed",
-        isError: true,
-      });
-    } else {
-      pending.resolve(decodeToolCallResponsePayload(response.result));
-    }
+  if (response && handleToolCallResponse(response)) {
     return;
   }
 
   const request = decodePiJsonRpcRequest(parsed);
   if (!request) return;
-  void handleRequest(request).catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
-    sendError(request.id, -32000, message);
-  });
+  runBridgeRequest({ request, handleRequest, sendError });
 }
 
-function isMainModule(): boolean {
-  const entryPoint = process.argv[1];
-  if (entryPoint === undefined) return false;
-  try {
-    return (
-      realpathSync(fileURLToPath(import.meta.url)) ===
-      realpathSync(resolve(entryPoint))
-    );
-  } catch {
-    return false;
-  }
-}
+export const handleLine = createBridgeLineHandler({ handleParsedMessage });
 
-if (isMainModule()) {
-  takeOverPiBridgeStdout();
-  const rl = createInterface({ input: process.stdin, terminal: false });
-  rl.on("line", handleLine);
-  rl.on("close", () => {
+startBridgeStdio({
+  importMetaUrl: import.meta.url,
+  handleLine,
+  beforeStart: takeOverPiBridgeStdout,
+  onClose: () => {
     // Stdin close is a process shutdown boundary; wait briefly for per-thread
     // abort/dispose so SDK work does not continue while the bridge exits.
     void closeThreadSessionsGracefully(
@@ -1067,5 +960,5 @@ if (isMainModule()) {
     ).finally(() => {
       process.exit(0);
     });
-  });
-}
+  },
+});

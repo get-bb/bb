@@ -1084,6 +1084,7 @@ describe("exact interrupt settlement", () => {
             type: "thread.stop",
             environmentId: environment.id,
             threadId: thread.id,
+            intent: "interrupt",
             expectedTurnId,
           },
           deps: {
@@ -1100,7 +1101,7 @@ describe("exact interrupt settlement", () => {
             completedAt: Date.now(),
             executionId: "rpc_exact_stop_stale",
             ok: true,
-            result: { outcome: "stale" },
+            result: { outcome: "stale", providerCheckpointId: null },
             type: "thread.stop",
           },
         });

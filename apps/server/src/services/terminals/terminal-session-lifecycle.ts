@@ -517,7 +517,7 @@ export class TerminalSessionLifecycle {
       TerminalSessionRow
     >({
       onFail: (pending, error) =>
-        this.finalizeFailedTerminalClose(pending, error),
+        this.finalizeTimedOutTerminalClose(pending, error),
       timeoutMs: closeTimeoutMs,
       timeoutError: terminalTimeoutError(
         "terminal_close_timeout",
@@ -973,13 +973,13 @@ export class TerminalSessionLifecycle {
         },
       );
       if (!sent) {
+        this.disconnectDaemonSessionTerminals({
+          daemonSessionId: current.daemonSessionId,
+        });
         this.rejectPendingClose(
           current.id,
           new ApiError(502, "host_disconnected", "Host is not connected"),
         );
-        this.disconnectDaemonSessionTerminals({
-          daemonSessionId: current.daemonSessionId,
-        });
       }
     }
     try {
@@ -1757,10 +1757,16 @@ export class TerminalSessionLifecycle {
     }
   }
 
-  private finalizeFailedTerminalClose(
+  private finalizeTimedOutTerminalClose(
     pending: PendingTerminalCloseKey,
     error: Error,
   ): void {
+    if (
+      !(error instanceof ApiError) ||
+      error.body.code !== "terminal_close_timeout"
+    ) {
+      return;
+    }
     // A normal daemon close force-kills after two seconds; the server waits
     // five seconds for terminal.exited. If that acknowledgement never arrives,
     // keeping the row daemon-owned makes every client rediscover an unclosable
@@ -1784,21 +1790,17 @@ export class TerminalSessionLifecycle {
       return;
     }
 
-    const code =
-      error instanceof ApiError ? error.body.code : "terminal_close_failed";
-    const message =
-      error instanceof ApiError ? error.body.message : error.message;
     this.options.logger.warn(
       {
         err: error,
         sessionId: pending.daemonSessionId,
         terminalId: pending.terminalId,
       },
-      "Finalized terminal after close acknowledgement failed",
+      "Finalized terminal after close acknowledgement timed out",
     );
     this.notifyExitedTerminalSession({
-      code,
-      message,
+      code: error.body.code,
+      message: error.body.message,
       session: exited,
     });
   }

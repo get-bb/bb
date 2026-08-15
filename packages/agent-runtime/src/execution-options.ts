@@ -8,8 +8,10 @@ import type {
   AgentRuntimeSkillRoot,
 } from "./types.js";
 import type { ProviderExecutionContext } from "./provider-adapter.js";
-import { DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG } from "@bb/domain";
-import { resolveAdapterPermissionPolicy } from "./shared/permission-policy.js";
+import {
+  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+  type RuntimePermissionPolicy,
+} from "@bb/domain";
 
 interface AssertProviderSupportsExecutionOptionsArgs {
   adapter: ProviderAdapter;
@@ -154,7 +156,7 @@ export function normalizeClaudeExecutionOptions(
 export function toProviderExecutionContext(
   args: ToProviderExecutionContextArgs,
 ): ProviderExecutionContext {
-  const permissionPolicy = resolveAdapterPermissionPolicy(args.execOpts);
+  const permissionPolicy: RuntimePermissionPolicy = args.execOpts;
   return {
     model: args.execOpts.model,
     serviceTier: args.execOpts.serviceTier,

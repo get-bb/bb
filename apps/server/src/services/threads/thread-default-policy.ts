@@ -11,10 +11,14 @@ import type {
   ServiceTier,
   Thread,
 } from "@bb/domain";
-import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { PERSONAL_PROJECT_ID, clampPermissionModeToCeiling } from "@bb/domain";
 import type { EnvironmentArgs } from "@bb/server-contract";
-import type { AppDeps } from "../../types.js";
+import { COMMAND_TIMEOUT_MS } from "../../constants.js";
+import type { WorkSessionDeps } from "../../types.js";
+import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { requireConnectedPrimaryHostId } from "../hosts/primary-host.js";
+import { resolveProjectWorkspaceTarget } from "../projects/project-workspace.js";
+import { resolveDefaultWorktreeBaseBranch } from "../projects/worktree-base-branch.js";
 import { isLiveParentThread, type ParentThread } from "./thread-parent.js";
 
 export const DEFAULT_SERVICE_TIER: ServiceTier = "default";
@@ -74,7 +78,7 @@ export interface ResolveThreadExecutionPermissionModeArgs {
   requestedPermissionMode?: PermissionMode;
   thread: Pick<
     Thread,
-    "childOrigin" | "originKind" | "parentThreadId" | "projectId" | "providerId"
+    "originKind" | "parentThreadId" | "projectId" | "providerId"
   >;
 }
 
@@ -207,25 +211,55 @@ export function buildProviderThreadExecutionDefaults(args: {
 /**
  * Resolve the `{ type: "project-default" }` thread-creation environment into
  * a concrete request. Server-owned defaulting policy for callers (plugins,
- * scripts) that must not re-derive the compose flow's choices: the personal
- * project gets a personal workspace on the primary host, and every other
- * project gets a fresh managed worktree from the project source's default
- * branch on the primary host. Throws a clear ApiError (502 host_unavailable)
- * when no enrolled, connected host exists.
+ * scripts) that must not re-derive the compose flow's choices. The personal
+ * project gets a personal workspace on the primary host. Every other project
+ * gets a fresh managed worktree when its primary source exposes a usable base
+ * branch, or works in that source checkout when it does not (for example, a
+ * non-Git directory or a repository with no commits). Host inspection failures
+ * remain failures; only a successful inspection can select the source checkout.
  */
-export function resolveProjectDefaultThreadEnvironment(
-  deps: Pick<AppDeps, "config" | "db" | "hub">,
+export async function resolveProjectDefaultThreadEnvironment(
+  deps: WorkSessionDeps,
   args: { projectId: string },
-): EnvironmentArgs {
+): Promise<EnvironmentArgs> {
   if (args.projectId === PERSONAL_PROJECT_ID) {
     // hostId is resolved to the primary host downstream, exactly like an
     // app-composed personal thread that omits it.
     return { type: "host", workspace: { type: "personal" } };
   }
+
+  const hostId = requireConnectedPrimaryHostId(deps);
+  const source = resolveProjectWorkspaceTarget(deps, {
+    hostId,
+    projectId: args.projectId,
+  });
+  const checkout = await callHostRetryableOnlineRpc(deps, {
+    hostId,
+    timeoutMs: COMMAND_TIMEOUT_MS,
+    command: {
+      type: "host.list_branches",
+      path: source.path,
+      limit: 1,
+    },
+  });
+  const baseBranch = resolveDefaultWorktreeBaseBranch(checkout);
+  if (baseBranch === null) {
+    return {
+      type: "host",
+      hostId,
+      workspace: { type: "unmanaged", path: null },
+    };
+  }
+
   return {
     type: "host",
-    hostId: requireConnectedPrimaryHostId(deps),
-    workspace: { type: "managed-worktree", baseBranch: { kind: "default" } },
+    hostId,
+    workspace: {
+      type: "managed-worktree",
+      // Pin the inspected ref so downstream provisioning does not need to
+      // inspect again or race a changing default branch.
+      baseBranch: { kind: "named", name: baseBranch },
+    },
   };
 }
 
@@ -276,6 +310,34 @@ export function resolveThreadDefaultPermissionMode(
 }
 
 export function resolveThreadExecutionPermissionMode(
+  args: ResolveThreadExecutionPermissionModeArgs,
+): PermissionMode {
+  const permissionMode = resolvePreferredThreadExecutionPermissionMode(args);
+  if (
+    !isManagedChildThread(args) ||
+    args.parentThreadExecutionPermissionMode === undefined
+  ) {
+    return permissionMode;
+  }
+
+  const ceiling = normalizeRecordedPermissionMode(
+    args.parentThreadExecutionPermissionMode,
+  );
+  const supported = args.thread.providerId
+    ? getSupportedPermissionModes(args.thread.providerId)
+    : null;
+  // A null clamp means the provider supports nothing at or below the parent's
+  // mode; returning the ceiling lets provider validation reject the pairing.
+  return (
+    clampPermissionModeToCeiling({
+      ceiling,
+      permissionMode,
+      ...(supported ? { supportedPermissionModes: supported } : {}),
+    }) ?? ceiling
+  );
+}
+
+function resolvePreferredThreadExecutionPermissionMode(
   args: ResolveThreadExecutionPermissionModeArgs,
 ): PermissionMode {
   if (args.requestedPermissionMode) {

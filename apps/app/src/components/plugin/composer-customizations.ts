@@ -1,4 +1,4 @@
-import type { PluginComposerScope } from "@bb/plugin-sdk";
+import type { PluginComposerScope } from "@get-bb/plugin-sdk";
 import type { PluginComposerCustomizationSlot } from "@/lib/plugin-slots";
 
 /** Preserve snapshot order while applying the shared composer scope contract. */

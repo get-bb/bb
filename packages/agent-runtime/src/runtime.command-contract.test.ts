@@ -36,6 +36,7 @@ interface CreateRuntimeLinkedWorktreeFixtureArgs {
 type RuntimeEventHandler = (event: ThreadEvent) => void;
 
 interface CreateContractRuntimeArgs {
+  adapterId?: string;
   onEvent?: RuntimeEventHandler;
   scriptPath: string;
   workspacePath: string;
@@ -66,7 +67,12 @@ function createContractRuntime(args: CreateContractRuntimeArgs): AgentRuntime {
       contentItems: [{ type: "inputText", text: "ok" }],
       success: true,
     }),
-    adapterFactory: () => createFakeAdapter(args.scriptPath),
+    adapterFactory: () => {
+      const adapter = createFakeAdapter(args.scriptPath);
+      return args.adapterId === undefined
+        ? adapter
+        : { ...adapter, id: args.adapterId };
+    },
   });
 }
 
@@ -442,6 +448,155 @@ rl.on("line", (line) => {
           type: "thread/name/updated",
         }),
       );
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("retries a Codex rename while its new rollout file is still empty", async () => {
+    const renameAttemptsPath = join(tmpDir, "rename-attempts.txt");
+    const renameTitlePath = join(tmpDir, "retried-rename-title.txt");
+    const providerScriptPath = join(tmpDir, "codex-rename-retry-provider.cjs");
+    writeFileSync(
+      providerScriptPath,
+      `
+const fs = require("node:fs");
+const readline = require("node:readline");
+const renameAttemptsPath = ${JSON.stringify(renameAttemptsPath)};
+const renameTitlePath = ${JSON.stringify(renameTitlePath)};
+let renameAttempts = 0;
+
+function send(message) {
+  process.stdout.write(JSON.stringify(message) + "\\n");
+}
+
+const rl = readline.createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+  const message = JSON.parse(line);
+  const params = message.params ?? {};
+  if (message.method === "initialize") {
+    send({ jsonrpc: "2.0", id: message.id, result: {} });
+    return;
+  }
+  if (message.method === "thread/start") {
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      result: { providerThreadId: "provider-thread-1" },
+    });
+    return;
+  }
+  if (message.method === "thread/name/set") {
+    renameAttempts += 1;
+    fs.writeFileSync(renameAttemptsPath, String(renameAttempts), "utf8");
+    if (renameAttempts === 1) {
+      send({
+        jsonrpc: "2.0",
+        id: message.id,
+        error: {
+          code: -32603,
+          message:
+            "failed to set thread name: rollout at /tmp/new-rollout.jsonl is empty",
+        },
+      });
+      return;
+    }
+    fs.writeFileSync(renameTitlePath, params.title, "utf8");
+    send({ jsonrpc: "2.0", id: message.id, result: {} });
+  }
+});
+`,
+      "utf8",
+    );
+    const runtime = createContractRuntime({
+      adapterId: "codex",
+      scriptPath: providerScriptPath,
+      workspacePath: tmpDir,
+    });
+
+    try {
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "codex",
+        options: fullRuntimeOptions,
+      });
+      await runtime.renameThread({ threadId: "t1", title: "New Title" });
+
+      expect(readFileSync(renameAttemptsPath, "utf8")).toBe("2");
+      expect(readFileSync(renameTitlePath, "utf8")).toBe("[bb] New Title");
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("stops retrying a Codex rename once its rollout stays empty", async () => {
+    const renameAttemptsPath = join(tmpDir, "exhausted-rename-attempts.txt");
+    const providerScriptPath = join(tmpDir, "codex-rename-empty-provider.cjs");
+    writeFileSync(
+      providerScriptPath,
+      `
+const fs = require("node:fs");
+const readline = require("node:readline");
+const renameAttemptsPath = ${JSON.stringify(renameAttemptsPath)};
+let renameAttempts = 0;
+
+function send(message) {
+  process.stdout.write(JSON.stringify(message) + "\\n");
+}
+
+const rl = readline.createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+  const message = JSON.parse(line);
+  if (message.method === "initialize") {
+    send({ jsonrpc: "2.0", id: message.id, result: {} });
+    return;
+  }
+  if (message.method === "thread/start") {
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      result: { providerThreadId: "provider-thread-1" },
+    });
+    return;
+  }
+  if (message.method === "thread/name/set") {
+    renameAttempts += 1;
+    fs.writeFileSync(renameAttemptsPath, String(renameAttempts), "utf8");
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      error: {
+        code: -32603,
+        message:
+          "failed to set thread name: rollout at /tmp/new-rollout.jsonl is empty",
+      },
+    });
+  }
+});
+`,
+      "utf8",
+    );
+    const runtime = createContractRuntime({
+      adapterId: "codex",
+      scriptPath: providerScriptPath,
+      workspacePath: tmpDir,
+    });
+
+    try {
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "codex",
+        options: fullRuntimeOptions,
+      });
+
+      await expect(
+        runtime.renameThread({ threadId: "t1", title: "New Title" }),
+      ).rejects.toThrow(/rollout at .+ is empty/i);
+      expect(readFileSync(renameAttemptsPath, "utf8")).toBe("3");
     } finally {
       await runtime.shutdown();
     }
@@ -1250,7 +1405,9 @@ process.on("SIGTERM", () => {
       providerId: "fake",
       options: fullRuntimeOptions,
     });
-    await runtime.stopThread({ threadId: "t1" });
+    await expect(runtime.stopThread({ threadId: "t1" })).resolves.toEqual({
+      providerCheckpointId: null,
+    });
 
     // Even a no-op stop removes the thread from the runtime, so the follow-up
     // turn resumes the provider session first.

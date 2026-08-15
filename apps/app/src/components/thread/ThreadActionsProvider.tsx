@@ -50,6 +50,7 @@ import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 
 export interface ThreadActionsContextValue {
   archiveThreadAndChildren: (thread: Thread) => void;
+  renameThread: (threadId: string, title: string) => void;
   requestRename: (thread: Thread) => void;
   requestDelete: (thread: Thread) => void;
   unarchiveThread: (thread: Thread) => void;
@@ -178,6 +179,13 @@ export function ThreadActionsProvider({
       });
     },
     [openRenameDialog],
+  );
+
+  const renameThread = useCallback(
+    (threadId: string, title: string) => {
+      updateMutate({ id: threadId, title });
+    },
+    [updateMutate],
   );
 
   const submitRename = useCallback(
@@ -427,6 +435,7 @@ export function ThreadActionsProvider({
 
   const value = useMemo<ThreadActionsContextValue>(
     () => ({
+      renameThread,
       requestRename,
       requestDelete,
       archiveThreadAndChildren: archiveThreadAndChildrenAction,
@@ -436,6 +445,7 @@ export function ThreadActionsProvider({
     }),
     [
       archiveThreadAndChildrenAction,
+      renameThread,
       requestRename,
       requestDelete,
       togglePin,

@@ -2,6 +2,7 @@ import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { resolveCodexHome } from "@bb/config/codex-home";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import type { ProviderNativeSkillRoots } from "@bb/domain";
 import { createConfiguredPiSettingsManager } from "@bb/agent-runtime";
@@ -239,10 +240,6 @@ const claudePluginManifestSchema = z
   })
   .passthrough();
 type ClaudePluginManifest = z.infer<typeof claudePluginManifestSchema>;
-
-export function resolveCodexHome(homeDir: string): string {
-  return process.env.CODEX_HOME?.trim() || path.join(homeDir, ".codex");
-}
 
 function resolveClaudeDir(homeDir: string): string {
   const configured = process.env.CLAUDE_CONFIG_DIR?.trim();

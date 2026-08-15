@@ -4,7 +4,6 @@ import {
   type BrowserFixedPanelTab,
   type FixedPanelTab,
   type FixedPanelTabsState,
-  type HostFilePreviewFixedPanelTab,
   type NewTabFixedPanelTab,
   type SecondaryFileFixedPanelTab,
   type SecondaryFixedPanelTab,
@@ -65,12 +64,6 @@ export function isWorkspaceFilePreviewTab(
   return tab.kind === "workspace-file-preview";
 }
 
-export function isHostFilePreviewTab(
-  tab: FixedPanelTab,
-): tab is HostFilePreviewFixedPanelTab {
-  return tab.kind === "host-file-preview";
-}
-
 export function isStorageFilePreviewTab(
   tab: FixedPanelTab,
 ): tab is ThreadStorageFilePreviewFixedPanelTab {
@@ -115,12 +108,6 @@ export function getActiveSecondaryPanelTab(
       (tab): tab is SecondaryFixedPanelTab => tab.id === activeTabId,
     ) ?? null
   );
-}
-
-export function getOpenSecondaryPanelTab(
-  state: FixedPanelTabsState,
-): SecondaryFixedPanelTab | null {
-  return state.secondary.isOpen ? getActiveSecondaryPanelTab(state) : null;
 }
 
 export function findSecondaryPanelTab(

@@ -95,7 +95,6 @@ vi.mock("@/hooks/useRouteState", () => ({
 function makeThread(overrides: Partial<Thread> = {}): Thread {
   return {
     archivedAt: null,
-    childOrigin: null,
     createdAt: 1,
     deletedAt: null,
     environmentId: "env_test",

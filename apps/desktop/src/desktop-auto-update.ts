@@ -61,6 +61,7 @@ export interface CreateDesktopAutoUpdateServiceArgs {
   forceDevUpdateConfig: boolean;
   logger?: DesktopAutoUpdateLogger;
   now?: () => number;
+  platform: BbDesktopInfo["platform"];
   updater: DesktopAutoUpdaterAdapter;
 }
 
@@ -90,13 +91,16 @@ export interface DesktopAutoUpdateService extends DesktopUpdateService {
   installUpdate(): void;
 }
 
-function createBaseInfo(currentVersion: string): BbDesktopInfo {
+function createBaseInfo(
+  currentVersion: string,
+  platform: BbDesktopInfo["platform"],
+): BbDesktopInfo {
   return {
     downloadState: "idle",
     lastCheckedAt: null,
     latestVersion: null,
     pendingVersion: null,
-    platform: "macos",
+    platform,
     updateAvailable: false,
     updateDownloaded: false,
     version: currentVersion,
@@ -200,7 +204,7 @@ export function createDesktopAutoUpdateService(
   const logger = args.logger ?? createDefaultLogger();
   const now = args.now ?? (() => Date.now());
 
-  let currentInfo = createBaseInfo(args.currentVersion);
+  let currentInfo = createBaseInfo(args.currentVersion, args.platform);
   let inflight: Promise<BbDesktopInfo> | null = null;
   let intervalHandle: DesktopUpdateIntervalHandle | null = null;
   let lastAttemptedAt: number | null = null;

@@ -43,7 +43,7 @@ describe("non-fork empty-input start provisions idle without a turn", () => {
       });
 
       const thread = await createThreadFromRequest(harness.deps, {
-        childOrigin: null,
+        originKind: null,
         environment: {
           type: "host",
           hostId: host.id,

@@ -23,7 +23,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup workspace
         uses: ./.github/actions/setup-workspace
@@ -34,6 +34,25 @@ jobs:
 
       - name: Build, typecheck, and lint
         run: pnpm exec turbo run build typecheck lint --cache-dir=.turbo/cache --output-logs=new-only
+
+      # Runs after build and typecheck, so the guard's own turbo build is a
+      # cache hit and the package it packs is the one this commit really ships.
+      # A published version whose packed files or consumer-facing manifest
+      # fields changed is a hard failure; an unreachable registry or a failed
+      # local pack (exit 2) is infrastructure, not a finding.
+      - name: Check plugin SDK npm version guard
+        run: |
+          # +e so the exit code can be inspected: GitHub's default shell runs
+          # with -e, which would abort the step before the exit-2 check.
+          set +e
+          node packages/plugin-sdk/scripts/check-npm-version-guard.mjs
+          guard_exit=$?
+          set -e
+          if [[ "$guard_exit" -eq 2 ]]; then
+            echo "::warning::Skipping the plugin SDK npm version guard: the npm registry was unreachable."
+            exit 0
+          fi
+          exit "$guard_exit"
 
       # Guards the JavaScript that blocks first paint in the web app. Heavy
       # editor, diff and math code reaches that path through barrel re-exports,
@@ -64,7 +83,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup workspace
         uses: ./.github/actions/setup-workspace
@@ -92,7 +111,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup workspace
         uses: ./.github/actions/setup-workspace
@@ -124,7 +143,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup workspace
         uses: ./.github/actions/setup-workspace

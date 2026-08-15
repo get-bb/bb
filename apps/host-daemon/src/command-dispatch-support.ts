@@ -93,7 +93,10 @@ export function isExpectedCommandDispatchError(
   return error instanceof ExpectedCommandDispatchError;
 }
 
-const EXPECTED_ONLINE_RPC_FAILURE_CODES = new Set(["provision_cancelled"]);
+const EXPECTED_ONLINE_RPC_FAILURE_CODES = new Set([
+  "file_too_large",
+  "provision_cancelled",
+]);
 
 export function isExpectedOnlineRpcFailureError(error: unknown): boolean {
   return (

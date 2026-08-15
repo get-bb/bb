@@ -75,7 +75,7 @@ function UserMessage({
       <ConversationMessageContent
         role="user"
         initiator="user"
-        childOrigin={null}
+        originKind={null}
         senderThreadId={null}
         senderThreadTitle={null}
         senderIsPluginSideChat={false}

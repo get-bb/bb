@@ -78,7 +78,7 @@ export type ThreadComparator = ((
 type WorktreeDisplayKind = "managed-worktree" | "unmanaged-worktree";
 type SidebarProjectThreadShape = Pick<
   ThreadListEntry,
-  "originKind" | "childOrigin" | "visibility"
+  "originKind" | "visibility"
 >;
 
 interface BuildThreadNodeArgs {

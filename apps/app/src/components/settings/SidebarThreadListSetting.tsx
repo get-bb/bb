@@ -61,7 +61,10 @@ export function SidebarThreadListSetting() {
             aria-label="Sidebar thread list"
           >
             <span className="min-w-0 truncate">{selected.title}</span>
-            <Icon name="ChevronDown" className="size-3.5 text-muted-foreground" />
+            <Icon
+              name="ChevronDown"
+              className="size-3.5 text-muted-foreground"
+            />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-72">

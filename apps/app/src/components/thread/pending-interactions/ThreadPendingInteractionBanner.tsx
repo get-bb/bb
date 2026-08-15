@@ -1,4 +1,5 @@
 import { useMemo, type ReactNode } from "react";
+import { NavLink } from "react-router-dom";
 import {
   assertNever,
   buildPendingInteractionApprovalResolution,
@@ -25,20 +26,28 @@ import { useResolveThreadPendingInteraction } from "@/hooks/mutations/thread-int
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { cn } from "@bb/shared-ui/lib/utils";
 
+interface ThreadPendingInteractionSourceThread {
+  href: string;
+  title: string;
+}
+
 interface ThreadPendingInteractionBannerProps {
   interaction: PendingInteraction;
+  sourceThread?: ThreadPendingInteractionSourceThread;
   threadId: string;
 }
 
 interface ApprovalPendingInteractionBannerProps {
   interaction: PendingInteraction;
   payload: ApprovalPendingInteractionPayload;
+  sourceThread?: ThreadPendingInteractionSourceThread;
   threadId: string;
 }
 
 interface UserQuestionPendingInteractionBannerProps {
   interaction: PendingInteraction;
   payload: UserQuestionPendingInteractionPayload;
+  sourceThread?: ThreadPendingInteractionSourceThread;
   threadId: string;
 }
 
@@ -48,6 +57,7 @@ interface BannerShellProps {
   errorMessage?: string | null;
   footer?: ReactNode;
   children?: ReactNode;
+  sourceThread?: ThreadPendingInteractionSourceThread;
 }
 
 interface ApprovalSubject {
@@ -62,6 +72,7 @@ interface BuildApprovalSubjectInput {
 
 export function ThreadPendingInteractionBanner({
   interaction,
+  sourceThread,
   threadId,
 }: ThreadPendingInteractionBannerProps) {
   if (interaction.payload.kind === "plugin") {
@@ -72,6 +83,7 @@ export function ThreadPendingInteractionBanner({
       <ThreadUserQuestionPendingInteractionBanner
         interaction={interaction}
         payload={interaction.payload}
+        sourceThread={sourceThread}
         threadId={threadId}
       />
     );
@@ -85,6 +97,7 @@ export function ThreadPendingInteractionBanner({
     <ApprovalPendingInteractionBanner
       interaction={interaction}
       payload={interaction.payload}
+      sourceThread={sourceThread}
       threadId={threadId}
     />
   );
@@ -95,9 +108,18 @@ function BannerShell({
   errorMessage,
   footer,
   children,
+  sourceThread,
 }: BannerShellProps) {
   return (
-    <div className="mb-2 rounded-lg border border-border bg-surface-recessed px-4 py-3 text-xs text-muted-foreground">
+    <div className="mb-2 min-w-0 max-w-full overflow-hidden rounded-lg border border-border bg-surface-recessed px-4 py-3 text-xs text-muted-foreground">
+      {sourceThread ? (
+        <NavLink
+          to={sourceThread.href}
+          className="mb-1 block text-xs text-muted-foreground no-underline hover:underline"
+        >
+          From child thread: {sourceThread.title}
+        </NavLink>
+      ) : null}
       {title ? (
         <h3 className="min-w-0 text-sm font-semibold text-foreground">
           <ExpandableLine fullText={title} collapsedClassName="line-clamp-2">
@@ -125,6 +147,7 @@ function BannerShell({
 function ApprovalPendingInteractionBanner({
   interaction,
   payload,
+  sourceThread,
   threadId,
 }: ApprovalPendingInteractionBannerProps) {
   const resolvePendingInteraction = useResolveThreadPendingInteraction();
@@ -163,6 +186,7 @@ function ApprovalPendingInteractionBanner({
     <BannerShell
       title={subject.title}
       errorMessage={mutationErrorMessage}
+      sourceThread={sourceThread}
       footer={payload.availableDecisions.map((decision) => (
         <ApprovalDecisionButton
           key={decision}
@@ -182,6 +206,7 @@ function ApprovalPendingInteractionBanner({
 function ThreadUserQuestionPendingInteractionBanner({
   interaction,
   payload,
+  sourceThread,
   threadId,
 }: UserQuestionPendingInteractionBannerProps) {
   const isResolving = interaction.status === "resolving";
@@ -189,7 +214,7 @@ function ThreadUserQuestionPendingInteractionBanner({
   // No shell title: the form supplies its own heading (the current question
   // prompt) plus the question tab strip.
   return (
-    <BannerShell>
+    <BannerShell sourceThread={sourceThread}>
       <UserQuestionAnswerForm
         interactionId={interaction.id}
         isResolving={isResolving}
@@ -256,6 +281,27 @@ function approvalResolutionDecision(
   return resolution.decision;
 }
 
+function ApprovalDetailList({
+  className,
+  lines,
+}: {
+  className: string;
+  lines: readonly string[];
+}) {
+  return (
+    <ul
+      className={cn(
+        "min-w-0 max-w-full text-xs text-muted-foreground [overflow-wrap:anywhere]",
+        className,
+      )}
+    >
+      {lines.map((line) => (
+        <li key={line}>{line}</li>
+      ))}
+    </ul>
+  );
+}
+
 function buildApprovalSubject({
   interaction,
   payload,
@@ -280,21 +326,20 @@ function buildApprovalSubject({
       return {
         title: payload.reason ?? "Do you want to run this command?",
         body: command ? (
-          <div className="overflow-hidden rounded-lg border border-border bg-card">
+          <div className="min-w-0 max-w-full overflow-hidden rounded-lg border border-border bg-card">
             <pre
               className={cn(
                 getDetailScrollMaxHeightClass("base"),
-                "overflow-auto whitespace-pre px-3 py-2 font-mono text-xs leading-relaxed text-foreground",
+                "max-w-full overflow-auto whitespace-pre px-3 py-2 font-mono text-xs leading-relaxed text-foreground",
               )}
             >
               $ {command}
             </pre>
             {detailLines.length > 0 ? (
-              <ul className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
-                {detailLines.map((line) => (
-                  <li key={line}>{line}</li>
-                ))}
-              </ul>
+              <ApprovalDetailList
+                className="border-t border-border px-3 py-2"
+                lines={detailLines}
+              />
             ) : null}
           </div>
         ) : null,
@@ -307,11 +352,10 @@ function buildApprovalSubject({
         title: payload.reason ?? "Do you want to make these changes?",
         body:
           detailLines.length > 0 ? (
-            <ul className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
-              {detailLines.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
+            <ApprovalDetailList
+              className="rounded-lg border border-border bg-card px-3 py-2"
+              lines={detailLines}
+            />
           ) : null,
       };
     }
@@ -322,11 +366,10 @@ function buildApprovalSubject({
         title: payload.reason ?? "Do you want to grant this permission?",
         body:
           detailLines.length > 0 ? (
-            <ul className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
-              {detailLines.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
+            <ApprovalDetailList
+              className="rounded-lg border border-border bg-card px-3 py-2"
+              lines={detailLines}
+            />
           ) : null,
       };
     }

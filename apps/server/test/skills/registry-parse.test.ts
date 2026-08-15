@@ -3,7 +3,7 @@ import {
   parsePageParameter,
   parsePerPageParameter,
   parsePublicDetail,
-  parsePublicHomepageSkills,
+  parsePublicDirectorySkills,
   parsePublicSkillMarkdown,
   parseRegistrySkillId,
   registrySkillUrl,
@@ -90,7 +90,7 @@ describe("public registry HTML parsing", () => {
       String.raw`\"source\":\"catalog.example.com/pkg\",\"skillId\":\"hosted-skill\",\"name\":\"Hosted skill\",\"installs\":7`,
     ].join("\n");
 
-    expect(parsePublicHomepageSkills(html)).toEqual([
+    expect(parsePublicDirectorySkills(html)).toEqual([
       {
         id: "owner/repo/first-skill",
         source: "owner/repo",

@@ -46,11 +46,11 @@ commands.
 
 - Thread recovery is validated with the existing lifecycle commands:
   `bb thread stop`, `bb thread tell`, `bb thread spawn`, archive/unarchive, and
-  the recovery checks below. There is no current product contract for
-  `bb thread retry`; do not mark its absence from `bb thread --help` as blocked.
-  When a failed or interrupted thread should continue, inspect it first and send
-  a fresh turn with `bb thread tell`, or create a replacement with
-  `bb thread spawn` when a new thread is the right recovery path.
+  the recovery checks below. `bb thread retry` is the manual path for a failed,
+  accepted provider rate-limit turn; inspect the thread before using it. For
+  other failed or interrupted threads, send a fresh turn with `bb thread tell`,
+  or create a replacement with `bb thread spawn` when a new thread is the right
+  recovery path.
 
 ## Prerequisites
 
@@ -97,8 +97,9 @@ jq . "$STATE_PATH"
 SERVER_DB_PATH=$(jq -er '.server.dataDir + "/bb.db"' "$STATE_PATH")
 SERVER_LOG_DIR=$(jq -er '(.paths.serverDataDir // .server.dataDir) + "/logs"' "$STATE_PATH")
 DAEMON_LOG_DIR=$(jq -er '(.paths.daemonDataDir // .daemon.dataDir) + "/logs"' "$STATE_PATH")
+DAEMON_RESTART_PID_PATH=$(jq -er '.paths.daemonRestartPidPath' "$STATE_PATH")
 
-bb() { node apps/cli/dist/index.js "$@"; }
+bb() { env -u BB_CLI node apps/cli/dist/index.js "$@"; }
 ```
 
 The machine-facing contract is the exported env block. The state file at `$STATE_PATH`
@@ -419,6 +420,15 @@ bb thread show "$DIRTY_ARCHIVE_THREAD_ID" --work-status
 bb thread archive "$DIRTY_ARCHIVE_THREAD_ID"
 
 curl -fsS "$BB_SERVER_URL/api/v1/threads/$DIRTY_ARCHIVE_THREAD_ID" | jq -e '.archivedAt != null'
+DIRTY_ARCHIVE_ENV_STATUS=$(curl -fsS "$BB_SERVER_URL/api/v1/environments/$DIRTY_ARCHIVE_ENV_ID" | jq -r '.status')
+test "$DIRTY_ARCHIVE_ENV_STATUS" = "retiring"
+test -e "$DIRTY_ARCHIVE_ENV_PATH"
+
+# A last-live archived managed environment remains revivable during the five-minute
+# archive grace period. Permanently deleting the thread removes that revival path
+# and makes the environment immediately eligible for destruction.
+bb thread delete "$DIRTY_ARCHIVE_THREAD_ID" --yes
+
 for i in $(seq 1 60); do
   DIRTY_ARCHIVE_ENV_STATUS=$(curl -fsS "$BB_SERVER_URL/api/v1/environments/$DIRTY_ARCHIVE_ENV_ID" | jq -r '.status')
   test "$DIRTY_ARCHIVE_ENV_STATUS" = "destroyed" && break
@@ -435,7 +445,7 @@ Expected result:
 - `bb environment commit` succeeds with helper-generated commit text without requiring `OPENAI_API_KEY`.
 - Environment merge-base metadata can be set, reflected by `bb environment show`, used by thread status/diff output, and cleared.
 - Archiving blocks `bb thread tell`; unarchiving restores normal operation.
-- Dirty isolated managed worktree archive succeeds, destroys the environment, and removes the worktree even while uncommitted or unmerged work remains.
+- Archiving the last live dirty managed worktree puts it in `retiring` and preserves it during the undo grace period; permanently deleting its archived thread then destroys the environment and removes the worktree even while uncommitted or unmerged work remains.
 
 ## Multi-Thread and Shared Environment
 
@@ -546,7 +556,7 @@ curl -fsS "$BB_SERVER_URL/api/v1/system/config" | jq
 curl -fsS "$BB_SERVER_URL/api/v1/hosts" | jq
 
 eval "$RESTART_DAEMON_COMMAND"
-DAEMON_PID=$!
+DAEMON_PID=$(cat "$DAEMON_RESTART_PID_PATH")
 
 curl -fsS "$BB_SERVER_URL/api/v1/hosts" | jq
 bb thread tell "$SMOKE_THREAD_ID" "Check recovery after daemon restart"
@@ -554,55 +564,63 @@ bb thread wait "$SMOKE_THREAD_ID" --status idle --timeout 120
 bb thread output "$SMOKE_THREAD_ID"
 ```
 
-Server restart during environment provisioning:
+Provisioning failure and next-message retry:
 
 ```bash
-SERVER_RESTART_THREAD_ID=$(bb thread spawn \
+# Commit a supported setup hook that fails exactly once across worktrees in the
+# disposable repository. The marker lives in the shared Git directory, so the
+# first failed worktree can be removed without losing it.
+cat > "$PROJECT_ROOT/.bb-env-setup.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+MARKER="$(git rev-parse --path-format=absolute --git-common-dir)/bb-qa-provision-failed-once"
+if [ ! -e "$MARKER" ]; then
+  touch "$MARKER"
+  echo "intentional one-time QA setup failure" >&2
+  exit 42
+fi
+EOF
+git -C "$PROJECT_ROOT" add .bb-env-setup.sh
+git -C "$PROJECT_ROOT" commit -m "qa: fail one worktree setup"
+
+PROVISION_RETRY_THREAD_ID=$(bb thread spawn \
   --project "$BB_PROJECT_ID" \
   --provider codex \
   --model "$CODEX_MODEL" \
   --reasoning-level low \
   --new-environment worktree \
-  --prompt "Say exactly: server restart provisioning recovery" \
+  --prompt "Say exactly: initial provisioning should fail" \
   --json | jq -r '.id')
 
-SERVER_RESTART_ENV_ID=$(curl -fsS "$BB_SERVER_URL/api/v1/threads/$SERVER_RESTART_THREAD_ID" | jq -er '.environmentId')
-for _ in $(seq 1 60); do
-  ENV_STATUS=$(curl -fsS "$BB_SERVER_URL/api/v1/environments/$SERVER_RESTART_ENV_ID" | jq -r '.status')
-  [ "$ENV_STATUS" = "provisioning" ] && break
-  sleep 1
-done
-test "$ENV_STATUS" = "provisioning"
+bb thread wait "$PROVISION_RETRY_THREAD_ID" --status error --timeout 120
+PROVISION_RETRY_ENV_ID=$(curl -fsS "$BB_SERVER_URL/api/v1/threads/$PROVISION_RETRY_THREAD_ID" | jq -er '.environmentId')
+curl -fsS "$BB_SERVER_URL/api/v1/environments/$PROVISION_RETRY_ENV_ID" | jq -e '.status == "error"'
+bb thread log "$PROVISION_RETRY_THREAD_ID" --format json \
+  | jq -e 'any(.[]; .type == "system/error" and (.data.code // .code // null) == "thread_provisioning_failed")'
 
-kill -TERM "$SERVER_PID"
-while kill -0 "$SERVER_PID" 2>/dev/null; do sleep 1; done
+# Retry only after the first provisioning RPC has completed as a real failure.
+# This next message starts a fresh provision; it does not recover an in-flight
+# RPC or rely on a persisted provisioning-attempt identifier.
+bb thread tell "$PROVISION_RETRY_THREAD_ID" "Say exactly: provisioning retry ok" --mode auto
+bb thread wait "$PROVISION_RETRY_THREAD_ID" --status idle --timeout 180
+bb thread output "$PROVISION_RETRY_THREAD_ID"
+curl -fsS "$BB_SERVER_URL/api/v1/environments/$PROVISION_RETRY_ENV_ID" | jq -e '.status == "ready"'
 
-BB_DATA_DIR=$(jq -er '.server.dataDir' "$STATE_PATH") \
-BB_SERVER_PORT=$(jq -er '.server.port' "$STATE_PATH") \
-node apps/server/dist/index.js >> "$(jq -er '.server.logPath' "$STATE_PATH")" 2>&1 &
-SERVER_PID=$!
-
-for _ in $(seq 1 60); do
-  curl -fsS "$BB_SERVER_URL/api/v1/system/config" >/dev/null && break
-  sleep 1
-done
-
-eval "$RESTART_DAEMON_COMMAND"
-DAEMON_PID=$!
-
-curl -fsS "$BB_SERVER_URL/api/v1/environments/$SERVER_RESTART_ENV_ID" | jq
-bb thread show "$SERVER_RESTART_THREAD_ID"
-bb thread log "$SERVER_RESTART_THREAD_ID" --format json | jq '.[-12:]'
+PROVISION_RETRY_MARKER="$(git -C "$PROJECT_ROOT" rev-parse --path-format=absolute --git-common-dir)/bb-qa-provision-failed-once"
+rm -f "$PROVISION_RETRY_MARKER"
+git -C "$PROJECT_ROOT" rm .bb-env-setup.sh
+git -C "$PROJECT_ROOT" commit -m "qa: remove one-time setup failure"
 ```
 
 Expected result:
 
-- The server restarts with the same data directory and the daemon reconnects.
-- The in-flight environment provision is not replayed from a durable queue.
-- If the live RPC result was lost, the environment/thread reaches an honest
-  `error` or retryable interrupted state, with a system error explaining that
-  the server restarted before live provisioning completed.
-- The operator can retry by sending a new turn after the host is connected.
+- The first setup hook failure completes with the thread and environment in
+  `error` and records `thread_provisioning_failed`.
+- Sending the next message with `--mode auto` starts a fresh provisioning
+  attempt for the same thread and environment, which reaches `ready` before the
+  turn runs.
+- Nothing in this scenario promises recovery of an in-flight provisioning RPC
+  across a server restart.
 
 Host offline before send:
 
@@ -623,7 +641,7 @@ else
 fi
 
 eval "$RESTART_DAEMON_COMMAND"
-DAEMON_PID=$!
+DAEMON_PID=$(cat "$DAEMON_RESTART_PID_PATH")
 bb thread tell "$SMOKE_THREAD_ID" "Say exactly: offline retry ok"
 bb thread wait "$SMOKE_THREAD_ID" --status idle --timeout 120
 bb thread output "$SMOKE_THREAD_ID"
@@ -651,7 +669,7 @@ HOT_REPLACE_THREAD_ID=$(bb thread spawn \
 bb thread wait "$HOT_REPLACE_THREAD_ID" --status active --timeout 30
 OLD_DAEMON_PID=$DAEMON_PID
 eval "$RESTART_DAEMON_COMMAND"
-DAEMON_PID=$!
+DAEMON_PID=$(cat "$DAEMON_RESTART_PID_PATH")
 test "$DAEMON_PID" != "$OLD_DAEMON_PID"
 
 curl -fsS "$BB_SERVER_URL/api/v1/hosts" | jq
@@ -678,7 +696,7 @@ kill -TERM "$DAEMON_PID"
 bb thread show "$SMOKE_THREAD_ID"
 
 eval "$RESTART_DAEMON_COMMAND"
-DAEMON_PID=$!
+DAEMON_PID=$(cat "$DAEMON_RESTART_PID_PATH")
 
 THREAD_STATE=$(curl -fsS "$BB_SERVER_URL/api/v1/threads/$SMOKE_THREAD_ID" | jq -r '.status')
 
@@ -767,14 +785,18 @@ curl -fsS "$BB_SERVER_URL/api/v1/environments/$PROVIDER_WORKTREE_ENV_ID/status" 
 Run a pending-interaction pass with permission-restricted turns:
 
 ```bash
+# Codex sandboxes commonly permit the OS temp directory. Put the disposable
+# target under the user home so it is reliably outside the managed worktree.
+APPROVAL_DIR=$(mktemp -d "${HOME:?}/.bb-approval-smoke.XXXXXX")
+APPROVAL_FILE="$APPROVAL_DIR/approval-smoke.txt"
 APPROVAL_THREAD_ID=$(bb thread spawn \
   --project "$BB_PROJECT_ID" \
   --provider codex \
   --model "$CODEX_MODEL" \
   --reasoning-level low \
   --new-environment worktree \
-  --permission-mode readonly \
-  --prompt "Run this exact shell command: printf 'APPROVED' > approval-smoke.txt. If approval is needed, request approval. After the command finishes, reply with exactly DONE." \
+  --permission-mode accept-edits \
+  --prompt "Run this exact shell command: printf 'APPROVED' > '$APPROVAL_FILE'. If approval is needed, request approval. After the command finishes, reply with exactly DONE." \
   --json | jq -r '.id')
 
 APPROVAL_INTERACTION_ID=
@@ -800,19 +822,22 @@ bb thread interactions approve "$APPROVAL_INTERACTION_ID" "$APPROVAL_THREAD_ID"
 bb thread wait "$APPROVAL_THREAD_ID" --status idle --timeout 180
 bb thread output "$APPROVAL_THREAD_ID"
 bb thread interactions list "$APPROVAL_THREAD_ID" --json | jq
+test "$(cat "$APPROVAL_FILE")" = "APPROVED"
 ```
 
 Verify denial handling with a separate interaction:
 
 ```bash
+DENY_DIR=$(mktemp -d "${HOME:?}/.bb-denial-smoke.XXXXXX")
+DENY_FILE="$DENY_DIR/denied-smoke.txt"
 DENY_THREAD_ID=$(bb thread spawn \
   --project "$BB_PROJECT_ID" \
   --provider codex \
   --model "$CODEX_MODEL" \
   --reasoning-level low \
   --new-environment worktree \
-  --permission-mode readonly \
-  --prompt "Run this exact shell command: printf 'DENIED' > denied-smoke.txt. If approval is denied, reply with exactly DENIED." \
+  --permission-mode accept-edits \
+  --prompt "Run this exact shell command: printf 'DENIED' > '$DENY_FILE'. If approval is denied, reply with exactly DENIED." \
   --json | jq -r '.id')
 
 DENY_INTERACTION_ID=
@@ -833,6 +858,7 @@ else
   bb thread show "$DENY_THREAD_ID"
 fi
 bb thread log "$DENY_THREAD_ID" --format json | jq '.[-12:]'
+test ! -e "$DENY_FILE"
 ```
 
 For `claude-code`, also verify grant semantics with a permission-grant interaction:
@@ -844,8 +870,8 @@ GRANT_THREAD_ID=$(bb thread spawn \
   --model "$CLAUDE_MODEL" \
   --reasoning-level low \
   --new-environment worktree \
-  --permission-mode workspace-write \
-  --prompt "Use the Read tool to read /etc/hosts, then reply with exactly the first non-empty line from the file and nothing else." \
+  --permission-mode accept-edits \
+  --prompt "Use WebFetch to fetch https://example.com, then reply with exactly GRANTED." \
   --json | jq -r '.id')
 
 GRANT_INTERACTION_ID=
@@ -862,11 +888,16 @@ bb thread interactions show "$GRANT_INTERACTION_ID" "$GRANT_THREAD_ID"
 bb thread interactions grant "$GRANT_INTERACTION_ID" "$GRANT_THREAD_ID" --scope turn
 bb thread wait "$GRANT_THREAD_ID" --status idle --timeout 180
 bb thread output "$GRANT_THREAD_ID"
+
+rm -f "$APPROVAL_FILE" "$DENY_FILE"
+rmdir "$APPROVAL_DIR" "$DENY_DIR"
 ```
 
 Expected result:
 
-- Permission-restricted turns surface pending interactions through `bb thread interactions list/show`.
+- `accept-edits` turns allow workspace changes but surface pending interactions
+  for the explicit outside-workspace probes; inspect them with
+  `bb thread interactions list/show`.
 - `bb thread tell` is rejected while the thread is awaiting user interaction.
 - `approve`, `deny`, and `grant` resolve their matching interaction kinds.
 - Approved/granted threads continue to `idle`; denied threads either reply with the denial handling text or clearly record the denied approval in the log.

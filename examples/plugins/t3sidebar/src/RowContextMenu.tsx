@@ -3,7 +3,7 @@ import * as ContextMenu from "@radix-ui/react-context-menu";
 import {
   experimental_useSidebarThreadActions as useSidebarThreadActions,
   type PluginSidebarThread,
-} from "@bb/plugin-sdk/app";
+} from "@get-bb/plugin-sdk/app";
 import { cn } from "./lib/utils";
 
 /**

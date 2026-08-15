@@ -55,6 +55,10 @@ describe("pi bridge model list", () => {
           routeProviderId: "anthropic",
           description: "Anthropic reasoning, multimodal model via Pi",
           supportedReasoningEfforts: [
+            {
+              reasoningEffort: "none",
+              description: "No extended thinking",
+            },
             { reasoningEffort: "low", description: "Low reasoning effort" },
             {
               reasoningEffort: "medium",
@@ -113,6 +117,9 @@ describe("pi bridge model list", () => {
     expect(result.models[0]?.description).toBe(
       "Commandcode non-reasoning model via Pi",
     );
+    expect(result.models[0]?.supportedReasoningEfforts).toEqual([
+      { reasoningEffort: "none", description: "No extended thinking" },
+    ]);
   });
 
   // `id` is equally extension-supplied. Without it the list builder called
@@ -159,6 +166,7 @@ describe("pi bridge model list", () => {
     const result = await listPiBridgeModels(modelRuntime);
 
     expect(result.models[0]?.supportedReasoningEfforts).toEqual([
+      { reasoningEffort: "none", description: "No extended thinking" },
       { reasoningEffort: "high", description: "High reasoning effort" },
       { reasoningEffort: "max", description: "Maximum reasoning effort" },
     ]);

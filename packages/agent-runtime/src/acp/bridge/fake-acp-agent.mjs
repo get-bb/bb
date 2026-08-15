@@ -10,6 +10,10 @@
  * Env knobs (passed by tests through thread/start envVars):
  * - FAKE_ACP_LOAD_SESSION=1  → advertise + accept session/load
  * - FAKE_ACP_FAIL_LOAD=1     → advertise session/load, then fail it
+ * - FAKE_ACP_FORK_SESSION=1  → advertise + accept session/fork
+ * - FAKE_ACP_FORK_LOG        → write the session/fork params as JSON
+ * - FAKE_ACP_FORK_REUSE_SOURCE_ID=1
+ *                            → return the source session id from session/fork
  * - FAKE_ACP_USAGE_ON_LOAD=1 → report context usage during session/load
  * - FAKE_ACP_USAGE_SESSION_ID
  *                            → override the usage notification session id
@@ -44,6 +48,8 @@ import { appendFileSync, writeFileSync } from "node:fs";
 
 const failLoad = process.env.FAKE_ACP_FAIL_LOAD === "1";
 const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1" || failLoad;
+const forkSession = process.env.FAKE_ACP_FORK_SESSION === "1";
+const forkReuseSourceId = process.env.FAKE_ACP_FORK_REUSE_SOURCE_ID === "1";
 const usageOnLoad = process.env.FAKE_ACP_USAGE_ON_LOAD === "1";
 const usageSessionId = process.env.FAKE_ACP_USAGE_SESSION_ID;
 const modelConfig = process.env.FAKE_ACP_MODEL_CONFIG === "1";
@@ -396,6 +402,7 @@ async function handleMessage(message) {
           agentCapabilities: {
             loadSession,
             promptCapabilities: { image: false },
+            ...(forkSession ? { sessionCapabilities: { fork: {} } } : {}),
           },
           ...(authMethods.length > 0
             ? { authMethods: authMethods.map((id) => ({ id })) }
@@ -472,6 +479,37 @@ async function handleMessage(message) {
           error: { code: -32601, message: "session/load is not supported" },
         });
       }
+      return;
+    case "session/fork":
+      if (!requireAuthenticated(message)) {
+        return;
+      }
+      if (!forkSession) {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32601, message: "session/fork is not supported" },
+        });
+        return;
+      }
+      if (process.env.FAKE_ACP_FORK_LOG) {
+        writeFileSync(
+          process.env.FAKE_ACP_FORK_LOG,
+          JSON.stringify(message.params),
+        );
+      }
+      activeSessionId = forkReuseSourceId
+        ? message.params.sessionId
+        : `fake-fork-${process.pid}`;
+      captureMcpServers(message);
+      send({
+        jsonrpc: "2.0",
+        id: message.id,
+        result: {
+          sessionId: activeSessionId,
+          ...configState(),
+        },
+      });
       return;
     case "session/set_model": {
       const modelId = message.params?.modelId;

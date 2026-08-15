@@ -5,6 +5,7 @@ import { registerEnvironmentCommands } from "./commands/environment.js";
 import { registerFileCommands } from "./commands/file.js";
 import { registerGuideCommand } from "./commands/guide.js";
 import { registerManagerCommands } from "./commands/manager.js";
+import { registerMarketplaceCommands } from "./commands/marketplace.js";
 import { registerMachineCommands } from "./commands/machine.js";
 import { registerProjectCommands } from "./commands/project.js";
 import { registerPluginCommands } from "./commands/plugin.js";
@@ -96,6 +97,7 @@ registerEnvironmentCommands(program, getUrl);
 registerFileCommands(program, getUrl);
 registerThemeCommands(program, getUrl);
 registerPluginCommands(program, getUrl);
+registerMarketplaceCommands(program, getUrl);
 registerSkillCommands(program, getUrl, getContext);
 registerGuideCommand(program);
 registerVoiceCommands(program, getUrl);
@@ -122,7 +124,14 @@ async function tryPluginCommandProxy(): Promise<void> {
     // machine is the canonical case) — only the running server can say, so
     // an unreachable server must not degrade into commander's "unknown
     // command".
-    console.error(describeUnreachableServer(getUrl(), result.cause));
+    console.error(
+      describeUnreachableServer(
+        getUrl(),
+        result.cause,
+        result.lastTimeoutMs,
+        result.attempts,
+      ),
+    );
     process.exit(1);
   }
   if (result.outcome === "invalid") return;

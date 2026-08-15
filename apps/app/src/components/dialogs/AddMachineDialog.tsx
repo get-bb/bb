@@ -14,6 +14,7 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { useHosts } from "@/hooks/queries/host-queries";
+import { useClipboardCopy } from "@/lib/clipboard";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 
@@ -116,7 +117,7 @@ function pairingCommand(
   if (serverUrl === null) return null;
   const machineFlag =
     machineCode === null ? "" : ` --machine-code ${machineCode.code}`;
-  return `curl -fsSL ${serverUrl}/install.sh | sh -s -- --join-code ${joinCode} --host-id ${hostId} --server ${serverUrl}${machineFlag}`;
+  return `curl -fL --progress-meter --connect-timeout 10 --max-time 60 --retry 2 ${serverUrl}/install.sh | sh -s -- --join-code ${joinCode} --host-id ${hostId} --server ${serverUrl}${machineFlag}`;
 }
 
 function AddMachineDialogContent({
@@ -163,13 +164,6 @@ function AddMachineDialogContent({
     return () => window.clearInterval(interval);
   }, []);
 
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timeout = window.setTimeout(() => setCopied(false), 2000);
-    return () => window.clearTimeout(timeout);
-  }, [copied]);
-
   const joinCode = mintJoinCode.data?.join ?? null;
   const machineCode = mintJoinCode.data?.machine ?? null;
   const expiresAt =
@@ -187,6 +181,7 @@ function AddMachineDialogContent({
           serverUrl,
         )
       : null;
+  const { copied, copy } = useClipboardCopy({ text: command ?? "" });
 
   return (
     <>
@@ -227,11 +222,7 @@ function AddMachineDialogContent({
                 variant="outline"
                 className="h-7 px-2.5 text-xs"
                 disabled={expired}
-                onClick={() => {
-                  void navigator.clipboard.writeText(command).then(() => {
-                    setCopied(true);
-                  });
-                }}
+                onClick={() => void copy()}
               >
                 {copied ? "Copied" : "Copy"}
               </Button>

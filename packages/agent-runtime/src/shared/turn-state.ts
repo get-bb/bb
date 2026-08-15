@@ -3,11 +3,12 @@ import type {
   ThreadEventItem,
   ThreadEventTokenUsageBreakdown,
 } from "@bb/domain";
-import { turnScope } from "@bb/domain";
+import { threadScope, turnScope } from "@bb/domain";
 import {
   getOrCreateScopedItemId,
   resolveCompletedScopedItemId,
 } from "./scoped-item-ids.js";
+import { UNSTAMPED_THREAD_ID } from "./unstamped-thread-id.js";
 
 const DEFAULT_PROVIDER_TURN_STATE_MAX_ENTRIES = 256;
 const DEFAULT_PROVIDER_TURN_ID_PREFIX = "turn-";
@@ -33,10 +34,15 @@ export interface CreateProviderTurnStateRegistryOptions<
    */
   isEvictable?: (state: TState) => boolean;
   maxEntries?: number;
+  onTurnFinish?: (args: FinishProviderTurnArgs<TState>) => void;
+  onTurnStart?: (
+    args: EnsureProviderTurnStartedArgs<TState> & { turnId: string },
+  ) => void;
   turnIdPrefix?: string;
 }
 
 export interface ProviderTurnStateRegistry<TState extends ProviderTurnState> {
+  buildErrorEvents(args: BuildProviderErrorEventsArgs): ThreadEvent[];
   ensureTurnStarted(args: EnsureProviderTurnStartedArgs<TState>): string;
   finishTurn(args: FinishProviderTurnArgs<TState>): void;
   get(args: GetProviderTurnStateArgs): TState | null;
@@ -63,6 +69,11 @@ export interface EnsureProviderTurnStartedArgs<
 export interface FinishProviderTurnArgs<TState extends ProviderTurnState> {
   state: TState;
   threadId: string;
+}
+
+export interface BuildProviderErrorEventsArgs {
+  contextThreadId?: string;
+  detail: string;
 }
 
 export interface GetProviderTurnStateArgs {
@@ -160,28 +171,81 @@ export function createProviderTurnStateRegistry<
     return `${args.assistantIdPrefix}-${args.state.assistantMessageCounter}`;
   }
 
-  return {
-    ensureTurnStarted(args) {
-      if (!args.state.currentTurnId) {
-        clearTransientTurnState(args.state);
-        args.state.counter += 1;
-        args.state.currentTurnId = createTurnId(args.state.counter);
-        args.events.push({
-          type: "turn/started",
-          threadId: args.threadId,
-          providerThreadId: "",
-          scope: turnScope(args.state.currentTurnId),
-        });
-      }
-      return args.state.currentTurnId;
-    },
-
-    finishTurn(args) {
+  function ensureTurnStarted(
+    args: EnsureProviderTurnStartedArgs<TState>,
+  ): string {
+    if (!args.state.currentTurnId) {
       clearTransientTurnState(args.state);
-      args.state.currentTurnId = undefined;
-      touchEntry({ threadId: args.threadId });
-      pruneInactiveEntries();
-    },
+      args.state.counter += 1;
+      args.state.currentTurnId = createTurnId(args.state.counter);
+      args.events.push({
+        type: "turn/started",
+        threadId: args.threadId,
+        providerThreadId: "",
+        scope: turnScope(args.state.currentTurnId),
+      });
+      options.onTurnStart?.({ ...args, turnId: args.state.currentTurnId });
+    }
+    return args.state.currentTurnId;
+  }
+
+  function finishTurn(args: FinishProviderTurnArgs<TState>): void {
+    options.onTurnFinish?.(args);
+    clearTransientTurnState(args.state);
+    args.state.currentTurnId = undefined;
+    touchEntry({ threadId: args.threadId });
+    pruneInactiveEntries();
+  }
+
+  function getOrCreate(args: GetProviderTurnStateArgs): TState {
+    const existing = touchEntry(args);
+    if (existing) {
+      return existing.state;
+    }
+    const entry = { state: options.createState() };
+    entries.set(args.threadId, entry);
+    pruneInactiveEntries();
+    return entry.state;
+  }
+
+  function buildErrorEvents(args: BuildProviderErrorEventsArgs): ThreadEvent[] {
+    const events: ThreadEvent[] = [];
+    const stateKey = args.contextThreadId;
+    const state = stateKey ? getOrCreate({ threadId: stateKey }) : null;
+    const turnId = state
+      ? ensureTurnStarted({
+          events,
+          state,
+          threadId: UNSTAMPED_THREAD_ID,
+        })
+      : undefined;
+
+    events.push({
+      type: "provider/error",
+      threadId: UNSTAMPED_THREAD_ID,
+      providerThreadId: "",
+      scope: turnId ? turnScope(turnId) : threadScope(),
+      message: "Provider error",
+      detail: args.detail,
+    });
+
+    if (stateKey && state && turnId) {
+      events.push({
+        type: "turn/completed",
+        threadId: UNSTAMPED_THREAD_ID,
+        providerThreadId: "",
+        scope: turnScope(turnId),
+        status: "failed",
+      });
+      finishTurn({ state, threadId: stateKey });
+    }
+    return events;
+  }
+
+  return {
+    buildErrorEvents,
+    ensureTurnStarted,
+    finishTurn,
 
     get(args) {
       return touchEntry(args)?.state ?? null;
@@ -194,20 +258,7 @@ export function createProviderTurnStateRegistry<
       );
     },
 
-    getOrCreate(args) {
-      const existing = touchEntry(args);
-      if (existing) {
-        return existing.state;
-      }
-
-      const entry: ProviderTurnStateRegistryEntry<TState> = {
-        state: options.createState(),
-      };
-      entries.set(args.threadId, entry);
-      pruneInactiveEntries();
-      return entry.state;
-    },
-
+    getOrCreate,
     getOrCreateAssistantMessageId(args) {
       return getOrCreateScopedItemId({
         createItemId: () => createAssistantMessageId(args),

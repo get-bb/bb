@@ -8,6 +8,11 @@ import {
   type FaviconColor,
   type FaviconColorPreference,
 } from "@bb/domain";
+import {
+  DARK_COLOR_SCHEME_QUERY,
+  getMediaQuerySnapshot,
+  subscribeMediaQuery,
+} from "@bb/shared-ui/hooks/use-media-query";
 import { invalidateSystemConfig } from "@/hooks/cache-owners/system-cache-effects";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { sdk } from "@/lib/sdk";
@@ -183,10 +188,7 @@ export function getFaviconGlyphHref(): string {
  */
 function getFaviconVariantSuffix(): string {
   if (import.meta.env.DEV) return "-dev";
-  if (typeof window.matchMedia !== "function") return "";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "-dark"
-    : "";
+  return getMediaQuerySnapshot(DARK_COLOR_SCHEME_QUERY) ? "-dark" : "";
 }
 
 function getFaviconLink(size: number): HTMLLinkElement | null {
@@ -345,10 +347,6 @@ export function initializeFavicon(): void {
   };
   store.sub(faviconColorAtom, apply);
   store.sub(faviconBadgeAtom, apply);
-  if (typeof window.matchMedia === "function") {
-    window
-      .matchMedia("(prefers-color-scheme: dark)")
-      .addEventListener("change", apply);
-  }
+  subscribeMediaQuery(DARK_COLOR_SCHEME_QUERY, apply);
   apply();
 }

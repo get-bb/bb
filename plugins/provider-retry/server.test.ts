@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
   makeThreadResponse,
-} from "@bb/plugin-sdk/testing";
+} from "@get-bb/plugin-sdk/testing";
 import plugin from "./server.js";
 import {
   ProviderRetryService,
@@ -80,6 +80,14 @@ function manualStatus(threadId: string) {
 async function flushPromises() {
   await Promise.resolve();
   await Promise.resolve();
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
 }
 
 beforeEach(() => {
@@ -169,6 +177,7 @@ describe("provider retry scheduler", () => {
     expect(continueAfterRateLimit).toHaveBeenLastCalledWith({
       threadId: "thread-a",
       failedRequestId: "request-thread-a",
+      mode: "automatic",
     });
 
     await vi.advanceTimersByTimeAsync(RELEASE_PACE_MS);
@@ -176,7 +185,109 @@ describe("provider retry scheduler", () => {
     expect(continueAfterRateLimit).toHaveBeenLastCalledWith({
       threadId: "thread-b",
       failedRequestId: "request-thread-b",
+      mode: "automatic",
     });
+    await host.harness.dispose();
+  });
+
+  it("automatically retries each reported reset window only once per plugin process", async () => {
+    const continueAfterRateLimit = vi.fn(async () => ({
+      ok: true as const,
+      requestId: "continuation-request",
+    }));
+    const host = createFakePluginHost({
+      pluginId: "provider-retry",
+      sdk: {
+        threads: {
+          rateLimitRecovery: async ({ threadId }) => eligibleStatus(threadId),
+          continueAfterRateLimit,
+        },
+      },
+    });
+    await plugin(host.bb);
+
+    await host.harness.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: "thread-once", status: "error" }),
+      error: "Usage limit reached",
+    });
+    await vi.advanceTimersByTimeAsync(5 * 60 * 60 * 1_000 + RESET_BUFFER_MS);
+    expect(continueAfterRateLimit).toHaveBeenCalledOnce();
+
+    await host.harness.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: "thread-once", status: "error" }),
+      error: "Usage limit reached again",
+    });
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1_000);
+    expect(continueAfterRateLimit).toHaveBeenCalledOnce();
+    await host.harness.dispose();
+  });
+
+  it("clears pending reset timers when the plugin reloads", async () => {
+    const continueAfterRateLimit = vi.fn(async () => ({
+      ok: true as const,
+      requestId: "continuation-request",
+    }));
+    const host = createFakePluginHost({
+      pluginId: "provider-retry",
+      sdk: {
+        threads: {
+          rateLimitRecovery: async ({ threadId }) => eligibleStatus(threadId),
+          continueAfterRateLimit,
+        },
+      },
+    });
+    await plugin(host.bb);
+    await host.harness.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: "thread-reload", status: "error" }),
+      error: "Usage limit reached",
+    });
+
+    const reloaded = await host.harness.reload(plugin);
+    await vi.advanceTimersByTimeAsync(5 * 60 * 60 * 1_000 + RESET_BUFFER_MS);
+    expect(continueAfterRateLimit).not.toHaveBeenCalled();
+    await expect(
+      reloaded.harness.callRpc("providerRetryStatus", {
+        threadId: "thread-reload",
+      }),
+    ).resolves.toEqual({ view: null });
+    await reloaded.harness.dispose();
+  });
+
+  it("keeps cancellation final when reconciliation is already running", async () => {
+    const pendingStatus = deferred<ReturnType<typeof eligibleStatus>>();
+    const continueAfterRateLimit = vi.fn();
+    let inspectionCount = 0;
+    const host = createFakePluginHost({
+      pluginId: "provider-retry",
+      sdk: {
+        threads: {
+          rateLimitRecovery: ({ threadId }) => {
+            inspectionCount += 1;
+            return inspectionCount === 1
+              ? Promise.resolve(eligibleStatus(threadId))
+              : pendingStatus.promise;
+          },
+          continueAfterRateLimit,
+        },
+      },
+    });
+    const service = new ProviderRetryService(host.bb);
+    await service.reconcile("thread-race");
+
+    const reconciling = service.reconcile("thread-race");
+    await flushPromises();
+    expect(inspectionCount).toBe(2);
+    const cancelling = service.cancel("thread-race");
+    pendingStatus.resolve(eligibleStatus("thread-race"));
+
+    await expect(reconciling).resolves.toMatchObject({
+      threadId: "thread-race",
+    });
+    await expect(cancelling).resolves.toBe(true);
+    expect(service.status("thread-race")).toBeNull();
+    await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1_000);
+    expect(continueAfterRateLimit).not.toHaveBeenCalled();
+    service.dispose();
     await host.harness.dispose();
   });
 
@@ -323,6 +434,39 @@ describe("provider retry scheduler", () => {
       }),
     ).resolves.toEqual({ view: null });
     expect(continueAfterRateLimit).not.toHaveBeenCalled();
+    await host.harness.dispose();
+  });
+
+  it("drops a scheduled retry that becomes manual-only before release", async () => {
+    const continueAfterRateLimit = vi.fn();
+    let inspectionCount = 0;
+    const host = createFakePluginHost({
+      pluginId: "provider-retry",
+      sdk: {
+        threads: {
+          rateLimitRecovery: async ({ threadId }) => {
+            inspectionCount += 1;
+            return inspectionCount === 1
+              ? eligibleStatus(threadId)
+              : manualStatus(threadId);
+          },
+          continueAfterRateLimit,
+        },
+      },
+    });
+    await plugin(host.bb);
+    await host.harness.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: "thread-policy", status: "error" }),
+      error: "Usage limit reached",
+    });
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 60 * 1_000 + RESET_BUFFER_MS);
+    expect(continueAfterRateLimit).not.toHaveBeenCalled();
+    await expect(
+      host.harness.callRpc("providerRetryStatus", {
+        threadId: "thread-policy",
+      }),
+    ).resolves.toEqual({ view: null });
     await host.harness.dispose();
   });
 

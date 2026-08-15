@@ -1,6 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { createFakePluginHost } from "@bb/plugin-sdk/testing";
+import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
 import { createTasksStore } from "../db";
 import {

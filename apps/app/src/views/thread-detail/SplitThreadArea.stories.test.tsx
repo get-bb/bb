@@ -40,17 +40,39 @@ describe("SplitThreadArea stories", () => {
         "opacity-50",
       );
       expect(view.getByText("Fix Thread Drag Sync")).toBeTruthy();
-      expect(view.getByText("Refine split styling")).toBeTruthy();
+      const titlePill = activePane.querySelector(
+        'header [data-prompt-mention="true"]',
+      );
+      expect(titlePill).toBeTruthy();
+      expect(titlePill?.tagName).not.toBe("A");
+      expect(titlePill?.textContent).toBe("Raw thread ID mention target");
+
+      const linkedMessagePills = activePane.querySelectorAll(
+        'a[data-prompt-mention="true"]',
+      );
+      expect(linkedMessagePills).toHaveLength(3);
+      for (const linkedMessagePill of linkedMessagePills) {
+        expect(linkedMessagePill.textContent).toBe(
+          "Raw thread ID mention target",
+        );
+        expect(linkedMessagePill.getAttribute("href")).toBe(
+          "/projects/proj_bb/threads/thr_dcwivn5n8w",
+        );
+      }
+      expect(
+        Array.from(activePane.querySelectorAll("code")).find(
+          (node) => node.textContent === "thr_dcwivn5n8w",
+        ),
+      ).toBeUndefined();
       expect(
         view.getByText(
           "When I drag threads between sections, the source row sometimes stays faded after the drop.",
         ),
       ).toBeTruthy();
-      expect(
-        view.getByText(
-          "Make the divider thinner, keep the inactive timeline readable, and let the header carry focus.",
-        ),
-      ).toBeTruthy();
+      expect(activePane.textContent).toContain("Use ");
+      expect(activePane.textContent).toContain(
+        " as context, make the divider thinner, and let the header carry focus.",
+      );
       expect(idlePane.querySelector('[aria-label="Goal"]')).toBeTruthy();
       expect(activePane.querySelector('[aria-label="Goal"]')).toBeTruthy();
 

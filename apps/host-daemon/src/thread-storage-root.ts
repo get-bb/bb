@@ -2,16 +2,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 interface ThreadStorageRootPathOptions {
-  env?: NodeJS.ProcessEnv;
+  configuredRoot?: string;
 }
-
-const THREAD_STORAGE_ENV_VAR = "BB_THREAD_STORAGE";
 
 export function threadStorageRootPath(
   dataDir: string,
   options: ThreadStorageRootPathOptions = {},
 ): string {
-  const configuredRoot = (options.env ?? process.env)[THREAD_STORAGE_ENV_VAR];
+  const configuredRoot = options.configuredRoot;
   if (configuredRoot && configuredRoot.trim().length > 0) {
     return path.resolve(configuredRoot);
   }

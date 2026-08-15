@@ -1119,13 +1119,17 @@ rl.on("line", (line) => {
       ).resolves.toEqual({
         outcome: "stale",
         activeTurnId: "turn-1",
+        providerCheckpointId: null,
       });
       expect(runtime.hasThread("t1")).toBe(true);
       expect(runtime.getActiveTurnId("t1")).toBe("turn-1");
 
       await expect(
         runtime.stopThread({ threadId: "t1", expectedTurnId: "turn-1" }),
-      ).resolves.toEqual({ outcome: "applied" });
+      ).resolves.toEqual({
+        outcome: "applied",
+        providerCheckpointId: null,
+      });
       expect(runtime.hasThread("t1")).toBe(false);
       await runtime.shutdown();
     });

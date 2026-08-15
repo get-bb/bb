@@ -15,20 +15,8 @@ export interface ReadPrimaryHostIdArgs {
   dataDir: string;
 }
 
-export interface AssertPrimaryHostIdArgs {
-  hostId: string;
-}
-
 export interface AssertUsableHostIdArgs {
   hostId: string;
-}
-
-function unsupportedHostError(): ApiError {
-  return new ApiError(
-    400,
-    "unsupported_host",
-    "This operation only supports the primary machine",
-  );
 }
 
 function unusableHostError(): ApiError {
@@ -93,16 +81,6 @@ export function requirePrimaryHostId(deps: PrimaryHostDeps): string {
     throw primaryHostUnavailableError();
   }
   return hostId;
-}
-
-export function assertPrimaryHostId(
-  deps: PrimaryHostDeps,
-  args: AssertPrimaryHostIdArgs,
-): void {
-  const primaryHostId = requirePrimaryHostId(deps);
-  if (args.hostId !== primaryHostId) {
-    throw unsupportedHostError();
-  }
 }
 
 /**

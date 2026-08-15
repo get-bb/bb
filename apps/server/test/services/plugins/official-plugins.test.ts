@@ -127,7 +127,7 @@ describe("store-installed official plugins", () => {
     delete globals.__builtinFixtureLoads;
     db = createConnection(":memory:");
     migrate(db);
-    workDir = await mkdtemp(join(tmpdir(), "bb-official-plugins-"));
+    workDir = await mkdtemp(join(tmpdir(), "bb-community-plugins-"));
   });
 
   afterEach(async () => {

@@ -111,6 +111,12 @@ describe("orderCommandSuggestions", () => {
     ).toEqual(["ottonomous:review", "review-pr"]);
   });
 
+  it("ranks a literal command above a namespaced skill's bare alias", () => {
+    expect(
+      orderedNames([skill("plugin:plan"), userCommand("plan")], "plan"),
+    ).toEqual(["plan", "plugin:plan"]);
+  });
+
   it("falls back to section order when several sections match exactly", () => {
     expect(orderedNames([userCommand("plan"), skill("plan")], "plan")).toEqual([
       "plan",

@@ -1,5 +1,4 @@
 import type { QueryKey } from "@tanstack/react-query";
-import type { SystemExecutionOptionsResponse } from "@bb/server-contract";
 import {
   allEnvironmentDiffFilesQueryKeyPrefix,
   allEnvironmentDiffPatchQueryKeyPrefix,
@@ -28,7 +27,6 @@ import {
   projectsQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
-  systemExecutionOptionsQueryKey,
   threadPromptHistoryQueryKeyPrefix,
   threadSearchQueryKeyPrefix,
   threadsQueryKey,
@@ -42,28 +40,8 @@ import {
   refetchFailedActiveQueryKeys,
 } from "./cache-effect-utils";
 
-interface SystemExecutionOptionsCacheArgs extends QueryClientArg {
-  environmentId: string | null;
-  executionOptions: SystemExecutionOptionsResponse;
-  hostId: string | null;
-  providerId: string | null;
-}
-
 interface SystemExecutionOptionsInvalidationArgs extends QueryClientArg {
   hostId: string;
-}
-
-export function seedSystemExecutionOptionsCache({
-  environmentId,
-  executionOptions,
-  hostId,
-  providerId,
-  queryClient,
-}: SystemExecutionOptionsCacheArgs): void {
-  queryClient.setQueryData<SystemExecutionOptionsResponse>(
-    systemExecutionOptionsQueryKey({ environmentId, hostId, providerId }),
-    executionOptions,
-  );
 }
 
 export function invalidateRealtimeQueriesAfterServerReconnect({

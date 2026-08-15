@@ -67,7 +67,7 @@ function pluginRuntimeRecovery(plugin: PluginListItem): string {
         : "Remove the plugin, then install it again from its source.";
     case "needs-configuration":
       return plugin.hasSettings
-        ? "Complete the Settings section; bb reloads the plugin after you save."
+        ? "Complete the Configuration section; bb reloads the plugin after you save."
         : "Add the required configuration, then reload the plugin.";
     case "degraded":
       return "Wait a moment, then reload the plugin.";
@@ -149,6 +149,15 @@ export function pluginRowSignal(
       label: runtimeStatus.label,
       tone: runtimeStatus.tone,
       detail: plugin.statusDetail,
+    };
+  }
+  if (state.outcome === "unavailable") {
+    return {
+      kind: "status",
+      icon: "AlertTriangle",
+      label: "Needs attention",
+      tone: "warning",
+      detail: state.detail,
     };
   }
   if (state.availableVersion !== null) {
