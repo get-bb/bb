@@ -50,22 +50,14 @@ export function registerInternalSessionRoutes(
     // Exact-id prefixes are safe: registry routing rejects non-matching ids
     // (e.g. "pi" cannot match a hypothetical "pi-x" because the routing also
     // requires a known provider).
+    // Plugin providers are deliberately absent: the daemon matches this list
+    // with startsWith, so a plugin id like "co" would hijack "codex" onto the
+    // bridge with the experiment off. They need no entry — the verified
+    // bridgeLaunch that rides their commands is its own routing authority in
+    // the agent-runtime provider registry.
     const prefixes = experiments.providerBridge
       ? ["acp-", "claude-code", "codex", "pi"]
       : [];
-    // Plugin providers with stored bridge artifacts always route onto the
-    // canonical protocol — there is no bespoke adapter for them, so they are
-    // not experiment-gated. Exact ids, same safety argument as above.
-    for (const entry of deps.providerRegistry.list()) {
-      if (entry.source.kind !== "plugin") continue;
-      const artifact = deps.providerBridgeArtifacts.getForPlugin(
-        entry.source.pluginId,
-      );
-      if (artifact === undefined) continue;
-      if (!prefixes.includes(entry.info.id)) {
-        prefixes.push(entry.info.id);
-      }
-    }
     return context.json({ bridgeProtocolProviderPrefixes: prefixes });
   });
 

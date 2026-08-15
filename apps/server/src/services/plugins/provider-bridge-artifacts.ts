@@ -20,9 +20,10 @@ export interface PluginProviderBridgeArtifact {
  * as `SkillTreeRegistry`: the plugin runtime publishes an entry when a plugin
  * with `bb.providerBridge` commits a load and removes it on dispose, so
  * presence means "this plugin's runtime is live and its bridge is servable".
- * Consumers: the internal `/provider-bridges/:sha256` route (bytes), the
- * `/provider-bridge-policy` route (routing prefixes), and thread commands
- * (the `bridgeLaunch` attach point).
+ * Consumers: the internal `/provider-bridges/:sha256` route (bytes) and
+ * thread commands (the `bridgeLaunch` attach point, which is what routes a
+ * plugin provider onto the bridge — it never rides the
+ * `/provider-bridge-policy` prefixes).
  */
 export class ProviderBridgeArtifactRegistry {
   readonly #byPluginId = new Map<string, PluginProviderBridgeArtifact>();

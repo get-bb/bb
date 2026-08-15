@@ -165,15 +165,17 @@ describe("provider bridge artifact delivery (server)", () => {
         ).status,
       ).toBe(401);
 
-      // The bridge policy routes the plugin provider onto the canonical
-      // protocol by exact id.
+      // The plugin provider stays OUT of the bridge policy prefixes: the
+      // daemon matches them with startsWith, so a short plugin id would
+      // hijack a bundled provider onto the bridge. Its bridgeLaunch below is
+      // what routes it.
       const policyResponse = await harness.app.request(
         "/internal/provider-bridge-policy",
         { headers },
       );
       expect(policyResponse.status).toBe(200);
       expect(await policyResponse.json()).toEqual({
-        bridgeProtocolProviderPrefixes: [PROVIDER_ID],
+        bridgeProtocolProviderPrefixes: [],
       });
 
       // Thread commands attach bridgeLaunch for the plugin provider…
