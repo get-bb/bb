@@ -184,7 +184,12 @@ describe("third-party marketplaces", () => {
       await mkdir(join(repo, "icons"), { recursive: true });
       await writeFile(join(repo, "icons", "notes.svg"), args.icon);
     }
-    await run("git", ["add", "."], { cwd: repo });
+    // -c core.excludesFile=/dev/null: a developer's global gitignore must not
+    // shape the fixture (the common macOS `Icon?` rule matches `icons/` and
+    // silently drops the icon file, failing the icon assertions locally).
+    await run("git", ["-c", "core.excludesFile=/dev/null", "add", "."], {
+      cwd: repo,
+    });
     await run("git", ["commit", "-qm", "catalog"], { cwd: repo });
     return repo;
   }
