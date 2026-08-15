@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { findCachedProviderInfo } from "@/hooks/queries/system-queries";
 import { useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
@@ -927,7 +929,14 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     },
     [forkThreadFromMessage],
   );
-  const isForkAvailable = isThreadForkable(thread ?? null);
+  const forkQueryClient = useQueryClient();
+  const isForkAvailable = isThreadForkable(
+    thread ?? null,
+    thread
+      ? (findCachedProviderInfo(forkQueryClient, thread.providerId)
+          ?.capabilities.supportsFork ?? false)
+      : false,
+  );
   const dismissCompactKeyboard = useCallback(() => {
     if (!renderSecondaryPanelAsDrawer) {
       return;

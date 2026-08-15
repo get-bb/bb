@@ -1,8 +1,3 @@
-import {
-  getBuiltInAgentProviderInfo,
-  isAcpProviderId,
-  isAgentProviderId,
-} from "@bb/agent-providers";
 import type { ComponentType } from "react";
 import { createElement, useState } from "react";
 import { ClaudeIcon } from "@/components/icons/ClaudeIcon";
@@ -22,8 +17,25 @@ interface ProviderIconInfo {
   ariaLabel: string;
 }
 
+function isAcpProviderId(providerId: string): boolean {
+  return providerId.startsWith(ACP_ID_PREFIX);
+}
+
 const GenericAcpIcon: ComponentType<{ className?: string }> = ({ className }) =>
   createElement(Icon, { name: "Code", className, "aria-hidden": "true" });
+
+// Vendored brand marks for the built-in providers, keyed by provider id. This
+// is the interim fallback for callers whose data carries no `logoUrl`: until
+// the first-party provider plugins populate `ProviderInfo.logoUrl`, built-ins
+// must keep rendering their real brand marks, never the generic glyph. Once
+// every call site receives a populated `logoUrl`, this map (and the vendored
+// SVG components behind it) graduates to dead code and can be deleted.
+const BUILT_IN_BRAND_ICONS: Record<string, ProviderIconInfo> = {
+  codex: { icon: OpenAiIcon, ariaLabel: "Codex" },
+  "claude-code": { icon: ClaudeIcon, ariaLabel: "Claude Code" },
+  pi: { icon: PiIcon, ariaLabel: "Pi" },
+  "acp-cursor": { icon: CursorIcon, ariaLabel: "Cursor" },
+};
 
 // Brand icons for well-known ACP agents, keyed by slug (the provider id with
 // the `acp-` prefix stripped). Unknown ACP agents fall back to the generic
@@ -76,8 +88,16 @@ function getConfiguredProviderLogoIcon(
 }
 
 /**
- * Maps closed_internal provider IDs to their brand icon components.
- * Returns undefined for unknown providers so callers can fall back gracefully.
+ * Resolves a provider's icon. Resolution order:
+ *
+ * 1. A caller-supplied `logoUrl` (from a server-provided `ProviderInfo`)
+ *    renders as an `<img>` logo, falling back to the vendored brand mark if
+ *    the image fails to load.
+ * 2. The vendored brand maps (built-ins plus well-known ACP slugs).
+ * 3. The generic glyph for unrecognized ACP providers.
+ *
+ * Returns undefined for unknown non-ACP providers so callers can fall back
+ * gracefully.
  */
 export function getProviderIconInfo(
   providerId: string,
@@ -90,7 +110,12 @@ export function getProviderIconInfo(
     };
   }
 
-  if (!isAgentProviderId(providerId) && isAcpProviderId(providerId)) {
+  const builtInBrand = BUILT_IN_BRAND_ICONS[providerId];
+  if (builtInBrand !== undefined) {
+    return builtInBrand;
+  }
+
+  if (isAcpProviderId(providerId)) {
     const slug = providerId.slice(ACP_ID_PREFIX.length);
     const brandIcon = KNOWN_ACP_BRAND_ICONS[slug];
     return {
@@ -99,37 +124,7 @@ export function getProviderIconInfo(
     };
   }
 
-  const providerInfo = isAgentProviderId(providerId)
-    ? getBuiltInAgentProviderInfo(providerId)
-    : null;
-  if (!providerInfo) {
-    return undefined;
-  }
-
-  switch (providerId) {
-    case "codex":
-      return {
-        icon: OpenAiIcon,
-        ariaLabel: providerInfo.displayName,
-      };
-    case "claude-code":
-      return {
-        icon: ClaudeIcon,
-        ariaLabel: providerInfo.displayName,
-      };
-    case "pi":
-      return {
-        icon: PiIcon,
-        ariaLabel: providerInfo.displayName,
-      };
-    case "acp-cursor":
-      return {
-        icon: CursorIcon,
-        ariaLabel: providerInfo.displayName,
-      };
-    default:
-      return undefined;
-  }
+  return undefined;
 }
 
 export function getProviderIconColorClass(providerId: string): string {

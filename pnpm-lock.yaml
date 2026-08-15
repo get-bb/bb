@@ -47,9 +47,6 @@ importers:
 
   apps/app:
     dependencies:
-      '@bb/agent-providers':
-        specifier: workspace:*
-        version: link:../../packages/agent-providers
       '@bb/config':
         specifier: workspace:*
         version: link:../../packages/config

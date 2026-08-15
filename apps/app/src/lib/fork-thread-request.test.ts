@@ -40,6 +40,7 @@ describe("buildForkThreadRequest", () => {
       permissionMode: "accept-edits",
       projectId: "proj_test",
       providerId: "codex",
+      providerSupportsFork: true,
       reasoningLevel: "high",
       serviceTier: "fast",
       sourceSeqEnd: 42,
@@ -71,6 +72,7 @@ describe("buildForkThreadRequest", () => {
       permissionMode: "auto",
       projectId: "proj_test",
       providerId: "codex",
+      providerSupportsFork: true,
       reasoningLevel: "medium",
       serviceTier: undefined,
       sourceSeqEnd: undefined,
@@ -90,6 +92,7 @@ describe("buildForkThreadRequest", () => {
         permissionMode: "auto",
         projectId: "proj_test",
         providerId: "acp-amp",
+        providerSupportsFork: true,
         reasoningLevel: "medium",
         serviceTier: undefined,
         sourceSeqEnd: undefined,
@@ -112,6 +115,7 @@ describe("buildForkThreadRequest", () => {
         permissionMode: "auto",
         projectId: "proj_test",
         providerId: "not-a-provider",
+        providerSupportsFork: false,
         reasoningLevel: "medium",
         serviceTier: undefined,
         sourceSeqEnd: undefined,
@@ -123,15 +127,18 @@ describe("buildForkThreadRequest", () => {
 });
 
 describe("isThreadForkable", () => {
-  it("is true only when the source thread has an environment id and fork-capable provider", () => {
-    expect(isThreadForkable(makeThread({ environmentId: "env_source" }))).toBe(
-      true,
-    );
-    expect(isThreadForkable(makeThread({ environmentId: null }))).toBe(false);
-    expect(isThreadForkable(makeThread({ providerId: "acp-amp" }))).toBe(true);
-    expect(isThreadForkable(makeThread({ providerId: "not-a-provider" }))).toBe(
+  it("is true only with an environment id and a fork-capable provider", () => {
+    expect(
+      isThreadForkable(makeThread({ environmentId: "env_source" }), true),
+    ).toBe(true);
+    expect(isThreadForkable(makeThread({ environmentId: null }), true)).toBe(
       false,
     );
-    expect(isThreadForkable(null)).toBe(false);
+    // The capability now arrives from server-provided ProviderInfo; absence
+    // (unknown provider, data not loaded) reads as false.
+    expect(
+      isThreadForkable(makeThread({ providerId: "not-a-provider" }), false),
+    ).toBe(false);
+    expect(isThreadForkable(null, true)).toBe(false);
   });
 });

@@ -1,8 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
+import type { AvailableModel, ProviderInfo } from "@bb/domain";
+import { SYSTEM_EXECUTION_OPTIONS_QUERY_KEY } from "@/hooks/queries/query-keys";
 import {
-  listBuiltInAgentProviderInfos,
-  listClaudeCodeFallbackModels,
-} from "@bb/agent-providers";
+  HIGH_REASONING_EFFORT,
+  LOW_REASONING_EFFORT,
+  MAX_REASONING_EFFORT,
+  MEDIUM_REASONING_EFFORT,
+  ULTRACODE_REASONING_EFFORT,
+  XHIGH_REASONING_EFFORT,
+} from "@bb/domain";
 import { toRecord } from "@bb/core-ui";
 import type {
   SystemCliSkillsStatusResponse,
@@ -61,6 +67,143 @@ const SYSTEM_EXECUTION_OPTIONS_RETRY_DELAY_MS = 250;
 const SYSTEM_EXECUTION_OPTIONS_RETRY_COUNT = 1;
 const CLAUDE_CODE_PROVIDER_ID = "claude-code";
 
+// ---------------------------------------------------------------------------
+// Cold-cache placeholder data. Rendered only as react-query placeholderData
+// while the first execution-options probe is in flight on an install that has
+// never cached a probe result; every later render uses last-seen real data.
+// Values are copied verbatim from the retired app-side catalog import so the
+// preload window looks identical; graduation moves this server-side and
+// deletes it (plans/agent-provider-plugin-surface.md, phase 6).
+// ---------------------------------------------------------------------------
+
+const XHIGH_LADDER = [
+  LOW_REASONING_EFFORT,
+  MEDIUM_REASONING_EFFORT,
+  HIGH_REASONING_EFFORT,
+  XHIGH_REASONING_EFFORT,
+  ULTRACODE_REASONING_EFFORT,
+  MAX_REASONING_EFFORT,
+] as const;
+
+const CLAUDE_CODE_PLACEHOLDER_MODELS: AvailableModel[] = [
+  {
+    id: "claude-fable-5",
+    model: "claude-fable-5",
+    displayName: "Fable 5",
+    description:
+      "Fable 5 for demanding reasoning; requires Claude Code v2.1.170+",
+    supportedReasoningEfforts: [...XHIGH_LADDER],
+    defaultReasoningEffort: "high",
+    isDefault: false,
+  },
+  {
+    id: "claude-opus-5[1m]",
+    model: "claude-opus-5[1m]",
+    displayName: "Opus 5 (1M)",
+    description: "Opus 5 with 1M context for complex long coding sessions",
+    supportedReasoningEfforts: [...XHIGH_LADDER],
+    defaultReasoningEffort: "high",
+    isDefault: true,
+  },
+  {
+    id: "claude-opus-4-8[1m]",
+    model: "claude-opus-4-8[1m]",
+    displayName: "Opus 4.8 (1M)",
+    description: "Opus 4.8 with 1M context for complex long coding sessions",
+    supportedReasoningEfforts: [...XHIGH_LADDER],
+    defaultReasoningEffort: "high",
+    isDefault: false,
+  },
+  {
+    id: "claude-opus-4-7[1m]",
+    model: "claude-opus-4-7[1m]",
+    displayName: "Opus 4.7 (1M)",
+    description: "Opus 4.7 with 1M context for complex long coding sessions",
+    supportedReasoningEfforts: [...XHIGH_LADDER],
+    defaultReasoningEffort: "medium",
+    isDefault: false,
+  },
+  {
+    id: "claude-sonnet-5",
+    model: "claude-sonnet-5",
+    displayName: "Sonnet 5",
+    description: "Sonnet 5 for everyday coding tasks with deeper reasoning",
+    supportedReasoningEfforts: [...XHIGH_LADDER],
+    defaultReasoningEffort: "medium",
+    isDefault: false,
+  },
+];
+
+const PLACEHOLDER_PROVIDER_INFOS: ProviderInfo[] = [
+  {
+    available: true,
+    id: "codex",
+    displayName: "Codex",
+    logoUrl: null,
+    capabilities: {
+      supportsArchive: true,
+      supportsRename: true,
+      supportsServiceTier: true,
+      supportsUserQuestion: false,
+      supportsFork: true,
+      supportedPermissionModes: ["accept-edits", "auto", "full"],
+    },
+    composerActions: [
+      { kind: "skills", trigger: "/" },
+      { kind: "plan", command: { trigger: "/", name: "plan", trailingText: " " } },
+      { kind: "goal", command: { trigger: "/", name: "goal", trailingText: " " } },
+    ],
+  },
+  {
+    available: true,
+    id: "claude-code",
+    displayName: "Claude Code",
+    logoUrl: null,
+    capabilities: {
+      supportsArchive: false,
+      supportsRename: false,
+      supportsServiceTier: false,
+      supportsUserQuestion: true,
+      supportsFork: true,
+      supportedPermissionModes: ["accept-edits", "auto", "full"],
+    },
+    composerActions: [
+      { kind: "skills", trigger: "/" },
+      { kind: "plan", command: { trigger: "/", name: "plan", trailingText: " " } },
+    ],
+  },
+  {
+    available: true,
+    id: "pi",
+    displayName: "Pi",
+    logoUrl: null,
+    capabilities: {
+      supportsArchive: false,
+      supportsRename: false,
+      supportsServiceTier: false,
+      supportsUserQuestion: false,
+      supportsFork: true,
+      supportedPermissionModes: ["full"],
+    },
+    composerActions: [{ kind: "skills", trigger: "/" }],
+  },
+  {
+    available: true,
+    id: "acp-cursor",
+    displayName: "Cursor",
+    logoUrl: null,
+    capabilities: {
+      supportsArchive: false,
+      supportsRename: false,
+      supportsServiceTier: true,
+      supportsUserQuestion: false,
+      supportsFork: true,
+      supportedPermissionModes: ["accept-edits", "full"],
+    },
+    composerActions: [{ kind: "skills", trigger: "/" }],
+  },
+];
+
 // Claude's account-scoped model probe spawns a CLI process on the host, so
 // waiting for it leaves the composer with no model list for seconds. Render a
 // provisional catalog immediately and let the authoritative rows replace it when
@@ -79,12 +222,34 @@ function claudeCodePlaceholderExecutionOptions(
 ): SystemExecutionOptionsResponse {
   const cached = readCachedClaudeModelCatalog(cacheKey);
   return {
-    providers: listBuiltInAgentProviderInfos(),
-    models: cached?.models ?? listClaudeCodeFallbackModels(),
+    providers: cached?.providers ?? PLACEHOLDER_PROVIDER_INFOS,
+    models: cached?.models ?? CLAUDE_CODE_PLACEHOLDER_MODELS,
     selectedOnlyModels: cached?.selectedOnlyModels ?? [],
     permissionCeiling: "full",
     modelLoadError: null,
   };
+}
+
+/**
+ * The freshest ProviderInfo the client already has for a provider id, scanned
+ * across every cached execution-options response (any environment/host).
+ * Null when no cached response mentions the id — callers treat that as the
+ * capability being absent (graceful absence for unknown providers).
+ */
+export function findCachedProviderInfo(
+  queryClient: import("@tanstack/react-query").QueryClient,
+  providerId: string,
+): ProviderInfo | null {
+  const entries = queryClient.getQueriesData<SystemExecutionOptionsResponse>({
+    queryKey: [SYSTEM_EXECUTION_OPTIONS_QUERY_KEY],
+  });
+  for (const [, data] of entries) {
+    const match = data?.providers.find((info) => info.id === providerId);
+    if (match !== undefined) {
+      return match;
+    }
+  }
+  return null;
 }
 
 function isAbortLikeError(error: unknown): boolean {
@@ -144,6 +309,7 @@ export function useSystemExecutionOptions(
         writeCachedClaudeModelCatalog(catalogCacheKey, {
           models: response.models,
           selectedOnlyModels: response.selectedOnlyModels,
+          providers: response.providers,
         });
       }
       return response;

@@ -6,6 +6,8 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { findCachedProviderInfo } from "@/hooks/queries/system-queries";
 import {
   findLocalPathProjectSourceForHost,
   type EnvironmentStatus,
@@ -583,6 +585,7 @@ export function RootComposeView() {
     useRootComposeProjectId();
   const location = useLocation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const createThread = useCreateThread();
   const [rootComposeSectionId, setRootComposeSectionId] = useState<
     string | null
@@ -625,6 +628,9 @@ export function RootComposeView() {
               input: request.input,
               model: request.model,
               permissionMode: request.permissionMode,
+              providerSupportsFork:
+                findCachedProviderInfo(queryClient, forkSeed.providerId)
+                  ?.capabilities.supportsFork ?? false,
               reasoningLevel: request.reasoningLevel,
               serviceTier: request.serviceTier,
             });
@@ -645,6 +651,7 @@ export function RootComposeView() {
     [
       createThread,
       forkSeed,
+      queryClient,
       navigate,
       navigateToThreadAfterCreate,
       rootComposeSectionId,

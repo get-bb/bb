@@ -12,6 +12,7 @@ import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { threadDefaultExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
+import { findCachedProviderInfo } from "@/hooks/queries/system-queries";
 
 export interface UseForkThreadFromMessageArgs {
   /** Source thread the fork branches from. Null until the thread loads. */
@@ -35,7 +36,11 @@ export function useForkThreadFromMessage({
   return useCallback(async (target: ForkThreadFromMessageTarget) => {
     if (
       sourceThread === null ||
-      !isThreadForkable(sourceThread) ||
+      !isThreadForkable(
+        sourceThread,
+        findCachedProviderInfo(queryClient, sourceThread.providerId)
+          ?.capabilities.supportsFork ?? false,
+      ) ||
       forkInFlightRef.current
     ) {
       return;

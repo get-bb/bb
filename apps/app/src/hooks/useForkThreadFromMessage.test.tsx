@@ -30,6 +30,21 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
     ...actual,
     useQueryClient: () => ({
       fetchQuery: mocks.fetchQuery,
+      // findCachedProviderInfo scans cached execution-options responses for
+      // the source provider's fork capability.
+      getQueriesData: () => [
+        [
+          ["systemExecutionOptions"],
+          {
+            providers: [
+              {
+                id: "codex",
+                capabilities: { supportsFork: true },
+              },
+            ],
+          },
+        ],
+      ],
     }),
   };
 });
