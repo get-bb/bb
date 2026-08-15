@@ -1696,25 +1696,30 @@ describe("thread command dispatch", () => {
     const stale = await dispatchCommand(
       {
         type: "thread.stop",
+        intent: "interrupt",
         environmentId: "env-1",
         threadId: "thread-1",
         expectedTurnId: "turn-old",
       },
       harness.dispatchOptions(),
     );
-    expect(stale).toEqual({ outcome: "stale" });
+    expect(stale).toEqual({ providerCheckpointId: null, outcome: "stale" });
     expect(harness.runtimeState.stoppedThreadId).toBeUndefined();
 
     const applied = await dispatchCommand(
       {
         type: "thread.stop",
+        intent: "interrupt",
         environmentId: "env-1",
         threadId: "thread-1",
         expectedTurnId: "turn-newer",
       },
       harness.dispatchOptions(),
     );
-    expect(applied).toEqual({ outcome: "applied" });
+    expect(applied).toEqual({
+      providerCheckpointId: null,
+      outcome: "applied",
+    });
     expect(harness.runtimeState.stoppedThreadId).toBe("thread-1");
   });
 
@@ -1730,6 +1735,7 @@ describe("thread command dispatch", () => {
     });
     harness.threadControls.setActiveTurn("thread-1", "turn-1");
     harness.runtime.stopThread = async () => ({
+      providerCheckpointId: null,
       outcome: "stale",
       activeTurnId: "turn-newer",
     });
@@ -1738,13 +1744,14 @@ describe("thread command dispatch", () => {
       dispatchCommand(
         {
           type: "thread.stop",
+          intent: "interrupt",
           environmentId: "env-1",
           threadId: "thread-1",
           expectedTurnId: "turn-1",
         },
         harness.dispatchOptions(),
       ),
-    ).resolves.toEqual({ outcome: "stale" });
+    ).resolves.toEqual({ providerCheckpointId: null, outcome: "stale" });
     expect(harness.runtimeState.stoppedThreadId).toBeUndefined();
   });
 
