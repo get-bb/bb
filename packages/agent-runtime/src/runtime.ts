@@ -244,6 +244,13 @@ interface RequireProviderRequestPlanArgs {
   providerId: string;
 }
 
+/**
+ * Codex-shaped recovery signals. These survive graduation deliberately: the
+ * codex bridge passes provider error text and `errorInfo.category` through
+ * verbatim precisely so these runtime tolerances keep matching (see the
+ * comments beside SESSION_NOT_RESTORABLE and the rename path in
+ * codex/bridge/bridge.ts). Do not delete them as "legacy adapter" residue.
+ */
 const CODEX_PROVIDER_ID = "codex";
 const CODEX_THREAD_PROCESS_KEY_PREFIX = `${CODEX_PROVIDER_ID}\0thread:`;
 const THREAD_CREATION_REQUEST_TIMEOUT_MS = 2 * 60_000;
@@ -437,6 +444,14 @@ function createAgentRuntimeInternal(
     workspacePath: options.workspacePath,
   });
 
+  /**
+   * Codex runs one provider process per thread. The codex bridge now owns a
+   * per-thread `codex app-server` child internally, so this outer scoping is
+   * redundant for isolation — but it is still load-bearing: the account
+   * restart below and the pre-experiment idle reap both key off
+   * `isThreadScopedCodexProcess`. Collapsing it means routing those through
+   * `thread/stop {release}` + resume, which is a refactor, not a deletion.
+   */
   function resolveProviderProcessKey(
     args: ResolveProviderProcessKeyArgs,
   ): string {
@@ -1240,9 +1255,9 @@ function createAgentRuntimeInternal(
     }
 
     // The runtime does NOT interpret notification content — it delegates
-    // entirely to the adapter's translateEvent. Each adapter knows its
-    // own wire format (codex sends direct notifications, bridges wrap
-    // SDK messages in sdk/message envelopes, etc.).
+    // entirely to the adapter's translateEvent. Every provider now speaks the
+    // canonical bridge protocol, so this is always a bb/* envelope the generic
+    // adapter unwraps; the branch stays provider-agnostic regardless.
     handleProviderNotification({
       parsed: parsedLine.parsed,
       proc,
