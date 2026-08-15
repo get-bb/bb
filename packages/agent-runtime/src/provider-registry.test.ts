@@ -1,9 +1,6 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import {
-  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-  turnScope,
-} from "@bb/domain";
+import { DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG } from "@bb/domain";
 import { createProviderForId } from "./provider-registry.js";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 
@@ -82,15 +79,14 @@ describe("provider registry", () => {
     });
   });
 
-  it.each([
-    { providerId: "claude-code", prefix: "claude-code" },
-    { providerId: "acp-cursor", prefix: "acp-" },
-  ])(
+  // Both providers are graduated, so neither needs an enabled prefix to reach
+  // the canonical bridge.
+  it.each([{ providerId: "claude-code" }, { providerId: "acp-cursor" }])(
     "carries environment write roots to the $providerId bridge via provider options",
-    ({ providerId, prefix }) => {
+    ({ providerId }) => {
       const provider = createProviderForId(providerId, {
         additionalWorkspaceWriteRoots: ["/extra-root"],
-        bridgeProtocolProviderPrefixes: [prefix],
+        bridgeProtocolProviderPrefixes: [],
       });
       const plan = provider.buildCommandPlan({
         type: "thread/start",
@@ -119,6 +115,21 @@ describe("provider registry", () => {
       });
     },
   );
+
+  // The deleted legacy adapter was the only pin on what claude-code
+  // advertises. The registry now hands the catalog entry straight to the
+  // generic bridge adapter, and the server reads these to decide which
+  // commands it may even send, so an accidental flip is silent.
+  it("advertises the claude-code capability set on the canonical adapter", () => {
+    expect(createProviderForId("claude-code").capabilities).toEqual({
+      supportsArchive: false,
+      supportsRename: false,
+      supportsServiceTier: false,
+      supportsUserQuestion: true,
+      supportsFork: true,
+      supportedPermissionModes: ["accept-edits", "auto", "full"],
+    });
+  });
 
   it("creates claude-code provider with expected process config", () => {
     const provider = createProviderForId("claude-code");
@@ -183,25 +194,11 @@ describe("provider registry", () => {
     expect(acpProvider.process.env).toEqual(bridgeNodeEnv);
   });
 
-  // Only the remaining legacy adapters mint bb turn ids in-process; graduated
-  // providers mint them in their bridge from the prefix on the wire.
-  it("passes the configured turn id prefix to legacy adapters", () => {
-    const claudeProvider = createProviderForId("claude-code", {
-      additionalWorkspaceWriteRoots: [],
-      turnIdPrefix: "turn_runtime_",
-    });
-
-    expect(
-      claudeProvider.translateEvent({ type: "assistant", message: {} }),
-    ).toContainEqual(
-      expect.objectContaining({
-        type: "turn/started",
-        threadId: "",
-        providerThreadId: "",
-        scope: turnScope("turn_runtime_1"),
-      }),
-    );
-  });
+  // The claude-code legacy adapter was the only in-process consumer of the
+  // runtime's turn id prefix; graduated providers mint bb turn ids in their
+  // bridge from the prefix on the wire. `shared/turn-state.test.ts` covers the
+  // minting itself, and `claude-code/event-translation.test.ts` covers the
+  // translator honoring the prefix.
 
   it("creates pi provider with expected process config", () => {
     const provider = createProviderForId("pi");
@@ -332,6 +329,17 @@ describe("provider registry", () => {
         },
       },
     });
+  });
+
+  it("routes claude-code canonically without an enabled bridge prefix", () => {
+    const provider = createProviderForId("claude-code", {
+      additionalWorkspaceWriteRoots: [],
+      bridgeProtocolProviderPrefixes: [],
+    });
+
+    expect(provider.process.args.at(-1)).toMatch(
+      /agent-runtime\/src\/claude-code\/bridge\/bridge\.ts$/,
+    );
   });
 
   it("routes pi canonically without an enabled bridge prefix", () => {

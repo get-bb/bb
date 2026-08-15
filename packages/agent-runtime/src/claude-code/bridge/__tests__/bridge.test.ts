@@ -4108,3 +4108,91 @@ describe("canonical skills/configure", () => {
     }
   });
 });
+
+describe("canonical model context-window hint", () => {
+  const canonicalOptions = {
+    permissionMode: "full",
+    permissionScope: "full",
+    approvalReviewer: null,
+    permissionEscalation: null,
+  };
+
+  // Claude reports `modelUsage.contextWindow` on some results and omits it on
+  // others. The legacy adapter seeded a model-derived fallback on every
+  // command plan that carried a model; the canonical bridge has no command
+  // plan, so it seeds the translator at session construction instead. Without
+  // that seeding, capacity read as unknown for every result Claude sent
+  // without the field — notably the 1M `[1m]` aliases.
+  it("seeds the model-derived context window for canonical sessions", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      bridge.sendRequest(1, "thread/start", {
+        threadId: "thread-context-hint",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: { ...canonicalOptions, model: "claude-opus-4-7[1m]" },
+      });
+      await bridge.waitForResponse(1);
+
+      bridge.sendRequest(2, "turn/start", {
+        threadId: "thread-context-hint",
+        providerThreadId: "thread-context-hint",
+        clientRequestId: "creq_23456789ab",
+        input: [{ type: "text", text: "hello", mentions: [] }],
+        options: { ...canonicalOptions, model: "claude-opus-4-7[1m]" },
+      });
+      await bridge.waitForResponse(2);
+
+      // A result with token usage but no `modelUsage`: the only capacity
+      // source left is the seeded hint.
+      queries[0]?.emit({
+        type: "result",
+        subtype: "success",
+        duration_ms: 1,
+        duration_api_ms: 1,
+        is_error: false,
+        num_turns: 1,
+        result: "ok",
+        stop_reason: "end_turn",
+        total_cost_usd: 0,
+        usage: {
+          input_tokens: 100,
+          output_tokens: 20,
+          cache_creation_input_tokens: 30,
+          cache_read_input_tokens: 40,
+        },
+        session_id: "session-1",
+      } as unknown as SDKMessage);
+      await bridge.flushWork();
+
+      const contextWindowEvents = bridge.messages.flatMap((message) => {
+        if (message.method !== "thread/event") {
+          return [];
+        }
+        const params = message.params;
+        if (params === null || typeof params !== "object") {
+          return [];
+        }
+        // Freeform wire payload: the ThreadEvent the bridge just serialized.
+        const event = (params as { event?: { type?: string } }).event;
+        return event?.type === "thread/contextWindowUsage/updated"
+          ? [event as unknown as { contextWindowUsage: JsonValue }]
+          : [];
+      });
+
+      expect(contextWindowEvents.at(-1)?.contextWindowUsage).toMatchObject({
+        modelContextWindow: 1_000_000,
+      });
+    } finally {
+      queries[0]?.finish();
+      bridge.restore();
+    }
+  });
+});

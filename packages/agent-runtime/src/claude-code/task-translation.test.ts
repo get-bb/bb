@@ -1,18 +1,83 @@
+/**
+ * Claude background-task invariants — task items, open-work tracking, settle
+ * on session replace / thread detach, and the turn-completion rules that
+ * decide which kinds of background work hold a bb turn open.
+ *
+ * The legacy claude-code adapter is gone; these invariants now live on the
+ * bridge-shared `createClaudeEventTranslator`, which is what the canonical
+ * bridge runs every session-scoped Claude notification through. The tests
+ * construct that same translator directly.
+ */
+
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-  threadScope,
-} from "@bb/domain";
+import { threadScope, turnScope } from "@bb/domain";
 import type {
   ThreadEvent,
   ThreadEventBackgroundTaskItem,
   ThreadEventItem,
 } from "@bb/domain";
-import { createClaudeCodeProviderAdapter } from "./adapter.js";
-import { CLAUDE_TASK_PROGRESS_THROTTLE_MS } from "./task-translation.js";
+import {
+  createClaudeEventTranslator,
+  type ClaudeEventTranslator,
+} from "./event-translation.js";
+import {
+  buildInterruptedClaudeTaskEvents,
+  hasOpenClaudeBackgroundTasks,
+  CLAUDE_TASK_PROGRESS_THROTTLE_MS,
+} from "./task-translation.js";
+
+function createTranslator(): ClaudeEventTranslator {
+  return createClaudeEventTranslator({
+    providerId: "claude-code",
+    // The canonical bridge injects per-session entropy here (#1224); these
+    // fixed prefixes reproduce the legacy id scheme so the assertions stay
+    // readable.
+    turnIdPrefix: "turn-",
+    itemIdPrefix: "claude-",
+    synthesizeItemStarted: true,
+  });
+}
+
+/**
+ * The open-work rule the bridge applies: unsettled background tasks — visible
+ * or opaque (monitors) — keep the thread busy.
+ */
+function hasOpenThreadWork(
+  translator: ClaudeEventTranslator,
+  threadId: string,
+): boolean {
+  const state = translator.turnState.get({ threadId });
+  return (
+    state !== null &&
+    (hasOpenClaudeBackgroundTasks(state.tasksById) ||
+      state.opaqueTaskIds.size > 0)
+  );
+}
+
+/**
+ * The shared session-replace / thread-detach settle the bridge performs:
+ * replacing or losing the CLI session kills its background tasks with it, so
+ * every still-open task settles before the session/replaced (or detach)
+ * announcement.
+ */
+function settleOpenClaudeTasks(
+  translator: ClaudeEventTranslator,
+  threadId: string,
+): ThreadEvent[] {
+  const state = translator.turnState.get({ threadId });
+  if (state === null) {
+    return [];
+  }
+  const events = buildInterruptedClaudeTaskEvents({
+    tasks: state.tasksById,
+    threadId,
+  });
+  state.opaqueTaskIds.clear();
+  return events;
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = resolve(__dirname, "../__fixtures__/claude-code");
@@ -90,7 +155,7 @@ describe("claude-code background task translation", () => {
   }
 
   it("translates a captured workflow session into one started/progress/completed lifecycle", () => {
-    const adapter = createClaudeCodeProviderAdapter();
+    const translator = createTranslator();
     const allEvents: ThreadEvent[] = [];
 
     for (const message of loadSessionFixture("workflow-mini.ndjson")) {
@@ -98,7 +163,9 @@ describe("claude-code background task translation", () => {
       // so every progress message is emission-eligible.
       advanceClock(CLAUDE_TASK_PROGRESS_THROTTLE_MS + 1);
       allEvents.push(
-        ...adapter.translateEvent(message, { threadId: "bb-thread-1" }),
+        ...translator.translateClaudeEvent(message, {
+          threadId: "bb-thread-1",
+        }),
       );
     }
 
@@ -161,14 +228,17 @@ describe("claude-code background task translation", () => {
   });
 
   it("folds delta batches: agents from earlier batches survive later partial batches", () => {
-    const adapter = createClaudeCodeProviderAdapter();
+    const translator = createTranslator();
     const context = { threadId: "bb-thread-1" };
 
-    adapter.translateEvent(loadFixture("task-started-workflow.json"), context);
+    translator.translateClaudeEvent(
+      loadFixture("task-started-workflow.json"),
+      context,
+    );
 
     advanceClock(CLAUDE_TASK_PROGRESS_THROTTLE_MS + 1);
     // Batch 1: phases seeded + agents 1 and 2.
-    const batch1 = adapter.translateEvent(
+    const batch1 = translator.translateClaudeEvent(
       loadFixture("task-progress-workflow-batch1.json"),
       context,
     );
@@ -177,7 +247,7 @@ describe("claude-code background task translation", () => {
 
     advanceClock(CLAUDE_TASK_PROGRESS_THROTTLE_MS + 1);
     // Batch 2: only agent 1's progress record — agent 2 must survive the fold.
-    const batch2 = adapter.translateEvent(
+    const batch2 = translator.translateClaudeEvent(
       loadFixture("task-progress-workflow-delta.json"),
       context,
     );
@@ -201,14 +271,17 @@ describe("claude-code background task translation", () => {
   });
 
   it("throttles progress events but flushes status transitions immediately", () => {
-    const adapter = createClaudeCodeProviderAdapter();
+    const translator = createTranslator();
     const context = { threadId: "bb-thread-1" };
 
-    adapter.translateEvent(loadFixture("task-started-workflow.json"), context);
+    translator.translateClaudeEvent(
+      loadFixture("task-started-workflow.json"),
+      context,
+    );
 
     // Within the throttle window: folded but not emitted.
     advanceClock(100);
-    const throttled = adapter.translateEvent(
+    const throttled = translator.translateClaudeEvent(
       loadFixture("task-progress-workflow-batch1.json"),
       context,
     );
@@ -217,7 +290,7 @@ describe("claude-code background task translation", () => {
     // Still within the window, but a status transition flushes immediately —
     // and the snapshot carries the previously folded (unemitted) records.
     advanceClock(100);
-    const updated = adapter.translateEvent(
+    const updated = translator.translateClaudeEvent(
       {
         type: "system",
         subtype: "task_updated",
@@ -237,7 +310,7 @@ describe("claude-code background task translation", () => {
 
     // After the window, progress emits again.
     advanceClock(CLAUDE_TASK_PROGRESS_THROTTLE_MS + 1);
-    const flushed = adapter.translateEvent(
+    const flushed = translator.translateClaudeEvent(
       loadFixture("task-progress-workflow-delta.json"),
       context,
     );
@@ -245,11 +318,14 @@ describe("claude-code background task translation", () => {
   });
 
   it("maps killed to a failed item and stopped to an interrupted item", () => {
-    const adapter = createClaudeCodeProviderAdapter();
+    const translator = createTranslator();
     const context = { threadId: "bb-thread-1" };
 
-    adapter.translateEvent(loadFixture("task-started-workflow.json"), context);
-    const killed = adapter.translateEvent(
+    translator.translateClaudeEvent(
+      loadFixture("task-started-workflow.json"),
+      context,
+    );
+    const killed = translator.translateClaudeEvent(
       {
         type: "system",
         subtype: "task_updated",
@@ -265,7 +341,7 @@ describe("claude-code background task translation", () => {
     expect(killedItem.taskStatus).toBe("killed");
     expect(killedItem.error).toBe("killed by user");
 
-    const stopped = adapter.translateEvent(
+    const stopped = translator.translateClaudeEvent(
       {
         type: "system",
         subtype: "task_notification",
@@ -288,13 +364,15 @@ describe("claude-code background task translation", () => {
   });
 
   it("materializes subagent tasks while preserving the delegation tool call", () => {
-    const adapter = createClaudeCodeProviderAdapter();
+    const translator = createTranslator();
     const allEvents: ThreadEvent[] = [];
 
     for (const message of loadSessionFixture("subagent-foreground.ndjson")) {
       advanceClock(CLAUDE_TASK_PROGRESS_THROTTLE_MS + 1);
       allEvents.push(
-        ...adapter.translateEvent(message, { threadId: "bb-thread-1" }),
+        ...translator.translateClaudeEvent(message, {
+          threadId: "bb-thread-1",
+        }),
       );
     }
 
@@ -328,8 +406,8 @@ describe("claude-code background task translation", () => {
   });
 
   it("ignores progress for unknown task ids (daemon restarted mid-run)", () => {
-    const adapter = createClaudeCodeProviderAdapter();
-    const events = adapter.translateEvent(
+    const translator = createTranslator();
+    const events = translator.translateClaudeEvent(
       loadFixture("task-progress-workflow-batch1.json"),
       { threadId: "bb-thread-1" },
     );
@@ -337,10 +415,10 @@ describe("claude-code background task translation", () => {
   });
 
   it("tracks monitors as open work without timeline rows", () => {
-    const adapter = createClaudeCodeProviderAdapter();
+    const translator = createTranslator();
     const context = { threadId: "bb-thread-monitor" };
 
-    const started = adapter.translateEvent(
+    const started = translator.translateClaudeEvent(
       {
         type: "system",
         subtype: "task_started",
@@ -354,14 +432,9 @@ describe("claude-code background task translation", () => {
     );
 
     expect(started).toEqual([]);
-    expect(
-      adapter.hasOpenThreadWork?.({
-        providerThreadId: "s-monitor-1",
-        threadId: context.threadId,
-      }),
-    ).toBe(true);
+    expect(hasOpenThreadWork(translator, context.threadId)).toBe(true);
 
-    const completed = adapter.translateEvent(
+    const completed = translator.translateClaudeEvent(
       {
         type: "system",
         subtype: "task_notification",
@@ -376,17 +449,12 @@ describe("claude-code background task translation", () => {
     );
 
     expect(completed).toEqual([]);
-    expect(
-      adapter.hasOpenThreadWork?.({
-        providerThreadId: "s-monitor-1",
-        threadId: context.threadId,
-      }),
-    ).toBe(false);
+    expect(hasOpenThreadWork(translator, context.threadId)).toBe(false);
   });
 
   it("preserves skip_transcript on the item", () => {
-    const adapter = createClaudeCodeProviderAdapter();
-    const started = adapter.translateEvent(
+    const translator = createTranslator();
+    const started = translator.translateClaudeEvent(
       {
         ...loadFixture("task-started-workflow.json"),
         skip_transcript: true,
@@ -398,28 +466,15 @@ describe("claude-code background task translation", () => {
   });
 
   it("settles open tasks as interrupted when the thread resumes", () => {
-    const adapter = createClaudeCodeProviderAdapter();
+    const translator = createTranslator();
     const context = { threadId: "bb-thread-1" };
 
-    adapter.translateEvent(loadFixture("task-started-workflow.json"), context);
+    translator.translateClaudeEvent(
+      loadFixture("task-started-workflow.json"),
+      context,
+    );
 
-    const events = adapter.translateAcceptedCommand({
-      command: {
-        type: "thread/resume",
-        threadId: "bb-thread-1",
-        cwd: "/tmp/bb-fixture/workspace",
-        providerThreadId: "claude-session-1",
-        options: {
-          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-          workflowsEnabled: false,
-          permissionMode: "full",
-          permissionScope: "full",
-          approvalReviewer: null,
-          permissionEscalation: null,
-        },
-        instructionMode: "append",
-      },
-    });
+    const events = settleOpenClaudeTasks(translator, "bb-thread-1");
 
     const completed = events.filter(
       (event) => event.type === "item/backgroundTask/completed",
@@ -434,37 +489,24 @@ describe("claude-code background task translation", () => {
     expect(completed[0]?.threadId).toBe("bb-thread-1");
 
     // Idempotent: a second resume has nothing left to settle.
-    const repeat = adapter.translateAcceptedCommand({
-      command: {
-        type: "thread/resume",
-        threadId: "bb-thread-1",
-        cwd: "/tmp/bb-fixture/workspace",
-        providerThreadId: "claude-session-1",
-        options: {
-          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-          workflowsEnabled: false,
-          permissionMode: "full",
-          permissionScope: "full",
-          approvalReviewer: null,
-          permissionEscalation: null,
-        },
-        instructionMode: "append",
-      },
-    });
+    const repeat = settleOpenClaudeTasks(translator, "bb-thread-1");
     expect(
       repeat.filter((event) => event.type === "item/backgroundTask/completed"),
     ).toHaveLength(0);
   });
 
   it("settling preserves an already-completed status reported before the terminal notification", () => {
-    const adapter = createClaudeCodeProviderAdapter();
+    const translator = createTranslator();
     const context = { threadId: "bb-thread-1" };
 
-    adapter.translateEvent(loadFixture("task-started-workflow.json"), context);
+    translator.translateClaudeEvent(
+      loadFixture("task-started-workflow.json"),
+      context,
+    );
     // task_updated may report "completed" minutes before task_notification
     // arrives; a settle inside that window must not flip the workflow to
     // interrupted.
-    adapter.translateEvent(
+    translator.translateClaudeEvent(
       {
         type: "system",
         subtype: "task_updated",
@@ -476,23 +518,7 @@ describe("claude-code background task translation", () => {
       context,
     );
 
-    const events = adapter.translateAcceptedCommand({
-      command: {
-        type: "thread/resume",
-        threadId: "bb-thread-1",
-        cwd: "/tmp/bb-fixture/workspace",
-        providerThreadId: "claude-session-1",
-        options: {
-          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-          workflowsEnabled: false,
-          permissionMode: "full",
-          permissionScope: "full",
-          approvalReviewer: null,
-          permissionEscalation: null,
-        },
-        instructionMode: "append",
-      },
-    });
+    const events = settleOpenClaudeTasks(translator, "bb-thread-1");
 
     const completed = events.filter(
       (event) => event.type === "item/backgroundTask/completed",
@@ -506,13 +532,15 @@ describe("claude-code background task translation", () => {
   });
 
   it("settles open tasks as interrupted when the thread detaches (process exit)", () => {
-    const adapter = createClaudeCodeProviderAdapter();
+    const translator = createTranslator();
     const context = { threadId: "bb-thread-1" };
 
-    adapter.translateEvent(loadFixture("task-started-workflow.json"), context);
+    translator.translateClaudeEvent(
+      loadFixture("task-started-workflow.json"),
+      context,
+    );
 
-    const events =
-      adapter.buildThreadDetachedEvents?.({ threadId: "bb-thread-1" }) ?? [];
+    const events = settleOpenClaudeTasks(translator, "bb-thread-1");
     const completed = events.filter(
       (event) => event.type === "item/backgroundTask/completed",
     );
@@ -520,31 +548,32 @@ describe("claude-code background task translation", () => {
     expect(backgroundTaskItem(completed[0]!).status).toBe("interrupted");
 
     // Threads without state produce nothing.
-    expect(
-      adapter.buildThreadDetachedEvents?.({ threadId: "bb-thread-other" }),
-    ).toEqual([]);
+    expect(settleOpenClaudeTasks(translator, "bb-thread-other")).toEqual([]);
   });
 
   it("preserves the parent link when a settled Claude task restarts", () => {
-    const adapter = createClaudeCodeProviderAdapter();
+    const translator = createTranslator();
     const context = { threadId: "bb-thread-1" };
 
-    adapter.translateEvent(loadFixture("task-started-workflow.json"), context);
-    adapter.translateEvent(
+    translator.translateClaudeEvent(
+      loadFixture("task-started-workflow.json"),
+      context,
+    );
+    translator.translateClaudeEvent(
       loadFixture("task-notification-workflow.json"),
       context,
     );
 
     // Late progress for the settled task: dropped.
     advanceClock(CLAUDE_TASK_PROGRESS_THROTTLE_MS + 1);
-    const late = adapter.translateEvent(
+    const late = translator.translateClaudeEvent(
       loadFixture("task-progress-workflow-batch1.json"),
       context,
     );
     expect(collectTaskEvents(late)).toHaveLength(0);
 
     // A fresh task_started for the same id starts a new item generation.
-    const reopened = adapter.translateEvent(
+    const reopened = translator.translateClaudeEvent(
       {
         ...loadFixture("task-started-workflow.json"),
         tool_use_id: "toolu_send_message_1",
@@ -562,10 +591,10 @@ describe("claude-code background task translation", () => {
   });
 
   it("materializes a backgrounded shell command (task_type local_bash)", () => {
-    const adapter = createClaudeCodeProviderAdapter();
+    const translator = createTranslator();
     const context = { threadId: "bb-thread-1" };
 
-    const started = adapter.translateEvent(
+    const started = translator.translateClaudeEvent(
       {
         type: "system",
         subtype: "task_started",
@@ -597,7 +626,7 @@ describe("claude-code background task translation", () => {
 
     // The terminal notification settles the row as completed with the provider
     // summary (which embeds the exit code).
-    const notified = adapter.translateEvent(
+    const notified = translator.translateClaudeEvent(
       {
         type: "system",
         subtype: "task_notification",
@@ -627,8 +656,8 @@ describe("claude-code background task translation", () => {
   });
 
   it("materializes background subagents with legacy task_type local_subagent", () => {
-    const adapter = createClaudeCodeProviderAdapter();
-    const events = adapter.translateEvent(
+    const translator = createTranslator();
+    const events = translator.translateClaudeEvent(
       {
         type: "system",
         subtype: "task_started",
@@ -653,5 +682,331 @@ describe("claude-code background task translation", () => {
       taskStatus: "running",
       parentToolCallId: "toolu_sub_1",
     });
+  });
+
+  // -- turn completion vs. open background work -----------------------------
+
+  it("keeps one logical turn open across Claude background-agent reinvocations", () => {
+    const translator = createTranslator();
+    const context = { threadId: "bb-thread-1" };
+
+    translator.translateClaudeEvent(
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "I will wait for the agent." }],
+        },
+        session_id: "sess-1",
+      },
+      context,
+    );
+    translator.translateClaudeEvent(
+      loadFixture("task-started-subagent.json"),
+      context,
+    );
+
+    const intermediateResult = translator.translateClaudeEvent(
+      {
+        type: "result",
+        subtype: "end_turn",
+        session_id: "sess-1",
+      },
+      context,
+    );
+    expect(intermediateResult).not.toContainEqual(
+      expect.objectContaining({ type: "turn/completed" }),
+    );
+
+    translator.translateClaudeEvent(
+      loadFixture("task-notification-subagent.json"),
+      context,
+    );
+    const resumed = translator.translateClaudeEvent(
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "The agent finished." }],
+        },
+        session_id: "sess-1",
+      },
+      context,
+    );
+    expect(resumed).not.toContainEqual(
+      expect.objectContaining({ type: "turn/started" }),
+    );
+    expect(resumed).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        scope: turnScope("turn-1"),
+        item: expect.objectContaining({
+          type: "agentMessage",
+          text: "The agent finished.",
+        }),
+      }),
+    );
+
+    const finalResult = translator.translateClaudeEvent(
+      {
+        type: "result",
+        subtype: "end_turn",
+        session_id: "sess-1",
+      },
+      context,
+    );
+    expect(finalResult).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        status: "completed",
+      }),
+    );
+  });
+
+  it("treats legacy subagents as completion-blocking", () => {
+    const blockingTasks = [
+      {
+        type: "system",
+        subtype: "task_started",
+        task_id: "subagent-1",
+        tool_use_id: "tool-subagent-1",
+        description: "Legacy subagent",
+        task_type: "local_subagent",
+        subagent_type: "Explore",
+        uuid: "uuid-subagent-1",
+        session_id: "sess-1",
+      },
+    ];
+
+    for (const [index, task] of blockingTasks.entries()) {
+      const translator = createTranslator();
+      const context = { threadId: `bb-thread-${index}` };
+      translator.translateClaudeEvent(
+        {
+          type: "assistant",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "waiting" }],
+          },
+          session_id: "sess-1",
+        },
+        context,
+      );
+      translator.translateClaudeEvent(task, context);
+
+      const events = translator.translateClaudeEvent(
+        {
+          type: "result",
+          subtype: "end_turn",
+          session_id: "sess-1",
+        },
+        context,
+      );
+      expect(events).not.toContainEqual(
+        expect.objectContaining({ type: "turn/completed" }),
+      );
+    }
+  });
+
+  it("does not let detached or ambient tasks block turn completion", () => {
+    for (const task of [
+      {
+        task_id: "bash-1",
+        task_type: "local_bash",
+        description: "Run a detached server",
+      },
+      {
+        task_id: "ambient-agent-1",
+        task_type: "local_agent",
+        description: "Ambient agent",
+        skip_transcript: true,
+      },
+    ]) {
+      const translator = createTranslator();
+      const context = { threadId: `bb-thread-${task.task_id}` };
+      translator.translateClaudeEvent(
+        {
+          type: "assistant",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "done" }],
+          },
+          session_id: "sess-1",
+        },
+        context,
+      );
+      translator.translateClaudeEvent(
+        {
+          type: "system",
+          subtype: "task_started",
+          tool_use_id: `tool-${task.task_id}`,
+          uuid: `uuid-${task.task_id}`,
+          session_id: "sess-1",
+          ...task,
+        },
+        context,
+      );
+
+      const events = translator.translateClaudeEvent(
+        {
+          type: "result",
+          subtype: "end_turn",
+          session_id: "sess-1",
+        },
+        context,
+      );
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "turn/completed",
+          scope: turnScope("turn-1"),
+          status: "completed",
+        }),
+      );
+    }
+  });
+
+  it("completes the turn while a workflow keeps running, leaving the task open", () => {
+    const translator = createTranslator();
+    const context = { threadId: "bb-thread-workflow" };
+    translator.translateClaudeEvent(
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "started the workflow" }],
+        },
+        session_id: "sess-1",
+      },
+      context,
+    );
+    const started = translator.translateClaudeEvent(
+      loadFixture("task-started-workflow.json"),
+      context,
+    );
+
+    const events = translator.translateClaudeEvent(
+      {
+        type: "result",
+        subtype: "end_turn",
+        session_id: "sess-1",
+      },
+      context,
+    );
+
+    // The turn ends so the thread goes idle and the composer sends instead of
+    // queueing, while the still-pending task keeps driving the workflow
+    // indicators.
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        status: "completed",
+      }),
+    );
+    expect(started).toContainEqual(
+      expect.objectContaining({
+        type: "item/started",
+        item: expect.objectContaining({
+          type: "backgroundTask",
+          taskType: "local_workflow",
+          status: "pending",
+        }),
+      }),
+    );
+  });
+
+  it("opens a fresh turn when a settled workflow reinvokes the model", () => {
+    const translator = createTranslator();
+    const context = { threadId: "bb-thread-workflow-settle" };
+    translator.translateClaudeEvent(
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "started the workflow" }],
+        },
+        session_id: "sess-1",
+      },
+      context,
+    );
+    translator.translateClaudeEvent(
+      loadFixture("task-started-workflow.json"),
+      context,
+    );
+    translator.translateClaudeEvent(
+      { type: "result", subtype: "end_turn", session_id: "sess-1" },
+      context,
+    );
+
+    translator.translateClaudeEvent(
+      loadFixture("task-notification-workflow.json"),
+      context,
+    );
+    const reinvoked = translator.translateClaudeEvent(
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "The workflow finished." }],
+        },
+        session_id: "sess-1",
+      },
+      context,
+    );
+
+    // The first turn already closed, so the workflow's follow-up work gets its
+    // own turn instead of reopening the settled one.
+    expect(reinvoked).toContainEqual(
+      expect.objectContaining({
+        type: "turn/started",
+        scope: turnScope("turn-2"),
+      }),
+    );
+    expect(
+      translator.translateClaudeEvent(
+        { type: "result", subtype: "end_turn", session_id: "sess-1" },
+        context,
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-2"),
+        status: "completed",
+      }),
+    );
+  });
+
+  it("closes a failed result even while a background agent is open", () => {
+    const translator = createTranslator();
+    const context = { threadId: "bb-thread-1" };
+    translator.translateClaudeEvent(
+      {
+        type: "assistant",
+        message: { role: "assistant", content: [{ type: "text", text: "x" }] },
+        session_id: "sess-1",
+      },
+      context,
+    );
+    translator.translateClaudeEvent(
+      loadFixture("task-started-subagent.json"),
+      context,
+    );
+
+    const events = translator.translateClaudeEvent(
+      {
+        type: "result",
+        subtype: "error",
+        session_id: "sess-1",
+      },
+      context,
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        status: "failed",
+      }),
+    );
   });
 });

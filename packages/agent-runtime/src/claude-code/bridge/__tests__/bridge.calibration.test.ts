@@ -13,37 +13,30 @@ import type {
   PromptInput,
   ThreadEvent,
 } from "@bb/domain";
-import { DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG } from "@bb/domain";
 import { BRIDGE_INBOUND_REQUEST_METHODS } from "@bb/provider-bridge-protocol";
 
 /**
- * Claude Code dual-path calibration.
+ * Claude Code scripted-session golden.
  *
  * One scripted Claude session — start, a turn carrying a delta-first assistant
  * message, a tool_use with its tool_result and a thinking block, a permission
  * approval and a steer while that turn is open, a second turn, a resume, a
- * post-resume turn, then a release stop — is replayed twice through the same
- * bridge module: once in the legacy dialect (whose raw `sdk/message`
- * notifications are fed to the legacy adapter, exactly as the runtime does
- * today) and once in the canonical dialect (whose `thread/event` notifications
- * are already ThreadEvents). One scripted SDK query drives both legs, so the
- * provider output is byte-identical and any diff is a translation or protocol
- * difference rather than fixture drift.
+ * post-resume turn, then a release stop — is replayed through the canonical
+ * bridge and the resulting ThreadEvent stream is pinned as a golden.
  *
- * The legacy leg also models what the *runtime* contributes: every accepted
- * command is fed back through `translateAcceptedCommand` right after its
- * response and before the notifications that follow it, exactly as
- * `emitAcceptedCommandEvents` does in runtime.ts. Leaving that out would
- * manufacture a `turn/input/accepted` divergence the shipped runtime does not
- * have.
+ * This was a dual-path calibration until the legacy adapter graduated: it
+ * replayed the same script through the adapter as well and diffed the two
+ * streams. With one path left there is nothing to calibrate, but the scripted
+ * session is the only end-to-end assertion over a *whole* claude session
+ * shape — turn boundaries, item identity across delta-first opens, the
+ * tool_use/tool_result pair, finalized reasoning, usage, every settlement, the
+ * four turn/input/accepted acks, and a resume in the middle — so the golden
+ * stays. Changing the list below is a decision, not an accident.
  *
  * Approvals travel on the JSON-RPC request channel rather than the event
- * stream, so they are compared separately from the diff.
- *
- * The diff must stay empty apart from the documented list at the bottom. That
- * list is the deliberate canonical-vs-legacy delta; changing it is a decision,
- * not an accident.
+ * stream, so they are asserted separately from the golden.
  */
+
 
 const { forkSessionMock, queryMock } = vi.hoisted(() => ({
   forkSessionMock: vi.fn(),
@@ -57,9 +50,6 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   tool: vi.fn((_name, _desc, _schema, handler) => handler),
 }));
 
-import { createClaudeCodeProviderAdapter } from "../../adapter.js";
-import { CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD } from "../../interactive-contract.js";
-import type { AdapterCommand } from "../../../provider-adapter.js";
 import { handleLine } from "../bridge.js";
 import {
   createBridgeJsonRpcTestHarness,
@@ -67,7 +57,6 @@ import {
 } from "../../../test/bridge-json-rpc-test-helpers.js";
 import {
   describeCalibrationEvents,
-  diffCalibrationStreams,
   normalizeCalibrationEvents,
 } from "../../../test/calibration-diff.js";
 
@@ -298,35 +287,7 @@ const CANONICAL_OPTIONS = {
   instructions: "test",
 } as const;
 
-/**
- * The legacy dialect's field bag for that same policy: the canonical session
- * options map onto exactly these values
- * (`buildClaudeCanonicalSessionParams`), so both legs construct an identical
- * provider session.
- */
-const LEGACY_SESSION_FIELDS = {
-  workflowsEnabled: false,
-  claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-  baseInstructions: "test",
-  instructionMode: "append",
-  permissionEscalation: "ask",
-  permissionMode: "auto",
-  approvedPlanPermissionMode: "auto",
-  permissionScope: "workspace",
-} as const;
-
-/** The legacy runtime's execution context for accepted-command acks. */
-const LEGACY_EXECUTION_CONTEXT = {
-  claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-  permissionMode: "auto",
-  permissionScope: "workspace",
-  approvalReviewer: "automatic",
-  permissionEscalation: "ask",
-  workflowsEnabled: false,
-  instructions: "test",
-} as const;
-
-/** The user's answer to the forwarded approval, identical on both paths. */
+/** The user's answer to the forwarded approval. */
 const APPROVAL_RESOLUTION: PendingInteractionResolution = {
   decision: "allow_once",
   grantedPermissions: null,
@@ -341,9 +302,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 interface ApprovalExchange {
-  /** The payload the path handed the runtime for rendering. */
+  /** The payload the bridge handed the runtime for rendering. */
   payload: unknown;
-  /** The bb turn the path correlated the approval with. */
+  /** The bb turn the bridge correlated the approval with. */
   turnId: string | null;
   /** How the request settled inside the provider process. */
   result: PermissionResult;
@@ -356,80 +317,35 @@ interface ReplayResult {
   events: ThreadEvent[];
 }
 
-async function replay(args: {
-  dialect: "legacy" | "canonical";
-  workspaceDir: string;
-}): Promise<ReplayResult> {
+async function replay(args: { workspaceDir: string }): Promise<ReplayResult> {
   const calls: ScriptedClaudeQueryCall[] = [];
   queryMock.mockImplementation((call: ScriptedClaudeQueryCall) => {
     calls.push(call);
     return createScriptedClaudeQuery(call);
   });
   const bridge = createBridgeJsonRpcTestHarness(handleLine);
-  const canonical = args.dialect === "canonical";
-  const adapter = canonical ? null : createClaudeCodeProviderAdapter();
   const events: ThreadEvent[] = [];
   let drained = 0;
   let providerThreadId = "calibration-session";
 
   const collect = (): void => {
     for (const message of bridge.messages.slice(drained)) {
-      if (canonical) {
-        if (message.method === "thread/event") {
-          const params = message.params;
-          if (
-            params !== null &&
-            typeof params === "object" &&
-            "event" in params
-          ) {
-            events.push(params.event as ThreadEvent);
-          }
-        }
-      } else if (message.method !== undefined && message.id === undefined) {
-        events.push(
-          ...(adapter?.translateEvent(
-            { jsonrpc: "2.0", method: message.method, params: message.params },
-            { threadId: THREAD_ID },
-          ) ?? []),
-        );
+      if (message.method !== "thread/event") {
+        continue;
+      }
+      const params = message.params;
+      if (params !== null && typeof params === "object" && "event" in params) {
+        // Freeform wire payload: the ThreadEvent the bridge just serialized.
+        events.push(params.event as ThreadEvent);
       }
     }
     drained = bridge.messages.length;
   };
 
   /**
-   * `emitAcceptedCommandEvents`: what the runtime emits once a command's
-   * response arrives, before draining the notifications that followed it —
-   * hence every call site acks *before* collecting. Only the legacy path needs
-   * it; the canonical bridge emits these itself.
-   */
-  const ack = (command: AdapterCommand): void => {
-    if (canonical) {
-      return;
-    }
-    events.push(
-      ...(adapter?.translateAcceptedCommand({ command, providerThreadId }) ??
-        []),
-    );
-  };
-
-  const ackTurnStart = (clientRequestId: string, text: string): void => {
-    ack({
-      type: "turn/start",
-      threadId: THREAD_ID,
-      providerThreadId,
-      clientRequestId,
-      input: promptInput(text),
-      options: LEGACY_EXECUTION_CONTEXT,
-    });
-  };
-
-  /**
-   * Drive one permission approval to completion. The legacy path forwards
-   * Claude-native params the runtime decodes host-side through the adapter;
-   * the canonical bridge maps them internally and sends the finished
-   * `PendingInteractionPayload` on `interaction/request`. Both are answered
-   * from the same `PendingInteractionResolution`.
+   * Drive one permission approval to completion. The bridge maps the
+   * Claude-native params internally and sends the finished
+   * `PendingInteractionPayload` on `interaction/request`.
    */
   const runApproval = async (): Promise<ApprovalExchange> => {
     const canUseTool = calls.at(-1)?.options.canUseTool;
@@ -448,54 +364,25 @@ async function replay(args: {
     );
     await settle(bridge, collect);
 
-    const method = canonical
-      ? BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest
-      : CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD;
+    const method = BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest;
     const request = bridge.messages.find((message) => message.method === method);
     if (request?.id === undefined || !isRecord(request.params)) {
       throw new Error(`Expected a forwarded ${method} request`);
     }
 
-    if (canonical) {
-      handleLine(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: request.id,
-          result: APPROVAL_RESOLUTION,
-        }),
-      );
-      const turnId = request.params.turnId;
-      return {
-        openTurnId,
-        payload: request.params.payload,
-        result: await resultPromise,
-        turnId: typeof turnId === "string" ? turnId : null,
-      };
-    }
-
-    const decoded = adapter?.decodeInteractiveRequest?.({
-      id: request.id,
-      method,
-      params: request.params,
-    });
-    if (!decoded) {
-      throw new Error("Expected the legacy adapter to decode the approval");
-    }
     handleLine(
       JSON.stringify({
         jsonrpc: "2.0",
         id: request.id,
-        result: adapter?.buildInteractiveResponse?.({
-          request: decoded,
-          resolution: APPROVAL_RESOLUTION,
-        }),
+        result: APPROVAL_RESOLUTION,
       }),
     );
+    const turnId = request.params.turnId;
     return {
       openTurnId,
-      payload: decoded.payload,
+      payload: request.params.payload,
       result: await resultPromise,
-      turnId: decoded.turnId,
+      turnId: typeof turnId === "string" ? turnId : null,
     };
   };
 
@@ -504,18 +391,12 @@ async function replay(args: {
     bridge.sendRequest(
       1,
       "thread/start",
-      canonical
-        ? {
-            threadId: THREAD_ID,
-            cwd: args.workspaceDir,
-            options: CANONICAL_OPTIONS,
-            instructionMode: "append",
-          }
-        : {
-            ...LEGACY_SESSION_FIELDS,
-            cwd: args.workspaceDir,
-            threadId: THREAD_ID,
-          },
+      {
+        threadId: THREAD_ID,
+        cwd: args.workspaceDir,
+        options: CANONICAL_OPTIONS,
+        instructionMode: "append",
+      },
     );
     const startResponse = await bridge.waitForResponse(1);
     const startResult = startResponse.result;
@@ -527,35 +408,20 @@ async function replay(args: {
     ) {
       providerThreadId = startResult.providerThreadId;
     }
-    ack({
-      type: "thread/start",
-      threadId: THREAD_ID,
-      cwd: args.workspaceDir,
-      instructionMode: "append",
-      options: LEGACY_EXECUTION_CONTEXT,
-    });
     collect();
 
     bridge.sendRequest(
       2,
       "turn/start",
-      canonical
-        ? {
-            threadId: THREAD_ID,
-            providerThreadId,
-            input: promptInput(FIRST_PROMPT_TEXT),
-            clientRequestId: FIRST_REQUEST_ID,
-            options: CANONICAL_OPTIONS,
-          }
-        : {
-            permissionEscalation: "ask",
-            threadId: THREAD_ID,
-            providerThreadId,
-            input: promptInput(FIRST_PROMPT_TEXT),
-          },
+      {
+        threadId: THREAD_ID,
+        providerThreadId,
+        input: promptInput(FIRST_PROMPT_TEXT),
+        clientRequestId: FIRST_REQUEST_ID,
+        options: CANONICAL_OPTIONS,
+      },
     );
     await bridge.waitForResponse(2);
-    ackTurnStart(FIRST_REQUEST_ID, FIRST_PROMPT_TEXT);
     await settle(bridge, collect);
 
     // A permission approval while turn 1 is open.
@@ -566,132 +432,76 @@ async function replay(args: {
     bridge.sendRequest(
       3,
       "turn/steer",
-      canonical
-        ? {
-            threadId: THREAD_ID,
-            providerThreadId,
-            expectedTurnId,
-            input: promptInput(STEER_PROMPT_TEXT),
-            clientRequestId: STEER_REQUEST_ID,
-            options: CANONICAL_OPTIONS,
-          }
-        : {
-            permissionEscalation: "ask",
-            threadId: THREAD_ID,
-            providerThreadId,
-            expectedTurnId,
-            input: promptInput(STEER_PROMPT_TEXT),
-          },
+      {
+        threadId: THREAD_ID,
+        providerThreadId,
+        expectedTurnId,
+        input: promptInput(STEER_PROMPT_TEXT),
+        clientRequestId: STEER_REQUEST_ID,
+        options: CANONICAL_OPTIONS,
+      },
     );
     await bridge.waitForResponse(3);
-    ack({
-      type: "turn/steer",
-      threadId: THREAD_ID,
-      providerThreadId,
-      expectedTurnId,
-      clientRequestId: STEER_REQUEST_ID,
-      input: promptInput(STEER_PROMPT_TEXT),
-      options: LEGACY_EXECUTION_CONTEXT,
-    });
     await settle(bridge, collect);
 
     bridge.sendRequest(
       4,
       "turn/start",
-      canonical
-        ? {
-            threadId: THREAD_ID,
-            providerThreadId,
-            input: promptInput(SECOND_PROMPT_TEXT),
-            clientRequestId: SECOND_REQUEST_ID,
-            options: CANONICAL_OPTIONS,
-          }
-        : {
-            permissionEscalation: "ask",
-            threadId: THREAD_ID,
-            providerThreadId,
-            input: promptInput(SECOND_PROMPT_TEXT),
-          },
+      {
+        threadId: THREAD_ID,
+        providerThreadId,
+        input: promptInput(SECOND_PROMPT_TEXT),
+        clientRequestId: SECOND_REQUEST_ID,
+        options: CANONICAL_OPTIONS,
+      },
     );
     await bridge.waitForResponse(4);
-    ackTurnStart(SECOND_REQUEST_ID, SECOND_PROMPT_TEXT);
     await settle(bridge, collect);
 
-    // Resume leg: a canonical resume mints a fresh translator id prefix (the
-    // #1224 cross-resume collision fix), which the id interner absorbs. The
+    // Resume leg: a resume mints a fresh translator id prefix (the #1224
+    // cross-resume collision fix), which the id interner absorbs. The
     // post-resume turn must still translate identically. Claude reports
     // `supportsArchive: false`, so resume — not archive — is the reattachment
-    // path worth calibrating.
+    // path worth pinning.
     bridge.sendRequest(
       5,
       "thread/resume",
-      canonical
-        ? {
-            threadId: THREAD_ID,
-            cwd: args.workspaceDir,
-            providerThreadId,
-            options: CANONICAL_OPTIONS,
-            instructionMode: "append",
-          }
-        : {
-            ...LEGACY_SESSION_FIELDS,
-            cwd: args.workspaceDir,
-            providerThreadId,
-            threadId: THREAD_ID,
-          },
+      {
+        threadId: THREAD_ID,
+        cwd: args.workspaceDir,
+        providerThreadId,
+        options: CANONICAL_OPTIONS,
+        instructionMode: "append",
+      },
     );
     await bridge.waitForResponse(5);
-    ack({
-      type: "thread/resume",
-      threadId: THREAD_ID,
-      cwd: args.workspaceDir,
-      providerThreadId,
-      instructionMode: "append",
-      options: LEGACY_EXECUTION_CONTEXT,
-    });
     collect();
 
     bridge.sendRequest(
       6,
       "turn/start",
-      canonical
-        ? {
-            threadId: THREAD_ID,
-            providerThreadId,
-            input: promptInput(RESUMED_PROMPT_TEXT),
-            clientRequestId: RESUMED_REQUEST_ID,
-            options: CANONICAL_OPTIONS,
-          }
-        : {
-            permissionEscalation: "ask",
-            threadId: THREAD_ID,
-            providerThreadId,
-            input: promptInput(RESUMED_PROMPT_TEXT),
-          },
+      {
+        threadId: THREAD_ID,
+        providerThreadId,
+        input: promptInput(RESUMED_PROMPT_TEXT),
+        clientRequestId: RESUMED_REQUEST_ID,
+        options: CANONICAL_OPTIONS,
+      },
     );
     await bridge.waitForResponse(6);
-    ackTurnStart(RESUMED_REQUEST_ID, RESUMED_PROMPT_TEXT);
     await settle(bridge, collect);
 
     bridge.sendRequest(
       7,
       "thread/stop",
-      canonical
-        ? {
-            threadId: THREAD_ID,
-            providerThreadId,
-            intent: "release",
-            activeTurnId: null,
-          }
-        : { threadId: THREAD_ID },
+      {
+        threadId: THREAD_ID,
+        providerThreadId,
+        intent: "release",
+        activeTurnId: null,
+      },
     );
     await bridge.waitForResponse(7);
-    ack({
-      type: "thread/stop",
-      threadId: THREAD_ID,
-      providerThreadId,
-      activeTurnId: null,
-    });
     collect();
   } finally {
     bridge.restore();
@@ -721,6 +531,54 @@ function lastTurnId(events: readonly ThreadEvent[]): string | undefined {
   return undefined;
 }
 
+/**
+ * The scripted session's ThreadEvent stream, in order. Claude streams
+ * assistant text and thinking delta-first, so every such item opens with the
+ * synthesized `item/started` the canonical grammar requires. `thread/identity`
+ * is absent by design: the canonical protocol returns the provider thread id
+ * in the `thread/start` response rather than as a stream event.
+ */
+const GOLDEN_EVENT_STREAM: string[] = [
+  // Turn 1: a delta-first assistant message (hence the synthesized
+  // item/started), the Bash tool_use with its tool_result, delta-first
+  // thinking, then the steer's ack and its provider-opened reply, which
+  // settles the turn with usage.
+  "turn/started",
+  "turn/input/accepted",
+  "item/started:agentMessage",
+  "item/agentMessage/delta",
+  "item/completed:agentMessage",
+  "item/started:commandExecution",
+  "item/completed:commandExecution",
+  "item/started:reasoning",
+  "item/reasoning/textDelta",
+  "item/completed:reasoning",
+  "turn/input/accepted",
+  "item/completed:agentMessage",
+  "thread/contextWindowUsage/updated",
+  "thread/tokenUsage/updated",
+  "turn/completed",
+  // Turn 2.
+  "turn/started",
+  "turn/input/accepted",
+  "item/started:agentMessage",
+  "item/agentMessage/delta",
+  "item/completed:agentMessage",
+  "thread/contextWindowUsage/updated",
+  "thread/tokenUsage/updated",
+  "turn/completed",
+  // Turn 3, after the resume: identical shape, which is the point of
+  // replaying past a reattachment.
+  "turn/started",
+  "turn/input/accepted",
+  "item/started:agentMessage",
+  "item/agentMessage/delta",
+  "item/completed:agentMessage",
+  "thread/contextWindowUsage/updated",
+  "thread/tokenUsage/updated",
+  "turn/completed",
+];
+
 let workspaceDir: string;
 
 beforeEach(() => {
@@ -732,53 +590,23 @@ afterEach(() => {
   rmSync(workspaceDir, { recursive: true, force: true });
 });
 
-it("replays one scripted claude session identically on both paths", async () => {
-  const legacy = await replay({ dialect: "legacy", workspaceDir });
-  const canonical = await replay({ dialect: "canonical", workspaceDir });
+it("replays one scripted claude session onto the golden event stream", async () => {
+  const canonical = await replay({ workspaceDir });
 
-  // A calibration is worthless if either leg went quiet.
-  expect(legacy.events.length).toBeGreaterThan(10);
+  // A golden is worthless if the run went quiet.
   expect(canonical.events.length).toBeGreaterThan(10);
 
-  const diff = diffCalibrationStreams(
-    normalizeCalibrationEvents(legacy.events),
-    normalizeCalibrationEvents(canonical.events),
-  );
+  expect(
+    describeCalibrationEvents(normalizeCalibrationEvents(canonical.events)),
+  ).toEqual(GOLDEN_EVENT_STREAM);
 
-  // The one legacy extra: the legacy bridge announces the provider thread as a
-  // notification, which the adapter turns into a thread/identity event. The
-  // canonical protocol returns that identity in the thread/start *response*
-  // instead (and its own identity notification is not a thread/event), so it
-  // is not a stream event at all.
-  expect(describeCalibrationEvents(diff.onlyInLegacy)).toEqual([
-    "thread/identity",
-  ]);
-
-  // The canonical extras, in order, are all the same deliberate addition:
-  // claude streams assistant text and thinking delta-first, and the canonical
-  // grammar requires every item to open with item/started
-  // (`synthesizeItemStarted`), which the legacy shape omits. One per
-  // delta-first item across the four turns. Everything else — the
-  // tool_use/tool_result pair, finalized reasoning, token and context-window
-  // usage, every turn settlement, and all four turn/input/accepted acks with
-  // their turn correlation — matches byte for byte, across the resume too.
-  expect(describeCalibrationEvents(diff.onlyInBridge)).toEqual([
-    "item/started:agentMessage",
-    "item/started:reasoning",
-    "item/started:agentMessage",
-    "item/started:agentMessage",
-  ]);
-
-  // The approval rides the request channel, not the event stream: both paths
-  // must hand the runtime the same payload and correlate it with the turn that
-  // was open when it was raised.
-  expect(legacy.approval.payload).toMatchObject({
+  // The approval rides the request channel, not the event stream: the bridge
+  // must hand the runtime a rendered payload and correlate it with the turn
+  // that was open when it was raised.
+  expect(canonical.approval.payload).toMatchObject({
     kind: "approval",
     reason: "Automatic review requires user escalation",
   });
-  expect(canonical.approval.payload).toEqual(legacy.approval.payload);
-  expect(legacy.approval.turnId).toBe(legacy.approval.openTurnId);
   expect(canonical.approval.turnId).toBe(canonical.approval.openTurnId);
-  expect(legacy.approval.result.behavior).toBe("allow");
   expect(canonical.approval.result.behavior).toBe("allow");
 }, 60_000);

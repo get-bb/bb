@@ -583,11 +583,13 @@ function queuePromptInputs(
 
 async function applyLiveSessionSettings(
   threadSession: ThreadSession,
+  threadId: string,
   next: ClaudeLiveSessionSettings,
 ): Promise<void> {
   const current = threadSession.liveSettings;
   if (current.model !== next.model) {
     await threadSession.session.setModel(next.model);
+    seedModelContextWindowHint(threadSession, threadId, next.model);
   }
 
   if (
@@ -876,6 +878,28 @@ function withTrackedPermissionEscalation(
   };
 }
 
+/**
+ * Seed the translator's context-window fallback from the selected model.
+ *
+ * Claude reports `modelUsage.contextWindow` on some results and omits it on
+ * others; when it is missing the translator falls back to the capacity implied
+ * by the model id (notably the 1M `[1m]` aliases). The legacy adapter seeded
+ * this on every session construction and every turn that carried a model, as a
+ * side effect of building the command plan. The canonical bridge has no
+ * command plan, so it seeds the hint here instead — without this, capacity
+ * reads as unknown whenever Claude omits the field.
+ */
+function seedModelContextWindowHint(
+  threadSession: ThreadSession,
+  threadId: string,
+  model: string | undefined,
+): void {
+  if (threadSession.translator === null || model === undefined) {
+    return;
+  }
+  threadSession.translator.setClaudeModelContextWindowHint(threadId, model);
+}
+
 function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
   const sessionSerial = nextSessionSerial();
   const session = new SdkSession(
@@ -890,7 +914,7 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     }),
   );
 
-  return {
+  const threadSession: ThreadSession = {
     session,
     sessionConstructionConfig: args.sessionConstructionConfig,
     sessionOptions: args.sessionOptions,
@@ -917,6 +941,12 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     sessionPermissionGrants: [...(args.sessionPermissionGrants ?? [])],
     threadIdRef: args.threadIdRef,
   };
+  seedModelContextWindowHint(
+    threadSession,
+    args.threadIdRef.current,
+    args.liveSettings.model,
+  );
+  return threadSession;
 }
 
 function getTrackedPermissionEscalation(
@@ -2202,6 +2232,7 @@ async function handleThreadResume(
   ) {
     await applyLiveSessionSettings(
       existing,
+      params.threadId,
       toInitialLiveSessionSettings(params),
     );
     existing.permissionEscalation = params.permissionEscalation;
@@ -2405,6 +2436,7 @@ async function handleTurnStart(
   try {
     await applyLiveSessionSettings(
       threadSession,
+      params.threadId,
       withTurnLiveSessionSettings(threadSession.liveSettings, params),
     );
   } catch (error) {
@@ -2469,6 +2501,7 @@ async function handleTurnSteer(
   try {
     await applyLiveSessionSettings(
       threadSession,
+      params.threadId,
       withTurnLiveSessionSettings(threadSession.liveSettings, params),
     );
   } catch (error) {

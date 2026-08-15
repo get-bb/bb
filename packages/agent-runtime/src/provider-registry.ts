@@ -2,8 +2,8 @@
  * Provider registry.
  *
  * Manages the set of available built-in provider metadata, the canonical
- * bridge routing for graduated providers (ACP, pi), and the remaining legacy
- * adapter factories (codex, claude-code).
+ * bridge routing for graduated providers (ACP, pi, claude-code), and the
+ * remaining legacy adapter factory (codex).
  */
 
 import {
@@ -18,7 +18,6 @@ import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import { createBridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
 import { resolveBridgeProcessArgs } from "./shared/bridge-path.js";
 import { BUILT_IN_ACP_LAUNCH_SPECS } from "./acp/launch-specs.js";
-import { createClaudeCodeProviderAdapter } from "./claude-code/adapter.js";
 import { createCodexProviderAdapter } from "./codex/adapter.js";
 import type {
   ProviderAdapter,
@@ -44,10 +43,6 @@ const builtInProviders = [
     createAdapter: (options) => createCodexProviderAdapter(options),
     info: getBuiltInAgentProviderInfo("codex"),
   },
-  {
-    createAdapter: (options) => createClaudeCodeProviderAdapter(options),
-    info: getBuiltInAgentProviderInfo("claude-code"),
-  },
 ] satisfies BuiltInProviderDescriptor[];
 
 const builtInProvidersById = new Map(
@@ -67,10 +62,10 @@ const builtInProvidersById = new Map(
  * Canonical path: providers run on the generic adapter speaking the canonical
  * Provider Bridge Protocol.
  *
- * ACP providers and pi are graduated — their legacy adapters are gone, so they
- * route canonically regardless of the experiment's prefix policy. claude-code
- * and codex still ship a legacy adapter, so an enabled bridge-protocol prefix
- * is what routes them here.
+ * ACP providers, pi and claude-code are graduated — their legacy adapters are
+ * gone, so they route canonically regardless of the experiment's prefix
+ * policy. codex still ships a legacy adapter, so an enabled bridge-protocol
+ * prefix is what routes it here.
  *
  * The ACP launch spec travels opaquely via staticProviderOptions (claude-code
  * needs no launch spec — its provider-flavored knobs ride the per-command
@@ -124,10 +119,44 @@ function createBridgeProtocolAdapterForId(
         : {}),
     });
   }
-  // Graduated: the ACP and pi legacy adapters are deleted, so those providers
-  // route canonically whether or not the experiment lists their prefix.
+  // Graduated: the ACP, pi and claude-code legacy adapters are deleted, so
+  // those providers route canonically whether or not the experiment lists
+  // their prefix.
   if (isAcpProviderId(providerId)) {
     return createAcpBridgeAdapter(providerId, options);
+  }
+  if (providerId === "claude-code") {
+    const info = getBuiltInAgentProviderInfo("claude-code");
+    const additionalWorkspaceWriteRoots =
+      options.additionalWorkspaceWriteRoots ?? [];
+    return createBridgeProtocolAdapter({
+      id: providerId,
+      displayName: info.displayName,
+      capabilities: info.capabilities,
+      process: {
+        command: options.bridgeNodeExecutablePath ?? "node",
+        args: resolveBridgeProcessArgs({
+          bridgeBundleDir: options.bridgeBundleDir,
+          bundleFileName: "bb-claude-code-bridge.mjs",
+          importMetaUrl: import.meta.url,
+          bridgeRelativePath: "claude-code/bridge/bridge.js",
+        }),
+        ...(options.bridgeNodeEnv !== undefined
+          ? { env: options.bridgeNodeEnv }
+          : {}),
+      },
+      // Same delivery as codex: the canonical wire has no core field for
+      // environment-level extra write roots, so they ride the provider-scoped
+      // options bag and reach session construction exactly as the legacy
+      // adapter delivered them.
+      ...(additionalWorkspaceWriteRoots.length > 0
+        ? {
+            staticProviderOptions: {
+              additionalWorkspaceWriteRoots: [...additionalWorkspaceWriteRoots],
+            },
+          }
+        : {}),
+    });
   }
   if (providerId === "pi") {
     const info = getBuiltInAgentProviderInfo("pi");
@@ -177,39 +206,6 @@ function createBridgeProtocolAdapterForId(
       // canonical wire; they ride the codex bridge's provider-scoped options
       // bag (the acpLaunchSpec precedent) so workspace-write sandboxing keeps
       // the same roots the legacy adapter received at construction.
-      ...(additionalWorkspaceWriteRoots.length > 0
-        ? {
-            staticProviderOptions: {
-              additionalWorkspaceWriteRoots: [...additionalWorkspaceWriteRoots],
-            },
-          }
-        : {}),
-    });
-  }
-  if (providerId === "claude-code") {
-    const info = getBuiltInAgentProviderInfo("claude-code");
-    const additionalWorkspaceWriteRoots =
-      options.additionalWorkspaceWriteRoots ?? [];
-    return createBridgeProtocolAdapter({
-      id: providerId,
-      displayName: info.displayName,
-      capabilities: info.capabilities,
-      process: {
-        command: options.bridgeNodeExecutablePath ?? "node",
-        args: resolveBridgeProcessArgs({
-          bridgeBundleDir: options.bridgeBundleDir,
-          bundleFileName: "bb-claude-code-bridge.mjs",
-          importMetaUrl: import.meta.url,
-          bridgeRelativePath: "claude-code/bridge/bridge.js",
-        }),
-        ...(options.bridgeNodeEnv !== undefined
-          ? { env: options.bridgeNodeEnv }
-          : {}),
-      },
-      // Same delivery as codex: the canonical wire has no core field for
-      // environment-level extra write roots, so they ride the provider-scoped
-      // options bag and reach session construction exactly as the legacy
-      // adapter delivered them.
       ...(additionalWorkspaceWriteRoots.length > 0
         ? {
             staticProviderOptions: {
