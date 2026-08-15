@@ -15,9 +15,12 @@
  * `{ "turns": [[{ "method", "params" }, …], …] }`, where the Nth accepted
  * `turn/start` emits the Nth turn's notifications verbatim. It exists so the
  * dual-path calibration suite can drive this process and the legacy adapter
- * from ONE script. Every `threadId` in the script is rewritten to the thread
- * id this process minted, because only this process knows it. Without the
- * argument the hardcoded behavior below is unchanged.
+ * from ONE script. An entry marked `"kind": "request"` is sent as a JSON-RPC
+ * *request* toward the client (an approval) and blocks the rest of the turn
+ * until the client answers, exactly as a real app-server does. Every
+ * `threadId` in the script is rewritten to the thread id this process minted,
+ * because only this process knows it. Without the argument the hardcoded
+ * behavior below is unchanged.
  */
 
 import { readFileSync } from "node:fs";
@@ -103,22 +106,44 @@ function withThreadId(value, threadId) {
   return rewritten;
 }
 
-function runScriptFileTurn(threadId) {
+/**
+ * Requests this process originates toward its client (approvals). A real
+ * app-server blocks the turn until the client answers, so the scripted turn
+ * does too — an entry marked `"kind": "request"` is sent as a JSON-RPC request
+ * rather than a notification.
+ */
+let outboundRequestCounter = 0;
+const pendingOutboundRequests = new Map();
+
+function requestFromClient(method, params) {
+  outboundRequestCounter += 1;
+  const id = `fx-req-${outboundRequestCounter}`;
+  return new Promise((resolve) => {
+    pendingOutboundRequests.set(id, resolve);
+    send({ jsonrpc: "2.0", id, method, params });
+  });
+}
+
+async function runScriptFileTurn(threadId) {
   const turn = scriptedTurns[scriptedTurnIndex] ?? [];
   scriptedTurnIndex += 1;
-  for (const notification of turn) {
-    const params = withThreadId(notification.params ?? {}, threadId);
-    if (notification.method === "turn/started") {
+  for (const entry of turn) {
+    const params = withThreadId(entry.params ?? {}, threadId);
+    if (entry.kind === "request") {
+      await requestFromClient(entry.method, params);
+      continue;
+    }
+    if (entry.method === "turn/started") {
       openTurnIdsByThreadId.set(threadId, params.turn.id);
     }
-    if (notification.method === "turn/completed") {
+    if (entry.method === "turn/completed") {
       openTurnIdsByThreadId.delete(threadId);
     }
-    notify(notification.method, params);
+    notify(entry.method, params);
   }
 }
 
-function handleRequest(message) {
+async function handleRequest(message) {
   const { id, method } = message;
   const params = message.params ?? {};
   switch (method) {
@@ -168,7 +193,7 @@ function handleRequest(message) {
         return;
       }
       if (scriptedTurns) {
-        runScriptFileTurn(params.threadId);
+        await runScriptFileTurn(params.threadId);
       } else {
         runScriptedTurn(params.threadId);
       }
@@ -218,7 +243,16 @@ stdinLines.on("line", (line) => {
     return;
   }
   if (parsed.id !== undefined && typeof parsed.method === "string") {
-    handleRequest(parsed);
+    void handleRequest(parsed);
+    return;
+  }
+  if (parsed.id !== undefined) {
+    // A response to a request this process originated (an approval answer).
+    const resolve = pendingOutboundRequests.get(parsed.id);
+    if (resolve) {
+      pendingOutboundRequests.delete(parsed.id);
+      resolve(parsed);
+    }
   }
 });
 stdinLines.on("close", () => {
