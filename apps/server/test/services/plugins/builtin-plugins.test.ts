@@ -14,7 +14,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createConnection,
   getInstalledPluginRegistration,
+  markInstalledPluginRemoved,
   migrate,
+  upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
@@ -28,7 +30,11 @@ import {
   BUILTIN_PLUGIN_NAMES,
   BUILTIN_PLUGINS,
   OFFICIAL_PLUGINS,
+  WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_NAMES,
   resolveBuiltinPluginRootPath,
+  workTogetherBuiltinDefaultsMarkerApplied,
+  workTogetherBuiltinDefaultsMarkerPath,
+  type BundledPluginRegistration,
 } from "../../../src/services/plugins/builtin-registry.js";
 import { copyBuiltinPlugins } from "../../../scripts/copy-builtin-plugins.js";
 import { testLogger } from "../../helpers/test-app.js";
@@ -142,6 +148,7 @@ function createService(args: {
   includeBuiltin?: boolean;
   pluginId?: string;
   rootDir?: string;
+  bundledPlugins?: readonly BundledPluginRegistration[];
   watchBuiltinPluginSources?: boolean;
 }): PluginService {
   return createPluginService({
@@ -155,7 +162,8 @@ function createService(args: {
     dataDir: args.dataDir,
     appVersion: "0.9.0",
     bundledPlugins:
-      args.includeBuiltin === false
+      args.bundledPlugins ??
+      (args.includeBuiltin === false
         ? []
         : [
             {
@@ -165,9 +173,103 @@ function createService(args: {
               rootDir: args.rootDir ?? fixtureRoot,
               defaultEnabled: args.defaultEnabled ?? true,
             },
-          ],
+          ]),
     watchBuiltinPluginSources: args.watchBuiltinPluginSources,
     loadTimeoutMs: 2000,
+  });
+}
+
+const WORK_TOGETHER_BUILTIN_DEFAULTS = {
+  "ask-user-question": true,
+  automations: false,
+  connect: false,
+  "custom-instructions": true,
+  "inline-vis": true,
+  "provider-retry": true,
+  secrets: false,
+  "side-chat": false,
+  workflows: false,
+} as const;
+
+const STOCK_BB_BUILTIN_ENABLED = {
+  "ask-user-question": false,
+  automations: true,
+  connect: true,
+  "custom-instructions": true,
+  "inline-vis": true,
+  "provider-retry": false,
+  secrets: true,
+  "side-chat": true,
+} as const;
+
+async function writeNamedBuiltinFixture(
+  workDir: string,
+  name: string,
+): Promise<string> {
+  const root = join(workDir, `bb-plugin-${name}`);
+  await mkdir(root, { recursive: true });
+  await writeFile(
+    join(root, "package.json"),
+    JSON.stringify({
+      name: `bb-plugin-${name}`,
+      version: "0.1.0",
+      type: "module",
+      bb: {
+        name,
+        description: `${name} builtin plugin fixture.`,
+        branding: { icon: "Zap" },
+        server: "./server.ts",
+      },
+    }),
+  );
+  await writeFile(
+    join(root, "server.ts"),
+    "export default function plugin() {}\n",
+  );
+  return root;
+}
+
+const EMPTY_PLUGIN_UPDATE_STATE = {
+  lastCheckAt: null,
+  availableCompatibleVersion: null,
+  newestIncompatibleVersion: null,
+  statusDetail: null,
+} as const;
+
+function seedInstalledBuiltin(args: {
+  db: DbConnection;
+  name: string;
+  pluginId: string;
+  rootDir: string;
+  enabled: boolean;
+  source?: "builtin" | "path";
+}): void {
+  if (args.source === "path") {
+    upsertInstalledPlugin(args.db, {
+      id: args.pluginId,
+      source: `path:${args.rootDir}`,
+      provenance: { kind: "direct" },
+      sourceIntent: { kind: "path", canonicalPath: args.rootDir },
+      exactResolution: { kind: "path" },
+      updateState: EMPTY_PLUGIN_UPDATE_STATE,
+      activeArtifactId: null,
+      rootDir: args.rootDir,
+      version: "0.1.0",
+      enabled: args.enabled,
+    });
+    return;
+  }
+  upsertInstalledPlugin(args.db, {
+    id: args.pluginId,
+    source: `builtin:${args.name}`,
+    provenance: { kind: "builtin" },
+    sourceIntent: { kind: "builtin", name: args.name },
+    exactResolution: { kind: "builtin" },
+    updateState: EMPTY_PLUGIN_UPDATE_STATE,
+    activeArtifactId: null,
+    rootDir: args.rootDir,
+    version: "0.1.0",
+    enabled: args.enabled,
   });
 }
 
@@ -192,6 +294,43 @@ describe("builtin plugin reconciliation", () => {
       expect(BUILTIN_PLUGINS.map((plugin) => plugin.name)).not.toContain(name);
     }
     expect(OFFICIAL_PLUGINS.every((plugin) => !plugin.autoInstall)).toBe(true);
+  });
+
+  it("ships Work Together builtin defaultEnabled flags", () => {
+    expect(
+      Object.fromEntries(
+        BUILTIN_PLUGINS.map((plugin) => [plugin.name, plugin.defaultEnabled]),
+      ),
+    ).toEqual(WORK_TOGETHER_BUILTIN_DEFAULTS);
+  });
+
+  it("one-shot reconciles only the named Work Together builtins", () => {
+    expect([...WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_NAMES]).toEqual([
+      "ask-user-question",
+      "automations",
+      "connect",
+      "provider-retry",
+      "secrets",
+      "side-chat",
+    ]);
+    expect(WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_NAMES).not.toContain(
+      "workflows",
+    );
+    expect(WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_NAMES).not.toContain(
+      "custom-instructions",
+    );
+    expect(WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_NAMES).not.toContain(
+      "inline-vis",
+    );
+    for (const name of WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_NAMES) {
+      expect(BUILTIN_PLUGINS.some((plugin) => plugin.name === name)).toBe(true);
+    }
+    const reconcileNames = new Set<string>(
+      WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_NAMES,
+    );
+    for (const official of OFFICIAL_PLUGINS) {
+      expect(reconcileNames.has(official.name)).toBe(false);
+    }
   });
 
   it("gives every builtin plugin a deliberate settings icon", async () => {
@@ -424,11 +563,11 @@ describe("builtin plugin reconciliation", () => {
     ]);
   });
 
-  it("ships Provider retry disabled on a fresh database", async () => {
+  it("ships Provider retry enabled on a fresh database", async () => {
     const providerRetry = BUILTIN_PLUGINS.find(
       (builtin) => builtin.name === "provider-retry",
     );
-    expect(providerRetry?.defaultEnabled).toBe(false);
+    expect(providerRetry?.defaultEnabled).toBe(true);
 
     service = createService({
       db,
@@ -443,10 +582,278 @@ describe("builtin plugin reconciliation", () => {
       {
         id: "provider-retry",
         source: "builtin:provider-retry",
+        enabled: true,
+        status: "running",
+      },
+    ]);
+  });
+
+  it("ships connect disabled on a fresh database", async () => {
+    const connect = BUILTIN_PLUGINS.find((builtin) => builtin.name === "connect");
+    expect(connect?.defaultEnabled).toBe(false);
+
+    service = createService({
+      db,
+      dataDir: join(workDir, "data"),
+      builtinName: "connect",
+      pluginId: "connect",
+      defaultEnabled: connect?.defaultEnabled,
+      rootDir: resolveBuiltinPluginRootPath("connect"),
+    });
+    await service.start();
+
+    expect(service.list()).toMatchObject([
+      {
+        id: "connect",
+        source: "builtin:connect",
         enabled: false,
         status: "disabled",
       },
     ]);
+  });
+
+  it("one-shot reconciles existing-cell builtin enabled flags", async () => {
+    const dataDir = join(workDir, "data");
+    const bundledPlugins = await Promise.all(
+      WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_NAMES.map(async (name) => {
+        const rootDir = await writeNamedBuiltinFixture(workDir, name);
+        const builtin = BUILTIN_PLUGINS.find((plugin) => plugin.name === name);
+        if (!builtin) throw new Error(`missing builtin ${name}`);
+        seedInstalledBuiltin({
+          db,
+          name,
+          pluginId: builtin.pluginId,
+          rootDir,
+          enabled: STOCK_BB_BUILTIN_ENABLED[name],
+        });
+        return {
+          ...builtin,
+          rootDir,
+        };
+      }),
+    );
+
+    service = createService({ db, dataDir, bundledPlugins });
+    await service.start();
+
+    expect(
+      Object.fromEntries(
+        service.list().map((plugin) => [plugin.id, plugin.enabled]),
+      ),
+    ).toEqual(
+      Object.fromEntries(
+        WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_NAMES.map((name) => [
+          name,
+          WORK_TOGETHER_BUILTIN_DEFAULTS[name],
+        ]),
+      ),
+    );
+    await expect(
+      readFile(workTogetherBuiltinDefaultsMarkerPath(dataDir), "utf8"),
+    ).resolves.toContain("work-together-builtin-defaults-v1");
+  });
+
+  it("does not re-enable a tombstoned builtin during the one-shot", async () => {
+    const dataDir = join(workDir, "data");
+    const name = "ask-user-question";
+    const rootDir = await writeNamedBuiltinFixture(workDir, name);
+    const builtin = BUILTIN_PLUGINS.find((plugin) => plugin.name === name);
+    if (!builtin) throw new Error(`missing builtin ${name}`);
+    seedInstalledBuiltin({
+      db,
+      name,
+      pluginId: builtin.pluginId,
+      rootDir,
+      enabled: false,
+    });
+    expect(markInstalledPluginRemoved(db, builtin.pluginId)).toBe(true);
+
+    service = createService({
+      db,
+      dataDir,
+      bundledPlugins: [{ ...builtin, rootDir }],
+    });
+    await service.start();
+
+    expect(service.list()).toEqual([]);
+    expect(getInstalledPluginRegistration(db, builtin.pluginId)).toMatchObject({
+      removedAt: expect.any(Number),
+      enabled: false,
+    });
+  });
+
+  it("keeps operator enabled changes after the one-shot has applied", async () => {
+    const dataDir = join(workDir, "data");
+    const name = "connect";
+    const rootDir = await writeNamedBuiltinFixture(workDir, name);
+    const builtin = BUILTIN_PLUGINS.find((plugin) => plugin.name === name);
+    if (!builtin) throw new Error(`missing builtin ${name}`);
+    seedInstalledBuiltin({
+      db,
+      name,
+      pluginId: builtin.pluginId,
+      rootDir,
+      enabled: true,
+    });
+
+    service = createService({
+      db,
+      dataDir,
+      bundledPlugins: [{ ...builtin, rootDir }],
+    });
+    await service.start();
+    expect(service.list()).toMatchObject([{ id: "connect", enabled: false }]);
+
+    await service.setEnabled("connect", true);
+    await service.stop();
+
+    service = createService({
+      db,
+      dataDir,
+      bundledPlugins: [{ ...builtin, rootDir }],
+    });
+    await service.start();
+    expect(service.list()).toMatchObject([{ id: "connect", enabled: true }]);
+  });
+
+  it("does not install store-only official plugins during the one-shot", async () => {
+    const dataDir = join(workDir, "data");
+    const officialRoot = await writeNamedBuiltinFixture(workDir, "github");
+    const official = OFFICIAL_PLUGINS.find((plugin) => plugin.name === "github");
+    if (!official) throw new Error("missing official github plugin");
+
+    service = createService({
+      db,
+      dataDir,
+      bundledPlugins: [{ ...official, rootDir: officialRoot }],
+    });
+    await service.start();
+
+    expect(service.list()).toEqual([]);
+    expect(getInstalledPluginRegistration(db, official.pluginId)).toBeUndefined();
+  });
+
+  it("does not re-enable operator-disabled custom-instructions during the one-shot", async () => {
+    const dataDir = join(workDir, "data");
+    const name = "custom-instructions";
+    const rootDir = await writeNamedBuiltinFixture(workDir, name);
+    const builtin = BUILTIN_PLUGINS.find((plugin) => plugin.name === name);
+    if (!builtin) throw new Error(`missing builtin ${name}`);
+    seedInstalledBuiltin({
+      db,
+      name,
+      pluginId: builtin.pluginId,
+      rootDir,
+      enabled: false,
+    });
+
+    service = createService({
+      db,
+      dataDir,
+      bundledPlugins: [{ ...builtin, rootDir }],
+    });
+    await service.start();
+
+    expect(service.list()).toMatchObject([
+      { id: "custom-instructions", enabled: false },
+    ]);
+    expect(workTogetherBuiltinDefaultsMarkerApplied(dataDir)).toBe(true);
+  });
+
+  it("does not flip a non-builtin row that shares a reserved plugin id", async () => {
+    const dataDir = join(workDir, "data");
+    const name = "connect";
+    const rootDir = await writeNamedBuiltinFixture(workDir, name);
+    const builtin = BUILTIN_PLUGINS.find((plugin) => plugin.name === name);
+    if (!builtin) throw new Error(`missing builtin ${name}`);
+    seedInstalledBuiltin({
+      db,
+      name,
+      pluginId: builtin.pluginId,
+      rootDir,
+      enabled: true,
+      source: "path",
+    });
+
+    service = createService({
+      db,
+      dataDir,
+      bundledPlugins: [{ ...builtin, rootDir }],
+    });
+    await service.start();
+
+    expect(getInstalledPluginRegistration(db, builtin.pluginId)).toMatchObject({
+      sourceKind: "path",
+      enabled: true,
+      removedAt: null,
+    });
+    expect(workTogetherBuiltinDefaultsMarkerApplied(dataDir)).toBe(true);
+  });
+
+  it("retries remaining flips when the marker is missing after a partial apply", async () => {
+    const dataDir = join(workDir, "data");
+    const names = ["connect", "provider-retry"] as const;
+    const bundledPlugins = await Promise.all(
+      names.map(async (name) => {
+        const rootDir = await writeNamedBuiltinFixture(workDir, name);
+        const builtin = BUILTIN_PLUGINS.find((plugin) => plugin.name === name);
+        if (!builtin) throw new Error(`missing builtin ${name}`);
+        seedInstalledBuiltin({
+          db,
+          name,
+          pluginId: builtin.pluginId,
+          rootDir,
+          enabled:
+            name === "connect"
+              ? WORK_TOGETHER_BUILTIN_DEFAULTS[name]
+              : STOCK_BB_BUILTIN_ENABLED[name],
+        });
+        return { ...builtin, rootDir };
+      }),
+    );
+
+    service = createService({ db, dataDir, bundledPlugins });
+    await service.start();
+
+    expect(
+      Object.fromEntries(
+        service.list().map((plugin) => [plugin.id, plugin.enabled]),
+      ),
+    ).toEqual({
+      connect: false,
+      "provider-retry": true,
+    });
+    expect(workTogetherBuiltinDefaultsMarkerApplied(dataDir)).toBe(true);
+  });
+
+  it("does not treat an empty marker file as already applied", async () => {
+    const dataDir = join(workDir, "data");
+    const name = "connect";
+    const rootDir = await writeNamedBuiltinFixture(workDir, name);
+    const builtin = BUILTIN_PLUGINS.find((plugin) => plugin.name === name);
+    if (!builtin) throw new Error(`missing builtin ${name}`);
+    seedInstalledBuiltin({
+      db,
+      name,
+      pluginId: builtin.pluginId,
+      rootDir,
+      enabled: true,
+    });
+    const markerPath = workTogetherBuiltinDefaultsMarkerPath(dataDir);
+    await mkdir(dirname(markerPath), { recursive: true });
+    await writeFile(markerPath, "");
+
+    service = createService({
+      db,
+      dataDir,
+      bundledPlugins: [{ ...builtin, rootDir }],
+    });
+    await service.start();
+
+    expect(service.list()).toMatchObject([{ id: "connect", enabled: false }]);
+    await expect(readFile(markerPath, "utf8")).resolves.toContain(
+      "work-together-builtin-defaults-v1",
+    );
   });
 
   it("loads the builtin connect plugin like other builtins", async () => {

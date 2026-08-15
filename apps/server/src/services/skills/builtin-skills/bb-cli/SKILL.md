@@ -449,11 +449,11 @@ For review or fix pipelines, get the environment ID from
 - For failed threads, inspect `bb thread show <id> --json` and
   `bb thread log <id>` before deciding whether to retry, clarify, or update the
   user.
-- The opt-in Provider retry plugin automatically waits for structured Codex and
+- The Provider retry plugin automatically waits for structured Codex and
   Claude Code subscription-window resets when the failed turn was accepted and
   its execution settings remain available. Prior output or tool activity does
-  not block recovery. Enable it with
-  `bb plugin enable provider-retry` or under Extensions → Plugins. Its timers
+  not block recovery. It is enabled on fresh installations; disable it with
+  `bb plugin disable provider-retry` or under Extensions → Plugins. Its timers
   last only while the current bb server/plugin process is running. Inspect it
   with `bb provider-retry status [thread-id]`, or cancel one with
   `bb provider-retry cancel <thread-id>`. Automatic waits default to six hours;
@@ -612,8 +612,8 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
 
 - The builtin `ask-user-question` plugin gives providers that lack a native
   one an `AskUserQuestion` tool — multiple-choice questions answered in a
-  composer form. It is disabled on fresh installations; enable it under
-  Extensions → Plugins or with `bb plugin enable ask-user-question`.
+  composer form. It is enabled on fresh installations; disable it under
+  Extensions → Plugins or with `bb plugin disable ask-user-question`.
 - It contributes no CLI command. Once enabled the tool appears in the agent's
   own tool list, and only for providers without a native equivalent: Claude
   Code threads keep using Claude's built-in `AskUserQuestion`, so the plugin

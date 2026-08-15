@@ -21,11 +21,10 @@ const PLUGIN_LOAD_INTERVAL_MS = 1_000;
 // bundles that pass health checks can still fail to load (0.0.31 shipped with
 // every builtin unable to resolve @get-bb/plugin-sdk at import time).
 const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
-  "automations",
-  "connect",
+  "ask-user-question",
   "custom-instructions",
   "inline-vis",
-  "secrets",
+  "provider-retry",
 ];
 const BRIDGE_WAIT_TIMEOUT_MS = 10_000;
 const PROCESS_STOP_TIMEOUT_MS = 5_000;

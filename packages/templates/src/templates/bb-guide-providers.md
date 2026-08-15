@@ -42,9 +42,10 @@ provider's global configuration.
 
 Subscription limit recovery
 
-The opt-in builtin Provider retry plugin recognizes structured Codex and Claude
-Code subscription windows. Enable it under Extensions → Plugins or run
-`bb plugin enable provider-retry`. If a provider terminally rejects an accepted
+The builtin Provider retry plugin recognizes structured Codex and Claude
+Code subscription windows. It is enabled on fresh installations; disable it
+under Extensions → Plugins or run `bb plugin disable provider-retry`. If a
+provider terminally rejects an accepted
 turn whose execution settings remain available, the plugin waits in memory
 until the reported reset plus a short buffer, then starts one agent-only
 `Please continue.` turn on the existing provider conversation. Prior output or

@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -41,23 +41,33 @@ export const PLUGIN_CATALOG_CATEGORIES = [
   "Interface",
 ] as const;
 
+/**
+ * Work Together cell profile. Stock bb enables connect / automations /
+ * secrets / side-chat and leaves ask-user-question / provider-retry off;
+ * those defaults are wrong for isolated cells. Official store plugins stay
+ * opt-in (`autoInstall: false`). `workflows` stays disabled.
+ *
+ * Changing `defaultEnabled` only affects first install. Existing cells are
+ * one-shot reconciled in `reconcileBundled` for
+ * `WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_NAMES`.
+ */
 export const BUILTIN_PLUGINS = [
   {
     name: "ask-user-question",
     pluginId: "ask-user-question",
-    defaultEnabled: false,
+    defaultEnabled: true,
     category: "Agent interaction",
   },
   {
     name: "automations",
     pluginId: "automations",
-    defaultEnabled: true,
+    defaultEnabled: false,
     category: "Workflow management",
   },
   {
     name: "connect",
     pluginId: "connect",
-    defaultEnabled: true,
+    defaultEnabled: false,
     category: "Host access",
   },
   {
@@ -75,19 +85,19 @@ export const BUILTIN_PLUGINS = [
   {
     name: "provider-retry",
     pluginId: "provider-retry",
-    defaultEnabled: false,
+    defaultEnabled: true,
     category: "Agent interaction",
   },
   {
     name: "secrets",
     pluginId: "secrets",
-    defaultEnabled: true,
+    defaultEnabled: false,
     category: "Developer tools",
   },
   {
     name: "side-chat",
     pluginId: "side-chat",
-    defaultEnabled: true,
+    defaultEnabled: false,
     category: "Agent interaction",
   },
   {
@@ -102,6 +112,49 @@ export const BUILTIN_PLUGINS = [
     autoInstall: true,
   }),
 );
+
+/**
+ * Named builtins whose `defaultEnabled` flipped for the Work Together
+ * profile. Stock reconcile keeps `existing.enabled`, so those flips would
+ * otherwise leave running cells on the old flags. `custom-instructions` and
+ * `inline-vis` stay off this list: their defaults did not change, and
+ * including them would only re-enable an operator who already turned them
+ * off. Tombstoned or non-builtin rows are skipped; later operator changes
+ * are not overwritten.
+ */
+export const WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_NAMES = [
+  "ask-user-question",
+  "automations",
+  "connect",
+  "provider-retry",
+  "secrets",
+  "side-chat",
+] as const;
+
+export const WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_ID =
+  "work-together-builtin-defaults-v1" as const;
+
+export function workTogetherBuiltinDefaultsMarkerPath(dataDir: string): string {
+  return path.join(
+    dataDir,
+    "plugins",
+    `.${WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_ID}`,
+  );
+}
+
+/** True only when the marker file exists and contains the expected id. */
+export function workTogetherBuiltinDefaultsMarkerApplied(
+  dataDir: string,
+): boolean {
+  try {
+    return readFileSync(
+      workTogetherBuiltinDefaultsMarkerPath(dataDir),
+      "utf8",
+    ).includes(WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_ID);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Official plugins ship bundled with the app like builtins, but are not

@@ -1,10 +1,12 @@
-import { resolve } from "node:path";
+import { mkdir, rename, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { isBbManagedWorkspacePath } from "../threads/worktree-paths.js";
 import {
   getInstalledPlugin,
   getInstalledPluginRegistration,
   listUnnormalizedPluginRegistrations,
   normalizeInstalledPluginRegistration,
+  setInstalledPluginEnabled,
   setInstalledPluginSourceClassification,
   upsertInstalledPlugin,
   type InstalledPluginRow,
@@ -17,6 +19,10 @@ import {
 import {
   BUNDLED_PLUGINS,
   builtinPluginSource,
+  WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_ID,
+  WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_NAMES,
+  workTogetherBuiltinDefaultsMarkerApplied,
+  workTogetherBuiltinDefaultsMarkerPath,
   type BundledPluginRegistration,
 } from "./builtin-registry.js";
 import { CURATED_MARKETPLACE_NAME } from "../plugin-catalog/marketplace-manifest.js";
@@ -608,6 +614,57 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
           enabled: existing?.enabled ?? bundled.defaultEnabled,
         });
       }
+    }
+    await applyWorkTogetherBuiltinEnabledDefaults();
+  }
+
+  /**
+   * One-shot: copy current `defaultEnabled` onto already-installed named
+   * builtins. Skips tombstones (`getInstalledPlugin` hides `removedAt`) and
+   * non-builtin sources so an operator remove is not undone. The marker is
+   * treated as applied only when it contains the expected id, and is written
+   * via temp-file rename so a crash cannot leave a false "done" file.
+   */
+  async function applyWorkTogetherBuiltinEnabledDefaults(): Promise<void> {
+    if (workTogetherBuiltinDefaultsMarkerApplied(deps.dataDir)) return;
+
+    const names = new Set<string>(WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_NAMES);
+    const flipped: string[] = [];
+    for (const bundled of bundledPlugins) {
+      if (!names.has(bundled.name)) continue;
+      const existing = getInstalledPlugin(deps.db, bundled.pluginId);
+      if (
+        existing === undefined ||
+        existing.sourceKind !== "builtin" ||
+        existing.sourceBuiltinName !== bundled.name ||
+        existing.enabled === bundled.defaultEnabled
+      ) {
+        continue;
+      }
+      if (
+        !setInstalledPluginEnabled(
+          deps.db,
+          bundled.pluginId,
+          bundled.defaultEnabled,
+        )
+      ) {
+        continue;
+      }
+      flipped.push(bundled.name);
+    }
+
+    const markerPath = workTogetherBuiltinDefaultsMarkerPath(deps.dataDir);
+    await mkdir(dirname(markerPath), { recursive: true });
+    const tmpPath = `${markerPath}.tmp`;
+    await writeFile(
+      tmpPath,
+      `${WORK_TOGETHER_BUILTIN_ENABLED_RECONCILE_ID}\n`,
+    );
+    await rename(tmpPath, markerPath);
+    if (flipped.length > 0) {
+      logger.info(
+        `applied Work Together builtin enabled defaults: ${flipped.join(", ")}`,
+      );
     }
   }
 
