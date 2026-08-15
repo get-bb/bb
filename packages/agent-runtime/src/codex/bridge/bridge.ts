@@ -384,6 +384,8 @@ interface CodexBridgeSession {
    * every thread/event for the session, so these flush right after it.
    */
   pendingPreIdentityEvents: ThreadEvent[];
+  /** Last `thread/openWork` value sent, so only changes go on the wire. */
+  openWorkReported: boolean;
   closing: boolean;
 }
 
@@ -424,6 +426,15 @@ function currentSession(
 
 function releaseSession(session: CodexBridgeSession): void {
   session.closing = true;
+  // The session is gone, so its work is too. Retract the open-work claim or
+  // the runtime keeps refusing to reap a thread that no longer exists here.
+  if (session.openWorkReported) {
+    session.openWorkReported = false;
+    sendNotification(BRIDGE_NOTIFICATION_METHODS.threadOpenWork, {
+      threadId: session.bbThreadId,
+      open: false,
+    });
+  }
   if (sessionsByBbThreadId.get(session.bbThreadId) === session) {
     sessionsByBbThreadId.delete(session.bbThreadId);
   }
@@ -691,6 +702,30 @@ function sendThreadEvent(
   });
 }
 
+/**
+ * Codex models native subagents as tool calls, not as bb background tasks, so
+ * the runtime's own background-work tracker cannot see them. Report the
+ * current value after every batch of translated events: a session release must
+ * not stop this process while a child agent still runs or still owes a
+ * followup turn.
+ */
+function reportOpenThreadWork(session: CodexBridgeSession): void {
+  const codexThreadId = session.codexThreadId;
+  const open =
+    codexThreadId !== null &&
+    session.translator.hasOpenThreadWork({
+      providerThreadId: codexThreadId,
+    });
+  if (open === session.openWorkReported) {
+    return;
+  }
+  session.openWorkReported = open;
+  sendNotification(BRIDGE_NOTIFICATION_METHODS.threadOpenWork, {
+    threadId: session.bbThreadId,
+    open,
+  });
+}
+
 function emitTranslatedEvents(
   session: CodexBridgeSession,
   events: readonly ThreadEvent[],
@@ -769,6 +804,7 @@ function handleChildNotification(
     session,
     session.translator.translateEvent(toProviderRuntimeEvent(method, params)),
   );
+  reportOpenThreadWork(session);
 }
 
 const codexChildToolCallParamsSchema = z.object({
@@ -1052,6 +1088,7 @@ async function constructThreadSession(
     openCodexTurnIds: new Set(),
     identityAnnounced: false,
     pendingPreIdentityEvents: [],
+    openWorkReported: false,
     closing: false,
   };
   sessionsByBbThreadId.set(args.threadId, session);

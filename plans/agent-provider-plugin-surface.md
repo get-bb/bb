@@ -119,11 +119,9 @@ Landed on this branch, every commit green:
      event at all (capacity unknown, notably for the 1M `[1m]` aliases). The
      bridge now seeds it at session construction and on every live model
      change, pinned by a bridge test that fails without it.
-  Still open and unchanged by graduation: `hasOpenThreadWork` has no
-  canonical implementation, so a codex session whose only live work is a
-  native subagent (and a claude session whose only live work is an opaque
-  monitor task) looks idle to the runtime's reaper. That is the phase-6
-  generic-adapter hook below, not a regression.
+  `hasOpenThreadWork` had no canonical implementation, so a codex session
+  whose only live work is a native subagent looked idle to the runtime's
+  reaper. FIXED in wave 4 by the `thread/openWork` notification (below).
 - **WAVE 3 DONE (2026-08-15)**: the `providerBridge` experiment, its
   settings toggle, and the whole `/internal/provider-bridge-policy`
   endpoint are deleted — the response carried only the prefix list, and
@@ -171,7 +169,8 @@ Landed on this branch, every commit green:
   notifications while others wrap them.
 - **Remaining (phase 6)**: the consolidation
   sweep (scattered enums, usage surfaces, provider-scoped options for
-  workflows/memory toggles); hasOpenThreadWork generic-adapter hook;
+  workflows/memory toggles) — see the phase-6 checklist for what wave 4
+  landed and what it deferred;
   interim icon fallbacks and inlined placeholders move server-side;
   collapsing the codex thread-scoped process keys onto
   `thread/stop {release}` + resume.
@@ -794,6 +793,20 @@ their level, never to flatten them toward a common denominator.
   usage-limits and CLI-install UI become registry-driven.
 - Host-daemon AI services (voice/inference, codex-only daemon commands) →
   optional protocol capability on the bridge.
+- DONE (wave 4) — `hasOpenThreadWork` generic-adapter hook. The optional
+  adapter member survived graduation with no canonical implementation: the
+  codex translator computes it, but the translator moved into the codex
+  bridge, so nothing in the runtime could ask. A codex thread whose only
+  live work was a native subagent (a tool call, not a `backgroundTask`
+  item) therefore looked idle and the session reaper stopped its process
+  out from under a running child agent. Fixed with a level-triggered
+  `thread/openWork` notification: the bridge reports the current value, the
+  generic adapter keeps the last one per thread and answers
+  `hasOpenThreadWork` from it, and a bridge that never sends it reads as
+  idle (today's behavior for the other three). Additive, so no
+  `PROVIDER_BRIDGE_PROTOCOL_VERSION` bump. The codex bridge also retracts
+  the claim on session release, or the runtime would refuse to reap a
+  thread that no longer exists on the bridge side.
 - MOSTLY DONE (wave 4) — `thread-timeline-active-prompt-mode` enum +
   `thread-view` provider switches. The premise needed correcting: plan mode
   is not bridge-emitted at all, it is derived server-side from a `/plan`

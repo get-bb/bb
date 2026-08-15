@@ -222,6 +222,37 @@ describe("translateEvent", () => {
     ).toStrictEqual([]);
   });
 
+  // The reaper's only view of provider work bb cannot see in the timeline.
+  // Codex models native subagents as tool calls, so a thread with a live child
+  // agent looks idle without this; a bridge that never reports reads as idle.
+  it("tracks thread/openWork per thread without emitting a timeline event", () => {
+    const adapter = makeAdapter();
+    const work = { providerThreadId: "codex-1", threadId: "thr_1" };
+    expect(adapter.hasOpenThreadWork?.(work)).toBe(false);
+
+    expect(
+      adapter.translateEvent({
+        jsonrpc: "2.0",
+        method: "thread/openWork",
+        params: { threadId: "thr_1", open: true },
+      }),
+    ).toStrictEqual([]);
+    expect(adapter.hasOpenThreadWork?.(work)).toBe(true);
+    expect(
+      adapter.hasOpenThreadWork?.({
+        providerThreadId: "codex-2",
+        threadId: "thr_2",
+      }),
+    ).toBe(false);
+
+    adapter.translateEvent({
+      jsonrpc: "2.0",
+      method: "thread/openWork",
+      params: { threadId: "thr_1", open: false },
+    });
+    expect(adapter.hasOpenThreadWork?.(work)).toBe(false);
+  });
+
   it("surfaces session/replaced as a visible warning with the context fate", () => {
     const adapter = makeAdapter();
     const events = adapter.translateEvent({

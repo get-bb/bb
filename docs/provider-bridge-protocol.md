@@ -133,6 +133,16 @@ Grammar rules:
    `fork: "tip"` bridge rejects checkpoint forks with
    `FORK_CHECKPOINT_UNSUPPORTED` rather than cloning history the bb timeline
    does not show.
+5. `thread/openWork` reports whether a thread still owns provider work that
+   outlives its turn and that bb cannot see. Work reported as
+   `backgroundTask` items is already tracked by the runtime; this is for
+   work the provider models as something else (codex reports native
+   subagents as tool calls). It is level-triggered — send the current value,
+   the runtime keeps the last one heard — and a bridge that never sends it
+   reads as no open work. Retract it (`open: false`) when the session is
+   released, or the runtime will refuse to reap a thread that no longer
+   exists on your side. Missing this is how an idle-looking thread gets its
+   parent process stopped out from under a running child agent.
 
 ## Ordering guarantees
 

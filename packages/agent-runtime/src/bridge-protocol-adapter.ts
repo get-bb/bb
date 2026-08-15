@@ -71,6 +71,10 @@ const threadIdentityNotificationParamsSchema = z
   })
   .passthrough();
 
+const threadOpenWorkNotificationParamsSchema = z
+  .object({ threadId: z.string().min(1), open: z.boolean() })
+  .passthrough();
+
 const sessionReplacedNotificationParamsSchema = z
   .object({
     threadId: z.string().min(1),
@@ -179,6 +183,9 @@ export function createBridgeProtocolAdapter(
   options: BridgeProtocolAdapterOptions,
 ): ProviderAdapter {
   let handshake: BridgeCapabilities = bridgeCapabilitiesSchema.parse({});
+  // Last `thread/openWork` value per bb thread. Level-triggered, so a missed
+  // intermediate notification cannot strand the runtime on a stale answer.
+  const threadIdsWithOpenWork = new Set<string>();
 
   function gate(
     capability: keyof BridgeCapabilities & string,
@@ -404,6 +411,16 @@ export function createBridgeProtocolAdapter(
 
     prepareTurnStart: noPreparedProviderCommandDispatch,
 
+    /**
+     * The bridge is the only side that knows about provider work bb models as
+     * something other than a background task (codex's native subagents are
+     * tool calls). It reports the current value with `thread/openWork`; a
+     * bridge that never sends it reads as no open work.
+     */
+    hasOpenThreadWork({ threadId }): boolean {
+      return threadIdsWithOpenWork.has(threadId);
+    },
+
     parseModelListResult: parseAvailableModelList,
 
     translateEvent(event: ProviderRuntimeEvent): ThreadEvent[] {
@@ -450,6 +467,21 @@ export function createBridgeProtocolAdapter(
             scope: { kind: "thread" },
           },
         ];
+      }
+      if (method === BRIDGE_NOTIFICATION_METHODS.threadOpenWork) {
+        // Not a timeline event: it only updates the reaper's view of whether
+        // stopping this thread would destroy live provider work.
+        const parsed = threadOpenWorkNotificationParamsSchema.safeParse(
+          event.params,
+        );
+        if (parsed.success) {
+          if (parsed.data.open) {
+            threadIdsWithOpenWork.add(parsed.data.threadId);
+          } else {
+            threadIdsWithOpenWork.delete(parsed.data.threadId);
+          }
+        }
+        return [];
       }
       if (method === BRIDGE_NOTIFICATION_METHODS.error) {
         const parsed = errorNotificationParamsSchema.safeParse(event.params);
