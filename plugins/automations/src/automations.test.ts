@@ -1049,7 +1049,7 @@ describe("script process containment", () => {
     await mkdir(scriptDir, { recursive: true });
     await writeFile(
       join(scriptDir, "script.sh"),
-      "sleep 30 &\nchild_pid=$!\necho $child_pid\nwait $child_pid\n",
+      "sleep 30 &\nchild_pid=$!\nprintf 'child_pid=%s\\n' \"$child_pid\"\nwait $child_pid\n",
     );
 
     try {
@@ -1065,10 +1065,8 @@ describe("script process containment", () => {
         timeoutMs: 1_000,
         serverUrl: "http://127.0.0.1:38886",
       });
-      const childPid = Number.parseInt(
-        result.output.trim().split(/\s+/u)[0] ?? "",
-        10,
-      );
+      const childPidMatch = result.output.match(/^child_pid=(\d+)$/mu);
+      const childPid = Number.parseInt(childPidMatch?.[1] ?? "", 10);
       expect(result.timedOut).toBe(true);
       expect(Number.isSafeInteger(childPid)).toBe(true);
 
