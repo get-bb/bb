@@ -31,7 +31,14 @@ function TasksNavigationPanelContent({ subPath }: PluginNavPanelProps) {
         summaries={summaries.data}
         presets={presets.data}
         activeTasks={activeTasks.data}
-        isLoading={projects.isLoading || summaries.isLoading}
+        // Skeleton only while there is nothing to draw: a refetch (manual
+        // refresh, invalidation) keeps the last-known rows on screen, and a
+        // snapshot-hydrated mount never shows the placeholder at all.
+        isLoading={
+          folders.data === undefined ||
+          projects.data === undefined ||
+          summaries.data === undefined
+        }
         onNavigate={navigation.go}
         onNewProject={() => setNewProjectOpen(true)}
       />

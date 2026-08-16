@@ -23,6 +23,7 @@ const app = await loadPluginApp(() => import("../app"));
 const { parseTasksRoute, tasksRouteToSubPath } = await import("./routes.js");
 const { pagerPosition } = await import("./topbar.js");
 const { loadViewMode } = await import("./view-preference.js");
+const { querySnapshotStorageKey } = await import("./query-snapshot.js");
 
 const tasksRegistration = app.navPanels[0]!;
 const navigationView = tasksRegistration.experimental_fixedTabs?.[0]!;
@@ -696,6 +697,118 @@ describe("tasks app shell", () => {
         slot.getByRole("textbox", { name: "Task title" }).textContent,
       ).toBe("Recovered detail title"),
     );
+  });
+
+  describe("last-known snapshot", () => {
+    const projectsKey = querySnapshotStorageKey("projects");
+    const foldersKey = querySnapshotStorageKey("folders");
+    const summaryKey = querySnapshotStorageKey("sidebar-summary");
+    const summary = {
+      projectId: PROJECT_ID,
+      taskCount: 3,
+      activeAgentCount: 1,
+    };
+    // An RPC the test settles by hand, so the pre-resolution render is observable.
+    function deferred<T>() {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((r) => {
+        resolve = r;
+      });
+      return { promise, resolve };
+    }
+
+    it("never paints the empty state while projects are unknown", async () => {
+      const projects = deferred<{ projects: never[] }>();
+      const slot = renderSlot(
+        app.navPanels[0]!,
+        { subPath: "" },
+        {
+          rpc: seededRpc({
+            listProjects: () => projects.promise,
+            sidebarSummary: () => ({ projects: [] }),
+          }),
+        },
+      );
+      // Cold profile: emptiness is not known yet, so the empty state must wait.
+      expect(slot.queryByText("No projects yet")).toBeNull();
+      projects.resolve({ projects: [] });
+      await slot.findByText("No projects yet");
+    });
+
+    it("paints the last-known empty state before listProjects resolves", () => {
+      window.localStorage.setItem(projectsKey, JSON.stringify([]));
+      window.localStorage.setItem(foldersKey, JSON.stringify([]));
+      window.localStorage.setItem(summaryKey, JSON.stringify([]));
+      const projects = deferred<{ projects: never[] }>();
+      const slot = renderSlot(
+        app.navPanels[0]!,
+        { subPath: "" },
+        {
+          rpc: seededRpc({
+            listProjects: () => projects.promise,
+            sidebarSummary: () => ({ projects: [] }),
+          }),
+        },
+      );
+      // First paint already matches the last truth this browser saw: no list chrome first.
+      expect(slot.getByText("No projects yet")).toBeTruthy();
+    });
+
+    it("paints last-known projects before listProjects resolves and never flashes empty", async () => {
+      window.localStorage.setItem(projectsKey, JSON.stringify([project]));
+      window.localStorage.setItem(foldersKey, JSON.stringify([folder]));
+      window.localStorage.setItem(summaryKey, JSON.stringify([summary]));
+      const projects = deferred<{ projects: (typeof project)[] }>();
+      const rpc = seededRpc({ listProjects: () => projects.promise });
+      // The sidebar lives in the right-panel navigation view; the page owns
+      // the empty state. Both must paint the last-known truth first.
+      const panel = renderSlot(
+        navigationRegistration,
+        { subPath: "" },
+        { rpc },
+      );
+      const page = renderSlot(app.navPanels[0]!, { subPath: "" }, { rpc });
+      expect(panel.getByText(project.name)).toBeTruthy();
+      expect(page.queryByText("No projects yet")).toBeNull();
+      projects.resolve({ projects: [project] });
+      await waitFor(() => expect(panel.getByText(project.name)).toBeTruthy());
+      expect(page.queryByText("No projects yet")).toBeNull();
+    });
+
+    it("ignores a malformed snapshot and loads normally", async () => {
+      window.localStorage.setItem(projectsKey, "{not json");
+      window.localStorage.setItem(
+        summaryKey,
+        JSON.stringify([{ projectId: 1 }]),
+      );
+      const slot = renderSlot(
+        app.navPanels[0]!,
+        { subPath: "" },
+        { rpc: emptyRpc },
+      );
+      expect(slot.queryByText("No projects yet")).toBeNull();
+      await slot.findByText("No projects yet");
+    });
+
+    it("records the fetched projects and counts for the next mount", async () => {
+      const slot = renderSlot(
+        navigationRegistration,
+        { subPath: "" },
+        { rpc: seededRpc() },
+      );
+      await slot.findByText(project.name);
+      await waitFor(() => {
+        expect(
+          JSON.parse(window.localStorage.getItem(projectsKey) ?? "null"),
+        ).toEqual([project]);
+        expect(
+          JSON.parse(window.localStorage.getItem(foldersKey) ?? "null"),
+        ).toEqual([folder]);
+        expect(
+          JSON.parse(window.localStorage.getItem(summaryKey) ?? "null"),
+        ).toEqual([summary]);
+      });
+    });
   });
 
   it("shows the empty state and opens the New project dialog", async () => {

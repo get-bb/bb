@@ -40,6 +40,9 @@ const { defaultPermissionMode, describePresetEnvironment, savePresetDraft } =
   await import("./preset-dialog.js");
 
 afterEach(cleanup);
+// The shell persists last-known sidebar data per browser profile; tests must
+// not inherit it from each other.
+beforeEach(() => window.localStorage.clear());
 
 const PROJECT_ID = "01HZZZZZZZZZZZZZZZZZZZZZP1";
 const TASK_ID = "01HZZZZZZZZZZZZZZZZZZZZZT1";
