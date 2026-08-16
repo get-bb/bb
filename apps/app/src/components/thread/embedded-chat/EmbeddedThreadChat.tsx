@@ -556,8 +556,11 @@ function EmbeddedThreadChatWithComposer({
   }, [stopThread, threadId]);
   const isProvisioning =
     displayStatus === "provisioning" || displayStatus === "starting";
+  // A replayed (placeholder) resolution seeds the pickers but does not open
+  // submission; wait for the live query like an empty cache would.
   const isDefaultExecutionOptionsLoading =
-    defaultExecutionOptions === undefined && executionOptionsQuery.isLoading;
+    executionOptionsQuery.isPlaceholderData ||
+    (defaultExecutionOptions === undefined && executionOptionsQuery.isLoading);
 
   const {
     processingQueuedMessage,
