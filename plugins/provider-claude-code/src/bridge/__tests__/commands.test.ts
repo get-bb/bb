@@ -1,62 +1,61 @@
-import { DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { decodeClaudeCodeJsonRpcRequest } from "../commands.js";
 
 const baseThreadStartParams = {
   threadId: "bb-thread-1",
   cwd: "/tmp/worktree",
-  baseInstructions: "test",
-  permissionMode: "default",
-  approvedPlanPermissionMode: "default",
-  permissionScope: "workspace",
-  permissionEscalation: "ask",
   instructionMode: "append",
-  workflowsEnabled: false,
-  claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+  options: {
+    permissionMode: "accept-edits",
+    permissionScope: "workspace",
+    approvalReviewer: "user",
+    permissionEscalation: "ask",
+    providerOptions: { workflowsEnabled: false },
+  },
 };
 
 describe("decodeClaudeCodeJsonRpcRequest", () => {
-  it("decodes thread/start with an explicit workflowsEnabled", () => {
-    const decoded = decodeClaudeCodeJsonRpcRequest({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "thread/start",
-      params: baseThreadStartParams,
-    });
-    expect(decoded).toMatchObject({
-      kind: "request",
-      request: {
-        method: "thread/start",
-        params: { workflowsEnabled: false },
-      },
-    });
-  });
-
-  it("rejects session commands that omit workflowsEnabled (the policy is filled at the server boundary, never defaulted downstream)", () => {
-    const { workflowsEnabled: _omitted, ...withoutWorkflowsEnabled } =
-      baseThreadStartParams;
+  it("decodes thread/start and keeps the provider-scoped options bag", () => {
     expect(
       decodeClaudeCodeJsonRpcRequest({
         jsonrpc: "2.0",
         id: 1,
         method: "thread/start",
-        params: withoutWorkflowsEnabled,
+        params: baseThreadStartParams,
+      }),
+    ).toMatchObject({
+      kind: "request",
+      request: {
+        method: "thread/start",
+        params: { options: { providerOptions: { workflowsEnabled: false } } },
+      },
+    });
+  });
+
+  // Reply, never drop (#853): the caller is waiting on `id` and would
+  // otherwise learn nothing until its request timed out, and the reply has to
+  // name the field that was wrong.
+  it("names the missing field on invalid params", () => {
+    const { options: _omitted, ...withoutOptions } = baseThreadStartParams;
+    expect(
+      decodeClaudeCodeJsonRpcRequest({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "thread/start",
+        params: withoutOptions,
       }),
     ).toMatchObject({
       kind: "invalid_params",
       id: 1,
       method: "thread/start",
-      issues: expect.stringContaining("workflowsEnabled"),
+      issues: expect.stringContaining("options"),
     });
     expect(
       decodeClaudeCodeJsonRpcRequest({
         jsonrpc: "2.0",
         id: 2,
         method: "thread/resume",
-        params: {
-          ...withoutWorkflowsEnabled,
-          providerThreadId: "claude-session-1",
-        },
+        params: { ...withoutOptions, providerThreadId: "claude-session-1" },
       }),
     ).toMatchObject({
       kind: "invalid_params",

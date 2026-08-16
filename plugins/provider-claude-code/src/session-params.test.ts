@@ -2,19 +2,16 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG } from "@bb/domain";
 import type { RuntimePermissionPolicy } from "@bb/domain";
 import {
-  buildClaudeCanonicalSessionParams,
-  buildClaudeCanonicalTurnParams,
   buildClaudeSessionParams,
+  buildClaudeTurnParams,
   type ClaudeSessionExecutionOptions,
 } from "./session-params.js";
 
 /**
- * Both dialects must feed the same internal session-construction machinery:
- * the canonical wire (execution options plus the claude-flavored knobs the
- * generic bridge-protocol adapter packs under `options.providerOptions`)
- * has to produce exactly the params the legacy adapter builds from the same
- * `ProviderExecutionContext`, which satisfies it structurally. Divergence here is the migration hazard — a
- * knob that silently stops reaching the bridge on one dialect.
+ * The canonical wire — execution options plus the claude-flavored knobs the
+ * generic bridge-protocol adapter packs under `options.providerOptions` — has
+ * to reach the bridge's session-construction params intact. A knob that
+ * silently stops arriving is the hazard these cases pin.
  */
 
 const EXECUTION_CONTEXT = {
@@ -82,35 +79,40 @@ const FULL_POLICY = {
   permissionEscalation: null,
 } satisfies RuntimePermissionPolicy;
 
-describe("buildClaudeCanonicalSessionParams", () => {
-  it("produces exactly the legacy adapter's session params for the same execution context", () => {
-    const shared = {
+describe("buildClaudeSessionParams", () => {
+  it("maps every claude-flavored knob out of the providerOptions bag", () => {
+    const params = buildClaudeSessionParams({
       threadId: "thread-1",
       cwd: "/tmp/worktree",
-      instructionMode: "append" as const,
+      instructionMode: "append",
       dynamicTools: [
         { name: "tool", description: "desc", inputSchema: { type: "object" } },
       ],
       disallowedTools: ["WebSearch"],
-    };
-    const canonical = buildClaudeCanonicalSessionParams({
-      ...shared,
       options: toCanonicalWireOptions(EXECUTION_CONTEXT),
     });
 
-    expect(canonical).toEqual(
-      buildClaudeSessionParams({
-        ...shared,
-        additionalWorkspaceWriteRoots: [],
-        options: EXECUTION_CONTEXT,
-      }),
-    );
-    // Absolute anchors, so the case still pins real mappings rather than only
-    // comparing two functions that share an implementation: native plan mode
-    // is a session option (`claudeCodePermissionMode: "plan"` becomes the SDK
-    // permission mode), and an explicit workflow toggle stays explicit.
-    expect(canonical.permissionMode).toBe("plan");
-    expect(canonical.workflowsEnabled).toBe(true);
+    // Native plan mode is a session option (`claudeCodePermissionMode: "plan"`
+    // becomes the SDK permission mode) and an explicit workflow toggle stays
+    // explicit; the model, reasoning level, and instructions ride the core
+    // canonical fields.
+    expect(params).toMatchObject({
+      threadId: "thread-1",
+      cwd: "/tmp/worktree",
+      permissionMode: "plan",
+      workflowsEnabled: true,
+      memoryEnabled: false,
+      providerSubagentsEnabled: false,
+      model: "claude-sonnet-5",
+      reasoningLevel: "high",
+      claudeCodeMockCliTraffic: {
+        enabled: true,
+        endpoint: "http://127.0.0.1:1",
+      },
+      disallowedTools: ["WebSearch"],
+      config: { "shell_environment_policy.set.BB_TEST": "1" },
+    });
+    expect(params.baseInstructions).toContain("Session instructions");
   });
 
   // The daemon's environment-level extra write roots have no core canonical
@@ -123,7 +125,7 @@ describe("buildClaudeCanonicalSessionParams", () => {
       instructionMode: "append" as const,
     };
     const additionalWorkspaceWriteRoots = ["/tmp/thread-storage"];
-    const canonical = buildClaudeCanonicalSessionParams({
+    const canonical = buildClaudeSessionParams({
       ...shared,
       options: {
         ...toCanonicalWireOptions(EXECUTION_CONTEXT),
@@ -137,17 +139,10 @@ describe("buildClaudeCanonicalSessionParams", () => {
     expect(canonical.additionalWorkspaceWriteRoots).toEqual(
       additionalWorkspaceWriteRoots,
     );
-    expect(canonical).toEqual(
-      buildClaudeSessionParams({
-        ...shared,
-        additionalWorkspaceWriteRoots,
-        options: EXECUTION_CONTEXT,
-      }),
-    );
   });
 
   it("falls back to provider defaults when the providerOptions bag is absent", () => {
-    const params = buildClaudeCanonicalSessionParams({
+    const params = buildClaudeSessionParams({
       threadId: "thread-1",
       cwd: "/tmp/worktree",
       instructionMode: "append",
@@ -163,7 +158,7 @@ describe("buildClaudeCanonicalSessionParams", () => {
     // An explicit false stays explicit: omission is not a hidden default, so
     // both explicit values have to survive the mapping unchanged.
     expect(
-      buildClaudeCanonicalSessionParams({
+      buildClaudeSessionParams({
         threadId: "thread-1",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -174,7 +169,7 @@ describe("buildClaudeCanonicalSessionParams", () => {
       }).workflowsEnabled,
     ).toBe(false);
     expect(
-      buildClaudeCanonicalSessionParams({
+      buildClaudeSessionParams({
         threadId: "thread-1",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -192,11 +187,7 @@ describe("buildClaudeCanonicalSessionParams", () => {
  * adapter suite. Each was asserted there through
  * `adapter.buildCommandPlan({ type: "thread/start" | "thread/resume" })` on
  * `plan.params`, and those params ARE this module's output, so the assertions
- * carry over unchanged. The start/resume twins are collapsed into single
- * cases: the legacy adapter's only resume-side difference was merging
- * `providerThreadId` onto the same params, which is adapter shaping that dies
- * with the adapter. Where the invariant is about what actually reaches the
- * bridge, the canonical builder is the assertion target.
+ * carry over unchanged.
  */
 
 const EXTRA_WORKSPACE_WRITE_ROOTS = [
@@ -223,7 +214,7 @@ function toWireOptionsWithRoots(args: {
 
 describe("claude session workspace-write roots", () => {
   it("includes construction-level workspace-write roots", () => {
-    const params = buildClaudeCanonicalSessionParams({
+    const params = buildClaudeSessionParams({
       threadId: "bb-thread-1",
       cwd: "/tmp/worktree",
       instructionMode: "append",
@@ -242,7 +233,7 @@ describe("claude session workspace-write roots", () => {
   // key as an explicit root list.
   it("omits empty workspace-write roots", () => {
     expect(
-      buildClaudeCanonicalSessionParams({
+      buildClaudeSessionParams({
         threadId: "bb-thread-1",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -253,19 +244,6 @@ describe("claude session workspace-write roots", () => {
       }),
     ).not.toHaveProperty("additionalWorkspaceWriteRoots");
 
-    expect(
-      buildClaudeSessionParams({
-        threadId: "bb-thread-1",
-        cwd: "/tmp/worktree",
-        instructionMode: "append",
-        additionalWorkspaceWriteRoots: [],
-        options: {
-          ...WORKSPACE_ACCEPT_EDITS_POLICY,
-          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-          workflowsEnabled: false,
-        },
-      }),
-    ).not.toHaveProperty("additionalWorkspaceWriteRoots");
   });
 
   // The roots are gated on the permission SCOPE, not the permission mode: an
@@ -276,7 +254,7 @@ describe("claude session workspace-write roots", () => {
       cwd: "/tmp/worktree",
       instructionMode: "append" as const,
     };
-    const autoParams = buildClaudeCanonicalSessionParams({
+    const autoParams = buildClaudeSessionParams({
       ...shared,
       threadId: "bb-thread-readonly",
       options: toWireOptionsWithRoots({
@@ -284,7 +262,7 @@ describe("claude session workspace-write roots", () => {
         additionalWorkspaceWriteRoots: EXTRA_WORKSPACE_WRITE_ROOTS,
       }),
     });
-    const fullParams = buildClaudeCanonicalSessionParams({
+    const fullParams = buildClaudeSessionParams({
       ...shared,
       threadId: "bb-thread-full",
       options: toWireOptionsWithRoots({
@@ -307,12 +285,13 @@ describe("claude session option passthrough", () => {
       threadId: "bb-thread-1",
       cwd: "/tmp/worktree",
       instructionMode: "append",
-      additionalWorkspaceWriteRoots: [],
       options: {
         ...WORKSPACE_ACCEPT_EDITS_POLICY,
         permissionEscalation: "ask",
-        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-        workflowsEnabled: false,
+        providerOptions: {
+          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+          workflowsEnabled: false,
+        },
         model: "claude-opus-4-7",
         instructions: "Focus on the failing tests first.",
         reasoningLevel: "max",
@@ -380,12 +359,13 @@ describe("claude session option passthrough", () => {
       threadId: "bb-thread-1",
       cwd: "/tmp/worktree",
       instructionMode: "append",
-      additionalWorkspaceWriteRoots: [],
       options: {
         ...WORKSPACE_AUTO_POLICY,
         permissionEscalation: "deny",
-        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-        workflowsEnabled: false,
+        providerOptions: {
+          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+          workflowsEnabled: false,
+        },
       },
     });
 
@@ -400,11 +380,12 @@ describe("claude session option passthrough", () => {
       threadId: "bb-thread-1",
       cwd: "/tmp/worktree",
       instructionMode: "append",
-      additionalWorkspaceWriteRoots: [],
       options: {
         ...FULL_POLICY,
-        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-        workflowsEnabled: false,
+        providerOptions: {
+          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+          workflowsEnabled: false,
+        },
       },
     });
 
@@ -415,9 +396,9 @@ describe("claude session option passthrough", () => {
   });
 });
 
-describe("buildClaudeCanonicalTurnParams", () => {
+describe("buildClaudeTurnParams", () => {
   it("leaves live-setting knobs undefined when providerOptions omits them, so the session keeps its current values", () => {
-    const params = buildClaudeCanonicalTurnParams({
+    const params = buildClaudeTurnParams({
       threadId: "thread-1",
       providerThreadId: "provider-1",
       input: [{ type: "text", text: "hi", mentions: [] }],
@@ -435,10 +416,9 @@ describe("buildClaudeCanonicalTurnParams", () => {
   });
 
   // Plan mode rides the session options; a literal "/plan" left in the prompt
-  // would reach the CLI as a second, redundant command. The legacy adapter
-  // strips it, so the canonical path must too.
+  // would reach the CLI as a second, redundant command.
   it("strips the /plan command mention that opened plan mode", () => {
-    const params = buildClaudeCanonicalTurnParams({
+    const params = buildClaudeTurnParams({
       threadId: "thread-1",
       providerThreadId: "provider-1",
       input: [

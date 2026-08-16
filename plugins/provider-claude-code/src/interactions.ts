@@ -5,9 +5,8 @@
  * (permission approvals, AskUserQuestion, plan-mode exit) onto the canonical
  * `PendingInteractionPayload`/`PendingInteractionResolution` shapes from
  * `@bb/domain`, and canonical resolutions back onto the Claude interactive
- * response contract. Extracted from the claude-code adapter so the adapter
- * (legacy dialect) and the bridge's canonical `interaction/request` path
- * share one mapping in both directions.
+ * response contract — one module for both directions of the bridge's
+ * `interaction/request` path.
  */
 
 import type {

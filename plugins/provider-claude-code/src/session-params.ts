@@ -1,11 +1,7 @@
 /**
- * Claude Code session parameter mapping.
- *
- * Shared helpers that build the claude-code bridge's internal
- * session-construction params. Extracted from the claude-code adapter so the
- * adapter (legacy dialect) and the bridge's canonical Provider Bridge
- * Protocol handlers share one mapping, the same pattern as
- * `acp/session-params.ts` and `pi/session-params.ts`.
+ * Claude Code session parameter mapping: canonical Provider Bridge Protocol
+ * session and turn params in, the bridge's internal session-construction and
+ * turn params out.
  */
 
 import {
@@ -125,7 +121,7 @@ function resolveClaudeSessionPermissionMode(
   return options.claudeCodePermissionMode ?? toClaudePermissionMode(options);
 }
 
-export interface BuildClaudeSessionParamsArgs {
+interface BuildInternalSessionParamsArgs {
   additionalWorkspaceWriteRoots: readonly string[];
   cwd: string;
   disallowedTools?: readonly string[] | undefined;
@@ -136,12 +132,11 @@ export interface BuildClaudeSessionParamsArgs {
 }
 
 /**
- * The claude-code bridge's internal session-construction params (the legacy
- * `thread/start` shape, minus resume/fork identity fields the callers
- * spread in).
+ * The bridge's session-construction params, minus the resume/fork identity
+ * fields the callers spread in.
  */
-export function buildClaudeSessionParams(
-  args: BuildClaudeSessionParamsArgs,
+function buildInternalSessionParams(
+  args: BuildInternalSessionParamsArgs,
 ): Record<string, unknown> {
   const baseInstructions = args.options.instructions ?? "";
   const config = buildClaudeCodeConfig(args.options.envVars);
@@ -188,7 +183,7 @@ export function buildClaudeSessionParams(
 }
 
 // ---------------------------------------------------------------------------
-// Canonical wire options → internal session params
+// Wire options → internal session params
 // ---------------------------------------------------------------------------
 
 /**
@@ -225,7 +220,7 @@ export type ClaudeCanonicalExecutionOptions = RuntimePermissionPolicy & {
   providerOptions?: Record<string, unknown> | undefined;
 };
 
-export interface BuildClaudeCanonicalSessionParamsArgs {
+export interface BuildClaudeSessionParamsArgs {
   threadId: string;
   cwd: string;
   options: ClaudeCanonicalExecutionOptions;
@@ -241,20 +236,20 @@ export interface BuildClaudeCanonicalSessionParamsArgs {
 }
 
 /**
- * The bridge's internal session-construction params built from canonical
- * Provider Bridge Protocol session params. Skill roots come from the
- * process-scoped `skills/configure` latch rather than the session options;
- * the daemon's extra workspace write roots ride the providerOptions bag. A
- * missing providerOptions bag falls back to the provider defaults (workflows
- * off, mock CLI traffic disabled).
+ * The bridge's session-construction params, built from the canonical Provider
+ * Bridge Protocol session params. Skill roots come from the process-scoped
+ * `skills/configure` latch rather than the session options; the daemon's extra
+ * workspace write roots ride the providerOptions bag. A missing providerOptions
+ * bag falls back to the provider defaults (workflows off, mock CLI traffic
+ * disabled).
  */
-export function buildClaudeCanonicalSessionParams(
-  args: BuildClaudeCanonicalSessionParamsArgs,
+export function buildClaudeSessionParams(
+  args: BuildClaudeSessionParamsArgs,
 ): Record<string, unknown> {
   const providerOptions = claudeProviderOptionsSchema.parse(
     args.options.providerOptions ?? {},
   );
-  return buildClaudeSessionParams({
+  return buildInternalSessionParams({
     additionalWorkspaceWriteRoots:
       providerOptions.additionalWorkspaceWriteRoots ?? [],
     cwd: args.cwd,
@@ -281,10 +276,10 @@ export function buildClaudeCanonicalSessionParams(
 /**
  * Plan mode is delivered as a session option, not as prompt text: the Claude
  * CLI would treat a literal `/plan` in the prompt as a second, redundant
- * command. Both dialects strip the mention that opened plan mode before the
- * input reaches the SDK.
+ * command, so the mention that opened plan mode is stripped before the input
+ * reaches the SDK.
  */
-export function stripClaudePlanCommandMentions(args: {
+function stripClaudePlanCommandMentions(args: {
   input: readonly PromptInput[];
   claudeCodePermissionMode: "plan" | undefined;
 }): PromptInput[] {
@@ -297,7 +292,7 @@ export function stripClaudePlanCommandMentions(args: {
   });
 }
 
-export interface BuildClaudeCanonicalTurnParamsArgs {
+export interface BuildClaudeTurnParamsArgs {
   threadId: string;
   providerThreadId: string | null;
   expectedTurnId?: string | undefined;
@@ -306,14 +301,13 @@ export interface BuildClaudeCanonicalTurnParamsArgs {
 }
 
 /**
- * The bridge's internal turn params (legacy `turn/start`/`turn/steer` shape)
- * built from canonical turn params. Live-setting knobs stay undefined when
- * the providerOptions bag omits them, which the bridge's per-turn settings
- * reconciliation reads as "keep the session's current value" — the same
- * machinery both dialects feed.
+ * The bridge's internal turn params, built from the canonical turn params.
+ * Live-setting knobs stay undefined when the providerOptions bag omits them,
+ * which the bridge's per-turn settings reconciliation reads as "keep the
+ * session's current value".
  */
-export function buildClaudeCanonicalTurnParams(
-  args: BuildClaudeCanonicalTurnParamsArgs,
+export function buildClaudeTurnParams(
+  args: BuildClaudeTurnParamsArgs,
 ): Record<string, unknown> {
   const providerOptions = claudeProviderOptionsSchema.parse(
     args.options.providerOptions ?? {},

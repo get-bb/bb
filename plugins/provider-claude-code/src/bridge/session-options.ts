@@ -192,8 +192,8 @@ function buildReadonlyHooks(
 }
 
 // The bb workspace sandbox applies only to the accept-edits/auto session
-// modes. Plan (and the legacy default/dontAsk modes) keep the Claude SDK's
-// native tool gating without a sandbox, matching pre-preset behavior.
+// modes. Plan keeps the Claude SDK's native tool gating without a sandbox,
+// matching pre-preset behavior.
 function usesWorkspaceSandbox(params: BuildSessionOptionsArgs): boolean {
   return (
     params.permissionScope === "workspace" &&

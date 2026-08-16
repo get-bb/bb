@@ -89,7 +89,6 @@ export const claudeTurnStartParamsSchema = z.object({
   threadId: z.string(),
   providerThreadId: z.string().nullable(),
   input: z.array(z.unknown()),
-  inputGroups: z.array(z.array(z.unknown()).min(1)).optional(),
   model: z.string().optional(),
   reasoningLevel: bridgeReasoningLevelSchema.optional(),
   workflowsEnabled: z.boolean().optional(),
@@ -104,7 +103,6 @@ export const claudeTurnSteerParamsSchema = z.object({
   providerThreadId: z.string().nullable(),
   expectedTurnId: z.string(),
   input: z.array(z.unknown()),
-  inputGroups: z.array(z.array(z.unknown()).min(1)).optional(),
   model: z.string().optional(),
   reasoningLevel: bridgeReasoningLevelSchema.optional(),
   workflowsEnabled: z.boolean().optional(),
@@ -113,36 +111,16 @@ export const claudeTurnSteerParamsSchema = z.object({
   permissionEscalation: bridgePermissionEscalationSchema,
 });
 
-export const claudeThreadStopParamsSchema = z.object({
-  threadId: z.string(),
-});
-
-/**
- * Per-method params accept both dialects during the phase-2c migration: the
- * canonical Provider Bridge Protocol shapes (imported from
- * `@bb/provider-bridge-protocol`, listed first — required fields such as
- * `options` or `intent` discriminate them from the legacy shapes) and the
- * legacy adapter shapes. Handlers narrow on the same fields. `model/list`
- * keeps one schema: the canonical params parse under the legacy `{}` shape.
- */
+/** The canonical Provider Bridge Protocol params, per method. */
 const claudeCodeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("initialize"),
-    // Accepts both the canonical Provider Bridge Protocol shape
-    // ({protocolVersion, client}) and the legacy shape ({clientInfo}); the
-    // reply is always the canonical handshake, which the legacy adapter
-    // ignores.
-    params: z.union([
-      z
-        .object({
-          protocolVersion: z.number().int().positive(),
-          client: z.object({ name: z.string(), version: z.string() }),
-        })
-        .passthrough(),
-      z.object({
-        clientInfo: z.object({ name: z.string(), version: z.string() }),
-      }),
-    ]),
+    params: z
+      .object({
+        protocolVersion: z.number().int().positive(),
+        client: z.object({ name: z.string(), version: z.string() }),
+      })
+      .passthrough(),
   }),
   z.object({
     method: z.literal("model/list"),
@@ -150,45 +128,27 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
   }),
   z.object({
     method: z.literal("thread/start"),
-    params: z.union([
-      canonicalThreadStartParamsSchema,
-      claudeThreadStartParamsSchema,
-    ]),
+    params: canonicalThreadStartParamsSchema,
   }),
   z.object({
     method: z.literal("thread/resume"),
-    params: z.union([
-      canonicalThreadResumeParamsSchema,
-      claudeThreadResumeParamsSchema,
-    ]),
+    params: canonicalThreadResumeParamsSchema,
   }),
   z.object({
     method: z.literal("thread/fork"),
-    params: z.union([
-      canonicalThreadForkParamsSchema,
-      claudeThreadForkParamsSchema,
-    ]),
+    params: canonicalThreadForkParamsSchema,
   }),
   z.object({
     method: z.literal("turn/start"),
-    params: z.union([
-      canonicalTurnStartParamsSchema,
-      claudeTurnStartParamsSchema,
-    ]),
+    params: canonicalTurnStartParamsSchema,
   }),
   z.object({
     method: z.literal("turn/steer"),
-    params: z.union([
-      canonicalTurnSteerParamsSchema,
-      claudeTurnSteerParamsSchema,
-    ]),
+    params: canonicalTurnSteerParamsSchema,
   }),
   z.object({
     method: z.literal("thread/stop"),
-    params: z.union([
-      canonicalThreadStopParamsSchema,
-      claudeThreadStopParamsSchema,
-    ]),
+    params: canonicalThreadStopParamsSchema,
   }),
   z.object({
     method: z.literal("thread/discard"),
@@ -217,7 +177,7 @@ export type TurnStartParams = z.infer<typeof claudeTurnStartParamsSchema>;
 
 export type TurnSteerParams = z.infer<typeof claudeTurnSteerParamsSchema>;
 
-export type ThreadStopParams = z.infer<typeof claudeThreadStopParamsSchema>;
+export type ThreadStopParams = z.infer<typeof canonicalThreadStopParamsSchema>;
 
 const claudeCodeCommandMethods = new Set<string>(
   claudeCodeCommandSchema.options.map((option) => option.shape.method.value),
@@ -239,48 +199,8 @@ export type ClaudeCodeJsonRpcRequestDecodeResult =
       issues: string;
     };
 
-/**
- * Whether the params carry a canonical-dialect marker (the same fields the
- * request handlers narrow on). Decides which union branch's issues a decode
- * failure reports.
- */
-function isCanonicalDialectParams(params: Record<string, unknown>): boolean {
-  return (
-    "options" in params || "intent" in params || "protocolVersion" in params
-  );
-}
-
-type BridgeCommandIssue = z.core.$ZodIssue;
-
-/**
- * Every dual-dialect params schema unions the canonical Provider Bridge
- * Protocol shape (first) with the legacy shape (last). A failed union parse
- * reports only the branch the request's dialect markers select, so a
- * malformed request names the missing fields of the shape its caller meant
- * instead of an opaque "Invalid input" union error (#853: replies must be
- * debuggable).
- */
-function selectDialectBranchIssues(
-  issue: BridgeCommandIssue,
-  canonicalDialect: boolean,
-): BridgeCommandIssue[] {
-  if (issue.code !== "invalid_union" || issue.errors.length === 0) {
-    return [issue];
-  }
-  const branch = canonicalDialect
-    ? issue.errors[0]
-    : issue.errors[issue.errors.length - 1];
-  return (branch ?? []).flatMap((inner) =>
-    selectDialectBranchIssues(inner, canonicalDialect).map((selected) => ({
-      ...selected,
-      path: [...issue.path, ...selected.path],
-    })),
-  );
-}
-
-function formatZodIssues(error: z.ZodError, canonicalDialect: boolean): string {
+function formatZodIssues(error: z.ZodError): string {
   return error.issues
-    .flatMap((issue) => selectDialectBranchIssues(issue, canonicalDialect))
     .map((issue) => {
       const path = issue.path.join(".");
       return path ? `${path}: ${issue.message}` : issue.message;
@@ -308,10 +228,7 @@ export function decodeClaudeCodeJsonRpcRequest(
       kind: "invalid_params",
       id,
       method,
-      issues: formatZodIssues(
-        command.error,
-        isCanonicalDialectParams(envelope.data.params ?? {}),
-      ),
+      issues: formatZodIssues(command.error),
     };
   }
 
