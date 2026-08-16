@@ -80,9 +80,6 @@ interface QuestionInputBlockProps {
 const OTHER_OPTION_LABEL = "Other…";
 const USER_QUESTION_FREE_TEXT_MIN_HEIGHT = 84;
 const USER_QUESTION_FREE_TEXT_MAX_HEIGHT = 158;
-// Keeps the tab strip, one or two option rows, and the action row on screen
-// even when the software keyboard leaves very little room.
-const USER_QUESTION_FORM_MIN_HEIGHT = 192;
 
 export type QuestionShortcutChoice =
   | { kind: "option"; value: string }
@@ -463,12 +460,10 @@ export function UserQuestionAnswerForm({
       style={
         availableHeight === null
           ? undefined
-          : {
-              maxHeight: `${Math.max(
-                USER_QUESTION_FORM_MIN_HEIGHT,
-                availableHeight,
-              )}px`,
-            }
+          : // No floor: a floor above the measured space pushes the footer
+            // taller than the scroll port again. The tab strip and action row
+            // are `shrink-0`, so they stay visible even when only they fit.
+            { maxHeight: `${availableHeight}px` }
       }
     >
       {totalQuestions > 1 ? (
