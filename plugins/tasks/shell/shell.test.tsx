@@ -23,7 +23,8 @@ const app = await loadPluginApp(() => import("../app"));
 const { parseTasksRoute, tasksRouteToSubPath } = await import("./routes.js");
 const { pagerPosition } = await import("./topbar.js");
 const { loadViewMode } = await import("./view-preference.js");
-const { querySnapshotStorageKey } = await import("./query-snapshot.js");
+const { querySnapshotStorageKey, resetQuerySnapshotStateForTest } =
+  await import("./query-snapshot.js");
 
 const tasksRegistration = app.navPanels[0]!;
 const navigationView = tasksRegistration.experimental_fixedTabs?.[0]!;
@@ -788,6 +789,25 @@ describe("tasks app shell", () => {
       );
       expect(slot.queryByText("No projects yet")).toBeNull();
       await slot.findByText("No projects yet");
+    });
+
+    it("prunes snapshots written under an older storage version", async () => {
+      // Pruning runs once per page load; this test owns a fresh load.
+      resetQuerySnapshotStateForTest();
+      window.localStorage.setItem(
+        "bb-tasks:query-snapshot:v0:projects",
+        JSON.stringify([]),
+      );
+      const slot = renderSlot(
+        navigationRegistration,
+        { subPath: "" },
+        { rpc: seededRpc() },
+      );
+      await slot.findByText(project.name);
+      expect(
+        window.localStorage.getItem("bb-tasks:query-snapshot:v0:projects"),
+      ).toBeNull();
+      expect(window.localStorage.getItem(projectsKey)).not.toBeNull();
     });
 
     it("records the fetched projects and counts for the next mount", async () => {
