@@ -851,7 +851,9 @@ export function BottomAnchoredScrollBody({
               <div className="scroll-bottom-anchor" aria-hidden />
             </div>
             {footer ? (
-              <div className="sticky bottom-0 z-20 shrink-0">{footer}</div>
+              <div data-scroll-footer="" className="sticky bottom-0 z-20 shrink-0">
+                {footer}
+              </div>
             ) : null}
           </div>
         </div>

@@ -34,6 +34,7 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
+import { useStickyFooterAvailableHeight } from "./useStickyFooterAvailableHeight.js";
 
 interface UserQuestionAnswerFormProps {
   className?: string;
@@ -79,6 +80,9 @@ interface QuestionInputBlockProps {
 const OTHER_OPTION_LABEL = "Other…";
 const USER_QUESTION_FREE_TEXT_MIN_HEIGHT = 84;
 const USER_QUESTION_FREE_TEXT_MAX_HEIGHT = 158;
+// Keeps the tab strip, one or two option rows, and the action row on screen
+// even when the software keyboard leaves very little room.
+const USER_QUESTION_FORM_MIN_HEIGHT = 192;
 
 export type QuestionShortcutChoice =
   | { kind: "option"; value: string }
@@ -298,6 +302,8 @@ export function UserQuestionAnswerForm({
   );
   const [currentIndex, setCurrentIndex] = useState(0);
   const [activeInteractionId, setActiveInteractionId] = useState(interactionId);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const availableHeight = useStickyFooterAvailableHeight(rootRef);
   const resolvePendingInteraction = useResolveThreadPendingInteraction();
   const stopThread = useStopThread();
   const questionSelectionShortcuts = useAppCommandShortcuts(
@@ -445,10 +451,25 @@ export function UserQuestionAnswerForm({
 
   return (
     <div
+      ref={rootRef}
       className={cn(
-        "flex max-h-[calc(100dvh-6rem)] min-h-0 flex-col text-xs text-muted-foreground",
+        "flex min-h-0 flex-col text-xs text-muted-foreground",
+        // Fallback outside a bottom-anchored scroll body (stories, tests). In
+        // the thread view the measured footer space wins: it accounts for the
+        // header, safe-area insets, keyboard, and sibling footer content.
+        availableHeight === null && "max-h-[calc(100dvh-6rem)]",
         className,
       )}
+      style={
+        availableHeight === null
+          ? undefined
+          : {
+              maxHeight: `${Math.max(
+                USER_QUESTION_FORM_MIN_HEIGHT,
+                availableHeight,
+              )}px`,
+            }
+      }
     >
       {totalQuestions > 1 ? (
         <QuestionTabs
