@@ -708,7 +708,8 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       providerRepositoryId: command.providerRepositoryId,
       knownPaths: command.knownPaths,
       dataDir: options.dataDir,
-      env: options.runtimeManager.getShellEnv(),
+      // Host identity (HOME, GH_TOKEN) plus managed PATH — getShellEnv() is PATH-only.
+      env: providerCliEnvFromShellEnv(options.runtimeManager.getShellEnv()),
     }),
   "workspace.status": async (command, options) => {
     const resolution = await resolveWorkspaceForCommand({

@@ -15,6 +15,7 @@ import {
   dispatchOnlineRpcCommand,
 } from "./command-dispatch.js";
 import type { CommandOf } from "./command-dispatch-support.js";
+import * as resolveGithubRepositoryModule from "./command-handlers/resolve-github-repository.js";
 import { RuntimeManager } from "./runtime-manager.js";
 
 const WORKSPACE_PATH = "/tmp/bb-command-dispatch-test";
@@ -1797,5 +1798,67 @@ describe("dispatchCommand", () => {
         },
       ],
     });
+  });
+
+  it("gives workspace.resolve_github_repository host identity env plus managed PATH", async () => {
+    // Regression: getShellEnv() is only PATH/BB_CLI/BB_SERVER_URL, so `gh`
+    // cannot find ~/.config/gh and private repo ids stay unavailable. Reuse
+    // the provider-CLI merge: inherit process.env (HOME, GH_TOKEN, …) and
+    // overlay the managed PATH.
+    const inheritedHome = "/tmp/bb-host-home-fixture";
+    const inheritedTokenKey = "GH_TOKEN";
+    const inheritedToken = "bb-test-inherited-token";
+    const managedPath = "/tmp/bb-managed-bin:/usr/bin";
+    vi.stubEnv("HOME", inheritedHome);
+    vi.stubEnv(inheritedTokenKey, inheritedToken);
+
+    const resolveSpy = vi
+      .spyOn(resolveGithubRepositoryModule, "resolveGithubRepository")
+      .mockResolvedValue({ outcome: "unavailable" });
+
+    try {
+      const manager = new RuntimeManager({
+        createRuntime,
+        provisionWorkspace: async () => createWorkspace(),
+      });
+      manager.replaceManagedShellEnv({ PATH: managedPath });
+
+      const result = await dispatchOnlineRpcCommand(
+        {
+          type: "workspace.resolve_github_repository",
+          providerRepositoryId: "1268425814",
+          knownPaths: [],
+        },
+        {
+          dataDir: "/tmp/bb-data",
+          eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+          fetchProjectAttachment: async () => {
+            throw new Error("Unexpected project attachment fetch");
+          },
+          runtimeManager: manager,
+          threadStorageRootPath: "/tmp/bb-thread-storage",
+        },
+      );
+
+      expect(result).toEqual({ outcome: "unavailable" });
+      expect(resolveSpy).toHaveBeenCalledOnce();
+      const passedEnv = resolveSpy.mock.calls[0]?.[0]?.env;
+      expect(passedEnv).toEqual(expect.any(Object));
+      if (passedEnv === undefined) {
+        throw new Error("expected resolver env");
+      }
+
+      // Assert identity keys without dumping the env object or token values.
+      expect(passedEnv.HOME).toBe(inheritedHome);
+      expect(passedEnv.PATH).toBe(managedPath);
+      expect(Object.hasOwn(passedEnv, inheritedTokenKey)).toBe(true);
+      expect(passedEnv[inheritedTokenKey] === inheritedToken).toBe(true);
+      expect(
+        passedEnv[inheritedTokenKey] === process.env[inheritedTokenKey],
+      ).toBe(true);
+    } finally {
+      resolveSpy.mockRestore();
+      vi.unstubAllEnvs();
+    }
   });
 });
