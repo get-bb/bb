@@ -293,7 +293,35 @@ describe("useSystemExecutionOptions", () => {
     expect(result.current.data?.models).toEqual([]);
   });
 
-  it("scopes the preloaded catalog to the provider and host that reported it", async () => {
+  it("falls back to the provider's latest catalog when the routed key was never fetched", async () => {
+    // A thread composer can mount before its environment is known, so its
+    // first query key differs from the one that later completes and is cached.
+    vi.mocked(sdk.system.executionOptions).mockResolvedValue(CODEX_CATALOG);
+    const first = createQueryClientTestHarness();
+    const warm = renderHook(
+      () =>
+        useSystemExecutionOptions({
+          environmentId: "env-1",
+          providerId: "codex",
+        }),
+      { wrapper: first.wrapper },
+    );
+    await waitFor(() =>
+      expect(warm.result.current.data).toEqual(CODEX_CATALOG),
+    );
+    warm.unmount();
+
+    vi.mocked(sdk.system.executionOptions).mockImplementation(pendingForever);
+    const reload = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () => useSystemExecutionOptions({ providerId: "codex" }),
+      { wrapper: reload.wrapper },
+    );
+    expect(result.current.isPlaceholderData).toBe(true);
+    expect(result.current.data?.models).toEqual([CODEX_MODEL]);
+  });
+
+  it("never preloads one provider's catalog for another", async () => {
     vi.mocked(sdk.system.executionOptions).mockResolvedValue(CODEX_CATALOG);
     const first = createQueryClientTestHarness();
     const warm = renderHook(
@@ -315,8 +343,12 @@ describe("useSystemExecutionOptions", () => {
       ],
       { wrapper: reload.wrapper },
     );
+    // Another provider never inherits this catalog: only its built-in
+    // identity preloads, with no rows.
     expect(result.current[0]!.data?.models).toEqual([]);
-    expect(result.current[1]!.data?.models).toEqual([]);
+    // Another host of the same provider gets it as a provisional stand-in.
+    expect(result.current[1]!.isPlaceholderData).toBe(true);
+    expect(result.current[1]!.data?.models).toEqual([CODEX_MODEL]);
   });
 
   it("retries one transient failure before surfacing model selector errors", async () => {

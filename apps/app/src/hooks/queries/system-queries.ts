@@ -261,6 +261,7 @@ function resolveExecutionOptionsPlaceholder({
   hostId,
   providerId,
   catalogCacheKey,
+  providerCatalogCacheKey,
 }: {
   previousData: SystemExecutionOptionsResponse | undefined;
   previousQueryKey: QueryKey | undefined;
@@ -268,6 +269,7 @@ function resolveExecutionOptionsPlaceholder({
   hostId: string | null;
   providerId: string | null;
   catalogCacheKey: string;
+  providerCatalogCacheKey: string | null;
 }): SystemExecutionOptionsResponse | undefined {
   // Same-route provider roster from the prior response: dynamic (ACP) tabs
   // stay visible while the newly selected provider's models load.
@@ -278,7 +280,16 @@ function resolveExecutionOptionsPlaceholder({
   )
     ? previousData?.providers
     : undefined;
-  const cached = readCachedModelCatalog(catalogCacheKey);
+  // The routed key is exact; the provider key holds the latest verified
+  // catalog for the provider from any routing. A composer can mount before its
+  // environment is known (a thread page still loading), so its first key may
+  // never have been fetched to completion — the provider's latest catalog is a
+  // fine provisional stand-in for that frame.
+  const cached =
+    readCachedModelCatalog(catalogCacheKey) ??
+    (providerCatalogCacheKey === null
+      ? null
+      : readCachedModelCatalog(providerCatalogCacheKey));
   const rememberedProviders =
     cached?.providers !== undefined && cached.providers.length > 0
       ? cached.providers
@@ -406,6 +417,10 @@ export function useSystemExecutionOptions(
     hostId,
     providerId,
   });
+  const providerCatalogCacheKey =
+    providerId === null
+      ? null
+      : modelCatalogCacheKey({ environmentId: null, hostId: null, providerId });
 
   return useQuery<SystemExecutionOptionsResponse>({
     queryKey: systemExecutionOptionsQueryKey({
@@ -424,11 +439,15 @@ export function useSystemExecutionOptions(
       // would let the server's probe-failure fallback masquerade as this
       // routing's real models on the next cold load.
       if (response.modelLoadError === null) {
-        writeCachedModelCatalog(catalogCacheKey, {
+        const catalog = {
           models: response.models,
           selectedOnlyModels: response.selectedOnlyModels,
           providers: response.providers,
-        });
+        };
+        writeCachedModelCatalog(catalogCacheKey, catalog);
+        if (providerCatalogCacheKey !== null) {
+          writeCachedModelCatalog(providerCatalogCacheKey, catalog);
+        }
       }
       return response;
     },
@@ -444,6 +463,7 @@ export function useSystemExecutionOptions(
         hostId,
         providerId,
         catalogCacheKey,
+        providerCatalogCacheKey,
       }),
   });
 }
