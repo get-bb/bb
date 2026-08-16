@@ -2,6 +2,8 @@
 
 import type { PromptTextMention } from "@bb/domain";
 import {
+  Profiler,
+  startTransition,
   createRef,
   useLayoutEffect,
   useRef,
@@ -9,6 +11,7 @@ import {
   type ComponentProps,
   type RefObject,
 } from "react";
+import { flushSync } from "react-dom";
 import {
   act,
   cleanup,
@@ -256,6 +259,35 @@ function PromptBoxHistoryAutoFocusAfterLayoutStealHarness({
         Late layout focus target
       </button>
     </>
+  );
+}
+
+function PromptBoxEmptyHistoryTransitionHarness({
+  scheduleRenderRef,
+}: {
+  scheduleRenderRef: RefObject<(() => void) | null>;
+}) {
+  const [, setRenderVersion] = useState(0);
+
+  useLayoutEffect(() => {
+    scheduleRenderRef.current = () =>
+      setRenderVersion((current) => current + 1);
+    return () => {
+      scheduleRenderRef.current = null;
+    };
+  }, [scheduleRenderRef]);
+
+  return (
+    <PromptBoxInternal
+      {...createPromptBoxProps({
+        history: {
+          currentDraft: emptyPromptDraftState(),
+          entries: [],
+          onSelectEntry: vi.fn(),
+          resetKey: "thread-1",
+        },
+      })}
+    />
   );
 }
 
@@ -1042,6 +1074,30 @@ describe("PromptBoxInternal controlled value sync", () => {
     } finally {
       restoreMatchMedia();
     }
+  });
+
+  it("does not loop when an empty history object is recreated across update priorities", () => {
+    const onRender = vi.fn();
+    const scheduleRenderRef = createRef<(() => void) | null>();
+    render(
+      <Profiler id="prompt-box" onRender={onRender}>
+        <PromptBoxEmptyHistoryTransitionHarness
+          scheduleRenderRef={scheduleRenderRef}
+        />
+      </Profiler>,
+    );
+    const scheduleRender = scheduleRenderRef.current;
+    if (!scheduleRender) throw new Error("Expected render scheduler");
+    let commitsAfterSynchronousRender = -1;
+
+    act(() => {
+      startTransition(scheduleRender);
+      flushSync(scheduleRender);
+      commitsAfterSynchronousRender = onRender.mock.calls.length;
+    });
+
+    expect(commitsAfterSynchronousRender).toBe(4);
+    expect(onRender).toHaveBeenCalledTimes(5);
   });
 
   it("refocuses when the history reset key changes on fine pointers", async () => {

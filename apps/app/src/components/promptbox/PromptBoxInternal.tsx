@@ -1253,6 +1253,9 @@ export function PromptBoxInternal({
     useState<PromptDraftState | null>(null);
   const [recalledHistoryDraft, setRecalledHistoryDraft] =
     useState<PromptDraftState | null>(null);
+  // Mark session transitions before dispatching state so overlapping React
+  // priorities cannot enqueue the same multi-state reset more than once.
+  const hasActiveHistorySessionRef = useRef(false);
   const resolvedZenModeStorageKey =
     zenModeStorageKey ?? ZEN_MODE_STORAGE_KEY[zenModeLayout];
   const zenModeAtom = useMemo(
@@ -1993,6 +1996,8 @@ export function PromptBoxInternal({
   }, [isZenMode, minHeight, scheduleRevealEditorSelection]);
 
   const resetHistorySession = useCallback(() => {
+    if (!hasActiveHistorySessionRef.current) return;
+    hasActiveHistorySessionRef.current = false;
     setActiveHistoryIndex(null);
     setTemporaryHistoryDraft(null);
     setRecalledHistoryDraft(null);
@@ -2917,6 +2922,7 @@ export function PromptBoxInternal({
             activeHistoryIndex === null
               ? 0
               : Math.min(activeHistoryIndex + 1, history.entries.length - 1);
+          hasActiveHistorySessionRef.current = true;
           if (activeHistoryIndex === null) {
             setTemporaryHistoryDraft(history.currentDraft);
           }
