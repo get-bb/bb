@@ -877,6 +877,23 @@ export function isAutomationSpawnedThread(db: Db, threadId: string): boolean {
   );
 }
 
+/** Every run still marked running, oldest first (startup reconciliation). */
+export function listRunningAutomationRuns(db: Db): AutomationRunRow[] {
+  return db
+    .prepare(
+      `SELECT
+           id, automation_id AS automationId, run_mode AS runMode,
+           thread_id AS threadId, status, trigger, skip_reason AS skipReason,
+           error, output, exit_code AS exitCode,
+           idempotency_key AS idempotencyKey, scheduled_for AS scheduledFor,
+           started_at AS startedAt, finished_at AS finishedAt
+         FROM automation_runs
+         WHERE status = 'running'
+         ORDER BY started_at ASC, id ASC`,
+    )
+    .all() as AutomationRunRow[];
+}
+
 export function listRunningAutomationRunsByThread(
   db: Db,
   threadId: string,

@@ -22,6 +22,7 @@ import {
   listAutomationRuns,
   migrations,
   setAutomationEnabled,
+  setAutomationRunThread,
   AUTOMATION_RETRY_BASE_MS,
   type Db,
 } from "./data.js";
@@ -38,6 +39,7 @@ import {
   mapScriptResultToRun,
   scriptPathEnv,
 } from "./script-runner.js";
+import { reconcileRunningAutomationRuns } from "./run.js";
 import { sweepDueAutomations } from "./sweep.js";
 import { createAutomationService } from "./service.js";
 import { automationScriptDir } from "./script-files.js";
@@ -247,6 +249,152 @@ describe("data migrations", () => {
     expect(rows[0]!.finishedAt).not.toBeNull();
     // And the invariant now holds: a second running row is refused.
     expect(() => insertRun.run("run_fourth", 2000)).toThrow(/UNIQUE/);
+  });
+});
+
+describe("startup reconciliation", () => {
+  function reconcileBb(threads: {
+    get: (args: { threadId: string }) => Promise<unknown>;
+  }) {
+    const published: unknown[] = [];
+    return {
+      bb: {
+        sdk: {
+          threads: {
+            get: threads.get,
+            send: async () => {
+              throw new Error("not expected");
+            },
+            spawn: async () => {
+              throw new Error("not expected");
+            },
+          },
+        },
+        realtime: {
+          publish: (...args: unknown[]) => void published.push(args),
+        },
+        log: {
+          debug: () => undefined,
+          error: () => undefined,
+          info: () => undefined,
+          warn: () => undefined,
+        },
+      },
+      published,
+    };
+  }
+
+  function thread(
+    threadId: string,
+    status: "idle" | "active" | "starting" | "stopping" | "error",
+    extra: { deletedAt?: number | null; archivedAt?: number | null } = {},
+  ) {
+    return {
+      id: threadId,
+      status,
+      deletedAt: extra.deletedAt ?? null,
+      archivedAt: extra.archivedAt ?? null,
+    };
+  }
+
+  it("settles ghost script runs and threadless agent runs as interrupted", async () => {
+    const db = createTestDb();
+    const script = createScheduledAutomation(db, 0, "auto_script");
+    const agent = createScheduledAutomation(db, 0, "auto_agent");
+    const scriptRun = createManualRun(db, {
+      automationId: script.id,
+      runMode: "script",
+      now: 1000,
+    }).run;
+    const agentRun = createManualRun(db, {
+      automationId: agent.id,
+      runMode: "agent",
+      now: 1000,
+    }).run;
+    const { bb, published } = reconcileBb({
+      get: async () => {
+        throw new Error("no thread should be asked about");
+      },
+    });
+    await reconcileRunningAutomationRuns(bb, db);
+    for (const run of [scriptRun, agentRun]) {
+      const settled = listAutomationRuns(db, {
+        automationId: run.automationId,
+        limit: 10,
+      })[0]!;
+      expect(settled.status).toBe("skipped");
+      expect(settled.skipReason).toMatch(/interrupted/);
+      expect(settled.finishedAt).not.toBeNull();
+      // Single-flight releases: a new run can start.
+      expect(getRunningAutomationRun(db, run.automationId)).toBeNull();
+    }
+    expect(published.length).toBeGreaterThan(0);
+  });
+
+  it("settles agent runs by their thread's state and leaves live threads alone", async () => {
+    const db = createTestDb();
+    const cases = [
+      {
+        id: "auto_idle",
+        thread: thread("thr_idle", "idle"),
+        status: "succeeded",
+      },
+      {
+        id: "auto_error",
+        thread: thread("thr_error", "error"),
+        status: "failed",
+      },
+      {
+        id: "auto_active",
+        thread: thread("thr_active", "active"),
+        status: "running",
+      },
+      {
+        id: "auto_starting",
+        thread: thread("thr_starting", "starting"),
+        status: "running",
+      },
+      {
+        id: "auto_archived",
+        thread: thread("thr_archived", "idle", { archivedAt: 5 }),
+        status: "skipped",
+      },
+      { id: "auto_gone", thread: null, status: "skipped" },
+      { id: "auto_unreachable", thread: "boom", status: "running" },
+    ] as const;
+    const threads = new Map<string, unknown>();
+    for (const testCase of cases) {
+      const automation = createScheduledAutomation(db, 0, testCase.id);
+      const run = createManualRun(db, {
+        automationId: automation.id,
+        runMode: "agent",
+        now: 1000,
+      }).run;
+      const threadId = `thr_${testCase.id.slice("auto_".length)}`;
+      setAutomationRunThread(db, { runId: run.id, threadId });
+      threads.set(threadId, testCase.thread);
+    }
+    const { bb } = reconcileBb({
+      get: async ({ threadId }) => {
+        const value = threads.get(threadId);
+        if (value === null) {
+          throw Object.assign(new Error("not found"), { status: 404 });
+        }
+        if (value === "boom") throw new Error("connection refused");
+        return value;
+      },
+    });
+    await reconcileRunningAutomationRuns(bb, db);
+    for (const testCase of cases) {
+      const run = listAutomationRuns(db, {
+        automationId: testCase.id,
+        limit: 10,
+      })[0]!;
+      expect([testCase.id, run.status]).toEqual([testCase.id, testCase.status]);
+    }
+    // A failed turn counts like a live failure; an interruption does not.
+    expect(getAutomation(db, "auto_error")!.consecutiveFailures).toBe(1);
+    expect(getAutomation(db, "auto_gone")!.consecutiveFailures).toBe(0);
   });
 });
 

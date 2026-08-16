@@ -31,6 +31,10 @@ Execution safety is fail-closed:
 - Script timeout and output-limit termination applies to the whole spawned
   process group, including descendant processes (on Windows, to the direct
   child).
+- A run interrupted by a server restart or plugin reload is settled on
+  startup: script runs and agent runs that never got a thread are recorded as
+  skipped, and agent runs follow their thread's state. Nothing stays "running"
+  without a process behind it.
 
 Use `agent` when the run needs reasoning: summarize a feed, pick interesting items, draft a human-friendly message, or branch on content.
 
