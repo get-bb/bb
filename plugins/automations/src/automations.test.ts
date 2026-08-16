@@ -1190,6 +1190,28 @@ describe("bb CLI injection for script runs", () => {
   });
 });
 
+async function isProcessRunning(pid: number): Promise<boolean> {
+  try {
+    process.kill(pid, 0);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+    throw error;
+  }
+
+  if (process.platform !== "linux") return true;
+  try {
+    const stat = await readFile(`/proc/${pid}/stat`, "utf8");
+    const closingParen = stat.lastIndexOf(")");
+    const state = stat.slice(closingParen + 2, closingParen + 3);
+    // Container PID 1 may leave a terminated descendant as a zombie briefly.
+    // A zombie cannot execute and therefore satisfies process containment.
+    return state !== "Z" && state !== "X";
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
 describe("script process containment", () => {
   it("terminates descendant processes when a script times out", async () => {
     const pluginDataDir = await mkdtemp(
@@ -1199,7 +1221,7 @@ describe("script process containment", () => {
     await mkdir(scriptDir, { recursive: true });
     await writeFile(
       join(scriptDir, "script.sh"),
-      "sleep 30 &\nchild_pid=$!\necho $child_pid\nwait $child_pid\n",
+      "sleep 30 &\nchild_pid=$!\nprintf 'child_pid=%s\\n' \"$child_pid\"\nwait $child_pid\n",
     );
 
     try {
@@ -1210,32 +1232,25 @@ describe("script process containment", () => {
         projectId: "proj_test",
         scriptFile: "script.sh",
         interpreter: "bash",
-        timeoutMs: 100,
+        // Leave enough startup headroom for loaded CI hosts while still proving
+        // that the timeout, rather than normal script completion, owns cleanup.
+        timeoutMs: 1_000,
         serverUrl: "http://127.0.0.1:38886",
       });
       // The runner prefixes a warning line when no bb CLI is on PATH (CI), so
-      // find the pid the script echoed rather than assuming it comes first.
-      const childPid = Number.parseInt(
-        result.output.split(/\s+/u).find((token) => /^\d+$/u.test(token)) ?? "",
-        10,
-      );
+      // read the labeled pid line rather than assuming the pid comes first.
+      const childPidMatch = result.output.match(/^child_pid=(\d+)$/mu);
+      const childPid = Number.parseInt(childPidMatch?.[1] ?? "", 10);
       expect(result.timedOut).toBe(true);
       expect(Number.isSafeInteger(childPid)).toBe(true);
 
-      let childExists = true;
+      let childRunning = true;
       for (let attempt = 0; attempt < 20; attempt += 1) {
-        try {
-          process.kill(childPid, 0);
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === "ESRCH") {
-            childExists = false;
-            break;
-          }
-          throw error;
-        }
+        childRunning = await isProcessRunning(childPid);
+        if (!childRunning) break;
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
-      expect(childExists).toBe(false);
+      expect(childRunning).toBe(false);
     } finally {
       await rm(pluginDataDir, { recursive: true, force: true });
     }
