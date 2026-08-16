@@ -12,6 +12,8 @@
  * plugin management UI are already lazy and import it directly; they share
  * this module instance, so the reconcile state stays single-owner.
  */
+import { markPluginFrontendsSettled } from "./plugin-frontend-boot-state";
+
 type PluginFrontendModule = typeof import("./plugin-frontend");
 
 /**
@@ -57,6 +59,10 @@ export async function bootPluginFrontends(): Promise<void> {
     console.warn(
       `plugin runtime load failed: ${error instanceof Error ? error.message : String(error)}`,
     );
+  } finally {
+    // Either way the registrations are as complete as this load will make
+    // them; routes waiting on a plugin may now report it missing.
+    markPluginFrontendsSettled();
   }
 }
 

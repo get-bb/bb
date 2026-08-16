@@ -2,6 +2,7 @@ import { useParams } from "react-router-dom";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
+import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import { usePluginSlots } from "@/lib/plugin-slots";
 
 /**
@@ -38,6 +39,7 @@ export function PluginPanelView(props: PluginPanelViewProps = {}) {
   // The route's trailing splat: panel-internal location ("" at the root).
   const subPath = props.subPath ?? params["*"] ?? "";
   const { navPanels } = usePluginSlots();
+  const pluginsSettled = usePluginFrontendsSettled();
   const panel =
     navPanels.find(
       (candidate) =>
@@ -45,11 +47,17 @@ export function PluginPanelView(props: PluginPanelViewProps = {}) {
     ) ?? null;
 
   if (panel === null) {
+    // Registrations arrive after first paint, so on a reload or deep link this
+    // is the normal state for a moment: stay blank rather than announce a
+    // problem. Only a settled boot that still has no panel is worth a message.
+    if (!pluginsSettled) {
+      return <PageShell contentClassName="pt-4 md:pt-5">{null}</PageShell>;
+    }
     return (
       <PageShell contentClassName="pt-4 md:pt-5">
         <EmptyStatePanel className="rounded-lg p-6 text-sm">
-          This plugin panel is not available. The plugin may still be loading,
-          or it has been disabled or removed.
+          This plugin panel is not available. The plugin may have been disabled
+          or removed.
         </EmptyStatePanel>
       </PageShell>
     );
