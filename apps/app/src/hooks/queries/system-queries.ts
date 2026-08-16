@@ -26,10 +26,10 @@ import type {
 import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import {
-  claudeModelCatalogCacheKey,
-  readCachedClaudeModelCatalog,
-  writeCachedClaudeModelCatalog,
-} from "@/lib/claude-model-catalog-cache";
+  modelCatalogCacheKey,
+  readCachedModelCatalog,
+  writeCachedModelCatalog,
+} from "@/lib/model-catalog-cache";
 import { useSystemRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
   hostProviderCliStatusQueryKey,
@@ -220,45 +220,21 @@ const PLACEHOLDER_PROVIDER_INFOS: ProviderInfo[] = [
   },
 ];
 
-// Seed only the stable identities from the same built-in placeholder catalog
-// used by the server. This keeps the picker branded while model discovery runs;
-// the authoritative response still replaces it and adds configured providers.
-function builtInProviderPlaceholderExecutionOptions(): SystemExecutionOptionsResponse {
-  return {
-    providers: PLACEHOLDER_PROVIDER_INFOS,
-    models: [],
-    selectedOnlyModels: [],
-    permissionCeiling: "full",
-    modelLoadError: null,
-  };
-}
-
-// Claude's account-scoped model probe spawns a CLI process on the host, so
-// waiting for it leaves the composer with no model list for seconds. Render a
-// provisional catalog immediately and let the authoritative rows replace it when
-// the probe lands.
+// Model probes run on the host (Claude's spawns a CLI process; every provider
+// pays a round trip), so waiting for one leaves the composer with no model list
+// for seconds on each full load. Render the last catalog this routing actually
+// reported immediately and let the authoritative rows replace it when the probe
+// lands: its ids match what the fresh probe will return, so a selection made
+// during the preload window survives instead of snapping back to a default.
 //
-// Prefer the last catalog this account actually reported: its ids match what the
-// fresh probe will return, so a selection made during the preload window
-// survives instead of snapping back to a default. The curated aliases are only
-// for a cold cache, where no account-scoped ids are known yet.
+// On a cold cache only Claude Code has curated aliases to fall back on; other
+// built-in providers keep their branded identity with an empty model list while
+// discovery runs, and a provider that no replayable list can vouch for waits
+// for the probe, exactly as before.
 //
 // Callers must gate model recovery on `isPlaceholderData` either way: a cached
 // catalog can be stale, so absence from this list is not evidence that a stored
 // model was retired.
-function claudeCodePlaceholderExecutionOptions(
-  cacheKey: string,
-): SystemExecutionOptionsResponse {
-  const cached = readCachedClaudeModelCatalog(cacheKey);
-  return {
-    providers: cached?.providers ?? PLACEHOLDER_PROVIDER_INFOS,
-    models: cached?.models ?? CLAUDE_CODE_PLACEHOLDER_MODELS,
-    selectedOnlyModels: cached?.selectedOnlyModels ?? [],
-    permissionCeiling: "full",
-    modelLoadError: null,
-  };
-}
-
 function isSameExecutionOptionsRoute(
   previousQueryKey: QueryKey | undefined,
   environmentId: string | null,
@@ -276,18 +252,18 @@ function resolveExecutionOptionsPlaceholder({
   previousQueryKey,
   environmentId,
   hostId,
-  isClaudeCode,
-  canPreloadBuiltInProviders,
+  providerId,
   catalogCacheKey,
 }: {
   previousData: SystemExecutionOptionsResponse | undefined;
   previousQueryKey: QueryKey | undefined;
   environmentId: string | null;
   hostId: string | null;
-  isClaudeCode: boolean;
-  canPreloadBuiltInProviders: boolean;
+  providerId: string | null;
   catalogCacheKey: string;
 }): SystemExecutionOptionsResponse | undefined {
+  // Same-route provider roster from the prior response: dynamic (ACP) tabs
+  // stay visible while the newly selected provider's models load.
   const previousProviders = isSameExecutionOptionsRoute(
     previousQueryKey,
     environmentId,
@@ -295,23 +271,29 @@ function resolveExecutionOptionsPlaceholder({
   )
     ? previousData?.providers
     : undefined;
-  const builtInPlaceholder = canPreloadBuiltInProviders
-    ? isClaudeCode
-      ? claudeCodePlaceholderExecutionOptions(catalogCacheKey)
-      : builtInProviderPlaceholderExecutionOptions()
-    : undefined;
-
-  if (previousProviders === undefined && builtInPlaceholder === undefined) {
+  const cached = readCachedModelCatalog(catalogCacheKey);
+  const rememberedProviders =
+    cached?.providers !== undefined && cached.providers.length > 0
+      ? cached.providers
+      : undefined;
+  const providers =
+    previousProviders ?? rememberedProviders ?? PLACEHOLDER_PROVIDER_INFOS;
+  if (
+    providerId !== null &&
+    !providers.some((provider) => provider.id === providerId)
+  ) {
     return undefined;
   }
-
+  const isClaudeCode = providerId === CLAUDE_CODE_PROVIDER_ID;
   return {
-    providers: previousProviders ?? builtInPlaceholder?.providers ?? [],
-    // A prior response's models belong to the prior provider. Keep only the
-    // provider-independent roster while the newly selected provider loads.
-    models: builtInPlaceholder?.models ?? [],
-    selectedOnlyModels: builtInPlaceholder?.selectedOnlyModels ?? [],
-    permissionCeiling: builtInPlaceholder?.permissionCeiling ?? "full",
+    providers,
+    // A prior response's models belong to the prior provider. Only this
+    // provider's own remembered catalog (or Claude's curated aliases) may
+    // stand in while its probe runs.
+    models:
+      cached?.models ?? (isClaudeCode ? CLAUDE_CODE_PLACEHOLDER_MODELS : []),
+    selectedOnlyModels: cached?.selectedOnlyModels ?? [],
+    permissionCeiling: "full",
     modelLoadError: null,
   };
 }
@@ -412,13 +394,10 @@ export function useSystemExecutionOptions(
   const providerId = args.providerId ?? null;
   const enabled = args.enabled ?? true;
   useSystemRealtimeSubscription({ enabled });
-  const isClaudeCode = providerId === CLAUDE_CODE_PROVIDER_ID;
-  const canPreloadBuiltInProviders =
-    providerId === null ||
-    PLACEHOLDER_PROVIDER_INFOS.some((provider) => provider.id === providerId);
-  const catalogCacheKey = claudeModelCatalogCacheKey({
+  const catalogCacheKey = modelCatalogCacheKey({
     environmentId,
     hostId,
+    providerId,
   });
 
   return useQuery<SystemExecutionOptionsResponse>({
@@ -436,9 +415,9 @@ export function useSystemExecutionOptions(
       });
       // Only a verified catalog is worth remembering. Caching a provisional list
       // would let the server's probe-failure fallback masquerade as this
-      // account's real models on the next cold load.
-      if (isClaudeCode && response.modelLoadError === null) {
-        writeCachedClaudeModelCatalog(catalogCacheKey, {
+      // routing's real models on the next cold load.
+      if (response.modelLoadError === null) {
+        writeCachedModelCatalog(catalogCacheKey, {
           models: response.models,
           selectedOnlyModels: response.selectedOnlyModels,
           providers: response.providers,
@@ -456,8 +435,7 @@ export function useSystemExecutionOptions(
         previousQueryKey: previousQuery?.queryKey,
         environmentId,
         hostId,
-        isClaudeCode,
-        canPreloadBuiltInProviders,
+        providerId,
         catalogCacheKey,
       }),
   });

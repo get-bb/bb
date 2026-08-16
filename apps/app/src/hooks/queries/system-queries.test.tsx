@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import type { AvailableModel } from "@bb/domain";
 import type {
   OnboardingAgentOverview,
   SystemExecutionOptionsResponse,
@@ -74,6 +75,7 @@ const PROVIDER_USAGE_RESPONSE: ProviderUsageResponse = {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  window.localStorage.clear();
 });
 
 describe("useSystemExecutionOptions", () => {
@@ -211,6 +213,108 @@ describe("useSystemExecutionOptions", () => {
     expect(systemProvidersQueryKey({ hostId: "host-a" })).not.toEqual(
       systemProvidersQueryKey({ hostId: "host-b" }),
     );
+  });
+
+  const CODEX_MODEL: AvailableModel = {
+    id: "gpt-5.6-sol",
+    model: "gpt-5.6-sol",
+    displayName: "GPT-5.6 Sol",
+    description: "",
+    supportedReasoningEfforts: [],
+    defaultReasoningEffort: "medium",
+    isDefault: true,
+  };
+  const CODEX_CATALOG: SystemExecutionOptionsResponse = {
+    ...EXECUTION_OPTIONS_RESPONSE,
+    models: [CODEX_MODEL],
+  };
+  /** A request that never settles, so the pre-fetch render is observable. */
+  const pendingForever = () => new Promise<never>(() => {});
+
+  it("preloads a provider's last verified catalog until the probe lands", async () => {
+    vi.mocked(sdk.system.executionOptions).mockResolvedValue(CODEX_CATALOG);
+    const first = createQueryClientTestHarness();
+    const warm = renderHook(
+      () =>
+        useSystemExecutionOptions({ hostId: "host-a", providerId: "codex" }),
+      { wrapper: first.wrapper },
+    );
+    await waitFor(() =>
+      expect(warm.result.current.data).toEqual(CODEX_CATALOG),
+    );
+    warm.unmount();
+
+    // A full page load starts from an empty query cache; only the profile's
+    // last-known catalog can fill the composer before the network answers.
+    vi.mocked(sdk.system.executionOptions).mockImplementation(pendingForever);
+    const reload = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useSystemExecutionOptions({ hostId: "host-a", providerId: "codex" }),
+      { wrapper: reload.wrapper },
+    );
+    expect(result.current.isPlaceholderData).toBe(true);
+    expect(result.current.data?.models).toEqual([CODEX_MODEL]);
+    expect(result.current.data?.modelLoadError).toBeNull();
+    await waitFor(() =>
+      expect(sdk.system.executionOptions).toHaveBeenCalledWith(
+        expect.objectContaining({ hostId: "host-a", providerId: "codex" }),
+      ),
+    );
+  });
+
+  it("does not preload a catalog that came from a failed probe", async () => {
+    vi.mocked(sdk.system.executionOptions).mockResolvedValue({
+      ...CODEX_CATALOG,
+      modelLoadError: { providerId: "codex", code: "failed" },
+    });
+    const first = createQueryClientTestHarness();
+    const warm = renderHook(
+      () =>
+        useSystemExecutionOptions({ hostId: "host-a", providerId: "codex" }),
+      { wrapper: first.wrapper },
+    );
+    await waitFor(() =>
+      expect(warm.result.current.data?.modelLoadError).not.toBeNull(),
+    );
+    warm.unmount();
+
+    vi.mocked(sdk.system.executionOptions).mockImplementation(pendingForever);
+    const reload = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useSystemExecutionOptions({ hostId: "host-a", providerId: "codex" }),
+      { wrapper: reload.wrapper },
+    );
+    // Only the built-in identity preloads; the failed probe's rows do not.
+    expect(result.current.isPlaceholderData).toBe(true);
+    expect(result.current.data?.models).toEqual([]);
+  });
+
+  it("scopes the preloaded catalog to the provider and host that reported it", async () => {
+    vi.mocked(sdk.system.executionOptions).mockResolvedValue(CODEX_CATALOG);
+    const first = createQueryClientTestHarness();
+    const warm = renderHook(
+      () =>
+        useSystemExecutionOptions({ hostId: "host-a", providerId: "codex" }),
+      { wrapper: first.wrapper },
+    );
+    await waitFor(() =>
+      expect(warm.result.current.data).toEqual(CODEX_CATALOG),
+    );
+    warm.unmount();
+
+    vi.mocked(sdk.system.executionOptions).mockImplementation(pendingForever);
+    const reload = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () => [
+        useSystemExecutionOptions({ hostId: "host-a", providerId: "pi" }),
+        useSystemExecutionOptions({ hostId: "host-b", providerId: "codex" }),
+      ],
+      { wrapper: reload.wrapper },
+    );
+    expect(result.current[0]!.data?.models).toEqual([]);
+    expect(result.current[1]!.data?.models).toEqual([]);
   });
 
   it("retries one transient failure before surfacing model selector errors", async () => {
