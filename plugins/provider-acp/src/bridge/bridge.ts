@@ -19,6 +19,7 @@ import { dirname, isAbsolute, basename, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import {
+  isStandaloneBuiltinCompactCommand,
   pendingInteractionResolutionSchema,
   reasoningEffortsForLevels,
   type AvailableModel,
@@ -51,6 +52,8 @@ import {
 } from "@bb/provider-bridge-protocol";
 import {
   ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE,
+  ACP_COMPACTION_COMPLETED_METHOD,
+  ACP_COMPACTION_STARTED_METHOD,
   ACP_DEFAULT_MODEL_ID,
   ACP_FS_WRITE_METHOD,
   ACP_TURN_COMPLETED_METHOD,
@@ -152,8 +155,11 @@ interface AcpThreadSession {
   policy: AcpSessionPolicy;
   cwd: string;
   pendingInstructions: string | undefined;
-  /** True while an agent prompt for a bb turn is in flight. */
-  turnActive: boolean;
+  /**
+   * Which agent prompt is in flight for this bb turn: an ordinary `"turn"`,
+   * the provider-local `"compaction"` maintenance prompt, or none.
+   */
+  activePromptKind: "turn" | "compaction" | null;
   queuedInputs: PromptInput[][];
   /** True while a session/prompt request is outstanding. */
   promptRequestPending: boolean;
@@ -1344,7 +1350,7 @@ function handlePermissionRequest(
   if (
     session.stopping ||
     session.cancelRequested ||
-    !session.turnActive
+    session.activePromptKind !== "turn"
   ) {
     responder.result({ outcome: { outcome: "cancelled" } });
     return;
@@ -1633,7 +1639,7 @@ async function startAgentSession(
     },
     cwd: params.cwd,
     pendingInstructions: params.instructions,
-    turnActive: false,
+    activePromptKind: null,
     queuedInputs: [],
     promptRequestPending: false,
     cancelRequested: false,
@@ -1803,7 +1809,7 @@ async function stopSession(session: AcpThreadSession): Promise<void> {
   session.queuedInputs = [];
   cancelPendingPermissions(session);
 
-  if (session.turnActive && !session.connection.exited) {
+  if (session.activePromptKind !== null && !session.connection.exited) {
     session.connection.notify("session/cancel", {
       sessionId: session.providerThreadId,
     });
@@ -1862,7 +1868,7 @@ function finishTurn(
   session: AcpThreadSession,
   stopReason: z.infer<typeof acpStopReasonSchema>,
 ): void {
-  session.turnActive = false;
+  session.activePromptKind = null;
   session.queuedInputs = [];
   session.promptRequestPending = false;
   session.cancelRequested = false;
@@ -1873,7 +1879,7 @@ function finishTurn(
 }
 
 function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
-  session.turnActive = true;
+  session.activePromptKind = "turn";
   emitForSession(session, ACP_TURN_STARTED_METHOD, {
     threadId: session.bbThreadId,
   });
@@ -1909,7 +1915,7 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
         session.promptRequestPending = false;
         session.queuedInputs = [];
         session.cancelRequested = false;
-        session.turnActive = false;
+        session.activePromptKind = null;
         // An exited agent already produced an error notification from the
         // connection's exit handler; only report in-protocol prompt failures.
         if (!session.stopping && !session.connection.exited) {
@@ -1935,6 +1941,71 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
       return;
     }
   })();
+}
+
+// ---------------------------------------------------------------------------
+// Manual compaction
+// ---------------------------------------------------------------------------
+
+/**
+ * Manual compaction travels the prompt path: bb's compact affordance sends a
+ * standalone builtin `/compact` mention as turn input. ACP has no compaction
+ * method, so the bridge runs the agent's own `/compact` command as a
+ * provider-local maintenance prompt and reports it through the compaction
+ * envelopes — the translator turns those into a `contextCompaction` turn, and
+ * only a completed one reports `thread/compacted`.
+ *
+ * Whether an agent has the command at all is a per-agent fact ACP does not
+ * expose: opencode's `available_commands_update` lists only its custom
+ * commands, never its built-in `/compact`. So the affordance is gated by the
+ * server-side per-agent `supportsManualCompaction` declaration
+ * (`KNOWN_ACP_AGENTS`, `customAcpAgents`), and the bridge reports whatever the
+ * agent does with the request: only an `end_turn` prompt counts as compacted,
+ * every other stop reason or prompt rejection fails the turn with the agent's
+ * own reason rather than being reported as a shrunk context.
+ */
+function startCompaction(session: AcpThreadSession): void {
+  session.activePromptKind = "compaction";
+  emitForSession(session, ACP_COMPACTION_STARTED_METHOD, {
+    threadId: session.bbThreadId,
+  });
+
+  const finish = (outcome: Record<string, unknown>): void => {
+    emitForSession(session, ACP_COMPACTION_COMPLETED_METHOD, {
+      threadId: session.bbThreadId,
+      ...outcome,
+    });
+    session.activePromptKind = null;
+    session.turnSettled = undefined;
+  };
+
+  session.turnSettled = session.connection
+    .request({
+      method: "session/prompt",
+      params: {
+        sessionId: session.providerThreadId,
+        prompt: [{ type: "text", text: "/compact" }],
+      },
+      resultSchema: acpPromptResultSchema,
+    })
+    .then((result) => {
+      finish(
+        result.stopReason === "end_turn"
+          ? { status: "completed" }
+          : result.stopReason === "cancelled"
+            ? { status: "interrupted" }
+            : {
+                status: "failed",
+                error: `Agent stopped compaction: ${result.stopReason}`,
+              },
+      );
+    })
+    .catch((error: unknown) => {
+      finish({
+        status: "failed",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -2146,8 +2217,18 @@ async function handleRequest(
       // "tip" — ACP session/fork clones whole sessions and each agent's
       // support is verified per session at agent initialize. sessionRestore
       // stays false at the handshake; sessions that negotiate loadSession
-      // report sessionRestorable per session. The legacy adapter ignores
-      // this result (plus `ok` for its historical shape).
+      // report sessionRestorable per session. manualCompaction is true — this
+      // bridge implements the standalone builtin `/compact` turn as the
+      // agent's own compaction command. It is a process-level fact and the
+      // handshake runs before any session exists, so it cannot answer the
+      // per-agent question ("does *this* ACP agent have /compact?"): that is
+      // the server-side per-agent `supportsManualCompaction` declaration,
+      // which is what gates the affordance in the UI. Nothing consumes this
+      // field for compaction today (there is no compact request method to
+      // gate), so it is documentation of what the bridge implements; the
+      // per-turn honesty lives in `startCompaction`, which fails the turn
+      // legibly for an agent that advertises no `compact` command.
+      // The `ok` field is the bridge's historical shape.
       sendResult(request.id, {
         ok: true,
         protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
@@ -2156,7 +2237,7 @@ async function handleRequest(
           archiveSync: false,
           nameSync: false,
           goalState: false,
-          manualCompaction: false,
+          manualCompaction: true,
           fork: "tip",
           approvalRequestPolicy: "runtime",
         },
@@ -2248,7 +2329,7 @@ async function handleRequest(
         sendError(request.id, -32000, "No active ACP session");
         return;
       }
-      if (session.turnActive) {
+      if (session.activePromptKind !== null) {
         sendError(request.id, -32000, "A turn is already active");
         return;
       }
@@ -2274,7 +2355,14 @@ async function handleRequest(
           state,
         });
       }
-      runTurn(session, params.input);
+      // A standalone builtin `/compact` mention is bb's manual-compaction
+      // request, not model input: it runs the agent's own compaction command
+      // instead of becoming a prompt.
+      if (isStandaloneBuiltinCompactCommand(params.input)) {
+        startCompaction(session);
+      } else {
+        runTurn(session, params.input);
+      }
       sendResult(request.id, { threadId: params.threadId });
       return;
     }
@@ -2286,7 +2374,7 @@ async function handleRequest(
         sendError(request.id, -32000, "No active ACP session");
         return;
       }
-      if (!session.turnActive) {
+      if (session.activePromptKind !== "turn") {
         sendError(
           request.id,
           ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE,

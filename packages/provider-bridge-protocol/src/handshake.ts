@@ -37,10 +37,12 @@ export const bridgeCapabilitiesSchema = z
     /** The bridge supports thread/goal/clear. */
     goalState: z.boolean().default(false),
     /**
-     * The bridge can compact a thread's context on demand. It gates the
-     * `/compact` affordance; the trigger today is a standalone builtin
-     * `/compact` prompt through the normal turn pipeline, not a dedicated
-     * request method.
+     * The bridge implements on-demand context compaction: a standalone
+     * builtin `/compact` prompt through the normal turn pipeline, not a
+     * dedicated request method. Nothing gates on this fact — with no request
+     * method there is nothing to withhold, and the `/compact` affordance is
+     * gated by the provider declaration's `supportsManualCompaction` (which
+     * the ACP bridge's agents differ on, session by session).
      */
     manualCompaction: z.boolean().default(false),
     /**

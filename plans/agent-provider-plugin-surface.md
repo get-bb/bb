@@ -500,7 +500,9 @@ What died beyond the dialect switch itself:
 - **ACP `thread/compact`.** The handshake reports `manualCompaction: false`, so
   the runtime never sends it; the method existed only in the legacy dialect.
   `startCompaction`, both compaction notification methods, their schemas, and
-  the translator's two compaction arms went with it.
+  the translator's two compaction arms went with it. **This one was a
+  regression** — see "ACP manual compaction" below; the mechanism is back, and
+  only the dead `thread/compact` request method stayed deleted.
 - **ACP `acp/permission/request`.** Superseded by canonical
   `interaction/request`; its params schema already had no importer at all.
 - **claude-code `inputGroups`.** Canonical turn params carry one flat input
@@ -572,6 +574,44 @@ Two things were audited and deliberately left:
   (session too small)"; that surfaces as a failed turn, so the declared
   `manualCompaction: true` is honest but small threads see an error rather than
   a no-op.
+- **ACP manual compaction was a graduation regression, now restored.** Twin of
+  the pi one, but with an extra misjudgment. On `origin/main` the legacy ACP
+  adapter intercepted a standalone builtin `/compact` and sent
+  `thread/compact`, and the bridge ran it as a provider-local maintenance
+  prompt (`session/prompt` with `/compact`, which is exactly how OpenCode
+  exposes its built-in compaction over ACP). Graduation deleted the sender;
+  the simplification commit then deleted the handler, reasoning from the
+  bridge's own `manualCompaction: false` handshake — but that fact was stale
+  bookkeeping, not the gate. Wave 4 made ACP compaction a **per-agent
+  server-side declaration** (`KnownAcpAgent.supportsManualCompaction`,
+  `customAcpAgents.supportsManualCompaction`), and
+  `providerRegistry.supportsManualCompaction` is what gates the affordance and
+  the `POST /threads/:id/compact` action. So the bridge deleted the only code
+  that could serve a request the server still allows for `acp-opencode`: live,
+  `/compact` reached the model as literal text.
+  The ACP bridge's `turn/start` now classifies the input with
+  `isStandaloneBuiltinCompactCommand` and drives the same maintenance prompt;
+  `activePromptKind` (`"turn" | "compaction" | null`) came back with it, the
+  compaction envelopes and the translator's two arms are restored, and the
+  handshake now reports `manualCompaction: true` — that is a process-level
+  fact about what this bridge implements, decided *before* any session exists,
+  so it cannot answer the per-agent question; nothing consumes it (there is no
+  compaction request method to gate), and the comment says so.
+  Per-agent honesty: an ACP agent's `available_commands_update` is **not** a
+  usable gate — OpenCode lists only its custom commands there and never its
+  built-in `compact` (probed live), so a first attempt to gate on it failed
+  the very case being restored. The gate stays the server-side declaration,
+  and the bridge reports the agent's own outcome: only an `end_turn` prompt
+  yields `thread/compacted`; every other stop reason or a rejected prompt
+  fails the turn with the agent's reason.
+  Verified live on `acp-opencode` (`thr_sgpr2zdbjz`): `item/started`
+  `contextCompaction` → real OpenCode summary → `thread/compacted` → completed
+  turn, with context 10,612 → 2,491 tokens.
+  Audit of the other adapters: `origin/main` had exactly three builtin-command
+  interceptions (acp, codex, pi), all `isStandaloneBuiltinCompactCommand` in
+  `turn/start`. Codex's canonical equivalent shipped with its bridge, pi's was
+  restored in 7d726a0f2, and acp's here; claude-code never had one (its CLI
+  handles `/compact` in the prompt text natively). No other orphans.
 
 ## Design notes from the #1641 prototype comparison (thr_fxnmqjf9a4)
 

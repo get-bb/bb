@@ -45,11 +45,14 @@ import type {
   ProviderRuntimeEvent,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import {
+  ACP_COMPACTION_COMPLETED_METHOD,
+  ACP_COMPACTION_STARTED_METHOD,
   ACP_FS_WRITE_METHOD,
   ACP_TURN_COMPLETED_METHOD,
   ACP_TURN_STARTED_METHOD,
   ACP_UPDATE_METHOD,
   ACP_WARNING_METHOD,
+  acpCompactionCompletedNotificationParamsSchema,
   acpFsWriteNotificationParamsSchema,
   acpTurnCompletedNotificationParamsSchema,
   acpTurnStartedNotificationParamsSchema,
@@ -376,6 +379,12 @@ export function createAcpEventTranslator(
       options.itemIdPrefix === undefined
         ? "acp-reasoning"
         : `${options.itemIdPrefix}reasoning`,
+  });
+  const acpCompactionItemIds = createScopedItemIdFactory({
+    prefix:
+      options.itemIdPrefix === undefined
+        ? "acp-compaction"
+        : `${options.itemIdPrefix}compaction`,
   });
   const turnState = createProviderTurnStateRegistry<AcpTurnState>({
     createState: () => ({
@@ -953,6 +962,79 @@ export function createAcpEventTranslator(
           resolveState(context),
           context,
         );
+      }
+
+      case ACP_COMPACTION_STARTED_METHOD: {
+        const params = acpTurnStartedNotificationParamsSchema.safeParse(
+          envelope.data.params,
+        );
+        if (!params.success) {
+          return [];
+        }
+        const events: ThreadEvent[] = [];
+        const turnId = turnState.ensureTurnStarted({
+          events,
+          state: resolveState(context),
+          threadId: UNSTAMPED_THREAD_ID,
+        });
+        events.push({
+          type: "item/started",
+          threadId: UNSTAMPED_THREAD_ID,
+          providerThreadId: "",
+          scope: turnScope(turnId),
+          item: {
+            type: "contextCompaction",
+            id: acpCompactionItemIds.createId(turnId),
+          },
+        });
+        return events;
+      }
+
+      case ACP_COMPACTION_COMPLETED_METHOD: {
+        const params = acpCompactionCompletedNotificationParamsSchema.safeParse(
+          envelope.data.params,
+        );
+        if (!params.success) {
+          return [];
+        }
+        const state = resolveState(context);
+        const turnId = state.currentTurnId;
+        if (!turnId) {
+          return [];
+        }
+        const events: ThreadEvent[] = [];
+        flushOpenTurnItems({
+          events,
+          parentToolCallId: context?.parentToolCallId,
+          state,
+          status: params.data.status,
+          turnId,
+        });
+        // Only a completed maintenance prompt actually shrank the context; a
+        // failed or interrupted one must never report `thread/compacted`.
+        if (params.data.status === "completed") {
+          events.push({
+            type: "thread/compacted",
+            threadId: UNSTAMPED_THREAD_ID,
+            providerThreadId: "",
+            scope: turnScope(turnId),
+          });
+        }
+        events.push({
+          type: "turn/completed",
+          threadId: UNSTAMPED_THREAD_ID,
+          providerThreadId: "",
+          scope: turnScope(turnId),
+          status: params.data.status,
+          ...(params.data.status === "failed"
+            ? { error: { message: params.data.error } }
+            : {}),
+        });
+        turnState.finishTurn({
+          state,
+          threadId: context?.threadId ?? "",
+        });
+        return events;
       }
 
       case ACP_UPDATE_METHOD: {

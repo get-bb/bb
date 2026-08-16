@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createStandaloneBuiltinCompactCommandInput } from "@bb/domain";
 import type { DynamicTool, ReasoningLevel } from "@bb/domain";
 import {
   captureBridgeJsonRpcOutput,
@@ -93,7 +94,11 @@ function notifications(method: string): BridgeJsonRpcOutputMessage[] {
 function threadEvents(): Record<string, unknown>[] {
   return notifications("thread/event").flatMap((message) => {
     const params = message.params;
-    if (typeof params !== "object" || params === null || Array.isArray(params)) {
+    if (
+      typeof params !== "object" ||
+      params === null ||
+      Array.isArray(params)
+    ) {
       return [];
     }
     const event = params.event;
@@ -254,8 +259,7 @@ async function startThread(args?: StartThreadArgs): Promise<{
         acpLaunchSpec: acpLaunchSpec(args ?? {}),
         ...(args?.additionalWorkspaceWriteRoots
           ? {
-              additionalWorkspaceWriteRoots:
-                args.additionalWorkspaceWriteRoots,
+              additionalWorkspaceWriteRoots: args.additionalWorkspaceWriteRoots,
             }
           : {}),
       },
@@ -326,6 +330,27 @@ function sendTurnRequest(
     options: executionOptions({}),
     ...params,
   });
+}
+
+/**
+ * The composer's standalone builtin `/compact` mention, as a turn/start input:
+ * bb's manual-compaction request rides the ordinary turn path.
+ */
+function compactCommandInput(): unknown[] {
+  return JSON.parse(
+    JSON.stringify(createStandaloneBuiltinCompactCommandInput()),
+  ) as unknown[];
+}
+
+/** Prompt texts the fake agent recorded, oldest first. */
+function loggedPrompts(path: string): string[] {
+  if (!existsSync(path)) {
+    return [];
+  }
+  return readFileSync(path, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as string);
 }
 
 async function waitForTurnCompleted(): Promise<Record<string, unknown>> {
@@ -555,7 +580,9 @@ describe("acp bridge", () => {
   });
 
   it("discovers ACP-native models from session models state", async () => {
-    const modelListId = sendModelList({ envVars: { FAKE_ACP_MODELS_FIELD: "1" } });
+    const modelListId = sendModelList({
+      envVars: { FAKE_ACP_MODELS_FIELD: "1" },
+    });
 
     expect((await waitForResponse(modelListId)).result).toMatchObject({
       models: [
@@ -741,11 +768,7 @@ describe("acp bridge", () => {
             .length
         : 0;
     const listModels = async () =>
-      (
-        await waitForResponse(
-          sendModelList({ envVars: discoveryEnv }),
-        )
-      ).result;
+      (await waitForResponse(sendModelList({ envVars: discoveryEnv }))).result;
 
     // Fake only Date so real timers/I/O still drive the subprocess discovery
     // and the wait helpers; we advance the clock to cross the discovery TTL.
@@ -1032,7 +1055,9 @@ describe("acp bridge", () => {
   });
 
   it("keeps ACP-native models without thought_level at the single managed level", async () => {
-    const modelListId = sendModelList({ envVars: { FAKE_ACP_MODEL_CONFIG: "1" } });
+    const modelListId = sendModelList({
+      envVars: { FAKE_ACP_MODEL_CONFIG: "1" },
+    });
 
     const response = await waitForResponse(modelListId);
     const models = (
@@ -1775,6 +1800,72 @@ describe("acp bridge", () => {
     expect(threadEventsOfType("turn/completed")).toHaveLength(1);
   });
 
+  it("runs the builtin /compact command as compaction, not as a prompt", async () => {
+    const promptLog = join(workspaceDir, "compact-prompt-log.jsonl");
+    const { providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_PROMPT_LOG: promptLog },
+    });
+
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: compactCommandInput(),
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+
+    const completed = await waitForTurnCompleted();
+    expect(completed).toMatchObject({ status: "completed" });
+    // The compaction turn is a context-maintenance turn, not model input: the
+    // agent ran its own /compact command and the thread reports compaction.
+    expect(threadEventsOfType("thread/compacted")).toHaveLength(1);
+    expect(
+      threadEvents().filter(
+        (event) =>
+          event.type === "item/started" &&
+          (event.item as { type?: string } | undefined)?.type ===
+            "contextCompaction",
+      ),
+    ).toHaveLength(1);
+    expect(loggedPrompts(promptLog)).toEqual(["/compact"]);
+    expect(agentMessageTexts()).not.toContain("echo:/compact");
+  });
+
+  it("fails the compaction turn legibly when the agent rejects the request", async () => {
+    const { providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_PROMPT_ERROR: "1" },
+    });
+
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: compactCommandInput(),
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+
+    // The agent's own reason reaches the thread, and a rejected maintenance
+    // prompt never reports a shrunk context.
+    const completed = await waitForTurnCompleted();
+    expect(completed).toMatchObject({
+      status: "failed",
+      error: { message: "Fake prompt failure" },
+    });
+    expect(threadEventsOfType("thread/compacted")).toEqual([]);
+  });
+
+  it("does not report an ACP refusal as successful compaction", async () => {
+    const { providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_COMPACT_STOP_REASON: "refusal" },
+    });
+
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: compactCommandInput(),
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+
+    const completed = await waitForTurnCompleted();
+    expect(completed).toMatchObject({
+      status: "failed",
+      error: { message: "Agent stopped compaction: refusal" },
+    });
+    expect(threadEventsOfType("thread/compacted")).toEqual([]);
+  });
+
   it("rejects steers when no turn is active", async () => {
     const { providerThreadId } = await startThread();
     const steerId = sendTurnRequest("turn/steer", providerThreadId, {
@@ -1816,11 +1907,13 @@ describe("acp bridge", () => {
       options: executionOptions({
         model: "fake/strong",
         providerOptions: {
-          acpLaunchSpec: acpLaunchSpec({ envVars: {
-        FAKE_ACP_FORK_SESSION: "1",
-        FAKE_ACP_FORK_LOG: forkLog,
-        FAKE_ACP_MODELS_FIELD: "1",
-      } }),
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: {
+              FAKE_ACP_FORK_SESSION: "1",
+              FAKE_ACP_FORK_LOG: forkLog,
+              FAKE_ACP_MODELS_FIELD: "1",
+            },
+          }),
         },
       }),
       dynamicTools: [
@@ -1887,7 +1980,9 @@ describe("acp bridge", () => {
       instructionMode: "append",
       options: executionOptions({
         providerOptions: {
-          acpLaunchSpec: acpLaunchSpec({ envVars: { FAKE_ACP_FORK_SESSION: "1", FAKE_ACP_FORK_LOG: forkLog } }),
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: { FAKE_ACP_FORK_SESSION: "1", FAKE_ACP_FORK_LOG: forkLog },
+          }),
         },
       }),
       sourceProviderThreadId: "source-session",
@@ -1895,9 +1990,7 @@ describe("acp bridge", () => {
     });
 
     const response = await waitForResponse(forkId);
-    expect(response.error?.message).toMatch(
-      /cannot fork at a checkpoint/u,
-    );
+    expect(response.error?.message).toMatch(/cannot fork at a checkpoint/u);
     expect(existsSync(forkLog)).toBe(false);
     expect(notifications("thread/identity")).toEqual([]);
   });
@@ -1909,10 +2002,12 @@ describe("acp bridge", () => {
       instructionMode: "append",
       options: executionOptions({
         providerOptions: {
-          acpLaunchSpec: acpLaunchSpec({ envVars: {
-        FAKE_ACP_FORK_SESSION: "1",
-        FAKE_ACP_FORK_REUSE_SOURCE_ID: "1",
-      } }),
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: {
+              FAKE_ACP_FORK_SESSION: "1",
+              FAKE_ACP_FORK_REUSE_SOURCE_ID: "1",
+            },
+          }),
         },
       }),
       sourceProviderThreadId: "source-session",
@@ -1933,7 +2028,9 @@ describe("acp bridge", () => {
       instructionMode: "append",
       options: executionOptions({
         providerOptions: {
-          acpLaunchSpec: acpLaunchSpec({ envVars: { FAKE_ACP_FORK_LOG: forkLog } }),
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: { FAKE_ACP_FORK_LOG: forkLog },
+          }),
         },
       }),
       sourceProviderThreadId: "source-session",
@@ -1960,7 +2057,9 @@ describe("acp bridge", () => {
       instructionMode: "append",
       options: executionOptions({
         providerOptions: {
-          acpLaunchSpec: acpLaunchSpec({ envVars: { FAKE_ACP_LOAD_SESSION: "1" } }),
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+          }),
         },
       }),
       providerThreadId: first.providerThreadId,
@@ -1987,10 +2086,12 @@ describe("acp bridge", () => {
       instructionMode: "append",
       options: executionOptions({
         providerOptions: {
-          acpLaunchSpec: acpLaunchSpec({ envVars: {
-        FAKE_ACP_LOAD_SESSION: "1",
-        FAKE_ACP_USAGE_ON_LOAD: "1",
-      } }),
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: {
+              FAKE_ACP_LOAD_SESSION: "1",
+              FAKE_ACP_USAGE_ON_LOAD: "1",
+            },
+          }),
         },
       }),
       providerThreadId: first.providerThreadId,
@@ -2025,11 +2126,13 @@ describe("acp bridge", () => {
       instructionMode: "append",
       options: executionOptions({
         providerOptions: {
-          acpLaunchSpec: acpLaunchSpec({ envVars: {
-        FAKE_ACP_LOAD_SESSION: "1",
-        FAKE_ACP_USAGE_ON_LOAD: "1",
-        FAKE_ACP_USAGE_SESSION_ID: "different-session",
-      } }),
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: {
+              FAKE_ACP_LOAD_SESSION: "1",
+              FAKE_ACP_USAGE_ON_LOAD: "1",
+              FAKE_ACP_USAGE_SESSION_ID: "different-session",
+            },
+          }),
         },
       }),
       providerThreadId: first.providerThreadId,
@@ -2056,10 +2159,12 @@ describe("acp bridge", () => {
       instructionMode: "append",
       options: executionOptions({
         providerOptions: {
-          acpLaunchSpec: acpLaunchSpec({ envVars: {
-        FAKE_ACP_FAIL_LOAD: "1",
-        FAKE_ACP_USAGE_ON_LOAD: "1",
-      } }),
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: {
+              FAKE_ACP_FAIL_LOAD: "1",
+              FAKE_ACP_USAGE_ON_LOAD: "1",
+            },
+          }),
         },
       }),
       providerThreadId: first.providerThreadId,
@@ -2099,11 +2204,13 @@ describe("acp bridge", () => {
         model: "fake/strong",
         reasoningLevel: "high",
         providerOptions: {
-          acpLaunchSpec: acpLaunchSpec({ envVars: {
-        FAKE_ACP_LOAD_SESSION: "1",
-        FAKE_ACP_MODEL_CONFIG: "1",
-        FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
-      } }),
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: {
+              FAKE_ACP_LOAD_SESSION: "1",
+              FAKE_ACP_MODEL_CONFIG: "1",
+              FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
+            },
+          }),
         },
       }),
       providerThreadId: first.providerThreadId,
