@@ -57,6 +57,7 @@ import {
   transcribeCodexVoice,
 } from "./codex-chatgpt-client.js";
 import { discoverRepos } from "./command-handlers/discover-repos.js";
+import { resolveGithubRepository } from "./command-handlers/resolve-github-repository.js";
 import { getProviderUsage } from "./provider-usage.js";
 import {
   getKnownAcpAgentsStatus,
@@ -700,6 +701,13 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       maxDepth: command.maxDepth,
       sinceDays: command.sinceDays,
       limit: command.limit,
+      env: options.runtimeManager.getShellEnv(),
+    }),
+  "workspace.resolve_github_repository": async (command, options) =>
+    resolveGithubRepository({
+      providerRepositoryId: command.providerRepositoryId,
+      knownPaths: command.knownPaths,
+      dataDir: options.dataDir,
       env: options.runtimeManager.getShellEnv(),
     }),
   "workspace.status": async (command, options) => {

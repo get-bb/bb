@@ -27,7 +27,10 @@ export interface WorkTogetherRoomResourceRegistry {
   resolve(input: {
     candidateHostId: string;
     providerRepositoryId: string;
-  }): WorkTogetherRoomResourceTarget | null;
+  }):
+    | WorkTogetherRoomResourceTarget
+    | null
+    | Promise<WorkTogetherRoomResourceTarget | null>;
 }
 
 export type ProvisionWorkTogetherRoomResourcesInput = Readonly<{
@@ -65,6 +68,13 @@ export class WorkTogetherRoomProvisioningUnavailableError extends Error {
   }
 }
 
+export class WorkTogetherRoomRepositoryNotRegisteredError extends Error {
+  constructor() {
+    super("Work Together Room repository is not registered on the host");
+    this.name = "WorkTogetherRoomRepositoryNotRegisteredError";
+  }
+}
+
 const BB_HOST_ID = /^host_[23456789abcdefghijkmnpqrstuvwxyz]{10}$/u;
 const PROVIDER_ID = /^[A-Za-z0-9._-]{1,64}$/u;
 const MAX_PROJECT_NAME_CODE_POINTS = 100;
@@ -73,8 +83,10 @@ const MAX_SOURCE_PATH_BYTES = 4_096;
 function requireTarget(
   target: WorkTogetherRoomResourceTarget | null,
 ): WorkTogetherRoomResourceTarget {
+  if (target === null) {
+    throw new WorkTogetherRoomRepositoryNotRegisteredError();
+  }
   if (
-    target === null ||
     !BB_HOST_ID.test(target.bbHostId) ||
     !PROVIDER_ID.test(target.providerId) ||
     target.projectName.length === 0 ||
@@ -221,10 +233,12 @@ export function createWorkTogetherRoomResourceProvisioner(
       input: ProvisionWorkTogetherRoomResourcesInput,
     ): Promise<ProvisionWorkTogetherRoomResourcesResult> {
       const target = requireTarget(
-        registry.resolve({
-          candidateHostId: input.launch.candidateHostId,
-          providerRepositoryId: input.launch.providerRepositoryId,
-        }),
+        await Promise.resolve(
+          registry.resolve({
+            candidateHostId: input.launch.candidateHostId,
+            providerRepositoryId: input.launch.providerRepositoryId,
+          }),
+        ),
       );
       ensureConfiguredHost(deps, target);
       let reservation: WorkTogetherRoomResourceReservation;

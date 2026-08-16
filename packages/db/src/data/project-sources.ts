@@ -1,8 +1,12 @@
-import { and, count, eq, inArray, ne } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, ne } from "drizzle-orm";
 import type { ProjectSource } from "@bb/domain";
 import type { DbConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
-import { projectSources } from "../schema.js";
+import {
+  projectExecutionDefaults,
+  projectSources,
+  projects,
+} from "../schema.js";
 import { createProjectSourceId } from "../ids.js";
 
 type ProjectSourceRow = typeof projectSources.$inferSelect;
@@ -82,6 +86,57 @@ export function listProjectSources(db: DbConnection, projectId: string) {
     .where(eq(projectSources.projectId, projectId))
     .all()
     .map(toProjectSource);
+}
+
+export interface PublicLocalPathProjectSourceForHost {
+  hostId: string;
+  path: string;
+  projectId: string;
+  projectName: string;
+  providerId: string | null;
+}
+
+export function listPublicLocalPathProjectSourcesForHost(
+  db: DbConnection,
+  hostId: string,
+): PublicLocalPathProjectSourceForHost[] {
+  return db
+    .select({
+      hostId: projectSources.hostId,
+      path: projectSources.path,
+      projectId: projects.id,
+      projectName: projects.name,
+      providerId: projectExecutionDefaults.providerId,
+    })
+    .from(projectSources)
+    .innerJoin(projects, eq(projects.id, projectSources.projectId))
+    .leftJoin(
+      projectExecutionDefaults,
+      eq(projectExecutionDefaults.projectId, projects.id),
+    )
+    .where(
+      and(
+        eq(projectSources.hostId, hostId),
+        eq(projectSources.type, "local_path"),
+        eq(projects.kind, "standard"),
+        isNull(projects.deletedAt),
+      ),
+    )
+    .all()
+    .map((row) => {
+      if (row.hostId === null || row.path === null) {
+        throw new Error(
+          `Invalid local_path project source row: ${row.projectId}`,
+        );
+      }
+      return {
+        hostId: row.hostId,
+        path: row.path,
+        projectId: row.projectId,
+        projectName: row.projectName,
+        providerId: row.providerId ?? null,
+      };
+    });
 }
 
 export function listProjectSourcesByProjectIds(

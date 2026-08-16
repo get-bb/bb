@@ -11,6 +11,7 @@ import {
 import {
   WorkTogetherRoomProvisioningConflictError,
   WorkTogetherRoomProvisioningUnavailableError,
+  WorkTogetherRoomRepositoryNotRegisteredError,
   type WorkTogetherRoomResourceProvisioner,
 } from "./room-resource-provisioner.js";
 import { parseRoomProvisioningTarget } from "./room-provisioning-target.js";
@@ -112,6 +113,13 @@ async function provision(
     if (error instanceof WorkTogetherRoomProvisioningConflictError) {
       throw new ApiError(409, "conflict", "Conflict");
     }
+    if (error instanceof WorkTogetherRoomRepositoryNotRegisteredError) {
+      throw new ApiError(
+        404,
+        "repository_not_registered",
+        "Repository is not registered on the host",
+      );
+    }
     if (error instanceof WorkTogetherRoomProvisioningUnavailableError) {
       throw new ApiError(
         503,
@@ -120,6 +128,7 @@ async function provision(
         true,
       );
     }
+    if (error instanceof ApiError) throw error;
     throw new ApiError(503, "service_unavailable", "Service unavailable", true);
   }
 }

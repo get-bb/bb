@@ -455,6 +455,13 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     ],
     truncated: false,
   },
+  "workspace.resolve_github_repository": {
+    outcome: "found",
+    repository: {
+      path: "/home/user/projects/cc-sandbox",
+      name: "cc-sandbox",
+    },
+  },
   "workspace.status": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diff": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diffFiles": WORKSPACE_UNAVAILABLE_RESULT,
@@ -1111,7 +1118,9 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(124);
+    // v125: workspace.resolve_github_repository maps a numeric GitHub
+    // repository id to a local checkout the host already has.
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(125);
   });
 
   it("requires an explicit intent on a thread stop command", () => {

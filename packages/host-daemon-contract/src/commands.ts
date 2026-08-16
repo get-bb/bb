@@ -36,7 +36,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 124 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 125 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -1573,6 +1573,41 @@ const discoverReposCommandSchema = z
   })
   .strict();
 
+const resolveGithubRepositoryCommandSchema = z
+  .object({
+    type: z.literal("workspace.resolve_github_repository"),
+    providerRepositoryId: z.string().regex(/^[1-9][0-9]{0,127}$/u),
+    knownPaths: z.array(z.string().min(1).max(4096)).max(500),
+  })
+  .strict();
+
+export const resolvedGithubRepositorySchema = z
+  .object({
+    name: z.string().min(1),
+    path: z.string().min(1),
+  })
+  .strict();
+export type ResolvedGithubRepository = z.infer<
+  typeof resolvedGithubRepositorySchema
+>;
+
+export const resolveGithubRepositoryResultSchema = z.discriminatedUnion(
+  "outcome",
+  [
+    z
+      .object({
+        outcome: z.literal("found"),
+        repository: resolvedGithubRepositorySchema,
+      })
+      .strict(),
+    z.object({ outcome: z.literal("not_found") }).strict(),
+    z.object({ outcome: z.literal("unavailable") }).strict(),
+  ],
+);
+export type ResolveGithubRepositoryResult = z.infer<
+  typeof resolveGithubRepositoryResultSchema
+>;
+
 const providerCliStatusCommandSchema = z
   .object({ type: z.literal("provider_cli.status") })
   .strict();
@@ -2079,6 +2114,15 @@ export const hostDaemonCommandRegistry = {
     type: "workspace.discover_repos",
     schema: discoverReposCommandSchema,
     resultSchema: discoverReposResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "workspace.resolve_github_repository": defineHostDaemonCommandDescriptor({
+    type: "workspace.resolve_github_repository",
+    schema: resolveGithubRepositoryCommandSchema,
+    resultSchema: resolveGithubRepositoryResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

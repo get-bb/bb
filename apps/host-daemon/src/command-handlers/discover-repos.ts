@@ -182,7 +182,7 @@ async function walkForRepos(
 }
 
 /** `git config --get remote.origin.url`, read straight from the config file. */
-async function readOriginUrl(repoPath: string): Promise<string | null> {
+export async function readOriginUrl(repoPath: string): Promise<string | null> {
   let config: string;
   try {
     config = await readFile(join(repoPath, ".git", "config"), "utf8");
@@ -369,6 +369,11 @@ export interface DiscoverReposArgs {
   maxDepth: number;
   sinceDays: number;
   limit: number;
+  /**
+   * When false, skip Codex/Claude history ranking. Default true so the
+   * onboarding walk still prefers repos an agent has already used.
+   */
+  includeAgentHistory?: boolean;
   /** Injectable for tests. */
   home?: string;
   env?: NodeJS.ProcessEnv;
@@ -391,13 +396,22 @@ export async function discoverRepos(
   // Ranking hints are best-effort in every direction: a missing file, an
   // uninstalled `codex`, a spawn failure, or a protocol that does not know
   // `thread/list` must never fail discovery.
-  const [claudeSeen, codexSeen] = await Promise.all([
-    readClaudeHistory(home).catch(() => new Map<string, number>()),
-    readCodexHistory(env, AGENT_HISTORY_BUDGET_MS).catch(() => ({
-      byPath: new Map<string, number>(),
-      byOrigin: new Map<string, number>(),
-    })),
-  ]);
+  const [claudeSeen, codexSeen] =
+    args.includeAgentHistory === false
+      ? [
+          new Map<string, number>(),
+          {
+            byPath: new Map<string, number>(),
+            byOrigin: new Map<string, number>(),
+          },
+        ]
+      : await Promise.all([
+          readClaudeHistory(home).catch(() => new Map<string, number>()),
+          readCodexHistory(env, AGENT_HISTORY_BUDGET_MS).catch(() => ({
+            byPath: new Map<string, number>(),
+            byOrigin: new Map<string, number>(),
+          })),
+        ]);
 
   const cutoff = now - args.sinceDays * 86_400_000;
 

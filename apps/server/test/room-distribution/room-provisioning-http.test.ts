@@ -10,6 +10,7 @@ import { registerRoomProvisioningHttpRoute } from "../../src/room-distribution/r
 import {
   WorkTogetherRoomProvisioningConflictError,
   WorkTogetherRoomProvisioningUnavailableError,
+  WorkTogetherRoomRepositoryNotRegisteredError,
   type WorkTogetherRoomResourceProvisioner,
 } from "../../src/room-distribution/room-resource-provisioner.js";
 
@@ -159,5 +160,24 @@ describe("Room provisioning HTTP adapter", () => {
     const response = await unavailable.app.request(request());
     expect(response.status).toBe(503);
     expect(await response.text()).not.toContain("Work Together");
+
+    const missing = fixture({
+      error: new WorkTogetherRoomRepositoryNotRegisteredError(),
+    });
+    const missingResponse = await missing.app.request(request());
+    expect(missingResponse.status).toBe(404);
+    expect(await missingResponse.json()).toEqual({
+      code: "repository_not_registered",
+      message: "Repository is not registered on the host",
+    });
+
+    const hostDown = fixture({
+      error: new ApiError(502, "host_unavailable", "Host is not connected"),
+    });
+    const hostDownResponse = await hostDown.app.request(request());
+    expect(hostDownResponse.status).toBe(502);
+    expect(await hostDownResponse.json()).toMatchObject({
+      code: "host_unavailable",
+    });
   });
 });

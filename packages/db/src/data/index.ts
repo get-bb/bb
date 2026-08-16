@@ -81,6 +81,7 @@ export {
   getProjectSourceForProject,
   listProjectSources,
   listProjectSourcesByProjectIds,
+  listPublicLocalPathProjectSourcesForHost,
   getProjectSourceByHost,
   getDefaultProjectSource,
   toProjectSource,
@@ -89,6 +90,7 @@ export {
 } from "./project-sources.js";
 export type {
   CreateProjectSourceInput,
+  PublicLocalPathProjectSourceForHost,
   UpdateProjectSourceInput,
 } from "./project-sources.js";
 

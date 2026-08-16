@@ -103,4 +103,20 @@ describe("discoverRepos", () => {
     expect(repos[0]?.agentSeen).toBe(false);
     expect(repos[0]?.agentSeenAt).toBeNull();
   });
+
+  it("can skip agent history for identity-only resolve walks", async () => {
+    await makeRepo("projects/app");
+
+    const { repos } = await discoverRepos({
+      maxDepth: 5,
+      sinceDays: 3650,
+      limit: 50,
+      includeAgentHistory: false,
+      home,
+      env: { PATH: "/nonexistent" },
+    });
+
+    expect(repos.map((repo) => repo.name)).toEqual(["app"]);
+    expect(repos[0]?.agentSeen).toBe(false);
+  });
 });

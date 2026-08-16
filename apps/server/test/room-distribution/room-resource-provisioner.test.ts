@@ -15,6 +15,7 @@ import {
   createWorkTogetherRoomResourceProvisioner,
   WorkTogetherRoomProvisioningConflictError,
   WorkTogetherRoomProvisioningUnavailableError,
+  WorkTogetherRoomRepositoryNotRegisteredError,
   type WorkTogetherRoomResourceProvisioner,
   type WorkTogetherRoomResourceRegistry,
   type WorkTogetherRoomResourceTarget,
@@ -198,7 +199,7 @@ describe("Work Together Room resource provisioner", () => {
     }
   });
 
-  it("fails before reservation when no operator registry target exists", async () => {
+  it("fails before reservation when the host does not have the repository", async () => {
     await withTestHarness(async (harness) => {
       const candidateHostId = randomUUID();
       const providerRepositoryId = "77";
@@ -213,13 +214,36 @@ describe("Work Together Room resource provisioner", () => {
           principal: PRINCIPAL,
           launch: exactLaunch,
         }),
-      ).rejects.toBeInstanceOf(WorkTogetherRoomProvisioningUnavailableError);
+      ).rejects.toBeInstanceOf(WorkTogetherRoomRepositoryNotRegisteredError);
       expect(
         getWorkTogetherRoomResourceReservation(
           harness.db,
           exactLaunch.bindingId,
         ),
       ).toBeNull();
+    });
+  });
+
+  it("treats an invalid resolved target shape as unavailable", async () => {
+    await withTestHarness(async (harness) => {
+      const candidateHostId = randomUUID();
+      const providerRepositoryId = "88";
+      const provisioner = createWorkTogetherRoomResourceProvisioner(
+        harness.deps,
+        registryFor(candidateHostId, providerRepositoryId, {
+          bbHostId: "not-a-host-id",
+          projectName: "Broken",
+          providerId: "codex",
+          sourcePath: "/srv/work-together/broken",
+        }),
+      );
+
+      await expect(
+        provisioner.provision({
+          principal: PRINCIPAL,
+          launch: launch(candidateHostId, providerRepositoryId),
+        }),
+      ).rejects.toBeInstanceOf(WorkTogetherRoomProvisioningUnavailableError);
     });
   });
 

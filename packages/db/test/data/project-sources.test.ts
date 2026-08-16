@@ -12,10 +12,12 @@ import {
   getProjectSourceByHost,
   listProjectSources,
   listProjectSourcesByProjectIds,
+  listPublicLocalPathProjectSourcesForHost,
   updateProjectSource,
   deleteProjectSource,
 } from "../../src/data/project-sources.js";
-import { createProject } from "../../src/data/projects.js";
+import { upsertProjectExecutionDefaults } from "../../src/data/project-execution-defaults.js";
+import { createProject, markProjectDeleted } from "../../src/data/projects.js";
 import { upsertHost } from "../../src/data/hosts.js";
 
 function setup() {
@@ -298,5 +300,53 @@ describe("project-sources", () => {
     const initialDefault = getDefaultProjectSource(db, project.id)!;
     expect(deleteProjectSource(db, noopNotifier, initialDefault.id)).toBe(true);
     expect(getDefaultProjectSource(db, project.id)?.id).toBe(second.id);
+  });
+
+  it("lists live standard local-path sources for one host", () => {
+    const { db, host, project } = setup();
+    upsertProjectExecutionDefaults(db, {
+      projectId: project.id,
+      providerId: "claude",
+      model: "opus",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+    });
+    const otherHost = upsertHost(db, noopNotifier, {
+      name: "other-host",
+      type: "persistent",
+    });
+    const { project: otherHostProject } = createProject(db, noopNotifier, {
+      name: "other-host-project",
+      source: {
+        type: "local_path",
+        hostId: otherHost.id,
+        path: "/tmp/other-host",
+      },
+    });
+    const { project: deleted } = createProject(db, noopNotifier, {
+      name: "deleted-project",
+      source: {
+        type: "local_path",
+        hostId: host.id,
+        path: "/tmp/deleted",
+      },
+    });
+    markProjectDeleted(db, noopNotifier, { projectId: deleted.id });
+
+    const listed = listPublicLocalPathProjectSourcesForHost(db, host.id);
+    expect(listed).toEqual([
+      {
+        hostId: host.id,
+        path: "/tmp/test",
+        projectId: project.id,
+        projectName: "test-project",
+        providerId: "claude",
+      },
+    ]);
+    expect(
+      listed.some((row) => row.projectId === otherHostProject.id),
+    ).toBe(false);
+    expect(listed.some((row) => row.projectId === deleted.id)).toBe(false);
   });
 });

@@ -38,9 +38,9 @@ import {
   type WorkTogetherRoomResourceProvisioner,
 } from "./room-distribution/room-resource-provisioner.js";
 import {
-  loadWorkTogetherRoomResourceRegistry,
-  WORK_TOGETHER_ROOM_RESOURCE_REGISTRY_ENV,
-} from "./room-distribution/room-resource-registry.js";
+  createHostWorkTogetherGithubRepositoryResolver,
+  createLiveWorkTogetherRoomResourceRegistry,
+} from "./room-distribution/room-resource-live-registry.js";
 import { createWorkTogetherRoomTaskProjection } from "./room-distribution/work-together-room-task-projection.js";
 import { createWorkTogetherRoomChildAttachments } from "./room-distribution/work-together-room-child-attachments.js";
 import { createBindingBackedRoomDistributionV1 } from "./room-distribution/binding-backed-room-distribution.js";
@@ -183,9 +183,11 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       principalRuntime.principalMode === "work-together"
         ? createWorkTogetherRoomResourceProvisioner(
             appDeps,
-            loadWorkTogetherRoomResourceRegistry(
-              process.env[WORK_TOGETHER_ROOM_RESOURCE_REGISTRY_ENV],
-            ),
+            createLiveWorkTogetherRoomResourceRegistry({
+              db: appDeps.db,
+              resolveGithubRepository:
+                createHostWorkTogetherGithubRepositoryResolver(appDeps),
+            }),
           )
         : undefined;
     roomDistribution =
