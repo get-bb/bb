@@ -94,7 +94,7 @@ import { resolveAutomationBreadcrumbs } from "@/components/tools/tools-navigatio
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
 import {
   PluginPanelHeaderActions,
   PluginPanelHeaderCenter,
@@ -1038,18 +1038,20 @@ function StandalonePaneContent({
   content: PaneContent;
   paneId?: string;
 }) {
-  const { navPanels } = usePluginSlots();
+  const navPanelChrome = usePluginNavPanelChrome();
   if (content.kind === "thread") {
     return <ThreadDetailView surface="page" />;
   }
   if (content.kind === "new-thread") {
     return <RootComposeView />;
   }
-  const panel = navPanels.find(
+  const panelEntry = navPanelChrome.find(
     (candidate) =>
-      candidate.pluginId === content.pluginId &&
-      candidate.path === content.panelPath,
+      candidate.chrome.pluginId === content.pluginId &&
+      candidate.chrome.path === content.panelPath,
   );
+  const panel = panelEntry?.panel ?? undefined;
+  const panelChrome = panelEntry?.chrome;
   const body = (
     <PluginPanelView
       pluginId={content.pluginId}
@@ -1065,16 +1067,18 @@ function StandalonePaneContent({
       paneId={paneId}
       subPath={content.subPath}
     >
-      {panel ? (
+      {panelChrome ? (
         <div className="flex h-full min-h-0 flex-col">
           <AppPageHeader
-            center={<PluginPanelHeaderCenter panel={panel} />}
+            center={<PluginPanelHeaderCenter chrome={panelChrome} />}
             actions={
-              <PluginPanelHeaderActions
-                panel={panel}
-                paneId={paneId}
-                subPath={content.subPath}
-              />
+              panel ? (
+                <PluginPanelHeaderActions
+                  panel={panel}
+                  paneId={paneId}
+                  subPath={content.subPath}
+                />
+              ) : undefined
             }
           />
           <div className="flex min-h-0 flex-1 flex-col p-4 md:p-5">{body}</div>
@@ -1101,7 +1105,7 @@ function NonThreadPaneContent({
   isTopRow: boolean;
   ownsWindowTopLeft: boolean;
 }) {
-  const { navPanels } = usePluginSlots();
+  const navPanelChrome = usePluginNavPanelChrome();
   const resourceRouteLabel = useAtomValue(resourceRouteLabelAtom);
   const dimsInactiveSplits = useAtomValue(dimInactiveSplitsAtom);
   const { reservesWindowPanelToggle, isFocused } = useOptionalPaneContext() ?? {
@@ -1113,14 +1117,16 @@ function NonThreadPaneContent({
   const showsWindowPanelToggle = hostLayout?.pinsCornerToggle === true;
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
-  const panel =
+  const panelEntry =
     content.kind === "plugin-panel"
-      ? navPanels.find(
+      ? navPanelChrome.find(
           (candidate) =>
-            candidate.pluginId === content.pluginId &&
-            candidate.path === content.panelPath,
+            candidate.chrome.pluginId === content.pluginId &&
+            candidate.chrome.path === content.panelPath,
         )
       : undefined;
+  const panel = panelEntry?.panel ?? undefined;
+  const panelChrome = panelEntry?.chrome;
   const automationBreadcrumbs =
     content.kind === "plugin-panel"
       ? resolveAutomationBreadcrumbs(
@@ -1128,7 +1134,7 @@ function NonThreadPaneContent({
           isFocused ? resourceRouteLabel : null,
         )
       : null;
-  const label = panel?.title ?? "New thread";
+  const label = panelChrome?.title ?? "New thread";
   const handlePointerDown = (event: ReactPointerEvent) => {
     if (
       event.target instanceof Element &&
@@ -1221,8 +1227,8 @@ function NonThreadPaneContent({
                   breadcrumbs={automationBreadcrumbs}
                   usesDesktopChrome={usesDesktopChrome}
                 />
-              ) : panel ? (
-                <PluginPanelHeaderCenter panel={panel} />
+              ) : panelChrome ? (
+                <PluginPanelHeaderCenter chrome={panelChrome} />
               ) : (
                 <p
                   className={cn(

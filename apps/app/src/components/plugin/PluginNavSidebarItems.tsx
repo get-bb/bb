@@ -35,7 +35,10 @@ import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@/components/sidebar/ProjectList";
 import { getPluginPanelRoutePath } from "@/lib/route-paths";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import {
+  usePluginNavPanelChrome,
+  type PluginNavPanelChrome,
+} from "@/lib/plugin-nav-panel-chrome";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
 import { usePaneContentSplitDrag } from "@/components/sidebar/usePaneContentSplitDrag";
@@ -101,7 +104,12 @@ type SidebarNavRow =
       pluginId: string;
       id: string;
       title: string;
-      panel: PluginNavPanelSlot;
+      chrome: PluginNavPanelChrome;
+      /**
+       * The live registration; null while the row is drawn from remembered
+       * chrome before plugin frontends have booted (no sidebar accessory).
+       */
+      panel: PluginNavPanelSlot | null;
     };
 
 /**
@@ -126,13 +134,14 @@ export function PluginNavSidebarItems({
   /** Omit when a host surface should render plugin rows without Extensions. */
   toolsRoutePath?: string;
 }) {
-  const { navPanels } = usePluginSlots();
+  const navPanels = usePluginNavPanelChrome();
   const rows = useMemo<SidebarNavRow[]>(() => {
-    const pluginRows = navPanels.map<SidebarNavRow>((panel) => ({
+    const pluginRows = navPanels.map<SidebarNavRow>(({ chrome, panel }) => ({
       kind: "plugin",
-      pluginId: panel.pluginId,
-      id: panel.id,
-      title: panel.title,
+      pluginId: chrome.pluginId,
+      id: chrome.id,
+      title: chrome.title,
+      chrome,
       panel,
     }));
     if (toolsRoutePath === undefined) return pluginRows;
@@ -452,28 +461,28 @@ function PluginNavSidebarItem({
 }: Omit<SidebarNavRowItemProps, "row"> & {
   row: Extract<SidebarNavRow, { kind: "plugin" }>;
 }) {
-  const { panel } = row;
+  const { chrome, panel } = row;
   const navigate = useNavigate();
   const isCompactViewport = useIsCompactViewport();
   const path = getPluginPanelRoutePath({
-    pluginId: panel.pluginId,
-    path: panel.path,
+    pluginId: chrome.pluginId,
+    path: chrome.path,
   });
   const content = {
     kind: "plugin-panel",
-    pluginId: panel.pluginId,
-    panelPath: panel.path,
+    pluginId: chrome.pluginId,
+    panelPath: chrome.path,
     subPath: "",
   } as const;
   const { onPointerDown, openInSplit } = usePaneContentSplitDrag({
     content,
     enabled: splitEnabled,
-    label: panel.title,
+    label: chrome.title,
   });
   const splitIndicator = usePaneContentSplitIndicator(content, splitEnabled);
-  const SidebarAccessory = panel.experimental_sidebarAccessory;
+  const SidebarAccessory = panel?.experimental_sidebarAccessory;
   const sidebarAccessory =
-    !isCompactViewport && SidebarAccessory !== undefined ? (
+    panel !== null && !isCompactViewport && SidebarAccessory !== undefined ? (
       <PluginSlotMount
         key={`${panel.pluginId}/${panel.id}/${panel.generation}`}
         pluginId={panel.pluginId}
@@ -489,8 +498,8 @@ function PluginNavSidebarItem({
     <SidebarNavRowChrome
       {...props}
       rowKey={getPluginNavPanelKey(row)}
-      title={panel.title}
-      icon={<PluginIcon pluginId={panel.pluginId} icon={panel.icon} />}
+      title={chrome.title}
+      icon={<PluginIcon pluginId={chrome.pluginId} icon={chrome.icon} />}
       isActive={pathname === path || pathname.startsWith(`${path}/`)}
       splitMiniMap={splitIndicator.miniMap}
       accessory={sidebarAccessory}

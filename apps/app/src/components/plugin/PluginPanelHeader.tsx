@@ -1,4 +1,5 @@
 import { Component, type ReactNode } from "react";
+import type { PluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
 import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
 import { PluginIcon } from "./PluginIcon";
 import { PluginContext } from "./plugin-context";
@@ -39,20 +40,24 @@ class HeaderContentBoundary extends Component<
   }
 }
 
-/** Header center for a plugin panel route: compact plugin icon + panel title. */
+/**
+ * Header center for a plugin panel route: compact plugin icon + panel title.
+ * Takes only the panel's chrome so it can paint from a live registration or
+ * from the chrome remembered before plugin frontends have booted.
+ */
 export function PluginPanelHeaderCenter({
-  panel,
+  chrome,
 }: {
-  panel: PluginNavPanelSlot;
+  chrome: Pick<PluginNavPanelChrome, "pluginId" | "icon" | "title">;
 }) {
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2">
       <PluginIcon
-        pluginId={panel.pluginId}
-        icon={panel.icon}
+        pluginId={chrome.pluginId}
+        icon={chrome.icon}
         className="text-muted-foreground"
       />
-      <p className="truncate text-sm font-semibold">{panel.title}</p>
+      <p className="truncate text-sm font-semibold">{chrome.title}</p>
     </div>
   );
 }

@@ -50,7 +50,11 @@ import {
   PluginPanelHeaderCenter,
 } from "@/components/plugin/PluginPanelHeader";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
-import { usePluginSlots, type PluginNavPanelSlot } from "@/lib/plugin-slots";
+import {
+  usePluginNavPanelChrome,
+  type PluginNavPanelChrome,
+} from "@/lib/plugin-nav-panel-chrome";
+import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
 import { createLocalStorageSyncStorage } from "@/lib/browser-storage";
 import {
   BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
@@ -307,9 +311,11 @@ interface AppHeaderProps {
   projectId?: string;
   project?: ProjectResponse;
   /** Registered navPanel when this is a plugin panel route (design §5.2):
-   * the shared header shows plugin icon + title, plus the registration's
-   * `headerContent` as the actions. */
+   * the registration's `headerContent` becomes the actions. */
   pluginPanel?: PluginNavPanelSlot;
+  /** The panel's icon + title for the header center — from the live
+   * registration, or remembered chrome until plugin frontends have booted. */
+  pluginPanelChrome?: PluginNavPanelChrome;
   /** The panel route's splat remainder ("" at the panel root). */
   pluginPanelSubPath?: string;
   meta: {
@@ -326,6 +332,7 @@ function AppHeader({
   projectId,
   project,
   pluginPanel,
+  pluginPanelChrome,
   pluginPanelSubPath,
   meta,
 }: AppHeaderProps) {
@@ -345,8 +352,8 @@ function AppHeader({
         usesDesktopChrome={usesDesktopChrome}
       />
     </div>
-  ) : pluginPanel ? (
-    <PluginPanelHeaderCenter panel={pluginPanel} />
+  ) : pluginPanelChrome ? (
+    <PluginPanelHeaderCenter chrome={pluginPanelChrome} />
   ) : hasCenterContent ? (
     <div className="min-w-0 flex-1">
       {headerTitle ? (
@@ -509,7 +516,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     : null;
   // Plugin panel routes ride the shared header (design §5.2): icon + panel
   // title in the center, the registration's headerContent as the actions.
-  const { navPanels } = usePluginSlots();
+  const navPanelChrome = usePluginNavPanelChrome();
   // Global settings routes swap the app sidebar for the settings sidebar.
   const isGlobalSettingsView =
     matchPath(`${SETTINGS_ROUTE_PATH}/*`, location.pathname) !== null;
@@ -518,13 +525,15 @@ export function AppLayout({ children }: AppLayoutProps) {
     PLUGIN_PANEL_ROUTE_PATH,
     location.pathname,
   );
-  const pluginPanel = pluginPanelMatch
-    ? navPanels.find(
+  const pluginPanelEntry = pluginPanelMatch
+    ? navPanelChrome.find(
         (candidate) =>
-          candidate.pluginId === pluginPanelMatch.params.pluginId &&
-          candidate.path === pluginPanelMatch.params.panelPath,
+          candidate.chrome.pluginId === pluginPanelMatch.params.pluginId &&
+          candidate.chrome.path === pluginPanelMatch.params.panelPath,
       )
     : undefined;
+  const pluginPanel = pluginPanelEntry?.panel ?? undefined;
+  const pluginPanelChrome = pluginPanelEntry?.chrome;
   const pluginPanelSubPath = pluginPanelMatch?.params["*"] ?? "";
   const sidebarNavigationQuery = useSidebarNavigation();
   const projects = useMemo(
@@ -845,6 +854,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                     projectId={projectId}
                     project={project}
                     pluginPanel={pluginPanel}
+                    pluginPanelChrome={pluginPanelChrome}
                     pluginPanelSubPath={pluginPanelSubPath}
                     meta={meta}
                   />

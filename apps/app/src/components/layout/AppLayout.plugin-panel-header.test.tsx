@@ -50,8 +50,8 @@ vi.mock("@/lib/plugin-slots", () => ({
 }));
 
 vi.mock("@/components/plugin/PluginPanelHeader", () => ({
-  PluginPanelHeaderCenter: ({ panel }: { panel: { title: string } }) => (
-    <span data-testid="plugin-panel-header-center">{panel.title}</span>
+  PluginPanelHeaderCenter: ({ chrome }: { chrome: { title: string } }) => (
+    <span data-testid="plugin-panel-header-center">{chrome.title}</span>
   ),
   PluginPanelHeaderActions: () => null,
 }));
