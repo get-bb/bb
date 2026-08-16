@@ -48,6 +48,28 @@ function createTestDb(): Db {
   return db;
 }
 
+async function isProcessRunning(pid: number): Promise<boolean> {
+  try {
+    process.kill(pid, 0);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+    throw error;
+  }
+
+  if (process.platform !== "linux") return true;
+  try {
+    const stat = await readFile(`/proc/${pid}/stat`, "utf8");
+    const closingParen = stat.lastIndexOf(")");
+    const state = stat.slice(closingParen + 2, closingParen + 3);
+    // Container PID 1 may leave a terminated descendant as a zombie briefly.
+    // A zombie cannot execute and therefore satisfies process containment.
+    return state !== "Z" && state !== "X";
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
 function createScheduledAutomation(
   db: Db,
   nextRunAt: number,
@@ -1048,20 +1070,13 @@ describe("script process containment", () => {
       expect(result.timedOut).toBe(true);
       expect(Number.isSafeInteger(childPid)).toBe(true);
 
-      let childExists = true;
+      let childRunning = true;
       for (let attempt = 0; attempt < 20; attempt += 1) {
-        try {
-          process.kill(childPid, 0);
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === "ESRCH") {
-            childExists = false;
-            break;
-          }
-          throw error;
-        }
+        childRunning = await isProcessRunning(childPid);
+        if (!childRunning) break;
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
-      expect(childExists).toBe(false);
+      expect(childRunning).toBe(false);
     } finally {
       await rm(pluginDataDir, { recursive: true, force: true });
     }
