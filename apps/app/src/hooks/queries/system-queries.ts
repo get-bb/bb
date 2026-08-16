@@ -31,6 +31,11 @@ import {
   readCachedModelCatalog,
   writeCachedModelCatalog,
 } from "@/lib/model-catalog-cache";
+import {
+  providerListCacheKey,
+  readCachedProviderList,
+  writeCachedProviderList,
+} from "@/lib/provider-list-cache";
 import { useSystemRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
   hostProviderCliStatusQueryKey,
@@ -233,6 +238,13 @@ const PLACEHOLDER_PROVIDER_INFOS: ProviderInfo[] = [
 // discovery runs, and a provider that no replayable list can vouch for waits
 // for the probe, exactly as before.
 //
+// The provider list rides along from its own last-known cache: the live list
+// carries the host's custom and installed ACP agents, so replaying only the
+// built-in providers would select the first built-in one for a beat whenever
+// the remembered provider is not built in. If the remembered provider is not
+// in the list we can replay, there is no honest provisional frame and the
+// composer waits, as it did before.
+//
 // Callers must gate model recovery on `isPlaceholderData` either way: a cached
 // catalog can be stale, so absence from this list is not evidence that a stored
 // model was retired.
@@ -262,6 +274,7 @@ function resolveExecutionOptionsPlaceholder({
   providerId,
   catalogCacheKey,
   providerCatalogCacheKey,
+  providersCacheKey,
 }: {
   previousData: SystemExecutionOptionsResponse | undefined;
   previousQueryKey: QueryKey | undefined;
@@ -270,6 +283,7 @@ function resolveExecutionOptionsPlaceholder({
   providerId: string | null;
   catalogCacheKey: string;
   providerCatalogCacheKey: string | null;
+  providersCacheKey: string;
 }): SystemExecutionOptionsResponse | undefined {
   // Same-route provider roster from the prior response: dynamic (ACP) tabs
   // stay visible while the newly selected provider's models load.
@@ -290,12 +304,12 @@ function resolveExecutionOptionsPlaceholder({
     (providerCatalogCacheKey === null
       ? null
       : readCachedModelCatalog(providerCatalogCacheKey));
-  const rememberedProviders =
-    cached?.providers !== undefined && cached.providers.length > 0
-      ? cached.providers
-      : undefined;
+  const remembered = readCachedProviderList(providersCacheKey);
   const providers =
-    previousProviders ?? rememberedProviders ?? PLACEHOLDER_PROVIDER_INFOS;
+    previousProviders ??
+    (remembered !== null && remembered.length > 0
+      ? remembered
+      : PLACEHOLDER_PROVIDER_INFOS);
   if (
     providerId !== null &&
     !providers.some((provider) => provider.id === providerId)
@@ -412,6 +426,7 @@ export function useSystemExecutionOptions(
   const providerId = args.providerId ?? null;
   const enabled = args.enabled ?? true;
   useSystemRealtimeSubscription({ enabled });
+  const providersCacheKey = providerListCacheKey({ environmentId, hostId });
   const catalogCacheKey = modelCatalogCacheKey({
     environmentId,
     hostId,
@@ -435,14 +450,16 @@ export function useSystemExecutionOptions(
         providerId: args.providerId,
         signal,
       });
-      // Only a verified catalog is worth remembering. Caching a provisional list
-      // would let the server's probe-failure fallback masquerade as this
-      // routing's real models on the next cold load.
+      // The provider list is authoritative whether or not the model probe
+      // succeeded. Only a verified catalog is worth remembering, though:
+      // caching a provisional list would let the server's probe-failure
+      // fallback masquerade as this routing's real models on the next cold
+      // load.
+      writeCachedProviderList(providersCacheKey, response.providers);
       if (response.modelLoadError === null) {
         const catalog = {
           models: response.models,
           selectedOnlyModels: response.selectedOnlyModels,
-          providers: response.providers,
         };
         writeCachedModelCatalog(catalogCacheKey, catalog);
         if (providerCatalogCacheKey !== null) {
@@ -464,6 +481,7 @@ export function useSystemExecutionOptions(
         providerId,
         catalogCacheKey,
         providerCatalogCacheKey,
+        providersCacheKey,
       }),
   });
 }

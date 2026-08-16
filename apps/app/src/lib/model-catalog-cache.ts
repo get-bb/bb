@@ -1,16 +1,10 @@
-import { availableModelSchema, providerInfoSchema } from "@bb/domain";
+import { availableModelSchema } from "@bb/domain";
 import { z } from "zod";
 import { createLastKnownCache } from "@/lib/last-known-cache";
 
 const cachedModelCatalogSchema = z.object({
   models: z.array(availableModelSchema),
   selectedOnlyModels: z.array(availableModelSchema),
-  /**
-   * The provider set the last successful probe reported, so the preload
-   * window shows this install's real providers (including plugin-registered
-   * ones) instead of a static list.
-   */
-  providers: z.array(providerInfoSchema).optional(),
 });
 
 export type CachedModelCatalog = z.infer<typeof cachedModelCatalogSchema>;
