@@ -1,44 +1,29 @@
-import {
-  resolvedThreadExecutionOptionsSchema,
-  type ResolvedThreadExecutionOptions,
-} from "@bb/domain";
-import { createJsonLocalStorage } from "@/lib/browser-storage";
-
-const THREAD_EXECUTION_OPTIONS_CACHE_PREFIX = "bb.thread-execution-options";
-const THREAD_EXECUTION_OPTIONS_CACHE_VERSION = "1";
-
-const optionsStorage = createJsonLocalStorage<unknown>();
-
-export function threadExecutionOptionsCacheKey(threadId: string): string {
-  return [
-    THREAD_EXECUTION_OPTIONS_CACHE_PREFIX,
-    THREAD_EXECUTION_OPTIONS_CACHE_VERSION,
-    threadId,
-  ].join(".");
-}
+import { resolvedThreadExecutionOptionsSchema } from "@bb/domain";
+import { createLastKnownCache } from "@/lib/last-known-cache";
 
 /**
  * The last execution options the server resolved for a thread (provider,
- * model, reasoning, permission mode), used to paint the composer's controls
- * on the first frame instead of the hook's neutral defaults. The server owns
- * the resolution policy; this only remembers its last answer, and a cached
- * answer can be stale, so callers must keep treating it as provisional until
+ * model, reasoning, permission mode), replayed to paint the composer's
+ * controls on the first frame instead of the hook's neutral defaults. The
+ * server owns the resolution policy; this only remembers its last answer, and
+ * a replay can be stale, so callers must keep treating it as provisional until
  * the live query settles.
+ *
+ * Keyed by thread id alone, unlike the model catalog's environment/host/
+ * provider scoping: thread ids are globally unique ULIDs, and the resolved
+ * options already carry the provider and host context that produced them.
  */
-export function readCachedThreadExecutionOptions(
-  key: string,
-): ResolvedThreadExecutionOptions | null {
-  const stored = optionsStorage.getItem(key, null);
-  if (stored === null) {
-    return null;
-  }
-  const parsed = resolvedThreadExecutionOptionsSchema.safeParse(stored);
-  return parsed.success ? parsed.data : null;
+const threadExecutionOptionsCache = createLastKnownCache({
+  prefix: "bb.thread-execution-options",
+  version: "1",
+  schema: resolvedThreadExecutionOptionsSchema,
+});
+
+export function threadExecutionOptionsCacheKey(threadId: string): string {
+  return threadExecutionOptionsCache.key(threadId);
 }
 
-export function writeCachedThreadExecutionOptions(
-  key: string,
-  options: ResolvedThreadExecutionOptions,
-): void {
-  optionsStorage.setItem(key, options);
-}
+export const readCachedThreadExecutionOptions =
+  threadExecutionOptionsCache.read;
+export const writeCachedThreadExecutionOptions =
+  threadExecutionOptionsCache.write;

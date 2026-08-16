@@ -1,7 +1,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QueryKey } from "@tanstack/react-query";
-import type { AvailableModel, ProviderInfo } from "@bb/domain";
+import type { AvailableModel, PermissionMode, ProviderInfo } from "@bb/domain";
 import { SYSTEM_EXECUTION_OPTIONS_QUERY_KEY } from "@/hooks/queries/query-keys";
 import {
   HIGH_REASONING_EFFORT,
@@ -10,6 +10,7 @@ import {
   MEDIUM_REASONING_EFFORT,
   ULTRACODE_REASONING_EFFORT,
   XHIGH_REASONING_EFFORT,
+  permissionModeValues,
 } from "@bb/domain";
 import { toRecord } from "@bb/core-ui";
 import type {
@@ -235,6 +236,12 @@ const PLACEHOLDER_PROVIDER_INFOS: ProviderInfo[] = [
 // Callers must gate model recovery on `isPlaceholderData` either way: a cached
 // catalog can be stale, so absence from this list is not evidence that a stored
 // model was retired.
+//
+// The placeholder's permission ceiling is the most restrictive mode. Consumers
+// ignore the ceiling while data is provisional, so the value is never used —
+// but a replay must fail safe if a future reader forgets that gate.
+const PLACEHOLDER_PERMISSION_CEILING: PermissionMode = permissionModeValues[0];
+
 function isSameExecutionOptionsRoute(
   previousQueryKey: QueryKey | undefined,
   environmentId: string | null,
@@ -293,7 +300,7 @@ function resolveExecutionOptionsPlaceholder({
     models:
       cached?.models ?? (isClaudeCode ? CLAUDE_CODE_PLACEHOLDER_MODELS : []),
     selectedOnlyModels: cached?.selectedOnlyModels ?? [],
-    permissionCeiling: "full",
+    permissionCeiling: PLACEHOLDER_PERMISSION_CEILING,
     modelLoadError: null,
   };
 }

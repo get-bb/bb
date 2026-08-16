@@ -256,6 +256,8 @@ describe("useSystemExecutionOptions", () => {
     expect(result.current.isPlaceholderData).toBe(true);
     expect(result.current.data?.models).toEqual([CODEX_MODEL]);
     expect(result.current.data?.modelLoadError).toBeNull();
+    // Provisional data fails safe: the widest ceiling is never replayed.
+    expect(result.current.data?.permissionCeiling).toBe("accept-edits");
     await waitFor(() =>
       expect(sdk.system.executionOptions).toHaveBeenCalledWith(
         expect.objectContaining({ hostId: "host-a", providerId: "codex" }),
