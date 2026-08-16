@@ -20,7 +20,9 @@ import type {
  *
  * Cold page cache — not CPU — is the real cost, so the walk is time-boxed and
  * reports `truncated` rather than blocking onboarding on a slow or
- * network-mounted home directory.
+ * network-mounted home directory. Unreadable directories (permissions, broken
+ * mounts) are also `truncated`: a sealed tree is an incomplete inventory, not
+ * an empty one.
  */
 
 /**
@@ -117,13 +119,14 @@ async function walkForRepos(
       return;
     }
 
-    // Unreadable or hung directory (permissions, broken mount) is not an error
-    // here — it just contributes nothing.
+    // Timeout, EACCES, and other open failures all look like `null` here
+    // because `withDeadline` swallows the error. Any of those means this
+    // subtree was not inventoried, so the walk is incomplete.
     const handle = await withDeadline(opendir(dir), deadline, (late) => {
       void late.close().catch(() => {});
     });
     if (handle === null) {
-      if (Date.now() > deadline) truncated = true;
+      truncated = true;
       return;
     }
 
@@ -144,6 +147,7 @@ async function walkForRepos(
         children.push(entry.name);
       }
     } catch {
+      truncated = true;
       return;
     }
 

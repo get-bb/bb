@@ -36,7 +36,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 125 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 126 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -1558,7 +1558,11 @@ export type DiscoveredRepo = z.infer<typeof discoveredRepoSchema>;
 export const discoverReposResultSchema = z
   .object({
     repos: z.array(discoveredRepoSchema),
-    /** True when the walk hit its time budget and results may be partial. */
+    /**
+     * True when the walk did not finish and results may be partial. Time
+     * budget, an unreadable directory, or a failed readdir all count — a
+     * sealed tree is incomplete, not empty.
+     */
     truncated: z.boolean(),
   })
   .strict();

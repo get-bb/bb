@@ -194,16 +194,56 @@ describe("resolveGithubRepository", () => {
   });
 
   it("confirms a miss when the host has no matching checkout", async () => {
+    const home = join(root, "home");
+    await mkdir(home, { recursive: true });
     const result = await resolveGithubRepository({
       providerRepositoryId: "1268425814",
       knownPaths: [],
       dataDir: join(root, "data"),
-      home: join(root, "home"),
+      home,
       env: { PATH: "/nonexistent" },
       resolveFullName: async () => "timmoshu/cc-sandbox",
-      discover: async () => ({ repos: [], truncated: false }),
     });
     expect(result).toEqual({ outcome: "not_found" });
+  });
+
+  it("does not claim a confirmed miss when home discovery is unreadable", async () => {
+    const home = join(root, "home");
+    const discovered = join(home, "projects", "cc-sandbox");
+    await writeOrigin(discovered, "https://github.com/timmoshu/cc-sandbox.git");
+    await chmod(home, 0o000);
+    try {
+      const result = await resolveGithubRepository({
+        providerRepositoryId: "1268425814",
+        knownPaths: [],
+        dataDir: join(root, "data"),
+        home,
+        env: { PATH: "/nonexistent" },
+        resolveFullName: async () => "timmoshu/cc-sandbox",
+      });
+      expect(result).toEqual({ outcome: "unavailable" });
+    } finally {
+      await chmod(home, 0o700);
+    }
+  });
+
+  it("does not claim a confirmed miss when a known path is unreadable", async () => {
+    const sourcePath = join(root, "srv", "cc-sandbox");
+    await writeOrigin(sourcePath, "https://github.com/timmoshu/cc-sandbox.git");
+    await chmod(sourcePath, 0o000);
+    try {
+      const result = await resolveGithubRepository({
+        providerRepositoryId: "1268425814",
+        knownPaths: [sourcePath],
+        dataDir: join(root, "data"),
+        home: join(root, "home"),
+        resolveFullName: async () => "timmoshu/cc-sandbox",
+        discover: async () => ({ repos: [], truncated: false }),
+      });
+      expect(result).toEqual({ outcome: "unavailable" });
+    } finally {
+      await chmod(sourcePath, 0o700);
+    }
   });
 
   it("does not claim a confirmed miss when the home walk is truncated", async () => {
