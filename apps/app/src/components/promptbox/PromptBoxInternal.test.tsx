@@ -2174,6 +2174,40 @@ describe("PromptBoxInternal compact layout", () => {
     expect(document.activeElement).toBe(editor);
   });
 
+  it("cancels the pointer submit default even when the editor reports unfocused", async () => {
+    // Regression: on iOS the editor can report unfocused at pointerdown while
+    // its keyboard is still up, because WebKit has already begun moving focus
+    // by the time the handler runs. Skipping preventDefault in that state let
+    // the keyboard dismiss and the composer reflow upward, so the click landed
+    // where the button used to be and the message only sent on a second tap.
+    const onSubmit = vi.fn();
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          value: "Send this follow-up",
+          onSubmit,
+          compact: {
+            isCompact: true,
+            placeholder: "Ask a follow-up",
+          },
+        })}
+      />,
+    );
+
+    await waitForPromptFocus();
+    const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+
+    // Stand in for WebKit having already moved focus off the editor.
+    getPromptEditorElement().blur();
+
+    expect(
+      fireEvent.pointerDown(submit, { button: 0, pointerType: "touch" }),
+    ).toBe(false);
+
+    fireEvent.click(submit, { detail: 1 });
+    expect(onSubmit).toHaveBeenCalledOnce();
+  });
+
   it("blurs the editor after a pointer submit when requested", async () => {
     const onSubmit = vi.fn();
     render(

@@ -122,8 +122,12 @@ import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-cl
 
 const PROMPTBOX_MIN_HEIGHT = 68;
 const PROMPTBOX_SELECTION_REVEAL_MARGIN = 12;
+// 32px is below the 44px minimum touch target, and this is the slot shared by
+// submit, stop and voice input — the most-tapped control in the app. Coarse
+// pointers get the full target; precise pointers keep the compact size, so
+// desktop density is unchanged.
 const COMPACT_PROMPT_ACTION_BUTTON_CLASS =
-  "size-8 p-0 transition-all [&_svg]:size-4";
+  "size-8 p-0 transition-all [&_svg]:size-4 max-md:pointer-coarse:size-11 max-md:pointer-coarse:[&_svg]:size-5";
 const RICH_PASTE_BLOCK_TAGS = new Set([
   "ADDRESS",
   "ARTICLE",
@@ -2646,18 +2650,23 @@ export function PromptBoxInternal({
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       if (event.button !== 0) return;
       const currentEditor = editorRef.current;
-      if (
-        !currentEditor ||
-        currentEditor.isDestroyed ||
-        !currentEditor.isFocused
-      ) {
-        return;
-      }
+      if (!currentEditor || currentEditor.isDestroyed) return;
 
       // Focus transfer happens before click. On iOS, moving focus from the
       // editor to this button begins keyboard dismissal and resizes the app
       // shell before the form can submit. Keep the editor focused; the click
       // still owns the commit, while genuine outside focus dismisses normally.
+      //
+      // Deliberately not gated on `isFocused`. On iOS the editor can report
+      // false at pointerdown while its keyboard is still up, because WebKit has
+      // already begun moving focus by the time this runs. Skipping
+      // preventDefault in that state is precisely when the dismissal it guards
+      // against happens: the keyboard closes, the composer reflows upward, and
+      // the click lands where the button used to be — so the tap appears to do
+      // nothing and the message only sends on a second press.
+      //
+      // Cancelling the default is safe regardless of focus state. It suppresses
+      // the focus transfer for this press only, and the click still fires.
       event.preventDefault();
     },
     [],

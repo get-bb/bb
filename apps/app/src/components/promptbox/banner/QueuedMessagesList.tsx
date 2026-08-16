@@ -737,6 +737,10 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                   "pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-md opacity-0 transition-opacity duration-[120ms] ease-out md:flex",
                   "group-hover/row:pointer-events-auto group-hover/row:opacity-100",
                   "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100",
+                  // Touch has no hover, so below `md` these actions were never
+                  // reachable and the row fell back to the overflow menu alone.
+                  // Show them outright on coarse pointers.
+                  "max-md:pointer-coarse:flex max-md:pointer-coarse:pointer-events-auto max-md:pointer-coarse:opacity-100",
                 )}
               >
                 <Tooltip>
@@ -817,6 +821,11 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                     "data-[state=open]:pointer-events-auto data-[state=open]:opacity-100",
                     "[@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100",
                     compact ? "size-7" : "size-8",
+                    // This menu and the inline actions are anchored to the same
+                    // edge and are meant to be alternatives. Now that coarse
+                    // pointers get the inline actions, showing this too would
+                    // stack the two sets on top of each other.
+                    "max-md:pointer-coarse:hidden",
                   )}
                   disabled={actionDisabled}
                   aria-label={`Queued message ${index + 1} actions`}

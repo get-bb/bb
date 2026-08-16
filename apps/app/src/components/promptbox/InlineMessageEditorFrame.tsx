@@ -36,11 +36,18 @@ export function InlineMessageEditorFrame({
         type="button"
         size="icon"
         variant="ghost"
-        className="ml-auto size-6 shrink-0 text-subtle-foreground"
+        /* 24px is the smallest target in the app and the only exit from edit
+           mode. Coarse pointers get a real target; precise pointers keep the
+           compact size. */
+        className="ml-auto size-6 shrink-0 text-subtle-foreground max-md:pointer-coarse:size-11"
         onClick={onCancel}
         aria-label={cancelLabel}
       >
-        <Icon name="X" className="size-3" aria-hidden />
+        <Icon
+          name="X"
+          className="size-3 max-md:pointer-coarse:size-4"
+          aria-hidden
+        />
       </Button>
     </div>
   );
