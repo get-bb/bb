@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
+import { stringifyJsonRpcLine } from "./json-rpc-line.js";
 
 export type BridgeJsonRpcId = string | number;
 
@@ -29,7 +30,7 @@ export function createBridgeIo<TMessage>({
   sendResult: (id: BridgeJsonRpcId, result: unknown) => void;
 } {
   const send = (message: TMessage | BridgeJsonRpcResponse): void => {
-    write(`${JSON.stringify(message)}\n`);
+    write(`${stringifyJsonRpcLine(message)}\n`);
   };
   return {
     send,

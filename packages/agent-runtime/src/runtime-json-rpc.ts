@@ -2,6 +2,7 @@ import type { ChildProcess } from "node:child_process";
 import type { Writable } from "node:stream";
 import { z } from "zod";
 import type { ProviderRequestCommandPlan } from "./provider-adapter.js";
+import { stringifyJsonRpcLine } from "./shared/json-rpc-line.js";
 
 export type JsonRpcObject = Record<string, unknown>;
 
@@ -279,7 +280,7 @@ export function sendJsonRpc(
   child: ChildProcess,
   message: JsonRpcMessage | ProviderRequestCommandPlan,
 ): void {
-  const line = JSON.stringify(toJsonRpcMessage(message));
+  const line = stringifyJsonRpcLine(toJsonRpcMessage(message));
   writeJsonRpcLine(child, line);
 }
 
@@ -329,7 +330,7 @@ export function sendJsonRpcRequest<TResult>(
 export function sendJsonRpcResult(args: SendJsonRpcResultArgs): void {
   writeJsonRpcLine(
     args.child,
-    JSON.stringify({
+    stringifyJsonRpcLine({
       jsonrpc: "2.0",
       id: args.id,
       result: args.result,
@@ -340,7 +341,7 @@ export function sendJsonRpcResult(args: SendJsonRpcResultArgs): void {
 export function sendJsonRpcError(args: SendJsonRpcErrorArgs): void {
   writeJsonRpcLine(
     args.child,
-    JSON.stringify({
+    stringifyJsonRpcLine({
       jsonrpc: "2.0",
       id: args.id,
       error: {
