@@ -186,6 +186,11 @@ export interface ServerClient {
     args: FetchProjectAttachmentArgs,
   ): Promise<FetchedProjectAttachment>;
   fetchSkillTree(treeHash: string): Promise<HostDaemonSkillTree>;
+  fetchPluginHostArtifact(args: {
+    pluginId: string;
+    digest: string;
+    expectedByteLength: number;
+  }): Promise<Uint8Array>;
   postEvents(events: HostDaemonEventEnvelope[]): Promise<EventPostResult>;
   callTool(request: ToolCallRequest): Promise<HostDaemonToolCallResponse>;
   registerInteractiveRequest(
@@ -447,6 +452,33 @@ export function createServerClient(
         throw await createResponseError("fetch skill tree", response);
       }
       return hostDaemonSkillTreeSchema.parse(await response.json());
+    },
+
+    async fetchPluginHostArtifact(args): Promise<Uint8Array> {
+      const response = await fetchFn(
+        buildInternalUrl(
+          `/plugins/${encodeURIComponent(args.pluginId)}/host/${encodeURIComponent(args.digest)}`,
+        ),
+        { method: "GET", headers: headers() },
+      );
+      if (!response.ok) {
+        throw await createResponseError("fetch plugin host artifact", response);
+      }
+      const contentLength = parseContentLength(
+        response.headers.get("content-length"),
+      );
+      if (contentLength !== null && contentLength !== args.expectedByteLength) {
+        throw new Error(
+          `Plugin host artifact length mismatch: expected ${args.expectedByteLength}, received ${contentLength}`,
+        );
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.byteLength !== args.expectedByteLength) {
+        throw new Error(
+          `Plugin host artifact length mismatch: expected ${args.expectedByteLength}, received ${bytes.byteLength}`,
+        );
+      }
+      return bytes;
     },
 
     async postEvents(

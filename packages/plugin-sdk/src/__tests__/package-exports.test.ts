@@ -24,11 +24,13 @@ describe("packed plugin SDK exports", () => {
     expect(Object.keys(packageJson.exports)).toEqual([
       ".",
       "./app",
+      "./host",
       "./internal/composer-customization-validation",
       "./internal/composer-view",
       "./internal/host-policy",
       "./testing",
       "./testing/app",
+      "./testing/host",
     ]);
 
     for (const entry of Object.values(packageJson.exports)) {

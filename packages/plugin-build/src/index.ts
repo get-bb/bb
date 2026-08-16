@@ -24,6 +24,10 @@ export {
   PLUGIN_SERVER_EXTERNALS,
   type PluginServerBuildResult,
 } from "./build-plugin-server.js";
+export {
+  buildPluginHost,
+  type PluginHostBuildResult,
+} from "./build-plugin-host.js";
 export * from "./plugin-dev-loop.js";
 export {
   PLUGIN_TOOLCHAIN_PINS,

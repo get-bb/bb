@@ -51,6 +51,7 @@ export const pluginBbManifestSchema = z
     branding: pluginBrandingSchema,
     server: requiredManifestString,
     app: requiredManifestString.optional(),
+    host: requiredManifestString.optional(),
     skills: z.array(requiredManifestString).optional(),
     themes: z
       .array(

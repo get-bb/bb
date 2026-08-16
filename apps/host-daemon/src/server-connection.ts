@@ -55,6 +55,7 @@ export type ServerSessionInvalidationSource =
   | "callTool"
   | "fetchProjectAttachment"
   | "fetchSkillTree"
+  | "fetchPluginHostArtifact"
   | "interruptInteractiveRequests"
   | "postEvents"
   | "registerInteractiveRequest";

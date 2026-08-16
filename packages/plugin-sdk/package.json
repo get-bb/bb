@@ -32,6 +32,12 @@
       "import": "./dist/app.js",
       "default": "./dist/app.js"
     },
+    "./host": {
+      "source": "./src/host.ts",
+      "types": "./bundled-types/bb-plugin-sdk-host.d.ts",
+      "import": "./dist/host.js",
+      "default": "./dist/host.js"
+    },
     "./internal/composer-customization-validation": {
       "source": "./src/internal/composer-customization-validation.ts",
       "types": "./bundled-types/bb-plugin-sdk-internal-composer-customization-validation.d.ts",
@@ -61,6 +67,12 @@
       "types": "./bundled-types/bb-plugin-sdk-testing-app.d.ts",
       "import": "./dist/testing/app.js",
       "default": "./dist/testing/app.js"
+    },
+    "./testing/host": {
+      "source": "./src/testing/host.ts",
+      "types": "./bundled-types/bb-plugin-sdk-testing-host.d.ts",
+      "import": "./dist/testing/host.js",
+      "default": "./dist/testing/host.js"
     }
   },
   "types": "./bundled-types/bb-plugin-sdk.d.ts",

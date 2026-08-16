@@ -31,6 +31,8 @@ import {
 } from "../internal/host-policy.js";
 import type {
   BbPluginApi,
+  ExperimentalHostResolvedTarget,
+  ExperimentalHostRpcContract,
   PluginAgentConfiguration,
   PluginAgentConfigurationContext,
   PluginAgentToolContext,
@@ -44,6 +46,7 @@ import type {
   PluginCliExecutionResult,
   PluginCliResult,
   PluginEvents,
+  PluginExperimentalCapabilities,
   PluginHttp,
   PluginHttpAuthMode,
   PluginHttpHandler,
@@ -189,6 +192,13 @@ export interface FakeRealtimeSignal {
   payload: unknown;
 }
 
+export interface ExperimentalFakeHostRpcCall {
+  method: string;
+  input: unknown;
+  target: { hostId: string } | { environmentId: string };
+  signal?: AbortSignal;
+}
+
 /** Everything the plugin registered, exposed raw for assertions. */
 export interface FakePluginRegistrations {
   settingsDescriptors: PluginSettingDescriptors;
@@ -226,6 +236,8 @@ export interface FakePluginInspectionState {
     hostId: string;
     ports: number[];
   }>;
+  /** Calls made through bb.hosts.experimental_client, after input validation. */
+  readonly experimental_hostRpcCalls: readonly ExperimentalFakeHostRpcCall[];
   readonly pendingInteractions: readonly (PluginInteractionRequest & {
     id: string;
   })[];
@@ -233,6 +245,12 @@ export interface FakePluginInspectionState {
 
 /** Deterministic inputs that stand in for behavior normally driven by BB. */
 export interface FakePluginBehaviorDrivers {
+  /** Deliver a validated host signal to matching server-side subscribers. */
+  experimental_emitHostSignal(
+    signal: string,
+    payload: unknown,
+    target: ExperimentalHostResolvedTarget,
+  ): Promise<void>;
   submitInteraction(id: string, value: JsonValue): void;
   cancelInteraction(id: string): void;
   /**
@@ -365,6 +383,17 @@ export interface CreateFakePluginHostOptions {
   agentSkillIds?: readonly string[];
   /** Read-only identities returned by bb.hosts.ensureSharedPortTunnel. */
   sharedPortTunnelIdentities?: Record<string, PluginSharedPortTunnelIdentity>;
+  /** Deterministic stand-in for the targeted daemon host entry. */
+  experimental_callHostRpc?: (
+    call: ExperimentalFakeHostRpcCall,
+  ) => unknown | Promise<unknown>;
+  /** Deterministic stand-in for a capability provided by another plugin. */
+  experimental_callPluginCapability?: (call: {
+    pluginId: string;
+    capabilityId: string;
+    method: string;
+    input: unknown;
+  }) => unknown | Promise<unknown>;
 }
 
 export interface FakePluginHost {
@@ -422,6 +451,15 @@ interface FakeRpcRecord {
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
   handler: (input: never) => unknown;
+}
+
+interface FakeHostSignalSubscription {
+  contract: ExperimentalHostRpcContract;
+  signal: string;
+  handler: (event: {
+    payload: unknown;
+    target: ExperimentalHostResolvedTarget;
+  }) => void | Promise<void>;
 }
 
 function normalizeRpcIssues(
@@ -1015,6 +1053,104 @@ function createFakePluginHostInternal(
     },
   };
 
+  const capabilityRecords = new Map<string, Map<string, FakeRpcRecord>>();
+  const experimentalCapabilities: PluginExperimentalCapabilities = {
+    experimental_provide(capabilityId, contract, handlers) {
+      assertLive();
+      if (
+        typeof capabilityId !== "string" ||
+        !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/u.test(capabilityId)
+      ) {
+        throw new Error(
+          `invalid capability id ${JSON.stringify(capabilityId)}`,
+        );
+      }
+      if (capabilityRecords.has(capabilityId)) {
+        throw new Error(`capability "${capabilityId}" is already provided`);
+      }
+      const methods = new Map<string, FakeRpcRecord>();
+      for (const [name, contractValue] of Object.entries(contract)) {
+        const methodContract = readRpcMethodContract(name, contractValue);
+        const handler = Reflect.get(handlers, name);
+        if (typeof handler !== "function") {
+          throw new Error(
+            `capability method "${name}" must provide a handler function`,
+          );
+        }
+        methods.set(name, {
+          inputSchema: methodContract.input,
+          outputSchema: methodContract.output,
+          handler: handler as (input: never) => unknown,
+        });
+      }
+      capabilityRecords.set(capabilityId, methods);
+    },
+
+    experimental_client({
+      pluginId: providerPluginId,
+      capabilityId,
+      contract,
+    }) {
+      return {
+        async call(method, ...callArgs) {
+          assertLive();
+          const methodContract = contract[method];
+          if (methodContract === undefined) {
+            throw new Error(`unknown capability method "${String(method)}"`);
+          }
+          const validatedInput = normalizeRpcJsonResult(
+            await validateRpcValue(
+              methodContract.input,
+              callArgs.length === 0 ? null : callArgs[0],
+              "input",
+            ),
+          );
+          let rawOutput: unknown;
+          if (options.experimental_callPluginCapability !== undefined) {
+            rawOutput = await options.experimental_callPluginCapability({
+              pluginId: providerPluginId,
+              capabilityId,
+              method,
+              input: validatedInput,
+            });
+          } else if (providerPluginId === pluginId) {
+            const providerMethod = capabilityRecords
+              .get(capabilityId)
+              ?.get(method);
+            if (providerMethod === undefined) {
+              throw new Error(
+                `plugin "${providerPluginId}" does not provide capability "${capabilityId}.${method}"`,
+              );
+            }
+            const providerInput = await validateRpcValue(
+              providerMethod.inputSchema,
+              validatedInput,
+              "input",
+            );
+            rawOutput = await providerMethod.handler(providerInput as never);
+            rawOutput = normalizeRpcJsonResult(
+              await validateRpcValue(
+                providerMethod.outputSchema,
+                rawOutput,
+                "output",
+              ),
+            );
+          } else {
+            throw new Error(
+              `fake plugin host has no capability stub for "${providerPluginId}/${capabilityId}.${method}"`,
+            );
+          }
+          const validatedOutput = await validateRpcValue(
+            methodContract.output,
+            rawOutput,
+            "output",
+          );
+          return normalizeRpcJsonResult(validatedOutput) as never;
+        },
+      };
+    },
+  };
+
   // --- realtime ---
   const realtimeSignals: FakeRealtimeSignal[] = [];
   const realtime: PluginRealtime = {
@@ -1488,7 +1624,90 @@ function createFakePluginHostInternal(
 
   const sharedPortDeclarations: FakePluginHarness["sharedPortDeclarations"] =
     [];
+  const hostRpcCalls: ExperimentalFakeHostRpcCall[] = [];
+  const hostSignalSubscriptions: FakeHostSignalSubscription[] = [];
   const hosts: PluginHosts = {
+    experimental_client({ contract }) {
+      return {
+        async call(method, input, callOptions) {
+          assertLive();
+          const methodContract = contract.methods[method];
+          if (methodContract === undefined) {
+            throw new Error(`unknown host rpc method "${String(method)}"`);
+          }
+          const target: unknown = callOptions.target;
+          if (typeof target !== "object" || target === null) {
+            throw new Error(
+              `host rpc method "${String(method)}" requires a target`,
+            );
+          }
+          const normalizedTarget =
+            methodContract.target.kind === "host" &&
+            typeof Reflect.get(target, "hostId") === "string"
+              ? { hostId: String(Reflect.get(target, "hostId")) }
+              : methodContract.target.kind === "environment" &&
+                  typeof Reflect.get(target, "environmentId") === "string"
+                ? {
+                    environmentId: String(Reflect.get(target, "environmentId")),
+                  }
+                : null;
+          if (normalizedTarget === null) {
+            throw new Error(
+              `host rpc method "${String(method)}" requires a ${methodContract.target.kind} target`,
+            );
+          }
+          if (callOptions.signal?.aborted) {
+            throw Object.assign(new Error("Host plugin call was cancelled"), {
+              name: "AbortError",
+            });
+          }
+          const validatedInput = normalizeRpcJsonResult(
+            await validateRpcValue(methodContract.input, input, "input"),
+          );
+          const call: ExperimentalFakeHostRpcCall = {
+            method: String(method),
+            input: validatedInput,
+            target: normalizedTarget,
+            ...(callOptions.signal === undefined
+              ? {}
+              : { signal: callOptions.signal }),
+          };
+          hostRpcCalls.push(call);
+          if (options.experimental_callHostRpc === undefined) {
+            throw new Error(
+              `fake plugin host has no experimental_callHostRpc stub for "${String(method)}"`,
+            );
+          }
+          const rawOutput = await options.experimental_callHostRpc(call);
+          const validatedOutput = await validateRpcValue(
+            methodContract.output,
+            rawOutput,
+            "output",
+          );
+          return normalizeRpcJsonResult(validatedOutput) as never;
+        },
+        onSignal(signal, handler) {
+          assertLive();
+          if (contract.signals?.[signal] === undefined) {
+            throw new Error(`unknown host signal "${String(signal)}"`);
+          }
+          const record: FakeHostSignalSubscription = {
+            contract,
+            signal,
+            handler:
+              handler as unknown as FakeHostSignalSubscription["handler"],
+          };
+          hostSignalSubscriptions.push(record);
+          let subscribed = true;
+          return () => {
+            if (!subscribed) return;
+            subscribed = false;
+            const index = hostSignalSubscriptions.indexOf(record);
+            if (index >= 0) hostSignalSubscriptions.splice(index, 1);
+          };
+        },
+      };
+    },
     async ensureSharedPortTunnel(hostId) {
       assertLive();
       if (hostId.trim().length === 0) {
@@ -1554,6 +1773,7 @@ function createFakePluginHostInternal(
     http,
     rpc,
     realtime,
+    experimental_capabilities: experimentalCapabilities,
     background,
     cli,
     agents,
@@ -1600,6 +1820,7 @@ function createFakePluginHostInternal(
     if (cleanupStorage) {
       rmSync(storageRoot, { recursive: true, force: true });
     }
+    hostSignalSubscriptions.splice(0);
     invalidated = true;
   }
 
@@ -1618,6 +1839,7 @@ function createFakePluginHostInternal(
     realtimeSignals,
     needsConfigurationMessages,
     sharedPortDeclarations,
+    experimental_hostRpcCalls: hostRpcCalls,
     sdk: sdkHarness,
     registrations: {
       settingsDescriptors,
@@ -1654,6 +1876,28 @@ function createFakePluginHostInternal(
         id,
         ...pending.request,
       }));
+    },
+    async experimental_emitHostSignal(signal, payload, target) {
+      assertLive();
+      for (const record of [...hostSignalSubscriptions]) {
+        if (record.signal !== signal) continue;
+        const signalContract = record.contract.signals?.[signal];
+        if (
+          signalContract === undefined ||
+          signalContract.target !== target.kind
+        ) {
+          continue;
+        }
+        const validatedPayload = await validateRpcValue(
+          signalContract.payload,
+          payload,
+          "output",
+        );
+        await record.handler({
+          payload: normalizeRpcJsonResult(validatedPayload),
+          target,
+        });
+      }
     },
     submitInteraction(id, value) {
       const pending = pendingInteractions.get(id);

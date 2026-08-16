@@ -6,6 +6,7 @@ import {
   type PluginAgentConfigurationContext,
 } from "../../backend-contract.js";
 import { defineRpcContract } from "../../rpc-contract.js";
+import { experimental_defineHostRpcContract } from "../../host-contract.js";
 import { createFakePluginHost, makeThreadResponse } from "../index.js";
 
 describe("ui.requestInput", () => {
@@ -76,6 +77,57 @@ describe("ui.requestInput", () => {
 });
 
 describe("host control plane", () => {
+  it("validates typed host calls and deterministically delivers host signals", async () => {
+    const contract = experimental_defineHostRpcContract({
+      methods: {
+        ping: {
+          target: { kind: "host" },
+          input: z.object({ value: z.string() }).strict(),
+          output: z.object({ pong: z.string() }).strict(),
+        },
+      },
+      signals: {
+        changed: {
+          target: "host",
+          payload: z.object({ sequence: z.number().int() }).strict(),
+        },
+      },
+    });
+    const { bb, harness } = createFakePluginHost({
+      experimental_callHostRpc: ({ input }) => ({
+        pong: String(Reflect.get(Object(input), "value")),
+      }),
+    });
+    const client = bb.hosts.experimental_client({ contract });
+
+    await expect(
+      client.call("ping", { value: "hello" }, { target: { hostId: "host-1" } }),
+    ).resolves.toEqual({ pong: "hello" });
+    expect(harness.experimental_hostRpcCalls).toMatchObject([
+      {
+        method: "ping",
+        input: { value: "hello" },
+        target: { hostId: "host-1" },
+      },
+    ]);
+
+    const events: unknown[] = [];
+    client.onSignal("changed", (event) => {
+      events.push(event);
+    });
+    await harness.experimental_emitHostSignal(
+      "changed",
+      { sequence: 2 },
+      { kind: "host", hostId: "host-1" },
+    );
+    expect(events).toEqual([
+      {
+        payload: { sequence: 2 },
+        target: { kind: "host", hostId: "host-1" },
+      },
+    ]);
+  });
+
   it("uses validated current-state replacements and read-only tunnel identity", async () => {
     const { bb, harness } = createFakePluginHost({
       sharedPortTunnelIdentities: {
@@ -208,6 +260,65 @@ describe("settings", () => {
         broken: { type: "select", label: "B", options: ["a"], default: "z" },
       }),
     ).toThrow('default for setting "broken" must be one of its options');
+  });
+});
+
+describe("experimental_capabilities", () => {
+  const capability = defineRpcContract({
+    greet: {
+      input: z.object({ name: z.string().min(1) }).strict(),
+      output: z.object({ message: z.string() }).strict(),
+    },
+  });
+
+  it("validates a lazy self-client on both sides of the provider boundary", async () => {
+    const { bb } = createFakePluginHost({ pluginId: "foundation" });
+    const client = bb.experimental_capabilities.experimental_client({
+      pluginId: "foundation",
+      capabilityId: "greeting.v1",
+      contract: capability,
+    });
+    bb.experimental_capabilities.experimental_provide(
+      "greeting.v1",
+      capability,
+      {
+        greet: ({ name }) => ({ message: `Hello, ${name}` }),
+      },
+    );
+
+    await expect(client.call("greet", { name: "Ada" })).resolves.toEqual({
+      message: "Hello, Ada",
+    });
+    await expect(client.call("greet", { name: "" })).rejects.toMatchObject({
+      code: "invalid_input",
+    });
+  });
+
+  it("routes an external client lazily through the harness driver", async () => {
+    const calls: unknown[] = [];
+    const { bb } = createFakePluginHost({
+      experimental_callPluginCapability(call) {
+        calls.push(call);
+        return { message: "from provider" };
+      },
+    });
+    const client = bb.experimental_capabilities.experimental_client({
+      pluginId: "provider",
+      capabilityId: "greeting.v1",
+      contract: capability,
+    });
+
+    await expect(client.call("greet", { name: "Grace" })).resolves.toEqual({
+      message: "from provider",
+    });
+    expect(calls).toEqual([
+      {
+        pluginId: "provider",
+        capabilityId: "greeting.v1",
+        method: "greet",
+        input: { name: "Grace" },
+      },
+    ]);
   });
 });
 

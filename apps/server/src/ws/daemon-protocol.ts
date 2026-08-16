@@ -19,6 +19,7 @@ import {
 } from "../internal/environment-changes.js";
 import { runEventLoopWorkSync } from "../services/system/event-loop-work.js";
 import { decodeSocketPayload } from "./decode-payload.js";
+import type { PluginService } from "../services/plugins/plugin-service.js";
 
 interface DaemonSocket {
   close(code?: number, reason?: string): void;
@@ -105,6 +106,7 @@ export function onDaemonSocketMessage(
     "config" | "db" | "hub" | "logger" | "sharedPorts" | "terminalSessions"
   >,
   args: DaemonSocketMessageArgs,
+  plugins?: Pick<PluginService, "handleHostSignal">,
 ): void {
   let decoded: unknown;
   try {
@@ -182,6 +184,17 @@ export function onDaemonSocketMessage(
           args.hostId,
           result.data.identity,
         );
+        return;
+      }
+      if (result.data.type === "plugin-host.signal") {
+        plugins?.handleHostSignal({
+          authenticatedHostId: args.hostId,
+          pluginId: result.data.pluginId,
+          generation: result.data.generation,
+          signal: result.data.signal,
+          payload: result.data.payload,
+          target: result.data.target,
+        });
         return;
       }
       if (result.data.type !== "heartbeat") {

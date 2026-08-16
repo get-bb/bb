@@ -28,6 +28,7 @@ const outDir = path.join(pkgRoot, "bundled-types");
 const outputs = {
   "bb-plugin-sdk.d.ts": path.join(pkgRoot, "src/index.ts"),
   "bb-plugin-sdk-app.d.ts": path.join(pkgRoot, "src/app.ts"),
+  "bb-plugin-sdk-host.d.ts": path.join(pkgRoot, "src/host.ts"),
   "bb-plugin-sdk-internal-composer-customization-validation.d.ts": path.join(
     pkgRoot,
     "src/internal/composer-customization-validation.ts",
@@ -42,6 +43,7 @@ const outputs = {
   ),
   "bb-plugin-sdk-testing.d.ts": path.join(pkgRoot, "src/testing/index.ts"),
   "bb-plugin-sdk-testing-app.d.ts": path.join(pkgRoot, "src/testing/app.tsx"),
+  "bb-plugin-sdk-testing-host.d.ts": path.join(pkgRoot, "src/testing/host.ts"),
 };
 
 // Real npm packages the bundle imports from — kept external so they resolve

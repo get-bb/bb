@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,6 +13,7 @@ import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import {
   createPluginService,
+  type PluginServiceDeps,
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
 import type { BbPluginApi } from "../../../src/services/plugins/plugin-api.js";
@@ -28,12 +30,14 @@ import {
   waitForQueuedCommand,
 } from "../../helpers/commands.js";
 import { startTestServer, testLogger } from "../../helpers/test-app.js";
+import { experimental_defineHostRpcContract } from "@get-bb/plugin-sdk";
+import { z } from "zod";
 
 const logger = testLogger as unknown as Logger;
 
 async function writePlugin(
   dir: string,
-  options: { name: string; serverSource: string },
+  options: { name: string; serverSource: string; hostSource?: string },
 ): Promise<string> {
   const rootDir = join(dir, options.name);
   await mkdir(rootDir, { recursive: true });
@@ -47,10 +51,14 @@ async function writePlugin(
         description: "Plugin SDK fixture.",
         branding: { icon: "Zap" },
         server: "./server.ts",
+        ...(options.hostSource === undefined ? {} : { host: "./host.ts" }),
       },
     }),
   );
   await writeFile(join(rootDir, "server.ts"), options.serverSource);
+  if (options.hostSource !== undefined) {
+    await writeFile(join(rootDir, "host.ts"), options.hostSource);
+  }
   return rootDir;
 }
 
@@ -76,6 +84,12 @@ describe("plugin bb.sdk bind gate", () => {
     label: "sawyer-air",
     baseDomain: "getbb.app",
   });
+  const callPluginHost = vi.fn(
+    async (
+      _args: Parameters<NonNullable<PluginServiceDeps["callPluginHost"]>>[0],
+    ) => ({ pong: true }),
+  );
+  const disposePluginHost = vi.fn(async () => undefined);
 
   beforeEach(async () => {
     db = createConnection(":memory:");
@@ -86,6 +100,8 @@ describe("plugin bb.sdk bind gate", () => {
     sharedPorts.replaceDeclarationsForOwner.mockClear();
     sharedPorts.clearDeclarationsForOwner.mockClear();
     ensureSharedPortTunnel.mockClear();
+    callPluginHost.mockClear();
+    disposePluginHost.mockClear();
     service = createPluginService({
       db,
       sharedPorts,
@@ -99,6 +115,8 @@ describe("plugin bb.sdk bind gate", () => {
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
       loadTimeoutMs: 2000,
+      callPluginHost,
+      disposePluginHost,
     });
   });
 
@@ -168,6 +186,140 @@ describe("plugin bb.sdk bind gate", () => {
     );
   });
 
+  it("binds typed host calls and ignores signals from stale generations", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-host-client",
+      serverSource: `export default function plugin() {}`,
+      hostSource: `
+        const schema = { "~standard": { validate(value) { return { value }; } } };
+        export default {
+          experimental_apiVersion: 1,
+          contract: {
+            methods: {
+              ping: { target: { kind: "host" }, input: schema, output: schema },
+            },
+            signals: {
+              changed: { target: "host", payload: schema },
+            },
+          },
+          handlers: { ping: (input) => input },
+        };
+      `,
+    });
+    await service.installPath(rootDir);
+    const api = requireApi(service, "host-client");
+    const contract = experimental_defineHostRpcContract({
+      methods: {
+        ping: {
+          target: { kind: "host" },
+          input: z.object({ value: z.string() }).strict(),
+          output: z.object({ pong: z.boolean() }).strict(),
+        },
+      },
+      signals: {
+        changed: {
+          target: "host",
+          payload: z.object({ sequence: z.number().int() }).strict(),
+        },
+      },
+    });
+    const client = api.hosts.experimental_client({ contract });
+
+    await expect(
+      client.call("ping", { value: "hello" }, { target: { hostId: "host-1" } }),
+    ).resolves.toEqual({ pong: true });
+    expect(callPluginHost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pluginId: "host-client",
+        method: "ping",
+        input: { value: "hello" },
+        target: { hostId: "host-1" },
+        artifact: expect.objectContaining({
+          digest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+          byteLength: expect.any(Number),
+          generation: expect.any(String),
+        }),
+      }),
+    );
+
+    const handler = vi.fn();
+    client.onSignal("changed", handler);
+    const artifact = callPluginHost.mock.calls[0]?.[0].artifact;
+    if (artifact === undefined) throw new Error("missing host artifact call");
+    const servedArtifact = service.readHostArtifact(
+      "host-client",
+      artifact.digest,
+    );
+    if (servedArtifact === undefined)
+      throw new Error("missing served artifact");
+    expect(servedArtifact.byteLength).toBe(artifact.byteLength);
+    expect(
+      createHash("sha256").update(servedArtifact.bytes).digest("hex"),
+    ).toBe(artifact.digest);
+    expect(
+      service.readHostArtifact("host-client", "0".repeat(64)),
+    ).toBeUndefined();
+    service.handleHostSignal({
+      authenticatedHostId: "host-1",
+      pluginId: "host-client",
+      generation: "stale-generation",
+      signal: "changed",
+      payload: { sequence: 1 },
+      target: { kind: "host", hostId: "host-1" },
+    });
+    service.handleHostSignal({
+      authenticatedHostId: "host-1",
+      pluginId: "host-client",
+      generation: artifact.generation,
+      signal: "changed",
+      payload: { sequence: 2 },
+      target: { kind: "host", hostId: "host-1" },
+    });
+    await vi.waitFor(() => expect(handler).toHaveBeenCalledOnce());
+    expect(handler).toHaveBeenCalledWith({
+      payload: { sequence: 2 },
+      target: { kind: "host", hostId: "host-1" },
+    });
+    expect(service.listHostArtifactGenerations()).toEqual([
+      { pluginId: "host-client", generation: artifact.generation },
+    ]);
+  });
+
+  it("rejects host calls during candidate factory registration", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-eager-host-client",
+      serverSource: `
+        import { experimental_defineHostRpcContract } from "@get-bb/plugin-sdk";
+        const schema = { "~standard": { validate(value: unknown) { return { value }; } } };
+        const contract = experimental_defineHostRpcContract({
+          methods: { ping: { target: { kind: "host" }, input: schema, output: schema } },
+        });
+        export default async function plugin(bb: any) {
+          await bb.hosts.experimental_client({ contract }).call(
+            "ping",
+            {},
+            { target: { hostId: "host-1" } },
+          );
+        }
+      `,
+      hostSource: `
+        const schema = { "~standard": { validate(value) { return { value }; } } };
+        export default {
+          experimental_apiVersion: 1,
+          contract: { methods: { ping: { target: { kind: "host" }, input: schema, output: schema } } },
+          handlers: { ping: (input) => input },
+        };
+      `,
+    });
+
+    const entry = await service.installPath(rootDir);
+    expect(entry.status).toBe("error");
+    expect(entry.statusDetail).toContain(
+      "host plugin calls are unavailable during factory registration",
+    );
+    expect(callPluginHost).not.toHaveBeenCalled();
+  });
+
   it("does not publish candidate host declarations when reload fails", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-atomic-shares",
@@ -202,6 +354,66 @@ describe("plugin bb.sdk bind gate", () => {
 });
 
 describe("plugin bb.sdk against a running server", () => {
+  it("returns the server-side Standard Schema output after the host JSON wire", async () => {
+    const server = await startTestServer();
+    const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-host-transform-"));
+    try {
+      const { host } = seedHostSession(server.deps, {
+        id: "host-plugin-transform",
+      });
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-host-transform",
+        serverSource: `export default function plugin() {}`,
+        hostSource: `
+          const schema = { "~standard": { validate(value) { return { value }; } } };
+          export default {
+            experimental_apiVersion: 1,
+            contract: { methods: { parseDate: { target: { kind: "host" }, input: schema, output: schema } } },
+            handlers: { parseDate: (input) => input },
+          };
+        `,
+      });
+      await server.pluginService.installPath(rootDir);
+      const inputDate = z.string().transform((value) => new Date(value));
+      const outputDate = z.string().transform((value) => new Date(value));
+      const contract = experimental_defineHostRpcContract({
+        methods: {
+          parseDate: {
+            target: { kind: "host" },
+            input: z.object({ when: inputDate }).strict(),
+            output: outputDate,
+          },
+        },
+      });
+      const client = requireApi(
+        server.pluginService,
+        "host-transform",
+      ).hosts.experimental_client({ contract });
+      const iso = "2026-08-16T12:34:56.000Z";
+
+      const resultPromise = client.call(
+        "parseDate",
+        { when: iso },
+        { target: { hostId: host.id } },
+      );
+      const command = await waitForQueuedCommand(
+        server,
+        ({ command }) =>
+          command.type === "plugin.host.call" &&
+          command.pluginId === "host-transform" &&
+          command.method === "parseDate",
+      );
+      expect(command.command).toMatchObject({ input: { when: iso } });
+      await reportQueuedCommandSuccess(server, command, { output: iso });
+
+      await expect(resultPromise).resolves.toEqual(new Date(iso));
+    } finally {
+      await server.pluginService.stop();
+      await rm(workDir, { recursive: true, force: true });
+      await server.close();
+    }
+  });
+
   it("keeps hidden plugin threads attributed and directly operable by id", async () => {
     const server = await startTestServer();
     const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-sdk-live-"));

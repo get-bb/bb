@@ -5,7 +5,7 @@
 // Confused by the API, or need a symbol that isn't here? Clone the BB repo
 // and read the real source: https://github.com/get-bb/bb
 
-import { BbPluginApi, PluginSettingValue, PluginSharedPortTunnelIdentity, PluginAgentToolExperimentalStatusLabels, PluginAgentToolContext, PluginAgentToolResult, PluginCliCommandInfo, PluginCliContext, PluginCliResult, PluginHttpAuthMode, PluginHttpHandler, PluginMentionTrigger, PluginMentionSearchContext, PluginMentionItem, JsonValue, PluginCliExecutionResult, PluginThreadEventName, PluginThreadEventPayloads, PluginAgentConfigurationContext, PluginSettingDescriptors, PluginAgentConfiguration, PluginInteractionRequest } from '@get-bb/plugin-sdk';
+import { BbPluginApi, PluginSettingValue, PluginSharedPortTunnelIdentity, PluginAgentToolExperimentalStatusLabels, PluginAgentToolContext, PluginAgentToolResult, PluginCliCommandInfo, PluginCliContext, PluginCliResult, PluginHttpAuthMode, PluginHttpHandler, PluginMentionTrigger, PluginMentionSearchContext, PluginMentionItem, ExperimentalHostResolvedTarget, JsonValue, PluginCliExecutionResult, PluginThreadEventName, PluginThreadEventPayloads, PluginAgentConfigurationContext, PluginSettingDescriptors, PluginAgentConfiguration, PluginInteractionRequest } from '@get-bb/plugin-sdk';
 
 type BbSdk = BbPluginApi["sdk"];
 /**
@@ -137,6 +137,16 @@ interface FakeRealtimeSignal {
     /** JSON-round-tripped, like the WS broadcast; `undefined` → `null`. */
     payload: unknown;
 }
+interface ExperimentalFakeHostRpcCall {
+    method: string;
+    input: unknown;
+    target: {
+        hostId: string;
+    } | {
+        environmentId: string;
+    };
+    signal?: AbortSignal;
+}
 /** Everything the plugin registered, exposed raw for assertions. */
 interface FakePluginRegistrations {
     settingsDescriptors: PluginSettingDescriptors;
@@ -172,12 +182,16 @@ interface FakePluginInspectionState {
         hostId: string;
         ports: number[];
     }>;
+    /** Calls made through bb.hosts.experimental_client, after input validation. */
+    readonly experimental_hostRpcCalls: readonly ExperimentalFakeHostRpcCall[];
     readonly pendingInteractions: readonly (PluginInteractionRequest & {
         id: string;
     })[];
 }
 /** Deterministic inputs that stand in for behavior normally driven by BB. */
 interface FakePluginBehaviorDrivers {
+    /** Deliver a validated host signal to matching server-side subscribers. */
+    experimental_emitHostSignal(signal: string, payload: unknown, target: ExperimentalHostResolvedTarget): Promise<void>;
     submitInteraction(id: string, value: JsonValue): void;
     cancelInteraction(id: string): void;
     /**
@@ -289,6 +303,15 @@ interface CreateFakePluginHostOptions {
     agentSkillIds?: readonly string[];
     /** Read-only identities returned by bb.hosts.ensureSharedPortTunnel. */
     sharedPortTunnelIdentities?: Record<string, PluginSharedPortTunnelIdentity>;
+    /** Deterministic stand-in for the targeted daemon host entry. */
+    experimental_callHostRpc?: (call: ExperimentalFakeHostRpcCall) => unknown | Promise<unknown>;
+    /** Deterministic stand-in for a capability provided by another plugin. */
+    experimental_callPluginCapability?: (call: {
+        pluginId: string;
+        capabilityId: string;
+        method: string;
+        input: unknown;
+    }) => unknown | Promise<unknown>;
 }
 interface FakePluginHost {
     bb: BbPluginApi;

@@ -28,6 +28,7 @@ import type {
   PluginCliContext,
   PluginCliResult,
   PluginEvents,
+  PluginExperimentalCapabilities,
   PluginHttp,
   PluginHttpAuthMode,
   PluginHttpHandler,
@@ -50,6 +51,9 @@ import type {
   PluginThreadEventName,
   PluginUi,
   StandardSchemaV1,
+  StandardSchemaV1InferOutput,
+  ExperimentalHostRpcContract,
+  ExperimentalHostResolvedTarget,
 } from "@get-bb/plugin-sdk";
 import {
   AGENT_TOOL_NAME_PATTERN,
@@ -277,6 +281,10 @@ export interface PluginApiHandle {
   httpRoutes: PluginHttpRouteRecord[];
   /** RPC handlers recorded by `bb.rpc.register`; dropped with the handle. */
   rpcHandlers: Map<string, PluginRpcHandler>;
+  /** Typed server capabilities published by this plugin generation. */
+  capabilities: Map<string, PluginCapabilityRecord>;
+  /** Host invalidation handlers registered through typed host clients. */
+  hostSignalHandlers: Map<string, PluginHostSignalHandlerRecord[]>;
   /** Background services recorded by `bb.background.service`. */
   backgroundServices: PluginBackgroundServiceRecord[];
   /** Schedules recorded by `bb.background.schedule`. */
@@ -298,6 +306,83 @@ export interface PluginApiHandle {
   activate(): void;
   /** Poison every method on the handle. */
   invalidate(): void;
+}
+
+export interface PluginHostSignalHandlerRecord {
+  contract: ExperimentalHostRpcContract;
+  handler: (event: {
+    payload: unknown;
+    target: ExperimentalHostResolvedTarget;
+  }) => void | Promise<void>;
+}
+
+export interface PluginCapabilityRecord {
+  id: string;
+  methods: Map<string, PluginRpcHandler>;
+}
+
+const CAPABILITY_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/u;
+const CAPABILITY_VALUE_MAX_BYTES = 8 * 1024 * 1024;
+
+async function validateCapabilityValue<Schema extends StandardSchemaV1>(
+  schema: Schema,
+  value: unknown,
+  label: string,
+): Promise<StandardSchemaV1InferOutput<Schema>> {
+  const result = await schema["~standard"].validate(value);
+  if (result.issues !== undefined) {
+    throw new Error(
+      `${label} failed validation: ${result.issues
+        .map((issue) => issue.message)
+        .join("; ")}`,
+    );
+  }
+  return result.value;
+}
+
+function normalizeCapabilityJson(value: unknown, label: string): unknown {
+  let serialized: string | undefined;
+  try {
+    serialized = JSON.stringify(value);
+  } catch {
+    serialized = undefined;
+  }
+  if (serialized === undefined) {
+    throw new Error(`${label} is not JSON-serializable`);
+  }
+  if (Buffer.byteLength(serialized) > CAPABILITY_VALUE_MAX_BYTES) {
+    throw new Error(`${label} exceeds ${CAPABILITY_VALUE_MAX_BYTES} bytes`);
+  }
+  return JSON.parse(serialized) as unknown;
+}
+
+/** Invoke the provider side of one typed, process-local plugin capability. */
+export async function invokePluginCapabilityRecord(
+  capability: PluginCapabilityRecord,
+  methodName: string,
+  input: unknown,
+): Promise<unknown> {
+  const method = capability.methods.get(methodName);
+  if (method === undefined) {
+    throw new Error(
+      `capability "${capability.id}" has no method "${methodName}"`,
+    );
+  }
+  const parsedInput = await validateCapabilityValue(
+    method.inputSchema,
+    input,
+    `capability "${capability.id}" input`,
+  );
+  const output = await method.handler(parsedInput as never);
+  const parsedOutput = await validateCapabilityValue(
+    method.outputSchema,
+    output,
+    `capability "${capability.id}" output`,
+  );
+  return normalizeCapabilityJson(
+    parsedOutput,
+    `capability "${capability.id}" output`,
+  );
 }
 
 /** Provider registered by `bb.agents.contributeInstructions`. */
@@ -384,6 +469,19 @@ export function createPluginApi(options: {
       ports: readonly number[];
     }[],
   ) => void;
+  callPluginHost?: (args: {
+    contract: ExperimentalHostRpcContract;
+    method: string;
+    input: unknown;
+    target: { hostId: string } | { environmentId: string };
+    signal?: AbortSignal;
+  }) => Promise<unknown>;
+  callPluginCapability: (args: {
+    pluginId: string;
+    capabilityId: string;
+    method: string;
+    input: unknown;
+  }) => Promise<unknown>;
 }): PluginApiHandle {
   const {
     pluginId,
@@ -401,6 +499,8 @@ export function createPluginApi(options: {
     validateSharedPortDeclaration,
     declareSharedPorts,
     replaceDeclaredSharedPorts,
+    callPluginHost,
+    callPluginCapability,
   } = options;
   let invalidated = false;
   let activated = false;
@@ -424,6 +524,8 @@ export function createPluginApi(options: {
   };
   const httpRoutes: PluginHttpRouteRecord[] = [];
   const rpcHandlers = new Map<string, PluginRpcHandler>();
+  const capabilities = new Map<string, PluginCapabilityRecord>();
+  const hostSignalHandlers = new Map<string, PluginHostSignalHandlerRecord[]>();
   const backgroundServices: PluginBackgroundServiceRecord[] = [];
   const schedules: PluginScheduleRecord[] = [];
 
@@ -702,6 +804,117 @@ export function createPluginApi(options: {
       for (const [name, record] of pending) {
         rpcHandlers.set(name, record);
       }
+    },
+  };
+
+  const experimentalCapabilities: PluginExperimentalCapabilities = {
+    experimental_provide(capabilityId, contract, handlers) {
+      assertLive();
+      if (
+        typeof capabilityId !== "string" ||
+        !CAPABILITY_ID_PATTERN.test(capabilityId)
+      ) {
+        throw new Error(
+          `invalid capability id ${JSON.stringify(capabilityId)} — use letters, digits, ".", "-", and "_"`,
+        );
+      }
+      if (capabilities.has(capabilityId)) {
+        throw new Error(`capability "${capabilityId}" is already provided`);
+      }
+      if (
+        typeof contract !== "object" ||
+        contract === null ||
+        Array.isArray(contract) ||
+        typeof handlers !== "object" ||
+        handlers === null ||
+        Array.isArray(handlers)
+      ) {
+        throw new Error(
+          `capability "${capabilityId}" requires contract and handler objects`,
+        );
+      }
+      const methods = new Map<string, PluginRpcHandler>();
+      const contractEntries = Object.entries(contract);
+      const contractNames = new Set(contractEntries.map(([name]) => name));
+      for (const extraName of Object.keys(handlers)) {
+        if (!contractNames.has(extraName)) {
+          throw new Error(
+            `capability handler "${extraName}" has no matching contract method`,
+          );
+        }
+      }
+      for (const [name, methodContractValue] of contractEntries) {
+        if (!RPC_METHOD_PATTERN.test(name)) {
+          throw new Error(
+            `invalid capability method name "${name}" — use letters, digits, "-" and "_"`,
+          );
+        }
+        const methodContract = readRpcMethodContract(name, methodContractValue);
+        const handler = Reflect.get(handlers, name);
+        if (typeof handler !== "function") {
+          throw new Error(
+            `capability method "${name}" must provide a handler function`,
+          );
+        }
+        methods.set(name, {
+          inputSchema: methodContract.input,
+          outputSchema: methodContract.output,
+          handler: handler as (input: never) => unknown,
+        });
+      }
+      capabilities.set(capabilityId, { id: capabilityId, methods });
+    },
+
+    experimental_client({
+      pluginId: providerPluginId,
+      capabilityId,
+      contract,
+    }) {
+      assertLive();
+      if (
+        typeof providerPluginId !== "string" ||
+        providerPluginId.length === 0 ||
+        typeof capabilityId !== "string" ||
+        !CAPABILITY_ID_PATTERN.test(capabilityId)
+      ) {
+        throw new Error(
+          "capability client requires valid plugin and capability ids",
+        );
+      }
+      return {
+        async call(method, ...callArgs) {
+          assertLive();
+          if (!activated) {
+            throw new Error(
+              "plugin capability calls are unavailable during factory registration; call from a handler, service, or timer",
+            );
+          }
+          const methodContract = contract[method];
+          if (methodContract === undefined) {
+            throw new Error(`unknown capability method "${String(method)}"`);
+          }
+          const input = callArgs.length === 0 ? null : callArgs[0];
+          const parsedInput = await validateCapabilityValue(
+            methodContract.input,
+            input,
+            `capability client "${providerPluginId}/${capabilityId}" input`,
+          );
+          const output = await callPluginCapability({
+            pluginId: providerPluginId,
+            capabilityId,
+            method,
+            input: normalizeCapabilityJson(
+              parsedInput,
+              `capability client "${providerPluginId}/${capabilityId}" input`,
+            ),
+          });
+          return validateCapabilityValue(
+            methodContract.output,
+            output,
+            `capability client "${providerPluginId}/${capabilityId}" output`,
+          );
+        },
+      };
     },
   };
 
@@ -1087,6 +1300,75 @@ export function createPluginApi(options: {
   };
 
   const hosts: PluginHosts = {
+    experimental_client({ contract }) {
+      assertLive();
+      if (callPluginHost === undefined) {
+        throw new Error("host plugin transport is unavailable");
+      }
+      const invokeHost = callPluginHost;
+      return {
+        async call(method, input, callOptions) {
+          assertLive();
+          if (!activated) {
+            throw new Error(
+              "host plugin calls are unavailable during factory registration; call from a handler, service, or timer",
+            );
+          }
+          if (
+            typeof method !== "string" ||
+            contract.methods[method] === undefined
+          ) {
+            throw new Error(`unknown host rpc method "${String(method)}"`);
+          }
+          if (
+            typeof callOptions !== "object" ||
+            callOptions === null ||
+            typeof callOptions.target !== "object" ||
+            callOptions.target === null
+          ) {
+            throw new Error(`host rpc method "${method}" requires a target`);
+          }
+          return invokeHost({
+            contract,
+            method,
+            input,
+            target: callOptions.target,
+            ...(callOptions.signal === undefined
+              ? {}
+              : { signal: callOptions.signal }),
+          });
+        },
+        onSignal(signal, handler) {
+          assertLive();
+          if (
+            typeof signal !== "string" ||
+            contract.signals?.[signal] === undefined
+          ) {
+            throw new Error(`unknown host signal "${String(signal)}"`);
+          }
+          if (typeof handler !== "function") {
+            throw new Error(`host signal "${signal}" requires a handler`);
+          }
+          const records = hostSignalHandlers.get(signal) ?? [];
+          const record: PluginHostSignalHandlerRecord = {
+            contract,
+            handler,
+          };
+          records.push(record);
+          hostSignalHandlers.set(signal, records);
+          let subscribed = true;
+          return () => {
+            if (!subscribed) return;
+            subscribed = false;
+            const current = hostSignalHandlers.get(signal);
+            if (current === undefined) return;
+            const next = current.filter((candidate) => candidate !== record);
+            if (next.length === 0) hostSignalHandlers.delete(signal);
+            else hostSignalHandlers.set(signal, next);
+          };
+        },
+      };
+    },
     ensureSharedPortTunnel(hostId) {
       assertLive();
       return ensureSharedPortTunnel(hostId);
@@ -1127,6 +1409,7 @@ export function createPluginApi(options: {
     http,
     rpc,
     realtime,
+    experimental_capabilities: experimentalCapabilities,
     background,
     cli,
     agents,
@@ -1161,6 +1444,8 @@ export function createPluginApi(options: {
     threadEventHandlers,
     httpRoutes,
     rpcHandlers,
+    capabilities,
+    hostSignalHandlers,
     backgroundServices,
     schedules,
     cli: cliRecord,

@@ -20,6 +20,7 @@ import {
   clientTurnRequestIdSchema,
   gitBranchNameSchema,
   jsonObjectSchema,
+  jsonValueSchema,
   providerNativeSkillRootsSchema,
   BRANCH_LIST_LIMIT_MAX,
   BRANCH_LIST_QUERY_MAX_LENGTH,
@@ -36,7 +37,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 123 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 125 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -662,6 +663,59 @@ const hostPickFolderCommandSchema = z
   })
   .strict();
 
+export const pluginHostInvocationTargetSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("host") }).strict(),
+  z
+    .object({
+      kind: z.literal("environment"),
+      environmentId: z.string().min(1),
+      workspaceContext: workspaceContextSchema,
+    })
+    .strict(),
+]);
+export type PluginHostInvocationTarget = z.infer<
+  typeof pluginHostInvocationTargetSchema
+>;
+
+const pluginHostArtifactSchema = z
+  .object({
+    digest: z.string().regex(/^[a-f0-9]{64}$/u),
+    byteLength: z.number().int().positive(),
+  })
+  .strict();
+
+const pluginHostCallCommandSchema = z
+  .object({
+    type: z.literal("plugin.host.call"),
+    pluginId: z.string().min(1),
+    generation: z.string().min(1),
+    artifact: pluginHostArtifactSchema,
+    callId: z.string().min(1),
+    method: z.string().min(1),
+    input: jsonValueSchema,
+    target: pluginHostInvocationTargetSchema,
+    scheduling: z.enum(["shared", "exclusive"]).nullable(),
+    deadlineUnixMs: z.number().int().positive(),
+  })
+  .strict();
+
+const pluginHostCancelCommandSchema = z
+  .object({
+    type: z.literal("plugin.host.cancel"),
+    pluginId: z.string().min(1),
+    generation: z.string().min(1),
+    callId: z.string().min(1),
+  })
+  .strict();
+
+const pluginHostDisposeCommandSchema = z
+  .object({
+    type: z.literal("plugin.host.dispose"),
+    pluginId: z.string().min(1),
+    generation: z.string().min(1),
+  })
+  .strict();
+
 const hostCaffeinateCommandSchema = z
   .object({
     type: z.literal("host.caffeinate"),
@@ -1283,6 +1337,18 @@ const pathListResultSchema = z.object({
 
 const hostPathMutationResultSchema = z.object({ ok: z.literal(true) }).strict();
 
+const pluginHostCallResultSchema = z
+  .object({ output: jsonValueSchema })
+  .strict();
+
+const pluginHostCancelResultSchema = z
+  .object({ cancelled: z.boolean() })
+  .strict();
+
+const pluginHostDisposeResultSchema = z
+  .object({ disposed: z.boolean() })
+  .strict();
+
 const hostCaffeinateResultSchema = z
   .object({
     enabled: z.boolean(),
@@ -1863,6 +1929,35 @@ export const hostDaemonCommandRegistry = {
     resultSchema: pickFolderResponseSchema,
     transport: "onlineRpc",
     retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "plugin.host.call": defineHostDaemonCommandDescriptor({
+    type: "plugin.host.call",
+    schema: pluginHostCallCommandSchema,
+    resultSchema: pluginHostCallResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    // Dynamic shared/exclusive scheduling is applied by CommandRouter after it
+    // validates the environment target against this command.
+    envLane: null,
+  }),
+  "plugin.host.cancel": defineHostDaemonCommandDescriptor({
+    type: "plugin.host.cancel",
+    schema: pluginHostCancelCommandSchema,
+    resultSchema: pluginHostCancelResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "plugin.host.dispose": defineHostDaemonCommandDescriptor({
+    type: "plugin.host.dispose",
+    schema: pluginHostDisposeCommandSchema,
+    resultSchema: pluginHostDisposeResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
     flushEventsBeforeResult: false,
     envLane: null,
   }),

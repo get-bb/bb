@@ -27,6 +27,8 @@ import {
 import { isExpectedOnlineRpcFailureError } from "./command-dispatch-support.js";
 import type { HostDaemonLogger } from "./logger.js";
 import { RuntimeManager } from "./runtime-manager.js";
+import type { PluginHostManager } from "./plugin-host-manager.js";
+import { requireResolvedWorkspaceForCommand } from "./workspace-resolution.js";
 
 interface CommandRouterLogger extends Pick<HostDaemonLogger, "warn"> {
   debug?: HostDaemonLogger["debug"];
@@ -99,6 +101,10 @@ interface InFlightThreadProviderLane {
   lane: ProviderExecutionLane;
 }
 
+interface QueuedPluginHostCall {
+  cancelled: boolean;
+}
+
 type CommandRouterTask = Promise<HostDaemonCommandResultForCommand>;
 
 export interface CommandRouterOptions {
@@ -111,6 +117,7 @@ export interface CommandRouterOptions {
   listModels?: CommandDispatchOptions["listModels"];
   resolveInteractiveRequest?: CommandDispatchOptions["resolveInteractiveRequest"];
   caffeinateManager?: CommandDispatchOptions["caffeinateManager"];
+  pluginHostManager?: PluginHostManager;
   ensureConnectTunnelIdentity?: CommandDispatchOptions["ensureConnectTunnelIdentity"];
   threadStorageRootPath: string;
   logger: CommandRouterLogger;
@@ -143,6 +150,7 @@ export class CommandRouter {
     string,
     InFlightThreadProviderLane
   >();
+  private readonly pluginHostCalls = new Map<string, QueuedPluginHostCall>();
 
   constructor(private readonly options: CommandRouterOptions) {
     this.logger = options.logger;
@@ -206,6 +214,26 @@ export class CommandRouter {
   private executeOnlineRpcCommand(
     command: HostDaemonOnlineRpcCommand,
   ): Promise<HostDaemonOnlineRpcResultForCommand> {
+    if (command.type === "plugin.host.call") {
+      return this.executePluginHostCall(command);
+    }
+    if (command.type === "plugin.host.cancel") {
+      if (!this.options.pluginHostManager) {
+        return Promise.reject(new Error("host plugin runtime is unavailable"));
+      }
+      const queued = this.pluginHostCalls.get(this.pluginHostCallKey(command));
+      if (queued !== undefined) queued.cancelled = true;
+      const result = this.options.pluginHostManager.cancel(command);
+      return Promise.resolve({
+        cancelled: queued !== undefined || result.cancelled,
+      });
+    }
+    if (command.type === "plugin.host.dispose") {
+      if (!this.options.pluginHostManager) {
+        return Promise.reject(new Error("host plugin runtime is unavailable"));
+      }
+      return this.options.pluginHostManager.dispose(command);
+    }
     const environmentLaneMode = this.getEnvironmentLaneMode(command);
     const result =
       environmentLaneMode && "environmentId" in command
@@ -219,6 +247,86 @@ export class CommandRouter {
     return result.then((value) =>
       parseHostDaemonOnlineRpcResultForCommand(command, value),
     );
+  }
+
+  private executePluginHostCall(
+    command: Extract<HostDaemonOnlineRpcCommand, { type: "plugin.host.call" }>,
+  ): Promise<HostDaemonOnlineRpcResultForCommand> {
+    const manager = this.options.pluginHostManager;
+    if (!manager) {
+      return Promise.reject(new Error("host plugin runtime is unavailable"));
+    }
+    const callKey = this.pluginHostCallKey(command);
+    if (this.pluginHostCalls.has(callKey)) {
+      return Promise.reject(
+        new Error(`duplicate host plugin call ${command.callId}`),
+      );
+    }
+    const callState: QueuedPluginHostCall = { cancelled: false };
+    this.pluginHostCalls.set(callKey, callState);
+    const task = this.executePluginHostCallInLane(command, callState, manager);
+    return task.finally(() => this.pluginHostCalls.delete(callKey));
+  }
+
+  private executePluginHostCallInLane(
+    command: Extract<HostDaemonOnlineRpcCommand, { type: "plugin.host.call" }>,
+    callState: QueuedPluginHostCall,
+    manager: PluginHostManager,
+  ): Promise<HostDaemonOnlineRpcResultForCommand> {
+    const invoke = (
+      cwd: string | null,
+    ): Promise<HostDaemonOnlineRpcResultForCommand> => {
+      if (callState.cancelled) {
+        return Promise.reject(
+          Object.assign(
+            new Error(`host plugin call ${command.callId} was cancelled`),
+            {
+              name: "AbortError",
+            },
+          ),
+        );
+      }
+      return manager.call(command, cwd);
+    };
+    if (command.target.kind === "host") {
+      if (command.scheduling !== null) {
+        return Promise.reject(
+          new Error(
+            "host-targeted plugin calls cannot declare environment scheduling",
+          ),
+        );
+      }
+      return invoke(null);
+    }
+    if (command.scheduling === null) {
+      return Promise.reject(
+        new Error("environment-targeted plugin calls require scheduling"),
+      );
+    }
+    const environmentTarget = command.target;
+    const laneMode: EnvironmentLaneMode =
+      command.scheduling === "shared" ? "read" : "write";
+    return this.runInEnvironmentLane(
+      environmentTarget.environmentId,
+      laneMode,
+      async () => {
+        const entry = await requireResolvedWorkspaceForCommand({
+          dataDir: this.options.dataDir,
+          environmentId: environmentTarget.environmentId,
+          runtimeManager: this.options.runtimeManager,
+          workspaceContext: environmentTarget.workspaceContext,
+        });
+        return invoke(entry.workspace.path);
+      },
+    );
+  }
+
+  private pluginHostCallKey(command: {
+    pluginId: string;
+    generation: string;
+    callId: string;
+  }): string {
+    return `${command.pluginId}\0${command.generation}\0${command.callId}`;
   }
 
   private executeLiveDaemonCommand(

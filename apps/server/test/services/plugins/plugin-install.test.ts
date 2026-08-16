@@ -70,6 +70,8 @@ async function writePluginFixture(
     engines?: string;
     pluginSdkRange?: string;
     appSource?: string;
+    hostSource?: string;
+    devDependencies?: Record<string, string>;
   },
 ): Promise<void> {
   await mkdir(rootDir, { recursive: true });
@@ -78,6 +80,9 @@ async function writePluginFixture(
     JSON.stringify({
       name: options.name,
       version: options.version ?? "0.1.0",
+      ...(options.devDependencies === undefined
+        ? {}
+        : { devDependencies: options.devDependencies }),
       ...(options.engines || options.pluginSdkRange
         ? {
             engines: {
@@ -94,6 +99,7 @@ async function writePluginFixture(
         branding: { icon: "Zap" },
         server: "./server.ts",
         ...(options.appSource === undefined ? {} : { app: "./app.tsx" }),
+        ...(options.hostSource === undefined ? {} : { host: "./host.ts" }),
       },
     }),
   );
@@ -103,6 +109,9 @@ async function writePluginFixture(
   );
   if (options.appSource !== undefined) {
     await writeFile(join(rootDir, "app.tsx"), options.appSource);
+  }
+  if (options.hostSource !== undefined) {
+    await writeFile(join(rootDir, "host.ts"), options.hostSource);
   }
 }
 
@@ -498,9 +507,7 @@ describe("plugin install flows", () => {
           }),
         ).rejects.toThrow(/marketplace/);
       }
-      expect(
-        getInstalledPluginRegistration(db, "registry"),
-      ).toBeUndefined();
+      expect(getInstalledPluginRegistration(db, "registry")).toBeUndefined();
     });
 
     it("guards a listed npm registry while it resolves an install plan", async () => {
@@ -1007,7 +1014,9 @@ describe("plugin install flows", () => {
       // No re-clone: the refusal came from the cache-hit path, not a fresh
       // materialization that would have run the checks anyway.
       expect(materializationCount).toBe(clonesBefore);
-      expect(getInstalledPluginRegistration(db, "cached-engine")).toBeUndefined();
+      expect(
+        getInstalledPluginRegistration(db, "cached-engine"),
+      ).toBeUndefined();
     });
 
     it("refuses a git url without the git binary being asked to run arbitrary flags", async () => {
@@ -1031,6 +1040,57 @@ describe("plugin install flows", () => {
       await stat(join(entry.rootDir, "dist", "server.js"));
       await stat(join(entry.rootDir, "dist", "server.meta.json"));
     });
+
+    it.runIf(hasNpm)(
+      "builds a Git host entry without installing the SDK at runtime",
+      async () => {
+        const repoDir = join(workDir, "repo-host-with-dev-sdk-omitted");
+        await writePluginFixture(repoDir, {
+          name: "bb-plugin-host-with-dev-sdk-omitted",
+          devDependencies: {
+            "@get-bb/plugin-sdk": "file:./sdk-type-fixture",
+          },
+          hostSource: `
+            import { experimental_defineHostRpcContract } from "@get-bb/plugin-sdk";
+            import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
+            const schema = { "~standard": { validate(value) { return { value }; } } };
+            const contract = experimental_defineHostRpcContract({
+              methods: { echo: { target: { kind: "host" }, input: schema, output: schema } },
+            });
+            export default experimental_defineHostEntry({
+              contract,
+              handlers: { echo: (input) => input },
+            });
+          `,
+        });
+        await mkdir(join(repoDir, "sdk-type-fixture"), { recursive: true });
+        await writeFile(
+          join(repoDir, "sdk-type-fixture", "package.json"),
+          JSON.stringify({
+            name: "@get-bb/plugin-sdk",
+            version: "0.0.0-test",
+            private: true,
+          }),
+        );
+        await initGitRepo(repoDir);
+        await commitAll(repoDir, "init");
+
+        const entry = await service.install(`git:${repoDir}@main`, {
+          kind: "root",
+        });
+
+        expect(entry.status).toBe("running");
+        const bundle = await readFile(
+          join(entry.rootDir, "dist", "host.js"),
+          "utf8",
+        );
+        expect(bundle).not.toMatch(/from\s+["']@get-bb\/plugin-sdk/u);
+        await stat(join(entry.rootDir, "dist", "host.meta.json"));
+        await expect(
+          stat(join(entry.rootDir, "node_modules", "@get-bb", "plugin-sdk")),
+        ).rejects.toMatchObject({ code: "ENOENT" });
+      },
+    );
 
     it("restores a target moved aside by an interrupted promotion", async () => {
       const repoDir = join(workDir, "repo-interrupted-promotion");

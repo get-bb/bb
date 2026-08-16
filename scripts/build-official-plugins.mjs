@@ -2,6 +2,7 @@ import { readFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
   buildPluginApp,
+  buildPluginHost,
   buildPluginServer,
   resolvePluginBuildToolchain,
 } from "../packages/plugin-build/src/index.ts";
@@ -43,14 +44,25 @@ if (typeof bbPackage.version !== "string") {
 for (const plugin of selected) {
   const rootDirectory = resolve(repositoryRoot, "plugins", plugin);
   await rm(resolve(rootDirectory, "dist"), { recursive: true, force: true });
+  const manifest = JSON.parse(
+    await readFile(resolve(rootDirectory, "package.json"), "utf8"),
+  );
 
   const server = await buildPluginServer(
     rootDirectory,
     bbPackage.version,
     toolchain,
   );
-  const app = await buildPluginApp(rootDirectory, bbPackage.version, toolchain);
-  console.log(
-    `${plugin}: built ${server.jsPath}, ${server.metaPath}, ${app.jsPath}, ${app.cssPath}, and ${app.metaPath}`,
-  );
+  const app = manifest.bb?.app
+    ? await buildPluginApp(rootDirectory, bbPackage.version, toolchain)
+    : null;
+  const host = manifest.bb?.host
+    ? await buildPluginHost(rootDirectory, bbPackage.version, toolchain)
+    : null;
+  const outputs = [server.jsPath, server.metaPath];
+  if (app !== null) {
+    outputs.push(app.jsPath, app.cssPath, app.metaPath);
+  }
+  if (host !== null) outputs.push(host.jsPath, host.mapPath, host.metaPath);
+  console.log(`${plugin}: built ${outputs.join(", ")}`);
 }

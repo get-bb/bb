@@ -59,6 +59,27 @@ describe("plugin manifest", () => {
     ).toBeUndefined();
   });
 
+  it("accepts one optional host entry and resolves it inside the plugin", async () => {
+    await writeFile(join(rootDir, "host.ts"), "export default {};\n");
+    await writeManifest(undefined, { ...validBb, host: "./host.ts" });
+
+    expect((await readPluginManifest(rootDir)).hostEntry).toBe(
+      join(rootDir, "host.ts"),
+    );
+  });
+
+  it("rejects a missing or escaping host entry", async () => {
+    await writeManifest(undefined, { ...validBb, host: "./missing.ts" });
+    await expect(readPluginManifest(rootDir)).rejects.toThrow(
+      /bb\.host.*missing file/u,
+    );
+
+    await writeManifest(undefined, { ...validBb, host: "../host.ts" });
+    await expect(readPluginManifest(rootDir)).rejects.toThrow(
+      /bb\.host.*escapes the plugin directory/u,
+    );
+  });
+
   it.each(["name", "description"] as const)(
     "requires a non-empty bb.%s string",
     async (field: "name" | "description") => {

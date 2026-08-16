@@ -637,6 +637,15 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     path: resolveProjectCloneDefaultPath(options.dataDir, command.projectSlug),
   }),
   "host.pick_folder": pickHostFolder,
+  "plugin.host.call": async () => {
+    throw new Error("plugin.host.call must be routed by CommandRouter");
+  },
+  "plugin.host.cancel": async () => {
+    throw new Error("plugin.host.cancel must be routed by CommandRouter");
+  },
+  "plugin.host.dispose": async () => {
+    throw new Error("plugin.host.dispose must be routed by CommandRouter");
+  },
   "host.caffeinate": async (command, options) =>
     getCaffeinateManager(options).setEnabled(command.enabled),
   "host.list_commands": listHostCommands,

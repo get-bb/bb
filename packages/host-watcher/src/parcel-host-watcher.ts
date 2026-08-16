@@ -1,4 +1,5 @@
 import path from "node:path";
+import { RootSubscription } from "./root-subscription.js";
 import { watchPathChanges } from "./watch-path.js";
 import { watchWorkspaceStatus } from "./watch-status.js";
 import type {
@@ -8,6 +9,7 @@ import type {
   ThreadStorageWatchTarget,
   WatchDataDirSkillsRootArgs,
   WatchThreadStorageRootArgs,
+  WatchPathRootArgs,
   WatchWorkspaceArgs,
 } from "./host-watcher-types.js";
 
@@ -93,10 +95,10 @@ export function collectThreadStorageObservedChanges(
   }
 
   return Array.from(storageChanges.values()).map((target) => ({
-      kind: "thread-storage-changed",
-      environmentId: target.environmentId,
-      threadId: target.threadId,
-    }));
+    kind: "thread-storage-changed",
+    environmentId: target.environmentId,
+    threadId: target.threadId,
+  }));
 }
 
 export function collectDataDirSkillsObservedChanges(
@@ -191,9 +193,39 @@ function watchDataDirSkillsRoot(
   });
 }
 
+function watchPathRoot(args: WatchPathRootArgs): () => Promise<void> {
+  const subscription = new RootSubscription({
+    rootPath: path.resolve(args.rootPath),
+    subscribeOptions:
+      args.ignoredPaths.length === 0
+        ? undefined
+        : { ignore: [...args.ignoredPaths] },
+    retryDelayMs: 250,
+    maxRetryDelayMs: 30_000,
+    onEvents: (events) => {
+      args.onChange(
+        events.map((event) => ({
+          path: path.isAbsolute(event.path)
+            ? path.normalize(event.path)
+            : path.resolve(args.rootPath, event.path),
+          type: event.type,
+        })),
+      );
+    },
+    onReady: args.onReady,
+    onDroppedEvents: args.onRescanRequired,
+    onWatchError: (message) => {
+      args.onWatchError({ rootPath: args.rootPath, message });
+    },
+  });
+  subscription.start();
+  return () => subscription.dispose();
+}
+
 export function createParcelHostWatcher(): HostWatcher {
   return {
     watchWorkspace,
+    watchPathRoot,
     watchThreadStorageRoot,
     watchDataDirSkillsRoot,
   };

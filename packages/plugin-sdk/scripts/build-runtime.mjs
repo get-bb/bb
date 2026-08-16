@@ -11,6 +11,7 @@ const packageRoot = path.resolve(
 const entries = [
   { source: "src/index.ts", output: "dist/index.js", external: [] },
   { source: "src/app.ts", output: "dist/app.js", external: [] },
+  { source: "src/host.ts", output: "dist/host.js", external: [] },
   {
     source: "src/internal/composer-customization-validation.ts",
     output: "dist/internal/composer-customization-validation.js",
@@ -49,6 +50,11 @@ const entries = [
       "react-dom",
       "react-dom/*",
     ],
+  },
+  {
+    source: "src/testing/host.ts",
+    output: "dist/testing/host.js",
+    external: [],
   },
 ];
 

@@ -60,6 +60,7 @@ import {
   disposeParcelWatcherBackend,
   type HostWatcher,
 } from "@bb/host-watcher";
+import { PluginHostManager } from "./plugin-host-manager.js";
 
 interface SessionState {
   value: string | null;
@@ -743,6 +744,24 @@ export async function createHostDaemonApp(
     runtimeManager,
     sendMessage: (message) => sendTerminalMessage(message),
   });
+  const pluginHostManager = new PluginHostManager({
+    dataDir: options.dataDir,
+    hostId: options.hostId,
+    logger: options.logger,
+    hostWatcher: options.hostWatcher,
+    shellEnv: () => runtimeManager.getShellEnv(),
+    fetchArtifact: (args) =>
+      runSessionRequest({
+        source: "fetchPluginHostArtifact",
+        request: () => serverClient.fetchPluginHostArtifact(args),
+      }),
+    onSignal: (signal) => {
+      sendServerMessage({
+        type: "plugin-host.signal",
+        ...signal,
+      });
+    },
+  });
 
   const router = new CommandRouter({
     dataDir: options.dataDir,
@@ -770,6 +789,7 @@ export async function createHostDaemonApp(
     },
     ensureConnectTunnelIdentity: () => connectTunnel.ensureTunnelIdentity(),
     caffeinateManager,
+    pluginHostManager,
     threadStorageRootPath,
     logger: options.logger,
     eventSink: {
@@ -833,6 +853,9 @@ export async function createHostDaemonApp(
       // applying generation 0 synchronously prevents that newer websocket
       // replacement from being overwritten by the initial empty snapshot.
       connectTunnel.replaceAuthoritativeShareSet(session.connectShares);
+      await pluginHostManager.reconcileGenerations(
+        session.pluginHostGenerations,
+      );
       if (session.retiredEnvironmentIds.length > 0) {
         await Promise.all(
           session.retiredEnvironmentIds.map((environmentId) =>
@@ -910,6 +933,7 @@ export async function createHostDaemonApp(
       eventLoopStallMonitor.stop();
       hostDaemonHealthMonitor.stop();
       caffeinateManager.shutdown();
+      await pluginHostManager.shutdown();
       await options.closeMachineAuthProxy?.();
       await localApi?.close();
       connectTunnel.shutdown();

@@ -1,4 +1,11 @@
-import { mkdtemp, mkdir, rename, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -130,6 +137,77 @@ describe("plugin service", () => {
     expect(entry.id).toBe("greeter");
     expect(entry.status).toBe("running");
     expect(service.getApi("greeter")).toBeDefined();
+  });
+
+  it("resolves typed plugin capabilities lazily across load and disable boundaries", async () => {
+    const consumerRoot = await writePlugin(workDir, {
+      name: "bb-plugin-capability-consumer",
+      serverSource: `
+        import { defineRpcContract } from "@get-bb/plugin-sdk";
+        import { z } from "zod";
+        const contract = defineRpcContract({
+          greet: {
+            input: z.object({ name: z.string().min(1) }).strict(),
+            output: z.object({ message: z.string() }).strict(),
+          },
+        });
+        export default function plugin(bb: any) {
+          const provider = bb.experimental_capabilities.experimental_client({
+            pluginId: "capability-provider",
+            capabilityId: "greeting.v1",
+            contract,
+          });
+          bb.rpc.register(contract, {
+            greet(input: unknown) { return provider.call("greet", input); },
+          });
+        }
+      `,
+    });
+    await service.installPath(consumerRoot);
+    const handler = service.getRpcHandler("capability-consumer", "greet");
+    expect(handler.outcome).toBe("found");
+    if (handler.outcome !== "found") throw new Error("missing consumer RPC");
+
+    await expect(
+      service.invokeRpcHandler("capability-consumer", "greet", handler.value, {
+        name: "Ada",
+      }),
+    ).resolves.toMatchObject({ ok: false });
+
+    const providerRoot = await writePlugin(workDir, {
+      name: "bb-plugin-capability-provider",
+      serverSource: `
+        import { defineRpcContract } from "@get-bb/plugin-sdk";
+        import { z } from "zod";
+        const contract = defineRpcContract({
+          greet: {
+            input: z.object({ name: z.string().min(1) }).strict(),
+            output: z.object({ message: z.string() }).strict(),
+          },
+        });
+        export default function plugin(bb: any) {
+          bb.experimental_capabilities.experimental_provide(
+            "greeting.v1",
+            contract,
+            { greet: ({ name }: { name: string }) => ({ message: "Hello, " + name }) },
+          );
+        }
+      `,
+    });
+    await service.installPath(providerRoot);
+
+    await expect(
+      service.invokeRpcHandler("capability-consumer", "greet", handler.value, {
+        name: "Ada",
+      }),
+    ).resolves.toEqual({ ok: true, result: { message: "Hello, Ada" } });
+
+    await service.setEnabled("capability-provider", false);
+    await expect(
+      service.invokeRpcHandler("capability-consumer", "greet", handler.value, {
+        name: "Ada",
+      }),
+    ).resolves.toMatchObject({ ok: false });
   });
 
   it("summarizes user-facing capabilities and drops the live ones when disabled", async () => {
