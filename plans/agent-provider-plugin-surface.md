@@ -464,6 +464,90 @@ fork, archived resume, models) plus plugin disable/re-enable and a
 plugin-update (new artifact hash) mid-session; a fresh-install QA pass
 (empty data dir); process-tree and orphan sweeps; and CI green.
 
+## Post-graduation simplification (2026-08-15)
+
+Graduation left every bridge dual-dialect: each carried a per-session
+`"legacy" | "canonical"` switch, a nullable translator, and a second params
+schema per method, because the deleted adapters used to be the other consumer.
+One commit per provider removed that, after proving the legacy arms had no
+driver left. The proof is short: `bridge-protocol-adapter.ts` is the only
+runtime→bridge request builder and always sends canonical params, and the only
+other live client was the tarball smoke — which sent `{clientInfo}` to all four
+bridges and drove pi's whole E2E in the legacy dialect. The smoke now speaks the
+canonical protocol (handshake, session construction, `turn/start`, release
+`thread/stop`) and asserts translated `thread/event`s; its pi turn waits for
+`turn/completed{status:"completed"}`, so an interrupted or failed turn fails
+loudly instead of satisfying the wait.
+
+Net: **-1,190 lines** across the four commits (2,874 added, 4,064 removed),
+with every suite green (agent-runtime 311, acp 138, codex 162, claude-code 260,
+protocol 70), full-tree typecheck, full-tree test, and `smoke:tarball`.
+
+What died beyond the dialect switch itself:
+
+- **The internal params zod round-trip (pi, acp, claude-code).** Each canonical
+  handler built an untyped record shaped like the *legacy wire*, re-parsed it
+  through the legacy zod schema, and mapped it again before it became session
+  options. The builders now return the typed params they always described.
+  Pi's was the worst: env vars made a full round trip out to
+  `shell_environment_policy.set.*` config keys and back through
+  `extractEnvOverrides`, so the kit grew one `buildShellEnvOverrides` that
+  `buildShellEnvironmentPolicyConfig` (still needed by codex) delegates to.
+- **A latent bug the union hid.** The legacy schemas were non-passthrough and
+  sat *second* in each union, so a canonical request that failed validation for
+  any reason fell through to them, got `options` stripped, and was silently
+  served in the legacy dialect instead of answering INVALID_PARAMS.
+- **ACP `thread/compact`.** The handshake reports `manualCompaction: false`, so
+  the runtime never sends it; the method existed only in the legacy dialect.
+  `startCompaction`, both compaction notification methods, their schemas, and
+  the translator's two compaction arms went with it.
+- **ACP `acp/permission/request`.** Superseded by canonical
+  `interaction/request`; its params schema already had no importer at all.
+- **claude-code `inputGroups`.** Canonical turn params carry one flat input
+  list and `buildClaudeTurnParams` never emitted groups, so the multi-prompt
+  queueing path was unreachable.
+- **claude-code resume with a null `providerThreadId`.** Canonical resume names
+  the session it reopens; it is now INVALID_PARAMS rather than a silent fresh
+  session.
+- **Two codex pass-through modules.** `permission-mapping.ts` (one importer, no
+  test of its own) merged into `interactive-requests.ts`; `subagent-activity-
+  translation.ts` (one importer, and no possible second — the tracking state
+  lives in the translator's closures) merged into `translator.ts`. Fifteen more
+  codex exports were module-internal in practice and are now declared so.
+  Three that looked identical are deliberately still exported: they are pure
+  functions with real unit tests, and routing those assertions through a caller
+  would test less.
+
+Test-side consequences worth keeping:
+
+- The bridge suites drove the legacy dialect end to end, so they moved to the
+  wire the bridges now speak. ACP's model discovery runs the agent binary
+  itself (what a launch-spec-derived list command always does), so the fake ACP
+  agent grew a `--list-models` mode.
+- Some cases could not be migrated because the canonical wire cannot express
+  them, and each deletion is a statement about reachability, not a coverage
+  cut: ACP's three manual-compaction tests (the method is gone), claude-code's
+  grouped-input tests, and four claude-code cases driving Claude's
+  `default`/`dontAsk` permission modes — no bb permission policy maps onto
+  either, and the hook-level readonly-Bash suite in the same file already
+  covers that rewrite in depth. One test is new on the other side: ACP session
+  construction without a launch spec must fail with INVALID_PARAMS, the one
+  degradation that bridge must not make.
+
+Two things were audited and deliberately left:
+
+- The translator options `turnIdPrefix`/`itemIdPrefix`/`synthesizeItemStarted`
+  are optional in all four providers, and production now always sets all three;
+  the un-prefixed, no-synthesis behaviour survives only in the translator unit
+  suites. Making them required is a real deletion, but it would rewrite id
+  assertions across ~4,000 lines of three translator suites for no behaviour
+  change, so it is left as a follow-up.
+- `thread/compact` reached nothing on ANY provider: the runtime adapter has no
+  compaction command at all, so pi's and codex's implementations are unreachable
+  too. Only ACP's was deleted here, because ACP's own handshake declares the
+  capability false. Whether manual compaction should be wired up or dropped
+  everywhere is a product question, not a dialect cleanup.
+
 ## Design notes from the #1641 prototype comparison (thr_fxnmqjf9a4)
 
 The provider-driver prototype (#1641) was reviewed side by side with this
