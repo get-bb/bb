@@ -130,7 +130,10 @@ import {
   type BridgeJsonRpcObject,
   type BridgeJsonRpcOutputMessage,
 } from "@bb/provider-bridge-protocol/testing";
-import type { JsonValue } from "@bb/domain";
+import {
+  createStandaloneBuiltinCompactCommandInput,
+  type JsonValue,
+} from "@bb/domain";
 
 const originalPiBridgeSessionDir = process.env[PI_BRIDGE_SESSION_DIR_ENV];
 
@@ -175,6 +178,16 @@ function turnStartParams(
     providerThreadId: threadId,
     threadId,
   };
+}
+
+/**
+ * The composer's standalone builtin `/compact` mention, as the wire JSON a
+ * turn/start request carries.
+ */
+function compactCommandPromptInput(): JsonValue {
+  return JSON.parse(
+    JSON.stringify(createStandaloneBuiltinCompactCommandInput()[0]),
+  ) as JsonValue;
 }
 
 /** Canonical turn/steer params. */
@@ -1039,6 +1052,88 @@ describe("pi bridge", () => {
       // signal must still close it, or the runtime waits forever.
       expect(threadEvents(bridge.messages)).toContainEqual(
         expect.objectContaining({ type: "turn/completed", status: "completed" }),
+      );
+    } finally {
+      bridge.restore();
+    }
+  });
+
+  it("compacts the session instead of prompting for a standalone /compact command", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const piSession = createControlledPiAgentSession();
+    piSession.compact.mockImplementation(async () => {
+      piSession.emit({ type: "compaction_start", reason: "manual" });
+      piSession.emit({
+        type: "compaction_end",
+        reason: "manual",
+        result: undefined,
+        aborted: false,
+        willRetry: false,
+      });
+    });
+    mockCreateAgentSession.mockResolvedValue({ session: piSession });
+
+    try {
+      bridge.sendRequest(
+        60,
+        "thread/start",
+        sessionParams({ threadId: "thread-compact" }),
+      );
+      await bridge.waitForResponse(60);
+
+      bridge.sendRequest(
+        61,
+        "turn/start",
+        turnStartParams("thread-compact", [compactCommandPromptInput()]),
+      );
+      await bridge.waitForResponse(61);
+      await bridge.flushWork();
+
+      // The builtin /compact affordance is a compaction request, not model
+      // input: prompting with the literal text would just make the model talk
+      // about compaction while the context keeps growing.
+      expect(piSession.compact).toHaveBeenCalledTimes(1);
+      expect(piSession.prompt).not.toHaveBeenCalled();
+      expect(threadEvents(bridge.messages)).toContainEqual(
+        expect.objectContaining({ type: "thread/compacted" }),
+      );
+    } finally {
+      bridge.restore();
+    }
+  });
+
+  it("fails the compaction turn when the Pi session refuses to compact", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const piSession = createControlledPiAgentSession();
+    piSession.compact.mockRejectedValue(new Error("Nothing to compact"));
+    mockCreateAgentSession.mockResolvedValue({ session: piSession });
+
+    try {
+      bridge.sendRequest(
+        62,
+        "thread/start",
+        sessionParams({ threadId: "thread-compact-failure" }),
+      );
+      await bridge.waitForResponse(62);
+
+      bridge.sendRequest(
+        63,
+        "turn/start",
+        turnStartParams("thread-compact-failure", [
+          compactCommandPromptInput(),
+        ]),
+      );
+      await bridge.waitForResponse(63);
+      await bridge.flushWork();
+
+      // A refusal emits no compaction events, so without the settle report the
+      // requested turn would never close.
+      expect(threadEvents(bridge.messages)).toContainEqual(
+        expect.objectContaining({
+          type: "turn/completed",
+          status: "failed",
+          error: { message: "Nothing to compact" },
+        }),
       );
     } finally {
       bridge.restore();

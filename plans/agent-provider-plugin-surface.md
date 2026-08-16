@@ -553,6 +553,25 @@ Two things were audited and deliberately left:
   declared `supportsManualCompaction` still gate the UI affordance. A
   structured trigger is future work; the protocol is unshipped, so
   reintroducing one costs nothing — but only with a sender.
+- Pi's prompt-path compaction was missing and is now implemented. Deleting the
+  dead `thread/compact` exposed that pi's `turn/start` never inspected its
+  input, so bb's compact affordance sent the literal text `/compact` to the
+  model (pi's own `/compact` is an interactive-mode command the SDK path never
+  sees). Verified live before the fix on `openai/gpt-5.4-mini`: the model
+  answered "Memory compacted: codeword is ALPHA…", no `thread/compacted`, and
+  context grew 4,890 → 5,148 tokens. The pi bridge now runs the same
+  `isStandaloneBuiltinCompactCommand` check codex uses and drives
+  `PiSdkSession.compact()` (previously unreachable code, now the sole caller);
+  the existing translator arms turn `compaction_start`/`compaction_end` into
+  the maintenance turn, and the settle report closes the turn when pi refuses
+  outright. Verified live after the fix: `thread/compacted`, completed turn,
+  and context 53,691 → 20,215 tokens. Pi reports unknown context usage for one
+  turn after compacting (its own `getContextUsage` distrusts pre-compaction
+  assistant usage), so the meter clears before it drops. Pi refuses to compact
+  sessions below its `keepRecentTokens` (20k default) with "Nothing to compact
+  (session too small)"; that surfaces as a failed turn, so the declared
+  `manualCompaction: true` is honest but small threads see an error rather than
+  a no-op.
 
 ## Design notes from the #1641 prototype comparison (thr_fxnmqjf9a4)
 

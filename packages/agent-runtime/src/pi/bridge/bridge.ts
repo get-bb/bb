@@ -11,7 +11,7 @@ import {
 import { dirname } from "node:path";
 import { z } from "zod";
 import type { ThreadEvent, ThreadEventContextWindowUsage } from "@bb/domain";
-import { turnScope } from "@bb/domain";
+import { isStandaloneBuiltinCompactCommand, turnScope } from "@bb/domain";
 import {
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
@@ -798,23 +798,42 @@ function startPiPrompt(
     );
 }
 
-function handleTurnStart(id: string | number, params: TurnStartParams): void {
-  // Requests resolve the session by bb threadId — pi's stable session handle.
-  const threadSession = sessions.get(params.threadId);
-  if (!threadSession || threadSession.closing) {
-    sendError(id, -32000, "No active pi session");
-    return;
-  }
+/**
+ * Manual compaction travels the prompt path: bb's compact affordance sends a
+ * standalone builtin `/compact` mention as turn input. Pi's own `/compact`
+ * slash command belongs to its interactive mode, so the bridge runs the SDK
+ * compaction directly; the resulting `compaction_start`/`compaction_end`
+ * events carry the turn. The settle report is the fallback that closes the
+ * requested turn when pi refuses to compact and emits no events at all.
+ */
+function startPiCompaction(
+  threadSession: ThreadSession,
+  threadId: string,
+): void {
+  void threadSession.session.compact().then(
+    () =>
+      reportPromptSettled({
+        sessionSerial: threadSession.sessionSerial,
+        threadId,
+      }),
+    (error: unknown) =>
+      reportPromptSettled({
+        error,
+        sessionSerial: threadSession.sessionSerial,
+        threadId,
+      }),
+  );
+}
 
-  const { text, images } = extractInput(params.input);
-  if (!text) {
-    sendError(id, BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS, "Missing input text");
-    return;
-  }
-
-  // Accepted-input correlation (turn/input/accepted): queue onto the
-  // translator so its onTurnStart drains it into the opening turn; a
-  // still-open translator turn gets the event immediately instead.
+/**
+ * Accepted-input correlation (turn/input/accepted): queue onto the translator
+ * so its onTurnStart drains it into the opening turn; a still-open translator
+ * turn gets the event immediately instead.
+ */
+function recordAcceptedTurnInput(
+  threadSession: ThreadSession,
+  params: TurnStartParams,
+): void {
   const state = threadSession.translator.resolveState({
     threadId: params.threadId,
   });
@@ -828,13 +847,39 @@ function handleTurnStart(id: string | number, params: TurnStartParams): void {
         turnId: state.currentTurnId,
       }),
     );
-  } else {
-    queueAcceptedUserMessage({
-      clientRequestId: params.clientRequestId,
-      state,
-    });
+    return;
+  }
+  queueAcceptedUserMessage({
+    clientRequestId: params.clientRequestId,
+    state,
+  });
+}
+
+function handleTurnStart(id: string | number, params: TurnStartParams): void {
+  // Requests resolve the session by bb threadId — pi's stable session handle.
+  const threadSession = sessions.get(params.threadId);
+  if (!threadSession || threadSession.closing) {
+    sendError(id, -32000, "No active pi session");
+    return;
   }
 
+  // A standalone builtin `/compact` mention is bb's manual-compaction request,
+  // not model input. Prompting with the literal text would make the model talk
+  // about compaction while the context keeps growing.
+  if (isStandaloneBuiltinCompactCommand(params.input)) {
+    recordAcceptedTurnInput(threadSession, params);
+    startPiCompaction(threadSession, params.threadId);
+    sendResult(id, { threadId: params.threadId });
+    return;
+  }
+
+  const { text, images } = extractInput(params.input);
+  if (!text) {
+    sendError(id, BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS, "Missing input text");
+    return;
+  }
+
+  recordAcceptedTurnInput(threadSession, params);
   startPiPrompt(threadSession, params.threadId, text, images);
   sendResult(id, { threadId: params.threadId });
 }
