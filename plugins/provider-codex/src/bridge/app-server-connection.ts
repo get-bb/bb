@@ -35,7 +35,7 @@ export interface CodexAppServerExitInfo {
   spawnFailed: boolean;
 }
 
-export interface CreateCodexAppServerConnectionOptions {
+interface CreateCodexAppServerConnectionOptions {
   command: string;
   args: string[];
   cwd: string;
@@ -50,7 +50,7 @@ export interface CreateCodexAppServerConnectionOptions {
   onExit(info: CodexAppServerExitInfo): void;
 }
 
-export interface CodexAppServerRequestArgs<TResult> {
+interface CodexAppServerRequestArgs<TResult> {
   method: string;
   params?: unknown;
   resultSchema: z.ZodType<TResult>;

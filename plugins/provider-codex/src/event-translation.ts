@@ -49,7 +49,7 @@ interface CodexLastTokenUsage {
   totalTokens: number;
 }
 
-export interface CodexEventTranslationState {
+interface CodexEventTranslationState {
   rateLimits: CodexRateLimitSnapshot | null;
 }
 

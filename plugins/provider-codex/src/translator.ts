@@ -1,14 +1,11 @@
 /**
  * The stateful Codex event-translation pipeline.
  *
- * `createCodexEventTranslator` holds every per-connection translation closure
- * the legacy adapter used to keep inline (raw shell-output recovery,
- * delegation/subagent correlation, accepted-user-message correlation,
- * workspace-write git-root staging) — moved here verbatim so the legacy
- * adapter and the canonical bridge share one implementation. Events leave in
+ * `createCodexEventTranslator` holds every per-connection translation closure:
+ * raw shell-output recovery, delegation/subagent correlation, accepted-user-
+ * message correlation, and workspace-write git-root staging. Events leave in
  * Codex-native id space (Codex turn/item ids, Codex thread ids in
- * threadId/providerThreadId); the canonical bridge stamps bridge-minted ids on
- * top, while the legacy adapter forwards them as-is (its `native` codec).
+ * threadId/providerThreadId); the bridge stamps bridge-minted ids on top.
  */
 
 import {
@@ -16,7 +13,12 @@ import {
   requireThreadEventScopeTurnId,
   turnScope,
 } from "@bb/domain";
-import type { ClientTurnRequestId, ThreadEvent } from "@bb/domain";
+import type {
+  ClientTurnRequestId,
+  ThreadEvent,
+  ThreadEventItem,
+  ThreadEventItemStatus,
+} from "@bb/domain";
 import { extractResultText } from "@bb/provider-bridge-protocol/bridge-kit";
 import type {
   JsonRpcMessage,
@@ -33,7 +35,9 @@ import {
   codexBridgeEnvelopeSchema,
   codexRateLimitReadResponseSchema,
   codexRawResponseItemCompletedParamsSchema,
+  codexSubAgentActivityItemSchema,
   codexThreadClosedParamsSchema,
+  type CodexSubAgentActivityItem,
 } from "./schemas.js";
 import {
   buildCodexConfig,
@@ -43,12 +47,6 @@ import {
   type CodexSessionOptions,
   type CodexThreadPermissionSettings,
 } from "./session-params.js";
-import {
-  buildCodexSubAgentCompletedEvent,
-  buildCodexSubAgentStartedEvent,
-  parseCodexSubAgentActivityEvent,
-  type CodexTrackedSubAgent,
-} from "./subagent-activity-translation.js";
 import type { JsonValue } from "./generated/codex-app-server/schema/serde_json/JsonValue.js";
 
 // Raw shell output recovery is a two-phase flow:
@@ -326,12 +324,12 @@ function extractRecoveredCommandOutput(
 // Translator factory
 // ---------------------------------------------------------------------------
 
-export interface CreateCodexEventTranslatorOptions {
+interface CreateCodexEventTranslatorOptions {
   additionalWorkspaceWriteRoots: readonly string[];
 }
 
 /** Structural session-construction input the git-root staging reads. */
-export interface CodexSessionConstructionInput {
+interface CodexSessionConstructionInput {
   threadId: string;
   cwd?: string;
   options: CodexSessionOptions;
@@ -342,7 +340,7 @@ interface RecordThreadGitWritableRootsArgs {
   writableRoots: readonly string[];
 }
 
-export interface ActivateThreadGitWritableRootsArgs {
+interface ActivateThreadGitWritableRootsArgs {
   providerThreadId: string;
   threadId: string;
 }
@@ -355,12 +353,12 @@ interface ClearGitWritableRootsByProviderThreadIdArgs {
   providerThreadId: string;
 }
 
-export interface PreparedWorkspaceWriteGitRoots {
+interface PreparedWorkspaceWriteGitRoots {
   config: { [key in string]?: JsonValue } | undefined;
   permissionSettings: CodexThreadPermissionSettings;
 }
 
-export interface PrepareWorkspaceWriteGitRootsArgs {
+interface PrepareWorkspaceWriteGitRootsArgs {
   command: CodexSessionConstructionInput;
 }
 
@@ -1372,5 +1370,111 @@ export function createCodexEventTranslator(
     prepareTurnStart: queueNativeTurnStartClientRequestId,
     prepareWorkspaceWriteGitRoots,
     translateEvent,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Native sub-agent activity
+//
+// Codex reports its own sub-agents as `subAgentActivity` items; the tracking
+// state lives entirely in this module's closures, so the mapping lives here
+// too.
+// ---------------------------------------------------------------------------
+
+interface CodexSubAgentActivityEvent {
+  item: CodexSubAgentActivityItem;
+  providerThreadId: string;
+  turnId: string;
+}
+
+interface CodexTrackedSubAgent {
+  agentPath: string;
+  agentThreadId: string;
+  callId: string;
+  parentProviderThreadId: string;
+  parentToolCallId?: string;
+  parentTurnId: string;
+  pendingFollowups: number;
+  terminal: boolean;
+}
+
+function parseCodexSubAgentActivityEvent(
+  event: ProviderRuntimeEvent,
+): CodexSubAgentActivityEvent | null {
+  const envelope = codexBridgeEnvelopeSchema.safeParse(event);
+  if (!envelope.success || envelope.data.method !== "item/completed") {
+    return null;
+  }
+
+  const params = envelope.data.params;
+  if (!params) {
+    return null;
+  }
+  const item = codexSubAgentActivityItemSchema.safeParse(params.item);
+  if (
+    !item.success ||
+    typeof params.threadId !== "string" ||
+    typeof params.turnId !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    item: item.data,
+    providerThreadId: params.threadId,
+    turnId: params.turnId,
+  };
+}
+
+function buildSubAgentToolCallItem(
+  tracked: CodexTrackedSubAgent,
+  status: ThreadEventItemStatus,
+): Extract<ThreadEventItem, { type: "toolCall" }> {
+  return {
+    type: "toolCall",
+    id: tracked.callId,
+    tool: "spawnAgent",
+    arguments: {
+      senderThreadId: tracked.parentProviderThreadId,
+      receiverThreadIds: [tracked.agentThreadId],
+      description: tracked.agentPath,
+    },
+    status,
+    ...(tracked.parentToolCallId
+      ? { parentToolCallId: tracked.parentToolCallId }
+      : {}),
+    ...(status === "pending"
+      ? {}
+      : {
+          result: {
+            agentPath: tracked.agentPath,
+            agentThreadId: tracked.agentThreadId,
+          },
+        }),
+  };
+}
+
+function buildCodexSubAgentStartedEvent(
+  tracked: CodexTrackedSubAgent,
+): ThreadEvent {
+  return {
+    type: "item/started",
+    threadId: tracked.parentProviderThreadId,
+    providerThreadId: tracked.parentProviderThreadId,
+    scope: turnScope(tracked.parentTurnId),
+    item: buildSubAgentToolCallItem(tracked, "pending"),
+  };
+}
+
+function buildCodexSubAgentCompletedEvent(args: {
+  status: Exclude<ThreadEventItemStatus, "pending">;
+  tracked: CodexTrackedSubAgent;
+}): ThreadEvent {
+  return {
+    type: "item/completed",
+    threadId: args.tracked.parentProviderThreadId,
+    providerThreadId: args.tracked.parentProviderThreadId,
+    scope: turnScope(args.tracked.parentTurnId),
+    item: buildSubAgentToolCallItem(args.tracked, args.status),
   };
 }

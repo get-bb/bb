@@ -9,9 +9,8 @@
  * maintenance children for provider-scoped work (model listing, archive and
  * rename for threads without a live child).
  *
- * Translation is shared with the legacy adapter (`../translator.ts`,
- * `../session-params.ts`, `../event-translation.ts`) — the bridge adds the
- * canonical surface on top:
+ * Translation lives in `../translator.ts`, `../session-params.ts`, and
+ * `../event-translation.ts`; the bridge adds the canonical surface on top:
  *
  * - Codex mints its own turn/item ids; the bridge stamps bridge-minted ids
  *   (entropy + per-session serial prefix, #1224) onto every event, keeps the
@@ -116,20 +115,12 @@ import {
 const codexBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("initialize"),
-    // Accepts both the legacy probe shape ({clientInfo} — used by the
-    // packaged-bundle smoke) and the canonical Provider Bridge Protocol
-    // shape; the reply is always the canonical handshake.
-    params: z.union([
-      z.object({
-        clientInfo: z.object({ name: z.string(), version: z.string() }),
-      }),
-      z
-        .object({
-          protocolVersion: z.number().int().positive(),
-          client: z.object({ name: z.string(), version: z.string() }),
-        })
-        .passthrough(),
-    ]),
+    params: z
+      .object({
+        protocolVersion: z.number().int().positive(),
+        client: z.object({ name: z.string(), version: z.string() }),
+      })
+      .passthrough(),
   }),
   z.object({ method: z.literal("model/list"), params: modelListParamsSchema }),
   z.object({
@@ -297,11 +288,7 @@ function sendRuntimeRequest(
 // App-server child launch
 // ---------------------------------------------------------------------------
 
-/**
- * Test seam for the app-server command. Production always launches
- * `codex app-server` (the legacy path's equivalent seam is the adapter
- * factory's processCommand/processArgs, which never rode the wire either).
- */
+/** Test seam for the app-server command; production launches `codex app-server`. */
 const CODEX_APP_SERVER_COMMAND_ENV = "BB_CODEX_BRIDGE_APP_SERVER_COMMAND";
 const CODEX_APP_SERVER_ARGS_ENV = "BB_CODEX_BRIDGE_APP_SERVER_ARGS";
 
@@ -329,12 +316,10 @@ function resolveAppServerLaunch(): { command: string; args: string[] } {
 }
 
 /**
- * Child env is constructed by allowlist, mirroring what the runtime's spawn
- * does for the legacy `codex app-server` process: bb runtime-owned vars are
- * stripped (#1366, #1545) and the bridge's own Node-runtime plumbing
+ * Child env is constructed by allowlist: bb runtime-owned vars are stripped
+ * (#1366, #1545) and the bridge's own Node-runtime plumbing
  * (ELECTRON_RUN_AS_NODE) is not leaked downward. The bridge's env already
- * carries the daemon's per-environment overlays, so children see the same
- * environment the legacy direct spawn produced.
+ * carries the daemon's per-environment overlays, so children inherit them.
  */
 function buildAppServerEnv(): NodeJS.ProcessEnv {
   return withoutBridgeRuntimeEnv(
@@ -397,8 +382,8 @@ const bridgeIdEntropyPrefix = `bt${randomUUID().slice(0, 8)}-`;
  * Structural shape of every id this bridge (or a previous instance of it)
  * mints: entropy + session serial + the Codex-native id. Reverse mapping
  * strips the prefix structurally, so checkpoint forks keep working across
- * bridge restarts, and ids persisted by the legacy path (raw Codex ids) pass
- * through unchanged.
+ * bridge restarts, and ids persisted before the bridge minted them (raw Codex
+ * ids) pass through unchanged.
  */
 const BRIDGE_MINTED_ID_PATTERN = /^bt[0-9a-f]{8}-\d+-/;
 
@@ -484,10 +469,8 @@ function decodeCodexOptions(
 
 /**
  * The construction-scoped option facts. A turn arriving with a different set
- * rebuilds the provider session (the legacy classify-any-change-as-session
- * behavior, reported via session/replaced instead of orchestrated by the
- * runtime). Model and serviceTier are deliberately absent: they ride every
- * codex turn/start, exactly as the legacy turn params carried them.
+ * rebuilds the provider session, reported via session/replaced. Model and
+ * serviceTier are deliberately absent: they ride every codex turn/start.
  *
  * envVars is deliberately absent too: the runtime builds the shell
  * environment only for session-construction commands and sends
@@ -1176,7 +1159,7 @@ async function constructThreadSession(
           ...(args.request.sourceProviderCheckpointId !== undefined
             ? {
                 // Checkpoints reaching a codex bridge are either bridge-minted
-                // turn ids (strip to the Codex turn id) or legacy-persisted
+                // turn ids (strip to the Codex turn id) or previously persisted
                 // Codex turn ids (pass through) — codex thread/fork takes the
                 // Codex turn id as lastTurnId either way.
                 lastTurnId: stripBridgeIdPrefix(
@@ -1377,9 +1360,15 @@ function sendConstructionError(
   sendError(id, BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR, message);
 }
 
-async function handleThreadStart(
+/**
+ * The one session-construction path. `resumable` is the only thing that
+ * differs on failure: a resume that fails can be retried against the same
+ * rollout, a start or fork cannot.
+ */
+async function handleThreadConstruction(
   id: string | number,
   params: ThreadStartParamsShape,
+  request: CodexSessionConstructionRequest,
 ): Promise<void> {
   try {
     const constructed = await constructThreadSession({
@@ -1390,68 +1379,14 @@ async function handleThreadStart(
       ...(params.dynamicTools !== undefined
         ? { dynamicTools: params.dynamicTools }
         : {}),
-      request: { kind: "start" },
+      request,
     });
     sendResult(id, {
       providerThreadId: constructed.codexThreadId,
       sessionRestorable: true,
     });
   } catch (error) {
-    sendConstructionError(id, error, false);
-  }
-}
-
-async function handleThreadResume(
-  id: string | number,
-  params: ThreadResumeParamsShape,
-): Promise<void> {
-  try {
-    const constructed = await constructThreadSession({
-      threadId: params.threadId,
-      cwd: params.cwd,
-      options: params.options,
-      instructionMode: params.instructionMode,
-      ...(params.dynamicTools !== undefined
-        ? { dynamicTools: params.dynamicTools }
-        : {}),
-      request: { kind: "resume", providerThreadId: params.providerThreadId },
-    });
-    sendResult(id, {
-      providerThreadId: constructed.codexThreadId,
-      sessionRestorable: true,
-    });
-  } catch (error) {
-    sendConstructionError(id, error, true);
-  }
-}
-
-async function handleThreadFork(
-  id: string | number,
-  params: ThreadForkParamsShape,
-): Promise<void> {
-  try {
-    const constructed = await constructThreadSession({
-      threadId: params.threadId,
-      cwd: params.cwd,
-      options: params.options,
-      instructionMode: params.instructionMode,
-      ...(params.dynamicTools !== undefined
-        ? { dynamicTools: params.dynamicTools }
-        : {}),
-      request: {
-        kind: "fork",
-        sourceProviderThreadId: params.sourceProviderThreadId,
-        ...(params.sourceProviderCheckpointId !== undefined
-          ? { sourceProviderCheckpointId: params.sourceProviderCheckpointId }
-          : {}),
-      },
-    });
-    sendResult(id, {
-      providerThreadId: constructed.codexThreadId,
-      sessionRestorable: true,
-    });
-  } catch (error) {
-    sendConstructionError(id, error, false);
+    sendConstructionError(id, error, request.kind === "resume");
   }
 }
 
@@ -1738,7 +1673,7 @@ async function handleThreadStop(
     session.codexThreadId === null ||
     params.activeTurnId === null
   ) {
-    // Mirrors the legacy noop when there is no active turn to interrupt.
+    // Nothing to interrupt: an interrupt with no active turn is a noop.
     sendResult(id, { ok: true });
     return;
   }
@@ -1883,13 +1818,27 @@ async function handleRequest(
       await handleModelList(request.id);
       break;
     case "thread/start":
-      await handleThreadStart(request.id, request.params);
+      await handleThreadConstruction(request.id, request.params, {
+        kind: "start",
+      });
       break;
     case "thread/resume":
-      await handleThreadResume(request.id, request.params);
+      await handleThreadConstruction(request.id, request.params, {
+        kind: "resume",
+        providerThreadId: request.params.providerThreadId,
+      });
       break;
     case "thread/fork":
-      await handleThreadFork(request.id, request.params);
+      await handleThreadConstruction(request.id, request.params, {
+        kind: "fork",
+        sourceProviderThreadId: request.params.sourceProviderThreadId,
+        ...(request.params.sourceProviderCheckpointId !== undefined
+          ? {
+              sourceProviderCheckpointId:
+                request.params.sourceProviderCheckpointId,
+            }
+          : {}),
+      });
       break;
     case "turn/start":
       await handleTurnStart(request.id, request.params);

@@ -1,9 +1,7 @@
 /**
  * Codex session/turn parameter builders.
  *
- * Pure translation from bb execution options to Codex app-server params,
- * extracted verbatim from the legacy adapter so the canonical bridge and the
- * legacy adapter share one implementation (the phase-2 no-duplication rule).
+ * Pure translation from bb execution options to Codex app-server params.
  * Everything here is stateless; the stateful translation pipeline lives in
  * `translator.ts`.
  */
@@ -31,9 +29,8 @@ import { mapBbReasoningLevelToCodex } from "./models.js";
 import { buildShellEnvironmentPolicyConfig } from "@bb/provider-bridge-protocol/bridge-kit";
 
 /**
- * The execution facts Codex param building actually reads. The legacy
- * adapter's `ProviderExecutionContext` satisfies this structurally; the
- * canonical bridge assembles it from wire options plus its provider-scoped
+ * The execution facts Codex param building actually reads. The bridge
+ * assembles it from the wire options plus its provider-scoped
  * `providerOptions` bag.
  */
 export type CodexSessionOptions = {
@@ -46,7 +43,7 @@ export type CodexSessionOptions = {
   envVars?: Record<string, string>;
 } & RuntimePermissionPolicy;
 
-export interface CodexPermissionSettings {
+interface CodexPermissionSettings {
   approvalPolicy: AskForApproval;
   approvalsReviewer: ApprovalsReviewer;
   sandbox: CodexSandboxMode;
@@ -79,22 +76,19 @@ export type BbThreadForkParams = {
   dynamicTools?: DynamicToolSpec[];
 };
 
-export interface ToCodexPermissionSettingsArgs {
+interface ToCodexPermissionSettingsArgs {
   additionalWorkspaceWriteRoots: readonly string[];
   gitWritableRoots: readonly string[];
   options: CodexSessionOptions;
 }
 
-export interface BuildCodexConfigArgs {
+interface BuildCodexConfigArgs {
   additionalWorkspaceWriteRoots: readonly string[];
   gitWritableRoots: readonly string[];
   options?: CodexSessionOptions;
   threadId: string;
 }
 
-export interface CodexSkillsExtraRootsSetParams {
-  extraRoots: string[];
-}
 
 interface RealpathContainedDirectoryArgs {
   candidatePath: string;
@@ -152,15 +146,14 @@ type GitHeadState =
 
 /**
  * The construction-command shape instruction overrides read: bb instructions
- * plus the append/replace mode. Structural so both the legacy adapter's
- * `AdapterCommand` extract and the bridge's canonical params satisfy it.
+ * plus the append/replace mode.
  */
-export interface CodexInstructionSource {
+interface CodexInstructionSource {
   instructionMode: "append" | "replace";
   options: { instructions?: string };
 }
 
-export interface CodexInstructionOverrides {
+interface CodexInstructionOverrides {
   baseInstructions?: ThreadStartParams["baseInstructions"];
   developerInstructions?: ThreadStartParams["developerInstructions"];
 }
@@ -666,7 +659,7 @@ export function buildCodexConfig(
 }
 
 /** Structural dynamic-tool shape shared by adapter commands and wire params. */
-export interface CodexDynamicToolInput {
+interface CodexDynamicToolInput {
   name: string;
   description: string;
   inputSchema: unknown;
