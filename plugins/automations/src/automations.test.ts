@@ -1060,7 +1060,9 @@ describe("script process containment", () => {
         projectId: "proj_test",
         scriptFile: "script.sh",
         interpreter: "bash",
-        timeoutMs: 100,
+        // Leave enough startup headroom for loaded CI hosts while still proving
+        // that the timeout, rather than normal script completion, owns cleanup.
+        timeoutMs: 1_000,
         serverUrl: "http://127.0.0.1:38886",
       });
       const childPid = Number.parseInt(
