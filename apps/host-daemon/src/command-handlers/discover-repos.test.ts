@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -102,6 +102,33 @@ describe("discoverRepos", () => {
     expect(truncated).toBe(false);
     expect(repos[0]?.agentSeen).toBe(false);
     expect(repos[0]?.agentSeenAt).toBeNull();
+  });
+
+  it("marks the walk truncated when a directory is unreadable", async () => {
+    await makeRepo("projects/app");
+    const sealed = join(home, "sealed");
+    await mkdir(sealed, { recursive: true });
+    await makeRepo("sealed/hidden");
+    await chmod(sealed, 0o000);
+    try {
+      const { repos, truncated } = await run();
+      expect(truncated).toBe(true);
+      expect(repos.map((repo) => repo.name)).toEqual(["app"]);
+    } finally {
+      await chmod(sealed, 0o700);
+    }
+  });
+
+  it("marks the walk truncated when home itself is unreadable", async () => {
+    await makeRepo("projects/app");
+    await chmod(home, 0o000);
+    try {
+      const { repos, truncated } = await run();
+      expect(truncated).toBe(true);
+      expect(repos).toEqual([]);
+    } finally {
+      await chmod(home, 0o700);
+    }
   });
 
   it("can skip agent history for identity-only resolve walks", async () => {

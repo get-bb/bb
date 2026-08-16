@@ -1118,9 +1118,12 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
+    // v126: home discovery marks unreadable or failed directory walks as
+    // truncated so workspace.resolve_github_repository cannot confirm
+    // not_found when a sealed tree may still hold the checkout.
     // v125: workspace.resolve_github_repository maps a numeric GitHub
     // repository id to a local checkout the host already has.
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(125);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(126);
   });
 
   it("requires an explicit intent on a thread stop command", () => {
