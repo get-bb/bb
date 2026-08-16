@@ -95,10 +95,16 @@ function BackgroundActivitySummary({
         className="min-w-0 truncate max-md:pointer-coarse:whitespace-normal max-md:pointer-coarse:line-clamp-2 max-md:pointer-coarse:break-words"
         title={row.description}
       >
+        {/* The prefix is ~27 characters and consumes the whole first line on a
+            phone, pushing the description onto a second line before it has had
+            any room. The icon already identifies the kind of task and the row's
+            aria-label still carries the full "<label>: <description>", so drop
+            the visible prefix on touch and give the description the width. */}
         <span
-          className={
-            active ? activityMetaClass("active") : "text-muted-foreground"
-          }
+          className={cn(
+            active ? activityMetaClass("active") : "text-muted-foreground",
+            "max-md:pointer-coarse:hidden",
+          )}
         >
           {display.runningPrefix}{" "}
         </span>
