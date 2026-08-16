@@ -17,7 +17,6 @@ import {
   BRIDGE_NOTIFICATION_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   modelListParamsSchema,
-  threadCompactParamsSchema,
   threadDiscardParamsSchema,
   threadForkParamsSchema,
   threadResumeParamsSchema,
@@ -81,10 +80,9 @@ interface BuildPiSessionOptionsArgs {
 }
 
 /**
- * The canonical Provider Bridge Protocol params, per method. `model/list`,
- * `thread/compact`, and `thread/discard` address the session by bb thread id
- * — pi's provider identity is that id, so it carries `providerThreadId`
- * without reading it.
+ * The canonical Provider Bridge Protocol params, per method. `model/list` and
+ * `thread/discard` address the session by bb thread id — pi's provider
+ * identity is that id, so it carries `providerThreadId` without reading it.
  */
 const piCommandSchema = z.discriminatedUnion("method", [
   z.object({
@@ -123,10 +121,6 @@ const piCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("thread/stop"),
     params: threadStopParamsSchema,
-  }),
-  z.object({
-    method: z.literal("thread/compact"),
-    params: threadCompactParamsSchema,
   }),
   z.object({
     method: z.literal("thread/discard"),
@@ -553,7 +547,7 @@ async function handleRequest(
       // "checkpoint" — thread/fork accepts providerCheckpointId and
       // materializes the source history up to that entry
       // (SessionManager.createBranchedSession). manualCompaction is true —
-      // thread/compact is implemented below.
+      // the pi session can compact its own context on demand.
       sendResult(request.id, {
         protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
         capabilities: {
@@ -596,9 +590,6 @@ async function handleRequest(
     case "thread/stop":
       await handleThreadStop(request.id, request.params);
       break;
-    case "thread/compact":
-      handleThreadCompact(request.id, request.params);
-      break;
     case "thread/discard":
       sendResult(request.id, await handleThreadDiscard(request.params));
       break;
@@ -616,7 +607,7 @@ type ThreadForkParams = z.infer<typeof threadForkParamsSchema>;
 type TurnStartParams = z.infer<typeof turnStartParamsSchema>;
 type TurnSteerParams = z.infer<typeof turnSteerParamsSchema>;
 type ThreadStopParams = z.infer<typeof threadStopParamsSchema>;
-type ThreadRefParams = z.infer<typeof threadCompactParamsSchema>;
+type ThreadRefParams = z.infer<typeof threadDiscardParamsSchema>;
 
 /**
  * The session-construction fields every constructing method carries, mapped
@@ -937,31 +928,6 @@ async function handleThreadStop(
   // A release detaches the idle session and must not fabricate an
   // interruption (#1584): the close path emits no turn events.
   sendResult(id, await closePiThreadSession(params.threadId));
-}
-
-function handleThreadCompact(
-  id: string | number,
-  params: ThreadRefParams,
-): void {
-  const threadSession = sessions.get(params.threadId);
-  if (!threadSession || threadSession.closing) {
-    sendError(id, -32000, "No active pi session");
-    return;
-  }
-  if (threadSession.session.getIsProcessing()) {
-    sendError(id, -32000, "Cannot compact context while a turn is active");
-    return;
-  }
-  // Pi reports the terminal outcome through compaction_end. The command result
-  // only acknowledges that the validated maintenance operation was started.
-  void threadSession.session.compact().catch((error: unknown) => {
-    reportSessionError({
-      error,
-      sessionSerial: threadSession.sessionSerial,
-      threadId: params.threadId,
-    });
-  });
-  sendResult(id, { threadId: params.threadId });
 }
 
 async function handleThreadDiscard(

@@ -58,6 +58,12 @@ fact may only _narrow_ what the provider's declaration advertises (a
 declared fork affordance can turn out unavailable for this agent), never
 widen it.
 
+`manualCompaction` is the one capability with no request method behind it:
+it gates the `/compact` affordance, and compaction is triggered today by a
+standalone builtin `/compact` prompt travelling the normal turn pipeline,
+which each bridge maps to its provider's compaction command. A structured
+compaction request is future work — reintroduce it only with a sender.
+
 ## Identifiers
 
 Three identifier families, three owners:

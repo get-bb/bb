@@ -143,8 +143,9 @@ export interface ProviderRegistryService {
    */
   supportsSessionRewind(providerId: string): boolean;
   /**
-   * Whether BB can explicitly request context compaction (the canonical
-   * `thread/compact` bridge method). Registered providers answer from their
+   * Whether BB can explicitly request context compaction — today by sending a
+   * standalone builtin `/compact` prompt, which the provider's bridge maps to
+   * its native compaction command. Registered providers answer from their
    * plugin declaration; dynamic ACP ids answer from the resolved agent's own
    * declaration via {@link ProviderRegistryDeps.resolveAcpAgentCapabilities}.
    */

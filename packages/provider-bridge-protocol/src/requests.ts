@@ -11,9 +11,9 @@ import { bridgeExecutionOptionsSchema } from "./execution-options.js";
 /**
  * Canonical runtime → bridge request methods. One vocabulary for every
  * provider: a bridge maps these to its provider's native dialect internally
- * (codex `thread/stop` → `turn/interrupt`, compaction → `thread/compact/start`,
- * …). Methods gated by a handshake capability are simply never sent to a
- * bridge that did not advertise them.
+ * (codex `thread/stop` → `turn/interrupt`, `thread/discard` →
+ * `thread/archive`, …). Methods gated by a handshake capability are simply
+ * never sent to a bridge that did not advertise them.
  */
 export const BRIDGE_REQUEST_METHODS = {
   initialize: "initialize",
@@ -27,7 +27,6 @@ export const BRIDGE_REQUEST_METHODS = {
   threadArchive: "thread/archive",
   threadUnarchive: "thread/unarchive",
   threadGoalClear: "thread/goal/clear",
-  threadCompact: "thread/compact",
   turnStart: "turn/start",
   turnSteer: "turn/steer",
   skillsConfigure: "skills/configure",
@@ -107,7 +106,6 @@ export const threadDiscardParamsSchema = threadRefParams;
 export const threadArchiveParamsSchema = threadRefParams;
 export const threadUnarchiveParamsSchema = threadRefParams;
 export const threadGoalClearParamsSchema = threadRefParams;
-export const threadCompactParamsSchema = threadRefParams;
 
 export const threadNameSetParamsSchema = z
   .object({

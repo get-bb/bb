@@ -21,9 +21,8 @@
  * - Canonical → codex method mapping: `thread/stop {intent: "interrupt"}` →
  *   `turn/interrupt`; `{intent: "release"}` → kill that thread's child (no
  *   fabricated interruption — the rollout stays resumable, #1584);
- *   `thread/discard` → `thread/archive`; `thread/compact` (and the
- *   standalone builtin /compact prompt) → `thread/compact/start`;
- *   `skills/configure` → `skills/extraRoots/set`.
+ *   `thread/discard` → `thread/archive`; a standalone builtin /compact prompt
+ *   → `thread/compact/start`; `skills/configure` → `skills/extraRoots/set`.
  * - Codex approval requests are decoded to canonical
  *   `PendingInteractionPayload`s and forwarded as `interaction/request`;
  *   resolutions map back through the shared permission mapping.
@@ -50,7 +49,6 @@ import {
   modelListParamsSchema,
   skillsConfigureParamsSchema,
   threadArchiveParamsSchema,
-  threadCompactParamsSchema,
   threadDiscardParamsSchema,
   threadForkParamsSchema,
   threadGoalClearParamsSchema,
@@ -160,10 +158,6 @@ const codexBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("thread/goal/clear"),
     params: threadGoalClearParamsSchema,
-  }),
-  z.object({
-    method: z.literal("thread/compact"),
-    params: threadCompactParamsSchema,
   }),
   z.object({
     method: z.literal("skills/configure"),
@@ -1300,8 +1294,9 @@ function handleInitialize(id: string | number): void {
   // Session-behavior facts, each backed by the codex methods this bridge
   // implements: sessionRestore — rollouts persist and thread/resume reopens
   // them; archiveSync/nameSync — codex thread/archive|unarchive and
-  // thread/name/set; goalState — thread/goal/clear; manualCompaction —
-  // thread/compact/start; fork "checkpoint" — thread/fork accepts lastTurnId;
+  // thread/name/set; goalState — thread/goal/clear; manualCompaction — a
+  // standalone builtin /compact prompt dispatches codex thread/compact/start;
+  // fork "checkpoint" — thread/fork accepts lastTurnId;
   // approvalRequestPolicy "runtime" — codex forwards every approval and the
   // runtime applies thread policy.
   sendResult(id, {
@@ -1738,42 +1733,6 @@ async function handleThreadMaintenance(
   }
 }
 
-async function handleThreadCompact(
-  id: string | number,
-  params: ThreadRefParamsShape,
-): Promise<void> {
-  const session = sessionsByBbThreadId.get(params.threadId);
-  if (
-    !session ||
-    session.closing ||
-    session.connection === null ||
-    session.connection.exited ||
-    session.codexThreadId === null
-  ) {
-    sendError(
-      id,
-      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
-      `No active codex session for thread "${params.threadId}"`,
-    );
-    return;
-  }
-  try {
-    await session.connection.request({
-      method: "thread/compact/start",
-      params: { threadId: session.codexThreadId },
-      resultSchema: ignoredChildResultSchema,
-      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
-    });
-    sendResult(id, { ok: true });
-  } catch (error) {
-    sendError(
-      id,
-      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
-      error instanceof Error ? error.message : String(error),
-    );
-  }
-}
-
 async function handleSkillsConfigure(
   id: string | number,
   params: z.infer<typeof skillsConfigureParamsSchema>,
@@ -1896,9 +1855,6 @@ async function handleRequest(
         method: "thread/goal/clear",
         params: { threadId: request.params.providerThreadId },
       });
-      break;
-    case "thread/compact":
-      await handleThreadCompact(request.id, request.params);
       break;
     case "skills/configure":
       await handleSkillsConfigure(request.id, request.params);

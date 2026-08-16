@@ -543,10 +543,16 @@ Two things were audited and deliberately left:
   assertions across ~4,000 lines of three translator suites for no behaviour
   change, so it is left as a follow-up.
 - `thread/compact` reached nothing on ANY provider: the runtime adapter has no
-  compaction command at all, so pi's and codex's implementations are unreachable
-  too. Only ACP's was deleted here, because ACP's own handshake declares the
-  capability false. Whether manual compaction should be wired up or dropped
-  everywhere is a product question, not a dialect cleanup.
+  compaction command at all, so pi's and codex's implementations were
+  unreachable too. ACP's went first (its handshake declares the capability
+  false), and the canonical method itself has now been deleted — schema,
+  `BRIDGE_REQUEST_METHODS` entry, and both remaining bridge handlers. Manual
+  compaction is not lost: it travels the prompt path as a standalone builtin
+  `/compact` mention through the normal turn pipeline (codex maps it to
+  `thread/compact/start`), and the `manualCompaction` handshake fact plus the
+  declared `supportsManualCompaction` still gate the UI affordance. A
+  structured trigger is future work; the protocol is unshipped, so
+  reintroducing one costs nothing — but only with a sender.
 
 ## Design notes from the #1641 prototype comparison (thr_fxnmqjf9a4)
 
@@ -1077,10 +1083,9 @@ surfaces, onboarding) must express the full richness their hardcoded
 surfaces have today — the point of this plan is to raise other providers to
 their level, never to flatten them toward a common denominator.
 
-- DONE (wave 4) — `supportsManualCompaction` string list → capability +
-  `thread/compact` protocol method. The protocol half already shipped in
-  phases 1–2 (`BRIDGE_REQUEST_METHODS.threadCompact`, the
-  `manualCompaction` handshake fact) and the plugin half in phase 4
+- DONE (wave 4) — `supportsManualCompaction` string list → capability. The
+  protocol half already shipped in phases 1–2 (the `manualCompaction`
+  handshake fact) and the plugin half in phase 4
   (`capabilities.supportsManualCompaction` on the declaration). What was
   left was the dynamic ACP tier's `MANUAL_COMPACTION_ACP_PROVIDER_IDS =
 ["acp-opencode"]` set, which is now a per-agent declaration:
@@ -1091,7 +1096,11 @@ their level, never to flatten them toward a common denominator.
   `resolveAcpAgentCapabilitiesForProviderId` (custom agent wins over known
   agent, same precedence as the launch spec). Deliberate behavior change:
   a custom agent that shadows `acp-opencode` must now declare compaction
-  itself instead of inheriting it from the id.
+  itself instead of inheriting it from the id. The companion
+  `thread/compact` request method was later dropped entirely (see the
+  dialect-cleanup notes above):
+  the capability gates the affordance, and the mechanism is the standalone
+  builtin `/compact` prompt through the normal turn pipeline.
 - DONE (wave 4) — `skillProviderSchema` closed enum → open provider id.
   Widening the provider field alone would have been cosmetic, because the
   scope vocabulary spelled the provider out a second time

@@ -856,68 +856,6 @@ describe("pi bridge", () => {
     }
   });
 
-  it("acknowledges Pi compaction before the SDK reports its outcome", async () => {
-    const bridge = createBridgeJsonRpcTestHarness(handleLine);
-    const session = createControlledPiAgentSession();
-    let rejectCompaction: ((error: Error) => void) | undefined;
-    session.compact.mockReturnValueOnce(
-      new Promise<void>((_resolve, reject) => {
-        rejectCompaction = reject;
-      }),
-    );
-    mockCreateAgentSession.mockResolvedValue({ session });
-
-    try {
-      bridge.sendRequest(
-        1,
-        "thread/start",
-        sessionParams({ threadId: "thread-compact" }),
-      );
-      await bridge.waitForResponse(1);
-
-      bridge.sendRequest(2, "thread/compact", threadRef("thread-compact"));
-
-      await expect(bridge.waitForResponse(2)).resolves.toMatchObject({
-        id: 2,
-        result: { threadId: "thread-compact" },
-      });
-      expect(session.compact).toHaveBeenCalledOnce();
-      expect(session.prompt).not.toHaveBeenCalled();
-
-      bridge.sendRequest(
-        3,
-        "turn/steer",
-        turnSteerParams("thread-compact", "turn-compact", [
-          { type: "text", text: "wait for compaction", mentions: [] },
-        ]),
-      );
-      await expect(bridge.waitForResponse(3)).resolves.toMatchObject({
-        id: 3,
-        error: {
-          message: "Cannot steer while context compaction is active",
-        },
-      });
-      expect(session.prompt).not.toHaveBeenCalled();
-
-      rejectCompaction?.(new Error("Pi compaction failed"));
-      await bridge.flushWork();
-      expect(
-        bridge.messages.filter((message) => message.id === 2),
-      ).toHaveLength(1);
-      expect(bridge.messages).toContainEqual({
-        jsonrpc: "2.0",
-        method: "error",
-        params: {
-          threadId: "thread-compact",
-          providerThreadId: "thread-compact",
-          message: "Pi compaction failed",
-        },
-      });
-    } finally {
-      bridge.restore();
-    }
-  });
-
   it("waits for an in-flight close before replacing the same thread", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const sessions: ControlledPiAgentSession[] = [];

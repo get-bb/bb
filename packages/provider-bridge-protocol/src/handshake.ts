@@ -36,7 +36,12 @@ export const bridgeCapabilitiesSchema = z
     nameSync: z.boolean().default(false),
     /** The bridge supports thread/goal/clear. */
     goalState: z.boolean().default(false),
-    /** The bridge supports explicit context compaction via thread/compact. */
+    /**
+     * The bridge can compact a thread's context on demand. It gates the
+     * `/compact` affordance; the trigger today is a standalone builtin
+     * `/compact` prompt through the normal turn pipeline, not a dedicated
+     * request method.
+     */
     manualCompaction: z.boolean().default(false),
     /**
      * Session cloning support. "tip" clones only the current end of a session
