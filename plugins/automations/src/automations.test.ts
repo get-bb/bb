@@ -1213,8 +1213,10 @@ describe("script process containment", () => {
         timeoutMs: 100,
         serverUrl: "http://127.0.0.1:38886",
       });
+      // The runner prefixes a warning line when no bb CLI is on PATH (CI), so
+      // find the pid the script echoed rather than assuming it comes first.
       const childPid = Number.parseInt(
-        result.output.trim().split(/\s+/u)[0] ?? "",
+        result.output.split(/\s+/u).find((token) => /^\d+$/u.test(token)) ?? "",
         10,
       );
       expect(result.timedOut).toBe(true);
