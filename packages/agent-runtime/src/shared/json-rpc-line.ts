@@ -1,3 +1,4 @@
+// Node readline treats these valid JSON string characters as line endings.
 const JSON_LINE_SEPARATOR = "\u2028";
 const JSON_PARAGRAPH_SEPARATOR = "\u2029";
 
