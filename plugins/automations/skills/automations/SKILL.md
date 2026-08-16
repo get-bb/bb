@@ -20,6 +20,12 @@ Use `script` when the output is fully determined by code: watchdogs, threshold a
 
 Design the script to print nothing when there is nothing to report: an exit-0 run with empty stdout/stderr, or a last non-empty line of `{"wakeAgent": false}`, is recorded as a skipped silent tick. Any other output is captured; non-zero exit or timeout is recorded as a failed run.
 
+Execution safety is fail-closed:
+
+- Script timeout and output-limit termination applies to the whole spawned
+  process group, including descendant processes (on Windows, to the direct
+  child).
+
 Use `agent` when the run needs reasoning: summarize a feed, pick interesting items, draft a human-friendly message, or branch on content.
 
 Creating:

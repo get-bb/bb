@@ -31,6 +31,7 @@ import {
 } from "./schedule-helpers.js";
 import {
   bbBinaryCandidates,
+  executeStoredScript,
   isWakeAgentSuppressed,
   mapScriptResultToRun,
   scriptPathEnv,
@@ -735,6 +736,56 @@ describe("bb CLI injection for script runs", () => {
     expect(scriptPathEnv("/daemon/bundle/bb", undefined)).toBe(
       "/daemon/bundle",
     );
+  });
+});
+
+describe("script process containment", () => {
+  it("terminates descendant processes when a script times out", async () => {
+    const pluginDataDir = await mkdtemp(
+      join(tmpdir(), "bb-auto-process-group-"),
+    );
+    const scriptDir = automationScriptDir(pluginDataDir, "auto_timeout");
+    await mkdir(scriptDir, { recursive: true });
+    await writeFile(
+      join(scriptDir, "script.sh"),
+      "sleep 30 &\nchild_pid=$!\necho $child_pid\nwait $child_pid\n",
+    );
+
+    try {
+      const result = await executeStoredScript({
+        pluginDataDir,
+        automationId: "auto_timeout",
+        runId: "run_timeout",
+        projectId: "proj_test",
+        scriptFile: "script.sh",
+        interpreter: "bash",
+        timeoutMs: 100,
+        serverUrl: "http://127.0.0.1:38886",
+      });
+      const childPid = Number.parseInt(
+        result.output.trim().split(/\s+/u)[0] ?? "",
+        10,
+      );
+      expect(result.timedOut).toBe(true);
+      expect(Number.isSafeInteger(childPid)).toBe(true);
+
+      let childExists = true;
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        try {
+          process.kill(childPid, 0);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ESRCH") {
+            childExists = false;
+            break;
+          }
+          throw error;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      expect(childExists).toBe(false);
+    } finally {
+      await rm(pluginDataDir, { recursive: true, force: true });
+    }
   });
 });
 

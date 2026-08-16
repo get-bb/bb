@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { constants } from "node:fs";
 import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
@@ -167,7 +167,9 @@ export interface ScriptRunOutcome {
   skipReason: string | null;
 }
 
-export function mapScriptResultToRun(result: ScriptRunResult): ScriptRunOutcome {
+export function mapScriptResultToRun(
+  result: ScriptRunResult,
+): ScriptRunOutcome {
   if (result.timedOut) {
     return {
       status: "failed",
@@ -213,27 +215,93 @@ export function mapScriptResultToRun(result: ScriptRunResult): ScriptRunOutcome 
   };
 }
 
-function trimOutput(output: string): string {
-  if (Buffer.byteLength(output, "utf8") <= SCRIPT_OUTPUT_MAX_BYTES) {
-    return output;
+function signalProcessGroup(child: ChildProcess, signal: NodeJS.Signals): void {
+  try {
+    if (process.platform !== "win32" && child.pid !== undefined) {
+      process.kill(-child.pid, signal);
+      return;
+    }
+    child.kill(signal);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
+    try {
+      child.kill(signal);
+    } catch {
+      // The child may have exited between the group and direct signals.
+    }
   }
-  return `${output.slice(0, SCRIPT_OUTPUT_MAX_BYTES)}\n[output truncated]\n`;
 }
 
-function combinedOutput(stdout: string | Buffer, stderr: string | Buffer): string {
-  return trimOutput(`${String(stdout)}${String(stderr)}`);
-}
+function executeWithProcessGroup(args: {
+  command: string;
+  scriptPath: string;
+  cwd: string;
+  timeoutMs: number;
+  env: NodeJS.ProcessEnv;
+}): Promise<ScriptRunResult> {
+  return new Promise((resolve) => {
+    let timedOut = false;
+    let outputLimitExceeded = false;
+    let outputBytes = 0;
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    let forceKill: NodeJS.Timeout | undefined;
+    let timeout: NodeJS.Timeout;
+    const child = spawn(args.command, [args.scriptPath], {
+      cwd: args.cwd,
+      detached: process.platform !== "win32",
+      env: args.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
 
-interface ExecFileError extends Error {
-  code?: number | string;
-  signal?: NodeJS.Signals;
-  killed?: boolean;
-  stdout?: string | Buffer;
-  stderr?: string | Buffer;
-}
-
-function exitCodeFromError(error: ExecFileError): number | null {
-  return typeof error.code === "number" ? error.code : null;
+    const terminateGroup = (): void => {
+      signalProcessGroup(child, "SIGTERM");
+      if (forceKill) return;
+      forceKill = setTimeout(() => {
+        signalProcessGroup(child, "SIGKILL");
+      }, 1_000);
+      forceKill.unref();
+    };
+    const capture = (target: Buffer[], chunk: Buffer | string): void => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      const remaining = SCRIPT_OUTPUT_MAX_BYTES - outputBytes;
+      if (remaining > 0) {
+        const captured = buffer.subarray(0, remaining);
+        target.push(captured);
+        outputBytes += captured.byteLength;
+      }
+      if (buffer.byteLength > remaining && !outputLimitExceeded) {
+        outputLimitExceeded = true;
+        terminateGroup();
+      }
+    };
+    child.stdout?.on("data", (chunk: Buffer) => capture(stdoutChunks, chunk));
+    child.stderr?.on("data", (chunk: Buffer) => capture(stderrChunks, chunk));
+    child.once("error", (error) => {
+      capture(stderrChunks, `${error.message}\n`);
+      terminateGroup();
+    });
+    child.once("close", (code) => {
+      clearTimeout(timeout);
+      if (forceKill) clearTimeout(forceKill);
+      if (timedOut || outputLimitExceeded) {
+        signalProcessGroup(child, "SIGKILL");
+      }
+      const suffix = outputLimitExceeded ? "\n[output truncated]\n" : "";
+      resolve({
+        exitCode: timedOut ? null : outputLimitExceeded ? 1 : code,
+        output: `${Buffer.concat(stdoutChunks).toString("utf8")}${Buffer.concat(
+          stderrChunks,
+        ).toString("utf8")}${suffix}`,
+        timedOut,
+      });
+    });
+    timeout = setTimeout(() => {
+      timedOut = true;
+      terminateGroup();
+    }, args.timeoutMs);
+    timeout.unref();
+  });
 }
 
 export async function executeStoredScript(args: {
@@ -252,7 +320,8 @@ export async function executeStoredScript(args: {
     automationId: args.automationId,
     scriptFile: args.scriptFile,
   });
-  const interpreter = args.interpreter ?? resolveDefaultInterpreter(args.scriptFile);
+  const interpreter =
+    args.interpreter ?? resolveDefaultInterpreter(args.scriptFile);
   const command = resolveInterpreterCommand(interpreter);
   const bbPath = await resolveBbBinary();
   // A script that never calls bb must still run, so an unresolved CLI only
@@ -274,24 +343,12 @@ export async function executeStoredScript(args: {
   }
   const cwd = scriptsRoot(args.pluginDataDir);
   await mkdir(cwd, { recursive: true });
-  try {
-    const result = await execFileAsync(command, [scriptPath], {
-      cwd,
-      timeout: Math.min(args.timeoutMs, AUTOMATION_SCRIPT_TIMEOUT_MAX_MS),
-      maxBuffer: SCRIPT_OUTPUT_MAX_BYTES,
-      env: scriptEnv,
-    });
-    return {
-      exitCode: 0,
-      output: `${warning}${combinedOutput(result.stdout, result.stderr)}`,
-      timedOut: false,
-    };
-  } catch (error) {
-    const err = error as ExecFileError;
-    return {
-      exitCode: exitCodeFromError(err),
-      output: `${warning}${combinedOutput(err.stdout ?? "", err.stderr ?? "")}`,
-      timedOut: err.killed === true && err.signal === "SIGTERM",
-    };
-  }
+  const result = await executeWithProcessGroup({
+    command,
+    scriptPath,
+    cwd,
+    timeoutMs: Math.min(args.timeoutMs, AUTOMATION_SCRIPT_TIMEOUT_MAX_MS),
+    env: scriptEnv,
+  });
+  return { ...result, output: `${warning}${result.output}` };
 }
