@@ -18,8 +18,15 @@ import {
   isApprovalPendingInteractionResolution,
 } from "@bb/domain";
 import { toOptionalString } from "@bb/provider-bridge-protocol/bridge-kit";
-import type { AcpPermissionResponse } from "./bridge-protocol.js";
 import type { AcpPermissionOptionKind } from "./wire.js";
+
+/**
+ * The bridge maps the user's decision back onto the ACP options it kept for
+ * the pending permission request.
+ */
+export interface AcpPermissionResponse {
+  decision: "allow_once" | "allow_for_session" | "deny";
+}
 
 export interface AcpPermissionToolCall {
   toolCallId: string;
@@ -86,8 +93,8 @@ export function buildAcpPermissionInteractionPayload(args: {
 
 /**
  * Map a canonical resolution back onto the ACP decision. Null when the
- * resolution kind does not match the approval payload — the adapter turns
- * that into an encode error, the bridge into a cancelled permission.
+ * resolution kind does not match the approval payload, which the bridge turns
+ * into a cancelled permission.
  */
 export function resolveAcpPermissionDecision(args: {
   payload: PendingInteractionPayload;

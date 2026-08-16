@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import { threadScope, turnScope, type ThreadEvent } from "@bb/domain";
 import type { ProviderRuntimeEvent } from "@bb/provider-bridge-protocol/bridge-kit";
 import {
-  ACP_COMPACTION_COMPLETED_METHOD,
-  ACP_COMPACTION_STARTED_METHOD,
   ACP_FS_WRITE_METHOD,
   ACP_TURN_COMPLETED_METHOD,
   ACP_TURN_STARTED_METHOD,
@@ -232,24 +230,6 @@ describe("acp event translation (bridge-shared invariants)", () => {
  * dialect, so these ThreadEvent shapes have no other home.
  */
 describe("acp event translation (moved from the legacy adapter suite)", () => {
-  function compactionStartedEvent(): ProviderRuntimeEvent {
-    return {
-      jsonrpc: "2.0",
-      method: ACP_COMPACTION_STARTED_METHOD,
-      params: { threadId: THREAD_ID },
-    };
-  }
-
-  function compactionCompletedEvent(
-    params: Record<string, unknown>,
-  ): ProviderRuntimeEvent {
-    return {
-      jsonrpc: "2.0",
-      method: ACP_COMPACTION_COMPLETED_METHOD,
-      params: { threadId: THREAD_ID, ...params },
-    };
-  }
-
   function countChangedLines(diff: string | undefined): {
     added: number;
     removed: number;
@@ -269,83 +249,6 @@ describe("acp event translation (moved from the legacy adapter suite)", () => {
     translator.translateAcpEvent(turnStartedEvent(), context);
     return translator;
   }
-
-  it("translates successful maintenance prompts into a compaction lifecycle", () => {
-    const translator = createAcpEventTranslator({ providerId: "acp" });
-
-    const started = translator.translateAcpEvent(
-      compactionStartedEvent(),
-      context,
-    );
-    const completed = translator.translateAcpEvent(
-      compactionCompletedEvent({ status: "completed" }),
-      context,
-    );
-
-    expect(started.map((event) => event.type)).toEqual([
-      "turn/started",
-      "item/started",
-    ]);
-    expect(completed).toEqual([
-      expect.objectContaining({
-        type: "thread/compacted",
-        scope: turnScope("turn-1"),
-      }),
-      expect.objectContaining({
-        type: "turn/completed",
-        scope: turnScope("turn-1"),
-        status: "completed",
-      }),
-    ]);
-  });
-
-  it("does not report failed maintenance prompts as compacted", () => {
-    const translator = createAcpEventTranslator({ providerId: "acp" });
-    translator.translateAcpEvent(compactionStartedEvent(), context);
-
-    expect(
-      translator.translateAcpEvent(
-        compactionCompletedEvent({
-          status: "failed",
-          error: "Provider rejected /compact",
-        }),
-        context,
-      ),
-    ).toEqual([
-      expect.objectContaining({
-        type: "turn/completed",
-        scope: turnScope("turn-1"),
-        status: "failed",
-        error: { message: "Provider rejected /compact" },
-      }),
-    ]);
-  });
-
-  it("completes streamed items before ending a compaction turn", () => {
-    const translator = createAcpEventTranslator({ providerId: "acp" });
-    translator.translateAcpEvent(compactionStartedEvent(), context);
-    translator.translateAcpEvent(
-      updateEvent({
-        sessionUpdate: "agent_message_chunk",
-        content: { type: "text", text: "Compacted successfully" },
-      }),
-      context,
-    );
-
-    const events = translator.translateAcpEvent(
-      compactionCompletedEvent({ status: "completed" }),
-      context,
-    );
-
-    expect(events.map((event) => event.type)).toEqual([
-      "item/completed",
-      "thread/compacted",
-      "turn/completed",
-    ]);
-    expect(events[0]).toMatchObject({
-      item: { type: "agentMessage", text: "Compacted successfully" },
-    });
-  });
 
   it("translates ACP usage updates into exact context-window usage", () => {
     expect(

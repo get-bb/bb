@@ -85,22 +85,96 @@ function notifications(method: string): BridgeJsonRpcOutputMessage[] {
   return output.messages.filter((message) => message.method === method);
 }
 
-interface StartThreadArgs {
+/**
+ * The canonical thread events the bridge emitted, oldest first. The `acp/*`
+ * envelopes the bridge builds internally never reach the wire, so every
+ * session-scoped assertion reads the translated events.
+ */
+function threadEvents(): Record<string, unknown>[] {
+  return notifications("thread/event").flatMap((message) => {
+    const params = message.params;
+    if (typeof params !== "object" || params === null || Array.isArray(params)) {
+      return [];
+    }
+    const event = params.event;
+    return typeof event === "object" && event !== null && !Array.isArray(event)
+      ? [event as Record<string, unknown>]
+      : [];
+  });
+}
+
+function threadEventsOfType(type: string): Record<string, unknown>[] {
+  return threadEvents().filter((event) => event.type === type);
+}
+
+/** The bb thread id a provider session id belongs to. */
+const bbThreadIdByProviderThreadId = new Map<string, string>();
+
+function bbThreadIdFor(providerThreadId: string): string {
+  const recorded = bbThreadIdByProviderThreadId.get(providerThreadId);
+  if (recorded !== undefined) {
+    return recorded;
+  }
+  // Sessions started with a raw request are only visible through the identity
+  // the bridge announced for them.
+  for (const message of notifications("thread/identity")) {
+    const params = message.params;
+    if (
+      typeof params === "object" &&
+      params !== null &&
+      !Array.isArray(params) &&
+      params.providerThreadId === providerThreadId &&
+      typeof params.threadId === "string"
+    ) {
+      return params.threadId;
+    }
+  }
+  throw new Error(`No bb thread id recorded for ${providerThreadId}`);
+}
+
+const CLIENT_REQUEST_ID = "creq_abcdefghjk";
+
+function executionOptions(args: {
   permissionMode?: "accept-edits" | "full";
   permissionEscalation?: "ask" | "deny" | null;
   envVars?: Record<string, string>;
   instructions?: string;
+  model?: string;
+  reasoningLevel?: ReasoningLevel;
+  serviceTier?: "default" | "fast";
+  providerOptions?: Record<string, unknown>;
+}): Record<string, unknown> {
+  const permissionMode = args.permissionMode ?? "full";
+  return {
+    ...(permissionMode === "full"
+      ? {
+          permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
+          permissionEscalation: null,
+        }
+      : {
+          permissionMode: "accept-edits",
+          permissionScope: "workspace",
+          approvalReviewer: "user",
+          permissionEscalation: args.permissionEscalation ?? "ask",
+        }),
+    ...(args.envVars ? { envVars: args.envVars } : {}),
+    ...(args.instructions ? { instructions: args.instructions } : {}),
+    ...(args.model ? { model: args.model } : {}),
+    ...(args.reasoningLevel ? { reasoningLevel: args.reasoningLevel } : {}),
+    ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
+    ...(args.providerOptions ? { providerOptions: args.providerOptions } : {}),
+  };
+}
+
+interface AgentLaunchArgs {
   agent?: { command: string; args: string[] };
-  dynamicTools?: DynamicTool[];
-  modelSelection?:
-    | {
-        listCommand: { command: string; args: string[] };
-        selectFlag: string;
-        model: string;
-        reasoningLevel?: ReasoningLevel;
-      }
-    | { modelId: string; reasoningLevel?: ReasoningLevel };
-  launchReasoningLevel?: ReasoningLevel;
+  envVars?: Record<string, string>;
+  /** `listArgs` the agent binary itself understands (see the fake agent). */
+  modelListArgs?: string[];
+  selectFlag?: string;
+  primaryModels?: string[];
   reasoningCli?: {
     flag: string;
     supportedLevels: ReasoningLevel[];
@@ -121,6 +195,49 @@ interface StartThreadArgs {
   };
 }
 
+/**
+ * The ACP launch spec a request carries in `options.providerOptions`; the
+ * bridge derives the agent command, model discovery, and every CLI flag set
+ * from it.
+ */
+function acpLaunchSpec(args: AgentLaunchArgs): Record<string, unknown> {
+  const agent = args.agent ?? {
+    command: process.execPath,
+    args: [FAKE_AGENT_PATH],
+  };
+  return {
+    displayName: "Fake ACP",
+    command: agent.command,
+    args: agent.args,
+    env: args.envVars ?? {},
+    ...(args.modelListArgs
+      ? {
+          modelCli: {
+            // The bridge runs the agent binary itself for model discovery, so
+            // the list args replace the launch args entirely.
+            listArgs: [...agent.args, ...args.modelListArgs],
+            ...(args.selectFlag ? { selectFlag: args.selectFlag } : {}),
+            primaryModels: args.primaryModels ?? [],
+          },
+        }
+      : {}),
+    ...(args.reasoningCli ? { reasoningCli: args.reasoningCli } : {}),
+    ...(args.nativeReasoning ? { nativeReasoning: args.nativeReasoning } : {}),
+    ...(args.permissionCli ? { permissionCli: args.permissionCli } : {}),
+  };
+}
+
+interface StartThreadArgs extends AgentLaunchArgs {
+  permissionMode?: "accept-edits" | "full";
+  permissionEscalation?: "ask" | "deny" | null;
+  instructions?: string;
+  dynamicTools?: DynamicTool[];
+  model?: string;
+  reasoningLevel?: ReasoningLevel;
+  serviceTier?: "default" | "fast";
+  additionalWorkspaceWriteRoots?: string[];
+}
+
 async function startThread(args?: StartThreadArgs): Promise<{
   bbThreadId: string;
   providerThreadId: string;
@@ -130,31 +247,19 @@ async function startThread(args?: StartThreadArgs): Promise<{
   const id = sendRequest("thread/start", {
     threadId: bbThreadId,
     cwd: workspaceDir,
-    agent: args?.agent ?? {
-      command: process.execPath,
-      args: [FAKE_AGENT_PATH],
-    },
-    ...(args?.modelSelection ? { modelSelection: args.modelSelection } : {}),
-    ...(args?.launchReasoningLevel !== undefined
-      ? { launchReasoningLevel: args.launchReasoningLevel }
-      : {}),
-    ...(args?.reasoningCli !== undefined
-      ? { reasoningCli: args.reasoningCli }
-      : {}),
-    ...(args?.nativeReasoning !== undefined
-      ? { nativeReasoning: args.nativeReasoning }
-      : {}),
-    ...(args?.permissionCli !== undefined
-      ? { permissionCli: args.permissionCli }
-      : {}),
-    permissionMode: args?.permissionMode ?? "full",
-    permissionEscalation:
-      args?.permissionEscalation === undefined
-        ? null
-        : args.permissionEscalation,
-    workspaceWriteRoots: [workspaceDir],
-    ...(args?.envVars ? { envVars: args.envVars } : {}),
-    ...(args?.instructions ? { instructions: args.instructions } : {}),
+    instructionMode: "append",
+    options: executionOptions({
+      ...args,
+      providerOptions: {
+        acpLaunchSpec: acpLaunchSpec(args ?? {}),
+        ...(args?.additionalWorkspaceWriteRoots
+          ? {
+              additionalWorkspaceWriteRoots:
+                args.additionalWorkspaceWriteRoots,
+            }
+          : {}),
+      },
+    }),
     ...(args?.dynamicTools ? { dynamicTools: args.dynamicTools } : {}),
   });
   const response = await waitForResponse(id);
@@ -171,60 +276,105 @@ async function startThread(args?: StartThreadArgs): Promise<{
     throw new Error("thread/start did not return a providerThreadId");
   }
   startedProviderThreadIds.push(result.providerThreadId);
+  bbThreadIdByProviderThreadId.set(result.providerThreadId, bbThreadId);
   return { bbThreadId, providerThreadId: result.providerThreadId };
 }
 
 async function stopThread(providerThreadId: string): Promise<void> {
-  const id = sendRequest("thread/stop", { threadId: providerThreadId });
+  const id = sendRequest("thread/stop", {
+    threadId: bbThreadIdFor(providerThreadId),
+    providerThreadId,
+    intent: "interrupt",
+    activeTurnId: null,
+  });
   await waitForResponse(id);
 }
 
-async function waitForTurnCompleted(): Promise<BridgeJsonRpcOutputMessage> {
-  return waitFor(
-    () => notifications("acp/turn/completed").at(-1),
-    "acp/turn/completed notification",
-  );
-}
-
-async function waitForCompactionCompleted(): Promise<BridgeJsonRpcOutputMessage> {
-  return waitFor(
-    () => notifications("acp/compaction/completed").at(-1),
-    "acp/compaction/completed notification",
-  );
-}
-
-function agentMessageTexts(): string[] {
-  return notifications("acp/update").flatMap((message) => {
-    const params = message.params;
-    if (
-      typeof params !== "object" ||
-      params === null ||
-      Array.isArray(params)
-    ) {
-      return [];
-    }
-    const update = params.update;
-    if (
-      typeof update !== "object" ||
-      update === null ||
-      Array.isArray(update)
-    ) {
-      return [];
-    }
-    if (update.sessionUpdate !== "agent_message_chunk") {
-      return [];
-    }
-    const content = update.content;
-    if (
-      typeof content !== "object" ||
-      content === null ||
-      Array.isArray(content) ||
-      typeof content.text !== "string"
-    ) {
-      return [];
-    }
-    return [content.text];
+/** Send a turn request in the canonical shape, keyed by provider session id. */
+/** Send `model/list` with the launch spec the bridge derives everything from. */
+function sendModelList(
+  args: AgentLaunchArgs & { modelLines?: string } = {},
+): number {
+  const { modelLines, ...launch } = args;
+  return sendRequest("model/list", {
+    providerOptions: {
+      acpLaunchSpec: acpLaunchSpec(
+        modelLines === undefined
+          ? launch
+          : {
+              ...launch,
+              modelListArgs: launch.modelListArgs ?? ["--list-models"],
+              envVars: {
+                ...launch.envVars,
+                FAKE_ACP_MODEL_LINES: modelLines,
+              },
+            },
+      ),
+    },
   });
+}
+
+function sendTurnRequest(
+  method: "turn/start" | "turn/steer",
+  providerThreadId: string,
+  params: Record<string, unknown>,
+): number {
+  return sendRequest(method, {
+    threadId: bbThreadIdFor(providerThreadId),
+    providerThreadId,
+    clientRequestId: CLIENT_REQUEST_ID,
+    options: executionOptions({}),
+    ...params,
+  });
+}
+
+async function waitForTurnCompleted(): Promise<Record<string, unknown>> {
+  return waitFor(
+    () => threadEventsOfType("turn/completed").at(-1),
+    "turn/completed thread event",
+  );
+}
+
+/**
+ * Assistant text as the runtime sees it: the agent-message items the
+ * translator opened, with their streamed deltas applied.
+ */
+function agentMessageTexts(): string[] {
+  const textsByItemId = new Map<string, string>();
+  const order: string[] = [];
+  const track = (itemId: string): void => {
+    if (!textsByItemId.has(itemId)) {
+      order.push(itemId);
+      textsByItemId.set(itemId, "");
+    }
+  };
+  for (const event of threadEvents()) {
+    if (event.type === "item/agentMessage/delta") {
+      const itemId = String(event.itemId);
+      track(itemId);
+      textsByItemId.set(
+        itemId,
+        (textsByItemId.get(itemId) ?? "") + String(event.delta ?? ""),
+      );
+      continue;
+    }
+    const item = event.item;
+    if (
+      event.type !== "item/completed" ||
+      typeof item !== "object" ||
+      item === null ||
+      Array.isArray(item)
+    ) {
+      continue;
+    }
+    const typedItem = item as { id: string; type: string; text?: string };
+    if (typedItem.type !== "agentMessage") {
+      continue;
+    }
+    track(typedItem.id);
+    textsByItemId.set(typedItem.id, typedItem.text ?? "");
+  }
+  return order.map((id) => textsByItemId.get(id) ?? "");
 }
 
 function callDynamicToolBridge(args: {
@@ -305,22 +455,17 @@ afterEach(async () => {
 describe("acp bridge", () => {
   it("answers initialize and lists grouped models without spawning an agent", async () => {
     const initializeId = sendRequest("initialize", {
-      clientInfo: { name: "bb", version: "1.0.0" },
+      protocolVersion: 1,
+      client: { name: "bb", version: "1.0.0" },
     });
     expect((await waitForResponse(initializeId)).result).toMatchObject({
-      ok: true,
       protocolVersion: 1,
       capabilities: { fork: "tip", approvalRequestPolicy: "runtime" },
     });
 
-    const modelListId = sendRequest("model/list", {
-      listCommand: {
-        command: process.execPath,
-        args: [
-          "-e",
-          'console.log("Available models\\n\\nauto - Auto\\ngrouped-1-low - Grouped One Low\\ngrouped-1 - Grouped One\\ngrouped-1-high - Grouped One High")',
-        ],
-      },
+    const modelListId = sendModelList({
+      modelLines:
+        "Available models\n\nauto - Auto\ngrouped-1-low - Grouped One Low\ngrouped-1 - Grouped One\ngrouped-1-high - Grouped One High",
       primaryModels: ["auto"],
     });
     const response = await waitForResponse(modelListId);
@@ -359,16 +504,11 @@ describe("acp bridge", () => {
   });
 
   it("uses the CLI model list before ACP-native session discovery when both are present", async () => {
-    const modelListId = sendRequest("model/list", {
-      listCommand: {
-        command: process.execPath,
-        args: ["-e", 'console.log("cli-model - CLI Model")'],
-      },
-      agent: {
-        command: "/nonexistent/acp-session-discovery-agent",
-        args: [],
-      },
-      primaryModels: [],
+    const modelListId = sendModelList({
+      // The agent could also answer session-discovery, but a list command
+      // wins: it is one process instead of a whole ACP session.
+      envVars: { FAKE_ACP_MODEL_CONFIG: "1" },
+      modelLines: "cli-model - CLI Model",
     });
 
     expect((await waitForResponse(modelListId)).result).toMatchObject({
@@ -378,16 +518,11 @@ describe("acp bridge", () => {
   });
 
   it("discovers ACP-native models and per-model reasoning from session configOptions", async () => {
-    const modelListId = sendRequest("model/list", {
-      agent: {
-        command: process.execPath,
-        args: [FAKE_AGENT_PATH],
-        envVars: {
-          FAKE_ACP_MODEL_CONFIG: "1",
-          FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
-        },
+    const modelListId = sendModelList({
+      envVars: {
+        FAKE_ACP_MODEL_CONFIG: "1",
+        FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
       },
-      primaryModels: [],
     });
 
     expect((await waitForResponse(modelListId)).result).toMatchObject({
@@ -420,14 +555,7 @@ describe("acp bridge", () => {
   });
 
   it("discovers ACP-native models from session models state", async () => {
-    const modelListId = sendRequest("model/list", {
-      agent: {
-        command: process.execPath,
-        args: [FAKE_AGENT_PATH],
-        envVars: { FAKE_ACP_MODELS_FIELD: "1" },
-      },
-      primaryModels: [],
-    });
+    const modelListId = sendModelList({ envVars: { FAKE_ACP_MODELS_FIELD: "1" } });
 
     expect((await waitForResponse(modelListId)).result).toMatchObject({
       models: [
@@ -453,13 +581,8 @@ describe("acp bridge", () => {
   });
 
   it("advertises launch-time reasoning CLI levels on ACP-native models", async () => {
-    const modelListId = sendRequest("model/list", {
-      agent: {
-        command: process.execPath,
-        args: [FAKE_AGENT_PATH],
-        envVars: { FAKE_ACP_MODELS_FIELD: "1" },
-      },
-      primaryModels: [],
+    const modelListId = sendModelList({
+      envVars: { FAKE_ACP_MODELS_FIELD: "1" },
       reasoningCli: {
         flag: "--reasoning-effort",
         supportedLevels: ["low", "medium", "high"],
@@ -493,16 +616,11 @@ describe("acp bridge", () => {
   });
 
   it("authenticates before ACP-native model discovery", async () => {
-    const modelListId = sendRequest("model/list", {
-      agent: {
-        command: process.execPath,
-        args: [FAKE_AGENT_PATH],
-        envVars: {
-          FAKE_ACP_AUTH_METHODS: "cached_token",
-          FAKE_ACP_MODEL_CONFIG: "1",
-        },
+    const modelListId = sendModelList({
+      envVars: {
+        FAKE_ACP_AUTH_METHODS: "cached_token",
+        FAKE_ACP_MODEL_CONFIG: "1",
       },
-      primaryModels: [],
     });
 
     expect((await waitForResponse(modelListId)).result).toMatchObject({
@@ -523,17 +641,12 @@ describe("acp bridge", () => {
   });
 
   it("probes per-model reasoning across large catalogs instead of falling back", async () => {
-    const modelListId = sendRequest("model/list", {
-      agent: {
-        command: process.execPath,
-        args: [FAKE_AGENT_PATH],
-        envVars: {
-          FAKE_ACP_MODEL_CONFIG: "1",
-          FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
-          FAKE_ACP_MODEL_COUNT: "60",
-        },
+    const modelListId = sendModelList({
+      envVars: {
+        FAKE_ACP_MODEL_CONFIG: "1",
+        FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
+        FAKE_ACP_MODEL_COUNT: "60",
       },
-      primaryModels: [],
     });
 
     const result = (await waitForResponse(modelListId)).result as {
@@ -554,17 +667,12 @@ describe("acp bridge", () => {
   });
 
   it("keeps ACP-native discovered models when per-model reasoning discovery errors", async () => {
-    const modelListId = sendRequest("model/list", {
-      agent: {
-        command: process.execPath,
-        args: [FAKE_AGENT_PATH],
-        envVars: {
-          FAKE_ACP_MODEL_CONFIG: "1",
-          FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
-          FAKE_ACP_SET_CONFIG_MODEL_ERROR: "1",
-        },
+    const modelListId = sendModelList({
+      envVars: {
+        FAKE_ACP_MODEL_CONFIG: "1",
+        FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
+        FAKE_ACP_SET_CONFIG_MODEL_ERROR: "1",
       },
-      primaryModels: [],
     });
 
     expect((await waitForResponse(modelListId)).result).toMatchObject({
@@ -597,17 +705,12 @@ describe("acp bridge", () => {
 
     vi.useFakeTimers();
     try {
-      modelListId = sendRequest("model/list", {
-        agent: {
-          command: process.execPath,
-          args: [FAKE_AGENT_PATH],
-          envVars: {
-            FAKE_ACP_HANG_INITIALIZE: "1",
-            FAKE_ACP_READY_FILE: readyFile,
-            FAKE_ACP_SIGNAL_FILE: signalFile,
-          },
+      modelListId = sendModelList({
+        envVars: {
+          FAKE_ACP_HANG_INITIALIZE: "1",
+          FAKE_ACP_READY_FILE: readyFile,
+          FAKE_ACP_SIGNAL_FILE: signalFile,
         },
-        primaryModels: [],
       });
       await waitForFileWithRealTimer(readyFile);
       await vi.advanceTimersByTimeAsync(30_000);
@@ -628,10 +731,9 @@ describe("acp bridge", () => {
 
   it("serves ACP-native discovered models from cache within the TTL and re-discovers after it", async () => {
     const launchLog = join(workspaceDir, "discovery-launches.txt");
-    const agent = {
-      command: process.execPath,
-      args: [FAKE_AGENT_PATH],
-      envVars: { FAKE_ACP_MODEL_CONFIG: "1", FAKE_ACP_LAUNCH_LOG: launchLog },
+    const discoveryEnv = {
+      FAKE_ACP_MODEL_CONFIG: "1",
+      FAKE_ACP_LAUNCH_LOG: launchLog,
     };
     const launchCount = () =>
       existsSync(launchLog)
@@ -641,7 +743,7 @@ describe("acp bridge", () => {
     const listModels = async () =>
       (
         await waitForResponse(
-          sendRequest("model/list", { agent, primaryModels: [] }),
+          sendModelList({ envVars: discoveryEnv }),
         )
       ).result;
 
@@ -674,10 +776,7 @@ describe("acp bridge", () => {
   });
 
   it("falls back to the synthetic model when ACP-native session discovery has no model option", async () => {
-    const modelListId = sendRequest("model/list", {
-      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
-      primaryModels: [],
-    });
+    const modelListId = sendModelList();
 
     expect((await waitForResponse(modelListId)).result).toMatchObject({
       models: [{ id: "acp-default", isDefault: true }],
@@ -686,12 +785,9 @@ describe("acp bridge", () => {
   });
 
   it("fails model/list with a clear error when the list command is missing", async () => {
-    const failingId = sendRequest("model/list", {
-      listCommand: {
-        command: "/nonexistent/acp-model-lister",
-        args: ["--list-models"],
-      },
-      primaryModels: [],
+    const failingId = sendModelList({
+      agent: { command: "/nonexistent/acp-model-lister", args: [] },
+      modelLines: "",
     });
     const failingResponse = await waitForResponse(failingId);
     expect(failingResponse.error?.message).toMatch(
@@ -700,18 +796,12 @@ describe("acp bridge", () => {
   });
 
   it("fails model/list when the list command reports ACP auth is required", async () => {
-    const authId = sendRequest("model/list", {
-      listCommand: {
-        command: process.execPath,
-        args: [
-          "-e",
-          [
-            "console.error(\"Error: Authentication required. Run 'agent login', pass --api-key/--auth-token, or set CURSOR_API_KEY/CURSOR_AUTH_TOKEN.\");",
-            "process.exit(1);",
-          ].join(""),
-        ],
+    const authId = sendModelList({
+      envVars: {
+        FAKE_ACP_MODEL_LIST_STDERR:
+          "Error: Authentication required. Run 'agent login', pass --api-key/--auth-token, or set CURSOR_API_KEY/CURSOR_AUTH_TOKEN.",
       },
-      primaryModels: [],
+      modelLines: "",
     });
 
     const response = await waitForResponse(authId);
@@ -719,13 +809,7 @@ describe("acp bridge", () => {
   });
 
   it("falls back to the synthetic model when the list command prints no models", async () => {
-    const emptyId = sendRequest("model/list", {
-      listCommand: {
-        command: process.execPath,
-        args: ["-e", 'console.log("no model lines here")'],
-      },
-      primaryModels: [],
-    });
+    const emptyId = sendModelList({ modelLines: "no model lines here" });
     expect((await waitForResponse(emptyId)).result).toMatchObject({
       models: [{ id: "acp-default", isDefault: true }],
     });
@@ -733,31 +817,26 @@ describe("acp bridge", () => {
 
   it("keeps CLI reasoning on the resolved model variant instead of ACP config", async () => {
     chmodSync(FAKE_AGENT_PATH, 0o755);
-    // Seed the bridge's catalog cache the way a picker would.
-    const listCommand = {
-      command: process.execPath,
-      args: [
-        "-e",
-        'console.log("pinme-low - Pin Me Low\\npinme - Pin Me\\npinme-extra-high - Pin Me Extra High")',
-      ],
-    };
-    await waitForResponse(
-      sendRequest("model/list", { listCommand, primaryModels: [] }),
-    );
-
-    // The fake agent runs via its shebang so the bridge's leading
-    // `--model <id>` lands in the agent's argv instead of node's.
-    const { providerThreadId } = await startThread({
+    // Seed the bridge's catalog cache the way a picker would. The fake agent
+    // runs via its shebang so the bridge's leading `--model <id>` lands in the
+    // agent's argv instead of node's.
+    const cliModelLaunch = {
       agent: { command: FAKE_AGENT_PATH, args: [] },
-      modelSelection: {
-        listCommand,
-        selectFlag: "--model",
-        model: "pinme",
-        reasoningLevel: "xhigh",
+      modelListArgs: ["--list-models"],
+      selectFlag: "--model",
+      envVars: {
+        FAKE_ACP_MODEL_LINES:
+          "pinme-low - Pin Me Low\npinme - Pin Me\npinme-extra-high - Pin Me Extra High",
       },
+    };
+    await waitForResponse(sendModelList(cliModelLaunch));
+
+    const { providerThreadId } = await startThread({
+      ...cliModelLaunch,
+      model: "pinme",
+      reasoningLevel: "xhigh",
     });
-    sendRequest("turn/start", {
-      threadId: providerThreadId,
+    sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "echo-argv", mentions: [] }],
     });
     await waitForTurnCompleted();
@@ -773,7 +852,7 @@ describe("acp bridge", () => {
 
     const { providerThreadId } = await startThread({
       agent: { command: FAKE_AGENT_PATH, args: [] },
-      launchReasoningLevel: "xhigh",
+      reasoningLevel: "xhigh",
       reasoningCli: {
         flag: "--reasoning-effort",
         supportedLevels: ["low", "medium", "high"],
@@ -781,8 +860,7 @@ describe("acp bridge", () => {
         defaultLevel: "high",
       },
     });
-    sendRequest("turn/start", {
-      threadId: providerThreadId,
+    sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "echo-argv", mentions: [] }],
     });
     await waitForTurnCompleted();
@@ -805,8 +883,7 @@ describe("acp bridge", () => {
         insertAfterArgs: 1,
       },
     });
-    sendRequest("turn/start", {
-      threadId: providerThreadId,
+    sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "echo-argv", mentions: [] }],
     });
     await waitForTurnCompleted();
@@ -828,8 +905,7 @@ describe("acp bridge", () => {
         full: ["--always-approve"],
       },
     });
-    sendRequest("turn/start", {
-      threadId: providerThreadId,
+    sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "echo-argv", mentions: [] }],
     });
     await waitForTurnCompleted();
@@ -839,38 +915,25 @@ describe("acp bridge", () => {
 
   it("uses modelCli only for model selection when reasoningCli owns effort", async () => {
     chmodSync(FAKE_AGENT_PATH, 0o755);
-    const listCommand = {
-      command: process.execPath,
-      args: ["-e", 'console.log("pinme - Pin Me")'],
-    };
-    await waitForResponse(
-      sendRequest("model/list", {
-        listCommand,
-        primaryModels: [],
-        reasoningCli: {
-          flag: "--reasoning-effort",
-          supportedLevels: ["low", "medium", "high"],
-        },
-      }),
-    );
-
-    const { providerThreadId } = await startThread({
+    const cliModelLaunch: AgentLaunchArgs = {
       agent: { command: FAKE_AGENT_PATH, args: [] },
-      launchReasoningLevel: "max",
+      modelListArgs: ["--list-models"],
+      selectFlag: "--model",
+      envVars: { FAKE_ACP_MODEL_LINES: "pinme - Pin Me" },
       reasoningCli: {
         flag: "--reasoning-effort",
         supportedLevels: ["low", "medium", "high"],
         levelValues: { max: "high" },
       },
-      modelSelection: {
-        listCommand,
-        selectFlag: "--model",
-        model: "pinme",
-        reasoningLevel: "max",
-      },
+    };
+    await waitForResponse(sendModelList(cliModelLaunch));
+
+    const { providerThreadId } = await startThread({
+      ...cliModelLaunch,
+      model: "pinme",
+      reasoningLevel: "max",
     });
-    sendRequest("turn/start", {
-      threadId: providerThreadId,
+    sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "echo-argv", mentions: [] }],
     });
     await waitForTurnCompleted();
@@ -885,11 +948,10 @@ describe("acp bridge", () => {
   it("selects ACP-native models with session/set_config_option before the first prompt", async () => {
     const { providerThreadId } = await startThread({
       envVars: { FAKE_ACP_MODEL_CONFIG: "1" },
-      modelSelection: { modelId: "fake/strong" },
+      model: "fake/strong",
     });
 
-    sendRequest("turn/start", {
-      threadId: providerThreadId,
+    sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "echo-selected-model", mentions: [] }],
     });
     await waitForTurnCompleted();
@@ -903,11 +965,10 @@ describe("acp bridge", () => {
         FAKE_ACP_MODEL_CONFIG: "1",
         FAKE_ACP_SET_CONFIG_MODEL_ERROR: "1",
       },
-      modelSelection: { modelId: "fake/strong" },
+      model: "fake/strong",
     });
 
-    sendRequest("turn/start", {
-      threadId: providerThreadId,
+    sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "echo-selected-model", mentions: [] }],
     });
     await waitForTurnCompleted();
@@ -918,11 +979,10 @@ describe("acp bridge", () => {
   it("selects ACP-native models from session models state", async () => {
     const { providerThreadId } = await startThread({
       envVars: { FAKE_ACP_MODELS_FIELD: "1" },
-      modelSelection: { modelId: "fake/strong" },
+      model: "fake/strong",
     });
 
-    sendRequest("turn/start", {
-      threadId: providerThreadId,
+    sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "echo-selected-model", mentions: [] }],
     });
     await waitForTurnCompleted();
@@ -936,11 +996,11 @@ describe("acp bridge", () => {
         FAKE_ACP_MODEL_CONFIG: "1",
         FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
       },
-      modelSelection: { modelId: "fake/strong", reasoningLevel: "max" },
+      model: "fake/strong",
+      reasoningLevel: "max",
     });
 
-    sendRequest("turn/start", {
-      threadId: providerThreadId,
+    sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "echo-selected-effort", mentions: [] }],
     });
     await waitForTurnCompleted();
@@ -954,7 +1014,8 @@ describe("acp bridge", () => {
         FAKE_ACP_MODEL_CONFIG: "1",
         FAKE_ACP_ACCEPT_NATIVE_REASONING: "1",
       },
-      modelSelection: { modelId: "fake/strong", reasoningLevel: "max" },
+      model: "fake/strong",
+      reasoningLevel: "max",
       nativeReasoning: {
         configId: "reasoning_effort",
         supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
@@ -962,8 +1023,7 @@ describe("acp bridge", () => {
       },
     });
 
-    sendRequest("turn/start", {
-      threadId: providerThreadId,
+    sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "echo-selected-effort", mentions: [] }],
     });
     await waitForTurnCompleted();
@@ -972,14 +1032,7 @@ describe("acp bridge", () => {
   });
 
   it("keeps ACP-native models without thought_level at the single managed level", async () => {
-    const modelListId = sendRequest("model/list", {
-      agent: {
-        command: process.execPath,
-        args: [FAKE_AGENT_PATH],
-        envVars: { FAKE_ACP_MODEL_CONFIG: "1" },
-      },
-      primaryModels: [],
-    });
+    const modelListId = sendModelList({ envVars: { FAKE_ACP_MODEL_CONFIG: "1" } });
 
     const response = await waitForResponse(modelListId);
     const models = (
@@ -997,16 +1050,11 @@ describe("acp bridge", () => {
   });
 
   it("keeps reasoning empty when an ACP-native model advertises only unmapped thought levels", async () => {
-    const modelListId = sendRequest("model/list", {
-      agent: {
-        command: process.execPath,
-        args: [FAKE_AGENT_PATH],
-        envVars: {
-          FAKE_ACP_MODEL_CONFIG: "1",
-          FAKE_ACP_UNMAPPED_REASONING_CONFIG: "1",
-        },
+    const modelListId = sendModelList({
+      envVars: {
+        FAKE_ACP_MODEL_CONFIG: "1",
+        FAKE_ACP_UNMAPPED_REASONING_CONFIG: "1",
       },
-      primaryModels: [],
     });
 
     const response = await waitForResponse(modelListId);
@@ -1025,13 +1073,8 @@ describe("acp bridge", () => {
   });
 
   it("shows configured native reasoning for ACP-native models without thought_level", async () => {
-    const modelListId = sendRequest("model/list", {
-      agent: {
-        command: process.execPath,
-        args: [FAKE_AGENT_PATH],
-        envVars: { FAKE_ACP_MODEL_CONFIG: "1" },
-      },
-      primaryModels: [],
+    const modelListId = sendModelList({
+      envVars: { FAKE_ACP_MODEL_CONFIG: "1" },
       nativeReasoning: {
         configId: "reasoning_effort",
         supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
@@ -1065,8 +1108,7 @@ describe("acp bridge", () => {
     vi.stubEnv("ELECTRON_RUN_AS_NODE", "1");
     const { providerThreadId } = await startThread();
 
-    sendRequest("turn/start", {
-      threadId: providerThreadId,
+    sendTurnRequest("turn/start", providerThreadId, {
       input: [
         { type: "text", text: "echo-electron-run-as-node", mentions: [] },
       ],
@@ -1092,8 +1134,7 @@ describe("acp bridge", () => {
       ],
     });
 
-    sendRequest("turn/start", {
-      threadId: providerThreadId,
+    sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "echo-mcp-server-config", mentions: [] }],
     });
     await waitForTurnCompleted();
@@ -1113,8 +1154,7 @@ describe("acp bridge", () => {
         ?.value,
     ).toBe("1");
 
-    sendRequest("turn/start", {
-      threadId: providerThreadId,
+    sendTurnRequest("turn/start", providerThreadId, {
       input: [
         { type: "text", text: "echo-electron-run-as-node", mentions: [] },
       ],
@@ -1130,33 +1170,27 @@ describe("acp bridge", () => {
 
   it("warns and launches the family id when a reasoning variant is missing", async () => {
     chmodSync(FAKE_AGENT_PATH, 0o755);
-    const listCommand = {
-      command: process.execPath,
-      args: ["-e", 'console.log("solo-2 - Solo Two")'],
+    const cliModelLaunch = {
+      agent: { command: FAKE_AGENT_PATH, args: [] },
+      modelListArgs: ["--list-models"],
+      selectFlag: "--model",
+      envVars: { FAKE_ACP_MODEL_LINES: "solo-2 - Solo Two" },
     };
-    await waitForResponse(
-      sendRequest("model/list", { listCommand, primaryModels: [] }),
-    );
+    await waitForResponse(sendModelList(cliModelLaunch));
 
     const { providerThreadId } = await startThread({
-      agent: { command: FAKE_AGENT_PATH, args: [] },
-      modelSelection: {
-        listCommand,
-        selectFlag: "--model",
-        model: "solo-2",
-        reasoningLevel: "max",
-      },
+      ...cliModelLaunch,
+      model: "solo-2",
+      reasoningLevel: "max",
     });
-    sendRequest("turn/start", {
-      threadId: providerThreadId,
+    sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "echo-argv", mentions: [] }],
     });
     await waitForTurnCompleted();
     expect(
       agentMessageTexts().some((text) => text === "argv:--model solo-2"),
     ).toBe(true);
-    const warning = notifications("acp/warning").at(-1);
-    expect(warning?.params).toMatchObject({
+    expect(threadEventsOfType("provider/warning").at(-1)).toMatchObject({
       summary: expect.stringContaining("no max reasoning variant"),
     });
   });
@@ -1169,107 +1203,18 @@ describe("acp bridge", () => {
     expect(identity?.params).toEqual({
       threadId: bbThreadId,
       providerThreadId,
+      sessionRestorable: false,
     });
 
-    const turnId = sendRequest("turn/start", {
-      threadId: providerThreadId,
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "hello there", mentions: [] }],
     });
     await waitForResponse(turnId);
 
     const completed = await waitForTurnCompleted();
-    expect(completed.params).toEqual({
-      threadId: bbThreadId,
-      stopReason: "end_turn",
-    });
-    expect(notifications("acp/turn/started")).toHaveLength(1);
+    expect(completed).toMatchObject({ status: "completed" });
+    expect(threadEventsOfType("turn/started")).toHaveLength(1);
     expect(agentMessageTexts()).toContain("echo:hello there");
-  });
-
-  it("runs manual compaction as a provider-local maintenance prompt", async () => {
-    const promptLog = join(workspaceDir, "prompt-log.jsonl");
-    const { providerThreadId } = await startThread({
-      instructions: "Be terse.",
-      envVars: { FAKE_ACP_PROMPT_LOG: promptLog },
-    });
-
-    const compactId = sendRequest("thread/compact", {
-      threadId: providerThreadId,
-    });
-    const compactResponse = await waitForResponse(compactId);
-    expect(compactResponse.error).toBeUndefined();
-    const completed = await waitForCompactionCompleted();
-    expect(output.messages.indexOf(compactResponse)).toBeLessThan(
-      output.messages.indexOf(completed),
-    );
-    expect(notifications("acp/turn/started")).toHaveLength(0);
-    expect(notifications("acp/turn/completed")).toHaveLength(0);
-    expect(notifications("acp/compaction/started")).toEqual([
-      expect.objectContaining({
-        params: { threadId: expect.any(String) },
-      }),
-    ]);
-    expect(notifications("acp/compaction/completed")).toEqual([
-      expect.objectContaining({
-        params: { threadId: expect.any(String), status: "completed" },
-      }),
-    ]);
-    expect(
-      readFileSync(promptLog, "utf8")
-        .trim()
-        .split("\n")
-        .map((line) => JSON.parse(line)),
-    ).toEqual(["/compact"]);
-
-    const turnId = sendRequest("turn/start", {
-      threadId: providerThreadId,
-      input: [{ type: "text", text: "hi", mentions: [] }],
-    });
-    await waitForResponse(turnId);
-    await waitForTurnCompleted();
-    expect(agentMessageTexts().at(-1)).toBe(
-      "echo:<system_instructions>\nBe terse.\n</system_instructions>\nhi",
-    );
-  });
-
-  it("reports a rejected maintenance prompt through the compaction lifecycle", async () => {
-    const { providerThreadId } = await startThread({
-      envVars: { FAKE_ACP_PROMPT_ERROR: "1" },
-    });
-
-    const compactId = sendRequest("thread/compact", {
-      threadId: providerThreadId,
-    });
-    const compactResponse = await waitForResponse(compactId);
-    expect(compactResponse.error).toBeUndefined();
-
-    const completed = await waitForCompactionCompleted();
-    expect(completed.params).toEqual({
-      threadId: expect.any(String),
-      status: "failed",
-      error: expect.stringContaining("Fake prompt failure"),
-    });
-    expect(output.messages.indexOf(compactResponse)).toBeLessThan(
-      output.messages.indexOf(completed),
-    );
-  });
-
-  it("does not report an ACP refusal as successful compaction", async () => {
-    const { providerThreadId } = await startThread({
-      envVars: { FAKE_ACP_COMPACT_STOP_REASON: "refusal" },
-    });
-
-    const compactId = sendRequest("thread/compact", {
-      threadId: providerThreadId,
-    });
-    await waitForResponse(compactId);
-
-    const completed = await waitForCompactionCompleted();
-    expect(completed.params).toEqual({
-      threadId: expect.any(String),
-      status: "failed",
-      error: "Agent stopped compaction: refusal",
-    });
   });
 
   it("authenticates ACP sessions with cached tokens when advertised", async () => {
@@ -1277,8 +1222,7 @@ describe("acp bridge", () => {
       envVars: { FAKE_ACP_AUTH_METHODS: "cached_token" },
     });
 
-    const turnId = sendRequest("turn/start", {
-      threadId: providerThreadId,
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "echo-auth-method", mentions: [] }],
     });
     await waitForResponse(turnId);
@@ -1295,8 +1239,7 @@ describe("acp bridge", () => {
       },
     });
 
-    const turnId = sendRequest("turn/start", {
-      threadId: providerThreadId,
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "echo-auth-method", mentions: [] }],
     });
     await waitForResponse(turnId);
@@ -1310,14 +1253,14 @@ describe("acp bridge", () => {
     const id = sendRequest("thread/start", {
       threadId: `thread-${nextThreadSerial}`,
       cwd: workspaceDir,
-      agent: {
-        command: process.execPath,
-        args: [FAKE_AGENT_PATH],
-      },
-      permissionMode: "full",
-      permissionEscalation: null,
-      workspaceWriteRoots: [workspaceDir],
-      envVars: { FAKE_ACP_AUTH_METHODS: "agent.login" },
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: {
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: { FAKE_ACP_AUTH_METHODS: "agent.login" },
+          }),
+        },
+      }),
     });
     const response = await waitForResponse(id);
 
@@ -1340,8 +1283,7 @@ describe("acp bridge", () => {
       ],
     });
 
-    const turnId = sendRequest("turn/start", {
-      threadId: providerThreadId,
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "echo-mcp-servers", mentions: [] }],
     });
     await waitForResponse(turnId);
@@ -1367,8 +1309,7 @@ describe("acp bridge", () => {
       ],
     });
 
-    const turnId = sendRequest("turn/start", {
-      threadId: providerThreadId,
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "echo-mcp-server-config", mentions: [] }],
     });
     await waitForResponse(turnId);
@@ -1523,8 +1464,7 @@ describe("acp bridge", () => {
     const { providerThreadId } = await startThread({
       instructions: "Be terse.",
     });
-    const turnId = sendRequest("turn/start", {
-      threadId: providerThreadId,
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "hi", mentions: [] }],
     });
     await waitForResponse(turnId);
@@ -1538,14 +1478,17 @@ describe("acp bridge", () => {
 
   it("auto-allows permission requests in full mode", async () => {
     const { providerThreadId } = await startThread({ permissionMode: "full" });
-    const turnId = sendRequest("turn/start", {
-      threadId: providerThreadId,
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "request-permission", mentions: [] }],
     });
     await waitForResponse(turnId);
     await waitForTurnCompleted();
 
-    expect(notifications("acp/permission/request")).toHaveLength(0);
+    expect(
+      output.messages.filter(
+        (message) => message.method === "interaction/request",
+      ),
+    ).toHaveLength(0);
     expect(agentMessageTexts()).toContain("permission:yes");
   });
 
@@ -1554,8 +1497,7 @@ describe("acp bridge", () => {
       permissionMode: "accept-edits",
       permissionEscalation: "ask",
     });
-    const turnId = sendRequest("turn/start", {
-      threadId: providerThreadId,
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "request-permission", mentions: [] }],
     });
     await waitForResponse(turnId);
@@ -1564,19 +1506,20 @@ describe("acp bridge", () => {
       () =>
         output.messages.find(
           (message) =>
-            message.method === "acp/permission/request" &&
+            message.method === "interaction/request" &&
             message.id !== undefined,
         ),
       "forwarded permission request",
     );
+    // The canonical interaction carries the approval payload, scoped to the
+    // turn the permission interrupted.
     expect(forwarded.params).toMatchObject({
       threadId: bbThreadId,
       providerThreadId,
-      turnId: null,
-      toolCall: {
-        toolCallId: "perm-tool-1",
-        kind: "execute",
-        command: "rm -rf /tmp/scratch",
+      turnId: expect.any(String),
+      payload: {
+        kind: "approval",
+        subject: expect.objectContaining({ command: "rm -rf /tmp/scratch" }),
       },
     });
 
@@ -1597,8 +1540,7 @@ describe("acp bridge", () => {
       permissionMode: "accept-edits",
       permissionEscalation: "ask",
     });
-    const turnId = sendRequest("turn/start", {
-      threadId: providerThreadId,
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "request-permission", mentions: [] }],
     });
     await waitForResponse(turnId);
@@ -1606,7 +1548,7 @@ describe("acp bridge", () => {
       () =>
         output.messages.find(
           (message) =>
-            message.method === "acp/permission/request" &&
+            message.method === "interaction/request" &&
             message.id !== undefined,
         ),
       "forwarded permission request",
@@ -1615,7 +1557,7 @@ describe("acp bridge", () => {
       JSON.stringify({
         jsonrpc: "2.0",
         id: forwarded.id,
-        result: { decision: "allow_for_session" },
+        result: { decision: "allow_for_session", grantedPermissions: null },
       }),
     );
     await waitForTurnCompleted();
@@ -1629,8 +1571,7 @@ describe("acp bridge", () => {
       permissionEscalation: "ask",
       envVars: { FAKE_ACP_WRITE_PATH: targetPath },
     });
-    const turnId = sendRequest("turn/start", {
-      threadId: providerThreadId,
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "write-file", mentions: [] }],
     });
     await waitForResponse(turnId);
@@ -1638,12 +1579,14 @@ describe("acp bridge", () => {
 
     expect(agentMessageTexts()).toContain("write:ok");
     expect(readFileSync(targetPath, "utf8")).toBe("hello from agent\n");
-    const fsWrite = notifications("acp/fs/write").at(-1);
-    expect(fsWrite?.params).toMatchObject({
-      threadId: bbThreadId,
-      path: targetPath,
-      kind: "add",
-    });
+    expect(
+      threadEventsOfType("item/completed").map((event) => event.item),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "fileChange",
+        changes: [expect.objectContaining({ path: targetPath, kind: "add" })],
+      }),
+    );
   });
 
   it("denies client fs writes outside the workspace in accept-edits mode", async () => {
@@ -1655,8 +1598,7 @@ describe("acp bridge", () => {
         permissionEscalation: "ask",
         envVars: { FAKE_ACP_WRITE_PATH: targetPath },
       });
-      const turnId = sendRequest("turn/start", {
-        threadId: providerThreadId,
+      const turnId = sendTurnRequest("turn/start", providerThreadId, {
         input: [{ type: "text", text: "write-file", mentions: [] }],
       });
       await waitForResponse(turnId);
@@ -1733,34 +1675,28 @@ describe("acp bridge", () => {
 
   it("cancels a hung prompt and continues the same turn with steer input", async () => {
     const { bbThreadId, providerThreadId } = await startThread();
-    const turnId = sendRequest("turn/start", {
-      threadId: providerThreadId,
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "hang", mentions: [] }],
     });
     await waitForResponse(turnId);
 
-    const steerId = sendRequest("turn/steer", {
-      threadId: providerThreadId,
+    const steerId = sendTurnRequest("turn/steer", providerThreadId, {
       expectedTurnId: "turn-1",
       input: [{ type: "text", text: "steered", mentions: [] }],
     });
     await waitForResponse(steerId);
 
     const completed = await waitForTurnCompleted();
-    expect(completed.params).toEqual({
-      threadId: bbThreadId,
-      stopReason: "end_turn",
-    });
+    expect(completed).toMatchObject({ status: "completed" });
     expect(agentMessageTexts()).toContain("echo:steered");
     expect(agentMessageTexts()).not.toContain("echo:hang");
-    expect(notifications("acp/turn/started")).toHaveLength(1);
-    expect(notifications("acp/turn/completed")).toHaveLength(1);
+    expect(threadEventsOfType("turn/started")).toHaveLength(1);
+    expect(threadEventsOfType("turn/completed")).toHaveLength(1);
   });
 
   it("keeps partial output from the cancelled prompt then continues", async () => {
     const { bbThreadId, providerThreadId } = await startThread();
-    const turnId = sendRequest("turn/start", {
-      threadId: providerThreadId,
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "slow first", mentions: [] }],
     });
     await waitForResponse(turnId);
@@ -1770,39 +1706,34 @@ describe("acp bridge", () => {
       "first prompt echo",
     );
 
-    const steerId = sendRequest("turn/steer", {
-      threadId: providerThreadId,
+    const steerId = sendTurnRequest("turn/steer", providerThreadId, {
       expectedTurnId: "turn-1",
       input: [{ type: "text", text: "steered", mentions: [] }],
     });
     await waitForResponse(steerId);
 
     const completed = await waitForTurnCompleted();
-    expect(completed.params).toEqual({
-      threadId: bbThreadId,
-      stopReason: "end_turn",
-    });
-    expect(agentMessageTexts()).toContain("echo:slow first");
-    expect(agentMessageTexts()).toContain("echo:steered");
-    expect(notifications("acp/turn/started")).toHaveLength(1);
-    expect(notifications("acp/turn/completed")).toHaveLength(1);
+    expect(completed).toMatchObject({ status: "completed" });
+    // The cancelled prompt's partial output and the steered continuation
+    // stream into the same assistant item.
+    expect(agentMessageTexts().join("")).toContain("echo:slow first");
+    expect(agentMessageTexts().join("")).toContain("echo:steered");
+    expect(threadEventsOfType("turn/started")).toHaveLength(1);
+    expect(threadEventsOfType("turn/completed")).toHaveLength(1);
   });
 
   it("delivers stacked steers on the same turn", async () => {
     const { bbThreadId, providerThreadId } = await startThread();
-    const turnId = sendRequest("turn/start", {
-      threadId: providerThreadId,
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "hang", mentions: [] }],
     });
     await waitForResponse(turnId);
 
-    const firstSteerId = sendRequest("turn/steer", {
-      threadId: providerThreadId,
+    const firstSteerId = sendTurnRequest("turn/steer", providerThreadId, {
       expectedTurnId: "turn-1",
       input: [{ type: "text", text: "first-steer", mentions: [] }],
     });
-    const secondSteerId = sendRequest("turn/steer", {
-      threadId: providerThreadId,
+    const secondSteerId = sendTurnRequest("turn/steer", providerThreadId, {
       expectedTurnId: "turn-1",
       input: [{ type: "text", text: "second-steer", mentions: [] }],
     });
@@ -1810,33 +1741,27 @@ describe("acp bridge", () => {
     await waitForResponse(secondSteerId);
 
     const completed = await waitForTurnCompleted();
-    expect(completed.params).toEqual({
-      threadId: bbThreadId,
-      stopReason: "end_turn",
-    });
-    expect(agentMessageTexts()).toContain("echo:first-steer");
-    expect(agentMessageTexts()).toContain("echo:second-steer");
-    expect(notifications("acp/turn/started")).toHaveLength(1);
-    expect(notifications("acp/turn/completed")).toHaveLength(1);
+    expect(completed).toMatchObject({ status: "completed" });
+    expect(agentMessageTexts().join("")).toContain("echo:first-steer");
+    expect(agentMessageTexts().join("")).toContain("echo:second-steer");
+    expect(threadEventsOfType("turn/started")).toHaveLength(1);
+    expect(threadEventsOfType("turn/completed")).toHaveLength(1);
   });
 
   it("cancels a stacked steer prompt that also hangs", async () => {
     const { bbThreadId, providerThreadId } = await startThread();
-    const turnId = sendRequest("turn/start", {
-      threadId: providerThreadId,
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "hang", mentions: [] }],
     });
     await waitForResponse(turnId);
 
     // The first steer also hangs, so the second steer must trigger a second
     // cancel instead of waiting for a prompt that never finishes.
-    const firstSteerId = sendRequest("turn/steer", {
-      threadId: providerThreadId,
+    const firstSteerId = sendTurnRequest("turn/steer", providerThreadId, {
       expectedTurnId: "turn-1",
       input: [{ type: "text", text: "hang again", mentions: [] }],
     });
-    const secondSteerId = sendRequest("turn/steer", {
-      threadId: providerThreadId,
+    const secondSteerId = sendTurnRequest("turn/steer", providerThreadId, {
       expectedTurnId: "turn-1",
       input: [{ type: "text", text: "second-steer", mentions: [] }],
     });
@@ -1844,19 +1769,15 @@ describe("acp bridge", () => {
     await waitForResponse(secondSteerId);
 
     const completed = await waitForTurnCompleted();
-    expect(completed.params).toEqual({
-      threadId: bbThreadId,
-      stopReason: "end_turn",
-    });
+    expect(completed).toMatchObject({ status: "completed" });
     expect(agentMessageTexts()).toContain("echo:second-steer");
-    expect(notifications("acp/turn/started")).toHaveLength(1);
-    expect(notifications("acp/turn/completed")).toHaveLength(1);
+    expect(threadEventsOfType("turn/started")).toHaveLength(1);
+    expect(threadEventsOfType("turn/completed")).toHaveLength(1);
   });
 
   it("rejects steers when no turn is active", async () => {
     const { providerThreadId } = await startThread();
-    const steerId = sendRequest("turn/steer", {
-      threadId: providerThreadId,
+    const steerId = sendTurnRequest("turn/steer", providerThreadId, {
       expectedTurnId: "turn-1",
       input: [{ type: "text", text: "late", mentions: [] }],
     });
@@ -1867,21 +1788,22 @@ describe("acp bridge", () => {
 
   it("cancels the active turn on thread/stop", async () => {
     const { bbThreadId, providerThreadId } = await startThread();
-    const turnId = sendRequest("turn/start", {
-      threadId: providerThreadId,
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "hang", mentions: [] }],
     });
     await waitForResponse(turnId);
 
-    const stopId = sendRequest("thread/stop", { threadId: providerThreadId });
+    const stopId = sendRequest("thread/stop", {
+      threadId: bbThreadIdFor(providerThreadId),
+      providerThreadId,
+      intent: "interrupt",
+      activeTurnId: null,
+    });
     const stopResponse = await waitForResponse(stopId);
     expect(stopResponse.result).toEqual({ ok: true });
 
     const completed = await waitForTurnCompleted();
-    expect(completed.params).toEqual({
-      threadId: bbThreadId,
-      stopReason: "cancelled",
-    });
+    expect(completed).toMatchObject({ status: "interrupted" });
     startedProviderThreadIds.pop();
   });
 
@@ -1889,18 +1811,18 @@ describe("acp bridge", () => {
     const forkLog = join(workspaceDir, "fork-params.json");
     const forkId = sendRequest("thread/fork", {
       threadId: "thread-fork",
-      sourceProviderThreadId: "source-session",
       cwd: workspaceDir,
-      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
-      permissionMode: "full",
-      permissionEscalation: null,
-      workspaceWriteRoots: [workspaceDir],
-      envVars: {
+      instructionMode: "append",
+      options: executionOptions({
+        model: "fake/strong",
+        providerOptions: {
+          acpLaunchSpec: acpLaunchSpec({ envVars: {
         FAKE_ACP_FORK_SESSION: "1",
         FAKE_ACP_FORK_LOG: forkLog,
         FAKE_ACP_MODELS_FIELD: "1",
-      },
-      modelSelection: { modelId: "fake/strong" },
+      } }),
+        },
+      }),
       dynamicTools: [
         {
           name: "fork_tool",
@@ -1908,6 +1830,7 @@ describe("acp bridge", () => {
           inputSchema: { type: "object" },
         },
       ],
+      sourceProviderThreadId: "source-session",
     });
     const response = await waitForResponse(forkId);
     const result = response.result;
@@ -1931,10 +1854,10 @@ describe("acp bridge", () => {
     expect(notifications("thread/identity").at(-1)?.params).toEqual({
       threadId: "thread-fork",
       providerThreadId: result.providerThreadId,
+      sessionRestorable: false,
     });
 
-    sendRequest("turn/start", {
-      threadId: result.providerThreadId,
+    sendTurnRequest("turn/start", result.providerThreadId, {
       input: [{ type: "text", text: "echo-mcp-servers", mentions: [] }],
     });
     await waitForTurnCompleted();
@@ -1942,15 +1865,14 @@ describe("acp bridge", () => {
       `mcp-servers:${ACP_BRIDGE_MCP_SERVER_NAME}`,
     );
 
-    const completedTurnCount = notifications("acp/turn/completed").length;
-    sendRequest("turn/start", {
-      threadId: result.providerThreadId,
+    const completedTurnCount = threadEventsOfType("turn/completed").length;
+    sendTurnRequest("turn/start", result.providerThreadId, {
       input: [{ type: "text", text: "echo-selected-model", mentions: [] }],
     });
     await waitFor(
       () =>
-        notifications("acp/turn/completed").length > completedTurnCount
-          ? notifications("acp/turn/completed").at(-1)
+        threadEventsOfType("turn/completed").length > completedTurnCount
+          ? threadEventsOfType("turn/completed").at(-1)
           : undefined,
       "second acp/turn/completed notification",
     );
@@ -1961,19 +1883,20 @@ describe("acp bridge", () => {
     const forkLog = join(workspaceDir, "checkpoint-fork-params.json");
     const forkId = sendRequest("thread/fork", {
       threadId: "thread-checkpoint-fork",
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: {
+          acpLaunchSpec: acpLaunchSpec({ envVars: { FAKE_ACP_FORK_SESSION: "1", FAKE_ACP_FORK_LOG: forkLog } }),
+        },
+      }),
       sourceProviderThreadId: "source-session",
       sourceProviderCheckpointId: "message-7",
-      cwd: workspaceDir,
-      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
-      permissionMode: "full",
-      permissionEscalation: null,
-      workspaceWriteRoots: [workspaceDir],
-      envVars: { FAKE_ACP_FORK_SESSION: "1", FAKE_ACP_FORK_LOG: forkLog },
     });
 
     const response = await waitForResponse(forkId);
     expect(response.error?.message).toMatch(
-      /does not support a session\/fork checkpoint/u,
+      /cannot fork at a checkpoint/u,
     );
     expect(existsSync(forkLog)).toBe(false);
     expect(notifications("thread/identity")).toEqual([]);
@@ -1982,16 +1905,17 @@ describe("acp bridge", () => {
   it("rejects a fork result that reuses the source session id", async () => {
     const forkId = sendRequest("thread/fork", {
       threadId: "thread-colliding-fork",
-      sourceProviderThreadId: "source-session",
       cwd: workspaceDir,
-      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
-      permissionMode: "full",
-      permissionEscalation: null,
-      workspaceWriteRoots: [workspaceDir],
-      envVars: {
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: {
+          acpLaunchSpec: acpLaunchSpec({ envVars: {
         FAKE_ACP_FORK_SESSION: "1",
         FAKE_ACP_FORK_REUSE_SOURCE_ID: "1",
-      },
+      } }),
+        },
+      }),
+      sourceProviderThreadId: "source-session",
     });
 
     const response = await waitForResponse(forkId);
@@ -2005,13 +1929,14 @@ describe("acp bridge", () => {
     const forkLog = join(workspaceDir, "unsupported-fork-params.json");
     const forkId = sendRequest("thread/fork", {
       threadId: "thread-unsupported-fork",
-      sourceProviderThreadId: "source-session",
       cwd: workspaceDir,
-      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
-      permissionMode: "full",
-      permissionEscalation: null,
-      workspaceWriteRoots: [workspaceDir],
-      envVars: { FAKE_ACP_FORK_LOG: forkLog },
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: {
+          acpLaunchSpec: acpLaunchSpec({ envVars: { FAKE_ACP_FORK_LOG: forkLog } }),
+        },
+      }),
+      sourceProviderThreadId: "source-session",
     });
 
     const response = await waitForResponse(forkId);
@@ -2031,20 +1956,21 @@ describe("acp bridge", () => {
 
     const resumeId = sendRequest("thread/resume", {
       threadId: first.bbThreadId,
-      providerThreadId: first.providerThreadId,
       cwd: workspaceDir,
-      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
-      permissionMode: "full",
-      permissionEscalation: null,
-      workspaceWriteRoots: [workspaceDir],
-      envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: {
+          acpLaunchSpec: acpLaunchSpec({ envVars: { FAKE_ACP_LOAD_SESSION: "1" } }),
+        },
+      }),
+      providerThreadId: first.providerThreadId,
     });
     const response = await waitForResponse(resumeId);
     expect(response.result).toEqual({
       providerThreadId: first.providerThreadId,
       sessionRestorable: true,
     });
-    expect(notifications("acp/warning")).toHaveLength(0);
+    expect(threadEventsOfType("provider/warning")).toHaveLength(0);
     startedProviderThreadIds.push(first.providerThreadId);
   });
 
@@ -2057,28 +1983,30 @@ describe("acp bridge", () => {
 
     const resumeId = sendRequest("thread/resume", {
       threadId: first.bbThreadId,
-      providerThreadId: first.providerThreadId,
       cwd: workspaceDir,
-      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
-      permissionMode: "full",
-      permissionEscalation: null,
-      workspaceWriteRoots: [workspaceDir],
-      envVars: {
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: {
+          acpLaunchSpec: acpLaunchSpec({ envVars: {
         FAKE_ACP_LOAD_SESSION: "1",
         FAKE_ACP_USAGE_ON_LOAD: "1",
-      },
+      } }),
+        },
+      }),
+      providerThreadId: first.providerThreadId,
     });
     const response = await waitForResponse(resumeId);
     expect(response.result).toEqual({
       providerThreadId: first.providerThreadId,
       sessionRestorable: true,
     });
-    expect(notifications("acp/update").at(-1)?.params).toEqual({
-      threadId: first.bbThreadId,
-      update: {
-        sessionUpdate: "usage_update",
-        used: 24_000,
-        size: 128_000,
+    expect(
+      threadEventsOfType("thread/contextWindowUsage/updated").at(-1),
+    ).toMatchObject({
+      contextWindowUsage: {
+        usedTokens: 24_000,
+        modelContextWindow: 128_000,
+        estimated: false,
       },
     });
     startedProviderThreadIds.push(first.providerThreadId);
@@ -2093,24 +2021,25 @@ describe("acp bridge", () => {
 
     const resumeId = sendRequest("thread/resume", {
       threadId: first.bbThreadId,
-      providerThreadId: first.providerThreadId,
       cwd: workspaceDir,
-      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
-      permissionMode: "full",
-      permissionEscalation: null,
-      workspaceWriteRoots: [workspaceDir],
-      envVars: {
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: {
+          acpLaunchSpec: acpLaunchSpec({ envVars: {
         FAKE_ACP_LOAD_SESSION: "1",
         FAKE_ACP_USAGE_ON_LOAD: "1",
         FAKE_ACP_USAGE_SESSION_ID: "different-session",
-      },
+      } }),
+        },
+      }),
+      providerThreadId: first.providerThreadId,
     });
     const response = await waitForResponse(resumeId);
     expect(response.result).toEqual({
       providerThreadId: first.providerThreadId,
       sessionRestorable: true,
     });
-    expect(notifications("acp/update")).toEqual([]);
+    expect(threadEventsOfType("thread/contextWindowUsage/updated")).toEqual([]);
     startedProviderThreadIds.push(first.providerThreadId);
   });
 
@@ -2123,16 +2052,17 @@ describe("acp bridge", () => {
 
     const resumeId = sendRequest("thread/resume", {
       threadId: first.bbThreadId,
-      providerThreadId: first.providerThreadId,
       cwd: workspaceDir,
-      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
-      permissionMode: "full",
-      permissionEscalation: null,
-      workspaceWriteRoots: [workspaceDir],
-      envVars: {
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: {
+          acpLaunchSpec: acpLaunchSpec({ envVars: {
         FAKE_ACP_FAIL_LOAD: "1",
         FAKE_ACP_USAGE_ON_LOAD: "1",
-      },
+      } }),
+        },
+      }),
+      providerThreadId: first.providerThreadId,
     });
     const response = await waitForResponse(resumeId);
     const result = response.result;
@@ -2145,10 +2075,8 @@ describe("acp bridge", () => {
       throw new Error("thread/resume did not return a providerThreadId");
     }
     expect(result.providerThreadId).not.toBe(first.providerThreadId);
-    expect(notifications("acp/update")).toEqual([]);
-    expect(notifications("acp/warning").at(-1)?.params).toMatchObject({
-      threadId: first.bbThreadId,
-    });
+    expect(threadEventsOfType("thread/contextWindowUsage/updated")).toEqual([]);
+    expect(threadEventsOfType("provider/warning")).not.toHaveLength(0);
     startedProviderThreadIds.push(result.providerThreadId);
   });
 
@@ -2165,18 +2093,20 @@ describe("acp bridge", () => {
 
     const resumeId = sendRequest("thread/resume", {
       threadId: first.bbThreadId,
-      providerThreadId: first.providerThreadId,
       cwd: workspaceDir,
-      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
-      modelSelection: { modelId: "fake/strong", reasoningLevel: "high" },
-      permissionMode: "full",
-      permissionEscalation: null,
-      workspaceWriteRoots: [workspaceDir],
-      envVars: {
+      instructionMode: "append",
+      options: executionOptions({
+        model: "fake/strong",
+        reasoningLevel: "high",
+        providerOptions: {
+          acpLaunchSpec: acpLaunchSpec({ envVars: {
         FAKE_ACP_LOAD_SESSION: "1",
         FAKE_ACP_MODEL_CONFIG: "1",
         FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
-      },
+      } }),
+        },
+      }),
+      providerThreadId: first.providerThreadId,
     });
     const response = await waitForResponse(resumeId);
     expect(response.result).toEqual({
@@ -2185,8 +2115,7 @@ describe("acp bridge", () => {
     });
     startedProviderThreadIds.push(first.providerThreadId);
 
-    sendRequest("turn/start", {
-      threadId: first.providerThreadId,
+    sendTurnRequest("turn/start", first.providerThreadId, {
       input: [{ type: "text", text: "echo-selected-effort", mentions: [] }],
     });
     await waitForTurnCompleted();
@@ -2197,12 +2126,14 @@ describe("acp bridge", () => {
   it("falls back to a fresh session with a warning when load is unsupported", async () => {
     const resumeId = sendRequest("thread/resume", {
       threadId: "thread-resume-fallback",
-      providerThreadId: "fake-sess-stale",
       cwd: workspaceDir,
-      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
-      permissionMode: "full",
-      permissionEscalation: null,
-      workspaceWriteRoots: [workspaceDir],
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: {
+          acpLaunchSpec: acpLaunchSpec({}),
+        },
+      }),
+      providerThreadId: "fake-sess-stale",
     });
     const response = await waitForResponse(resumeId);
     const result = response.result;
@@ -2217,16 +2148,12 @@ describe("acp bridge", () => {
     expect(result.providerThreadId).not.toBe("fake-sess-stale");
     startedProviderThreadIds.push(result.providerThreadId);
 
-    const warning = notifications("acp/warning").at(-1);
-    expect(warning?.params).toMatchObject({
-      threadId: "thread-resume-fallback",
-    });
+    expect(threadEventsOfType("provider/warning")).not.toHaveLength(0);
   });
 
   it("reports unexpected agent exits as a single provider error", async () => {
     const { bbThreadId, providerThreadId } = await startThread();
-    const turnId = sendRequest("turn/start", {
-      threadId: providerThreadId,
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "die", mentions: [] }],
     });
     await waitForResponse(turnId);
@@ -2245,12 +2172,31 @@ describe("acp bridge", () => {
     const id = sendRequest("thread/start", {
       threadId: "thread-missing-agent",
       cwd: workspaceDir,
-      agent: { command: "definitely-not-a-real-binary-bb", args: [] },
-      permissionMode: "full",
-      permissionEscalation: null,
-      workspaceWriteRoots: [workspaceDir],
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: {
+          acpLaunchSpec: acpLaunchSpec({
+            agent: { command: "definitely-not-a-real-binary-bb", args: [] },
+          }),
+        },
+      }),
     });
     const response = await waitForResponse(id);
     expect(response.error?.message).toMatch(/definitely-not-a-real-binary-bb/);
+  });
+
+  // Session construction is the one place the bridge cannot degrade: without a
+  // launch spec it has no agent to speak to at all.
+  it("rejects thread/start without an ACP launch spec", async () => {
+    const id = sendRequest("thread/start", {
+      threadId: "thread-no-launch-spec",
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({}),
+    });
+    expect((await waitForResponse(id)).error).toMatchObject({
+      code: -32602,
+      message: expect.stringContaining("acpLaunchSpec"),
+    });
   });
 });

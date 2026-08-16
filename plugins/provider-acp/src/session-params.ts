@@ -1,11 +1,7 @@
 /**
- * ACP session/model-list parameter mapping.
- *
- * Builds the ACP bridge's internal session-construction and model-list params
- * from an agent profile plus execution options. Extracted from the ACP adapter
- * so the adapter (legacy dialect) and the bridge's canonical Provider Bridge
- * Protocol handlers share one mapping, the same pattern as the event-translator
- * extraction.
+ * ACP session/model-list parameter mapping: an agent profile plus the
+ * canonical execution options in, the bridge's session-construction and
+ * model-list params out.
  */
 
 import path from "node:path";
@@ -18,12 +14,17 @@ import type {
 } from "@bb/domain";
 
 import { ACP_DEFAULT_MODEL_ID } from "./bridge-protocol.js";
-import type { AcpAgentProfile } from "./profiles.js";
+import type {
+  AcpAgentNativeReasoning,
+  AcpAgentPermissionCli,
+  AcpAgentProfile,
+  AcpAgentReasoningCli,
+} from "./profiles.js";
 
 /**
  * The execution-option subset the ACP session mapping reads. Structurally
- * satisfied by both the adapter's `ProviderExecutionContext` and the canonical
- * wire options (`bridgeExecutionOptionsSchema` output).
+ * satisfied by the canonical wire options (`bridgeExecutionOptionsSchema`
+ * output).
  */
 export interface AcpSessionExecutionOptions {
   model?: string | undefined;
@@ -47,11 +48,85 @@ export interface AcpSkillRoot {
   skills: readonly { name: string; description: string }[];
 }
 
-interface AcpAgentCommandParam {
+export interface AcpAgentCommandParam {
   command: string;
   args: string[];
   cwd?: string;
   envVars?: Record<string, string>;
+}
+
+/** What the bridge needs to discover an agent's models. */
+export interface AcpModelListParams {
+  /**
+   * Command whose stdout lists one `id - Display Name` line per model. The
+   * bridge groups the ids into model families with reasoning-effort variants
+   * (see `bridge/model-catalog.ts`), falling back to the synthetic "Agent
+   * default" entry when the command fails or lists nothing. Absent when the
+   * profile has no list command — or when there is no profile at all, as in
+   * the packaged-bridge smoke, which still gets a valid synthetic response.
+   */
+  listCommand?: AcpAgentCommandParam;
+  /**
+   * ACP-native model discovery command. Used only when `listCommand` is
+   * absent: the bridge starts a throwaway session and reads the model select
+   * from the `session/new` result's config state.
+   */
+  agent?: AcpAgentCommandParam;
+  /**
+   * Family ids served in the picker's default list; the rest become
+   * selected-only "more models". No matches (or an empty list) serves
+   * everything as primary.
+   */
+  primaryModels: string[];
+  reasoningCli?: AcpAgentReasoningCli;
+  nativeReasoning?: AcpAgentNativeReasoning;
+}
+
+/**
+ * Session-level model pin. CLI-style agents resolve (model, reasoningLevel,
+ * serviceTier) to a raw model id and launch with `<selectFlag> <resolved-id>`.
+ * ACP-native agents receive `{ modelId }` after `session/new` — via their
+ * "model"-category config option (`session/set_config_option`) when they
+ * advertise one, otherwise via `session/set_model`; if they expose a
+ * `thought_level` config option, the bridge applies `reasoningLevel` via
+ * `session/set_config_option`. Absent when the thread has no model preference.
+ */
+export type AcpModelSelection =
+  | {
+      listCommand: AcpAgentCommandParam;
+      selectFlag: string;
+      model: string;
+      reasoningLevel?: ReasoningLevel;
+      serviceTier?: ServiceTier;
+    }
+  | { modelId: string; reasoningLevel?: ReasoningLevel };
+
+/** Everything the bridge needs to construct one ACP agent session. */
+export interface AcpSessionParams {
+  threadId: string;
+  cwd: string;
+  agent: { command: string; args: string[] };
+  modelSelection?: AcpModelSelection;
+  /**
+   * Launch-time reasoning level for agents that take reasoning as a global CLI
+   * flag rather than an ACP `thought_level` config option.
+   */
+  launchReasoningLevel?: ReasoningLevel;
+  reasoningCli?: AcpAgentReasoningCli;
+  nativeReasoning?: AcpAgentNativeReasoning;
+  /**
+   * Launch-time permission flags for agents whose own prompt policy must be
+   * selected by CLI args rather than by ACP permission responses.
+   */
+  permissionCli?: AcpAgentPermissionCli;
+  permissionMode: "accept-edits" | "full";
+  permissionEscalation: PermissionEscalation | null;
+  /** Roots (workspace plus configured extras) where client fs writes are allowed. */
+  workspaceWriteRoots: string[];
+  envVars?: Record<string, string>;
+  /** Server-owned instructions; prepended to the session's first prompt. */
+  instructions?: string;
+  dynamicTools?: readonly DynamicTool[];
 }
 
 function sanitizeAcpSkillDescription(description: string): string {
@@ -103,7 +178,7 @@ function buildAcpSessionInstructions(
   return instructions.length > 0 ? instructions.join("\n\n") : undefined;
 }
 
-export function buildAcpModelListCommand(
+function buildAcpModelListCommand(
   profile: AcpAgentProfile,
 ): AcpAgentCommandParam | undefined {
   if (!profile.modelCli || profile.modelCli.listArgs.length === 0) {
@@ -117,7 +192,7 @@ export function buildAcpModelListCommand(
   };
 }
 
-export function buildAcpModelDiscoveryAgentCommand(
+function buildAcpModelDiscoveryAgentCommand(
   profile: AcpAgentProfile,
 ): AcpAgentCommandParam | undefined {
   if (buildAcpModelListCommand(profile) !== undefined) {
@@ -131,10 +206,17 @@ export function buildAcpModelDiscoveryAgentCommand(
   };
 }
 
-/** `model/list` request params for the bridge, derived from the profile. */
+/**
+ * Model-discovery params derived from the profile. A null profile means the
+ * request carried no launch spec; the bridge then serves its synthetic
+ * default entry rather than failing the picker.
+ */
 export function buildAcpModelListParams(
-  profile: AcpAgentProfile,
-): Record<string, unknown> {
+  profile: AcpAgentProfile | null,
+): AcpModelListParams {
+  if (profile === null) {
+    return { primaryModels: [] };
+  }
   const listCommand = buildAcpModelListCommand(profile);
   const agent = buildAcpModelDiscoveryAgentCommand(profile);
   return {
@@ -150,15 +232,11 @@ export function buildAcpModelListParams(
   };
 }
 
-/**
- * Session-level model pin for the bridge. CLI-style agents use launch flags;
- * ACP-native agents receive the selected model over the protocol. The
- * synthetic "acp-default" id is never forwarded.
- */
+/** The synthetic "acp-default" id is never forwarded. */
 function buildAcpModelSelectionParam(
   profile: AcpAgentProfile,
   options: AcpSessionExecutionOptions,
-): Record<string, unknown> {
+): { modelSelection?: AcpModelSelection } {
   const model = options.model;
   const listCommand = buildAcpModelListCommand(profile);
   if (!model || model === ACP_DEFAULT_MODEL_ID) {
@@ -204,13 +282,10 @@ export interface BuildAcpSessionParamsArgs {
   threadId: string;
 }
 
-/**
- * The bridge's internal session-construction params
- * (`acpBridgeThreadStartParamsSchema` shape) for a thread start/resume/fork.
- */
+/** The bridge's session-construction params for a thread start/resume/fork. */
 export function buildAcpSessionParams(
   args: BuildAcpSessionParamsArgs,
-): Record<string, unknown> {
+): AcpSessionParams {
   const { options, profile } = args;
   const instructions = buildAcpSessionInstructions(options);
   const cwd = profile.cwd ?? args.cwd;

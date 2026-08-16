@@ -5,6 +5,7 @@ import {
   buildAcpModelListParams,
   buildAcpSessionParams,
   type AcpSessionExecutionOptions,
+  type AcpSessionParams,
 } from "./session-params.js";
 
 /**
@@ -225,7 +226,7 @@ describe("buildAcpSessionParams model selection", () => {
 
   function cursorSessionParams(
     options: Partial<AcpSessionExecutionOptions>,
-  ): Record<string, unknown> {
+  ): AcpSessionParams {
     return buildAcpSessionParams({
       additionalWorkspaceWriteRoots: [],
       cwd: "/workspace",
@@ -315,7 +316,7 @@ describe("buildAcpSessionParams skill instructions", () => {
 
   function paramsWithOptions(
     options: Partial<AcpSessionExecutionOptions>,
-  ): Record<string, unknown> {
+  ): AcpSessionParams {
     return buildAcpSessionParams({
       additionalWorkspaceWriteRoots: [],
       cwd: "/workspace",

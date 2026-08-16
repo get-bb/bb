@@ -1,21 +1,15 @@
 /**
- * Wire contract between the agent runtime and the ACP bridge process.
- *
- * The runtime sends the JSON-RPC requests produced by the ACP adapter's
- * `buildCommandPlan`; the bridge answers them and streams the notifications
- * below back over stdout. Both sides import these schemas so the contract has
- * a single source of truth.
+ * The ACP bridge's own vocabulary: the canonical requests it accepts, and the
+ * `acp/*` envelopes it feeds its session translator. The envelopes never reach
+ * the wire — the translator turns them into canonical `ThreadEvent`s — but
+ * they are a real contract between the bridge and its translator, which is why
+ * they are schemas rather than ad-hoc objects.
  */
 
 import {
   acpPermissionCliSchema as acpBridgePermissionCliSchema,
   acpNativeReasoningSchema as acpBridgeNativeReasoningSchema,
   acpReasoningCliSchema as acpBridgeReasoningCliSchema,
-  dynamicToolSchema,
-  permissionEscalationSchema,
-  promptInputSchema,
-  reasoningLevelSchema,
-  serviceTierSchema,
 } from "@bb/domain";
 import {
   modelListParamsSchema as canonicalModelListParamsSchema,
@@ -29,12 +23,7 @@ import {
   skillsConfigureParamsSchema,
 } from "@bb/provider-bridge-protocol";
 import { z } from "zod";
-import {
-  acpPermissionOptionSchema,
-  acpSessionUpdateSchema,
-  acpStopReasonSchema,
-  acpToolKindSchema,
-} from "./wire.js";
+import { acpSessionUpdateSchema, acpStopReasonSchema } from "./wire.js";
 
 // ---------------------------------------------------------------------------
 // Runtime → bridge commands
@@ -64,222 +53,57 @@ export type AcpBridgePermissionCli = z.infer<
   typeof acpBridgePermissionCliSchema
 >;
 
-export const acpBridgeModelListParamsSchema = z.object({
-  /**
-   * Command whose stdout lists one `id - Display Name` line per model. The
-   * bridge groups the ids into model families with reasoning-effort variants
-   * (see `bridge/model-catalog.ts`), falling back to the synthetic "Agent
-   * default" entry when the command fails or lists nothing. Optional so a
-   * minimal `model/list` (e.g. the packaged-bridge smoke test, which has no
-   * agent binary) still gets a valid synthetic response instead of hanging.
-   */
-  listCommand: acpBridgeAgentCommandSchema.optional(),
-  /**
-   * ACP-native model discovery command. Used only when `listCommand` is
-   * absent: the bridge starts a throwaway session and reads the model select
-   * from the `session/new` result's config state.
-   */
-  agent: acpBridgeAgentCommandSchema.optional(),
-  /**
-   * Family ids served in the picker's default list; the rest become
-   * selected-only "more models". No matches (or an empty list) serves
-   * everything as primary.
-   */
-  primaryModels: z.array(z.string()).default([]),
-  reasoningCli: acpBridgeReasoningCliSchema.optional(),
-  nativeReasoning: acpBridgeNativeReasoningSchema.optional(),
-});
-export type AcpBridgeModelListParams = z.infer<
-  typeof acpBridgeModelListParamsSchema
->;
-
 /**
- * Session-level model pin. CLI-style agents resolve (model, reasoningLevel,
- * serviceTier) to a raw model id and launch with `<selectFlag> <resolved-id>`.
- * ACP-native agents receive `{ modelId }` after `session/new` — via their
- * "model"-category config option (`session/set_config_option`) when they
- * advertise one, otherwise via legacy `session/set_model`; if they expose a
- * `thought_level` config option, the bridge applies `reasoningLevel` via
- * `session/set_config_option`. Absent when the thread has no model preference.
+ * `model/list` as sent by the generic bridge-protocol adapter: the base
+ * canonical shape plus the provider-scoped options bag the acp bridge reads
+ * its launch spec from.
  */
-const acpBridgeCliModelSelectionSchema = z.object({
-  listCommand: acpBridgeAgentCommandSchema,
-  selectFlag: z.string().min(1),
-  model: z.string().min(1),
-  reasoningLevel: reasoningLevelSchema.optional(),
-  serviceTier: serviceTierSchema.optional(),
+const acpModelListParamsSchema = canonicalModelListParamsSchema.extend({
+  providerOptions: z.record(z.string(), z.unknown()).optional(),
 });
 
-const acpBridgeNativeModelSelectionSchema = z.object({
-  modelId: z.string().min(1),
-  reasoningLevel: reasoningLevelSchema.optional(),
-});
-
-const acpBridgeModelSelectionSchema = z.union([
-  acpBridgeCliModelSelectionSchema,
-  acpBridgeNativeModelSelectionSchema,
-]);
-export type AcpBridgeModelSelection = z.infer<
-  typeof acpBridgeModelSelectionSchema
->;
-
-const acpBridgeSessionParamsSchema = z.object({
-  threadId: z.string().min(1),
-  cwd: z.string().min(1),
-  agent: acpBridgeAgentCommandSchema,
-  modelSelection: acpBridgeModelSelectionSchema.optional(),
-  /**
-   * Launch-time reasoning level for agents that take reasoning as a global CLI
-   * flag rather than an ACP `thought_level` config option.
-   */
-  launchReasoningLevel: reasoningLevelSchema.optional(),
-  reasoningCli: acpBridgeReasoningCliSchema.optional(),
-  nativeReasoning: acpBridgeNativeReasoningSchema.optional(),
-  /**
-   * Launch-time permission flags for agents whose own prompt policy must be
-   * selected by CLI args rather than by ACP permission responses.
-   */
-  permissionCli: acpBridgePermissionCliSchema.optional(),
-  permissionMode: z.enum(["accept-edits", "full"]),
-  permissionEscalation: permissionEscalationSchema.nullable(),
-  /** Roots (workspace plus configured extras) where client fs writes are allowed. */
-  workspaceWriteRoots: z.array(z.string()),
-  envVars: z.record(z.string(), z.string()).optional(),
-  /** Server-owned instructions; prepended to the session's first prompt. */
-  instructions: z.string().optional(),
-  dynamicTools: z.array(dynamicToolSchema).optional(),
-});
-
-export const acpBridgeThreadStartParamsSchema = acpBridgeSessionParamsSchema;
-export type AcpBridgeThreadStartParams = z.infer<
-  typeof acpBridgeThreadStartParamsSchema
->;
-
-export const acpBridgeThreadResumeParamsSchema =
-  acpBridgeSessionParamsSchema.extend({
-    providerThreadId: z.string().min(1),
-  });
-export type AcpBridgeThreadResumeParams = z.infer<
-  typeof acpBridgeThreadResumeParamsSchema
->;
-
-export const acpBridgeThreadForkParamsSchema =
-  acpBridgeSessionParamsSchema.extend({
-    sourceProviderThreadId: z.string().min(1),
-    sourceProviderCheckpointId: z.string().min(1).optional(),
-  });
-export type AcpBridgeThreadForkParams = z.infer<
-  typeof acpBridgeThreadForkParamsSchema
->;
-
-const acpBridgeTurnStartParamsSchema = z.object({
-  threadId: z.string().min(1),
-  input: z.array(promptInputSchema),
-});
-
-const acpBridgeTurnSteerParamsSchema = z.object({
-  threadId: z.string().min(1),
-  expectedTurnId: z.string().min(1),
-  input: z.array(promptInputSchema),
-});
-
-const acpBridgeThreadIdParamsSchema = z.object({
-  threadId: z.string().min(1),
-});
-
-/**
- * Canonical `model/list` params as sent by the generic bridge-protocol
- * adapter: the base canonical shape plus the provider-scoped options bag the
- * acp bridge reads the launch spec from. `providerOptions` doubles as the
- * discriminator against the legacy params (whose fields are all optional).
- */
-const acpBridgeCanonicalModelListParamsSchema =
-  canonicalModelListParamsSchema.extend({
-    providerOptions: z.record(z.string(), z.unknown()),
-  });
-
-/**
- * Per-method params accept both dialects during the phase-2a migration:
- * the canonical Provider Bridge Protocol shape (schemas imported from
- * `@bb/provider-bridge-protocol`, listed first — required fields such as
- * `options`, `clientRequestId`, or `intent` discriminate them from the legacy
- * shapes) and the legacy adapter shape. Handlers narrow on the same fields.
- */
+/** The canonical Provider Bridge Protocol params, per method. */
 export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("initialize"),
-    // Accepts both the legacy shape ({clientInfo}) and the canonical
-    // Provider Bridge Protocol shape ({protocolVersion, client}) during the
-    // migration; the reply is always the canonical handshake, which the
-    // legacy adapter ignores.
-    params: z.union([
-      z.object({
-        clientInfo: z.object({ name: z.string(), version: z.string() }),
-      }),
-      z
-        .object({
-          protocolVersion: z.number().int().positive(),
-          client: z.object({ name: z.string(), version: z.string() }),
-        })
-        .passthrough(),
-    ]),
+    params: z
+      .object({
+        protocolVersion: z.number().int().positive(),
+        client: z.object({ name: z.string(), version: z.string() }),
+      })
+      .passthrough(),
   }),
   z.object({
     method: z.literal("model/list"),
-    params: z.union([
-      acpBridgeCanonicalModelListParamsSchema,
-      acpBridgeModelListParamsSchema,
-    ]),
+    params: acpModelListParamsSchema,
   }),
   z.object({
     method: z.literal("thread/start"),
-    params: z.union([
-      canonicalThreadStartParamsSchema,
-      acpBridgeThreadStartParamsSchema,
-    ]),
+    params: canonicalThreadStartParamsSchema,
   }),
   z.object({
     method: z.literal("thread/resume"),
-    params: z.union([
-      canonicalThreadResumeParamsSchema,
-      acpBridgeThreadResumeParamsSchema,
-    ]),
+    params: canonicalThreadResumeParamsSchema,
   }),
   z.object({
     method: z.literal("thread/fork"),
-    params: z.union([
-      canonicalThreadForkParamsSchema,
-      acpBridgeThreadForkParamsSchema,
-    ]),
+    params: canonicalThreadForkParamsSchema,
   }),
   z.object({
     method: z.literal("turn/start"),
-    params: z.union([
-      canonicalTurnStartParamsSchema,
-      acpBridgeTurnStartParamsSchema,
-    ]),
+    params: canonicalTurnStartParamsSchema,
   }),
   z.object({
     method: z.literal("turn/steer"),
-    params: z.union([
-      canonicalTurnSteerParamsSchema,
-      acpBridgeTurnSteerParamsSchema,
-    ]),
+    params: canonicalTurnSteerParamsSchema,
   }),
   z.object({
     method: z.literal("thread/stop"),
-    params: z.union([
-      canonicalThreadStopParamsSchema,
-      acpBridgeThreadIdParamsSchema,
-    ]),
+    params: canonicalThreadStopParamsSchema,
   }),
   z.object({
     method: z.literal("thread/discard"),
     params: canonicalThreadDiscardParamsSchema,
-  }),
-  z.object({
-    method: z.literal("thread/compact"),
-    params: acpBridgeThreadIdParamsSchema,
   }),
   z.object({
     method: z.literal("skills/configure"),
@@ -303,8 +127,6 @@ export type AcpBridgeCommand = z.infer<typeof acpBridgeCommandSchema>;
 
 export const ACP_TURN_STARTED_METHOD = "acp/turn/started";
 export const ACP_TURN_COMPLETED_METHOD = "acp/turn/completed";
-export const ACP_COMPACTION_STARTED_METHOD = "acp/compaction/started";
-export const ACP_COMPACTION_COMPLETED_METHOD = "acp/compaction/completed";
 export const ACP_UPDATE_METHOD = "acp/update";
 export const ACP_FS_WRITE_METHOD = "acp/fs/write";
 export const ACP_WARNING_METHOD = "acp/warning";
@@ -324,29 +146,6 @@ export const acpTurnCompletedNotificationParamsSchema = z
     stopReason: acpStopReasonSchema,
   })
   .passthrough();
-
-export const acpCompactionCompletedNotificationParamsSchema =
-  z.discriminatedUnion("status", [
-    z
-      .object({
-        threadId: z.string().min(1),
-        status: z.literal("completed"),
-      })
-      .passthrough(),
-    z
-      .object({
-        threadId: z.string().min(1),
-        status: z.literal("interrupted"),
-      })
-      .passthrough(),
-    z
-      .object({
-        threadId: z.string().min(1),
-        status: z.literal("failed"),
-        error: z.string().min(1),
-      })
-      .passthrough(),
-  ]);
 
 export const acpUpdateNotificationParamsSchema = z
   .object({
@@ -371,36 +170,3 @@ export const acpWarningNotificationParamsSchema = z
     details: z.string().optional(),
   })
   .passthrough();
-
-// ---------------------------------------------------------------------------
-// Bridge → runtime permission requests
-// ---------------------------------------------------------------------------
-
-export const ACP_PERMISSION_REQUEST_METHOD = "acp/permission/request";
-
-export const acpPermissionRequestParamsSchema = z.object({
-  threadId: z.string().min(1),
-  providerThreadId: z.string().min(1),
-  turnId: z.union([z.string().min(1), z.null()]),
-  toolCall: z
-    .object({
-      toolCallId: z.string().min(1),
-      title: z.string().optional(),
-      kind: acpToolKindSchema.optional(),
-      command: z.string().optional(),
-    })
-    .optional(),
-  options: z.array(acpPermissionOptionSchema).min(1),
-});
-export type AcpPermissionRequestParams = z.infer<
-  typeof acpPermissionRequestParamsSchema
->;
-
-/**
- * The runtime answers a permission request with the user's decision; the
- * bridge maps it back onto the ACP options it kept for the pending request.
- */
-export const acpPermissionResponseSchema = z.object({
-  decision: z.enum(["allow_once", "allow_for_session", "deny"]),
-});
-export type AcpPermissionResponse = z.infer<typeof acpPermissionResponseSchema>;

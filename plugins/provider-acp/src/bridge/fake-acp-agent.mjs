@@ -17,6 +17,9 @@
  * - FAKE_ACP_USAGE_ON_LOAD=1 → report context usage during session/load
  * - FAKE_ACP_USAGE_SESSION_ID
  *                            → override the usage notification session id
+ * - FAKE_ACP_MODEL_LINES     → stdout for the agent's `--list-models` mode
+ * - FAKE_ACP_MODEL_LIST_STDERR
+ *                            → make `--list-models` fail with this stderr
  * - FAKE_ACP_MODEL_CONFIG=1  → advertise a model configOptions select
  * - FAKE_ACP_MODELS_FIELD=1  → advertise legacy ACP models state
  * - FAKE_ACP_THOUGHT_LEVEL_CONFIG=1
@@ -63,6 +66,18 @@ const authMethods = (process.env.FAKE_ACP_AUTH_METHODS ?? "")
   .split(",")
   .map((method) => method.trim())
   .filter(Boolean);
+// `--list-models` is the agent's own model-list mode: the bridge derives its
+// list command from the launch spec's agent binary plus `modelCli.listArgs`,
+// so a list command can only ever be this binary.
+if (process.argv.includes("--list-models")) {
+  if (process.env.FAKE_ACP_MODEL_LIST_STDERR) {
+    process.stderr.write(`${process.env.FAKE_ACP_MODEL_LIST_STDERR}\n`);
+    process.exit(1);
+  }
+  process.stdout.write(`${process.env.FAKE_ACP_MODEL_LINES ?? ""}\n`);
+  process.exit(0);
+}
+
 const sessionId = `fake-sess-${process.pid}`;
 const fakeModels = [
   { value: "fake/default", name: "Fake Default" },
