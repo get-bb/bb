@@ -648,6 +648,7 @@ export function createAutomationService(args: {
         enabled: true,
         nextRunAt: computeNextRunAt(trigger, now),
         lastError: null,
+        resetConsecutiveFailures: true,
       });
       if (!updated) throw new Error("Automation not found");
       publishAutomationChange(bb, input.projectId, "automations-changed");

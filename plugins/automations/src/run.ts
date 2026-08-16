@@ -4,7 +4,7 @@ import {
   closeAutomationRun,
   disableAutomationsForDeletedThread,
   getAutomation,
-  getRunningAutomationRunByThread,
+  listRunningAutomationRunsByThread,
   markAutomationThread,
   setAutomationEnabled,
   setAutomationRunThread,
@@ -130,8 +130,7 @@ export async function executeAgentRun(
 /**
  * Failure policy for agent dispatch: a deleted project is terminal (the
  * project never comes back), so disable the automation and close the run
- * instead of invoking the caller's rollback — which would re-arm the past
- * next_run_at and fail again every sweep.
+ * instead of treating the failure as transient and scheduling another run.
  */
 function settleDispatchFailure(
   bb: Pick<BbPluginApi, "log">,
@@ -218,8 +217,8 @@ async function reuseTargetThreadForRun(
 /**
  * The target thread is gone or unusable — a deliberate disable, not a
  * transient dispatch failure: close the run failed and leave the automation
- * disabled instead of invoking the schedule rollback (which would re-enable
- * and re-arm it).
+ * disabled instead of treating the failure as transient and scheduling
+ * another run.
  */
 function closeRunForUnusableTargetThread(
   bb: Pick<BbPluginApi, "log">,
@@ -306,19 +305,23 @@ export function closeAutomationRunForSettledThread(
   db: Db,
   args: { threadId: string; status: "idle" | "failed"; error?: string | null },
 ): void {
-  const run = getRunningAutomationRunByThread(db, args.threadId);
-  if (!run) return;
-  const closed = closeAutomationRun(db, {
-    runId: run.id,
-    status: args.status === "idle" ? "succeeded" : "failed",
-    error: args.status === "idle" ? null : (args.error ?? "Turn failed"),
-    threadId: args.threadId,
-    now: Date.now(),
-  });
-  if (!closed) return;
-  const automation = getAutomation(db, closed.automationId);
-  if (automation) {
-    publishAutomationChange(bb, automation.projectId, [
+  const runs = listRunningAutomationRunsByThread(db, args.threadId);
+  const now = Date.now();
+  const changedProjects = new Set<string>();
+  for (const run of runs) {
+    const closed = closeAutomationRun(db, {
+      runId: run.id,
+      status: args.status === "idle" ? "succeeded" : "failed",
+      error: args.status === "idle" ? null : (args.error ?? "Turn failed"),
+      threadId: args.threadId,
+      now,
+    });
+    if (!closed) continue;
+    const automation = getAutomation(db, closed.automationId);
+    if (automation) changedProjects.add(automation.projectId);
+  }
+  for (const projectId of changedProjects) {
+    publishAutomationChange(bb, projectId, [
       "automations-changed",
       "automation-runs-changed",
     ]);

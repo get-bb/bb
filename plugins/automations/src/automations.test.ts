@@ -17,10 +17,12 @@ import {
   createAutomation,
   createManualRun,
   getAutomation,
+  getRunningAutomationRun,
   listAutomationsForProject,
   listAutomationRuns,
   migrations,
-  restoreAutomationAfterFailedRun,
+  setAutomationEnabled,
+  AUTOMATION_RETRY_BASE_MS,
   type Db,
 } from "./data.js";
 import { ingestLegacyImport } from "./legacy-import.js";
@@ -42,7 +44,7 @@ import { automationScriptDir } from "./script-files.js";
 
 function createTestDb(): Db {
   const db = new Database(":memory:");
-  db.exec(migrations[0] ?? "");
+  for (const migration of migrations) db.exec(migration);
   return db;
 }
 
@@ -194,6 +196,58 @@ describe("data migrations", () => {
       .map((row) => row.permissionMode);
     expect(modes).toEqual(["accept-edits", "accept-edits"]);
   });
+
+  it("settles older duplicate running rows so single-flight can be introduced on history", () => {
+    // Databases from before single-flight could hold several running rows for
+    // one automation (manual runs never checked). The migration must not fail
+    // closed on that history: it keeps the newest row and settles the rest.
+    const db = new Database(":memory:");
+    db.exec(migrations[0] ?? "");
+    db.prepare(
+      `INSERT INTO automations (
+         id, project_id, name, trigger_type, trigger_config, run_mode,
+         execution, origin, created_at, updated_at
+       ) VALUES (
+         'auto_once', 'proj_test', 'Once', 'once', '{}', 'agent', '{}',
+         'human', 1, 1
+       )`,
+    ).run();
+    const insertRun = db.prepare(
+      `INSERT INTO automation_runs (
+         id, automation_id, run_mode, status, trigger, scheduled_for, started_at
+       ) VALUES (?, 'auto_once', 'agent', 'running', 'manual', 1000, ?)`,
+    );
+    insertRun.run("run_first", 1000);
+    insertRun.run("run_second", 1001);
+    insertRun.run("run_third", 1001);
+
+    db.transaction(() => {
+      db.exec(migrations[1] ?? "");
+      db.exec(migrations[2] ?? "");
+    })();
+
+    const rows = db
+      .prepare(
+        `SELECT id, status, skip_reason AS skipReason, finished_at AS finishedAt
+           FROM automation_runs ORDER BY id`,
+      )
+      .all() as Array<{
+      id: string;
+      status: string;
+      skipReason: string | null;
+      finishedAt: number | null;
+    }>;
+    // Newest by started_at, then id: run_third survives.
+    expect(rows.map((row) => [row.id, row.status])).toEqual([
+      ["run_first", "skipped"],
+      ["run_second", "skipped"],
+      ["run_third", "running"],
+    ]);
+    expect(rows[0]!.skipReason).toMatch(/single-flight/);
+    expect(rows[0]!.finishedAt).not.toBeNull();
+    // And the invariant now holds: a second running row is refused.
+    expect(() => insertRun.run("run_fourth", 2000)).toThrow(/UNIQUE/);
+  });
 });
 
 describe("schedule helpers", () => {
@@ -251,7 +305,7 @@ describe("automation data access", () => {
     ).toHaveLength(1);
   });
 
-  it("rolls schedule state back after dispatch failure", () => {
+  it("backs off a scheduled automation after dispatch failure", () => {
     const db = createTestDb();
     const automation = createScheduledAutomation(db, 1000);
     const claim = claimAutomationScheduledRun(db, {
@@ -261,20 +315,272 @@ describe("automation data access", () => {
       now: 1000,
     });
     if (!claim.advanced) throw new Error("claim failed");
-    restoreAutomationAfterFailedRun(db, {
-      automationId: automation.id,
+    closeAutomationRun(db, {
       runId: claim.run.id,
-      triggerType: "schedule",
-      advancedNextRunAt: 2000,
-      restoredNextRunAt: 1000,
-      expectedRunCount: 1,
+      status: "failed",
       error: "dispatch failed",
       now: 1001,
     });
     const restored = getAutomation(db, automation.id);
-    expect(restored?.nextRunAt).toBe(1000);
-    expect(restored?.runCount).toBe(0);
+    expect(restored?.nextRunAt).toBe(1001 + AUTOMATION_RETRY_BASE_MS);
+    expect(restored?.runCount).toBe(1);
+    expect(restored?.consecutiveFailures).toBe(1);
     expect(restored?.lastRunStatus).toBe("failed");
+  });
+
+  it("settles a running automation exactly once", () => {
+    const db = createTestDb();
+    const automation = createScheduledAutomation(db, 1000);
+    const claim = claimAutomationScheduledRun(db, {
+      automationId: automation.id,
+      expectedNextRunAt: 1000,
+      newNextRunAt: 2000,
+      now: 1000,
+    });
+    if (!claim.advanced) throw new Error("claim failed");
+
+    const first = closeAutomationRun(db, {
+      runId: claim.run.id,
+      status: "failed",
+      error: "first failure",
+      now: 1001,
+    });
+    const duplicate = closeAutomationRun(db, {
+      runId: claim.run.id,
+      status: "failed",
+      error: "duplicate failure",
+      now: 1002,
+    });
+
+    expect(first?.run.status).toBe("failed");
+    expect(duplicate).toBeNull();
+    expect(getAutomation(db, automation.id)?.consecutiveFailures).toBe(1);
+    expect(getAutomation(db, automation.id)?.nextRunAt).toBe(
+      1001 + AUTOMATION_RETRY_BASE_MS,
+    );
+    expect(first?.run.error).toBe("first failure");
+  });
+
+  it("does not re-enable a manually paused automation after failure", () => {
+    const db = createTestDb();
+    const automation = createScheduledAutomation(db, 1000);
+    const claim = claimAutomationScheduledRun(db, {
+      automationId: automation.id,
+      expectedNextRunAt: 1000,
+      newNextRunAt: 2000,
+      now: 1000,
+    });
+    if (!claim.advanced) throw new Error("claim failed");
+    setAutomationEnabled(db, {
+      projectId: automation.projectId,
+      automationId: automation.id,
+      enabled: false,
+      nextRunAt: null,
+    });
+
+    closeAutomationRun(db, {
+      runId: claim.run.id,
+      status: "failed",
+      error: "failed after pause",
+      now: 1001,
+    });
+
+    expect(getAutomation(db, automation.id)?.enabled).toBe(false);
+    expect(getAutomation(db, automation.id)?.nextRunAt).toBeNull();
+  });
+
+  it("auto-pauses after three consecutive scheduled failures", () => {
+    const db = createTestDb();
+    const automation = createScheduledAutomation(db, 1000);
+    let expectedNextRunAt = 1000;
+
+    for (let failure = 1; failure <= 3; failure += 1) {
+      const advancedNextRunAt = expectedNextRunAt + 60_000;
+      const claim = claimAutomationScheduledRun(db, {
+        automationId: automation.id,
+        expectedNextRunAt,
+        newNextRunAt: advancedNextRunAt,
+        now: expectedNextRunAt,
+      });
+      if (!claim.advanced) throw new Error(`claim ${failure} failed`);
+      const failedAt = expectedNextRunAt + 1;
+      closeAutomationRun(db, {
+        runId: claim.run.id,
+        status: "failed",
+        error: `dispatch failed ${failure}`,
+        now: failedAt,
+      });
+      const current = getAutomation(db, automation.id);
+      expect(current?.consecutiveFailures).toBe(failure);
+      if (failure < 3) {
+        expectedNextRunAt =
+          failedAt + AUTOMATION_RETRY_BASE_MS * 2 ** (failure - 1);
+        expect(current?.enabled).toBe(true);
+        expect(current?.nextRunAt).toBe(expectedNextRunAt);
+      } else {
+        expect(current?.enabled).toBe(false);
+        expect(current?.nextRunAt).toBeNull();
+        expect(current?.lastError).toContain(
+          "paused after 3 consecutive failures",
+        );
+      }
+    }
+  });
+
+  it("applies the same backoff and pause policy to settled script failures", () => {
+    const db = createTestDb();
+    const automation = createScheduledAutomation(db, 1000);
+    let expectedNextRunAt = 1000;
+
+    for (let failure = 1; failure <= 3; failure += 1) {
+      const claim = claimAutomationScheduledRun(db, {
+        automationId: automation.id,
+        expectedNextRunAt,
+        newNextRunAt: expectedNextRunAt + 60_000,
+        now: expectedNextRunAt,
+      });
+      if (!claim.advanced) throw new Error(`claim ${failure} failed`);
+      const failedAt = expectedNextRunAt + 1;
+      closeAutomationRun(db, {
+        runId: claim.run.id,
+        status: "failed",
+        error: `script failed ${failure}`,
+        now: failedAt,
+      });
+      const current = getAutomation(db, automation.id);
+      expect(current?.consecutiveFailures).toBe(failure);
+      if (failure < 3) {
+        expectedNextRunAt =
+          failedAt + AUTOMATION_RETRY_BASE_MS * 2 ** (failure - 1);
+        expect(current?.nextRunAt).toBe(expectedNextRunAt);
+      } else {
+        expect(current?.enabled).toBe(false);
+        expect(current?.nextRunAt).toBeNull();
+      }
+    }
+  });
+
+  it("enforces one running execution per automation", () => {
+    const db = createTestDb();
+    const automation = createScheduledAutomation(db, 1000);
+    const first = claimAutomationScheduledRun(db, {
+      automationId: automation.id,
+      expectedNextRunAt: 1000,
+      newNextRunAt: 2000,
+      now: 1000,
+    });
+    if (!first.advanced) throw new Error("first claim failed");
+
+    const overlapping = claimAutomationScheduledRun(db, {
+      automationId: automation.id,
+      expectedNextRunAt: 2000,
+      newNextRunAt: 3000,
+      now: 2000,
+    });
+    const manual = createManualRun(db, {
+      automationId: automation.id,
+      runMode: "agent",
+      now: 2000,
+    });
+
+    expect(overlapping.advanced).toBe(false);
+    expect(manual.deduped).toBe(true);
+    expect(manual.run.id).toBe(first.run.id);
+    expect(getRunningAutomationRun(db, automation.id)?.id).toBe(first.run.id);
+  });
+
+  it("enforces single-flight at the database boundary", () => {
+    const db = createTestDb();
+    const automation = createScheduledAutomation(db, 1000);
+    createManualRun(db, {
+      automationId: automation.id,
+      runMode: "agent",
+      now: 1000,
+    });
+
+    expect(() =>
+      db
+        .prepare(
+          `INSERT INTO automation_runs (
+             id, automation_id, run_mode, status, trigger,
+             scheduled_for, started_at
+           ) VALUES (
+             'run_overlap', ?, 'agent', 'running', 'manual', 1001, 1001
+           )`,
+        )
+        .run(automation.id),
+    ).toThrow();
+  });
+
+  it("resets consecutive failures after a successful run", () => {
+    const db = createTestDb();
+    const automation = createScheduledAutomation(db, 1000);
+    const first = claimAutomationScheduledRun(db, {
+      automationId: automation.id,
+      expectedNextRunAt: 1000,
+      newNextRunAt: 2000,
+      now: 1000,
+    });
+    if (!first.advanced) throw new Error("first claim failed");
+    closeAutomationRun(db, {
+      runId: first.run.id,
+      status: "failed",
+      error: "dispatch failed",
+      now: 1001,
+    });
+    const retryAt = getAutomation(db, automation.id)?.nextRunAt;
+    if (retryAt === null || retryAt === undefined) {
+      throw new Error("retry was not scheduled");
+    }
+    const retry = claimAutomationScheduledRun(db, {
+      automationId: automation.id,
+      expectedNextRunAt: retryAt,
+      newNextRunAt: retryAt + 60_000,
+      now: retryAt,
+    });
+    if (!retry.advanced) throw new Error("retry claim failed");
+    closeAutomationRun(db, {
+      runId: retry.run.id,
+      status: "succeeded",
+      now: retryAt + 1,
+    });
+
+    expect(getAutomation(db, automation.id)?.consecutiveFailures).toBe(0);
+  });
+
+  it("resets consecutive failures when a scheduled tick is skipped", () => {
+    const db = createTestDb();
+    const automation = createScheduledAutomation(db, 1000);
+    const failed = claimAutomationScheduledRun(db, {
+      automationId: automation.id,
+      expectedNextRunAt: 1000,
+      newNextRunAt: 2000,
+      now: 1000,
+    });
+    if (!failed.advanced) throw new Error("claim failed");
+    closeAutomationRun(db, {
+      runId: failed.run.id,
+      status: "failed",
+      error: "transient failure",
+      now: 1001,
+    });
+    const retryAt = getAutomation(db, automation.id)?.nextRunAt;
+    if (retryAt === null || retryAt === undefined) {
+      throw new Error("retry was not scheduled");
+    }
+
+    const skipped = claimAutomationScheduledRun(db, {
+      automationId: automation.id,
+      expectedNextRunAt: retryAt,
+      newNextRunAt: retryAt + 60_000,
+      skipReason: "nothing to do",
+      now: retryAt,
+    });
+
+    expect(skipped.advanced).toBe(true);
+    expect(skipped.advanced && skipped.run.status).toBe("skipped");
+    expect(getAutomation(db, automation.id)?.consecutiveFailures).toBe(0);
+    expect(getAutomation(db, automation.id)?.lastError).toBeNull();
   });
 
   it("does not re-arm one-shot automations after dispatch failure", () => {
@@ -287,13 +593,9 @@ describe("automation data access", () => {
       now: 1000,
     });
     if (!claim.advanced) throw new Error("claim failed");
-    restoreAutomationAfterFailedRun(db, {
-      automationId: automation.id,
+    closeAutomationRun(db, {
       runId: claim.run.id,
-      triggerType: "once",
-      advancedNextRunAt: null,
-      restoredNextRunAt: 1000,
-      expectedRunCount: 1,
+      status: "failed",
       error: "dispatch failed",
       now: 1001,
     });
@@ -301,6 +603,7 @@ describe("automation data access", () => {
     expect(restored?.enabled).toBe(false);
     expect(restored?.nextRunAt).toBeNull();
     expect(restored?.runCount).toBe(1);
+    expect(restored?.consecutiveFailures).toBe(1);
     expect(restored?.lastRunStatus).toBe("failed");
   });
 

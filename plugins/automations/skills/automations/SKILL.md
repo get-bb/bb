@@ -22,6 +22,12 @@ Design the script to print nothing when there is nothing to report: an exit-0 ru
 
 Execution safety is fail-closed:
 
+- An automation has at most one running execution. A duplicate scheduled tick or
+  manual run reuses the existing run instead of starting another process tree.
+- Failed recurring runs retry after exponential delays (30 seconds, then 60
+  seconds). The third consecutive failure pauses the automation and clears its
+  next run. A successful or skipped run resets the failure count; explicitly
+  resuming an automation also resets it.
 - Script timeout and output-limit termination applies to the whole spawned
   process group, including descendant processes (on Windows, to the direct
   child).
