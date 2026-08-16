@@ -93,6 +93,7 @@ describe("official plugin registry invariants", () => {
       docs: "Context & knowledge",
       github: "Developer tools",
       "inline-vis": "Interface",
+      "keep-awake": "Host access",
       memory: "Context & knowledge",
       "provider-retry": "Agent interaction",
       secrets: "Developer tools",

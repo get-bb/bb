@@ -1,0 +1,32 @@
+{
+  "name": "bb-plugin-keep-awake",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Keeps the primary macOS host awake while bb is running.",
+  "engines": {
+    "bb": ">=0.0"
+  },
+  "bb": {
+    "name": "Keep Awake",
+    "description": "Keeps the primary macOS host awake while bb is running.",
+    "branding": {
+      "icon": "Coffee"
+    },
+    "server": "./server.ts",
+    "host": "./host.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1"
+  }
+}

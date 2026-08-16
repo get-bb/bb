@@ -452,6 +452,12 @@ const curatedMarketplaceRenameMigrationPath = resolve(
   "drizzle",
   "0098_rename_curated_marketplace.sql",
 );
+const keepAwakePluginSettingMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0099_chunky_lady_deathstrike.sql",
+);
 const sidebarOrderingMigrationPath = resolve(
   __dirname,
   "..",
@@ -4728,6 +4734,68 @@ describe("migrate", () => {
         { id: "catalog-plugin", catalogMarketplaceName: "bb-official" },
         { id: "direct-plugin", catalogMarketplaceName: null },
       ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("moves the legacy keep-awake preference into plugin-owned settings", () => {
+    const db = createConnection(":memory:");
+    try {
+      db.$client.exec(`
+        CREATE TABLE app_settings (
+          id text PRIMARY KEY NOT NULL,
+          caffeinate integer NOT NULL,
+          updated_at integer NOT NULL
+        );
+        CREATE TABLE plugin_settings (
+          plugin_id text NOT NULL,
+          key text NOT NULL,
+          value text NOT NULL,
+          updated_at integer NOT NULL,
+          PRIMARY KEY (plugin_id, key)
+        );
+        INSERT INTO app_settings VALUES ('default', 1, 123);
+      `);
+
+      runMigrationFile({
+        db,
+        migrationPath: keepAwakePluginSettingMigrationPath,
+      });
+
+      expect(
+        db.$client
+          .prepare<[], { name: string }>("PRAGMA table_info(app_settings)")
+          .all()
+          .map((column) => column.name),
+      ).not.toContain("caffeinate");
+      expect(
+        db.$client
+          .prepare<
+            [],
+            {
+              key: string;
+              pluginId: string;
+              updatedAt: number;
+              value: string;
+            }
+          >(
+            `
+              SELECT
+                plugin_id AS pluginId,
+                key,
+                value,
+                updated_at AS updatedAt
+              FROM plugin_settings
+            `,
+          )
+          .get(),
+      ).toEqual({
+        pluginId: "keep-awake",
+        key: "enabled",
+        value: "true",
+        updatedAt: 123,
+      });
     } finally {
       closeConnection(db);
     }

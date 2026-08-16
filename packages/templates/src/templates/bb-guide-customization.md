@@ -65,13 +65,11 @@ service-unavailable failure. Their defaults are `codex/gpt-5.6-luna` and
 Server-backed General settings
 
 Settings → General includes app-wide preferences stored server-side so every
-window and restart sees the same value. On macOS, the Caffeinate toggle asks the
-builtin Keep Awake host plugin to run
-`/usr/bin/caffeinate -i -w <worker-pid>` on the primary host, preventing system
-idle sleep while bb is running; turning it off stops that process. It only
-blocks idle sleep: closing a laptop lid or choosing Sleep manually still sleeps
-the Mac. This setting is only shown when the connected primary host daemon
-reports macOS.
+window and restart sees the same value. Keep Awake is instead owned by its
+builtin plugin: configure `enabled` under Extensions → Plugins or run
+`bb plugin config keep-awake set enabled <true|false>`. On macOS it prevents
+system idle sleep while bb is running; closing the lid or choosing Sleep still
+sleeps the Mac.
 
 Settings → Keyboard also includes `showKeyboardHints`, which defaults to true.
 Turn it off to hide the delayed shortcut badges shown while holding Command or

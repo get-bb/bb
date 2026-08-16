@@ -274,10 +274,6 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       { name: "bb-cli", path: "/home/user/.agents/skills/bb-cli" },
     ],
   },
-  "host.caffeinate": {
-    enabled: true,
-    supported: true,
-  },
   "host.list_branches": {
     branches: ["main"],
     branchesTruncated: false,

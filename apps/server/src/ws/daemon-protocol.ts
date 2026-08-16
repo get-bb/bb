@@ -7,7 +7,6 @@ import { ApiError } from "../errors.js";
 import { verifyAuthenticatedDaemon } from "../internal/auth.js";
 import type { AppDeps } from "../types.js";
 import { runtimeErrorLogFields } from "../services/lib/error-log-fields.js";
-import { schedulePrimaryHostCaffeinateReconciliation } from "../services/system/app-settings.js";
 import {
   getInactiveSessionLogFields,
   requireAuthorizedOpenSession,
@@ -69,20 +68,7 @@ export async function validateDaemonWebSocket(
 }
 
 export function onDaemonSocketOpen(
-  deps: Pick<
-    AppDeps,
-    | "config"
-    | "db"
-    | "hub"
-    | "lifecycleDedupers"
-    | "logger"
-    | "machineAuth"
-    | "pendingInteractions"
-    | "skillTreeRegistry"
-    | "sharedPorts"
-    | "telemetry"
-    | "terminalSessions"
-  >,
+  deps: Pick<AppDeps, "hub" | "logger" | "sharedPorts" | "terminalSessions">,
   args: { hostId: string; sessionId: string; socket: DaemonSocket },
 ): void {
   deps.logger.info(
@@ -94,9 +80,6 @@ export function onDaemonSocketOpen(
   deps.terminalSessions.expireDisconnectedHostTerminals({
     daemonSessionId: args.sessionId,
     hostId: args.hostId,
-  });
-  schedulePrimaryHostCaffeinateReconciliation(deps, {
-    reason: "daemon-open",
   });
 }
 

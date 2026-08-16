@@ -15,14 +15,11 @@ host context supplies the core-resolved target and workspace, request and
 generation abort signals, plugin-scoped data and temporary directories, and a
 raw daemon-owned filesystem watch primitive with acknowledged delivery.
 
-The initial builtin proofs are Keep Awake (host target, a generation-owned
-child process, and unexpected-exit invalidation) and Git status/diff/commit
-(environment targets, both scheduling modes, bounded larger results, and no
-private `@bb/*` implementation imports, including through relative or
-type-only paths). Git owns repository watch roots, ignore rules, fingerprints,
-and semantic invalidations; core owns only capped native observation,
-backpressure, and lifecycle cleanup. The migrated Git implementation and
-regression tests no longer remain duplicated in `@bb/host-workspace`.
+The initial builtin proof is Keep Awake: it owns a host target, a
+generation-owned child process, desired-state reconciliation, and
+unexpected-exit recovery without feature-specific core hooks. Environment
+targets, scheduling, and raw watches have platform-level tests but still need
+an independently useful plugin proof before stabilization.
 
 **Audit before stabilizing.**
 
@@ -74,9 +71,10 @@ Consumers may load before providers; a missing or disabled provider fails the
 call without poisoning the consumer. Host entries remain private—the provider
 may implement its capability by calling its own host client.
 
-Git publishes `workspace.v1` as the first builtin proof, so future Git UI and
-developer-tool plugins can consume repository operations without importing
-Git implementation code or calling its private host entry.
+V1 deliberately has no builtin capability provider whose implementation still
+depends on feature-specific core adapters. The platform contract is covered by
+isolation tests; a standalone provider and consumer pair is still required
+before stabilization.
 
 **Audit before stabilizing.**
 

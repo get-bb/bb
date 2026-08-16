@@ -20,10 +20,6 @@ import {
   cancelEnvironmentProvision,
   provisionEnvironment,
 } from "./command-handlers/environment.js";
-import {
-  createCaffeinateManager,
-  type CaffeinateManager,
-} from "./command-handlers/caffeinate.js";
 import { listHostBranches } from "./command-handlers/host-branches.js";
 import {
   installGlobalSkills,
@@ -86,7 +82,6 @@ import {
 } from "./workspace-resolution.js";
 
 const THREAD_STOP_ACTIVE_TURN_WAIT_MS = 5_000;
-const defaultCaffeinateManager = createCaffeinateManager();
 
 export {
   CommandDispatchError,
@@ -120,12 +115,6 @@ function providerCliEnvFromShellEnv(
   shellEnv: NodeJS.ProcessEnv,
 ): NodeJS.ProcessEnv {
   return shellEnv.PATH ? { ...process.env, PATH: shellEnv.PATH } : process.env;
-}
-
-function getCaffeinateManager(
-  options: CommandDispatchOptions,
-): CaffeinateManager {
-  return options.caffeinateManager ?? defaultCaffeinateManager;
 }
 
 function handleProviderCliInstallEventLine(
@@ -646,8 +635,6 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "plugin.host.dispose": async () => {
     throw new Error("plugin.host.dispose must be routed by CommandRouter");
   },
-  "host.caffeinate": async (command, options) =>
-    getCaffeinateManager(options).setEnabled(command.enabled),
   "host.list_commands": listHostCommands,
   "host.list_skills": listHostSkills,
   "host.delete_skill": deleteHostSkill,

@@ -116,7 +116,6 @@ export interface CommandRouterOptions {
   eventSink: CommandDispatchOptions["eventSink"];
   listModels?: CommandDispatchOptions["listModels"];
   resolveInteractiveRequest?: CommandDispatchOptions["resolveInteractiveRequest"];
-  caffeinateManager?: CommandDispatchOptions["caffeinateManager"];
   pluginHostManager?: PluginHostManager;
   ensureConnectTunnelIdentity?: CommandDispatchOptions["ensureConnectTunnelIdentity"];
   threadStorageRootPath: string;
@@ -431,7 +430,6 @@ export class CommandRouter {
       eventSink: this.options.eventSink,
       listModels: this.options.listModels,
       resolveInteractiveRequest: this.options.resolveInteractiveRequest,
-      caffeinateManager: this.options.caffeinateManager,
       ensureConnectTunnelIdentity: this.options.ensureConnectTunnelIdentity,
       threadStorageRootPath: this.options.threadStorageRootPath,
     };

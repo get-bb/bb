@@ -1294,6 +1294,35 @@ function restoreStagedConnectMachineIdColumn(db: DbConnection): void {
   );
 }
 
+function prepareKeepAwakeSettingMigration(
+  db: DbConnection,
+  migrationsFolder: string,
+): void {
+  if (
+    !tableExists(db, "__drizzle_migrations") ||
+    !tableExists(db, "app_settings") ||
+    columnExists(db, "app_settings", "caffeinate")
+  ) {
+    return;
+  }
+
+  const migration = requireExpectedAppliedMigration(
+    readExpectedAppliedMigrations(migrationsFolder),
+    "0099_chunky_lady_deathstrike",
+  );
+  if (readAppliedMigrationCreatedAts(db).has(migration.createdAt)) {
+    return;
+  }
+
+  // Branch-local repair tests and prerelease databases can already reflect
+  // the new app_settings shape while still needing to replay this migration.
+  // A temporary false value carries no legacy preference and lets the
+  // generated data-copy/drop migration remain replay-safe.
+  db.$client.exec(
+    "ALTER TABLE app_settings ADD COLUMN caffeinate integer DEFAULT false NOT NULL",
+  );
+}
+
 function repairBranchLocalThreadSearchMigrations(db: DbConnection): void {
   if (!tableExists(db, "__drizzle_migrations")) {
     return;
@@ -1497,6 +1526,7 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
       db,
       migrationsFolder,
     );
+    prepareKeepAwakeSettingMigration(db, migrationsFolder);
     try {
       drizzleMigrate(db, { migrationsFolder });
     } finally {

@@ -51,7 +51,6 @@ import {
   resolveCustomThemeCssPath,
   resolveThemeRootPath,
 } from "../services/system/custom-themes.js";
-import { schedulePrimaryHostCaffeinateReconciliation } from "../services/system/app-settings.js";
 import {
   installGlobalCliSkills,
   listInstallableMachineIds,
@@ -195,9 +194,6 @@ export function registerSystemRoutes(
   put(routes.generalSettings, (context, payload) => {
     setAppSettings(deps.db, payload);
     deps.hub.notifySystem(["config-changed"]);
-    schedulePrimaryHostCaffeinateReconciliation(deps, {
-      reason: "settings-updated",
-    });
     return context.json(getAppSettings(deps.db));
   });
 

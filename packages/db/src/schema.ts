@@ -153,9 +153,6 @@ export const systemExperiments = sqliteTable("system_experiments", {
 
 export const appSettings = sqliteTable("app_settings", {
   id: text("id").primaryKey(),
-  caffeinate: integer("caffeinate", { mode: "boolean" })
-    .notNull()
-    .default(false),
   showKeyboardHints: integer("show_keyboard_hints", { mode: "boolean" })
     .notNull()
     .default(true),

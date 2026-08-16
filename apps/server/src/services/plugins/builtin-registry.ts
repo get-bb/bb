@@ -73,6 +73,12 @@ export const BUILTIN_PLUGINS = [
     category: "Interface",
   },
   {
+    name: "keep-awake",
+    pluginId: "keep-awake",
+    defaultEnabled: true,
+    category: "Host access",
+  },
+  {
     name: "provider-retry",
     pluginId: "provider-retry",
     defaultEnabled: false,

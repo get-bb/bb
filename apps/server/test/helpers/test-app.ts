@@ -45,6 +45,20 @@ export interface RunningTestServer extends TestAppHarness {
   close(): Promise<void>;
 }
 
+export async function installTestBuiltinPlugin(
+  harness: Pick<TestAppHarness, "pluginService">,
+  name: "keep-awake",
+): Promise<void> {
+  const entry = await harness.pluginService.install(`builtin:${name}`, {
+    kind: "root",
+  });
+  if (entry.status !== "running") {
+    throw new Error(
+      `test builtin ${name} did not start: ${entry.statusDetail ?? entry.status}`,
+    );
+  }
+}
+
 export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
   appVersionService?: AppVersionService;
   terminalCloseTimeoutMs?: number;
@@ -212,6 +226,7 @@ export async function createTestAppHarness(
     pluginService,
     pluginCatalogService,
     async cleanup(): Promise<void> {
+      await pluginService.stop();
       await rm(dataDir, { recursive: true, force: true });
     },
   };

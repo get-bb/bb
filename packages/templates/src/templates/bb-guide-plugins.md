@@ -23,6 +23,13 @@ The builtin Custom instructions plugin adds a multiline editor under Settings
 → Custom instructions. Saved text is persisted on this bb host and included in
 agent task instructions; blank text contributes nothing.
 
+The builtin Keep Awake plugin prevents macOS idle sleep while bb is running.
+Set `enabled` on its plugin detail page or run
+`bb plugin config keep-awake set enabled <true|false>`. It reconciles the
+setting when the plugin starts, when any host connects, and when the primary
+host or setting changes. Only the connected primary host is enabled; disabling
+the plugin disposes its host workers and their child processes.
+
 The opt-in builtin Provider retry plugin continues Codex and Claude Code
 turns after a structured subscription window resets. Enable it under
 Extensions → Plugins or run `bb plugin enable provider-retry`. It keeps its
