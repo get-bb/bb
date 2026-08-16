@@ -2,6 +2,10 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  resetPluginFrontendBootStateForTest,
+  usePluginFrontendsSettled,
+} from "@/lib/plugin-frontend-boot-state";
+import {
   markRouteContentPainted,
   resetRouteContentPaintForTest,
 } from "@/lib/route-content-paint";
@@ -19,7 +23,10 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({ data: mocks.systemConfigData }),
 }));
 
-import { usePluginFrontendBoot } from "./usePluginFrontendBoot";
+import {
+  PLUGIN_FRONTEND_SETTLE_FLOOR_MS,
+  usePluginFrontendBoot,
+} from "./usePluginFrontendBoot";
 
 const flushMicrotasks = () => act(async () => {});
 
@@ -34,6 +41,7 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   mocks.bootPluginFrontends.mockClear();
+  resetPluginFrontendBootStateForTest();
 });
 
 describe("usePluginFrontendBoot", () => {
@@ -79,5 +87,19 @@ describe("usePluginFrontendBoot", () => {
       await vi.advanceTimersByTimeAsync(5_000);
     });
     expect(mocks.bootPluginFrontends).not.toHaveBeenCalled();
+  });
+
+  it("settles after the floor even when system config never resolves", () => {
+    // System config never resolves here: the boot must not wait forever.
+    mocks.systemConfigData = undefined;
+    const { result } = renderHook(() => {
+      usePluginFrontendBoot();
+      return usePluginFrontendsSettled();
+    });
+    expect(result.current).toBe(false);
+    act(() => vi.advanceTimersByTime(PLUGIN_FRONTEND_SETTLE_FLOOR_MS - 1));
+    expect(result.current).toBe(false);
+    act(() => vi.advanceTimersByTime(1));
+    expect(result.current).toBe(true);
   });
 });
