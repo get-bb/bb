@@ -3,7 +3,7 @@ import {
   type HostDaemonBridgeLaunch,
 } from "@bb/host-daemon-contract";
 import {
-  buildAcpProviderInfo,
+  ACP_TIER_CAPABILITIES,
   getAcpProviderServerCapabilities,
   isAcpProviderId,
 } from "../providers/acp-provider-tier.js";
@@ -41,15 +41,9 @@ export function resolveBridgeLaunchForProviderId(
     supportsThreadArchive,
     supportsThreadRename,
     permissionModes,
-  } = (
-    isOwnRegistration
-      ? registration.info
-      : buildAcpProviderInfo({
-          id: providerId,
-          displayName: providerId,
-          logoUrl: null,
-        })
-  ).capabilities;
+  } = isOwnRegistration
+    ? registration.info.capabilities
+    : ACP_TIER_CAPABILITIES;
   const fork = isOwnRegistration
     ? registration.serverCapabilities.fork
     : getAcpProviderServerCapabilities(providerId).fork;

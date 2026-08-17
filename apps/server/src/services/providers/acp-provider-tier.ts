@@ -23,7 +23,6 @@
  * variants out as separate model-list entries.
  */
 import type {
-  PermissionMode,
   ProviderCapabilities,
   ProviderComposerAction,
   ProviderInfo,
@@ -32,19 +31,13 @@ import type {
 } from "@bb/domain";
 import type { ProviderServerCapabilities } from "./provider-registry.js";
 
-const ACP_PERMISSION_MODES: readonly PermissionMode[] = [
-  "accept-edits",
-  "full",
-];
-
-// ACP session/fork clones a whole session and cannot stop at a checkpoint,
-// so fork is offered but edit-message rewind is not.
-const ACP_FORK: ProviderFork = "tip";
-
-const ACP_CAPABILITIES: Omit<
-  ProviderCapabilities,
-  "permissionModes"
-> = {
+/**
+ * The whole tier's client-facing capabilities. Exported because the registry's
+ * ACP fallbacks are capability questions, not `ProviderInfo` questions: they
+ * read this directly rather than building a throwaway ProviderInfo with a
+ * placeholder display name and a null logo just to reach one boolean.
+ */
+export const ACP_TIER_CAPABILITIES: ProviderCapabilities = {
   supportsThreadArchive: false,
   supportsThreadRename: false,
   supportsServiceTier: true,
@@ -52,7 +45,12 @@ const ACP_CAPABILITIES: Omit<
   // The ACP_FORK "tip" ladder, projected: fork yes, rewind no.
   supportsFork: true,
   supportsSessionRewind: false,
+  permissionModes: ["accept-edits", "full"],
 };
+
+// ACP session/fork clones a whole session and cannot stop at a checkpoint,
+// so fork is offered but edit-message rewind is not.
+const ACP_FORK: ProviderFork = "tip";
 
 // Skills are injected into every provider runtime, so the `/` skills
 // typeahead is universal; ACP agents contribute no other composer affordance.
@@ -76,6 +74,10 @@ const ACP_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsWorkflows: false,
   reasoningLevels: ACP_REASONING_LEVELS,
   fork: ACP_FORK,
+  // Compaction varies per ACP agent (OpenCode supports it, Cursor does not),
+  // so the tier declares none and the registry answers dynamic ids from the
+  // resolved agent record instead.
+  supportsManualCompaction: false,
 };
 
 export function isAcpProviderId(value: string): boolean {
@@ -101,8 +103,8 @@ export function buildAcpProviderInfo(
   return {
     available: true,
     capabilities: {
-      ...ACP_CAPABILITIES,
-      permissionModes: [...ACP_PERMISSION_MODES],
+      ...ACP_TIER_CAPABILITIES,
+      permissionModes: [...ACP_TIER_CAPABILITIES.permissionModes],
     },
     composerActions: ACP_COMPOSER_ACTIONS.map((action) =>
       action.kind === "skills"
@@ -121,4 +123,3 @@ export function getAcpProviderServerCapabilities(
   requireAcpProviderId(providerId);
   return ACP_SERVER_CAPABILITIES;
 }
-

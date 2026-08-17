@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { listSystemProviderInfos } from "../../../src/services/system/execution-options.js";
-import { withTestHarness, type TestAppHarness } from "../../helpers/test-app.js";
+import {
+  withTestHarness,
+  type TestAppHarness,
+} from "../../helpers/test-app.js";
 
 /**
  * The first-party provider plugins are the ONLY source of the four built-in
@@ -85,10 +88,10 @@ async function installFirstPartyProviderPlugins(
 }
 
 describe("first-party provider plugins", () => {
-  it(
-    "are the sole source of the built-in providers",
-    async () => {
-      await withTestHarness({ seedFirstPartyProviders: false }, async (harness) => {
+  it("are the sole source of the built-in providers", async () => {
+    await withTestHarness(
+      { seedFirstPartyProviders: false },
+      async (harness) => {
         const registry = harness.deps.providerRegistry;
         // No seed underneath: nothing exists until the plugins load.
         expect(registry.list()).toEqual([]);
@@ -115,22 +118,23 @@ describe("first-party provider plugins", () => {
             expectedLogoUrl(plugin.providerId),
           );
           // The facts the takeover merge used to carry over from the seed.
-          expect(registration.info.capabilities.supportsThreadArchive, label).toBe(
-            plugin.supportsThreadArchive,
-          );
-          expect(registration.info.capabilities.supportsThreadRename, label).toBe(
-            plugin.supportsThreadRename,
-          );
           expect(
-            registration.serverCapabilities.supportsWorkflows,
+            registration.info.capabilities.supportsThreadArchive,
             label,
-          ).toBe(plugin.supportsWorkflows);
+          ).toBe(plugin.supportsThreadArchive);
+          expect(
+            registration.info.capabilities.supportsThreadRename,
+            label,
+          ).toBe(plugin.supportsThreadRename);
+          expect(registration.serverCapabilities.supportsWorkflows, label).toBe(
+            plugin.supportsWorkflows,
+          );
           expect(registry.supportsManualCompaction(plugin.providerId)).toBe(
             plugin.supportsManualCompaction,
           );
           // The declaration is metadata only; the implementation is the
           // plugin's own built bridge artifact (pi's is daemon-bundled).
-          expect(registration.declaration?.id, label).toBe(plugin.providerId);
+          expect(registration.info.id, label).toBe(plugin.providerId);
         }
 
         // The composed provider listing (GET /system/providers path) agrees.
@@ -139,15 +143,14 @@ describe("first-party provider plugins", () => {
         expect(infos.map((info) => info.logoUrl)).toEqual(
           PROVIDER_IDS.map(expectedLogoUrl),
         );
-      });
-    },
-    60_000,
-  );
+      },
+    );
+  }, 60_000);
 
-  it(
-    "disabling a provider plugin removes its provider, and re-enabling restores its position",
-    async () => {
-      await withTestHarness({ seedFirstPartyProviders: false }, async (harness) => {
+  it("disabling a provider plugin removes its provider, and re-enabling restores its position", async () => {
+    await withTestHarness(
+      { seedFirstPartyProviders: false },
+      async (harness) => {
         const registry = harness.deps.providerRegistry;
         await installFirstPartyProviderPlugins(harness);
         expect(registry.get("pi")?.source).toEqual({
@@ -182,8 +185,7 @@ describe("first-party provider plugins", () => {
         expect(registry.list().map((entry) => entry.info.id)).toEqual(
           PROVIDER_IDS,
         );
-      });
-    },
-    60_000,
-  );
+      },
+    );
+  }, 60_000);
 });

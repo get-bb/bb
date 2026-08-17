@@ -5,10 +5,12 @@
  * `ProviderServerCapabilities`. Declarations are the only source of provider
  * metadata, so every field a consumer reads must be declarable.
  *
- * Declared facts outside these shapes (`kind`, `bridge`,
- * `supportsManualCompaction`) are not dropped:
- * the full declaration rides the registration record, where the registry's
- * compaction accessor reads `supportsManualCompaction`.
+ * Every declared fact a registry consumer reads lands in one of the two
+ * shapes — client-facing facts on `ProviderInfo`, backend-only ones on
+ * `ProviderServerCapabilities`. Facts nothing reads (`kind`, `bridge`) are
+ * deliberately dropped rather than stashed: a registration that also carries
+ * the raw declaration invites consumers to read around the projection, and
+ * then there are two answers to every capability question.
  */
 import { isPluginOwnedIconPath } from "@bb/domain";
 import type { ProviderComposerAction, ProviderInfo } from "@bb/domain";
@@ -88,7 +90,8 @@ export function buildPluginProviderRegistration(args: {
     supportsWorkflows: capabilities.supportsWorkflows,
     reasoningLevels: [...capabilities.reasoningLevels],
     fork: capabilities.fork,
+    supportsManualCompaction: capabilities.supportsManualCompaction,
   };
 
-  return { info, serverCapabilities, declaration };
+  return { info, serverCapabilities };
 }

@@ -86,8 +86,7 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
       const entry = await harness.pluginService.installPath(rootDir);
       expect(entry.status).toBe("running");
 
-      const registration =
-        harness.deps.providerRegistry.get("my-remote-agent");
+      const registration = harness.deps.providerRegistry.get("my-remote-agent");
       expect(registration).toMatchObject({
         source: { kind: "plugin", pluginId: entry.id },
         info: {
@@ -116,10 +115,10 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
           reasoningLevels: ["low", "medium", "high"],
         },
       });
-      // Fields without a registry consumer yet ride the full declaration.
-      expect(registration?.declaration).toMatchObject({
-        capabilities: { supportsManualCompaction: true },
-      });
+      // Backend-only declared facts land on serverCapabilities.
+      expect(registration?.serverCapabilities.supportsManualCompaction).toBe(
+        true,
+      );
 
       // The composed provider listing (GET /system/providers path) includes
       // the plugin provider next to the core catalog.
@@ -177,9 +176,7 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
       });
       const entry = await harness.pluginService.installPath(rootDir);
       expect(entry.status).toBe("running");
-      expect(
-        harness.deps.providerRegistry.get("reload-agent"),
-      ).not.toBeNull();
+      expect(harness.deps.providerRegistry.get("reload-agent")).not.toBeNull();
 
       await harness.pluginService.reload(entry.id);
 

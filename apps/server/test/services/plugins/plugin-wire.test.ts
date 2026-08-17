@@ -478,7 +478,9 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(response.status).toBe(500);
     expect(await response.json()).toMatchObject({
       ok: false,
-      error: expect.stringContaining("http route handler must return a Response"),
+      error: expect.stringContaining(
+        "http route handler must return a Response",
+      ),
     });
   });
 

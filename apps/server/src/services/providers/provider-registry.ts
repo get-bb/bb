@@ -12,7 +12,7 @@
  * stay in the bridge handshake; neither belongs here.
  */
 import {
-  buildAcpProviderInfo,
+  ACP_TIER_CAPABILITIES,
   getAcpProviderServerCapabilities,
   isAcpProviderId,
 } from "./acp-provider-tier.js";
@@ -22,7 +22,6 @@ import type {
   ProviderInfo,
   ReasoningLevel,
 } from "@bb/domain";
-import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 
 /**
  * Backend-only provider facts, the server-side half of a declaration (the
@@ -46,6 +45,11 @@ export interface ProviderServerCapabilities {
    * bridge handshake narrows against it.
    */
   fork: ProviderFork;
+  /**
+   * Whether BB can explicitly request context compaction. Backend-only: it
+   * gates a server-composed builtin `/compact` prompt, and no client reads it.
+   */
+  supportsManualCompaction: boolean;
 }
 
 /**
@@ -111,13 +115,6 @@ export interface ProviderRegistration {
   serverCapabilities: ProviderServerCapabilities;
   source: ProviderRegistrationSource;
   /**
-   * The plugin's full declaration. Retained so declared facts without a
-   * registry consumer yet (`kind`, `bridge`) are not dropped by the
-   * info/serverCapabilities mapping;
-   * `supportsManualCompaction` is read from it by the compaction accessor.
-   */
-  declaration?: PluginProviderDeclaration;
-  /**
    * Immutable byte snapshot of the declared provider icon, read from the
    * plugin root at registration time and served by the provider-logo route.
    * Present only for plugin-sourced entries whose declaration has an icon
@@ -151,8 +148,9 @@ export interface ProviderRegistryService {
    * Whether BB can explicitly request context compaction — today by sending a
    * standalone builtin `/compact` prompt, which the provider's bridge maps to
    * its native compaction command. Registered providers answer from their
-   * plugin declaration; dynamic ACP ids answer from the resolved agent's own
-   * declaration via {@link ProviderRegistryDeps.resolveAcpAgentCapabilities}.
+   * projected server capabilities; dynamic ACP ids are per-agent rather than
+   * per-tier, so they answer from the resolved agent's own declaration via
+   * {@link ProviderRegistryDeps.resolveAcpAgentCapabilities}.
    */
   supportsManualCompaction(providerId: string): boolean;
   /**
@@ -255,11 +253,7 @@ export function createProviderRegistryService(
         return registration.info.capabilities.permissionModes;
       }
       if (isAcpProviderId(providerId)) {
-        return buildAcpProviderInfo({
-          id: providerId,
-          displayName: providerId,
-          logoUrl: null,
-        }).capabilities.permissionModes;
+        return ACP_TIER_CAPABILITIES.permissionModes;
       }
       return null;
     },
@@ -270,11 +264,7 @@ export function createProviderRegistryService(
         return registration.info.capabilities.supportsFork;
       }
       if (isAcpProviderId(providerId)) {
-        return buildAcpProviderInfo({
-          id: providerId,
-          displayName: providerId,
-          logoUrl: null,
-        }).capabilities.supportsFork;
+        return ACP_TIER_CAPABILITIES.supportsFork;
       }
       return false;
     },
@@ -285,11 +275,7 @@ export function createProviderRegistryService(
         return registration.info.capabilities.supportsSessionRewind;
       }
       if (isAcpProviderId(providerId)) {
-        return buildAcpProviderInfo({
-          id: providerId,
-          displayName: providerId,
-          logoUrl: null,
-        }).capabilities.supportsSessionRewind;
+        return ACP_TIER_CAPABILITIES.supportsSessionRewind;
       }
       return false;
     },
@@ -297,10 +283,7 @@ export function createProviderRegistryService(
     supportsManualCompaction(providerId) {
       const registration = getRegistration(providerId);
       if (registration) {
-        return (
-          registration.declaration?.capabilities.supportsManualCompaction ??
-          false
-        );
+        return registration.serverCapabilities.supportsManualCompaction;
       }
       if (isAcpProviderId(providerId)) {
         return (
@@ -329,9 +312,6 @@ export function createProviderRegistryService(
         info: registration.info,
         serverCapabilities: registration.serverCapabilities,
         source: { kind: "plugin", pluginId: registration.pluginId },
-        ...(registration.declaration === undefined
-          ? {}
-          : { declaration: registration.declaration }),
         ...(registration.icon === undefined ? {} : { icon: registration.icon }),
       };
       pluginRegistrations.set(providerId, entry);

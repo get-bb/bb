@@ -111,7 +111,7 @@ describe("provider bridge artifact delivery (server)", () => {
       // Declaration registered.
       expect(harness.deps.providerRegistry.get(PROVIDER_ID)).toMatchObject({
         source: { kind: "plugin", pluginId: entry.id },
-        declaration: { id: PROVIDER_ID },
+        info: { id: PROVIDER_ID },
       });
 
       // Artifact recorded with the hash of the exact built bytes.

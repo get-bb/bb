@@ -60,14 +60,15 @@ describe("buildPluginProviderRegistration", () => {
         },
       ],
     });
+    // Every backend-only declared fact lands here, compaction included;
+    // nothing rides along as a raw declaration to be read around.
     expect(registration.serverCapabilities).toStrictEqual({
       supportsWorkflows: true,
       reasoningLevels: ["low", "medium", "high"],
       fork: "checkpoint",
+      supportsManualCompaction:
+        normalized.capabilities.supportsManualCompaction,
     });
-    // The full declaration rides the registration so declared facts without
-    // a registry consumer yet (compaction) survive.
-    expect(registration.declaration).toBe(normalized);
   });
 
   it("projects each fork ladder rung onto the two client booleans", () => {

@@ -19,8 +19,8 @@ const CURSOR_LIKE_INFO = {
 };
 
 const MINIMAL_SERVER_CAPABILITIES = {
+  supportsManualCompaction: false,
   supportsWorkflows: false,
-  backsHostDaemonAiServices: false,
   reasoningLevels: ["medium" as const],
   fork: "none" as const,
 };
@@ -72,9 +72,7 @@ describe("provider registry policy accessors", () => {
     expect(
       registry.getSupportedPermissionModes("acp-custom-agent"),
     ).toStrictEqual(["accept-edits", "full"]);
-    expect(typeof registry.supportsFork("acp-custom-agent")).toBe(
-      "boolean",
-    );
+    expect(typeof registry.supportsFork("acp-custom-agent")).toBe("boolean");
     // With no resolver wired the tier declares nothing, so an unresolvable
     // acp-* id cannot claim a per-agent capability.
     expect(registry.supportsManualCompaction("acp-opencode")).toBe(false);
@@ -111,11 +109,11 @@ describe("provider registry policy accessors", () => {
     const registry = createProviderRegistryService();
     const handle = registry.register({
       info: { ...CURSOR_LIKE_INFO, id: "codex" },
-      serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
+      serverCapabilities: {
+        ...MINIMAL_SERVER_CAPABILITIES,
+        supportsManualCompaction: true,
+      },
       pluginId: "provider-codex",
-      declaration: {
-        capabilities: { supportsManualCompaction: true },
-      } as never,
     });
     expect(registry.supportsManualCompaction("codex")).toBe(true);
 
