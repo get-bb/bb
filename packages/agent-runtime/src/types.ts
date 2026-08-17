@@ -147,8 +147,14 @@ export interface AgentRuntimeOptions {
  * a plugin update (new artifact hash) gets a fresh bridge process.
  */
 export interface AgentRuntimeBridgeLaunch {
-  sha256: string;
-  artifactPath: string;
+  /**
+   * Which bridge binary to run, as the server decided it: a hash-verified
+   * plugin artifact already cached on this host, or a bridge inside the
+   * daemon's own bundle (Pi).
+   */
+  source:
+    | { kind: "artifact"; sha256: string; artifactPath: string }
+    | { kind: "daemon-bundled"; id: string };
   /** Server-validated capabilities from the provider declaration. */
   capabilities: {
     supportsServiceTier: boolean;

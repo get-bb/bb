@@ -1,6 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { AgentRuntimeOptions } from "@bb/agent-runtime";
+import type {
+  AgentRuntimeBridgeLaunch,
+  AgentRuntimeOptions,
+} from "@bb/agent-runtime";
 import type {
   HostDaemonAcpLaunchSpec,
   HostDaemonBridgeLaunch,
@@ -26,6 +29,8 @@ import {
   createHarness,
   makeDispatchOptions,
   makeTempDir,
+  DISPATCH_TEST_BRIDGE_LAUNCH,
+  DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
 } from "./dispatch-helpers.js";
 
 afterEach(cleanupTempDirs);
@@ -66,6 +71,7 @@ describe("thread command dispatch", () => {
     });
 
     const command: Extract<HostDaemonCommand, { type: "thread.start" }> = {
+      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       type: "thread.start",
       environmentId: "env-loaded",
       threadId: "thread-stale-start",
@@ -126,6 +132,7 @@ describe("thread command dispatch", () => {
     await expect(
       dispatchCommand(
         {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           type: "turn.submit",
           environmentId: "env-loaded",
           threadId: "thread-stale-turn",
@@ -143,6 +150,7 @@ describe("thread command dispatch", () => {
           },
           target: { mode: "start" },
           resumeContext: {
+            bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
             workspaceContext: {
               workspacePath: "/tmp/env-stale",
               workspaceProvisionType: "unmanaged",
@@ -180,6 +188,7 @@ describe("thread command dispatch", () => {
 
     await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.start",
         environmentId: "env-attachments",
         threadId: "thread-attachments",
@@ -297,6 +306,7 @@ describe("thread command dispatch", () => {
 
     await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "turn.submit",
         environmentId: "env-submit-attachments",
         threadId: "thread-submit-attachments",
@@ -313,6 +323,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-submit-attachments",
             workspaceProvisionType: "unmanaged",
@@ -420,8 +431,7 @@ describe("thread command dispatch", () => {
       `${sha256}.mjs`,
     );
     expect(harness.runtimeState.startedBridgeLaunch).toEqual({
-      sha256,
-      artifactPath,
+      source: { kind: "artifact", sha256, artifactPath },
       capabilities: {
         supportsServiceTier: false,
         permissionModes: ["full"],
@@ -455,8 +465,11 @@ describe("thread command dispatch", () => {
       },
     };
     const expectedRuntimeLaunch = {
-      sha256,
-      artifactPath: path.join(dataDir, "provider-bridges", `${sha256}.mjs`),
+      source: {
+        kind: "artifact" as const,
+        sha256,
+        artifactPath: path.join(dataDir, "provider-bridges", `${sha256}.mjs`),
+      },
       capabilities: {
         supportsServiceTier: false,
         permissionModes: ["full"],
@@ -511,6 +524,7 @@ describe("thread command dispatch", () => {
 
     await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "turn.submit",
         environmentId: "env-bridge-resume",
         threadId: "thread-bridge-resume",
@@ -562,8 +576,11 @@ describe("thread command dispatch", () => {
     );
 
     expect(harness.runtimeState.resumedBridgeLaunch).toEqual({
-      sha256,
-      artifactPath: path.join(dataDir, "provider-bridges", `${sha256}.mjs`),
+      source: {
+        kind: "artifact" as const,
+        sha256,
+        artifactPath: path.join(dataDir, "provider-bridges", `${sha256}.mjs`),
+      },
       capabilities: {
         supportsServiceTier: false,
         permissionModes: ["full"],
@@ -608,6 +625,7 @@ describe("thread command dispatch", () => {
     await expect(
       dispatchCommand(
         {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           type: "turn.submit",
           environmentId: "env-reaped-during-staging",
           threadId,
@@ -624,6 +642,7 @@ describe("thread command dispatch", () => {
             permissionEscalation: null,
           },
           resumeContext: {
+            bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
             workspaceContext: {
               workspacePath: "/tmp/env-reaped-during-staging",
               workspaceProvisionType: "unmanaged",
@@ -658,6 +677,7 @@ describe("thread command dispatch", () => {
 
     await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.start",
         environmentId: "env-no-stage-attachments",
         threadId: "thread-no-stage-attachments",
@@ -721,6 +741,7 @@ describe("thread command dispatch", () => {
 
     await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.start",
         environmentId: "env-restage-attachments",
         threadId: "thread-restage-attachments",
@@ -777,6 +798,7 @@ describe("thread command dispatch", () => {
 
     await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.start",
         environmentId: "env-grouped-stage-attachments",
         threadId: "thread-grouped-stage-attachments",
@@ -859,6 +881,7 @@ describe("thread command dispatch", () => {
     try {
       await dispatchCommand(
         {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           type: "thread.start",
           environmentId: "env-failed-stage-attachments",
           threadId: "thread-failed-stage-attachments",
@@ -927,6 +950,7 @@ describe("thread command dispatch", () => {
     await expect(
       dispatchCommand(
         {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           type: "thread.start",
           environmentId: "env-oversized-stage-attachments",
           threadId: "thread-oversized-stage-attachments",
@@ -994,6 +1018,7 @@ describe("thread command dispatch", () => {
     await expect(
       dispatchCommand(
         {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           type: "thread.start",
           environmentId: "env-runtime-failed-start-attachments",
           threadId: "thread-runtime-failed-start-attachments",
@@ -1054,6 +1079,7 @@ describe("thread command dispatch", () => {
     await expect(
       dispatchCommand(
         {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           type: "turn.submit",
           environmentId: "env-runtime-failed-turn-attachments",
           threadId: "thread-runtime-failed-turn-attachments",
@@ -1070,6 +1096,7 @@ describe("thread command dispatch", () => {
             permissionEscalation: null,
           },
           resumeContext: {
+            bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
             workspaceContext: {
               workspacePath: "/tmp/env-runtime-failed-turn-attachments",
               workspaceProvisionType: "unmanaged",
@@ -1107,6 +1134,7 @@ describe("thread command dispatch", () => {
 
     const startResult = await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.start",
         environmentId: "env-1",
         threadId: "thread-1",
@@ -1146,6 +1174,7 @@ describe("thread command dispatch", () => {
     );
     const archiveResult = await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.archive",
         environmentId: "env-1",
         threadId: "thread-1",
@@ -1160,6 +1189,7 @@ describe("thread command dispatch", () => {
     );
     const unarchiveResult = await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.unarchive",
         environmentId: "env-1",
         threadId: "thread-1",
@@ -1210,6 +1240,7 @@ describe("thread command dispatch", () => {
 
     await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.start",
         environmentId: "env-1",
         threadId: "thread-stop",
@@ -1275,6 +1306,7 @@ describe("thread command dispatch", () => {
 
     const result = await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.archive",
         environmentId: "env-recreated",
         threadId: "thread-archive",
@@ -1308,6 +1340,7 @@ describe("thread command dispatch", () => {
 
     await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.start",
         environmentId: "env-resume-after-archive",
         threadId: "thread-resume-after-archive",
@@ -1339,6 +1372,7 @@ describe("thread command dispatch", () => {
 
     await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.archive",
         environmentId: "env-resume-after-archive",
         threadId: "thread-resume-after-archive",
@@ -1357,6 +1391,7 @@ describe("thread command dispatch", () => {
 
     await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "turn.submit",
         environmentId: "env-resume-after-archive",
         threadId: "thread-resume-after-archive",
@@ -1373,6 +1408,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-resume-after-archive",
             workspaceProvisionType: "unmanaged",
@@ -1406,6 +1442,7 @@ describe("thread command dispatch", () => {
 
     const result = await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.unarchive",
         environmentId: "env-unarchive-cleaned",
         threadId: "thread-unarchive-cleaned",
@@ -1445,6 +1482,7 @@ describe("thread command dispatch", () => {
 
     const runResult = await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "turn.submit",
         environmentId: "env-1",
         threadId: "thread-1",
@@ -1461,6 +1499,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-1",
             workspaceProvisionType: "unmanaged",
@@ -1479,6 +1518,7 @@ describe("thread command dispatch", () => {
     );
     const steerResult = await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "turn.submit",
         environmentId: "env-1",
         threadId: "thread-1",
@@ -1495,6 +1535,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-1",
             workspaceProvisionType: "unmanaged",
@@ -1536,6 +1577,7 @@ describe("thread command dispatch", () => {
 
     await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "turn.submit",
         environmentId: "env-1",
         threadId: "thread-1",
@@ -1552,6 +1594,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-1",
             workspaceProvisionType: "unmanaged",
@@ -1574,6 +1617,7 @@ describe("thread command dispatch", () => {
 
     const result = await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "turn.submit",
         environmentId: "env-1",
         threadId: "thread-1",
@@ -1590,6 +1634,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-1",
             workspaceProvisionType: "unmanaged",
@@ -1628,6 +1673,7 @@ describe("thread command dispatch", () => {
 
     const result = await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "turn.submit",
         environmentId: "env-1",
         threadId: "thread-1",
@@ -1644,6 +1690,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-1",
             workspaceProvisionType: "unmanaged",
@@ -1692,6 +1739,7 @@ describe("thread command dispatch", () => {
 
     const result = await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "turn.submit",
         environmentId: "env-1",
         threadId: "thread-1",
@@ -1708,6 +1756,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-1",
             workspaceProvisionType: "unmanaged",
@@ -1750,6 +1799,7 @@ describe("thread command dispatch", () => {
 
     const result = await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "turn.submit",
         environmentId: "env-1",
         threadId: "thread-1",
@@ -1766,6 +1816,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-1",
             workspaceProvisionType: "unmanaged",
@@ -1802,6 +1853,7 @@ describe("thread command dispatch", () => {
 
     const result = await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "turn.submit",
         environmentId: "env-1",
         threadId: "thread-1",
@@ -1818,6 +1870,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-1",
             workspaceProvisionType: "unmanaged",
@@ -1847,6 +1900,7 @@ describe("thread command dispatch", () => {
 
     const result = await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "turn.submit",
         environmentId: "env-lazy",
         threadId: "thread-1",
@@ -1864,6 +1918,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-lazy",
             workspaceProvisionType: "unmanaged",
@@ -1944,6 +1999,7 @@ describe("thread command dispatch", () => {
 
     const result = await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "turn.submit",
         environmentId: "env-exit",
         threadId: "thread-1",
@@ -1960,6 +2016,7 @@ describe("thread command dispatch", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/env-exit",
             workspaceProvisionType: "unmanaged",
@@ -1992,12 +2049,14 @@ describe("thread command dispatch", () => {
       | {
           providerId: string;
           acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+          bridgeLaunch?: AgentRuntimeBridgeLaunch;
           cwd?: string;
         }
       | undefined;
 
     const result = await dispatchOnlineRpcCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "provider.list_models",
         providerId: "fake",
         acpLaunchSpec,
@@ -2038,6 +2097,7 @@ describe("thread command dispatch", () => {
     expect(capturedListModelsArgs).toEqual({
       providerId: "fake",
       acpLaunchSpec,
+      bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
       cwd: "/tmp/worktree",
     });
     expect(result).toEqual({
@@ -2080,6 +2140,7 @@ describe("thread command dispatch", () => {
 
     await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.start",
         environmentId: "env-parent",
         threadId: "thread-parent",
@@ -2140,6 +2201,7 @@ describe("thread command dispatch", () => {
 
     await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.start",
         environmentId: "env-1",
         threadId: "thread-1",
@@ -2179,6 +2241,7 @@ describe("thread command dispatch", () => {
 
     const result = await dispatchCommand(
       {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         type: "thread.start",
         environmentId: "env-1",
         threadId: "thread-1",
@@ -2218,6 +2281,7 @@ describe("thread command dispatch", () => {
     await expect(
       dispatchCommand(
         {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           type: "thread.start",
           environmentId: "env-1",
           threadId: "thread-1",

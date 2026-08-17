@@ -21,14 +21,30 @@ const dynamicAcpLaunchSpec: HostDaemonAcpLaunchSpec = {
 /** What the server sends for any acp-* id: the ACP plugin's artifact plus the
  * shared ACP tier capabilities. */
 const ACP_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch = {
-  sha256: "e".repeat(64),
-  artifactPath: "/data/provider-bridges/acp.mjs",
+  source: {
+    kind: "artifact",
+    sha256: "e".repeat(64),
+    artifactPath: "/data/provider-bridges/acp.mjs",
+  },
   capabilities: {
     supportsServiceTier: true,
     permissionModes: ["accept-edits", "full"],
     supportsThreadArchive: false,
     supportsThreadRename: false,
     fork: "tip",
+  },
+};
+
+/** What the server sends for Pi: the bridge inside the daemon's own bundle,
+ * plus Pi's declared capabilities. */
+const PI_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch = {
+  source: { kind: "daemon-bundled", id: "pi" },
+  capabilities: {
+    supportsServiceTier: false,
+    permissionModes: ["full"],
+    supportsThreadArchive: false,
+    supportsThreadRename: false,
+    fork: "checkpoint",
   },
 };
 
@@ -69,6 +85,7 @@ describe("provider registry", () => {
     const piProvider = createProviderForId("pi", {
       additionalWorkspaceWriteRoots: [],
       bridgeBundleDir: "/tmp",
+      bridgeLaunch: PI_BRIDGE_LAUNCH,
     });
 
     expect(piProvider.process.args[0]).toBe("/tmp/bb-pi-bridge.mjs");
@@ -78,6 +95,7 @@ describe("provider registry", () => {
     const bridgeNodeEnv = { ELECTRON_RUN_AS_NODE: "1" };
     const piProvider = createProviderForId("pi", {
       additionalWorkspaceWriteRoots: [],
+      bridgeLaunch: PI_BRIDGE_LAUNCH,
       bridgeNodeEnv,
       bridgeNodeExecutablePath: "/Applications/bb.app/Contents/MacOS/bb",
     });
@@ -99,7 +117,10 @@ describe("provider registry", () => {
   });
 
   it("creates pi provider with expected process config", () => {
-    const provider = createProviderForId("pi");
+    const provider = createProviderForId("pi", {
+      additionalWorkspaceWriteRoots: [],
+      bridgeLaunch: PI_BRIDGE_LAUNCH,
+    });
     expect(provider.id).toBe("pi");
     expect(provider.process.command).toBe("node");
     expect(provider.process.args.slice(0, 3)).toEqual([
@@ -114,7 +135,10 @@ describe("provider registry", () => {
   });
 
   it("passes the requested workspace to Pi model listing", () => {
-    const provider = createProviderForId("pi");
+    const provider = createProviderForId("pi", {
+      additionalWorkspaceWriteRoots: [],
+      bridgeLaunch: PI_BRIDGE_LAUNCH,
+    });
 
     expect(
       provider.buildCommandPlan({
@@ -238,11 +262,12 @@ describe("provider registry", () => {
     });
   });
 
-  // Pi is the last bridge bb delivers in the daemon bundle: with no
-  // bridgeLaunch it must still route to its canonical bridge source.
+  // Pi is the last bridge bb delivers in the daemon bundle: its launch names
+  // that bundled bridge instead of carrying an artifact hash.
   it("routes pi to its bundled canonical bridge", () => {
     const provider = createProviderForId("pi", {
       additionalWorkspaceWriteRoots: [],
+      bridgeLaunch: PI_BRIDGE_LAUNCH,
     });
 
     expect(provider.process.command).toBe("node");
@@ -251,7 +276,9 @@ describe("provider registry", () => {
     expect(existsSync(bridgeEntry)).toBe(true);
   });
 
-  it("rejects unsupported adapters", () => {
+  // Every bridge-bound command carries a launch, so a missing one means the
+  // caller has no bridge for this provider at all — not a lookup miss.
+  it("rejects a provider with no bridge launch", () => {
     expect(() => createProviderForId("pi-mono")).toThrow(
       'Unsupported provider "pi-mono"',
     );
@@ -261,8 +288,11 @@ describe("provider registry", () => {
     const provider = createProviderForId("echo-agent", {
       additionalWorkspaceWriteRoots: [],
       bridgeLaunch: {
-        sha256: "a".repeat(64),
-        artifactPath: "/data/provider-bridges/artifact.mjs",
+        source: {
+          kind: "artifact",
+          sha256: "a".repeat(64),
+          artifactPath: "/data/provider-bridges/artifact.mjs",
+        },
         capabilities: {
           supportsServiceTier: false,
           permissionModes: ["full"],
@@ -278,7 +308,6 @@ describe("provider registry", () => {
     expect(provider.process.args).toEqual([
       "/data/provider-bridges/artifact.mjs",
     ]);
-
   });
 
   // Codex graduated onto this route, where its environment-level write roots
@@ -290,8 +319,11 @@ describe("provider registry", () => {
     const provider = createProviderForId("codex", {
       additionalWorkspaceWriteRoots: ["/extra-root"],
       bridgeLaunch: {
-        sha256: "b".repeat(64),
-        artifactPath: "/data/provider-bridges/codex.mjs",
+        source: {
+          kind: "artifact",
+          sha256: "b".repeat(64),
+          artifactPath: "/data/provider-bridges/codex.mjs",
+        },
         capabilities: {
           supportsServiceTier: true,
           permissionModes: ["accept-edits", "auto", "full"],
@@ -344,8 +376,11 @@ describe("provider registry", () => {
       bridgeNodeEnv,
       bridgeNodeExecutablePath: "/Applications/bb.app/Contents/MacOS/bb",
       bridgeLaunch: {
-        sha256: "b".repeat(64),
-        artifactPath: "/data/provider-bridges/artifact.mjs",
+        source: {
+          kind: "artifact",
+          sha256: "b".repeat(64),
+          artifactPath: "/data/provider-bridges/artifact.mjs",
+        },
         capabilities: {
           supportsServiceTier: false,
           permissionModes: ["full"],
@@ -361,23 +396,38 @@ describe("provider registry", () => {
     expect(provider.process.env).toEqual(bridgeNodeEnv);
   });
 
-  it("keeps first-party bundled bridges untouched even when a bridge launch rides along", () => {
+  // The launch source, not the provider id, decides which binary runs: the
+  // server states the delivery path and the runtime obeys it. A first-party id
+  // is no longer a special case here — reservation of first-party ids is
+  // server-side policy, and the daemon has already verified the artifact bytes.
+  it("runs the artifact a launch names even for a first-party id", () => {
     const provider = createProviderForId("pi", {
       additionalWorkspaceWriteRoots: [],
       bridgeBundleDir: "/tmp",
       bridgeLaunch: {
-        sha256: "c".repeat(64),
-        artifactPath: "/data/provider-bridges/never-used.mjs",
-        capabilities: {
-          supportsServiceTier: false,
-          permissionModes: ["full"],
-          supportsThreadArchive: false,
-          supportsThreadRename: false,
-          fork: "none",
+        source: {
+          kind: "artifact",
+          sha256: "c".repeat(64),
+          artifactPath: "/data/provider-bridges/graduated-pi.mjs",
         },
+        capabilities: PI_BRIDGE_LAUNCH.capabilities,
       },
     });
-    expect(provider.process.args[0]).toBe("/tmp/bb-pi-bridge.mjs");
+    expect(provider.process.args).toEqual([
+      "/data/provider-bridges/graduated-pi.mjs",
+    ]);
+  });
+
+  it("refuses a bundled bridge id the daemon does not ship", () => {
+    expect(() =>
+      createProviderForId("pi", {
+        additionalWorkspaceWriteRoots: [],
+        bridgeLaunch: {
+          source: { kind: "daemon-bundled", id: "not-bundled" },
+          capabilities: PI_BRIDGE_LAUNCH.capabilities,
+        },
+      }),
+    ).toThrow(/"not-bundled" is not a bridge this daemon bundles/u);
   });
 
   it("honors a verified bridge launch for an id the registry does not know", () => {
@@ -387,8 +437,11 @@ describe("provider registry", () => {
     const provider = createProviderForId("echo-agent", {
       additionalWorkspaceWriteRoots: [],
       bridgeLaunch: {
-        sha256: "d".repeat(64),
-        artifactPath: "/data/provider-bridges/artifact.mjs",
+        source: {
+          kind: "artifact",
+          sha256: "d".repeat(64),
+          artifactPath: "/data/provider-bridges/artifact.mjs",
+        },
         capabilities: {
           supportsServiceTier: true,
           permissionModes: ["accept-edits", "full"],

@@ -13,6 +13,7 @@ import {
   dispatchCommand,
   dispatchOnlineRpcCommand,
 } from "./command-dispatch.js";
+import { DISPATCH_TEST_BRIDGE_LAUNCH } from "../test/command/dispatch-helpers.js";
 import type { CommandOf } from "./command-dispatch-support.js";
 import { RuntimeManager } from "./runtime-manager.js";
 
@@ -489,6 +490,7 @@ describe("dispatchCommand", () => {
     });
     const flush = vi.fn(async () => undefined);
     const command: CommandOf<"thread.goal.clear"> = {
+      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       type: "thread.goal.clear",
       environmentId: "env-1",
       threadId: "thread-1",
@@ -503,6 +505,7 @@ describe("dispatchCommand", () => {
         permissionEscalation: null,
       },
       resumeContext: {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         workspaceContext: {
           workspacePath: WORKSPACE_PATH,
           workspaceProvisionType: "unmanaged",
@@ -560,6 +563,7 @@ describe("dispatchCommand", () => {
     oldRuntime.setIdle("thread-1");
 
     const command: CommandOf<"turn.submit"> = {
+      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       type: "turn.submit",
       environmentId: "env-new",
       threadId: "thread-1",
@@ -576,6 +580,7 @@ describe("dispatchCommand", () => {
         permissionEscalation: null,
       },
       resumeContext: {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         workspaceContext: {
           workspacePath: "/tmp/bb-command-dispatch-new",
           workspaceProvisionType: "unmanaged",
@@ -923,6 +928,7 @@ describe("dispatchCommand", () => {
     oldRuntime.setActiveTurn("thread-1", "turn-old");
 
     const command: CommandOf<"thread.goal.clear"> = {
+      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       type: "thread.goal.clear",
       environmentId: "env-new",
       threadId: "thread-1",
@@ -937,6 +943,7 @@ describe("dispatchCommand", () => {
         permissionEscalation: null,
       },
       resumeContext: {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         workspaceContext: {
           workspacePath: "/tmp/bb-goal-new",
           workspaceProvisionType: "unmanaged",
@@ -1003,6 +1010,7 @@ describe("dispatchCommand", () => {
       provisionWorkspace: async () => createWorkspace(),
     });
     const command: CommandOf<"thread.start"> = {
+      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       type: "thread.start",
       environmentId: "env-1",
       threadId: "thread-1",
@@ -1079,6 +1087,7 @@ describe("dispatchCommand", () => {
       provisionWorkspace: async () => createWorkspace(),
     });
     const command: CommandOf<"thread.start"> = {
+      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       type: "thread.start",
       environmentId: "env-1",
       threadId: "thread-1",
@@ -1135,6 +1144,7 @@ describe("dispatchCommand", () => {
       provisionWorkspace: async () => createWorkspace(),
     });
     const command: CommandOf<"thread.rewind.prepare"> = {
+      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       type: "thread.rewind.prepare",
       environmentId: "env-1",
       threadId: "thread-1",
@@ -1633,6 +1643,7 @@ describe("dispatchCommand", () => {
       activeThreadId: "sibling-thread",
     });
     const command: CommandOf<"thread.start"> = {
+      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       type: "thread.start",
       environmentId: "env-1",
       threadId: "thread-1",
@@ -1692,6 +1703,7 @@ describe("dispatchCommand", () => {
       activeThreadId: "thread-1",
     });
     const command: CommandOf<"turn.submit"> = {
+      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       type: "turn.submit",
       environmentId: "env-1",
       threadId: "thread-1",
@@ -1708,6 +1720,7 @@ describe("dispatchCommand", () => {
         permissionEscalation: null,
       },
       resumeContext: {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         workspaceContext: {
           workspacePath: WORKSPACE_PATH,
           workspaceProvisionType: "unmanaged",

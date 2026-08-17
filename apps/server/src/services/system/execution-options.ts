@@ -29,7 +29,7 @@ import { getSupportedReasoningLevelsForProvider } from "../threads/thread-reason
 import { resolveSystemLookupHostId } from "./host-lookup.js";
 import {
   isAcpProviderTierRegistered,
-  resolveBridgeLaunchForProviderId,
+  requireBridgeLaunchForProviderId,
 } from "./provider-bridge-launch.js";
 import {
   buildKnownAcpProviderInfo,
@@ -551,7 +551,7 @@ async function loadSystemProviderModels(
     customAcpAgent === undefined
       ? findKnownAcpAgentForProviderId(provider.id)
       : undefined;
-  const bridgeLaunch = resolveBridgeLaunchForProviderId(deps, provider.id);
+  const bridgeLaunch = requireBridgeLaunchForProviderId(deps, provider.id);
   try {
     const { models, selectedOnlyModels } = await callHostRetryableOnlineRpc(
       deps,
@@ -572,7 +572,7 @@ async function loadSystemProviderModels(
                     normalizeHostDaemonAcpLaunchSpec(knownAcpAgent),
                 }
               : {}),
-          ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+          bridgeLaunch,
         },
       },
     );

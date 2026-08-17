@@ -137,8 +137,11 @@ export async function createTestAppHarness(
     resolveAcpAgentCapabilities: (providerId) =>
       resolveAcpAgentCapabilitiesForProviderId({ config }, providerId),
   });
+  const providerBridgeArtifacts = new ProviderBridgeArtifactRegistry();
   if (seedFirstPartyProviders) {
-    await registerFirstPartyProviders(providerRegistry);
+    await registerFirstPartyProviders(providerRegistry, {
+      artifacts: providerBridgeArtifacts,
+    });
   }
   const lifecycleDedupers = createLifecycleDedupers();
   const machineAuth = await createMachineAuthService({
@@ -204,7 +207,6 @@ export async function createTestAppHarness(
   });
   const telemetry = createNoopTelemetryService();
   const skillTreeRegistry = new SkillTreeRegistry();
-  const providerBridgeArtifacts = new ProviderBridgeArtifactRegistry();
   const pendingInteractions = new PendingInteractionLifecycle({
     config,
     db,

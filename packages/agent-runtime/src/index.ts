@@ -1,11 +1,10 @@
 export { createAgentRuntime } from "./runtime.js";
 export {
   fingerprintAcpLaunchSpec,
-  fingerprintBridgeLaunchDeclaration,
+  bridgeLaunchProcessKey,
 } from "./acp-launch-spec-fingerprint.js";
 export {
   createProviderForId,
-  listAvailableProviderInfos as listAvailableProviders,
 } from "./provider-registry.js";
 export type {
   AgentRuntime,

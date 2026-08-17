@@ -2,6 +2,7 @@ import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH } from "../test/command/dispatch-helpers.js";
 
 const createAgentRuntimeMock = vi.hoisted(() =>
   vi.fn<(options: AgentRuntimeOptions) => AgentRuntime>(),
@@ -152,11 +153,21 @@ describe("command dispatch support", () => {
       }),
     );
 
-    await expect(defaultListModels({ providerId: "codex" })).resolves.toEqual({
+    await expect(
+      defaultListModels({
+        providerId: "codex",
+        bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+      }),
+    ).resolves.toEqual({
       models: [firstModel],
       selectedOnlyModels: [],
     });
-    await expect(defaultListModels({ providerId: "codex" })).resolves.toEqual({
+    await expect(
+      defaultListModels({
+        providerId: "codex",
+        bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+      }),
+    ).resolves.toEqual({
       models: [secondModel],
       selectedOnlyModels: [],
     });
@@ -190,11 +201,13 @@ describe("command dispatch support", () => {
     await defaultListModels({
       providerId: "acp-custom",
       acpLaunchSpec: launchSpec,
+      bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
     });
 
     expect(listModels).toHaveBeenCalledWith({
       providerId: "acp-custom",
       acpLaunchSpec: launchSpec,
+      bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
     });
   });
 
@@ -240,12 +253,14 @@ describe("command dispatch support", () => {
       defaultListModels({
         providerId: "acp-custom",
         acpLaunchSpec: firstSpec,
+        bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
       }),
     ).resolves.toMatchObject({ models: [{ id: "first" }] });
     await expect(
       defaultListModels({
         providerId: "acp-custom",
         acpLaunchSpec: secondSpec,
+        bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
       }),
     ).resolves.toMatchObject({ models: [{ id: "second" }] });
 

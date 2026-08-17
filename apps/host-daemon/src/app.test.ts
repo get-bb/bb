@@ -16,6 +16,10 @@ import {
 import type { HostWatcher } from "@bb/host-watcher";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  DISPATCH_TEST_BRIDGE_LAUNCH,
+  DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+} from "../test/command/dispatch-helpers.js";
+import {
   createHostDaemonApp,
   startIdleProviderSessionReaper,
   type HostDaemonApp,
@@ -458,6 +462,7 @@ describe("createHostDaemonApp", () => {
         command: {
           type: "provider.list_models",
           providerId: "cursor",
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         },
       });
 
@@ -480,7 +485,10 @@ describe("createHostDaemonApp", () => {
           },
         }),
       );
-      expect(listModels).toHaveBeenCalledWith({ providerId: "cursor" });
+      expect(listModels).toHaveBeenCalledWith({
+        providerId: "cursor",
+        bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+      });
 
       await expect(
         app.router.handleOnlineRpcRequest({
@@ -489,6 +497,7 @@ describe("createHostDaemonApp", () => {
           command: {
             type: "provider.list_models",
             providerId: "cursor",
+            bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           },
         }),
       ).resolves.toMatchObject({
@@ -557,6 +566,7 @@ describe("createHostDaemonApp", () => {
           command: {
             type: "provider.list_models",
             providerId: "codex",
+            bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           },
         }),
       ).resolves.toMatchObject({
@@ -575,7 +585,6 @@ describe("createHostDaemonApp", () => {
       await app.daemon.shutdown("test");
     }
   });
-
 
   it("runs the idle provider session reaper on a non-overlapping interval", async () => {
     const logger = createLogger();

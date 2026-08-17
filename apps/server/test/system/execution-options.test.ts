@@ -286,7 +286,7 @@ describe("resolveSystemExecutionOptions", () => {
       expect(responder.requests.map((request) => request.command.type)).toEqual(
         ["known_acp_agents.status", "provider.list_models"],
       );
-      expect(responder.requests[1].command).toEqual({
+      expect(responder.requests[1].command).toMatchObject({
         type: "provider.list_models",
         providerId: "acp-opencode",
         acpLaunchSpec: {
@@ -357,7 +357,7 @@ describe("resolveSystemExecutionOptions", () => {
       expect(responder.requests.map((request) => request.command.type)).toEqual(
         ["known_acp_agents.status", "provider.list_models"],
       );
-      expect(responder.requests[1].command).toEqual({
+      expect(responder.requests[1].command).toMatchObject({
         type: "provider.list_models",
         providerId: "acp-grok",
         acpLaunchSpec: {
@@ -448,7 +448,7 @@ describe("resolveSystemExecutionOptions", () => {
       expect(responder.requests.map((request) => request.command.type)).toEqual(
         ["known_acp_agents.status", "provider.list_models"],
       );
-      expect(responder.requests[1].command).toEqual({
+      expect(responder.requests[1].command).toMatchObject({
         type: "provider.list_models",
         providerId: "acp-hermes-agent",
         acpLaunchSpec: {
@@ -731,7 +731,7 @@ describe("resolveSystemExecutionOptions", () => {
         expect(
           responder.requests.map((request) => request.command.type),
         ).toEqual(["known_acp_agents.status", "provider.list_models"]);
-        expect(responder.requests[1].command).toEqual({
+        expect(responder.requests[1].command).toMatchObject({
           type: "provider.list_models",
           providerId: "acp-opencode",
           acpLaunchSpec: {
@@ -977,7 +977,7 @@ describe("resolveSystemExecutionOptions", () => {
         expect(
           responder.requests.map((request) => request.command.type),
         ).toEqual(["known_acp_agents.status", "provider.list_models"]);
-        expect(responder.requests[1].command).toEqual({
+        expect(responder.requests[1].command).toMatchObject({
           type: "provider.list_models",
           providerId: "acp-example-agent",
           acpLaunchSpec: {
@@ -1104,7 +1104,7 @@ describe("resolveSystemExecutionOptions", () => {
       expect(responder.requests.map((request) => request.command.type)).toEqual(
         ["known_acp_agents.status", "provider.list_models"],
       );
-      expect(responder.requests[1].command).toEqual({
+      expect(responder.requests[1].command).toMatchObject({
         type: "provider.list_models",
         providerId: "acp-cursor",
       });

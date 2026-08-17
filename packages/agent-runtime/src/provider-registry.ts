@@ -6,14 +6,9 @@
  */
 
 import {
-  getBundledProvider,
-  isBundledProviderId,
-  listBundledProviderIds,
-  listBundledProviderInfos,
-  type BundledProvider,
-} from "./provider-catalog.js";
-import type { ProviderInfo } from "@bb/domain";
-import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
+  DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS,
+  type HostDaemonAcpLaunchSpec,
+} from "@bb/host-daemon-contract";
 import { createBridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
 import { resolveBridgeProcessArgs } from "./shared/bridge-path.js";
 import { BUILT_IN_ACP_LAUNCH_SPECS } from "./acp-launch-specs.js";
@@ -30,65 +25,89 @@ import type {
  * Canonical path: providers run on the generic adapter speaking the canonical
  * Provider Bridge Protocol.
  *
- * Every provider is graduated: no legacy adapter remains, so every id routes
- * here unconditionally. Pi is the only bridge still delivered in the daemon
- * bundle; every other provider arrives as a hash-verified plugin artifact.
+ * Every provider is graduated, and every bridge-bound command carries the
+ * server's `bridgeLaunch`, so there is one construction here and the only
+ * branch is which binary to spawn: a hash-verified plugin artifact already
+ * cached on this host, or a bridge inside the daemon's own bundle. The runtime
+ * no longer infers that from the provider id.
  */
 function createBridgeProtocolAdapterForId(
   providerId: string,
   options: ProviderAdapterFactoryOptions,
 ): ProviderAdapter | null {
-  // A hash-verified plugin artifact is its own routing authority: the server
-  // only attaches a bridgeLaunch to commands for providers it has routed onto
-  // the bridge protocol, and the daemon has already verified the artifact
-  // bytes. It is matched before the bundled first-party bridge so a plugin
-  // provider can never be shadowed by its id.
-  if (options.bridgeLaunch !== undefined && !isBundledProviderId(providerId)) {
-    return createBridgeProtocolAdapter({
-      id: providerId,
-      displayName: providerId,
-      // The provider's real declaration lives server-side; the launch spec
-      // transports its validated execution capabilities (the server accepted
-      // these before routing the command). Session-behavior facts arrive via
-      // the initialize handshake, which may only narrow.
-      capabilities: {
-        ...options.bridgeLaunch.capabilities,
-        permissionModes: [...options.bridgeLaunch.capabilities.permissionModes],
-        // A session-behavior fact the runtime never enforces, so the wire does
-        // not carry it: the bridge answers per session (thread/identity).
-        supportsNativeUserQuestion: false,
-      },
-      process: {
-        command: options.bridgeNodeExecutablePath ?? "node",
-        args: [options.bridgeLaunch.artifactPath],
-        ...(options.bridgeNodeEnv !== undefined
-          ? { env: options.bridgeNodeEnv }
-          : {}),
-      },
-      ...buildPluginStaticProviderOptions(providerId, options),
-    });
+  const bridgeLaunch = options.bridgeLaunch;
+  if (bridgeLaunch === undefined) {
+    return null;
   }
-  if (providerId === "pi") {
-    const bundled = requireBundledProvider("pi");
-    return createBridgeProtocolAdapter({
-      id: providerId,
-      displayName: bundled.displayName,
-      capabilities: bundled.capabilities,
-      process: {
-        command: options.bridgeNodeExecutablePath ?? "node",
-        args: resolveBridgeProcessArgs({
-          bridgeBundleDir: options.bridgeBundleDir,
-          bundleFileName: "bb-pi-bridge.mjs",
-          importMetaUrl: import.meta.url,
-          bridgeRelativePath: "pi/bridge/bridge.js",
-        }),
-        ...(options.bridgeNodeEnv !== undefined
-          ? { env: options.bridgeNodeEnv }
-          : {}),
-      },
-    });
+  return createBridgeProtocolAdapter({
+    id: providerId,
+    displayName: providerId,
+    // The provider's real declaration lives server-side; the launch spec
+    // transports its validated execution capabilities (the server accepted
+    // these before routing the command). Session-behavior facts arrive via
+    // the initialize handshake, which may only narrow.
+    capabilities: {
+      ...bridgeLaunch.capabilities,
+      permissionModes: [...bridgeLaunch.capabilities.permissionModes],
+      // A session-behavior fact the runtime never enforces, so the wire does
+      // not carry it: the bridge answers per session (thread/identity).
+      supportsNativeUserQuestion: false,
+    },
+    process: {
+      command: options.bridgeNodeExecutablePath ?? "node",
+      args:
+        bridgeLaunch.source.kind === "artifact"
+          ? [bridgeLaunch.source.artifactPath]
+          : resolveBundledBridgeArgs(bridgeLaunch.source.id, options),
+      ...(options.bridgeNodeEnv !== undefined
+        ? { env: options.bridgeNodeEnv }
+        : {}),
+    },
+    ...buildPluginStaticProviderOptions(providerId, options),
+  });
+}
+
+/**
+ * Where each daemon-bundled bridge's entry lives, both in a packaged daemon
+ * (`bridgeBundleDir`) and when running from source. Only Pi is bundled: its
+ * agent tree cannot be inlined into a relocatable artifact.
+ */
+const DAEMON_BUNDLED_BRIDGE_ENTRIES: Readonly<
+  Record<string, { bundleFileName: string; bridgeRelativePath: string }>
+> = {
+  pi: {
+    bundleFileName: "bb-pi-bridge.mjs",
+    bridgeRelativePath: "pi/bridge/bridge.js",
+  },
+};
+
+// The contract states which ids are daemon-bundled (the server sends
+// `source: {kind: "daemon-bundled", id}` only for those, and accepts their
+// declarations without an artifact); this table states where each of those
+// bridges actually lives. Any drift between the two is a bug.
+for (const bundledBridgeId of DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS) {
+  if (!Object.hasOwn(DAEMON_BUNDLED_BRIDGE_ENTRIES, bundledBridgeId)) {
+    throw new Error(
+      `"${bundledBridgeId}" is declared daemon-bundled but this daemon ships no bridge entry for it.`,
+    );
   }
-  return null;
+}
+
+function resolveBundledBridgeArgs(
+  bundledBridgeId: string,
+  options: ProviderAdapterFactoryOptions,
+): string[] {
+  const entry = DAEMON_BUNDLED_BRIDGE_ENTRIES[bundledBridgeId];
+  if (entry === undefined) {
+    throw new Error(
+      `"${bundledBridgeId}" is not a bridge this daemon bundles. Bundled: ${Object.keys(DAEMON_BUNDLED_BRIDGE_ENTRIES).join(", ")}.`,
+    );
+  }
+  return resolveBridgeProcessArgs({
+    bridgeBundleDir: options.bridgeBundleDir,
+    importMetaUrl: import.meta.url,
+    ...entry,
+  });
 }
 
 /**
@@ -127,14 +146,6 @@ function resolveAcpLaunchSpec(
   return options.acpLaunchSpec ?? BUILT_IN_ACP_LAUNCH_SPECS[providerId];
 }
 
-function requireBundledProvider(providerId: string): BundledProvider {
-  const bundled = getBundledProvider(providerId);
-  if (bundled === null) {
-    throw new Error(`"${providerId}" has no bundled provider baseline.`);
-  }
-  return bundled;
-}
-
 export function createProviderForId(
   providerId: string,
   options?: ProviderAdapterFactoryOptions,
@@ -147,14 +158,11 @@ export function createProviderForId(
     return bridgeProtocolAdapter;
   }
 
+  // Reachable only for a caller that resolved no bridge: every bridge-bound
+  // command carries a `bridgeLaunch`, and the server refuses to build one
+  // without it.
   throw new Error(
-    `Unsupported provider "${providerId}". Available providers: ${listBundledProviderIds().join(", ")}.`,
+    `Unsupported provider "${providerId}": no provider bridge launch was supplied.`,
   );
 }
 
-/**
- * List info for all available built-in providers.
- */
-export function listAvailableProviderInfos(): ProviderInfo[] {
-  return listBundledProviderInfos();
-}

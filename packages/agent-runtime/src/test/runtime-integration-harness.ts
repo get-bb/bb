@@ -924,13 +924,12 @@ export function createTestRuntime(
     onStderr: () => {},
   });
 
-  const bridgeLaunch = resolveIntegrationBridgeLaunch(providerId);
-
+  // Every provider has a launch now, so every command carries one.
   return {
-    runtime:
-      bridgeLaunch === undefined
-        ? runtime
-        : withBridgeLaunch(runtime, bridgeLaunch),
+    runtime: withBridgeLaunch(
+      runtime,
+      resolveIntegrationBridgeLaunch(providerId),
+    ),
     events,
     toolCalls,
     interactiveRequests,

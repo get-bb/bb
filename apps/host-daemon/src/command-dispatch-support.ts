@@ -1,7 +1,7 @@
 import {
   createAgentRuntime,
   fingerprintAcpLaunchSpec,
-  fingerprintBridgeLaunchDeclaration,
+  bridgeLaunchProcessKey,
   type AgentRuntime,
   type AgentRuntimeBridgeLaunch,
   type AgentRuntimeOptions,
@@ -58,7 +58,7 @@ export interface CommandDispatchOptions {
   listModels?: (args: {
     providerId: string;
     acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-    bridgeLaunch?: AgentRuntimeBridgeLaunch;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
   }) => Promise<{
     models: AvailableModel[];
@@ -118,17 +118,24 @@ const ACP_AUTH_REQUIRED_PATTERN =
   /ACP agent is (?:installed but )?not authenticated|Authentication required.*(?:agent login|CURSOR_API_KEY|CURSOR_AUTH_TOKEN|api key|auth token|login)/is;
 
 /**
- * Turn a wire `bridgeLaunch` into the runtime shape: ensure the artifact is
- * cached (downloading + hash-verifying if needed) and hand the runtime the
- * verified local path. Absent input stays absent — first-party providers keep
- * daemon-local bridge resolution.
+ * Turn a wire `bridgeLaunch` into the runtime shape. An `artifact` source is
+ * resolved to a verified local path (downloading + hash-verifying if needed);
+ * a `daemon-bundled` source names a bridge inside this daemon's own bundle and
+ * needs no fetch. The source travels through, so the runtime routes on the
+ * server's explicit answer rather than re-deriving it from the provider id.
  */
 export async function resolveRuntimeBridgeLaunch(
-  bridgeLaunch: HostDaemonBridgeLaunch | undefined,
+  bridgeLaunch: HostDaemonBridgeLaunch,
   options: Pick<CommandDispatchOptions, "dataDir" | "fetchProviderBridge">,
-): Promise<AgentRuntimeBridgeLaunch | undefined> {
-  if (bridgeLaunch === undefined) {
-    return undefined;
+): Promise<AgentRuntimeBridgeLaunch> {
+  // Wire and runtime shapes share one noun set, so the block carries over
+  // whole; only the mutable permission-mode array is copied.
+  const capabilities = {
+    ...bridgeLaunch.capabilities,
+    permissionModes: [...bridgeLaunch.capabilities.permissionModes],
+  };
+  if (bridgeLaunch.source.kind === "daemon-bundled") {
+    return { source: { ...bridgeLaunch.source }, capabilities };
   }
   if (options.fetchProviderBridge === undefined) {
     throw new CommandDispatchError(
@@ -143,14 +150,12 @@ export async function resolveRuntimeBridgeLaunch(
     byteLength: bridgeLaunch.source.byteLength,
   });
   return {
-    sha256: bridgeLaunch.source.sha256,
-    artifactPath,
-    // Wire and runtime shapes share one noun set, so the block carries over
-    // whole; only the mutable permission-mode array is copied.
-    capabilities: {
-      ...bridgeLaunch.capabilities,
-      permissionModes: [...bridgeLaunch.capabilities.permissionModes],
+    source: {
+      kind: "artifact",
+      sha256: bridgeLaunch.source.sha256,
+      artifactPath,
     },
+    capabilities,
   };
 }
 
@@ -166,7 +171,7 @@ export async function defaultListModels(
   args: {
     providerId: string;
     acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-    bridgeLaunch?: AgentRuntimeBridgeLaunch;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
   },
   options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
 ): Promise<{
@@ -175,9 +180,7 @@ export async function defaultListModels(
 }> {
   const runtimeKey =
     `${options.bridgeBundleDir ?? ""}` +
-    (args.bridgeLaunch !== undefined
-      ? `#bridge:${args.bridgeLaunch.sha256.slice(0, 16)}.${fingerprintBridgeLaunchDeclaration(args.bridgeLaunch)}`
-      : "") +
+    `#bridge:${bridgeLaunchProcessKey(args.bridgeLaunch)}` +
     (args.acpLaunchSpec !== undefined
       ? `#acp:${fingerprintAcpLaunchSpec(args.acpLaunchSpec)}`
       : "");

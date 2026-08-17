@@ -234,14 +234,17 @@ export const DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS: readonly string[] = ["pi"];
 export const MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES = 256 * 1024 * 1024;
 
 /**
- * How the daemon obtains the provider bridge for a plugin-registered
- * provider. `source.kind: "artifact"` means: download the content-addressed
- * bridge bundle from the server by sha256, verify the bytes, cache it under
- * the daemon data dir, and run it with the daemon's node. Absence of the
- * whole field means today's daemon-local resolution (the bundled first-party
- * bridges) — the field is only sent for plugin providers with stored
- * artifacts, so first-party providers are wire-identical to version 122.
+ * How the daemon obtains the provider bridge for a provider. Every provider is
+ * plugin-declared, so every command that reaches a bridge carries one of these
+ * — the source says which of the two delivery paths to take rather than
+ * leaving the daemon to infer it from an absent field:
  *
+ * - `"artifact"`: download the content-addressed bridge bundle from the server
+ *   by sha256, verify the bytes, cache it under the daemon data dir, and run it
+ *   with the daemon's node.
+ * - `"daemon-bundled"`: run the named bridge from the daemon's own bundle. Pi
+ *   is the only one, because its agent tree cannot be inlined into a
+ *   relocatable artifact ({@link DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS}).
  */
 export const hostDaemonBridgeLaunchSchema = z
   .object({
@@ -255,6 +258,12 @@ export const hostDaemonBridgeLaunchSchema = z
             .int()
             .positive()
             .max(MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal("daemon-bundled"),
+          id: z.string().min(1),
         })
         .strict(),
     ]),
@@ -285,7 +294,7 @@ const hostDaemonThreadRuntimeContextSchema = z
     projectId: z.string().min(1),
     providerId: z.string().min(1),
     acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
-    bridgeLaunch: hostDaemonBridgeLaunchSchema.optional(),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
     options: runtimeThreadExecutionOptionsSchema,
     instructions: z.string().min(1),
     dynamicTools: z.array(dynamicToolSchema),
@@ -430,7 +439,7 @@ const turnSubmitCommandSchema = hostDaemonThreadTargetSchema
     inputGroups: z.array(z.array(promptInputSchema).min(1)).min(1).optional(),
     options: runtimeThreadExecutionOptionsSchema,
     acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
-    bridgeLaunch: hostDaemonBridgeLaunchSchema.optional(),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
     resumeContext: turnResumeContextSchema,
     target: turnSubmitTargetSchema,
   })
@@ -459,7 +468,7 @@ const threadGoalClearCommandSchema = hostDaemonThreadTargetSchema
     type: z.literal("thread.goal.clear"),
     options: runtimeThreadExecutionOptionsSchema,
     acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
-    bridgeLaunch: hostDaemonBridgeLaunchSchema.optional(),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
     resumeContext: turnResumeContextSchema,
   })
   .strict();
@@ -483,7 +492,7 @@ const threadArchiveCommandSchema = hostDaemonThreadWorkspaceTargetSchema
     type: z.literal("thread.archive"),
     providerId: z.string().min(1),
     providerThreadId: z.string().min(1),
-    bridgeLaunch: hostDaemonBridgeLaunchSchema.optional(),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
   })
   .strict();
 
@@ -496,7 +505,7 @@ const threadUnarchiveCommandSchema = hostDaemonThreadTargetSchema
     type: z.literal("thread.unarchive"),
     providerId: z.string().min(1),
     providerThreadId: z.string().min(1),
-    bridgeLaunch: hostDaemonBridgeLaunchSchema.optional(),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
   })
   .strict();
 
@@ -1014,7 +1023,7 @@ const providerListModelsCommandSchema = z.object({
   type: z.literal("provider.list_models"),
   providerId: z.string().min(1),
   acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
-  bridgeLaunch: hostDaemonBridgeLaunchSchema.optional(),
+  bridgeLaunch: hostDaemonBridgeLaunchSchema,
   cwd: z.string().min(1).optional(),
 });
 

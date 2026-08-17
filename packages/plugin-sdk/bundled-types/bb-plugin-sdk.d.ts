@@ -2955,8 +2955,8 @@ declare const environmentArchiveThreadsResponseSchema: z$1.ZodObject<{
 type EnvironmentArchiveThreadsResponse = z$1.infer<typeof environmentArchiveThreadsResponseSchema>;
 declare const pullRequestMergeMethodSchema: z$1.ZodEnum<{
     merge: "merge";
-    squash: "squash";
     rebase: "rebase";
+    squash: "squash";
 }>;
 type PullRequestMergeMethod = z$1.infer<typeof pullRequestMergeMethodSchema>;
 declare const commitActionResponseSchema: z$1.ZodObject<{
@@ -2987,8 +2987,8 @@ declare const pullRequestMergeActionResponseSchema: z$1.ZodObject<{
     action: z$1.ZodLiteral<"pull_request_merge">;
     method: z$1.ZodEnum<{
         merge: "merge";
-        squash: "squash";
         rebase: "rebase";
+        squash: "squash";
     }>;
     message: z$1.ZodString;
 }, z$1.core.$strip>;
@@ -3555,11 +3555,14 @@ declare const hostDaemonCommandRegistry: {
                 insertAfterArgs: z$1.ZodOptional<z$1.ZodNumber>;
             }, z$1.core.$strict>>;
         }, z$1.core.$strict>>;
-        bridgeLaunch: z$1.ZodOptional<z$1.ZodObject<{
+        bridgeLaunch: z$1.ZodObject<{
             source: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"artifact">;
                 sha256: z$1.ZodString;
                 byteLength: z$1.ZodNumber;
+            }, z$1.core.$strict>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"daemon-bundled">;
+                id: z$1.ZodString;
             }, z$1.core.$strict>], "kind">;
             capabilities: z$1.ZodObject<{
                 supportsServiceTier: z$1.ZodBoolean;
@@ -3576,7 +3579,7 @@ declare const hostDaemonCommandRegistry: {
                     checkpoint: "checkpoint";
                 }>;
             }, z$1.core.$strict>;
-        }, z$1.core.$strict>>;
+        }, z$1.core.$strict>;
         options: z$1.ZodIntersection<z$1.ZodObject<{
             model: z$1.ZodString;
             serviceTier: z$1.ZodEnum<{
@@ -3778,11 +3781,14 @@ declare const hostDaemonCommandRegistry: {
                 insertAfterArgs: z$1.ZodOptional<z$1.ZodNumber>;
             }, z$1.core.$strict>>;
         }, z$1.core.$strict>>;
-        bridgeLaunch: z$1.ZodOptional<z$1.ZodObject<{
+        bridgeLaunch: z$1.ZodObject<{
             source: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"artifact">;
                 sha256: z$1.ZodString;
                 byteLength: z$1.ZodNumber;
+            }, z$1.core.$strict>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"daemon-bundled">;
+                id: z$1.ZodString;
             }, z$1.core.$strict>], "kind">;
             capabilities: z$1.ZodObject<{
                 supportsServiceTier: z$1.ZodBoolean;
@@ -3799,7 +3805,7 @@ declare const hostDaemonCommandRegistry: {
                     checkpoint: "checkpoint";
                 }>;
             }, z$1.core.$strict>;
-        }, z$1.core.$strict>>;
+        }, z$1.core.$strict>;
         options: z$1.ZodIntersection<z$1.ZodObject<{
             model: z$1.ZodString;
             serviceTier: z$1.ZodEnum<{
@@ -4365,11 +4371,14 @@ declare const hostDaemonCommandRegistry: {
                 insertAfterArgs: z$1.ZodOptional<z$1.ZodNumber>;
             }, z$1.core.$strict>>;
         }, z$1.core.$strict>>;
-        bridgeLaunch: z$1.ZodOptional<z$1.ZodObject<{
+        bridgeLaunch: z$1.ZodObject<{
             source: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"artifact">;
                 sha256: z$1.ZodString;
                 byteLength: z$1.ZodNumber;
+            }, z$1.core.$strict>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"daemon-bundled">;
+                id: z$1.ZodString;
             }, z$1.core.$strict>], "kind">;
             capabilities: z$1.ZodObject<{
                 supportsServiceTier: z$1.ZodBoolean;
@@ -4386,7 +4395,7 @@ declare const hostDaemonCommandRegistry: {
                     checkpoint: "checkpoint";
                 }>;
             }, z$1.core.$strict>;
-        }, z$1.core.$strict>>;
+        }, z$1.core.$strict>;
         resumeContext: z$1.ZodObject<{
             workspaceContext: z$1.ZodObject<{
                 workspacePath: z$1.ZodString;
@@ -4396,6 +4405,31 @@ declare const hostDaemonCommandRegistry: {
                     personal: "personal";
                 }>;
             }, z$1.core.$strip>;
+            bridgeLaunch: z$1.ZodObject<{
+                source: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"artifact">;
+                    sha256: z$1.ZodString;
+                    byteLength: z$1.ZodNumber;
+                }, z$1.core.$strict>, z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"daemon-bundled">;
+                    id: z$1.ZodString;
+                }, z$1.core.$strict>], "kind">;
+                capabilities: z$1.ZodObject<{
+                    supportsServiceTier: z$1.ZodBoolean;
+                    permissionModes: z$1.ZodArray<z$1.ZodEnum<{
+                        full: "full";
+                        "accept-edits": "accept-edits";
+                        auto: "auto";
+                    }>>;
+                    supportsThreadArchive: z$1.ZodBoolean;
+                    supportsThreadRename: z$1.ZodBoolean;
+                    fork: z$1.ZodEnum<{
+                        none: "none";
+                        tip: "tip";
+                        checkpoint: "checkpoint";
+                    }>;
+                }, z$1.core.$strict>;
+            }, z$1.core.$strict>;
             instructionMode: z$1.ZodEnum<{
                 append: "append";
                 replace: "replace";
@@ -4497,28 +4531,6 @@ declare const hostDaemonCommandRegistry: {
                     readonly: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
                     insertAfterArgs: z$1.ZodOptional<z$1.ZodNumber>;
                 }, z$1.core.$strict>>;
-            }, z$1.core.$strict>>;
-            bridgeLaunch: z$1.ZodOptional<z$1.ZodObject<{
-                source: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
-                    kind: z$1.ZodLiteral<"artifact">;
-                    sha256: z$1.ZodString;
-                    byteLength: z$1.ZodNumber;
-                }, z$1.core.$strict>], "kind">;
-                capabilities: z$1.ZodObject<{
-                    supportsServiceTier: z$1.ZodBoolean;
-                    permissionModes: z$1.ZodArray<z$1.ZodEnum<{
-                        full: "full";
-                        "accept-edits": "accept-edits";
-                        auto: "auto";
-                    }>>;
-                    supportsThreadArchive: z$1.ZodBoolean;
-                    supportsThreadRename: z$1.ZodBoolean;
-                    fork: z$1.ZodEnum<{
-                        none: "none";
-                        tip: "tip";
-                        checkpoint: "checkpoint";
-                    }>;
-                }, z$1.core.$strict>;
             }, z$1.core.$strict>>;
             instructions: z$1.ZodString;
             dynamicTools: z$1.ZodArray<z$1.ZodObject<{
@@ -4729,11 +4741,14 @@ declare const hostDaemonCommandRegistry: {
                 insertAfterArgs: z$1.ZodOptional<z$1.ZodNumber>;
             }, z$1.core.$strict>>;
         }, z$1.core.$strict>>;
-        bridgeLaunch: z$1.ZodOptional<z$1.ZodObject<{
+        bridgeLaunch: z$1.ZodObject<{
             source: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"artifact">;
                 sha256: z$1.ZodString;
                 byteLength: z$1.ZodNumber;
+            }, z$1.core.$strict>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"daemon-bundled">;
+                id: z$1.ZodString;
             }, z$1.core.$strict>], "kind">;
             capabilities: z$1.ZodObject<{
                 supportsServiceTier: z$1.ZodBoolean;
@@ -4750,7 +4765,7 @@ declare const hostDaemonCommandRegistry: {
                     checkpoint: "checkpoint";
                 }>;
             }, z$1.core.$strict>;
-        }, z$1.core.$strict>>;
+        }, z$1.core.$strict>;
         resumeContext: z$1.ZodObject<{
             workspaceContext: z$1.ZodObject<{
                 workspacePath: z$1.ZodString;
@@ -4760,6 +4775,31 @@ declare const hostDaemonCommandRegistry: {
                     personal: "personal";
                 }>;
             }, z$1.core.$strip>;
+            bridgeLaunch: z$1.ZodObject<{
+                source: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"artifact">;
+                    sha256: z$1.ZodString;
+                    byteLength: z$1.ZodNumber;
+                }, z$1.core.$strict>, z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"daemon-bundled">;
+                    id: z$1.ZodString;
+                }, z$1.core.$strict>], "kind">;
+                capabilities: z$1.ZodObject<{
+                    supportsServiceTier: z$1.ZodBoolean;
+                    permissionModes: z$1.ZodArray<z$1.ZodEnum<{
+                        full: "full";
+                        "accept-edits": "accept-edits";
+                        auto: "auto";
+                    }>>;
+                    supportsThreadArchive: z$1.ZodBoolean;
+                    supportsThreadRename: z$1.ZodBoolean;
+                    fork: z$1.ZodEnum<{
+                        none: "none";
+                        tip: "tip";
+                        checkpoint: "checkpoint";
+                    }>;
+                }, z$1.core.$strict>;
+            }, z$1.core.$strict>;
             instructionMode: z$1.ZodEnum<{
                 append: "append";
                 replace: "replace";
@@ -4862,28 +4902,6 @@ declare const hostDaemonCommandRegistry: {
                     insertAfterArgs: z$1.ZodOptional<z$1.ZodNumber>;
                 }, z$1.core.$strict>>;
             }, z$1.core.$strict>>;
-            bridgeLaunch: z$1.ZodOptional<z$1.ZodObject<{
-                source: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
-                    kind: z$1.ZodLiteral<"artifact">;
-                    sha256: z$1.ZodString;
-                    byteLength: z$1.ZodNumber;
-                }, z$1.core.$strict>], "kind">;
-                capabilities: z$1.ZodObject<{
-                    supportsServiceTier: z$1.ZodBoolean;
-                    permissionModes: z$1.ZodArray<z$1.ZodEnum<{
-                        full: "full";
-                        "accept-edits": "accept-edits";
-                        auto: "auto";
-                    }>>;
-                    supportsThreadArchive: z$1.ZodBoolean;
-                    supportsThreadRename: z$1.ZodBoolean;
-                    fork: z$1.ZodEnum<{
-                        none: "none";
-                        tip: "tip";
-                        checkpoint: "checkpoint";
-                    }>;
-                }, z$1.core.$strict>;
-            }, z$1.core.$strict>>;
             instructions: z$1.ZodString;
             dynamicTools: z$1.ZodArray<z$1.ZodObject<{
                 name: z$1.ZodString;
@@ -4952,11 +4970,14 @@ declare const hostDaemonCommandRegistry: {
         type: z$1.ZodLiteral<"thread.archive">;
         providerId: z$1.ZodString;
         providerThreadId: z$1.ZodString;
-        bridgeLaunch: z$1.ZodOptional<z$1.ZodObject<{
+        bridgeLaunch: z$1.ZodObject<{
             source: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"artifact">;
                 sha256: z$1.ZodString;
                 byteLength: z$1.ZodNumber;
+            }, z$1.core.$strict>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"daemon-bundled">;
+                id: z$1.ZodString;
             }, z$1.core.$strict>], "kind">;
             capabilities: z$1.ZodObject<{
                 supportsServiceTier: z$1.ZodBoolean;
@@ -4973,7 +4994,7 @@ declare const hostDaemonCommandRegistry: {
                     checkpoint: "checkpoint";
                 }>;
             }, z$1.core.$strict>;
-        }, z$1.core.$strict>>;
+        }, z$1.core.$strict>;
     }, z$1.core.$strict>, z$1.ZodObject<{}, z$1.core.$strip>, "settled", false>;
     "thread.unarchive": HostDaemonCommandDescriptor<"thread.unarchive", z$1.ZodObject<{
         environmentId: z$1.ZodString;
@@ -4981,11 +5002,14 @@ declare const hostDaemonCommandRegistry: {
         type: z$1.ZodLiteral<"thread.unarchive">;
         providerId: z$1.ZodString;
         providerThreadId: z$1.ZodString;
-        bridgeLaunch: z$1.ZodOptional<z$1.ZodObject<{
+        bridgeLaunch: z$1.ZodObject<{
             source: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"artifact">;
                 sha256: z$1.ZodString;
                 byteLength: z$1.ZodNumber;
+            }, z$1.core.$strict>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"daemon-bundled">;
+                id: z$1.ZodString;
             }, z$1.core.$strict>], "kind">;
             capabilities: z$1.ZodObject<{
                 supportsServiceTier: z$1.ZodBoolean;
@@ -5002,7 +5026,7 @@ declare const hostDaemonCommandRegistry: {
                     checkpoint: "checkpoint";
                 }>;
             }, z$1.core.$strict>;
-        }, z$1.core.$strict>>;
+        }, z$1.core.$strict>;
     }, z$1.core.$strict>, z$1.ZodObject<{}, z$1.core.$strip>, "settled", false>;
     "interactive.resolve": HostDaemonCommandDescriptor<"interactive.resolve", z$1.ZodObject<{
         environmentId: z$1.ZodString;
@@ -5674,11 +5698,14 @@ declare const hostDaemonCommandRegistry: {
                 insertAfterArgs: z$1.ZodOptional<z$1.ZodNumber>;
             }, z$1.core.$strict>>;
         }, z$1.core.$strict>>;
-        bridgeLaunch: z$1.ZodOptional<z$1.ZodObject<{
+        bridgeLaunch: z$1.ZodObject<{
             source: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"artifact">;
                 sha256: z$1.ZodString;
                 byteLength: z$1.ZodNumber;
+            }, z$1.core.$strict>, z$1.ZodObject<{
+                kind: z$1.ZodLiteral<"daemon-bundled">;
+                id: z$1.ZodString;
             }, z$1.core.$strict>], "kind">;
             capabilities: z$1.ZodObject<{
                 supportsServiceTier: z$1.ZodBoolean;
@@ -5695,7 +5722,7 @@ declare const hostDaemonCommandRegistry: {
                     checkpoint: "checkpoint";
                 }>;
             }, z$1.core.$strict>;
-        }, z$1.core.$strict>>;
+        }, z$1.core.$strict>;
         cwd: z$1.ZodOptional<z$1.ZodString>;
     }, z$1.core.$strip>, z$1.ZodObject<{
         models: z$1.ZodArray<z$1.ZodObject<{

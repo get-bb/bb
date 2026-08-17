@@ -1265,8 +1265,11 @@ rl.on("line", (line) => {
       scriptPath: threadScopedProviderScript,
     });
     const bridgeLaunch: AgentRuntimeBridgeLaunch = {
-      sha256: "c".repeat(64),
-      artifactPath: join(tmpDir, "codex-provider-bridge.mjs"),
+      source: {
+        kind: "artifact",
+        sha256: "c".repeat(64),
+        artifactPath: join(tmpDir, "codex-provider-bridge.mjs"),
+      },
       capabilities: {
         supportsServiceTier: true,
         permissionModes: ["full"],
@@ -1351,8 +1354,11 @@ rl.on("line", (line) => {
     const capturedBridgeLaunches: Array<AgentRuntimeBridgeLaunch | undefined> =
       [];
     const bridgeLaunch: AgentRuntimeBridgeLaunch = {
-      sha256: "d".repeat(64),
-      artifactPath: join(tmpDir, "declaration-provider-bridge.mjs"),
+      source: {
+        kind: "artifact",
+        sha256: "d".repeat(64),
+        artifactPath: join(tmpDir, "declaration-provider-bridge.mjs"),
+      },
       capabilities: {
         supportsServiceTier: true,
         permissionModes: ["full"],

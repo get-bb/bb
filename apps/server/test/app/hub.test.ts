@@ -10,6 +10,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NotificationHub } from "../../src/ws/hub.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
+import { TRANSPORT_TEST_BRIDGE_LAUNCH } from "../helpers/provider-registry.js";
 
 /**
  * Smuggles an out-of-contract change kind into a typed changes array without a
@@ -297,7 +298,11 @@ describe("NotificationHub", () => {
       message: {
         type: "host-rpc.request",
         requestId: "rpc-1",
-        command: { type: "provider.list_models", providerId: "codex" },
+        command: {
+          type: "provider.list_models",
+          providerId: "codex",
+          bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+        },
       },
     });
 
@@ -305,7 +310,11 @@ describe("NotificationHub", () => {
       {
         type: "host-rpc.request",
         requestId: "rpc-1",
-        command: { type: "provider.list_models", providerId: "codex" },
+        command: {
+          type: "provider.list_models",
+          providerId: "codex",
+          bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+        },
       },
     ]);
     const disposition = hub.recordHostOnlineRpcResponse({
@@ -341,7 +350,11 @@ describe("NotificationHub", () => {
       message: {
         type: "host-rpc.request",
         requestId: "rpc-session-scoped",
-        command: { type: "provider.list_models", providerId: "codex" },
+        command: {
+          type: "provider.list_models",
+          providerId: "codex",
+          bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+        },
       },
     });
     let resolved = false;
@@ -399,7 +412,11 @@ describe("NotificationHub", () => {
       message: {
         type: "host-rpc.request",
         requestId: "rpc-1",
-        command: { type: "provider.list_models", providerId: "codex" },
+        command: {
+          type: "provider.list_models",
+          providerId: "codex",
+          bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+        },
       },
     });
     hub.unregisterDaemon("session-1");

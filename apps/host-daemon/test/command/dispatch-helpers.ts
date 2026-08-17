@@ -16,7 +16,10 @@ import type {
   GitHostPullRequest,
   PromptInput,
 } from "@bb/domain";
-import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonAcpLaunchSpec,
+  HostDaemonBridgeLaunch,
+} from "@bb/host-daemon-contract";
 import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
 import type {
   HostWorkspace,
@@ -562,3 +565,30 @@ export async function cleanupTempDirs(): Promise<void> {
       .map((dir) => fs.rm(dir, { recursive: true, force: true })),
   );
 }
+
+/**
+ * Every bridge-bound command now carries a `bridgeLaunch`. These tests
+ * exercise dispatch and runtime plumbing rather than bridge delivery, so they
+ * name the daemon's own bundled Pi bridge — no artifact fetch — with
+ * permissive capabilities, so no capability gate trips by accident.
+ */
+export const DISPATCH_TEST_BRIDGE_LAUNCH: HostDaemonBridgeLaunch = {
+  source: { kind: "daemon-bundled", id: "pi" },
+  capabilities: {
+    supportsServiceTier: true,
+    permissionModes: ["accept-edits", "auto", "full"],
+    supportsThreadArchive: true,
+    supportsThreadRename: true,
+    fork: "checkpoint",
+  },
+};
+
+/**
+ * The same launch after {@link resolveRuntimeBridgeLaunch}, for tests that call
+ * runtime entry points directly. A daemon-bundled source needs no fetch, so the
+ * two shapes coincide — but they are different types.
+ */
+export const DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch = {
+  source: { kind: "daemon-bundled", id: "pi" },
+  capabilities: DISPATCH_TEST_BRIDGE_LAUNCH.capabilities,
+};

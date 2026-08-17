@@ -50,14 +50,21 @@ export function fingerprintAcpLaunchSpec(
 }
 
 /**
- * The declaration facts a bridge adapter is built from and then keeps for the
- * life of its process: the capabilities it enforces. They come from the
+ * Process-key part for a bridge launch: which binary the adapter spawns, plus
+ * the declaration facts it is built from and then keeps for the life of that
+ * process (the capabilities it enforces). The capabilities come from the
  * plugin's declaration, not from its bundle, so editing a declaration changes
- * them while the artifact hash stays put — without this in the process key the
- * next thread reuses an adapter built from the superseded declaration.
+ * them while the artifact hash stays put — without them in the key the next
+ * thread reuses an adapter built from the superseded declaration.
  */
-export function fingerprintBridgeLaunchDeclaration(
+export function bridgeLaunchProcessKey(
   bridgeLaunch: AgentRuntimeBridgeLaunch,
 ): string {
-  return fingerprintStableJson({ capabilities: bridgeLaunch.capabilities });
+  const source =
+    bridgeLaunch.source.kind === "artifact"
+      ? bridgeLaunch.source.sha256.slice(0, 16)
+      : `bundled:${bridgeLaunch.source.id}`;
+  return `${source}.${fingerprintStableJson({
+    capabilities: bridgeLaunch.capabilities,
+  })}`;
 }

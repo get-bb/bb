@@ -14,10 +14,14 @@
  * runtime, which also imports them as untyped modules and validates what comes
  * back.
  */
+import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
+import { writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { HostDaemonBridgeLaunch } from "@bb/host-daemon-contract";
 import {
   buildPluginProviderBridge,
   resolvePluginBuildToolchain,
@@ -34,6 +38,7 @@ import {
 } from "../../src/services/providers/provider-registry.js";
 import {
   readPluginProviderBridgeArtifact,
+  type PluginProviderBridgeArtifact,
   type ProviderBridgeArtifactRegistry,
 } from "../../src/services/plugins/provider-bridge-artifacts.js";
 
@@ -85,10 +90,21 @@ async function loadDeclaration(
  * Registers the four first-party providers into an existing registry, exactly
  * as their plugins would. `excludePluginIds` models a plugin the user disabled
  * (or that failed to load), whose provider is then absent from the registry.
+ *
+ * Pass `artifacts` to also record a STUB bridge artifact per bridge-shipping
+ * plugin. In production a loaded provider plugin always has one, and every
+ * bridge-bound command carries a `bridgeLaunch` naming it, so a harness that
+ * registers providers without artifacts models a state that cannot happen and
+ * every command build fails. The stub is metadata only — no bytes are servable
+ * from it. Tests that need the real bundle use
+ * {@link recordFirstPartyProviderBridgeArtifacts}, which overwrites the stub.
  */
 export async function registerFirstPartyProviders(
   registry: ProviderRegistryService,
-  options: { excludePluginIds?: readonly string[] } = {},
+  options: {
+    excludePluginIds?: readonly string[];
+    artifacts?: ProviderBridgeArtifactRegistry;
+  } = {},
 ): Promise<void> {
   const excluded = new Set(options.excludePluginIds ?? []);
   for (const pluginId of FIRST_PARTY_PROVIDER_PLUGIN_IDS) {
@@ -100,7 +116,30 @@ export async function registerFirstPartyProviders(
       ...buildPluginProviderRegistration({ pluginId, declaration }),
       pluginId,
     });
+    if (
+      options.artifacts !== undefined &&
+      (await hasProviderBridgeEntry(pluginRootDir(pluginId)))
+    ) {
+      options.artifacts.set(pluginId, stubBridgeArtifact(pluginId));
+    }
   }
+}
+
+/**
+ * A one-line bundle standing in for a built bridge: real bytes at a real path,
+ * so the internal `/provider-bridges/:sha256` route serves them and a daemon
+ * that downloads and hash-verifies the artifact succeeds. Nothing executes it —
+ * the harnesses that get this far run a fake adapter.
+ */
+function stubBridgeArtifact(pluginId: string): PluginProviderBridgeArtifact {
+  const bytes = Buffer.from(`// stub provider bridge for ${pluginId}\n`);
+  const path = join(tmpdir(), `bb-stub-provider-bridge-${pluginId}.mjs`);
+  writeFileSync(path, bytes);
+  return {
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+    byteLength: bytes.byteLength,
+    path,
+  };
 }
 
 /**
@@ -149,4 +188,69 @@ export async function createTestProviderRegistry(): Promise<ProviderRegistryServ
   const registry = createProviderRegistryService();
   await registerFirstPartyProviders(registry);
   return registry;
+}
+
+/**
+ * A well-formed `bridgeLaunch` for tests that only need a valid command on the
+ * wire — transport plumbing (hub routing, online-RPC retries) that never
+ * launches a bridge. Tests about which bridge a provider actually resolves to
+ * must go through `resolveBridgeLaunchForProviderId` instead.
+ */
+export const TRANSPORT_TEST_BRIDGE_LAUNCH: HostDaemonBridgeLaunch = {
+  source: { kind: "daemon-bundled", id: "pi" },
+  capabilities: {
+    supportsServiceTier: false,
+    permissionModes: ["full"],
+    supportsThreadArchive: false,
+    supportsThreadRename: false,
+    fork: "none",
+  },
+};
+
+/**
+ * Provider ids the fake-stack integration tests create threads on. `fake` is
+ * the default there; the alpha/beta pair exercises per-provider process
+ * isolation.
+ */
+const FAKE_PROVIDER_IDS = ["fake", "fake-alpha", "fake-beta"] as const;
+
+/**
+ * Declare the fake providers into a registry with a stub bridge artifact each,
+ * the way a real provider plugin would. Every bridge-bound command carries a
+ * `bridgeLaunch`, so a provider with neither a declaration nor an artifact
+ * cannot have a command built for it at all — while the daemon side of those
+ * tests runs a fake adapter and never reads the launch. Capabilities are
+ * permissive: those tests are about lifecycle, not policy.
+ */
+export function registerFakeProviders(
+  registry: ProviderRegistryService,
+  artifacts: ProviderBridgeArtifactRegistry,
+): void {
+  for (const providerId of FAKE_PROVIDER_IDS) {
+    const pluginId = `provider-${providerId}`;
+    registry.register({
+      ...buildPluginProviderRegistration({
+        pluginId,
+        declaration: validatePluginProviderDeclaration({
+          id: providerId,
+          displayName: providerId,
+          capabilities: {
+            supportsServiceTier: true,
+            supportsHostAiServices: false,
+            supportsNativeUserQuestion: false,
+            fork: "checkpoint",
+            supportsManualCompaction: true,
+            supportsThreadArchive: true,
+            supportsThreadRename: true,
+            supportsWorkflows: true,
+            permissionModes: ["accept-edits", "auto", "full"],
+            reasoningLevels: ["low", "medium", "high"],
+          },
+          composerActions: ["plan", "goal"],
+        }),
+      }),
+      pluginId,
+    });
+    artifacts.set(pluginId, stubBridgeArtifact(pluginId));
+  }
 }

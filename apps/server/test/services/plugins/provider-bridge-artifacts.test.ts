@@ -261,7 +261,7 @@ describe("provider bridge artifact delivery (server)", () => {
     });
   }, 120_000);
 
-  it("bundled first-party registrations never attach bridgeLaunch", async () => {
+  it("names the daemon-bundled bridge for a plugin that ships no artifact", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-first-party-no-bridge",
@@ -277,18 +277,18 @@ describe("provider bridge artifact delivery (server)", () => {
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        providerId: "codex",
+        providerId: "pi",
       });
       seedThreadRuntimeState(harness.deps, {
         environmentId: environment.id,
-        providerThreadId: "provider-codex",
+        providerThreadId: "provider-pi",
         threadId: thread.id,
       });
 
       const startCommand = await buildThreadStartCommand(harness.deps, {
         environment,
         execution: {
-          model: "gpt-5",
+          model: "pi-default",
           permissionMode: "full",
           reasoningLevel: "medium",
           serviceTier: "default",
@@ -298,15 +298,18 @@ describe("provider bridge artifact delivery (server)", () => {
         permissionEscalation: "ask",
         input: textInput("hello"),
         projectId: project.id,
-        providerId: "codex",
+        providerId: "pi",
         requestId: encodeClientTurnRequestIdNumber({ value: 302 }),
         syncGeneratedTitle: false,
         thread,
       });
-      // Wire-identical to version 122: no artifact recorded for the takeover
-      // registration, so the field is absent and daemon-local (bundled)
-      // bridge resolution applies.
-      expect(startCommand).not.toHaveProperty("bridgeLaunch");
+      // Pi declares a provider but ships no `bb.providerBridge`, so its bridge
+      // is the one inside the daemon bundle. The command says so explicitly
+      // rather than omitting the field and leaving the daemon to infer it.
+      expect(startCommand.bridgeLaunch).toMatchObject({
+        source: { kind: "daemon-bundled", id: "pi" },
+        capabilities: { permissionModes: ["full"], fork: "checkpoint" },
+      });
     });
   });
 

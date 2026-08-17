@@ -191,7 +191,7 @@ async function resumeThreadRuntimeIfMissing(
       : command.acpLaunchSpec !== undefined
         ? { acpLaunchSpec: command.acpLaunchSpec }
         : {}),
-    ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+    bridgeLaunch,
     environmentId: command.environmentId,
     threadId: command.threadId,
     projectId: resumeContext.projectId,
@@ -240,7 +240,7 @@ export async function startThread(
       ...(command.acpLaunchSpec !== undefined
         ? { acpLaunchSpec: command.acpLaunchSpec }
         : {}),
-      ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+      bridgeLaunch,
       environmentId: command.environmentId,
       threadId: command.threadId,
       projectId: command.projectId,
@@ -285,7 +285,7 @@ export async function prepareThreadRewind(
     ...(command.acpLaunchSpec !== undefined
       ? { acpLaunchSpec: command.acpLaunchSpec }
       : {}),
-    ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+    bridgeLaunch,
     environmentId: command.environmentId,
     threadId: command.threadId,
     leaseId: command.leaseId,

@@ -513,7 +513,7 @@ const commandHandlers: CommandHandlerMap = {
       threadId: command.threadId,
       providerId: command.providerId,
       providerThreadId: command.providerThreadId,
-      ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+      bridgeLaunch,
     });
     return {};
   },
@@ -530,7 +530,7 @@ const commandHandlers: CommandHandlerMap = {
       threadId: command.threadId,
       providerId: command.providerId,
       providerThreadId: command.providerThreadId,
-      ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+      bridgeLaunch,
     });
     return {};
   },
@@ -669,7 +669,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       ...(command.acpLaunchSpec !== undefined
         ? { acpLaunchSpec: command.acpLaunchSpec }
         : {}),
-      ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+      bridgeLaunch,
     });
   },
   "known_acp_agents.status": async (command, options) =>

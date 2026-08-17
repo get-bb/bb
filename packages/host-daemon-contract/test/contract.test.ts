@@ -718,10 +718,6 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "ACP permission CLI config only needs args for modes that differ from the agent default.",
   "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.insertAfterArgs":
     "ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
-  "hostDaemonCommandSchema.bridgeLaunch":
-    "thread.start, turn.submit, and thread.goal.clear carry a bridge launch spec only for plugin providers with stored bridge artifacts; absence means daemon-local (bundled) bridge resolution.",
-  "hostDaemonCommandSchema.resumeContext.bridgeLaunch":
-    "resume contexts carry a bridge launch spec only for plugin providers with stored bridge artifacts that may need lazy resume.",
   "hostDaemonCommandSchema.checkout":
     "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
   "hostDaemonCommandSchema.targetPath":
@@ -734,8 +730,6 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "workspace.status may omit mergeBaseBranch when the caller only needs working-tree state.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec":
     "provider.list_models includes an ACP launch spec only for dynamic ACP providers; built-ins resolve from daemon-side profiles.",
-  "hostDaemonOnlineRpcCommandSchema.bridgeLaunch":
-    "provider.list_models carries a bridge launch spec only for plugin providers with stored bridge artifacts; absence means daemon-local (bundled) bridge resolution.",
   "hostDaemonOnlineRpcCommandSchema.cwd":
     "provider.list_models may omit cwd when only user-level provider configuration applies.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.cwd":
@@ -1064,6 +1058,22 @@ describe("host-daemon local schemas", () => {
     ).toThrow();
   });
 });
+
+/**
+ * Every bridge-bound command carries a `bridgeLaunch`. Schema-shape tests use
+ * the daemon-bundled variant (the shorter of the two sources); the artifact
+ * variant has its own round-trip test.
+ */
+const BRIDGE_LAUNCH = {
+  source: { kind: "daemon-bundled", id: "pi" },
+  capabilities: {
+    supportsServiceTier: false,
+    permissionModes: ["full"],
+    supportsThreadArchive: false,
+    supportsThreadRename: false,
+    fork: "none",
+  },
+} as const;
 
 describe("host-daemon command schemas", () => {
   // Version 129 raises the single executable host-artifact ceiling to 256 MiB.
@@ -1729,7 +1739,11 @@ describe("host-daemon command schemas", () => {
         path: "README.md",
         dotfiles: "deny",
       },
-      { type: "provider.list_models", providerId: "codex" },
+      {
+        type: "provider.list_models",
+        providerId: "codex",
+        bridgeLaunch: BRIDGE_LAUNCH,
+      },
       {
         type: "known_acp_agents.status",
         agents: [{ id: "acp-opencode", executableName: "opencode" }],
@@ -1862,6 +1876,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonCommandSchema.parse({
         type: "thread.start",
+        bridgeLaunch: BRIDGE_LAUNCH,
         threadId: "thr_123",
         workspaceContext: {
           workspacePath: "/tmp/workspace",
@@ -1891,6 +1906,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonCommandSchema.parse({
         type: "turn.submit",
+        bridgeLaunch: BRIDGE_LAUNCH,
         threadId: "thr_123",
         requestId: CLIENT_REQUEST_ID,
         input: [{ type: "text", text: "follow up", mentions: [] }],
@@ -1905,6 +1921,7 @@ describe("host-daemon command schemas", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          bridgeLaunch: BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/workspace",
             workspaceProvisionType: "unmanaged",
@@ -1926,6 +1943,7 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonCommandSchema.parse({
         type: "thread.start",
+        bridgeLaunch: BRIDGE_LAUNCH,
         environmentId: "env_123",
         threadId: "thr_123",
         workspaceContext: {
@@ -1975,6 +1993,7 @@ describe("host-daemon command schemas", () => {
       }),
     ).toMatchObject({
       type: "thread.start",
+      bridgeLaunch: BRIDGE_LAUNCH,
       input: [
         {
           mentions: [
@@ -2011,6 +2030,7 @@ describe("host-daemon command schemas", () => {
     ({ permissionMode, permissionScope, approvalReviewer }) => {
       const command = {
         type: "thread.start" as const,
+        bridgeLaunch: BRIDGE_LAUNCH,
         environmentId: "env_123",
         threadId: "thr_123",
         workspaceContext: {
@@ -2053,6 +2073,7 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonCommandSchema.parse({
         type: "turn.submit",
+        bridgeLaunch: BRIDGE_LAUNCH,
         environmentId: "env_123",
         threadId: "thr_123",
         requestId: CLIENT_REQUEST_ID,
@@ -2084,6 +2105,7 @@ describe("host-daemon command schemas", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          bridgeLaunch: BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/workspace",
             workspaceProvisionType: "unmanaged",
@@ -2100,6 +2122,7 @@ describe("host-daemon command schemas", () => {
       }),
     ).toMatchObject({
       type: "turn.submit",
+      bridgeLaunch: BRIDGE_LAUNCH,
       input: [
         {
           mentions: [
@@ -2119,6 +2142,7 @@ describe("host-daemon command schemas", () => {
   it("rejects grouped commands whose flat input disagrees with inputGroups", () => {
     const threadStartCommand = {
       type: "thread.start",
+      bridgeLaunch: BRIDGE_LAUNCH,
       environmentId: "env_123",
       threadId: "thr_123",
       workspaceContext: {
@@ -2159,6 +2183,7 @@ describe("host-daemon command schemas", () => {
 
     const turnSubmitCommand = {
       type: "turn.submit",
+      bridgeLaunch: BRIDGE_LAUNCH,
       environmentId: "env_123",
       threadId: "thr_123",
       requestId: CLIENT_REQUEST_ID,
@@ -2175,6 +2200,7 @@ describe("host-daemon command schemas", () => {
         permissionEscalation: null,
       },
       resumeContext: {
+        bridgeLaunch: BRIDGE_LAUNCH,
         workspaceContext: {
           workspacePath: "/tmp/workspace",
           workspaceProvisionType: "unmanaged",
@@ -2197,6 +2223,7 @@ describe("host-daemon command schemas", () => {
   it("round-trips dynamic ACP launch specs on provider.list_models, thread.start, and turn.submit", () => {
     const providerListModelsCommand = {
       type: "provider.list_models",
+      bridgeLaunch: BRIDGE_LAUNCH,
       providerId: "acp-local",
       acpLaunchSpec: ACP_LAUNCH_SPEC,
       cwd: "/tmp/workspace",
@@ -2222,6 +2249,7 @@ describe("host-daemon command schemas", () => {
 
     const threadStartCommand = {
       type: "thread.start",
+      bridgeLaunch: BRIDGE_LAUNCH,
       environmentId: "env_123",
       threadId: "thr_123",
       workspaceContext: {
@@ -2256,6 +2284,7 @@ describe("host-daemon command schemas", () => {
 
     const turnSubmitCommand = {
       type: "turn.submit",
+      bridgeLaunch: BRIDGE_LAUNCH,
       environmentId: "env_123",
       threadId: "thr_123",
       requestId: CLIENT_REQUEST_ID,
@@ -2272,6 +2301,7 @@ describe("host-daemon command schemas", () => {
       },
       acpLaunchSpec: ACP_LAUNCH_SPEC,
       resumeContext: {
+        bridgeLaunch: BRIDGE_LAUNCH,
         workspaceContext: {
           workspacePath: "/tmp/workspace",
           workspaceProvisionType: "unmanaged",
@@ -2293,17 +2323,17 @@ describe("host-daemon command schemas", () => {
       turnSubmitCommand,
     );
 
-    // Version-124 compat: the same version-123 payloads (no bridgeLaunch)
-    // must round-trip byte-identically — the parses above already assert
-    // that, and no default may materialize the new field.
-    expect(
-      hostDaemonCommandSchema.parse(threadStartRoundTrip),
-    ).not.toHaveProperty("bridgeLaunch");
-    const parsedTurnSubmit = hostDaemonCommandSchema.parse(turnSubmitRoundTrip);
-    expect(parsedTurnSubmit).not.toHaveProperty("bridgeLaunch");
-    expect(
-      (parsedTurnSubmit as { resumeContext: object }).resumeContext,
-    ).not.toHaveProperty("bridgeLaunch");
+    // A version-123 payload (no bridgeLaunch) is DELIBERATELY no longer
+    // accepted: version 124 is unshipped, so nothing in the field ever sent
+    // one, and the field is required precisely so the daemon is never left to
+    // infer a bridge from an absent field. The reject is asserted below.
+    const withoutBridgeLaunch: Record<string, unknown> = {
+      ...threadStartRoundTrip,
+    };
+    delete withoutBridgeLaunch.bridgeLaunch;
+    expect(hostDaemonCommandSchema.safeParse(withoutBridgeLaunch).success).toBe(
+      false,
+    );
   });
 
   it("round-trips bridge launch specs and rejects malformed artifact sources", () => {
@@ -2493,6 +2523,7 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonCommandSchema.parse({
         type: "turn.submit",
+        bridgeLaunch: BRIDGE_LAUNCH,
         environmentId: "env_123",
         threadId: "thr_123",
         requestId: CLIENT_REQUEST_ID,
@@ -2508,6 +2539,7 @@ describe("host-daemon command schemas", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          bridgeLaunch: BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/workspace",
             workspaceProvisionType: "unmanaged",
@@ -2526,6 +2558,7 @@ describe("host-daemon command schemas", () => {
       type: "turn.submit",
       requestId: CLIENT_REQUEST_ID,
       resumeContext: {
+        bridgeLaunch: BRIDGE_LAUNCH,
         workspaceContext: {
           workspacePath: "/tmp/workspace",
           workspaceProvisionType: "unmanaged",
@@ -2537,6 +2570,7 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonCommandSchema.parse({
         type: "turn.submit",
+        bridgeLaunch: BRIDGE_LAUNCH,
         environmentId: "env_123",
         threadId: "thr_123",
         requestId: CLIENT_REQUEST_ID,
@@ -2552,6 +2586,7 @@ describe("host-daemon command schemas", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          bridgeLaunch: BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/workspace",
             workspaceProvisionType: "unmanaged",
@@ -2568,6 +2603,7 @@ describe("host-daemon command schemas", () => {
       }),
     ).toMatchObject({
       type: "turn.submit",
+      bridgeLaunch: BRIDGE_LAUNCH,
       requestId: CLIENT_REQUEST_ID,
       target: { mode: "auto", expectedTurnId: "turn_123" },
     });
@@ -2575,6 +2611,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonCommandSchema.parse({
         type: "turn.submit",
+        bridgeLaunch: BRIDGE_LAUNCH,
         environmentId: "env_123",
         threadId: "thr_123",
         input: [{ type: "text", text: "hello", mentions: [] }],
@@ -2589,6 +2626,7 @@ describe("host-daemon command schemas", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          bridgeLaunch: BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/workspace",
             workspaceProvisionType: "unmanaged",
@@ -2605,6 +2643,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonCommandSchema.parse({
         type: "thread.start",
+        bridgeLaunch: BRIDGE_LAUNCH,
         environmentId: "env_123",
         threadId: "thr_123",
         workspaceContext: {
@@ -2635,6 +2674,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonCommandSchema.parse({
         type: "thread.start",
+        bridgeLaunch: BRIDGE_LAUNCH,
         environmentId: "env_123",
         threadId: "thr_123",
         workspaceContext: {
@@ -2666,6 +2706,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonCommandSchema.parse({
         type: "turn.submit",
+        bridgeLaunch: BRIDGE_LAUNCH,
         environmentId: "env_123",
         threadId: "thr_123",
         requestId: CLIENT_REQUEST_ID,
@@ -2682,6 +2723,7 @@ describe("host-daemon command schemas", () => {
           permissionEscalation: null,
         },
         resumeContext: {
+          bridgeLaunch: BRIDGE_LAUNCH,
           workspaceContext: {
             workspacePath: "/tmp/workspace",
             workspaceProvisionType: "unmanaged",
@@ -3604,12 +3646,20 @@ describe("host-daemon session schemas", () => {
       hostDaemonServerWsMessageSchema.parse({
         type: "host-rpc.request",
         requestId: "rpc-1",
-        command: { type: "provider.list_models", providerId: "codex" },
+        command: {
+          type: "provider.list_models",
+          providerId: "codex",
+          bridgeLaunch: BRIDGE_LAUNCH,
+        },
       }),
     ).toEqual({
       type: "host-rpc.request",
       requestId: "rpc-1",
-      command: { type: "provider.list_models", providerId: "codex" },
+      command: {
+        type: "provider.list_models",
+        providerId: "codex",
+        bridgeLaunch: BRIDGE_LAUNCH,
+      },
     });
 
     expect(

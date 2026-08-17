@@ -78,7 +78,7 @@ import {
 } from "./thread-identity.js";
 import {
   fingerprintAcpLaunchSpec,
-  fingerprintBridgeLaunchDeclaration,
+  bridgeLaunchProcessKey,
 } from "./acp-launch-spec-fingerprint.js";
 
 interface ReconfigureThreadIfNeededArgs {
@@ -481,7 +481,7 @@ function createAgentRuntimeInternal(
     const bridgeKey =
       args.bridgeLaunch === undefined
         ? baseKey
-        : `${baseKey}#bridge:${args.bridgeLaunch.sha256.slice(0, 16)}.${fingerprintBridgeLaunchDeclaration(args.bridgeLaunch)}`;
+        : `${baseKey}#bridge:${bridgeLaunchProcessKey(args.bridgeLaunch)}`;
     if (args.acpLaunchSpec === undefined) {
       return bridgeKey;
     }

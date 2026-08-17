@@ -29,6 +29,7 @@ import { createProviderRegistryService } from "../../../apps/server/src/services
 import { resolveAcpAgentCapabilitiesForProviderId } from "../../../apps/server/src/services/system/acp-launch-spec.js";
 import {
   recordFirstPartyProviderBridgeArtifacts,
+  registerFakeProviders,
   registerFirstPartyProviders,
 } from "../../../apps/server/test/helpers/provider-registry.js";
 import {
@@ -285,6 +286,11 @@ async function startIntegrationServer(
   // their plugins would.
   await registerFirstPartyProviders(providerRegistry);
   const providerBridgeArtifacts = new ProviderBridgeArtifactRegistry();
+  // The fake providers these tests drive are declarations too: every
+  // bridge-bound command carries a `bridgeLaunch`, so a provider with no
+  // declaration and no artifact cannot have a command built for it at all. The
+  // daemon side runs a fake adapter and never reads the launch.
+  registerFakeProviders(providerRegistry, providerBridgeArtifacts);
   // Every first-party bridge except Pi's ships as a plugin artifact, and the
   // daemon has no bridge for those providers without one on the wire. The
   // dynamic ACP tier depends on it most: `acp-<slug>` ids are never

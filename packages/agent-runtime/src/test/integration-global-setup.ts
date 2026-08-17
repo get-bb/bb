@@ -28,15 +28,20 @@ import {
 
 /**
  * Every first-party provider plugin that ships a bridge artifact. Pi is
- * absent on purpose: its bridge stays in the daemon bundle (its agent tree
- * cannot be inlined into a relocatable artifact), so it has no
- * `bb.providerBridge` and needs no `bridgeLaunch`.
+ * separate: its bridge stays in the daemon bundle (its agent tree cannot be
+ * inlined into a relocatable artifact), so it has no `bb.providerBridge` and
+ * its launch names the bundled bridge instead of an artifact.
  */
 const PROVIDER_BRIDGE_PLUGIN_IDS = [
   "provider-codex",
   "provider-claude-code",
   "provider-acp",
 ] as const;
+
+/** Plugins whose bridge the daemon bundles, keyed by bundled bridge id. */
+const DAEMON_BUNDLED_BRIDGE_PLUGIN_IDS: Readonly<Record<string, string>> = {
+  pi: "provider-pi",
+};
 
 function pluginRootDir(pluginId: string): string {
   // No trailing slash: the plugin build's directory-escape checks compare
@@ -78,6 +83,24 @@ async function loadDeclaration(
   return validatePluginProviderDeclaration(captured);
 }
 
+/**
+ * The same five execution capabilities the server puts on the wire (see
+ * resolveBridgeLaunchForProviderId): the daemon has no registry to read a
+ * declaration from.
+ */
+function wireCapabilities(
+  declaration: PluginProviderDeclaration,
+): IntegrationProviderBridgeManifest[string]["capabilities"] {
+  const { capabilities } = declaration;
+  return {
+    supportsServiceTier: capabilities.supportsServiceTier,
+    permissionModes: [...capabilities.permissionModes],
+    supportsThreadArchive: capabilities.supportsThreadArchive,
+    supportsThreadRename: capabilities.supportsThreadRename,
+    fork: capabilities.fork,
+  };
+}
+
 export async function setup(): Promise<void> {
   const toolchain = await resolvePluginBuildToolchain(
     join(tmpdir(), "bb-plugin-build-toolchain"),
@@ -89,22 +112,24 @@ export async function setup(): Promise<void> {
       loadDeclaration(pluginId),
       buildPluginProviderBridge(rootDir, toolchain),
     ]);
-    const { capabilities } = declaration;
     manifest[declaration.id] = {
-      sha256: build.sha256,
-      // No download step here: the daemon caches the verified bytes, the test
-      // launches the freshly built file in place.
-      artifactPath: build.jsPath,
-      // The same five execution capabilities the server puts on the wire
-      // (see resolveBridgeLaunchForProviderId): the daemon has no registry to
-      // read a declaration from.
-      capabilities: {
-        supportsServiceTier: capabilities.supportsServiceTier,
-        permissionModes: [...capabilities.permissionModes],
-        supportsThreadArchive: capabilities.supportsThreadArchive,
-        supportsThreadRename: capabilities.supportsThreadRename,
-        fork: capabilities.fork,
+      source: {
+        kind: "artifact",
+        sha256: build.sha256,
+        // No download step here: the daemon caches the verified bytes, the
+        // test launches the freshly built file in place.
+        artifactPath: build.jsPath,
       },
+      capabilities: wireCapabilities(declaration),
+    };
+  }
+  for (const [bundledBridgeId, pluginId] of Object.entries(
+    DAEMON_BUNDLED_BRIDGE_PLUGIN_IDS,
+  )) {
+    const declaration = await loadDeclaration(pluginId);
+    manifest[declaration.id] = {
+      source: { kind: "daemon-bundled", id: bundledBridgeId },
+      capabilities: wireCapabilities(declaration),
     };
   }
   await writeFile(

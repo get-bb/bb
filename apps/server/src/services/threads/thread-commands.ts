@@ -49,7 +49,10 @@ import { clampPermissionModeToHost } from "../hosts/permission-ceiling.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import { workspaceContextFromPath } from "../environments/workspace-command-target.js";
 import { resolveAcpLaunchSpecForProviderId } from "../system/acp-launch-spec.js";
-import { resolveBridgeLaunchForProviderId } from "../system/provider-bridge-launch.js";
+import {
+  requireBridgeLaunchForProviderId,
+  resolveBridgeLaunchForProviderId,
+} from "../system/provider-bridge-launch.js";
 
 export type ExecutionOptionsRequest = ExistingThreadExecutionInputRequest;
 
@@ -322,7 +325,7 @@ export async function buildThreadStartCommand(
 ): Promise<Extract<HostDaemonCommand, { type: "thread.start" }>> {
   // A graduated provider only has a bridge while its plugin is registered, and
   // plugins load after the listener starts serving. Wait, or a turn submitted
-  // during that window dispatches with no bridgeLaunch and dies on the daemon.
+  // during that window has no bridgeLaunch to carry and is refused.
   await deps.providerRegistry.whenRegistrationsSettled();
   const runtimeContext = await resolveThreadRuntimeCommandConfig(deps, {
     thread: args.thread,
@@ -333,7 +336,7 @@ export async function buildThreadStartCommand(
     deps,
     args.providerId,
   );
-  const bridgeLaunch = resolveBridgeLaunchForProviderId(deps, args.providerId);
+  const bridgeLaunch = requireBridgeLaunchForProviderId(deps, args.providerId);
   return {
     type: "thread.start",
     environmentId: args.environment.id,
@@ -345,7 +348,7 @@ export async function buildThreadStartCommand(
     projectId: args.projectId,
     providerId: args.providerId,
     ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
-    ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+    bridgeLaunch,
     requestId: args.requestId,
     input: args.input,
     ...(args.inputGroups !== undefined
@@ -380,7 +383,7 @@ function buildPreparedTurnSubmitCommandPayload(
     args.deps,
     args.runtimeContext.providerId,
   );
-  const bridgeLaunch = resolveBridgeLaunchForProviderId(
+  const bridgeLaunch = requireBridgeLaunchForProviderId(
     args.deps,
     args.runtimeContext.providerId,
   );
@@ -389,7 +392,7 @@ function buildPreparedTurnSubmitCommandPayload(
     environmentId: args.environmentId,
     threadId: args.threadId,
     ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
-    ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+    bridgeLaunch,
     input: args.input,
     ...(args.inputGroups !== undefined
       ? { inputGroups: args.inputGroups }
@@ -421,7 +424,7 @@ function buildPreparedTurnSubmitCommandPayload(
       projectId: args.runtimeContext.projectId,
       providerId: args.runtimeContext.providerId,
       ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
-      ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+      bridgeLaunch,
       providerThreadId: args.providerThreadId,
       instructions: args.runtimeContext.instructions,
       dynamicTools: args.runtimeContext.dynamicTools,
@@ -607,10 +610,15 @@ export function dispatchArchivedThreadProviderArchiveCommand(
 
   // Archive can have to spawn the provider bridge from scratch (fresh daemon,
   // reaped idle session), so it carries the same launch spec as thread.start.
+  // Forwarding is best-effort: with no bridge there is nothing to mirror the
+  // archive onto, so skip rather than dispatch a command the daemon rejects.
   const bridgeLaunch = resolveBridgeLaunchForProviderId(
     deps,
     thread.providerId,
   );
+  if (bridgeLaunch === null) {
+    return false;
+  }
 
   startLiveHostCommand(deps, {
     command: {
@@ -620,7 +628,7 @@ export function dispatchArchivedThreadProviderArchiveCommand(
       workspaceContext,
       providerId: thread.providerId,
       providerThreadId,
-      ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+      bridgeLaunch,
     },
     hostId: environment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
@@ -651,11 +659,15 @@ export function dispatchThreadUnarchiveCommand(
   }
 
   // Unarchive always runs on a fresh provider-maintenance runtime, so it can
-  // never reuse a live process and must carry its own launch spec.
+  // never reuse a live process and must carry its own launch spec. Same
+  // best-effort rule as archive: no bridge, nothing to unarchive on.
   const bridgeLaunch = resolveBridgeLaunchForProviderId(
     deps,
     args.thread.providerId,
   );
+  if (bridgeLaunch === null) {
+    return false;
+  }
 
   startLiveHostCommand(deps, {
     command: {
@@ -664,7 +676,7 @@ export function dispatchThreadUnarchiveCommand(
       threadId: args.thread.id,
       providerId: args.thread.providerId,
       providerThreadId: args.providerThreadId,
-      ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+      bridgeLaunch,
     },
     hostId: args.environment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
