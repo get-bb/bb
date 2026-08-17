@@ -69,7 +69,9 @@ function BackgroundActivityDuration({ startedAt }: { startedAt: number }) {
   if (elapsed <= 1_000) {
     return null;
   }
-  return <>{durationToCompactString(elapsed)}</>;
+  return (
+    <span className="tabular-nums">{durationToCompactString(elapsed)}</span>
+  );
 }
 
 function BackgroundActivitySummary({

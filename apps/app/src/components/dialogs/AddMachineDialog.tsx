@@ -243,7 +243,7 @@ function AddMachineDialogContent({
                   </Button>
                 </>
               ) : remainingMs !== null ? (
-                <span className="text-xs text-subtle-foreground">
+                <span className="text-xs tabular-nums text-subtle-foreground">
                   Code expires in {formatCountdown(remainingMs)}
                 </span>
               ) : null}

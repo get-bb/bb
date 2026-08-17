@@ -242,8 +242,8 @@ function renderDecoration(
   switch (decoration.kind) {
     case "duration": {
       const durationClass = decoration.em
-        ? cn("shrink-0 whitespace-pre", emToneClass(tone))
-        : baseClass;
+        ? cn("shrink-0 whitespace-pre tabular-nums", emToneClass(tone))
+        : cn(baseClass, "tabular-nums");
       return (
         <span key={index} className={durationClass}>
           {decoration.completedAt !== null ? (
@@ -275,7 +275,9 @@ function renderDecoration(
               "inline-flex items-baseline gap-1",
             )}
           >
-            {durationText ? <span>{durationText}</span> : null}
+            {durationText ? (
+              <span className="tabular-nums">{durationText}</span>
+            ) : null}
             {renderStatusDecorationText(
               decoration.status,
               // Only an emphasized error — one that is the row's primary signal,
