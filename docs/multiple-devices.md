@@ -101,8 +101,8 @@ the installer also configures the machine credential used to reach the server
 through the account gate. Without bb connect, open the server through a
 Tailscale Serve URL before generating the installer; the loopback listener is
 not directly reachable from another machine. When bb connect is not paired and
-the server URL is a loopback address, the dialog does not show an installer. It
-links to Settings → Remote access instead.
+the server URL is a loopback or unspecified address, the dialog does not show an
+installer. It links to Settings → Remote access instead.
 
 The installer always installs the exact `bb-app` package exposed by that
 server at `/install/bb-app.tgz`; a `bb-app` already on PATH is reused, and the

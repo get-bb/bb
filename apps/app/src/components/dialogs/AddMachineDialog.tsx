@@ -16,7 +16,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useClipboardCopy } from "@/lib/clipboard";
-import { isLoopbackHostname } from "@/lib/loopback-hostname";
+import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
 import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
@@ -44,24 +44,39 @@ function isNotPairedRpcError(error: BbHttpError): boolean {
   return envelope.success && envelope.data.error.message === "not_paired";
 }
 
-async function createConnectMachineCode(): Promise<ConnectMachineCode | null> {
+/**
+ * Outcome of asking the connect plugin for a machine code.
+ * - `issued`: connect is paired; the command routes through getbb.app.
+ * - `unpaired`: connect is installed but not paired (or not installed at all).
+ *   Only a direct server URL can work.
+ * - `unavailable`: a temporary failure (for example the plugin is still
+ *   starting). Nothing is known about pairing.
+ */
+type ConnectMachineCodeResult =
+  | { kind: "issued"; code: ConnectMachineCode }
+  | { kind: "unpaired" }
+  | { kind: "unavailable" };
+
+async function createConnectMachineCode(): Promise<ConnectMachineCodeResult> {
   try {
-    return await sdk.plugins.callRpc({
+    const code = await sdk.plugins.callRpc({
       pluginId: "connect",
       method: "createMachineCode",
       input: null,
       outputSchema: connectMachineCodeSchema,
     });
+    return { kind: "issued", code };
   } catch (error) {
+    if (!(error instanceof BbHttpError)) throw error;
     if (
-      error instanceof BbHttpError &&
-      (error.code === "not_paired" ||
-        isNotPairedRpcError(error) ||
-        error.status === 404 ||
-        error.status === 422 ||
-        error.status === 503)
+      error.code === "not_paired" ||
+      isNotPairedRpcError(error) ||
+      error.status === 404
     ) {
-      return null;
+      return { kind: "unpaired" };
+    }
+    if (error.status === 422 || error.status === 503) {
+      return { kind: "unavailable" };
     }
     throw error;
   }
@@ -123,32 +138,30 @@ function pairingCommand(
   return `curl -fL --progress-meter --connect-timeout 10 --max-time 60 --retry 2 ${serverUrl}/install.sh | sh -s -- --join-code ${joinCode} --host-id ${hostId} --server ${serverUrl}${machineFlag}`;
 }
 
-/**
- * Whether the direct server URL points at a loopback address. bb listens on
- * loopback by default, so without a connect machine code the pairing command
- * would target a URL that no other machine can reach (issue #1690).
- */
-export function isLoopbackServerUrl(serverUrl: string): boolean {
-  try {
-    return isLoopbackHostname(new URL(serverUrl).hostname);
-  } catch {
-    return false;
-  }
-}
-
 const REMOTE_ACCESS_ROUTE = getPluginConfigurationRoutePath({
   pluginId: "connect",
 });
 
+/**
+ * Shown instead of the pairing command when connect is unpaired and the only
+ * server URL we know is loopback or unspecified (issue #1690). bb listens on
+ * loopback by default, so a command that targets this address dials the new
+ * machine itself instead of this server.
+ */
 function UnreachableServerNotice({ serverUrl }: { serverUrl: string }) {
   return (
-    <div className="space-y-2 rounded-md border border-border bg-muted/40 p-3">
+    <div
+      role="status"
+      aria-live="polite"
+      className="space-y-2 rounded-md border border-border bg-muted/40 p-3"
+    >
       <p className="text-sm text-foreground">
-        This bb is only reachable from this computer.
+        Another machine cannot use this address.
       </p>
       <p className="text-xs text-subtle-foreground">
-        The server listens on <span className="font-mono">{serverUrl}</span>, so
-        another machine cannot connect to it. Set up remote access first, then
+        The pairing command would target{" "}
+        <span className="font-mono">{serverUrl}</span>, which points to the
+        machine that runs it, not to this bb. Set up remote access first, then
         come back here to get a pairing command that works from anywhere.
       </p>
       <div className="flex items-center gap-2">
@@ -211,29 +224,38 @@ function AddMachineDialogContent({
         )
       : undefined) ?? null;
 
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const interval = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(interval);
-  }, []);
-
   const joinCode = mintJoinCode.data?.join ?? null;
-  const machineCode = mintJoinCode.data?.machine ?? null;
+  const machineCodeResult = mintJoinCode.data?.machine ?? null;
+  const machineCode =
+    machineCodeResult?.kind === "issued" ? machineCodeResult.code : null;
   const expiresAt =
     joinCode === null
       ? null
       : Math.min(joinCode.expiresAt, machineCode?.expiresAt ?? Infinity);
-  const remainingMs = expiresAt !== null ? expiresAt - now : null;
-  const expired = remainingMs !== null && remainingMs <= 0;
+  const localOnlyServerUrl =
+    serverUrl !== null && isLocalOnlyUrl(serverUrl) ? serverUrl : null;
   const unreachableServerUrl =
-    mintJoinCode.isSuccess &&
-    machineCode === null &&
-    serverUrl !== null &&
-    isLoopbackServerUrl(serverUrl)
-      ? serverUrl
-      : null;
+    machineCodeResult?.kind === "unpaired" ? localOnlyServerUrl : null;
+  // Connect failed for a temporary reason and the fallback URL cannot work:
+  // offer a retry instead of a command that dials the wrong machine.
+  const connectUnavailable =
+    machineCodeResult?.kind === "unavailable" && localOnlyServerUrl !== null;
+  const showCommand =
+    joinCode !== null && unreachableServerUrl === null && !connectUnavailable;
+
+  // Tick only while a command with an expiry is on screen.
+  const [now, setNow] = useState(() => Date.now());
+  const hasCountdown = showCommand && expiresAt !== null;
+  useEffect(() => {
+    if (!hasCountdown) return;
+    const interval = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, [hasCountdown]);
+  const remainingMs =
+    hasCountdown && expiresAt !== null ? expiresAt - now : null;
+  const expired = remainingMs !== null && remainingMs <= 0;
   const command =
-    joinCode !== null && unreachableServerUrl === null
+    showCommand && joinCode !== null
       ? pairingCommand(
           joinCode.joinCode,
           joinCode.hostId,
@@ -248,18 +270,21 @@ function AddMachineDialogContent({
       <DialogHeader>
         <DialogTitle>Add a machine</DialogTitle>
         <DialogDescription>
-          Run this on the machine you want to add. It pairs the machine to this
-          server and keeps it available for your projects.
+          {unreachableServerUrl !== null
+            ? "Pair a machine to run projects and threads on it."
+            : "Run this on the machine you want to add. It pairs the machine to this server and keeps it available for your projects."}
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-4">
-        {mintJoinCode.isError ? (
+        {mintJoinCode.isError || connectUnavailable ? (
           <div className="space-y-2">
             <p className="text-sm text-destructive">
-              {getMutationErrorMessage({
-                error: mintJoinCode.error,
-                fallbackMessage: "Couldn't create a join code.",
-              })}
+              {connectUnavailable
+                ? "Remote access isn't ready yet."
+                : getMutationErrorMessage({
+                    error: mintJoinCode.error,
+                    fallbackMessage: "Couldn't create a join code.",
+                  })}
             </p>
             <Button
               type="button"

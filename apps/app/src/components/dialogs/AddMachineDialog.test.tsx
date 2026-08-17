@@ -230,14 +230,55 @@ describe("AddMachineDialog", () => {
 
     // The desktop server listens on loopback only. Another machine cannot
     // reach it, so a curl command against 127.0.0.1 can never work.
-    expect(
-      await screen.findByText(/only reachable from this computer/),
-    ).toBeDefined();
+    const notice = await screen.findByRole("status");
+    expect(notice.textContent).toContain(
+      "Another machine cannot use this address.",
+    );
+    expect(notice.textContent).toContain("http://127.0.0.1:38886");
     expect(screen.queryByText(/--join-code jc_test123/)).toBeNull();
     const link = screen.getByRole("link", { name: "Set up remote access" });
     expect(link.getAttribute("href")).toBe("/settings/plugins/connect");
     expect(
       screen.queryByText("Waiting for the machine to connect…"),
     ).toBeNull();
+  });
+
+  it("offers a retry when connect is temporarily unavailable on a loopback server", async () => {
+    vi.mocked(sdk.hosts.createJoinCode).mockResolvedValue({
+      joinCode: "jc_test123",
+      hostId: "host_new",
+      expiresAt: Date.now() + 15 * 60 * 1000,
+    });
+    vi.mocked(sdk.plugins.callRpc).mockRejectedValue(
+      new BbHttpError({
+        body: { error: "plugin starting" },
+        code: "unavailable",
+        message: "unavailable",
+        status: 503,
+      }),
+    );
+    vi.mocked(sdk.hosts.list).mockResolvedValue([existingHost]);
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <AddMachineDialog
+          open
+          onOpenChange={vi.fn()}
+          serverUrl="http://0.0.0.0:38886"
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    // A 503 says nothing about pairing. Do not print a command that dials the
+    // new machine itself, and do not claim connect is unpaired: let the user
+    // retry.
+    expect(
+      await screen.findByText("Remote access isn't ready yet."),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeDefined();
+    expect(screen.queryByText(/--join-code jc_test123/)).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });
