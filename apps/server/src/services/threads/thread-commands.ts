@@ -102,7 +102,7 @@ interface PreparedTurnSubmitCommandBuildArgs {
   claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
   deps: Pick<
     AppDeps,
-    "config" | "db" | "providerRegistry" | "providerBridgeArtifacts"
+    "config" | "db" | "providerRegistry" | "pluginHostArtifacts"
   >;
   environmentId: string;
   hostId: string;

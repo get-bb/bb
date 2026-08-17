@@ -2033,6 +2033,10 @@ function requiredArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
       path: join(context.daemonBundleDir, "bb-pi-bridge.mjs"),
     },
     {
+      label: "provider bridge worker",
+      path: join(context.daemonBundleDir, "bb-provider-bridge-worker.mjs"),
+    },
+    {
       label: "parcel watcher child",
       path: join(context.daemonBundleDir, "bb-parcel-watcher-child.mjs"),
     },

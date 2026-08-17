@@ -1,8 +1,3 @@
-import { realpathSync } from "node:fs";
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { readBoundedLines } from "./bounded-line-reader.js";
-
 export type BridgeJsonRpcId = string | number;
 
 type BridgeJsonRpcResponse =
@@ -72,55 +67,4 @@ export function runBridgeRequest<
     const message = error instanceof Error ? error.message : String(error);
     args.sendError(args.request.id, -32000, message);
   });
-}
-
-export function isMainModule(importMetaUrl: string): boolean {
-  const entryPoint = process.argv[1];
-  if (entryPoint === undefined) {
-    return false;
-  }
-  try {
-    return (
-      realpathSync(fileURLToPath(importMetaUrl)) ===
-      realpathSync(resolve(entryPoint))
-    );
-  } catch {
-    return false;
-  }
-}
-
-export function startBridgeStdio(args: {
-  beforeStart?: () => void;
-  handleLine: (line: string) => void;
-  importMetaUrl: string;
-  onClose: () => void;
-  onSigint?: () => void;
-  onSigterm?: () => void;
-}): boolean {
-  if (!isMainModule(args.importMetaUrl)) {
-    return false;
-  }
-
-  args.beforeStart?.();
-  if (args.onSigterm) {
-    process.once("SIGTERM", args.onSigterm);
-  }
-  if (args.onSigint) {
-    process.once("SIGINT", args.onSigint);
-  }
-
-  // Bounded rather than `readline`: the runtime on the other end of this pipe
-  // is trusted, but an unbounded line buffer is one malformed writer away from
-  // taking the bridge down with it.
-  readBoundedLines({
-    input: process.stdin,
-    onLine: args.handleLine,
-    onOverflow: (bytes) => {
-      process.stderr.write(
-        `Discarded an oversized JSON-RPC line from the runtime (${bytes} bytes).\n`,
-      );
-    },
-    onClose: args.onClose,
-  });
-  return true;
 }

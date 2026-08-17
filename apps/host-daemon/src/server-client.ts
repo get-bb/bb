@@ -192,15 +192,6 @@ export interface ServerClient {
     digest: string;
     expectedByteLength: number;
   }): Promise<Uint8Array>;
-  /**
-   * Raw bytes of a plugin provider's bridge bundle, addressed by content
-   * hash. The caller verifies the sha256 over the received bytes before
-   * caching or executing them.
-   */
-  fetchProviderBridge(args: {
-    sha256: string;
-    expectedByteLength: number;
-  }): Promise<Uint8Array>;
   postEvents(events: HostDaemonEventEnvelope[]): Promise<EventPostResult>;
   callTool(request: ToolCallRequest): Promise<HostDaemonToolCallResponse>;
   registerInteractiveRequest(
@@ -575,28 +566,6 @@ export function createServerClient(
       return readHostArtifactBytes(response, args.expectedByteLength);
     },
 
-    async fetchProviderBridge(args): Promise<Uint8Array> {
-      // Same trust model and the same bounded read as the plugin host
-      // bundle: the authenticated daemon transport is the boundary, the
-      // stream is cut off the moment it outruns the declared length, and the
-      // caller hash-verifies the bytes before they are cached or executed.
-      if (args.expectedByteLength > HOST_ARTIFACT_MAX_BYTES) {
-        throw new Error(
-          `Host artifact exceeds the ${HOST_ARTIFACT_MAX_BYTES} byte limit`,
-        );
-      }
-      const response = await fetchFn(
-        buildInternalUrl(
-          `/provider-bridges/${encodeURIComponent(args.sha256)}`,
-        ),
-        { method: "GET", headers: headers() },
-      );
-      if (!response.ok) {
-        throw await createResponseError("fetch provider bridge", response);
-      }
-      assertHostArtifactContentLength(response, args.expectedByteLength);
-      return readHostArtifactBytes(response, args.expectedByteLength);
-    },
 
     async postEvents(
       events: HostDaemonEventEnvelope[],

@@ -487,7 +487,11 @@ describe("createHostDaemonApp", () => {
       );
       expect(listModels).toHaveBeenCalledWith({
         providerId: "cursor",
-        bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+        bridgeLaunch: {
+          ...DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+          // Resolved against this test's own daemon data dir.
+          dataDir: path.join(dataDir, "plugins", "provider-pi", "bridge-data"),
+        },
       });
 
       await expect(

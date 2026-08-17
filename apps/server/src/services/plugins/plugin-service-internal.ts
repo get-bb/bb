@@ -19,7 +19,7 @@ import type {
 } from "./plugin-api.js";
 import type { HostSharedPortCoordinator } from "../../ws/host-shared-ports.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
-import type { ProviderBridgeArtifactRegistry } from "./provider-bridge-artifacts.js";
+import type { PluginHostArtifactRegistry } from "./plugin-host-artifact-registry.js";
 export type {
   PluginApplyUpdateResult,
   PluginHandlerStats,
@@ -94,7 +94,11 @@ export interface PluginServiceDeps {
   /** Live provider-bridge artifacts, shared with the internal routes and
    * thread commands. Omitted only by isolated plugin tests that exercise no
    * provider surface. */
-  providerBridgeArtifacts?: ProviderBridgeArtifactRegistry;
+  /**
+   * The shared live-host-artifact map. Omitted only by isolated plugin-runtime
+   * tests, which then get a private one.
+   */
+  pluginHostArtifacts?: PluginHostArtifactRegistry;
   /** Thread DTO assembly for lifecycle events + plugin-signal broadcast +
    * the `plugins-changed` system broadcast on lifecycle completion. */
   hub: Pick<

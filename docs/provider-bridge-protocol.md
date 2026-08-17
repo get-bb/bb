@@ -9,20 +9,36 @@ conformance kit enforces the testable rules against every bridge in CI.
 
 ## Where a bridge lives
 
-A bridge ships from its plugin: `bb.providerBridge` in the plugin manifest
-names its entry, `bb plugin build` bundles it to `dist/provider-bridge.mjs`,
-and the server stores that bundle content-addressed and hands hosts its
-hash. The daemon downloads, verifies, caches, and runs it. First-party
-bridges use exactly this path — `plugins/provider-codex/src/bridge/bridge.ts`
-is the largest worked example, and `examples/plugins/echo-provider` the
-smallest.
+A bridge ships inside its plugin's **`bb.host` artifact** — the same artifact
+a host RPC entry ships in, and one plugin may carry both. It is an *export*,
+not a program:
 
-The bundle is self-contained (only node builtins stay external), so a bridge
-may not depend on `@bb/agent-runtime`. The building blocks bb's own bridges
-share — JSON-RPC plumbing, the stdio harness, tool-call and interaction
-codecs, id scoping, translation helpers — live in
-`@bb/provider-bridge-protocol/bridge-kit`, with test infrastructure in
-`@bb/provider-bridge-protocol/testing`.
+```ts
+export const experimental_providerBridge = experimental_defineProviderBridge({
+  handleLine,
+  start({ pluginId, dataDir, tempDir }) {},
+  onClose() {},
+});
+```
+
+`bb plugin build` bundles the artifact to `dist/host.js`; the server records
+it content-addressed and hands hosts `{pluginId, digest}`; the daemon
+downloads, verifies, caches and runs it — through a bootstrap that owns
+everything outside the protocol: argv, the plugin-scoped `dataDir`/`tempDir`
+above, the bounded stdin framing, and the signals. A bridge that started
+itself could not be imported by a test, and could not share an artifact with a
+host RPC entry. First-party bridges use exactly this path —
+`plugins/provider-codex/src/bridge/bridge.ts` is the largest worked example,
+and `examples/plugins/echo-provider` the smallest.
+
+The bundle is self-contained (only node builtins stay external) and may not
+import bb's private `@bb/*` workspace packages at all — an installed plugin
+cannot resolve them. Everything a bridge compiles against is published at
+**`@get-bb/plugin-sdk/bridge`**: the protocol schemas, the bridge kit (JSON-RPC
+plumbing, tool-call and interaction codecs, id scoping, translation helpers),
+and the event vocabulary the payloads are made of. In-repo, those are
+implemented by `@bb/provider-bridge-protocol` and `@bb/domain`; test
+infrastructure stays private in `@bb/provider-bridge-protocol/testing`.
 
 ## Transport
 

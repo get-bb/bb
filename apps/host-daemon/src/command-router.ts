@@ -104,7 +104,7 @@ export interface CommandRouterOptions {
   dataDir: CommandDispatchOptions["dataDir"];
   fetchProjectAttachment: CommandDispatchOptions["fetchProjectAttachment"];
   fetchSkillTree?: CommandDispatchOptions["fetchSkillTree"];
-  fetchProviderBridge?: CommandDispatchOptions["fetchProviderBridge"];
+  fetchPluginHostArtifact?: CommandDispatchOptions["fetchPluginHostArtifact"];
   runtimeManager: RuntimeManager;
   terminalManager?: CommandDispatchOptions["terminalManager"];
   eventSink: CommandDispatchOptions["eventSink"];
@@ -336,7 +336,7 @@ export class CommandRouter {
     return {
       fetchProjectAttachment: this.options.fetchProjectAttachment,
       fetchSkillTree: this.options.fetchSkillTree,
-      fetchProviderBridge: this.options.fetchProviderBridge,
+      fetchPluginHostArtifact: this.options.fetchPluginHostArtifact,
       runtimeManager: this.options.runtimeManager,
       terminalManager: this.options.terminalManager,
       dataDir: this.options.dataDir,

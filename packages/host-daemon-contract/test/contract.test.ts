@@ -1065,6 +1065,7 @@ describe("host-daemon local schemas", () => {
  * variant has its own round-trip test.
  */
 const BRIDGE_LAUNCH = {
+  pluginId: "provider-pi",
   source: { kind: "daemon-bundled", id: "pi" },
   capabilities: {
     supportsServiceTier: false,
@@ -1080,7 +1081,9 @@ describe("host-daemon command schemas", () => {
   // `bridgeLaunch` field beside every `acpLaunchSpec` site (thread.start, the
   // resume contexts, thread.goal.clear, thread.archive, thread.unarchive,
   // provider.list_models) naming the delivery path (`artifact` or
-  // `daemon-bundled`) and the server-validated capabilities, plus the collapse
+  // `daemon-bundled`) plus the owning `pluginId`, the plugin host artifact's
+  // `digest` vocabulary for the artifact variant, and the server-validated
+  // capabilities, plus the collapse
   // of `host.delete_skill`'s per-provider scopes to `provider-user` /
   // `provider-project`. The command schemas are strict, so an older daemon
   // cannot parse the new field and rejects the new scope values.
@@ -2346,9 +2349,10 @@ describe("host-daemon command schemas", () => {
 
   it("round-trips bridge launch specs and rejects malformed artifact sources", () => {
     const bridgeLaunch = {
+      pluginId: "provider-echo",
       source: {
         kind: "artifact",
-        sha256: "a".repeat(64),
+        digest: "a".repeat(64),
         byteLength: 4096,
       },
       capabilities: {
@@ -2431,21 +2435,32 @@ describe("host-daemon command schemas", () => {
       ),
     ).toEqual(goalClearCommand);
 
-    // Never execute unverifiable bytes: a malformed hash, a non-positive
-    // byte length, and an unknown source kind all fail the parse.
+    // Never execute unverifiable bytes: a malformed digest, a non-positive
+    // byte length, and an unknown source kind all fail the parse. So does a
+    // launch with no owning plugin — it names neither an artifact to fetch nor
+    // a directory to scope the bridge process to.
     for (const source of [
-      { kind: "artifact", sha256: "not-a-hash", byteLength: 4096 },
-      { kind: "artifact", sha256: "A".repeat(64), byteLength: 4096 },
-      { kind: "artifact", sha256: "a".repeat(64), byteLength: 0 },
+      { kind: "artifact", digest: "not-a-hash", byteLength: 4096 },
+      { kind: "artifact", digest: "A".repeat(64), byteLength: 4096 },
+      { kind: "artifact", digest: "a".repeat(64), byteLength: 0 },
       { kind: "bundled" },
     ]) {
       expect(
         hostDaemonCommandSchema.safeParse({
           ...threadStartCommand,
-          bridgeLaunch: { source },
+          bridgeLaunch: { pluginId: "provider-echo", source },
         }).success,
       ).toBe(false);
     }
+    expect(
+      hostDaemonCommandSchema.safeParse({
+        ...threadStartCommand,
+        bridgeLaunch: {
+          source: bridgeLaunch.source,
+          capabilities: bridgeLaunch.capabilities,
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it("parses every injected skill source variant", () => {

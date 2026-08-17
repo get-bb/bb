@@ -62,7 +62,7 @@ export function bridgeLaunchProcessKey(
 ): string {
   const source =
     bridgeLaunch.source.kind === "artifact"
-      ? bridgeLaunch.source.sha256.slice(0, 16)
+      ? bridgeLaunch.source.digest.slice(0, 16)
       : `bundled:${bridgeLaunch.source.id}`;
   return `${source}.${fingerprintStableJson({
     capabilities: bridgeLaunch.capabilities,

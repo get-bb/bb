@@ -155,9 +155,9 @@ Each label is capped at 80 characters and rendered as a truncating segment.
 
 **What it does.** Lets a plugin declare an agent provider into the server's
 `ProviderRegistryService`. The declaration is metadata only — the
-implementation is the plugin's `bb.providerBridge` artifact, and registering
-without one (and without being a daemon-bundled first-party id) fails the
-plugin load. The declaration is
+implementation is the bridge the plugin exports from its `bb.host` artifact,
+and registering without one (and without being a daemon-bundled first-party id)
+fails the plugin load. The declaration is
 validated at call time by the shared host policy
 (`validatePluginProviderDeclaration`); registrations stage during the factory
 and commit when the plugin load commits, are replaced wholesale on reload, and
@@ -194,17 +194,18 @@ registration record so fields without a registry consumer yet
    re-declaring its own id on reload/settings change never races another
    plugin's claim, and decide whether the reserved set should be a namespace
    rule (e.g. plugin-scoped id prefixes) before third-party ids proliferate.
-4. **Bridge delivery (phase 5, shipped).** A plugin
-   declaring `bb.providerBridge` in its manifest gets its bridge built
-   (`dist/provider-bridge.mjs`, self-contained node ESM), recorded
-   content-addressed (`ProviderBridgeArtifactRegistry`), and delivered:
-   thread commands carry `bridgeLaunch {source: {kind: "artifact", sha256,
-   byteLength}}` (the protocol-123 field) and daemons download/verify/cache
-   via `GET /internal/provider-bridges/:sha256`. Pi is the one provider whose
-   bridge stays daemon-bundled (`DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS`); every
-   other provider, first-party or not, arrives as an artifact. Before
-   stabilizing: confirm the single-bundle shape (`bb.providerBridge` names one
-   self-contained source) survives per-platform needs, and decide whether a
+4. **Bridge delivery.** A provider bridge is a second consumer of the
+   plugin's `bb.host` artifact: it is exported by name
+   (`experimental_providerBridge`), built into `dist/host.js`, recorded in the
+   one live-host-artifact registry, served by the one host artifact route, and
+   cached once per plugin on the daemon. Thread commands carry `bridgeLaunch
+   {pluginId, source: {kind: "artifact", digest, byteLength}}`. Pi is the one
+   provider whose bridge stays daemon-bundled
+   (`DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS`); every other provider, first-party or
+   not, arrives as an artifact. Before stabilizing: confirm one artifact per
+   plugin survives (a plugin declaring several providers today ships one bridge
+   for all of them, and there is no way to name a second), confirm the
+   single-bundle shape survives per-platform needs, and decide whether a
    router-kind declaration — a picker entry resolving to another provider at
    submit time, removed from the contract because nothing ever resolved one —
    returns as its own surface.

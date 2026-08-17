@@ -23,7 +23,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HostDaemonBridgeLaunch } from "@bb/host-daemon-contract";
 import {
-  buildPluginProviderBridge,
+  buildPluginHost,
   resolvePluginBuildToolchain,
 } from "@bb/plugin-build";
 import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
@@ -36,11 +36,8 @@ import {
   createProviderRegistryService,
   type ProviderRegistryService,
 } from "../../src/services/providers/provider-registry.js";
-import {
-  readPluginProviderBridgeArtifact,
-  type PluginProviderBridgeArtifact,
-  type ProviderBridgeArtifactRegistry,
-} from "../../src/services/plugins/provider-bridge-artifacts.js";
+import { PluginHostArtifactRegistry } from "../../src/services/plugins/plugin-host-artifact-registry.js";
+import type { PluginHostArtifactSnapshot } from "../../src/services/plugins/plugin-service-internal.js";
 
 const FIRST_PARTY_PROVIDER_PLUGIN_IDS = [
   "provider-codex",
@@ -103,7 +100,7 @@ export async function registerFirstPartyProviders(
   registry: ProviderRegistryService,
   options: {
     excludePluginIds?: readonly string[];
-    artifacts?: ProviderBridgeArtifactRegistry;
+    artifacts?: PluginHostArtifactRegistry;
   } = {},
 ): Promise<void> {
   const excluded = new Set(options.excludePluginIds ?? []);
@@ -118,27 +115,28 @@ export async function registerFirstPartyProviders(
     });
     if (
       options.artifacts !== undefined &&
-      (await hasProviderBridgeEntry(pluginRootDir(pluginId)))
+      (await hasHostEntry(pluginRootDir(pluginId)))
     ) {
-      options.artifacts.set(pluginId, stubBridgeArtifact(pluginId));
+      options.artifacts.set(pluginId, stubHostArtifact(pluginId));
     }
   }
 }
 
 /**
- * A one-line bundle standing in for a built bridge: real bytes at a real path,
- * so the internal `/provider-bridges/:sha256` route serves them and a daemon
- * that downloads and hash-verifies the artifact succeeds. Nothing executes it —
- * the harnesses that get this far run a fake adapter.
+ * A one-line bundle standing in for a built host artifact: real bytes at a real
+ * path, so the internal plugin host artifact route serves them and a daemon
+ * that downloads and hash-verifies it succeeds. Nothing executes it — the
+ * harnesses that get this far run a fake adapter.
  */
-function stubBridgeArtifact(pluginId: string): PluginProviderBridgeArtifact {
-  const bytes = Buffer.from(`// stub provider bridge for ${pluginId}\n`);
-  const path = join(tmpdir(), `bb-stub-provider-bridge-${pluginId}.mjs`);
+function stubHostArtifact(pluginId: string): PluginHostArtifactSnapshot {
+  const bytes = Buffer.from(`// stub host artifact for ${pluginId}\n`);
+  const path = join(tmpdir(), `bb-stub-host-artifact-${pluginId}.mjs`);
   writeFileSync(path, bytes);
   return {
-    sha256: createHash("sha256").update(bytes).digest("hex"),
+    digest: createHash("sha256").update(bytes).digest("hex"),
     byteLength: bytes.byteLength,
     path,
+    generation: `stub-${pluginId}`,
   };
 }
 
@@ -151,35 +149,36 @@ function stubBridgeArtifact(pluginId: string): PluginProviderBridgeArtifact {
  * make a test pass against yesterday's bridge.
  */
 export async function recordFirstPartyProviderBridgeArtifacts(
-  artifacts: ProviderBridgeArtifactRegistry,
+  artifacts: PluginHostArtifactRegistry,
 ): Promise<void> {
   const toolchain = await resolvePluginBuildToolchain(
     join(tmpdir(), "bb-plugin-build-toolchain"),
   );
   for (const pluginId of FIRST_PARTY_PROVIDER_PLUGIN_IDS) {
     const rootDir = pluginRootDir(pluginId);
-    // Pi has no `bb.providerBridge`: its bridge stays in the daemon bundle.
-    if (!(await hasProviderBridgeEntry(rootDir))) {
+    // Pi has no `bb.host`: its bridge stays in the daemon bundle.
+    if (!(await hasHostEntry(rootDir))) {
       continue;
     }
-    await buildPluginProviderBridge(rootDir, toolchain);
-    const artifact = await readPluginProviderBridgeArtifact(rootDir);
-    if (artifact === null) {
-      throw new Error(`${pluginId} produced no readable provider bridge`);
-    }
-    artifacts.set(pluginId, artifact);
+    const build = await buildPluginHost(rootDir, "0.0.0-test", toolchain);
+    const bytes = await readFile(build.jsPath);
+    artifacts.set(pluginId, {
+      digest: build.artifactDigest,
+      byteLength: bytes.byteLength,
+      path: build.jsPath,
+      generation: `test-${pluginId}`,
+    });
   }
 }
 
-async function hasProviderBridgeEntry(rootDir: string): Promise<boolean> {
+async function hasHostEntry(rootDir: string): Promise<boolean> {
   const raw = await readFile(join(rootDir, "package.json"), "utf8");
   const parsed: unknown = JSON.parse(raw);
   return (
     typeof parsed === "object" &&
     parsed !== null &&
     typeof (parsed as { bb?: unknown }).bb === "object" &&
-    (parsed as { bb: { providerBridge?: unknown } }).bb.providerBridge !==
-      undefined
+    (parsed as { bb: { host?: unknown } }).bb.host !== undefined
   );
 }
 
@@ -197,6 +196,7 @@ export async function createTestProviderRegistry(): Promise<ProviderRegistryServ
  * must go through `resolveBridgeLaunchForProviderId` instead.
  */
 export const TRANSPORT_TEST_BRIDGE_LAUNCH: HostDaemonBridgeLaunch = {
+  pluginId: "provider-pi",
   source: { kind: "daemon-bundled", id: "pi" },
   capabilities: {
     supportsServiceTier: false,
@@ -224,7 +224,7 @@ const FAKE_PROVIDER_IDS = ["fake", "fake-alpha", "fake-beta"] as const;
  */
 export function registerFakeProviders(
   registry: ProviderRegistryService,
-  artifacts: ProviderBridgeArtifactRegistry,
+  artifacts: PluginHostArtifactRegistry,
 ): void {
   for (const providerId of FAKE_PROVIDER_IDS) {
     const pluginId = `provider-${providerId}`;
@@ -250,6 +250,6 @@ export function registerFakeProviders(
       }),
       pluginId,
     });
-    artifacts.set(pluginId, stubBridgeArtifact(pluginId));
+    artifacts.set(pluginId, stubHostArtifact(pluginId));
   }
 }

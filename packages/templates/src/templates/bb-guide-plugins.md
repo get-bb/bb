@@ -243,14 +243,12 @@ added/updated/unchanged counts.
                                  bundle (server.js, server.meta.json); when
                                  bb.app is declared, the frontend bundle
                                  (app.js, app.css, app.meta.json); when
-                                 bb.host is declared, the Node host bundle
-                                 (host.js, host.js.map, host.meta.json); and
-                                 when bb.providerBridge is declared, the
-                                 self-contained provider bridge
-                                 (provider-bridge.mjs plus
-                                 provider-bridge.meta.json recording its
-                                 sha256 and byteLength — host daemons fetch
-                                 and verify the bundle by that hash). Each
+                                 bb.host is declared, the self-contained Node
+                                 host bundle (host.js, host.js.map,
+                                 host.meta.json recording its digest — host
+                                 daemons fetch and verify the bundle by that
+                                 digest, and run it as a host RPC worker, a
+                                 provider bridge, or both). Each
                                  *.meta.json is stamped with SDK
                                  major/version, artifactFormatVersion,
                                  pluginId, pluginVersion, and builtWith (bb +

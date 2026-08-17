@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { errorToResponse } from "../../src/errors.js";
 import { registerInternalPluginHostArtifactRoutes } from "../../src/internal/plugin-host-artifacts.js";
+import { PluginHostArtifactRegistry } from "../../src/services/plugins/plugin-host-artifact-registry.js";
 import { withTestHarness, testLogger } from "../helpers/test-app.js";
 
 const tempDirs: string[] = [];
@@ -22,14 +23,17 @@ async function createRouteHarness(bytes: Uint8Array) {
   const path = join(directory, "host.js");
   await writeFile(path, bytes);
   const digest = createHash("sha256").update(bytes).digest("hex");
-  const getHostArtifact = vi.fn((pluginId: string, candidate: string) =>
-    pluginId === "git" && candidate === digest
-      ? { path, byteLength: bytes.byteLength }
-      : undefined,
-  );
+  const pluginHostArtifacts = new PluginHostArtifactRegistry();
+  pluginHostArtifacts.set("git", {
+    path,
+    byteLength: bytes.byteLength,
+    digest,
+    generation: "generation-1",
+  });
+  const getHostArtifact = vi.spyOn(pluginHostArtifacts, "get");
   const app = new Hono();
   app.onError((error) => errorToResponse(error, testLogger));
-  registerInternalPluginHostArtifactRoutes(app, { getHostArtifact });
+  registerInternalPluginHostArtifactRoutes(app, { pluginHostArtifacts });
   return { app, digest, getHostArtifact, path };
 }
 
@@ -51,7 +55,7 @@ describe("internal plugin host artifact routes", () => {
       String(bytes.byteLength),
     );
     expect(response.headers.get("etag")).toBe(`"${digest}"`);
-    expect(getHostArtifact).toHaveBeenCalledWith("git", digest);
+    expect(getHostArtifact).toHaveBeenCalledWith("git");
   });
 
   it("returns 404 without consulting plugin state for a malformed digest", async () => {
@@ -74,7 +78,7 @@ describe("internal plugin host artifact routes", () => {
     const response = await app.request(`/plugins/git/host/${staleDigest}`);
 
     expect(response.status).toBe(404);
-    expect(getHostArtifact).toHaveBeenCalledWith("git", staleDigest);
+    expect(getHostArtifact).toHaveBeenCalledWith("git");
   });
 
   it("reads the active artifact lazily from its recorded path", async () => {

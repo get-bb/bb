@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { mkdirSync } from "node:fs";
 import {
   mkdir,
   mkdtemp,
@@ -346,15 +347,38 @@ function waitForJsonRpcResponse({ childProcess, id, label, output }) {
   });
 }
 
+/**
+ * Bridges are never spawned directly: the runtime runs the packed bootstrap
+ * and hands it the bridge module plus the plugin scope. Driving it the same
+ * way here is what makes this a smoke of the real launch path.
+ */
+function spawnPackedBridge({ bridgePath, pluginId }) {
+  const dataDir = join(tempRoot, "bridge-data", pluginId);
+  mkdirSync(dataDir, { recursive: true });
+  return spawn(
+    process.execPath,
+    [
+      join(
+        packageDir,
+        "host-daemon",
+        "dist",
+        "bb-provider-bridge-worker.mjs",
+      ),
+      bridgePath,
+      pluginId,
+      dataDir,
+    ],
+    { cwd: tempRoot, stdio: ["pipe", "pipe", "pipe"] },
+  );
+}
+
 async function smokeBridgeModelList({
   allowUnavailableProvider = false,
   bridgePath,
+  pluginId,
   label,
 }) {
-  const childProcess = spawn(process.execPath, [bridgePath], {
-    cwd: tempRoot,
-    stdio: ["pipe", "pipe", "pipe"],
-  });
+  const childProcess = spawnPackedBridge({ bridgePath, pluginId });
   const output = collectProcessOutput(childProcess);
   const modelListResponsePromise = waitForJsonRpcResponse({
     childProcess,
@@ -428,12 +452,14 @@ async function smokeProviderBridgeBundles(packageDir) {
       "builtin-plugins",
       "provider-claude-code",
       "dist",
-      "provider-bridge.mjs",
+      "host.js",
     ),
-    label: "Claude Code provider-bridge artifact model/list",
+    pluginId: "provider-claude-code",
+    label: "Claude Code host-artifact bridge model/list",
   });
   await smokeBridgeModelList({
     bridgePath: join(packageDir, "host-daemon", "dist", "bb-pi-bridge.mjs"),
+    pluginId: "provider-pi",
     label: "Pi bridge model/list",
   });
   await smokeBridgeModelList({
@@ -448,9 +474,10 @@ async function smokeProviderBridgeBundles(packageDir) {
       "builtin-plugins",
       "provider-acp",
       "dist",
-      "provider-bridge.mjs",
+      "host.js",
     ),
-    label: "ACP provider-bridge artifact model/list",
+    pluginId: "provider-acp",
+    label: "ACP host-artifact bridge model/list",
   });
   await smokeBridgeModelList({
     // Codex ships its bridge as a plugin artifact (graduation wave 5), so the
@@ -466,8 +493,9 @@ async function smokeProviderBridgeBundles(packageDir) {
       "builtin-plugins",
       "provider-codex",
       "dist",
-      "provider-bridge.mjs",
+      "host.js",
     ),
+    pluginId: "provider-codex",
     label: "Codex provider-bridge artifact model/list",
   });
 }
@@ -596,18 +624,32 @@ async function smokePiUserConfiguration(packageDir) {
     "dist",
     "bb-pi-bridge.mjs",
   );
-  const childProcess = spawn(process.execPath, [bridgePath], {
-    cwd: maintenanceDir,
-    env: {
-      ...process.env,
-      BB_PI_BRIDGE_SESSION_DIR: join(testRoot, "sessions"),
-      BB_PI_E2E_SESSION_MARKER: sessionMarkerPath,
-      BB_PI_E2E_TOOL_MARKER: toolMarkerPath,
-      PI_CODING_AGENT_DIR: agentDir,
-      PI_OFFLINE: "1",
+  const childProcess = spawn(
+    process.execPath,
+    [
+      join(
+        packageDir,
+        "host-daemon",
+        "dist",
+        "bb-provider-bridge-worker.mjs",
+      ),
+      bridgePath,
+      "provider-pi",
+      maintenanceDir,
+    ],
+    {
+      cwd: maintenanceDir,
+      env: {
+        ...process.env,
+        BB_PI_BRIDGE_SESSION_DIR: join(testRoot, "sessions"),
+        BB_PI_E2E_SESSION_MARKER: sessionMarkerPath,
+        BB_PI_E2E_TOOL_MARKER: toolMarkerPath,
+        PI_CODING_AGENT_DIR: agentDir,
+        PI_OFFLINE: "1",
+      },
+      stdio: ["pipe", "pipe", "pipe"],
     },
-    stdio: ["pipe", "pipe", "pipe"],
-  });
+  );
   const output = collectProcessOutput(childProcess);
   const dynamicToolCalls = [];
   const messages = collectJsonRpcMessages({

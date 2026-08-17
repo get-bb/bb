@@ -18,10 +18,8 @@ import {
 import {
   buildPluginApp,
   buildPluginHost,
-  buildPluginProviderBridge,
   buildPluginServer,
 } from "@bb/plugin-build";
-import { readPluginProviderBridgeArtifact } from "./provider-bridge-artifacts.js";
 import {
   assertPublicMarketplaceUrl,
   boundedResponseJson,
@@ -372,33 +370,6 @@ export function createManagedPluginArtifacts(
       // template, or .wasm at runtime would break if the tree were pruned —
       // and the source fallback at `resolveServerEntry` needs it too.
     }
-    // Provider bridge bundle: same source policy as the other bundles — git
-    // builds it here, npm must ship a prebuilt bundle whose recorded hash
-    // matches the bytes (the daemon executes exactly those bytes, so a
-    // mismatch refuses the install rather than surfacing later on a host).
-    if (manifest.providerBridgeEntry !== undefined) {
-      if (kind === "git") {
-        try {
-          await buildPluginProviderBridge(
-            args.rootDir,
-            await getPluginBuildToolchain(deps),
-          );
-        } catch (error) {
-          throw new Error(
-            `install failed: provider bridge build for "${manifest.id}" failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
-      }
-      if (kind === "npm") {
-        const artifact = await readPluginProviderBridgeArtifact(args.rootDir);
-        if (artifact === null) {
-          throw new Error(
-            `install refused: npm plugins with a provider bridge (bb.providerBridge) must publish a prebuilt bundle — "${manifest.id}" is missing dist/provider-bridge.mjs + dist/provider-bridge.meta.json or its recorded hash does not match`,
-          );
-        }
-      }
-    }
-
     async function validateArtifact(
       artifact: "server" | "app" | "host",
       required: boolean,

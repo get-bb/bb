@@ -295,35 +295,6 @@ describe("createServerClient", () => {
     expect(cancel).toHaveBeenCalledOnce();
   });
 
-  it("fetches provider bridge bytes over the authenticated daemon transport", async () => {
-    const sha256 = "c".repeat(64);
-    const fetchFn = vi.fn<FetchFn>(async (input, init) => {
-      const url = new URL(String(input));
-      expect(url.pathname).toBe(`/internal/provider-bridges/${sha256}`);
-      expect(new Headers(init?.headers).get("authorization")).toBe(
-        "Bearer host-key",
-      );
-      return new Response(Buffer.from("bridge-bundle-bytes"), {
-        headers: { "content-type": "application/octet-stream" },
-        status: 200,
-      });
-    });
-    const client = createServerClient({
-      fetchFn,
-      getSessionId: () => "session-1",
-      hostKey: "host-key",
-      logger: createLogger(),
-      serverUrl: "http://192.168.1.10:3000",
-    });
-
-    const bytes = await client.fetchProviderBridge({
-      sha256,
-      expectedByteLength: Buffer.byteLength("bridge-bundle-bytes"),
-    });
-    expect(Buffer.from(bytes).toString("utf8")).toBe("bridge-bundle-bytes");
-    expect(fetchFn).toHaveBeenCalledTimes(1);
-  });
-
   it("adds the connect machine credential to internal HTTP requests", async () => {
     const treeHash = "b".repeat(64);
     const fetchFn = vi.fn<FetchFn>(async (_input, init) => {

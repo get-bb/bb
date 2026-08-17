@@ -12,7 +12,7 @@ import { PendingInteractionLifecycle } from "./services/interactions/pending-int
 import { createMachineAuthService } from "./services/machine-auth.js";
 import { resolveBuiltinSkillsRootPath } from "./services/skills/builtin-skills-copy.js";
 import { SkillTreeRegistry } from "./services/skills/injected-skills.js";
-import { ProviderBridgeArtifactRegistry } from "./services/plugins/provider-bridge-artifacts.js";
+import { PluginHostArtifactRegistry } from "./services/plugins/plugin-host-artifact-registry.js";
 import { createAppVersionService } from "./services/system/app-version.js";
 import { createBbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
 import { startEventLoopStallMonitor } from "./services/system/event-loop-stall-monitor.js";
@@ -140,7 +140,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   });
   await machineAuth.ensureReady();
   const skillTreeRegistry = new SkillTreeRegistry();
-  const providerBridgeArtifacts = new ProviderBridgeArtifactRegistry();
+  const pluginHostArtifacts = new PluginHostArtifactRegistry();
   const pendingInteractions = new PendingInteractionLifecycle({
     config: runtimeConfig,
     db,
@@ -149,7 +149,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     logger,
     machineAuth,
     providerRegistry,
-    providerBridgeArtifacts,
+    pluginHostArtifacts,
     skillTreeRegistry,
     telemetry,
     terminalSessions,
@@ -178,7 +178,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       machineAuth,
       pendingInteractions,
       providerRegistry,
-      providerBridgeArtifacts,
+      pluginHostArtifacts,
       skillTreeRegistry,
       telemetry,
       terminalSessions,
@@ -198,7 +198,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     machineAuth,
     pendingInteractions,
     providerRegistry,
-    providerBridgeArtifacts,
+    pluginHostArtifacts,
     skillTreeRegistry,
     pluginSchedules: pluginService,
     pluginService,

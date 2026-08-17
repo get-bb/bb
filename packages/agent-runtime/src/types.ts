@@ -147,13 +147,21 @@ export interface AgentRuntimeOptions {
  * a plugin update (new artifact hash) gets a fresh bridge process.
  */
 export interface AgentRuntimeBridgeLaunch {
+  /** The plugin that ships this bridge. Scopes the process's directories. */
+  pluginId: string;
+  /**
+   * This plugin's persistent bridge directory on this host, already created by
+   * the daemon. The bootstrap hands it to the bridge; the matching temp dir is
+   * this process's own and is created and removed by the bootstrap.
+   */
+  dataDir: string;
   /**
    * Which bridge binary to run, as the server decided it: a hash-verified
    * plugin artifact already cached on this host, or a bridge inside the
    * daemon's own bundle (Pi).
    */
   source:
-    | { kind: "artifact"; sha256: string; artifactPath: string }
+    | { kind: "artifact"; digest: string; artifactPath: string }
     | { kind: "daemon-bundled"; id: string };
   /** Server-validated capabilities from the provider declaration. */
   capabilities: {

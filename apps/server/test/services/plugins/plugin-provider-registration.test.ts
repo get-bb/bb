@@ -10,8 +10,10 @@ import {
 import { withTestHarness } from "../../helpers/test-app.js";
 
 /**
- * A provider fixture ships a bridge by default, because a declaration without
- * one is refused: `withBridge: false` is how a test asks for that refusal.
+ * A provider fixture ships a bridge by default — as a `bb.host` artifact
+ * export, like every provider plugin — because a declaration without an
+ * implementation is refused: `withBridge: false` is how a test asks for that
+ * refusal.
  */
 async function writePlugin(
   dir: string,
@@ -30,7 +32,7 @@ async function writePlugin(
         description: "Provider registration plugin fixture.",
         branding: { icon: "Zap" },
         server: "./server.ts",
-        ...(withBridge ? { providerBridge: "./bridge.ts" } : {}),
+        ...(withBridge ? { host: "./bridge.ts" } : {}),
       },
     }),
   );
@@ -38,7 +40,10 @@ async function writePlugin(
   if (withBridge) {
     await writeFile(
       join(rootDir, "bridge.ts"),
-      'process.stdin.on("data", () => undefined);\n',
+      // Shaped like a bridge export without importing the SDK: the fixture
+      // lives outside the workspace, and what matters here is that the
+      // manifest declares a buildable bb.host artifact.
+      "export const experimental_providerBridge = { experimental_apiVersion: 1, handleLine: () => undefined };\n",
     );
   }
   return rootDir;

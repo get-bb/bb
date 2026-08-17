@@ -41,9 +41,11 @@ const missingProviderThreadId = "t-missing";
 const missingProviderThreadIdError =
   /No provider thread id available for t-missing/;
 const bridgeLaunch: AgentRuntimeBridgeLaunch = {
+  pluginId: "provider-fixture",
+  dataDir: "/data/plugins/provider-fixture/bridge-data",
   source: {
     kind: "artifact",
-    sha256: "b".repeat(64),
+    digest: "b".repeat(64),
     artifactPath: "/tmp/graduated-provider-bridge.mjs",
   },
   capabilities: {

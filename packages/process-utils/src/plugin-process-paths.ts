@@ -12,8 +12,9 @@ import { join } from "node:path";
  * collide with — or be read through — another's.
  *
  * Shared rather than inlined because more than one kind of plugin process
- * needs it. Host plugin workers use it today; provider bridges are the next
- * consumer, once a bridge launch names the plugin that owns it.
+ * needs it, and they do not all live in the daemon: host plugin workers are
+ * spawned by the daemon, provider bridges by the agent runtime, and both
+ * bootstraps must agree on the layout.
  */
 
 /** Path-safe, reversible, and collision-free for any plugin id. */

@@ -21,9 +21,11 @@ const dynamicAcpLaunchSpec: HostDaemonAcpLaunchSpec = {
 /** What the server sends for any acp-* id: the ACP plugin's artifact plus the
  * shared ACP tier capabilities. */
 const ACP_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch = {
+  pluginId: "provider-fixture",
+  dataDir: "/data/plugins/provider-fixture/bridge-data",
   source: {
     kind: "artifact",
-    sha256: "e".repeat(64),
+    digest: "e".repeat(64),
     artifactPath: "/data/provider-bridges/acp.mjs",
   },
   capabilities: {
@@ -38,6 +40,8 @@ const ACP_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch = {
 /** What the server sends for Pi: the bridge inside the daemon's own bundle,
  * plus Pi's declared capabilities. */
 const PI_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch = {
+  pluginId: "provider-fixture",
+  dataDir: "/data/plugins/provider-fixture/bridge-data",
   source: { kind: "daemon-bundled", id: "pi" },
   capabilities: {
     supportsServiceTier: false,
@@ -47,6 +51,41 @@ const PI_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch = {
     fork: "checkpoint",
   },
 };
+
+/**
+ * A bridge is never spawned directly any more: the runtime runs the bootstrap
+ * and passes it the bridge module plus the plugin scope it must hand the
+ * bridge. Assert that shape once, so each test states only what differs.
+ */
+function expectBridgeSpawn(
+  provider: { process: { args: string[] } },
+  expected: { module: string | RegExp; bundleDir?: string },
+): void {
+  const args = provider.process.args;
+  expect(args.slice(-2)).toEqual([
+    "provider-fixture",
+    "/data/plugins/provider-fixture/bridge-data",
+  ]);
+  const moduleArg = args.at(-3) ?? "";
+  if (typeof expected.module === "string") {
+    expect(moduleArg).toBe(expected.module);
+  } else {
+    expect(moduleArg).toMatch(expected.module);
+  }
+  const workerArgs = args.slice(0, -3);
+  if (expected.bundleDir === undefined) {
+    expect(workerArgs.slice(0, 3)).toEqual([
+      "--conditions=source",
+      "--import",
+      import.meta.resolve("tsx"),
+    ]);
+    expect(workerArgs.at(-1)).toMatch(/bridge-worker-entry\.ts$/u);
+  } else {
+    expect(workerArgs).toEqual([
+      `${expected.bundleDir}/bb-provider-bridge-worker.mjs`,
+    ]);
+  }
+}
 
 describe("provider registry", () => {
   it("carries environment write roots to the acp bridge via provider options", () => {
@@ -88,7 +127,10 @@ describe("provider registry", () => {
       bridgeLaunch: PI_BRIDGE_LAUNCH,
     });
 
-    expect(piProvider.process.args[0]).toBe("/tmp/bb-pi-bridge.mjs");
+    expectBridgeSpawn(piProvider, {
+      module: "/tmp/bb-pi-bridge.mjs",
+      bundleDir: "/tmp",
+    });
   });
 
   it("passes the configured bridge node runtime to bundled providers", () => {
@@ -123,15 +165,10 @@ describe("provider registry", () => {
     });
     expect(provider.id).toBe("pi");
     expect(provider.process.command).toBe("node");
-    expect(provider.process.args.slice(0, 3)).toEqual([
-      "--conditions=source",
-      "--import",
-      import.meta.resolve("tsx"),
-    ]);
-    expect(provider.process.args.at(-1)).toMatch(
-      /agent-runtime\/src\/pi\/bridge\/bridge\.ts$/,
-    );
-    expect(existsSync(provider.process.args.at(-1) ?? "")).toBe(true);
+    expectBridgeSpawn(provider, {
+      module: /agent-runtime\/src\/pi\/bridge\/bridge\.ts$/u,
+    });
+    expect(existsSync(provider.process.args.at(-3) ?? "")).toBe(true);
   });
 
   it("passes the requested workspace to Pi model listing", () => {
@@ -164,7 +201,9 @@ describe("provider registry", () => {
         bridgeLaunch: ACP_BRIDGE_LAUNCH,
       });
       expect(provider.id).toBe(providerId);
-      expect(provider.process.args).toEqual(["/data/provider-bridges/acp.mjs"]);
+      expectBridgeSpawn(provider, {
+        module: "/data/provider-bridges/acp.mjs",
+      });
       // The declared "tip" ladder projects onto fork-yes / rewind-no.
       expect(provider.capabilities).toMatchObject({
         supportsServiceTier: true,
@@ -271,8 +310,8 @@ describe("provider registry", () => {
     });
 
     expect(provider.process.command).toBe("node");
-    const bridgeEntry = provider.process.args.at(-1) ?? "";
-    expect(bridgeEntry).toMatch(/agent-runtime\/src\/pi\/bridge\/bridge\.ts$/);
+    const bridgeEntry = provider.process.args.at(-3) ?? "";
+    expect(bridgeEntry).toMatch(/agent-runtime\/src\/pi\/bridge\/bridge\.ts$/u);
     expect(existsSync(bridgeEntry)).toBe(true);
   });
 
@@ -288,9 +327,11 @@ describe("provider registry", () => {
     const provider = createProviderForId("echo-agent", {
       additionalWorkspaceWriteRoots: [],
       bridgeLaunch: {
+        pluginId: "provider-fixture",
+        dataDir: "/data/plugins/provider-fixture/bridge-data",
         source: {
           kind: "artifact",
-          sha256: "a".repeat(64),
+          digest: "a".repeat(64),
           artifactPath: "/data/provider-bridges/artifact.mjs",
         },
         capabilities: {
@@ -305,9 +346,9 @@ describe("provider registry", () => {
 
     expect(provider.id).toBe("echo-agent");
     expect(provider.process.command).toBe("node");
-    expect(provider.process.args).toEqual([
-      "/data/provider-bridges/artifact.mjs",
-    ]);
+    expectBridgeSpawn(provider, {
+      module: "/data/provider-bridges/artifact.mjs",
+    });
   });
 
   // Codex graduated onto this route, where its environment-level write roots
@@ -319,9 +360,11 @@ describe("provider registry", () => {
     const provider = createProviderForId("codex", {
       additionalWorkspaceWriteRoots: ["/extra-root"],
       bridgeLaunch: {
+        pluginId: "provider-fixture",
+        dataDir: "/data/plugins/provider-fixture/bridge-data",
         source: {
           kind: "artifact",
-          sha256: "b".repeat(64),
+          digest: "b".repeat(64),
           artifactPath: "/data/provider-bridges/codex.mjs",
         },
         capabilities: {
@@ -376,9 +419,11 @@ describe("provider registry", () => {
       bridgeNodeEnv,
       bridgeNodeExecutablePath: "/Applications/bb.app/Contents/MacOS/bb",
       bridgeLaunch: {
+        pluginId: "provider-fixture",
+        dataDir: "/data/plugins/provider-fixture/bridge-data",
         source: {
           kind: "artifact",
-          sha256: "b".repeat(64),
+          digest: "b".repeat(64),
           artifactPath: "/data/provider-bridges/artifact.mjs",
         },
         capabilities: {
@@ -405,17 +450,20 @@ describe("provider registry", () => {
       additionalWorkspaceWriteRoots: [],
       bridgeBundleDir: "/tmp",
       bridgeLaunch: {
+        pluginId: "provider-fixture",
+        dataDir: "/data/plugins/provider-fixture/bridge-data",
         source: {
           kind: "artifact",
-          sha256: "c".repeat(64),
+          digest: "c".repeat(64),
           artifactPath: "/data/provider-bridges/graduated-pi.mjs",
         },
         capabilities: PI_BRIDGE_LAUNCH.capabilities,
       },
     });
-    expect(provider.process.args).toEqual([
-      "/data/provider-bridges/graduated-pi.mjs",
-    ]);
+    expectBridgeSpawn(provider, {
+      module: "/data/provider-bridges/graduated-pi.mjs",
+      bundleDir: "/tmp",
+    });
   });
 
   it("refuses a bundled bridge id the daemon does not ship", () => {
@@ -423,6 +471,8 @@ describe("provider registry", () => {
       createProviderForId("pi", {
         additionalWorkspaceWriteRoots: [],
         bridgeLaunch: {
+          pluginId: "provider-fixture",
+          dataDir: "/data/plugins/provider-fixture/bridge-data",
           source: { kind: "daemon-bundled", id: "not-bundled" },
           capabilities: PI_BRIDGE_LAUNCH.capabilities,
         },
@@ -437,9 +487,11 @@ describe("provider registry", () => {
     const provider = createProviderForId("echo-agent", {
       additionalWorkspaceWriteRoots: [],
       bridgeLaunch: {
+        pluginId: "provider-fixture",
+        dataDir: "/data/plugins/provider-fixture/bridge-data",
         source: {
           kind: "artifact",
-          sha256: "d".repeat(64),
+          digest: "d".repeat(64),
           artifactPath: "/data/provider-bridges/artifact.mjs",
         },
         capabilities: {
@@ -451,9 +503,9 @@ describe("provider registry", () => {
         },
       },
     });
-    expect(provider.process.args).toEqual([
-      "/data/provider-bridges/artifact.mjs",
-    ]);
+    expectBridgeSpawn(provider, {
+      module: "/data/provider-bridges/artifact.mjs",
+    });
     // The transported declaration capabilities drive execution checks.
     expect(provider.capabilities.supportsServiceTier).toBe(true);
     expect(provider.capabilities.permissionModes).toEqual([

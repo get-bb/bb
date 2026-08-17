@@ -86,7 +86,6 @@ function createServerClientFixture(args: CreateServerClientFixtureArgs = {}) {
     openSession,
     getRuntimePolicy: unused,
     fetchProjectAttachment: unused,
-    fetchProviderBridge: unused,
     fetchSkillTree: unused,
     fetchPluginHostArtifact: unused,
     postEvents: unused,

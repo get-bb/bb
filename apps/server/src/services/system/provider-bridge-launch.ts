@@ -21,7 +21,7 @@ import type { AppDeps } from "../../types.js";
  * callers must refuse instead of dispatching.
  */
 export function resolveBridgeLaunchForProviderId(
-  deps: Pick<AppDeps, "providerRegistry" | "providerBridgeArtifacts">,
+  deps: Pick<AppDeps, "providerRegistry" | "pluginHostArtifacts">,
   providerId: string,
 ): HostDaemonBridgeLaunch | null {
   const registration = resolveBridgeRegistration(deps, providerId);
@@ -32,6 +32,7 @@ export function resolveBridgeLaunchForProviderId(
   if (source === null) {
     return null;
   }
+  const pluginId = registration.source.pluginId;
   // The dynamic ACP tier has no registration to read capabilities from, so it
   // answers from the shared ACP capability set — the same source every other
   // ACP policy accessor on the registry falls back to.
@@ -48,6 +49,7 @@ export function resolveBridgeLaunchForProviderId(
     ? registration.serverCapabilities.fork
     : getAcpProviderServerCapabilities(providerId).fork;
   return {
+    pluginId,
     source,
     // The daemon has no registry: transport the validated declaration's
     // execution capabilities so its adapter accepts the same permission
@@ -70,7 +72,7 @@ export function resolveBridgeLaunchForProviderId(
  * daemon rejected the turn as an unsupported provider.
  */
 export function requireBridgeLaunchForProviderId(
-  deps: Pick<AppDeps, "providerRegistry" | "providerBridgeArtifacts">,
+  deps: Pick<AppDeps, "providerRegistry" | "pluginHostArtifacts">,
   providerId: string,
 ): HostDaemonBridgeLaunch {
   const bridgeLaunch = resolveBridgeLaunchForProviderId(deps, providerId);
@@ -85,24 +87,22 @@ export function requireBridgeLaunchForProviderId(
 }
 
 /**
- * Which of the two delivery paths runs this provider's bridge. A recorded
- * artifact wins: it is the graduated path, and a plugin that has one is not
- * relying on the daemon bundle. Otherwise the id must be one the daemon bundles
+ * Which of the two delivery paths runs this provider's bridge. The plugin's
+ * live `bb.host` artifact wins: it is the graduated path, and a plugin that
+ * has one is not relying on the daemon bundle. Otherwise the id must be one the daemon bundles
  * (the same rule `assertProviderRegistrable` accepted the declaration under);
  * anything else has no bridge.
  */
 function resolveBridgeSource(
-  deps: Pick<AppDeps, "providerBridgeArtifacts">,
+  deps: Pick<AppDeps, "pluginHostArtifacts">,
   registration: ProviderRegistration & { source: { kind: "plugin" } },
   providerId: string,
 ): HostDaemonBridgeLaunch["source"] | null {
-  const artifact = deps.providerBridgeArtifacts.getForPlugin(
-    registration.source.pluginId,
-  );
+  const artifact = deps.pluginHostArtifacts.get(registration.source.pluginId);
   if (artifact !== undefined) {
     return {
       kind: "artifact",
-      sha256: artifact.sha256,
+      digest: artifact.digest,
       byteLength: artifact.byteLength,
     };
   }

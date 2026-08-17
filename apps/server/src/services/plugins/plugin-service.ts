@@ -33,7 +33,6 @@ import {
 import {
   buildPluginApp,
   buildPluginHost,
-  buildPluginProviderBridge,
   createPluginDevLoop,
 } from "@bb/plugin-build";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
@@ -265,11 +264,6 @@ export interface PluginService {
     id: string,
     variant: PluginBrandingAssetVariant,
   ): { bytes: Uint8Array; contentType: string; hash: string } | undefined;
-  /** Resolve the active on-disk host bundle when its digest matches exactly. */
-  getHostArtifact(
-    id: string,
-    digest: string,
-  ): { path: string; byteLength: number } | undefined;
   /** Active generations a reconnecting daemon uses to retire stale workers. */
   listHostArtifactGenerations(): Array<{
     pluginId: string;
@@ -1502,7 +1496,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             pluginId: row.id,
             hasApp: manifest.appEntry !== undefined,
             hasHost: manifest.hostEntry !== undefined,
-            hasProviderBridge: manifest.providerBridgeEntry !== undefined,
             buildApp: async () => {
               try {
                 await buildPluginApp(
@@ -1526,23 +1519,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
                 await buildPluginHost(
                   bundled.rootDir,
                   deps.appVersion,
-                  await getPluginBuildToolchain(deps),
-                );
-                setDevBuildProblem(row.id, null);
-                notifyPluginsChanged();
-              } catch (error) {
-                setDevBuildProblem(
-                  row.id,
-                  error instanceof Error ? error.message : String(error),
-                );
-                notifyPluginsChanged();
-                throw error;
-              }
-            },
-            buildProviderBridge: async () => {
-              try {
-                await buildPluginProviderBridge(
-                  bundled.rootDir,
                   await getPluginBuildToolchain(deps),
                 );
                 setDevBuildProblem(row.id, null);
@@ -1809,14 +1785,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         contentType: asset.contentType,
         hash: asset.hash,
       };
-    },
-
-    getHostArtifact(id, digest) {
-      if (!loaded.has(id)) return undefined;
-      const artifact = hostArtifacts.get(id);
-      if (artifact === undefined || artifact.digest !== digest)
-        return undefined;
-      return { path: artifact.path, byteLength: artifact.byteLength };
     },
 
     listHostArtifactGenerations() {

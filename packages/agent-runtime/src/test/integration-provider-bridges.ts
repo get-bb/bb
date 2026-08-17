@@ -23,10 +23,12 @@ export const INTEGRATION_PROVIDER_BRIDGE_MANIFEST_PATH = join(
 );
 
 const bridgeLaunchSchema = z.object({
+  pluginId: z.string(),
+  dataDir: z.string(),
   source: z.discriminatedUnion("kind", [
     z.object({
       kind: z.literal("artifact"),
-      sha256: z.string(),
+      digest: z.string(),
       artifactPath: z.string(),
     }),
     z.object({ kind: z.literal("daemon-bundled"), id: z.string() }),

@@ -4,7 +4,6 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 import {
   buildPluginApp,
   buildPluginHost,
-  buildPluginProviderBridge,
   buildPluginServer,
   resolvePluginBuildToolchain,
 } from "@bb/plugin-build";
@@ -89,9 +88,6 @@ async function writeRuntimePackageJson(args: {
           ...(packageJson.bb.host === undefined
             ? {}
             : { host: "./dist/host.js" }),
-          ...(packageJson.bb.providerBridge === undefined
-            ? {}
-            : { providerBridge: "./dist/provider-bridge.mjs" }),
         },
       },
       null,
@@ -123,9 +119,6 @@ async function copyBuiltinPlugin(args: {
     }
     if (packageJson.bb.host !== undefined) {
       await buildPluginHost(args.sourceRoot, args.bbVersion, toolchain);
-    }
-    if (packageJson.bb.providerBridge !== undefined) {
-      await buildPluginProviderBridge(args.sourceRoot, toolchain);
     }
   }
 

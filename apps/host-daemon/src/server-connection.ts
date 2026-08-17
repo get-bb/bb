@@ -54,7 +54,6 @@ interface ServerMessagePayloadSummary {
 export type ServerSessionInvalidationSource =
   | "callTool"
   | "fetchProjectAttachment"
-  | "fetchProviderBridge"
   | "fetchSkillTree"
   | "fetchPluginHostArtifact"
   | "interruptInteractiveRequests"

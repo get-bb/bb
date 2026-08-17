@@ -13,7 +13,7 @@ import { createProviderRegistryService } from "../../src/services/providers/prov
 import { resolveAcpAgentCapabilitiesForProviderId } from "../../src/services/system/acp-launch-spec.js";
 import { registerFirstPartyProviders } from "./provider-registry.js";
 import { SkillTreeRegistry } from "../../src/services/skills/injected-skills.js";
-import { ProviderBridgeArtifactRegistry } from "../../src/services/plugins/provider-bridge-artifacts.js";
+import { PluginHostArtifactRegistry } from "../../src/services/plugins/plugin-host-artifact-registry.js";
 import {
   createAppVersionService,
   type AppVersionService,
@@ -137,10 +137,10 @@ export async function createTestAppHarness(
     resolveAcpAgentCapabilities: (providerId) =>
       resolveAcpAgentCapabilitiesForProviderId({ config }, providerId),
   });
-  const providerBridgeArtifacts = new ProviderBridgeArtifactRegistry();
+  const pluginHostArtifacts = new PluginHostArtifactRegistry();
   if (seedFirstPartyProviders) {
     await registerFirstPartyProviders(providerRegistry, {
-      artifacts: providerBridgeArtifacts,
+      artifacts: pluginHostArtifacts,
     });
   }
   const lifecycleDedupers = createLifecycleDedupers();
@@ -215,7 +215,7 @@ export async function createTestAppHarness(
     logger: testLogger,
     machineAuth: testMachineAuth,
     providerRegistry,
-    providerBridgeArtifacts,
+    pluginHostArtifacts,
     skillTreeRegistry,
     telemetry,
     terminalSessions,
@@ -238,7 +238,7 @@ export async function createTestAppHarness(
     machineAuth: testMachineAuth,
     pendingInteractions,
     providerRegistry,
-    providerBridgeArtifacts,
+    pluginHostArtifacts,
     skillTreeRegistry,
     telemetry,
     terminalSessions,

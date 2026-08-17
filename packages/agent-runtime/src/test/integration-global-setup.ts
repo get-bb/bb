@@ -13,9 +13,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  buildPluginProviderBridge,
+  buildPluginHost,
   resolvePluginBuildToolchain,
 } from "@bb/plugin-build";
+import { ensurePluginProcessDataDir } from "@bb/process-utils";
 import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import type {
   BbPluginApi,
@@ -102,6 +103,7 @@ function wireCapabilities(
 }
 
 export async function setup(): Promise<void> {
+  const bridgeDataRoot = join(tmpdir(), "bb-agent-runtime-integration-daemon");
   const toolchain = await resolvePluginBuildToolchain(
     join(tmpdir(), "bb-plugin-build-toolchain"),
   );
@@ -110,12 +112,18 @@ export async function setup(): Promise<void> {
     const rootDir = pluginRootDir(pluginId);
     const [declaration, build] = await Promise.all([
       loadDeclaration(pluginId),
-      buildPluginProviderBridge(rootDir, toolchain),
+      buildPluginHost(rootDir, "0.0.0-integration", toolchain),
     ]);
     manifest[declaration.id] = {
+      pluginId,
+      dataDir: await ensurePluginProcessDataDir({
+        daemonDataDir: bridgeDataRoot,
+        pluginId,
+        kind: "bridge-data",
+      }),
       source: {
         kind: "artifact",
-        sha256: build.sha256,
+        digest: build.artifactDigest,
         // No download step here: the daemon caches the verified bytes, the
         // test launches the freshly built file in place.
         artifactPath: build.jsPath,
@@ -128,6 +136,12 @@ export async function setup(): Promise<void> {
   )) {
     const declaration = await loadDeclaration(pluginId);
     manifest[declaration.id] = {
+      pluginId,
+      dataDir: await ensurePluginProcessDataDir({
+        daemonDataDir: bridgeDataRoot,
+        pluginId,
+        kind: "bridge-data",
+      }),
       source: { kind: "daemon-bundled", id: bundledBridgeId },
       capabilities: wireCapabilities(declaration),
     };

@@ -10,7 +10,10 @@ import {
   type HostDaemonAcpLaunchSpec,
 } from "@bb/host-daemon-contract";
 import { createBridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
-import { resolveBridgeProcessArgs } from "./shared/bridge-path.js";
+import {
+  resolveBridgeWorkerProcessArgs,
+  resolveBundledBridgeModulePath,
+} from "./shared/bridge-path.js";
 import { BUILT_IN_ACP_LAUNCH_SPECS } from "./acp-launch-specs.js";
 import type {
   ProviderAdapter,
@@ -55,10 +58,21 @@ function createBridgeProtocolAdapterForId(
     },
     process: {
       command: options.bridgeNodeExecutablePath ?? "node",
-      args:
+      // Never the bridge module directly: the bootstrap owns the process
+      // boundary (plugin-scoped directories, stdin framing, signals) and
+      // imports the bridge's exported surface out of the artifact.
+      args: [
+        ...resolveBridgeWorkerProcessArgs({
+          ...(options.bridgeBundleDir === undefined
+            ? {}
+            : { bridgeBundleDir: options.bridgeBundleDir }),
+        }),
         bridgeLaunch.source.kind === "artifact"
-          ? [bridgeLaunch.source.artifactPath]
-          : resolveBundledBridgeArgs(bridgeLaunch.source.id, options),
+          ? bridgeLaunch.source.artifactPath
+          : resolveBundledBridgeModule(bridgeLaunch.source.id, options),
+        bridgeLaunch.pluginId,
+        bridgeLaunch.dataDir,
+      ],
       ...(options.bridgeNodeEnv !== undefined
         ? { env: options.bridgeNodeEnv }
         : {}),
@@ -93,18 +107,20 @@ for (const bundledBridgeId of DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS) {
   }
 }
 
-function resolveBundledBridgeArgs(
+function resolveBundledBridgeModule(
   bundledBridgeId: string,
   options: ProviderAdapterFactoryOptions,
-): string[] {
+): string {
   const entry = DAEMON_BUNDLED_BRIDGE_ENTRIES[bundledBridgeId];
   if (entry === undefined) {
     throw new Error(
       `"${bundledBridgeId}" is not a bridge this daemon bundles. Bundled: ${Object.keys(DAEMON_BUNDLED_BRIDGE_ENTRIES).join(", ")}.`,
     );
   }
-  return resolveBridgeProcessArgs({
-    bridgeBundleDir: options.bridgeBundleDir,
+  return resolveBundledBridgeModulePath({
+    ...(options.bridgeBundleDir === undefined
+      ? {}
+      : { bridgeBundleDir: options.bridgeBundleDir }),
     importMetaUrl: import.meta.url,
     ...entry,
   });

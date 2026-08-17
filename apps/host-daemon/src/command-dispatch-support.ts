@@ -20,6 +20,7 @@ import type {
   WorkspaceContext,
 } from "@bb/host-daemon-contract";
 import { getPersonalWorkspaceRoot } from "@bb/host-workspace";
+import { ensurePluginProcessDataDir } from "@bb/process-utils";
 import type { InteractiveResolveCommandInput } from "./interactive-request-registry.js";
 import { RuntimeManager, type RuntimeEntry } from "./runtime-manager.js";
 import type { TerminalManager } from "./terminals/terminal-manager.js";
@@ -27,9 +28,9 @@ import type { FetchProjectAttachment } from "./project-attachments.js";
 import type { FetchSkillTree } from "./skill-trees.js";
 import type { HostDaemonLogger } from "./logger.js";
 import {
-  ensureCachedProviderBridge,
-  type FetchProviderBridge,
-} from "./provider-bridges.js";
+  ensureCachedPluginHostArtifact,
+  type FetchPluginHostArtifact,
+} from "./plugin-host-artifact-cache.js";
 
 type DispatchCommand = HostDaemonCommand | HostDaemonOnlineRpcCommand;
 
@@ -53,7 +54,7 @@ export interface CommandDispatchOptions {
   logger: Pick<HostDaemonLogger, "debug" | "warn">;
   fetchProjectAttachment: FetchProjectAttachment;
   fetchSkillTree?: FetchSkillTree;
-  fetchProviderBridge?: FetchProviderBridge;
+  fetchPluginHostArtifact?: FetchPluginHostArtifact;
   runtimeManager: RuntimeManager;
   terminalManager?: Pick<TerminalManager, "closeEnvironmentTerminals">;
   eventSink: EventSink;
@@ -130,7 +131,7 @@ export async function resolveRuntimeBridgeLaunch(
   bridgeLaunch: HostDaemonBridgeLaunch,
   options: Pick<
     CommandDispatchOptions,
-    "dataDir" | "fetchProviderBridge" | "logger"
+    "dataDir" | "fetchPluginHostArtifact" | "logger"
   >,
 ): Promise<AgentRuntimeBridgeLaunch> {
   // Wire and runtime shapes share one noun set, so the block carries over
@@ -139,26 +140,42 @@ export async function resolveRuntimeBridgeLaunch(
     ...bridgeLaunch.capabilities,
     permissionModes: [...bridgeLaunch.capabilities.permissionModes],
   };
+  // Every bridge, artifact or bundled, is scoped to the plugin that ships it:
+  // it gets that plugin's own persistent directory, the same one the plugin's
+  // host worker would get, under its own `bridge-data` kind.
+  const dataDir = await ensurePluginProcessDataDir({
+    daemonDataDir: options.dataDir,
+    pluginId: bridgeLaunch.pluginId,
+    kind: "bridge-data",
+  });
   if (bridgeLaunch.source.kind === "daemon-bundled") {
-    return { source: { ...bridgeLaunch.source }, capabilities };
+    return {
+      pluginId: bridgeLaunch.pluginId,
+      dataDir,
+      source: { ...bridgeLaunch.source },
+      capabilities,
+    };
   }
-  if (options.fetchProviderBridge === undefined) {
+  if (options.fetchPluginHostArtifact === undefined) {
     throw new CommandDispatchError(
       "provider_bridge_unavailable",
-      "This daemon has no provider-bridge fetcher configured",
+      "This daemon has no plugin host artifact fetcher configured",
     );
   }
-  const artifactPath = await ensureCachedProviderBridge({
+  const artifactPath = await ensureCachedPluginHostArtifact({
     dataDir: options.dataDir,
-    fetchProviderBridge: options.fetchProviderBridge,
-    sha256: bridgeLaunch.source.sha256,
+    pluginId: bridgeLaunch.pluginId,
+    fetchArtifact: options.fetchPluginHostArtifact,
+    digest: bridgeLaunch.source.digest,
     byteLength: bridgeLaunch.source.byteLength,
     logger: options.logger,
   });
   return {
+    pluginId: bridgeLaunch.pluginId,
+    dataDir,
     source: {
       kind: "artifact",
-      sha256: bridgeLaunch.source.sha256,
+      digest: bridgeLaunch.source.digest,
       artifactPath,
     },
     capabilities,

@@ -72,16 +72,6 @@ The manifest is `package.json`:
   `bb plugin build` needs no server, and depending on `bb-app@X` builds
   against exactly that release's shim configuration. bb downloads its build
   toolchain on first use, so cache `<dataDir>/plugins/toolchain-*` in CI.
-- `bb.providerBridge` (optional) — provider-bridge entry for agent-provider
-  plugins (for example `./src/provider-bridge.ts`). `bb plugin build`
-  compiles it into a fully self-contained `dist/provider-bridge.mjs` (all
-  dependencies inlined; only node builtins external) plus
-  `dist/provider-bridge.meta.json` recording the bundle's `sha256` and
-  `byteLength`. Path and builtin installs rebuild it on every load; git
-  installs build it at install time; npm installs must ship the prebuilt
-  bundle. Enrolled host daemons download the artifact by content hash,
-  verify it, and run it with their own node — see the provider section
-  below.
 - `bb.skills` (optional) — relocates the auto-imported skills directories
   (default `skills/`; `[]` opts out). Every `skills/<name>/SKILL.md` is
   injected into agent threads as the plugin skills tier.
@@ -1103,11 +1093,40 @@ registrations; registrations replace wholesale on reload like every other
 surface. Disabling the plugin removes the provider (open threads show a
 provider-unavailable state instead of erroring).
 
-**The bridge.** Declare `bb.providerBridge` in the manifest
-(`"./src/provider-bridge.ts"`). The bridge is a standalone process speaking
-the canonical Provider Bridge Protocol — line-delimited JSON-RPC 2.0 over
-stdio, documented in `docs/provider-bridge-protocol.md` with schemas in
-`@bb/provider-bridge-protocol`. Minimum correct surface: the `initialize`
+**The bridge.** A provider bridge ships inside the plugin's `bb.host`
+artifact — the same artifact a host RPC entry ships in, and a plugin may have
+both. Export it by name:
+
+```ts
+// host.ts (bb.host)
+import { experimental_defineProviderBridge } from "@get-bb/plugin-sdk/bridge";
+
+export const experimental_providerBridge = experimental_defineProviderBridge({
+  handleLine(line) {
+    /* one JSON-RPC line from the runtime */
+  },
+  // Optional; called once before the first line, with this plugin's
+  // persistent dataDir and this process's own tempDir.
+  start({ pluginId, dataDir, tempDir }) {},
+  onClose() {}, // stdin closed: the runtime is gone
+  onSigterm() {},
+});
+```
+
+Do NOT start the bridge yourself: the daemon owns the process boundary (argv,
+plugin-scoped directories, bounded stdin framing, signals) and imports this
+export out of the artifact. Importing the module must start nothing, which is
+also what lets your conformance test drive `handleLine` in-process.
+
+Everything a bridge compiles against is published at
+`@get-bb/plugin-sdk/bridge` — protocol schemas, the bridge kit, and the event
+vocabulary — so add `@get-bb/plugin-sdk` to `dependencies` (not just
+`devDependencies`). A `bb.host` artifact cannot import bb's private `@bb/*`
+workspace packages; an installed plugin could not resolve them.
+
+The bridge speaks the canonical Provider Bridge Protocol — line-delimited
+JSON-RPC 2.0 over stdio, documented in `docs/provider-bridge-protocol.md`.
+Minimum correct surface: the `initialize`
 handshake (`{protocolVersion, capabilities}`), `thread/start` /
 `thread/resume` answering `{providerThreadId}` after a `thread/identity`
 notification, `turn/start` driving the event grammar (`turn/input/accepted`
@@ -1121,16 +1140,17 @@ ids survive restarts and resumes.
 
 **Conformance.** Ship a test that drives
 `@bb/provider-bridge-protocol/conformance` against your bridge in-process:
-export the bridge's line handler, wire `runBridgeConformance` with a
+export the bridge surface, wire `runBridgeConformance` with a
 transport whose `send` calls it and whose `takeMessages` drains captured
 stdout, and assert all eleven scenarios pass (see
 `examples/plugins/echo-provider/provider-bridge.conformance.test.ts`).
 
-**Delivery.** On install/reload the server builds the bridge and records
-`{sha256, byteLength, path}`. Thread commands for the provider carry that
-hash to the host daemon, which downloads the bytes from the server,
-verifies the sha256 before caching under `<dataDir>/provider-bridges/`, and
-runs the artifact with its own node — it never executes unverified bytes.
+**Delivery.** On install/reload the server builds `dist/host.js` and records
+its digest. Thread commands for the provider carry `{pluginId, digest}` to the
+host daemon, which downloads the bytes from the server, verifies the digest
+before caching them, and runs the artifact with its own node — it never
+executes unverified bytes. It is one cache and one route with the host RPC
+worker, because it is one artifact.
 Trust model: installation trust, exactly like every other plugin surface. A
 bridge runs only for an installed, enabled plugin, and only on hosts whose
 server instructs it.
@@ -2056,8 +2076,8 @@ multi-plugin arbitration. Use a live loop for those host boundaries.
 
 ### Live loop against a running bb
 
-- `bb plugin dev` is the loop: save → rebuild declared `bb.app`, `bb.host`, and
-  `bb.providerBridge` artifacts → reload; open app pages pick new UI up live and
+- `bb plugin dev` is the loop: save → rebuild declared `bb.app` and `bb.host`
+  artifacts → reload; open app pages pick new UI up live and
   host workers move to the new generation on their next call. Build/reload
   failures print and keep watching.
 - `bb plugin list` shows status, services, schedules (with last_error),

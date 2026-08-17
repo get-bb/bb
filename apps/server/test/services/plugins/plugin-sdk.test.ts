@@ -29,6 +29,7 @@ import {
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
 } from "../../helpers/commands.js";
+import { PluginHostArtifactRegistry } from "../../../src/services/plugins/plugin-host-artifact-registry.js";
 import { startTestServer, testLogger } from "../../helpers/test-app.js";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -72,6 +73,7 @@ describe("plugin bb.sdk bind gate", () => {
   let db: DbConnection;
   let workDir: string;
   let service: PluginService;
+  let pluginHostArtifacts: PluginHostArtifactRegistry;
   const sharedPorts = {
     declareSharedPorts: vi.fn(),
     validateSharedPortDeclaration: vi.fn(
@@ -102,8 +104,10 @@ describe("plugin bb.sdk bind gate", () => {
     ensureSharedPortTunnel.mockClear();
     callPluginHost.mockClear();
     disposePluginHost.mockClear();
+    pluginHostArtifacts = new PluginHostArtifactRegistry();
     service = createPluginService({
       db,
+      pluginHostArtifacts,
       sharedPorts,
       ensureSharedPortTunnel,
       hub: {
@@ -241,21 +245,18 @@ describe("plugin bb.sdk bind gate", () => {
     client.experimental_onSignal("changed", signalHandler);
     const artifact = callPluginHost.mock.calls[0]?.[0].artifact;
     if (artifact === undefined) throw new Error("missing host artifact call");
-    const servedArtifact = service.getHostArtifact(
-      "host-client",
-      artifact.digest,
-    );
+    // The one live-artifact registry is what the internal route serves from,
+    // so what the RPC call names must be exactly what a daemon can fetch.
+    const servedArtifact = pluginHostArtifacts.get("host-client");
     if (servedArtifact === undefined)
       throw new Error("missing served artifact");
+    expect(servedArtifact.digest).toBe(artifact.digest);
     expect(servedArtifact.byteLength).toBe(artifact.byteLength);
     expect(
       createHash("sha256")
         .update(await readFile(servedArtifact.path))
         .digest("hex"),
     ).toBe(artifact.digest);
-    expect(
-      service.getHostArtifact("host-client", "0".repeat(64)),
-    ).toBeUndefined();
     service.handleHostWorkerExit({
       authenticatedHostId: "host-1",
       pluginId: "host-client",

@@ -218,20 +218,25 @@ export function normalizeHostDaemonAcpLaunchSpec(
  * — the source says which of the two delivery paths to take rather than
  * leaving the daemon to infer it from an absent field:
  *
- * - `"artifact"`: download the content-addressed bridge bundle from the server
- *   by sha256, verify the bytes, cache it under the daemon data dir, and run it
- *   with the daemon's node.
+ * - `"artifact"`: download the plugin's content-addressed host artifact from
+ *   the server by digest, verify the bytes, cache it under the daemon data dir,
+ *   and run it with the daemon's node through the bridge bootstrap.
  * - `"daemon-bundled"`: run the named bridge from the daemon's own bundle. Pi
  *   is the only one, because its agent tree cannot be inlined into a
  *   relocatable artifact ({@link DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS}).
  */
 export const hostDaemonBridgeLaunchSchema = z
   .object({
+    // The plugin that ships this bridge. It names the artifact to fetch, and
+    // it scopes the bridge process's own directories on the host — a bridge is
+    // a `bb.host` artifact like any other, so it gets the same plugin-scoped
+    // data directory a host worker does.
+    pluginId: z.string().min(1),
     source: z.discriminatedUnion("kind", [
       z
         .object({
           kind: z.literal("artifact"),
-          sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+          digest: z.string().regex(/^[a-f0-9]{64}$/u),
           byteLength: z
             .number()
             .int()

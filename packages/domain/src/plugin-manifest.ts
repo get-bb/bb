@@ -47,13 +47,6 @@ export const pluginBbManifestSchema = z
     server: requiredManifestString,
     app: requiredManifestString.optional(),
     host: requiredManifestString.optional(),
-    /**
-     * Provider-bridge entry (e.g. "./src/provider-bridge.ts"). Declared by
-     * provider plugins; `bb plugin build` bundles it into a self-contained
-     * `dist/provider-bridge.mjs` that the host daemon downloads by hash and
-     * runs under its own node.
-     */
-    providerBridge: requiredManifestString.optional(),
     skills: z.array(requiredManifestString).optional(),
     themes: z
       .array(

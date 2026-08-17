@@ -42,6 +42,21 @@ export const bundleTargets = [
     outfile: resolve(packageRoot, "dist", "bb-pi-bridge.mjs"),
   },
   {
+    // The bootstrap the runtime spawns for EVERY bridge, artifact or bundled:
+    // it imports the bridge module out of a `bb.host` artifact and owns the
+    // process boundary. Emitted beside the bundled bridges it also launches.
+    banner: NODE_ESM_REQUIRE_BANNER,
+    entryPoint: resolve(
+      workspaceRoot,
+      "packages",
+      "provider-bridge-protocol",
+      "src",
+      "bridge-worker-entry.ts",
+    ),
+    label: "provider bridge worker",
+    outfile: resolve(packageRoot, "dist", "bb-provider-bridge-worker.mjs"),
+  },
+  {
     banner: NODE_ESM_REQUIRE_BANNER,
     entryPoint: resolve(workspaceRoot, "apps", "cli", "src", "index.ts"),
     executable: true,

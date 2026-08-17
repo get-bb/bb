@@ -7,8 +7,13 @@
 //     path explicitly — a content-addressed `artifact` or a `daemon-bundled`
 //     id — rather than leaving the daemon to infer it from an absent field,
 //     and carries the server-validated capabilities the daemon enforces before
-//     a command reaches the bridge. The command schemas are strict, so an old
-//     daemon cannot parse a payload carrying the new field.
+//     a command reaches the bridge. It also names the owning `pluginId`,
+//     because a provider bridge is now a consumer of that plugin's `bb.host`
+//     artifact: the artifact variant carries the plugin host artifact's own
+//     `digest` vocabulary and is fetched from the plugin host artifact route,
+//     and the plugin id scopes the bridge process's directories on the host.
+//     The command schemas are strict, so an old daemon cannot parse a payload
+//     carrying the new field.
 //   - `host.delete_skill`'s per-provider scopes (`claude-user`,
 //     `codex-project`, …) collapse to `provider-user` / `provider-project`.
 //     The daemon only ever distinguished bb roots from a server-supplied

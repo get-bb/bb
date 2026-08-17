@@ -581,6 +581,7 @@ export async function cleanupTempDirs(): Promise<void> {
  * permissive capabilities, so no capability gate trips by accident.
  */
 export const DISPATCH_TEST_BRIDGE_LAUNCH: HostDaemonBridgeLaunch = {
+  pluginId: "provider-pi",
   source: { kind: "daemon-bundled", id: "pi" },
   capabilities: {
     supportsServiceTier: true,
@@ -593,10 +594,15 @@ export const DISPATCH_TEST_BRIDGE_LAUNCH: HostDaemonBridgeLaunch = {
 
 /**
  * The same launch after {@link resolveRuntimeBridgeLaunch}, for tests that call
- * runtime entry points directly. A daemon-bundled source needs no fetch, so the
- * two shapes coincide — but they are different types.
+ * runtime entry points directly: a daemon-bundled source needs no fetch, but
+ * the resolved shape additionally carries the plugin-scoped directory the
+ * bridge bootstrap hands its bridge.
  */
 export const DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch = {
+  pluginId: "provider-pi",
+  // Where `resolveRuntimeBridgeLaunch` puts a bridge's plugin-scoped
+  // directory under the helpers' own data dir.
+  dataDir: "/tmp/bb-test-data/plugins/provider-pi/bridge-data",
   source: { kind: "daemon-bundled", id: "pi" },
   capabilities: DISPATCH_TEST_BRIDGE_LAUNCH.capabilities,
 };

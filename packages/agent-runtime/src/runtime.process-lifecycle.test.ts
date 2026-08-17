@@ -1265,9 +1265,11 @@ rl.on("line", (line) => {
       scriptPath: threadScopedProviderScript,
     });
     const bridgeLaunch: AgentRuntimeBridgeLaunch = {
+      pluginId: "provider-fixture",
+      dataDir: "/data/plugins/provider-fixture/bridge-data",
       source: {
         kind: "artifact",
-        sha256: "c".repeat(64),
+        digest: "c".repeat(64),
         artifactPath: join(tmpDir, "codex-provider-bridge.mjs"),
       },
       capabilities: {
@@ -1354,9 +1356,11 @@ rl.on("line", (line) => {
     const capturedBridgeLaunches: Array<AgentRuntimeBridgeLaunch | undefined> =
       [];
     const bridgeLaunch: AgentRuntimeBridgeLaunch = {
+      pluginId: "provider-fixture",
+      dataDir: "/data/plugins/provider-fixture/bridge-data",
       source: {
         kind: "artifact",
-        sha256: "d".repeat(64),
+        digest: "d".repeat(64),
         artifactPath: join(tmpDir, "declaration-provider-bridge.mjs"),
       },
       capabilities: {

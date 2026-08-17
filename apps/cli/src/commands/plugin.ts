@@ -32,7 +32,6 @@ import { cliFetch, createCliBbSdk } from "../client.js";
 import {
   buildPluginApp,
   buildPluginHost,
-  buildPluginProviderBridge,
   buildPluginServer,
   createPluginDevLoop,
   PLUGIN_TOOLCHAIN_PINS,
@@ -149,7 +148,6 @@ const pluginManifestSchema = z.object({
       server: z.unknown().optional(),
       app: z.unknown().optional(),
       host: z.unknown().optional(),
-      providerBridge: z.unknown().optional(),
     })
     .optional(),
 });
@@ -1494,7 +1492,7 @@ export function registerPluginCommands(
   plugin
     .command("build [path]")
     .description(
-      "Compile the plugin into dist/: the bb.server backend bundle (server.js, server.meta.json), plus, when declared, the bb.app frontend bundle (app.js, app.css, app.meta.json), the bb.host daemon bundle (host.js, host.js.map, host.meta.json), and the self-contained bb.providerBridge bundle (provider-bridge.mjs, provider-bridge.meta.json with its sha256/byteLength); each *.meta.json stamps SDK/identity metadata; no server required",
+      "Compile the plugin into dist/: the bb.server backend bundle (server.js, server.meta.json), plus, when declared, the bb.app frontend bundle (app.js, app.css, app.meta.json) and the self-contained bb.host daemon bundle (host.js, host.js.map, host.meta.json) — which carries the plugin's host RPC entry, its provider bridge, or both; each *.meta.json stamps SDK/identity metadata; no server required",
     )
     .action(
       action(async (path: string | undefined) => {
@@ -1506,8 +1504,6 @@ export function registerPluginCommands(
         const manifest = await readPluginManifest(rootDir);
         const hasApp = typeof manifest?.bb?.app === "string";
         const hasHost = typeof manifest?.bb?.host === "string";
-        const hasProviderBridge =
-          typeof manifest?.bb?.providerBridge === "string";
         // Keep the local declarations tracking the bb doing the build, so a
         // plugin scaffolded against an older SDK never typechecks green
         // against an API this bb no longer has. Gate on bb.server so a
@@ -1525,10 +1521,6 @@ export function registerPluginCommands(
         if (hasHost) {
           const host = await buildPluginHost(rootDir, bbVersion, toolchain);
           files.push(host.jsPath, host.mapPath, host.metaPath);
-        }
-        if (hasProviderBridge) {
-          const bridge = await buildPluginProviderBridge(rootDir, toolchain);
-          files.push(bridge.jsPath, bridge.metaPath);
         }
         for (const file of files) {
           console.log(relative(process.cwd(), file));
@@ -1565,8 +1557,6 @@ export function registerPluginCommands(
           );
           process.exit(1);
         }
-        const hasProviderBridge =
-          typeof manifest.bb?.providerBridge === "string";
         const loop = createPluginDevLoop({
           pluginId: entry.id,
           hasApp,
@@ -1584,10 +1574,6 @@ export function registerPluginCommands(
               resolveBbCliVersion(),
               await cliBuildToolchain(),
             );
-          },
-          hasProviderBridge,
-          buildProviderBridge: async () => {
-            await buildPluginProviderBridge(rootDir, await cliBuildToolchain());
           },
           reloadPlugin: async () => {
             const result = pluginMutationResultSchema.parse(
@@ -1613,7 +1599,7 @@ export function registerPluginCommands(
           },
         );
         console.log(
-          `Watching ${rootDir} for plugin "${entry.id}"${hasApp || hasHost || hasProviderBridge ? ` (${[hasApp ? "frontend" : null, hasHost ? "host" : null, hasProviderBridge ? "provider bridge" : null].filter(Boolean).join(" + ")} rebuild + reload on change)` : " (reload on change)"} — Ctrl+C to stop.`,
+          `Watching ${rootDir} for plugin "${entry.id}"${hasApp || hasHost ? ` (${[hasApp ? "frontend" : null, hasHost ? "host" : null].filter(Boolean).join(" + ")} rebuild + reload on change)` : " (reload on change)"} — Ctrl+C to stop.`,
         );
         await new Promise<void>((resolveDone) => {
           const stop = (): void => {

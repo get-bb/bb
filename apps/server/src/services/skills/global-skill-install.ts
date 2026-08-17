@@ -44,7 +44,7 @@ type GlobalSkillInstallDeps = Pick<
   | "logger"
   | "machineAuth"
   | "providerRegistry"
-  | "providerBridgeArtifacts"
+  | "pluginHostArtifacts"
   | "skillTreeRegistry"
   | "telemetry"
 >;

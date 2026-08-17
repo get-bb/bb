@@ -22,6 +22,11 @@
       "source": "./src/testing/index.ts",
       "types": "./src/testing/index.ts",
       "default": "./src/testing/index.ts"
+    },
+    "./bridge-worker-entry": {
+      "source": "./src/bridge-worker-entry.ts",
+      "types": "./src/bridge-worker-entry.ts",
+      "default": "./src/bridge-worker-entry.ts"
     }
   },
   "types": "./src/index.ts",
@@ -32,6 +37,7 @@
   },
   "dependencies": {
     "@bb/domain": "workspace:*",
+    "@bb/process-utils": "workspace:*",
     "zod": "^4.3.6"
   },
   "devDependencies": {

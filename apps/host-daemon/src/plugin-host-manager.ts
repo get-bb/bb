@@ -1,7 +1,7 @@
 import { fork, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { isAbsolute } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import type { Readable } from "node:stream";
@@ -11,14 +11,13 @@ import type {
 } from "@bb/host-daemon-contract";
 import type { HostPathWatchChange, HostWatcher } from "@bb/host-watcher";
 import { jsonValueSchema, type JsonValue } from "@bb/domain";
-import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 import {
   createPluginProcessTempDir,
   ensurePluginProcessDataDir,
-  safePluginSegment,
-} from "./plugin-process-paths.js";
+  sanitizeInheritedChildProcessEnv,
+} from "@bb/process-utils";
 import type { HostDaemonLogger } from "./logger.js";
-import { ensureCachedNodeArtifact } from "./node-artifact-cache.js";
+import { ensureCachedPluginHostArtifact } from "./plugin-host-artifact-cache.js";
 
 type PluginHostCallCommand = Extract<
   HostDaemonOnlineRpcCommand,
@@ -955,29 +954,16 @@ export class PluginHostManager {
   private async materializeArtifact(
     command: PluginHostCallCommand,
   ): Promise<string> {
-    return ensureCachedNodeArtifact({
-      cacheDir: join(
-        this.options.dataDir,
-        "plugin-host-artifacts",
-        safePluginSegment(command.pluginId),
-      ),
+    return ensureCachedPluginHostArtifact({
+      dataDir: this.options.dataDir,
+      pluginId: command.pluginId,
       digest: command.artifact.digest,
       byteLength: command.artifact.byteLength,
-      fileName: "host.js",
-      // The cache is content-addressed and generic; the plugin id it belongs
-      // to is the caller's business, so the fetch closes over it.
-      fetchArtifact: ({ digest, byteLength }) =>
-        this.options.fetchArtifact({
-          pluginId: command.pluginId,
-          digest,
-          expectedByteLength: byteLength,
-        }),
-      // A plugin runs exactly one host bundle at a time, so every other
-      // digest under its directory is superseded.
-      prune: { kind: "keep-only-current" },
+      fetchArtifact: this.options.fetchArtifact,
       logger: this.options.logger,
     });
   }
+
 
   private async stopWorker(worker: WorkerState, reason: string): Promise<void> {
     if (worker.disposing) return worker.closed;
