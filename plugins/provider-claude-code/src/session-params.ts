@@ -15,7 +15,7 @@ import {
   type PromptInput,
   type ReasoningLevel,
   type RuntimePermissionPolicy,
-  buildShellEnvironmentPolicyConfig,
+  buildShellEnvOverrides,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 import {
@@ -87,11 +87,19 @@ function buildClaudeSkillConfigParams(
   };
 }
 
+/**
+ * The session config bag is claude-code-internal (this module encodes it, the
+ * bridge decodes it), so env overrides travel as a plain map under the
+ * bridge's own `envVars` key — filtered through the shared name-safety guard.
+ */
 function buildClaudeCodeConfig(
   envVars?: Record<string, string>,
 ): Record<string, unknown> | undefined {
-  const config = buildShellEnvironmentPolicyConfig(envVars);
-  return config ? { ...config } : undefined;
+  if (!envVars) {
+    return undefined;
+  }
+  const overrides = buildShellEnvOverrides(envVars);
+  return Object.keys(overrides).length > 0 ? { envVars: overrides } : undefined;
 }
 
 /**

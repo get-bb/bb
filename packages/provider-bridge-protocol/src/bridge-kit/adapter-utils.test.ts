@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildEditDiff,
   buildShellEnvOverrides,
-  diffCumulativeText,
   extractResultText,
   normalizeProviderCommandOutput,
 } from "./adapter-utils.js";
@@ -90,44 +89,6 @@ describe("adapter-utils", () => {
         emptyPlaceholders: ["(no output)"],
       }),
     ).toBe(" \n");
-  });
-
-  it("diffCumulativeText emits the first chunk when no prior snapshot exists", () => {
-    expect(
-      diffCumulativeText({
-        nextText: "FIRST\n",
-      }),
-    ).toEqual({
-      delta: "FIRST\n",
-      nextText: "FIRST\n",
-      reset: false,
-    });
-  });
-
-  it("diffCumulativeText emits only the suffix for cumulative updates", () => {
-    expect(
-      diffCumulativeText({
-        previousText: "FIRST\n",
-        nextText: "FIRST\nSECOND\n",
-      }),
-    ).toEqual({
-      delta: "SECOND\n",
-      nextText: "FIRST\nSECOND\n",
-      reset: false,
-    });
-  });
-
-  it("diffCumulativeText falls back to the full text after a reset", () => {
-    expect(
-      diffCumulativeText({
-        previousText: "FIRST\nSECOND\n",
-        nextText: "THIRD\n",
-      }),
-    ).toEqual({
-      delta: "THIRD\n",
-      nextText: "THIRD\n",
-      reset: true,
-    });
   });
 
   it("buildEditDiff omits synthetic hunk headers when only snippet text is available", () => {

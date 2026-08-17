@@ -110,7 +110,7 @@ describe("buildClaudeSessionParams", () => {
         endpoint: "http://127.0.0.1:1",
       },
       disallowedTools: ["WebSearch"],
-      config: { "shell_environment_policy.set.BB_TEST": "1" },
+      config: { envVars: { BB_TEST: "1" } },
     });
     expect(params.baseInstructions).toContain("Session instructions");
   });
@@ -340,18 +340,17 @@ describe("claude session option passthrough", () => {
       ],
       disallowedTools: ["ExitPlanMode", "NotebookEdit", "Task"],
     });
+    // A name a shell would refuse is dropped by the name-safety filter, never
+    // passed through to the session environment.
     expect(params).toMatchObject({
       config: {
-        "shell_environment_policy.set.TEST_VAR": "123",
+        envVars: { TEST_VAR: "123" },
       },
     });
-    // A dotted name cannot be expressed as a shell-environment-policy key, so
-    // it is dropped rather than smuggled into the config as a nested path.
-    expect(params).not.toMatchObject({
-      config: {
-        "shell_environment_policy.set.BAD.KEY": "ignored",
-      },
-    });
+    expect(
+      (params as { config: { envVars: Record<string, string> } }).config
+        .envVars,
+    ).not.toHaveProperty("BAD.KEY");
   });
 
   it("maps automatic review to Claude auto", () => {

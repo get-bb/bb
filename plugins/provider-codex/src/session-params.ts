@@ -13,7 +13,7 @@ import {
   type ReasoningLevel,
   type RuntimePermissionPolicy,
   type ServiceTier,
-  buildShellEnvironmentPolicyConfig,
+  buildShellEnvOverrides,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import fs from "node:fs";
 import path from "node:path";
@@ -619,6 +619,23 @@ export function toCodexUserInput(input: PromptInput[]): CodexUserInput[] {
         };
     }
   });
+}
+
+/**
+ * The shell env overrides expressed in Codex's native
+ * `shell_environment_policy.set.*` config namespace.
+ */
+function buildShellEnvironmentPolicyConfig(
+  envVars?: Record<string, string>,
+): Record<string, string> | undefined {
+  if (!envVars) {
+    return undefined;
+  }
+  const config: Record<string, string> = {};
+  for (const [key, value] of Object.entries(buildShellEnvOverrides(envVars))) {
+    config[`shell_environment_policy.set.${key}`] = value;
+  }
+  return Object.keys(config).length > 0 ? config : undefined;
 }
 
 export function buildCodexConfig(

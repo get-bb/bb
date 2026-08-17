@@ -32,7 +32,6 @@ import {
   createProviderTurnStateRegistry,
   createScopedItemIdFactory,
   createUnhandledProviderEvent,
-  diffCumulativeText,
   drainAcceptedUserMessages,
   errorEnvelopeSchema,
   extractResultText,
@@ -52,6 +51,7 @@ import type {
   JsonRpcMessage,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import type { ProviderTranslationContext } from "../provider-adapter.js";
+import { diffCumulativeText } from "./diff-cumulative-text.js";
 import { toCanonicalPiModelId } from "./model-list.js";
 import { piVisibilityMetadata } from "./visibility.js";
 

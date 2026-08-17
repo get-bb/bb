@@ -74,7 +74,6 @@ import {
 } from "../session-params.js";
 import { buildInterruptedClaudeTaskEvents } from "../task-translation.js";
 import { SdkSession, type SdkSessionOptions } from "./sdk-session.js";
-import { extractEnvOverrides } from "./env-overrides.js";
 import { listClaudeCodeBridgeModels } from "./model-list.js";
 import {
   claudeThreadForkParamsSchema,
@@ -1445,10 +1444,20 @@ function appendNoProxyLoopback(value: string | undefined): string {
   return [...entries].join(",");
 }
 
+const sessionConfigEnvVarsSchema = z.record(z.string(), z.string());
+
+/** The bridge end of `buildClaudeCodeConfig`'s plugin-internal config bag. */
+function readConfigEnvOverrides(
+  config: Record<string, unknown> | undefined,
+): Record<string, string> {
+  const parsed = sessionConfigEnvVarsSchema.safeParse(config?.["envVars"]);
+  return parsed.success ? parsed.data : {};
+}
+
 async function prepareSessionEnv(
   params: PrepareSessionEnvParams,
 ): Promise<PreparedSessionEnv> {
-  const envOverrides = extractEnvOverrides(params.config);
+  const envOverrides = readConfigEnvOverrides(params.config);
   if (!params.claudeCodeMockCliTraffic.enabled) {
     return {
       env: buildSessionEnv(envOverrides),
