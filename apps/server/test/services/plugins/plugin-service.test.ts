@@ -17,6 +17,8 @@ import {
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
 import { testLogger } from "../../helpers/test-app.js";
+import { pluginInstalledTelemetryEvent } from "../../../src/services/plugins/plugin-registration.js";
+import type { TelemetryEvent } from "../../../src/services/system/telemetry.js";
 
 const logger = testLogger as unknown as Logger;
 
@@ -567,6 +569,69 @@ describe("plugin service", () => {
     const entry = await devService.installPath(gated);
     expect(entry.status).toBe("running");
     await devService.stop();
+  });
+
+  it("reports one anonymous plugin_installed event per user install", async () => {
+    const captured: TelemetryEvent[] = [];
+    const tracked = createPluginService({
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      telemetry: { capture: (event) => captured.push(event) },
+      dataDir: join(workDir, "data"),
+      appVersion: "0.9.0",
+      loadTimeoutMs: 2000,
+    });
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-tracked",
+      serverSource: `export default function plugin() {}`,
+    });
+    await tracked.installPath(rootDir);
+    // A direct install may point at private code, so it reports no id.
+    expect(captured).toEqual([
+      {
+        name: "plugin_installed",
+        properties: {
+          plugin_id: null,
+          provenance: "direct",
+          marketplace: null,
+          source_kind: "path",
+        },
+      },
+    ]);
+    // Reload, enable, and boot-time reconcile are not installs.
+    await tracked.reload("tracked");
+    await tracked.setEnabled("tracked", false);
+    await tracked.setEnabled("tracked", true);
+    await tracked.stop();
+    await tracked.start();
+    expect(captured).toHaveLength(1);
+    await tracked.stop();
+  });
+
+  it("names public plugins in the install event so PostHog can rank them", () => {
+    expect(
+      pluginInstalledTelemetryEvent(
+        "tasks",
+        { kind: "catalog", marketplace: "bb-community", entryId: "tasks" },
+        {
+          kind: "npm",
+          packageName: "@get-bb/tasks",
+          registry: "https://registry.npmjs.org",
+          requestedSpec: "^1",
+          specKind: "range",
+        },
+      ).properties,
+    ).toEqual({
+      plugin_id: "tasks",
+      provenance: "catalog",
+      marketplace: "bb-community",
+      source_kind: "npm",
+    });
   });
 
   it("times out a hung factory and reports error", async () => {
