@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import type { Host } from "@bb/domain";
 import { z } from "zod";
@@ -15,6 +16,8 @@ import { Icon } from "@bb/shared-ui/icon";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useClipboardCopy } from "@/lib/clipboard";
+import { isLoopbackHostname } from "@/lib/loopback-hostname";
+import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 
@@ -120,6 +123,56 @@ function pairingCommand(
   return `curl -fL --progress-meter --connect-timeout 10 --max-time 60 --retry 2 ${serverUrl}/install.sh | sh -s -- --join-code ${joinCode} --host-id ${hostId} --server ${serverUrl}${machineFlag}`;
 }
 
+/**
+ * Whether the direct server URL points at a loopback address. bb listens on
+ * loopback by default, so without a connect machine code the pairing command
+ * would target a URL that no other machine can reach (issue #1690).
+ */
+export function isLoopbackServerUrl(serverUrl: string): boolean {
+  try {
+    return isLoopbackHostname(new URL(serverUrl).hostname);
+  } catch {
+    return false;
+  }
+}
+
+const REMOTE_ACCESS_ROUTE = getPluginConfigurationRoutePath({
+  pluginId: "connect",
+});
+
+function UnreachableServerNotice({ serverUrl }: { serverUrl: string }) {
+  return (
+    <div className="space-y-2 rounded-md border border-border bg-muted/40 p-3">
+      <p className="text-sm text-foreground">
+        This bb is only reachable from this computer.
+      </p>
+      <p className="text-xs text-subtle-foreground">
+        The server listens on <span className="font-mono">{serverUrl}</span>, so
+        another machine cannot connect to it. Set up remote access first, then
+        come back here to get a pairing command that works from anywhere.
+      </p>
+      <div className="flex items-center gap-2">
+        <Button
+          asChild
+          size="sm"
+          variant="outline"
+          className="h-7 px-2.5 text-xs"
+        >
+          <Link to={REMOTE_ACCESS_ROUTE}>Set up remote access</Link>
+        </Button>
+        <a
+          href="https://github.com/get-bb/bb/blob/main/docs/multiple-devices.md"
+          target="_blank"
+          rel="noreferrer"
+          className="text-xs text-subtle-foreground underline underline-offset-2"
+        >
+          Other options
+        </a>
+      </div>
+    </div>
+  );
+}
+
 function AddMachineDialogContent({
   onOpenChange,
   serverUrl,
@@ -172,8 +225,15 @@ function AddMachineDialogContent({
       : Math.min(joinCode.expiresAt, machineCode?.expiresAt ?? Infinity);
   const remainingMs = expiresAt !== null ? expiresAt - now : null;
   const expired = remainingMs !== null && remainingMs <= 0;
+  const unreachableServerUrl =
+    mintJoinCode.isSuccess &&
+    machineCode === null &&
+    serverUrl !== null &&
+    isLoopbackServerUrl(serverUrl)
+      ? serverUrl
+      : null;
   const command =
-    joinCode !== null
+    joinCode !== null && unreachableServerUrl === null
       ? pairingCommand(
           joinCode.joinCode,
           joinCode.hostId,
@@ -210,6 +270,8 @@ function AddMachineDialogContent({
               Try again
             </Button>
           </div>
+        ) : unreachableServerUrl !== null ? (
+          <UnreachableServerNotice serverUrl={unreachableServerUrl} />
         ) : command !== null ? (
           <div className="space-y-2">
             <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-md border border-border bg-muted/40 p-3 font-mono text-xs text-foreground">
@@ -259,35 +321,37 @@ function AddMachineDialogContent({
             Creating a join code…
           </p>
         )}
-        <div className="flex items-center gap-2.5 rounded-md border border-border bg-muted/40 px-3 py-2.5">
-          {connectedNewHost !== null ? (
-            <>
-              <MachineStatusDot connected />
-              <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                {connectedNewHost.name} connected
-              </span>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="h-7 shrink-0 px-2 text-xs"
-                onClick={() => onOpenChange(false)}
-              >
-                Set up a project on it →
-              </Button>
-            </>
-          ) : (
-            <>
-              <Icon
-                name="Spinner"
-                className="size-4 shrink-0 animate-spin text-muted-foreground"
-              />
-              <span className="text-sm text-muted-foreground">
-                Waiting for the machine to connect…
-              </span>
-            </>
-          )}
-        </div>
+        {unreachableServerUrl !== null ? null : (
+          <div className="flex items-center gap-2.5 rounded-md border border-border bg-muted/40 px-3 py-2.5">
+            {connectedNewHost !== null ? (
+              <>
+                <MachineStatusDot connected />
+                <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                  {connectedNewHost.name} connected
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 shrink-0 px-2 text-xs"
+                  onClick={() => onOpenChange(false)}
+                >
+                  Set up a project on it →
+                </Button>
+              </>
+            ) : (
+              <>
+                <Icon
+                  name="Spinner"
+                  className="size-4 shrink-0 animate-spin text-muted-foreground"
+                />
+                <span className="text-sm text-muted-foreground">
+                  Waiting for the machine to connect…
+                </span>
+              </>
+            )}
+          </div>
+        )}
       </div>
       <DialogFooter>
         <Button

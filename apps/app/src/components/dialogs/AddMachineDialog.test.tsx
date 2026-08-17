@@ -9,6 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { Host } from "@bb/domain";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { hostsQueryKey } from "@/hooks/queries/query-keys";
@@ -76,11 +77,13 @@ describe("AddMachineDialog", () => {
 
     const { queryClient, wrapper } = createQueryClientTestHarness();
     render(
-      <AddMachineDialog
-        open
-        onOpenChange={vi.fn()}
-        serverUrl="http://direct.example.test:38886"
-      />,
+      <MemoryRouter>
+        <AddMachineDialog
+          open
+          onOpenChange={vi.fn()}
+          serverUrl="http://direct.example.test:38886"
+        />
+      </MemoryRouter>,
       { wrapper },
     );
 
@@ -155,11 +158,13 @@ describe("AddMachineDialog", () => {
 
     const { queryClient, wrapper } = createQueryClientTestHarness();
     render(
-      <AddMachineDialog
-        open
-        onOpenChange={vi.fn()}
-        serverUrl="http://direct.example.test:38886"
-      />,
+      <MemoryRouter>
+        <AddMachineDialog
+          open
+          onOpenChange={vi.fn()}
+          serverUrl="http://direct.example.test:38886"
+        />
+      </MemoryRouter>,
       { wrapper },
     );
 
@@ -190,5 +195,49 @@ describe("AddMachineDialog", () => {
       await screen.findByText("Waiting for the machine to connect…"),
     ).toBeDefined();
     expect(screen.queryByText("dev-vm connected")).toBeNull();
+  });
+
+  it("explains that a loopback server is unreachable when connect is unpaired", async () => {
+    vi.mocked(sdk.hosts.createJoinCode).mockResolvedValue({
+      joinCode: "jc_test123",
+      hostId: "host_new",
+      expiresAt: Date.now() + 15 * 60 * 1000,
+    });
+    vi.mocked(sdk.plugins.callRpc).mockRejectedValue(
+      new BbHttpError({
+        body: {
+          ok: false,
+          error: { code: "handler_error", message: "not_paired" },
+        },
+        code: "handler_error",
+        message: "not_paired",
+        status: 500,
+      }),
+    );
+    vi.mocked(sdk.hosts.list).mockResolvedValue([existingHost]);
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <AddMachineDialog
+          open
+          onOpenChange={vi.fn()}
+          serverUrl="http://127.0.0.1:38886"
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    // The desktop server listens on loopback only. Another machine cannot
+    // reach it, so a curl command against 127.0.0.1 can never work.
+    expect(
+      await screen.findByText(/only reachable from this computer/),
+    ).toBeDefined();
+    expect(screen.queryByText(/--join-code jc_test123/)).toBeNull();
+    const link = screen.getByRole("link", { name: "Set up remote access" });
+    expect(link.getAttribute("href")).toBe("/settings/plugins/connect");
+    expect(
+      screen.queryByText("Waiting for the machine to connect…"),
+    ).toBeNull();
   });
 });
