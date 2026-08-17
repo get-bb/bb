@@ -918,6 +918,42 @@ function normalizePluginAgentConfiguration(args: {
   };
 }
 
+/**
+ * Plugin handlers can run in a different realm (jiti-loaded modules, bundled
+ * fetch polyfills), so a valid `Response` from a handler may fail
+ * `instanceof Response` here (#1661). Accept a structurally valid Response
+ * from any realm and re-wrap it into a this-realm `Response`, so Hono always
+ * consumes a native object and a malformed return still fails at this
+ * boundary with a pointed error.
+ */
+async function adoptHandlerResponse(value: unknown): Promise<Response> {
+  if (value instanceof Response) return value;
+  if (!isResponseLike(value)) {
+    throw new Error("http route handler must return a Response");
+  }
+  const body = await value.arrayBuffer();
+  const status = value.status;
+  const isNullBodyStatus =
+    status === 101 || status === 204 || status === 205 || status === 304;
+  return new Response(isNullBodyStatus ? null : body, {
+    status,
+    statusText: typeof value.statusText === "string" ? value.statusText : "",
+    headers: new Headers(value.headers),
+  });
+}
+
+function isResponseLike(value: unknown): value is Response {
+  if (value === null || typeof value !== "object") return false;
+  const candidate = value as Partial<Response>;
+  return (
+    typeof candidate.status === "number" &&
+    typeof candidate.headers === "object" &&
+    candidate.headers !== null &&
+    typeof candidate.arrayBuffer === "function" &&
+    typeof candidate.clone === "function"
+  );
+}
+
 export function createPluginService(deps: PluginServiceDeps): PluginService {
   const logger = deps.logger;
   const bundledPlugins =
@@ -1826,10 +1862,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         `http ${route.method} ${route.path}`,
         async () => {
           const response = await route.handler(context);
-          if (!(response instanceof Response)) {
-            throw new Error("http route handler must return a Response");
-          }
-          return response;
+          return await adoptHandlerResponse(response);
         },
       );
       if (outcome.ok) return outcome.value;

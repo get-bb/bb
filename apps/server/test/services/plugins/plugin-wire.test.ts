@@ -45,6 +45,23 @@ const WIRE_SOURCE = `
     bb.http.route("GET", "/boom", () => {
       throw new Error("route boom");
     });
+    // A structurally valid Response whose prototype is not this realm's
+    // Response, as a handler running in another realm would return (#1661).
+    bb.http.route("GET", "/foreign", () => {
+      const real = new Response(JSON.stringify({ foreign: true }), {
+        status: 201,
+        statusText: "Created",
+        headers: { "content-type": "application/json", "x-foreign": "yes" },
+      });
+      return {
+        status: real.status,
+        statusText: real.statusText,
+        headers: real.headers,
+        arrayBuffer: () => real.arrayBuffer(),
+        clone: () => real.clone(),
+      };
+    });
+    bb.http.route("GET", "/not-a-response", () => ({ status: 200 }));
     bb.rpc.register(rpcContract, {
       echo: async (input: any) => ({ echoed: input }),
       boom: async () => {
@@ -389,6 +406,29 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     const entry = harness.pluginService.list().find((p) => p.id === "wire");
     expect(entry?.handlerStats.errorCount).toBe(1);
     expect(entry?.statusDetail).toContain("http GET /boom failed");
+  });
+
+  it("adopts a structurally valid Response from another realm (#1661)", async () => {
+    const response = await harness.app.request(
+      `${BASE}/api/v1/plugins/wire/http/foreign`,
+    );
+    expect(response).toBeInstanceOf(Response);
+    expect(response.status).toBe(201);
+    expect(response.headers.get("x-foreign")).toBe("yes");
+    expect(await response.json()).toEqual({ foreign: true });
+    const entry = harness.pluginService.list().find((p) => p.id === "wire");
+    expect(entry?.handlerStats.errorCount).toBe(0);
+  });
+
+  it("rejects a non-Response return with a pointed 500 at the invoke boundary", async () => {
+    const response = await harness.app.request(
+      `${BASE}/api/v1/plugins/wire/http/not-a-response`,
+    );
+    expect(response.status).toBe(500);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("http route handler must return a Response"),
+    });
   });
 
   it("successful reload atomically replaces the complete route and rpc tables", async () => {
