@@ -362,7 +362,10 @@ export function ThreadSecondaryPanel({
   const togglePanelShortcut = useAppCommandShortcut("panel.toggle");
   const diffShortcut = useAppCommandShortcut("diff.toggle");
   const activeFileTab = fileTabs?.find((tab) => tab.isActive);
-  const visibleFileTabs = fileTabs?.filter((tab) => tab.isHidden !== true);
+  const visibleFileTabs = useMemo(
+    () => fileTabs?.filter((tab) => tab.isHidden !== true),
+    [fileTabs],
+  );
   const hasActiveFileTab = activeFileTab !== undefined;
   const isTerminalTabActive =
     activeTab?.kind === "terminal" && hasActiveFileTab;

@@ -1687,7 +1687,7 @@ function RootComposeSurface({
     },
     [closeSecondaryPanel, closeTab, secondaryFileTabCount],
   );
-  const fileTabs = (() => {
+  const fileTabs = useMemo(() => {
     const filenameOf = (path: string) => path.split("/").at(-1) ?? path;
     const tabs = syncedOrderedSecondaryFileTabs.map(
       (tab): SecondaryPanelFileTab => {
@@ -1798,7 +1798,17 @@ function RootComposeSurface({
       },
     );
     return tabs.length > 0 ? tabs : undefined;
-  })();
+  }, [
+    activeFixedSecondaryTabId,
+    closeTab,
+    handleActivateFileTab,
+    handleActivateTerminalTab,
+    handleCloseNewTab,
+    handleCloseTerminalTab,
+    rootPanelNewThreadPanelActions,
+    syncedOrderedSecondaryFileTabs,
+    terminalsById,
+  ]);
   const { isLocalDaemonHost } = useHostDaemon();
   const activeWorkspaceEnvironmentQuery = useEnvironment(
     activeWorkspaceFileEnvironmentId,
