@@ -62,6 +62,12 @@
       "import": "./dist/internal/host-policy.js",
       "default": "./dist/internal/host-policy.js"
     },
+    "./internal/plugin-app-collector": {
+      "source": "./src/internal/plugin-app-collector.ts",
+      "types": "./bundled-types/bb-plugin-sdk-internal-plugin-app-collector.d.ts",
+      "import": "./dist/internal/plugin-app-collector.js",
+      "default": "./dist/internal/plugin-app-collector.js"
+    },
     "./testing": {
       "source": "./src/testing/index.ts",
       "types": "./bundled-types/bb-plugin-sdk-testing.d.ts",

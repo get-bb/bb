@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
 import {
   collectPluginAppRegistrations,
   definePluginApp,
@@ -155,6 +156,108 @@ describe("collectPluginAppRegistrations — experimental_threadList", () => {
 });
 
 describe("collectPluginAppRegistrations", () => {
+  it("produces the same complete registration set in the app and test runtimes", async () => {
+    const run = () => {};
+    const mount = () => {};
+    const match = () => [];
+    const definition = definePluginApp((app) => {
+      app.slots.homepageSection({
+        id: "home",
+        title: "Home",
+        component: Component,
+      });
+      app.slots.settingsSection({
+        id: "settings",
+        title: "Settings",
+        description: "Configure it.",
+        component: Component,
+      });
+      app.slots.navPanel({
+        id: "panel",
+        title: "Panel",
+        icon: "Columns",
+        path: "panel",
+        component: Component,
+        experimental_sidebarAccessory: Component,
+        headerContent: Component,
+      });
+      app.slots.threadPanelAction({
+        id: "thread-panel",
+        title: "Thread panel",
+        icon: "Columns",
+        component: Component,
+        layout: "flush",
+        run,
+      });
+      app.slots.experimental_newThreadPanelAction({
+        id: "new-thread-panel",
+        title: "New thread panel",
+        component: Component,
+        layout: "padded",
+        run,
+      });
+      app.slots.pendingInteraction({
+        id: "interaction",
+        component: Component,
+      });
+      app.slots.sidebarFooterAction({
+        id: "footer",
+        title: "Footer",
+        icon: "Bolt",
+        run,
+      });
+      app.slots.experimental_threadList({
+        id: "threads",
+        title: "Threads",
+        description: "A thread list.",
+        component: Component,
+      });
+      app.slots.experimental_threadHeaderAction({
+        id: "thread-header",
+        title: "Thread header",
+        component: Component,
+      });
+      app.slots.fileOpener({
+        id: "files",
+        title: "Files",
+        extensions: ["md", "mdx"],
+        component: Component,
+      });
+      app.slots.messageDirective({
+        id: "inline-card",
+        component: Component,
+      });
+      app.slots.messageAction({
+        id: "message",
+        title: "Message",
+        icon: "Bolt",
+        run,
+      });
+      app.composer.customize({
+        id: "composer",
+        scopes: ["thread", "new-thread"],
+        actions: [{ id: "action", component: Component }],
+        banners: [{ id: "banner", component: Component }],
+        plusMenu: [{ id: "menu", label: "Menu", run }],
+        richText: {
+          effects: [
+            {
+              id: "effect",
+              className: "effect",
+              match,
+            },
+          ],
+          onDraftChange: run,
+        },
+      });
+      app.contentScripts.register({ id: "script", mount });
+    });
+
+    expect(await loadPluginApp(definition)).toEqual(
+      collectPluginAppRegistrations(definition),
+    );
+  });
+
   it("collects every slot kind as plain data", () => {
     const run = () => {};
     const mount = () => {};

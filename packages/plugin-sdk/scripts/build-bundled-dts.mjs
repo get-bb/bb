@@ -45,6 +45,10 @@ const outputs = {
     pkgRoot,
     "src/internal/host-policy.ts",
   ),
+  "bb-plugin-sdk-internal-plugin-app-collector.d.ts": path.join(
+    pkgRoot,
+    "src/internal/plugin-app-collector.ts",
+  ),
   "bb-plugin-sdk-testing.d.ts": path.join(pkgRoot, "src/testing/index.ts"),
   "bb-plugin-sdk-testing-app.d.ts": path.join(pkgRoot, "src/testing/app.tsx"),
   "bb-plugin-sdk-testing-host.d.ts": path.join(pkgRoot, "src/testing/host.ts"),
