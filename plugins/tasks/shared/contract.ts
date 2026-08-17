@@ -691,7 +691,7 @@ export const tasksRpcContract = defineRpcContract({
             .object({
               id: z.string(),
               name: z.string(),
-              supportedPermissionModes: z.array(presetPermissionModeSchema),
+              permissionModes: z.array(presetPermissionModeSchema),
             })
             .strict(),
         ),

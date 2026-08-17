@@ -9,12 +9,12 @@ function makeAdapter() {
     id: "fake-bridge",
     displayName: "Fake Bridge",
     capabilities: {
-      supportsArchive: false,
-      supportsRename: false,
+      supportsThreadArchive: false,
+      supportsThreadRename: false,
       supportsServiceTier: false,
-      supportsUserQuestion: false,
+      supportsNativeUserQuestion: false,
       fork: "checkpoint",
-      supportedPermissionModes: ["full"],
+      permissionModes: ["full"],
     },
     process: { command: "node", args: ["fake-bridge.mjs"] },
   });

@@ -270,9 +270,9 @@ export const hostDaemonBridgeLaunchSchema = z
     capabilities: z
       .object({
         supportsServiceTier: z.boolean(),
-        supportedPermissionModes: z.array(permissionModeSchema).min(1),
-        supportsArchive: z.boolean(),
-        supportsRename: z.boolean(),
+        permissionModes: z.array(permissionModeSchema).min(1),
+        supportsThreadArchive: z.boolean(),
+        supportsThreadRename: z.boolean(),
         fork: providerForkSchema,
       })
       .strict(),

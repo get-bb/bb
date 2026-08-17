@@ -40,7 +40,7 @@ function project(projectId = PROJECT_ID) {
 }
 
 async function bootAutomationsPlugin(
-  supportedPermissionModes: Array<"accept-edits" | "auto" | "full"> = [
+  declaredPermissionModes: Array<"accept-edits" | "auto" | "full"> = [
     "accept-edits",
     "auto",
     "full",
@@ -82,12 +82,9 @@ async function bootAutomationsPlugin(
             routing?.environmentId === "env_routed" &&
             routedPermissionModes !== undefined
               ? routedPermissionModes
-              : supportedPermissionModes;
+              : declaredPermissionModes;
           return [
-            {
-              id: "codex",
-              capabilities: { supportedPermissionModes: permissionModes },
-            },
+            { id: "codex", capabilities: { permissionModes } },
           ] as never;
         },
         async models() {
@@ -96,7 +93,7 @@ async function bootAutomationsPlugin(
               {
                 id: "codex",
                 available: true,
-                capabilities: { supportedPermissionModes },
+                capabilities: { permissionModes: declaredPermissionModes },
               },
             ],
             permissionCeiling: "full",

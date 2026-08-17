@@ -100,9 +100,9 @@ export async function setup(): Promise<void> {
       // read a declaration from.
       capabilities: {
         supportsServiceTier: capabilities.supportsServiceTier,
-        supportedPermissionModes: [...capabilities.permissionModes],
-        supportsArchive: capabilities.supportsThreadArchive,
-        supportsRename: capabilities.supportsThreadRename,
+        permissionModes: [...capabilities.permissionModes],
+        supportsThreadArchive: capabilities.supportsThreadArchive,
+        supportsThreadRename: capabilities.supportsThreadRename,
         fork: capabilities.fork,
       },
     };

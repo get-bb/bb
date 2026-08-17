@@ -62,13 +62,13 @@ export function permissionModeRank(permissionMode: PermissionMode): number {
 export function clampPermissionModeToCeiling(args: {
   ceiling: PermissionMode;
   permissionMode: PermissionMode;
-  supportedPermissionModes?: readonly PermissionMode[];
+  permissionModes?: readonly PermissionMode[];
 }): PermissionMode | null {
   const ceilingRank = permissionModeRank(args.ceiling);
   if (permissionModeRank(args.permissionMode) <= ceilingRank) {
     return args.permissionMode;
   }
-  const supported = args.supportedPermissionModes ?? permissionModeValues;
+  const supported = args.permissionModes ?? permissionModeValues;
   const allowed = supported
     .filter((mode) => permissionModeRank(mode) <= ceilingRank)
     .sort(

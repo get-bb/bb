@@ -130,7 +130,7 @@ function createAutomationServiceBb() {
             {
               id: "codex",
               capabilities: {
-                supportedPermissionModes: ["accept-edits", "auto", "full"],
+                permissionModes: ["accept-edits", "auto", "full"],
               },
             },
           ] as never,

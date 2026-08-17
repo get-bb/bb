@@ -36,17 +36,17 @@ export async function resolvePermissionMode(
   }
   if (
     requested !== undefined &&
-    !provider.capabilities.supportedPermissionModes.includes(requested)
+    !provider.capabilities.permissionModes.includes(requested)
   ) {
     throw new Error(
       `Permission mode ${requested} is not supported by provider ${providerId}.`,
     );
   }
   if (requested !== undefined) return requested;
-  if (provider.capabilities.supportedPermissionModes.includes("auto")) {
+  if (provider.capabilities.permissionModes.includes("auto")) {
     return "auto";
   }
-  if (provider.capabilities.supportedPermissionModes.includes("full")) {
+  if (provider.capabilities.permissionModes.includes("full")) {
     return "full";
   }
   throw new Error(

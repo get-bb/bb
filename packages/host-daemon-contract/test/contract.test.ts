@@ -2322,9 +2322,9 @@ describe("host-daemon command schemas", () => {
       providerOptions: { echoPrefix: "echo:" },
       capabilities: {
         supportsServiceTier: true,
-        supportedPermissionModes: ["accept-edits", "full"],
-        supportsArchive: false,
-        supportsRename: false,
+        permissionModes: ["accept-edits", "full"],
+        supportsThreadArchive: false,
+        supportsThreadRename: false,
         fork: "tip",
       },
     };

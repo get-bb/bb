@@ -26,10 +26,10 @@ export const availableModelSchema = z.object({
 export type AvailableModel = z.infer<typeof availableModelSchema>;
 
 export const providerCapabilitiesSchema = z.object({
-  supportsArchive: z.boolean(),
-  supportsRename: z.boolean(),
+  supportsThreadArchive: z.boolean(),
+  supportsThreadRename: z.boolean(),
   supportsServiceTier: z.boolean(),
-  supportsUserQuestion: z.boolean(),
+  supportsNativeUserQuestion: z.boolean(),
   supportsFork: z.boolean(),
   /**
    * The provider can recreate a session at an earlier point, which is what
@@ -37,7 +37,7 @@ export const providerCapabilitiesSchema = z.object({
    * whole sessions (tip-only) and cannot stop at a checkpoint.
    */
   supportsSessionRewind: z.boolean(),
-  supportedPermissionModes: z.array(permissionModeSchema).min(1),
+  permissionModes: z.array(permissionModeSchema).min(1),
 });
 export type ProviderCapabilities = z.infer<typeof providerCapabilitiesSchema>;
 

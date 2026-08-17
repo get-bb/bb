@@ -436,7 +436,7 @@ export function createAutomationService(args: {
           return true;
         })
         .map(({ id, model, displayName }) => ({ id, model, displayName }));
-      const permissionModes = provider.capabilities.supportedPermissionModes;
+      const permissionModes = provider.capabilities.permissionModes;
       return { models, permissionModes };
     },
 
@@ -463,7 +463,7 @@ export function createAutomationService(args: {
         throw new Error(`Provider ${execution.providerId} is not available.`);
       }
       return {
-        permissionModes: provider.capabilities.supportedPermissionModes,
+        permissionModes: provider.capabilities.permissionModes,
       };
     },
 

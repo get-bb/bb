@@ -45,9 +45,9 @@ const bridgeLaunch: AgentRuntimeBridgeLaunch = {
   artifactPath: "/tmp/graduated-provider-bridge.mjs",
   capabilities: {
     supportsServiceTier: false,
-    supportedPermissionModes: ["full"],
-    supportsArchive: true,
-    supportsRename: false,
+    permissionModes: ["full"],
+    supportsThreadArchive: true,
+    supportsThreadRename: false,
     fork: "none",
   },
 };
@@ -723,7 +723,7 @@ rl.on("line", (line) => {
         ...baseAdapter,
         capabilities: {
           ...baseAdapter.capabilities,
-          supportsRename: false,
+          supportsThreadRename: false,
         },
       }),
     });

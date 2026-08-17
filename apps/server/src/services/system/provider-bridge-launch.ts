@@ -31,7 +31,12 @@ export function resolveBridgeLaunchForProviderId(
   // answers from the shared ACP capability set — the same source every other
   // ACP policy accessor on the registry falls back to.
   const isOwnRegistration = registration.info.id === providerId;
-  const capabilities = (
+  const {
+    supportsServiceTier,
+    supportsThreadArchive,
+    supportsThreadRename,
+    permissionModes,
+  } = (
     isOwnRegistration
       ? registration.info
       : buildAcpProviderInfo({
@@ -51,12 +56,13 @@ export function resolveBridgeLaunchForProviderId(
     },
     // The daemon has no registry: transport the validated declaration's
     // execution capabilities so its adapter accepts the same permission
-    // modes and service tier the server already offered to clients.
+    // modes and service tier the server already offered to clients. The wire
+    // shares the declaration's nouns, so these carry over by name.
     capabilities: {
-      supportsServiceTier: capabilities.supportsServiceTier,
-      supportedPermissionModes: [...capabilities.supportedPermissionModes],
-      supportsArchive: capabilities.supportsArchive,
-      supportsRename: capabilities.supportsRename,
+      supportsServiceTier,
+      supportsThreadArchive,
+      supportsThreadRename,
+      permissionModes: [...permissionModes],
       fork,
     },
   };

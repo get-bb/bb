@@ -31,13 +31,13 @@ import {
 } from "../provider-adapter.js";
 import { parseAvailableModelList } from "../shared/available-models.js";
 import { classifySessionExecutionSettingsChange } from "../execution-options.js";
-type FakeUserQuestionCapability = ProviderCapabilities["supportsUserQuestion"];
+type FakeUserQuestionCapability = ProviderCapabilities["supportsNativeUserQuestion"];
 
 export interface CreateFakeProviderExecutionContext {
   displayName?: string;
   id?: string;
   scriptPath?: string;
-  supportsUserQuestion?: FakeUserQuestionCapability;
+  supportsNativeUserQuestion?: FakeUserQuestionCapability;
 }
 
 interface FakeEventMessage {
@@ -476,26 +476,26 @@ export function createFakeAdapter(
    *   `turnId`, matching the canonical bridge wire form for providers that
    *   cannot resolve the BB turn id.
    * - `ask_user` emits a provider-scoped user-question interactive request
-   *   when the adapter is configured with `supportsUserQuestion: true`.
+   *   when the adapter is configured with `supportsNativeUserQuestion: true`.
    * - remaining text is echoed back as `Response to: ...`.
    */
-  const supportsUserQuestion = options.supportsUserQuestion ?? false;
+  const supportsNativeUserQuestion = options.supportsNativeUserQuestion ?? false;
 
   return {
     approvalRequestPolicy: "runtime",
     buildCommandPlan,
     capabilities: {
-      supportsArchive: true,
-      supportsRename: true,
+      supportsThreadArchive: true,
+      supportsThreadRename: true,
       supportsServiceTier: false,
-      supportsUserQuestion,
+      supportsNativeUserQuestion,
       supportsFork: true,
       supportsSessionRewind: true,
-      supportedPermissionModes: ["accept-edits", "auto", "full"],
+      permissionModes: ["accept-edits", "auto", "full"],
     },
     classifyExecutionSettingsChange: classifySessionExecutionSettingsChange,
     decodeToolCallRequest,
-    decodeInteractiveRequest: supportsUserQuestion
+    decodeInteractiveRequest: supportsNativeUserQuestion
       ? decodeInteractiveRequest
       : undefined,
     displayName: options.displayName ?? DEFAULT_DISPLAY_NAME,
@@ -512,7 +512,7 @@ export function createFakeAdapter(
     translateAcceptedCommand() {
       return [];
     },
-    buildInteractiveResponse: supportsUserQuestion
+    buildInteractiveResponse: supportsNativeUserQuestion
       ? buildInteractiveResponse
       : undefined,
   };

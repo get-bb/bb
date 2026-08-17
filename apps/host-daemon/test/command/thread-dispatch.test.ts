@@ -386,9 +386,9 @@ describe("thread command dispatch", () => {
           providerOptions: { echoPrefix: "echo:" },
           capabilities: {
             supportsServiceTier: false,
-            supportedPermissionModes: ["full"] as const,
-            supportsArchive: false,
-            supportsRename: false,
+            permissionModes: ["full"] as const,
+            supportsThreadArchive: false,
+            supportsThreadRename: false,
             fork: "none",
           },
         },
@@ -426,9 +426,9 @@ describe("thread command dispatch", () => {
       providerOptions: { echoPrefix: "echo:" },
       capabilities: {
         supportsServiceTier: false,
-        supportedPermissionModes: ["full"],
-        supportsArchive: false,
-        supportsRename: false,
+        permissionModes: ["full"],
+        supportsThreadArchive: false,
+        supportsThreadRename: false,
         fork: "none",
       },
     });
@@ -450,9 +450,9 @@ describe("thread command dispatch", () => {
       },
       capabilities: {
         supportsServiceTier: false,
-        supportedPermissionModes: ["full"],
-        supportsArchive: true,
-        supportsRename: false,
+        permissionModes: ["full"],
+        supportsThreadArchive: true,
+        supportsThreadRename: false,
         fork: "none",
       },
     };
@@ -461,9 +461,9 @@ describe("thread command dispatch", () => {
       artifactPath: path.join(dataDir, "provider-bridges", `${sha256}.mjs`),
       capabilities: {
         supportsServiceTier: false,
-        supportedPermissionModes: ["full"],
-        supportsArchive: true,
-        supportsRename: false,
+        permissionModes: ["full"],
+        supportsThreadArchive: true,
+        supportsThreadRename: false,
         fork: "none",
       },
     };
@@ -544,9 +544,9 @@ describe("thread command dispatch", () => {
             },
             capabilities: {
               supportsServiceTier: false,
-              supportedPermissionModes: ["full"] as const,
-              supportsArchive: false,
-              supportsRename: false,
+              permissionModes: ["full"] as const,
+              supportsThreadArchive: false,
+              supportsThreadRename: false,
               fork: "none",
             },
           },
@@ -568,9 +568,9 @@ describe("thread command dispatch", () => {
       artifactPath: path.join(dataDir, "provider-bridges", `${sha256}.mjs`),
       capabilities: {
         supportsServiceTier: false,
-        supportedPermissionModes: ["full"],
-        supportsArchive: false,
-        supportsRename: false,
+        permissionModes: ["full"],
+        supportsThreadArchive: false,
+        supportsThreadRename: false,
         fork: "none",
       },
     });

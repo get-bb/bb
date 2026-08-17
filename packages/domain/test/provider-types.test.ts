@@ -7,13 +7,13 @@ describe("provider info schema", () => {
     displayName: "Codex",
     logoUrl: null,
     capabilities: {
-      supportsArchive: true,
-      supportsRename: true,
+      supportsThreadArchive: true,
+      supportsThreadRename: true,
       supportsServiceTier: true,
-      supportsUserQuestion: false,
+      supportsNativeUserQuestion: false,
       supportsFork: true,
       supportsSessionRewind: true,
-      supportedPermissionModes: ["accept-edits", "auto", "full"],
+      permissionModes: ["accept-edits", "auto", "full"],
     },
     available: true,
   };

@@ -258,14 +258,14 @@ export function createProviderRegistryService(
     getSupportedPermissionModes(providerId) {
       const registration = getRegistration(providerId);
       if (registration) {
-        return registration.info.capabilities.supportedPermissionModes;
+        return registration.info.capabilities.permissionModes;
       }
       if (isAcpProviderId(providerId)) {
         return buildAcpProviderInfo({
           id: providerId,
           displayName: providerId,
           logoUrl: null,
-        }).capabilities.supportedPermissionModes;
+        }).capabilities.permissionModes;
       }
       return null;
     },

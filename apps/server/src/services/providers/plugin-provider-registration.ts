@@ -23,6 +23,15 @@ export function buildPluginProviderRegistration(args: {
 }): Omit<ProviderRegistration, "source"> {
   const { declaration } = args;
   const { capabilities } = declaration;
+  // The declaration and `ProviderInfo` now share one noun set, so these carry
+  // over by name; only `fork` still needs a projection (below).
+  const {
+    supportsThreadArchive,
+    supportsThreadRename,
+    supportsServiceTier,
+    supportsNativeUserQuestion,
+    permissionModes,
+  } = capabilities;
 
   // Skills slash-command typeahead is universal (BB injects skills into every
   // provider), so it always leads; declared actions carry the composer's own
@@ -57,16 +66,17 @@ export function buildPluginProviderRegistration(args: {
         ? null
         : `/api/v1/system/providers/${declaration.id}/logo`,
     capabilities: {
-      supportsArchive: capabilities.supportsThreadArchive,
-      supportsRename: capabilities.supportsThreadRename,
-      supportsServiceTier: capabilities.supportsServiceTier,
-      supportsUserQuestion: capabilities.supportsNativeUserQuestion,
-      // The declared fork ladder projects onto the two booleans clients read:
-      // any cloning at all enables the fork affordance, while rewind
-      // (edit-past-message) needs a session recreated at an earlier point.
+      supportsThreadArchive,
+      supportsThreadRename,
+      supportsServiceTier,
+      supportsNativeUserQuestion,
+      permissionModes: [...permissionModes],
+      // The one projection left: the declared fork ladder becomes the two
+      // booleans clients read. Any cloning at all enables the fork affordance,
+      // while rewind (edit-past-message) needs a session recreated at an
+      // earlier point.
       supportsFork: capabilities.fork !== "none",
       supportsSessionRewind: capabilities.fork === "checkpoint",
-      supportedPermissionModes: [...capabilities.permissionModes],
     },
     composerActions,
   };

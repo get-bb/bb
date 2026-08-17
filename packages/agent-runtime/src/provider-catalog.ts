@@ -23,12 +23,12 @@ export function isAcpProviderId(value: string): boolean {
 }
 
 const PI_CAPABILITIES: BridgeAdapterCapabilities = {
-  supportsArchive: false,
-  supportsRename: false,
+  supportsThreadArchive: false,
+  supportsThreadRename: false,
   supportsServiceTier: false,
-  supportsUserQuestion: false,
+  supportsNativeUserQuestion: false,
   fork: "checkpoint",
-  supportedPermissionModes: ["full"],
+  permissionModes: ["full"],
 };
 
 /**
@@ -67,7 +67,7 @@ function toInfo(id: string, provider: BundledProvider): ProviderInfo {
     available: true,
     capabilities: {
       ...capabilities,
-      supportedPermissionModes: [...capabilities.supportedPermissionModes],
+      permissionModes: [...capabilities.permissionModes],
       supportsFork: fork !== "none",
       supportsSessionRewind: fork === "checkpoint",
     },

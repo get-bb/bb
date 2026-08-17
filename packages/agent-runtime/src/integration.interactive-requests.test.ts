@@ -1289,6 +1289,6 @@ describe("interactive request scenarios", () => {
       (provider) => provider.id === "pi",
     );
 
-    expect(piProvider?.capabilities.supportedPermissionModes).toEqual(["full"]);
+    expect(piProvider?.capabilities.permissionModes).toEqual(["full"]);
   });
 });

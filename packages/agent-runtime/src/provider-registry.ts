@@ -52,17 +52,11 @@ function createBridgeProtocolAdapterForId(
       // these before routing the command). Session-behavior facts arrive via
       // the initialize handshake, which may only narrow.
       capabilities: {
-        supportsArchive: options.bridgeLaunch.capabilities.supportsArchive,
-        supportsRename: options.bridgeLaunch.capabilities.supportsRename,
-        supportsServiceTier:
-          options.bridgeLaunch.capabilities.supportsServiceTier,
-        // A session-behavior fact the runtime never enforces: the bridge
-        // answers for it per session (thread/identity).
-        supportsUserQuestion: false,
-        fork: options.bridgeLaunch.capabilities.fork,
-        supportedPermissionModes: [
-          ...options.bridgeLaunch.capabilities.supportedPermissionModes,
-        ],
+        ...options.bridgeLaunch.capabilities,
+        permissionModes: [...options.bridgeLaunch.capabilities.permissionModes],
+        // A session-behavior fact the runtime never enforces, so the wire does
+        // not carry it: the bridge answers per session (thread/identity).
+        supportsNativeUserQuestion: false,
       },
       process: {
         command: options.bridgeNodeExecutablePath ?? "node",

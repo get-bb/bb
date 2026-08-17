@@ -43,12 +43,12 @@ const ACP_FORK: ProviderFork = "tip";
 
 const ACP_CAPABILITIES: Omit<
   ProviderCapabilities,
-  "supportedPermissionModes"
+  "permissionModes"
 > = {
-  supportsArchive: false,
-  supportsRename: false,
+  supportsThreadArchive: false,
+  supportsThreadRename: false,
   supportsServiceTier: true,
-  supportsUserQuestion: false,
+  supportsNativeUserQuestion: false,
   // The ACP_FORK "tip" ladder, projected: fork yes, rewind no.
   supportsFork: true,
   supportsSessionRewind: false,
@@ -103,7 +103,7 @@ export function buildAcpProviderInfo(
     available: true,
     capabilities: {
       ...ACP_CAPABILITIES,
-      supportedPermissionModes: [...ACP_PERMISSION_MODES],
+      permissionModes: [...ACP_PERMISSION_MODES],
     },
     composerActions: ACP_COMPOSER_ACTIONS.map((action) =>
       action.kind === "skills"

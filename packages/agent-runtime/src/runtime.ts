@@ -972,7 +972,7 @@ function createAgentRuntimeInternal(
       ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
     });
     const proc = requireProviderProcess({ processKey, providerId });
-    if (!proc.adapter.capabilities.supportsArchive) {
+    if (!proc.adapter.capabilities.supportsThreadArchive) {
       throw new Error(
         `Provider "${providerId}" does not support thread archive.`,
       );
@@ -2247,7 +2247,7 @@ function createAgentRuntimeInternal(
         work: async () => {
           const pid = resolveProviderForThread(threadId);
           const proc = requireProviderProcessForThread(threadId);
-          if (!proc.adapter.capabilities.supportsRename) {
+          if (!proc.adapter.capabilities.supportsThreadRename) {
             throw new Error(
               `Provider "${pid}" does not support thread rename.`,
             );

@@ -154,9 +154,9 @@ export interface AgentRuntimeBridgeLaunch {
   /** Server-validated capabilities from the provider declaration. */
   capabilities: {
     supportsServiceTier: boolean;
-    supportedPermissionModes: PermissionMode[];
-    supportsArchive: boolean;
-    supportsRename: boolean;
+    permissionModes: PermissionMode[];
+    supportsThreadArchive: boolean;
+    supportsThreadRename: boolean;
     fork: ProviderFork;
   };
 }

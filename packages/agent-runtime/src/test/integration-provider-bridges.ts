@@ -27,9 +27,9 @@ const bridgeLaunchSchema = z.object({
   artifactPath: z.string(),
   capabilities: z.object({
     supportsServiceTier: z.boolean(),
-    supportedPermissionModes: z.array(permissionModeSchema),
-    supportsArchive: z.boolean(),
-    supportsRename: z.boolean(),
+    permissionModes: z.array(permissionModeSchema),
+    supportsThreadArchive: z.boolean(),
+    supportsThreadRename: z.boolean(),
     fork: providerForkSchema,
   }),
 });

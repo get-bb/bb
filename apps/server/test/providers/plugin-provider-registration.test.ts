@@ -41,13 +41,13 @@ describe("buildPluginProviderRegistration", () => {
       available: true,
       logoUrl: "/api/v1/system/providers/my-remote-agent/logo",
       capabilities: {
-        supportsArchive: true,
-        supportsRename: true,
+        supportsThreadArchive: true,
+        supportsThreadRename: true,
         supportsServiceTier: true,
-        supportsUserQuestion: true,
+        supportsNativeUserQuestion: true,
         supportsFork: true,
         supportsSessionRewind: true,
-        supportedPermissionModes: ["accept-edits", "full"],
+        permissionModes: ["accept-edits", "full"],
       },
       composerActions: [
         { kind: "skills", trigger: "/" },

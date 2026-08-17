@@ -21,8 +21,8 @@ const FIRST_PARTY_PROVIDER_PLUGINS = [
     pluginId: "provider-codex",
     providerId: "codex",
     displayName: "Codex",
-    supportsArchive: true,
-    supportsRename: true,
+    supportsThreadArchive: true,
+    supportsThreadRename: true,
     supportsWorkflows: false,
     supportsManualCompaction: true,
     backsHostDaemonAiServices: true,
@@ -32,8 +32,8 @@ const FIRST_PARTY_PROVIDER_PLUGINS = [
     pluginId: "provider-claude-code",
     providerId: "claude-code",
     displayName: "Claude Code",
-    supportsArchive: false,
-    supportsRename: false,
+    supportsThreadArchive: false,
+    supportsThreadRename: false,
     supportsWorkflows: true,
     supportsManualCompaction: true,
     backsHostDaemonAiServices: false,
@@ -43,8 +43,8 @@ const FIRST_PARTY_PROVIDER_PLUGINS = [
     pluginId: "provider-pi",
     providerId: "pi",
     displayName: "Pi",
-    supportsArchive: false,
-    supportsRename: false,
+    supportsThreadArchive: false,
+    supportsThreadRename: false,
     supportsWorkflows: false,
     supportsManualCompaction: true,
     backsHostDaemonAiServices: false,
@@ -54,8 +54,8 @@ const FIRST_PARTY_PROVIDER_PLUGINS = [
     pluginId: "provider-acp",
     providerId: "acp-cursor",
     displayName: "Cursor",
-    supportsArchive: false,
-    supportsRename: false,
+    supportsThreadArchive: false,
+    supportsThreadRename: false,
     supportsWorkflows: false,
     supportsManualCompaction: false,
     backsHostDaemonAiServices: false,
@@ -119,11 +119,11 @@ describe("first-party provider plugins", () => {
             expectedLogoUrl(plugin.providerId),
           );
           // The facts the takeover merge used to carry over from the seed.
-          expect(registration.info.capabilities.supportsArchive, label).toBe(
-            plugin.supportsArchive,
+          expect(registration.info.capabilities.supportsThreadArchive, label).toBe(
+            plugin.supportsThreadArchive,
           );
-          expect(registration.info.capabilities.supportsRename, label).toBe(
-            plugin.supportsRename,
+          expect(registration.info.capabilities.supportsThreadRename, label).toBe(
+            plugin.supportsThreadRename,
           );
           expect(
             registration.serverCapabilities.supportsWorkflows,

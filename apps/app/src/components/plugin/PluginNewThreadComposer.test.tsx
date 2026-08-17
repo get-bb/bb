@@ -127,7 +127,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
           logoUrl: null,
           capabilities: {
             supportsServiceTier: false,
-            supportedPermissionModes: ["auto", "accept-edits", "full"],
+            permissionModes: ["auto", "accept-edits", "full"],
           },
           composerActions: [],
         },
@@ -137,7 +137,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
           logoUrl: null,
           capabilities: {
             supportsServiceTier: false,
-            supportedPermissionModes: ["auto", "accept-edits", "full"],
+            permissionModes: ["auto", "accept-edits", "full"],
           },
           composerActions: [],
         },

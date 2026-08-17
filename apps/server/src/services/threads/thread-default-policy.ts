@@ -170,23 +170,23 @@ function resolveSupportedPermissionMode(
     return args.preferredPermissionMode;
   }
 
-  const supportedPermissionModes = registry.getSupportedPermissionModes(
+  const permissionModes = registry.getSupportedPermissionModes(
     args.providerId,
   );
-  if (!supportedPermissionModes) {
+  if (!permissionModes) {
     return args.preferredPermissionMode;
   }
 
-  if (supportedPermissionModes.includes(args.preferredPermissionMode)) {
+  if (permissionModes.includes(args.preferredPermissionMode)) {
     return args.preferredPermissionMode;
   }
-  if (supportedPermissionModes.includes(DEFAULT_PERMISSION_MODE)) {
+  if (permissionModes.includes(DEFAULT_PERMISSION_MODE)) {
     return DEFAULT_PERMISSION_MODE;
   }
-  if (supportedPermissionModes.includes("full")) {
+  if (permissionModes.includes("full")) {
     return "full";
   }
-  return supportedPermissionModes[0] ?? DEFAULT_PERMISSION_MODE;
+  return permissionModes[0] ?? DEFAULT_PERMISSION_MODE;
 }
 
 export function resolveCreateThreadExecutionDefaults(
@@ -361,7 +361,7 @@ export function resolveThreadExecutionPermissionMode(
     clampPermissionModeToCeiling({
       ceiling,
       permissionMode,
-      ...(supported ? { supportedPermissionModes: supported } : {}),
+      ...(supported ? { permissionModes: supported } : {}),
     }) ?? ceiling
   );
 }

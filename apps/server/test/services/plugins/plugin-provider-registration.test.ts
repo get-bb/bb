@@ -97,12 +97,12 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
           available: true,
           logoUrl: "/api/v1/system/providers/my-remote-agent/logo",
           capabilities: {
-            supportsArchive: false,
-            supportsRename: false,
+            supportsThreadArchive: false,
+            supportsThreadRename: false,
             supportsServiceTier: true,
-            supportsUserQuestion: true,
+            supportsNativeUserQuestion: true,
             supportsFork: true,
-            supportedPermissionModes: ["accept-edits", "full"],
+            permissionModes: ["accept-edits", "full"],
           },
           composerActions: [
             { kind: "skills", trigger: "/" },

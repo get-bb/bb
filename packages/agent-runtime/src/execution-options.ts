@@ -45,7 +45,7 @@ export function assertProviderSupportsExecutionOptions(
   }
 
   if (
-    !args.adapter.capabilities.supportedPermissionModes.includes(
+    !args.adapter.capabilities.permissionModes.includes(
       args.options.permissionMode,
     )
   ) {

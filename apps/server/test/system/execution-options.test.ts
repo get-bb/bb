@@ -966,7 +966,7 @@ describe("resolveSystemExecutionOptions", () => {
               capabilities: expect.objectContaining({
                 supportsFork: true,
                 supportsServiceTier: true,
-                supportedPermissionModes: ["accept-edits", "full"],
+                permissionModes: ["accept-edits", "full"],
               }),
             }),
           ]),

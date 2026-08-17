@@ -230,7 +230,7 @@ export async function resolveThreadRuntimeCommandConfig(
           // the safe answer: the plugin contributes its own.
           supportsNativeUserQuestion:
             deps.providerRegistry.get(args.thread.providerId)?.info.capabilities
-              .supportsUserQuestion ?? false,
+              .supportsNativeUserQuestion ?? false,
         },
       },
       origin: {

@@ -698,7 +698,7 @@ describe("PresetDialog environment section", () => {
               {
                 id: "claude-code",
                 name: "Claude Code",
-                supportedPermissionModes: ["accept-edits", "auto", "full"],
+                permissionModes: ["accept-edits", "auto", "full"],
               },
             ],
           }),

@@ -443,7 +443,7 @@ async function replay(args: { workspaceDir: string }): Promise<ReplayResult> {
     // Resume leg: a resume mints a fresh translator id prefix (the #1224
     // cross-resume collision fix), which the id interner absorbs. The
     // post-resume turn must still translate identically. Claude reports
-    // `supportsArchive: false`, so resume — not archive — is the reattachment
+    // `supportsThreadArchive: false`, so resume — not archive — is the reattachment
     // path worth pinning.
     bridge.sendRequest(5, "thread/resume", {
       threadId: THREAD_ID,

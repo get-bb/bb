@@ -1269,9 +1269,9 @@ rl.on("line", (line) => {
       artifactPath: join(tmpDir, "codex-provider-bridge.mjs"),
       capabilities: {
         supportsServiceTier: true,
-        supportedPermissionModes: ["full"],
-        supportsArchive: true,
-        supportsRename: false,
+        permissionModes: ["full"],
+        supportsThreadArchive: true,
+        supportsThreadRename: false,
         fork: "none",
       },
     };
@@ -1355,9 +1355,9 @@ rl.on("line", (line) => {
       artifactPath: join(tmpDir, "declaration-provider-bridge.mjs"),
       capabilities: {
         supportsServiceTier: true,
-        supportedPermissionModes: ["full"],
-        supportsArchive: false,
-        supportsRename: false,
+        permissionModes: ["full"],
+        supportsThreadArchive: false,
+        supportsThreadRename: false,
         fork: "none",
       },
     };
@@ -1396,7 +1396,7 @@ rl.on("line", (line) => {
 
       const updatedDeclaration: AgentRuntimeBridgeLaunch = {
         ...bridgeLaunch,
-        capabilities: { ...bridgeLaunch.capabilities, supportsArchive: true },
+        capabilities: { ...bridgeLaunch.capabilities, supportsThreadArchive: true },
       };
       await runtime.startThread({
         bridgeLaunch: updatedDeclaration,

@@ -64,7 +64,7 @@ export function clampPermissionModeToHost(
   const clamped = clampPermissionModeToCeiling({
     ceiling,
     permissionMode: args.permissionMode,
-    ...(supported ? { supportedPermissionModes: supported } : {}),
+    ...(supported ? { permissionModes: supported } : {}),
   });
   if (clamped === null) {
     throw new HostPermissionCeilingConflictError(

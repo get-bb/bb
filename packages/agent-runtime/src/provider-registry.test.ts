@@ -25,9 +25,9 @@ const ACP_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch = {
   artifactPath: "/data/provider-bridges/acp.mjs",
   capabilities: {
     supportsServiceTier: true,
-    supportedPermissionModes: ["accept-edits", "full"],
-    supportsArchive: false,
-    supportsRename: false,
+    permissionModes: ["accept-edits", "full"],
+    supportsThreadArchive: false,
+    supportsThreadRename: false,
     fork: "tip",
   },
 };
@@ -146,7 +146,7 @@ describe("provider registry", () => {
         supportsServiceTier: true,
         supportsFork: true,
         supportsSessionRewind: false,
-        supportedPermissionModes: ["accept-edits", "full"],
+        permissionModes: ["accept-edits", "full"],
       });
     }
   });
@@ -266,9 +266,9 @@ describe("provider registry", () => {
         providerOptions: { echoPrefix: "echo:" },
         capabilities: {
           supportsServiceTier: false,
-          supportedPermissionModes: ["full"],
-          supportsArchive: false,
-          supportsRename: false,
+          permissionModes: ["full"],
+          supportsThreadArchive: false,
+          supportsThreadRename: false,
           fork: "none",
         },
       },
@@ -317,21 +317,21 @@ describe("provider registry", () => {
         artifactPath: "/data/provider-bridges/codex.mjs",
         capabilities: {
           supportsServiceTier: true,
-          supportedPermissionModes: ["accept-edits", "auto", "full"],
-          supportsArchive: true,
-          supportsRename: true,
+          permissionModes: ["accept-edits", "auto", "full"],
+          supportsThreadArchive: true,
+          supportsThreadRename: true,
           fork: "checkpoint",
         },
       },
     });
 
     expect(provider.capabilities).toMatchObject({
-      supportsArchive: true,
-      supportsRename: true,
+      supportsThreadArchive: true,
+      supportsThreadRename: true,
       supportsFork: true,
       supportsSessionRewind: true,
       supportsServiceTier: true,
-      supportedPermissionModes: ["accept-edits", "auto", "full"],
+      permissionModes: ["accept-edits", "auto", "full"],
     });
     const plan = provider.buildCommandPlan({
       type: "thread/start",
@@ -371,9 +371,9 @@ describe("provider registry", () => {
         artifactPath: "/data/provider-bridges/artifact.mjs",
         capabilities: {
           supportsServiceTier: false,
-          supportedPermissionModes: ["full"],
-          supportsArchive: false,
-          supportsRename: false,
+          permissionModes: ["full"],
+          supportsThreadArchive: false,
+          supportsThreadRename: false,
           fork: "none",
         },
       },
@@ -393,9 +393,9 @@ describe("provider registry", () => {
         artifactPath: "/data/provider-bridges/never-used.mjs",
         capabilities: {
           supportsServiceTier: false,
-          supportedPermissionModes: ["full"],
-          supportsArchive: false,
-          supportsRename: false,
+          permissionModes: ["full"],
+          supportsThreadArchive: false,
+          supportsThreadRename: false,
           fork: "none",
         },
       },
@@ -414,9 +414,9 @@ describe("provider registry", () => {
         artifactPath: "/data/provider-bridges/artifact.mjs",
         capabilities: {
           supportsServiceTier: true,
-          supportedPermissionModes: ["accept-edits", "full"],
-          supportsArchive: false,
-          supportsRename: false,
+          permissionModes: ["accept-edits", "full"],
+          supportsThreadArchive: false,
+          supportsThreadRename: false,
           fork: "none",
         },
       },
@@ -426,7 +426,7 @@ describe("provider registry", () => {
     ]);
     // The transported declaration capabilities drive execution checks.
     expect(provider.capabilities.supportsServiceTier).toBe(true);
-    expect(provider.capabilities.supportedPermissionModes).toEqual([
+    expect(provider.capabilities.permissionModes).toEqual([
       "accept-edits",
       "full",
     ]);

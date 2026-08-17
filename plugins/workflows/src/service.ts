@@ -651,7 +651,7 @@ export function createWorkflowService(
       run.originPermissionMode,
     );
     if (
-      !provider.capabilities.supportedPermissionModes.includes(permissionMode)
+      !provider.capabilities.permissionModes.includes(permissionMode)
     ) {
       throw new Error(
         `Permission mode ${JSON.stringify(run.originPermissionMode)} is not supported by provider ${requested.provider}`,

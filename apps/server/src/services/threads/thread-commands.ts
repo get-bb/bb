@@ -186,7 +186,7 @@ function providerSupportsThreadRename(
     // exactly as they did before the registry.
     return true;
   }
-  return registration.info.capabilities.supportsRename;
+  return registration.info.capabilities.supportsThreadRename;
 }
 
 function providerSupportsThreadArchiveForwarding(
@@ -197,7 +197,7 @@ function providerSupportsThreadArchiveForwarding(
   if (!registration) {
     return false;
   }
-  return registration.info.capabilities.supportsArchive;
+  return registration.info.capabilities.supportsThreadArchive;
 }
 
 function resolveClaudeCodeMockCliTrafficConfig(

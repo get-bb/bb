@@ -208,9 +208,9 @@ describe("provider bridge artifact delivery (server)", () => {
         // the thread operations the declaration claims.
         capabilities: {
           supportsServiceTier: false,
-          supportedPermissionModes: ["full"],
-          supportsArchive: false,
-          supportsRename: false,
+          permissionModes: ["full"],
+          supportsThreadArchive: false,
+          supportsThreadRename: false,
           fork: "none",
         },
       };

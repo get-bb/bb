@@ -148,14 +148,11 @@ export async function resolveRuntimeBridgeLaunch(
     ...(bridgeLaunch.providerOptions !== undefined
       ? { providerOptions: bridgeLaunch.providerOptions }
       : {}),
+    // Wire and runtime shapes share one noun set, so the block carries over
+    // whole; only the mutable permission-mode array is copied.
     capabilities: {
-      supportsServiceTier: bridgeLaunch.capabilities.supportsServiceTier,
-      supportedPermissionModes: [
-        ...bridgeLaunch.capabilities.supportedPermissionModes,
-      ],
-      supportsArchive: bridgeLaunch.capabilities.supportsArchive,
-      supportsRename: bridgeLaunch.capabilities.supportsRename,
-      fork: bridgeLaunch.capabilities.fork,
+      ...bridgeLaunch.capabilities,
+      permissionModes: [...bridgeLaunch.capabilities.permissionModes],
     },
   };
 }

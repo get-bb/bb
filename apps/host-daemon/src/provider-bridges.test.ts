@@ -169,9 +169,9 @@ describe("bridgeLaunch wire schema", () => {
       },
       capabilities: {
         supportsServiceTier: false,
-        supportedPermissionModes: ["full"],
-        supportsArchive: false,
-        supportsRename: false,
+        permissionModes: ["full"],
+        supportsThreadArchive: false,
+        supportsThreadRename: false,
         fork: "none",
       },
     };
