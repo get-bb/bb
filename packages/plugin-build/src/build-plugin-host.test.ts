@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -114,6 +121,47 @@ describe("plugin host build", () => {
     expect(builtEntry.default.handlers.echo("from-artifact")).toBe(
       "from-artifact",
     );
+  });
+
+  it("removes host staging directories left by interrupted builds", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-host-stage-cleanup-test-"));
+    tempDirs.push(dir);
+    const distDir = join(dir, "dist");
+    await mkdir(join(distDir, ".host-stage-abandoned"), { recursive: true });
+    await writeFile(
+      join(distDir, ".host-stage-abandoned", "partial-host.js"),
+      "partial artifact\n",
+    );
+    await mkdir(join(distDir, ".stage-app-build"));
+    await writeFile(
+      join(dir, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-host-stage-cleanup-fixture",
+        version: "1.0.0",
+        engines: { bb: ">=0.0" },
+        bb: {
+          name: "Host stage cleanup fixture",
+          description: "Exercises stale host staging directory cleanup.",
+          branding: { icon: "Cpu" },
+          server: "./server.ts",
+          host: "./host.ts",
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "server.ts"),
+      "export default function plugin() {}\n",
+    );
+    await writeFile(join(dir, "host.ts"), "export default {};\n");
+
+    await buildPluginHost(dir, "0.9.0-test", await testToolchain());
+
+    const distEntries = await readdir(distDir);
+    expect(distEntries).not.toContain(".host-stage-abandoned");
+    expect(distEntries).toContain(".stage-app-build");
+    expect(
+      distEntries.filter((entry) => entry.startsWith(".host-stage-")),
+    ).toEqual([]);
   });
 
   it("rejects a host entry outside the plugin directory", async () => {

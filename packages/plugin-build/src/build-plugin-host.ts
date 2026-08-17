@@ -3,6 +3,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rename,
   rm,
   stat,
@@ -23,6 +24,7 @@ const NODE_ESM_REQUIRE_BANNER = [
 ].join("\n");
 
 const PLUGIN_SDK_HOST_RUNTIME_NAMESPACE = "bb-host-sdk-runtime";
+const HOST_STAGE_DIRECTORY_PREFIX = ".host-stage-";
 
 // Managed plugins are installed with production dependencies only. The SDK
 // is intentionally a development/type dependency for plugin authors, so the
@@ -267,6 +269,23 @@ export interface PluginHostBuildResult {
   artifactDigest: string;
 }
 
+async function removeStaleHostStageDirectories(
+  distDir: string,
+): Promise<void> {
+  const entries = await readdir(distDir, { withFileTypes: true });
+  await Promise.all(
+    entries
+      .filter(
+        (entry) =>
+          entry.isDirectory() &&
+          entry.name.startsWith(HOST_STAGE_DIRECTORY_PREFIX),
+      )
+      .map((entry) =>
+        rm(join(distDir, entry.name), { recursive: true, force: true }),
+      ),
+  );
+}
+
 /** Build the optional Node host entry into a self-contained remote artifact. */
 export async function buildPluginHost(
   rootDir: string,
@@ -280,7 +299,8 @@ export async function buildPluginHost(
   const jsPath = join(distDir, "host.js");
   const mapPath = join(distDir, "host.js.map");
   const metaPath = join(distDir, "host.meta.json");
-  const stageDir = await mkdtemp(join(distDir, ".host-stage-"));
+  await removeStaleHostStageDirectories(distDir);
+  const stageDir = await mkdtemp(join(distDir, HOST_STAGE_DIRECTORY_PREFIX));
   try {
     const stagedJsPath = join(stageDir, "host.js");
     const stagedMetaPath = join(stageDir, "host.meta.json");
