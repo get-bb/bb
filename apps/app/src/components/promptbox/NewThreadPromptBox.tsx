@@ -11,7 +11,7 @@ import {
 import type { Host, ProjectSource, PromptTextMention } from "@bb/domain";
 import type { ComposerView } from "@get-bb/plugin-sdk";
 import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
-import { PluginComposerBanners } from "@/components/plugin/PluginComposerBanners";
+import { ComposerBannersSlot } from "@/components/plugin/PluginComposerBanners";
 import {
   PluginComposerHostProvider,
   PluginComposerViewProvider,
@@ -314,8 +314,13 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
         <PluginComposerHostProvider value={pluginComposerHost ?? null}>
           {modeConfig.banner || pluginComposerHost ? (
             <div className="mb-2 grid gap-2">
-              {modeConfig.banner}
-              {pluginComposerHost ? <PluginComposerBanners /> : null}
+              {pluginComposerHost ? (
+                <ComposerBannersSlot ownerPlacement="before">
+                  {modeConfig.banner}
+                </ComposerBannersSlot>
+              ) : (
+                modeConfig.banner
+              )}
             </div>
           ) : null}
           <PromptBoxInternal

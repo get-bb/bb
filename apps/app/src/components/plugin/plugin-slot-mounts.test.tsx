@@ -35,7 +35,7 @@ import {
   PluginPanelHeaderCenter,
 } from "./PluginPanelHeader";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
-import { PluginComposerActions } from "./PluginComposerActions";
+import { ComposerActionsSlot } from "./PluginComposerActions";
 import { PluginContext } from "./plugin-context";
 import {
   PluginComposerHostProvider,
@@ -336,7 +336,7 @@ describe("useComposer", () => {
 
   function ComposerCustomizationMount() {
     const view = useComposerView();
-    return <PluginComposerActions view={view} />;
+    return <ComposerActionsSlot view={view} />;
   }
 
   it("writes quotes into the thread draft and fires the focus bus", () => {
