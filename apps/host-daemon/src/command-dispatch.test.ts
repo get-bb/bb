@@ -13,7 +13,10 @@ import {
   dispatchCommand,
   dispatchOnlineRpcCommand,
 } from "./command-dispatch.js";
-import { DISPATCH_TEST_BRIDGE_LAUNCH } from "../test/command/dispatch-helpers.js";
+import {
+  DISPATCH_TEST_BRIDGE_LAUNCH,
+  silentLogger,
+} from "../test/command/dispatch-helpers.js";
 import type { CommandOf } from "./command-dispatch-support.js";
 import { RuntimeManager } from "./runtime-manager.js";
 
@@ -303,6 +306,7 @@ async function runSuccessfulClaudeCodeUpdateVerification(args: {
     },
     {
       dataDir,
+      logger: silentLogger,
       eventSink: {
         emit: vi.fn(),
         flush: vi.fn(async () => undefined),
@@ -344,6 +348,7 @@ describe("dispatchCommand", () => {
     let resolved = false;
     const dispatchPromise = dispatchCommand(command, {
       dataDir: "/tmp/bb-data",
+      logger: silentLogger,
       eventSink: {
         emit: vi.fn(),
         flush,
@@ -395,6 +400,7 @@ describe("dispatchCommand", () => {
       },
       {
         dataDir: "/tmp/bb-data",
+        logger: silentLogger,
         eventSink: { emit: vi.fn(), flush },
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
@@ -431,6 +437,7 @@ describe("dispatchCommand", () => {
       },
       {
         dataDir: "/tmp/bb-data",
+        logger: silentLogger,
         eventSink: { emit: vi.fn(), flush },
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
@@ -467,6 +474,7 @@ describe("dispatchCommand", () => {
       },
       {
         dataDir: "/tmp/bb-data",
+        logger: silentLogger,
         eventSink: { emit: vi.fn(), flush },
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
@@ -522,6 +530,7 @@ describe("dispatchCommand", () => {
 
     const result = await dispatchCommand(command, {
       dataDir: "/tmp/bb-data",
+      logger: silentLogger,
       eventSink: { emit: vi.fn(), flush },
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
@@ -598,6 +607,7 @@ describe("dispatchCommand", () => {
 
     const result = await dispatchCommand(command, {
       dataDir: "/tmp/bb-data",
+      logger: silentLogger,
       eventSink: {
         emit: vi.fn(),
         flush: vi.fn(async () => undefined),
@@ -659,6 +669,7 @@ describe("dispatchCommand", () => {
 
     const result = await dispatchCommand(command, {
       dataDir: "/tmp/bb-data",
+      logger: silentLogger,
       eventSink: { emit: vi.fn(), flush },
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
@@ -688,6 +699,7 @@ describe("dispatchCommand", () => {
 
     const options = {
       dataDir: "/tmp/bb-data",
+      logger: silentLogger,
       eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
@@ -750,6 +762,7 @@ describe("dispatchCommand", () => {
       },
       {
         dataDir: "/tmp/bb-data",
+        logger: silentLogger,
         eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
@@ -781,6 +794,7 @@ describe("dispatchCommand", () => {
     await expect(
       dispatchCommand(command, {
         dataDir: "/tmp/bb-data",
+        logger: silentLogger,
         eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
@@ -812,6 +826,7 @@ describe("dispatchCommand", () => {
 
     const result = await dispatchCommand(command, {
       dataDir: "/tmp/bb-data",
+      logger: silentLogger,
       eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
@@ -847,6 +862,7 @@ describe("dispatchCommand", () => {
 
     const result = await dispatchCommand(command, {
       dataDir: "/tmp/bb-data",
+      logger: silentLogger,
       eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
@@ -892,6 +908,7 @@ describe("dispatchCommand", () => {
 
     const result = await dispatchCommand(command, {
       dataDir: "/tmp/bb-data",
+      logger: silentLogger,
       eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
@@ -961,6 +978,7 @@ describe("dispatchCommand", () => {
     await expect(
       dispatchCommand(command, {
         dataDir: "/tmp/bb-data",
+        logger: silentLogger,
         eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
@@ -988,6 +1006,7 @@ describe("dispatchCommand", () => {
 
     const result = await dispatchCommand(command, {
       dataDir: "/tmp/bb-data",
+      logger: silentLogger,
       eventSink: {
         emit: vi.fn(),
         flush: vi.fn(async () => undefined),
@@ -1062,6 +1081,7 @@ describe("dispatchCommand", () => {
     await expect(
       dispatchCommand(command, {
         dataDir: "/tmp/bb-data",
+        logger: silentLogger,
         eventSink: {
           emit: vi.fn(),
           flush: vi.fn(async () => undefined),
@@ -1120,6 +1140,7 @@ describe("dispatchCommand", () => {
 
     const result = await dispatchCommand(command, {
       dataDir: "/tmp/bb-data",
+      logger: silentLogger,
       eventSink: {
         emit: vi.fn(),
         flush: vi.fn(async () => undefined),
@@ -1191,6 +1212,7 @@ describe("dispatchCommand", () => {
     await expect(
       dispatchCommand(command, {
         dataDir: "/tmp/bb-data",
+        logger: silentLogger,
         eventSink: {
           emit: vi.fn(),
           flush: vi.fn(async () => undefined),
@@ -1216,6 +1238,7 @@ describe("dispatchCommand", () => {
         { ...command, leaseId: "lease-old-codex" },
         {
           dataDir: "/tmp/bb-data",
+          logger: silentLogger,
           eventSink: {
             emit: vi.fn(),
             flush: vi.fn(async () => undefined),
@@ -1245,6 +1268,7 @@ describe("dispatchCommand", () => {
         },
         {
           dataDir: "/tmp/bb-data",
+          logger: silentLogger,
           eventSink: {
             emit: vi.fn(),
             flush: vi.fn(async () => undefined),
@@ -1301,6 +1325,7 @@ describe("dispatchCommand", () => {
 
     const result = await dispatchOnlineRpcCommand(command, {
       dataDir,
+      logger: silentLogger,
       eventSink: {
         emit: vi.fn(),
         flush: vi.fn(async () => undefined),
@@ -1400,6 +1425,7 @@ describe("dispatchCommand", () => {
         },
         {
           dataDir,
+          logger: silentLogger,
           eventSink: {
             emit: vi.fn(),
             flush: vi.fn(async () => undefined),
@@ -1456,6 +1482,7 @@ describe("dispatchCommand", () => {
       },
       {
         dataDir,
+        logger: silentLogger,
         eventSink: {
           emit: vi.fn(),
           flush: vi.fn(async () => undefined),
@@ -1536,6 +1563,7 @@ describe("dispatchCommand", () => {
       },
       {
         dataDir,
+        logger: silentLogger,
         eventSink: {
           emit: vi.fn(),
           flush: vi.fn(async () => undefined),
@@ -1673,6 +1701,7 @@ describe("dispatchCommand", () => {
 
     const result = await dispatchCommand(command, {
       dataDir: fixture.dataDir,
+      logger: silentLogger,
       eventSink: {
         emit: vi.fn(),
         flush: vi.fn(async () => undefined),
@@ -1738,6 +1767,7 @@ describe("dispatchCommand", () => {
 
     const result = await dispatchCommand(command, {
       dataDir: fixture.dataDir,
+      logger: silentLogger,
       eventSink: {
         emit: vi.fn(),
         flush: vi.fn(async () => undefined),
@@ -1790,6 +1820,7 @@ describe("dispatchCommand", () => {
       },
       {
         dataDir: "/tmp/bb-data",
+        logger: silentLogger,
         eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");

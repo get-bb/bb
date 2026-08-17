@@ -428,7 +428,8 @@ describe("thread command dispatch", () => {
     const artifactPath = path.join(
       dataDir,
       "provider-bridges",
-      `${sha256}.mjs`,
+      sha256,
+      "bridge.mjs",
     );
     expect(harness.runtimeState.startedBridgeLaunch).toEqual({
       source: { kind: "artifact", sha256, artifactPath },
@@ -468,7 +469,7 @@ describe("thread command dispatch", () => {
       source: {
         kind: "artifact" as const,
         sha256,
-        artifactPath: path.join(dataDir, "provider-bridges", `${sha256}.mjs`),
+        artifactPath: path.join(dataDir, "provider-bridges", sha256, "bridge.mjs"),
       },
       capabilities: {
         supportsServiceTier: false,
@@ -579,7 +580,7 @@ describe("thread command dispatch", () => {
       source: {
         kind: "artifact" as const,
         sha256,
-        artifactPath: path.join(dataDir, "provider-bridges", `${sha256}.mjs`),
+        artifactPath: path.join(dataDir, "provider-bridges", sha256, "bridge.mjs"),
       },
       capabilities: {
         supportsServiceTier: false,

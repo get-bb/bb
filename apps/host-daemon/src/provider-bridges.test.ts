@@ -1,5 +1,14 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,6 +25,8 @@ const BRIDGE_SHA = createHash("sha256").update(BRIDGE_BYTES).digest("hex");
 
 let dataDir: string;
 
+const silentLogger = { debug: () => undefined, warn: () => undefined };
+
 beforeEach(async () => {
   dataDir = await mkdtemp(join(tmpdir(), "bb-provider-bridges-"));
 });
@@ -25,7 +36,7 @@ afterEach(async () => {
 });
 
 function cachePath(sha256: string): string {
-  return join(dataDir, "provider-bridges", `${sha256}.mjs`);
+  return join(dataDir, "provider-bridges", sha256, "bridge.mjs");
 }
 
 describe("ensureCachedProviderBridge", () => {
@@ -36,6 +47,7 @@ describe("ensureCachedProviderBridge", () => {
       dataDir,
       fetchProviderBridge,
       sha256: BRIDGE_SHA,
+      logger: silentLogger,
       byteLength: BRIDGE_BYTES.byteLength,
     });
 
@@ -47,6 +59,7 @@ describe("ensureCachedProviderBridge", () => {
       dataDir,
       fetchProviderBridge,
       sha256: BRIDGE_SHA,
+      logger: silentLogger,
       byteLength: BRIDGE_BYTES.byteLength,
     });
     expect(again).toBe(path);
@@ -63,14 +76,17 @@ describe("ensureCachedProviderBridge", () => {
       dataDir,
       fetchProviderBridge,
       sha256: BRIDGE_SHA,
+      logger: silentLogger,
       byteLength: BRIDGE_BYTES.byteLength,
     });
 
     expect(fetchProviderBridge).toHaveBeenCalledTimes(2);
     expect(await readFile(path)).toEqual(BRIDGE_BYTES);
     // Atomicity: no .tmp- staging leftovers.
-    const entries = await readdir(join(dataDir, "provider-bridges"));
-    expect(entries).toEqual([`${BRIDGE_SHA}.mjs`]);
+    const entries = await readdir(
+      join(dataDir, "provider-bridges", BRIDGE_SHA),
+    );
+    expect(entries).toEqual(["bridge.mjs"]);
   });
 
   it("refuses a persistently corrupted payload after one retry", async () => {
@@ -83,15 +99,16 @@ describe("ensureCachedProviderBridge", () => {
         dataDir,
         fetchProviderBridge,
         sha256: BRIDGE_SHA,
+        logger: silentLogger,
         byteLength: BRIDGE_BYTES.byteLength,
       }),
     ).rejects.toThrow(/failed verification after retry/);
 
     expect(fetchProviderBridge).toHaveBeenCalledTimes(2);
     // Nothing unverified may remain on disk.
-    const entries = await readdir(join(dataDir, "provider-bridges")).catch(
-      () => [],
-    );
+    const entries = await readdir(
+      join(dataDir, "provider-bridges", BRIDGE_SHA),
+    ).catch(() => []);
     expect(entries).toEqual([]);
   });
 
@@ -103,6 +120,7 @@ describe("ensureCachedProviderBridge", () => {
         dataDir,
         fetchProviderBridge,
         sha256: BRIDGE_SHA,
+        logger: silentLogger,
         byteLength: BRIDGE_BYTES.byteLength + 1,
       }),
     ).rejects.toThrow(/expected \d+ bytes/);
@@ -114,6 +132,7 @@ describe("ensureCachedProviderBridge", () => {
       dataDir,
       fetchProviderBridge,
       sha256: BRIDGE_SHA,
+      logger: silentLogger,
       byteLength: BRIDGE_BYTES.byteLength,
     });
 
@@ -123,6 +142,7 @@ describe("ensureCachedProviderBridge", () => {
       dataDir,
       fetchProviderBridge,
       sha256: BRIDGE_SHA,
+      logger: silentLogger,
       byteLength: BRIDGE_BYTES.byteLength,
     });
     expect(again).toBe(path);
@@ -137,9 +157,10 @@ describe("ensureCachedProviderBridge", () => {
         dataDir,
         fetchProviderBridge,
         sha256: "../../../etc/passwd",
+        logger: silentLogger,
         byteLength: 1,
       }),
-    ).rejects.toThrow(/Invalid provider bridge sha256/);
+    ).rejects.toThrow(/Invalid artifact digest/);
     expect(fetchProviderBridge).not.toHaveBeenCalled();
   });
 
@@ -152,10 +173,58 @@ describe("ensureCachedProviderBridge", () => {
         dataDir,
         fetchProviderBridge,
         sha256: BRIDGE_SHA,
+        logger: silentLogger,
         byteLength: HOST_ARTIFACT_MAX_BYTES + 1,
       }),
     ).rejects.toThrow(/too large/);
     expect(fetchProviderBridge).not.toHaveBeenCalled();
+  });
+
+  it("stages the artifact owner-only; a shared host cannot read a bridge", async () => {
+    const fetchProviderBridge = vi.fn(async () => new Uint8Array(BRIDGE_BYTES));
+    const path = await ensureCachedProviderBridge({
+      dataDir,
+      fetchProviderBridge,
+      sha256: BRIDGE_SHA,
+      logger: silentLogger,
+      byteLength: BRIDGE_BYTES.byteLength,
+    });
+    expect((await stat(path)).mode & 0o777).toBe(0o600);
+  });
+
+  // Several providers run at once, so pruning is by disuse, not by "keep the
+  // current digest" — that would delete a live sibling's bridge on every
+  // launch and ping-pong the two downloads forever.
+  it("prunes a bridge nothing has launched for a month and keeps live siblings", async () => {
+    const fetchProviderBridge = vi.fn(async () => new Uint8Array(BRIDGE_BYTES));
+    const otherBytes = Buffer.from("export function other() {}\n");
+    const otherSha = createHash("sha256").update(otherBytes).digest("hex");
+    const staleSha = createHash("sha256")
+      .update(Buffer.from("stale\n"))
+      .digest("hex");
+
+    await ensureCachedProviderBridge({
+      dataDir,
+      fetchProviderBridge: async () => new Uint8Array(otherBytes),
+      sha256: otherSha,
+      logger: silentLogger,
+      byteLength: otherBytes.byteLength,
+    });
+    const staleDir = join(dataDir, "provider-bridges", staleSha);
+    await mkdir(staleDir, { recursive: true });
+    const longAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+    await utimes(staleDir, longAgo, longAgo);
+
+    await ensureCachedProviderBridge({
+      dataDir,
+      fetchProviderBridge,
+      sha256: BRIDGE_SHA,
+      logger: silentLogger,
+      byteLength: BRIDGE_BYTES.byteLength,
+    });
+
+    const entries = await readdir(join(dataDir, "provider-bridges"));
+    expect(entries.sort()).toEqual([BRIDGE_SHA, otherSha].sort());
   });
 });
 

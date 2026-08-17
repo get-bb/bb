@@ -34,6 +34,12 @@ import type { FetchProjectAttachment } from "../../src/project-attachments.js";
 
 const tempDirs: string[] = [];
 const execFileAsync = promisify(execFile);
+/** Dispatch's diagnostic logger; tests that assert on logs pass their own. */
+export const silentLogger: CommandDispatchOptions["logger"] = {
+  debug: () => undefined,
+  warn: () => undefined,
+};
+
 export const unexpectedProjectAttachmentFetch: FetchProjectAttachment =
   async () => {
     throw new Error("Unexpected project attachment fetch");
@@ -521,6 +527,7 @@ export function createHarness(
     ): CommandDispatchOptions {
       return {
         dataDir: overrides.dataDir ?? "/tmp/bb-test-data",
+        logger: silentLogger,
         eventSink: noopEventSink,
         fetchProjectAttachment: unexpectedProjectAttachmentFetch,
         runtimeManager: manager,
@@ -538,6 +545,7 @@ export function makeDispatchOptions(
 ): CommandDispatchOptions {
   return {
     dataDir: "/tmp/bb-test-data",
+    logger: silentLogger,
     eventSink: noopEventSink,
     fetchProjectAttachment: unexpectedProjectAttachmentFetch,
     threadStorageRootPath: "/tmp/bb-test-thread-storage",

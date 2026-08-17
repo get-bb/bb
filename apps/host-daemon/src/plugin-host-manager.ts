@@ -1,15 +1,6 @@
-import { createHash, randomUUID } from "node:crypto";
 import { fork, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  readdir,
-  rename,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -22,6 +13,7 @@ import type {
 import type { HostPathWatchChange, HostWatcher } from "@bb/host-watcher";
 import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import type { HostDaemonLogger } from "./logger.js";
+import { ensureCachedNodeArtifact } from "./node-artifact-cache.js";
 
 type PluginHostCallCommand = Extract<
   HostDaemonOnlineRpcCommand,
@@ -972,103 +964,27 @@ export class PluginHostManager {
   private async materializeArtifact(
     command: PluginHostCallCommand,
   ): Promise<string> {
-    const directory = join(
-      this.options.dataDir,
-      "plugin-host-artifacts",
-      safePluginSegment(command.pluginId),
-      command.artifact.digest,
-    );
-    const artifactPath = join(directory, "host.js");
-    try {
-      const current = await readFile(artifactPath);
-      if (
-        current.byteLength === command.artifact.byteLength &&
-        createHash("sha256").update(current).digest("hex") ===
-          command.artifact.digest
-      ) {
-        this.options.logger.debug(
-          { pluginId: command.pluginId },
-          "Using cached host plugin artifact",
-        );
-        await this.prunePluginArtifactDigests(
-          command.pluginId,
-          command.artifact.digest,
-        );
-        return artifactPath;
-      }
-    } catch {
-      // Download below.
-    }
-    this.options.logger.debug(
-      { pluginId: command.pluginId },
-      "Downloading host plugin artifact",
-    );
-    const bytes = await this.options.fetchArtifact({
-      pluginId: command.pluginId,
-      digest: command.artifact.digest,
-      expectedByteLength: command.artifact.byteLength,
-    });
-    if (bytes.byteLength !== command.artifact.byteLength) {
-      throw new Error(`host artifact length mismatch for ${command.pluginId}`);
-    }
-    const digest = createHash("sha256").update(bytes).digest("hex");
-    if (digest !== command.artifact.digest) {
-      throw new Error(`host artifact digest mismatch for ${command.pluginId}`);
-    }
-    await mkdir(directory, { recursive: true });
-    const staged = join(directory, `.host-${randomUUID()}.tmp`);
-    await writeFile(staged, bytes, { mode: 0o600 });
-    await rename(staged, artifactPath);
-    await this.prunePluginArtifactDigests(
-      command.pluginId,
-      command.artifact.digest,
-    );
-    return artifactPath;
-  }
-
-  private async prunePluginArtifactDigests(
-    pluginId: string,
-    keepDigest: string,
-  ): Promise<void> {
-    const pluginDirectory = join(
-      this.options.dataDir,
-      "plugin-host-artifacts",
-      safePluginSegment(pluginId),
-    );
-    let entries;
-    try {
-      entries = await readdir(pluginDirectory, { withFileTypes: true });
-    } catch (error) {
-      this.options.logger.warn(
-        { pluginId, err: error },
-        "Failed to inspect host plugin artifact cache",
-      );
-      return;
-    }
-    const staleDigestDirectories = entries.filter(
-      (entry) =>
-        entry.isDirectory() &&
-        entry.name !== keepDigest &&
-        /^[a-f0-9]{64}$/u.test(entry.name),
-    );
-    const results = await Promise.allSettled(
-      staleDigestDirectories.map((entry) =>
-        rm(join(pluginDirectory, entry.name), {
-          recursive: true,
-          force: true,
-        }),
+    return ensureCachedNodeArtifact({
+      cacheDir: join(
+        this.options.dataDir,
+        "plugin-host-artifacts",
+        safePluginSegment(command.pluginId),
       ),
-    );
-    results.forEach((result, index) => {
-      if (result.status === "fulfilled") return;
-      this.options.logger.warn(
-        {
-          pluginId,
-          digest: staleDigestDirectories[index]?.name,
-          err: result.reason,
-        },
-        "Failed to prune stale host plugin artifact",
-      );
+      digest: command.artifact.digest,
+      byteLength: command.artifact.byteLength,
+      fileName: "host.js",
+      // The cache is content-addressed and generic; the plugin id it belongs
+      // to is the caller's business, so the fetch closes over it.
+      fetchArtifact: ({ digest, byteLength }) =>
+        this.options.fetchArtifact({
+          pluginId: command.pluginId,
+          digest,
+          expectedByteLength: byteLength,
+        }),
+      // A plugin runs exactly one host bundle at a time, so every other
+      // digest under its directory is superseded.
+      prune: { kind: "keep-only-current" },
+      logger: this.options.logger,
     });
   }
 

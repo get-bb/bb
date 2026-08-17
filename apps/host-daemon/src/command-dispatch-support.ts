@@ -25,6 +25,7 @@ import { RuntimeManager, type RuntimeEntry } from "./runtime-manager.js";
 import type { TerminalManager } from "./terminals/terminal-manager.js";
 import type { FetchProjectAttachment } from "./project-attachments.js";
 import type { FetchSkillTree } from "./skill-trees.js";
+import type { HostDaemonLogger } from "./logger.js";
 import {
   ensureCachedProviderBridge,
   type FetchProviderBridge,
@@ -49,6 +50,7 @@ export const noopEventSink: EventSink = {
 
 export interface CommandDispatchOptions {
   dataDir: string;
+  logger: Pick<HostDaemonLogger, "debug" | "warn">;
   fetchProjectAttachment: FetchProjectAttachment;
   fetchSkillTree?: FetchSkillTree;
   fetchProviderBridge?: FetchProviderBridge;
@@ -126,7 +128,10 @@ const ACP_AUTH_REQUIRED_PATTERN =
  */
 export async function resolveRuntimeBridgeLaunch(
   bridgeLaunch: HostDaemonBridgeLaunch,
-  options: Pick<CommandDispatchOptions, "dataDir" | "fetchProviderBridge">,
+  options: Pick<
+    CommandDispatchOptions,
+    "dataDir" | "fetchProviderBridge" | "logger"
+  >,
 ): Promise<AgentRuntimeBridgeLaunch> {
   // Wire and runtime shapes share one noun set, so the block carries over
   // whole; only the mutable permission-mode array is copied.
@@ -148,6 +153,7 @@ export async function resolveRuntimeBridgeLaunch(
     fetchProviderBridge: options.fetchProviderBridge,
     sha256: bridgeLaunch.source.sha256,
     byteLength: bridgeLaunch.source.byteLength,
+    logger: options.logger,
   });
   return {
     source: {

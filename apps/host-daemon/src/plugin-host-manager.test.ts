@@ -174,8 +174,8 @@ describe("PluginHostManager", () => {
     await manager.call(command);
 
     expect(logger.debug).toHaveBeenCalledWith(
-      { pluginId: "fixture" },
-      "Downloading host plugin artifact",
+      expect.objectContaining({ digest: expect.any(String) }),
+      "Downloading host artifact",
     );
     expect(logger.info).toHaveBeenCalledWith(
       {
@@ -313,8 +313,8 @@ describe("PluginHostManager", () => {
     expect(Reflect.get(Object(restarted.output), "pid")).not.toBe(firstPid);
     expect(onWorkerExit).not.toHaveBeenCalled();
     expect(logger.debug).toHaveBeenCalledWith(
-      { pluginId: "fixture" },
-      "Using cached host plugin artifact",
+      expect.objectContaining({ digest: expect.any(String) }),
+      "Using cached host artifact",
     );
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -349,8 +349,10 @@ describe("PluginHostManager", () => {
     const tampered = await createManager({
       fetchArtifact: async () => Buffer.from("tampered"),
     });
+    // Retried once, then refused: the daemon never executes bytes whose
+    // digest it has not just confirmed.
     await expect(tampered.call(callCommand())).rejects.toThrow(
-      /artifact length mismatch/u,
+      /failed verification after retry/u,
     );
 
     const invalidArtifact = Buffer.from("export default {};\n");
