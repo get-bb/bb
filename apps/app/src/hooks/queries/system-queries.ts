@@ -1,5 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { QueryKey } from "@tanstack/react-query";
 import type { AvailableModel, ProviderInfo } from "@bb/domain";
 import { SYSTEM_EXECUTION_OPTIONS_QUERY_KEY } from "@/hooks/queries/query-keys";
 import {
@@ -258,6 +259,63 @@ function claudeCodePlaceholderExecutionOptions(
   };
 }
 
+function isSameExecutionOptionsRoute(
+  previousQueryKey: QueryKey | undefined,
+  environmentId: string | null,
+  hostId: string | null,
+): boolean {
+  return (
+    previousQueryKey?.[0] === SYSTEM_EXECUTION_OPTIONS_QUERY_KEY &&
+    previousQueryKey[1] === environmentId &&
+    previousQueryKey[2] === hostId
+  );
+}
+
+function resolveExecutionOptionsPlaceholder({
+  previousData,
+  previousQueryKey,
+  environmentId,
+  hostId,
+  isClaudeCode,
+  canPreloadBuiltInProviders,
+  catalogCacheKey,
+}: {
+  previousData: SystemExecutionOptionsResponse | undefined;
+  previousQueryKey: QueryKey | undefined;
+  environmentId: string | null;
+  hostId: string | null;
+  isClaudeCode: boolean;
+  canPreloadBuiltInProviders: boolean;
+  catalogCacheKey: string;
+}): SystemExecutionOptionsResponse | undefined {
+  const previousProviders = isSameExecutionOptionsRoute(
+    previousQueryKey,
+    environmentId,
+    hostId,
+  )
+    ? previousData?.providers
+    : undefined;
+  const builtInPlaceholder = canPreloadBuiltInProviders
+    ? isClaudeCode
+      ? claudeCodePlaceholderExecutionOptions(catalogCacheKey)
+      : builtInProviderPlaceholderExecutionOptions()
+    : undefined;
+
+  if (previousProviders === undefined && builtInPlaceholder === undefined) {
+    return undefined;
+  }
+
+  return {
+    providers: previousProviders ?? builtInPlaceholder?.providers ?? [],
+    // A prior response's models belong to the prior provider. Keep only the
+    // provider-independent roster while the newly selected provider loads.
+    models: builtInPlaceholder?.models ?? [],
+    selectedOnlyModels: builtInPlaceholder?.selectedOnlyModels ?? [],
+    permissionCeiling: builtInPlaceholder?.permissionCeiling ?? "full",
+    modelLoadError: null,
+  };
+}
+
 /**
  * The freshest ProviderInfo the client already has for a provider id, scanned
  * across every cached execution-options response (any environment/host).
@@ -392,14 +450,16 @@ export function useSystemExecutionOptions(
     staleTime: 60_000,
     retry: shouldRetrySystemExecutionOptions,
     retryDelay: SYSTEM_EXECUTION_OPTIONS_RETRY_DELAY_MS,
-    ...(canPreloadBuiltInProviders
-      ? {
-          placeholderData: () =>
-            isClaudeCode
-              ? claudeCodePlaceholderExecutionOptions(catalogCacheKey)
-              : builtInProviderPlaceholderExecutionOptions(),
-        }
-      : {}),
+    placeholderData: (previousData, previousQuery) =>
+      resolveExecutionOptionsPlaceholder({
+        previousData,
+        previousQueryKey: previousQuery?.queryKey,
+        environmentId,
+        hostId,
+        isClaudeCode,
+        canPreloadBuiltInProviders,
+        catalogCacheKey,
+      }),
   });
 }
 
