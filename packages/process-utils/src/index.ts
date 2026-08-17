@@ -2,6 +2,7 @@ export * from "./plugin-process-paths.js";
 import type { ChildProcess, StdioOptions } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { readdir, readlink, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import crossSpawn from "cross-spawn";
@@ -37,6 +38,29 @@ export interface PortableOutputChildProcess extends PortableChildProcess {
   stderr: Readable;
 }
 
+export interface KillProcessGroupArgs {
+  child: {
+    pid?: number | undefined;
+    kill: (signal: NodeJS.Signals) => unknown;
+  };
+  signal: NodeJS.Signals;
+}
+
+export interface ProcessWithCwd {
+  pid: number;
+  cwd: string;
+}
+
+export interface ListProcessesWithCwdUnderArgs {
+  directory: string;
+}
+
+export interface KillProcessesWithCwdUnderArgs {
+  directory: string;
+  /** Time to wait after SIGTERM before SIGKILL. Defaults to 2000ms. */
+  graceMs?: number;
+}
+
 export interface ResolveContainedPathArgs {
   rootPath: string;
   candidatePath: string;
@@ -55,17 +79,14 @@ export interface SanitizeInheritedChildProcessEnvArgs {
   shellPath?: string;
 }
 
-export type SafeProcessDiagnosticKind =
-  | "startupFailure"
-  | "uncaughtException";
+export type SafeProcessDiagnosticKind = "startupFailure" | "uncaughtException";
 
 export interface SafeProcessDiagnosticsOptions {
   logsDir: string;
   processName: string;
 }
 
-export interface WriteSafeProcessDiagnosticReportArgs
-  extends SafeProcessDiagnosticsOptions {
+export interface WriteSafeProcessDiagnosticReportArgs extends SafeProcessDiagnosticsOptions {
   kind: SafeProcessDiagnosticKind;
   error: unknown;
   now?: () => Date;
@@ -153,6 +174,162 @@ export function spawnPortableOutputProcess(
   });
   assertPortableOutputProcess(child);
   return child;
+}
+
+/**
+ * True when the platform supports POSIX process groups. Callers spawn with
+ * `detached: true` so the child leads its own group and this helper can signal
+ * the whole group, including grandchildren.
+ */
+export function supportsProcessGroups(): boolean {
+  return process.platform !== "win32";
+}
+
+/**
+ * Sends `signal` to the child's process group when possible, and falls back
+ * to the direct child when the group is gone or unsupported.
+ */
+export function killProcessGroup(args: KillProcessGroupArgs): void {
+  if (supportsProcessGroups() && args.child.pid !== undefined) {
+    try {
+      process.kill(-args.child.pid, args.signal);
+      return;
+    } catch {
+      // Fall back to killing the direct child if the process group is gone.
+    }
+  }
+  args.child.kill(args.signal);
+}
+
+function isPathUnderDirectory(candidate: string, directory: string): boolean {
+  // Linux reports a removed cwd as "<path> (deleted)".
+  const normalized = candidate.endsWith(" (deleted)")
+    ? candidate.slice(0, -" (deleted)".length)
+    : candidate;
+  return (
+    normalized === directory || normalized.startsWith(`${directory}${sep}`)
+  );
+}
+
+async function listLinuxProcessCwds(): Promise<ProcessWithCwd[]> {
+  const entries = await readdir("/proc");
+  const results: ProcessWithCwd[] = [];
+  await Promise.all(
+    entries.map(async (entry) => {
+      if (!/^\d+$/.test(entry)) {
+        return;
+      }
+      try {
+        const cwd = await readlink(`/proc/${entry}/cwd`);
+        results.push({ pid: Number(entry), cwd });
+      } catch {
+        // Process exited or is not readable by this user.
+      }
+    }),
+  );
+  return results;
+}
+
+async function listLsofProcessCwds(): Promise<ProcessWithCwd[]> {
+  const child = spawnPortableOutputProcess({
+    command: "lsof",
+    args: ["-a", "-d", "cwd", "-F", "pn", "-w", "-n"],
+  });
+  const chunks: Buffer[] = [];
+  child.stdout.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+  child.stderr.resume();
+  await new Promise<void>((resolveExit) => {
+    child.once("error", () => resolveExit());
+    child.once("exit", () => resolveExit());
+  });
+  const results: ProcessWithCwd[] = [];
+  let pid: number | null = null;
+  for (const line of Buffer.concat(chunks).toString("utf8").split("\n")) {
+    if (line.startsWith("p")) {
+      pid = Number(line.slice(1));
+    } else if (line.startsWith("n") && pid !== null) {
+      results.push({ pid, cwd: line.slice(1) });
+    }
+  }
+  return results;
+}
+
+/**
+ * Lists processes whose current working directory is `directory` or a path
+ * inside it. Excludes the current process. Returns [] on unsupported
+ * platforms.
+ */
+export async function listProcessesWithCwdUnder(
+  args: ListProcessesWithCwdUnderArgs,
+): Promise<ProcessWithCwd[]> {
+  if (process.platform === "win32") {
+    return [];
+  }
+  let directory = resolve(args.directory);
+  try {
+    directory = await realpath(directory);
+  } catch {
+    // The directory may already be gone; match against the given path.
+  }
+  const all =
+    process.platform === "linux"
+      ? await listLinuxProcessCwds()
+      : await listLsofProcessCwds();
+  return all.filter(
+    (entry) =>
+      entry.pid !== process.pid && isPathUnderDirectory(entry.cwd, directory),
+  );
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Sends SIGTERM to every process rooted in `directory`, waits `graceMs`, then
+ * SIGKILLs the survivors. Returns the processes that received a signal.
+ */
+export async function killProcessesWithCwdUnder(
+  args: KillProcessesWithCwdUnderArgs,
+): Promise<ProcessWithCwd[]> {
+  const targets = await listProcessesWithCwdUnder({
+    directory: args.directory,
+  });
+  if (targets.length === 0) {
+    return [];
+  }
+  const graceMs = args.graceMs ?? 2000;
+  const signalled: ProcessWithCwd[] = [];
+  for (const target of targets) {
+    try {
+      process.kill(target.pid, "SIGTERM");
+      signalled.push(target);
+    } catch {
+      // Already exited.
+    }
+  }
+  const deadline = Date.now() + graceMs;
+  while (
+    Date.now() < deadline &&
+    signalled.some((target) => isProcessAlive(target.pid))
+  ) {
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 50));
+  }
+  for (const target of signalled) {
+    if (isProcessAlive(target.pid)) {
+      try {
+        process.kill(target.pid, "SIGKILL");
+      } catch {
+        // Already exited.
+      }
+    }
+  }
+  return signalled;
 }
 
 export function resolveContainedPath(

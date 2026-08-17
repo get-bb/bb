@@ -8,6 +8,7 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
+import { killProcessGroup, supportsProcessGroups } from "@bb/process-utils";
 import type { z } from "zod";
 
 const STDERR_TAIL_MAX_CHUNKS = 40;
@@ -92,6 +93,7 @@ export function createAcpAgentConnection(
 ): AcpAgentConnection {
   const child: ChildProcess = spawn(options.command, options.args, {
     cwd: options.cwd,
+    detached: supportsProcessGroups(),
     env: options.env,
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -268,7 +270,7 @@ export function createAcpAgentConnection(
       if (exited) {
         return;
       }
-      child.kill("SIGTERM");
+      killProcessGroup({ child, signal: "SIGTERM" });
     },
   };
 }

@@ -1,0 +1,115 @@
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  killProcessGroup,
+  killProcessesWithCwdUnder,
+  listProcessesWithCwdUnder,
+  spawnPortablePipedProcess,
+} from "../src/index.js";
+
+const posixOnly = process.platform === "win32" ? describe.skip : describe;
+
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function waitFor(check: () => boolean, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!check()) {
+    if (Date.now() > deadline) {
+      throw new Error("Timed out waiting for condition");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
+async function readFirstLine(stream: NodeJS.ReadableStream): Promise<string> {
+  const [chunk] = await once(stream, "data");
+  return String(chunk).trim();
+}
+
+posixOnly("process tree helpers", () => {
+  const cleanupPids: number[] = [];
+  const cleanupDirs: string[] = [];
+
+  afterEach(() => {
+    for (const pid of cleanupPids) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // already gone
+      }
+    }
+    cleanupPids.length = 0;
+    for (const dir of cleanupDirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    cleanupDirs.length = 0;
+  });
+
+  it("kills the grandchild when the leader is signalled by process group", async () => {
+    const child = spawnPortablePipedProcess({
+      command: "sh",
+      args: ["-c", "sleep 300 & echo $!; wait"],
+      detached: true,
+    });
+    const grandchildPid = Number(await readFirstLine(child.stdout));
+    cleanupPids.push(grandchildPid);
+    expect(isAlive(grandchildPid)).toBe(true);
+    const exited = once(child, "exit");
+
+    killProcessGroup({ child, signal: "SIGKILL" });
+
+    await waitFor(() => !isAlive(grandchildPid));
+    await exited;
+  });
+
+  it("finds and kills processes whose cwd is inside a directory", async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "bb-cwd-sweep-")));
+    cleanupDirs.push(dir);
+    // A detached session leader: not reachable by any process-group kill.
+    const child = spawn("sh", ["-c", "sleep 300 & echo $!; wait"], {
+      cwd: dir,
+      detached: true,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    child.unref();
+    const grandchildPid = Number(await readFirstLine(child.stdout));
+    cleanupPids.push(child.pid ?? 0, grandchildPid);
+
+    const found = await listProcessesWithCwdUnder({ directory: dir });
+    expect(found.map((entry) => entry.pid)).toEqual(
+      expect.arrayContaining([child.pid, grandchildPid]),
+    );
+    expect(found.map((entry) => entry.pid)).not.toContain(process.pid);
+
+    const killed = await killProcessesWithCwdUnder({
+      directory: dir,
+      graceMs: 200,
+    });
+    expect(killed.map((entry) => entry.pid)).toEqual(
+      expect.arrayContaining([child.pid, grandchildPid]),
+    );
+    await waitFor(() => !isAlive(grandchildPid) && !isAlive(child.pid ?? 0));
+
+    // A sibling directory with a shared prefix must not match.
+    expect(
+      await listProcessesWithCwdUnder({ directory: `${dir}-other` }),
+    ).toEqual([]);
+  });
+
+  it("returns an empty list for a directory that no process uses", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "bb-cwd-empty-"));
+    cleanupDirs.push(dir);
+    expect(await listProcessesWithCwdUnder({ directory: dir })).toEqual([]);
+  });
+});

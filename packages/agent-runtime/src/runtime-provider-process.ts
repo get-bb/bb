@@ -2,8 +2,10 @@ import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import {
+  killProcessGroup,
   sanitizeInheritedChildProcessEnv,
   spawnPortablePipedProcess,
+  supportsProcessGroups,
 } from "@bb/process-utils";
 import type {
   ProviderAdapter,
@@ -438,7 +440,10 @@ export class RuntimeProviderProcessManager {
         shutdownPromises.push(
           new Promise<void>((resolve) => {
             const timer = setTimeout(() => {
-              providerProcess.child.kill("SIGKILL");
+              killProcessGroup({
+                child: providerProcess.child,
+                signal: "SIGKILL",
+              });
               resolve();
             }, 5000);
 
@@ -447,7 +452,10 @@ export class RuntimeProviderProcessManager {
               resolve();
             });
 
-            providerProcess.child.kill("SIGTERM");
+            killProcessGroup({
+              child: providerProcess.child,
+              signal: "SIGTERM",
+            });
           }),
         );
       }
@@ -498,10 +506,13 @@ export class RuntimeProviderProcessManager {
       ...processConfig.env,
     };
 
+    // Lead a process group so shutdown can also reap grandchildren the
+    // provider CLI starts (background dev servers, MCP servers, ...).
     const child = spawnPortablePipedProcess({
       command: processConfig.command,
       args: processConfig.args,
       cwd: this.args.workspacePath,
+      detached: supportsProcessGroups(),
       env,
     });
     let finalizeExit: () => void = () => undefined;
@@ -665,7 +676,10 @@ export class RuntimeProviderProcessManager {
       const timeoutMs = args.timeoutMs ?? 5000;
       const softTimer = setTimeout(() => {
         if (!hasChildProcessExited(args.providerProcess.child)) {
-          args.providerProcess.child.kill("SIGKILL");
+          killProcessGroup({
+            child: args.providerProcess.child,
+            signal: "SIGKILL",
+          });
         }
       }, timeoutMs);
       const hardTimer = setTimeout(resolve, timeoutMs + 1000);
@@ -676,7 +690,10 @@ export class RuntimeProviderProcessManager {
         resolve();
       });
 
-      args.providerProcess.child.kill("SIGTERM");
+      killProcessGroup({
+        child: args.providerProcess.child,
+        signal: "SIGTERM",
+      });
     });
   }
 
