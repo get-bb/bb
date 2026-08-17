@@ -1503,11 +1503,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
                   deps.appVersion,
                   await getPluginBuildToolchain(deps),
                 );
-                setDevBuildProblem(row.id, null);
+                setDevBuildProblem(row.id, "frontend", null);
                 notifyPluginsChanged();
               } catch (error) {
                 setDevBuildProblem(
                   row.id,
+                  "frontend",
                   error instanceof Error ? error.message : String(error),
                 );
                 notifyPluginsChanged();
@@ -1521,11 +1522,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
                   deps.appVersion,
                   await getPluginBuildToolchain(deps),
                 );
-                setDevBuildProblem(row.id, null);
+                setDevBuildProblem(row.id, "host", null);
                 notifyPluginsChanged();
               } catch (error) {
                 setDevBuildProblem(
                   row.id,
+                  "host",
                   error instanceof Error ? error.message : String(error),
                 );
                 notifyPluginsChanged();

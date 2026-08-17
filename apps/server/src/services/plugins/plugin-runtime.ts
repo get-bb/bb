@@ -308,6 +308,14 @@ function releaseMutableRoots(rootUrls: Iterable<string>): void {
   mutableRootHooks = null;
 }
 
+/** Which build target a dev build problem belongs to. */
+export type PluginDevBuildKind = "frontend" | "host";
+
+const DEV_BUILD_PROBLEM_LABELS: Record<PluginDevBuildKind, string> = {
+  frontend: "frontend bundle build failed",
+  host: "host bundle build failed",
+};
+
 const DEFAULT_LOAD_TIMEOUT_MS = 30_000;
 const DEFAULT_SERVICE_STOP_TIMEOUT_MS = 5_000;
 const DEFAULT_SERVICE_RESTART_BASE_MS = 1_000;
@@ -402,7 +410,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     string,
     { status: PluginRuntimeStatus; detail: string | null }
   >();
-  const devBuildProblems = new Map<string, string>();
+  const devBuildProblems = new Map<
+    string,
+    Partial<Record<PluginDevBuildKind, string>>
+  >();
   const statusListeners = new Map<
     string,
     Set<(status: PluginRuntimeStatus, detail: string | null) => void>
@@ -467,19 +478,30 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     detail: string | null = null,
   ): void {
     baseStatuses.set(id, { status, detail });
-    const buildProblem = devBuildProblems.get(id);
+    const buildProblems = devBuildProblems.get(id);
     publishStatus(
       id,
       status,
-      [detail, buildProblem]
+      [detail, buildProblems?.frontend, buildProblems?.host]
         .filter((part): part is string => part !== null && part !== undefined)
         .join("; ") || null,
     );
   }
 
-  function setDevBuildProblem(id: string, message: string | null): void {
-    if (message === null) devBuildProblems.delete(id);
-    else devBuildProblems.set(id, `frontend bundle build failed: ${message}`);
+  function setDevBuildProblem(
+    id: string,
+    kind: PluginDevBuildKind,
+    message: string | null,
+  ): void {
+    const problems = devBuildProblems.get(id) ?? {};
+    if (message === null) {
+      if (problems[kind] === undefined) return;
+      delete problems[kind];
+    } else {
+      problems[kind] = `${DEV_BUILD_PROBLEM_LABELS[kind]}: ${message}`;
+    }
+    if (Object.keys(problems).length === 0) devBuildProblems.delete(id);
+    else devBuildProblems.set(id, problems);
     const base = baseStatuses.get(id);
     if (base !== undefined) setStatus(id, base.status, base.detail);
   }
@@ -1072,6 +1094,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
             deps.appVersion,
             await getPluginBuildToolchain(deps),
           );
+          setDevBuildProblem(row.id, "frontend", null);
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);
@@ -1106,6 +1129,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         deps.appVersion,
         await getPluginBuildToolchain(deps),
       );
+      // A successful rebuild through the load path (enable/reload) must clear
+      // a stale dev-loop failure, or it sticks until the next source change.
+      setDevBuildProblem(row.id, "host", null);
     }
     const jsPath = join(row.rootDir, "dist", "host.js");
     const metaPath = join(row.rootDir, "dist", "host.meta.json");
