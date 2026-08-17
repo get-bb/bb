@@ -77,6 +77,11 @@ interface PluginThreadListProps {
    * owns that field, so filter by this rather than shipping a second one.
    */
   searchQuery: string;
+  /**
+   * BB's thread list bound to this sidebar instance. Render it to delegate
+   * conditionally without re-entering plugin replacement resolution.
+   */
+  experimental_Original: ComponentType;
 }
 ```
 
@@ -85,16 +90,16 @@ interface PluginThreadListProps {
 Every other `app.slots.*` member is additive. This one is not: two thread
 lists cannot share one scroll area. The rules:
 
-1. The built-in list is the default. A plugin never takes the sidebar by
-   being installed.
-2. The user picks the list in **Settings → Appearance → Sidebar**. The picker
-   lists the built-in list plus every registered `threadList` slot.
+1. Automatic is the default. It activates the first registered provider in
+   deterministic slot order; disabling or removing it reveals the next.
+2. The user can choose Automatic, pin the built-in list, or pin a provider in
+   **Settings → Appearance → Sidebar**.
 3. The choice is client-local, in `localStorage` under
    `bb.sidebar.threadListProvider`, next to the other sidebar layout
    preferences. A device with a plugin disabled falls back cleanly.
-4. If the chosen provider disappears — the plugin is uninstalled, disabled,
-   or fails to interpret — the host renders the built-in list and keeps the
-   preference. If the plugin comes back, so does its list.
+4. If an explicitly chosen provider disappears — the plugin is uninstalled,
+   disabled, or fails to interpret — the host renders the built-in list and
+   keeps the preference. If the plugin comes back, so does its list.
 5. If the component throws, the host does **not** show the usual "plugin
    crashed" chip. A chip in place of the whole sidebar leaves the user
    stranded. The host renders the built-in list instead, plus one toast that
@@ -629,8 +634,9 @@ Add these when the API lands.
 ### `app.slots.experimental_threadList` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Replaces the sidebar's scrolling thread list with a plugin
-component. Exclusive: the user picks one provider in Settings, stored client-
-local. A crash or a missing plugin falls back to the built-in list.
+component. Exclusive: Automatic activates the first available provider, while
+the user can pin BB or one provider in client-local Settings. A crash or a
+missing explicitly selected plugin falls back to the built-in list.
 
 **Audit before stabilizing.**
 

@@ -1342,8 +1342,10 @@ surface them here instead, filtering `experimental_useSidebarThreads()` by
 ### Replacing the sidebar thread list
 
 `app.slots.experimental_threadList` is the one **exclusive** slot: only one
-list fills the sidebar's scroll area. Registering it does not take the sidebar
-— the built-in list stays the default, and the user picks a provider in
+list fills the sidebar's scroll area. Registering activates the replacement
+while the plugin is enabled. If multiple plugins register one, the first in
+deterministic slot order is active by default; removing it reveals the next.
+The user can pin BB's list or a specific provider under
 **Settings → Appearance → Sidebar**. The choice is per client.
 
 Your component gets the scrolling list and nothing else. The New-thread button,
@@ -1368,6 +1370,9 @@ interface PluginThreadListProps {
   /** The host search field's text; "" when the field is closed. The host owns
       that field — filter by this rather than shipping a second one. */
   searchQuery: string;
+  /** BB's bound thread list. Render it to delegate conditionally without
+      re-entering plugin replacement resolution. */
+  experimental_Original: ComponentType;
 }
 ```
 
@@ -1579,9 +1584,11 @@ Slot props contracts (versioned, additive-only):
   (sync or async) are contained and logged,
   never breaking the sidebar. `title` is the tooltip + accessible label;
   `icon` is a BB icon-name hint (unknown names fall back to a generic bolt).
-- `fileOpener` → `{ path: string, source }` — register as a viewer/editor
+- `fileOpener` → `{ path: string, source, experimental_Original }` — register as a viewer/editor
   for file extensions: `{ id, title, extensions: ["md"], component }`.
-  Users set the per-extension default under Settings → "File openers", and
+  Matching files use the first applicable opener in deterministic slot order
+  by default. Users can pin BB's preview or a specific opener per extension
+  under Settings → "File openers", and
   right-clicking a file link in rendered markdown offers a one-off
   "Open with …" choice; matching files opened in the right panel then
   render your component in a plugin tab instead of the built-in preview —
@@ -1590,6 +1597,8 @@ Slot props contracts (versioned, additive-only):
   `{ kind: "workspace" | "host" | "thread-storage", threadId, environmentId,
 projectId }` (nullable fields) and `path` follows the source (workspace:
   worktree-relative; host: absolute; thread-storage: storage-relative).
+  `experimental_Original` is BB's preview bound to this file; render it to
+  delegate conditionally without re-entering plugin replacement resolution.
   Applies only to live file content — git-ref snapshots and deleted files
   always use the built-in preview, and a removed/disabled opener degrades
   back to it. Pair with `bb.sdk.files` (rpc from your server) to load and

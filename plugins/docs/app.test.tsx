@@ -1081,6 +1081,7 @@ describe("Docs nav panel", () => {
           environmentId: "env_1",
           projectId: "project_1",
         },
+        experimental_Original: () => null,
       },
       {
         rpc: {

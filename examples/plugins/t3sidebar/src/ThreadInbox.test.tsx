@@ -58,6 +58,7 @@ const listProps = {
   isCompactViewport: false,
   onNavigate: () => {},
   searchQuery: "",
+  experimental_Original: () => null,
 };
 
 function render(
