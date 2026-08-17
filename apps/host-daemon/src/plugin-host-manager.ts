@@ -12,6 +12,7 @@ import type {
 } from "@bb/host-daemon-contract";
 import type { HostPathWatchChange, HostWatcher } from "@bb/host-watcher";
 import { jsonValueSchema, type JsonValue } from "@bb/domain";
+import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 import type { HostDaemonLogger } from "./logger.js";
 import { ensureCachedNodeArtifact } from "./node-artifact-cache.js";
 
@@ -224,19 +225,6 @@ function sendToWorker(child: ChildProcess, message: object): boolean {
   } catch {
     return false;
   }
-}
-
-/** Remove daemon-only BB variables while retaining the user's executable PATH. */
-export function pluginHostProcessEnv(
-  inherited: NodeJS.ProcessEnv,
-  shellEnv: NodeJS.ProcessEnv,
-): NodeJS.ProcessEnv {
-  const env = { ...inherited };
-  for (const key of Object.keys(env)) {
-    if (key.startsWith("BB_")) delete env[key];
-  }
-  if (shellEnv.PATH !== undefined) env.PATH = shellEnv.PATH;
-  return env;
 }
 
 export class PluginHostManager {
@@ -459,6 +447,7 @@ export class PluginHostManager {
     );
     await mkdir(dataDir, { recursive: true });
     const tempDir = await mkdtemp(join(tmpdir(), `bb-host-${pluginSegment}-`));
+    const shellPath = this.options.shellEnv?.().PATH;
     const startedAtMs = performance.now();
     let child: ChildProcess;
     try {
@@ -466,10 +455,12 @@ export class PluginHostManager {
         this.options.workerEntryPath ?? defaultWorkerEntryPath(),
         [artifactPath, command.pluginId, command.generation, dataDir, tempDir],
         {
-          env: pluginHostProcessEnv(
-            process.env,
-            this.options.shellEnv?.() ?? {},
-          ),
+          // Same answer every daemon-spawned child gets, plus the user's
+          // login-shell PATH so a host plugin can find their executables.
+          env: sanitizeInheritedChildProcessEnv({
+            env: process.env,
+            ...(shellPath !== undefined ? { shellPath } : {}),
+          }),
           stdio: ["ignore", "ignore", "pipe", "ipc"],
         },
       );

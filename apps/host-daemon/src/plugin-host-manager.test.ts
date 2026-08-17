@@ -4,11 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HostDaemonOnlineRpcCommand } from "@bb/host-daemon-contract";
 import type { WatchPathRootArgs } from "@bb/host-watcher";
+import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  PluginHostManager,
-  pluginHostProcessEnv,
-} from "./plugin-host-manager.js";
+import { PluginHostManager } from "./plugin-host-manager.js";
 
 type PluginCall = Extract<
   HostDaemonOnlineRpcCommand,
@@ -600,19 +598,19 @@ describe("PluginHostManager", () => {
   });
 });
 
-describe("pluginHostProcessEnv", () => {
-  it("uses the normalized PATH without forwarding daemon BB variables", () => {
+describe("host plugin worker env", () => {
+  it("uses the login-shell PATH without forwarding daemon BB variables", () => {
     expect(
-      pluginHostProcessEnv(
-        {
+      sanitizeInheritedChildProcessEnv({
+        env: {
           HOME: "/Users/test",
           PATH: "/usr/bin",
           GH_TOKEN: "user-token",
           BB_CONNECT_MACHINE_CREDENTIAL: "daemon-secret",
           BB_SERVER_URL: "http://daemon.internal",
         },
-        { PATH: "/Users/test/bin:/usr/bin", BB_CLI: "/bb/bin/bb" },
-      ),
+        shellPath: "/Users/test/bin:/usr/bin",
+      }),
     ).toEqual({
       HOME: "/Users/test",
       PATH: "/Users/test/bin:/usr/bin",

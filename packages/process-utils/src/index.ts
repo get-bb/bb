@@ -43,6 +43,15 @@ export interface ResolveContainedPathArgs {
 
 export interface SanitizeInheritedChildProcessEnvArgs {
   env: NodeJS.ProcessEnv;
+  /**
+   * The user's login-shell PATH, substituted for the inherited one. Omit to
+   * keep the parent's PATH: that is a real distinction, not a default. A
+   * daemon started by launchd or systemd inherits a minimal PATH that finds
+   * none of the user's tools, so anything spawning user-facing executables
+   * (plugin hosts, provider bridges) passes the resolved shell PATH, while a
+   * child that must run exactly what the parent runs must not.
+   */
+  shellPath?: string;
 }
 
 export type SafeProcessDiagnosticKind =
@@ -168,8 +177,10 @@ export function resolveContainedPath(
 }
 
 /**
- * Removes bb runtime-owned env from an inherited process env. Callers should
- * overlay only the child-specific bb env they intentionally expose afterward.
+ * The one answer to "what does a bb-spawned child process inherit": the
+ * parent's env minus bb runtime-owned variables (`BB_*`) and `NODE_ENV`,
+ * optionally with the user's login-shell PATH substituted. Callers overlay
+ * only the child-specific bb env they intentionally expose afterward.
  */
 export function sanitizeInheritedChildProcessEnv(
   args: SanitizeInheritedChildProcessEnvArgs,
@@ -183,6 +194,9 @@ export function sanitizeInheritedChildProcessEnv(
       continue;
     }
     sanitizedEnv[key] = value;
+  }
+  if (args.shellPath !== undefined) {
+    sanitizedEnv.PATH = args.shellPath;
   }
   return sanitizedEnv;
 }
