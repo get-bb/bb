@@ -185,7 +185,7 @@ function buildCatalogModel(entry: ClaudeCodeCatalogEntry): AvailableModel {
 }
 
 function buildDiscoveredModel(modelInfo: ModelInfo): AvailableModel {
-  const supportedReasoningEfforts = (
+  const supportedReasoningEfforts = cloneReasoningEfforts(
     modelInfo.supportedEffortLevels?.length
       ? modelInfo.supportedEffortLevels.flatMap((level) => {
           switch (level) {
@@ -201,8 +201,8 @@ function buildDiscoveredModel(modelInfo: ModelInfo): AvailableModel {
               return [MAX_REASONING_EFFORT];
           }
         })
-      : [LOW_REASONING_EFFORT]
-  ).map((effort) => ({ ...effort }));
+      : [LOW_REASONING_EFFORT],
+  );
   const supportedLevels = supportedReasoningEfforts.map(
     (effort) => effort.reasoningEffort,
   );
