@@ -3403,7 +3403,7 @@ export function PromptBoxInternal({
                     ) : null}
                     {voice &&
                     !showVoiceActionGroup &&
-                    !showVoiceAsPrimaryAction ? (
+                    (!showVoiceAsPrimaryAction || showStop) ? (
                       <Button
                         data-promptbox-expanded-only=""
                         type="button"
