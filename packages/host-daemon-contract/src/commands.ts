@@ -37,11 +37,11 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 import { workspaceResolutionFailureSchema } from "./workspace.js";
-import { PLUGIN_HOST_ARTIFACT_MAX_BYTES } from "./protocol.js";
+import { HOST_ARTIFACT_MAX_BYTES } from "./protocol.js";
 
 export {
+  HOST_ARTIFACT_MAX_BYTES,
   HOST_DAEMON_PROTOCOL_VERSION,
-  PLUGIN_HOST_ARTIFACT_MAX_BYTES,
 } from "./protocol.js";
 export {
   workspaceResolutionFailureCodeSchema,
@@ -654,7 +654,7 @@ const hostPickFolderCommandSchema = z
 const pluginHostArtifactSchema = z
   .object({
     digest: z.string().regex(/^[a-f0-9]{64}$/u),
-    byteLength: z.number().int().positive().max(PLUGIN_HOST_ARTIFACT_MAX_BYTES),
+    byteLength: z.number().int().positive().max(HOST_ARTIFACT_MAX_BYTES),
   })
   .strict();
 

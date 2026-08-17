@@ -65,7 +65,8 @@ export interface LoadedPlugin {
 }
 
 export interface PluginHostArtifactSnapshot {
-  bytes: Uint8Array;
+  /** Absolute path to the validated bundle; bytes are read only when served. */
+  path: string;
   byteLength: number;
   digest: string;
   /** Changes on every successful activation, even if source bytes are equal. */

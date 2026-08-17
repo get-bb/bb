@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -241,7 +241,7 @@ describe("plugin bb.sdk bind gate", () => {
     client.experimental_onSignal("changed", signalHandler);
     const artifact = callPluginHost.mock.calls[0]?.[0].artifact;
     if (artifact === undefined) throw new Error("missing host artifact call");
-    const servedArtifact = service.readHostArtifact(
+    const servedArtifact = service.getHostArtifact(
       "host-client",
       artifact.digest,
     );
@@ -249,10 +249,12 @@ describe("plugin bb.sdk bind gate", () => {
       throw new Error("missing served artifact");
     expect(servedArtifact.byteLength).toBe(artifact.byteLength);
     expect(
-      createHash("sha256").update(servedArtifact.bytes).digest("hex"),
+      createHash("sha256")
+        .update(await readFile(servedArtifact.path))
+        .digest("hex"),
     ).toBe(artifact.digest);
     expect(
-      service.readHostArtifact("host-client", "0".repeat(64)),
+      service.getHostArtifact("host-client", "0".repeat(64)),
     ).toBeUndefined();
     service.handleHostWorkerExit({
       authenticatedHostId: "host-1",

@@ -263,11 +263,11 @@ export interface PluginService {
     id: string,
     variant: PluginBrandingAssetVariant,
   ): { bytes: Uint8Array; contentType: string; hash: string } | undefined;
-  /** Read the active immutable host bundle when its digest matches exactly. */
-  readHostArtifact(
+  /** Resolve the active on-disk host bundle when its digest matches exactly. */
+  getHostArtifact(
     id: string,
     digest: string,
-  ): { bytes: Uint8Array; byteLength: number } | undefined;
+  ): { path: string; byteLength: number } | undefined;
   /** Active generations a reconnecting daemon uses to retire stale workers. */
   listHostArtifactGenerations(): Array<{
     pluginId: string;
@@ -1791,12 +1791,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       };
     },
 
-    readHostArtifact(id, digest) {
+    getHostArtifact(id, digest) {
       if (!loaded.has(id)) return undefined;
       const artifact = hostArtifacts.get(id);
       if (artifact === undefined || artifact.digest !== digest)
         return undefined;
-      return { bytes: artifact.bytes, byteLength: artifact.byteLength };
+      return { path: artifact.path, byteLength: artifact.byteLength };
     },
 
     listHostArtifactGenerations() {

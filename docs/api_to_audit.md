@@ -45,7 +45,7 @@ unexpected-exit recovery without feature-specific core hooks.
 5. **Paths.** Confirm the stable host data path layout and generation-temporary
    cleanup behavior across crashes and daemon restarts.
 6. **Limits.** Audit the common call duration, startup/cancellation grace, 8
-   MiB JSON payload cap, 16 MiB artifact cap, and per-plugin admission limits
+   MiB JSON payload cap, 256 MiB artifact cap, and per-plugin admission limits
    (256 active calls / 32 MiB of active inputs) against real plugins. Confirm
    retaining only the most recently materialized artifact digest per plugin is
    sufficient.

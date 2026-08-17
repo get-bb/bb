@@ -3,8 +3,8 @@ import { threadScope, turnScope, type JsonObject } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import * as contract from "../src/index.js";
 import {
+  HOST_ARTIFACT_MAX_BYTES,
   HOST_DAEMON_PROTOCOL_VERSION,
-  PLUGIN_HOST_ARTIFACT_MAX_BYTES,
   HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES,
   HOST_DAEMON_SETTLED_COMMAND_TYPES,
   TERMINAL_COLS_MAX,
@@ -1060,6 +1060,8 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
+  // Version 129 raises the single executable host-artifact ceiling to 256 MiB.
+  // Older daemons reject artifact declarations above the previous 16 MiB cap.
   // Version 128 replaces cross-machine host-plugin deadline timestamps with a
   // relative duration and caps declared host-plugin artifact sizes. Older
   // daemons cannot interpret the new call envelope.
@@ -1106,7 +1108,8 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(128);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(129);
+    expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
   it("uses relative host-plugin timeouts and bounds artifact declarations", () => {
@@ -1138,7 +1141,7 @@ describe("host-daemon command schemas", () => {
         ...command,
         artifact: {
           ...command.artifact,
-          byteLength: PLUGIN_HOST_ARTIFACT_MAX_BYTES + 1,
+          byteLength: HOST_ARTIFACT_MAX_BYTES + 1,
         },
       }).success,
     ).toBe(false);

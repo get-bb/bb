@@ -1,5 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, realpathSync, type FSWatcher } from "node:fs";
+import {
+  createReadStream,
+  existsSync,
+  realpathSync,
+  type FSWatcher,
+} from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -7,7 +12,7 @@ import { createRequire, registerHooks } from "node:module";
 import { performance } from "node:perf_hooks";
 import { createJiti } from "jiti";
 import semver from "semver";
-import { PLUGIN_HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
+import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION, type Thread } from "@bb/domain";
 import { buildPluginApp, buildPluginHost } from "@bb/plugin-build";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
@@ -74,6 +79,18 @@ const PLUGIN_SDK_SPECIFIER = "@get-bb/plugin-sdk";
  * migration window closes.
  */
 const LEGACY_PLUGIN_SDK_SPECIFIER = "@bb/plugin-sdk";
+
+async function hashFile(
+  path: string,
+): Promise<{ digest: string; byteLength: number }> {
+  const hash = createHash("sha256");
+  let byteLength = 0;
+  for await (const chunk of createReadStream(path)) {
+    byteLength += chunk.byteLength;
+    hash.update(chunk);
+  }
+  return { digest: hash.digest("hex"), byteLength };
+}
 
 /** Internal export for focused tests; not part of the service surface. */
 export function pluginSdkAliasFor(runtimePath: string): Record<string, string> {
@@ -991,22 +1008,22 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         `host artifact for plugin "${manifest.id}" is missing or unreadable: ${error instanceof Error ? error.message : String(error)}`,
       );
     });
-    if (artifactStats.size > PLUGIN_HOST_ARTIFACT_MAX_BYTES) {
+    if (artifactStats.size > HOST_ARTIFACT_MAX_BYTES) {
       throw new Error(
-        `host artifact for plugin "${manifest.id}" exceeds the ${PLUGIN_HOST_ARTIFACT_MAX_BYTES} byte limit`,
+        `host artifact for plugin "${manifest.id}" exceeds the ${HOST_ARTIFACT_MAX_BYTES} byte limit`,
       );
     }
-    const [bytes, rawMeta] = await Promise.all([
-      readFile(jsPath),
+    const [artifact, rawMeta] = await Promise.all([
+      hashFile(jsPath),
       readFile(metaPath, "utf8"),
     ]).catch((error) => {
       throw new Error(
         `host artifact for plugin "${manifest.id}" is missing or unreadable: ${error instanceof Error ? error.message : String(error)}`,
       );
     });
-    if (bytes.byteLength > PLUGIN_HOST_ARTIFACT_MAX_BYTES) {
+    if (artifact.byteLength > HOST_ARTIFACT_MAX_BYTES) {
       throw new Error(
-        `host artifact for plugin "${manifest.id}" exceeds the ${PLUGIN_HOST_ARTIFACT_MAX_BYTES} byte limit`,
+        `host artifact for plugin "${manifest.id}" exceeds the ${HOST_ARTIFACT_MAX_BYTES} byte limit`,
       );
     }
     const metadataProblem = validatePluginArtifactMeta({
@@ -1026,15 +1043,15 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     } catch {
       declaredDigest = undefined;
     }
-    const digest = createHash("sha256").update(bytes).digest("hex");
+    const digest = artifact.digest;
     if (declaredDigest !== digest) {
       throw new Error(
         `host artifact for plugin "${manifest.id}" has digest ${String(declaredDigest)}, expected ${digest}`,
       );
     }
     return {
-      bytes: new Uint8Array(bytes),
-      byteLength: bytes.byteLength,
+      path: jsPath,
+      byteLength: artifact.byteLength,
       digest,
       generation: randomUUID(),
     };

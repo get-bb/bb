@@ -25,7 +25,7 @@ import {
   type HostDaemonToolCallResponse,
   type HostDaemonSkillTree,
 } from "@bb/host-daemon-contract";
-import { PLUGIN_HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
+import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
 import type { PendingInteractionCreate, ToolCallRequest } from "@bb/domain";
 import type { HostDaemonLogger } from "./logger.js";
 import type { EventPostResult } from "./event-sink.js";
@@ -304,11 +304,10 @@ async function readProjectAttachmentBytes(
 function validatePluginHostArtifactPartialByteLength(
   expectedByteLength: number,
   byteLength: number,
+  maxBytes: number,
 ): void {
-  if (byteLength > PLUGIN_HOST_ARTIFACT_MAX_BYTES) {
-    throw new Error(
-      `Plugin host artifact exceeds the ${PLUGIN_HOST_ARTIFACT_MAX_BYTES} byte limit`,
-    );
+  if (byteLength > maxBytes) {
+    throw new Error(`Plugin host artifact exceeds the ${maxBytes} byte limit`);
   }
   if (byteLength > expectedByteLength) {
     throw new Error(
@@ -317,9 +316,11 @@ function validatePluginHostArtifactPartialByteLength(
   }
 }
 
-async function readPluginHostArtifactBytes(
+/** Internal export for exercising streaming limits without allocating the production cap. */
+export async function readPluginHostArtifactBytes(
   response: Response,
   expectedByteLength: number,
+  maxBytes = HOST_ARTIFACT_MAX_BYTES,
 ): Promise<Uint8Array> {
   if (!response.body) {
     throw new Error(
@@ -338,6 +339,7 @@ async function readPluginHostArtifactBytes(
       validatePluginHostArtifactPartialByteLength(
         expectedByteLength,
         totalBytes,
+        maxBytes,
       );
       chunks.push(result.value);
     }
@@ -515,9 +517,9 @@ export function createServerClient(
     },
 
     async fetchPluginHostArtifact(args): Promise<Uint8Array> {
-      if (args.expectedByteLength > PLUGIN_HOST_ARTIFACT_MAX_BYTES) {
+      if (args.expectedByteLength > HOST_ARTIFACT_MAX_BYTES) {
         throw new Error(
-          `Plugin host artifact exceeds the ${PLUGIN_HOST_ARTIFACT_MAX_BYTES} byte limit`,
+          `Plugin host artifact exceeds the ${HOST_ARTIFACT_MAX_BYTES} byte limit`,
         );
       }
       const response = await fetchFn(
@@ -532,12 +534,9 @@ export function createServerClient(
       const contentLength = parseContentLength(
         response.headers.get("content-length"),
       );
-      if (
-        contentLength !== null &&
-        contentLength > PLUGIN_HOST_ARTIFACT_MAX_BYTES
-      ) {
+      if (contentLength !== null && contentLength > HOST_ARTIFACT_MAX_BYTES) {
         throw new Error(
-          `Plugin host artifact exceeds the ${PLUGIN_HOST_ARTIFACT_MAX_BYTES} byte limit`,
+          `Plugin host artifact exceeds the ${HOST_ARTIFACT_MAX_BYTES} byte limit`,
         );
       }
       if (contentLength !== null && contentLength !== args.expectedByteLength) {
