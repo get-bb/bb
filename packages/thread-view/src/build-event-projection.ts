@@ -1,5 +1,6 @@
 import type { ThreadEvent } from "@bb/domain";
 import {
+  isBackgroundCommandTaskType,
   LOCAL_WORKFLOW_TASK_TYPE,
   requireThreadEventScopeTurnId,
 } from "@bb/domain";
@@ -222,6 +223,23 @@ function isDirectBackgroundTaskForCurrentAgent(
   return spawningCall ? spawningCall.parentToolCallId === undefined : true;
 }
 
+function getRootSpawningCallId(
+  message: EventProjectionWorkflowMessage,
+  callMessageById: ReadonlyMap<string, EventProjectionCallMessage>,
+): string | undefined {
+  let callId = message.parentToolCallId;
+  const visited = new Set<string>();
+  while (callId && !visited.has(callId)) {
+    visited.add(callId);
+    const call = callMessageById.get(callId);
+    if (!call?.parentToolCallId) {
+      return callId;
+    }
+    callId = call.parentToolCallId;
+  }
+  return undefined;
+}
+
 function selectActiveBackgroundCommandMessages(
   messages: readonly EventProjectionMessage[],
 ): EventProjectionWorkflowMessage[] {
@@ -229,14 +247,38 @@ function selectActiveBackgroundCommandMessages(
   // the background-activity prompt-box card, independent of the workflow-only
   // banner driven by selectActiveWorkflowMessage.
   const callMessageById = buildCallMessageById(messages);
+  const representedRootCallIds = new Set<string>();
+  for (const message of messages) {
+    if (
+      message.kind === "workflow" &&
+      message.status === "pending" &&
+      !message.skipTranscript &&
+      message.parentToolCallId &&
+      isDirectBackgroundTaskForCurrentAgent(message, callMessageById)
+    ) {
+      representedRootCallIds.add(message.parentToolCallId);
+    }
+  }
   const running: EventProjectionWorkflowMessage[] = [];
   for (const message of messages) {
+    const isDirect =
+      message.kind === "workflow" &&
+      isDirectBackgroundTaskForCurrentAgent(message, callMessageById);
+    const rootSpawningCallId =
+      message.kind === "workflow"
+        ? getRootSpawningCallId(message, callMessageById)
+        : undefined;
+    const isRepresentedByActiveParent =
+      !isDirect &&
+      rootSpawningCallId !== undefined &&
+      representedRootCallIds.has(rootSpawningCallId);
     if (
       message.kind !== "workflow" ||
       message.taskType === LOCAL_WORKFLOW_TASK_TYPE ||
       message.status !== "pending" ||
       message.skipTranscript ||
-      !isDirectBackgroundTaskForCurrentAgent(message, callMessageById)
+      isRepresentedByActiveParent ||
+      (!isDirect && !isBackgroundCommandTaskType(message.taskType))
     ) {
       continue;
     }

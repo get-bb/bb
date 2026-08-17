@@ -1,4 +1,5 @@
 import { getThread, listEvents } from "@bb/db";
+import { turnScope } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
   listQueuedCommands,
@@ -11,6 +12,7 @@ import {
   seedEnvironment,
   seedHost,
   seedProjectWithSource,
+  seedStoredEvent,
   seedThread,
   seedThreadFixture,
 } from "../helpers/seed.js";
@@ -47,6 +49,64 @@ describe("thread runtime stop", () => {
       // Nobody interrupted this thread. A release that appended an
       // interruption would put a false event in the user's timeline and would
       // interrupt the thread's pending interactions.
+      expect(
+        listEvents(harness.db, { threadId: thread.id }).filter(
+          (event) => event.type === "system/thread/interrupted",
+        ),
+      ).toHaveLength(0);
+    });
+  });
+
+  it("settles background commands terminated by an idle runtime release", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness, {
+        thread: { status: "idle", visibility: "hidden" },
+      });
+      seedStoredEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        type: "item/started",
+        scope: turnScope("turn-1"),
+        providerThreadId: "provider-thread-1",
+        itemId: "task:orphaned-waiter",
+        itemKind: "backgroundTask",
+        data: {
+          providerThreadId: "provider-thread-1",
+          item: {
+            type: "backgroundTask",
+            id: "task:orphaned-waiter",
+            taskType: "local_bash",
+            description: "Wait for tests",
+            status: "pending",
+            taskStatus: "running",
+            skipTranscript: false,
+          },
+        },
+      });
+
+      const responsePromise = harness.app.request(
+        `/api/v1/threads/${thread.id}/stop`,
+        { method: "POST" },
+      );
+      const stop = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" && command.threadId === thread.id,
+      );
+      await reportQueuedCommandSuccess(harness, stop, {
+        providerCheckpointId: null,
+      });
+
+      expect((await responsePromise).status).toBe(200);
+      const taskCompletions = listEvents(harness.db, {
+        threadId: thread.id,
+      }).filter((event) => event.type === "item/backgroundTask/completed");
+      expect(taskCompletions).toHaveLength(1);
+      expect(JSON.parse(taskCompletions[0]!.data)).toMatchObject({
+        item: { status: "interrupted", taskStatus: "stopped" },
+      });
+      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
       expect(
         listEvents(harness.db, { threadId: thread.id }).filter(
           (event) => event.type === "system/thread/interrupted",

@@ -770,47 +770,107 @@ describe("background task timeline projection", () => {
           5,
         ),
         turnCompleted("turn-1", 6),
-        turnStarted("turn-2", 7),
-        withMeta(
-          {
-            type: "item/backgroundTask/completed",
-            threadId: "thread-1",
-            providerThreadId: "provider-1",
-            scope: threadScope(),
-            item: bashTaskItem({
-              status: "completed",
-              taskStatus: "completed",
-              id: "task:nested-bash",
-              description: "Wait 10 seconds",
-              parentToolCallId: "toolu-nested-bash",
-              summary: "Wait 10 seconds",
-            }),
-          },
-          8,
-        ),
-        withMeta(
-          {
-            type: "item/completed",
-            threadId: "thread-1",
-            providerThreadId: "provider-1",
-            scope: turnScope("turn-2"),
-            item: {
-              type: "toolCall",
-              id: "toolu-nested-bash",
-              tool: "unknown",
-              status: "completed",
-              result: "(Bash completed with no output)",
-              parentToolCallId: "toolu-root-agent",
-            },
-          },
-          9,
-        ),
       ],
       { includeNestedRows: false, turnMessageDetail: "summary" },
     );
 
     expect(timeline.activeBackgroundCommands.map((row) => row.itemId)).toEqual([
       "task:root-agent",
+    ]);
+  });
+
+  it("surfaces a nested command after its owning background agent settles", () => {
+    const timeline = buildTimeline(
+      [
+        turnStarted("turn-1", 1),
+        withMeta(
+          {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: {
+              type: "toolCall",
+              id: "toolu-root-agent",
+              tool: "Agent",
+              status: "pending",
+            },
+          },
+          2,
+        ),
+        withMeta(
+          {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: agentTaskItem({
+              status: "pending",
+              taskStatus: "running",
+              id: "task:root-agent",
+              description: "Run the tests",
+              parentToolCallId: "toolu-root-agent",
+            }),
+          },
+          3,
+        ),
+        withMeta(
+          {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: {
+              type: "commandExecution",
+              id: "toolu-nested-wait",
+              command: "until tests-finish; do sleep 5; done",
+              cwd: "/tmp",
+              status: "pending",
+              approvalStatus: null,
+              parentToolCallId: "toolu-root-agent",
+            },
+          },
+          4,
+        ),
+        withMeta(
+          {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: bashTaskItem({
+              status: "pending",
+              taskStatus: "running",
+              id: "task:nested-wait",
+              description: "Wait for tests",
+              parentToolCallId: "toolu-nested-wait",
+            }),
+          },
+          5,
+        ),
+        withMeta(
+          {
+            type: "item/backgroundTask/completed",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: threadScope(),
+            item: agentTaskItem({
+              status: "completed",
+              taskStatus: "completed",
+              id: "task:root-agent",
+              description: "Run the tests",
+              parentToolCallId: "toolu-root-agent",
+            }),
+          },
+          6,
+        ),
+        turnCompleted("turn-1", 7),
+      ],
+      { includeNestedRows: false, turnMessageDetail: "summary" },
+    );
+
+    expect(timeline.activeBackgroundCommands.map((row) => row.itemId)).toEqual([
+      "task:nested-wait",
     ]);
   });
 

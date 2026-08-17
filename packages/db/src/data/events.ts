@@ -1055,6 +1055,10 @@ export interface ListOpenBackgroundTaskItemRowsForHostArgs {
   hostId: string;
 }
 
+export interface ListOpenBackgroundTaskItemRowsForThreadArgs {
+  threadId: string;
+}
+
 export interface OpenBackgroundTaskItemRow {
   /** Raw data JSON of the latest lifecycle row; carries the item payload. */
   data: string;
@@ -3423,6 +3427,67 @@ export function listOpenBackgroundTaskItemRowsForHost(
       ),
     )
     .orderBy(events.threadId, events.itemId)
+    .all();
+
+  return rows.flatMap((row) =>
+    row.itemId === null ? [] : [{ ...row, itemId: row.itemId }],
+  );
+}
+
+/**
+ * Latest lifecycle row per open backgroundTask item in one thread. Successful
+ * thread-runtime releases use this to settle work the released provider
+ * process could no longer report itself.
+ */
+export function listOpenBackgroundTaskItemRowsForThread(
+  db: DbQueryConnection,
+  args: ListOpenBackgroundTaskItemRowsForThreadArgs,
+): OpenBackgroundTaskItemRow[] {
+  const startedType = "item/started" satisfies ThreadEventType;
+  const progressType =
+    "item/backgroundTask/progress" satisfies ThreadEventType;
+  const completedType =
+    "item/backgroundTask/completed" satisfies ThreadEventType;
+  const settled = alias(events, "settled_thread_background_task");
+
+  const rows = db
+    .select({
+      data: events.data,
+      environmentId: threads.environmentId,
+      itemId: events.itemId,
+      providerThreadId: events.providerThreadId,
+      threadId: events.threadId,
+    })
+    .from(events)
+    .innerJoin(threads, eq(events.threadId, threads.id))
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.itemKind, "backgroundTask"),
+        inArray(events.type, [startedType, progressType]),
+        isNotNull(events.itemId),
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(settled)
+            .where(
+              and(
+                eq(settled.threadId, events.threadId),
+                eq(settled.itemId, events.itemId),
+                eq(settled.type, completedType),
+              ),
+            ),
+        ),
+        sql`${events.sequence} = (
+          SELECT MAX(latest.sequence)
+          FROM events latest
+          WHERE latest.thread_id = ${events.threadId}
+            AND latest.item_id = ${events.itemId}
+            AND latest.type IN (${startedType}, ${progressType})
+        )`,
+      ),
+    )
+    .orderBy(events.itemId)
     .all();
 
   return rows.flatMap((row) =>
