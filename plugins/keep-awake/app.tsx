@@ -5,7 +5,6 @@ import {
   type StandardSchemaV1InferOutput,
 } from "@get-bb/plugin-sdk/app";
 import { Checkbox } from "@bb/shared-ui/checkbox";
-import { Icon } from "@bb/shared-ui/icon";
 import { RadioGroup, RadioGroupItem } from "@bb/shared-ui/radio-group";
 import { Switch } from "@bb/shared-ui/switch";
 import type { keepAwakeRpcContract } from "./server.js";
@@ -142,7 +141,7 @@ function KeepAwakeSettings() {
   const hasHosts = view.hosts.length > 0;
 
   return (
-    <div className="max-w-2xl space-y-5">
+    <div className="w-full space-y-5">
       <div className="flex items-start justify-between gap-6">
         <div className="min-w-0">
           <h3 className="text-sm font-medium text-foreground">
@@ -163,105 +162,107 @@ function KeepAwakeSettings() {
         />
       </div>
 
-      <div className="border-t border-border/60 pt-4">
-        <h3 className="text-sm font-medium text-foreground">Keep awake on</h3>
-        <RadioGroup
-          className="mt-2 gap-1"
-          value={view.selection.mode}
-          onValueChange={(mode) => {
-            if (mode === "all" || mode === "selected") selectMode(mode);
-          }}
-        >
-          <label
-            htmlFor="keep-awake-all-hosts"
-            className="flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-accent/50"
-          >
-            <RadioGroupItem
-              id="keep-awake-all-hosts"
-              value="all"
-              aria-label="All hosts"
-              className="mt-0.5"
-            />
-            <span>
-              <span className="block text-sm font-medium">All hosts</span>
-              <span className="block text-xs text-muted-foreground">
-                Include hosts added in the future. Keep Awake runs only on
-                macOS.
-              </span>
-            </span>
-          </label>
-          <label
-            htmlFor="keep-awake-selected-hosts"
-            className={`flex items-start gap-3 rounded-md px-2 py-2 ${
-              hasHosts
-                ? "cursor-pointer hover:bg-accent/50"
-                : "cursor-not-allowed opacity-50"
-            }`}
-          >
-            <RadioGroupItem
-              id="keep-awake-selected-hosts"
-              value="selected"
-              aria-label="Specific hosts"
-              disabled={!hasHosts}
-              className="mt-0.5"
-            />
-            <span>
-              <span className="block text-sm font-medium">Specific hosts</span>
-              <span className="block text-xs text-muted-foreground">
-                Choose individual machines below.
-              </span>
-            </span>
-          </label>
-        </RadioGroup>
-      </div>
-
-      <div className="overflow-hidden rounded-md border border-border/60">
-        {hasHosts ? (
-          <div className="divide-y divide-border/60">
-            {view.hosts.map((host) => {
-              const selected =
-                view.selection.mode === "all" ||
-                selectedHostIds.includes(host.id);
-              const isOnlySelectedHost =
-                view.selection.mode === "selected" &&
-                selected &&
-                selectedHostIds.length === 1;
-              return (
-                <div
-                  key={host.id}
-                  className="flex min-h-10 items-center gap-3 px-3 py-2"
-                >
-                  {view.selection.mode === "all" ? (
-                    <span className="flex size-4 shrink-0 items-center justify-center rounded-sm bg-foreground text-background">
-                      <Icon name="Check" className="size-3.5" aria-hidden />
-                      <span className="sr-only">Included</span>
-                    </span>
-                  ) : (
-                    <Checkbox
-                      checked={selected}
-                      disabled={isOnlySelectedHost}
-                      aria-label={host.name}
-                      onCheckedChange={(checked) => {
-                        setHostSelected(host.id, checked === true);
-                      }}
-                    />
-                  )}
-                  <span className="min-w-0 flex-1 truncate text-sm">
-                    {host.name}
+      {view.enabled ? (
+        <>
+          <div className="border-t border-border/60 pt-4">
+            <h3 className="text-sm font-medium text-foreground">Hosts</h3>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Choose which Macs to keep awake.
+            </p>
+            <RadioGroup
+              className="mt-2 gap-1"
+              value={view.selection.mode}
+              onValueChange={(mode) => {
+                if (mode === "all" || mode === "selected") selectMode(mode);
+              }}
+            >
+              <label
+                htmlFor="keep-awake-all-hosts"
+                className="flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-accent/50"
+              >
+                <RadioGroupItem
+                  id="keep-awake-all-hosts"
+                  value="all"
+                  aria-label="All hosts"
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="block text-sm font-medium">All hosts</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Include hosts added in the future. Only macOS hosts are
+                    supported.
                   </span>
-                  <span className="text-xs text-muted-foreground">
-                    {host.status === "connected" ? "Connected" : "Offline"}
+                </span>
+              </label>
+              <label
+                htmlFor="keep-awake-selected-hosts"
+                className={`flex items-start gap-3 rounded-md px-2 py-2 ${
+                  hasHosts
+                    ? "cursor-pointer hover:bg-accent/50"
+                    : "cursor-not-allowed opacity-50"
+                }`}
+              >
+                <RadioGroupItem
+                  id="keep-awake-selected-hosts"
+                  value="selected"
+                  aria-label="Specific hosts"
+                  disabled={!hasHosts}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="block text-sm font-medium">
+                    Specific hosts
                   </span>
-                </div>
-              );
-            })}
+                  <span className="block text-xs text-muted-foreground">
+                    Choose individual Macs below.
+                  </span>
+                </span>
+              </label>
+            </RadioGroup>
           </div>
-        ) : (
-          <p className="px-3 py-4 text-sm text-muted-foreground">
-            No hosts available.
-          </p>
-        )}
-      </div>
+
+          {view.selection.mode === "selected" ? (
+            <div className="overflow-hidden rounded-md border border-border/60">
+              {hasHosts ? (
+                <div className="divide-y divide-border/60">
+                  {view.hosts.map((host) => {
+                    const selected = selectedHostIds.includes(host.id);
+                    const isOnlySelectedHost =
+                      selected && selectedHostIds.length === 1;
+                    return (
+                      <div
+                        key={host.id}
+                        className="flex min-h-10 items-center gap-3 px-3 py-2"
+                      >
+                        <Checkbox
+                          checked={selected}
+                          disabled={isOnlySelectedHost}
+                          aria-label={host.name}
+                          onCheckedChange={(checked) => {
+                            setHostSelected(host.id, checked === true);
+                          }}
+                        />
+                        <span className="min-w-0 flex-1 truncate text-sm">
+                          {host.name}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {host.status === "connected"
+                            ? "Connected"
+                            : "Offline"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="px-3 py-4 text-sm text-muted-foreground">
+                  No hosts available.
+                </p>
+              )}
+            </div>
+          ) : null}
+        </>
+      ) : null}
 
       <div className="flex min-h-5 justify-end" aria-live="polite">
         {error !== null ? (

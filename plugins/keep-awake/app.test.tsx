@@ -66,7 +66,10 @@ describe("Keep Awake settings", () => {
     const enabled = await slot.findByRole("switch", { name: "Keep Awake" });
     expect(enabled.getAttribute("aria-checked")).toBe("false");
     expect(slot.queryByRole("button", { name: /save/u })).toBeNull();
-    expect(slot.getByText("Offline")).toBeTruthy();
+    expect(slot.queryByText("Hosts")).toBeNull();
+    expect(slot.queryByRole("radio", { name: "All hosts" })).toBeNull();
+    expect(slot.queryByText("Offline")).toBeNull();
+    expect(slot.queryByRole("checkbox", { name: "Laptop" })).toBeNull();
 
     fireEvent.click(enabled);
     await waitFor(() =>
@@ -75,6 +78,8 @@ describe("Keep Awake settings", () => {
         input: { enabled: true, selection: { mode: "all" } },
       }),
     );
+    expect(slot.getByText("Hosts")).toBeTruthy();
+    expect(slot.getByText("Choose which Macs to keep awake.")).toBeTruthy();
 
     fireEvent.click(slot.getByRole("radio", { name: "Specific hosts" }));
     await waitFor(() =>
@@ -89,6 +94,7 @@ describe("Keep Awake settings", () => {
         },
       }),
     );
+    expect(slot.getByText("Offline")).toBeTruthy();
 
     fireEvent.click(slot.getByRole("checkbox", { name: "Laptop" }));
     await waitFor(() =>
@@ -124,6 +130,7 @@ describe("Keep Awake settings", () => {
     const alert = await slot.findByRole("alert");
     expect(alert.textContent).toContain("Could not save configuration");
     expect(enabled.getAttribute("aria-checked")).toBe("false");
+    expect(slot.queryByRole("radio", { name: "All hosts" })).toBeNull();
   });
 
   it("serializes rapid autosaves so an older response cannot win", async () => {
