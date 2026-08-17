@@ -440,11 +440,13 @@ function FolderRow({
   rootFolders,
   onRename,
   onMove,
+  onDelete,
 }: {
   folder: Folder;
   rootFolders: Folder[];
   onRename: (name: string) => Promise<void>;
   onMove: (parentFolderId: string | null) => Promise<void>;
+  onDelete: () => void;
 }) {
   const [renaming, setRenaming] = useState(false);
   const [draftName, setDraftName] = useState(folder.name);
@@ -524,6 +526,15 @@ function FolderRow({
           >
             <Icon name="Edit" className="size-3.5" />
           </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-6 text-muted-foreground hover:text-destructive"
+            aria-label={`Delete folder ${folder.name}`}
+            onClick={onDelete}
+          >
+            <Icon name="Trash2" className="size-3.5" />
+          </Button>
         </>
       )}
     </div>
@@ -533,7 +544,9 @@ function FolderRow({
 function FoldersSection() {
   const rpc = useTasksRpc();
   const folders = useFolders();
+  const projects = useProjects();
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Folder | null>(null);
   const folderList = folders.data ?? [];
   // The sidebar nests folders one level deep, so only roots can be parents.
   const rootFolders = useMemo(
@@ -549,6 +562,29 @@ function FoldersSection() {
       setError(describeError(actionError));
     }
   };
+
+  // Deleting a folder only unfiles what it held: the schema's ON DELETE SET
+  // NULL moves its projects and subfolders to the top level. Nothing else is
+  // removed, so the confirmation names the move rather than warning about loss.
+  function describeDeleteImpact(folder: Folder): string {
+    const projectCount = (projects.data ?? []).filter(
+      (project) => project.folderId === folder.id,
+    ).length;
+    const subfolderCount = folderList.filter(
+      (entry) => entry.parentFolderId === folder.id,
+    ).length;
+    const moved = [
+      projectCount > 0
+        ? `${projectCount} project${projectCount > 1 ? "s" : ""}`
+        : null,
+      subfolderCount > 0
+        ? `${subfolderCount} subfolder${subfolderCount > 1 ? "s" : ""}`
+        : null,
+    ].filter((part) => part !== null);
+    return moved.length === 0
+      ? "The folder is empty."
+      : `${moved.join(" and ")} move to the top level. No tasks are deleted.`;
+  }
 
   return (
     <div className="space-y-3">
@@ -576,6 +612,10 @@ function FoldersSection() {
                   }),
                 )
               }
+              onDelete={() => {
+                setError(null);
+                setConfirmDelete(folder);
+              }}
             />
           ))}
         </div>
@@ -585,6 +625,22 @@ function FoldersSection() {
           {error}
         </p>
       ) : null}
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDelete(null);
+        }}
+        title={`Delete folder “${confirmDelete?.name ?? ""}”?`}
+        description={confirmDelete ? describeDeleteImpact(confirmDelete) : ""}
+        confirmLabel="Delete folder"
+        destructive
+        onConfirm={() => {
+          const target = confirmDelete;
+          if (target) {
+            void run(() => rpc.call("deleteFolder", { folderId: target.id }));
+          }
+        }}
+      />
     </div>
   );
 }

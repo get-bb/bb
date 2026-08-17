@@ -751,6 +751,78 @@ describe("PresetDialog environment section", () => {
   });
 });
 
+describe("Manage folders", () => {
+  const parentFolder = {
+    id: "01HZZZZZZZZZZZZZZZZZZZZZF1",
+    name: "bb",
+    parentFolderId: null,
+    createdAt: "2026-07-15T00:00:00.000Z",
+  };
+  const childFolder = {
+    id: "01HZZZZZZZZZZZZZZZZZZZZZF2",
+    name: "archive",
+    parentFolderId: parentFolder.id,
+    createdAt: "2026-07-15T00:00:00.000Z",
+  };
+
+  function renderFolders(overrides: Record<string, unknown> = {}) {
+    return renderSlot(
+      app.navPanels[0]!,
+      { subPath: "manage" },
+      {
+        rpc: {
+          listProjects: () => ({
+            projects: [{ ...project, folderId: parentFolder.id }],
+          }),
+          listFolders: () => ({ folders: [parentFolder, childFolder] }),
+          listPresets: () => ({ presets: [] }),
+          sidebarSummary: () => ({ projects: [] }),
+          listTasks: () => ({ tasks: [] }),
+          listLabels: () => ({ labels: [] }),
+          ...overrides,
+        },
+      },
+    );
+  }
+
+  it("deletes a folder after naming what the delete unfiles", async () => {
+    const deleteCalls: Array<Record<string, unknown>> = [];
+    const slot = renderFolders({
+      deleteFolder: (input: Record<string, unknown>) => {
+        deleteCalls.push(input);
+        return { deleted: true };
+      },
+    });
+    fireEvent.mouseDown(await slot.findByRole("tab", { name: "Folders" }));
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Delete folder bb" }),
+    );
+
+    // Nothing is destroyed: the schema re-parents the folder's contents.
+    await slot.findByText(
+      "1 project and 1 subfolder move to the top level. No tasks are deleted.",
+    );
+    fireEvent.click(slot.getByRole("button", { name: "Delete folder" }));
+    await waitFor(() => expect(deleteCalls).toHaveLength(1));
+    expect(deleteCalls[0]).toMatchObject({ folderId: parentFolder.id });
+  });
+
+  it("surfaces a failed delete instead of silently closing", async () => {
+    const slot = renderFolders({
+      deleteFolder: () => {
+        throw new Error("Folder not found");
+      },
+    });
+    fireEvent.mouseDown(await slot.findByRole("tab", { name: "Folders" }));
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Delete folder archive" }),
+    );
+    await slot.findByText("The folder is empty.");
+    fireEvent.click(slot.getByRole("button", { name: "Delete folder" }));
+    await slot.findByRole("alert");
+  });
+});
+
 describe("NewProjectDialog", () => {
   function renderEmptyState(overrides: Record<string, unknown> = {}) {
     return renderSlot(
