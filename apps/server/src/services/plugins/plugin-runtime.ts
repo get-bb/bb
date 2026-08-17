@@ -5,7 +5,7 @@ import {
   realpathSync,
   type FSWatcher,
 } from "node:fs";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire, registerHooks } from "node:module";
@@ -14,7 +14,11 @@ import { createJiti } from "jiti";
 import semver from "semver";
 import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION, type Thread } from "@bb/domain";
-import { buildPluginApp, buildPluginHost } from "@bb/plugin-build";
+import {
+  buildPluginApp,
+  buildPluginHost,
+  isIgnoredPluginDevPath,
+} from "@bb/plugin-build";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { createNodeBbSdk, type BbSdk } from "@bb/sdk";
 import {
@@ -881,6 +885,52 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   }
 
   /**
+   * Mutable plugin app artifacts are only a cache of their source tree. A
+   * watcher can rebuild edits made while the server is running, but startup
+   * must also catch edits made while it was stopped. Directory mtimes matter
+   * because deleting a source file changes its parent rather than another
+   * surviving file.
+   */
+  async function isMutableAppBundleStale(rootDir: string): Promise<boolean> {
+    let artifactMtimeMs: number;
+    try {
+      artifactMtimeMs = (await stat(join(rootDir, "dist", "app.js"))).mtimeMs;
+    } catch {
+      return true;
+    }
+
+    const pendingDirectories = [""];
+    while (pendingDirectories.length > 0) {
+      const relativeDirectory = pendingDirectories.pop();
+      if (relativeDirectory === undefined) break;
+      const directory = join(rootDir, relativeDirectory);
+      let entries;
+      try {
+        const directoryStats = await stat(directory);
+        if (directoryStats.mtimeMs > artifactMtimeMs) return true;
+        entries = await readdir(directory, { withFileTypes: true });
+      } catch {
+        // The tree changed while it was scanned. Rebuilding is the safe
+        // outcome, and the build will report any lasting filesystem problem.
+        return true;
+      }
+
+      for (const entry of entries) {
+        const relativePath = join(relativeDirectory, entry.name);
+        if (isIgnoredPluginDevPath(relativePath)) continue;
+        try {
+          const entryStats = await stat(join(rootDir, relativePath));
+          if (entryStats.mtimeMs > artifactMtimeMs) return true;
+        } catch {
+          return true;
+        }
+        if (entry.isDirectory()) pendingDirectories.push(relativePath);
+      }
+    }
+    return false;
+  }
+
+  /**
    * The backend entry to import for this load. Managed (git:/npm:) installs
    * prefer a fresh, SDK-compatible prebuilt `dist/server.js` (design
    * §3 loader amendment, §6 prebuilt distribution) so consumers never need
@@ -932,10 +982,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
 
   /**
    * Refresh a plugin's frontend-bundle snapshot for this load (design §5.1).
-   * Mutable path: and source-builtin trees are rebuilt when the recorded SDK
-   * version differs from the running one. Managed git/npm artifacts are
-   * immutable after promotion and are served exactly as validated;
-   * incompatible metadata is surfaced without rewriting cached bytes.
+   * Mutable path installs and source-layout builtins are rebuilt when the
+   * recorded SDK version differs from the running one or their source changed
+   * after the last build. Managed git/npm artifacts are immutable after
+   * promotion and are served exactly as validated; incompatible metadata is
+   * surfaced without rewriting cached bytes.
    */
   async function loadAppBundleCandidate(
     row: InstalledPluginRow,
@@ -956,10 +1007,14 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       !isPackagedBuiltinAppEntry({ kind, manifest, rootDir: row.rootDir })
     ) {
       const meta = await readPluginAppBundleMeta(row.rootDir);
-      if (meta?.sdkVersion !== PLUGIN_SDK_VERSION) {
-        logger.info(
-          `plugin ${row.id}: rebuilding frontend bundle (built with SDK ${meta?.sdkVersion ?? "unknown"}, running SDK is ${PLUGIN_SDK_VERSION})`,
-        );
+      const sdkChanged = meta?.sdkVersion !== PLUGIN_SDK_VERSION;
+      const sourceChanged =
+        !sdkChanged && (await isMutableAppBundleStale(row.rootDir));
+      if (sdkChanged || sourceChanged) {
+        const reason = sdkChanged
+          ? `built with SDK ${meta?.sdkVersion ?? "unknown"}, running SDK is ${PLUGIN_SDK_VERSION}`
+          : "plugin source is newer than dist/app.js";
+        logger.info(`plugin ${row.id}: rebuilding frontend bundle (${reason})`);
         try {
           await buildPluginApp(
             row.rootDir,
