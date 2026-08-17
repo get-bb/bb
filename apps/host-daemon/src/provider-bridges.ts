@@ -28,7 +28,10 @@ const BRIDGE_PRUNE: NodeArtifactPruneStrategy = {
   maxAgeMs: 30 * 24 * 60 * 60 * 1000,
 };
 
-export type FetchProviderBridge = (sha256: string) => Promise<Uint8Array>;
+export type FetchProviderBridge = (args: {
+  sha256: string;
+  expectedByteLength: number;
+}) => Promise<Uint8Array>;
 
 export interface EnsureCachedProviderBridgeArgs {
   dataDir: string;
@@ -51,7 +54,11 @@ export async function ensureCachedProviderBridge(
     digest: args.sha256,
     byteLength: args.byteLength,
     fileName: BRIDGE_FILE_NAME,
-    fetchArtifact: ({ digest }) => args.fetchProviderBridge(digest),
+    fetchArtifact: ({ digest, byteLength }) =>
+      args.fetchProviderBridge({
+        sha256: digest,
+        expectedByteLength: byteLength,
+      }),
     prune: BRIDGE_PRUNE,
     logger: args.logger,
   });

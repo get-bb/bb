@@ -1,7 +1,4 @@
-import {
-  getThread,
-  hasRootStoredTurnStarted,
-} from "@bb/db";
+import { getThread, hasRootStoredTurnStarted } from "@bb/db";
 import {
   requireThreadEventScopeTurnId,
   type ThreadEvent,
