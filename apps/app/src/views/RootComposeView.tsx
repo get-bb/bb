@@ -121,7 +121,10 @@ import {
   useTouchFixedPanelTabsState,
   useUpdateFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs";
-import { createNewTabFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
+import {
+  createNewTabFixedPanelTab,
+  type SecondaryFileFixedPanelTab,
+} from "@/lib/fixed-panel-tabs-state";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import {
   getFilePreviewLineRangeStart,
@@ -301,6 +304,23 @@ interface RootComposeRightPanelToggleProps {
   onToggle: () => void;
 }
 
+interface ShouldHideRootComposePanelOnTabCloseArgs {
+  tabCount: number;
+  tabKind: SecondaryFileFixedPanelTab["kind"];
+}
+
+/**
+ * Root compose has no fixed Info view to reveal after its last launcher tab
+ * closes. Keep the launcher mounted and hide the panel instead, matching the
+ * existing Cmd+W behavior while making the visible close control honest.
+ */
+export function shouldHideRootComposePanelOnTabClose({
+  tabCount,
+  tabKind,
+}: ShouldHideRootComposePanelOnTabCloseArgs): boolean {
+  return tabKind === "new-tab" && tabCount === 1;
+}
+
 export function resolveRootComposePanelTogglePlacement(args: {
   isHosted: boolean;
   isOpen: boolean;
@@ -319,6 +339,37 @@ export function resolveRootComposePanelTogglePlacement(args: {
 
 interface RightPanelFileTabIconProps {
   path: string;
+}
+
+interface BuildRootComposeNewTabFileTabArgs {
+  activeTabId: string | null;
+  onClose: () => void;
+  onSelect: () => void;
+  tabId: string;
+}
+
+/** The root launcher uses the same visible tab-pill model as thread panels. */
+export function buildRootComposeNewTabFileTab({
+  activeTabId,
+  onClose,
+  onSelect,
+  tabId,
+}: BuildRootComposeNewTabFileTabArgs): SecondaryPanelFileTab {
+  return {
+    id: tabId,
+    filename: "New tab",
+    isActive: tabId === activeTabId,
+    leadingVisual: (
+      <Icon
+        name="NewTab"
+        className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+        aria-hidden
+      />
+    ),
+    statusLabel: null,
+    onSelect,
+    onClose,
+  };
 }
 
 function RightPanelFileTabIcon({ path }: RightPanelFileTabIconProps) {
@@ -1577,6 +1628,8 @@ function RootComposeSurface({
       rootPanelTerminalTarget,
     ],
   );
+  const secondaryFileTabCount =
+    fixedPanelTabsState.secondary.tabs.filter(isSecondaryFileTab).length;
   const handleCloseWindowRequest = useCallback(() => {
     // Gate on the visible panel state, not the persisted flag: on compact
     // viewports the drawer can be dismissed while tabs stay persisted, and
@@ -1592,8 +1645,10 @@ function RootComposeSurface({
       // whenever the panel would otherwise be empty), so hide the panel
       // instead of churning the placeholder.
       if (
-        activeFixedSecondaryTab.kind === "new-tab" &&
-        fixedPanelTabsState.secondary.tabs.length === 1
+        shouldHideRootComposePanelOnTabClose({
+          tabCount: secondaryFileTabCount,
+          tabKind: activeFixedSecondaryTab.kind,
+        })
       ) {
         closeSecondaryPanel();
         return true;
@@ -1613,10 +1668,25 @@ function RootComposeSurface({
     activeFixedSecondaryTab,
     closeSecondaryPanel,
     closeTab,
-    fixedPanelTabsState.secondary.tabs,
     handleCloseTerminalTab,
     isSecondaryPanelOpen,
+    secondaryFileTabCount,
   ]);
+  const handleCloseNewTab = useCallback(
+    (tabId: string) => {
+      if (
+        shouldHideRootComposePanelOnTabClose({
+          tabCount: secondaryFileTabCount,
+          tabKind: "new-tab",
+        })
+      ) {
+        closeSecondaryPanel();
+        return;
+      }
+      closeTab(tabId);
+    },
+    [closeSecondaryPanel, closeTab, secondaryFileTabCount],
+  );
   const fileTabs = (() => {
     const filenameOf = (path: string) => path.split("/").at(-1) ?? path;
     const tabs = syncedOrderedSecondaryFileTabs.map(
@@ -1695,22 +1765,12 @@ function RootComposeSurface({
               onClose: () => closeTab(tab.id),
             };
           case "new-tab":
-            return {
-              id: tab.id,
-              filename: "New tab",
-              isHidden: true,
-              isActive: tab.id === activeFixedSecondaryTabId,
-              leadingVisual: (
-                <Icon
-                  name="NewTab"
-                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-                  aria-hidden
-                />
-              ),
-              statusLabel: null,
+            return buildRootComposeNewTabFileTab({
+              activeTabId: activeFixedSecondaryTabId,
+              onClose: () => handleCloseNewTab(tab.id),
               onSelect: () => handleActivateFileTab(tab.id),
-              onClose: () => closeTab(tab.id),
-            };
+              tabId: tab.id,
+            });
           case "plugin-panel": {
             const actionIcon =
               rootPanelNewThreadPanelActions.find(
@@ -2366,6 +2426,9 @@ function RootComposeSurface({
             renderBrowserDeck,
             isBrowserTabActive,
             isOpen: isSecondaryPanelOpen,
+            // The shell, tab strip, launcher, resize, and drawer behavior are
+            // shared with threads. Info, Diff, and conversation full-screen
+            // stay thread-only because no thread exists on this surface yet.
             showConversationCollapseControl: false,
             showGitDiffTab: false,
             showInfoTab: false,
