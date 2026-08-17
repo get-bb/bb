@@ -260,26 +260,17 @@ export function AppSidebar({
     ],
   );
 
-  const OriginalThreadList = useCallback(
-    () => (
-      <ProjectList
-        onNewProject={
-          quickCreateProject.isAvailable
-            ? quickCreateProject.openCreateDialog
-            : undefined
-        }
-        onProjectSelect={closeOnMobile}
-        isCreatingProject={quickCreateProject.isCreating}
-        threadSearch={threadSearchPanelController}
-      />
-    ),
-    [
-      closeOnMobile,
-      quickCreateProject.isAvailable,
-      quickCreateProject.isCreating,
-      quickCreateProject.openCreateDialog,
-      threadSearchPanelController,
-    ],
+  const originalThreadList = (
+    <ProjectList
+      onNewProject={
+        quickCreateProject.isAvailable
+          ? quickCreateProject.openCreateDialog
+          : undefined
+      }
+      onProjectSelect={closeOnMobile}
+      isCreatingProject={quickCreateProject.isCreating}
+      threadSearch={threadSearchPanelController}
+    />
   );
 
   return (
@@ -343,7 +334,7 @@ export function AppSidebar({
         <SidebarContent>
           <PluginThreadList
             replacement={threadListReplacement}
-            Original={OriginalThreadList}
+            original={originalThreadList}
             searchQuery={threadSearch.query}
             onNavigate={threadSearch.onExternalThreadOpen}
           />

@@ -1,13 +1,6 @@
-import { useCallback, useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import type { JsonValue } from "@get-bb/plugin-sdk";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
-import { FilePreview } from "@/components/secondary-panel/FilePreview";
-import {
-  HostFilePreviewTabContent,
-  ProjectFilePreviewTabContent,
-  ThreadStorageFilePreviewTabContent,
-  WorkspaceFilePreviewTabContent,
-} from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
 import {
   usePluginSlots,
   type PluginNewThreadPanelActionSlot,
@@ -21,7 +14,6 @@ import {
 import {
   fileOpenerIdFromActionId,
   parseFileOpenerParams,
-  type PluginFileOpenerFile,
 } from "./file-opener-tabs";
 import { PluginSlotMount } from "./PluginSlotMount";
 import { PluginReplacementSlot } from "./PluginReplacementSlot";
@@ -200,13 +192,22 @@ export type PluginPanelSurfaceContext =
 export function PluginPanelTabContent({
   tab,
   context,
+  fileOpenerOriginal,
 }: {
   tab: PluginPanelFixedPanelTab;
   context: PluginPanelSurfaceContext;
+  /** The view's real native file-preview node, with its live actions bound. */
+  fileOpenerOriginal?: ReactNode;
 }) {
   const openerId = fileOpenerIdFromActionId(tab.actionId);
   if (openerId !== null) {
-    return <FileOpenerTabContent openerId={openerId} tab={tab} />;
+    return (
+      <FileOpenerTabContent
+        openerId={openerId}
+        original={fileOpenerOriginal}
+        tab={tab}
+      />
+    );
   }
   return context.kind === "thread" ? (
     <ThreadActionTabContent tab={tab} threadId={context.threadId} />
@@ -317,9 +318,11 @@ function NewThreadActionTabContent({
  */
 function FileOpenerTabContent({
   openerId,
+  original,
   tab,
 }: {
   openerId: string;
+  original: ReactNode | undefined;
   tab: PluginPanelFixedPanelTab;
 }) {
   const { fileOpeners } = usePluginSlots();
@@ -332,22 +335,17 @@ function FileOpenerTabContent({
     () => parseFileOpenerParams(tab.paramsJson),
     [tab.paramsJson],
   );
-  const Original = useCallback(
-    () =>
-      file === null ? (
-        <UnavailableFileOpenerTab />
-      ) : (
-        <BuiltInFileOpener file={file} />
-      ),
-    [file],
-  );
-  if (file === null) {
+  if (
+    file === null ||
+    tab.fileOpenerOwner === undefined ||
+    original === undefined
+  ) {
     return <UnavailableFileOpenerTab />;
   }
   return (
     <PluginReplacementSlot
       replacement={replacement}
-      Original={Original}
+      original={original}
       slotKind="fileOpener"
     >
       {(opener, BoundOriginal) => (
@@ -376,58 +374,4 @@ function UnavailableFileOpenerTab() {
       </EmptyStatePanel>
     </div>
   );
-}
-
-/** The built-in live-file preview bound to one plugin-opener tab. */
-function BuiltInFileOpener({ file }: { file: PluginFileOpenerFile }) {
-  const { path, source } = file;
-  if (source.kind === "workspace") {
-    if (source.environmentId !== null) {
-      return (
-        <WorkspaceFilePreviewTabContent
-          activePath={path}
-          environmentId={source.environmentId}
-          lineRange={null}
-          source={{ kind: "working-tree" }}
-          statusLabel={null}
-          threadId={source.threadId}
-        />
-      );
-    }
-    if (source.projectId !== null) {
-      return (
-        <ProjectFilePreviewTabContent
-          activePath={path}
-          environmentId={null}
-          hostId={null}
-          lineRange={null}
-          projectId={source.projectId}
-        />
-      );
-    }
-  }
-  if (source.kind === "host" && source.threadId !== null) {
-    return (
-      <HostFilePreviewTabContent
-        activePath={path}
-        copyPath={path}
-        environmentId={source.environmentId}
-        lineRange={null}
-        threadId={source.threadId}
-      />
-    );
-  }
-  if (source.kind === "thread-storage" && source.threadId !== null) {
-    return (
-      <ThreadStorageFilePreviewTabContent
-        activePath={path}
-        lineRange={null}
-        threadId={source.threadId}
-      />
-    );
-  }
-
-  // Persisted tabs from an older or partial context still show recognizable
-  // owner chrome while their full source context is unavailable.
-  return <FilePreview path={path} state={{ kind: "loading" }} />;
 }

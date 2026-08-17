@@ -1136,6 +1136,7 @@ function RootComposeSurface({
     usePluginSlots();
   const {
     activePluginPanelTab,
+    activeFileOpenerOwner,
     activeHostFileEnvironmentId,
     activeHostFileLineRange,
     activeHostFilePath,
@@ -1981,6 +1982,19 @@ function RootComposeSurface({
     activeTabId: activeFixedSecondaryTabId,
     tabs: syncedOrderedSecondaryFileTabs,
   });
+  const renderFileOpenerReplacement = (original: ReactNode): ReactNode =>
+    activeFileOpenerOwner !== null && activePluginPanelTab !== null ? (
+      <PluginPanelTabContent
+        tab={activePluginPanelTab}
+        context={{
+          kind: "new-thread",
+          projectId: isProjectless ? null : projectId,
+        }}
+        fileOpenerOriginal={original}
+      />
+    ) : (
+      original
+    );
   const fileTabContent: ReactNode =
     activeTerminalId && rootPanelTerminalTarget ? (
       <ThreadTerminalPanel
@@ -2013,65 +2027,73 @@ function RootComposeSurface({
       />
     ) : activeWorkspaceFilePath !== null &&
       activeWorkspaceFileEnvironmentId !== null ? (
-      <WorkspaceFilePreviewTabContent
-        activePath={activeWorkspaceFilePath}
-        copyPath={workspaceFileCopyPath}
-        environmentId={activeWorkspaceFileEnvironmentId}
-        lineRange={activeWorkspaceFileLineRange}
-        onOpenInEditor={handleOpenWorkspaceFileInEditor}
-        onSelectionAddToChat={handleRootPanelSelectionAddToChat}
-        source={activeWorkspaceFileSource}
-        statusLabel={activeWorkspaceFileStatusLabel}
-        threadId={rootPanelThreadId}
-      />
+      renderFileOpenerReplacement(
+        <WorkspaceFilePreviewTabContent
+          activePath={activeWorkspaceFilePath}
+          copyPath={workspaceFileCopyPath}
+          environmentId={activeWorkspaceFileEnvironmentId}
+          lineRange={activeWorkspaceFileLineRange}
+          onOpenInEditor={handleOpenWorkspaceFileInEditor}
+          onSelectionAddToChat={handleRootPanelSelectionAddToChat}
+          source={activeWorkspaceFileSource}
+          statusLabel={activeWorkspaceFileStatusLabel}
+          threadId={rootPanelThreadId}
+        />,
+      )
     ) : activeWorkspaceFilePath !== null &&
       activeWorkspaceFileProjectPreviewId !== null ? (
-      <ProjectFilePreviewTabContent
-        activePath={activeWorkspaceFilePath}
-        copyPath={projectFileCopyPath}
-        environmentId={rootPanelEnvironmentId}
-        hostId={rootProjectHostId}
-        lineRange={activeWorkspaceFileLineRange}
-        onOpenInEditor={handleOpenProjectFileInEditor}
-        onSelectionAddToChat={handleRootPanelSelectionAddToChat}
-        projectId={activeWorkspaceFileProjectPreviewId}
-      />
-    ) : activeHostFilePath !== null ? (
-      activeRootHostFileThreadId && activeRootHostFileEnvironmentId ? (
-        <HostFilePreviewTabContent
-          activePath={activeHostFilePath}
-          copyPath={activeHostFilePath}
-          environmentId={activeRootHostFileEnvironmentId}
-          lineRange={activeHostFileLineRange}
-          onOpenInEditor={handleOpenHostFileInEditor}
+      renderFileOpenerReplacement(
+        <ProjectFilePreviewTabContent
+          activePath={activeWorkspaceFilePath}
+          copyPath={projectFileCopyPath}
+          environmentId={rootPanelEnvironmentId}
+          hostId={rootProjectHostId}
+          lineRange={activeWorkspaceFileLineRange}
+          onOpenInEditor={handleOpenProjectFileInEditor}
           onSelectionAddToChat={handleRootPanelSelectionAddToChat}
-          threadId={activeRootHostFileThreadId}
-        />
-      ) : (
-        <FilePreview
-          path={activeHostFilePath}
-          copyPath={activeHostFilePath}
-          onOpenInEditor={handleOpenHostFileInEditor}
-          state={{ kind: "loading" }}
-        />
+          projectId={activeWorkspaceFileProjectPreviewId}
+        />,
+      )
+    ) : activeHostFilePath !== null ? (
+      renderFileOpenerReplacement(
+        activeRootHostFileThreadId && activeRootHostFileEnvironmentId ? (
+          <HostFilePreviewTabContent
+            activePath={activeHostFilePath}
+            copyPath={activeHostFilePath}
+            environmentId={activeRootHostFileEnvironmentId}
+            lineRange={activeHostFileLineRange}
+            onOpenInEditor={handleOpenHostFileInEditor}
+            onSelectionAddToChat={handleRootPanelSelectionAddToChat}
+            threadId={activeRootHostFileThreadId}
+          />
+        ) : (
+          <FilePreview
+            path={activeHostFilePath}
+            copyPath={activeHostFilePath}
+            onOpenInEditor={handleOpenHostFileInEditor}
+            state={{ kind: "loading" }}
+          />
+        ),
       )
     ) : activeStorageFilePath !== null ? (
-      activeRootStorageFileThreadId ? (
-        <ThreadStorageFilePreviewTabContent
-          activePath={activeStorageFilePath}
-          copyPath={storageFileCopyPath}
-          lineRange={activeStorageFileLineRange}
-          onOpenInEditor={handleOpenStorageFileInEditor}
-          onSelectionAddToChat={handleRootPanelSelectionAddToChat}
-          threadId={activeRootStorageFileThreadId}
-        />
-      ) : (
-        <FilePreview
-          path={activeStorageFilePath}
-          copyPath={storageFileCopyPath}
-          onOpenInEditor={handleOpenStorageFileInEditor}
-          state={{ kind: "loading" }}
-        />
+      renderFileOpenerReplacement(
+        activeRootStorageFileThreadId ? (
+          <ThreadStorageFilePreviewTabContent
+            activePath={activeStorageFilePath}
+            copyPath={storageFileCopyPath}
+            lineRange={activeStorageFileLineRange}
+            onOpenInEditor={handleOpenStorageFileInEditor}
+            onSelectionAddToChat={handleRootPanelSelectionAddToChat}
+            threadId={activeRootStorageFileThreadId}
+          />
+        ) : (
+          <FilePreview
+            path={activeStorageFilePath}
+            copyPath={storageFileCopyPath}
+            onOpenInEditor={handleOpenStorageFileInEditor}
+            state={{ kind: "loading" }}
+          />
+        ),
       )
     ) : activePluginPanelTab ? (
       <PluginPanelTabContent

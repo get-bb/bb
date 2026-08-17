@@ -1,4 +1,4 @@
-import { useCallback, type ComponentType } from "react";
+import { useCallback, type ReactNode } from "react";
 import { toast } from "sonner";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
 import { useSidebar } from "@/components/ui/sidebar.js";
@@ -12,7 +12,7 @@ export const THREAD_LIST_SLOT_KIND = "threadList";
 interface PluginThreadListProps {
   replacement: ResolvedReplacement<PluginThreadListSlot>;
   /** BB's list bound to this sidebar instance. */
-  Original: ComponentType;
+  original: ReactNode;
   /** The host search field's text; "" when closed or plugin-owned. */
   searchQuery: string;
   onNavigate: () => void;
@@ -25,7 +25,7 @@ interface PluginThreadListProps {
  */
 export function PluginThreadList({
   replacement,
-  Original,
+  original,
   searchQuery,
   onNavigate,
 }: PluginThreadListProps) {
@@ -46,7 +46,7 @@ export function PluginThreadList({
   return (
     <PluginReplacementSlot
       replacement={replacement}
-      Original={Original}
+      original={original}
       slotKind={THREAD_LIST_SLOT_KIND}
       onCrash={handleCrash}
     >

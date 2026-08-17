@@ -6,6 +6,7 @@ import {
   createBrowserFixedPanelTab,
   createEmptyFixedPanelTabsState,
   createHostFilePreviewFixedPanelTab,
+  createPluginPanelFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
   createThreadStorageFilePreviewFixedPanelTab,
@@ -16,6 +17,7 @@ import {
   serializeFixedPanelTabsState,
   FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
   type FixedPanelTabsState,
+  type PluginPanelFixedPanelTab,
 } from "./fixed-panel-tabs-state";
 
 const NOW = 1_700_000_000_000;
@@ -319,6 +321,60 @@ describe("thread-owned file preview fixed panel tabs", () => {
         threadId: null,
       },
     ]);
+  });
+});
+
+describe("plugin file opener owner state", () => {
+  it("persists native preview context while dropping transient line selection", () => {
+    const tab = {
+      ...createPluginPanelFixedPanelTab({
+        actionId: "file-opener:markdown",
+        paramsJson: JSON.stringify({ path: "docs/readme.md" }),
+        pluginId: "docs",
+        title: "readme.md",
+      }),
+      fileOpenerOwner: {
+        kind: "workspace-file-preview" as const,
+        environmentId: "env_docs",
+        projectId: null,
+        tab: {
+          lineRange: { startLineNumber: 8, endLineNumber: 12 },
+          path: "docs/readme.md",
+          source: { kind: "working-tree" as const },
+          statusLabel: null,
+        },
+        threadId: "thr_docs",
+      },
+    } satisfies PluginPanelFixedPanelTab;
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: tab.id,
+        isOpen: true,
+        tabs: [tab],
+      },
+      lastUsedAt: NOW,
+    });
+
+    const parsed = parseFixedPanelTabsState({
+      initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
+      now: NOW,
+      storedValue: serializeFixedPanelTabsState({ state }),
+    });
+
+    expect(parsed.secondary.tabs[0]).toMatchObject({
+      actionId: "file-opener:markdown",
+      fileOpenerOwner: {
+        environmentId: "env_docs",
+        projectId: null,
+        tab: {
+          lineRange: null,
+          path: "docs/readme.md",
+          source: { kind: "working-tree" },
+          statusLabel: null,
+        },
+        threadId: "thr_docs",
+      },
+    });
   });
 });
 

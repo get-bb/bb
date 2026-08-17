@@ -2,6 +2,7 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useEffect } from "react";
 import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { PluginReplacementSlot } from "./PluginReplacementSlot";
@@ -29,7 +30,7 @@ describe("PluginReplacementSlot", () => {
     render(
       <PluginReplacementSlot<TestRegistration>
         replacement={{ kind: "owner" }}
-        Original={() => <div>BB owner</div>}
+        original={<div>BB owner</div>}
         slotKind="testReplacement"
       >
         {() => <div>Plugin replacement</div>}
@@ -48,7 +49,7 @@ describe("PluginReplacementSlot", () => {
     render(
       <PluginReplacementSlot
         replacement={replacement}
-        Original={() => <div>BB owner</div>}
+        original={<div>BB owner</div>}
         slotKind="testReplacement"
       >
         {(_registration, Original) => <Original />}
@@ -68,7 +69,7 @@ describe("PluginReplacementSlot", () => {
     render(
       <PluginReplacementSlot
         replacement={{ kind: "plugin", registration: REGISTRATION }}
-        Original={() => <div>BB owner</div>}
+        original={<div>BB owner</div>}
         slotKind="testReplacement"
       >
         {() => <Crash />}
@@ -77,5 +78,41 @@ describe("PluginReplacementSlot", () => {
 
     expect(screen.getByText("BB owner")).toBeDefined();
     expect(screen.queryByText(/plugin demo crashed/u)).toBeNull();
+  });
+
+  it("keeps the owner mounted while live owner props change", () => {
+    let mountCount = 0;
+    function Owner({ query }: { query: string }) {
+      useEffect(() => {
+        mountCount += 1;
+      }, []);
+      return <div>Owner query: {query}</div>;
+    }
+    const replacement: ResolvedReplacement<TestRegistration> = {
+      kind: "plugin",
+      registration: REGISTRATION,
+    };
+    const { rerender } = render(
+      <PluginReplacementSlot
+        replacement={replacement}
+        original={<Owner query="first" />}
+        slotKind="testReplacement"
+      >
+        {(_registration, Original) => <Original />}
+      </PluginReplacementSlot>,
+    );
+
+    rerender(
+      <PluginReplacementSlot
+        replacement={replacement}
+        original={<Owner query="second" />}
+        slotKind="testReplacement"
+      >
+        {(_registration, Original) => <Original />}
+      </PluginReplacementSlot>,
+    );
+
+    expect(screen.getByText("Owner query: second")).toBeDefined();
+    expect(mountCount).toBe(1);
   });
 });
