@@ -810,9 +810,11 @@ interface PluginSidebarThreadSplit {
  * Unlike every other slot, this one is EXCLUSIVE: two lists cannot share one
  * scroll area. Registering activates the replacement while the plugin is
  * enabled. If multiple plugins register one, the first in deterministic slot
- * order is active. A plugin can use its own setting and render
- * `experimental_Original` conditionally. An absent or crashing replacement
- * falls back to BB's list rather than leaving the user with no sidebar.
+ * order is active by default; removing it reveals the next. The user can pin
+ * BB's list or a specific provider under Settings → Appearance. A plugin can
+ * also use its own setting and render `experimental_Original` conditionally.
+ * An absent or crashing replacement falls back to BB's list rather than
+ * leaving the user with no sidebar.
  *
  * The plugin gets the scrolling list and nothing else. The New-thread button,
  * the search field, the plugin nav rows, and the footer stay host-rendered in
@@ -822,9 +824,9 @@ interface PluginSidebarThreadSplit {
 interface PluginThreadListRegistration {
     /** Unique within the plugin; letters, digits, `-`, `_`. */
     id: string;
-    /** Label used when BB identifies this capability. */
+    /** Label shown in Settings → Appearance and capability details. */
     title: string;
-    /** Optional one-line description used when BB identifies this capability. */
+    /** Optional one-line description shown with the provider choice. */
     description?: string;
     component: ComponentType<PluginThreadListProps>;
 }

@@ -267,8 +267,9 @@ export function resolveReplacement<Registration>(
 
 export function resolveThreadListReplacement(
   registrations: readonly PluginThreadListSlot[],
+  applies?: (registration: PluginThreadListSlot) => boolean,
 ): ResolvedReplacement<PluginThreadListSlot> {
-  return resolveReplacement(registrations);
+  return resolveReplacement(registrations, applies);
 }
 
 export type FileOpenerOverride =

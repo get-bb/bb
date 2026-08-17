@@ -247,7 +247,8 @@ function pluginAppSurfaceItems(
       pluginId,
       slots.threadLists,
       "thread-list",
-      "Replaces the sidebar thread list while the plugin is enabled.",
+      "Can replace the sidebar thread list; configured in Appearance.",
+      () => getSettingsRoutePath("appearance"),
     ),
     ...namedSlotItems(
       pluginId,

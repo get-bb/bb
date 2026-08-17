@@ -78,8 +78,8 @@ export function AppSidebar({
   toolsRoutePath,
 }: AppSidebarProps) {
   const quickCreateProject = useQuickCreateProjectController();
-  // The first registered replacement owns the sidebar's scrolling thread list.
-  // It never replaces the chrome around it: the New-thread button, search field,
+  // The resolved replacement owns the sidebar's scrolling thread list. It never
+  // replaces the chrome around it: the New-thread button, search field,
   // the plugin nav rows, and the footer stay host-rendered in every sidebar.
   const threadListReplacement = useThreadListReplacement();
   const { threadId: activeThreadId } = useRouteState();

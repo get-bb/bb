@@ -420,22 +420,25 @@ Before stabilization, audit:
 
 **What it does.** Replaces the sidebar's scrolling thread list with a plugin
 component. Unlike every other `app.slots.*` member this slot is **exclusive**:
-one list at a time fills the scroll area. Registration activates it immediately.
+one list at a time fills the scroll area. Automatic activation is the default.
 If several are registered, the first in the slot snapshot wins (plugin ids are
-sorted, then each plugin's registration order is preserved). Removing it
-reveals the next provider. A plugin-owned enable/disable setting belongs in the
-component, which can render `experimental_Original` when disabled.
+sorted, then each plugin's registration order is preserved); removing the
+automatic winner reveals the next. The user can override that behavior under
+Settings → Appearance by pinning BB's list or a specific provider; the choice
+is stored per client. A plugin-owned enable/disable setting can also live in
+the component, which renders `experimental_Original` when disabled.
 
-Two fallbacks keep the sidebar usable: a crashing component renders the
-built-in list (not the usual "plugin crashed" chip, which in place of a whole
-sidebar would strand the user) plus one toast; and no applicable registration
-renders the built-in list.
+Fallbacks keep the sidebar usable: no automatic provider renders BB's list; an
+unavailable pinned provider temporarily renders BB's list without erasing the
+choice; and a crashing component renders BB's list (not the usual "plugin
+crashed" chip, which in place of a whole sidebar would strand the user) plus
+one toast.
 
 **Audit before stabilizing.**
 
-1. **Arbitration.** Confirm alphabetical plugin-id order is an acceptable
-   deterministic tie-breaker when multiple replacements are enabled, or
-   whether the host eventually needs an explicit precedence policy.
+1. **Arbitration.** Confirm automatic/pinned/built-in is the right long-term
+   selection model and alphabetical plugin-id order is an acceptable default
+   tie-breaker when multiple replacements are enabled.
 2. **Fallback discoverability.** Confirm one toast is the right signal when a
    crash silently swaps the user's sidebar back.
 3. **Region boundary.** The plugin gets the scrolling list and nothing else:
