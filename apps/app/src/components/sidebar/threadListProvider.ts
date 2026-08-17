@@ -1,6 +1,7 @@
 import { atomWithStorage } from "jotai/utils";
 import { useAtomValue } from "jotai";
 import { createJsonLocalStorage } from "@/lib/browser-storage";
+import { resolveThreadListReplacement } from "@/lib/plugin-slot-resolvers";
 import { usePluginSlots, type PluginThreadListSlot } from "@/lib/plugin-slots";
 
 const THREAD_LIST_PROVIDER_STORAGE_KEY = "bb.sidebar.threadListProvider";
@@ -41,10 +42,12 @@ export function resolveThreadListProvider(
   slots: readonly PluginThreadListSlot[],
   preference: string,
 ): PluginThreadListSlot | null {
-  if (preference === BUILT_IN_THREAD_LIST_PROVIDER) return null;
-  return (
-    slots.find((slot) => threadListProviderKey(slot) === preference) ?? null
+  const resolved = resolveThreadListReplacement(
+    slots,
+    preference,
+    BUILT_IN_THREAD_LIST_PROVIDER,
   );
+  return resolved.kind === "plugin" ? resolved.registration : null;
 }
 
 /** The resolved thread-list slot for the sidebar, or null for the built-in. */

@@ -6,10 +6,11 @@ import {
   createPluginPanelFixedPanelTab,
   type PluginPanelFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
+import type { FileOpenerPreferenceMap } from "@/lib/file-opener-preference";
 import {
-  resolvePreferredFileOpener,
-  type FileOpenerPreferenceMap,
-} from "@/lib/file-opener-preference";
+  resolveFileOpenerReplacement,
+  type FileOpenerOverride,
+} from "@/lib/plugin-slot-resolvers";
 import type { PluginFileOpenerSlot } from "@/lib/plugin-slots";
 import type { OpenSecondaryPanelTabRequest } from "@/components/secondary-panel/useThreadFileTabs";
 
@@ -79,9 +80,7 @@ export function parseFileOpenerParams(
  * built-in preview; an opener ref forces that plugin opener. Absent =
  * follow the per-extension default.
  */
-export type FileTabViewerOverride =
-  | "builtin"
-  | { pluginId: string; openerId: string };
+export type FileTabViewerOverride = FileOpenerOverride;
 
 export interface CreateFileOpenerTabForRequestArgs {
   fileOpeners: readonly PluginFileOpenerSlot[];
@@ -108,7 +107,6 @@ export function createFileOpenerTabForRequest({
   threadId,
   viewer,
 }: CreateFileOpenerTabForRequestArgs): PluginPanelFixedPanelTab | null {
-  if (viewer === "builtin") return null;
   const file = fileForOpenRequest({
     projectId,
     request,
@@ -116,20 +114,15 @@ export function createFileOpenerTabForRequest({
     threadId,
   });
   if (file === null) return null;
-  const opener =
-    viewer !== undefined
-      ? (fileOpeners.find(
-          (candidate) =>
-            candidate.pluginId === viewer.pluginId &&
-            candidate.id === viewer.openerId,
-        ) ?? null)
-      : resolvePreferredFileOpener({
-          openers: fileOpeners,
-          preference,
-          path: file.path,
-        });
-  if (opener === null) return null;
-  return buildFileOpenerPanelTab(opener, file);
+  const resolved = resolveFileOpenerReplacement({
+    registrations: fileOpeners,
+    preference,
+    path: file.path,
+    ...(viewer !== undefined ? { override: viewer } : {}),
+  });
+  return resolved.kind === "plugin"
+    ? buildFileOpenerPanelTab(resolved.registration, file)
+    : null;
 }
 
 function fileForOpenRequest({
