@@ -508,6 +508,11 @@ export const environments = sqliteTable(
       .default(false),
     branchName: text("branch_name"),
     baseBranch: text("base_branch"),
+    baseRevision: text("base_revision"),
+    baseRevisionVerifiedAt: integer("base_revision_verified_at"),
+    provisionFailure: text("provision_failure").$type<
+      "revision_not_found" | "unavailable"
+    >(),
     defaultBranch: text("default_branch"),
     mergeBaseBranch: text("merge_base_branch"),
     destroyAttemptId: text("destroy_attempt_id"),
@@ -1136,8 +1141,13 @@ export const workTogetherRoomResourceReservations = sqliteTable(
     repositoryBindingVersion: integer("repository_binding_version").notNull(),
     providerRepositoryId: text("provider_repository_id").notNull(),
     baseBranch: text("base_branch").notNull(),
+    baseRevision: text("base_revision"),
     generatedBranch: text("generated_branch").notNull(),
     candidateHostId: text("candidate_host_id").notNull(),
+    bbHostId: text("bb_host_id"),
+    projectName: text("project_name"),
+    providerId: text("provider_id"),
+    sourcePath: text("source_path"),
     environmentTemplate: text("environment_template")
       .$type<"managed-worktree">()
       .notNull(),

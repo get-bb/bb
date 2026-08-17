@@ -476,7 +476,7 @@ describe("provisionWorkspace", () => {
         sourcePath: repoPath,
         targetPath,
         branchName: "bb/env-test",
-        baseBranch: "main",
+        startPoint: { kind: "branch", baseBranch: "main" },
         timeoutMs: 900000,
       });
 
@@ -497,7 +497,7 @@ describe("provisionWorkspace", () => {
         sourcePath: repoPath,
         targetPath,
         branchName: "bb/env-roots",
-        baseBranch: "main",
+        startPoint: { kind: "branch", baseBranch: "main" },
         timeoutMs: 900000,
       });
       const gitDir = (
@@ -529,7 +529,7 @@ describe("provisionWorkspace", () => {
         sourcePath: repoPath,
         targetPath,
         branchName: "bb/env-destroy",
-        baseBranch: "main",
+        startPoint: { kind: "branch", baseBranch: "main" },
         timeoutMs: 900000,
       });
 
@@ -556,7 +556,7 @@ describe("provisionWorkspace", () => {
         sourcePath: repoPath,
         targetPath,
         branchName: "bb/env-script",
-        baseBranch: "main",
+        startPoint: { kind: "branch", baseBranch: "main" },
         timeoutMs: 900000,
       });
 
@@ -581,7 +581,7 @@ describe("provisionWorkspace", () => {
           sourcePath: repoPath,
           targetPath,
           branchName: "bb/env-fail",
-          baseBranch: "main",
+          startPoint: { kind: "branch", baseBranch: "main" },
           timeoutMs: 900000,
         }),
       ).rejects.toThrow(/Setup script failed/u);

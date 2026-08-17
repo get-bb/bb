@@ -153,6 +153,8 @@ export function seedEnvironment(
     isWorktree?: boolean;
     branchName?: string | null;
     baseBranch?: string | null;
+    baseRevision?: string | null;
+    baseRevisionVerifiedAt?: number | null;
     defaultBranch?: string | null;
     mergeBaseBranch?: string | null;
   },
@@ -169,6 +171,11 @@ export function seedEnvironment(
     workspaceProvisionType: args.workspaceProvisionType ?? "unmanaged",
     branchName: args.branchName !== undefined ? args.branchName : "bb/test",
     baseBranch: args.baseBranch !== undefined ? args.baseBranch : null,
+    baseRevision: args.baseRevision !== undefined ? args.baseRevision : null,
+    baseRevisionVerifiedAt:
+      args.baseRevisionVerifiedAt !== undefined
+        ? args.baseRevisionVerifiedAt
+        : null,
     defaultBranch:
       args.defaultBranch !== undefined ? args.defaultBranch : "main",
     mergeBaseBranch: args.mergeBaseBranch ?? null,

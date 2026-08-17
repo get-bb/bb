@@ -11,7 +11,11 @@ import type {
   ThreadOriginKind,
   ThreadVisibility,
 } from "@bb/domain";
-import { gitBranchNameSchema, SYSTEM_ACTOR_STAMP } from "@bb/domain";
+import {
+  gitBranchNameSchema,
+  gitObjectIdSchema,
+  SYSTEM_ACTOR_STAMP,
+} from "@bb/domain";
 import { supportsNativeFork } from "@bb/agent-providers";
 import type { BaseBranchSpec, UnmanagedBranchSpec } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
@@ -102,6 +106,8 @@ export interface ThreadCreateResourceReservation {
   threadId: string;
   /** Exact managed-worktree branch retained by the enclosing Room saga. */
   managedBranchName: string;
+  baseRevision: string;
+  providerRepositoryId: string;
 }
 
 const RESERVED_ENVIRONMENT_ID = /^env_[23456789abcdefghijkmnpqrstuvwxyz]{10}$/u;
@@ -121,7 +127,9 @@ function requireThreadCreateResourceReservation(
     !RESERVED_THREAD_ID.test(reservation.threadId) ||
     Buffer.byteLength(reservation.managedBranchName, "utf8") > 255 ||
     reservation.managedBranchName.startsWith("refs/") ||
-    !gitBranchNameSchema.safeParse(reservation.managedBranchName).success
+    !gitBranchNameSchema.safeParse(reservation.managedBranchName).success ||
+    !gitObjectIdSchema.safeParse(reservation.baseRevision).success ||
+    !/^[1-9][0-9]{0,127}$/u.test(reservation.providerRepositoryId)
   ) {
     throw new ApiError(
       400,
@@ -933,6 +941,11 @@ export async function createThreadFromRequest(
           ? {
               environmentId: resourceReservation.environmentId,
               branchName: resourceReservation.managedBranchName,
+              revisionPin: {
+                baseRevision: resourceReservation.baseRevision,
+                providerRepositoryId: resourceReservation.providerRepositoryId,
+                allowExistingDescendant: false,
+              },
             }
           : {}),
       };

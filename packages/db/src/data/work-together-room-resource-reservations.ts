@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { gitBranchNameSchema } from "@bb/domain";
+import { gitBranchNameSchema, gitObjectIdSchema } from "@bb/domain";
 
 import type { DbConnection, DbQueryConnection } from "../connection.js";
 import {
@@ -19,8 +19,13 @@ export interface ReserveWorkTogetherRoomResourcesInput {
   repositoryBindingVersion: number;
   providerRepositoryId: string;
   baseBranch: string;
+  baseRevision: string;
   generatedBranch: string;
   candidateHostId: string;
+  bbHostId: string;
+  projectName: string;
+  providerId: string;
+  sourcePath: string;
   environmentTemplate: "managed-worktree";
 }
 
@@ -82,6 +87,19 @@ function validateInput(input: ReserveWorkTogetherRoomResourcesInput): void {
   }
   requireBranch(input.baseBranch);
   requireBranch(input.generatedBranch);
+  if (!gitObjectIdSchema.safeParse(input.baseRevision).success) {
+    throw new TypeError(
+      "Invalid Work Together Room resource reservation base revision",
+    );
+  }
+  if (
+    input.bbHostId.length === 0 ||
+    input.projectName.length === 0 ||
+    input.providerId.length === 0 ||
+    input.sourcePath.length === 0
+  ) {
+    throw new TypeError("Invalid Work Together Room resource reservation target");
+  }
   if (input.environmentTemplate !== "managed-worktree") {
     throw new TypeError(
       "Invalid Work Together Room resource reservation environment template",
@@ -115,8 +133,13 @@ function sameLaunchFacts(
     row.repositoryBindingVersion === input.repositoryBindingVersion &&
     row.providerRepositoryId === input.providerRepositoryId &&
     row.baseBranch === input.baseBranch &&
+    row.baseRevision === input.baseRevision &&
     row.generatedBranch === input.generatedBranch &&
     row.candidateHostId === input.candidateHostId &&
+    row.bbHostId === input.bbHostId &&
+    row.projectName === input.projectName &&
+    row.providerId === input.providerId &&
+    row.sourcePath === input.sourcePath &&
     row.environmentTemplate === input.environmentTemplate
   );
 }
@@ -127,6 +150,21 @@ export function getWorkTogetherRoomResourceReservation(
 ): WorkTogetherRoomResourceReservation | null {
   requireUuid(bindingId);
   return getByBindingId(db, bindingId);
+}
+
+export function getWorkTogetherRoomResourceReservationByEnvironmentId(
+  db: DbQueryConnection,
+  environmentId: string,
+): WorkTogetherRoomResourceReservation | null {
+  return (
+    db
+      .select()
+      .from(workTogetherRoomResourceReservations)
+      .where(
+        eq(workTogetherRoomResourceReservations.environmentId, environmentId),
+      )
+      .get() ?? null
+  );
 }
 
 /**

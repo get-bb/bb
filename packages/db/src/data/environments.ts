@@ -30,6 +30,9 @@ export interface CreateEnvironmentInput {
   isWorktree?: boolean;
   branchName?: string | null;
   baseBranch?: string | null;
+  baseRevision?: string | null;
+  baseRevisionVerifiedAt?: number | null;
+  provisionFailure?: "revision_not_found" | "unavailable" | null;
   defaultBranch?: string | null;
   mergeBaseBranch?: string | null;
   status?: EnvironmentStatus;
@@ -55,6 +58,9 @@ export function createEnvironment(
       isWorktree: input.isWorktree ?? false,
       branchName: input.branchName ?? null,
       baseBranch: input.baseBranch ?? null,
+      baseRevision: input.baseRevision ?? null,
+      baseRevisionVerifiedAt: input.baseRevisionVerifiedAt ?? null,
+      provisionFailure: input.provisionFailure ?? null,
       defaultBranch: input.defaultBranch ?? null,
       mergeBaseBranch: input.mergeBaseBranch ?? null,
       workspaceProvisionType: input.workspaceProvisionType,
@@ -157,6 +163,9 @@ export function listEnvironmentsByIds(
 
 interface EnvironmentMetadataUpdateColumns {
   baseBranch?: string | null;
+  baseRevision?: string | null;
+  baseRevisionVerifiedAt?: number | null;
+  provisionFailure?: "revision_not_found" | "unavailable" | null;
   branchName?: string | null;
   defaultBranch?: string | null;
   isGitRepo?: boolean;
@@ -221,6 +230,11 @@ function buildEnvironmentMetadataUpdateSet(
 ): EnvironmentMetadataUpdateColumns {
   const set: EnvironmentMetadataUpdateColumns = {};
   if ("baseBranch" in input) set.baseBranch = input.baseBranch;
+  if ("baseRevision" in input) set.baseRevision = input.baseRevision;
+  if ("baseRevisionVerifiedAt" in input)
+    set.baseRevisionVerifiedAt = input.baseRevisionVerifiedAt;
+  if ("provisionFailure" in input)
+    set.provisionFailure = input.provisionFailure;
   if ("path" in input) set.path = input.path;
   if ("isGitRepo" in input) set.isGitRepo = input.isGitRepo;
   if ("isWorktree" in input) set.isWorktree = input.isWorktree;
@@ -237,6 +251,13 @@ function environmentMetadataChanged(
   return (
     ("baseBranch" in args.metadata &&
       args.updated.baseBranch !== args.existing.baseBranch) ||
+    ("baseRevision" in args.metadata &&
+      args.updated.baseRevision !== args.existing.baseRevision) ||
+    ("baseRevisionVerifiedAt" in args.metadata &&
+      args.updated.baseRevisionVerifiedAt !==
+        args.existing.baseRevisionVerifiedAt) ||
+    ("provisionFailure" in args.metadata &&
+      args.updated.provisionFailure !== args.existing.provisionFailure) ||
     ("path" in args.metadata && args.updated.path !== args.existing.path) ||
     ("isGitRepo" in args.metadata &&
       args.updated.isGitRepo !== args.existing.isGitRepo) ||
@@ -305,6 +326,7 @@ export function recordEnvironmentCurrentBranch(
 
 export interface RecordProvisionedEnvironmentWorkspaceInput extends DiscoveredWorkspaceProperties {
   baseBranch?: string | null;
+  baseRevisionVerifiedAt?: number | null;
   mergeBaseBranch?: string | null;
 }
 
@@ -326,9 +348,24 @@ export function recordProvisionedEnvironmentWorkspace(
     branchName: input.branchName,
     defaultBranch: input.defaultBranch,
     ...(input.baseBranch !== undefined ? { baseBranch: input.baseBranch } : {}),
+    ...(input.baseRevisionVerifiedAt !== undefined
+      ? { baseRevisionVerifiedAt: input.baseRevisionVerifiedAt }
+      : {}),
+    provisionFailure: null,
     ...(input.mergeBaseBranch !== undefined
       ? { mergeBaseBranch: input.mergeBaseBranch }
       : {}),
+  });
+}
+
+export function recordEnvironmentProvisionFailure(
+  db: EnvironmentWriteConnection,
+  notifier: DbNotifier,
+  id: string,
+  failure: "revision_not_found" | "unavailable" | null,
+) {
+  return updateEnvironmentMetadataRecord(db, notifier, id, {
+    provisionFailure: failure,
   });
 }
 
@@ -450,6 +487,9 @@ function applyEnvironmentLifecycleEventRecord(
     evaluation.to === "destroyed"
   ) {
     set.retireRequestedAt = null;
+  }
+  if (args.event.type === "provision.requested") {
+    set.provisionFailure = null;
   }
   if (args.event.type === "destroy.started") {
     set.destroyAttemptId = args.event.destroyAttemptId;

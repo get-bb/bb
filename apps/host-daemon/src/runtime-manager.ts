@@ -1091,6 +1091,18 @@ export class RuntimeManager {
   private async applyExistingEnvironmentProvision(
     args: ApplyExistingEnvironmentProvisionArgs,
   ): Promise<void> {
+    if (args.provision?.workspaceProvisionType === "managed-worktree") {
+      if (args.provision.targetPath !== args.entry.path) {
+        throw new Error(
+          `Cannot reprovision existing environment ${args.entry.environmentId} at a different path`,
+        );
+      }
+      await this.provisionWorkspace({
+        ...args.provision,
+        signal: args.signal,
+      });
+      return;
+    }
     if (
       args.provision?.workspaceProvisionType !== "unmanaged" ||
       !args.provision.checkout

@@ -3492,6 +3492,7 @@ describe("public thread data routes", () => {
                 defaultBranch: "main",
                 isGitRepo: true,
                 isWorktree: true,
+                verifiedBaseRevision: null,
                 transcript: [],
               },
             };
@@ -3641,6 +3642,7 @@ describe("public thread data routes", () => {
         defaultBranch: "main",
         isGitRepo: true,
         isWorktree: true,
+        verifiedBaseRevision: null,
         transcript: [],
       });
       const startCommand = await waitForQueuedCommandAfter(

@@ -109,6 +109,11 @@ export type EnvironmentProvisionCommandArgs =
       targetPath: string;
       branchName: string;
       baseBranch: BaseBranchSpec;
+      revisionPin?: {
+        baseRevision: string;
+        providerRepositoryId: string;
+        allowExistingDescendant: boolean;
+      };
       setupTimeoutMs: number;
     }
   | {
@@ -141,7 +146,17 @@ export function buildEnvironmentProvisionCommand(
         sourcePath: args.sourcePath,
         targetPath: args.targetPath,
         branchName: args.branchName,
-        baseBranch: baseBranchSpecToStoredName(args.baseBranch),
+        startPoint:
+          args.revisionPin === undefined
+            ? {
+                kind: "branch" as const,
+                baseBranch: baseBranchSpecToStoredName(args.baseBranch),
+              }
+            : {
+                kind: "revision" as const,
+                baseBranch: baseBranchSpecToStoredName(args.baseBranch),
+                ...args.revisionPin,
+              },
         setupTimeoutMs: args.setupTimeoutMs,
       };
     case "personal":

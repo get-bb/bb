@@ -19,6 +19,7 @@ import {
   gitHostPullRequestSchema,
   clientTurnRequestIdSchema,
   gitBranchNameSchema,
+  gitObjectIdSchema,
   jsonObjectSchema,
   providerNativeSkillRootsSchema,
   BRANCH_LIST_LIMIT_MAX,
@@ -36,7 +37,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 126 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 127 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -993,6 +994,24 @@ const unmanagedEnvironmentProvisionCommandSchema =
     })
     .strict();
 
+const managedWorktreeStartPointSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("branch"),
+      baseBranch: gitBranchNameSchema.nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("revision"),
+      baseBranch: gitBranchNameSchema.nullable(),
+      baseRevision: gitObjectIdSchema,
+      providerRepositoryId: z.string().regex(/^[1-9][0-9]{0,127}$/u),
+      allowExistingDescendant: z.boolean(),
+    })
+    .strict(),
+]);
+
 const managedEnvironmentProvisionFieldsSchema = z.object({
   /** Source repo path */
   sourcePath: z.string().min(1),
@@ -1000,11 +1019,8 @@ const managedEnvironmentProvisionFieldsSchema = z.object({
   targetPath: z.string().min(1),
   /** Name of the new branch the daemon should create for this environment. */
   branchName: gitBranchNameSchema,
-  /**
-   * Branch on the source repo that the new branch should be based on. Pass
-   * `null` to use the source's default branch (resolved by the daemon).
-   */
-  baseBranch: gitBranchNameSchema.nullable(),
+  /** Exact start point for the managed branch. */
+  startPoint: managedWorktreeStartPointSchema,
   /** Maximum time in ms to wait for the setup script */
   setupTimeoutMs: z.number().int().positive(),
 });
@@ -1433,6 +1449,7 @@ const codexVoiceTranscribeResultSchema = z.object({
 });
 const environmentProvisionResultSchema =
   discoveredWorkspacePropertiesSchema.extend({
+    verifiedBaseRevision: gitObjectIdSchema.nullable(),
     transcript: z.array(provisioningTranscriptEntrySchema),
   });
 const environmentProvisionCancelResultSchema = z.object({

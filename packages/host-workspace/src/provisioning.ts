@@ -16,6 +16,7 @@ import { Workspace } from "./workspace.js";
 import { tryWithCheckoutMutationLock } from "./checkout-mutation-lock.js";
 import {
   pathExists,
+  getGitCommonDir,
   readDefaultBranch,
   readGitRepositoryState,
   runGit,
@@ -47,12 +48,8 @@ export interface CreateWorkspaceArgs {
   targetPath: string;
   /** Name of the new branch to create on the workspace. */
   branchName: string;
-  /**
-   * Branch to base the new branch on (start point for git worktree add / git
-   * checkout). Pass `null` to use the source's default branch (resolved by
-   * the daemon).
-   */
-  baseBranch: string | null;
+  /** Exact start point for the managed branch. */
+  startPoint: WorktreeStartPoint;
   /** Setup script timeout in ms. Controlled by the server. */
   timeoutMs: number;
   /** Resolved user-shell PATH for the setup script. */
@@ -61,6 +58,15 @@ export interface CreateWorkspaceArgs {
   pruneEmptyParent?: boolean;
   signal?: AbortSignal;
 }
+
+export type WorktreeStartPoint =
+  | { kind: "branch"; baseBranch: string | null }
+  | {
+      kind: "revision";
+      baseBranch: string | null;
+      revision: string;
+      allowExistingDescendant: boolean;
+    };
 
 export interface RunSetupScriptArgs {
   workspacePath: string;
@@ -156,8 +162,10 @@ function emitGitOutput(
 }
 
 async function ensureExistingWorkspaceMatches(
+  sourcePath: string,
   targetPath: string,
   branchName: string,
+  startPoint: WorktreeStartPoint,
 ): Promise<boolean> {
   if (!(await pathExists(targetPath))) {
     return false;
@@ -176,6 +184,20 @@ async function ensureExistingWorkspaceMatches(
       "path_exists",
       `Target path exists on the wrong branch: ${targetPath}`,
     );
+  }
+
+  if (startPoint.kind === "revision") {
+    const [sourceCommonDir, targetCommonDir] = await Promise.all([
+      getGitCommonDir(sourcePath).then((commonDir) => fs.realpath(commonDir)),
+      getGitCommonDir(targetPath).then((commonDir) => fs.realpath(commonDir)),
+    ]);
+    if (sourceCommonDir !== targetCommonDir) {
+      throw new WorkspaceError(
+        "revision_mismatch",
+        `Target path belongs to a different Git repository: ${targetPath}`,
+      );
+    }
+    await requireWorkspaceRevision(targetPath, startPoint);
   }
 
   return true;
@@ -334,11 +356,270 @@ async function fetchRemoteBaseBranch(args: {
   }
 }
 
+async function resolveRevisionFetchTarget(args: {
+  sourcePath: string;
+  baseBranch: string | null;
+  signal: AbortSignal | undefined;
+}): Promise<{ remote: string; branch: string | null }> {
+  if (args.baseBranch !== null) {
+    const remoteBase = await resolveRemoteBaseBranch(
+      args.sourcePath,
+      args.baseBranch,
+      args.signal,
+    );
+    if (remoteBase) {
+      return remoteBase;
+    }
+  }
+
+  const remotes = (
+    await runGit(["remote"], {
+      cwd: args.sourcePath,
+      signal: args.signal,
+    })
+  ).stdout
+    .split("\n")
+    .map((remote) => remote.trim())
+    .filter(Boolean);
+  if (remotes.includes("origin")) {
+    return { remote: "origin", branch: args.baseBranch };
+  }
+  if (remotes.length === 1 && remotes[0] !== undefined) {
+    return { remote: remotes[0], branch: args.baseBranch };
+  }
+  throw new WorkspaceError(
+    "revision_unavailable",
+    `Cannot select a remote to fetch the requested revision from: ${args.sourcePath}`,
+  );
+}
+
+async function requireCompatibleObjectFormat(args: {
+  sourcePath: string;
+  revision: string;
+  signal: AbortSignal | undefined;
+}): Promise<void> {
+  const format = (
+    await runGit(["rev-parse", "--show-object-format"], {
+      cwd: args.sourcePath,
+      signal: args.signal,
+    })
+  ).stdout.trim();
+  const expectedLength = format === "sha1" ? 40 : format === "sha256" ? 64 : 0;
+  if (args.revision.length !== expectedLength) {
+    throw new WorkspaceError(
+      "revision_unavailable",
+      `Requested revision does not match repository object format: ${args.sourcePath}`,
+    );
+  }
+}
+
+async function hasCommit(args: {
+  sourcePath: string;
+  revision: string;
+  signal: AbortSignal | undefined;
+}): Promise<boolean> {
+  const result = await runGit(["cat-file", "-e", `${args.revision}^{commit}`], {
+    cwd: args.sourcePath,
+    signal: args.signal,
+    allowFailure: true,
+  });
+  return result.exitCode === 0;
+}
+
+async function fetchRevision(args: {
+  sourcePath: string;
+  baseBranch: string | null;
+  revision: string;
+  onProgress: ProgressCallback | undefined;
+  signal: AbortSignal | undefined;
+}): Promise<void> {
+  if (await hasCommit(args)) {
+    return;
+  }
+  let remote: string;
+  let branch: string | null;
+  try {
+    await requireCompatibleObjectFormat(args);
+    ({ remote, branch } = await resolveRevisionFetchTarget(args));
+  } catch (error) {
+    if (
+      error instanceof WorkspaceError &&
+      (error.code === "provision_cancelled" ||
+        error.code === "git_command_timeout" ||
+        error.code === "revision_unavailable")
+    ) {
+      throw error;
+    }
+    throw new WorkspaceError(
+      "revision_unavailable",
+      `Cannot prepare to fetch requested revision ${args.revision}`,
+      { cause: error },
+    );
+  }
+  const startedAt = Date.now();
+  emitStep({
+    onProgress: args.onProgress,
+    key: "git-fetch-revision-started",
+    text: `Fetching revision ${args.revision.slice(0, 12)}`,
+    status: "started",
+    startedAt,
+  });
+  try {
+    const fetchResults: GitCommandResult[] = [];
+    if (branch !== null) {
+      fetchResults.push(
+        await runGit(
+          [
+            "fetch",
+            "--quiet",
+            "--no-write-fetch-head",
+            "--refmap=",
+            remote,
+            `refs/heads/${branch}`,
+          ],
+          { cwd: args.sourcePath, signal: args.signal, allowFailure: true },
+        ),
+      );
+    }
+    if (!(await hasCommit(args))) {
+      fetchResults.push(
+        await runGit(
+          [
+            "fetch",
+            "--quiet",
+            "--no-write-fetch-head",
+            "--refmap=",
+            remote,
+            args.revision,
+          ],
+          { cwd: args.sourcePath, signal: args.signal, allowFailure: true },
+        ),
+      );
+    }
+    if (!(await hasCommit(args))) {
+      const completedFetch = fetchResults.some(
+        (result) => result.exitCode === 0,
+      );
+      throw new WorkspaceError(
+        completedFetch
+          ? "revision_missing_after_fetch"
+          : "revision_unavailable",
+        `Fetched object is not a commit: ${args.revision}`,
+      );
+    }
+  } catch (error) {
+    emitStep({
+      onProgress: args.onProgress,
+      key: "git-fetch-revision-failed",
+      text: `Failed to fetch revision ${args.revision.slice(0, 12)}`,
+      status: "failed",
+      startedAt,
+      metadata: { durationMs: Date.now() - startedAt },
+    });
+    if (
+      error instanceof WorkspaceError &&
+      (error.code === "provision_cancelled" ||
+        error.code === "git_command_timeout" ||
+        error.code === "revision_missing_after_fetch" ||
+        error.code === "revision_unavailable")
+    ) {
+      throw error;
+    }
+    throw new WorkspaceError(
+      "revision_unavailable",
+      `Cannot fetch requested revision ${args.revision}`,
+      { cause: error },
+    );
+  }
+  emitStep({
+    onProgress: args.onProgress,
+    key: "git-fetch-revision-completed",
+    text: `Fetched revision ${args.revision.slice(0, 12)}`,
+    status: "completed",
+    startedAt,
+    metadata: { durationMs: Date.now() - startedAt },
+  });
+}
+
+async function requireWorkspaceRevision(
+  targetPath: string,
+  startPoint: Extract<WorktreeStartPoint, { kind: "revision" }>,
+): Promise<string> {
+  const workspace = new Workspace(targetPath);
+  const head = await workspace.getHeadSha();
+  if (head === startPoint.revision) {
+    return head;
+  }
+  if (head !== null && startPoint.allowExistingDescendant) {
+    const relation = await runGit(
+      ["merge-base", "--is-ancestor", startPoint.revision, head],
+      { cwd: targetPath, allowFailure: true },
+    );
+    if (relation.exitCode === 0) {
+      return head;
+    }
+  }
+  throw new WorkspaceError(
+    "revision_mismatch",
+    `Target path exists at the wrong revision: ${targetPath}`,
+  );
+}
+
+async function buildRevisionWorktreeArgs(args: {
+  sourcePath: string;
+  targetPath: string;
+  branchName: string;
+  revision: string;
+  allowExistingDescendant: boolean;
+  signal: AbortSignal | undefined;
+}): Promise<string[]> {
+  const branchRef = `refs/heads/${args.branchName}`;
+  const existing = await runGit(["show-ref", "--verify", branchRef], {
+    cwd: args.sourcePath,
+    signal: args.signal,
+    allowFailure: true,
+  });
+  if (existing.exitCode !== 0) {
+    return [
+      "worktree",
+      "add",
+      "-b",
+      args.branchName,
+      args.targetPath,
+      args.revision,
+    ];
+  }
+
+  const branchRevision = existing.stdout.trim().split(/\s+/u)[0];
+  const exact = branchRevision === args.revision;
+  const descendant =
+    !exact && args.allowExistingDescendant
+      ? await runGit(
+          ["merge-base", "--is-ancestor", args.revision, branchRef],
+          { cwd: args.sourcePath, signal: args.signal, allowFailure: true },
+        )
+      : null;
+  if (!exact && descendant?.exitCode !== 0) {
+    throw new WorkspaceError(
+      "revision_mismatch",
+      `Managed branch exists at the wrong revision: ${args.branchName}`,
+    );
+  }
+  return ["worktree", "add", args.targetPath, args.branchName];
+}
+
 export async function createWorktree(
   args: CreateWorkspaceArgs,
 ): Promise<{ path: string }> {
   throwIfProvisionAborted(args.signal);
-  if (await ensureExistingWorkspaceMatches(args.targetPath, args.branchName)) {
+  if (
+    await ensureExistingWorkspaceMatches(
+      args.sourcePath,
+      args.targetPath,
+      args.branchName,
+      args.startPoint,
+    )
+  ) {
     return { path: args.targetPath };
   }
 
@@ -362,30 +643,48 @@ export async function createWorktree(
   await ensureWorkspaceParentDirectory(args.targetPath);
 
   throwIfProvisionAborted(args.signal);
-  const baseBranch =
-    args.baseBranch ?? (await readDefaultBranch(args.sourcePath));
-  if (!baseBranch) {
-    throw new WorkspaceError(
-      "missing_default_branch",
-      `Cannot resolve default branch for source: ${args.sourcePath}`,
-    );
+  let gitArgs: string[];
+  if (args.startPoint.kind === "branch") {
+    const baseBranch =
+      args.startPoint.baseBranch ?? (await readDefaultBranch(args.sourcePath));
+    if (!baseBranch) {
+      throw new WorkspaceError(
+        "missing_default_branch",
+        `Cannot resolve default branch for source: ${args.sourcePath}`,
+      );
+    }
+    throwIfProvisionAborted(args.signal);
+    await fetchRemoteBaseBranch({
+      sourcePath: args.sourcePath,
+      baseBranch,
+      onProgress: args.onProgress,
+      signal: args.signal,
+    });
+    gitArgs = [
+      "worktree",
+      "add",
+      "-B",
+      args.branchName,
+      args.targetPath,
+      baseBranch,
+    ];
+  } else {
+    await fetchRevision({
+      sourcePath: args.sourcePath,
+      baseBranch: args.startPoint.baseBranch,
+      revision: args.startPoint.revision,
+      onProgress: args.onProgress,
+      signal: args.signal,
+    });
+    gitArgs = await buildRevisionWorktreeArgs({
+      sourcePath: args.sourcePath,
+      targetPath: args.targetPath,
+      branchName: args.branchName,
+      revision: args.startPoint.revision,
+      allowExistingDescendant: args.startPoint.allowExistingDescendant,
+      signal: args.signal,
+    });
   }
-  throwIfProvisionAborted(args.signal);
-  await fetchRemoteBaseBranch({
-    sourcePath: args.sourcePath,
-    baseBranch,
-    onProgress: args.onProgress,
-    signal: args.signal,
-  });
-
-  const gitArgs = [
-    "worktree",
-    "add",
-    "-B",
-    args.branchName,
-    args.targetPath,
-    baseBranch,
-  ];
   const worktreeStartedAt = Date.now();
   emitStep({
     onProgress: args.onProgress,
@@ -410,6 +709,9 @@ export async function createWorktree(
       metadata: { durationMs: Date.now() - worktreeStartedAt },
     });
     worktreeCreated = true;
+    if (args.startPoint.kind === "revision") {
+      await requireWorkspaceRevision(args.targetPath, args.startPoint);
+    }
     emitCwd({
       onProgress: args.onProgress,
       keySuffix: "target",

@@ -32,8 +32,13 @@ function input(
     repositoryBindingVersion: 1,
     providerRepositoryId: "42",
     baseBranch: "main",
+    baseRevision: "a".repeat(40),
     generatedBranch: "room/example",
     candidateHostId: randomUUID(),
+    bbHostId: "host_23456789ab",
+    projectName: "Example",
+    providerId: "codex",
+    sourcePath: "/tmp/example",
     environmentTemplate: "managed-worktree",
     ...overrides,
   };
@@ -90,7 +95,7 @@ describe("Work Together Room resource reservations", () => {
       expect(() =>
         reserveWorkTogetherRoomResources(db, {
           ...launch,
-          generatedBranch: "room/changed",
+          baseRevision: "b".repeat(40),
         }),
       ).toThrow(WorkTogetherRoomResourceReservationConflictError);
       expect(() =>

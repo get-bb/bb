@@ -7,6 +7,8 @@ import { applyEnvironmentUpdateResult } from "./environment-workspace-cache-owne
 function createEnvironment(): Environment {
   return {
     baseBranch: null,
+    baseRevision: null,
+    baseRevisionVerifiedAt: null,
     branchName: "main",
     createdAt: 1000,
     defaultBranch: "main",
@@ -19,6 +21,7 @@ function createEnvironment(): Environment {
     name: "Renamed environment",
     path: "/tmp/project",
     projectId: "proj_1",
+    provisionFailure: null,
     status: "ready",
     updatedAt: 2000,
     workspaceProvisionType: "managed-worktree",

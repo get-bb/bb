@@ -1,5 +1,6 @@
 import { bodyLimit } from "hono/body-limit";
 import type { Context, Hono } from "hono";
+import { gitObjectIdSchema } from "@bb/domain";
 
 import { issueRoomProvisioningAuthorization } from "../auth/room-provisioning-authorization.js";
 import { ApiError } from "../errors.js";
@@ -12,6 +13,7 @@ import {
   WorkTogetherRoomProvisioningConflictError,
   WorkTogetherRoomProvisioningUnavailableError,
   WorkTogetherRoomRepositoryNotRegisteredError,
+  WorkTogetherRoomRepositoryRevisionUnavailableError,
   type WorkTogetherRoomResourceProvisioner,
 } from "./room-resource-provisioner.js";
 import { parseRoomProvisioningTarget } from "./room-provisioning-target.js";
@@ -20,6 +22,7 @@ const BODY_LIMIT_BYTES = 16_384;
 const CONTENT_TYPE = /^application\/json(?:\s*;\s*charset=utf-8)?$/iu;
 const BODY_KEYS = [
   "baseBranch",
+  "baseRevision",
   "candidateHostId",
   "cellId",
   "environmentTemplate",
@@ -58,6 +61,7 @@ function readLaunchBody(value: unknown): Record<string, unknown> {
       invalidRequest();
     }
   }
+  if (!gitObjectIdSchema.safeParse(body.baseRevision).success) invalidRequest();
   if (body.environmentTemplate !== "managed-worktree") invalidRequest();
   return body;
 }
@@ -101,6 +105,7 @@ async function provision(
         repositoryBindingVersion: body.repositoryBindingVersion as number,
         providerRepositoryId: body.providerRepositoryId as string,
         baseBranch: body.baseBranch as string,
+        baseRevision: body.baseRevision as string,
         generatedBranch: body.generatedBranch as string,
         candidateHostId: body.candidateHostId as string,
         environmentTemplate: body.environmentTemplate as "managed-worktree",
@@ -118,6 +123,13 @@ async function provision(
         404,
         "repository_not_registered",
         "Repository is not registered on the host",
+      );
+    }
+    if (error instanceof WorkTogetherRoomRepositoryRevisionUnavailableError) {
+      throw new ApiError(
+        404,
+        "repository_revision_unavailable",
+        "Repository revision is unavailable on the host",
       );
     }
     if (error instanceof WorkTogetherRoomProvisioningUnavailableError) {

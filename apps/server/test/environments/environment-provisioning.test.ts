@@ -4,6 +4,7 @@ import {
   getThread,
   listEvents,
   threads,
+  workTogetherRoomResourceReservations,
 } from "@bb/db";
 import { systemThreadProvisioningEventDataSchema } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
@@ -181,7 +182,9 @@ describe("environment reprovisioning", () => {
       );
       const managedCommand =
         requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
-      expect(managedCommand.command.baseBranch).toBe("release/2026-05");
+      expect(managedCommand.command.startPoint.baseBranch).toBe(
+        "release/2026-05",
+      );
     });
   });
 
@@ -223,7 +226,149 @@ describe("environment reprovisioning", () => {
       );
       const managedCommand =
         requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
-      expect(managedCommand.command.baseBranch).toBeNull();
+      expect(managedCommand.command.startPoint.baseBranch).toBeNull();
+    });
+  });
+
+  it("fails closed instead of branch-falling back when a pinned environment has no Room reservation", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-reprovision-missing-room-reservation",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/reprovision-missing-room-reservation-project",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/reprovision-missing-room-reservation-target",
+        status: "error",
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+        baseRevision: "a".repeat(40),
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+
+      await expect(
+        dispatchManagedEnvironmentReprovision(harness.deps, {
+          environment,
+          projectId: thread.projectId,
+          provisionEventSequence: 1,
+          provisioningId: "tpv-reprovision-missing-room-reservation",
+          threadId: thread.id,
+        }),
+      ).rejects.toMatchObject({
+        body: { code: "invalid_request" },
+        status: 409,
+      });
+      expect(getEnvironment(harness.db, environment.id)?.status).toBe("error");
+      expect(
+        listQueuedEnvironmentCommands(
+          harness,
+          "environment.provision",
+          environment.id,
+        ),
+      ).toHaveLength(0);
+    });
+  });
+
+  it("accepts the measured descendant only for a previously verified pinned Room reprovision", async () => {
+    await withTestHarness(async (harness) => {
+      const baseRevision = "a".repeat(40);
+      const descendantRevision = "b".repeat(40);
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-reprovision-verified-room",
+      });
+      const { project, source } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/reprovision-verified-room-project",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/reprovision-verified-room-target",
+        status: "error",
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+        baseBranch: "main",
+        baseRevision,
+        baseRevisionVerifiedAt: 1,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      harness.db
+        .insert(workTogetherRoomResourceReservations)
+        .values({
+          bindingId: "10000000-0000-4000-8000-000000000001",
+          workspaceId: "10000000-0000-4000-8000-000000000002",
+          taskId: "10000000-0000-4000-8000-000000000003",
+          cellId: "10000000-0000-4000-8000-000000000004",
+          repositoryBindingId: "10000000-0000-4000-8000-000000000005",
+          repositoryBindingVersion: 1,
+          providerRepositoryId: "42",
+          baseBranch: "main",
+          baseRevision,
+          generatedBranch: environment.branchName ?? `bb/${thread.id}`,
+          candidateHostId: "10000000-0000-4000-8000-000000000006",
+          bbHostId: host.id,
+          projectName: project.name,
+          providerId: "codex",
+          sourcePath: source.path,
+          environmentTemplate: "managed-worktree",
+          projectId: project.id,
+          projectSourceId: source.id,
+          environmentId: environment.id,
+          primaryThreadId: thread.id,
+          createdAt: 1,
+          updatedAt: 1,
+        })
+        .run();
+
+      await dispatchManagedEnvironmentReprovision(harness.deps, {
+        environment,
+        projectId: thread.projectId,
+        provisionEventSequence: 1,
+        provisioningId: "tpv-reprovision-verified-room",
+        threadId: thread.id,
+      });
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "environment.provision" &&
+          command.environmentId === environment.id,
+      );
+      const managed =
+        requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
+      expect(managed.command.startPoint).toEqual({
+        kind: "revision",
+        baseBranch: "main",
+        baseRevision,
+        providerRepositoryId: "42",
+        allowExistingDescendant: true,
+      });
+
+      await reportQueuedCommandSuccess(harness, queued, {
+        path: environment.path ?? "/tmp/reprovision-verified-room-target",
+        isGitRepo: true,
+        isWorktree: true,
+        branchName: environment.branchName,
+        defaultBranch: "main",
+        verifiedBaseRevision: descendantRevision,
+        transcript: [],
+      });
+
+      expect(getEnvironment(harness.db, environment.id)).toMatchObject({
+        status: "ready",
+        baseRevision,
+        baseRevisionVerifiedAt: expect.any(Number),
+        provisionFailure: null,
+      });
     });
   });
 
@@ -383,6 +528,7 @@ describe("environment reprovisioning", () => {
         isWorktree: false,
         branchName: null,
         defaultBranch: null,
+        verifiedBaseRevision: null,
         transcript: [],
       });
 

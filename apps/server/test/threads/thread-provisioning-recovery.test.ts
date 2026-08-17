@@ -460,6 +460,7 @@ describe("thread provisioning recovery", () => {
           defaultBranch: "main",
           isGitRepo: true,
           isWorktree: true,
+          verifiedBaseRevision: null,
           transcript: [],
         });
         startCommand = await waitForQueuedCommandAfter(

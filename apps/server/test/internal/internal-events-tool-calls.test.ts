@@ -1219,6 +1219,7 @@ describe("internal event and tool-call routes", () => {
         isWorktree: true,
         branchName: "feature/new-worktree",
         defaultBranch: "main",
+        verifiedBaseRevision: null,
         transcript: [],
       });
       const response = await responsePromise;
@@ -1334,6 +1335,7 @@ describe("internal event and tool-call routes", () => {
         isWorktree: false,
         branchName: "main",
         defaultBranch: "main",
+        verifiedBaseRevision: null,
         transcript: [],
       });
 

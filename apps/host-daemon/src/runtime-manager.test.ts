@@ -1053,7 +1053,7 @@ describe("RuntimeManager", () => {
         sourcePath: repoPath,
         targetPath,
         branchName: "bb/env-roots",
-        baseBranch: "main",
+        startPoint: { kind: "branch", baseBranch: "main" },
         timeoutMs: 900000,
       },
     });
@@ -1181,7 +1181,7 @@ describe("RuntimeManager", () => {
         sourcePath: "/tmp/source",
         targetPath: "/tmp/env-1",
         branchName: "bb/env-1",
-        baseBranch: "main",
+        startPoint: { kind: "branch", baseBranch: "main" },
         timeoutMs: 900000,
       },
     });
@@ -1191,6 +1191,38 @@ describe("RuntimeManager", () => {
         setupPath: "/resolved/user/bin:/usr/bin:/bin",
       }),
     );
+  });
+
+  it("revalidates a managed start point on a resident runtime", async () => {
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const createRuntime = vi.fn(() => createFakeRuntime());
+    const manager = new RuntimeManager({ provisionWorkspace, createRuntime });
+    const provision = {
+      workspaceProvisionType: "managed-worktree" as const,
+      sourcePath: "/tmp/source",
+      targetPath: "/tmp/env-1",
+      branchName: "bb/env-1",
+      startPoint: {
+        kind: "revision" as const,
+        baseBranch: "main",
+        revision: "a".repeat(40),
+        allowExistingDescendant: false,
+      },
+      timeoutMs: 900000,
+    };
+
+    const first = await manager.ensureEnvironment({
+      environmentId: "env-1",
+      provision,
+    });
+    const second = await manager.ensureEnvironment({
+      environmentId: "env-1",
+      provision,
+    });
+
+    expect(second).toBe(first);
+    expect(provisionWorkspace).toHaveBeenCalledTimes(2);
+    expect(createRuntime).toHaveBeenCalledTimes(1);
   });
 
   it("passes shell PATH through to provider process env", async () => {

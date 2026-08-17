@@ -715,6 +715,13 @@
       "when": 1786745604262,
       "tag": "0101_rename_curated_marketplace",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "6",
+      "when": 1786942917675,
+      "tag": "0102_workable_speed_demon",
+      "breakpoints": true
     }
   ]
 }

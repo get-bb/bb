@@ -5,22 +5,27 @@ import { join } from "node:path";
 
 import {
   createHostId,
+  environments,
   getWorkTogetherRoomResourceReservation,
   listEvents,
   listProjects,
   listThreads,
 } from "@bb/db";
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
   createWorkTogetherRoomResourceProvisioner,
   WorkTogetherRoomProvisioningConflictError,
   WorkTogetherRoomProvisioningUnavailableError,
   WorkTogetherRoomRepositoryNotRegisteredError,
+  WorkTogetherRoomRepositoryRevisionUnavailableError,
   type WorkTogetherRoomResourceProvisioner,
   type WorkTogetherRoomResourceRegistry,
   type WorkTogetherRoomResourceTarget,
 } from "../../src/room-distribution/room-resource-provisioner.js";
 import {
+  reportQueuedCommandError,
+  reportQueuedCommandSuccess,
   requireManagedWorktreeEnvironmentProvisionLiveCommand,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
@@ -58,6 +63,7 @@ function launch(candidateHostId: string, providerRepositoryId: string) {
     repositoryBindingVersion: 1,
     providerRepositoryId,
     baseBranch: "main",
+    baseRevision: "a".repeat(40),
     generatedBranch: "rooms/exact-room-branch",
     candidateHostId,
     environmentTemplate: "managed-worktree" as const,
@@ -109,6 +115,13 @@ describe("Work Together Room resource provisioner", () => {
         harness.db,
         exactLaunch.bindingId,
       );
+      expect(reservation).toMatchObject({
+        baseRevision: exactLaunch.baseRevision,
+        bbHostId: target.bbHostId,
+        projectName: target.projectName,
+        providerId: target.providerId,
+        sourcePath: target.sourcePath,
+      });
       expect(first).toMatchObject({
         projectId: reservation?.projectId,
         environmentId: reservation?.environmentId,
@@ -125,6 +138,13 @@ describe("Work Together Room resource provisioner", () => {
         branchName: exactLaunch.generatedBranch,
         environmentId: first.environmentId,
         sourcePath: target.sourcePath,
+        startPoint: {
+          kind: "revision",
+          baseBranch: exactLaunch.baseBranch,
+          baseRevision: exactLaunch.baseRevision,
+          providerRepositoryId: exactLaunch.providerRepositoryId,
+          allowExistingDescendant: false,
+        },
       });
 
       const replay = await provisioner.provision({
@@ -149,7 +169,9 @@ describe("Work Together Room resource provisioner", () => {
     const providerRepositoryId = "4242";
     const exactLaunch = launch(candidateHostId, providerRepositoryId);
     let target: WorkTogetherRoomResourceTarget;
-    let firstResult: Awaited<ReturnType<WorkTogetherRoomResourceProvisioner["provision"]>>;
+    let firstResult: Awaited<
+      ReturnType<WorkTogetherRoomResourceProvisioner["provision"]>
+    >;
     const first = await createTestAppHarness({ dataDir, databasePath });
     try {
       const { host } = seedHostSession(first.deps, { id: createHostId() });
@@ -176,12 +198,17 @@ describe("Work Together Room resource provisioner", () => {
         registryFor(candidateHostId, providerRepositoryId, target!),
       ).provision({ principal: PRINCIPAL, launch: exactLaunch });
       expect(replay).toEqual(firstResult!);
-      expect(listProjects(restarted.db).filter((project) =>
-        project.id === replay.projectId)).toHaveLength(1);
-      expect(listThreads(restarted.db, {
-        includeHidden: true,
-        projectId: replay.projectId,
-      })).toHaveLength(1);
+      expect(
+        listProjects(restarted.db).filter(
+          (project) => project.id === replay.projectId,
+        ),
+      ).toHaveLength(1);
+      expect(
+        listThreads(restarted.db, {
+          includeHidden: true,
+          projectId: replay.projectId,
+        }),
+      ).toHaveLength(1);
       expect(
         getWorkTogetherRoomResourceReservation(
           restarted.db,
@@ -224,6 +251,108 @@ describe("Work Together Room resource provisioner", () => {
     });
   });
 
+  it("preserves revision failures ahead of the generic failed thread state", async () => {
+    await withTestHarness(async (harness) => {
+      const candidateHostId = randomUUID();
+      const providerRepositoryId = "177";
+      const { host } = seedHostSession(harness.deps, { id: createHostId() });
+      const exactLaunch = launch(candidateHostId, providerRepositoryId);
+      const provisioner = createWorkTogetherRoomResourceProvisioner(
+        harness.deps,
+        registryFor(candidateHostId, providerRepositoryId, {
+          bbHostId: host.id,
+          projectName: "Revision failure",
+          providerId: "codex",
+          sourcePath: "/srv/work-together/revision-failure",
+        }),
+      );
+      const created = await provisioner.provision({
+        principal: PRINCIPAL,
+        launch: exactLaunch,
+      });
+      const provisionCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "environment.provision" &&
+          command.environmentId === created.environmentId,
+      );
+      await reportQueuedCommandError(harness, provisionCommand, {
+        errorCode: "revision_not_found",
+        errorMessage: "Revision is not available",
+      });
+
+      await expect(
+        provisioner.provision({ principal: PRINCIPAL, launch: exactLaunch }),
+      ).rejects.toBeInstanceOf(
+        WorkTogetherRoomRepositoryRevisionUnavailableError,
+      );
+
+      harness.db
+        .update(environments)
+        .set({ provisionFailure: "unavailable" })
+        .where(eq(environments.id, created.environmentId))
+        .run();
+      await expect(
+        provisioner.provision({ principal: PRINCIPAL, launch: exactLaunch }),
+      ).rejects.toBeInstanceOf(WorkTogetherRoomProvisioningUnavailableError);
+    });
+  });
+
+  it("fails the environment and bound thread when the daemon reports a different revision", async () => {
+    await withTestHarness(async (harness) => {
+      const candidateHostId = randomUUID();
+      const providerRepositoryId = "178";
+      const { host } = seedHostSession(harness.deps, { id: createHostId() });
+      const exactLaunch = launch(candidateHostId, providerRepositoryId);
+      const provisioner = createWorkTogetherRoomResourceProvisioner(
+        harness.deps,
+        registryFor(candidateHostId, providerRepositoryId, {
+          bbHostId: host.id,
+          projectName: "Revision mismatch",
+          providerId: "codex",
+          sourcePath: "/srv/work-together/revision-mismatch",
+        }),
+      );
+      const created = await provisioner.provision({
+        principal: PRINCIPAL,
+        launch: exactLaunch,
+      });
+      const provisionCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "environment.provision" &&
+          command.environmentId === created.environmentId,
+      );
+
+      await reportQueuedCommandSuccess(harness, provisionCommand, {
+        path: "/srv/work-together/revision-mismatch-worktree",
+        isGitRepo: true,
+        isWorktree: true,
+        branchName: exactLaunch.generatedBranch,
+        defaultBranch: exactLaunch.baseBranch,
+        verifiedBaseRevision: "b".repeat(40),
+        transcript: [],
+      });
+
+      expect(
+        harness.db
+          .select({ provisionFailure: environments.provisionFailure })
+          .from(environments)
+          .where(eq(environments.id, created.environmentId))
+          .get(),
+      ).toEqual({ provisionFailure: "unavailable" });
+      expect(
+        listThreads(harness.db, {
+          includeHidden: true,
+          projectId: created.projectId,
+        }),
+      ).toEqual([expect.objectContaining({ status: "error" })]);
+      await expect(
+        provisioner.provision({ principal: PRINCIPAL, launch: exactLaunch }),
+      ).rejects.toBeInstanceOf(WorkTogetherRoomProvisioningUnavailableError);
+    });
+  });
+
   it("treats an invalid resolved target shape as unavailable", async () => {
     await withTestHarness(async (harness) => {
       const candidateHostId = randomUUID();
@@ -247,7 +376,7 @@ describe("Work Together Room resource provisioner", () => {
     });
   });
 
-  it("refuses changed operator source facts without duplicating resources", async () => {
+  it("replays persisted source facts without consulting the registry again", async () => {
     await withTestHarness(async (harness) => {
       const candidateHostId = randomUUID();
       const providerRepositoryId = "99";
@@ -266,24 +395,19 @@ describe("Work Together Room resource provisioner", () => {
         registryFor(candidateHostId, providerRepositoryId, originalTarget),
       );
       const projectCountBefore = listProjects(harness.db).length;
-      await original.provision({
+      const first = await original.provision({
         principal: PRINCIPAL,
         launch: exactLaunch,
       });
 
-      const changed = createWorkTogetherRoomResourceProvisioner(
-        harness.deps,
-        registryFor(candidateHostId, providerRepositoryId, {
-          ...originalTarget,
-          sourcePath: "/srv/work-together/changed",
-        }),
-      );
+      const changed = createWorkTogetherRoomResourceProvisioner(harness.deps, {
+        resolve: () => {
+          throw new Error("registry must not run during an exact replay");
+        },
+      });
       await expect(
-        changed.provision({
-          principal: PRINCIPAL,
-          launch: exactLaunch,
-        }),
-      ).rejects.toBeInstanceOf(WorkTogetherRoomProvisioningConflictError);
+        changed.provision({ principal: PRINCIPAL, launch: exactLaunch }),
+      ).resolves.toEqual(first);
       expect(listProjects(harness.db)).toHaveLength(projectCountBefore + 1);
     });
   });

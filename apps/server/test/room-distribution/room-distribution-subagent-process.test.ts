@@ -183,6 +183,7 @@ async function provisionRoom(harness: TestAppHarness, seed: number) {
     repositoryBindingVersion: 1,
     providerRepositoryId: String(seed),
     baseBranch: "main",
+    baseRevision: "a".repeat(40),
     generatedBranch: `rooms/subagent-process-${seed}`,
     candidateHostId: randomUUID(),
     environmentTemplate: "managed-worktree" as const,

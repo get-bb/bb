@@ -250,6 +250,12 @@ declare const environmentSchema: z$1.ZodObject<{
     }>;
     branchName: z$1.ZodNullable<z$1.ZodString>;
     baseBranch: z$1.ZodNullable<z$1.ZodString>;
+    baseRevision: z$1.ZodNullable<z$1.ZodString>;
+    baseRevisionVerifiedAt: z$1.ZodNullable<z$1.ZodNumber>;
+    provisionFailure: z$1.ZodNullable<z$1.ZodEnum<{
+        unavailable: "unavailable";
+        revision_not_found: "revision_not_found";
+    }>>;
     defaultBranch: z$1.ZodNullable<z$1.ZodString>;
     mergeBaseBranch: z$1.ZodNullable<z$1.ZodString>;
     status: z$1.ZodEnum<{
@@ -1576,9 +1582,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         tell: "tell";
     }>;
     initiator: z$1.ZodEnum<{
+        user: "user";
         agent: "agent";
         system: "system";
-        user: "user";
     }>;
     request: z$1.ZodObject<{
         method: z$1.ZodEnum<{
@@ -1598,9 +1604,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         tell: "tell";
     }>;
     initiator: z$1.ZodEnum<{
+        user: "user";
         agent: "agent";
         system: "system";
-        user: "user";
     }>;
     senderThreadId: z$1.ZodNullable<z$1.ZodString>;
     systemMessageKind: z$1.ZodOptional<z$1.ZodEnum<{
@@ -1848,9 +1854,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         tell: "tell";
     }>;
     initiator: z$1.ZodEnum<{
+        user: "user";
         agent: "agent";
         system: "system";
-        user: "user";
     }>;
     request: z$1.ZodObject<{
         method: z$1.ZodEnum<{
@@ -2965,8 +2971,8 @@ declare const environmentArchiveThreadsResponseSchema: z$1.ZodObject<{
 type EnvironmentArchiveThreadsResponse = z$1.infer<typeof environmentArchiveThreadsResponseSchema>;
 declare const pullRequestMergeMethodSchema: z$1.ZodEnum<{
     merge: "merge";
-    squash: "squash";
     rebase: "rebase";
+    squash: "squash";
 }>;
 type PullRequestMergeMethod = z$1.infer<typeof pullRequestMergeMethodSchema>;
 declare const commitActionResponseSchema: z$1.ZodObject<{
@@ -2997,8 +3003,8 @@ declare const pullRequestMergeActionResponseSchema: z$1.ZodObject<{
     action: z$1.ZodLiteral<"pull_request_merge">;
     method: z$1.ZodEnum<{
         merge: "merge";
-        squash: "squash";
         rebase: "rebase";
+        squash: "squash";
     }>;
     message: z$1.ZodString;
 }, z$1.core.$strip>;
@@ -4938,7 +4944,16 @@ declare const hostDaemonCommandRegistry: {
         sourcePath: z$1.ZodString;
         targetPath: z$1.ZodString;
         branchName: z$1.ZodString;
-        baseBranch: z$1.ZodNullable<z$1.ZodString>;
+        startPoint: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"branch">;
+            baseBranch: z$1.ZodNullable<z$1.ZodString>;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"revision">;
+            baseBranch: z$1.ZodNullable<z$1.ZodString>;
+            baseRevision: z$1.ZodString;
+            providerRepositoryId: z$1.ZodString;
+            allowExistingDescendant: z$1.ZodBoolean;
+        }, z$1.core.$strict>], "kind">;
         setupTimeoutMs: z$1.ZodNumber;
         workspaceProvisionType: z$1.ZodLiteral<"managed-worktree">;
     }, z$1.core.$strict>, z$1.ZodObject<{
@@ -4956,6 +4971,7 @@ declare const hostDaemonCommandRegistry: {
         isWorktree: z$1.ZodBoolean;
         branchName: z$1.ZodNullable<z$1.ZodString>;
         defaultBranch: z$1.ZodNullable<z$1.ZodString>;
+        verifiedBaseRevision: z$1.ZodNullable<z$1.ZodString>;
         transcript: z$1.ZodArray<z$1.ZodObject<{
             type: z$1.ZodEnum<{
                 output: "output";
@@ -9801,6 +9817,12 @@ declare const threadWithIncludesResponseSchema: z$1.ZodObject<{
         }>;
         branchName: z$1.ZodNullable<z$1.ZodString>;
         baseBranch: z$1.ZodNullable<z$1.ZodString>;
+        baseRevision: z$1.ZodNullable<z$1.ZodString>;
+        baseRevisionVerifiedAt: z$1.ZodNullable<z$1.ZodNumber>;
+        provisionFailure: z$1.ZodNullable<z$1.ZodEnum<{
+            unavailable: "unavailable";
+            revision_not_found: "revision_not_found";
+        }>>;
         defaultBranch: z$1.ZodNullable<z$1.ZodString>;
         mergeBaseBranch: z$1.ZodNullable<z$1.ZodString>;
         status: z$1.ZodEnum<{

@@ -15,6 +15,8 @@ import {
 function makeEnvironment(overrides: Partial<Environment> = {}): Environment {
   return {
     baseBranch: null,
+    baseRevision: null,
+    baseRevisionVerifiedAt: null,
     branchName: "feature/test",
     createdAt: 1,
     defaultBranch: "main",
@@ -27,6 +29,7 @@ function makeEnvironment(overrides: Partial<Environment> = {}): Environment {
     mergeBaseBranch: "main",
     path: "/tmp/workspace",
     projectId: "project-1",
+    provisionFailure: null,
     status: "ready",
     updatedAt: 1,
     workspaceProvisionType: "managed-worktree",

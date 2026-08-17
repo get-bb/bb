@@ -72,7 +72,7 @@ async function createAndCaptureProvision(
   const managed = requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
   return {
     provision: {
-      baseBranch: managed.command.baseBranch,
+      baseBranch: managed.command.startPoint.baseBranch,
       sourcePath: managed.command.sourcePath,
       workspaceProvisionType: managed.command.workspaceProvisionType,
     },

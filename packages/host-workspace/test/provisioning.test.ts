@@ -110,7 +110,7 @@ describe("workspace provisioning", () => {
         sourcePath: sourceDir,
         targetPath,
         branchName: "feature",
-        baseBranch: null,
+        startPoint: { kind: "branch", baseBranch: null },
         timeoutMs: 900000,
       }),
     ).rejects.toMatchObject({
@@ -134,7 +134,7 @@ describe("workspace provisioning", () => {
         sourcePath: sourceRepo,
         targetPath,
         branchName: "feature",
-        baseBranch: null,
+        startPoint: { kind: "branch", baseBranch: null },
         timeoutMs: 900000,
       }),
     ).rejects.toMatchObject({
@@ -156,14 +156,14 @@ describe("workspace provisioning", () => {
       sourcePath: sourceRepo,
       targetPath,
       branchName: "feature",
-      baseBranch: "main",
+      startPoint: { kind: "branch", baseBranch: "main" },
       timeoutMs: 900000,
     });
     const second = await createWorktree({
       sourcePath: sourceRepo,
       targetPath,
       branchName: "feature",
-      baseBranch: "main",
+      startPoint: { kind: "branch", baseBranch: "main" },
       timeoutMs: 900000,
     });
 
@@ -187,7 +187,7 @@ describe("workspace provisioning", () => {
       sourcePath: repoPath,
       targetPath,
       branchName: "feature",
-      baseBranch: "origin/main",
+      startPoint: { kind: "branch", baseBranch: "origin/main" },
       timeoutMs: 900000,
     });
 
@@ -198,6 +198,179 @@ describe("workspace provisioning", () => {
       cwd: targetPath,
     });
     expect(worktreeHead.stdout.trim()).toBe(remoteHead);
+  });
+
+  it("creates a revision worktree without mutating a stale dirty source checkout", async () => {
+    const { remotePath, repoPath } = await initRemoteBackedRepo();
+    const revision = await pushRemoteMainCommit(remotePath);
+    await runGit(["switch", "-c", "local-work"], { cwd: repoPath });
+    await fs.writeFile(
+      path.join(repoPath, "README.md"),
+      "dirty source\n",
+      "utf8",
+    );
+    await fs.writeFile(
+      path.join(repoPath, "staged.txt"),
+      "staged source\n",
+      "utf8",
+    );
+    await runGit(["add", "staged.txt"], { cwd: repoPath });
+    await fs.writeFile(
+      path.join(repoPath, "untracked.txt"),
+      "untracked source\n",
+      "utf8",
+    );
+
+    await expect(
+      runGit(["cat-file", "-e", `${revision}^{commit}`], { cwd: repoPath }),
+    ).rejects.toThrow();
+
+    const sourceHeadBefore = await runGit(["rev-parse", "HEAD"], {
+      cwd: repoPath,
+    });
+    const sourceBranchBefore = await runGit(
+      ["rev-parse", "--abbrev-ref", "HEAD"],
+      { cwd: repoPath },
+    );
+    const sourceStatusBefore = await runGit(["status", "--porcelain=v1"], {
+      cwd: repoPath,
+    });
+    const sourceRefsBefore = await runGit(["show-ref"], { cwd: repoPath });
+    const fetchHeadBefore = await fs.readFile(
+      path.join(repoPath, ".git/FETCH_HEAD"),
+    );
+    const sourceIndexBefore = await fs.readFile(
+      path.join(repoPath, ".git/index"),
+    );
+    const dirtyFileBefore = await fs.readFile(path.join(repoPath, "README.md"));
+    const untrackedFileBefore = await fs.readFile(
+      path.join(repoPath, "untracked.txt"),
+    );
+    const parentDir = await makeTempDir("bb-worktree-revision-parent-");
+    const targetPath = path.join(parentDir, "feature");
+
+    await createWorktree({
+      sourcePath: repoPath,
+      targetPath,
+      branchName: "feature",
+      startPoint: {
+        kind: "revision",
+        baseBranch: "origin/main",
+        revision,
+        allowExistingDescendant: false,
+      },
+      timeoutMs: 900000,
+    });
+
+    const worktreeHead = await runGit(["rev-parse", "HEAD"], {
+      cwd: targetPath,
+    });
+    expect(worktreeHead.stdout.trim()).toBe(revision);
+    await expect(
+      runGit(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: repoPath }),
+    ).resolves.toMatchObject({ stdout: sourceBranchBefore.stdout });
+    await expect(
+      runGit(["rev-parse", "HEAD"], { cwd: repoPath }),
+    ).resolves.toMatchObject({ stdout: sourceHeadBefore.stdout });
+    await expect(
+      runGit(["status", "--porcelain=v1"], { cwd: repoPath }),
+    ).resolves.toMatchObject({ stdout: sourceStatusBefore.stdout });
+    const sourceRefsAfter = await runGit(["show-ref"], { cwd: repoPath });
+    expect(
+      sourceRefsAfter.stdout
+        .split("\n")
+        .filter((line) => !line.endsWith(" refs/heads/feature"))
+        .join("\n"),
+    ).toBe(sourceRefsBefore.stdout);
+    await expect(
+      fs.readFile(path.join(repoPath, ".git/FETCH_HEAD")),
+    ).resolves.toEqual(fetchHeadBefore);
+    await expect(
+      fs.readFile(path.join(repoPath, ".git/index")),
+    ).resolves.toEqual(sourceIndexBefore);
+    await expect(
+      fs.readFile(path.join(repoPath, "README.md")),
+    ).resolves.toEqual(dirtyFileBefore);
+    await expect(
+      fs.readFile(path.join(repoPath, "untracked.txt")),
+    ).resolves.toEqual(untrackedFileBefore);
+  });
+
+  it("recovers a revision worktree from an already reserved exact branch", async () => {
+    const { remotePath, repoPath } = await initRemoteBackedRepo();
+    const revision = await pushRemoteMainCommit(remotePath);
+    await runGit(
+      ["fetch", "--quiet", "--no-write-fetch-head", "origin", revision],
+      { cwd: repoPath },
+    );
+    await runGit(["branch", "feature", revision], { cwd: repoPath });
+    const parentDir = await makeTempDir("bb-worktree-revision-recovery-");
+    const targetPath = path.join(parentDir, "feature");
+
+    await createWorktree({
+      sourcePath: repoPath,
+      targetPath,
+      branchName: "feature",
+      startPoint: {
+        kind: "revision",
+        baseBranch: "main",
+        revision,
+        allowExistingDescendant: false,
+      },
+      timeoutMs: 900000,
+    });
+
+    await expect(
+      runGit(["rev-parse", "HEAD"], { cwd: targetPath }),
+    ).resolves.toMatchObject({ stdout: `${revision}\n` });
+  });
+
+  it("rejects an exact revision whose length does not match the repository object format", async () => {
+    const sourceRepo = await initRepoWithOptionalSetup();
+    const parentDir = await makeTempDir("bb-worktree-object-format-");
+    const targetPath = path.join(parentDir, "feature");
+
+    await expect(
+      createWorktree({
+        sourcePath: sourceRepo,
+        targetPath,
+        branchName: "feature",
+        startPoint: {
+          kind: "revision",
+          baseBranch: "main",
+          revision: "a".repeat(64),
+          allowExistingDescendant: false,
+        },
+        timeoutMs: 900000,
+      }),
+    ).rejects.toMatchObject({ code: "revision_unavailable" });
+    await expect(fs.stat(targetPath)).rejects.toThrow();
+  });
+
+  it("rejects an existing exact path from a different Git common directory", async () => {
+    const sourceRepo = await initRepoWithOptionalSetup();
+    const revision = (
+      await runGit(["rev-parse", "HEAD"], { cwd: sourceRepo })
+    ).stdout.trim();
+    const parentDir = await makeTempDir("bb-worktree-unrelated-existing-");
+    const targetPath = path.join(parentDir, "feature");
+    await runGit(["clone", sourceRepo, targetPath], { cwd: parentDir });
+    await runGit(["switch", "-c", "feature"], { cwd: targetPath });
+
+    await expect(
+      createWorktree({
+        sourcePath: sourceRepo,
+        targetPath,
+        branchName: "feature",
+        startPoint: {
+          kind: "revision",
+          baseBranch: "main",
+          revision,
+          allowExistingDescendant: false,
+        },
+        timeoutMs: 900000,
+      }),
+    ).rejects.toMatchObject({ code: "revision_mismatch" });
   });
 
   it("rolls back failed worktree setup scripts", async () => {
@@ -212,7 +385,7 @@ describe("workspace provisioning", () => {
         sourcePath: sourceRepo,
         targetPath,
         branchName: "broken",
-        baseBranch: "main",
+        startPoint: { kind: "branch", baseBranch: "main" },
         timeoutMs: 900000,
       }),
     ).rejects.toThrow(/Setup script failed/u);
@@ -245,14 +418,14 @@ describe("workspace provisioning", () => {
         sourcePath: sourceRepo,
         targetPath: firstTargetPath,
         branchName: "feature-a",
-        baseBranch: "main",
+        startPoint: { kind: "branch", baseBranch: "main" },
         timeoutMs: 900000,
       }),
       createWorktree({
         sourcePath: sourceRepo,
         targetPath: secondTargetPath,
         branchName: "feature-b",
-        baseBranch: "main",
+        startPoint: { kind: "branch", baseBranch: "main" },
         timeoutMs: 900000,
       }),
     ]);
@@ -290,7 +463,7 @@ describe("workspace provisioning", () => {
       sourcePath: sourceRepo,
       targetPath,
       branchName: "feature",
-      baseBranch: "main",
+      startPoint: { kind: "branch", baseBranch: "main" },
       timeoutMs: 900000,
     });
 
@@ -429,7 +602,7 @@ describe("workspace provisioning", () => {
       sourcePath: sourceRepo,
       targetPath,
       branchName: "cancelled",
-      baseBranch: "main",
+      startPoint: { kind: "branch", baseBranch: "main" },
       timeoutMs: 900000,
       signal: abortController.signal,
     });
@@ -584,7 +757,7 @@ describe("workspace provisioning", () => {
       sourcePath: sourceRepo,
       targetPath,
       branchName: "feature",
-      baseBranch: "main",
+      startPoint: { kind: "branch", baseBranch: "main" },
       timeoutMs: 900000,
     });
     await fs.writeFile(path.join(targetPath, "local.txt"), "dirty\n", "utf8");
@@ -610,7 +783,7 @@ describe("workspace provisioning", () => {
       sourcePath: sourceRepo,
       targetPath,
       branchName: "feature-orphan-gitfile",
-      baseBranch: "main",
+      startPoint: { kind: "branch", baseBranch: "main" },
       timeoutMs: 900000,
     });
     await fs.rm(path.join(targetPath, ".git"), { force: true });
@@ -638,7 +811,7 @@ describe("workspace provisioning", () => {
       sourcePath: sourceRepo,
       targetPath,
       branchName: "feature-metadata-failure",
-      baseBranch: "main",
+      startPoint: { kind: "branch", baseBranch: "main" },
       timeoutMs: 900000,
     });
     await fs.writeFile(path.join(targetPath, "local.txt"), "dirty\n", "utf8");

@@ -56,7 +56,10 @@ interface TerminalManagerFixture {
 type TerminalDataListener = (data: string) => void;
 type TerminalExitListener = (event: TerminalPtyExit) => void;
 
-afterEach(cleanupTempDirs);
+afterEach(async () => {
+  vi.unstubAllGlobals();
+  await cleanupTempDirs();
+});
 
 function createDeferred<TValue>(): Deferred<TValue> {
   let resolve!: Deferred<TValue>["resolve"];
@@ -214,7 +217,7 @@ describe("environment command dispatch", () => {
         sourcePath,
         targetPath: "/tmp/worktree",
         branchName: "bb/test",
-        baseBranch: "main",
+        startPoint: { kind: "branch", baseBranch: "main" },
         setupTimeoutMs: 900000,
       },
       harness.dispatchOptions(),
@@ -245,12 +248,136 @@ describe("environment command dispatch", () => {
         sourcePath,
         targetPath: "/tmp/worktree",
         branchName: "bb/test",
-        baseBranch: "main",
+        startPoint: { kind: "branch", baseBranch: "main" },
         timeoutMs: 900000,
         onProgress: expect.any(Function),
         signal: expect.any(AbortSignal),
       },
     ]);
+  });
+
+  it("reports the measured worktree HEAD instead of echoing the requested revision", async () => {
+    const requestedRevision = "a".repeat(40);
+    const measuredRevision = "b".repeat(40);
+    const harness = createHarness({
+      workspacePath: "/tmp/exact-worktree",
+      isWorktree: true,
+    });
+    harness.workspace.getHeadSha = async () => measuredRevision;
+
+    const result = await dispatchCommand(
+      {
+        type: "environment.provision",
+        environmentId: "env-exact-worktree",
+        initiator: null,
+        workspaceProvisionType: "managed-worktree",
+        sourcePath: "/tmp/exact-source",
+        targetPath: "/tmp/exact-worktree",
+        branchName: "bb/exact",
+        startPoint: {
+          kind: "revision",
+          baseBranch: "main",
+          baseRevision: requestedRevision,
+          providerRepositoryId: "42",
+          allowExistingDescendant: false,
+        },
+        setupTimeoutMs: 900000,
+      },
+      harness.dispatchOptions(),
+    );
+
+    expect(result.verifiedBaseRevision).toBe(measuredRevision);
+    expect(harness.provisions[0]).toMatchObject({
+      startPoint: { kind: "revision", revision: requestedRevision },
+    });
+  });
+
+  it.each([
+    ["provision_cancelled", "provision_cancelled"],
+    ["git_command_timeout", "revision_unavailable"],
+    ["revision_unavailable", "revision_unavailable"],
+  ])(
+    "does not ask GitHub to classify a %s fetch failure",
+    async (workspaceErrorCode, expectedErrorCode) => {
+      const { runtime } = createFakeRuntime();
+      const manager = new RuntimeManager({
+        createRuntime: () => runtime,
+        provisionWorkspace: async () => {
+          throw new WorkspaceError(workspaceErrorCode, "fetch failed");
+        },
+      });
+      const fetchSpy = vi.fn<typeof fetch>();
+      vi.stubGlobal("fetch", fetchSpy);
+
+      await expect(
+        dispatchCommand(
+          {
+            type: "environment.provision",
+            environmentId: `env-${workspaceErrorCode}`,
+            initiator: null,
+            workspaceProvisionType: "managed-worktree",
+            sourcePath: "/tmp/exact-source",
+            targetPath: "/tmp/exact-worktree",
+            branchName: "bb/exact",
+            startPoint: {
+              kind: "revision",
+              baseBranch: "main",
+              baseRevision: "a".repeat(40),
+              providerRepositoryId: "42",
+              allowExistingDescendant: false,
+            },
+            setupTimeoutMs: 900000,
+          },
+          makeDispatchOptions({ runtimeManager: manager }),
+        ),
+      ).rejects.toMatchObject({ code: expectedErrorCode });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    },
+  );
+
+  it("asks GitHub to classify only a revision still absent after a completed fetch", async () => {
+    const { runtime } = createFakeRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => {
+        throw new WorkspaceError(
+          "revision_missing_after_fetch",
+          "revision absent after fetch",
+        );
+      },
+    });
+    const fetchSpy = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({ full_name: "owner/repo", default_branch: "main" }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 404 }))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(
+      dispatchCommand(
+        {
+          type: "environment.provision",
+          environmentId: "env-revision-missing-after-fetch",
+          initiator: null,
+          workspaceProvisionType: "managed-worktree",
+          sourcePath: "/tmp/exact-source",
+          targetPath: "/tmp/exact-worktree",
+          branchName: "bb/exact",
+          startPoint: {
+            kind: "revision",
+            baseBranch: "main",
+            baseRevision: "a".repeat(40),
+            providerRepositoryId: "42",
+            allowExistingDescendant: false,
+          },
+          setupTimeoutMs: 900000,
+        },
+        makeDispatchOptions({ runtimeManager: manager }),
+      ),
+    ).rejects.toMatchObject({ code: "revision_not_found" });
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
   });
 
   it("covers environment.provision in personal mode", async () => {
@@ -611,7 +738,7 @@ describe("environment command dispatch", () => {
           sourcePath: "/tmp/source",
           targetPath: "/tmp/failure",
           branchName: "bb/failure",
-          baseBranch: "main",
+          startPoint: { kind: "branch", baseBranch: "main" },
           setupTimeoutMs: 900000,
         },
         makeDispatchOptions({

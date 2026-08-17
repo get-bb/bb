@@ -222,7 +222,7 @@ describe("createWorktree with .worktreeinclude", () => {
       sourcePath,
       targetPath,
       branchName: "feature",
-      baseBranch: "main",
+      startPoint: { kind: "branch", baseBranch: "main" },
       timeoutMs: 900000,
     });
 
@@ -244,7 +244,7 @@ describe("createWorktree with .worktreeinclude", () => {
       sourcePath,
       targetPath,
       branchName: "feature",
-      baseBranch: "main",
+      startPoint: { kind: "branch", baseBranch: "main" },
       timeoutMs: 900000,
     });
 

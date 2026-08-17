@@ -257,6 +257,42 @@ function dropLateAdmissionTables(db: DbConnection): void {
 }
 
 /**
+ * Migration 0102 adds exact-revision state to environments as well as the
+ * Work Together reservation table. Rewind helpers drop the reservation table,
+ * but environments predates the additive chain and must have these columns
+ * removed explicitly before 0102 can replay.
+ */
+function dropExactBaseRevisionEnvironmentColumns(db: DbConnection): void {
+  if (
+    !db.$client
+      .prepare(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'environments'",
+      )
+      .get()
+  ) {
+    return;
+  }
+
+  const columns = new Set(
+    db.$client
+      .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
+      .all()
+      .map((column) => column.name),
+  );
+  for (const column of [
+    "base_revision",
+    "base_revision_verified_at",
+    "provision_failure",
+  ]) {
+    if (columns.has(column)) {
+      db.$client
+        .prepare(`ALTER TABLE environments DROP COLUMN ${column}`)
+        .run();
+    }
+  }
+}
+
+/**
  * Migration 0090 rebuilds `queued_thread_messages` with optional admission
  * identity columns, a completeness CHECK, and a per-thread sequence unique
  * index. Rewind helpers that clear 0090's ledger row must restore the pre-0090
@@ -265,11 +301,13 @@ function dropLateAdmissionTables(db: DbConnection): void {
 function dropQueuedMessageAdmissionReferenceSchema(db: DbConnection): void {
   // 0091 follows the 0090 queue rebuild. Any rewind that makes 0090
   // re-applicable also makes later additive migrations re-applicable, so
-  // remove their tables before Drizzle replays the forward chain.
+  // remove their tables and environment columns before Drizzle replays the
+  // forward chain.
   db.$client
     .prepare("DROP TABLE IF EXISTS work_together_room_resource_reservations")
     .run();
   db.$client.prepare("DROP TABLE IF EXISTS thread_principal_read_state").run();
+  dropExactBaseRevisionEnvironmentColumns(db);
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
     .all()
@@ -4842,16 +4880,18 @@ describe("migrate", () => {
       // installs still name the old key would list every entry twice.
       expect(
         db.$client
-          .prepare<[], { name: string }>(
-            "SELECT name FROM plugin_marketplaces ORDER BY name",
-          )
+          .prepare<
+            [],
+            { name: string }
+          >("SELECT name FROM plugin_marketplaces ORDER BY name")
           .all(),
       ).toEqual([{ name: "acme" }, { name: "bb-community" }]);
       expect(
         db.$client
-          .prepare<[], { marketplaceName: string }>(
-            "SELECT marketplace_name AS marketplaceName FROM plugin_marketplace_icons ORDER BY marketplace_name",
-          )
+          .prepare<
+            [],
+            { marketplaceName: string }
+          >("SELECT marketplace_name AS marketplaceName FROM plugin_marketplace_icons ORDER BY marketplace_name")
           .all(),
       ).toEqual([
         { marketplaceName: "acme" },
@@ -4859,9 +4899,10 @@ describe("migrate", () => {
       ]);
       expect(
         db.$client
-          .prepare<[], { id: string; catalogMarketplaceName: string | null }>(
-            "SELECT id, catalog_marketplace_name AS catalogMarketplaceName FROM plugins ORDER BY id",
-          )
+          .prepare<
+            [],
+            { id: string; catalogMarketplaceName: string | null }
+          >("SELECT id, catalog_marketplace_name AS catalogMarketplaceName FROM plugins ORDER BY id")
           .all(),
       ).toEqual([
         { id: "local", catalogMarketplaceName: null },
@@ -4875,9 +4916,10 @@ describe("migrate", () => {
       // 304. Other marketplaces keep theirs.
       expect(
         db.$client
-          .prepare<[], { name: string; etag: string | null; lastModified: string | null }>(
-            "SELECT name, etag, last_modified AS lastModified FROM plugin_marketplaces ORDER BY name",
-          )
+          .prepare<
+            [],
+            { name: string; etag: string | null; lastModified: string | null }
+          >("SELECT name, etag, last_modified AS lastModified FROM plugin_marketplaces ORDER BY name")
           .all(),
       ).toEqual([
         {

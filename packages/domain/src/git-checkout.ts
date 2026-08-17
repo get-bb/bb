@@ -45,6 +45,11 @@ export const gitBranchNameSchema = z
   .refine(isValidGitBranchName, { message: "Invalid git branch name" });
 export type GitBranchName = z.infer<typeof gitBranchNameSchema>;
 
+export const gitObjectIdSchema = z
+  .string()
+  .regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u, "Invalid Git object ID");
+export type GitObjectId = z.infer<typeof gitObjectIdSchema>;
+
 export const gitCheckoutRefSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("branch"),
@@ -107,9 +112,7 @@ export const defaultBranchRelationSchema = z.enum([
   "diverged",
   "unknown",
 ]);
-export type DefaultBranchRelation = z.infer<
-  typeof defaultBranchRelationSchema
->;
+export type DefaultBranchRelation = z.infer<typeof defaultBranchRelationSchema>;
 
 export const projectSourceCheckoutSchema = z.object({
   /** Local branches under refs/heads, safe for checkout and write targets. */

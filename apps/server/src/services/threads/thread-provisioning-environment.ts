@@ -235,6 +235,11 @@ interface ManagedEnvironmentPlanArgs {
   hostId: string;
   sourcePath: string;
   baseBranch: BaseBranchSpec;
+  revisionPin?: {
+    baseRevision: string;
+    providerRepositoryId: string;
+    allowExistingDescendant: boolean;
+  };
   thread: Thread;
   workspaceProvisionType: "managed-worktree";
 }
@@ -834,6 +839,7 @@ function buildManagedEnvironmentPlan(
       managed: true,
       workspaceProvisionType: args.workspaceProvisionType,
       baseBranch: baseBranchSpecToStoredName(args.baseBranch),
+      baseRevision: args.revisionPin?.baseRevision ?? null,
       ...(args.branchName !== undefined ? { branchName: args.branchName } : {}),
       status: "provisioning",
     },
@@ -846,6 +852,9 @@ function buildManagedEnvironmentPlan(
             threadId: args.thread.id,
           }),
         baseBranch: args.baseBranch,
+        ...(args.revisionPin !== undefined
+          ? { revisionPin: args.revisionPin }
+          : {}),
         environmentId: environment.id,
         hostId: args.hostId,
         initiator: {
@@ -926,6 +935,9 @@ async function resolveEnvironmentCreationPlan(
         hostId: args.intent.hostId,
         sourcePath: args.intent.sourcePath,
         baseBranch: args.intent.baseBranch,
+        ...(args.intent.revisionPin !== undefined
+          ? { revisionPin: args.intent.revisionPin }
+          : {}),
         thread: args.thread,
         workspaceProvisionType: args.intent.workspaceProvisionType,
       });

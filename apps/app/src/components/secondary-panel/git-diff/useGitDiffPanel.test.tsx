@@ -53,6 +53,8 @@ const noop = () => undefined;
 function makeEnvironment(id: string, mergeBaseBranch: string): Environment {
   return {
     baseBranch: null,
+    baseRevision: null,
+    baseRevisionVerifiedAt: null,
     branchName: `bb/${id}`,
     createdAt: 1,
     defaultBranch: "main",
@@ -65,6 +67,7 @@ function makeEnvironment(id: string, mergeBaseBranch: string): Environment {
     mergeBaseBranch,
     path: `/tmp/${id}`,
     projectId: "project-1",
+    provisionFailure: null,
     status: "ready",
     updatedAt: 1,
     workspaceProvisionType: "managed-worktree",

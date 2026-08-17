@@ -169,6 +169,7 @@ describe("public thread fork route", () => {
         defaultBranch: "main",
         isGitRepo: false,
         isWorktree: false,
+        verifiedBaseRevision: null,
         transcript: [],
       });
 

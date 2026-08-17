@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { gitObjectIdSchema } from "./git-checkout.js";
 export const environmentStatusValues = [
   "provisioning",
   "ready",
@@ -80,6 +81,9 @@ export const environmentSchema = z.object({
   workspaceProvisionType: workspaceProvisionTypeSchema,
   branchName: z.string().nullable(),
   baseBranch: z.string().nullable(),
+  baseRevision: gitObjectIdSchema.nullable(),
+  baseRevisionVerifiedAt: z.number().int().nonnegative().nullable(),
+  provisionFailure: z.enum(["revision_not_found", "unavailable"]).nullable(),
   defaultBranch: z.string().nullable(),
   mergeBaseBranch: z.string().nullable(),
   status: environmentStatusSchema,

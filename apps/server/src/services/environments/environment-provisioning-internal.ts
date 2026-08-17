@@ -6,11 +6,15 @@ import {
   type DbQueryConnection,
   type DbTransaction,
   getEnvironment,
+  getWorkTogetherRoomResourceReservationByEnvironmentId,
   getThread,
   listStoredThreadProvisioningRowsByProvisioningId,
   threads,
 } from "@bb/db";
-import { recordProvisionedEnvironmentWorkspace } from "@bb/db/internal-environment-lifecycle";
+import {
+  recordEnvironmentProvisionFailure,
+  recordProvisionedEnvironmentWorkspace,
+} from "@bb/db/internal-environment-lifecycle";
 import type {
   Environment,
   ProvisioningTranscriptEntry,
@@ -574,6 +578,16 @@ export function settleEnvironmentProvisionCommandResult(
   const postCommitActions: CommandResultPostCommitAction[] = [];
   const initiator = args.command.initiator;
   if (!initiator && !args.report.ok) {
+    recordEnvironmentProvisionFailure(
+      args.deps.db,
+      args.deps.hub,
+      args.command.environmentId,
+      args.report.errorCode === "revision_not_found"
+        ? "revision_not_found"
+        : args.report.errorCode === "revision_unavailable"
+          ? "unavailable"
+          : null,
+    );
     const outcome = applyLoggedEnvironmentLifecycleEventInTransaction(
       args.deps,
       {
@@ -597,6 +611,72 @@ export function settleEnvironmentProvisionCommandResult(
     .all();
 
   if (args.report.ok) {
+    const revisionStartPoint =
+      args.command.workspaceProvisionType === "managed-worktree" &&
+      args.command.startPoint.kind === "revision"
+        ? args.command.startPoint
+        : null;
+    const expectedRevision = revisionStartPoint?.baseRevision ?? null;
+    const revisionVerificationMatches =
+      revisionStartPoint === null
+        ? args.report.result.verifiedBaseRevision === null
+        : args.report.result.verifiedBaseRevision !== null &&
+          (args.report.result.verifiedBaseRevision === expectedRevision ||
+            revisionStartPoint.allowExistingDescendant);
+    if (!revisionVerificationMatches) {
+      recordEnvironmentProvisionFailure(
+        args.deps.db,
+        args.deps.hub,
+        args.command.environmentId,
+        "unavailable",
+      );
+      if (initiator) {
+        const failureHandled =
+          recordEnvironmentProvisioningFailureInTransaction(args.deps, {
+            environmentId: args.command.environmentId,
+            failureReason:
+              "Provisioned workspace revision did not match the requested revision",
+            provisioningId: initiator.provisioningId,
+            failureEntry: {
+              type: "step",
+              key: "workspace-failed",
+              text: "Workspace revision verification failed",
+              status: "failed",
+              startedAt: args.execution.createdAt,
+              metadata: { durationMs: Date.now() - args.execution.createdAt },
+            },
+          });
+        if (failureHandled) {
+          postCommitActions.push({
+            name: "Environment cleanup advance after revision verification failure",
+            context: { environmentId: args.command.environmentId },
+            run: (deps) => {
+              requestEnvironmentCleanup(deps, {
+                environmentId: args.command.environmentId,
+              });
+              runEnvironmentCleanupAdvance(deps, {
+                environmentId: args.command.environmentId,
+              });
+            },
+          });
+        }
+        return { postCommitActions };
+      }
+      const mismatchOutcome = applyLoggedEnvironmentLifecycleEventInTransaction(
+        args.deps,
+        {
+          environmentId: args.command.environmentId,
+          event: { type: "provision.failed" },
+        },
+      );
+      if (mismatchOutcome.applied) {
+        args.deps.hub.notifyEnvironment(
+          args.command.environmentId,
+          mismatchOutcome.changes,
+        );
+      }
+      return emptyCommandResultSideEffects();
+    }
     recordProvisionedEnvironmentWorkspace(
       args.deps.db,
       args.deps.hub,
@@ -608,15 +688,16 @@ export function settleEnvironmentProvisionCommandResult(
         branchName: args.report.result.branchName,
         defaultBranch: args.report.result.defaultBranch,
         ...resolveProvisionedEnvironmentBranchMetadata(args.command),
+        ...(expectedRevision === null
+          ? {}
+          : { baseRevisionVerifiedAt: Date.now() }),
       },
     );
-    const provisionedOutcome = applyLoggedEnvironmentLifecycleEventInTransaction(
-      args.deps,
-      {
+    const provisionedOutcome =
+      applyLoggedEnvironmentLifecycleEventInTransaction(args.deps, {
         environmentId: args.command.environmentId,
         event: { type: "provision.succeeded" },
-      },
-    );
+      });
     if (provisionedOutcome.applied) {
       args.deps.hub.notifyEnvironment(
         args.command.environmentId,
@@ -740,6 +821,16 @@ export function settleEnvironmentProvisionCommandResult(
     return emptyCommandResultSideEffects();
   }
   const environmentProvisioningId = initiator.provisioningId;
+  recordEnvironmentProvisionFailure(
+    args.deps.db,
+    args.deps.hub,
+    args.command.environmentId,
+    args.report.errorCode === "revision_not_found"
+      ? "revision_not_found"
+      : args.report.errorCode === "revision_unavailable"
+        ? "unavailable"
+        : null,
+  );
   const failureHandled = recordEnvironmentProvisioningFailureInTransaction(
     args.deps,
     {
@@ -1086,17 +1177,42 @@ export async function dispatchManagedEnvironmentReprovision(
           workspaceProvisionType: provisionType,
         })
       : (() => {
-          const source = requireSourceForHost(
-            deps,
-            args.projectId,
-            args.environment.hostId,
-          );
+          const roomReservation =
+            getWorkTogetherRoomResourceReservationByEnvironmentId(
+              deps.db,
+              args.environment.id,
+            );
+          if (
+            (args.environment.baseRevision !== null &&
+              roomReservation === null) ||
+            (roomReservation !== null &&
+              (args.environment.baseRevision === null ||
+                roomReservation.baseRevision === null ||
+                roomReservation.baseRevision !==
+                  args.environment.baseRevision ||
+                roomReservation.sourcePath === null ||
+                roomReservation.bbHostId === null ||
+                roomReservation.bbHostId !== args.environment.hostId ||
+                roomReservation.projectName === null ||
+                roomReservation.providerId === null ||
+                roomReservation.projectId !== args.projectId))
+          ) {
+            throw new ApiError(
+              409,
+              "invalid_request",
+              "Pinned Room environment cannot be reprovisioned from incomplete or conflicting state",
+            );
+          }
+          const sourcePath =
+            roomReservation?.sourcePath ??
+            requireSourceForHost(deps, args.projectId, args.environment.hostId)
+              .path;
           const targetPath =
             args.environment.path ??
             resolveManagedTargetPath({
               dataDir: hostSession.dataDir,
               environmentId: args.environment.id,
-              sourcePath: source.path,
+              sourcePath,
             });
           const branchName =
             args.environment.branchName ??
@@ -1110,10 +1226,21 @@ export async function dispatchManagedEnvironmentReprovision(
             environmentId: args.environment.id,
             hostId: args.environment.hostId,
             initiator,
-            sourcePath: source.path,
+            sourcePath,
             targetPath,
             workspaceProvisionType: provisionType,
             setupTimeoutMs: SETUP_TIMEOUT_MS,
+            ...(args.environment.baseRevision !== null &&
+            roomReservation !== null
+              ? {
+                  revisionPin: {
+                    baseRevision: args.environment.baseRevision,
+                    providerRepositoryId: roomReservation.providerRepositoryId,
+                    allowExistingDescendant:
+                      args.environment.baseRevisionVerifiedAt !== null,
+                  },
+                }
+              : {}),
           });
         })();
 

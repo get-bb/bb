@@ -12,6 +12,8 @@ type WorkspaceStatusOverrides = Partial<WorkspaceStatus>;
 function makeEnvironment(overrides: EnvironmentOverrides = {}): Environment {
   return {
     baseBranch: null,
+    baseRevision: null,
+    baseRevisionVerifiedAt: null,
     branchName: "bb/thread",
     createdAt: 1,
     defaultBranch: "main",
@@ -24,6 +26,7 @@ function makeEnvironment(overrides: EnvironmentOverrides = {}): Environment {
     mergeBaseBranch: null,
     path: "/tmp/workspace",
     projectId: "project-1",
+    provisionFailure: null,
     status: "ready",
     updatedAt: 1,
     workspaceProvisionType: "managed-worktree",

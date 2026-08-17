@@ -11,6 +11,7 @@ import {
   WorkTogetherRoomProvisioningConflictError,
   WorkTogetherRoomProvisioningUnavailableError,
   WorkTogetherRoomRepositoryNotRegisteredError,
+  WorkTogetherRoomRepositoryRevisionUnavailableError,
   type WorkTogetherRoomResourceProvisioner,
 } from "../../src/room-distribution/room-resource-provisioner.js";
 
@@ -29,6 +30,7 @@ const BODY = Object.freeze({
   repositoryBindingVersion: 7,
   providerRepositoryId: "42",
   baseBranch: "main",
+  baseRevision: "a".repeat(40),
   generatedBranch: "rooms/room-1",
   candidateHostId: "55555555-5555-4555-8555-555555555555",
   environmentTemplate: "managed-worktree",
@@ -129,6 +131,7 @@ describe("Room provisioning HTTP adapter", () => {
       { ...BODY, principalId: "user_forged" },
       { ...BODY, bindingId: BINDING_ID },
       { ...BODY, repositoryBindingVersion: 1.5 },
+      { ...BODY, baseRevision: "ABC" },
       { ...BODY, environmentTemplate: "direct" },
     ]) {
       expect((await test.app.request(request(body))).status).toBe(400);
@@ -169,6 +172,17 @@ describe("Room provisioning HTTP adapter", () => {
     expect(await missingResponse.json()).toEqual({
       code: "repository_not_registered",
       message: "Repository is not registered on the host",
+    });
+
+    const missingRevision = fixture({
+      error: new WorkTogetherRoomRepositoryRevisionUnavailableError(),
+    });
+    const missingRevisionResponse =
+      await missingRevision.app.request(request());
+    expect(missingRevisionResponse.status).toBe(404);
+    expect(await missingRevisionResponse.json()).toEqual({
+      code: "repository_revision_unavailable",
+      message: "Repository revision is unavailable on the host",
     });
 
     const hostDown = fixture({

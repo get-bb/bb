@@ -73,6 +73,7 @@ async function provisionIdleRoom(
     repositoryBindingVersion: 1,
     providerRepositoryId: String(args.seed),
     baseBranch: "main",
+    baseRevision: "a".repeat(40),
     generatedBranch: `rooms/publish-${args.seed}`,
     candidateHostId,
     environmentTemplate: "managed-worktree" as const,

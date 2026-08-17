@@ -7,6 +7,7 @@ import {
   getProject,
   getProjectSourceForProject,
   getThread,
+  getWorkTogetherRoomResourceReservation,
   reserveWorkTogetherRoomResources,
   WorkTogetherRoomResourceReservationConflictError,
   type ReserveWorkTogetherRoomResourcesInput,
@@ -36,7 +37,10 @@ export interface WorkTogetherRoomResourceRegistry {
 export type ProvisionWorkTogetherRoomResourcesInput = Readonly<{
   /** Immutable server-resolved identity; never deserialize this from a body. */
   principal: Principal;
-  launch: ReserveWorkTogetherRoomResourcesInput;
+  launch: Omit<
+    ReserveWorkTogetherRoomResourcesInput,
+    "bbHostId" | "projectName" | "providerId" | "sourcePath"
+  >;
 }>;
 
 export type ProvisionWorkTogetherRoomResourcesResult = Readonly<{
@@ -72,6 +76,13 @@ export class WorkTogetherRoomRepositoryNotRegisteredError extends Error {
   constructor() {
     super("Work Together Room repository is not registered on the host");
     this.name = "WorkTogetherRoomRepositoryNotRegisteredError";
+  }
+}
+
+export class WorkTogetherRoomRepositoryRevisionUnavailableError extends Error {
+  constructor() {
+    super("Work Together Room repository revision is unavailable on the host");
+    this.name = "WorkTogetherRoomRepositoryRevisionUnavailableError";
   }
 }
 
@@ -114,6 +125,45 @@ function ensureConfiguredHost(
   if (host === null || host.destroyedAt !== null) {
     throw new WorkTogetherRoomProvisioningUnavailableError();
   }
+}
+
+function targetFromReservation(
+  reservation: WorkTogetherRoomResourceReservation,
+): WorkTogetherRoomResourceTarget {
+  if (
+    reservation.bbHostId === null ||
+    reservation.projectName === null ||
+    reservation.providerId === null ||
+    reservation.sourcePath === null
+  ) {
+    throw new WorkTogetherRoomProvisioningUnavailableError();
+  }
+  return requireTarget({
+    bbHostId: reservation.bbHostId,
+    projectName: reservation.projectName,
+    providerId: reservation.providerId,
+    sourcePath: reservation.sourcePath,
+  });
+}
+
+function launchMatchesReservation(
+  launch: ProvisionWorkTogetherRoomResourcesInput["launch"],
+  reservation: WorkTogetherRoomResourceReservation,
+): boolean {
+  return (
+    launch.bindingId === reservation.bindingId &&
+    launch.workspaceId === reservation.workspaceId &&
+    launch.taskId === reservation.taskId &&
+    launch.cellId === reservation.cellId &&
+    launch.repositoryBindingId === reservation.repositoryBindingId &&
+    launch.repositoryBindingVersion === reservation.repositoryBindingVersion &&
+    launch.providerRepositoryId === reservation.providerRepositoryId &&
+    launch.baseBranch === reservation.baseBranch &&
+    launch.baseRevision === reservation.baseRevision &&
+    launch.generatedBranch === reservation.generatedBranch &&
+    launch.candidateHostId === reservation.candidateHostId &&
+    launch.environmentTemplate === reservation.environmentTemplate
+  );
 }
 
 function ensureProject(
@@ -177,6 +227,7 @@ function assertExistingResourceCoherence(
       environment.hostId !== target.bbHostId ||
       environment.workspaceProvisionType !== "managed-worktree" ||
       environment.baseBranch !== reservation.baseBranch ||
+      environment.baseRevision !== reservation.baseRevision ||
       environment.branchName !== reservation.generatedBranch)
   ) {
     throw new WorkTogetherRoomProvisioningConflictError();
@@ -200,6 +251,12 @@ function resultForReservation(
   let failureReason: ProvisionWorkTogetherRoomResourcesResult["failureReason"] =
     null;
 
+  if (environment?.provisionFailure === "revision_not_found") {
+    throw new WorkTogetherRoomRepositoryRevisionUnavailableError();
+  }
+  if (environment?.provisionFailure === "unavailable") {
+    throw new WorkTogetherRoomProvisioningUnavailableError();
+  }
   if (thread?.status === "error") {
     state = "failed";
     failureReason = "bb_thread_failed";
@@ -232,24 +289,45 @@ export function createWorkTogetherRoomResourceProvisioner(
     async provision(
       input: ProvisionWorkTogetherRoomResourcesInput,
     ): Promise<ProvisionWorkTogetherRoomResourcesResult> {
-      const target = requireTarget(
-        await Promise.resolve(
-          registry.resolve({
-            candidateHostId: input.launch.candidateHostId,
-            providerRepositoryId: input.launch.providerRepositoryId,
-          }),
-        ),
-      );
-      ensureConfiguredHost(deps, target);
       let reservation: WorkTogetherRoomResourceReservation;
-      try {
-        reservation = reserveWorkTogetherRoomResources(deps.db, input.launch);
-      } catch (error) {
-        if (error instanceof WorkTogetherRoomResourceReservationConflictError) {
+      const existing = getWorkTogetherRoomResourceReservation(
+        deps.db,
+        input.launch.bindingId,
+      );
+      let target: WorkTogetherRoomResourceTarget;
+      if (existing !== null) {
+        if (!launchMatchesReservation(input.launch, existing)) {
           throw new WorkTogetherRoomProvisioningConflictError();
         }
-        throw error;
+        reservation = existing;
+        target = targetFromReservation(existing);
+      } else {
+        target = requireTarget(
+          await Promise.resolve(
+            registry.resolve({
+              candidateHostId: input.launch.candidateHostId,
+              providerRepositoryId: input.launch.providerRepositoryId,
+            }),
+          ),
+        );
+        try {
+          reservation = reserveWorkTogetherRoomResources(deps.db, {
+            ...input.launch,
+            bbHostId: target.bbHostId,
+            projectName: target.projectName,
+            providerId: target.providerId,
+            sourcePath: target.sourcePath,
+          });
+        } catch (error) {
+          if (
+            error instanceof WorkTogetherRoomResourceReservationConflictError
+          ) {
+            throw new WorkTogetherRoomProvisioningConflictError();
+          }
+          throw error;
+        }
       }
+      ensureConfiguredHost(deps, target);
       ensureProject(deps, reservation, target);
       assertExistingResourceCoherence(deps, reservation, target);
 
@@ -281,6 +359,8 @@ export function createWorkTogetherRoomResourceProvisioner(
             resourceReservation: {
               environmentId: reservation.environmentId,
               managedBranchName: reservation.generatedBranch,
+              baseRevision: input.launch.baseRevision,
+              providerRepositoryId: reservation.providerRepositoryId,
               threadId: reservation.primaryThreadId,
             },
           },

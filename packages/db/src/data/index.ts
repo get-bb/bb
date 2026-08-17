@@ -25,6 +25,7 @@ export type {
 
 export {
   getWorkTogetherRoomResourceReservation,
+  getWorkTogetherRoomResourceReservationByEnvironmentId,
   reserveWorkTogetherRoomResources,
   WorkTogetherRoomResourceReservationConflictError,
 } from "./work-together-room-resource-reservations.js";

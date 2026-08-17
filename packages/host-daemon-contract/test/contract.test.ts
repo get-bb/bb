@@ -526,6 +526,7 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
     isWorktree: true,
     branchName: "bb/env-123",
     defaultBranch: "main",
+    verifiedBaseRevision: null,
     transcript: [
       {
         type: "step",
@@ -1123,7 +1124,7 @@ describe("host-daemon command schemas", () => {
     // not_found when a sealed tree may still hold the checkout.
     // v125: workspace.resolve_github_repository maps a numeric GitHub
     // repository id to a local checkout the host already has.
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(126);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(127);
   });
 
   it("requires an explicit intent on a thread stop command", () => {
@@ -1372,7 +1373,7 @@ describe("host-daemon command schemas", () => {
         sourcePath: "/tmp/project",
         targetPath: "/tmp/project/.bb/env",
         branchName: "bb/env-123",
-        baseBranch: null,
+        startPoint: { kind: "branch", baseBranch: null },
         setupTimeoutMs: 900000,
       }),
     ).toMatchObject({
@@ -3087,6 +3088,7 @@ describe("host-daemon command schemas", () => {
         isWorktree: true,
         branchName: "bb/env-123",
         defaultBranch: "main",
+        verifiedBaseRevision: null,
         transcript: [
           {
             type: "step",

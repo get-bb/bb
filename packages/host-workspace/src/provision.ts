@@ -1,9 +1,6 @@
 import { mkdir, realpath, rm } from "node:fs/promises";
 import path from "node:path";
-import type {
-  ProvisioningTranscriptEntry,
-  WorkspaceStatus,
-} from "@bb/domain";
+import type { ProvisioningTranscriptEntry, WorkspaceStatus } from "@bb/domain";
 import type {
   CommitOptions,
   CommitResult,
@@ -90,11 +87,8 @@ export interface ManagedWorkspaceBaseOpts extends ProvisionBase {
   targetPath: string;
   /** Name of the new branch to create on the workspace. */
   branchName: string;
-  /**
-   * Branch on the source repo that the new branch should be based on. Pass
-   * `null` to use the source's default branch.
-   */
-  baseBranch: string | null;
+  /** Exact start point for the managed branch. */
+  startPoint: import("./provisioning.js").WorktreeStartPoint;
   /** Setup script timeout in ms. Controlled by the server. */
   timeoutMs: number;
   /** Resolved user-shell PATH for the setup script. */
@@ -730,7 +724,7 @@ async function provisionWorktree(
     sourcePath: opts.sourcePath,
     targetPath: opts.targetPath,
     branchName: opts.branchName,
-    baseBranch: opts.baseBranch,
+    startPoint: opts.startPoint,
     timeoutMs: opts.timeoutMs,
     setupPath: opts.setupPath,
     onProgress: opts.onProgress,

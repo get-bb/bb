@@ -203,6 +203,7 @@ async function withLiveListRoom(
       repositoryBindingVersion: 1,
       providerRepositoryId: "401",
       baseBranch: "main",
+      baseRevision: "a".repeat(40),
       generatedBranch: "rooms/live-list",
       candidateHostId: randomUUID(),
       environmentTemplate: "managed-worktree" as const,

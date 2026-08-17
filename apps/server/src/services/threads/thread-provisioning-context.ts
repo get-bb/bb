@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createThreadProvisioningId } from "@bb/db";
 import {
   gitBranchNameSchema,
+  gitObjectIdSchema,
   promptInputSchema,
   resolvedThreadExecutionOptionsSchema,
   clientTurnRequestIdSchema,
@@ -39,6 +40,14 @@ const directManagedIntentSchema = z.object({
   /** Internal-only identities fixed by an enclosing provisioning saga. */
   environmentId: z.string().min(1).optional(),
   branchName: gitBranchNameSchema.optional(),
+  revisionPin: z
+    .object({
+      baseRevision: gitObjectIdSchema,
+      providerRepositoryId: z.string().regex(/^[1-9][0-9]{0,127}$/u),
+      allowExistingDescendant: z.boolean(),
+    })
+    .strict()
+    .optional(),
 });
 
 const directPersonalIntentSchema = z.object({
