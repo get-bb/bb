@@ -86,7 +86,6 @@ export function buildPluginProviderRegistration(args: {
 
   const serverCapabilities: ProviderServerCapabilities = {
     supportsWorkflows: capabilities.supportsWorkflows,
-    backsHostDaemonAiServices: capabilities.supportsHostAiServices,
     reasoningLevels: [...capabilities.reasoningLevels],
     fork: capabilities.fork,
   };

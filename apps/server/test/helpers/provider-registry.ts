@@ -236,7 +236,6 @@ export function registerFakeProviders(
           displayName: providerId,
           capabilities: {
             supportsServiceTier: true,
-            supportsHostAiServices: false,
             supportsNativeUserQuestion: false,
             fork: "checkpoint",
             supportsManualCompaction: true,

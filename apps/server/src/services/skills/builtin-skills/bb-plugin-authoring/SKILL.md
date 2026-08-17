@@ -1075,7 +1075,6 @@ bb.agents.experimental_registerProvider({
     // Pre-session facts only — the bridge reports the same facts at
     // initialize and may only narrow what is declared here, never widen it.
     supportsServiceTier: false,
-    supportsHostAiServices: false,
     supportsNativeUserQuestion: false,
     fork: "none",                    // "none" | "tip" | "checkpoint"
     supportsManualCompaction: false,

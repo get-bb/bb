@@ -13,7 +13,6 @@ export default function plugin(bb: BbPluginApi) {
     icon: "./icons/claude-code.svg",
     capabilities: {
       supportsServiceTier: false,
-      supportsHostAiServices: false,
       supportsNativeUserQuestion: true,
       fork: "checkpoint",
       supportsManualCompaction: true,

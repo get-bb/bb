@@ -13,7 +13,6 @@ export default function plugin(bb: BbPluginApi) {
     icon: "./icons/codex.svg",
     capabilities: {
       supportsServiceTier: true,
-      supportsHostAiServices: true,
       supportsNativeUserQuestion: false,
       fork: "checkpoint",
       supportsManualCompaction: true,

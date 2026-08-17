@@ -946,7 +946,6 @@ describe("agents.experimental_registerProvider", () => {
       icon: "./icons/agent.svg",
       capabilities: {
         supportsServiceTier: false,
-        supportsHostAiServices: false,
         supportsNativeUserQuestion: true,
         fork: "tip",
         supportsManualCompaction: true,

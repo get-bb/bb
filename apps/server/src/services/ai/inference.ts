@@ -314,7 +314,7 @@ export async function inferenceComplete<T extends TSchema>(
       args.model === undefined ? "BB_INFERENCE" : "inference model override",
     value: configuredModel,
   });
-  if (backsHostDaemonAiServices(deps.providerRegistry, modelInfo.provider)) {
+  if (backsHostDaemonAiServices(modelInfo.provider)) {
     return completeWithCodexHostDaemon(deps, modelInfo, args);
   }
 

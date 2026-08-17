@@ -42,7 +42,6 @@ const SERVER_SOURCE = `
       displayName: "Echo Fixture Agent",
       capabilities: {
         supportsServiceTier: false,
-        supportsHostAiServices: false,
         supportsNativeUserQuestion: false,
         fork: "none",
         supportsManualCompaction: false,

@@ -52,7 +52,6 @@ const REGISTER_PROVIDER_SOURCE = (id: string): string => `
       icon: "./icons/agent.svg",
       capabilities: {
         supportsServiceTier: true,
-        supportsHostAiServices: false,
         supportsNativeUserQuestion: true,
         fork: "tip",
         supportsManualCompaction: true,
@@ -114,7 +113,6 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
         },
         serverCapabilities: {
           supportsWorkflows: false,
-          backsHostDaemonAiServices: false,
           reasoningLevels: ["low", "medium", "high"],
         },
       });

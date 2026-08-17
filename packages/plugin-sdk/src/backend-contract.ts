@@ -515,10 +515,6 @@ export interface PluginProviderCapabilities {
   /** The provider accepts a fast/priority service-tier choice — shows the
    * service-tier toggle in the picker. */
   supportsServiceTier: boolean;
-  /** The provider backs host-daemon-routed AI services (voice transcription
-   * and structured inference) — the server may route those requests through
-   * it. */
-  supportsHostAiServices: boolean;
   /** The provider ships its own native ask-user-question tool — the
    * ask-user-question plugin skips registering its duplicate. */
   supportsNativeUserQuestion: boolean;

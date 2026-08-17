@@ -399,7 +399,6 @@ export function validatePluginProviderDeclaration(
   }
   const booleanCapabilityFields = [
     "supportsServiceTier",
-    "supportsHostAiServices",
     "supportsNativeUserQuestion",
     "supportsManualCompaction",
     "supportsThreadArchive",
@@ -420,7 +419,6 @@ export function validatePluginProviderDeclaration(
   }
   const normalizedCapabilities: PluginProviderCapabilities = Object.freeze({
     supportsServiceTier: capabilities.supportsServiceTier,
-    supportsHostAiServices: capabilities.supportsHostAiServices,
     supportsNativeUserQuestion: capabilities.supportsNativeUserQuestion,
     fork: capabilities.fork,
     supportsManualCompaction: capabilities.supportsManualCompaction,

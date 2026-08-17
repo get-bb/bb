@@ -25,7 +25,6 @@ const FIRST_PARTY_PROVIDER_PLUGINS = [
     supportsThreadRename: true,
     supportsWorkflows: false,
     supportsManualCompaction: true,
-    backsHostDaemonAiServices: true,
   },
   {
     builtinName: "provider-claude-code",
@@ -36,7 +35,6 @@ const FIRST_PARTY_PROVIDER_PLUGINS = [
     supportsThreadRename: false,
     supportsWorkflows: true,
     supportsManualCompaction: true,
-    backsHostDaemonAiServices: false,
   },
   {
     builtinName: "provider-pi",
@@ -47,7 +45,6 @@ const FIRST_PARTY_PROVIDER_PLUGINS = [
     supportsThreadRename: false,
     supportsWorkflows: false,
     supportsManualCompaction: true,
-    backsHostDaemonAiServices: false,
   },
   {
     builtinName: "provider-acp",
@@ -58,7 +55,6 @@ const FIRST_PARTY_PROVIDER_PLUGINS = [
     supportsThreadRename: false,
     supportsWorkflows: false,
     supportsManualCompaction: false,
-    backsHostDaemonAiServices: false,
   },
 ] as const;
 
@@ -129,10 +125,6 @@ describe("first-party provider plugins", () => {
             registration.serverCapabilities.supportsWorkflows,
             label,
           ).toBe(plugin.supportsWorkflows);
-          expect(
-            registration.serverCapabilities.backsHostDaemonAiServices,
-            label,
-          ).toBe(plugin.backsHostDaemonAiServices);
           expect(registry.supportsManualCompaction(plugin.providerId)).toBe(
             plugin.supportsManualCompaction,
           );

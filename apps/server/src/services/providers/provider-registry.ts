@@ -36,12 +36,6 @@ export interface ProviderServerCapabilities {
    */
   supportsWorkflows: boolean;
   /**
-   * Whether this provider backs host-daemon-routed AI services (voice
-   * transcription and structured inference) via its `*.voice.transcribe` /
-   * `*.inference.complete` daemon commands.
-   */
-  backsHostDaemonAiServices: boolean;
-  /**
    * The coarse, ordered per-provider reasoning ladder. Used as a fallback when
    * a precise per-model `supportedReasoningEfforts` set is unavailable.
    */

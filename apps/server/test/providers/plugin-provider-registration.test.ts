@@ -12,7 +12,6 @@ function declaration(
     icon: "./icons/agent.svg",
     capabilities: {
       supportsServiceTier: true,
-      supportsHostAiServices: false,
       supportsNativeUserQuestion: true,
       fork: "checkpoint",
       supportsManualCompaction: false,
@@ -63,7 +62,6 @@ describe("buildPluginProviderRegistration", () => {
     });
     expect(registration.serverCapabilities).toStrictEqual({
       supportsWorkflows: true,
-      backsHostDaemonAiServices: false,
       reasoningLevels: ["low", "medium", "high"],
       fork: "checkpoint",
     });

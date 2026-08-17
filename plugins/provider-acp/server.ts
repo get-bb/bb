@@ -15,7 +15,6 @@ export default function plugin(bb: BbPluginApi) {
     icon: "./icons/cursor.svg",
     capabilities: {
       supportsServiceTier: true,
-      supportsHostAiServices: false,
       supportsNativeUserQuestion: false,
       fork: "tip",
       supportsManualCompaction: false,

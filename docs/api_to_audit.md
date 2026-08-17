@@ -208,6 +208,18 @@ registration record so fields without a registry consumer yet
    router-kind declaration — a picker entry resolving to another provider at
    submit time, removed from the contract because nothing ever resolved one —
    returns as its own surface.
+5. **What a capability may be.** `supportsHostAiServices` was removed after
+   shipping: it declared that bb's voice-transcription and structured-inference
+   features could route through the provider, which is a fact about the daemon
+   bundle (it ships a codex ChatGPT client and answers
+   `codex.inference.complete` / `codex.voice.transcribe`) rather than about the
+   provider. A plugin declaring it true could not make the daemon grow a
+   client, so the flag could only ever be wrong. The routing now lives in the
+   AI-services module that consumes it; the future home for the real
+   capability is a bounded host RPC a plugin can offer (`bb.host`), once the
+   host-plugin foundation exists. Apply the same test to every remaining
+   capability before stabilizing: a declaration may assert what the provider
+   itself implements, never what bb or its daemon can do with it.
 
 ## `app.slots.experimental_providerIcon` (`@get-bb/plugin-sdk/app`)
 

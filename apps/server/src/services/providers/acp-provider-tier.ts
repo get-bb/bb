@@ -74,7 +74,6 @@ const ACP_REASONING_LEVELS: readonly ReasoningLevel[] = [
 
 const ACP_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsWorkflows: false,
-  backsHostDaemonAiServices: false,
   reasoningLevels: ACP_REASONING_LEVELS,
   fork: ACP_FORK,
 };

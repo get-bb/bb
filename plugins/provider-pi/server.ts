@@ -13,7 +13,6 @@ export default function plugin(bb: BbPluginApi) {
     icon: "./icons/pi.svg",
     capabilities: {
       supportsServiceTier: false,
-      supportsHostAiServices: false,
       supportsNativeUserQuestion: false,
       fork: "checkpoint",
       supportsManualCompaction: true,

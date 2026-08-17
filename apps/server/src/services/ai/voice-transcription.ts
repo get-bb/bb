@@ -49,7 +49,7 @@ export function resolveVoiceTranscriptionEnabled(
   deps: LoggedWorkSessionDeps,
 ): boolean {
   const modelInfo = parseTranscriptionModel(deps.config.transcriptionModel);
-  if (backsHostDaemonAiServices(deps.providerRegistry, modelInfo.provider)) {
+  if (backsHostDaemonAiServices(modelInfo.provider)) {
     return isCodexVoiceTranscriptionAvailable(deps);
   }
   if (modelInfo.provider === OPENAI_TRANSCRIPTION_PROVIDER) {
@@ -255,7 +255,7 @@ export async function transcribeVoiceInput(
   }
 
   const modelInfo = parseTranscriptionModel(deps.config.transcriptionModel);
-  if (backsHostDaemonAiServices(deps.providerRegistry, modelInfo.provider)) {
+  if (backsHostDaemonAiServices(modelInfo.provider)) {
     return transcribeWithCodexHostDaemon(deps, modelInfo, args);
   }
   if (modelInfo.provider === OPENAI_TRANSCRIPTION_PROVIDER) {
