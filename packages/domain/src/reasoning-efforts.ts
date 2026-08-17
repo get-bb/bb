@@ -54,11 +54,3 @@ export function reasoningEffortsForLevels(
 ): ModelReasoningEffort[] {
   return levels.map((level) => ({ ...REASONING_EFFORT_BY_LEVEL[level] }));
 }
-
-// Defensive copy so callers can hand out reasoning efforts in mutable API
-// responses without aliasing the module-level constants above.
-export function cloneReasoningEfforts(
-  efforts: readonly ModelReasoningEffort[],
-): ModelReasoningEffort[] {
-  return efforts.map((effort) => ({ ...effort }));
-}

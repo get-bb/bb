@@ -250,20 +250,23 @@ build inlines the SDK's published, self-contained bundle.
    domain. Decide, before third parties depend on the shapes, whether the
    protocol should own a narrower event vocabulary of its own that `@bb/domain`
    then derives from, or whether this facade is the permanent answer.
-2. **Surface size.** ~190 names is a large promise. Several are there for one
-   first-party bridge only (the Claude mock-CLI traffic config, the ACP
-   reasoning/permission CLI schemas, the workflow snapshot types). Each is a
-   candidate to move into its own plugin instead of being promised to everyone.
-   The root cause is upstream of the SDK: the wave-5 move relocated
-   `agent-runtime/src/shared/` byte-identically, and `bridge-kit/adapter-utils.ts`
-   is a self-described grab-bag of "functions and constants duplicated across
-   the claude-code, pi, and codex adapters" whose single-consumer passengers
-   moved with it — `claudeCodeMockCliTrafficConfigSchema`,
-   `claudeTaskToolNameSchema`, `claudeTaskToolOutputSchema` (claude-code plugin
-   only) and `acpNativeReasoningSchema` (acp plugin only). Repatriate those to
-   their owning plugins and shrink `adapter-utils` to what two-plus bridges
-   actually share; the kit barrel is `export *`, so trimming the kit trims the
-   published surface (and this audit) with it.
+2. **Surface size.** ~190 names is a large promise. Single-consumer
+   repatriation done (Aug 2026): `extractEnvOverrides` and
+   `getMessageContentTypes` moved into the claude-code plugin,
+   `normalizePendingInteractionRequestedPermissionProfile` (whole
+   `pending-interaction-normalization` module plus test) into the codex
+   plugin, and the `cloneReasoningEfforts` helper out of `@bb/domain` into
+   claude-code's model catalog. The other named candidates turned out not to
+   be movable: they are `@bb/domain`/protocol definitions with core consumers
+   — `claudeCodeMockCliTrafficConfigSchema` is the source of the
+   core-consumed `ClaudeCodeMockCliTrafficConfig`/default (agent-runtime,
+   server), the `claudeTaskTool*` schemas share their contract file with
+   thread-view, the `acp*Cli`/`acpNativeReasoning` schemas are parsed by
+   host-daemon-contract and config, and the workflow snapshot types are
+   rendered by the app. `buildEditDiff`, `completeStartedToolItem`, and
+   `decodeToolCallResponsePayload` are used inside the kit itself. The
+   surface is still large; any further shrink is a per-name product decision,
+   not a mechanical move.
 3. **The ACP launch spec.** `hostDaemonAcpLaunchSpecSchema` is a
    server↔daemon wire shape a bridge parses out of its provider-scoped static
    options. It is the one core contract leaking into the published surface;

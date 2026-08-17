@@ -2,9 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildEditDiff,
   buildShellEnvOverrides,
-  buildShellEnvironmentPolicyConfig,
   diffCumulativeText,
-  extractEnvOverrides,
   extractResultText,
   normalizeProviderCommandOutput,
 } from "./adapter-utils.js";
@@ -32,14 +30,6 @@ describe("adapter-utils", () => {
         "BAD.KEY": "ignored",
         API_URL: "https://example.com",
       }),
-    ).toEqual({ API_URL: "https://example.com" });
-  });
-
-  it("round-trips shell environment policy overrides", () => {
-    expect(
-      extractEnvOverrides(
-        buildShellEnvironmentPolicyConfig({ API_URL: "https://example.com" }),
-      ),
     ).toEqual({ API_URL: "https://example.com" });
   });
 

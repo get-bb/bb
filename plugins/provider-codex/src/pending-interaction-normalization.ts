@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   pendingInteractionRequestedPermissionProfileSchema,
   type PendingInteractionRequestedPermissionProfile,
-} from "@bb/domain";
+} from "@get-bb/plugin-sdk/provider-bridge";
 
 // Providers inconsistently omit fields or send null for the same "not present"
 // wire value. Normalize that external input before validating the domain shape.

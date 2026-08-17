@@ -293,22 +293,6 @@ export function buildShellEnvironmentPolicyConfig(
   return Object.keys(config).length > 0 ? config : undefined;
 }
 
-export function extractEnvOverrides(
-  config: Record<string, unknown> | undefined,
-): Record<string, string> {
-  const envOverrides: Record<string, string> = {};
-  for (const [key, value] of Object.entries(config ?? {})) {
-    if (
-      key.startsWith("shell_environment_policy.set.") &&
-      typeof value === "string"
-    ) {
-      const envVar = key.slice("shell_environment_policy.set.".length);
-      envOverrides[envVar] = value;
-    }
-  }
-  return envOverrides;
-}
-
 // ---------------------------------------------------------------------------
 // Numeric helpers
 // ---------------------------------------------------------------------------

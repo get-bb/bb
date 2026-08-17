@@ -34,20 +34,3 @@ export function getRawSdkMessage(event: JsonRpcMessage): StringRecord | null {
   const message = event.params["message"];
   return isRecord(message) ? message : null;
 }
-
-export function getMessageContentTypes(message: StringRecord): string[] {
-  const messagePayload = getRecordProperty(message, "message");
-  const content = messagePayload?.["content"];
-  if (!Array.isArray(content)) {
-    return [];
-  }
-
-  const types = new Set<string>();
-  for (const block of content) {
-    if (!isRecord(block)) continue;
-    const type = getStringProperty(block, "type");
-    if (!type) continue;
-    types.add(type);
-  }
-  return [...types];
-}

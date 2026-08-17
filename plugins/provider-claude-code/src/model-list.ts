@@ -1,5 +1,4 @@
 import {
-  cloneReasoningEfforts,
   HIGH_REASONING_EFFORT,
   LOW_REASONING_EFFORT,
   MAX_REASONING_EFFORT,
@@ -14,6 +13,7 @@ import {
   CLAUDE_CODE_ACTIVE_CATALOG,
   CLAUDE_XHIGH_CAPABLE_REASONING_EFFORTS,
   DEFAULT_CLAUDE_CODE_MODEL,
+  cloneReasoningEfforts,
   type ClaudeCodeCatalogEntry,
 } from "./model-catalog.js";
 

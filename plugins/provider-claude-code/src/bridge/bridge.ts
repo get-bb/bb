@@ -40,7 +40,6 @@ import {
   createBridgeLineHandler,
   createBridgeSessionRegistry,
   decodeBridgeJsonRpcResponse,
-  extractEnvOverrides,
   queueAcceptedUserMessage,
   runBridgeRequest,
   shouldAutoDenyInteractiveRequest,
@@ -76,6 +75,7 @@ import {
 } from "../session-params.js";
 import { buildInterruptedClaudeTaskEvents } from "../task-translation.js";
 import { SdkSession, type SdkSessionOptions } from "./sdk-session.js";
+import { extractEnvOverrides } from "./env-overrides.js";
 import { listClaudeCodeBridgeModels } from "./model-list.js";
 import {
   claudeThreadForkParamsSchema,

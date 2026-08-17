@@ -1,5 +1,4 @@
 import {
-  cloneReasoningEfforts,
   HIGH_REASONING_EFFORT,
   LOW_REASONING_EFFORT,
   MAX_REASONING_EFFORT,
@@ -9,6 +8,14 @@ import {
   type AvailableModel,
   type ModelReasoningEffort,
 } from "@get-bb/plugin-sdk/provider-bridge";
+
+// Defensive copy so callers can hand out reasoning efforts in mutable API
+// responses without aliasing the shared module-level constants.
+export function cloneReasoningEfforts(
+  efforts: readonly ModelReasoningEffort[],
+): ModelReasoningEffort[] {
+  return efforts.map((effort) => ({ ...effort }));
+}
 
 export interface ClaudeCodeCatalogEntry {
   id: string;
