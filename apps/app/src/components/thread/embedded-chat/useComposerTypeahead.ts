@@ -47,6 +47,7 @@ export function useComposerTypeahead({
   const promptMentions = usePromptMentions(mentionsProjectId ?? projectId, {
     currentThreadId,
     environmentId,
+    threadStorageThreadId: currentThreadId,
   });
   const [commandQuery, setCommandQuery] = useState<string | null>(null);
   const providerPromptActions = useMemo(

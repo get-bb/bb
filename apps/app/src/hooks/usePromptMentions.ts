@@ -32,7 +32,10 @@ import {
 const PROMPT_MENTION_SOURCE_LIMIT = 8;
 
 export interface UsePromptMentionsOptions {
+  /** Existing thread that owns the composer and must not mention itself. */
   currentThreadId?: string;
+  /** Thread whose storage files are available to the composer. */
+  threadStorageThreadId?: string;
   environmentId: string | null;
   hostId?: string | null;
 }
@@ -170,7 +173,7 @@ export function usePromptMentions(
     limit: PROMPT_MENTION_SOURCE_LIMIT,
     environmentId: options.environmentId,
     hostId: options.hostId,
-    currentThreadId: options.currentThreadId,
+    currentThreadId: options.threadStorageThreadId,
     includeDirectories: true,
   });
   const projectNamesQuery = useSidebarNavigation({

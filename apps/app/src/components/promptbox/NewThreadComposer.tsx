@@ -853,9 +853,9 @@ export function NewThreadComposer({
   const promptMentions = usePromptMentions(
     isProjectless ? undefined : projectId,
     {
-      currentThreadId: panelThreadId ?? undefined,
       environmentId: reuseEnvironmentId,
       hostId: projectHostId,
+      threadStorageThreadId: panelThreadId ?? undefined,
     },
   );
   const defaultMentionLinkResolver = useCallback<PromptMentionLinkResolver>(
