@@ -56,7 +56,6 @@ export interface CompleteStartedToolItemArgs {
   exitCode?: number;
   outputText?: string;
   parentToolCallId?: string;
-  preserveUndefinedToolCallFields?: boolean;
   startedItem: ThreadEventItem;
   status: ThreadEventItemStatus;
   toolCallResult?: unknown;
@@ -64,6 +63,18 @@ export interface CompleteStartedToolItemArgs {
 
 export function completeStartedToolItem(
   args: CompleteStartedToolItemArgs,
+): ThreadEventItem | null {
+  return completeStartedToolItemInternal(args, false);
+}
+
+/**
+ * `preserveUndefinedToolCallFields` keeps explicit `undefined` values on the
+ * completed toolCall's `arguments`/`result` keys, matching the historical
+ * result-item shape `buildToolResultItem` has always emitted.
+ */
+function completeStartedToolItemInternal(
+  args: CompleteStartedToolItemArgs,
+  preserveUndefinedToolCallFields: boolean,
 ): ThreadEventItem | null {
   const parentToolCallId =
     args.parentToolCallId ?? args.startedItem.parentToolCallId;
@@ -113,12 +124,12 @@ export function completeStartedToolItem(
         type: "toolCall",
         id: args.callId,
         tool: args.startedItem.tool,
-        ...(args.preserveUndefinedToolCallFields ||
+        ...(preserveUndefinedToolCallFields ||
         args.startedItem.arguments !== undefined
           ? { arguments: args.startedItem.arguments }
           : {}),
         status: args.status,
-        ...(args.preserveUndefinedToolCallFields ||
+        ...(preserveUndefinedToolCallFields ||
         args.toolCallResult !== undefined
           ? { result: args.toolCallResult }
           : {}),
@@ -132,7 +143,6 @@ export function buildToolResultItem(args: {
   callId: string;
   commandOutputText?: string;
   commandToolNames: ReadonlySet<string>;
-  completeWebItems?: boolean;
   fileChangeToolNames: ReadonlySet<string>;
   isError: boolean;
   outputText?: string;
@@ -143,23 +153,26 @@ export function buildToolResultItem(args: {
 }): ThreadEventItem {
   const status = args.isError ? "failed" : "completed";
   const exitCode = args.isError ? 1 : 0;
+  // Web items are never completed here: a provider that wants a started
+  // webSearch/webFetch item finished calls completeStartedToolItem itself.
   if (
     args.startedItem &&
-    (args.completeWebItems ||
-      (args.startedItem.type !== "webSearch" &&
-        args.startedItem.type !== "webFetch"))
+    args.startedItem.type !== "webSearch" &&
+    args.startedItem.type !== "webFetch"
   ) {
-    const completed = completeStartedToolItem({
-      callId: args.callId,
-      commandOutputText: args.commandOutputText,
-      exitCode,
-      outputText: args.outputText,
-      parentToolCallId: args.parentToolCallId,
-      preserveUndefinedToolCallFields: true,
-      startedItem: args.startedItem,
-      status,
-      toolCallResult: args.toolCallResult,
-    });
+    const completed = completeStartedToolItemInternal(
+      {
+        callId: args.callId,
+        commandOutputText: args.commandOutputText,
+        exitCode,
+        outputText: args.outputText,
+        parentToolCallId: args.parentToolCallId,
+        startedItem: args.startedItem,
+        status,
+        toolCallResult: args.toolCallResult,
+      },
+      true,
+    );
     if (completed) {
       return completed;
     }

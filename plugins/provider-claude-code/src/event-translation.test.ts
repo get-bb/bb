@@ -4,10 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
-import {
-  finishOpenProviderTurn,
-  queueAcceptedUserMessage,
-} from "@bb/provider-bridge-protocol/bridge-kit";
+import { queueAcceptedUserMessage } from "@bb/provider-bridge-protocol/bridge-kit";
 import type { ProviderRuntimeEvent } from "@bb/provider-bridge-protocol/bridge-kit";
 import { createClaudeEventTranslator } from "./event-translation.js";
 
@@ -625,7 +622,10 @@ describe("claude synthetic no-response handling", () => {
 
     // A stop finishes the open turn before the CLI's result lands, so a result
     // with no open turn is routine. It must not open a second, empty turn.
-    finishOpenProviderTurn({ registry: turnState, threadId: "bb-thread-1" });
+    const state = turnState.getOrCreate({ threadId: "bb-thread-1" });
+    if (state.currentTurnId) {
+      turnState.finishTurn({ state, threadId: "bb-thread-1" });
+    }
 
     expect(
       translateClaudeEvent(

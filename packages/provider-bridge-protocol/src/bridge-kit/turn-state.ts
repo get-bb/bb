@@ -5,6 +5,10 @@ import type {
 } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
 import {
+  drainAcceptedUserMessages,
+  type AcceptedUserMessage,
+} from "./accepted-user-messages.js";
+import {
   getOrCreateScopedItemId,
   resolveCompletedScopedItemId,
 } from "./scoped-item-ids.js";
@@ -19,7 +23,9 @@ export interface ProviderTurnState {
   currentTurnId: string | undefined;
   cumulativeTokens: ThreadEventTokenUsageBreakdown;
   openAssistantMessageIdsByScope: Map<string, string>;
-  openReasoningItemIdsByScope: Map<string, string>;
+  openScopedItemIdsByScope: Map<string, string>;
+  /** Accepted turn input queued while no turn was open; drained on turn start. */
+  pendingAcceptedUserMessages: AcceptedUserMessage[];
   toolItemsByCallId: Map<string, ThreadEventItem>;
 }
 
@@ -80,11 +86,6 @@ export interface GetProviderTurnStateArgs {
   threadId: string;
 }
 
-export interface FinishOpenProviderTurnArgs<TState extends ProviderTurnState> {
-  registry: ProviderTurnStateRegistry<TState>;
-  threadId: string;
-}
-
 export interface GetCurrentOrLastProviderTurnIdArgs<
   TState extends ProviderTurnState,
 > {
@@ -128,7 +129,7 @@ export function createProviderTurnStateRegistry<
 
   function clearTransientTurnState(state: TState): void {
     state.openAssistantMessageIdsByScope.clear();
-    state.openReasoningItemIdsByScope.clear();
+    state.openScopedItemIdsByScope.clear();
     state.toolItemsByCallId.clear();
   }
 
@@ -185,6 +186,13 @@ export function createProviderTurnStateRegistry<
         scope: turnScope(args.state.currentTurnId),
       });
       options.onTurnStart?.({ ...args, turnId: args.state.currentTurnId });
+      drainAcceptedUserMessages({
+        events: args.events,
+        providerThreadId: "",
+        state: args.state,
+        threadId: args.threadId,
+        turnId: args.state.currentTurnId,
+      });
     }
     return args.state.currentTurnId;
   }
@@ -278,14 +286,4 @@ export function createProviderTurnStateRegistry<
       });
     },
   };
-}
-
-export function finishOpenProviderTurn<TState extends ProviderTurnState>(
-  args: FinishOpenProviderTurnArgs<TState>,
-): void {
-  const state = args.registry.getOrCreate({ threadId: args.threadId });
-  if (!state.currentTurnId) {
-    return;
-  }
-  args.registry.finishTurn({ state, threadId: args.threadId });
 }

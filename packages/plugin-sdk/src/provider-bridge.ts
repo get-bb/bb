@@ -104,7 +104,6 @@ export {
   createUnhandledProviderEvent,
   decodeBridgeJsonRpcResponse,
   decodeToolCallResponsePayload,
-  drainAcceptedUserMessages,
   errorEnvelopeSchema,
   extractResultText,
   getRawSdkMessage,

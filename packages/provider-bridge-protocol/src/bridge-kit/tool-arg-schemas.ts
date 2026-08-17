@@ -19,9 +19,3 @@ export const textBlockSchema = z.object({
   type: z.literal("text"),
   text: z.string(),
 });
-
-export const contentWrapperSchema = z
-  .object({
-    content: z.array(z.unknown()),
-  })
-  .passthrough();

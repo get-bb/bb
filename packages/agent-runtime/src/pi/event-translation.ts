@@ -32,7 +32,6 @@ import {
   createProviderTurnStateRegistry,
   createScopedItemIdFactory,
   createUnhandledProviderEvent,
-  drainAcceptedUserMessages,
   errorEnvelopeSchema,
   extractResultText,
   jsonRpcEnvelopeSchema,
@@ -429,9 +428,9 @@ export interface PiTurnState {
   currentTurnId: string | undefined;
   cumulativeTokens: ThreadEventTokenUsageBreakdown;
   openAssistantMessageIdsByScope: Map<string, string>;
-  openReasoningItemIdsByScope: Map<string, string>;
+  openScopedItemIdsByScope: Map<string, string>;
   pendingAcceptedUserMessages: AcceptedUserMessageState["pendingAcceptedUserMessages"];
-  reasoningItemCounter: number;
+  scopedItemCounter: number;
   toolItemsByCallId: Map<string, ThreadEventItem>;
 }
 
@@ -501,20 +500,13 @@ export function createPiEventTranslator(
         reasoningOutputTokens: 0,
       },
       openAssistantMessageIdsByScope: new Map(),
-      openReasoningItemIdsByScope: new Map(),
+      openScopedItemIdsByScope: new Map(),
       pendingAcceptedUserMessages: [],
-      reasoningItemCounter: 0,
+      scopedItemCounter: 0,
       toolItemsByCallId: new Map(),
     }),
-    onTurnStart: ({ events, state, threadId, turnId }) => {
+    onTurnStart: ({ state }) => {
       resetPiCommandOutputSnapshots(state);
-      drainAcceptedUserMessages({
-        events,
-        providerThreadId: "",
-        state,
-        threadId,
-        turnId,
-      });
     },
     turnIdPrefix: options.turnIdPrefix,
   });
@@ -926,7 +918,7 @@ export function createPiEventTranslator(
             if (typeof assistantEvent.contentIndex !== "number") {
               return buildUnexpectedEvent(event);
             }
-            const opensItem = !state.openReasoningItemIdsByScope.has(
+            const opensItem = !state.openScopedItemIdsByScope.has(
               `${context?.parentToolCallId ?? "root"}:${assistantEvent.contentIndex}`,
             );
             const itemId = piReasoningItemIds.getOrCreate({

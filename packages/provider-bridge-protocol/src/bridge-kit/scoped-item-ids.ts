@@ -14,8 +14,8 @@ export interface ResolveCompletedScopedItemIdArgs {
 }
 
 interface CounterScopedItemIdState {
-  openReasoningItemIdsByScope: Map<string, string>;
-  reasoningItemCounter: number;
+  openScopedItemIdsByScope: Map<string, string>;
+  scopedItemCounter: number;
 }
 
 interface CounterScopedItemIdArgs<TState extends CounterScopedItemIdState> {
@@ -67,8 +67,8 @@ export function createScopedItemIdFactory(args: { prefix: string }) {
   const createCounterId = <TState extends CounterScopedItemIdState>(
     state: TState,
   ): string => {
-    state.reasoningItemCounter += 1;
-    return createId(state.reasoningItemCounter);
+    state.scopedItemCounter += 1;
+    return createId(state.scopedItemCounter);
   };
   return {
     createId,
@@ -77,7 +77,7 @@ export function createScopedItemIdFactory(args: { prefix: string }) {
     ): string {
       return getOrCreateScopedItemId({
         createItemId: () => createCounterId(item.state),
-        openItemIdsByScope: item.state.openReasoningItemIdsByScope,
+        openItemIdsByScope: item.state.openScopedItemIdsByScope,
         parentToolCallId: item.parentToolCallId,
         scopeId: String(item.scopeId),
       });
@@ -87,7 +87,7 @@ export function createScopedItemIdFactory(args: { prefix: string }) {
     ): string {
       return resolveCompletedScopedItemId({
         createItemId: () => createCounterId(item.state),
-        openItemIdsByScope: item.state.openReasoningItemIdsByScope,
+        openItemIdsByScope: item.state.openScopedItemIdsByScope,
         parentToolCallId: item.parentToolCallId,
         providerItemId: item.providerItemId,
         scopeId: String(item.scopeId),

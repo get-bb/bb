@@ -267,6 +267,18 @@ build inlines the SDK's published, self-contained bundle.
    `decodeToolCallResponsePayload` are used inside the kit itself. The
    surface is still large; any further shrink is a per-name product decision,
    not a mechanical move.
+   A follow-up de-overfitting pass (Aug 2026) then unwound the kit's
+   over-general helpers: `buildToolUseItem`'s parser-callback router became
+   per-provider switches over plain constructors (`buildFileChangeItem`,
+   `buildGenericToolCallItem`); the generic session registry was split into
+   `createPendingToolCallTracker` plus consumer-owned session maps;
+   claude-code stopped borrowing codex's `shell_environment_policy` namespace
+   (`buildShellEnvironmentPolicyConfig` now lives in provider-codex,
+   `diffCumulativeText` in pi); the zero-consumer native tool-call decoder,
+   the `finishOpenProviderTurn` wrapper, and the per-consumer flags
+   (`completeWebItems`, `preserveUndefinedToolCallFields`) came off the
+   surface; and the shared accepted-user-message drain folded into the
+   turn-state registry core.
 3. **The ACP launch spec.** `hostDaemonAcpLaunchSpecSchema` is a
    server↔daemon wire shape a bridge parses out of its provider-scoped static
    options. It is the one core contract leaking into the published surface;

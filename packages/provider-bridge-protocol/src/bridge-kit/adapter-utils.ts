@@ -7,13 +7,14 @@
 
 import { z } from "zod";
 import type { ThreadEventItem } from "@bb/domain";
-import { contentWrapperSchema, textBlockSchema } from "./tool-arg-schemas.js";
+import { textBlockSchema } from "./tool-arg-schemas.js";
 import { getStringProperty, isRecord } from "./provider-visibility-helpers.js";
 
-export interface NormalizeProviderCommandOutputArgs {
-  emptyPlaceholders: readonly string[];
-  text: string;
-}
+const contentWrapperSchema = z
+  .object({
+    content: z.array(z.unknown()),
+  })
+  .passthrough();
 
 const shellEnvironmentVariableKeySchema = z
   .string()
@@ -274,9 +275,10 @@ export function toNonNegativeNumber(value: unknown): number {
     : 0;
 }
 
-export function normalizeProviderCommandOutput(
-  args: NormalizeProviderCommandOutputArgs,
-): string | undefined {
+export function normalizeProviderCommandOutput(args: {
+  emptyPlaceholders: readonly string[];
+  text: string;
+}): string | undefined {
   // Compare placeholders against trimmed provider text, but preserve the
   // original bytes for real process output so downstream rendering stays exact.
   const trimmedText = args.text.trim();

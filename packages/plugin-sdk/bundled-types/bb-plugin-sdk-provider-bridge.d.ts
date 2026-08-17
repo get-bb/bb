@@ -98,18 +98,18 @@ declare const LOCAL_WORKFLOW_TASK_TYPE = "local_workflow";
 declare const LOCAL_BASH_TASK_TYPE = "local_bash";
 declare function isBackgroundAgentTaskType(taskType: string): boolean;
 declare const backgroundTaskStatusSchema: z.ZodEnum<{
-    completed: "completed";
-    failed: "failed";
-    paused: "paused";
     pending: "pending";
     running: "running";
+    paused: "paused";
+    completed: "completed";
+    failed: "failed";
     killed: "killed";
     stopped: "stopped";
 }>;
 type BackgroundTaskStatus = z.infer<typeof backgroundTaskStatusSchema>;
 declare const workflowAgentStateSchema: z.ZodEnum<{
-    failed: "failed";
     running: "running";
+    failed: "failed";
     queued: "queued";
     done: "done";
     skipped: "skipped";
@@ -119,8 +119,8 @@ declare const workflowAgentSnapshotSchema: z.ZodObject<{
     index: z.ZodNumber;
     label: z.ZodString;
     state: z.ZodEnum<{
-        failed: "failed";
         running: "running";
+        failed: "failed";
         queued: "queued";
         done: "done";
         skipped: "skipped";
@@ -166,8 +166,8 @@ declare const workflowProgressSnapshotSchema: z.ZodObject<{
         index: z.ZodNumber;
         label: z.ZodString;
         state: z.ZodEnum<{
-            failed: "failed";
             running: "running";
+            failed: "failed";
             queued: "queued";
             done: "done";
             skipped: "skipped";
@@ -229,8 +229,8 @@ declare const claudeTaskToolOutputSchema: z.ZodUnion<readonly [z.ZodObject<{
     task: z.ZodNullable<z.ZodObject<{
         id: z.ZodString;
         status: z.ZodEnum<{
-            completed: "completed";
             pending: "pending";
+            completed: "completed";
             in_progress: "in_progress";
         }>;
         subject: z.ZodString;
@@ -878,10 +878,10 @@ declare const clientTurnRequestIdSchema: z.ZodString;
 type ClientTurnRequestId = z.infer<typeof clientTurnRequestIdSchema>;
 
 declare const threadEventItemStatusSchema: z.ZodEnum<{
+    pending: "pending";
     completed: "completed";
     failed: "failed";
     interrupted: "interrupted";
-    pending: "pending";
 }>;
 type ThreadEventItemStatus = z.infer<typeof threadEventItemStatusSchema>;
 declare const threadEventItemApprovalStatusSchema: z.ZodNullable<z.ZodEnum<{
@@ -1000,10 +1000,10 @@ type ProviderRateLimitState = z.infer<typeof providerRateLimitStateSchema>;
 declare const threadEventPlanStepSchema: z.ZodObject<{
     step: z.ZodString;
     status: z.ZodOptional<z.ZodEnum<{
+        pending: "pending";
         completed: "completed";
         failed: "failed";
         active: "active";
-        pending: "pending";
     }>>;
 }, z.core.$strip>;
 type ThreadEventPlanStep = z.infer<typeof threadEventPlanStepSchema>;
@@ -1084,17 +1084,17 @@ declare const threadEventBackgroundTaskItemSchema: z.ZodObject<{
     taskType: z.ZodString;
     description: z.ZodString;
     status: z.ZodEnum<{
+        pending: "pending";
         completed: "completed";
         failed: "failed";
         interrupted: "interrupted";
-        pending: "pending";
     }>;
     taskStatus: z.ZodEnum<{
-        completed: "completed";
-        failed: "failed";
-        paused: "paused";
         pending: "pending";
         running: "running";
+        paused: "paused";
+        completed: "completed";
+        failed: "failed";
         killed: "killed";
         stopped: "stopped";
     }>;
@@ -1110,8 +1110,8 @@ declare const threadEventBackgroundTaskItemSchema: z.ZodObject<{
             index: z.ZodNumber;
             label: z.ZodString;
             state: z.ZodEnum<{
-                failed: "failed";
                 running: "running";
+                failed: "failed";
                 queued: "queued";
                 done: "done";
                 skipped: "skipped";
@@ -1176,10 +1176,10 @@ declare const threadEventItemSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     command: z.ZodString;
     cwd: z.ZodString;
     status: z.ZodEnum<{
+        pending: "pending";
         completed: "completed";
         failed: "failed";
         interrupted: "interrupted";
-        pending: "pending";
     }>;
     approvalStatus: z.ZodNullable<z.ZodEnum<{
         waiting_for_approval: "waiting_for_approval";
@@ -1223,10 +1223,10 @@ declare const threadEventItemSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
         diff: z.ZodOptional<z.ZodString>;
     }, z.core.$strip>>;
     status: z.ZodEnum<{
+        pending: "pending";
         completed: "completed";
         failed: "failed";
         interrupted: "interrupted";
-        pending: "pending";
     }>;
     approvalStatus: z.ZodNullable<z.ZodEnum<{
         waiting_for_approval: "waiting_for_approval";
@@ -1263,10 +1263,10 @@ declare const threadEventItemSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
         completed: z.ZodString;
     }, z.core.$strip>>;
     status: z.ZodEnum<{
+        pending: "pending";
         completed: "completed";
         failed: "failed";
         interrupted: "interrupted";
-        pending: "pending";
     }>;
     result: z.ZodOptional<z.ZodUnknown>;
     error: z.ZodOptional<z.ZodString>;
@@ -1313,17 +1313,17 @@ declare const threadEventItemSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     taskType: z.ZodString;
     description: z.ZodString;
     status: z.ZodEnum<{
+        pending: "pending";
         completed: "completed";
         failed: "failed";
         interrupted: "interrupted";
-        pending: "pending";
     }>;
     taskStatus: z.ZodEnum<{
-        completed: "completed";
-        failed: "failed";
-        paused: "paused";
         pending: "pending";
         running: "running";
+        paused: "paused";
+        completed: "completed";
+        failed: "failed";
         killed: "killed";
         stopped: "stopped";
     }>;
@@ -1339,8 +1339,8 @@ declare const threadEventItemSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
             index: z.ZodNumber;
             label: z.ZodString;
             state: z.ZodEnum<{
-                failed: "failed";
                 running: "running";
+                failed: "failed";
                 queued: "queued";
                 done: "done";
                 skipped: "skipped";
@@ -1431,8 +1431,8 @@ declare const providerEventSchema: z.ZodIntersection<z.ZodDiscriminatedUnion<[z.
     providerThreadId: z.ZodString;
     objective: z.ZodString;
     status: z.ZodEnum<{
-        active: "active";
         paused: "paused";
+        active: "active";
         budgetLimited: "budgetLimited";
         complete: "complete";
     }>;
@@ -1476,10 +1476,10 @@ declare const providerEventSchema: z.ZodIntersection<z.ZodDiscriminatedUnion<[z.
         command: z.ZodString;
         cwd: z.ZodString;
         status: z.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         approvalStatus: z.ZodNullable<z.ZodEnum<{
             waiting_for_approval: "waiting_for_approval";
@@ -1523,10 +1523,10 @@ declare const providerEventSchema: z.ZodIntersection<z.ZodDiscriminatedUnion<[z.
             diff: z.ZodOptional<z.ZodString>;
         }, z.core.$strip>>;
         status: z.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         approvalStatus: z.ZodNullable<z.ZodEnum<{
             waiting_for_approval: "waiting_for_approval";
@@ -1563,10 +1563,10 @@ declare const providerEventSchema: z.ZodIntersection<z.ZodDiscriminatedUnion<[z.
             completed: z.ZodString;
         }, z.core.$strip>>;
         status: z.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         result: z.ZodOptional<z.ZodUnknown>;
         error: z.ZodOptional<z.ZodString>;
@@ -1613,17 +1613,17 @@ declare const providerEventSchema: z.ZodIntersection<z.ZodDiscriminatedUnion<[z.
         taskType: z.ZodString;
         description: z.ZodString;
         status: z.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         taskStatus: z.ZodEnum<{
-            completed: "completed";
-            failed: "failed";
-            paused: "paused";
             pending: "pending";
             running: "running";
+            paused: "paused";
+            completed: "completed";
+            failed: "failed";
             killed: "killed";
             stopped: "stopped";
         }>;
@@ -1639,8 +1639,8 @@ declare const providerEventSchema: z.ZodIntersection<z.ZodDiscriminatedUnion<[z.
                 index: z.ZodNumber;
                 label: z.ZodString;
                 state: z.ZodEnum<{
-                    failed: "failed";
                     running: "running";
+                    failed: "failed";
                     queued: "queued";
                     done: "done";
                     skipped: "skipped";
@@ -1708,10 +1708,10 @@ declare const providerEventSchema: z.ZodIntersection<z.ZodDiscriminatedUnion<[z.
         command: z.ZodString;
         cwd: z.ZodString;
         status: z.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         approvalStatus: z.ZodNullable<z.ZodEnum<{
             waiting_for_approval: "waiting_for_approval";
@@ -1755,10 +1755,10 @@ declare const providerEventSchema: z.ZodIntersection<z.ZodDiscriminatedUnion<[z.
             diff: z.ZodOptional<z.ZodString>;
         }, z.core.$strip>>;
         status: z.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         approvalStatus: z.ZodNullable<z.ZodEnum<{
             waiting_for_approval: "waiting_for_approval";
@@ -1795,10 +1795,10 @@ declare const providerEventSchema: z.ZodIntersection<z.ZodDiscriminatedUnion<[z.
             completed: z.ZodString;
         }, z.core.$strip>>;
         status: z.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         result: z.ZodOptional<z.ZodUnknown>;
         error: z.ZodOptional<z.ZodString>;
@@ -1845,17 +1845,17 @@ declare const providerEventSchema: z.ZodIntersection<z.ZodDiscriminatedUnion<[z.
         taskType: z.ZodString;
         description: z.ZodString;
         status: z.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         taskStatus: z.ZodEnum<{
-            completed: "completed";
-            failed: "failed";
-            paused: "paused";
             pending: "pending";
             running: "running";
+            paused: "paused";
+            completed: "completed";
+            failed: "failed";
             killed: "killed";
             stopped: "stopped";
         }>;
@@ -1871,8 +1871,8 @@ declare const providerEventSchema: z.ZodIntersection<z.ZodDiscriminatedUnion<[z.
                 index: z.ZodNumber;
                 label: z.ZodString;
                 state: z.ZodEnum<{
-                    failed: "failed";
                     running: "running";
+                    failed: "failed";
                     queued: "queued";
                     done: "done";
                     skipped: "skipped";
@@ -1974,17 +1974,17 @@ declare const providerEventSchema: z.ZodIntersection<z.ZodDiscriminatedUnion<[z.
         taskType: z.ZodString;
         description: z.ZodString;
         status: z.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         taskStatus: z.ZodEnum<{
-            completed: "completed";
-            failed: "failed";
-            paused: "paused";
             pending: "pending";
             running: "running";
+            paused: "paused";
+            completed: "completed";
+            failed: "failed";
             killed: "killed";
             stopped: "stopped";
         }>;
@@ -2000,8 +2000,8 @@ declare const providerEventSchema: z.ZodIntersection<z.ZodDiscriminatedUnion<[z.
                 index: z.ZodNumber;
                 label: z.ZodString;
                 state: z.ZodEnum<{
-                    failed: "failed";
                     running: "running";
+                    failed: "failed";
                     queued: "queued";
                     done: "done";
                     skipped: "skipped";
@@ -2046,17 +2046,17 @@ declare const providerEventSchema: z.ZodIntersection<z.ZodDiscriminatedUnion<[z.
         taskType: z.ZodString;
         description: z.ZodString;
         status: z.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         taskStatus: z.ZodEnum<{
-            completed: "completed";
-            failed: "failed";
-            paused: "paused";
             pending: "pending";
             running: "running";
+            paused: "paused";
+            completed: "completed";
+            failed: "failed";
             killed: "killed";
             stopped: "stopped";
         }>;
@@ -2072,8 +2072,8 @@ declare const providerEventSchema: z.ZodIntersection<z.ZodDiscriminatedUnion<[z.
                 index: z.ZodNumber;
                 label: z.ZodString;
                 state: z.ZodEnum<{
-                    failed: "failed";
                     running: "running";
+                    failed: "failed";
                     queued: "queued";
                     done: "done";
                     skipped: "skipped";
@@ -2145,10 +2145,10 @@ declare const providerEventSchema: z.ZodIntersection<z.ZodDiscriminatedUnion<[z.
     plan: z.ZodArray<z.ZodObject<{
         step: z.ZodString;
         status: z.ZodOptional<z.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             active: "active";
-            pending: "pending";
         }>>;
     }, z.core.$strip>>;
     explanation: z.ZodOptional<z.ZodString>;
@@ -2330,8 +2330,8 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
     providerThreadId: z.ZodString;
     objective: z.ZodString;
     status: z.ZodEnum<{
-        active: "active";
         paused: "paused";
+        active: "active";
         budgetLimited: "budgetLimited";
         complete: "complete";
     }>;
@@ -2375,10 +2375,10 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
         command: z.ZodString;
         cwd: z.ZodString;
         status: z.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         approvalStatus: z.ZodNullable<z.ZodEnum<{
             waiting_for_approval: "waiting_for_approval";
@@ -2422,10 +2422,10 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
             diff: z.ZodOptional<z.ZodString>;
         }, z.core.$strip>>;
         status: z.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         approvalStatus: z.ZodNullable<z.ZodEnum<{
             waiting_for_approval: "waiting_for_approval";
@@ -2462,10 +2462,10 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
             completed: z.ZodString;
         }, z.core.$strip>>;
         status: z.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         result: z.ZodOptional<z.ZodUnknown>;
         error: z.ZodOptional<z.ZodString>;
@@ -2512,17 +2512,17 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
         taskType: z.ZodString;
         description: z.ZodString;
         status: z.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         taskStatus: z.ZodEnum<{
-            completed: "completed";
-            failed: "failed";
-            paused: "paused";
             pending: "pending";
             running: "running";
+            paused: "paused";
+            completed: "completed";
+            failed: "failed";
             killed: "killed";
             stopped: "stopped";
         }>;
@@ -2538,8 +2538,8 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
                 index: z.ZodNumber;
                 label: z.ZodString;
                 state: z.ZodEnum<{
-                    failed: "failed";
                     running: "running";
+                    failed: "failed";
                     queued: "queued";
                     done: "done";
                     skipped: "skipped";
@@ -2607,10 +2607,10 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
         command: z.ZodString;
         cwd: z.ZodString;
         status: z.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         approvalStatus: z.ZodNullable<z.ZodEnum<{
             waiting_for_approval: "waiting_for_approval";
@@ -2654,10 +2654,10 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
             diff: z.ZodOptional<z.ZodString>;
         }, z.core.$strip>>;
         status: z.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         approvalStatus: z.ZodNullable<z.ZodEnum<{
             waiting_for_approval: "waiting_for_approval";
@@ -2694,10 +2694,10 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
             completed: z.ZodString;
         }, z.core.$strip>>;
         status: z.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         result: z.ZodOptional<z.ZodUnknown>;
         error: z.ZodOptional<z.ZodString>;
@@ -2744,17 +2744,17 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
         taskType: z.ZodString;
         description: z.ZodString;
         status: z.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         taskStatus: z.ZodEnum<{
-            completed: "completed";
-            failed: "failed";
-            paused: "paused";
             pending: "pending";
             running: "running";
+            paused: "paused";
+            completed: "completed";
+            failed: "failed";
             killed: "killed";
             stopped: "stopped";
         }>;
@@ -2770,8 +2770,8 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
                 index: z.ZodNumber;
                 label: z.ZodString;
                 state: z.ZodEnum<{
-                    failed: "failed";
                     running: "running";
+                    failed: "failed";
                     queued: "queued";
                     done: "done";
                     skipped: "skipped";
@@ -2873,17 +2873,17 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
         taskType: z.ZodString;
         description: z.ZodString;
         status: z.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         taskStatus: z.ZodEnum<{
-            completed: "completed";
-            failed: "failed";
-            paused: "paused";
             pending: "pending";
             running: "running";
+            paused: "paused";
+            completed: "completed";
+            failed: "failed";
             killed: "killed";
             stopped: "stopped";
         }>;
@@ -2899,8 +2899,8 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
                 index: z.ZodNumber;
                 label: z.ZodString;
                 state: z.ZodEnum<{
-                    failed: "failed";
                     running: "running";
+                    failed: "failed";
                     queued: "queued";
                     done: "done";
                     skipped: "skipped";
@@ -2945,17 +2945,17 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
         taskType: z.ZodString;
         description: z.ZodString;
         status: z.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         taskStatus: z.ZodEnum<{
-            completed: "completed";
-            failed: "failed";
-            paused: "paused";
             pending: "pending";
             running: "running";
+            paused: "paused";
+            completed: "completed";
+            failed: "failed";
             killed: "killed";
             stopped: "stopped";
         }>;
@@ -2971,8 +2971,8 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
                 index: z.ZodNumber;
                 label: z.ZodString;
                 state: z.ZodEnum<{
-                    failed: "failed";
                     running: "running";
+                    failed: "failed";
                     queued: "queued";
                     done: "done";
                     skipped: "skipped";
@@ -3044,10 +3044,10 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
     plan: z.ZodArray<z.ZodObject<{
         step: z.ZodString;
         status: z.ZodOptional<z.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             active: "active";
-            pending: "pending";
         }>>;
     }, z.core.$strip>>;
     explanation: z.ZodOptional<z.ZodString>;
@@ -3495,8 +3495,8 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
     providerId: z.ZodString;
     providerRequestId: z.ZodString;
     status: z.ZodEnum<{
-        interrupted: "interrupted";
         pending: "pending";
+        interrupted: "interrupted";
         resolving: "resolving";
         resolved: "resolved";
     }>;
@@ -3547,8 +3547,8 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
     providerId: z.ZodString;
     providerRequestId: z.ZodString;
     status: z.ZodEnum<{
-        interrupted: "interrupted";
         pending: "pending";
+        interrupted: "interrupted";
         resolving: "resolving";
         resolved: "resolved";
     }>;
@@ -3721,16 +3721,8 @@ interface BuildAcceptedUserMessageEventArgs extends CreateAcceptedUserMessageArg
 interface QueueAcceptedUserMessageArgs<TState extends AcceptedUserMessageState> extends CreateAcceptedUserMessageArgs {
     state: TState;
 }
-interface DrainAcceptedUserMessagesArgs<TState extends AcceptedUserMessageState> {
-    events: ThreadEvent[];
-    providerThreadId: string;
-    state: TState;
-    threadId: string;
-    turnId: string;
-}
 declare function buildAcceptedUserMessageEvent(args: BuildAcceptedUserMessageEventArgs): ThreadEvent[];
 declare function queueAcceptedUserMessage<TState extends AcceptedUserMessageState>(args: QueueAcceptedUserMessageArgs<TState>): void;
-declare function drainAcceptedUserMessages<TState extends AcceptedUserMessageState>(args: DrainAcceptedUserMessagesArgs<TState>): void;
 
 /**
  * Shared adapter utilities.
@@ -3739,19 +3731,6 @@ declare function drainAcceptedUserMessages<TState extends AcceptedUserMessageSta
  * adapters are extracted here so each adapter imports from one place.
  */
 
-interface NormalizeProviderCommandOutputArgs {
-    emptyPlaceholders: readonly string[];
-    text: string;
-}
-interface DiffCumulativeTextArgs {
-    nextText: string;
-    previousText?: string;
-}
-interface DiffCumulativeTextResult {
-    delta: string;
-    nextText: string;
-    reset: boolean;
-}
 /**
  * Builds a compact unified-diff-like string from old/new text pairs.
  * Exported so each adapter can call it with its own arg names.
@@ -3767,15 +3746,11 @@ declare function withParentToolCallId<TItem extends ThreadEventItem>(item: TItem
  * its whole session on one bad key.
  */
 declare function buildShellEnvOverrides(envVars?: Record<string, string>): Record<string, string>;
-/**
- * The same overrides expressed as a codex/pi-style `shell_environment_policy`
- * config bag, for providers whose session construction takes config keys
- * rather than an environment map.
- */
-declare function buildShellEnvironmentPolicyConfig(envVars?: Record<string, string>): Record<string, string> | undefined;
 declare function toNonNegativeNumber(value: unknown): number;
-declare function normalizeProviderCommandOutput(args: NormalizeProviderCommandOutputArgs): string | undefined;
-declare function diffCumulativeText(args: DiffCumulativeTextArgs): DiffCumulativeTextResult | null;
+declare function normalizeProviderCommandOutput(args: {
+    emptyPlaceholders: readonly string[];
+    text: string;
+}): string | undefined;
 /**
  * Extracts text from tool result content.
  * Handles strings, arrays of text blocks, and `{ content: [...] }` wrappers.
@@ -3864,41 +3839,6 @@ declare function decodeBridgeJsonRpcResponse(input: unknown): BridgeJsonRpcRespo
 declare function decodeToolCallResponsePayload(result: unknown): {
     content: string;
     isError: boolean;
-};
-
-type ToolCallResult = {
-    content: string;
-    isError?: boolean;
-};
-interface PendingBridgeToolCall {
-    resolve: (value: ToolCallResult) => void;
-}
-interface RegisteredBridgeSession {
-    closing: boolean;
-    pendingToolCalls: Map<string | number, PendingBridgeToolCall>;
-}
-interface CloseThreadSessionArgs {
-    graceful?: boolean;
-    message: string;
-    threadId: string;
-}
-interface BridgeSessionRegistryOptions<TSession extends RegisteredBridgeSession, TCloseResult> {
-    closeSessionGracefully: (session: TSession) => Promise<TCloseResult>;
-    getProviderThreadId: (session: TSession, threadId: string) => string;
-    nextToolCallRequestId?: () => number;
-    resolveAdditionalPendingWork?: (session: TSession, message: string) => void;
-    sendToolCall: (request: BridgeToolCallRequest) => void;
-    stopSession?: (session: TSession) => Promise<TCloseResult> | TCloseResult;
-}
-type BridgeToolCallForwarder = (toolName: string, args: Record<string, unknown>) => Promise<ToolCallResult>;
-declare function createBridgeSessionRegistry<TSession extends RegisteredBridgeSession, TCloseResult = void>(options: BridgeSessionRegistryOptions<TSession, TCloseResult>): {
-    closeThreadSession: (args: CloseThreadSessionArgs) => Promise<TCloseResult | undefined>;
-    closeThreadSessionsGracefully: (message: string) => Promise<void>;
-    createForwardToolCall: (getThreadId: () => string) => BridgeToolCallForwarder;
-    handleToolCallResponse: (response: BridgeJsonRpcResponse) => boolean;
-    resolvePendingSessionWork: (session: TSession, message: string) => void;
-    resolvePendingToolCalls: (session: TSession, message: string) => void;
-    sessions: Map<string, TSession>;
 };
 
 /**
@@ -3995,6 +3935,45 @@ declare const errorEnvelopeSchema: z.ZodObject<{
 
 declare function mimeTypeFromExtension(filePath: string): string;
 
+interface BridgeToolCallResult {
+    content: string;
+    isError?: boolean;
+}
+interface ForwardBridgeToolCallArgs {
+    arguments: Record<string, unknown>;
+    providerThreadId: string;
+    /**
+     * The session the pending call belongs to. `resolvePendingToolCalls`
+     * error-resolves by scope identity, so a bridge passes its own session
+     * object and settles that session's calls on close/replace without touching
+     * calls minted by a successor session under the same thread id.
+     */
+    scope: object;
+    threadId: string;
+    toolName: string;
+}
+interface PendingToolCallTracker {
+    /**
+     * Mints an `item/tool/call` JSON-RPC request toward the runtime and returns
+     * a promise settled by the matching response (or by
+     * `resolvePendingToolCalls`). Never rejects: failures resolve as
+     * `isError: true` results.
+     */
+    forwardToolCall: (args: ForwardBridgeToolCallArgs) => Promise<BridgeToolCallResult>;
+    /** Returns true when the response settled a pending tool call. */
+    handleToolCallResponse: (response: BridgeJsonRpcResponse) => boolean;
+    /** Error-resolves every pending call minted under `scope`. */
+    resolvePendingToolCalls: (scope: object, message: string) => void;
+}
+/**
+ * Tracks the bridge's outgoing tool-call requests: mints request ids, sends
+ * the `item/tool/call` envelope, and matches responses back to their waiting
+ * promise via `decodeToolCallResponsePayload`.
+ */
+declare function createPendingToolCallTracker(options: {
+    sendToolCall: (request: BridgeToolCallRequest) => void;
+}): PendingToolCallTracker;
+
 /**
  * The single statement of when an interactive provider request is answered
  * without ever reaching the user.
@@ -4058,7 +4037,9 @@ interface ProviderTurnState {
     currentTurnId: string | undefined;
     cumulativeTokens: ThreadEventTokenUsageBreakdown;
     openAssistantMessageIdsByScope: Map<string, string>;
-    openReasoningItemIdsByScope: Map<string, string>;
+    openScopedItemIdsByScope: Map<string, string>;
+    /** Accepted turn input queued while no turn was open; drained on turn start. */
+    pendingAcceptedUserMessages: AcceptedUserMessage[];
     toolItemsByCallId: Map<string, ThreadEventItem>;
 }
 interface CreateProviderTurnStateRegistryOptions<TState extends ProviderTurnState> {
@@ -4207,8 +4188,8 @@ declare function getStringProperty(value: StringRecord, key: string): string | u
 declare function getRawSdkMessage(event: JsonRpcMessage): StringRecord | null;
 
 interface CounterScopedItemIdState {
-    openReasoningItemIdsByScope: Map<string, string>;
-    reasoningItemCounter: number;
+    openScopedItemIdsByScope: Map<string, string>;
+    scopedItemCounter: number;
 }
 interface CounterScopedItemIdArgs<TState extends CounterScopedItemIdState> {
     parentToolCallId?: string;
@@ -4240,37 +4221,34 @@ declare const textBlockSchema: z.ZodObject<{
     text: z.ZodString;
 }, z.core.$strip>;
 
-interface ToolUseTranslationInput {
+type FileChangeItem = Extract<ThreadEventItem, {
+    type: "fileChange";
+}>;
+type ToolCallItem = Extract<ThreadEventItem, {
+    type: "toolCall";
+}>;
+/**
+ * The generic pending `toolCall` item a provider falls back to when a tool
+ * use has no richer translation (unknown tool, or a known tool whose
+ * arguments failed to parse). Raw arguments are attached when they are a
+ * record.
+ */
+declare function buildGenericToolCallItem(args: {
     args: unknown;
     callId: string;
-    parentToolCallId?: string;
     toolName: string;
-}
-interface ParsedCommandToolArguments {
-    command: string;
-    cwd: string;
-}
-interface ParsedFileChangeToolArguments {
-    arguments: Record<string, unknown>;
+}): ToolCallItem;
+declare function buildFileChangeItem(args: {
     newText?: string;
     oldText?: string;
-    path?: string;
-}
-interface BuildToolUseItemOptions {
-    commandToolNames: ReadonlySet<string>;
-    fileChangeToolNames: ReadonlySet<string>;
-    parseCommand: (args: unknown) => ParsedCommandToolArguments | null;
-    parseFileChange: (args: unknown) => ParsedFileChangeToolArguments | null;
-    translateSpecialToolUse?: (input: ToolUseTranslationInput) => ThreadEventItem | null;
-}
-declare function buildToolUseItem(input: ToolUseTranslationInput, options: BuildToolUseItemOptions): ThreadEventItem;
+    path: string;
+}): FileChangeItem;
 interface CompleteStartedToolItemArgs {
     callId: string;
     commandOutputText?: string;
     exitCode?: number;
     outputText?: string;
     parentToolCallId?: string;
-    preserveUndefinedToolCallFields?: boolean;
     startedItem: ThreadEventItem;
     status: ThreadEventItemStatus;
     toolCallResult?: unknown;
@@ -4280,7 +4258,6 @@ declare function buildToolResultItem(args: {
     callId: string;
     commandOutputText?: string;
     commandToolNames: ReadonlySet<string>;
-    completeWebItems?: boolean;
     fileChangeToolNames: ReadonlySet<string>;
     isError: boolean;
     outputText?: string;
@@ -6494,5 +6471,5 @@ declare const hostDaemonAcpLaunchSpecSchema: z.ZodObject<{
 type HostDaemonAcpLaunchSpec = z.infer<typeof hostDaemonAcpLaunchSpecSchema>;
 declare function normalizeHostDaemonAcpLaunchSpec(spec: HostDaemonAcpLaunchSpec): HostDaemonAcpLaunchSpec;
 
-export { BRIDGE_INBOUND_REQUEST_METHODS, BRIDGE_JSON_RPC_ERRORS, BRIDGE_NOTIFICATION_METHODS, BRIDGE_REQUEST_METHODS, DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG, DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT, HIGH_REASONING_EFFORT, LOCAL_BASH_TASK_TYPE, LOCAL_WORKFLOW_TASK_TYPE, LOW_REASONING_EFFORT, MAX_REASONING_EFFORT, MEDIUM_REASONING_EFFORT, NONE_REASONING_EFFORT, PROVIDER_BRIDGE_EXPORT_NAME, PROVIDER_BRIDGE_PROTOCOL_VERSION, ProviderRequestDecodeError, ProviderResponseEncodeError, ULTRACODE_REASONING_EFFORT, UNSTAMPED_THREAD_ID, USER_QUESTION_MAX_OPTIONS, USER_QUESTION_MAX_QUESTIONS, XHIGH_REASONING_EFFORT, acpNativeReasoningSchema, acpPermissionCliSchema, acpReasoningCliSchema, backgroundTaskItemStatus, bashArgsSchema, bridgeRequestEnvelopeSchema, buildAcceptedUserMessageEvent, buildEditDiff, buildShellEnvOverrides, buildShellEnvironmentPolicyConfig, buildToolResultItem, buildToolUseItem, buildUnhandledProviderEvents, claudeCodeMockCliTrafficConfigSchema, claudeTaskToolNameSchema, claudeTaskToolOutputSchema, completeStartedToolItem, createBridgeIo, createBridgeLineHandler, createBridgeSessionRegistry, createProviderTurnStateRegistry, createProviderVisibilityMetadata, createScopedItemIdFactory, createStandaloneBuiltinCompactCommandInput, createUnhandledProviderEvent, decodeBridgeJsonRpcResponse, decodeToolCallResponsePayload, diffCumulativeText, drainAcceptedUserMessages, dynamicToolSchema, errorEnvelopeSchema, experimental_defineProviderBridge, extractResultText, getRawSdkMessage, getRecordProperty, getStringProperty, getThreadEventScopeTurnId, hostDaemonAcpLaunchSpecSchema, initializeParamsSchema, instructionModeValues, isApprovalPendingInteractionPayload, isApprovalPendingInteractionResolution, isBackgroundAgentTaskType, isClaudeCodeMockCliTrafficEndpoint, isRecord, isSettledBackgroundTaskStatus, isStandaloneBuiltinCompactCommand, isUserQuestionPendingInteractionPayload, isUserQuestionPendingInteractionResolution, jsonRpcEnvelopeSchema, jsonValueSchema, mimeTypeFromExtension, modelListParamsSchema, normalizeHostDaemonAcpLaunchSpec, normalizeProviderCommandOutput, pendingInteractionCommandActionSchema, pendingInteractionFileSystemPermissionsSchema, pendingInteractionMacOsPermissionsSchema, pendingInteractionNetworkPermissionsSchema, pendingInteractionRequestedPermissionProfileSchema, pendingInteractionResolutionSchema, permissionEscalationValues, queueAcceptedUserMessage, reasoningEffortsForLevels, reasoningLevelSchema, reasoningLevelValues, removeCommandMentionsFromPromptInput, requireThreadEventScopeTurnId, resolveProviderTerminalTurn, runBridgeRequest, runtimePermissionScopeValues, sanitizeInheritedChildProcessEnv, sdkMessageEnvelopeSchema, shouldAutoDenyInteractiveRequest, skillsConfigureParamsSchema, textBlockSchema, threadArchiveParamsSchema, threadContextWindowUsageEnvelopeSchema, threadDiscardParamsSchema, threadEventNotificationSchema, threadForkParamsSchema, threadGoalClearParamsSchema, threadIdentityEnvelopeSchema, threadNameSetParamsSchema, threadResumeParamsSchema, threadScope, threadStartParamsSchema, threadStopParamsSchema, threadUnarchiveParamsSchema, toNonNegativeNumber, toOptionalRecord, toOptionalString, toPositiveNumber, turnScope, turnStartParamsSchema, turnSteerParamsSchema, withParentToolCallId, withoutBridgeRuntimeEnv };
-export type { AcceptedUserMessageState, ApprovalPendingInteractionPayload, AvailableModel, BackgroundTaskStatus, BackgroundTaskUsage, BridgeExecutionOptions, BridgeJsonRpcResponse, BridgeToolCallRequest, BuildInteractiveResponseArgs, ClaudeCodeMockCliTrafficConfig, ClaudeTaskToolOutput, ClientTurnRequestId, DecodedInteractiveRequest, DynamicTool, EnsureProviderTurnStartedArgs, HostDaemonAcpLaunchSpec, InitializeResult, InstructionMode, JsonObject, JsonRpcMessage, JsonValue, ModelReasoningEffort, PendingBridgeToolCall, PendingInteractionApprovalDecision, PendingInteractionApprovalSubject, PendingInteractionCommandAction, PendingInteractionGrantablePermissionProfile, PendingInteractionGrantedPermissionProfile, PendingInteractionPayload, PendingInteractionRequestedPermissionProfile, PendingInteractionResolution, PendingInteractionUserQuestionQuestion, PermissionEscalation, PermissionMode, PreparedProviderCommandDispatch, PromptInput, ProviderBridgeContext, ProviderBridgeDefinition, ProviderBridgeEntry, ProviderErrorCategory, ProviderErrorInfo, ProviderInboundRequest, ProviderPostInitializeRequest, ProviderRateLimitState, ProviderRateLimitStatus, ProviderRateLimitWindow, ProviderRawEventCoverage, ProviderRawEventDescription, ProviderRuntimeEvent, ProviderTurnStateRegistry, ProviderVisibilityMetadata, ReasoningLevel, RuntimePermissionPolicy, RuntimePermissionScope, ServiceTier, ThreadEvent, ThreadEventBackgroundTaskItem, ThreadEventContextWindowUsage, ThreadEventItem, ThreadEventItemApprovalStatus, ThreadEventItemStatus, ThreadEventPlanStep, ThreadEventScope, ThreadEventTokenUsage, ThreadEventTokenUsageBreakdown, ThreadEventTurnStatus, ThreadEventUserContent, ThreadEventWebFetchItem, ThreadEventWebSearchItem, ToolUseTranslationInput, UserQuestionPendingInteractionPayload, UserQuestionPendingInteractionResolution, WorkflowAgentSnapshot, WorkflowAgentState, WorkflowPhaseSnapshot, WorkflowProgressSnapshot };
+export { BRIDGE_INBOUND_REQUEST_METHODS, BRIDGE_JSON_RPC_ERRORS, BRIDGE_NOTIFICATION_METHODS, BRIDGE_REQUEST_METHODS, DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG, DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT, HIGH_REASONING_EFFORT, LOCAL_BASH_TASK_TYPE, LOCAL_WORKFLOW_TASK_TYPE, LOW_REASONING_EFFORT, MAX_REASONING_EFFORT, MEDIUM_REASONING_EFFORT, NONE_REASONING_EFFORT, PROVIDER_BRIDGE_EXPORT_NAME, PROVIDER_BRIDGE_PROTOCOL_VERSION, ProviderRequestDecodeError, ProviderResponseEncodeError, ULTRACODE_REASONING_EFFORT, UNSTAMPED_THREAD_ID, USER_QUESTION_MAX_OPTIONS, USER_QUESTION_MAX_QUESTIONS, XHIGH_REASONING_EFFORT, acpNativeReasoningSchema, acpPermissionCliSchema, acpReasoningCliSchema, backgroundTaskItemStatus, bashArgsSchema, bridgeRequestEnvelopeSchema, buildAcceptedUserMessageEvent, buildEditDiff, buildFileChangeItem, buildGenericToolCallItem, buildShellEnvOverrides, buildToolResultItem, buildUnhandledProviderEvents, claudeCodeMockCliTrafficConfigSchema, claudeTaskToolNameSchema, claudeTaskToolOutputSchema, completeStartedToolItem, createBridgeIo, createBridgeLineHandler, createPendingToolCallTracker, createProviderTurnStateRegistry, createProviderVisibilityMetadata, createScopedItemIdFactory, createStandaloneBuiltinCompactCommandInput, createUnhandledProviderEvent, decodeBridgeJsonRpcResponse, decodeToolCallResponsePayload, dynamicToolSchema, errorEnvelopeSchema, experimental_defineProviderBridge, extractResultText, getRawSdkMessage, getRecordProperty, getStringProperty, getThreadEventScopeTurnId, hostDaemonAcpLaunchSpecSchema, initializeParamsSchema, instructionModeValues, isApprovalPendingInteractionPayload, isApprovalPendingInteractionResolution, isBackgroundAgentTaskType, isClaudeCodeMockCliTrafficEndpoint, isRecord, isSettledBackgroundTaskStatus, isStandaloneBuiltinCompactCommand, isUserQuestionPendingInteractionPayload, isUserQuestionPendingInteractionResolution, jsonRpcEnvelopeSchema, jsonValueSchema, mimeTypeFromExtension, modelListParamsSchema, normalizeHostDaemonAcpLaunchSpec, normalizeProviderCommandOutput, pendingInteractionCommandActionSchema, pendingInteractionFileSystemPermissionsSchema, pendingInteractionMacOsPermissionsSchema, pendingInteractionNetworkPermissionsSchema, pendingInteractionRequestedPermissionProfileSchema, pendingInteractionResolutionSchema, permissionEscalationValues, queueAcceptedUserMessage, reasoningEffortsForLevels, reasoningLevelSchema, reasoningLevelValues, removeCommandMentionsFromPromptInput, requireThreadEventScopeTurnId, resolveProviderTerminalTurn, runBridgeRequest, runtimePermissionScopeValues, sanitizeInheritedChildProcessEnv, sdkMessageEnvelopeSchema, shouldAutoDenyInteractiveRequest, skillsConfigureParamsSchema, textBlockSchema, threadArchiveParamsSchema, threadContextWindowUsageEnvelopeSchema, threadDiscardParamsSchema, threadEventNotificationSchema, threadForkParamsSchema, threadGoalClearParamsSchema, threadIdentityEnvelopeSchema, threadNameSetParamsSchema, threadResumeParamsSchema, threadScope, threadStartParamsSchema, threadStopParamsSchema, threadUnarchiveParamsSchema, toNonNegativeNumber, toOptionalRecord, toOptionalString, toPositiveNumber, turnScope, turnStartParamsSchema, turnSteerParamsSchema, withParentToolCallId, withoutBridgeRuntimeEnv };
+export type { AcceptedUserMessageState, ApprovalPendingInteractionPayload, AvailableModel, BackgroundTaskStatus, BackgroundTaskUsage, BridgeExecutionOptions, BridgeJsonRpcResponse, BridgeToolCallRequest, BuildInteractiveResponseArgs, ClaudeCodeMockCliTrafficConfig, ClaudeTaskToolOutput, ClientTurnRequestId, DecodedInteractiveRequest, DynamicTool, EnsureProviderTurnStartedArgs, HostDaemonAcpLaunchSpec, InitializeResult, InstructionMode, JsonObject, JsonRpcMessage, JsonValue, ModelReasoningEffort, PendingInteractionApprovalDecision, PendingInteractionApprovalSubject, PendingInteractionCommandAction, PendingInteractionGrantablePermissionProfile, PendingInteractionGrantedPermissionProfile, PendingInteractionPayload, PendingInteractionRequestedPermissionProfile, PendingInteractionResolution, PendingInteractionUserQuestionQuestion, PermissionEscalation, PermissionMode, PreparedProviderCommandDispatch, PromptInput, ProviderBridgeContext, ProviderBridgeDefinition, ProviderBridgeEntry, ProviderErrorCategory, ProviderErrorInfo, ProviderInboundRequest, ProviderPostInitializeRequest, ProviderRateLimitState, ProviderRateLimitStatus, ProviderRateLimitWindow, ProviderRawEventCoverage, ProviderRawEventDescription, ProviderRuntimeEvent, ProviderTurnStateRegistry, ProviderVisibilityMetadata, ReasoningLevel, RuntimePermissionPolicy, RuntimePermissionScope, ServiceTier, ThreadEvent, ThreadEventBackgroundTaskItem, ThreadEventContextWindowUsage, ThreadEventItem, ThreadEventItemApprovalStatus, ThreadEventItemStatus, ThreadEventPlanStep, ThreadEventScope, ThreadEventTokenUsage, ThreadEventTokenUsageBreakdown, ThreadEventTurnStatus, ThreadEventUserContent, ThreadEventWebFetchItem, ThreadEventWebSearchItem, UserQuestionPendingInteractionPayload, UserQuestionPendingInteractionResolution, WorkflowAgentSnapshot, WorkflowAgentState, WorkflowPhaseSnapshot, WorkflowProgressSnapshot };

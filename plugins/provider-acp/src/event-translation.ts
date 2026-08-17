@@ -20,7 +20,6 @@ import {
   completeStartedToolItem,
   createProviderTurnStateRegistry,
   createScopedItemIdFactory,
-  drainAcceptedUserMessages,
   errorEnvelopeSchema,
   extractResultText,
   jsonRpcEnvelopeSchema,
@@ -87,8 +86,8 @@ export interface AcpTurnState extends AcceptedUserMessageState {
   agentMessageTextsByItemId: Map<string, string>;
   fsWriteCounter: number;
   openAssistantMessageIdsByScope: Map<string, string>;
-  openReasoningItemIdsByScope: Map<string, string>;
-  reasoningItemCounter: number;
+  openScopedItemIdsByScope: Map<string, string>;
+  scopedItemCounter: number;
   thoughtTextsByItemId: Map<string, string>;
   toolCallEventsByCallId: Map<string, AcpToolCallUpdateEvent>;
   toolItemsByCallId: Map<string, ThreadEventItem>;
@@ -398,24 +397,17 @@ export function createAcpEventTranslator(
       agentMessageTextsByItemId: new Map(),
       fsWriteCounter: 0,
       openAssistantMessageIdsByScope: new Map(),
-      openReasoningItemIdsByScope: new Map(),
+      openScopedItemIdsByScope: new Map(),
       pendingAcceptedUserMessages: [],
-      reasoningItemCounter: 0,
+      scopedItemCounter: 0,
       thoughtTextsByItemId: new Map(),
       toolCallEventsByCallId: new Map(),
       toolItemsByCallId: new Map(),
     }),
-    onTurnStart: ({ events, state, threadId, turnId }) => {
+    onTurnStart: ({ state }) => {
       state.agentMessageTextsByItemId.clear();
       state.thoughtTextsByItemId.clear();
       state.toolCallEventsByCallId.clear();
-      drainAcceptedUserMessages({
-        events,
-        providerThreadId: "",
-        state,
-        threadId,
-        turnId,
-      });
     },
     turnIdPrefix: options.turnIdPrefix,
   });
@@ -434,7 +426,7 @@ export function createAcpEventTranslator(
       return;
     }
     const scopeKey = `${parentToolCallId ?? "root"}:thought`;
-    const openItemId = state.openReasoningItemIdsByScope.get(scopeKey);
+    const openItemId = state.openScopedItemIdsByScope.get(scopeKey);
     if (!openItemId) {
       return;
     }
@@ -644,7 +636,7 @@ export function createAcpEventTranslator(
         }
         const turnId = state.currentTurnId;
         if (!turnId) return [];
-        const opensItem = !state.openReasoningItemIdsByScope.has(
+        const opensItem = !state.openScopedItemIdsByScope.has(
           `${parentToolCallId ?? "root"}:thought`,
         );
         const itemId = acpReasoningItemIds.getOrCreate({
