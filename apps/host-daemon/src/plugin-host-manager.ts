@@ -49,6 +49,8 @@ interface WorkerState {
   pluginId: string;
   generation: string;
   digest: string;
+  startedAtMs: number;
+  readyAtMs: number | null;
   child: ChildProcess;
   closed: Promise<void>;
   dataDir: string;
@@ -92,7 +94,7 @@ interface ActiveCallAdmission {
 
 export interface PluginHostManagerOptions {
   dataDir: string;
-  logger: Pick<HostDaemonLogger, "debug" | "warn">;
+  logger: Pick<HostDaemonLogger, "debug" | "info" | "warn">;
   fetchArtifact: (args: {
     pluginId: string;
     digest: string;
@@ -112,6 +114,8 @@ export interface PluginHostManagerOptions {
   hostWatcher?: Pick<HostWatcher, "watchPathRoot">;
   /** Test override for the daemon-owned worker idle timeout. */
   workerIdleTimeoutMs?: number;
+  /** Test override for the grace period before force-killing a worker. */
+  workerStopGraceMs?: number;
   /** Test override for the per-plugin active-call admission count. */
   maxActiveCallsPerPlugin?: number;
   /** Test override for the per-plugin active-call input-byte budget. */
@@ -137,6 +141,25 @@ const HOST_DIAGNOSTIC_MAX_LINES = 1_000;
 
 function safePluginSegment(pluginId: string): string {
   return encodeURIComponent(pluginId);
+}
+
+function elapsedMs(startedAtMs: number): number {
+  return Math.max(0, Math.round(performance.now() - startedAtMs));
+}
+
+function workerLogContext(worker: WorkerState): Record<string, unknown> {
+  return {
+    pluginId: worker.pluginId,
+    generation: worker.generation,
+    digest: worker.digest,
+    pid: worker.child.pid,
+    uptimeMs: elapsedMs(worker.startedAtMs),
+    ready: worker.readyAtMs !== null,
+    activeCallCount: worker.activeCallCount,
+    pendingCallCount: worker.pending.size,
+    watchCount: worker.watches.size,
+    retainedLeaseCount: worker.retainedLeaseIds.size,
+  };
 }
 
 function defaultWorkerEntryPath(): string {
@@ -444,6 +467,7 @@ export class PluginHostManager {
     );
     await mkdir(dataDir, { recursive: true });
     const tempDir = await mkdtemp(join(tmpdir(), `bb-host-${pluginSegment}-`));
+    const startedAtMs = performance.now();
     let child: ChildProcess;
     try {
       child = fork(
@@ -458,6 +482,15 @@ export class PluginHostManager {
         },
       );
     } catch (error) {
+      this.options.logger.warn(
+        {
+          pluginId: command.pluginId,
+          generation: command.generation,
+          digest: command.artifact.digest,
+          err: error,
+        },
+        "Failed to start host plugin worker",
+      );
       await rm(tempDir, { recursive: true, force: true });
       throw error;
     }
@@ -480,6 +513,8 @@ export class PluginHostManager {
       pluginId: command.pluginId,
       generation: command.generation,
       digest: command.artifact.digest,
+      startedAtMs,
+      readyAtMs: null,
       child,
       closed,
       dataDir,
@@ -495,10 +530,19 @@ export class PluginHostManager {
       watches: new Map(),
     };
     let unexpectedExitReported = false;
-    const failWorker = (reason: string): void => {
+    const failWorker = (
+      reason: string,
+      details: Record<string, unknown> = {},
+    ): void => {
       this.cancelWorkerIdleTimer(worker);
       if (!worker.disposing && !unexpectedExitReported) {
         unexpectedExitReported = true;
+        this.options.logger.warn(
+          { ...workerLogContext(worker), ...details, reason },
+          worker.readyAtMs === null
+            ? "Host plugin worker failed to start"
+            : "Host plugin worker exited unexpectedly",
+        );
         this.options.onWorkerExit?.({
           pluginId: worker.pluginId,
           generation: worker.generation,
@@ -513,6 +557,10 @@ export class PluginHostManager {
     };
 
     this.workers.set(command.pluginId, worker);
+    this.options.logger.info(
+      workerLogContext(worker),
+      "Starting host plugin worker",
+    );
     const startTimer = setTimeout(() => {
       failWorker(`host plugin ${command.pluginId} startup timed out`);
       child.kill("SIGKILL");
@@ -528,7 +576,9 @@ export class PluginHostManager {
     }
     child.once("error", (error) => {
       clearTimeout(startTimer);
-      failWorker(`host plugin worker failed: ${errorMessage(error)}`);
+      failWorker(`host plugin worker failed: ${errorMessage(error)}`, {
+        err: error,
+      });
     });
     child.on("message", (message: unknown) => {
       if (typeof message !== "object" || message === null) return;
@@ -540,6 +590,14 @@ export class PluginHostManager {
         record.generation === worker.generation
       ) {
         clearTimeout(startTimer);
+        worker.readyAtMs = performance.now();
+        this.options.logger.info(
+          {
+            ...workerLogContext(worker),
+            startupDurationMs: elapsedMs(worker.startedAtMs),
+          },
+          "Host plugin worker ready",
+        );
         worker.resolveReady();
         return;
       }
@@ -610,7 +668,10 @@ export class PluginHostManager {
     });
     child.once("exit", (code, signal) => {
       clearTimeout(startTimer);
-      failWorker(`host plugin worker exited (${code ?? signal ?? "unknown"})`);
+      failWorker(`host plugin worker exited (${code ?? signal ?? "unknown"})`, {
+        exitCode: code,
+        signal,
+      });
     });
     try {
       await ready;
@@ -929,6 +990,14 @@ export class PluginHostManager {
         createHash("sha256").update(current).digest("hex") ===
           command.artifact.digest
       ) {
+        this.options.logger.debug(
+          {
+            pluginId: command.pluginId,
+            digest: command.artifact.digest,
+            byteLength: current.byteLength,
+          },
+          "Using cached host plugin artifact",
+        );
         await this.prunePluginArtifactDigests(
           command.pluginId,
           command.artifact.digest,
@@ -938,6 +1007,14 @@ export class PluginHostManager {
     } catch {
       // Download below.
     }
+    this.options.logger.debug(
+      {
+        pluginId: command.pluginId,
+        digest: command.artifact.digest,
+        expectedByteLength: command.artifact.byteLength,
+      },
+      "Downloading host plugin artifact",
+    );
     const bytes = await this.options.fetchArtifact({
       pluginId: command.pluginId,
       digest: command.artifact.digest,
@@ -1014,15 +1091,34 @@ export class PluginHostManager {
     if (this.workers.get(worker.pluginId) === worker) {
       this.workers.delete(worker.pluginId);
     }
+    this.options.logger.info(
+      { ...workerLogContext(worker), reason },
+      "Stopping host plugin worker",
+    );
     await this.stopAllWorkerWatches(worker);
     sendToWorker(worker.child, { type: "dispose" });
-    const forceTimer = setTimeout(
-      () => worker.child.kill("SIGKILL"),
-      CANCEL_GRACE_MS,
-    );
+    let forceKilled = false;
+    const forceTimer = setTimeout(() => {
+      forceKilled = true;
+      this.options.logger.warn(
+        { ...workerLogContext(worker), reason },
+        "Force-killing unresponsive host plugin worker",
+      );
+      worker.child.kill("SIGKILL");
+    }, this.options.workerStopGraceMs ?? CANCEL_GRACE_MS);
     forceTimer.unref?.();
     await worker.closed;
     clearTimeout(forceTimer);
+    this.options.logger.info(
+      {
+        ...workerLogContext(worker),
+        reason,
+        exitCode: worker.child.exitCode,
+        signal: worker.child.signalCode,
+        forceKilled,
+      },
+      "Host plugin worker stopped",
+    );
     this.rejectPendingCalls(worker, reason);
     await rm(worker.tempDir, { recursive: true, force: true });
   }

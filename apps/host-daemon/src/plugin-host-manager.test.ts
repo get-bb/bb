@@ -20,6 +20,7 @@ const anySchema = { "~standard": { validate(value) { return { value }; } } };
 const stringSchema = { "~standard": { validate(value) { return typeof value === "string" ? { value } : { issues: [{ message: "expected string" }] }; } } };
 let lastPaths;
 let retainedLease;
+let hangOnDispose = false;
 export default {
   experimental_apiVersion: 1,
   contract: {
@@ -32,6 +33,7 @@ export default {
     pathsAndSignal: { input: anySchema, output: anySchema },
     watch: { input: anySchema, output: anySchema },
     retain: { input: anySchema, output: anySchema },
+    hangDispose: { input: anySchema, output: anySchema },
   },
   experimental_signals: { changed: { payload: anySchema } },
   handlers: {
@@ -76,8 +78,13 @@ export default {
       }
       return { retained: retainedLease !== undefined, pid: process.pid };
     },
+    hangDispose() {
+      hangOnDispose = true;
+      return { enabled: true };
+    },
   },
   async dispose() {
+    if (hangOnDispose) await new Promise(() => {});
     await retainedLease?.dispose();
     retainedLease = undefined;
     if (lastPaths) {
@@ -131,7 +138,7 @@ describe("PluginHostManager", () => {
     tempDirs.push(dataDir);
     const manager = new PluginHostManager({
       dataDir,
-      logger: { debug: vi.fn(), warn: vi.fn() },
+      logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn() },
       fetchArtifact: vi.fn(async () => artifactSource),
       ...overrides,
     });
@@ -153,6 +160,69 @@ describe("PluginHostManager", () => {
       Reflect.get(Object(second.output), "pid"),
     );
     expect(fetchArtifact).toHaveBeenCalledOnce();
+  });
+
+  it("logs artifact and worker lifecycle transitions", async () => {
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+    };
+    const manager = await createManager({ logger });
+    const command = callCommand();
+
+    await manager.call(command);
+
+    expect(logger.debug).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pluginId: "fixture",
+        digest: command.artifact.digest,
+      }),
+      "Downloading host plugin artifact",
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pluginId: "fixture",
+        generation: "generation-1",
+        digest: command.artifact.digest,
+        pid: expect.any(Number),
+        ready: false,
+      }),
+      "Starting host plugin worker",
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pluginId: "fixture",
+        generation: "generation-1",
+        pid: expect.any(Number),
+        ready: true,
+        startupDurationMs: expect.any(Number),
+      }),
+      "Host plugin worker ready",
+    );
+
+    await manager.dispose({
+      type: "plugin.host.dispose",
+      pluginId: command.pluginId,
+      generation: command.generation,
+    });
+
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pluginId: "fixture",
+        reason: "plugin disposed",
+      }),
+      "Stopping host plugin worker",
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pluginId: "fixture",
+        reason: "plugin disposed",
+        forceKilled: false,
+      }),
+      "Host plugin worker stopped",
+    );
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 
   it("bounds call count and input bytes while worker startup is pending", async () => {
@@ -243,7 +313,13 @@ describe("PluginHostManager", () => {
 
   it("evicts an idle worker and starts it again without reporting a crash", async () => {
     const onWorkerExit = vi.fn();
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+    };
     const manager = await createManager({
+      logger,
       onWorkerExit,
       workerIdleTimeoutMs: 20,
     });
@@ -255,6 +331,14 @@ describe("PluginHostManager", () => {
 
     expect(Reflect.get(Object(restarted.output), "pid")).not.toBe(firstPid);
     expect(onWorkerExit).not.toHaveBeenCalled();
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pluginId: "fixture",
+        reason: "host plugin worker became idle",
+        forceKilled: false,
+      }),
+      "Host plugin worker stopped",
+    );
   });
 
   it("retains a worker with a lease until the lease is released", async () => {
@@ -368,6 +452,41 @@ describe("PluginHostManager", () => {
     expect(onWorkerExit).not.toHaveBeenCalled();
   });
 
+  it("logs when graceful disposal requires a forced kill", async () => {
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+    };
+    const manager = await createManager({
+      logger,
+      workerStopGraceMs: 20,
+    });
+    const command = callCommand({ method: "hangDispose" });
+    await manager.call(command);
+
+    await manager.dispose({
+      type: "plugin.host.dispose",
+      pluginId: command.pluginId,
+      generation: command.generation,
+    });
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pluginId: "fixture",
+        reason: "plugin disposed",
+      }),
+      "Force-killing unresponsive host plugin worker",
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pluginId: "fixture",
+        forceKilled: true,
+      }),
+      "Host plugin worker stopped",
+    );
+  });
+
   it("forwards typed signals and owns persistent and generation-temp paths", async () => {
     const onSignal = vi.fn();
     const manager = await createManager({ onSignal });
@@ -444,7 +563,12 @@ describe("PluginHostManager", () => {
 
   it("recovers after a crash and retires stale generations", async () => {
     const onWorkerExit = vi.fn();
-    const manager = await createManager({ onWorkerExit });
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+    };
+    const manager = await createManager({ logger, onWorkerExit });
     const first = await manager.call(callCommand());
     const firstPid = Reflect.get(Object(first.output), "pid");
 
@@ -455,6 +579,16 @@ describe("PluginHostManager", () => {
       pluginId: "fixture",
       generation: "generation-1",
     });
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pluginId: "fixture",
+        generation: "generation-1",
+        ready: true,
+        exitCode: 17,
+        reason: expect.stringContaining("worker exited"),
+      }),
+      "Host plugin worker exited unexpectedly",
+    );
     const restarted = await manager.call(callCommand());
     expect(Reflect.get(Object(restarted.output), "pid")).not.toBe(firstPid);
 
