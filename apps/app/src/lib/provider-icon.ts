@@ -1,13 +1,9 @@
 import type { ComponentType } from "react";
 import { createElement, useState, useSyncExternalStore } from "react";
-import { ClaudeIcon } from "@/components/icons/ClaudeIcon";
-import { CursorIcon } from "@/components/icons/CursorIcon";
 import { GrokIcon } from "@/components/icons/GrokIcon";
 import { HermesAgentIcon } from "@/components/icons/HermesAgentIcon";
-import { OpenAiIcon } from "@/components/icons/OpenAiIcon";
 import { OpencodeIcon } from "@/components/icons/OpencodeIcon";
 import { OmpIcon } from "@/components/icons/OmpIcon";
-import { PiIcon } from "@/components/icons/PiIcon";
 import { Icon } from "@bb/shared-ui/icon";
 import { getPluginSlotSnapshot, subscribePluginSlots } from "./plugin-slots";
 
@@ -25,21 +21,15 @@ function isAcpProviderId(providerId: string): boolean {
 const GenericAcpIcon: ComponentType<{ className?: string }> = ({ className }) =>
   createElement(Icon, { name: "Code", className, "aria-hidden": "true" });
 
-// Vendored brand marks for the built-in providers, keyed by provider id. The
-// first-party provider plugins now register these same marks through
-// `app.slots.experimental_providerIcon`, so this map is the fallback for the
-// window before plugin frontends boot and for a disabled/failed provider
-// plugin: built-ins must keep rendering their real brand marks, never the
-// generic glyph and never a black-on-black `<img>` logo. It graduates to dead
-// code — deletable along with the vendored SVG components — once the plugin
-// icons have soaked and a disabled provider plugin no longer leaves its
-// provider in the picker.
-const BUILT_IN_BRAND_ICONS: Record<string, ProviderIconInfo> = {
-  codex: { icon: OpenAiIcon, ariaLabel: "Codex" },
-  "claude-code": { icon: ClaudeIcon, ariaLabel: "Claude Code" },
-  pi: { icon: PiIcon, ariaLabel: "Pi" },
-  "acp-cursor": { icon: CursorIcon, ariaLabel: "Cursor" },
-};
+// First-party marks belong exclusively to their provider plugins. While a
+// frontend boots or is absent, render nothing rather than a generic glyph or
+// its currentColor SVG as a black-on-black <img>.
+const PLUGIN_OWNED_PROVIDER_ICON_LABELS = new Map<string, string>([
+  ["codex", "Codex"],
+  ["claude-code", "Claude Code"],
+  ["pi", "Pi"],
+  ["acp-cursor", "Cursor"],
+]);
 
 // Brand icons for well-known ACP agents, keyed by slug (the provider id with
 // the `acp-` prefix stripped). Unknown ACP agents fall back to the generic
@@ -147,15 +137,14 @@ function getPluginAwareProviderIcon(
  * 1. A plugin-registered `app.slots.experimental_providerIcon` component. It
  *    is inline React, so it inherits the app theme, and the owning plugin
  *    ships it alongside the provider declaration itself.
- * 2. The vendored brand maps (built-ins plus well-known ACP slugs). These are
- *    theme-aware React components (`currentColor` cascades), so they must win
- *    over a server `logoUrl`: an SVG rendered through `<img>` is a separate
- *    document where `currentColor` resolves to black — invisible on dark
- *    themes — and page CSS cannot reach it.
- * 3. A caller-supplied `logoUrl` (from a server-provided `ProviderInfo`) for
+ * 2. No fallback for first-party, plugin-owned marks. Their live wrapper stays
+ *    empty until registration rather than showing a generic or black `<img>`.
+ * 3. Vendored brand marks for well-known ACP slugs. These remain app-owned
+ *    because one ACP plugin owns a dynamic tier of agent providers.
+ * 4. A caller-supplied `logoUrl` (from a server-provided `ProviderInfo`) for
  *    providers without a vendored mark — plugin-registered third parties, and
  *    the right home for static color logos.
- * 4. The generic glyph for unrecognized ACP providers.
+ * 5. The generic glyph for unrecognized ACP providers.
  *
  * Returns undefined for unknown non-ACP providers so callers can fall back
  * gracefully.
@@ -164,14 +153,22 @@ export function getProviderIconInfo(
   providerId: string,
   logoUrl: string | null = null,
 ): ProviderIconInfo | undefined {
-  const staticInfo = resolveStaticProviderIconInfo(providerId, logoUrl);
+  const pluginOwnedLabel = PLUGIN_OWNED_PROVIDER_ICON_LABELS.get(providerId);
+  const staticInfo =
+    pluginOwnedLabel === undefined
+      ? resolveStaticProviderIconInfo(providerId, logoUrl)
+      : undefined;
   const pluginIcon = getRegisteredPluginProviderIcon(providerId);
-  if (staticInfo === undefined && pluginIcon === undefined) {
+  if (
+    staticInfo === undefined &&
+    pluginIcon === undefined &&
+    pluginOwnedLabel === undefined
+  ) {
     return undefined;
   }
   return {
     icon: getPluginAwareProviderIcon(providerId, logoUrl, staticInfo?.icon),
-    ariaLabel: staticInfo?.ariaLabel ?? providerId,
+    ariaLabel: staticInfo?.ariaLabel ?? pluginOwnedLabel ?? providerId,
   };
 }
 
@@ -179,11 +176,6 @@ function resolveStaticProviderIconInfo(
   providerId: string,
   logoUrl: string | null,
 ): ProviderIconInfo | undefined {
-  const builtInBrand = BUILT_IN_BRAND_ICONS[providerId];
-  if (builtInBrand !== undefined) {
-    return builtInBrand;
-  }
-
   if (isAcpProviderId(providerId)) {
     const slug = providerId.slice(ACP_ID_PREFIX.length);
     const brandIcon = KNOWN_ACP_BRAND_ICONS[slug];
