@@ -17,10 +17,7 @@ import {
   createWorkTogetherRoomResourceProvisioner,
   type WorkTogetherRoomResourceTarget,
 } from "../../src/room-distribution/room-resource-provisioner.js";
-import {
-  seedHostSession,
-  seedThreadRuntimeState,
-} from "../helpers/seed.js";
+import { seedHostSession, seedThreadRuntimeState } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 const admitBranchPublish = vi.hoisted(() => vi.fn());
@@ -45,6 +42,7 @@ const NO_CHILDREN: WorkTogetherRoomChildAttachmentPortV1 = Object.freeze({
   },
   list: async () => Object.freeze([]),
 });
+const PRIMARY_STREAM = Object.freeze({ kind: "primary" as const });
 
 function contextFor(
   bindingId: string,
@@ -132,7 +130,9 @@ describe("Room branch.publish command", () => {
       };
       const distribution = createBindingBackedRoomDistributionV1(
         harness.deps,
-        { read: async () => ({ id: room.launch.taskId, title: "Ship feature" }) },
+        {
+          read: async () => ({ id: room.launch.taskId, title: "Ship feature" }),
+        },
         NO_CHILDREN,
         { read: async () => ({ ...policyFacts }) },
       );
@@ -176,7 +176,9 @@ describe("Room branch.publish command", () => {
       });
       const distribution = createBindingBackedRoomDistributionV1(
         harness.deps,
-        { read: async () => ({ id: room.launch.taskId, title: "Ship feature" }) },
+        {
+          read: async () => ({ id: room.launch.taskId, title: "Ship feature" }),
+        },
         NO_CHILDREN,
         {
           read: async ({ principal }) =>
@@ -190,6 +192,7 @@ describe("Room branch.publish command", () => {
         distribution.execute(contextFor(room.launch.bindingId, BOB), {
           kind: "branch.publish",
           requestId: "creq_23456789pa",
+          stream: PRIMARY_STREAM,
         }),
       ).rejects.toMatchObject({ kind: "not_found" });
       expect(admitBranchPublish).not.toHaveBeenCalled();
@@ -203,6 +206,7 @@ describe("Room branch.publish command", () => {
         distribution.execute(contextFor(room.launch.bindingId, ALICE), {
           kind: "branch.publish",
           requestId: "creq_23456789pb",
+          stream: PRIMARY_STREAM,
         }),
       ).rejects.toMatchObject({ kind: "not_found" });
       expect(admitBranchPublish).not.toHaveBeenCalled();
@@ -241,7 +245,9 @@ describe("Room branch.publish command", () => {
       });
       const distribution = createBindingBackedRoomDistributionV1(
         harness.deps,
-        { read: async () => ({ id: room.launch.taskId, title: "Ship feature" }) },
+        {
+          read: async () => ({ id: room.launch.taskId, title: "Ship feature" }),
+        },
         NO_CHILDREN,
         { read: async () => ({ role: "owner", isTaskAssignee: false }) },
       );
@@ -253,12 +259,14 @@ describe("Room branch.publish command", () => {
           requestId: "creq_23456789pc",
           title: "Custom title",
           body: "Custom body",
+          stream: PRIMARY_STREAM,
         },
       );
 
       expect(response).toMatchObject({
         status: 202,
         body: {
+          schemaVersion: 2,
           outcome: "accepted",
           commandKind: "branch.publish",
           result: {
@@ -268,6 +276,7 @@ describe("Room branch.publish command", () => {
             prUrl: "https://github.com/org/repo/pull/22",
             commitSha: "cafe1234",
           },
+          stream: PRIMARY_STREAM,
         },
       });
       expect(admitBranchPublish).toHaveBeenCalledWith(
@@ -296,7 +305,9 @@ describe("Room branch.publish command", () => {
       );
       const distribution = createBindingBackedRoomDistributionV1(
         harness.deps,
-        { read: async () => ({ id: room.launch.taskId, title: "Ship feature" }) },
+        {
+          read: async () => ({ id: room.launch.taskId, title: "Ship feature" }),
+        },
         NO_CHILDREN,
         { read: async () => ({ role: "owner", isTaskAssignee: false }) },
       );
@@ -305,13 +316,16 @@ describe("Room branch.publish command", () => {
         distribution.execute(contextFor(room.launch.bindingId, ALICE), {
           kind: "branch.publish",
           requestId: "creq_23456789pd",
+          stream: PRIMARY_STREAM,
         }),
       ).resolves.toMatchObject({
         status: 200,
         body: {
+          schemaVersion: 2,
           outcome: "rejected",
           commandKind: "branch.publish",
           reason: "no_changes",
+          stream: PRIMARY_STREAM,
         },
       });
       expect(

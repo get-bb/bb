@@ -9,7 +9,7 @@ const BINDING_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 const CURSOR = "evt_01HZX9k.abc~1";
 const SECRET_CURSOR = "super-secret-cursor-token-xyz";
 const SECRET_ID = "ffffffff-eeee-4ddd-8ccc-bbbbbbbbbbbb";
-const CHILD_ID = "11111111-2222-4333-8444-555555555555";
+const SUBAGENT_ID = "11111111-2222-4333-8444-555555555555";
 
 function targetFor(
   operation: string,
@@ -104,7 +104,7 @@ describe("parseRoomDistributionTarget", () => {
       method: "GET",
       transport: "http",
       cursor: null,
-      childAttachmentId: null,
+      subagentId: null,
     });
     expect(Object.isFrozen(without)).toBe(true);
 
@@ -119,7 +119,7 @@ describe("parseRoomDistributionTarget", () => {
       method: "GET",
       transport: "http",
       cursor: CURSOR,
-      childAttachmentId: null,
+      subagentId: null,
     });
     expect(Object.isFrozen(withCursor)).toBe(true);
   });
@@ -136,6 +136,28 @@ describe("parseRoomDistributionTarget", () => {
       method: "GET",
       transport: "http",
       before: "p.42",
+      subagentId: null,
+    });
+    expect(Object.isFrozen(descriptor)).toBe(true);
+  });
+
+  it("accepts GET http timeline with Subagent then public before cursor", () => {
+    const descriptor = parse({
+      method: "GET",
+      transport: "http",
+      target: targetFor(
+        "timeline",
+        BINDING_ID,
+        `subagent=${SUBAGENT_ID}&before=p.42`,
+      ),
+    });
+    expect(descriptor).toEqual({
+      bindingId: BINDING_ID,
+      operation: "timeline",
+      method: "GET",
+      transport: "http",
+      before: "p.42",
+      subagentId: SUBAGENT_ID,
     });
     expect(Object.isFrozen(descriptor)).toBe(true);
   });
@@ -148,7 +170,7 @@ describe("parseRoomDistributionTarget", () => {
       "before=s.1",
       "before=1",
       "cursor=p.1",
-      "before=p.1&child=11111111-2222-4333-8444-555555555555",
+      "before=p.1&subagent=11111111-2222-4333-8444-555555555555",
       "before=",
       "before=p.",
       "before=p.-1",
@@ -175,6 +197,49 @@ describe("parseRoomDistributionTarget", () => {
     });
   });
 
+  it("rejects inverted, obsolete, or malformed Subagent older-page queries", () => {
+    for (const query of [
+      `subagent=${SUBAGENT_ID}`,
+      `subagent=${SUBAGENT_ID}&before=`,
+      `subagent=${SUBAGENT_ID}&before=p.0`,
+      `subagent=${SUBAGENT_ID}&before=p.01`,
+      `subagent=${SUBAGENT_ID}&before=s.1`,
+      `subagent=${SUBAGENT_ID}&cursor=p.1`,
+      `child=${SUBAGENT_ID}&before=p.1`,
+      "subagent=AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE&before=p.1",
+      `subagent=%31${SUBAGENT_ID.slice(1)}&before=p.1`,
+      `subagent=${SUBAGENT_ID}&subagent=${SUBAGENT_ID}&before=p.1`,
+      `subagent=${SUBAGENT_ID}&before=p.1&before=p.2`,
+      `subagent=${SUBAGENT_ID}&before=p.1&limit=1`,
+      `subagent=${SUBAGENT_ID}&before=p.1&cursor=s.1`,
+      "subagent=not-a-uuid&before=p.1",
+    ]) {
+      expectRejected({
+        method: "GET",
+        transport: "http",
+        target: targetFor("timeline", BINDING_ID, query),
+      });
+    }
+    expectRejected({
+      method: "POST",
+      transport: "http",
+      target: targetFor(
+        "timeline",
+        BINDING_ID,
+        `subagent=${SUBAGENT_ID}&before=p.1`,
+      ),
+    });
+    expectRejected({
+      method: "GET",
+      transport: "websocket",
+      target: targetFor(
+        "timeline",
+        BINDING_ID,
+        `subagent=${SUBAGENT_ID}&before=p.1`,
+      ),
+    });
+  });
+
   it("accepts GET websocket subscribe with and without cursor", () => {
     const without = parse({
       method: "GET",
@@ -187,7 +252,7 @@ describe("parseRoomDistributionTarget", () => {
       method: "GET",
       transport: "websocket",
       cursor: null,
-      childAttachmentId: null,
+      subagentId: null,
     });
     expect(Object.isFrozen(without)).toBe(true);
 
@@ -202,19 +267,19 @@ describe("parseRoomDistributionTarget", () => {
       method: "GET",
       transport: "websocket",
       cursor: CURSOR,
-      childAttachmentId: null,
+      subagentId: null,
     });
     expect(Object.isFrozen(withCursor)).toBe(true);
   });
 
-  it("accepts an opaque child attachment before an optional cursor", () => {
+  it("accepts an opaque Subagent attachment before an optional cursor", () => {
     expect(
       parse({
         method: "GET",
         transport: "http",
-        target: targetFor("events", BINDING_ID, `child=${CHILD_ID}`),
+        target: targetFor("events", BINDING_ID, `subagent=${SUBAGENT_ID}`),
       }),
-    ).toMatchObject({ childAttachmentId: CHILD_ID, cursor: null });
+    ).toMatchObject({ subagentId: SUBAGENT_ID, cursor: null });
     expect(
       parse({
         method: "GET",
@@ -222,10 +287,10 @@ describe("parseRoomDistributionTarget", () => {
         target: targetFor(
           "subscribe",
           BINDING_ID,
-          `child=${CHILD_ID}&cursor=${CURSOR}`,
+          `subagent=${SUBAGENT_ID}&cursor=${CURSOR}`,
         ),
       }),
-    ).toMatchObject({ childAttachmentId: CHILD_ID, cursor: CURSOR });
+    ).toMatchObject({ subagentId: SUBAGENT_ID, cursor: CURSOR });
   });
 
   it("returns bindingId unchanged for any-version lowercase UUIDs", () => {
@@ -367,19 +432,35 @@ describe("parseRoomDistributionTarget", () => {
       target: targetFor(
         "events",
         BINDING_ID,
-        `cursor=${CURSOR}&child=${CHILD_ID}`,
+        `cursor=${CURSOR}&subagent=${SUBAGENT_ID}`,
       ),
     });
     expectRejected({
       method: "GET",
       transport: "http",
-      target: targetFor("events", BINDING_ID, "child=not-a-uuid"),
+      target: targetFor("events", BINDING_ID, "subagent=not-a-uuid"),
     });
     expectRejected({
       method: "GET",
       transport: "http",
-      target: targetFor("events", BINDING_ID, `child=${CHILD_ID}&cursor=`),
+      target: targetFor(
+        "events",
+        BINDING_ID,
+        `subagent=${SUBAGENT_ID}&cursor=`,
+      ),
     });
+    for (const query of [
+      `child=${SUBAGENT_ID}`,
+      `subagent=${SUBAGENT_ID}&subagent=${SUBAGENT_ID}`,
+      "subagent=AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE",
+      `subagent=%31${SUBAGENT_ID.slice(1)}`,
+    ]) {
+      expectRejected({
+        method: "GET",
+        transport: "http",
+        target: targetFor("events", BINDING_ID, query),
+      });
+    }
   });
 
   it("rejects cursor grammar violations while never decoding", () => {

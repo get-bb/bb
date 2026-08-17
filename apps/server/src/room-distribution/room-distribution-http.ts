@@ -178,7 +178,7 @@ export function registerRoomDistributionHttpRoutes(
       const room = await createContext(context, target.bindingId);
       await requireOperation(room, "events");
       const body = await distribution.events(room, {
-        childAttachmentId: target.childAttachmentId,
+        subagentId: target.subagentId,
         cursor: target.cursor,
       });
       context.header("cache-control", "no-store");
@@ -198,6 +198,7 @@ export function registerRoomDistributionHttpRoutes(
       // Older pages share the existing events read authority; no new operation.
       await requireOperation(room, "events");
       const body = await distribution.timeline(room, {
+        subagentId: target.subagentId,
         before: target.before,
       });
       context.header("cache-control", "no-store");

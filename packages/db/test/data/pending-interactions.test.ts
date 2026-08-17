@@ -12,6 +12,9 @@ import {
   interruptPendingInteractionsForThreadIds,
   interruptPendingInteractionsForThreads,
   listPendingInteractionsByThread,
+  listPendingInteractionsByThreadIds,
+  MAX_PENDING_INTERACTION_THREAD_IDS,
+  PendingInteractionThreadIdBoundError,
   setPendingInteractionResolved,
   setPendingInteractionResolving,
 } from "../../src/data/pending-interactions.js";
@@ -337,4 +340,47 @@ describe("pending interactions", () => {
     },
   );
 
+  it("lists pending interactions for a bounded thread id set in one query", () => {
+    const { db, siblingThread, thread } = setup();
+    const older = createPendingInteraction(db, {
+      threadId: thread.id,
+      turnId: "turn-batch-1",
+      providerId: "codex",
+      providerThreadId: "provider-thread-batch-1",
+      providerRequestId: "request-batch-1",
+      payload: commandApprovalPayload("git status", "item-batch-1"),
+    });
+    const newer = createPendingInteraction(db, {
+      threadId: siblingThread.id,
+      turnId: "turn-batch-2",
+      providerId: "codex",
+      providerThreadId: "provider-thread-batch-2",
+      providerRequestId: "request-batch-2",
+      payload: fileChangeApprovalPayload("item-batch-2"),
+    });
+
+    expect(listPendingInteractionsByThreadIds(db, { threadIds: [] })).toEqual(
+      [],
+    );
+    expect(
+      listPendingInteractionsByThreadIds(db, {
+        threadIds: [thread.id, siblingThread.id, thread.id],
+        statuses: ["pending"],
+      }).map((row) => row.id),
+    ).toEqual([newer.id, older.id]);
+    expect(
+      listPendingInteractionsByThreadIds(db, {
+        threadIds: [thread.id],
+        statuses: ["resolved"],
+      }),
+    ).toEqual([]);
+    expect(() =>
+      listPendingInteractionsByThreadIds(db, {
+        threadIds: Array.from(
+          { length: MAX_PENDING_INTERACTION_THREAD_IDS + 1 },
+          (_, index) => `thr_overflow_${index}`,
+        ),
+      }),
+    ).toThrow(PendingInteractionThreadIdBoundError);
+  });
 });

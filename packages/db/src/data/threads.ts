@@ -340,6 +340,11 @@ export function createThread(
   notifier.notifyThread(id, ["thread-created"], {
     projectId: input.projectId,
   });
+  if (thread.parentThreadId !== null) {
+    notifier.notifyThread(thread.parentThreadId, ["children-changed"], {
+      projectId: input.projectId,
+    });
+  }
   notifier.notifyProject(input.projectId, ["threads-changed"]);
   return thread;
 }

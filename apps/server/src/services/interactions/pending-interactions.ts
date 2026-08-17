@@ -10,6 +10,7 @@ import {
   interruptPendingInteractionsForPlugin,
   listActivePluginPendingInteractions,
   listPendingInteractionsByThread,
+  listPendingInteractionsByThreadIds,
   setPendingInteractionInterrupted,
   setPendingInteractionResolved,
   setPendingInteractionResolving,
@@ -309,6 +310,29 @@ export class PendingInteractionLifecycle {
         statuses: ["pending", "resolving"],
       }),
     );
+  }
+
+  listPendingThreadInteractionsByThreadIds(
+    threadIds: readonly string[],
+  ): ReadonlyMap<string, PendingInteraction[]> {
+    const interactions = this.parseListRows(
+      listPendingInteractionsByThreadIds(this.deps.db, {
+        threadIds,
+        statuses: ["pending", "resolving"],
+      }),
+    );
+    const byThreadId = new Map<string, PendingInteraction[]>();
+    for (const threadId of threadIds) {
+      if (!byThreadId.has(threadId)) {
+        byThreadId.set(threadId, []);
+      }
+    }
+    for (const interaction of interactions) {
+      const list = byThreadId.get(interaction.threadId);
+      if (list === undefined) continue;
+      list.push(interaction);
+    }
+    return byThreadId;
   }
 
   getThreadInteraction(args: GetThreadInteractionArgs): PendingInteraction {

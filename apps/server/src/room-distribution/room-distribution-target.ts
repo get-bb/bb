@@ -20,12 +20,17 @@ const BINDING_ID_PATTERN = new RegExp(`^${UUID_FRAGMENT}$`, "u");
  * Do not decode or reserialize; validate the exact characters after `cursor=`.
  */
 const CURSOR_PATTERN = /^[A-Za-z0-9._~:%+-]{1,512}$/u;
-const CHILD_QUERY_PATTERN = new RegExp(
-  `^child=(${UUID_FRAGMENT})(?:&cursor=([A-Za-z0-9._~:%+-]{1,512}))?$`,
+const SUBAGENT_QUERY_PATTERN = new RegExp(
+  `^subagent=(${UUID_FRAGMENT})(?:&cursor=([A-Za-z0-9._~:%+-]{1,512}))?$`,
   "u",
 );
 /** Public older-page cursor: sequence-only `p.<positive integer>`. */
 const OLDER_BEFORE_QUERY_PATTERN = /^before=(p\.(?:[1-9][0-9]{0,15}))$/u;
+/** Canonical Subagent older page: `subagent=<uuid>&before=p.<positive sequence>`. */
+const OLDER_SUBAGENT_BEFORE_QUERY_PATTERN = new RegExp(
+  `^subagent=(${UUID_FRAGMENT})&before=(p\\.(?:[1-9][0-9]{0,15}))$`,
+  "u",
+);
 
 const OPERATIONS = [
   "bootstrap",
@@ -65,12 +70,13 @@ export type RoomDistributionEventsTarget = {
   readonly method: "GET";
   readonly transport: "http";
   readonly cursor: string | null;
-  readonly childAttachmentId: string | null;
+  readonly subagentId: string | null;
 };
 
 /**
- * Older sanitized Room page. Requires exactly `before=p.<positive sequence>`.
- * Authorized under the existing events read authority; primary stream only.
+ * Older sanitized Room page. Primary is exactly `before=p.<positive sequence>`.
+ * Subagent is exactly `subagent=<lowercase UUID>&before=p.<positive sequence>`.
+ * Authorized under the existing events read authority.
  */
 export type RoomDistributionTimelineTarget = {
   readonly bindingId: string;
@@ -78,6 +84,7 @@ export type RoomDistributionTimelineTarget = {
   readonly method: "GET";
   readonly transport: "http";
   readonly before: string;
+  readonly subagentId: string | null;
 };
 
 export type RoomDistributionSubscribeTarget = {
@@ -86,7 +93,7 @@ export type RoomDistributionSubscribeTarget = {
   readonly method: "GET";
   readonly transport: "websocket";
   readonly cursor: string | null;
-  readonly childAttachmentId: string | null;
+  readonly subagentId: string | null;
 };
 
 export type RoomDistributionTargetDescriptor =
@@ -118,22 +125,41 @@ function isOperation(value: string): value is RoomDistributionOperation {
 }
 
 function parseStreamQuery(query: string | null): Readonly<{
-  childAttachmentId: string | null;
+  subagentId: string | null;
   cursor: string | null;
 }> {
   if (query === null) {
-    return Object.freeze({ childAttachmentId: null, cursor: null });
+    return Object.freeze({ subagentId: null, cursor: null });
   }
   if (query.startsWith("cursor=")) {
     const raw = query.slice("cursor=".length);
     if (query.includes("&") || !CURSOR_PATTERN.test(raw)) reject();
-    return Object.freeze({ childAttachmentId: null, cursor: raw });
+    return Object.freeze({ subagentId: null, cursor: raw });
   }
-  const child = CHILD_QUERY_PATTERN.exec(query);
-  if (child === null) reject();
+  const subagent = SUBAGENT_QUERY_PATTERN.exec(query);
+  if (subagent === null) reject();
   return Object.freeze({
-    childAttachmentId: child[1] ?? null,
-    cursor: child[2] ?? null,
+    subagentId: subagent[1] ?? null,
+    cursor: subagent[2] ?? null,
+  });
+}
+
+function parseOlderQuery(query: string): Readonly<{
+  subagentId: string | null;
+  before: string;
+}> {
+  const primary = OLDER_BEFORE_QUERY_PATTERN.exec(query);
+  if (primary !== null) {
+    return Object.freeze({
+      subagentId: null,
+      before: primary[1] ?? reject(),
+    });
+  }
+  const subagent = OLDER_SUBAGENT_BEFORE_QUERY_PATTERN.exec(query);
+  if (subagent === null) reject();
+  return Object.freeze({
+    subagentId: subagent[1] ?? reject(),
+    before: subagent[2] ?? reject(),
   });
 }
 
@@ -233,16 +259,14 @@ export function parseRoomDistributionTarget(
       if (method !== "GET" || transport !== "http" || query === null) {
         reject();
       }
-      const older = OLDER_BEFORE_QUERY_PATTERN.exec(query);
-      if (older === null) {
-        reject();
-      }
+      const older = parseOlderQuery(query);
       return Object.freeze({
         bindingId,
         operation: "timeline",
         method: "GET",
         transport: "http",
-        before: older[1] ?? reject(),
+        before: older.before,
+        subagentId: older.subagentId,
       });
     }
     case "subscribe": {

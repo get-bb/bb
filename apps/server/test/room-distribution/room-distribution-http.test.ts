@@ -14,7 +14,7 @@ import {
 } from "../../src/room-distribution/room-distribution-port.js";
 
 const BINDING_ID = "99999999-aaaa-4bbb-8ccc-dddddddddddd";
-const CHILD_ID = "55555555-6666-4777-8888-999999999999";
+const SUBAGENT_ID = "55555555-6666-4777-8888-999999999999";
 const PRINCIPAL: Principal = Object.freeze({
   id: "user_RoomHttp123",
   kind: "human",
@@ -115,13 +115,15 @@ describe("Room distribution HTTP adapter", () => {
     });
     expect(test.events).toHaveBeenCalledWith(
       expect.objectContaining({ bindingId: BINDING_ID, principal: PRINCIPAL }),
-      { childAttachmentId: null, cursor: "evt%3A7" },
+      { subagentId: null, cursor: "evt%3A7" },
     );
 
-    await test.app.request(path("events", `?child=${CHILD_ID}&cursor=evt%3A8`));
+    await test.app.request(
+      path("events", `?subagent=${SUBAGENT_ID}&cursor=evt%3A8`),
+    );
     expect(test.events).toHaveBeenLastCalledWith(
       expect.objectContaining({ bindingId: BINDING_ID, principal: PRINCIPAL }),
-      { childAttachmentId: CHILD_ID, cursor: "evt%3A8" },
+      { subagentId: SUBAGENT_ID, cursor: "evt%3A8" },
     );
 
     const timelineResponse = await test.app.request(
@@ -131,7 +133,7 @@ describe("Room distribution HTTP adapter", () => {
     expect(timelineResponse.headers.get("cache-control")).toBe("no-store");
     expect(test.timeline).toHaveBeenCalledWith(
       expect.objectContaining({ bindingId: BINDING_ID, principal: PRINCIPAL }),
-      { before: "p.7" },
+      { subagentId: null, before: "p.7" },
     );
     // Older timeline reuses events read authority (no new action).
     expect(test.authorizations.at(-1)?.action).toEqual(
@@ -193,11 +195,47 @@ describe("Room distribution HTTP adapter", () => {
       (await malformed.app.request(path("timeline", "?before=s.1"))).status,
     ).toBe(404);
     expect(
+      (
+        await malformed.app.request(
+          path("timeline", `?before=p.7&subagent=${SUBAGENT_ID}`),
+        )
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await malformed.app.request(
+          path("timeline", `?child=${SUBAGENT_ID}&before=p.7`),
+        )
+      ).status,
+    ).toBe(404);
+    expect(
       (await malformed.app.request(`/api/bb-rooms/v1/rooms/${BINDING_ID}/raw`))
         .status,
     ).toBe(404);
     expect(malformed.events).not.toHaveBeenCalled();
     expect(malformed.timeline).not.toHaveBeenCalled();
+  });
+
+  it("passes the canonical Subagent older-page target through unchanged", async () => {
+    const test = fixture();
+    const response = await test.app.request(
+      path("timeline", `?subagent=${SUBAGENT_ID}&before=p.9`),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.json()).toEqual({
+      schemaVersion: 1,
+      timeline: { rows: [], hasOlder: false, olderCursor: null },
+      before: "p.9",
+    });
+    expect(test.timeline).toHaveBeenCalledWith(
+      expect.objectContaining({ bindingId: BINDING_ID, principal: PRINCIPAL }),
+      { subagentId: SUBAGENT_ID, before: "p.9" },
+    );
+    expect(test.authorizations).toHaveLength(1);
+    expect(test.authorizations[0]?.action).toEqual(
+      expect.objectContaining({ name: "roomDistribution.events" }),
+    );
   });
 
   it("maps binding misses without enumeration and upstream failures to unavailable", async () => {

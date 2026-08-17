@@ -17,6 +17,10 @@ import {
   RoomDistributionUnavailableError,
   type RoomJsonObject,
 } from "./room-distribution-port.js";
+import {
+  WORK_TOGETHER_ROOM_VISIBLE_DISALLOWED_CONTROL,
+  projectWorkTogetherRoomVisibleScalar,
+} from "./work-together-room-visible-scalar.js";
 
 type RoomActivityKind =
   | "command"
@@ -175,7 +179,6 @@ const MAX_SHORT_LABEL_BYTES = 160;
 const MAX_OPTION_VALUE_BYTES = 256;
 const MAX_OPTION_LABEL_BYTES = 256;
 const MAX_OPTION_DESCRIPTION_BYTES = 512;
-const DISALLOWED_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
 const PENDING_INTERACTION_ID = /^pint_[23456789abcdefghijkmnpqrstuvwxyz]{10}$/u;
 
 const ACTIVITY_LABELS = {
@@ -306,23 +309,13 @@ function validateVisibleText(
   maxBytes: number,
   requireNonBlank: boolean,
 ): string {
-  let projected = value.normalize("NFC");
-  projected = projected.replaceAll(input.privateThreadId, input.publicStreamId);
-  projected = projected.replaceAll(
-    input.environmentId,
-    `${input.bindingId}:environment`,
+  const projected = projectWorkTogetherRoomVisibleScalar(
+    value,
+    input,
+    maxBytes,
+    requireNonBlank,
   );
-  projected = projected.replaceAll(
-    input.projectId,
-    `${input.bindingId}:project`,
-  );
-  if (
-    DISALLOWED_CONTROL.test(projected) ||
-    Buffer.byteLength(projected, "utf8") > maxBytes ||
-    (requireNonBlank && projected.trim().length === 0)
-  ) {
-    rowUnavailable();
-  }
+  if (projected === null) rowUnavailable();
   return projected;
 }
 
@@ -334,7 +327,7 @@ function validateCorrelation(
   if (
     value.normalize("NFC") !== value ||
     value.trim().length === 0 ||
-    DISALLOWED_CONTROL.test(value) ||
+    WORK_TOGETHER_ROOM_VISIBLE_DISALLOWED_CONTROL.test(value) ||
     Buffer.byteLength(value, "utf8") > maxBytes ||
     value.includes(input.privateThreadId) ||
     value.includes(input.environmentId) ||

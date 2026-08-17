@@ -184,6 +184,7 @@ declare const changedMessageSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         "archived-changed": "archived-changed";
         "pin-state-changed": "pin-state-changed";
         "parent-changed": "parent-changed";
+        "children-changed": "children-changed";
         "environment-changed": "environment-changed";
         "read-state-changed": "read-state-changed";
         "order-changed": "order-changed";

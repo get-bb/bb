@@ -30,12 +30,14 @@ export type RoomDistributionSubscriptionV1 = Readonly<{
 }>;
 
 export type RoomDistributionStreamTargetV1 = Readonly<{
-  /** Null selects the Room's primary thread. Child ids are opaque WT attachment ids. */
-  childAttachmentId: string | null;
+  /** Null selects Primary. Subagent ids are opaque WT attachment ids. */
+  subagentId: string | null;
   cursor: string | null;
 }>;
 
 export type RoomDistributionOlderTimelineTargetV1 = Readonly<{
+  /** Null selects Primary. Subagent ids are opaque WT attachment ids. */
+  subagentId: string | null;
   /** Public sequence-only cursor `p.<positive sequence>`. */
   before: string;
 }>;
@@ -58,6 +60,7 @@ export interface WorkTogetherRoomDistributionV1 {
   /**
    * Authorized older timeline page before a public sequence-only cursor.
    * Distinct from live events high-water semantics (`s.N`).
+   * `subagentId` null selects Primary; otherwise the current attachment.
    */
   timeline(
     context: RoomDistributionContextV1,

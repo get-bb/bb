@@ -1,4 +1,9 @@
-import { getActiveStoredTurnId, getThreadCommandAdmission } from "@bb/db";
+import {
+  getActiveStoredTurnId,
+  getThreadCommandAdmission,
+  InvalidWorkTogetherRoomRootTurnOutcomeError,
+  listLatestRootTurnTerminalOutcomesByThreadIds,
+} from "@bb/db";
 import {
   approvalPendingInteractionResolutionSchema,
   clientTurnRequestIdSchema,
@@ -35,8 +40,18 @@ import {
 } from "../services/threads/message-send-fingerprint.js";
 import { threadCommandAdmissionReceiptFromPersisted } from "../services/threads/thread-command-receipt.js";
 import type { AppDeps } from "../types.js";
-import type { WorkTogetherRoomCommandAuthorityPortV1 } from "./work-together-room-command-authority.js";
+import type {
+  WorkTogetherRoomCommandAuthorityPortV1,
+  WorkTogetherRoomCommandAuthorityV1,
+} from "./work-together-room-command-authority.js";
 import { deriveWorkTogetherRoomPublicTurnId } from "./work-together-room-timeline-projection.js";
+import {
+  deriveWorkTogetherRoomSubagentAttentionV1,
+  deriveWorkTogetherRoomSubagentCapabilitiesV1,
+  deriveWorkTogetherRoomSubagentLifecycleV1,
+  type RoomSubagentCapabilityV1,
+  type RoomSubagentPendingInteractionKindV1,
+} from "./work-together-room-subagent-public-contract.js";
 import {
   RoomDistributionUnavailableError,
   type RoomDistributionCommandResultV1,
@@ -51,6 +66,19 @@ const ROOM_EVENT_CURSOR_PATTERN = /^[A-Za-z0-9._~:%+-]{1,512}$/u;
 const PENDING_INTERACTION_ID_PATTERN =
   /^pint_[23456789abcdefghijkmnpqrstuvwxyz]{10}$/;
 const PUBLIC_TURN_ID_PATTERN = /^turn_[A-Za-z0-9_-]{43}$/u;
+const CANONICAL_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+const SUBAGENT_PUBLIC_COMMAND_KINDS = new Set<RoomSubagentCapabilityV1>([
+  "message.send",
+  "message.steer",
+  "agent.interrupt",
+  "interaction.answer",
+  "interaction.approve",
+]);
+
+export type RoomCommandStreamV2 = Readonly<
+  { kind: "primary" } | { kind: "subagent"; id: string }
+>;
 const FORBIDDEN_IDENTITY_KEY_TOKENS = new Set([
   "actor",
   "actorid",
@@ -120,6 +148,7 @@ type SupportedRoomCommand =
 type RoomCommandScope = Readonly<{
   bindingId: string;
   principal: Principal;
+  publicStream: RoomCommandStreamV2;
   publicStreamId: string;
   taskId: string;
   thread: Thread;
@@ -157,6 +186,32 @@ function exactKeys(
     actual.length === sortedExpected.length &&
     actual.every((key, index) => key === sortedExpected[index])
   );
+}
+
+/**
+ * Exact current V2 command stream. Primary is `{ kind: "primary" }`; Subagent
+ * is `{ kind: "subagent", id }` with a canonical attachment UUID. Missing,
+ * null, extra-key, and obsolete selectors fail the same generic unavailable.
+ */
+export function parseRoomCommandStreamV2(
+  value: RoomJsonValue | undefined,
+): RoomCommandStreamV2 {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    unavailable();
+  }
+  const stream = value;
+  if (stream.kind === "primary") {
+    if (!exactKeys(stream, ["kind"])) unavailable();
+    return Object.freeze({ kind: "primary" });
+  }
+  if (stream.kind === "subagent") {
+    if (!exactKeys(stream, ["id", "kind"])) unavailable();
+    if (typeof stream.id !== "string" || !CANONICAL_UUID.test(stream.id)) {
+      unavailable();
+    }
+    return Object.freeze({ kind: "subagent", id: stream.id });
+  }
+  unavailable();
 }
 
 /**
@@ -384,9 +439,12 @@ function approvalResolution(
 }
 
 function decodeCommand(command: RoomJsonObject): SupportedRoomCommand {
+  parseRoomCommandStreamV2(command.stream);
   switch (command.kind) {
     case "message.send":
-      if (!exactKeys(command, ["kind", "requestId", "text"])) unavailable();
+      if (!exactKeys(command, ["kind", "requestId", "stream", "text"])) {
+        unavailable();
+      }
       return Object.freeze({
         kind: "message.send",
         requestId: requestId(command.requestId),
@@ -394,7 +452,13 @@ function decodeCommand(command: RoomJsonObject): SupportedRoomCommand {
       });
     case "message.steer":
       if (
-        !exactKeys(command, ["expectedTurnId", "kind", "requestId", "text"])
+        !exactKeys(command, [
+          "expectedTurnId",
+          "kind",
+          "requestId",
+          "stream",
+          "text",
+        ])
       ) {
         unavailable();
       }
@@ -404,8 +468,10 @@ function decodeCommand(command: RoomJsonObject): SupportedRoomCommand {
         requestId: requestId(command.requestId),
         text: commandText(command.text),
       });
-    case "thread.interrupt":
-      if (!exactKeys(command, ["expectedTurnId", "kind", "requestId"])) {
+    case "agent.interrupt":
+      if (
+        !exactKeys(command, ["expectedTurnId", "kind", "requestId", "stream"])
+      ) {
         unavailable();
       }
       return Object.freeze({
@@ -415,7 +481,13 @@ function decodeCommand(command: RoomJsonObject): SupportedRoomCommand {
       });
     case "interaction.answer":
       if (
-        !exactKeys(command, ["interactionId", "kind", "requestId", "value"])
+        !exactKeys(command, [
+          "interactionId",
+          "kind",
+          "requestId",
+          "stream",
+          "value",
+        ])
       ) {
         unavailable();
       }
@@ -432,6 +504,7 @@ function decodeCommand(command: RoomJsonObject): SupportedRoomCommand {
           "kind",
           "requestId",
           "resolution",
+          "stream",
         ])
       ) {
         unavailable();
@@ -443,7 +516,7 @@ function decodeCommand(command: RoomJsonObject): SupportedRoomCommand {
         resolution: approvalResolution(command.resolution),
       });
     case "read.mark":
-      if (!exactKeys(command, ["eventCursor", "kind", "requestId"])) {
+      if (!exactKeys(command, ["eventCursor", "kind", "requestId", "stream"])) {
         unavailable();
       }
       return Object.freeze({
@@ -455,7 +528,7 @@ function decodeCommand(command: RoomJsonObject): SupportedRoomCommand {
       if (
         !requiredAndOptionalKeys(
           command,
-          ["kind", "requestId"],
+          ["kind", "requestId", "stream"],
           ["body", "title"],
         )
       ) {
@@ -506,25 +579,35 @@ function commandReceipt(
     admission: PersistedThreadCommandAdmission;
     kind: "accepted" | "replayed";
   }>,
+  stream: RoomCommandStreamV2,
 ): RoomJsonObject {
   const receipt = threadCommandAdmissionReceiptFromPersisted({
     admission: result.admission,
     kind: result.kind,
   });
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     outcome: receipt.kind === "accepted" ? "accepted" : "already-accepted",
     requestId: receipt.requestId,
-    commandKind: receipt.commandKind,
+    commandKind: publicCommandKindName(receipt.commandKind),
     admissionSequence: receipt.admissionSequence,
     result: receiptResult(receipt.result),
     createdAt: receipt.createdAt,
     completedAt: receipt.completedAt,
+    stream,
   };
 }
 
-function commandKind(command: SupportedRoomCommand) {
+function storedCommandKind(command: SupportedRoomCommand) {
   return command.kind;
+}
+
+function publicCommandKind(command: SupportedRoomCommand): string {
+  return publicCommandKindName(command.kind);
+}
+
+function publicCommandKindName(commandKind: string): string {
+  return commandKind === "thread.interrupt" ? "agent.interrupt" : commandKind;
 }
 
 function commandFingerprint(command: SupportedRoomCommand) {
@@ -575,7 +658,7 @@ function exactRecoveredAdmission(
   });
   if (
     admission === null ||
-    admission.commandKind !== commandKind(command) ||
+    admission.commandKind !== storedCommandKind(command) ||
     admission.requestFingerprint !== commandFingerprint(command) ||
     admission.actor.principalId !== scope.principal.id ||
     admission.actor.principalKind !== scope.principal.kind
@@ -588,15 +671,17 @@ function exactRecoveredAdmission(
 function rejectedReceipt(
   command: SupportedRoomCommand,
   reason: string,
+  stream: RoomCommandStreamV2,
 ): RoomDistributionCommandResultV1 {
   return Object.freeze({
     status: 200,
     body: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       outcome: "rejected",
       requestId: command.requestId,
-      commandKind: command.kind,
+      commandKind: publicCommandKind(command),
       reason,
+      stream,
     },
   });
 }
@@ -650,12 +735,28 @@ function hasPendingApproval(deps: AppDeps, threadId: string): boolean {
     );
 }
 
+function isSubagentPublicCommandKind(
+  kind: string,
+): kind is RoomSubagentCapabilityV1 {
+  for (const allowed of SUBAGENT_PUBLIC_COMMAND_KINDS) {
+    if (allowed === kind) return true;
+  }
+  return false;
+}
+
 function commandAvailable(
   deps: AppDeps,
   command: SupportedRoomCommand,
   scope: RoomCommandScope,
   authority: RoomCommandAuthority,
 ): boolean {
+  if (scope.publicStream.kind === "subagent") {
+    const publicKind = publicCommandKind(command);
+    if (!isSubagentPublicCommandKind(publicKind)) return false;
+    return currentSubagentCapabilities(deps, scope, authority).includes(
+      publicKind,
+    );
+  }
   switch (command.kind) {
     case "message.send":
       return scope.thread.status === "idle" || scope.thread.status === "active";
@@ -680,10 +781,75 @@ function commandAvailable(
     case "read.mark":
       return true;
     case "branch.publish":
-      return (
-        canPublishBranch(authority) && scope.thread.status === "idle"
-      );
+      return canPublishBranch(authority) && scope.thread.status === "idle";
   }
+}
+
+function subagentAttention(deps: AppDeps, threadId: string) {
+  const kinds: RoomSubagentPendingInteractionKindV1[] = [];
+  for (const interaction of deps.pendingInteractions.listPendingThreadInteractions(
+    threadId,
+  )) {
+    if (interaction.status !== "pending") continue;
+    if (isUserQuestionPendingInteractionPayload(interaction.payload)) {
+      kinds.push("question");
+    } else if (isApprovalPendingInteractionPayload(interaction.payload)) {
+      kinds.push("approval");
+    }
+  }
+  return mapSubagentPolicy(() =>
+    deriveWorkTogetherRoomSubagentAttentionV1(kinds),
+  );
+}
+
+function latestSubagentRootTurnOutcome(deps: AppDeps, threadId: string) {
+  let rows;
+  try {
+    rows = listLatestRootTurnTerminalOutcomesByThreadIds(deps.db, [threadId]);
+  } catch (error) {
+    if (error instanceof InvalidWorkTogetherRoomRootTurnOutcomeError) {
+      unavailable();
+    }
+    throw error;
+  }
+  return rows[0]?.outcome ?? null;
+}
+
+function mapSubagentPolicy<T>(run: () => T): T {
+  try {
+    return run();
+  } catch (error) {
+    if (error instanceof RoomDistributionUnavailableError) unavailable();
+    throw error;
+  }
+}
+
+function currentSubagentCapabilities(
+  deps: AppDeps,
+  scope: RoomCommandScope,
+  authority: RoomCommandAuthority,
+): readonly RoomSubagentCapabilityV1[] {
+  const attention = subagentAttention(deps, scope.thread.id);
+  const lifecycle = mapSubagentPolicy(() =>
+    deriveWorkTogetherRoomSubagentLifecycleV1({
+      archivedAt: scope.thread.archivedAt,
+      attention,
+      latestPublicAssistantExcerpt: null,
+      latestRootTurnOutcome: latestSubagentRootTurnOutcome(
+        deps,
+        scope.thread.id,
+      ),
+      privateThreadId: scope.thread.id,
+      status: scope.thread.status,
+      title: scope.thread.title,
+      titleFallback: scope.thread.titleFallback,
+    }),
+  );
+  return deriveWorkTogetherRoomSubagentCapabilitiesV1({
+    attention,
+    authority,
+    lifecycle,
+  });
 }
 
 function statusCapabilities(
@@ -695,14 +861,14 @@ function statusCapabilities(
       return ["message.send"];
     case "starting":
       return authority.role === "owner" || authority.isTaskAssignee
-        ? ["thread.interrupt"]
+        ? ["agent.interrupt"]
         : [];
     case "active":
       return [
         "message.send",
         "message.steer",
         ...(authority.role === "owner" || authority.isTaskAssignee
-          ? ["thread.interrupt"]
+          ? ["agent.interrupt"]
           : []),
       ];
     default:
@@ -738,16 +904,20 @@ export function createBindingBackedRoomCommandHandler(
     if (typeof task.title === "string" && task.title.length > 0) {
       return task.title;
     }
-    return (
-      scope.thread.title ??
-      scope.thread.titleFallback ??
-      "Room work"
-    );
+    return scope.thread.title ?? scope.thread.titleFallback ?? "Room work";
   }
 
   return Object.freeze({
-    async capabilities(scope: RoomCommandScope): Promise<string[]> {
-      const authority = await currentAuthority(scope);
+    readAuthority(
+      scope: RoomCommandScope,
+    ): Promise<WorkTogetherRoomCommandAuthorityV1> {
+      return currentAuthority(scope);
+    },
+
+    capabilities(
+      scope: RoomCommandScope,
+      authority: WorkTogetherRoomCommandAuthorityV1,
+    ): string[] {
       const capabilities = statusCapabilities(scope.thread.status, authority);
       if (
         canAnswerInteraction(authority) &&
@@ -761,10 +931,7 @@ export function createBindingBackedRoomCommandHandler(
       ) {
         capabilities.push("interaction.approve");
       }
-      if (
-        canPublishBranch(authority) &&
-        scope.thread.status === "idle"
-      ) {
+      if (canPublishBranch(authority) && scope.thread.status === "idle") {
         capabilities.push("branch.publish");
       }
       capabilities.push("read.mark");
@@ -776,6 +943,7 @@ export function createBindingBackedRoomCommandHandler(
       rawCommand: RoomJsonObject,
     ): Promise<RoomDistributionCommandResultV1> {
       const publicCommand = decodeCommand(rawCommand);
+      const stream = scope.publicStream;
       // Exact replay / identity conflict are decided from the durable ledger
       // before capability availability, so a resolved interaction or post-
       // interrupt thread status cannot suppress already-accepted receipts.
@@ -787,30 +955,38 @@ export function createBindingBackedRoomCommandHandler(
         const replay = replayCommand(scope, publicCommand, existingAdmission);
         if (
           replay !== null &&
-          existingAdmission.commandKind === commandKind(publicCommand) &&
+          existingAdmission.commandKind === storedCommandKind(publicCommand) &&
           existingAdmission.requestFingerprint === commandFingerprint(replay) &&
           existingAdmission.actor.principalId === scope.principal.id &&
           existingAdmission.actor.principalKind === scope.principal.kind
         ) {
           return Object.freeze({
             status: 200,
-            body: commandReceipt({
-              admission: existingAdmission,
-              kind: "replayed",
-            }),
+            body: commandReceipt(
+              {
+                admission: existingAdmission,
+                kind: "replayed",
+              },
+              stream,
+            ),
           });
         }
-        return rejectedReceipt(publicCommand, "request_identity_conflict");
+        return rejectedReceipt(
+          publicCommand,
+          "request_identity_conflict",
+          stream,
+        );
       }
       const authority = await currentAuthority(scope);
-      if (!commandAvailable(deps, publicCommand, scope, authority)) unavailable();
+      if (!commandAvailable(deps, publicCommand, scope, authority))
+        unavailable();
       const command =
         publicCommand.kind === "message.steer" ||
         publicCommand.kind === "thread.interrupt"
           ? executableTurnCommand(deps, scope, publicCommand)
           : publicCommand;
       if (command === null) {
-        return rejectedReceipt(publicCommand, "turn_mismatch");
+        return rejectedReceipt(publicCommand, "turn_mismatch", stream);
       }
       const actor = actorStampFromPrincipal(scope.principal);
       let result;
@@ -900,29 +1076,33 @@ export function createBindingBackedRoomCommandHandler(
         if (recovered !== null) {
           return Object.freeze({
             status: 200,
-            body: commandReceipt({ admission: recovered, kind: "replayed" }),
+            body: commandReceipt(
+              { admission: recovered, kind: "replayed" },
+              stream,
+            ),
           });
         }
         if (error instanceof ApiError) {
-          return rejectedReceipt(publicCommand, rejectionReason(error));
+          return rejectedReceipt(publicCommand, rejectionReason(error), stream);
         }
         deps.logger.warn(
-          { err: error, commandKind: publicCommand.kind },
+          { err: error, commandKind: publicCommandKind(publicCommand) },
           "Room command outcome is indeterminate",
         );
         return Object.freeze({
           status: 200,
           body: {
-            schemaVersion: 1,
+            schemaVersion: 2,
             outcome: "indeterminate",
             requestId: publicCommand.requestId,
-            commandKind: publicCommand.kind,
+            commandKind: publicCommandKind(publicCommand),
+            stream,
           },
         });
       }
       return Object.freeze({
         status: result.kind === "accepted" ? 202 : 200,
-        body: commandReceipt(result),
+        body: commandReceipt(result, stream),
       });
     },
   });

@@ -43,6 +43,7 @@ import {
   seedThreadRuntimeState,
   seedTurnStarted,
 } from "../helpers/seed.js";
+import { createUserQuestionPayload } from "../helpers/pending-interactions.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
 const PRINCIPAL: Principal = Object.freeze({
@@ -65,6 +66,7 @@ const MEMBER_AUTHORITY = Object.freeze({
   read: async () =>
     Object.freeze({ role: "member" as const, isTaskAssignee: false }),
 });
+const PRIMARY_STREAM = Object.freeze({ kind: "primary" as const });
 
 function context(
   bindingId: string,
@@ -239,7 +241,7 @@ describe("binding-backed Work Together Room distribution", () => {
 
       const bootstrap = await distribution.bootstrap(context(launch.bindingId));
       expect(bootstrap).toMatchObject({
-        schemaVersion: 1,
+        schemaVersion: 2,
         binding: { id: launch.bindingId, state: "active" },
         cell: { connection: "ready" },
         task: { id: launch.taskId, title: "Canonical task" },
@@ -249,6 +251,7 @@ describe("binding-backed Work Together Room distribution", () => {
           generatedBranch: launch.generatedBranch,
         },
         capabilities: ["read.mark"],
+        subagents: [],
       });
       const ownerDistribution = createBindingBackedRoomDistributionV1(
         harness.deps,
@@ -259,7 +262,7 @@ describe("binding-backed Work Together Room distribution", () => {
       await expect(
         ownerDistribution.bootstrap(context(launch.bindingId)),
       ).resolves.toMatchObject({
-        capabilities: ["thread.interrupt", "read.mark"],
+        capabilities: ["agent.interrupt", "read.mark"],
       });
       expect(taskProjection.read).toHaveBeenCalledWith({
         bindingId: launch.bindingId,
@@ -275,7 +278,7 @@ describe("binding-backed Work Together Room distribution", () => {
       expect(wire).toContain("participant_");
 
       const first = await distribution.events(context(launch.bindingId), {
-        childAttachmentId: null,
+        subagentId: null,
         cursor: "s.0",
       });
       expect(first.changed).toBe(true);
@@ -283,7 +286,7 @@ describe("binding-backed Work Together Room distribution", () => {
       const cursor = first.cursor as string;
       await expect(
         distribution.events(context(launch.bindingId), {
-          childAttachmentId: null,
+          subagentId: null,
           cursor,
         }),
       ).resolves.toMatchObject({ changed: false, timeline: null, cursor });
@@ -330,7 +333,7 @@ describe("binding-backed Work Together Room distribution", () => {
       const emitted: unknown[] = [];
       const subscription = await distribution.subscribe(
         context(launch.bindingId),
-        { childAttachmentId: null, cursor: null },
+        { subagentId: null, cursor: null },
         (event) => emitted.push(event),
       );
       expect(emitted).toEqual([
@@ -460,6 +463,7 @@ describe("binding-backed Work Together Room distribution", () => {
         kind: "message.send",
         requestId: "creq_23456789ab",
         text: "Queue this exact message",
+        stream: PRIMARY_STREAM,
       } as const;
 
       const activeBootstrap = await distribution.bootstrap(
@@ -483,6 +487,7 @@ describe("binding-backed Work Together Room distribution", () => {
           requestId: "creq_23456789ag",
           expectedTurnId: turnId,
           text: "Reject a private turn identifier",
+          stream: PRIMARY_STREAM,
         }),
       ).rejects.toMatchObject({ kind: "not_found" });
 
@@ -493,11 +498,13 @@ describe("binding-backed Work Together Room distribution", () => {
       expect(accepted).toMatchObject({
         status: 202,
         body: {
+          schemaVersion: 2,
           outcome: "accepted",
           requestId: command.requestId,
           commandKind: "message.send",
           admissionSequence: 1,
           result: { disposition: "queued" },
+          stream: PRIMARY_STREAM,
         },
       });
       expect(accepted.body.result).toEqual({ disposition: "queued" });
@@ -509,9 +516,11 @@ describe("binding-backed Work Together Room distribution", () => {
       expect(replayed).toMatchObject({
         status: 200,
         body: {
+          schemaVersion: 2,
           outcome: "already-accepted",
           requestId: command.requestId,
           admissionSequence: 1,
+          stream: PRIMARY_STREAM,
         },
       });
       expect(
@@ -532,13 +541,16 @@ describe("binding-backed Work Together Room distribution", () => {
           requestId: "creq_23456789ad",
           expectedTurnId: publicTurnId,
           text: "Steer this exact turn",
+          stream: PRIMARY_STREAM,
         }),
       ).resolves.toMatchObject({
         status: 202,
         body: {
+          schemaVersion: 2,
           outcome: "accepted",
           commandKind: "message.steer",
           result: { disposition: "steered" },
+          stream: PRIMARY_STREAM,
         },
       });
       expect(
@@ -559,15 +571,17 @@ describe("binding-backed Work Together Room distribution", () => {
             publicStreamId: "wrong_child_stream",
           }),
           text: "Do not leak the active turn",
+          stream: PRIMARY_STREAM,
         }),
       ).resolves.toEqual({
         status: 200,
         body: {
-          schemaVersion: 1,
+          schemaVersion: 2,
           outcome: "rejected",
           requestId: "creq_23456789af",
           commandKind: "message.steer",
           reason: "turn_mismatch",
+          stream: PRIMARY_STREAM,
         },
       });
       await expect(
@@ -578,18 +592,20 @@ describe("binding-backed Work Together Room distribution", () => {
       ).resolves.toEqual({
         status: 200,
         body: {
-          schemaVersion: 1,
+          schemaVersion: 2,
           outcome: "rejected",
           requestId: command.requestId,
           commandKind: "message.send",
           reason: "request_identity_conflict",
+          stream: PRIMARY_STREAM,
         },
       });
       await expect(
         distribution.execute(context(launch.bindingId), {
-          kind: "thread.interrupt",
+          kind: "agent.interrupt",
           requestId: "creq_23456789ac",
           expectedTurnId: publicTurnId,
+          stream: PRIMARY_STREAM,
         }),
       ).rejects.toMatchObject({ kind: "not_found" });
       expect(
@@ -601,42 +617,52 @@ describe("binding-backed Work Together Room distribution", () => {
       policyFacts = { role: "owner", isTaskAssignee: false };
       await expect(
         distribution.execute(context(launch.bindingId), {
-          kind: "thread.interrupt",
+          kind: "agent.interrupt",
           requestId: "creq_23456789ae",
           expectedTurnId: publicTurnId,
+          stream: PRIMARY_STREAM,
         }),
       ).resolves.toMatchObject({
         status: 202,
         body: {
+          schemaVersion: 2,
           outcome: "accepted",
-          commandKind: "thread.interrupt",
+          commandKind: "agent.interrupt",
           result: { disposition: "interrupted" },
+          stream: PRIMARY_STREAM,
         },
       });
       await expect(
         distribution.execute(context(launch.bindingId), {
-          kind: "thread.interrupt",
+          kind: "agent.interrupt",
           requestId: "creq_23456789ae",
           expectedTurnId: publicTurnId,
+          stream: PRIMARY_STREAM,
         }),
       ).resolves.toMatchObject({
         status: 200,
         body: {
+          schemaVersion: 2,
           outcome: "already-accepted",
-          commandKind: "thread.interrupt",
+          commandKind: "agent.interrupt",
+          stream: PRIMARY_STREAM,
         },
       });
       await expect(
         distribution.execute(context(launch.bindingId), {
-          kind: "thread.interrupt",
+          kind: "agent.interrupt",
           requestId: "creq_23456789ae",
           expectedTurnId: `turn_${"B".repeat(43)}`,
+          stream: PRIMARY_STREAM,
         }),
       ).resolves.toMatchObject({
         status: 200,
         body: {
+          schemaVersion: 2,
           outcome: "rejected",
           reason: "request_identity_conflict",
+          commandKind: "agent.interrupt",
+          stream: PRIMARY_STREAM,
         },
       });
       // Replay and identity-conflict paths resolve from the durable ledger
@@ -649,10 +675,43 @@ describe("binding-backed Work Together Room distribution", () => {
           actor: "user_spoofed",
         }),
       ).rejects.toMatchObject({ kind: "not_found" });
+      await expect(
+        distribution.execute(context(launch.bindingId), {
+          kind: "message.send",
+          requestId: "creq_23456789ah",
+          text: "V1 body without stream",
+        }),
+      ).rejects.toMatchObject({ kind: "not_found" });
+      await expect(
+        distribution.execute(context(launch.bindingId), {
+          ...command,
+          stream: null,
+        }),
+      ).rejects.toMatchObject({ kind: "not_found" });
+      await expect(
+        distribution.execute(context(launch.bindingId), {
+          ...command,
+          stream: { kind: "primary", extra: true },
+        }),
+      ).rejects.toMatchObject({ kind: "not_found" });
+      await expect(
+        distribution.execute(context(launch.bindingId), {
+          ...command,
+          stream: { kind: "subagent" },
+        }),
+      ).rejects.toMatchObject({ kind: "not_found" });
+      await expect(
+        distribution.execute(context(launch.bindingId), {
+          kind: "thread.interrupt",
+          requestId: "creq_23456789ai",
+          expectedTurnId: publicTurnId,
+          stream: PRIMARY_STREAM,
+        }),
+      ).rejects.toMatchObject({ kind: "not_found" });
     });
   });
 
-  it("reconciles opaque child attachments and keeps each child on its own authorized stream", async () => {
+  it("publishes exact direct and nested Subagents while keeping each on its own authorized stream", async () => {
     await withTestHarness(async (harness) => {
       const candidateHostId = randomUUID();
       const { host } = seedHostSession(harness.deps, { id: createHostId() });
@@ -690,8 +749,47 @@ describe("binding-backed Work Together Room distribution", () => {
         projectId: provisioned.projectId,
         environmentId: provisioned.environmentId,
         parentThreadId: child.id,
+        status: "active",
         title: "Nested worker",
       });
+      seedMessageTurn(harness.deps, {
+        environmentId: provisioned.environmentId,
+        firstTurn: true,
+        requestId: 901,
+        startSequence: 1,
+        text: "Direct result",
+        threadId: child.id,
+        turnId: "turn_direct_result",
+      });
+      seedMessageTurn(harness.deps, {
+        environmentId: provisioned.environmentId,
+        requestId: 901,
+        startSequence:
+          getLatestThreadSequence(harness.db, {
+            threadId: provisioned.primaryThreadId,
+          }) + 1,
+        text: "Direct result",
+        threadId: provisioned.primaryThreadId,
+        turnId: "turn_direct_result",
+      });
+      const grandchildTurnId = "turn_nested_question";
+      seedTurnStarted(harness.deps, {
+        environmentId: provisioned.environmentId,
+        threadId: grandchild.id,
+        turnId: grandchildTurnId,
+      });
+      const pendingQuestion =
+        harness.deps.pendingInteractions.registerPendingInteraction({
+          interaction: {
+            threadId: grandchild.id,
+            turnId: grandchildTurnId,
+            providerId: "codex",
+            providerThreadId: "provider-nested-question",
+            providerRequestId: "request-nested-question",
+            payload: createUserQuestionPayload(),
+          },
+        });
+      expect(pendingQuestion.outcome).toBe("created");
       const ids = new Map([
         [child.id, randomUUID()],
         [grandchild.id, randomUUID()],
@@ -715,26 +813,43 @@ describe("binding-backed Work Together Room distribution", () => {
         }),
         list: vi.fn(async () => Object.freeze([...attached])),
       };
+      const commandAuthority = {
+        read: vi.fn(async () =>
+          Object.freeze({ role: "member" as const, isTaskAssignee: false }),
+        ),
+      };
       const distribution = createBindingBackedRoomDistributionV1(
         harness.deps,
         { read: async () => ({ id: launch.taskId, title: "Task" }) },
         childAuthority,
-        MEMBER_AUTHORITY,
+        commandAuthority,
       );
 
       const bootstrap = await distribution.bootstrap(context(launch.bindingId));
-      expect(bootstrap.children).toEqual([
-        expect.objectContaining({
+      expect(bootstrap).toMatchObject({ schemaVersion: 2 });
+      expect(bootstrap.subagents).toEqual([
+        {
+          schemaVersion: 1,
           id: ids.get(child.id),
-          parentId: null,
-          stream: { child: ids.get(child.id) },
-        }),
-        expect.objectContaining({
+          parent: { kind: "primary", id: launch.bindingId },
+          label: "Direct worker",
+          summary: "Direct result — answered.",
+          lifecycle: "completed",
+          attention: { kind: "none" },
+          capabilities: ["message.send"],
+        },
+        {
+          schemaVersion: 1,
           id: ids.get(grandchild.id),
-          parentId: ids.get(child.id),
-          stream: { child: ids.get(grandchild.id) },
-        }),
+          parent: { kind: "subagent", id: ids.get(child.id) },
+          label: "Nested worker",
+          summary: null,
+          lifecycle: "running",
+          attention: { kind: "question" },
+          capabilities: ["message.send", "message.steer", "interaction.answer"],
+        },
       ]);
+      expect(commandAuthority.read).toHaveBeenCalledTimes(1);
       expect(childAuthority.attach).toHaveBeenNthCalledWith(1, {
         bindingId: launch.bindingId,
         workspaceId: launch.workspaceId,
@@ -750,15 +865,71 @@ describe("binding-backed Work Together Room distribution", () => {
       const wire = JSON.stringify(bootstrap);
       expect(wire).not.toContain(child.id);
       expect(wire).not.toContain(grandchild.id);
+      expect(wire).not.toContain(provisioned.environmentId);
+      expect(wire).not.toContain(provisioned.projectId);
+      expect(wire).not.toContain('"children"');
 
+      const initialChildEvents = await distribution.events(
+        context(launch.bindingId),
+        {
+          subagentId: ids.get(child.id)!,
+          cursor: null,
+        },
+      );
+      expect(initialChildEvents).toMatchObject({
+        schemaVersion: 1,
+        changed: true,
+        timeline: { rows: expect.any(Array) },
+      });
       const childEvents = await distribution.events(context(launch.bindingId), {
-        childAttachmentId: ids.get(child.id)!,
+        subagentId: ids.get(child.id)!,
         cursor: "s.0",
       });
-      expect(JSON.stringify(childEvents)).not.toContain(child.id);
+      expect(childEvents.timeline).toEqual(initialChildEvents.timeline);
+      const childEventsWire = JSON.stringify(childEvents);
+      expect(childEventsWire).not.toContain(child.id);
+      expect(childEventsWire).not.toContain("turn_direct_result");
+      const primaryRowIds = new Set(
+        (bootstrap.timeline as { rows: Array<{ id: string }> }).rows.map(
+          (row) => row.id,
+        ),
+      );
+      const childRows = (
+        initialChildEvents.timeline as { rows: Array<{ id: string }> }
+      ).rows;
+      expect(childRows.length).toBeGreaterThan(0);
+      expect(childRows.every((row) => !primaryRowIds.has(row.id))).toBe(true);
+      expect(
+        deriveWorkTogetherRoomPublicTurnId({
+          bindingId: launch.bindingId,
+          privateTurnId: "turn_direct_result",
+          publicStreamId: ids.get(child.id)!,
+        }),
+      ).not.toBe(
+        deriveWorkTogetherRoomPublicTurnId({
+          bindingId: launch.bindingId,
+          privateTurnId: "turn_direct_result",
+          publicStreamId: launch.bindingId,
+        }),
+      );
+      const wrongAncestryAttachmentId = randomUUID();
+      attached.push(
+        Object.freeze({
+          id: wrongAncestryAttachmentId,
+          childThreadId: child.id,
+          parentThreadId: grandchild.id,
+        }),
+      );
       await expect(
         distribution.events(context(launch.bindingId), {
-          childAttachmentId: randomUUID(),
+          subagentId: wrongAncestryAttachmentId,
+          cursor: null,
+        }),
+      ).rejects.toMatchObject({ kind: "not_found" });
+      expect(attached.pop()?.id).toBe(wrongAncestryAttachmentId);
+      await expect(
+        distribution.events(context(launch.bindingId), {
+          subagentId: randomUUID(),
           cursor: null,
         }),
       ).rejects.toMatchObject({ kind: "not_found" });
@@ -781,15 +952,64 @@ describe("binding-backed Work Together Room distribution", () => {
       );
       await expect(
         distribution.events(context(launch.bindingId), {
-          childAttachmentId: crossRoomAttachmentId,
+          subagentId: crossRoomAttachmentId,
           cursor: null,
         }),
       ).rejects.toMatchObject({ kind: "not_found" });
 
+      const emptySubagent = seedThread(harness.deps, {
+        projectId: provisioned.projectId,
+        environmentId: provisioned.environmentId,
+        parentThreadId: provisioned.primaryThreadId,
+        title: "Created worker",
+      });
+      const emptySubagentId = randomUUID();
+      attached.push(
+        Object.freeze({
+          id: emptySubagentId,
+          childThreadId: emptySubagent.id,
+          parentThreadId: provisioned.primaryThreadId,
+        }),
+      );
+      await expect(
+        distribution.events(context(launch.bindingId), {
+          subagentId: emptySubagentId,
+          cursor: null,
+        }),
+      ).resolves.toEqual({
+        schemaVersion: 1,
+        cursor: "s.0",
+        changed: true,
+        timeline: {
+          rows: [],
+          working: false,
+          activeTurnId: null,
+          hasOlder: false,
+          olderCursor: null,
+        },
+      });
+      await expect(
+        distribution.events(context(launch.bindingId), {
+          subagentId: emptySubagentId,
+          cursor: "s.0",
+        }),
+      ).resolves.toEqual({
+        schemaVersion: 1,
+        cursor: "s.0",
+        changed: false,
+        timeline: null,
+      });
+      expect(attached.pop()?.id).toBe(emptySubagentId);
+      harness.db
+        .update(threads)
+        .set({ deletedAt: Date.now() })
+        .where(eq(threads.id, emptySubagent.id))
+        .run();
+
       const emitted: unknown[] = [];
       const subscription = await distribution.subscribe(
         context(launch.bindingId),
-        { childAttachmentId: ids.get(child.id)!, cursor: null },
+        { subagentId: ids.get(child.id)!, cursor: null },
         (event) => emitted.push(event),
       );
       harness.hub.notifyThread(provisioned.primaryThreadId, [
@@ -821,6 +1041,108 @@ describe("binding-backed Work Together Room distribution", () => {
       harness.hub.notifyThread(child.id, ["events-appended"]);
       expect(emitted).toHaveLength(2);
       subscription.close();
+
+      attached.push(
+        Object.freeze({
+          id: randomUUID(),
+          childThreadId: "missing-orphan-thread",
+          parentThreadId: "missing-parent-thread",
+        }),
+      );
+      await expect(
+        distribution.bootstrap(context(launch.bindingId)),
+      ).rejects.toMatchObject({ kind: "unavailable" });
+      attached.splice(2);
+
+      for (let index = 0; index < 63; index += 1) {
+        attached.push(
+          Object.freeze({
+            id: randomUUID(),
+            childThreadId: `missing-overflow-thread-${index}`,
+            parentThreadId: provisioned.primaryThreadId,
+          }),
+        );
+      }
+      await expect(
+        distribution.bootstrap(context(launch.bindingId)),
+      ).rejects.toMatchObject({ kind: "unavailable" });
+      attached.splice(2);
+
+      const unresolvedAttachmentId = randomUUID();
+      attached.push(
+        Object.freeze({
+          id: unresolvedAttachmentId,
+          childThreadId: "missing-local-thread",
+          parentThreadId: provisioned.primaryThreadId,
+        }),
+      );
+      const unresolvedBootstrap = await distribution.bootstrap(
+        context(launch.bindingId),
+      );
+      expect(unresolvedBootstrap.subagents).toEqual([
+        {
+          schemaVersion: 1,
+          id: ids.get(child.id),
+          parent: { kind: "primary", id: launch.bindingId },
+          label: "Direct worker",
+          summary: "Direct result — answered.",
+          lifecycle: "completed",
+          attention: { kind: "none" },
+          capabilities: ["message.send"],
+        },
+        {
+          schemaVersion: 1,
+          id: ids.get(grandchild.id),
+          parent: { kind: "subagent", id: ids.get(child.id) },
+          label: "Nested worker",
+          summary: null,
+          lifecycle: "running",
+          attention: { kind: "question" },
+          capabilities: ["message.send", "message.steer", "interaction.answer"],
+        },
+        {
+          schemaVersion: 1,
+          id: unresolvedAttachmentId,
+          parent: { kind: "primary", id: launch.bindingId },
+          label: "Untitled subagent",
+          summary: null,
+          lifecycle: "unavailable",
+          attention: { kind: "none" },
+          capabilities: [],
+        },
+      ]);
+      attached.pop();
+
+      const malformedTurnId = "turn_malformed_root_outcome";
+      seedTurnStarted(harness.deps, {
+        environmentId: provisioned.environmentId,
+        threadId: child.id,
+        turnId: malformedTurnId,
+      });
+      harness.db
+        .insert(events)
+        .values({
+          id: createEventId(),
+          threadId: child.id,
+          environmentId: provisioned.environmentId,
+          scopeKind: "turn",
+          turnId: malformedTurnId,
+          providerThreadId: "provider-malformed-root-outcome",
+          sequence:
+            getLatestThreadSequence(harness.db, { threadId: child.id }) + 1,
+          type: "turn/completed",
+          itemId: null,
+          itemKind: null,
+          actorPrincipalId: null,
+          actorKind: null,
+          actorDisplayName: null,
+          data: JSON.stringify({ status: "corrupt" }),
+          createdAt: Date.now(),
+        })
+        .run();
+      await expect(
+        distribution.bootstrap(context(launch.bindingId)),
+      ).rejects.toMatchObject({ kind: "unavailable" });
     });
   });
 
@@ -841,7 +1163,7 @@ describe("binding-backed Work Together Room distribution", () => {
       });
       await expect(
         distribution.events(missing, {
-          childAttachmentId: null,
+          subagentId: null,
           cursor: "s.9999999999999999",
         }),
       ).rejects.toBeInstanceOf(RoomDistributionUnavailableError);
@@ -929,18 +1251,18 @@ describe("binding-backed Work Together Room distribution", () => {
         parentThreadId: provisioned.primaryThreadId,
         title: "Worker",
       });
-      const childAttachmentId = randomUUID();
+      const subagentId = randomUUID();
       const childAttachments: WorkTogetherRoomChildAttachmentPortV1 = {
         attach: async () =>
           Object.freeze({
-            id: childAttachmentId,
+            id: subagentId,
             childThreadId: child.id,
             parentThreadId: provisioned.primaryThreadId,
           }),
         list: async () =>
           Object.freeze([
             {
-              id: childAttachmentId,
+              id: subagentId,
               childThreadId: child.id,
               parentThreadId: provisioned.primaryThreadId,
             },
@@ -968,7 +1290,7 @@ describe("binding-backed Work Together Room distribution", () => {
       const aliceEvents: unknown[] = [];
       const aliceA = await distribution.subscribe(
         context(launch.bindingId, PRINCIPAL),
-        { childAttachmentId: null, cursor: null },
+        { subagentId: null, cursor: null },
         (event) => aliceEvents.push(event),
       );
       expect(aliceEvents).toContainEqual({
@@ -982,7 +1304,7 @@ describe("binding-backed Work Together Room distribution", () => {
       const aliceBEvents: unknown[] = [];
       const aliceB = await distribution.subscribe(
         context(launch.bindingId, PRINCIPAL),
-        { childAttachmentId: null, cursor: null },
+        { subagentId: null, cursor: null },
         (event) => aliceBEvents.push(event),
       );
       // Same principal, two sockets: still unique count 1.
@@ -1000,7 +1322,7 @@ describe("binding-backed Work Together Room distribution", () => {
       const bobEvents: unknown[] = [];
       const bob = await distribution.subscribe(
         context(launch.bindingId, PRINCIPAL_B),
-        { childAttachmentId: null, cursor: null },
+        { subagentId: null, cursor: null },
         (event) => bobEvents.push(event),
       );
       expect(bobEvents).toContainEqual({
@@ -1025,7 +1347,7 @@ describe("binding-backed Work Together Room distribution", () => {
       const childEvents: unknown[] = [];
       const childSub = await distribution.subscribe(
         context(launch.bindingId, PRINCIPAL_B),
-        { childAttachmentId, cursor: null },
+        { subagentId, cursor: null },
         (event) => childEvents.push(event),
       );
       expect(
@@ -1149,7 +1471,7 @@ describe("binding-backed Work Together Room distribution", () => {
       });
 
       const events = await distribution.events(context(launch.bindingId), {
-        childAttachmentId: null,
+        subagentId: null,
         cursor: "s.0",
       });
       expect(events.cursor).toBe(liveCursor);
@@ -1159,6 +1481,7 @@ describe("binding-backed Work Together Room distribution", () => {
       });
 
       const older = await distribution.timeline(context(launch.bindingId), {
+        subagentId: null,
         before: latestTimeline.olderCursor!,
       });
       expect(older).toMatchObject({
@@ -1206,7 +1529,7 @@ describe("binding-backed Work Together Room distribution", () => {
       // Live high-water remains unchanged after older reads.
       await expect(
         distribution.events(context(launch.bindingId), {
-          childAttachmentId: null,
+          subagentId: null,
           cursor: liveCursor,
         }),
       ).resolves.toMatchObject({
@@ -1217,22 +1540,309 @@ describe("binding-backed Work Together Room distribution", () => {
 
       await expect(
         distribution.timeline(context(launch.bindingId), {
+          subagentId: null,
           before: "p.0",
         }),
       ).rejects.toMatchObject({ kind: "not_found" });
       await expect(
         distribution.timeline(context(launch.bindingId), {
+          subagentId: null,
           before: "s.1",
         }),
       ).rejects.toMatchObject({ kind: "not_found" });
       await expect(
         distribution.timeline(context(launch.bindingId), {
+          subagentId: null,
           before: "p.999999999",
         }),
       ).rejects.toMatchObject({ kind: "not_found" });
       await expect(
         distribution.timeline(context(launch.bindingId), {
+          subagentId: null,
           before: "not-a-cursor",
+        }),
+      ).rejects.toMatchObject({ kind: "not_found" });
+    });
+  });
+
+  it("pages Subagent older history on the current attachment stream", async () => {
+    await withTestHarness(async (harness) => {
+      const candidateHostId = randomUUID();
+      const { host } = seedHostSession(harness.deps, { id: createHostId() });
+      const launch = {
+        bindingId: randomUUID(),
+        workspaceId: randomUUID(),
+        taskId: randomUUID(),
+        cellId: randomUUID(),
+        repositoryBindingId: randomUUID(),
+        repositoryBindingVersion: 1,
+        providerRepositoryId: "204",
+        baseBranch: "main",
+        generatedBranch: "rooms/subagent-older-pages",
+        candidateHostId,
+        environmentTemplate: "managed-worktree" as const,
+      };
+      const provisioned = await createWorkTogetherRoomResourceProvisioner(
+        harness.deps,
+        {
+          resolve: () => ({
+            bbHostId: host.id,
+            projectName: "Subagent Older Pages Repository",
+            providerId: "codex",
+            sourcePath: "/srv/work-together/subagent-older-pages",
+          }),
+        },
+      ).provision({ principal: PRINCIPAL, launch });
+      const child = seedThread(harness.deps, {
+        projectId: provisioned.projectId,
+        environmentId: provisioned.environmentId,
+        parentThreadId: provisioned.primaryThreadId,
+        title: "Older worker",
+      });
+      const grandchild = seedThread(harness.deps, {
+        projectId: provisioned.projectId,
+        environmentId: provisioned.environmentId,
+        parentThreadId: child.id,
+        title: "Nested older worker",
+      });
+      const childBaseSequence =
+        getLatestThreadSequence(harness.db, { threadId: child.id }) + 1;
+      for (let turn = 1; turn <= 22; turn += 1) {
+        seedMessageTurn(harness.deps, {
+          environmentId: provisioned.environmentId,
+          firstTurn: turn === 1 && childBaseSequence === 1,
+          requestId: 300 + turn,
+          startSequence: childBaseSequence + (turn - 1) * 5,
+          text:
+            turn === 1
+              ? `Child older ${turn} ${child.id}`
+              : `Child older ${turn}`,
+          threadId: child.id,
+          turnId: `turn_subagent_older_${turn}`,
+        });
+      }
+      const primaryBaseSequence =
+        getLatestThreadSequence(harness.db, {
+          threadId: provisioned.primaryThreadId,
+        }) + 1;
+      seedMessageTurn(harness.deps, {
+        environmentId: provisioned.environmentId,
+        firstTurn: primaryBaseSequence === 1,
+        requestId: 400,
+        startSequence: primaryBaseSequence,
+        text: "Primary overlap probe",
+        threadId: provisioned.primaryThreadId,
+        turnId: "turn_subagent_older_1",
+      });
+      const subagentId = randomUUID();
+      const nestedId = randomUUID();
+      const attached: WorkTogetherRoomChildAttachmentV1[] = [
+        Object.freeze({
+          id: subagentId,
+          childThreadId: child.id,
+          parentThreadId: provisioned.primaryThreadId,
+        }),
+        Object.freeze({
+          id: nestedId,
+          childThreadId: grandchild.id,
+          parentThreadId: child.id,
+        }),
+      ];
+      const childAuthority: WorkTogetherRoomChildAttachmentPortV1 = {
+        attach: vi.fn(async () => {
+          throw new Error("older reads must not reconcile attachments");
+        }),
+        list: vi.fn(async () => Object.freeze([...attached])),
+      };
+      const distribution = createBindingBackedRoomDistributionV1(
+        harness.deps,
+        { read: async () => ({ id: launch.taskId, title: "Task" }) },
+        childAuthority,
+        MEMBER_AUTHORITY,
+      );
+
+      const latest = await distribution.events(context(launch.bindingId), {
+        subagentId,
+        cursor: null,
+      });
+      const latestTimeline = latest.timeline as {
+        hasOlder: boolean;
+        olderCursor: string | null;
+        rows: Array<{ id: string; kind: string; text?: string }>;
+        activeTurnId: string | null;
+      };
+      expect(latestTimeline.hasOlder).toBe(true);
+      expect(latestTimeline.olderCursor).toMatch(/^p\.[1-9][0-9]*$/u);
+      const latestRowIds = latestTimeline.rows.map((row) => row.id);
+      expect(latestRowIds.length).toBeGreaterThan(0);
+      expect(childAuthority.list).toHaveBeenCalledTimes(1);
+
+      const older = await distribution.timeline(context(launch.bindingId), {
+        subagentId,
+        before: latestTimeline.olderCursor!,
+      });
+      expect(childAuthority.list).toHaveBeenCalledTimes(2);
+      expect(older).toMatchObject({
+        schemaVersion: 1,
+        timeline: {
+          hasOlder: expect.any(Boolean),
+          activeTurnId: null,
+          working: false,
+        },
+      });
+      expect(older).not.toHaveProperty("cursor");
+      expect(older).not.toHaveProperty("changed");
+      const olderTimeline = older.timeline as {
+        hasOlder: boolean;
+        olderCursor: string | null;
+        rows: Array<{ id: string; kind: string; text?: string }>;
+      };
+      const olderRowIds = olderTimeline.rows.map((row) => row.id);
+      expect(olderRowIds.length).toBeGreaterThan(0);
+      expect(olderRowIds.some((id) => latestRowIds.includes(id))).toBe(false);
+      const olderTexts = olderTimeline.rows
+        .filter((row) => row.kind === "conversation" && row.text !== undefined)
+        .map((row) => row.text as string);
+      expect(olderTexts.some((text) => text.includes(subagentId))).toBe(true);
+      expect(
+        olderTexts.some(
+          (text) =>
+            text.includes("Child older 22") || text.includes("Child older 21"),
+        ),
+      ).toBe(false);
+      const olderWire = JSON.stringify(older);
+      expect(olderWire).not.toContain(child.id);
+      expect(olderWire).not.toContain(grandchild.id);
+      expect(olderWire).not.toContain("turn_subagent_older_");
+      expect(olderWire).not.toContain("work-together-room-older-page");
+      assertNoPrivateTimelineLeak(olderWire, {
+        environmentId: provisioned.environmentId,
+        principalIds: [PRINCIPAL.id],
+        primaryThreadId: provisioned.primaryThreadId,
+        projectId: provisioned.projectId,
+      });
+      const primaryLatest = await distribution.events(
+        context(launch.bindingId),
+        { subagentId: null, cursor: null },
+      );
+      const primaryRowIds = (
+        primaryLatest.timeline as { rows: Array<{ id: string }> }
+      ).rows.map((row) => row.id);
+      expect(olderRowIds.some((id) => primaryRowIds.includes(id))).toBe(false);
+      expect(
+        deriveWorkTogetherRoomPublicTurnId({
+          bindingId: launch.bindingId,
+          privateTurnId: "turn_subagent_older_1",
+          publicStreamId: subagentId,
+        }),
+      ).not.toBe(
+        deriveWorkTogetherRoomPublicTurnId({
+          bindingId: launch.bindingId,
+          privateTurnId: "turn_subagent_older_1",
+          publicStreamId: launch.bindingId,
+        }),
+      );
+
+      seedMessageTurn(harness.deps, {
+        environmentId: provisioned.environmentId,
+        requestId: 323,
+        startSequence:
+          getLatestThreadSequence(harness.db, { threadId: child.id }) + 1,
+        text: "Child older 23",
+        threadId: child.id,
+        turnId: "turn_subagent_older_23",
+      });
+      const olderAfterTail = await distribution.timeline(
+        context(launch.bindingId),
+        { subagentId, before: latestTimeline.olderCursor! },
+      );
+      expect(childAuthority.list).toHaveBeenCalledTimes(3);
+      const olderAfterTailTimeline = olderAfterTail.timeline as {
+        rows: Array<{ id: string; kind: string; text?: string }>;
+      };
+      expect(olderAfterTailTimeline.rows.map((row) => row.id)).toEqual(
+        olderRowIds,
+      );
+      expect(
+        olderAfterTailTimeline.rows.some((row) =>
+          latestRowIds.includes(row.id),
+        ),
+      ).toBe(false);
+      expect(
+        olderAfterTailTimeline.rows.some(
+          (row) => row.kind === "conversation" && row.text === "Child older 23",
+        ),
+      ).toBe(false);
+
+      await expect(
+        distribution.timeline(context(launch.bindingId), {
+          subagentId,
+          before: "p.999999999",
+        }),
+      ).rejects.toMatchObject({ kind: "not_found" });
+      await expect(
+        distribution.timeline(context(launch.bindingId), {
+          subagentId,
+          before: "s.1",
+        }),
+      ).rejects.toMatchObject({ kind: "not_found" });
+      await expect(
+        distribution.timeline(context(launch.bindingId), {
+          subagentId: randomUUID(),
+          before: latestTimeline.olderCursor!,
+        }),
+      ).rejects.toMatchObject({ kind: "not_found" });
+
+      const wrongAncestryAttachmentId = randomUUID();
+      attached.push(
+        Object.freeze({
+          id: wrongAncestryAttachmentId,
+          childThreadId: child.id,
+          parentThreadId: grandchild.id,
+        }),
+      );
+      await expect(
+        distribution.timeline(context(launch.bindingId), {
+          subagentId: wrongAncestryAttachmentId,
+          before: latestTimeline.olderCursor!,
+        }),
+      ).rejects.toMatchObject({ kind: "not_found" });
+      expect(attached.pop()?.id).toBe(wrongAncestryAttachmentId);
+
+      const otherPrimary = seedThread(harness.deps, {
+        projectId: provisioned.projectId,
+        environmentId: provisioned.environmentId,
+      });
+      const crossRoomChild = seedThread(harness.deps, {
+        projectId: provisioned.projectId,
+        environmentId: provisioned.environmentId,
+        parentThreadId: otherPrimary.id,
+      });
+      const crossRoomAttachmentId = randomUUID();
+      attached.push(
+        Object.freeze({
+          id: crossRoomAttachmentId,
+          childThreadId: crossRoomChild.id,
+          parentThreadId: otherPrimary.id,
+        }),
+      );
+      await expect(
+        distribution.timeline(context(launch.bindingId), {
+          subagentId: crossRoomAttachmentId,
+          before: latestTimeline.olderCursor!,
+        }),
+      ).rejects.toMatchObject({ kind: "not_found" });
+      expect(attached.pop()?.id).toBe(crossRoomAttachmentId);
+
+      attached[0] = Object.freeze({
+        id: subagentId,
+        childThreadId: child.id,
+        parentThreadId: grandchild.id,
+      });
+      await expect(
+        distribution.timeline(context(launch.bindingId), {
+          subagentId,
+          before: latestTimeline.olderCursor!,
         }),
       ).rejects.toMatchObject({ kind: "not_found" });
     });

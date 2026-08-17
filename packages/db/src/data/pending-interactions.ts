@@ -44,6 +44,20 @@ export interface ListPendingInteractionsArgs {
   threadId: string;
 }
 
+export interface ListPendingInteractionsByThreadIdsArgs {
+  statuses?: readonly PendingInteractionStatus[];
+  threadIds: readonly string[];
+}
+
+export const MAX_PENDING_INTERACTION_THREAD_IDS = 64;
+
+export class PendingInteractionThreadIdBoundError extends Error {
+  constructor() {
+    super("pending interaction thread id set exceeds bound");
+    this.name = "PendingInteractionThreadIdBoundError";
+  }
+}
+
 export interface SetPendingInteractionTerminalStateArgs {
   allowedCurrentStatuses?: readonly PendingInteractionStatus[];
   id: string;
@@ -291,6 +305,32 @@ export function listPendingInteractionsByThread(
     .orderBy(desc(pendingInteractions.createdAt));
 
   return args.limit ? query.limit(args.limit).all() : query.all();
+}
+
+export function listPendingInteractionsByThreadIds(
+  db: PendingInteractionReadConnection,
+  args: ListPendingInteractionsByThreadIdsArgs,
+): PendingInteractionRow[] {
+  const uniqueThreadIds = [...new Set(args.threadIds)];
+  if (uniqueThreadIds.length === 0) {
+    return [];
+  }
+  if (uniqueThreadIds.length > MAX_PENDING_INTERACTION_THREAD_IDS) {
+    throw new PendingInteractionThreadIdBoundError();
+  }
+  return db
+    .select()
+    .from(pendingInteractions)
+    .where(
+      and(
+        inArray(pendingInteractions.threadId, uniqueThreadIds),
+        args.statuses && args.statuses.length > 0
+          ? inArray(pendingInteractions.status, [...args.statuses])
+          : undefined,
+      ),
+    )
+    .orderBy(desc(pendingInteractions.createdAt))
+    .all();
 }
 
 export function setPendingInteractionResolved(

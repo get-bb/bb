@@ -18,7 +18,7 @@ import {
 } from "../helpers/test-app.js";
 
 const BINDING_ID = "99999999-aaaa-4bbb-8ccc-dddddddddddd";
-const CHILD_ID = "55555555-6666-4777-8888-999999999999";
+const SUBAGENT_ID = "55555555-6666-4777-8888-999999999999";
 const PRINCIPAL: Principal = Object.freeze({
   id: "user_RoomProcess123",
   kind: "human",
@@ -108,7 +108,7 @@ describe("Room distribution real process boundary", () => {
     expect(commandResponse.status).toBe(202);
 
     const eventsResponse = await fetch(
-      `${server.baseUrl}${PREFIX}/events?child=${CHILD_ID}&cursor=evt%3A7`,
+      `${server.baseUrl}${PREFIX}/events?subagent=${SUBAGENT_ID}&cursor=evt%3A7`,
     );
     expect(eventsResponse.status).toBe(200);
     expect(await eventsResponse.json()).toEqual({
@@ -119,7 +119,7 @@ describe("Room distribution real process boundary", () => {
     const socket = new WebSocket(
       websocketUrl(
         server.baseUrl,
-        `${PREFIX}/subscribe?child=${CHILD_ID}&cursor=evt%3A8`,
+        `${PREFIX}/subscribe?subagent=${SUBAGENT_ID}&cursor=evt%3A8`,
       ),
     );
     const message = await new Promise<string>((resolve, reject) => {
@@ -140,12 +140,12 @@ describe("Room distribution real process boundary", () => {
       { method: "POST", target: `${PREFIX}/commands`, transport: "http" },
       {
         method: "GET",
-        target: `${PREFIX}/events?child=${CHILD_ID}&cursor=evt%3A7`,
+        target: `${PREFIX}/events?subagent=${SUBAGENT_ID}&cursor=evt%3A7`,
         transport: "http",
       },
       {
         method: "GET",
-        target: `${PREFIX}/subscribe?child=${CHILD_ID}&cursor=evt%3A8`,
+        target: `${PREFIX}/subscribe?subagent=${SUBAGENT_ID}&cursor=evt%3A8`,
         transport: "websocket",
       },
     ]);
@@ -154,11 +154,11 @@ describe("Room distribution real process boundary", () => {
     expect(events).toHaveBeenCalledOnce();
     expect(subscribe).toHaveBeenCalledOnce();
     expect(events.mock.calls[0]![1]).toEqual({
-      childAttachmentId: CHILD_ID,
+      subagentId: SUBAGENT_ID,
       cursor: "evt%3A7",
     });
     expect(subscribe.mock.calls[0]![1]).toEqual({
-      childAttachmentId: CHILD_ID,
+      subagentId: SUBAGENT_ID,
       cursor: "evt%3A8",
     });
 

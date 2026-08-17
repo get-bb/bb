@@ -365,6 +365,13 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadDetailQueries, // Detail metadata and parent UI render parentThreadId.
     ],
   },
+  "children-changed": {
+    flush: "debounced",
+    dirty: [
+      dirtyThreadListQueries, // Child set changes sidebar grouping and child filters.
+      dirtyThreadDetailQueries, // Parent detail may render child metadata.
+    ],
+  },
   "environment-changed": {
     flush: "immediate",
     dirty: [

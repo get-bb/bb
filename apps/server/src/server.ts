@@ -662,7 +662,7 @@ export function createApp(
               session,
               target.bindingId,
               target.cursor,
-              target.childAttachmentId,
+              target.subagentId,
             ),
           onMessage: (_event, socket) =>
             roomDistributionSocketProtocol.message(socket),

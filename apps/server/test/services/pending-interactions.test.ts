@@ -2,6 +2,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import {
+  createPendingInteraction,
   events as eventTable,
   pendingInteractions as pendingInteractionTable,
 } from "@bb/db";
@@ -1565,6 +1566,41 @@ describe("pending interaction lifecycle", () => {
           interactionId: created.interaction.id,
         }).status,
       ).toBe("pending");
+    });
+  });
+
+  it("batches pending interaction reads and skips corrupt payloads", async () => {
+    await withTestHarness(async (harness) => {
+      const first = seedPluginInteractionThread(harness.deps, "batch-valid");
+      const second = seedPluginInteractionThread(harness.deps, "batch-corrupt");
+      const created = createPendingInteraction(harness.db, {
+        threadId: first.id,
+        turnId: "turn-batch-valid",
+        providerId: "codex",
+        providerThreadId: "provider-batch-valid",
+        providerRequestId: "request-batch-valid",
+        payload: JSON.stringify(createUserQuestionPayload()),
+      });
+      createPendingInteraction(harness.db, {
+        threadId: second.id,
+        turnId: "turn-batch-corrupt",
+        providerId: "codex",
+        providerThreadId: "provider-batch-corrupt",
+        providerRequestId: "request-batch-corrupt",
+        payload: "{not-json",
+      });
+
+      const byThreadId =
+        harness.deps.pendingInteractions.listPendingThreadInteractionsByThreadIds(
+          [first.id, second.id],
+        );
+      expect([...byThreadId.keys()].sort()).toEqual(
+        [first.id, second.id].sort(),
+      );
+      expect(byThreadId.get(first.id)?.map((row) => row.id)).toEqual([
+        created.id,
+      ]);
+      expect(byThreadId.get(second.id)).toEqual([]);
     });
   });
 });

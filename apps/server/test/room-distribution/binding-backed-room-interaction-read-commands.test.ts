@@ -51,6 +51,7 @@ const NO_CHILDREN: WorkTogetherRoomChildAttachmentPortV1 = Object.freeze({
   },
   list: async () => Object.freeze([]),
 });
+const PRIMARY_STREAM = Object.freeze({ kind: "primary" as const });
 
 function contextFor(
   bindingId: string,
@@ -228,14 +229,17 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
           requestId: "creq_23456789aa",
           interactionId: aliceQuestion.id,
           value: createUserAnswerResolution().answers,
+          stream: PRIMARY_STREAM,
         },
       );
       expect(aliceAnswer).toMatchObject({
         status: 202,
         body: {
+          schemaVersion: 2,
           outcome: "accepted",
           commandKind: "interaction.answer",
           result: { disposition: "answered" },
+          stream: PRIMARY_STREAM,
         },
       });
       expect(
@@ -265,14 +269,17 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
           requestId: "creq_23456789ab",
           interactionId: bobQuestion.id,
           value: createUserAnswerResolution().answers,
+          stream: PRIMARY_STREAM,
         },
       );
       expect(bobAnswer).toMatchObject({
         status: 202,
         body: {
+          schemaVersion: 2,
           outcome: "accepted",
           commandKind: "interaction.answer",
           result: { disposition: "answered" },
+          stream: PRIMARY_STREAM,
         },
       });
       expect(
@@ -293,14 +300,17 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
           kind: "read.mark",
           requestId: "creq_23456789ac",
           eventCursor: "s.42",
+          stream: PRIMARY_STREAM,
         },
       );
       expect(aliceMark).toMatchObject({
         status: 202,
         body: {
+          schemaVersion: 2,
           outcome: "accepted",
           commandKind: "read.mark",
           result: { disposition: "marked" },
+          stream: PRIMARY_STREAM,
         },
       });
       const bobMark = await distribution.execute(
@@ -309,14 +319,17 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
           kind: "read.mark",
           requestId: "creq_23456789ad",
           eventCursor: "s.99",
+          stream: PRIMARY_STREAM,
         },
       );
       expect(bobMark).toMatchObject({
         status: 202,
         body: {
+          schemaVersion: 2,
           outcome: "accepted",
           commandKind: "read.mark",
           result: { disposition: "marked" },
+          stream: PRIMARY_STREAM,
         },
       });
 
@@ -371,6 +384,7 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
           requestId: "creq_23456789ba",
           interactionId: approval.id,
           resolution: createAllowOnceResolution(),
+          stream: PRIMARY_STREAM,
         }),
       ).rejects.toMatchObject({ kind: "not_found" });
       expect(getPendingInteraction(harness.db, approval.id)?.status).toBe(
@@ -384,6 +398,7 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
           requestId: "creq_23456789bb",
           interactionId: approval.id,
           resolution: createAllowOnceResolution(),
+          stream: PRIMARY_STREAM,
         }),
       ).rejects.toMatchObject({ kind: "not_found" });
       expect(getPendingInteraction(harness.db, approval.id)?.status).toBe(
@@ -397,13 +412,16 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
           requestId: "creq_23456789bc",
           interactionId: approval.id,
           resolution: createAllowOnceResolution(),
+          stream: PRIMARY_STREAM,
         }),
       ).resolves.toMatchObject({
         status: 202,
         body: {
+          schemaVersion: 2,
           outcome: "accepted",
           commandKind: "interaction.approve",
           result: { disposition: "approved" },
+          stream: PRIMARY_STREAM,
         },
       });
       expect(getPendingInteraction(harness.db, approval.id)?.status).toBe(
@@ -451,6 +469,7 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
           requestId: "creq_23456789ca",
           interactionId: approval.id,
           value: createUserAnswerResolution().answers,
+          stream: PRIMARY_STREAM,
         }),
       ).rejects.toMatchObject({ kind: "not_found" });
       expect(getPendingInteraction(harness.db, approval.id)?.status).toBe(
@@ -464,6 +483,7 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
           requestId: "creq_23456789cb",
           interactionId: question.id,
           resolution: createDenyResolution(),
+          stream: PRIMARY_STREAM,
         }),
       ).rejects.toMatchObject({ kind: "not_found" });
       expect(getPendingInteraction(harness.db, question.id)?.status).toBe(
@@ -493,6 +513,7 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
         requestId: "creq_23456789da" as const,
         interactionId: question.id,
         value: createUserAnswerResolution().answers,
+        stream: PRIMARY_STREAM,
       };
 
       const accepted = await distribution.execute(
@@ -502,9 +523,11 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
       expect(accepted).toMatchObject({
         status: 202,
         body: {
+          schemaVersion: 2,
           outcome: "accepted",
           admissionSequence: 1,
           result: { disposition: "answered" },
+          stream: PRIMARY_STREAM,
         },
       });
       const replayed = await distribution.execute(
@@ -514,9 +537,11 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
       expect(replayed).toMatchObject({
         status: 200,
         body: {
+          schemaVersion: 2,
           outcome: "already-accepted",
           admissionSequence: 1,
           result: { disposition: "answered" },
+          stream: PRIMARY_STREAM,
         },
       });
       expect(JSON.stringify(replayed.body)).not.toContain(question.id);
@@ -570,6 +595,7 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
         requestId,
         interactionId: question.id,
         value: createUserAnswerResolution({ selected: ["staging"] }).answers,
+        stream: PRIMARY_STREAM,
       });
 
       await expect(
@@ -579,15 +605,17 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
           interactionId: question.id,
           value: createUserAnswerResolution({ selected: ["production"] })
             .answers,
+          stream: PRIMARY_STREAM,
         }),
       ).resolves.toEqual({
         status: 200,
         body: {
-          schemaVersion: 1,
+          schemaVersion: 2,
           outcome: "rejected",
           requestId,
           commandKind: "interaction.answer",
           reason: "request_identity_conflict",
+          stream: PRIMARY_STREAM,
         },
       });
 
@@ -598,15 +626,17 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
           requestId,
           interactionId: question.id,
           value: createUserAnswerResolution({ selected: ["staging"] }).answers,
+          stream: PRIMARY_STREAM,
         }),
       ).resolves.toEqual({
         status: 200,
         body: {
-          schemaVersion: 1,
+          schemaVersion: 2,
           outcome: "rejected",
           requestId,
           commandKind: "interaction.answer",
           reason: "request_identity_conflict",
+          stream: PRIMARY_STREAM,
         },
       });
       expect(
@@ -651,13 +681,16 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
             requestId: "creq_23456789fa",
             interactionId: question.id,
             value: createUserAnswerResolution().answers,
+            stream: PRIMARY_STREAM,
           }),
         ).resolves.toMatchObject({
           status: 200,
           body: {
+            schemaVersion: 2,
             outcome: "indeterminate",
             requestId: "creq_23456789fa",
             commandKind: "interaction.answer",
+            stream: PRIMARY_STREAM,
           },
         });
         expect(getPendingInteraction(harness.db, question.id)?.status).toBe(
@@ -679,13 +712,16 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
             kind: "read.mark",
             requestId: "creq_23456789fb",
             eventCursor: "s.7",
+            stream: PRIMARY_STREAM,
           }),
         ).resolves.toMatchObject({
           status: 200,
           body: {
+            schemaVersion: 2,
             outcome: "indeterminate",
             requestId: "creq_23456789fb",
             commandKind: "read.mark",
+            stream: PRIMARY_STREAM,
           },
         });
         const readRowAfter = getThreadPrincipalReadStateRow(harness.db, {
@@ -744,13 +780,16 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
           kind: "read.mark",
           requestId: "creq_23456789ga",
           eventCursor: "s.123",
+          stream: PRIMARY_STREAM,
         }),
       ).resolves.toMatchObject({
         status: 202,
         body: {
+          schemaVersion: 2,
           outcome: "accepted",
           commandKind: "read.mark",
           result: { disposition: "marked" },
+          stream: PRIMARY_STREAM,
         },
       });
 
@@ -784,6 +823,7 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
                 kind: "read.mark",
                 requestId: "creq_23456789ga",
                 eventCursor: "s.123",
+                stream: PRIMARY_STREAM,
               },
             )
           ).body,
@@ -832,7 +872,7 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
         capabilities: expect.arrayContaining([
           "interaction.answer",
           "read.mark",
-          "thread.interrupt",
+          "agent.interrupt",
         ]),
       });
       const ownerBootstrap = await distribution.bootstrap(
@@ -869,6 +909,7 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
           requestId: "creq_23456789ha",
           interactionId: approval.id,
           resolution: createAllowOnceResolution(),
+          stream: PRIMARY_STREAM,
         }),
       ).rejects.toMatchObject({ kind: "not_found" });
       expect(getPendingInteraction(harness.db, approval.id)?.status).toBe(
@@ -888,7 +929,7 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
         capabilities: expect.arrayContaining([
           "interaction.answer",
           "read.mark",
-          "thread.interrupt",
+          "agent.interrupt",
         ]),
       });
       await expect(
@@ -897,12 +938,15 @@ describe("Room interaction.answer / interaction.approve / read.mark commands", (
           requestId: "creq_23456789hb",
           interactionId: secondQuestion.id,
           value: createUserAnswerResolution().answers,
+          stream: PRIMARY_STREAM,
         }),
       ).resolves.toMatchObject({
         status: 202,
         body: {
+          schemaVersion: 2,
           outcome: "accepted",
           commandKind: "interaction.answer",
+          stream: PRIMARY_STREAM,
         },
       });
     });

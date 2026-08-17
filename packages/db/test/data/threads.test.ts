@@ -1094,6 +1094,77 @@ describe("threads", () => {
     );
   });
 
+  it("notifies the parent with children-changed after a hierarchical child commit", () => {
+    const { db, project } = setup();
+    const spy: DbNotifier = {
+      notifyThread: vi.fn(),
+      notifyEnvironment: vi.fn(),
+      notifyHost: vi.fn(),
+      notifyProject: vi.fn(),
+      notifySystem: vi.fn(),
+    };
+    const root = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    const direct = createThread(db, spy, {
+      parentThreadId: root.id,
+      projectId: project.id,
+      providerId: "codex",
+    });
+
+    expect(spy.notifyThread).toHaveBeenNthCalledWith(
+      1,
+      direct.id,
+      ["thread-created"],
+      { projectId: project.id },
+    );
+    expect(spy.notifyThread).toHaveBeenNthCalledWith(
+      2,
+      root.id,
+      ["children-changed"],
+      { projectId: project.id },
+    );
+    expect(spy.notifyThread).toHaveBeenCalledTimes(2);
+
+    const nested = createThread(db, spy, {
+      parentThreadId: direct.id,
+      projectId: project.id,
+      providerId: "codex",
+    });
+    expect(spy.notifyThread).toHaveBeenNthCalledWith(
+      3,
+      nested.id,
+      ["thread-created"],
+      { projectId: project.id },
+    );
+    expect(spy.notifyThread).toHaveBeenNthCalledWith(
+      4,
+      direct.id,
+      ["children-changed"],
+      { projectId: project.id },
+    );
+    expect(spy.notifyThread).not.toHaveBeenCalledWith(
+      root.id,
+      ["thread-created"],
+      expect.anything(),
+    );
+
+    spy.notifyThread.mockClear();
+    const fork = createThread(db, spy, {
+      originKind: "fork",
+      parentThreadId: root.id,
+      projectId: project.id,
+      providerId: "codex",
+    });
+    expect(spy.notifyThread).toHaveBeenCalledTimes(1);
+    expect(spy.notifyThread).toHaveBeenCalledWith(
+      fork.id,
+      ["thread-created"],
+      { projectId: project.id },
+    );
+  });
+
   it("notifies when a thread environment changes", () => {
     const { db, host, project } = setup();
     const spy: DbNotifier = {

@@ -272,15 +272,23 @@ export async function withTestHarness<T>(
   }
 }
 
+export type TestAppCreateOptionsFactory = (
+  harness: TestAppHarness,
+) => TestAppCreateOptions | Promise<TestAppCreateOptions>;
+
 export async function startTestServer(
   overrides: TestAppHarnessConfigOverrides = {},
-  createAppOptions?: TestAppCreateOptions,
+  createAppOptions?: TestAppCreateOptions | TestAppCreateOptionsFactory,
 ): Promise<RunningTestServer> {
   const harness = await createTestAppHarness(overrides);
+  const resolvedCreateAppOptions =
+    typeof createAppOptions === "function"
+      ? await createAppOptions(harness)
+      : createAppOptions;
   let addressInfo: AddressInfo | null = null;
   const { app, closeWebSockets, injectWebSocket, pluginService } = createApp(
     harness.deps,
-    createAppOptions,
+    resolvedCreateAppOptions,
   );
   const server = serve(
     {

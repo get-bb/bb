@@ -6,11 +6,23 @@ import {
   getLatestThreadSequence,
   getThread,
   getWorkTogetherRoomResourceReservation,
+  InvalidWorkTogetherRoomAssistantExcerptError,
+  InvalidWorkTogetherRoomRootTurnOutcomeError,
+  listLatestCompletedAgentMessageExcerptsByThreadIds,
+  listLatestRootTurnTerminalOutcomesByThreadIds,
   listNonDeletedChildThreads,
+  PendingInteractionThreadIdBoundError,
 } from "@bb/db";
-import type { Principal } from "@bb/domain";
+import {
+  isApprovalPendingInteractionPayload,
+  isUserQuestionPendingInteractionPayload,
+  type ChangedMessage,
+  type Principal,
+  type ThreadChangeKind,
+} from "@bb/domain";
 import type { ThreadTimelineResponse } from "@bb/server-contract";
 import { ApiError } from "../errors.js";
+import { productionErrorLogFields } from "../services/lib/error-log-fields.js";
 import type { AppDeps } from "../types.js";
 import { buildThreadTimeline } from "../services/threads/timeline.js";
 import { DEFAULT_MAX_INLINE_OUTPUT_CHARS } from "../services/threads/timeline-output-truncation.js";
@@ -19,8 +31,23 @@ import type {
   WorkTogetherRoomChildAttachmentPortV1,
   WorkTogetherRoomChildAttachmentV1,
 } from "./work-together-room-child-attachments.js";
-import { createBindingBackedRoomCommandHandler } from "./binding-backed-room-commands.js";
-import type { WorkTogetherRoomCommandAuthorityPortV1 } from "./work-together-room-command-authority.js";
+import {
+  createBindingBackedRoomCommandHandler,
+  parseRoomCommandStreamV2,
+} from "./binding-backed-room-commands.js";
+import type {
+  WorkTogetherRoomCommandAuthorityPortV1,
+  WorkTogetherRoomCommandAuthorityV1,
+} from "./work-together-room-command-authority.js";
+import {
+  deriveWorkTogetherRoomSubagentAttentionV1,
+  projectWorkTogetherRoomSubagentPublicContract,
+  type RoomSubagentAttentionKindV1,
+  type RoomSubagentPendingInteractionKindV1,
+  type RoomSubagentV1,
+  type WorkTogetherRoomSubagentPublicAttachmentInputV1,
+  type WorkTogetherRoomSubagentPublicParentInputV1,
+} from "./work-together-room-subagent-public-contract.js";
 import {
   RoomDistributionUnavailableError,
   type RoomDistributionContextV1,
@@ -44,6 +71,18 @@ const OLDER_PAGE_ANCHOR_PLACEHOLDER = "work-together-room-older-page";
 const MAX_TASK_PROJECTION_BYTES = 131_072;
 const INITIAL_TIMELINE_SEGMENTS = 20;
 const MAX_ROOM_CHILDREN = 64;
+const LIST_RELEVANT_SUBAGENT_CHANGE_KINDS = new Set<ThreadChangeKind>([
+  "archived-changed",
+  "interactions-changed",
+  "parent-changed",
+  "status-changed",
+  "thread-deleted",
+  "title-changed",
+]);
+const LIST_RELEVANT_COMPLETED_EVENT_TYPES = new Set([
+  "item/completed",
+  "turn/completed",
+]);
 const FORBIDDEN_TASK_IDENTITY_KEYS = new Set([
   "clerkid",
   "email",
@@ -66,8 +105,71 @@ function unavailable(kind: "not_found" | "unavailable" = "unavailable"): never {
   throw new RoomDistributionUnavailableError(kind);
 }
 
-function parseCursor(cursor: string | null): number {
-  if (cursor === null) return 0;
+function mapKnownProjectionQueryError(error: unknown): never {
+  if (error instanceof RoomDistributionUnavailableError) throw error;
+  if (
+    error instanceof InvalidWorkTogetherRoomRootTurnOutcomeError ||
+    error instanceof InvalidWorkTogetherRoomAssistantExcerptError ||
+    error instanceof PendingInteractionThreadIdBoundError
+  ) {
+    unavailable();
+  }
+  throw error;
+}
+
+function copyPublicSubagents(
+  subagents: readonly RoomSubagentV1[],
+): RoomJsonObject[] {
+  return subagents.map(
+    (subagent): RoomJsonObject =>
+      Object.freeze({
+        ...subagent,
+        capabilities: [...subagent.capabilities],
+      }),
+  );
+}
+
+function subagentListSignature(subagents: readonly RoomSubagentV1[]): string {
+  return JSON.stringify(subagents);
+}
+
+function isObservedSubagentListRelevant(
+  message: Extract<ChangedMessage, { entity: "thread" }>,
+): boolean {
+  for (const change of message.changes) {
+    if (LIST_RELEVANT_SUBAGENT_CHANGE_KINDS.has(change)) return true;
+  }
+  if (!message.changes.includes("events-appended")) return false;
+  const eventTypes = message.metadata?.eventTypes;
+  if (eventTypes === undefined) return true;
+  for (const eventType of eventTypes) {
+    if (LIST_RELEVANT_COMPLETED_EVENT_TYPES.has(eventType)) return true;
+  }
+  return false;
+}
+
+function subagentParentInput(
+  reservation: NonNullable<
+    ReturnType<typeof getWorkTogetherRoomResourceReservation>
+  >,
+  attachment: WorkTogetherRoomChildAttachmentV1,
+  attachmentsByChildThreadId: ReadonlyMap<
+    string,
+    WorkTogetherRoomChildAttachmentV1
+  >,
+): WorkTogetherRoomSubagentPublicParentInputV1 {
+  if (attachment.parentThreadId === reservation.primaryThreadId) {
+    return Object.freeze({ kind: "primary" });
+  }
+  const parentAttachment = attachmentsByChildThreadId.get(
+    attachment.parentThreadId,
+  );
+  if (parentAttachment === undefined) unavailable();
+  return Object.freeze({ kind: "subagent", id: parentAttachment.id });
+}
+
+function parseCursor(cursor: string | null): number | null {
+  if (cursor === null) return null;
   const match = CURSOR.exec(cursor);
   if (!match) unavailable("not_found");
   const sequence = Number(match[1]);
@@ -200,7 +302,7 @@ function participantId(bindingId: string, principalId: string): string {
 type ProjectionScope = Readonly<{
   bindingId: string;
   threadId?: string;
-  publicThreadId?: string;
+  publicStreamId?: string;
   environmentId?: string;
   projectId?: string;
 }>;
@@ -210,7 +312,7 @@ function projectString(value: string, scope: ProjectionScope): string {
   if (scope.threadId !== undefined) {
     projected = projected.replaceAll(
       scope.threadId,
-      scope.publicThreadId ?? scope.bindingId,
+      scope.publicStreamId ?? scope.bindingId,
     );
   }
   if (scope.environmentId !== undefined) {
@@ -433,7 +535,7 @@ export function createBindingBackedRoomDistributionV1(
   function timeline(
     bindingId: string,
     thread: ReturnType<typeof getThread>,
-    publicThreadId = bindingId,
+    publicStreamId = bindingId,
   ) {
     if (thread === null) unavailable();
     const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
@@ -448,7 +550,7 @@ export function createBindingBackedRoomDistributionV1(
     const projected = projectWorkTogetherRoomTimeline({
       bindingId,
       privateThreadId: thread.id,
-      publicStreamId: publicThreadId,
+      publicStreamId,
       environmentId: thread.environmentId ?? unavailable(),
       projectId: thread.projectId,
       threadStatus: thread.status,
@@ -466,6 +568,7 @@ export function createBindingBackedRoomDistributionV1(
     bindingId: string,
     thread: NonNullable<ReturnType<typeof getThread>>,
     beforeSequence: number,
+    publicStreamId: string,
   ) {
     const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
     if (beforeSequence > maxSeq) unavailable("not_found");
@@ -491,7 +594,7 @@ export function createBindingBackedRoomDistributionV1(
     const projected = projectWorkTogetherRoomTimeline({
       bindingId,
       privateThreadId: thread.id,
-      publicStreamId: bindingId,
+      publicStreamId,
       environmentId: thread.environmentId ?? unavailable(),
       projectId: thread.projectId,
       threadStatus: "idle",
@@ -571,6 +674,124 @@ export function createBindingBackedRoomDistributionV1(
     return thread;
   }
 
+  function tryResolveAttachedChild(
+    reservation: NonNullable<
+      ReturnType<typeof getWorkTogetherRoomResourceReservation>
+    >,
+    attachment: WorkTogetherRoomChildAttachmentV1,
+  ) {
+    try {
+      return validateAttachedChild(reservation, attachment);
+    } catch (error) {
+      if (
+        error instanceof RoomDistributionUnavailableError &&
+        error.kind === "not_found"
+      ) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  function pendingSubagentAttentionByThreadIds(
+    threadIds: readonly string[],
+  ): Map<string, RoomSubagentAttentionKindV1> {
+    const interactionsByThreadId =
+      deps.pendingInteractions.listPendingThreadInteractionsByThreadIds(
+        threadIds,
+      );
+    const attentionByThreadId = new Map<string, RoomSubagentAttentionKindV1>();
+    for (const threadId of threadIds) {
+      const kinds: RoomSubagentPendingInteractionKindV1[] = [];
+      for (const interaction of interactionsByThreadId.get(threadId) ?? []) {
+        if (interaction.status !== "pending") continue;
+        if (isUserQuestionPendingInteractionPayload(interaction.payload)) {
+          kinds.push("question");
+        } else if (isApprovalPendingInteractionPayload(interaction.payload)) {
+          kinds.push("approval");
+        }
+      }
+      attentionByThreadId.set(
+        threadId,
+        deriveWorkTogetherRoomSubagentAttentionV1(kinds),
+      );
+    }
+    return attentionByThreadId;
+  }
+
+  function projectSubagentAttachments(
+    reservation: NonNullable<
+      ReturnType<typeof getWorkTogetherRoomResourceReservation>
+    >,
+    attachments: readonly WorkTogetherRoomChildAttachmentV1[],
+  ): readonly WorkTogetherRoomSubagentPublicAttachmentInputV1[] {
+    const attachmentsByChildThreadId = new Map(
+      attachments.map((attachment) => [attachment.childThreadId, attachment]),
+    );
+    const resolved = attachments.map((attachment) => {
+      const parent = subagentParentInput(
+        reservation,
+        attachment,
+        attachmentsByChildThreadId,
+      );
+      return {
+        attachment,
+        parent,
+        thread: tryResolveAttachedChild(reservation, attachment),
+      };
+    });
+    const resolvedThreadIds = resolved.flatMap((entry) =>
+      entry.thread === null ? [] : [entry.thread.id],
+    );
+    let outcomeByThreadId: Map<string, "completed" | "failed" | "interrupted">;
+    let excerptByThreadId: Map<string, string>;
+    let attentionByThreadId: Map<string, RoomSubagentAttentionKindV1>;
+    try {
+      outcomeByThreadId = new Map(
+        listLatestRootTurnTerminalOutcomesByThreadIds(
+          deps.db,
+          resolvedThreadIds,
+        ).map((row) => [row.threadId, row.outcome]),
+      );
+      excerptByThreadId = new Map(
+        listLatestCompletedAgentMessageExcerptsByThreadIds(
+          deps.db,
+          resolvedThreadIds,
+        ).map((row) => [row.threadId, row.excerpt]),
+      );
+      attentionByThreadId =
+        pendingSubagentAttentionByThreadIds(resolvedThreadIds);
+    } catch (error) {
+      mapKnownProjectionQueryError(error);
+    }
+    return resolved.map(({ attachment, parent, thread }) => {
+      if (thread === null) {
+        return Object.freeze({
+          id: attachment.id,
+          parent,
+          thread: null,
+        });
+      }
+      return Object.freeze({
+        id: attachment.id,
+        parent,
+        thread: Object.freeze({
+          archivedAt: thread.archivedAt,
+          attention:
+            attentionByThreadId.get(thread.id) ??
+            deriveWorkTogetherRoomSubagentAttentionV1([]),
+          latestPublicAssistantExcerpt:
+            excerptByThreadId.get(thread.id) ?? null,
+          latestRootTurnOutcome: outcomeByThreadId.get(thread.id) ?? null,
+          privateThreadId: thread.id,
+          status: thread.status,
+          title: thread.title,
+          titleFallback: thread.titleFallback,
+        }),
+      });
+    });
+  }
+
   async function authoritativeChildren(
     context: RoomDistributionContextV1,
     reservation: NonNullable<
@@ -595,41 +816,87 @@ export function createBindingBackedRoomDistributionV1(
     });
   }
 
+  async function projectCurrentSubagentList(input: {
+    authority: WorkTogetherRoomCommandAuthorityV1;
+    context: RoomDistributionContextV1;
+    reconcile: boolean;
+    reservation: NonNullable<
+      ReturnType<typeof getWorkTogetherRoomResourceReservation>
+    >;
+  }): Promise<{
+    observedPrivateThreadIds: ReadonlySet<string>;
+    subagents: readonly RoomSubagentV1[];
+  }> {
+    const attachments = await authoritativeChildren(
+      input.context,
+      input.reservation,
+      input.reconcile,
+    );
+    const projectedAttachments = projectSubagentAttachments(
+      input.reservation,
+      attachments,
+    );
+    const environmentId = input.reservation.environmentId;
+    if (environmentId.length === 0) unavailable();
+    const subagents = projectWorkTogetherRoomSubagentPublicContract({
+      attachments: projectedAttachments,
+      authority: input.authority,
+      bindingId: input.context.bindingId,
+      environmentId,
+      projectId: input.reservation.projectId,
+    });
+    const observedPrivateThreadIds = new Set<string>([
+      input.reservation.primaryThreadId,
+    ]);
+    for (const attachment of projectedAttachments) {
+      if (attachment.thread !== null) {
+        observedPrivateThreadIds.add(attachment.thread.privateThreadId);
+      }
+    }
+    return { observedPrivateThreadIds, subagents };
+  }
+
   async function resolveStream(
     context: RoomDistributionContextV1,
-    childAttachmentId: string | null,
+    subagentId: string | null,
   ) {
     const resolved = resolve(context.bindingId);
-    if (childAttachmentId === null) {
-      return { ...resolved, publicThreadId: context.bindingId };
+    if (subagentId === null) {
+      return {
+        ...resolved,
+        kind: "primary" as const,
+        publicStreamId: context.bindingId,
+      };
     }
     const attachments = await authoritativeChildren(
       context,
       resolved.reservation,
       false,
     );
-    const attachment = attachments.find(
-      (entry) => entry.id === childAttachmentId,
-    );
+    const attachment = attachments.find((entry) => entry.id === subagentId);
     if (attachment === undefined) unavailable("not_found");
     return {
       ...resolved,
+      kind: "subagent" as const,
       thread: validateAttachedChild(resolved.reservation, attachment),
-      publicThreadId: attachment.id,
+      publicStreamId: attachment.id,
     };
   }
 
   return Object.freeze({
     async bootstrap(context: RoomDistributionContextV1) {
       const { reservation, thread, environment } = resolve(context.bindingId);
-      const capabilities = await commands.capabilities({
+      const commandScope = {
         bindingId: context.bindingId,
+        publicStream: Object.freeze({ kind: "primary" as const }),
         publicStreamId: context.bindingId,
         workspaceId: reservation.workspaceId,
         taskId: reservation.taskId,
         principal: context.principal,
         thread,
-      });
+      };
+      const authority = await commands.readAuthority(commandScope);
+      const capabilities = commands.capabilities(commandScope, authority);
       const task = validateTaskProjection(
         await taskProjection.read({
           bindingId: context.bindingId,
@@ -640,44 +907,15 @@ export function createBindingBackedRoomDistributionV1(
         context.bindingId,
       );
       const current = timeline(context.bindingId, thread);
-      const attachments = await authoritativeChildren(
+      const currentList = await projectCurrentSubagentList({
+        authority,
         context,
+        reconcile: true,
         reservation,
-        true,
-      );
-      const attachmentIdsByThread = new Map(
-        attachments.map((attachment) => [
-          attachment.childThreadId,
-          attachment.id,
-        ]),
-      );
-      const children = attachments.map((attachment) => {
-        let child;
-        try {
-          child = validateAttachedChild(reservation, attachment);
-        } catch {
-          return Object.freeze({
-            id: attachment.id,
-            parentId:
-              attachmentIdsByThread.get(attachment.parentThreadId) ?? null,
-            run: "unavailable",
-            stream: { child: attachment.id },
-          });
-        }
-        return Object.freeze({
-          id: attachment.id,
-          parentId:
-            attachmentIdsByThread.get(attachment.parentThreadId) ?? null,
-          run:
-            child.archivedAt === null ? primaryRun(child.status) : "archived",
-          cursor: cursorFor(
-            getLatestThreadSequence(deps.db, { threadId: child.id }),
-          ),
-          stream: { child: attachment.id },
-        });
       });
+      const subagents = copyPublicSubagents(currentList.subagents);
       return Object.freeze({
-        schemaVersion: 1,
+        schemaVersion: 2,
         binding: { id: context.bindingId, state: "active" },
         cell: { connection: "ready" },
         task,
@@ -694,7 +932,7 @@ export function createBindingBackedRoomDistributionV1(
         },
         primaryRun: primaryRun(thread.status),
         capabilities,
-        children,
+        subagents,
         collaboration: collaborationState(presence.count(context.bindingId)),
         timeline: current.projection,
         cursor: cursorFor(current.maxSeq),
@@ -705,15 +943,22 @@ export function createBindingBackedRoomDistributionV1(
       context: RoomDistributionContextV1,
       rawCommand: RoomJsonObject,
     ) {
-      const { reservation, thread } = resolve(context.bindingId);
+      // Parse only the exact V2 stream target first so unknown/stale/cross-Room
+      // Subagents fail the same generic unavailable as a malformed body.
+      const stream = parseRoomCommandStreamV2(rawCommand.stream);
+      const resolved = await resolveStream(
+        context,
+        stream.kind === "subagent" ? stream.id : null,
+      );
       return commands.execute(
         {
           bindingId: context.bindingId,
-          publicStreamId: context.bindingId,
-          workspaceId: reservation.workspaceId,
-          taskId: reservation.taskId,
+          publicStream: stream,
+          publicStreamId: resolved.publicStreamId,
+          workspaceId: resolved.reservation.workspaceId,
+          taskId: resolved.reservation.taskId,
           principal: context.principal,
-          thread,
+          thread: resolved.thread,
         },
         rawCommand,
       );
@@ -724,17 +969,18 @@ export function createBindingBackedRoomDistributionV1(
       target: RoomDistributionStreamTargetV1,
     ) {
       const after = parseCursor(target.cursor);
-      const { thread, publicThreadId } = await resolveStream(
+      const { thread, publicStreamId } = await resolveStream(
         context,
-        target.childAttachmentId,
+        target.subagentId,
       );
-      const current = timeline(context.bindingId, thread, publicThreadId);
-      if (after > current.maxSeq) unavailable("not_found");
+      const current = timeline(context.bindingId, thread, publicStreamId);
+      if (after !== null && after > current.maxSeq) unavailable("not_found");
+      const changed = after === null || current.maxSeq > after;
       return Object.freeze({
         schemaVersion: 1,
         cursor: cursorFor(current.maxSeq),
-        changed: current.maxSeq > after,
-        timeline: current.maxSeq > after ? current.projection : null,
+        changed,
+        timeline: changed ? current.projection : null,
       });
     },
 
@@ -743,11 +989,15 @@ export function createBindingBackedRoomDistributionV1(
       target: RoomDistributionOlderTimelineTargetV1,
     ) {
       const beforeSequence = parsePublicOlderCursor(target.before);
-      const { thread } = resolve(context.bindingId);
+      const { thread, publicStreamId } = await resolveStream(
+        context,
+        target.subagentId,
+      );
       const projection = olderTimeline(
         context.bindingId,
         thread,
         beforeSequence,
+        publicStreamId,
       );
       return Object.freeze({
         schemaVersion: 1,
@@ -760,34 +1010,246 @@ export function createBindingBackedRoomDistributionV1(
       target: RoomDistributionStreamTargetV1,
       emit: (event: RoomJsonObject) => void,
     ) {
-      const after = parseCursor(target.cursor);
-      const { thread } = await resolveStream(context, target.childAttachmentId);
+      const after = parseCursor(target.cursor) ?? 0;
+      const resolved = await resolveStream(context, target.subagentId);
+      const { kind, reservation, thread } = resolved;
       const current = getLatestThreadSequence(deps.db, { threadId: thread.id });
       if (after > current) unavailable("not_found");
       let closed = false;
       let delivered = after;
-      const isPrimary = target.childAttachmentId === null;
+      const isPrimary = kind === "primary";
       let leavePresence: (() => void) | null = null;
-      emit(Object.freeze({ type: "ready", cursor: cursorFor(current) }));
-      delivered = current;
-      const unsubscribe = deps.hub.onChangedMessage((message) => {
-        if (closed || message.entity !== "thread" || message.id !== thread.id)
-          return;
+      let readyEmitted = false;
+      let observedPrivateThreadIds = new Set<string>([thread.id]);
+      let listSignature = "";
+      let queuedListWork: "none" | "reproject" | "reconcile" = "none";
+      let listProjectionActive = false;
+      let cachedAuthority: WorkTogetherRoomCommandAuthorityV1 | null = null;
+      const retainedUnknownListHints = new Map<
+        string,
+        { reconcile: boolean; reproject: boolean }
+      >();
+
+      function emitSafe(event: RoomJsonObject): void {
+        if (closed) return;
+        try {
+          emit(event);
+        } catch {
+          // Emit is best-effort; a closed socket must not break the observer.
+        }
+      }
+
+      function considerTimeline(message: ChangedMessage): void {
+        if (message.entity !== "thread" || message.id !== thread.id) return;
         const latest = getLatestThreadSequence(deps.db, {
           threadId: thread.id,
         });
         if (latest <= delivered) return;
         delivered = latest;
-        emit(Object.freeze({ type: "changed", cursor: cursorFor(latest) }));
-      });
-      if (isPrimary) {
-        const handle = presence.join(
-          context.bindingId,
-          context.principal.id,
-          emit,
-        );
-        leavePresence = () => handle.leave();
+        if (!readyEmitted) return;
+        emitSafe(Object.freeze({ type: "changed", cursor: cursorFor(latest) }));
       }
+
+      function queueObservedListHint(
+        threadId: string,
+        message: Extract<ChangedMessage, { entity: "thread" }>,
+      ): void {
+        if (message.changes.includes("children-changed")) {
+          queuedListWork = "reconcile";
+          if (readyEmitted) void flushListProjection();
+          return;
+        }
+        if (threadId === reservation.primaryThreadId) return;
+        if (!isObservedSubagentListRelevant(message)) return;
+        if (queuedListWork !== "reconcile") queuedListWork = "reproject";
+        if (readyEmitted) void flushListProjection();
+      }
+
+      function retainUnknownListHint(
+        threadId: string,
+        message: Extract<ChangedMessage, { entity: "thread" }>,
+      ): void {
+        if (readyEmitted) {
+          if (
+            !listProjectionActive ||
+            !message.changes.includes("children-changed")
+          ) {
+            return;
+          }
+        }
+        if (
+          !retainedUnknownListHints.has(threadId) &&
+          retainedUnknownListHints.size >= MAX_ROOM_CHILDREN
+        ) {
+          if (!readyEmitted) {
+            retainedUnknownListHints.clear();
+            queuedListWork = "reconcile";
+          }
+          return;
+        }
+        const current = retainedUnknownListHints.get(threadId) ?? {
+          reconcile: false,
+          reproject: false,
+        };
+        if (message.changes.includes("children-changed")) {
+          current.reconcile = true;
+        } else if (
+          threadId !== reservation.primaryThreadId &&
+          isObservedSubagentListRelevant(message)
+        ) {
+          current.reproject = true;
+        } else {
+          return;
+        }
+        retainedUnknownListHints.set(threadId, current);
+      }
+
+      function replayRetainedListHints(): void {
+        for (const [threadId, hint] of [...retainedUnknownListHints]) {
+          if (!observedPrivateThreadIds.has(threadId)) {
+            if (readyEmitted) retainedUnknownListHints.delete(threadId);
+            continue;
+          }
+          retainedUnknownListHints.delete(threadId);
+          if (hint.reconcile) {
+            queuedListWork = "reconcile";
+            continue;
+          }
+          if (hint.reproject && queuedListWork !== "reconcile") {
+            queuedListWork = "reproject";
+          }
+        }
+      }
+
+      function queuedListNeedsReconciliation(): boolean {
+        return queuedListWork === "reconcile";
+      }
+
+      function considerListHint(message: ChangedMessage): void {
+        if (!isPrimary || message.entity !== "thread") return;
+        const threadId = message.id;
+        if (threadId === undefined) return;
+        if (!observedPrivateThreadIds.has(threadId)) {
+          retainUnknownListHint(threadId, message);
+          return;
+        }
+        queueObservedListHint(threadId, message);
+      }
+
+      async function applyListProjection(reconcile: boolean): Promise<void> {
+        if (cachedAuthority === null) unavailable();
+        const projected = await projectCurrentSubagentList({
+          authority: cachedAuthority,
+          context,
+          reconcile,
+          reservation,
+        });
+        observedPrivateThreadIds = new Set(projected.observedPrivateThreadIds);
+        replayRetainedListHints();
+        const signature = subagentListSignature(projected.subagents);
+        if (signature === listSignature) return;
+        listSignature = signature;
+        if (!readyEmitted) return;
+        emitSafe(
+          Object.freeze({
+            type: "subagents.changed",
+            subagents: copyPublicSubagents(projected.subagents),
+          }),
+        );
+      }
+
+      async function flushListProjection(): Promise<void> {
+        if (listProjectionActive || closed || !readyEmitted) return;
+        listProjectionActive = true;
+        try {
+          while (queuedListWork !== "none" && !closed) {
+            const work = queuedListWork;
+            queuedListWork = "none";
+            try {
+              await applyListProjection(work === "reconcile");
+            } catch (error) {
+              deps.logger.warn(
+                productionErrorLogFields(error),
+                "Room primary subagent list projection failed",
+              );
+            }
+          }
+        } finally {
+          listProjectionActive = false;
+        }
+        if (queuedListWork !== "none" && !closed) {
+          await flushListProjection();
+        }
+      }
+
+      const unsubscribe = deps.hub.onChangedMessage((message) => {
+        if (closed) return;
+        considerTimeline(message);
+        considerListHint(message);
+      });
+
+      try {
+        if (isPrimary) {
+          cachedAuthority = await commands.readAuthority({
+            bindingId: context.bindingId,
+            publicStream: Object.freeze({ kind: "primary" as const }),
+            publicStreamId: context.bindingId,
+            workspaceId: reservation.workspaceId,
+            taskId: reservation.taskId,
+            principal: context.principal,
+            thread,
+          });
+          const snapshot = await projectCurrentSubagentList({
+            authority: cachedAuthority,
+            context,
+            reconcile: true,
+            reservation,
+          });
+          observedPrivateThreadIds = new Set(snapshot.observedPrivateThreadIds);
+          replayRetainedListHints();
+          const recheck = await projectCurrentSubagentList({
+            authority: cachedAuthority,
+            context,
+            reconcile: queuedListNeedsReconciliation(),
+            reservation,
+          });
+          observedPrivateThreadIds = new Set(recheck.observedPrivateThreadIds);
+          listSignature = subagentListSignature(recheck.subagents);
+          replayRetainedListHints();
+          const readySeq = getLatestThreadSequence(deps.db, {
+            threadId: thread.id,
+          });
+          delivered = Math.max(delivered, readySeq);
+          emit(
+            Object.freeze({
+              type: "ready",
+              cursor: cursorFor(delivered),
+              subagents: copyPublicSubagents(recheck.subagents),
+            }),
+          );
+        } else {
+          delivered = Math.max(delivered, current);
+          emit(Object.freeze({ type: "ready", cursor: cursorFor(delivered) }));
+        }
+        readyEmitted = true;
+        if (isPrimary) {
+          replayRetainedListHints();
+          const handle = presence.join(
+            context.bindingId,
+            context.principal.id,
+            emit,
+          );
+          leavePresence = () => handle.leave();
+          await flushListProjection();
+        }
+      } catch (error) {
+        closed = true;
+        unsubscribe();
+        leavePresence?.();
+        leavePresence = null;
+        throw error;
+      }
+
       const subscription: RoomDistributionSubscriptionV1 = Object.freeze({
         close() {
           if (closed) return;

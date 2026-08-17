@@ -33,6 +33,19 @@ export type {
   WorkTogetherRoomResourceReservation,
 } from "./work-together-room-resource-reservations.js";
 
+export { listLatestRootTurnTerminalOutcomesByThreadIds } from "./work-together-room-root-turn-outcomes.js";
+export type {
+  LatestRootTurnTerminalOutcomeRow,
+  RootTurnTerminalOutcome,
+} from "./work-together-room-root-turn-outcomes.js";
+export { InvalidWorkTogetherRoomRootTurnOutcomeError } from "./work-together-room-root-turn-outcomes.js";
+
+export {
+  InvalidWorkTogetherRoomAssistantExcerptError,
+  listLatestCompletedAgentMessageExcerptsByThreadIds,
+} from "./work-together-room-assistant-excerpts.js";
+export type { LatestCompletedAgentMessageExcerptRow } from "./work-together-room-assistant-excerpts.js";
+
 export {
   createThreadSection,
   deleteThreadSection,
@@ -503,6 +516,9 @@ export {
   listActivePendingInteractionsForPlugin,
   listActivePluginPendingInteractions,
   listPendingInteractionsByThread,
+  listPendingInteractionsByThreadIds,
+  MAX_PENDING_INTERACTION_THREAD_IDS,
+  PendingInteractionThreadIdBoundError,
   setPendingInteractionInterrupted,
   setPendingInteractionResolving,
   setPendingInteractionResolved,
@@ -513,6 +529,7 @@ export type {
   InterruptPendingInteractionsForThreadsArgs,
   InterruptPendingInteractionsForPluginArgs,
   ListPendingInteractionsArgs,
+  ListPendingInteractionsByThreadIdsArgs,
   PendingInteractionProviderRequestIdentity,
   PendingInteractionRow,
   SetPendingInteractionResolvingArgs,

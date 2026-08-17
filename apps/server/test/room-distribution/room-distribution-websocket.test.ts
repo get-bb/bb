@@ -3,7 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { isRegistryIssuedRoomDistributionAuthorization } from "../../src/auth/room-distribution-authorization.js";
 import type { ClientSocketSession } from "../../src/request-context.js";
-import type { WorkTogetherRoomDistributionV1 } from "../../src/room-distribution/room-distribution-port.js";
+import type {
+  RoomJsonObject,
+  WorkTogetherRoomDistributionV1,
+} from "../../src/room-distribution/room-distribution-port.js";
 import {
   createRoomDistributionSocketProtocol,
   ROOM_DISTRIBUTION_MESSAGE_CLOSE_REASON,
@@ -11,7 +14,7 @@ import {
 } from "../../src/room-distribution/room-distribution-websocket.js";
 
 const BINDING_ID = "99999999-aaaa-4bbb-8ccc-dddddddddddd";
-const CHILD_ID = "55555555-6666-4777-8888-999999999999";
+const SUBAGENT_ID = "55555555-6666-4777-8888-999999999999";
 const PRINCIPAL: Principal = Object.freeze({
   id: "user_RoomSocket123",
   kind: "human",
@@ -38,7 +41,7 @@ function fixture(
     }>;
   } = {},
 ) {
-  let emit: ((event: { readonly [key: string]: string }) => void) | undefined;
+  let emit: ((event: RoomJsonObject) => void) | undefined;
   const closeSubscription = vi.fn();
   const subscribe = vi.fn(async (_context, _cursor, sink) => {
     emit = sink;
@@ -82,7 +85,7 @@ function fixture(
     subscribe,
     closeSubscription,
     authorizationCalls,
-    emit: (event: { readonly [key: string]: string }) => emit?.(event),
+    emit: (event: RoomJsonObject) => emit?.(event),
   };
 }
 
@@ -94,12 +97,12 @@ describe("Room distribution WebSocket protocol", () => {
       test.session,
       BINDING_ID,
       "evt%3A7",
-      CHILD_ID,
+      SUBAGENT_ID,
     );
     await vi.advanceTimersByTimeAsync(0);
     expect(test.subscribe).toHaveBeenCalledWith(
       expect.objectContaining({ bindingId: BINDING_ID, principal: PRINCIPAL }),
-      { childAttachmentId: CHILD_ID, cursor: "evt%3A7" },
+      { subagentId: SUBAGENT_ID, cursor: "evt%3A7" },
       expect.any(Function),
     );
     expect(test.authorizationCalls).toHaveLength(1);
@@ -113,6 +116,52 @@ describe("Room distribution WebSocket protocol", () => {
     expect(test.socket.send).toHaveBeenCalledWith(
       JSON.stringify({ type: "event", cursor: "evt%3A8" }),
     );
+  });
+
+  it("forwards Primary ready subagents and subagents.changed replacement JSON", async () => {
+    const test = fixture();
+    test.protocol.open(test.socket, test.session, BINDING_ID, null, null);
+    await vi.advanceTimersByTimeAsync(0);
+    const subagents = [
+      Object.freeze({
+        schemaVersion: 1,
+        id: SUBAGENT_ID,
+        parent: Object.freeze({ kind: "primary", id: BINDING_ID }),
+        label: "Worker",
+        summary: null,
+        lifecycle: "created",
+        attention: Object.freeze({ kind: "none" }),
+        capabilities: [],
+      }),
+    ];
+    test.emit(
+      Object.freeze({
+        type: "ready",
+        cursor: "s.0",
+        subagents,
+      }) as RoomJsonObject,
+    );
+    expect(test.socket.send).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: "ready",
+        cursor: "s.0",
+        subagents,
+      }),
+    );
+    test.emit(
+      Object.freeze({
+        type: "subagents.changed",
+        subagents,
+      }) as RoomJsonObject,
+    );
+    const forwarded = JSON.parse(
+      String(test.socket.send.mock.calls.at(-1)?.[0]),
+    ) as RoomJsonObject;
+    expect(Object.keys(forwarded)).toEqual(["type", "subagents"]);
+    expect(forwarded).toEqual({
+      type: "subagents.changed",
+      subagents,
+    });
   });
 
   it("reauthorizes periodically and closes immediately after policy denial", async () => {
