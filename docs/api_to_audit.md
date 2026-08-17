@@ -254,6 +254,16 @@ build inlines the SDK's published, self-contained bundle.
    first-party bridge only (the Claude mock-CLI traffic config, the ACP
    reasoning/permission CLI schemas, the workflow snapshot types). Each is a
    candidate to move into its own plugin instead of being promised to everyone.
+   The root cause is upstream of the SDK: the wave-5 move relocated
+   `agent-runtime/src/shared/` byte-identically, and `bridge-kit/adapter-utils.ts`
+   is a self-described grab-bag of "functions and constants duplicated across
+   the claude-code, pi, and codex adapters" whose single-consumer passengers
+   moved with it — `claudeCodeMockCliTrafficConfigSchema`,
+   `claudeTaskToolNameSchema`, `claudeTaskToolOutputSchema` (claude-code plugin
+   only) and `acpNativeReasoningSchema` (acp plugin only). Repatriate those to
+   their owning plugins and shrink `adapter-utils` to what two-plus bridges
+   actually share; the kit barrel is `export *`, so trimming the kit trims the
+   published surface (and this audit) with it.
 3. **The ACP launch spec.** `hostDaemonAcpLaunchSpecSchema` is a
    server↔daemon wire shape a bridge parses out of its provider-scoped static
    options. It is the one core contract leaking into the published surface;
