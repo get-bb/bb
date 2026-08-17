@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import * as contract from "../src/index.js";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
+  PLUGIN_HOST_ARTIFACT_MAX_BYTES,
   HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES,
   HOST_DAEMON_SETTLED_COMMAND_TYPES,
   TERMINAL_COLS_MAX,
@@ -1059,6 +1060,9 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
+  // Version 128 replaces cross-machine host-plugin deadline timestamps with a
+  // relative duration and caps declared host-plugin artifact sizes. Older
+  // daemons cannot interpret the new call envelope.
   // Version 127 carries typed host-plugin signals from daemon workers to the
   // server. Older daemons cannot publish plugin-owned host invalidations.
   // Version 125 adds the authoritative active-plugin generation snapshot on
@@ -1102,7 +1106,42 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(127);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(128);
+  });
+
+  it("uses relative host-plugin timeouts and bounds artifact declarations", () => {
+    const command = {
+      type: "plugin.host.call" as const,
+      pluginId: "fixture",
+      generation: "generation-1",
+      artifact: {
+        digest: "a".repeat(64),
+        byteLength: 1,
+      },
+      callId: "call-1",
+      method: "echo",
+      input: null,
+      timeoutMs: 10_000,
+    };
+    expect(hostDaemonOnlineRpcCommandSchema.safeParse(command).success).toBe(
+      true,
+    );
+    expect(
+      hostDaemonOnlineRpcCommandSchema.safeParse({
+        ...command,
+        timeoutMs: undefined,
+        deadlineUnixMs: Date.now() + 10_000,
+      }).success,
+    ).toBe(false);
+    expect(
+      hostDaemonOnlineRpcCommandSchema.safeParse({
+        ...command,
+        artifact: {
+          ...command.artifact,
+          byteLength: PLUGIN_HOST_ARTIFACT_MAX_BYTES + 1,
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it("requires an explicit intent on a thread stop command", () => {

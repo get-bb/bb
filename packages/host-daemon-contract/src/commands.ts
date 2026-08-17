@@ -37,8 +37,12 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 import { workspaceResolutionFailureSchema } from "./workspace.js";
+import { PLUGIN_HOST_ARTIFACT_MAX_BYTES } from "./protocol.js";
 
-export { HOST_DAEMON_PROTOCOL_VERSION } from "./protocol.js";
+export {
+  HOST_DAEMON_PROTOCOL_VERSION,
+  PLUGIN_HOST_ARTIFACT_MAX_BYTES,
+} from "./protocol.js";
 export {
   workspaceResolutionFailureCodeSchema,
   workspaceResolutionFailureSchema,
@@ -650,9 +654,11 @@ const hostPickFolderCommandSchema = z
 const pluginHostArtifactSchema = z
   .object({
     digest: z.string().regex(/^[a-f0-9]{64}$/u),
-    byteLength: z.number().int().positive(),
+    byteLength: z.number().int().positive().max(PLUGIN_HOST_ARTIFACT_MAX_BYTES),
   })
   .strict();
+
+const MAX_NODE_TIMER_DELAY_MS = 2_147_483_647;
 
 const pluginHostCallCommandSchema = z
   .object({
@@ -663,7 +669,7 @@ const pluginHostCallCommandSchema = z
     callId: z.string().min(1),
     method: z.string().min(1),
     input: jsonValueSchema,
-    deadlineUnixMs: z.number().int().positive(),
+    timeoutMs: z.number().int().positive().max(MAX_NODE_TIMER_DELAY_MS),
   })
   .strict();
 

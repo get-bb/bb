@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HostDaemonOnlineRpcCommand } from "@bb/host-daemon-contract";
@@ -100,7 +100,7 @@ function callCommand(overrides: Partial<PluginCall> = {}): PluginCall {
     callId: randomUUID(),
     method: "echo",
     input: { value: "hello" },
-    deadlineUnixMs: Date.now() + 10_000,
+    timeoutMs: 10_000,
     ...overrides,
   };
 }
@@ -121,6 +121,12 @@ describe("PluginHostManager", () => {
   async function createManager(
     overrides: Partial<ConstructorParameters<typeof PluginHostManager>[0]> = {},
   ): Promise<PluginHostManager> {
+    return (await createManagerFixture(overrides)).manager;
+  }
+
+  async function createManagerFixture(
+    overrides: Partial<ConstructorParameters<typeof PluginHostManager>[0]> = {},
+  ): Promise<{ dataDir: string; manager: PluginHostManager }> {
     const dataDir = await mkdtemp(join(tmpdir(), "bb-plugin-host-test-"));
     tempDirs.push(dataDir);
     const manager = new PluginHostManager({
@@ -130,7 +136,7 @@ describe("PluginHostManager", () => {
       ...overrides,
     });
     managers.push(manager);
-    return manager;
+    return { dataDir, manager };
   }
 
   it("verifies, caches, and reuses one worker for an artifact generation", async () => {
@@ -147,6 +153,92 @@ describe("PluginHostManager", () => {
       Reflect.get(Object(second.output), "pid"),
     );
     expect(fetchArtifact).toHaveBeenCalledOnce();
+  });
+
+  it("bounds call count and input bytes while worker startup is pending", async () => {
+    let resolveCountFetch!: (bytes: Uint8Array) => void;
+    const countFetch = vi.fn(
+      () =>
+        new Promise<Uint8Array>((resolve) => {
+          resolveCountFetch = resolve;
+        }),
+    );
+    const countManager = await createManager({
+      fetchArtifact: countFetch,
+      maxActiveCallsPerPlugin: 1,
+    });
+    const firstCountCall = countManager.call(callCommand({ timeoutMs: 20 }));
+    const firstDeadline = expect(firstCountCall).rejects.toThrow(
+      /deadline before dispatch/u,
+    );
+    await vi.waitFor(() => expect(countFetch).toHaveBeenCalledOnce());
+    await firstDeadline;
+    await expect(countManager.call(callCommand())).rejects.toThrow(
+      /too many active calls/u,
+    );
+    resolveCountFetch(artifactSource);
+
+    const input = { value: "1234567890" };
+    const inputByteLength = Buffer.byteLength(JSON.stringify(input));
+    let resolveByteFetch!: (bytes: Uint8Array) => void;
+    const byteFetch = vi.fn(
+      () =>
+        new Promise<Uint8Array>((resolve) => {
+          resolveByteFetch = resolve;
+        }),
+    );
+    const byteManager = await createManager({
+      fetchArtifact: byteFetch,
+      maxActiveCallsPerPlugin: 2,
+      maxActiveCallInputBytesPerPlugin: inputByteLength * 2 - 1,
+    });
+    const firstByteCall = byteManager.call(callCommand({ input }));
+    await vi.waitFor(() => expect(byteFetch).toHaveBeenCalledOnce());
+    await expect(byteManager.call(callCommand({ input }))).rejects.toThrow(
+      /active call inputs exceed/u,
+    );
+    resolveByteFetch(artifactSource);
+    await firstByteCall;
+  });
+
+  it("keeps only the active artifact digest in each plugin cache", async () => {
+    const versionedArtifact = (index: number): Buffer =>
+      Buffer.concat([artifactSource, Buffer.from(`\n// version ${index}\n`)]);
+    const sources = [
+      versionedArtifact(1),
+      versionedArtifact(2),
+      versionedArtifact(3),
+    ] satisfies [Buffer, Buffer, Buffer];
+    const sourceByDigest = new Map(
+      sources.map((source) => [
+        createHash("sha256").update(source).digest("hex"),
+        source,
+      ]),
+    );
+    const { dataDir, manager } = await createManagerFixture({
+      fetchArtifact: vi.fn(async ({ digest }) => {
+        const source = sourceByDigest.get(digest);
+        if (source === undefined) throw new Error("unexpected artifact digest");
+        return source;
+      }),
+    });
+
+    for (const [index, source] of sources.entries()) {
+      await manager.call(
+        callCommand({
+          generation: `generation-${index + 1}`,
+          artifact: {
+            digest: createHash("sha256").update(source).digest("hex"),
+            byteLength: source.byteLength,
+          },
+        }),
+      );
+    }
+
+    const latestDigest = createHash("sha256").update(sources[2]).digest("hex");
+    await expect(
+      readdir(join(dataDir, "plugin-host-artifacts", "fixture")),
+    ).resolves.toEqual([latestDigest]);
   });
 
   it("evicts an idle worker and starts it again without reporting a crash", async () => {
@@ -240,11 +332,25 @@ describe("PluginHostManager", () => {
     await expect(result).rejects.toMatchObject({ name: "AbortError" });
 
     await expect(
-      manager.call(
-        callCommand({ method: "wait", deadlineUnixMs: Date.now() + 20 }),
-      ),
+      manager.call(callCommand({ method: "wait", timeoutMs: 20 })),
     ).rejects.toThrow(/exceeded its deadline/u);
   });
+
+  it.each([-4_000_000_000_000, 4_000_000_000_000])(
+    "enforces relative timeouts with a wall-clock offset of %s",
+    async (wallClockMs) => {
+      const manager = await createManager();
+      await manager.call(callCommand());
+      const dateNow = vi.spyOn(Date, "now").mockReturnValue(wallClockMs);
+      try {
+        await expect(
+          manager.call(callCommand({ method: "wait", timeoutMs: 20 })),
+        ).rejects.toThrow(/exceeded its deadline/u);
+      } finally {
+        dateNow.mockRestore();
+      }
+    },
+  );
 
   it("disposes deliberately without reporting a crash", async () => {
     const onWorkerExit = vi.fn();

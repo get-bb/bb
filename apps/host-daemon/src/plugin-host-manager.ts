@@ -5,12 +5,14 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rename,
   rm,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
+import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import type { Readable } from "node:stream";
 import type {
@@ -80,6 +82,12 @@ interface WorkerWatchState {
 
 interface ActiveCallState {
   cancelled: boolean;
+  inputByteLength: number;
+}
+
+interface ActiveCallAdmission {
+  count: number;
+  inputByteLength: number;
 }
 
 export interface PluginHostManagerOptions {
@@ -104,13 +112,18 @@ export interface PluginHostManagerOptions {
   hostWatcher?: Pick<HostWatcher, "watchPathRoot">;
   /** Test override for the daemon-owned worker idle timeout. */
   workerIdleTimeoutMs?: number;
+  /** Test override for the per-plugin active-call admission count. */
+  maxActiveCallsPerPlugin?: number;
+  /** Test override for the per-plugin active-call input-byte budget. */
+  maxActiveCallInputBytesPerPlugin?: number;
 }
 
 const START_TIMEOUT_MS = 10_000;
 const CANCEL_GRACE_MS = 5_000;
 const HOST_WORKER_PROTOCOL_VERSION = 2;
 const DEFAULT_WORKER_IDLE_TIMEOUT_MS = 5 * 60_000;
-const MAX_PENDING_CALLS_PER_WORKER = 256;
+const MAX_ACTIVE_CALLS_PER_PLUGIN = 256;
+const MAX_ACTIVE_CALL_INPUT_BYTES_PER_PLUGIN = 32 * 1024 * 1024;
 const MAX_WATCHES_PER_WORKER = 256;
 const MAX_WATCH_CHANGED_PATHS = 4_096;
 const MAX_WATCH_BATCH_BYTES = 1024 * 1024;
@@ -214,6 +227,10 @@ export function pluginHostProcessEnv(
 export class PluginHostManager {
   private readonly workers = new Map<string, WorkerState>();
   private readonly activeCalls = new Map<string, ActiveCallState>();
+  private readonly activeCallAdmissions = new Map<
+    string,
+    ActiveCallAdmission
+  >();
   private readonly retiredGenerations = new Map<string, Set<string>>();
   private readonly workerMutationTails = new Map<string, Promise<void>>();
   private shuttingDown = false;
@@ -224,25 +241,22 @@ export class PluginHostManager {
     if (this.shuttingDown) {
       throw new Error("host plugin manager is shutting down");
     }
-    if (Date.now() >= command.deadlineUnixMs) {
-      throw new Error(
-        `host plugin call ${command.callId} reached its deadline before dispatch`,
-      );
-    }
-    const callKey = this.callKey(command);
-    if (this.activeCalls.has(callKey)) {
-      throw new Error(`duplicate host plugin call ${command.callId}`);
-    }
-    const callState: ActiveCallState = { cancelled: false };
-    this.activeCalls.set(callKey, callState);
+    const { callKey, callState } = this.admitCall(command);
+    const deadlineMonotonicMs = performance.now() + command.timeoutMs;
+    const workerStartup = this.ensureWorker(command);
     let activeWorker: WorkerState | undefined;
     try {
-      const worker = await this.ensureWorker(command);
+      const worker = await this.awaitBeforeDeadline(
+        workerStartup,
+        deadlineMonotonicMs,
+        `host plugin call ${command.callId} reached its deadline before dispatch`,
+      );
       activeWorker = worker;
       worker.activeCallCount += 1;
       await worker.ready;
       if (callState.cancelled) throw this.cancelledCallError(command.callId);
-      if (Date.now() >= command.deadlineUnixMs) {
+      const remainingMs = deadlineMonotonicMs - performance.now();
+      if (remainingMs <= 0) {
         throw new Error(
           `host plugin call ${command.callId} reached its deadline before dispatch`,
         );
@@ -250,7 +264,7 @@ export class PluginHostManager {
       if (worker.pending.has(command.callId)) {
         throw new Error(`duplicate host plugin call ${command.callId}`);
       }
-      if (worker.pending.size >= MAX_PENDING_CALLS_PER_WORKER) {
+      if (worker.pending.size >= MAX_ACTIVE_CALLS_PER_PLUGIN) {
         throw new Error(
           `host plugin ${command.pluginId} has too many pending calls`,
         );
@@ -265,7 +279,7 @@ export class PluginHostManager {
                 `host plugin call ${command.callId} exceeded its deadline`,
               ),
             ),
-          Math.max(1, command.deadlineUnixMs - Date.now()),
+          Math.max(1, remainingMs),
         );
         deadlineTimer.unref?.();
         worker.pending.set(command.callId, {
@@ -295,7 +309,15 @@ export class PluginHostManager {
         activeWorker.activeCallCount -= 1;
         this.scheduleWorkerIdle(activeWorker);
       }
-      this.activeCalls.delete(callKey);
+      const release = (): void => this.releaseCall(command, callKey, callState);
+      if (activeWorker === undefined) {
+        void workerStartup.then((worker) => {
+          release();
+          this.scheduleWorkerIdle(worker);
+        }, release);
+      } else {
+        release();
+      }
     }
   }
 
@@ -907,6 +929,10 @@ export class PluginHostManager {
         createHash("sha256").update(current).digest("hex") ===
           command.artifact.digest
       ) {
+        await this.prunePluginArtifactDigests(
+          command.pluginId,
+          command.artifact.digest,
+        );
         return artifactPath;
       }
     } catch {
@@ -928,7 +954,57 @@ export class PluginHostManager {
     const staged = join(directory, `.host-${randomUUID()}.tmp`);
     await writeFile(staged, bytes, { mode: 0o600 });
     await rename(staged, artifactPath);
+    await this.prunePluginArtifactDigests(
+      command.pluginId,
+      command.artifact.digest,
+    );
     return artifactPath;
+  }
+
+  private async prunePluginArtifactDigests(
+    pluginId: string,
+    keepDigest: string,
+  ): Promise<void> {
+    const pluginDirectory = join(
+      this.options.dataDir,
+      "plugin-host-artifacts",
+      safePluginSegment(pluginId),
+    );
+    let entries;
+    try {
+      entries = await readdir(pluginDirectory, { withFileTypes: true });
+    } catch (error) {
+      this.options.logger.warn(
+        { pluginId, err: error },
+        "Failed to inspect host plugin artifact cache",
+      );
+      return;
+    }
+    const staleDigestDirectories = entries.filter(
+      (entry) =>
+        entry.isDirectory() &&
+        entry.name !== keepDigest &&
+        /^[a-f0-9]{64}$/u.test(entry.name),
+    );
+    const results = await Promise.allSettled(
+      staleDigestDirectories.map((entry) =>
+        rm(join(pluginDirectory, entry.name), {
+          recursive: true,
+          force: true,
+        }),
+      ),
+    );
+    results.forEach((result, index) => {
+      if (result.status === "fulfilled") return;
+      this.options.logger.warn(
+        {
+          pluginId,
+          digest: staleDigestDirectories[index]?.name,
+          err: result.reason,
+        },
+        "Failed to prune stale host plugin artifact",
+      );
+    });
   }
 
   private async stopWorker(worker: WorkerState, reason: string): Promise<void> {
@@ -993,6 +1069,96 @@ export class PluginHostManager {
     callId: string;
   }): string {
     return `${command.pluginId}\0${command.generation}\0${command.callId}`;
+  }
+
+  private admitCall(command: PluginHostCallCommand): {
+    callKey: string;
+    callState: ActiveCallState;
+  } {
+    const callKey = this.callKey(command);
+    if (this.activeCalls.has(callKey)) {
+      throw new Error(`duplicate host plugin call ${command.callId}`);
+    }
+    const serializedInput = JSON.stringify(command.input);
+    if (serializedInput === undefined) {
+      throw new Error(`host plugin call ${command.callId} has invalid input`);
+    }
+    const inputByteLength = Buffer.byteLength(serializedInput);
+    const admission = this.activeCallAdmissions.get(command.pluginId) ?? {
+      count: 0,
+      inputByteLength: 0,
+    };
+    const maxCalls =
+      this.options.maxActiveCallsPerPlugin ?? MAX_ACTIVE_CALLS_PER_PLUGIN;
+    if (admission.count >= maxCalls) {
+      throw new Error(
+        `host plugin ${command.pluginId} has too many active calls (maximum ${maxCalls})`,
+      );
+    }
+    const maxInputBytes =
+      this.options.maxActiveCallInputBytesPerPlugin ??
+      MAX_ACTIVE_CALL_INPUT_BYTES_PER_PLUGIN;
+    if (admission.inputByteLength + inputByteLength > maxInputBytes) {
+      throw new Error(
+        `host plugin ${command.pluginId} active call inputs exceed the ${maxInputBytes} byte budget`,
+      );
+    }
+    const callState = { cancelled: false, inputByteLength };
+    this.activeCalls.set(callKey, callState);
+    this.activeCallAdmissions.set(command.pluginId, {
+      count: admission.count + 1,
+      inputByteLength: admission.inputByteLength + inputByteLength,
+    });
+    return { callKey, callState };
+  }
+
+  private releaseCall(
+    command: PluginHostCallCommand,
+    callKey: string,
+    callState: ActiveCallState,
+  ): void {
+    if (this.activeCalls.get(callKey) !== callState) return;
+    this.activeCalls.delete(callKey);
+    const admission = this.activeCallAdmissions.get(command.pluginId);
+    if (admission === undefined) return;
+    const count = admission.count - 1;
+    const inputByteLength =
+      admission.inputByteLength - callState.inputByteLength;
+    if (count === 0) {
+      this.activeCallAdmissions.delete(command.pluginId);
+      return;
+    }
+    this.activeCallAdmissions.set(command.pluginId, {
+      count,
+      inputByteLength,
+    });
+  }
+
+  private awaitBeforeDeadline<T>(
+    promise: Promise<T>,
+    deadlineMonotonicMs: number,
+    message: string,
+  ): Promise<T> {
+    const remainingMs = deadlineMonotonicMs - performance.now();
+    if (remainingMs <= 0) return Promise.reject(new Error(message));
+    return new Promise<T>((resolve, reject) => {
+      let settled = false;
+      const finish = (callback: () => void): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        callback();
+      };
+      const timer = setTimeout(
+        () => finish(() => reject(new Error(message))),
+        Math.max(1, remainingMs),
+      );
+      timer.unref?.();
+      promise.then(
+        (value) => finish(() => resolve(value)),
+        (error) => finish(() => reject(error)),
+      );
+    });
   }
 
   private enqueueWorkerMutation<T>(

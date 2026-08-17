@@ -93,7 +93,7 @@ export async function callPluginHostRpc(
       callId,
       method: args.method,
       input,
-      deadlineUnixMs: Date.now() + COMMAND_TIMEOUT_MS,
+      timeoutMs: COMMAND_TIMEOUT_MS,
     },
   });
   const signal = args.signal;

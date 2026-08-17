@@ -403,7 +403,11 @@ describe("plugin bb.sdk against a running server", () => {
           command.pluginId === "host-transform" &&
           command.method === "parseDate",
       );
-      expect(command.command).toMatchObject({ input: { when: iso } });
+      expect(command.command).toMatchObject({
+        input: { when: iso },
+        timeoutMs: 30_000,
+      });
+      expect(command.command).not.toHaveProperty("deadlineUnixMs");
       await reportQueuedCommandSuccess(server, command, { output: iso });
 
       await expect(resultPromise).resolves.toEqual(new Date(iso));

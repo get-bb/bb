@@ -7,6 +7,7 @@ import { createRequire, registerHooks } from "node:module";
 import { performance } from "node:perf_hooks";
 import { createJiti } from "jiti";
 import semver from "semver";
+import { PLUGIN_HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION, type Thread } from "@bb/domain";
 import { buildPluginApp, buildPluginHost } from "@bb/plugin-build";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
@@ -985,6 +986,16 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     }
     const jsPath = join(row.rootDir, "dist", "host.js");
     const metaPath = join(row.rootDir, "dist", "host.meta.json");
+    const artifactStats = await stat(jsPath).catch((error) => {
+      throw new Error(
+        `host artifact for plugin "${manifest.id}" is missing or unreadable: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+    if (artifactStats.size > PLUGIN_HOST_ARTIFACT_MAX_BYTES) {
+      throw new Error(
+        `host artifact for plugin "${manifest.id}" exceeds the ${PLUGIN_HOST_ARTIFACT_MAX_BYTES} byte limit`,
+      );
+    }
     const [bytes, rawMeta] = await Promise.all([
       readFile(jsPath),
       readFile(metaPath, "utf8"),
@@ -993,6 +1004,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         `host artifact for plugin "${manifest.id}" is missing or unreadable: ${error instanceof Error ? error.message : String(error)}`,
       );
     });
+    if (bytes.byteLength > PLUGIN_HOST_ARTIFACT_MAX_BYTES) {
+      throw new Error(
+        `host artifact for plugin "${manifest.id}" exceeds the ${PLUGIN_HOST_ARTIFACT_MAX_BYTES} byte limit`,
+      );
+    }
     const metadataProblem = validatePluginArtifactMeta({
       artifact: "host",
       raw: rawMeta,

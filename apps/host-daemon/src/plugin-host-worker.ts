@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 
 const HOST_WORKER_PROTOCOL_VERSION = 2;
 const RESULT_MAX_BYTES = 8 * 1024 * 1024;
+const DEFAULT_DISPOSE_TIMEOUT_MS = 5_000;
 
 interface StandardSchema {
   readonly "~standard": {
@@ -315,8 +316,18 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-const [artifactPath, pluginId, generation, dataDir, tempDir] =
-  process.argv.slice(2);
+const [
+  artifactPath,
+  pluginId,
+  generation,
+  dataDir,
+  tempDir,
+  disposeTimeoutArg,
+] = process.argv.slice(2);
+const disposeTimeoutMs =
+  disposeTimeoutArg === undefined
+    ? DEFAULT_DISPOSE_TIMEOUT_MS
+    : Number(disposeTimeoutArg);
 if (
   artifactPath === undefined ||
   !isAbsolute(artifactPath) ||
@@ -325,7 +336,9 @@ if (
   dataDir === undefined ||
   !isAbsolute(dataDir) ||
   tempDir === undefined ||
-  !isAbsolute(tempDir)
+  !isAbsolute(tempDir) ||
+  !Number.isSafeInteger(disposeTimeoutMs) ||
+  disposeTimeoutMs <= 0
 ) {
   throw new Error("invalid host worker arguments");
 }
@@ -335,7 +348,7 @@ const activeCalls = new Map<string, AbortController>();
 const watches = new Map<string, WorkerWatchState>();
 let nextWatchId = 1;
 let nextLeaseId = 1;
-let entry: HostEntry;
+let entry: HostEntry | null = null;
 let disposing = false;
 
 function startWatch(
@@ -437,16 +450,17 @@ function handleWatchEvent(
 async function dispose(): Promise<void> {
   if (disposing) return;
   disposing = true;
+  setTimeout(() => process.exit(1), disposeTimeoutMs);
   lifecycleController.abort();
   for (const controller of activeCalls.values()) controller.abort();
   activeCalls.clear();
-  await Promise.all(
-    [...watches.values()].map((watch) => watch.subscription.dispose()),
-  );
   try {
-    await entry.dispose?.();
+    await Promise.all(
+      [...watches.values()].map((watch) => watch.subscription.dispose()),
+    );
+    await entry?.dispose?.();
   } finally {
-    process.disconnect?.();
+    if (process.connected) process.disconnect?.();
     process.exit(0);
   }
 }
@@ -455,6 +469,8 @@ async function handleCall(
   message: Extract<ParentMessage, { type: "call" }>,
 ): Promise<void> {
   if (disposing) return;
+  const currentEntry = entry;
+  if (currentEntry === null) return;
   if (activeCalls.has(message.callId)) {
     send({
       type: "result",
@@ -464,8 +480,8 @@ async function handleCall(
     });
     return;
   }
-  const method = entry.contract[message.method];
-  const handler = entry.handlers[message.method];
+  const method = currentEntry.contract[message.method];
+  const handler = currentEntry.handlers[message.method];
   if (method === undefined || handler === undefined) {
     send({
       type: "result",
@@ -485,7 +501,7 @@ async function handleCall(
       lifecycle: { signal: lifecycleController.signal },
       experimental_paths: { dataDir, tempDir },
       async experimental_emitSignal(signalName, payload) {
-        const signal = entry.experimental_signals?.[signalName];
+        const signal = currentEntry.experimental_signals?.[signalName];
         if (signal === undefined) {
           throw new Error(`unknown host signal "${signalName}"`);
         }
@@ -537,8 +553,12 @@ async function handleCall(
   }
 }
 
+process.once("disconnect", () => void dispose());
+if (!process.connected) void dispose();
+
 try {
   const imported = await import(pathToFileURL(artifactPath).href);
+  if (disposing) process.exit(0);
   entry = parseEntry(imported.default);
   process.on("message", (raw: unknown) => {
     const message = parseParentMessage(raw);
@@ -557,7 +577,6 @@ try {
       void dispose();
     }
   });
-  process.once("disconnect", () => void dispose());
   send({
     type: "ready",
     protocolVersion: HOST_WORKER_PROTOCOL_VERSION,
@@ -565,6 +584,7 @@ try {
     generation,
   });
 } catch (error) {
+  if (disposing) process.exit(1);
   send({ type: "startup-error", error: errorMessage(error) });
   process.exit(1);
 }
