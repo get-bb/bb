@@ -175,6 +175,73 @@ export interface ParseRejectedUsersFromClientRequestArgs {
   options?: BuildEventProjectionMessagesOptions;
 }
 
+export function parseProviderUserMessage(
+  decoded: ThreadEvent,
+  meta: EventMeta,
+): EventProjectionUserMessage | null {
+  if (
+    decoded.type !== "item/completed" ||
+    decoded.item.type !== "userMessage"
+  ) {
+    return null;
+  }
+
+  const textParts: string[] = [];
+  const imageUrls: string[] = [];
+  const localImagePaths: string[] = [];
+  const localFilePaths: string[] = [];
+  for (const part of decoded.item.content) {
+    switch (part.type) {
+      case "text":
+        textParts.push(part.text);
+        break;
+      case "image":
+        imageUrls.push(part.url);
+        break;
+      case "localImage":
+        localImagePaths.push(part.path);
+        break;
+      case "localFile":
+        localFilePaths.push(part.path);
+        break;
+    }
+  }
+  const text = textParts.join("");
+  if (
+    text.length === 0 &&
+    imageUrls.length === 0 &&
+    localImagePaths.length === 0 &&
+    localFilePaths.length === 0
+  ) {
+    return null;
+  }
+
+  return {
+    kind: "user",
+    id: messageId(decoded.threadId, "provider-user", decoded.item.id),
+    threadId: decoded.threadId,
+    sourceSeqStart: meta.seq,
+    sourceSeqEnd: meta.seq,
+    createdAt: meta.createdAt,
+    scope: decoded.scope,
+    initiator: "system",
+    senderThreadId: null,
+    systemMessageKind: "unlabeled",
+    systemMessageSubject: null,
+    turnRequest: { isGrouped: false, kind: "message", status: "accepted" },
+    text,
+    mentions: [],
+    attachments: {
+      webImages: imageUrls.length,
+      localImages: localImagePaths.length,
+      localFiles: localFilePaths.length,
+      ...(imageUrls.length > 0 ? { imageUrls } : {}),
+      ...(localImagePaths.length > 0 ? { localImagePaths } : {}),
+      ...(localFilePaths.length > 0 ? { localFilePaths } : {}),
+    },
+  };
+}
+
 type ClientTurnRequestedEvent = Extract<
   ThreadEvent,
   { type: "client/turn/requested" }

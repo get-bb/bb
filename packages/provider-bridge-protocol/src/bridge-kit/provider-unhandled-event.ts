@@ -39,9 +39,14 @@ export interface BuildUnhandledProviderEventsArgs {
 }
 
 function toProviderRawEvent(rawEvent: JsonRpcMessage): ProviderRawEvent {
-  const parsed = providerRawEventSchema.safeParse(rawEvent);
-  if (parsed.success) {
-    return parsed.data;
+  try {
+    const normalized = JSON.parse(JSON.stringify(rawEvent));
+    const parsed = providerRawEventSchema.safeParse(normalized);
+    if (parsed.success) {
+      return parsed.data;
+    }
+  } catch {
+    // Fall through to the diagnostic envelope below.
   }
 
   return {

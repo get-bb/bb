@@ -1133,6 +1133,8 @@ describe("host-daemon command schemas", () => {
   // Version 116 reports provider exits that happen while a turn start is
   // pending. Older daemons can leave the server thread active until the live
   // command timeout, so enrolled machines must update before handling turns.
+  // Version 136 projects visible Pi custom messages as provider input and
+  // reports empty provider-triggered turns instead of silently completing them.
   // Version 115 settles zero-work provider prompts with a complete synthetic
   // turn lifecycle. Older daemons can leave locally handled prompts active
   // indefinitely, so enrolled machines must update for reliable completion.
@@ -1142,7 +1144,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(135);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(136);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

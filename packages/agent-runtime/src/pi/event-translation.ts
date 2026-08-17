@@ -106,6 +106,8 @@ const piEventTypeSchema = z
       "agent_start",
       "compaction_end",
       "compaction_start",
+      "message_end",
+      "message_start",
       "message_update",
       "tool_execution_end",
       "tool_execution_start",
@@ -138,6 +140,25 @@ const piIgnoredEventSchema = z
   .object({ type: z.string() })
   .passthrough()
   .refine((event) => PI_IGNORED_EVENT_TYPES.has(event.type));
+
+const piCustomMessageBoundaryEventSchema = z
+  .object({
+    type: z.enum(["message_end", "message_start"]),
+    message: z
+      .object({
+        role: z.literal("custom"),
+        content: z.string(),
+        display: z.boolean().default(false),
+        details: z
+          .object({
+            attention: z.enum(["context", "ignore", "turn"]).optional(),
+          })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
 
 const piMessageContentBlockSchema = z
   .object({
@@ -447,8 +468,11 @@ export interface PiTurnState {
   openAssistantMessageIdsByScope: Map<string, string>;
   openScopedItemIdsByScope: Map<string, string>;
   pendingAcceptedUserMessages: AcceptedUserMessageState["pendingAcceptedUserMessages"];
+  providerInputCounter: number;
+  providerInputTurnId: string | undefined;
   scopedItemCounter: number;
   toolItemsByCallId: Map<string, ThreadEventItem>;
+  turnStartedWithAcceptedUserMessage: boolean;
 }
 
 const piCompactionItemIds = createScopedItemIdFactory({
@@ -494,6 +518,10 @@ export function createPiEventTranslator(
     options.itemIdPrefix === undefined
       ? "pi-assistant"
       : `${options.itemIdPrefix}assistant`;
+  const providerInputIdPrefix =
+    options.itemIdPrefix === undefined
+      ? "pi-provider-input"
+      : `${options.itemIdPrefix}provider-input`;
   const piReasoningItemIds = createScopedItemIdFactory({
     prefix:
       options.itemIdPrefix === undefined
@@ -519,11 +547,20 @@ export function createPiEventTranslator(
       openAssistantMessageIdsByScope: new Map(),
       openScopedItemIdsByScope: new Map(),
       pendingAcceptedUserMessages: [],
+      providerInputCounter: 0,
+      providerInputTurnId: undefined,
       scopedItemCounter: 0,
       toolItemsByCallId: new Map(),
+      turnStartedWithAcceptedUserMessage: false,
     }),
+    onTurnFinish: ({ state }) => {
+      state.providerInputTurnId = undefined;
+      state.turnStartedWithAcceptedUserMessage = false;
+    },
     onTurnStart: ({ state }) => {
       resetPiCommandOutputSnapshots(state);
+      state.turnStartedWithAcceptedUserMessage =
+        state.pendingAcceptedUserMessages.length > 0;
     },
     turnIdPrefix: options.turnIdPrefix,
   });
@@ -715,6 +752,53 @@ export function createPiEventTranslator(
       });
 
     switch (eventType.data.type) {
+      case "message_end":
+      case "message_start": {
+        const piEvent = piCustomMessageBoundaryEventSchema.safeParse(event);
+        if (!piEvent.success) {
+          return buildUnexpectedEvent(event);
+        }
+        if (
+          piEvent.data.type === "message_end" ||
+          !piEvent.data.message.display ||
+          piEvent.data.message.details?.attention === "ignore"
+        ) {
+          return [];
+        }
+        if (
+          state.currentTurnId === undefined &&
+          piEvent.data.message.details?.attention === "context"
+        ) {
+          return [];
+        }
+        const turnId = turnState.ensureTurnStarted({
+          events,
+          state,
+          threadId,
+        });
+        state.providerInputCounter += 1;
+        if (!state.turnStartedWithAcceptedUserMessage) {
+          state.providerInputTurnId = turnId;
+        }
+        events.push({
+          type: "item/completed",
+          threadId,
+          providerThreadId: "",
+          scope: turnScope(turnId),
+          item: {
+            type: "userMessage",
+            id: `${providerInputIdPrefix}-${state.providerInputCounter}`,
+            content: [
+              {
+                type: "text",
+                text: piEvent.data.message.content,
+              },
+            ],
+          },
+        });
+        break;
+      }
+
       case "agent_start": {
         const piEvent = piAgentStartEventSchema.safeParse(event);
         if (!piEvent.success) {
@@ -859,22 +943,32 @@ export function createPiEventTranslator(
             }),
           ];
         }
-        if (lastAssistant) {
-          const text = extractAssistantText(lastAssistant);
-          if (text) {
-            const itemId = turnState.resolveCompletedAssistantMessageId({
-              assistantIdPrefix,
-              parentToolCallId: context?.parentToolCallId,
-              state,
-            });
-            events.push({
-              type: "item/completed",
-              threadId,
-              providerThreadId: "",
-              scope: turnScope(currentTurnId),
-              item: { type: "agentMessage", id: itemId, text },
-            });
-          }
+        const assistantText = lastAssistant
+          ? extractAssistantText(lastAssistant)
+          : undefined;
+        if (assistantText) {
+          const itemId = turnState.resolveCompletedAssistantMessageId({
+            assistantIdPrefix,
+            parentToolCallId: context?.parentToolCallId,
+            state,
+          });
+          events.push({
+            type: "item/completed",
+            threadId,
+            providerThreadId: "",
+            scope: turnScope(currentTurnId),
+            item: { type: "agentMessage", id: itemId, text: assistantText },
+          });
+        } else if (state.providerInputTurnId === currentTurnId) {
+          events.push({
+            type: "provider/warning",
+            threadId,
+            providerThreadId: "",
+            scope: turnScope(currentTurnId),
+            category: "general",
+            summary:
+              "Pi completed the provider-triggered turn without a text response",
+          });
         }
         const tokenUsage = extractPiTokenUsage(
           lastAssistant,

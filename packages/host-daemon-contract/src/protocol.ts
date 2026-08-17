@@ -1,3 +1,8 @@
+// Version 136 translates visible Pi custom-message boundaries into provider
+// input items, preserves their attention semantics, and warns when a
+// provider-triggered turn returns no assistant text. Older daemons still send
+// those boundaries as unhandled events and omit the warning.
+//
 // Version 135 adds the `compaction-skipped` provider warning category. The Pi
 // bridge now reports a refused manual compaction ("Nothing to compact") as
 // that warning plus a completed turn instead of a failed turn. An older daemon
@@ -44,7 +49,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 135 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 136 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

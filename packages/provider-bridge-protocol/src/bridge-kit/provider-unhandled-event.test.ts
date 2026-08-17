@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createUnhandledProviderEvent } from "./provider-unhandled-event.js";
 
 describe("provider unhandled events", () => {
-  it("does not throw when raw event params are not JSON-serializable", () => {
+  it("preserves JSON-compatible fields when provider params contain undefined", () => {
     const event = createUnhandledProviderEvent({
       providerId: "test-provider",
       rawType: "sdk/custom",
@@ -27,8 +27,8 @@ describe("provider unhandled events", () => {
         jsonrpc: "2.0",
         method: "sdk/message",
         params: {
-          serializationError:
-            "Provider raw event params were not JSON-serializable.",
+          threadId: "thread-1",
+          nested: {},
         },
       },
     });

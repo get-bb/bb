@@ -3,6 +3,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { threadScope, turnScope } from "@bb/domain";
+import { queueAcceptedUserMessage } from "@bb/provider-bridge-protocol/bridge-kit";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { createPiEventTranslator } from "./event-translation.js";
 
@@ -75,6 +76,76 @@ interface PiBashStartEventArgs {
   command: string;
   cwd?: string;
   toolCallId: string;
+}
+
+interface PiProcessNotificationEventArgs {
+  attention: "context" | "ignore" | "turn";
+  content: string;
+  customType?: string;
+  display?: boolean;
+  eventType?: "message_end" | "message_start";
+  kind: "log_match" | "success";
+  processId: string;
+  threadId?: string;
+}
+
+function createPiProcessNotificationEvent(
+  args: PiProcessNotificationEventArgs,
+) {
+  return {
+    jsonrpc: "2.0" as const,
+    method: "sdk/message",
+    params: {
+      threadId: args.threadId ?? "pi-thread-1",
+      message: {
+        type: args.eventType ?? "message_start",
+        message: {
+          role: "custom",
+          customType: args.customType ?? "ad-process:notification",
+          content: args.content,
+          display: args.display ?? true,
+          details: {
+            attention: args.attention,
+            kind: args.kind,
+            processId: args.processId,
+          },
+          timestamp: 1_786_919_243_630,
+        },
+      },
+    },
+  };
+}
+
+function createPiEmptyAgentEndEvent(): AgentSessionEvent {
+  return {
+    type: "agent_end",
+    willRetry: false,
+    messages: [
+      {
+        role: "assistant",
+        content: [],
+        stopReason: "stop",
+        api: "openai-responses",
+        provider: "openai-codex",
+        model: "gpt-5.6-sol",
+        usage: {
+          input: 10,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 10,
+          cost: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 0,
+          },
+        },
+        timestamp: 1_786_919_246_950,
+      },
+    ],
+  };
 }
 
 function createPiBashStartEvent(args: PiBashStartEventArgs): AgentSessionEvent {
@@ -295,6 +366,361 @@ describe("pi event translation", () => {
     expect(events.some((event) => event.type === "provider/unhandled")).toBe(
       false,
     );
+  });
+
+  it("projects one turn for a visible custom message and accepts it in agent_end", () => {
+    const translator = createTranslator();
+    const context = { threadId: "pi-thread-1" };
+    const content = '<process_event type="lifecycle" kind="success" />';
+
+    const providerStartEvents = translator.translatePiEvent(
+      loadFixture("agent-start.json"),
+      context,
+    );
+    const notificationEvents = translator.translatePiEvent(
+      createPiProcessNotificationEvent({
+        attention: "turn",
+        content,
+        customType: "third-party:notification",
+        kind: "success",
+        processId: "proc_sleep",
+      }),
+      context,
+    );
+    const duplicateEndEvents = translator.translatePiEvent(
+      createPiProcessNotificationEvent({
+        attention: "turn",
+        content,
+        customType: "third-party:notification",
+        eventType: "message_end",
+        kind: "success",
+        processId: "proc_sleep",
+      }),
+      context,
+    );
+    const terminalEvents = translator.translatePiEvent(
+      {
+        type: "agent_end",
+        messages: [
+          {
+            role: "custom",
+            customType: "third-party:notification",
+            content,
+            details: { attention: "turn" },
+          },
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "The process finished." }],
+            stopReason: "stop",
+          },
+        ],
+        providerCheckpointId: "pi-entry-process",
+        willRetry: false,
+      },
+      context,
+    );
+    const events = [
+      ...notificationEvents,
+      ...duplicateEndEvents,
+      ...providerStartEvents,
+      ...terminalEvents,
+    ];
+
+    expect(providerStartEvents).toEqual([
+      expect.objectContaining({
+        type: "turn/started",
+        scope: turnScope("turn-1"),
+      }),
+    ]);
+    expect(notificationEvents).toEqual([
+      expect.objectContaining({
+        type: "item/completed",
+        scope: turnScope("turn-1"),
+        item: expect.objectContaining({
+          type: "userMessage",
+          content: [{ type: "text", text: content }],
+        }),
+      }),
+    ]);
+    expect(duplicateEndEvents).toEqual([]);
+    expect(
+      events.filter((event) => event.type === "turn/started"),
+    ).toHaveLength(1);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "agentMessage",
+          text: "The process finished.",
+        }),
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        providerCheckpointId: "pi-entry-process",
+      }),
+    );
+    expect(events.some((event) => event.type === "provider/unhandled")).toBe(
+      false,
+    );
+  });
+
+  it.each(["context", "ignore"] as const)(
+    "does not open an idle turn for a process notification with %s attention",
+    (attention) => {
+      const translator = createTranslator();
+      const context = { threadId: "pi-thread-1" };
+
+      const events = translator.translatePiEvent(
+        createPiProcessNotificationEvent({
+          attention,
+          content: `<process_event attention="${attention}" />`,
+          kind: "success",
+          processId: `proc_${attention}`,
+        }),
+        context,
+      );
+
+      expect(events).toEqual([]);
+      expect(
+        translator.translatePiEvent(loadFixture("agent-start.json"), context),
+      ).toContainEqual(
+        expect.objectContaining({
+          type: "turn/started",
+          scope: turnScope("turn-1"),
+        }),
+      );
+    },
+  );
+
+  it("uses the translator item prefix for process notification IDs", () => {
+    const firstTranslator = createPiEventTranslator({
+      providerId: "pi",
+      itemIdPrefix: "resume-a-",
+    });
+    const secondTranslator = createPiEventTranslator({
+      providerId: "pi",
+      itemIdPrefix: "resume-b-",
+    });
+    const notification = createPiProcessNotificationEvent({
+      attention: "turn",
+      content: '<process_event type="lifecycle" kind="success" />',
+      kind: "success",
+      processId: "proc_sleep",
+    });
+
+    const firstEvents = firstTranslator.translatePiEvent(notification, {
+      threadId: "pi-thread-1",
+    });
+    const secondEvents = secondTranslator.translatePiEvent(notification, {
+      threadId: "pi-thread-1",
+    });
+
+    expect(firstEvents).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "userMessage",
+          id: "resume-a-provider-input-1",
+        }),
+      }),
+    );
+    expect(secondEvents).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "userMessage",
+          id: "resume-b-provider-input-1",
+        }),
+      }),
+    );
+  });
+
+  it("coalesces clustered process notifications into one active turn", () => {
+    const translator = createTranslator();
+    const context = { threadId: "pi-thread-1" };
+
+    const lifecycleEvents = translator.translatePiEvent(
+      createPiProcessNotificationEvent({
+        attention: "turn",
+        content: '<process_event type="lifecycle" kind="success" />',
+        kind: "success",
+        processId: "proc_sleep",
+      }),
+      context,
+    );
+    const logMatchEvents = translator.translatePiEvent(
+      createPiProcessNotificationEvent({
+        attention: "turn",
+        content:
+          '<process_event type="log_match" kind="log_match"><matched_line>done</matched_line></process_event>',
+        kind: "log_match",
+        processId: "proc_sleep",
+      }),
+      context,
+    );
+    const events = [...lifecycleEvents, ...logMatchEvents];
+
+    expect(
+      events.filter((event) => event.type === "turn/started"),
+    ).toHaveLength(1);
+    expect(
+      events.filter(
+        (event) =>
+          event.type === "item/completed" && event.item.type === "userMessage",
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("warns when a process-triggered turn ends without assistant text", () => {
+    const translator = createTranslator();
+    const context = { threadId: "pi-thread-1" };
+    translator.translatePiEvent(loadFixture("agent-start.json"), context);
+    translator.translatePiEvent(
+      createPiProcessNotificationEvent({
+        attention: "turn",
+        content: '<process_event type="lifecycle" kind="success" />',
+        kind: "success",
+        processId: "proc_sleep",
+      }),
+      context,
+    );
+
+    const events = translator.translatePiEvent(
+      createPiEmptyAgentEndEvent(),
+      context,
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "provider/warning",
+        scope: turnScope("turn-1"),
+        summary:
+          "Pi completed the provider-triggered turn without a text response",
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+      }),
+    );
+  });
+
+  it("projects context notifications into an active user turn without reclassifying it", () => {
+    const translator = createTranslator();
+    const context = { threadId: "pi-thread-1" };
+    queueAcceptedUserMessage({
+      clientRequestId: "creq_context1",
+      state: translator.resolveState(context),
+    });
+    translator.translatePiEvent(loadFixture("agent-start.json"), context);
+
+    const notificationEvents = translator.translatePiEvent(
+      createPiProcessNotificationEvent({
+        attention: "context",
+        content: '<process_event type="lifecycle" kind="success" />',
+        kind: "success",
+        processId: "proc_sleep",
+      }),
+      context,
+    );
+    const terminalEvents = translator.translatePiEvent(
+      createPiEmptyAgentEndEvent(),
+      context,
+    );
+
+    expect(notificationEvents).toEqual([
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({ type: "userMessage" }),
+      }),
+    ]);
+    expect(
+      terminalEvents.some((event) => event.type === "provider/warning"),
+    ).toBe(false);
+  });
+
+  it("ignores ignore-attention notifications during an active turn", () => {
+    const translator = createTranslator();
+    const context = { threadId: "pi-thread-1" };
+    translator.translatePiEvent(loadFixture("agent-start.json"), context);
+
+    const events = translator.translatePiEvent(
+      createPiProcessNotificationEvent({
+        attention: "ignore",
+        content: '<process_event attention="ignore" />',
+        kind: "success",
+        processId: "proc_sleep",
+      }),
+      context,
+    );
+
+    expect(events).toEqual([]);
+  });
+
+  it("drops non-visible custom message boundaries without an unhandled event", () => {
+    const translator = createTranslator();
+    const context = { threadId: "pi-thread-1" };
+
+    expect(
+      translator.translatePiEvent(
+        createPiProcessNotificationEvent({
+          attention: "turn",
+          content: "hidden extension state",
+          customType: "another-extension:state",
+          display: false,
+          kind: "success",
+          processId: "proc_hidden",
+        }),
+        context,
+      ),
+    ).toEqual([]);
+  });
+
+  it("keeps an accepted user prompt from becoming a process-triggered turn", () => {
+    const translator = createTranslator();
+    const context = { threadId: "pi-thread-1" };
+    queueAcceptedUserMessage({
+      clientRequestId: "creq_abcdefghjk",
+      state: translator.resolveState(context),
+    });
+
+    const providerStartEvents = translator.translatePiEvent(
+      loadFixture("agent-start.json"),
+      context,
+    );
+    const notificationEvents = translator.translatePiEvent(
+      createPiProcessNotificationEvent({
+        attention: "turn",
+        content: '<process_event type="lifecycle" kind="success" />',
+        kind: "success",
+        processId: "proc_sleep",
+      }),
+      context,
+    );
+    const terminalEvents = translator.translatePiEvent(
+      createPiEmptyAgentEndEvent(),
+      context,
+    );
+
+    expect(providerStartEvents).toContainEqual(
+      expect.objectContaining({
+        type: "turn/input/accepted",
+        clientRequestId: "creq_abcdefghjk",
+        scope: turnScope("turn-1"),
+      }),
+    );
+    expect(notificationEvents).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({ type: "userMessage" }),
+      }),
+    );
+    expect(
+      terminalEvents.some((event) => event.type === "provider/warning"),
+    ).toBe(false);
   });
 
   it("translateEvent agent_end surfaces Pi assistant stop errors as failed turns", () => {

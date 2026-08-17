@@ -443,6 +443,22 @@ function formatConversationRequestLabel(
   return "steer";
 }
 
+function conversationRoleLabel(row: TimelineConversationViewRow): string {
+  if (row.role === "assistant") {
+    return "Assistant";
+  }
+  switch (row.initiator) {
+    case "agent":
+      return "Agent";
+    case "system":
+      return "System";
+    case "user":
+      return "User";
+    default:
+      return assertNever(row.initiator);
+  }
+}
+
 function formatRow(
   row: ThreadTimelineViewRow,
   context: TimelineTextFormatContext,
@@ -450,7 +466,7 @@ function formatRow(
   switch (row.kind) {
     case "conversation":
       return [
-        rowHeader(row.role === "user" ? "User" : "Assistant", context),
+        rowHeader(conversationRoleLabel(row), context),
         maybeTruncateBodyLinesForAudit(row.text.split("\n"), context).join(
           "\n",
         ),

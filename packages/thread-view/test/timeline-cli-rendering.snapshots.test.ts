@@ -800,6 +800,47 @@ describe("timeline CLI rendering snapshots", () => {
     `);
   });
 
+  it("renders provider-originated input in the timeline and CLI", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const events: TimelineFixtureEvent[] = [
+      event.turnStarted({ turnId: "turn-1" }),
+      event.providerUserMessage({
+        text: '<process_event kind="success">done</process_event>',
+        turnId: "turn-1",
+      }),
+      event.assistantCompleted({
+        itemId: "assistant-1",
+        text: "The process finished.",
+        turnId: "turn-1",
+      }),
+      event.turnCompleted({ turnId: "turn-1" }),
+    ];
+    const timeline = renderIdleTimeline(events);
+
+    expect(timeline.messages).toContainEqual(
+      expect.objectContaining({
+        kind: "user",
+        initiator: "system",
+        text: '<process_event kind="success">done</process_event>',
+      }),
+    );
+    expect(timeline.rows).toContainEqual(
+      expect.objectContaining({
+        kind: "conversation",
+        role: "user",
+        initiator: "system",
+        text: '<process_event kind="success">done</process_event>',
+      }),
+    );
+    expect(timeline.text).toMatchInlineSnapshot(`
+      "── System ──────────────────────────────────────────────────
+      <process_event kind=\"success\">done</process_event>
+
+      ── Assistant ───────────────────────────────────────────────
+      The process finished."
+    `);
+  });
+
   it("keeps completed thread provisioning after the initial user request", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const initialRequest = event.clientTurnRequested({

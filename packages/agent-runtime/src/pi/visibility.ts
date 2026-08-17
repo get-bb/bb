@@ -22,7 +22,12 @@ type PiAssistantEventType =
   | "toolcall_start"
   | "unknown";
 
-type PiMessageBoundaryRole = "assistant" | "toolResult" | "user" | "unknown";
+type PiMessageBoundaryRole =
+  | "assistant"
+  | "custom"
+  | "toolResult"
+  | "user"
+  | "unknown";
 
 type PiSdkEventType =
   | "agent_end"
@@ -75,6 +80,7 @@ interface PiSimpleSdkRawEvent {
 }
 
 interface PiMessageBoundaryRawEvent {
+  display: boolean;
   kind: "sdk/message-boundary";
   role: PiMessageBoundaryRole;
   sdkType: "message_end" | "message_start";
@@ -134,6 +140,7 @@ function toPiMessageBoundaryRole(
 ): PiMessageBoundaryRole {
   switch (role) {
     case "assistant":
+    case "custom":
     case "toolResult":
     case "user":
       return role;
@@ -214,6 +221,7 @@ function parsePiRawEvent(event: JsonRpcMessage): PiRawEvent {
     case "message_end": {
       const payload = getRecordProperty(message, "message");
       return {
+        display: payload?.["display"] === true,
         kind: "sdk/message-boundary",
         sdkType,
         role: toPiMessageBoundaryRole(
@@ -319,6 +327,14 @@ function describeParsedPiRawEvent(
       switch (event.role) {
         case "assistant":
           return { kind, coverage: "noise" };
+        case "custom":
+          return {
+            kind,
+            coverage:
+              event.sdkType === "message_start" && event.display
+                ? "normalized"
+                : "noise",
+          };
         case "toolResult":
         case "user":
           return { kind, coverage: "noise" };
