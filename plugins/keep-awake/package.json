@@ -22,6 +22,7 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
+    "@bb/shared-ui": "workspace:*",
     "zod": "^4.3.6"
   },
   "devDependencies": {

@@ -66,11 +66,11 @@ Server-backed General settings
 
 Settings → General includes app-wide preferences stored server-side so every
 window and restart sees the same value. Keep Awake is instead owned by its
-builtin plugin: configure `enabled` under Extensions → Plugins or run
-`bb plugin config keep-awake set enabled <true|false>`. Choose every host with
-`bb keep-awake hosts all`, or name individual host ids after `bb keep-awake
-hosts`. On macOS it prevents system idle sleep while bb is running; closing the
-lid or choosing Sleep still sleeps the Mac.
+builtin plugin: use its autosaving page under Extensions → Plugins or run
+`bb keep-awake enable` or `bb keep-awake disable`. Choose every host with `bb
+keep-awake hosts all`, or name individual host ids after `bb keep-awake hosts`.
+On macOS it prevents system idle sleep while bb is running; closing the lid or
+choosing Sleep still sleeps the Mac.
 
 Settings → Keyboard also includes `showKeyboardHints`, which defaults to true.
 Turn it off to hide the delayed shortcut badges shown while holding Command or

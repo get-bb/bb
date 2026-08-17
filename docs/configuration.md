@@ -144,15 +144,17 @@ selected browser `MediaDevices` device id in localStorage as
 `bb.voiceInput.audioInputDeviceId`; it does not change `bb-app config` or the
 server-side transcription model.
 
-The builtin Keep Awake plugin has an `enabled` setting and an all-or-selected
-host picker under Extensions → Plugins. On selected macOS hosts it runs
-`/usr/bin/caffeinate -i -w <worker-pid>` while enabled, preventing system idle
-sleep while bb is running. It only blocks idle sleep: closing a laptop lid or
-choosing Sleep manually still sleeps the Mac. Configure it from an agent or
+The builtin Keep Awake plugin has one autosaving configuration page with an
+enable switch and an all-or-selected host picker. On selected macOS hosts it
+runs `/usr/bin/caffeinate -i -w <worker-pid>` while enabled, preventing system
+idle sleep while bb is running. It only blocks idle sleep: closing a laptop lid
+or choosing Sleep manually still sleeps the Mac. Configure it from an agent or
 terminal with:
 
 ```sh
-bb plugin config keep-awake set enabled <true|false>
+bb keep-awake status [--json]
+bb keep-awake enable [--json]
+bb keep-awake disable [--json]
 bb keep-awake hosts all
 bb keep-awake hosts <host-id>...
 ```

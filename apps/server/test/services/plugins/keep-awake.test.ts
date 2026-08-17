@@ -7,7 +7,7 @@ import {
 } from "../../helpers/test-app.js";
 
 describe("builtin Keep Awake plugin", () => {
-  it("owns its setting and reconciles it without a core adapter", async () => {
+  it("owns its configuration and reconciles it without a core adapter", async () => {
     const server = await startTestServer();
     try {
       const { host, session } = seedHostSession(server.deps);
@@ -46,11 +46,14 @@ describe("builtin Keep Awake plugin", () => {
       });
 
       const response = await server.app.request(
-        "/api/v1/plugins/keep-awake/settings",
+        "/api/v1/plugins/keep-awake/rpc/setConfiguration",
         {
-          method: "PUT",
+          method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ values: { enabled: true } }),
+          body: JSON.stringify({
+            enabled: true,
+            selection: { mode: "all" },
+          }),
         },
       );
       expect(response.status).toBe(200);

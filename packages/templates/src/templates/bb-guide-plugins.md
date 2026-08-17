@@ -24,18 +24,20 @@ The builtin Custom instructions plugin adds a multiline editor under Settings
 agent task instructions; blank text contributes nothing.
 
 The builtin Keep Awake plugin prevents macOS idle sleep while bb is running.
-Its plugin detail page lets you target all hosts or selected hosts. The CLI
+Its settings page lets you target all hosts or selected hosts. The CLI
 equivalents are:
 
 ```
-bb plugin config keep-awake set enabled <true|false>
+bb keep-awake status [--json]
+bb keep-awake enable [--json]
+bb keep-awake disable [--json]
 bb keep-awake hosts all
 bb keep-awake hosts <host-id>...
 ```
 
-It reconciles when the plugin starts, a host connects, its settings change, or
-a worker exits unexpectedly. Disabling the plugin disposes its host workers
-and their child processes.
+It reconciles when the plugin starts, a host connects, its configuration
+changes, or a worker exits unexpectedly. Disabling the plugin disposes its host
+workers and their child processes.
 
 The opt-in builtin Provider retry plugin continues Codex and Claude Code
 turns after a structured subscription window resets. Enable it under

@@ -74,9 +74,10 @@ message agents, or inspect projects, providers, and environments.
   `BB_SERVER_BIND_HOST` was changed or unset.
 - Settings → General holds server-backed app-wide preferences. For details, read
   `references/app-settings.md` (in this skill's directory).
-- Keep Awake is a standalone builtin plugin. Configure its macOS idle-sleep
-  assertion with `bb plugin config keep-awake set enabled <true|false>` and
-  target hosts with `bb keep-awake hosts all|<host-id>...`.
+- Keep Awake is a standalone builtin plugin. Use `bb keep-awake enable` and
+  `bb keep-awake disable` to configure its macOS idle-sleep assertion. Inspect
+  it with `bb keep-awake status [--json]`. Target hosts with
+  `bb keep-awake hosts all` or `bb keep-awake hosts <host-id>...`.
 - The `showUnhandledProviderEvents` General preference defaults to false and
   exposes raw provider events that bb does not yet understand in packaged
   builds. Development builds always show those diagnostic rows. Update it with
@@ -302,8 +303,8 @@ environment pull-request show <id>`. Diff commands require an explicit target
   provider's automatic reviewer. `full` explicitly bypasses sandbox and
   approval protections. Plan mode remains separate. The product default is
   `auto` when no inherited or project default applies.
-- Subagents inherit the parent's permission mode by default; `--permission-mode
-  full` only takes effect when the parent itself runs full.
+- Subagents inherit the parent's permission mode by default;
+  `--permission-mode full` only takes effect when the parent itself runs full.
 - Use `--parent-self` inside a thread to parent the new thread to the current
   thread.
 - Use `--parent-thread <thread-id>` to choose another specific parent.

@@ -99,7 +99,6 @@ describe("builtin Keep Awake server entry", () => {
     const subscriptions = lifecycleSubscriptions();
     const host = createFakePluginHost({
       pluginId: "keep-awake",
-      settings: { enabled: true },
       sdk: {
         subscribe: subscriptions.subscribe,
         hosts: {
@@ -111,17 +110,13 @@ describe("builtin Keep Awake server entry", () => {
         supported: true,
       }),
     });
+    await host.bb.storage.kv.set("configuration", {
+      enabled: true,
+      selection: { mode: "all" },
+    });
     await plugin(host.bb);
 
-    expect(host.harness.registrations.settingsDescriptors).toEqual({
-      enabled: {
-        type: "boolean",
-        label: "Keep hosts awake",
-        description:
-          "Prevent idle sleep on the selected Macs while bb is running. Closing the lid or choosing Sleep still sleeps the Mac.",
-        default: false,
-      },
-    });
+    expect(host.harness.registrations.settingsDescriptors).toEqual({});
     const running = host.harness.runService("desired-state-reconciler");
     await vi.waitFor(() => {
       expect(host.harness.experimental_hostRpcCalls).toHaveLength(2);
@@ -140,16 +135,17 @@ describe("builtin Keep Awake server entry", () => {
     ]);
 
     await expect(
-      host.harness.callRpc("setHostSelection", {
-        mode: "selected",
-        hostIds: ["host-2"],
+      host.harness.callRpc("setConfiguration", {
+        enabled: true,
+        selection: { mode: "selected", hostIds: ["host-2"] },
       }),
     ).resolves.toMatchObject({
+      enabled: true,
       selection: { mode: "selected", hostIds: ["host-2"] },
     });
-    await expect(host.bb.storage.kv.get("host-selection")).resolves.toEqual({
-      mode: "selected",
-      hostIds: ["host-2"],
+    await expect(host.bb.storage.kv.get("configuration")).resolves.toEqual({
+      enabled: true,
+      selection: { mode: "selected", hostIds: ["host-2"] },
     });
     await vi.waitFor(() => {
       expect(host.harness.experimental_hostRpcCalls).toHaveLength(4);
@@ -159,7 +155,10 @@ describe("builtin Keep Awake server entry", () => {
       { input: { enabled: true }, hostId: "host-2" },
     ]);
 
-    await host.harness.setSettings({ enabled: false });
+    await host.harness.callRpc("setConfiguration", {
+      enabled: false,
+      selection: { mode: "selected", hostIds: ["host-2"] },
+    });
     await vi.waitFor(() => {
       expect(host.harness.experimental_hostRpcCalls).toHaveLength(6);
     });
@@ -183,12 +182,15 @@ describe("builtin Keep Awake server entry", () => {
     let status: HostRecord["status"] = "disconnected";
     const host = createFakePluginHost({
       pluginId: "keep-awake",
-      settings: { enabled: true },
       sdk: {
         subscribe: subscriptions.subscribe,
         hosts: { list: async () => [hostRecord("host-1", status)] },
       },
       experimental_callHostRpc: () => ({ enabled: true, supported: true }),
+    });
+    await host.bb.storage.kv.set("configuration", {
+      enabled: true,
+      selection: { mode: "all" },
     });
     await plugin(host.bb);
     const running = host.harness.runService("desired-state-reconciler");
@@ -212,12 +214,15 @@ describe("builtin Keep Awake server entry", () => {
     const subscriptions = lifecycleSubscriptions();
     const host = createFakePluginHost({
       pluginId: "keep-awake",
-      settings: { enabled: true },
       sdk: {
         subscribe: subscriptions.subscribe,
         hosts: { list: async () => [hostRecord("host-1")] },
       },
       experimental_callHostRpc: () => ({ enabled: true, supported: true }),
+    });
+    await host.bb.storage.kv.set("configuration", {
+      enabled: true,
+      selection: { mode: "all" },
     });
     await plugin(host.bb);
     const running = host.harness.runService("desired-state-reconciler");
@@ -250,29 +255,50 @@ describe("builtin Keep Awake server entry", () => {
         },
       },
     });
-    await host.bb.storage.kv.set("host-selection", {
-      mode: "selected",
-      hostIds: ["host-2"],
+    await host.bb.storage.kv.set("configuration", {
+      enabled: true,
+      selection: { mode: "selected", hostIds: ["host-2"] },
     });
     await plugin(host.bb);
 
-    await expect(host.harness.callRpc("getHostConfiguration")).resolves.toEqual(
-      {
+    await expect(host.harness.callRpc("getConfiguration")).resolves.toEqual({
+      enabled: true,
+      selection: { mode: "selected", hostIds: ["host-2"] },
+      hosts: [
+        { id: "host-1", name: "host-1", status: "connected" },
+        { id: "host-2", name: "host-2", status: "connected" },
+      ],
+    });
+    await expect(
+      host.harness.runCli(["status", "--json"]),
+    ).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: JSON.stringify({
+        enabled: true,
         selection: { mode: "selected", hostIds: ["host-2"] },
-        hosts: [
-          { id: "host-1", name: "host-1", status: "connected" },
-          { id: "host-2", name: "host-2", status: "connected" },
-        ],
-      },
-    );
+      }),
+    });
+    await expect(host.harness.runCli(["disable"])).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: "Keep Awake disabled",
+    });
+    await expect(host.bb.storage.kv.get("configuration")).resolves.toEqual({
+      enabled: false,
+      selection: { mode: "selected", hostIds: ["host-2"] },
+    });
+    await expect(host.harness.runCli(["enable"])).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: "Keep Awake enabled",
+    });
     await expect(
       host.harness.runCli(["hosts", "all", "--json"]),
     ).resolves.toMatchObject({
       exitCode: 0,
       stdout: JSON.stringify({ mode: "all" }),
     });
-    await expect(host.bb.storage.kv.get("host-selection")).resolves.toEqual({
-      mode: "all",
+    await expect(host.bb.storage.kv.get("configuration")).resolves.toEqual({
+      enabled: true,
+      selection: { mode: "all" },
     });
     await expect(
       host.harness.runCli(["hosts", "host-1", "host-2"]),
@@ -289,18 +315,17 @@ describe("builtin Keep Awake server entry", () => {
       pluginId: "keep-awake",
       sdk: { hosts: { list: async () => [] } },
     });
-    await host.bb.storage.kv.set("host-selection", {
-      mode: "selected",
-      hostIds: [],
+    await host.bb.storage.kv.set("configuration", {
+      enabled: true,
+      selection: { mode: "selected", hostIds: [] },
     });
     await plugin(host.bb);
 
-    await expect(host.harness.callRpc("getHostConfiguration")).resolves.toEqual(
-      {
-        selection: { mode: "all" },
-        hosts: [],
-      },
-    );
+    await expect(host.harness.callRpc("getConfiguration")).resolves.toEqual({
+      enabled: false,
+      selection: { mode: "all" },
+      hosts: [],
+    });
 
     await host.harness.dispose();
   });

@@ -1294,21 +1294,28 @@ function restoreStagedConnectMachineIdColumn(db: DbConnection): void {
   );
 }
 
-function seedKeepAwakePluginSetting(db: DbConnection): void {
+function seedKeepAwakePluginConfiguration(db: DbConnection): void {
   if (
     !tableExists(db, "app_settings") ||
     !columnExists(db, "app_settings", "caffeinate") ||
-    !tableExists(db, "plugin_settings")
+    !tableExists(db, "plugin_kv")
   ) {
     return;
   }
-  // Idempotently preserve the legacy core setting without a schema migration.
-  // Once a plugin-owned value exists, later starts never overwrite it.
+  // Idempotently preserve the retired core preference in the plugin's one
+  // configuration record. Once plugin-owned state exists, never overwrite it.
   db.$client.exec(`
-    INSERT INTO plugin_settings (plugin_id, key, value, updated_at)
-    SELECT 'keep-awake', 'enabled', 'true', updated_at
+    INSERT INTO plugin_kv (plugin_id, key, value, updated_at)
+    SELECT
+      'keep-awake',
+      'configuration',
+      CASE caffeinate
+        WHEN 1 THEN '{"enabled":true,"selection":{"mode":"all"}}'
+        ELSE '{"enabled":false,"selection":{"mode":"all"}}'
+      END,
+      updated_at
     FROM app_settings
-    WHERE caffeinate = 1
+    WHERE id = 'current'
     ON CONFLICT (plugin_id, key) DO NOTHING
   `);
 }
@@ -1523,7 +1530,7 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
     }
     applyReorderedCleanupMigrations(db, migrationsFolder);
     applyQueuedMessageGroupingSchema(db);
-    seedKeepAwakePluginSetting(db);
+    seedKeepAwakePluginConfiguration(db);
   } finally {
     sqlite.pragma("foreign_keys = ON");
   }

@@ -4,7 +4,7 @@ import { keepAwakeHostContract } from "./contract.js";
 
 const RETRY_MIN_MS = 1_000;
 const RETRY_MAX_MS = 30_000;
-const HOST_SELECTION_KEY = "host-selection";
+const CONFIGURATION_KEY = "configuration";
 
 const hostSelectionSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("all") }).strict(),
@@ -22,25 +22,33 @@ const hostSummarySchema = z
     status: z.enum(["connected", "disconnected"]),
   })
   .strict();
+const keepAwakeConfigurationSchema = z
+  .object({
+    enabled: z.boolean(),
+    selection: hostSelectionSchema,
+  })
+  .strict();
 const hostConfigurationSchema = z
   .object({
+    enabled: z.boolean(),
     selection: hostSelectionSchema,
     hosts: z.array(hostSummarySchema),
   })
   .strict();
 
 export const keepAwakeRpcContract = defineRpcContract({
-  getHostConfiguration: {
+  getConfiguration: {
     input: z.null(),
     output: hostConfigurationSchema,
   },
-  setHostSelection: {
-    input: hostSelectionSchema,
+  setConfiguration: {
+    input: keepAwakeConfigurationSchema,
     output: hostConfigurationSchema,
   },
 });
 
 type HostSelection = z.infer<typeof hostSelectionSchema>;
+type KeepAwakeConfiguration = z.infer<typeof keepAwakeConfigurationSchema>;
 
 type ReconcileOutcome = "settled" | "retry";
 
@@ -53,28 +61,28 @@ function normalizeSelection(selection: HostSelection): HostSelection {
   return { mode: "selected", hostIds: [...new Set(selection.hostIds)] };
 }
 
+function normalizeConfiguration(
+  configuration: KeepAwakeConfiguration,
+): KeepAwakeConfiguration {
+  return {
+    enabled: configuration.enabled,
+    selection: normalizeSelection(configuration.selection),
+  };
+}
+
 export default async function keepAwakePlugin(bb: BbPluginApi): Promise<void> {
-  const settings = bb.settings.define({
-    enabled: {
-      type: "boolean",
-      label: "Keep hosts awake",
-      description:
-        "Prevent idle sleep on the selected Macs while bb is running. Closing the lid or choosing Sleep still sleeps the Mac.",
-      default: false,
-    },
-  });
   const host = bb.hosts.experimental_client({
     contract: keepAwakeHostContract,
   });
 
   let reconcileRequested = true;
   let wakeWaiter: (() => void) | null = null;
-  const storedSelection = hostSelectionSchema.safeParse(
-    await bb.storage.kv.get<unknown>(HOST_SELECTION_KEY),
+  const storedConfiguration = keepAwakeConfigurationSchema.safeParse(
+    await bb.storage.kv.get<unknown>(CONFIGURATION_KEY),
   );
-  let hostSelection: HostSelection = storedSelection.success
-    ? normalizeSelection(storedSelection.data)
-    : { mode: "all" };
+  let configuration: KeepAwakeConfiguration = storedConfiguration.success
+    ? normalizeConfiguration(storedConfiguration.data)
+    : { enabled: false, selection: { mode: "all" } };
 
   function requestReconcile(): void {
     reconcileRequested = true;
@@ -84,7 +92,7 @@ export default async function keepAwakePlugin(bb: BbPluginApi): Promise<void> {
   async function readHostConfiguration() {
     const availableHosts = await bb.sdk.hosts.list();
     return {
-      selection: hostSelection,
+      ...configuration,
       hosts: availableHosts.map(({ id, name, status }) => ({
         id,
         name,
@@ -93,25 +101,42 @@ export default async function keepAwakePlugin(bb: BbPluginApi): Promise<void> {
     };
   }
 
-  async function saveHostSelection(selection: HostSelection): Promise<void> {
-    const nextSelection = normalizeSelection(selection);
-    await bb.storage.kv.set(HOST_SELECTION_KEY, nextSelection);
-    hostSelection = nextSelection;
+  async function saveConfiguration(
+    next: KeepAwakeConfiguration,
+  ): Promise<void> {
+    const normalized = normalizeConfiguration(next);
+    await bb.storage.kv.set(CONFIGURATION_KEY, normalized);
+    configuration = normalized;
     requestReconcile();
   }
 
   bb.rpc.register(keepAwakeRpcContract, {
-    getHostConfiguration: readHostConfiguration,
-    async setHostSelection(selection) {
-      await saveHostSelection(selection);
+    getConfiguration: readHostConfiguration,
+    async setConfiguration(next) {
+      await saveConfiguration(next);
       return readHostConfiguration();
     },
   });
 
   bb.cli.register({
     name: "keep-awake",
-    summary: "Choose which hosts Keep Awake manages",
+    summary: "Configure macOS idle-sleep prevention",
     commands: [
+      {
+        name: "status",
+        summary: "Show whether Keep Awake is enabled and which hosts it uses",
+        usage: "bb keep-awake status [--json]",
+      },
+      {
+        name: "enable",
+        summary: "Enable Keep Awake",
+        usage: "bb keep-awake enable [--json]",
+      },
+      {
+        name: "disable",
+        summary: "Disable Keep Awake",
+        usage: "bb keep-awake disable [--json]",
+      },
       {
         name: "hosts",
         summary: "Show or replace the Keep Awake host selection",
@@ -120,38 +145,71 @@ export default async function keepAwakePlugin(bb: BbPluginApi): Promise<void> {
     ],
     async run(argv) {
       const json = argv.includes("--json");
-      const [command, ...hostIds] = argv.filter((arg) => arg !== "--json");
+      const [command, ...args] = argv.filter((arg) => arg !== "--json");
+      if (command === "status" && args.length === 0) {
+        return {
+          exitCode: 0,
+          stdout: json
+            ? JSON.stringify(configuration)
+            : `${configuration.enabled ? "Enabled" : "Disabled"}\nHosts: ${
+                configuration.selection.mode === "all"
+                  ? "all"
+                  : configuration.selection.hostIds.join(", ")
+              }`,
+        };
+      }
+      if (
+        (command === "enable" || command === "disable") &&
+        args.length === 0
+      ) {
+        await saveConfiguration({
+          ...configuration,
+          enabled: command === "enable",
+        });
+        return {
+          exitCode: 0,
+          stdout: json
+            ? JSON.stringify(configuration)
+            : `Keep Awake ${configuration.enabled ? "enabled" : "disabled"}`,
+        };
+      }
       if (command !== "hosts") {
         return {
           exitCode: 1,
-          stderr: "Usage: bb keep-awake hosts [all|<host-id>...] [--json]",
+          stderr:
+            "Usage: bb keep-awake <status|enable|disable|hosts> [arguments] [--json]",
         };
       }
-      if (hostIds.length > 0) {
-        if (hostIds[0] === "all") {
-          if (hostIds.length !== 1) {
+      if (args.length > 0) {
+        if (args[0] === "all") {
+          if (args.length !== 1) {
             return {
               exitCode: 1,
               stderr: '"all" cannot be combined with individual host ids',
             };
           }
-          await saveHostSelection({ mode: "all" });
+          await saveConfiguration({
+            ...configuration,
+            selection: { mode: "all" },
+          });
         } else {
-          await saveHostSelection({ mode: "selected", hostIds });
+          await saveConfiguration({
+            ...configuration,
+            selection: { mode: "selected", hostIds: args },
+          });
         }
       }
       return {
         exitCode: 0,
         stdout: json
-          ? JSON.stringify(hostSelection)
-          : hostSelection.mode === "all"
+          ? JSON.stringify(configuration.selection)
+          : configuration.selection.mode === "all"
             ? "All hosts"
-            : hostSelection.hostIds.join("\n"),
+            : configuration.selection.hostIds.join("\n"),
       };
     },
   });
 
-  settings.onChange(requestReconcile);
   host.experimental_onWorkerExit(({ hostId }) => {
     bb.log.warn(
       `Keep Awake host worker exited unexpectedly on host ${hostId}; retrying`,
@@ -161,20 +219,20 @@ export default async function keepAwakePlugin(bb: BbPluginApi): Promise<void> {
 
   async function reconcile(signal: AbortSignal): Promise<ReconcileOutcome> {
     try {
-      const [{ enabled }, availableHosts] = await Promise.all([
-        settings.get(),
-        bb.sdk.hosts.list(),
-      ]);
+      const desiredConfiguration = configuration;
+      const availableHosts = await bb.sdk.hosts.list();
       const selectedHostIds = new Set(
-        hostSelection.mode === "selected" ? hostSelection.hostIds : [],
+        desiredConfiguration.selection.mode === "selected"
+          ? desiredConfiguration.selection.hostIds
+          : [],
       );
       const outcomes = await Promise.all(
         availableHosts
           .filter((availableHost) => availableHost.status === "connected")
           .map(async (availableHost): Promise<ReconcileOutcome> => {
             const desired =
-              enabled &&
-              (hostSelection.mode === "all" ||
+              desiredConfiguration.enabled &&
+              (desiredConfiguration.selection.mode === "all" ||
                 selectedHostIds.has(availableHost.id));
             try {
               const actual = await host.call(

@@ -1,200 +1,278 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   definePluginApp,
   useRpc,
   type StandardSchemaV1InferOutput,
 } from "@get-bb/plugin-sdk/app";
+import { Checkbox } from "@bb/shared-ui/checkbox";
+import { Icon } from "@bb/shared-ui/icon";
+import { RadioGroup, RadioGroupItem } from "@bb/shared-ui/radio-group";
+import { Switch } from "@bb/shared-ui/switch";
 import type { keepAwakeRpcContract } from "./server.js";
 
-type HostConfiguration = StandardSchemaV1InferOutput<
-  (typeof keepAwakeRpcContract)["getHostConfiguration"]["output"]
+type ConfigurationView = StandardSchemaV1InferOutput<
+  (typeof keepAwakeRpcContract)["getConfiguration"]["output"]
 >;
-type HostSelection = HostConfiguration["selection"];
+type PersistedConfiguration = Pick<ConfigurationView, "enabled" | "selection">;
+type SaveState = "idle" | "saving" | "saved" | "error";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function selectionsEqual(a: HostSelection, b: HostSelection): boolean {
-  if (a.mode !== b.mode) return false;
-  if (a.mode === "all" || b.mode === "all") return true;
-  return (
-    a.hostIds.length === b.hostIds.length &&
-    a.hostIds.every((hostId, index) => hostId === b.hostIds[index])
-  );
+function persistedConfiguration(
+  view: ConfigurationView,
+): PersistedConfiguration {
+  return { enabled: view.enabled, selection: view.selection };
 }
 
-function KeepAwakeHostSettings() {
+function KeepAwakeSettings() {
   const rpc = useRpc<typeof keepAwakeRpcContract>();
-  const [configuration, setConfiguration] = useState<HostConfiguration | null>(
-    null,
-  );
-  const [draft, setDraft] = useState<HostSelection>({ mode: "all" });
-  const [isSaving, setIsSaving] = useState(false);
+  const [view, setView] = useState<ConfigurationView | null>(null);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
   const [error, setError] = useState<string | null>(null);
+  const activeRef = useRef(true);
+  const viewRef = useRef<ConfigurationView | null>(null);
+  const confirmedRef = useRef<ConfigurationView | null>(null);
+  const latestRevisionRef = useRef(0);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
-    let active = true;
+    let loading = true;
+    activeRef.current = true;
     void rpc
-      .call("getHostConfiguration")
-      .then((next) => {
-        if (!active) return;
-        setConfiguration(next);
-        setDraft(next.selection);
+      .call("getConfiguration")
+      .then((configuration) => {
+        if (!loading || !activeRef.current) return;
+        viewRef.current = configuration;
+        confirmedRef.current = configuration;
+        setView(configuration);
+        setSaveState("saved");
       })
       .catch((loadError: unknown) => {
-        if (active) setError(errorMessage(loadError));
+        if (!loading || !activeRef.current) return;
+        setError(errorMessage(loadError));
+        setSaveState("error");
       });
     return () => {
-      active = false;
+      loading = false;
+      activeRef.current = false;
     };
   }, [rpc]);
 
-  const hasSelection = draft.mode === "all" || draft.hostIds.length > 0;
-  const hasChanges =
-    configuration !== null && !selectionsEqual(draft, configuration.selection);
-
-  function selectMode(mode: HostSelection["mode"]): void {
+  function updateConfiguration(
+    update: (current: ConfigurationView) => ConfigurationView,
+  ): void {
+    const current = viewRef.current;
+    if (current === null) return;
+    const next = update(current);
+    const revision = latestRevisionRef.current + 1;
+    latestRevisionRef.current = revision;
+    viewRef.current = next;
+    setView(next);
     setError(null);
-    if (mode === "all") {
-      setDraft({ mode: "all" });
-      return;
-    }
-    const previous = draft.mode === "selected" ? draft.hostIds : [];
-    const firstHostId = configuration?.hosts[0]?.id;
-    setDraft({
-      mode: "selected",
-      hostIds:
-        previous.length > 0
-          ? previous
-          : firstHostId === undefined
-            ? []
-            : [firstHostId],
+    setSaveState("saving");
+
+    const operation = saveQueueRef.current.then(async () => {
+      const saved = await rpc.call(
+        "setConfiguration",
+        persistedConfiguration(next),
+      );
+      confirmedRef.current = saved;
+      if (!activeRef.current || latestRevisionRef.current !== revision) return;
+      viewRef.current = saved;
+      setView(saved);
+      setSaveState("saved");
+    });
+    saveQueueRef.current = operation.catch((saveError: unknown) => {
+      if (!activeRef.current || latestRevisionRef.current !== revision) return;
+      const confirmed = confirmedRef.current;
+      if (confirmed !== null) {
+        viewRef.current = confirmed;
+        setView(confirmed);
+      }
+      setError(errorMessage(saveError));
+      setSaveState("error");
     });
   }
 
-  async function save(): Promise<void> {
-    if (!hasSelection) return;
-    setIsSaving(true);
-    setError(null);
-    try {
-      const next = await rpc.call("setHostSelection", draft);
-      setConfiguration(next);
-      setDraft(next.selection);
-    } catch (saveError) {
-      setError(errorMessage(saveError));
-    } finally {
-      setIsSaving(false);
-    }
+  function selectMode(mode: "all" | "selected"): void {
+    updateConfiguration((current) => {
+      if (mode === "all") {
+        return { ...current, selection: { mode: "all" } };
+      }
+      const hostIds =
+        current.selection.mode === "selected"
+          ? current.selection.hostIds
+          : current.hosts.map((host) => host.id).slice(0, 256);
+      if (hostIds.length === 0) return current;
+      return { ...current, selection: { mode: "selected", hostIds } };
+    });
   }
 
-  if (configuration === null) {
+  function setHostSelected(hostId: string, selected: boolean): void {
+    updateConfiguration((current) => {
+      if (current.selection.mode !== "selected") return current;
+      const currentHostIds = current.selection.hostIds;
+      const hostIds = selected
+        ? [...new Set([...currentHostIds, hostId])]
+        : currentHostIds.filter((candidate) => candidate !== hostId);
+      if (hostIds.length === 0) return current;
+      return { ...current, selection: { mode: "selected", hostIds } };
+    });
+  }
+
+  if (view === null) {
     return (
-      <p className="text-sm text-muted-foreground" role="status">
+      <p
+        className={
+          error === null
+            ? "text-sm text-muted-foreground"
+            : "text-sm text-destructive"
+        }
+        role={error === null ? "status" : "alert"}
+      >
         {error ?? "Loading hosts…"}
       </p>
     );
   }
 
+  const selectedHostIds =
+    view.selection.mode === "selected" ? view.selection.hostIds : [];
+  const hasHosts = view.hosts.length > 0;
+
   return (
-    <div className="space-y-4">
-      <fieldset className="space-y-3">
-        <legend className="sr-only">Host selection</legend>
-        <label className="flex items-start gap-3">
-          <input
-            type="radio"
-            name="keep-awake-host-selection"
-            value="all"
-            aria-label="All hosts"
-            checked={draft.mode === "all"}
-            onChange={() => selectMode("all")}
-            className="mt-0.5 size-4 shrink-0 accent-primary"
-          />
-          <span>
-            <span className="block text-sm font-medium">All hosts</span>
-            <span className="block text-xs text-muted-foreground">
-              Include hosts added in the future.
-            </span>
-          </span>
-        </label>
-        <label className="flex items-start gap-3">
-          <input
-            type="radio"
-            name="keep-awake-host-selection"
-            value="selected"
-            aria-label="Selected hosts"
-            checked={draft.mode === "selected"}
-            onChange={() => selectMode("selected")}
-            className="mt-0.5 size-4 shrink-0 accent-primary"
-          />
-          <span>
-            <span className="block text-sm font-medium">Selected hosts</span>
-            <span className="block text-xs text-muted-foreground">
-              Keep only the machines chosen below awake.
-            </span>
-          </span>
-        </label>
-      </fieldset>
-
-      {draft.mode === "selected" ? (
-        <div className="space-y-2 border-l border-border pl-7">
-          {configuration.hosts.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No hosts available.</p>
-          ) : (
-            configuration.hosts.map((host) => (
-              <label key={host.id} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={draft.hostIds.includes(host.id)}
-                  aria-label={host.name}
-                  onChange={(event) => {
-                    setError(null);
-                    const checked = event.currentTarget.checked;
-                    setDraft((current) => {
-                      if (current.mode !== "selected") return current;
-                      return {
-                        mode: "selected",
-                        hostIds: checked
-                          ? [...new Set([...current.hostIds, host.id])]
-                          : current.hostIds.filter(
-                              (hostId) => hostId !== host.id,
-                            ),
-                      };
-                    });
-                  }}
-                  className="size-4 shrink-0 accent-primary"
-                />
-                <span className="min-w-0 flex-1 truncate">{host.name}</span>
-                {host.status === "disconnected" ? (
-                  <span className="text-xs text-muted-foreground">Offline</span>
-                ) : null}
-              </label>
-            ))
-          )}
-          {!hasSelection ? (
-            <p className="text-xs text-destructive" role="alert">
-              Select at least one host.
-            </p>
-          ) : null}
+    <div className="max-w-2xl space-y-5">
+      <div className="flex items-start justify-between gap-6">
+        <div className="min-w-0">
+          <h3 className="text-sm font-medium text-foreground">
+            Prevent idle sleep
+          </h3>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            Keep selected Macs awake while bb is running. Closing the lid or
+            choosing Sleep still sleeps the Mac.
+          </p>
         </div>
-      ) : null}
+        <Switch
+          checked={view.enabled}
+          size="default"
+          aria-label="Keep Awake"
+          onCheckedChange={(enabled) => {
+            updateConfiguration((current) => ({ ...current, enabled }));
+          }}
+        />
+      </div>
 
-      <div className="flex min-h-8 items-center justify-between gap-4">
-        {error === null ? (
-          <span />
+      <div className="border-t border-border/60 pt-4">
+        <h3 className="text-sm font-medium text-foreground">Keep awake on</h3>
+        <RadioGroup
+          className="mt-2 gap-1"
+          value={view.selection.mode}
+          onValueChange={(mode) => {
+            if (mode === "all" || mode === "selected") selectMode(mode);
+          }}
+        >
+          <label
+            htmlFor="keep-awake-all-hosts"
+            className="flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-accent/50"
+          >
+            <RadioGroupItem
+              id="keep-awake-all-hosts"
+              value="all"
+              aria-label="All hosts"
+              className="mt-0.5"
+            />
+            <span>
+              <span className="block text-sm font-medium">All hosts</span>
+              <span className="block text-xs text-muted-foreground">
+                Include hosts added in the future. Keep Awake runs only on
+                macOS.
+              </span>
+            </span>
+          </label>
+          <label
+            htmlFor="keep-awake-selected-hosts"
+            className={`flex items-start gap-3 rounded-md px-2 py-2 ${
+              hasHosts
+                ? "cursor-pointer hover:bg-accent/50"
+                : "cursor-not-allowed opacity-50"
+            }`}
+          >
+            <RadioGroupItem
+              id="keep-awake-selected-hosts"
+              value="selected"
+              aria-label="Specific hosts"
+              disabled={!hasHosts}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="block text-sm font-medium">Specific hosts</span>
+              <span className="block text-xs text-muted-foreground">
+                Choose individual machines below.
+              </span>
+            </span>
+          </label>
+        </RadioGroup>
+      </div>
+
+      <div className="overflow-hidden rounded-md border border-border/60">
+        {hasHosts ? (
+          <div className="divide-y divide-border/60">
+            {view.hosts.map((host) => {
+              const selected =
+                view.selection.mode === "all" ||
+                selectedHostIds.includes(host.id);
+              const isOnlySelectedHost =
+                view.selection.mode === "selected" &&
+                selected &&
+                selectedHostIds.length === 1;
+              return (
+                <div
+                  key={host.id}
+                  className="flex min-h-10 items-center gap-3 px-3 py-2"
+                >
+                  {view.selection.mode === "all" ? (
+                    <span className="flex size-4 shrink-0 items-center justify-center rounded-sm bg-foreground text-background">
+                      <Icon name="Check" className="size-3.5" aria-hidden />
+                      <span className="sr-only">Included</span>
+                    </span>
+                  ) : (
+                    <Checkbox
+                      checked={selected}
+                      disabled={isOnlySelectedHost}
+                      aria-label={host.name}
+                      onCheckedChange={(checked) => {
+                        setHostSelected(host.id, checked === true);
+                      }}
+                    />
+                  )}
+                  <span className="min-w-0 flex-1 truncate text-sm">
+                    {host.name}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {host.status === "connected" ? "Connected" : "Offline"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         ) : (
+          <p className="px-3 py-4 text-sm text-muted-foreground">
+            No hosts available.
+          </p>
+        )}
+      </div>
+
+      <div className="flex min-h-5 justify-end" aria-live="polite">
+        {error !== null ? (
           <span className="text-xs text-destructive" role="alert">
             {error}
           </span>
+        ) : (
+          <span className="text-xs text-muted-foreground" role="status">
+            {saveState === "saving" ? "Saving…" : "Saved"}
+          </span>
         )}
-        <button
-          type="button"
-          disabled={!hasChanges || !hasSelection || isSaving}
-          onClick={() => void save()}
-          className="inline-flex h-8 items-center justify-center rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
-        >
-          {isSaving ? "Saving…" : "Save hosts"}
-        </button>
       </div>
     </div>
   );
@@ -202,9 +280,7 @@ function KeepAwakeHostSettings() {
 
 export default definePluginApp((app) => {
   app.slots.settingsSection({
-    id: "hosts",
-    title: "Hosts",
-    description: "Choose which macOS hosts should stay awake.",
-    component: KeepAwakeHostSettings,
+    id: "configuration",
+    component: KeepAwakeSettings,
   });
 });

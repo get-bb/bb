@@ -4675,7 +4675,10 @@ describe("migrate", () => {
       // 304. Other marketplaces keep theirs.
       expect(
         db.$client
-          .prepare<[], { name: string; etag: string | null; lastModified: string | null }>(
+          .prepare<
+            [],
+            { name: string; etag: string | null; lastModified: string | null }
+          >(
             "SELECT name, etag, last_modified AS lastModified FROM plugin_marketplaces ORDER BY name",
           )
           .all(),
@@ -4733,7 +4736,7 @@ describe("migrate", () => {
     }
   });
 
-  it("seeds the plugin-owned Keep Awake setting from the legacy preference", () => {
+  it("seeds the Keep Awake configuration from the legacy preference", () => {
     const db = createConnection(":memory:");
     try {
       migrate(db);
@@ -4741,8 +4744,8 @@ describe("migrate", () => {
         INSERT INTO app_settings (id, caffeinate, updated_at)
         VALUES ('current', 1, 123)
         ON CONFLICT (id) DO UPDATE SET caffeinate = 1, updated_at = 123;
-        DELETE FROM plugin_settings
-        WHERE plugin_id = 'keep-awake' AND key = 'enabled';
+        DELETE FROM plugin_kv
+        WHERE plugin_id = 'keep-awake' AND key = 'configuration';
       `);
       migrate(db);
       expect(
@@ -4762,14 +4765,18 @@ describe("migrate", () => {
                 key,
                 value,
                 updated_at AS updatedAt
-              FROM plugin_settings
+              FROM plugin_kv
+              WHERE plugin_id = 'keep-awake' AND key = 'configuration'
             `,
           )
           .get(),
       ).toEqual({
         pluginId: "keep-awake",
-        key: "enabled",
-        value: "true",
+        key: "configuration",
+        value: JSON.stringify({
+          enabled: true,
+          selection: { mode: "all" },
+        }),
         updatedAt: 123,
       });
     } finally {
