@@ -222,4 +222,4 @@ package again, or run `npm rebuild better-sqlite3`.
 
 ## Acknowledgements
 
-<a href="https://blacksmith.sh"><img src="assets/blacksmith-ci.png" alt="CI powered by Blacksmith" width="240"></a>
+<a href="https://blacksmith.sh"><img src="assets/blacksmith-ci.png" alt="CI powered by Blacksmith" width="400"></a>
