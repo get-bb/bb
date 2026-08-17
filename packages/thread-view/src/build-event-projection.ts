@@ -673,8 +673,9 @@ function buildFlatProjectionData(
         );
       } else {
         onThreadInterrupted({
-          completedAt: meta.createdAt,
+          meta,
           state,
+          threadId: decoded.threadId,
         });
         flushProjectionBufferedOutputs(state);
       }

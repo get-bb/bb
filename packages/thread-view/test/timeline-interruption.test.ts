@@ -113,6 +113,36 @@ describe("timeline interruption projection", () => {
         opType: "compaction",
         status: "interrupted",
         title: "Context compaction interrupted",
+        completedAt: 3_000,
+      }),
+    );
+  });
+
+  it("does not apply an old thread interruption to a later compaction", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderIdleTimeline([
+      event.turnStarted({ turnId: "turn-a", createdAt: 0 }),
+      event.turnCompleted({
+        turnId: "turn-a",
+        status: "interrupted",
+        createdAt: 1_000,
+      }),
+      event.systemThreadInterrupted({ createdAt: 1_100 }),
+      event.turnStarted({ turnId: "turn-b", createdAt: 2_000 }),
+      event.turnCompleted({ turnId: "turn-b", createdAt: 3_000 }),
+      event.contextCompactionStarted({
+        turnId: "turn-b",
+        createdAt: 4_000,
+      }),
+    ]);
+
+    expect(timeline.messages).toContainEqual(
+      expect.objectContaining({
+        kind: "operation",
+        opType: "compaction",
+        status: "pending",
+        title: "Compacting context",
+        completedAt: null,
       }),
     );
   });

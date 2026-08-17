@@ -83,6 +83,12 @@ interface FinalizeOpenCompactionsForTurnArgs {
   detail: string | undefined;
 }
 
+interface InterruptOpenCompactionsArgs {
+  state: OperationProjectionState;
+  meta: EventMeta;
+  threadId: string;
+}
+
 type LifecycleStatus = Extract<
   EventProjectionOperationMessage["status"],
   "pending" | "completed" | "error" | "interrupted"
@@ -902,6 +908,23 @@ export function onCompactionEnd(
  * Turn-end finalization is provisional: keep the compaction open so a later
  * explicit compaction completion can override the inferred error/interruption.
  */
+function finalizeOpenCompaction(
+  message: EventProjectionOperationMessage,
+  meta: EventMeta,
+  status: CompactionTurnFinalizationStatus,
+  detail: string | undefined,
+): void {
+  message.sourceSeqEnd = Math.max(message.sourceSeqEnd, meta.seq);
+  message.createdAt = Math.max(message.createdAt, meta.createdAt);
+  message.completedAt = meta.createdAt;
+  message.status = status;
+  message.title =
+    status === "error"
+      ? "Context compaction failed"
+      : "Context compaction interrupted";
+  message.detail = detail ?? message.detail;
+}
+
 export function finalizeOpenCompactionsForTurn(
   args: FinalizeOpenCompactionsForTurnArgs,
 ): void {
@@ -916,14 +939,23 @@ export function finalizeOpenCompactionsForTurn(
       continue;
     }
 
-    message.sourceSeqEnd = Math.max(message.sourceSeqEnd, args.meta.seq);
-    message.createdAt = Math.max(message.createdAt, args.meta.createdAt);
-    message.completedAt = args.meta.createdAt;
-    message.status = args.status;
-    message.title =
-      args.status === "error"
-        ? "Context compaction failed"
-        : "Context compaction interrupted";
-    message.detail = args.detail ?? message.detail;
+    finalizeOpenCompaction(message, args.meta, args.status, args.detail);
+  }
+}
+
+/** Settle only compactions that are pending when this interruption is seen. */
+export function interruptOpenCompactions(
+  args: InterruptOpenCompactionsArgs,
+): void {
+  for (const message of args.state.openCompactionsByKey.values()) {
+    if (
+      message.threadId !== args.threadId ||
+      message.status !== "pending" ||
+      message.sourceSeqStart > args.meta.seq
+    ) {
+      continue;
+    }
+
+    finalizeOpenCompaction(message, args.meta, "interrupted", undefined);
   }
 }
