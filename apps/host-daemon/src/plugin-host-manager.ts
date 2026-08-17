@@ -589,7 +589,7 @@ export class PluginHostManager {
         worker.readyAtMs = performance.now();
         this.options.logger.info(
           {
-            ...workerLogContext(worker),
+            pluginId: worker.pluginId,
             startupDurationMs: elapsedMs(worker.startedAtMs),
           },
           "Host plugin worker ready",
@@ -987,11 +987,7 @@ export class PluginHostManager {
           command.artifact.digest
       ) {
         this.options.logger.debug(
-          {
-            pluginId: command.pluginId,
-            digest: command.artifact.digest,
-            byteLength: current.byteLength,
-          },
+          { pluginId: command.pluginId },
           "Using cached host plugin artifact",
         );
         await this.prunePluginArtifactDigests(
@@ -1004,11 +1000,7 @@ export class PluginHostManager {
       // Download below.
     }
     this.options.logger.debug(
-      {
-        pluginId: command.pluginId,
-        digest: command.artifact.digest,
-        expectedByteLength: command.artifact.byteLength,
-      },
+      { pluginId: command.pluginId },
       "Downloading host plugin artifact",
     );
     const bytes = await this.options.fetchArtifact({
@@ -1103,8 +1095,9 @@ export class PluginHostManager {
     clearTimeout(forceTimer);
     this.options.logger.info(
       {
-        ...workerLogContext(worker),
+        pluginId: worker.pluginId,
         reason,
+        uptimeMs: elapsedMs(worker.startedAtMs),
         exitCode: worker.child.exitCode,
         signal: worker.child.signalCode,
         forceKilled,
