@@ -72,9 +72,12 @@ const acpBridgeModelListParamsSchema = z.object({
   /**
    * Family ids served in the picker's default list; the rest become
    * selected-only "more models". No matches (or an empty list) serves
-   * everything as primary.
+   * everything as primary. ACP-native discovery probes these ids first for
+   * reasoning options. It still returns all ACP-native models as primary.
    */
   primaryModels: z.array(z.string()).default([]),
+  /** Enables Cursor's separate model, reasoning, and Fast mode options. */
+  parameterizedModelPicker: z.boolean().optional(),
   reasoningCli: acpBridgeReasoningCliSchema.optional(),
   nativeReasoning: acpBridgeNativeReasoningSchema.optional(),
 });
@@ -82,11 +85,10 @@ const acpBridgeModelListParamsSchema = z.object({
 /**
  * Session-level model pin. CLI-style agents resolve (model, reasoningLevel,
  * serviceTier) to a raw model id and launch with `<selectFlag> <resolved-id>`.
- * ACP-native agents receive `{ modelId }` after `session/new` — via their
- * "model"-category config option (`session/set_config_option`) when they
- * advertise one, otherwise via legacy `session/set_model`; if they expose a
- * `thought_level` config option, the bridge applies `reasoningLevel` via
- * `session/set_config_option`. Absent when the thread has no model preference.
+ * ACP-native agents receive these selections after `session/new`. The bridge
+ * uses the model config option, or legacy `session/set_model` when absent.
+ * It uses `thought_level` for reasoning and `fast` for the service tier.
+ * The selection is absent when the thread has no model preference.
  */
 const acpBridgeCliModelSelectionSchema = z.object({
   listCommand: acpBridgeAgentCommandSchema,
@@ -99,6 +101,7 @@ const acpBridgeCliModelSelectionSchema = z.object({
 const acpBridgeNativeModelSelectionSchema = z.object({
   modelId: z.string().min(1),
   reasoningLevel: reasoningLevelSchema.optional(),
+  serviceTier: serviceTierSchema.optional(),
 });
 
 const acpBridgeModelSelectionSchema = z.union([
@@ -121,6 +124,7 @@ const acpBridgeSessionParamsSchema = z.object({
   launchReasoningLevel: reasoningLevelSchema.optional(),
   reasoningCli: acpBridgeReasoningCliSchema.optional(),
   nativeReasoning: acpBridgeNativeReasoningSchema.optional(),
+  parameterizedModelPicker: z.boolean().optional(),
   /**
    * Launch-time permission flags for agents whose own prompt policy must be
    * selected by CLI args rather than by ACP permission responses.

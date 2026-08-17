@@ -35,11 +35,14 @@ export interface AcpAgentProfile {
   reasoningCli?: AcpAgentReasoningCli;
   nativeReasoning?: AcpAgentNativeReasoning;
   permissionCli?: AcpAgentPermissionCli;
+  /** Enables an agent extension for separate model configuration options. */
+  parameterizedModelPicker?: boolean;
+  /** Model ids to probe first during ACP-native reasoning discovery. */
+  primaryModels?: string[];
 }
 
 interface BuiltInAcpAgentProfile extends AcpAgentProfile {
   providerId: AcpAgentProviderId;
-  modelCli: AcpAgentModelCli;
 }
 
 export const ACP_AGENT_PROFILES: readonly BuiltInAcpAgentProfile[] = [
@@ -51,23 +54,10 @@ export const ACP_AGENT_PROFILES: readonly BuiltInAcpAgentProfile[] = [
     // on PATH cannot silently replace Cursor and collapse model discovery to
     // the synthetic fallback.
     agentCommand: { command: "cursor-agent", args: ["acp"] },
-    // Global flags must precede the `acp` subcommand, matching the documented
-    // `cursor-agent --api-key ... acp` form.
-    modelCli: {
-      listArgs: ["--list-models"],
-      selectFlag: "--model",
-      // Family ids (the default variant's raw id), not raw variant ids: the
-      // catalog folds effort and the `-fast` tail into one entry per family.
-      primaryModels: [
-        "auto",
-        "cursor-grok-4.5-medium",
-        "gpt-5.6-sol-medium",
-        "claude-opus-5-thinking-medium",
-        "claude-fable-5-thinking-medium",
-        // Composer is one family now; its `-fast` twin is the Fast-mode tier.
-        "composer-2.5",
-      ],
-    },
+    // Cursor exposes model effort and Fast mode as separate ACP config options
+    // only when the client advertises this Cursor extension capability.
+    parameterizedModelPicker: true,
+    primaryModels: ["grok-4.6", "grok-4.5"],
   },
 ];
 

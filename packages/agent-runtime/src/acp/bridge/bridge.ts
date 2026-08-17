@@ -646,6 +646,19 @@ async function authenticateAcpAgent(args: {
   });
 }
 
+function acpClientCapabilities(
+  parameterizedModelPicker?: boolean,
+  fsAccess = false,
+) {
+  return {
+    fs: { readTextFile: fsAccess, writeTextFile: fsAccess },
+    terminal: false,
+    ...(parameterizedModelPicker === true
+      ? { _meta: { parameterizedModelPicker: true } }
+      : {}),
+  };
+}
+
 /**
  * Run the agent's model list command and build the variant catalog, cached
  * per list command for the bridge's lifetime (model/list refreshes it on the
@@ -705,8 +718,14 @@ async function loadAgentModelCatalog(
 
 async function loadSessionDiscoveredModels(
   agent: AcpBridgeAgentCommand,
+  primaryModels: readonly string[],
+  parameterizedModelPicker?: boolean,
 ): Promise<AvailableModel[] | null> {
-  const key = JSON.stringify(agent);
+  const key = JSON.stringify({
+    agent,
+    primaryModels,
+    parameterizedModelPicker,
+  });
   if (
     cachedSessionDiscoveredModels?.key === key &&
     Date.now() - cachedSessionDiscoveredModels.fetchedAt <
@@ -751,10 +770,7 @@ async function loadSessionDiscoveredModels(
           params: {
             protocolVersion: ACP_PROTOCOL_VERSION,
             clientInfo: { name: "bb", version: "1.0.0" },
-            clientCapabilities: {
-              fs: { readTextFile: false, writeTextFile: false },
-              terminal: false,
-            },
+            clientCapabilities: acpClientCapabilities(parameterizedModelPicker),
           },
           resultSchema: acpInitializeResultSchema,
         });
@@ -796,6 +812,7 @@ async function loadSessionDiscoveredModels(
       connection,
       sessionId: newSession.sessionId,
       modelOption,
+      primaryModels,
     });
     const models =
       reasoningByModel === null
@@ -826,12 +843,30 @@ async function discoverAcpNativeReasoningByModel(args: {
   connection: AcpAgentConnection;
   sessionId: string;
   modelOption: AcpConfigOption | undefined;
+  primaryModels: readonly string[];
 }): Promise<ReadonlyMap<string, AcpNativeReasoningSupport> | null> {
   const modelOptions = args.modelOption?.options ?? [];
   if (!args.modelOption || modelOptions.length === 0) {
     return null;
   }
   const modelOption = args.modelOption;
+  const modelByValue = new Map(
+    modelOptions.map((model) => [model.value, model] as const),
+  );
+  const modelsToProbe: typeof modelOptions = [];
+  const addedModels = new Set<string>();
+  for (const value of args.primaryModels) {
+    const model = modelByValue.get(value);
+    if (model && !addedModels.has(model.value)) {
+      modelsToProbe.push(model);
+      addedModels.add(model.value);
+    }
+  }
+  for (const model of modelOptions) {
+    if (!addedModels.has(model.value)) {
+      modelsToProbe.push(model);
+    }
+  }
 
   // Each probe is one set_config_option round trip to the local agent, so
   // work is bounded by the time budget rather than a model-count cutoff
@@ -852,7 +887,7 @@ async function discoverAcpNativeReasoningByModel(args: {
   try {
     return await Promise.race([
       (async () => {
-        for (const model of modelOptions) {
+        for (const model of modelsToProbe) {
           const configState = await args.connection.request({
             method: "session/set_config_option",
             params: {
@@ -1057,6 +1092,12 @@ async function selectAcpNativeModel(args: {
     modelSelection: selection,
     nativeReasoning: args.nativeReasoning,
   });
+  await selectAcpNativeServiceTier({
+    connection: args.connection,
+    sessionId: args.sessionId,
+    configOptions,
+    modelSelection: selection,
+  });
 }
 
 async function selectAcpNativeReasoning(args: {
@@ -1098,6 +1139,41 @@ async function selectAcpNativeReasoning(args: {
     });
   } catch {
     // Unsupported or stale thought levels should leave the agent default intact.
+  }
+}
+
+async function selectAcpNativeServiceTier(args: {
+  connection: AcpAgentConnection;
+  sessionId: string;
+  configOptions: readonly AcpConfigOption[] | undefined;
+  modelSelection: Extract<
+    AcpBridgeThreadStartParams["modelSelection"],
+    { modelId: string }
+  >;
+}): Promise<void> {
+  const serviceTier = args.modelSelection.serviceTier;
+  if (serviceTier === undefined) {
+    return;
+  }
+  const fastOption = (args.configOptions ?? []).find(
+    (option) => option.id === "fast" && option.type === "select",
+  );
+  const value = serviceTier === "fast" ? "true" : "false";
+  if (!fastOption?.options?.some((option) => option.value === value)) {
+    return;
+  }
+  try {
+    await args.connection.request({
+      method: "session/set_config_option",
+      params: {
+        sessionId: args.sessionId,
+        configId: fastOption.id,
+        value,
+      },
+      resultSchema: acpConfigStateResultSchema,
+    });
+  } catch {
+    // Unsupported or stale service tiers should leave the agent default intact.
   }
 }
 
@@ -1505,10 +1581,10 @@ async function startAgentSession(
       params: {
         protocolVersion: ACP_PROTOCOL_VERSION,
         clientInfo: { name: "bb", version: "1.0.0" },
-        clientCapabilities: {
-          fs: { readTextFile: true, writeTextFile: true },
-          terminal: false,
-        },
+        clientCapabilities: acpClientCapabilities(
+          params.parameterizedModelPicker,
+          true,
+        ),
       },
       resultSchema: acpInitializeResultSchema,
     });
@@ -1938,7 +2014,11 @@ async function handleRequest(
       }
       const sessionDiscoveredModels =
         request.params.listCommand === undefined && request.params.agent
-          ? await loadSessionDiscoveredModels(request.params.agent)
+          ? await loadSessionDiscoveredModels(
+              request.params.agent,
+              request.params.primaryModels,
+              request.params.parameterizedModelPicker,
+            )
           : null;
       if (sessionDiscoveredModels) {
         sendResult(request.id, {

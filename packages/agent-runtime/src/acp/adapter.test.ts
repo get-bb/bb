@@ -44,10 +44,21 @@ function createCompactingAdapter(): AcpProviderAdapter {
   });
 }
 
-const CURSOR_LIST_COMMAND = {
-  command: "cursor-agent",
-  args: ["--list-models"],
-};
+function createModelCliAdapter(): AcpProviderAdapter {
+  return createAcpProviderAdapter({
+    profile: {
+      providerId: "acp-custom",
+      displayName: "Custom ACP",
+      agentCommand: { command: "custom-acp", args: ["serve"] },
+      modelCli: {
+        listArgs: ["models", "list"],
+        selectFlag: "--model",
+        primaryModels: [],
+      },
+    },
+    additionalWorkspaceWriteRoots: [],
+  });
+}
 
 const THREAD_CONTEXT = { threadId: "thread-1" };
 
@@ -161,6 +172,7 @@ describe("acp adapter command plans", () => {
         workspaceWriteRoots: ["/workspace", "/extra-root"],
         envVars: { BB_THREAD_ID: "thread-1" },
         instructions: "Stay focused.",
+        parameterizedModelPicker: true,
       },
     });
   });
@@ -513,18 +525,17 @@ describe("acp compaction events", () => {
   });
 });
 
-describe("acp adapter model cli", () => {
-  it("requests the profile's model list command with its primary families", () => {
-    const plan = createAdapter().buildCommandPlan({ type: "model/list" });
-    expect(plan).toMatchObject({
+describe("acp adapter models", () => {
+  it("discovers Cursor models from its ACP session", () => {
+    expect(createAdapter().buildCommandPlan({ type: "model/list" })).toEqual({
       kind: "request",
       method: "model/list",
-      params: { listCommand: CURSOR_LIST_COMMAND },
+      params: {
+        agent: { command: "cursor-agent", args: ["acp"] },
+        primaryModels: ["grok-4.6", "grok-4.5"],
+        parameterizedModelPicker: true,
+      },
     });
-    const params = (plan as { params: Record<string, unknown> }).params;
-    const primaryModels = params.primaryModels as string[];
-    expect(primaryModels).toContain("auto");
-    expect(primaryModels.length).toBeGreaterThan(1);
   });
 
   it("requests ACP-native session discovery when the profile has no model CLI", () => {
@@ -554,15 +565,16 @@ describe("acp adapter model cli", () => {
     });
   });
 
-  it("forwards the session model and reasoning level for bridge resolution", () => {
+  it("forwards Cursor's parameterized ACP model selection", () => {
     const plan = createAdapter().buildCommandPlan({
       type: "thread/start",
       threadId: "thread-1",
       cwd: "/workspace",
       options: {
         ...fullProviderExecutionContext,
-        model: "gpt-5.3-codex",
+        model: "grok-4.6",
         reasoningLevel: "high",
+        serviceTier: "fast",
       },
       instructionMode: "append",
     });
@@ -570,11 +582,11 @@ describe("acp adapter model cli", () => {
       params: {
         agent: { command: "cursor-agent", args: ["acp"] },
         modelSelection: {
-          listCommand: CURSOR_LIST_COMMAND,
-          selectFlag: "--model",
-          model: "gpt-5.3-codex",
+          modelId: "grok-4.6",
           reasoningLevel: "high",
+          serviceTier: "fast",
         },
+        parameterizedModelPicker: true,
       },
     });
   });
@@ -651,7 +663,7 @@ describe("acp adapter model cli", () => {
     });
     expect(plan).toMatchObject({
       params: {
-        modelSelection: { model: "gpt-5.3-codex" },
+        modelSelection: { modelId: "gpt-5.3-codex" },
       },
     });
     const params = (plan as { params: Record<string, unknown> }).params;
@@ -659,8 +671,8 @@ describe("acp adapter model cli", () => {
     expect("reasoningLevel" in selection).toBe(false);
   });
 
-  it("forwards Fast mode as the model selection service tier", () => {
-    const plan = createAdapter().buildCommandPlan({
+  it("forwards Fast mode to an agent with launch-time model selection", () => {
+    const plan = createModelCliAdapter().buildCommandPlan({
       type: "thread/start",
       threadId: "thread-1",
       cwd: "/workspace",
@@ -678,8 +690,8 @@ describe("acp adapter model cli", () => {
     });
   });
 
-  it("omits a default service tier from the model selection", () => {
-    const plan = createAdapter().buildCommandPlan({
+  it("omits a default service tier from launch-time model selection", () => {
+    const plan = createModelCliAdapter().buildCommandPlan({
       type: "thread/start",
       threadId: "thread-1",
       cwd: "/workspace",

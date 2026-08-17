@@ -147,9 +147,8 @@ const ACP_COMPOSER_ACTIONS: ProviderComposerAction[] = [
 // Fork support is negotiated with each agent before the bridge sends the
 // unstable ACP session/fork request; agents that do not advertise it fail the
 // fork without falling back to a fresh session.
-// Cursor exposes a `-fast` service tail per model; the bridge resolves it from
-// the serviceTier (the "Fast mode" toggle), so service tier is supported here
-// rather than fanning fast variants out as separate model-list entries.
+// Cursor exposes Fast mode as an ACP config option, so it supports the shared
+// service tier without separate model entries.
 const ACP_CAPABILITIES: ProviderCapabilities = {
   supportsArchive: false,
   supportsRename: false,

@@ -561,6 +561,12 @@ export function createAcpProviderAdapter(
       : { permissionCli: profile.permissionCli };
   }
 
+  function buildParameterizedModelPickerParam(): Record<string, unknown> {
+    return profile.parameterizedModelPicker === true
+      ? { parameterizedModelPicker: true }
+      : {};
+  }
+
   const turnState = createProviderTurnStateRegistry<AcpTurnState>({
     createState: () => ({
       assistantMessageCounter: 0,
@@ -1310,6 +1316,7 @@ export function createAcpProviderAdapter(
       ...buildModelSelectionParam(command.options),
       ...buildReasoningCliParam(),
       ...buildNativeReasoningParam(),
+      ...buildParameterizedModelPickerParam(),
       ...buildPermissionCliParam(),
       ...(profile.reasoningCli !== undefined &&
       command.options.reasoningLevel !== undefined
@@ -1345,6 +1352,10 @@ export function createAcpProviderAdapter(
           modelId: model,
           ...(options.reasoningLevel !== undefined
             ? { reasoningLevel: options.reasoningLevel }
+            : {}),
+          ...(profile.parameterizedModelPicker === true &&
+          options.serviceTier !== undefined
+            ? { serviceTier: options.serviceTier }
             : {}),
         },
       };
@@ -1402,7 +1413,12 @@ export function createAcpProviderAdapter(
               params: {
                 ...(listCommand !== undefined ? { listCommand } : {}),
                 ...(agent !== undefined ? { agent } : {}),
-                primaryModels: [...(profile.modelCli?.primaryModels ?? [])],
+                primaryModels: [
+                  ...(profile.primaryModels ??
+                    profile.modelCli?.primaryModels ??
+                    []),
+                ],
+                ...buildParameterizedModelPickerParam(),
                 ...buildReasoningCliParam(),
                 ...buildNativeReasoningParam(),
               },

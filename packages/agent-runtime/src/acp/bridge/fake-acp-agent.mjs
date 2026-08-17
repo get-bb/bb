@@ -21,6 +21,9 @@
  * - FAKE_ACP_MODELS_FIELD=1  → advertise legacy ACP models state
  * - FAKE_ACP_THOUGHT_LEVEL_CONFIG=1
  *                            → advertise per-model effort configOptions
+ * - FAKE_ACP_FAST_CONFIG=1   → advertise the Fast mode config option
+ * - FAKE_ACP_INITIAL_FAST    → set the initial Fast mode value
+ * - FAKE_ACP_INITIALIZE_LOG  → append initialize params as JSON
  * - FAKE_ACP_UNMAPPED_REASONING_CONFIG=1
  *                            → advertise unmapped thought_level values
  * - FAKE_ACP_ACCEPT_NATIVE_REASONING=1
@@ -28,6 +31,7 @@
  *                              advertising a thought_level config option
  * - FAKE_ACP_SET_CONFIG_MODEL_ERROR=1
  *                            → fail session/set_config_option for model values
+ * - FAKE_ACP_SET_CONFIG_LOG  → append selected model values
  * - FAKE_ACP_MODEL_COUNT=<n> → pad the catalog to n reasoning-capable models
  *                              (exercises large-catalog reasoning discovery)
  * - FAKE_ACP_AUTH_METHODS    → comma-separated auth method ids to advertise;
@@ -53,6 +57,7 @@ const usageSessionId = process.env.FAKE_ACP_USAGE_SESSION_ID;
 const modelConfig = process.env.FAKE_ACP_MODEL_CONFIG === "1";
 const modelsField = process.env.FAKE_ACP_MODELS_FIELD === "1";
 const thoughtLevelConfig = process.env.FAKE_ACP_THOUGHT_LEVEL_CONFIG === "1";
+const fastConfig = process.env.FAKE_ACP_FAST_CONFIG === "1";
 const unmappedReasoningConfig =
   process.env.FAKE_ACP_UNMAPPED_REASONING_CONFIG === "1";
 const acceptNativeReasoning =
@@ -73,6 +78,7 @@ let activePromptId = null;
 let nextAgentRequestId = 1000;
 let selectedModel = "fake/default";
 let selectedEffort = "none";
+let selectedFast = process.env.FAKE_ACP_INITIAL_FAST ?? "false";
 let authenticatedMethod = null;
 let activeSessionId = sessionId;
 const pendingClientRequests = new Map();
@@ -173,6 +179,17 @@ function configOptions() {
       options: fakeModels,
     },
     effortOptionForModel(selectedModel),
+    ...(fastConfig
+      ? [
+          {
+            id: "fast",
+            name: "Fast mode",
+            type: "select",
+            currentValue: selectedFast,
+            options: [{ value: "false" }, { value: "true" }],
+          },
+        ]
+      : []),
   ].filter(Boolean);
 }
 
@@ -313,6 +330,8 @@ async function handlePrompt(message) {
     notifyUpdate(messageChunk(`selected-model:${selectedModel}`));
   } else if (text.includes("echo-selected-effort")) {
     notifyUpdate(messageChunk(`selected-effort:${selectedEffort}`));
+  } else if (text.includes("echo-selected-fast")) {
+    notifyUpdate(messageChunk(`selected-fast:${selectedFast}`));
   } else if (text.includes("echo-auth-method")) {
     notifyUpdate(messageChunk(`auth-method:${authenticatedMethod ?? "none"}`));
   } else if (text.includes("echo-electron-run-as-node")) {
@@ -354,6 +373,12 @@ async function handleMessage(message) {
     case "initialize":
       if (hangInitialize) {
         return;
+      }
+      if (process.env.FAKE_ACP_INITIALIZE_LOG) {
+        appendFileSync(
+          process.env.FAKE_ACP_INITIALIZE_LOG,
+          `${JSON.stringify(message.params)}\n`,
+        );
       }
       send({
         jsonrpc: "2.0",
@@ -511,6 +536,9 @@ async function handleMessage(message) {
           });
           return;
         }
+        if (process.env.FAKE_ACP_SET_CONFIG_LOG) {
+          appendFileSync(process.env.FAKE_ACP_SET_CONFIG_LOG, `${value}\n`);
+        }
         selectedModel = value;
         send({ jsonrpc: "2.0", id: message.id, result: configState() });
         return;
@@ -530,6 +558,19 @@ async function handleMessage(message) {
           return;
         }
         selectedEffort = value;
+        send({ jsonrpc: "2.0", id: message.id, result: configState() });
+        return;
+      }
+      if (configId === "fast") {
+        if (!fastConfig || (value !== "false" && value !== "true")) {
+          send({
+            jsonrpc: "2.0",
+            id: message.id,
+            error: { code: -32602, message: `fast mode not found: ${value}` },
+          });
+          return;
+        }
+        selectedFast = value;
         send({ jsonrpc: "2.0", id: message.id, result: configState() });
         return;
       }

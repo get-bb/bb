@@ -99,7 +99,12 @@ interface StartThreadArgs {
         model: string;
         reasoningLevel?: ReasoningLevel;
       }
-    | { modelId: string; reasoningLevel?: ReasoningLevel };
+    | {
+        modelId: string;
+        reasoningLevel?: ReasoningLevel;
+        serviceTier?: "default" | "fast";
+      };
+  parameterizedModelPicker?: boolean;
   launchReasoningLevel?: ReasoningLevel;
   reasoningCli?: {
     flag: string;
@@ -143,6 +148,9 @@ async function startThread(args?: StartThreadArgs): Promise<{
       : {}),
     ...(args?.nativeReasoning !== undefined
       ? { nativeReasoning: args.nativeReasoning }
+      : {}),
+    ...(args?.parameterizedModelPicker === true
+      ? { parameterizedModelPicker: true }
       : {}),
     ...(args?.permissionCli !== undefined
       ? { permissionCli: args.permissionCli }
@@ -413,6 +421,37 @@ describe("acp bridge", () => {
       ],
       selectedOnlyModels: [],
     });
+  });
+
+  it("advertises parameterized model selection and probes primary models first", async () => {
+    const initializeLog = join(workspaceDir, "discovery-initialize.jsonl");
+    const selectionLog = join(workspaceDir, "primary-model-selections.txt");
+    const modelListId = sendRequest("model/list", {
+      agent: {
+        command: process.execPath,
+        args: [FAKE_AGENT_PATH],
+        envVars: {
+          FAKE_ACP_INITIALIZE_LOG: initializeLog,
+          FAKE_ACP_MODEL_CONFIG: "1",
+          FAKE_ACP_SET_CONFIG_LOG: selectionLog,
+          FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
+        },
+      },
+      primaryModels: ["fake/strong"],
+      parameterizedModelPicker: true,
+    });
+
+    await waitForResponse(modelListId);
+    await waitForFileWithRealTimer(initializeLog);
+    const initializeParams = JSON.parse(
+      readFileSync(initializeLog, "utf8").trim(),
+    );
+    expect(initializeParams.clientCapabilities).toMatchObject({
+      _meta: { parameterizedModelPicker: true },
+    });
+    expect(readFileSync(selectionLog, "utf8").split("\n")[0]).toBe(
+      "fake/strong",
+    );
   });
 
   it("discovers ACP-native models from session models state", async () => {
@@ -893,6 +932,26 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("selected-model:fake/strong");
   });
 
+  it("advertises parameterized model selection during a live session", async () => {
+    const initializeLog = join(workspaceDir, "session-initialize.jsonl");
+    await startThread({
+      envVars: {
+        FAKE_ACP_INITIALIZE_LOG: initializeLog,
+        FAKE_ACP_MODEL_CONFIG: "1",
+      },
+      modelSelection: { modelId: "fake/strong" },
+      parameterizedModelPicker: true,
+    });
+
+    await waitForFileWithRealTimer(initializeLog);
+    const initializeParams = JSON.parse(
+      readFileSync(initializeLog, "utf8").trim(),
+    );
+    expect(initializeParams.clientCapabilities).toMatchObject({
+      _meta: { parameterizedModelPicker: true },
+    });
+  });
+
   it("falls back to session/set_model when the model config option errors", async () => {
     const { providerThreadId } = await startThread({
       envVars: {
@@ -943,6 +1002,39 @@ describe("acp bridge", () => {
 
     expect(agentMessageTexts()).toContain("selected-effort:xhigh");
   });
+
+  it.each([
+    {
+      serviceTier: "fast" as const,
+      initialFast: "false",
+      selectedFast: "true",
+    },
+    {
+      serviceTier: "default" as const,
+      initialFast: "true",
+      selectedFast: "false",
+    },
+  ])(
+    "maps the $serviceTier service tier to Fast mode $selectedFast",
+    async ({ serviceTier, initialFast, selectedFast }) => {
+      const { providerThreadId } = await startThread({
+        envVars: {
+          FAKE_ACP_FAST_CONFIG: "1",
+          FAKE_ACP_INITIAL_FAST: initialFast,
+          FAKE_ACP_MODEL_CONFIG: "1",
+        },
+        modelSelection: { modelId: "fake/strong", serviceTier },
+      });
+
+      sendRequest("turn/start", {
+        threadId: providerThreadId,
+        input: [{ type: "text", text: "echo-selected-fast", mentions: [] }],
+      });
+      await waitForTurnCompleted();
+
+      expect(agentMessageTexts()).toContain(`selected-fast:${selectedFast}`);
+    },
+  );
 
   it("applies configured native reasoning when the ACP agent does not advertise thought_level", async () => {
     const { providerThreadId } = await startThread({

@@ -1060,6 +1060,9 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
+  // Version 124 advertises Cursor's parameterized model picker and sends its
+  // model, reasoning, and Fast mode as ACP config options. Older daemons use
+  // launch-only model variants that Cursor ACP ignores.
   // Version 123 adds required status-enrichment budgets and a required
   // diff-files truncation marker. Older daemons cannot safely enforce or
   // interpret the new bounded workspace response contract.
@@ -1093,7 +1096,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(123);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(124);
   });
 
   it("requires an explicit intent on a thread stop command", () => {
