@@ -3859,6 +3859,7 @@ describe("migrate", () => {
         "events_thread_turn_type_item_sequence_idx",
         "events_thread_type_item_kind_sequence_idx",
         "events_thread_type_sequence_idx",
+        "events_tool_call_parent_lookup_idx",
       ]);
 
       const migrationCreatedAts = db.$client

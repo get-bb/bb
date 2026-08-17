@@ -2081,10 +2081,10 @@ export function listActiveBackgroundTaskCountsByThreadIds(
   db: DbQueryConnection,
   args: ListActiveBackgroundTaskCountsByThreadIdsArgs,
 ): ActiveBackgroundTaskCountRow[] {
-  // The query binds each thread ID twice and also binds 11 fixed values.
+  // The query binds each thread ID once and also binds 14 fixed values.
   const rows = queryInSqliteVariableBatches({
     dedupeKey: (threadId) => threadId,
-    fixedVariableCount: 11,
+    fixedVariableCount: 14,
     queryBatch: (threadIds) => {
       const startedType = "item/started" satisfies ThreadEventType;
       const progressType =
@@ -2098,27 +2098,29 @@ export function listActiveBackgroundTaskCountsByThreadIds(
         `= '${backgroundTaskItemKind}'`,
       );
       return db.all<ActiveBackgroundTaskCountRow>(sql`
-    WITH latest_background_task_activity AS (
+    WITH latest_background_task_state AS (
       SELECT
         ${events.threadId} AS thread_id,
         ${events.itemId} AS item_id,
-        MAX(${events.sequence}) AS sequence
+        MAX(
+          CASE
+            WHEN ${inArray(events.type, [startedType, progressType])}
+              THEN ${events.sequence}
+            ELSE NULL
+          END
+        ) AS sequence,
+        MAX(
+          CASE
+            WHEN ${eq(events.type, completedType)} THEN 1
+            ELSE 0
+          END
+        ) AS is_completed
       FROM ${events} INDEXED BY events_background_task_thread_type_item_sequence_idx
       WHERE ${inArray(events.threadId, [...threadIds])}
         AND ${events.itemKind} ${backgroundTaskItemKindPredicate}
-        AND ${inArray(events.type, [startedType, progressType])}
+        AND ${inArray(events.type, [startedType, progressType, completedType])}
         AND ${isNotNull(events.itemId)}
       GROUP BY ${events.threadId}, ${events.itemId}
-    ),
-    completed_background_task_activity AS (
-      SELECT DISTINCT
-        ${events.threadId} AS thread_id,
-        ${events.itemId} AS item_id
-      FROM ${events} INDEXED BY events_background_task_thread_type_item_sequence_idx
-      WHERE ${inArray(events.threadId, [...threadIds])}
-        AND ${events.itemKind} ${backgroundTaskItemKindPredicate}
-        AND ${eq(events.type, completedType)}
-        AND ${isNotNull(events.itemId)}
     )
     SELECT
       active_event.thread_id AS threadId,
@@ -2148,14 +2150,12 @@ export function listActiveBackgroundTaskCountsByThreadIds(
           ELSE 0
         END
       ) AS activeBackgroundCommandCount
-    FROM latest_background_task_activity latest
+    FROM latest_background_task_state latest
     JOIN events active_event
       ON active_event.thread_id = latest.thread_id
       AND active_event.sequence = latest.sequence
-    LEFT JOIN completed_background_task_activity completed
-      ON completed.thread_id = latest.thread_id
-      AND completed.item_id = latest.item_id
-    WHERE completed.item_id IS NULL
+    WHERE latest.is_completed = 0
+      AND latest.sequence IS NOT NULL
       AND json_extract(active_event.data, '$.item.status') = 'pending'
       AND json_extract(active_event.data, '$.item.taskType') IN (
         ${LOCAL_WORKFLOW_TASK_TYPE},
@@ -2172,7 +2172,7 @@ export function listActiveBackgroundTaskCountsByThreadIds(
   `);
     },
     values: args.threadIds,
-    variableCountPerValue: 2,
+    variableCountPerValue: 1,
   });
 
   return rows.sort((left, right) =>

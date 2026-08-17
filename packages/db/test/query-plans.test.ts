@@ -13,6 +13,7 @@ import {
   getPendingInteractionByProviderRequest,
 } from "../src/data/pending-interactions.js";
 import {
+  hasParentedEventCrossingSequence,
   insertEvents,
   listActiveBackgroundTaskCountsByThreadIds,
   listLatestGoalEventRowsByThreadIds,
@@ -171,9 +172,14 @@ function captureStatements(
     value: (source: string) => {
       const statement = originalPrepare(source);
       const originalAll = statement.all.bind(statement);
+      const originalGet = statement.get.bind(statement);
       statement.all = (...params: unknown[]) => {
         captured.push({ params: params as SqliteParameter[], sql: source });
         return originalAll(...params);
+      };
+      statement.get = (...params: unknown[]) => {
+        captured.push({ params: params as SqliteParameter[], sql: source });
+        return originalGet(...params);
       };
       return statement;
     },
@@ -213,7 +219,36 @@ function assertEmittedQueryPlanUsesIndex(
 }
 
 describe("slow query index plans", () => {
-  it("pins active background-task scans to the partial index", () => {
+  it("resolves parent crossings through the covering tool-call index", () => {
+    const { db, thread } = setup();
+
+    const captured = captureStatements(db, () => {
+      expect(
+        hasParentedEventCrossingSequence(db, {
+          sequence: 2,
+          threadId: thread.id,
+        }),
+      ).toBe(false);
+    });
+    const query = captured.find((entry) =>
+      entry.sql.includes("parent_event.item_id"),
+    );
+    if (!query) {
+      throw new Error("Expected the parent-crossing lookup SQL");
+    }
+    const details = queryPlanDetails({
+      db,
+      params: query.params,
+      sql: query.sql,
+    });
+    expect(details).toMatch(
+      /SEARCH parent_event .*USING COVERING INDEX events_tool_call_parent_lookup_idx/u,
+    );
+
+    db.$client.close();
+  });
+
+  it("scans background-task history once without a completed-set join", () => {
     const { db, thread } = setup();
 
     const captured = captureStatements(db, () => {
@@ -222,12 +257,12 @@ describe("slow query index plans", () => {
       });
     });
     const query = captured.find((entry) =>
-      entry.sql.includes("latest_background_task_activity"),
+      entry.sql.includes("latest_background_task_state"),
     );
     if (!query) {
       throw new Error("Expected the active background-task count SQL");
     }
-    expect(query.params).toHaveLength(13);
+    expect(query.params).toHaveLength(15);
     const details = queryPlanDetails({
       db,
       params: query.params,
@@ -235,7 +270,8 @@ describe("slow query index plans", () => {
     });
     expect(
       details.match(/events_background_task_thread_type_item_sequence_idx/gu),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
+    expect(details).not.toMatch(/CORRELATED|LEFT-JOIN|SCAN completed/u);
 
     db.$client.close();
   });

@@ -3685,7 +3685,7 @@ describe("events", () => {
   it("chunks thread IDs before SQLite reaches its variable limit", () => {
     const { db } = setup();
     const threadIds = Array.from(
-      { length: 16_378 },
+      { length: 32_753 },
       (_, index) => `thr_missing_${index}`,
     );
 
@@ -3738,7 +3738,7 @@ describe("events", () => {
       threadIds: [thread.id, otherThread.id],
     });
     const missingThreadIds = Array.from(
-      { length: 16_376 },
+      { length: 32_751 },
       (_, index) => `thr_missing_${index}`,
     );
     const chunkedRows = listActiveBackgroundTaskCountsByThreadIds(db, {

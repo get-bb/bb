@@ -102,6 +102,11 @@ export interface CompactDatabaseResult {
   before: DatabaseCompactionStats;
 }
 
+export interface IncrementalVacuumResult {
+  after: DatabaseFreelistStats;
+  before: DatabaseFreelistStats;
+}
+
 export interface RunIncrementalVacuumArgs {
   maxPages: number;
 }
@@ -429,18 +434,21 @@ export function compactDatabase(db: DbConnection): CompactDatabaseResult {
 export function runIncrementalVacuum(
   db: DbConnection,
   args: RunIncrementalVacuumArgs,
-): CompactDatabaseResult {
+): IncrementalVacuumResult {
   return runWithMaintenanceBusyTimeout({
     db,
     work: () => {
-      const before = getDatabaseCompactionStats(db);
+      // Incremental vacuum can reclaim only freelist pages. Reading dbstat's
+      // internal-page slack here cannot affect the operation and scans the
+      // entire database twice on every pass.
+      const before = getDatabaseFreelistStats(db);
 
       db.$client.exec("PRAGMA wal_checkpoint(PASSIVE)");
       db.$client.exec(`PRAGMA incremental_vacuum(${args.maxPages})`);
       db.$client.exec("PRAGMA wal_checkpoint(PASSIVE)");
 
       return {
-        after: getDatabaseCompactionStats(db),
+        after: getDatabaseFreelistStats(db),
         before,
       };
     },
