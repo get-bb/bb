@@ -335,3 +335,85 @@ export function enforcePluginCliOutputLimit(
       }
     : { exitCode: 1, stdout: "", stderr: error.message, error };
 }
+
+/**
+ * Adopt the value a plugin HTTP route handler returned.
+ *
+ * Plugin handlers can run in a different realm (jiti-loaded modules, bundled
+ * fetch polyfills), so a valid `Response` from a handler can fail
+ * `instanceof Response` in the host (#1661). Both the real host and the fake
+ * host accept a structurally valid Response from any realm and re-wrap it
+ * into a this-realm `Response`, so Hono always consumes a native object and a
+ * malformed return still fails at the invoke boundary with a pointed error.
+ *
+ * The body streams through: a foreign `body` stream is piped chunk by chunk
+ * with cancellation forwarded to the source, so no full-size buffer is made.
+ */
+export function adoptHttpRouteResponse(value: unknown): Response {
+  if (value instanceof Response) return value;
+  if (!isResponseLike(value)) {
+    throw new Error("http route handler must return a Response");
+  }
+  const status = value.status;
+  const isNullBodyStatus =
+    status === 101 || status === 204 || status === 205 || status === 304;
+  const init: ResponseInit = {
+    status,
+    statusText: typeof value.statusText === "string" ? value.statusText : "",
+    headers: new Headers(value.headers),
+  };
+  if (isNullBodyStatus || value.body === null) {
+    return new Response(null, init);
+  }
+  return new Response(adoptBodyStream(value), init);
+}
+
+function adoptBodyStream(value: Response): ReadableStream<Uint8Array> {
+  const source = value.body;
+  if (!isReadableStreamLike(source)) {
+    // No usable stream (for example a body already consumed by a proxy):
+    // fall back to the buffered body so the route still returns its content.
+    return new ReadableStream<Uint8Array>({
+      async start(controller) {
+        controller.enqueue(new Uint8Array(await value.arrayBuffer()));
+        controller.close();
+      },
+    });
+  }
+  const reader = source.getReader();
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const { done, value: chunk } = await reader.read();
+      if (done) {
+        controller.close();
+        return;
+      }
+      controller.enqueue(chunk);
+    },
+    async cancel(reason) {
+      await reader.cancel(reason);
+    },
+  });
+}
+
+function isReadableStreamLike(
+  value: unknown,
+): value is ReadableStream<Uint8Array> {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    typeof (value as ReadableStream).getReader === "function"
+  );
+}
+
+function isResponseLike(value: unknown): value is Response {
+  if (value === null || typeof value !== "object") return false;
+  const candidate = value as Partial<Response>;
+  return (
+    typeof candidate.status === "number" &&
+    typeof candidate.headers === "object" &&
+    candidate.headers !== null &&
+    typeof candidate.arrayBuffer === "function" &&
+    typeof candidate.clone === "function"
+  );
+}

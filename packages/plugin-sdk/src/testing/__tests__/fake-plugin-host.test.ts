@@ -345,6 +345,38 @@ describe("http", () => {
       error: "plugin route failed: nope",
     });
   });
+
+  it("adopts a structurally valid Response from another realm like the host (#1661)", async () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.http.route("GET", "/foreign", () => {
+      const real = new Response(JSON.stringify({ foreign: true }), {
+        status: 201,
+        headers: { "content-type": "application/json", "x-foreign": "yes" },
+      });
+      // Not `instanceof Response` in this realm; same structural shape.
+      return {
+        status: real.status,
+        statusText: real.statusText,
+        headers: real.headers,
+        body: real.body,
+        arrayBuffer: () => real.arrayBuffer(),
+        clone: () => real.clone(),
+      } as unknown as Response;
+    });
+    bb.http.route("GET", "/not-a-response", () => ({ status: 200 }) as Response);
+
+    const foreign = await harness.fetchHttp("GET", "/foreign");
+    expect(foreign.status).toBe(201);
+    expect(foreign.headers.get("x-foreign")).toBe("yes");
+    expect(await foreign.json()).toEqual({ foreign: true });
+
+    const malformed = await harness.fetchHttp("GET", "/not-a-response");
+    expect(malformed.status).toBe(500);
+    expect(await malformed.json()).toEqual({
+      ok: false,
+      error: "plugin route failed: http route handler must return a Response",
+    });
+  });
 });
 
 describe("cli", () => {

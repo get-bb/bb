@@ -57,6 +57,29 @@ const WIRE_SOURCE = `
         status: real.status,
         statusText: real.statusText,
         headers: real.headers,
+        body: real.body,
+        arrayBuffer: () => real.arrayBuffer(),
+        clone: () => real.clone(),
+      };
+    });
+    // Streams two chunks; the second is only produced after the test releases
+    // it, so buffering the whole body would hang the first read.
+    bb.http.route("GET", "/foreign-stream", () => {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          controller.enqueue(encoder.encode("first;"));
+          await globalThis.__releaseSecondChunk;
+          controller.enqueue(encoder.encode("second"));
+          controller.close();
+        },
+      });
+      const real = new Response(stream, { status: 200 });
+      return {
+        status: real.status,
+        statusText: real.statusText,
+        headers: real.headers,
+        body: real.body,
         arrayBuffer: () => real.arrayBuffer(),
         clone: () => real.clone(),
       };
@@ -418,6 +441,34 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(await response.json()).toEqual({ foreign: true });
     const entry = harness.pluginService.list().find((p) => p.id === "wire");
     expect(entry?.handlerStats.errorCount).toBe(0);
+  });
+
+  it("streams a foreign response body instead of buffering it", async () => {
+    let release!: () => void;
+    (globalThis as any).__releaseSecondChunk = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    try {
+      const response = await harness.app.request(
+        `${BASE}/api/v1/plugins/wire/http/foreign-stream`,
+      );
+      expect(response.status).toBe(200);
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      const first = await reader.read();
+      expect(decoder.decode(first.value)).toBe("first;");
+      release();
+      let rest = "";
+      for (;;) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        rest += decoder.decode(chunk.value, { stream: true });
+      }
+      expect(rest).toBe("second");
+    } finally {
+      release();
+      delete (globalThis as any).__releaseSecondChunk;
+    }
   });
 
   it("rejects a non-Response return with a pointed 500 at the invoke boundary", async () => {

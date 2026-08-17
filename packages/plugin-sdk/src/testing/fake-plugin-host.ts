@@ -28,6 +28,7 @@ import {
   RPC_METHOD_PATTERN,
   summarizeParseIssues,
   validateSettingsUpdate,
+  adoptHttpRouteResponse,
 } from "../internal/host-policy.js";
 import type {
   BbPluginApi,
@@ -1779,11 +1780,7 @@ function createFakePluginHostInternal(
       const app = new Hono();
       app.on(route.method, route.path, async (context) => {
         try {
-          const response = await route.handler(context);
-          if (!(response instanceof Response)) {
-            throw new Error("http route handler must return a Response");
-          }
-          return response;
+          return adoptHttpRouteResponse(await route.handler(context));
         } catch (error) {
           const message = errorMessage(error);
           emitLog(

@@ -137,5 +137,19 @@ declare function isZodSchemaLike(value: unknown): boolean;
 /** Compact issue summary from a (possibly foreign-instance) zod error. */
 declare function summarizeParseIssues(error: unknown): string;
 declare function enforcePluginCliOutputLimit(result: Omit<PluginCliExecutionResult, "error">, jsonOutput: boolean): PluginCliExecutionResult;
+/**
+ * Adopt the value a plugin HTTP route handler returned.
+ *
+ * Plugin handlers can run in a different realm (jiti-loaded modules, bundled
+ * fetch polyfills), so a valid `Response` from a handler can fail
+ * `instanceof Response` in the host (#1661). Both the real host and the fake
+ * host accept a structurally valid Response from any realm and re-wrap it
+ * into a this-realm `Response`, so Hono always consumes a native object and a
+ * malformed return still fails at the invoke boundary with a pointed error.
+ *
+ * The body streams through: a foreign `body` stream is piped chunk by chunk
+ * with cancellation forwarded to the source, so no full-size buffer is made.
+ */
+declare function adoptHttpRouteResponse(value: unknown): Response;
 
-export { AGENT_TOOL_NAME_PATTERN, BACKGROUND_NAME_PATTERN, CLI_COMMAND_NAME_PATTERN, KV_VALUE_MAX_BYTES, MENTION_PROVIDER_ID_PATTERN, PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS, PLUGIN_AGENT_SELECTION_MAX_IDS, PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS, PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS, PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES, PLUGIN_HTTP_METHODS, PLUGIN_MENTION_TRIGGER_VALUES, RESERVED_AGENT_TOOL_NAMES, RESERVED_BB_CLI_COMMANDS, RPC_METHOD_PATTERN, SETTING_KEY_PATTERN, enforcePluginCliOutputLimit, isPluginMentionTrigger, isStandardSchema, isZodSchemaLike, normalizeMentionProviderTriggers, readRpcMethodContract, registerSettingDescriptors, summarizeParseIssues, validateSettingsUpdate };
+export { AGENT_TOOL_NAME_PATTERN, BACKGROUND_NAME_PATTERN, CLI_COMMAND_NAME_PATTERN, KV_VALUE_MAX_BYTES, MENTION_PROVIDER_ID_PATTERN, PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS, PLUGIN_AGENT_SELECTION_MAX_IDS, PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS, PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS, PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES, PLUGIN_HTTP_METHODS, PLUGIN_MENTION_TRIGGER_VALUES, RESERVED_AGENT_TOOL_NAMES, RESERVED_BB_CLI_COMMANDS, RPC_METHOD_PATTERN, SETTING_KEY_PATTERN, adoptHttpRouteResponse, enforcePluginCliOutputLimit, isPluginMentionTrigger, isStandardSchema, isZodSchemaLike, normalizeMentionProviderTriggers, readRpcMethodContract, registerSettingDescriptors, summarizeParseIssues, validateSettingsUpdate };
