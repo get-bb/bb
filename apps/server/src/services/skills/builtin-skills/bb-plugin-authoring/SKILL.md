@@ -2056,10 +2056,10 @@ multi-plugin arbitration. Use a live loop for those host boundaries.
 
 ### Live loop against a running bb
 
-- `bb plugin dev` is the loop: save → rebuild declared `bb.app` and `bb.host`
-  artifacts → reload; open app pages pick new UI up live and host workers move
-  to the new generation on their next call. Build/reload failures print and
-  keep watching.
+- `bb plugin dev` is the loop: save → rebuild declared `bb.app`, `bb.host`, and
+  `bb.providerBridge` artifacts → reload; open app pages pick new UI up live and
+  host workers move to the new generation on their next call. Build/reload
+  failures print and keep watching.
 - `bb plugin list` shows status, services, schedules (with last_error),
   handler stats, and the CLI command; `bb plugin logs <id> -f` follows
   `bb.log` output. Add `--json` to any plugin command for machine output.

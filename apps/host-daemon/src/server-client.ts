@@ -551,6 +551,8 @@ export function createServerClient(
         );
       }
       return readPluginHostArtifactBytes(response, args.expectedByteLength);
+    },
+
     async fetchProviderBridge(sha256: string): Promise<Uint8Array> {
       // Same trust model as fetchSkillTree: the authenticated daemon
       // transport is the boundary, and the caller hash-verifies the bytes

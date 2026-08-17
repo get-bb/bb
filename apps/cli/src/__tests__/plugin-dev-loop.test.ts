@@ -9,7 +9,13 @@ describe("createPluginDevLoop", () => {
     vi.useRealTimers();
   });
 
-  function makeDeps(overrides: { hasApp?: boolean; hasHost?: boolean } = {}) {
+  function makeDeps(
+    overrides: {
+      hasApp?: boolean;
+      hasHost?: boolean;
+      hasProviderBridge?: boolean;
+    } = {},
+  ) {
     const calls: string[] = [];
     const lines: string[] = [];
     return {
@@ -19,11 +25,15 @@ describe("createPluginDevLoop", () => {
         pluginId: "hello",
         hasApp: overrides.hasApp ?? true,
         hasHost: overrides.hasHost ?? false,
+        hasProviderBridge: overrides.hasProviderBridge ?? false,
         buildApp: vi.fn(async () => {
           calls.push("build");
         }),
         buildHost: vi.fn(async () => {
           calls.push("build-host");
+        }),
+        buildProviderBridge: vi.fn(async () => {
+          calls.push("build-provider-bridge");
         }),
         reloadPlugin: vi.fn(async () => {
           calls.push("reload");

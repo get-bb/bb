@@ -211,8 +211,7 @@ function readPluginProviderIcon(
     return null;
   }
   const asset = icon;
-  const contentType =
-    PROVIDER_ICON_CONTENT_TYPES[extname(asset).toLowerCase()];
+  const contentType = PROVIDER_ICON_CONTENT_TYPES[extname(asset).toLowerCase()];
   if (contentType === undefined) {
     return null;
   }
@@ -1163,6 +1162,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       digest,
       generation: randomUUID(),
     };
+  }
+
   /**
    * Refresh a plugin's provider-bridge artifact for this load. Mutable
    * sources (path:/source-builtin) rebuild every load so the recorded
@@ -1399,10 +1400,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
             // logoUrl-with-404 → the app's vendored fallback, never a load
             // failure. The asset path was already traversal-validated by
             // host-policy.
-            const icon = readPluginProviderIcon(
-              row.rootDir,
-              declaration.icon,
-            );
+            const icon = readPluginProviderIcon(row.rootDir, declaration.icon);
             return icon === null ? {} : { icon };
           })(),
           pluginId: row.id,
@@ -1445,9 +1443,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         // reload they are disposed before the staged replacements flush, so
         // re-declaring the same id is not a collision.
         const existing = deps.providerRegistry.get(providerId);
-        return (
-          existing !== null && existing.source.pluginId !== row.id
-        );
+        return existing !== null && existing.source.pluginId !== row.id;
       },
     });
     // Mutable trees are edited between loads, so invalidate the previous
@@ -1554,7 +1550,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     // dispose path removed the previous load's entry): presence there means
     // the plugin runtime is live and its bridge bytes are servable.
     if (providerBridgeCandidate.artifact !== null) {
-      deps.providerBridgeArtifacts?.set(row.id, providerBridgeCandidate.artifact);
+      deps.providerBridgeArtifacts?.set(
+        row.id,
+        providerBridgeCandidate.artifact,
+      );
     } else {
       deps.providerBridgeArtifacts?.delete(row.id);
     }

@@ -1076,6 +1076,14 @@ const BRIDGE_LAUNCH = {
 } as const;
 
 describe("host-daemon command schemas", () => {
+  // Version 130 makes every provider plugin-declared on the wire: a REQUIRED
+  // `bridgeLaunch` field beside every `acpLaunchSpec` site (thread.start, the
+  // resume contexts, thread.goal.clear, thread.archive, thread.unarchive,
+  // provider.list_models) naming the delivery path (`artifact` or
+  // `daemon-bundled`) and the server-validated capabilities, plus the collapse
+  // of `host.delete_skill`'s per-provider scopes to `provider-user` /
+  // `provider-project`. The command schemas are strict, so an older daemon
+  // cannot parse the new field and rejects the new scope values.
   // Version 129 raises the single executable host-artifact ceiling to 256 MiB.
   // Older daemons reject artifact declarations above the previous 16 MiB cap.
   // Version 128 replaces cross-machine host-plugin deadline timestamps with a
@@ -1124,7 +1132,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(129);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(130);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

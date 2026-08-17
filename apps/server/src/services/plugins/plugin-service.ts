@@ -33,6 +33,7 @@ import {
 import {
   buildPluginApp,
   buildPluginHost,
+  buildPluginProviderBridge,
   createPluginDevLoop,
 } from "@bb/plugin-build";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
@@ -1501,6 +1502,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             pluginId: row.id,
             hasApp: manifest.appEntry !== undefined,
             hasHost: manifest.hostEntry !== undefined,
+            hasProviderBridge: manifest.providerBridgeEntry !== undefined,
             buildApp: async () => {
               try {
                 await buildPluginApp(
@@ -1524,6 +1526,23 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
                 await buildPluginHost(
                   bundled.rootDir,
                   deps.appVersion,
+                  await getPluginBuildToolchain(deps),
+                );
+                setDevBuildProblem(row.id, null);
+                notifyPluginsChanged();
+              } catch (error) {
+                setDevBuildProblem(
+                  row.id,
+                  error instanceof Error ? error.message : String(error),
+                );
+                notifyPluginsChanged();
+                throw error;
+              }
+            },
+            buildProviderBridge: async () => {
+              try {
+                await buildPluginProviderBridge(
+                  bundled.rootDir,
                   await getPluginBuildToolchain(deps),
                 );
                 setDevBuildProblem(row.id, null);

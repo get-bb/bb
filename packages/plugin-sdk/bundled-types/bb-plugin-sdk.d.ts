@@ -17,7 +17,6 @@ import { Context } from 'hono';
  * Client-local settings stay in the frontend localStorage helpers instead.
  */
 declare const appSettingsSchema: z$1.ZodObject<{
-    caffeinate: z$1.ZodBoolean;
     showKeyboardHints: z$1.ZodBoolean;
     steerActiveThreadOnEnter: z$1.ZodBoolean;
     showUnhandledProviderEvents: z$1.ZodBoolean;
@@ -2941,8 +2940,8 @@ declare const environmentDiffFileResponseSchema: z$1.ZodObject<{
     path: z$1.ZodString;
     content: z$1.ZodString;
     contentEncoding: z$1.ZodEnum<{
-        base64: "base64";
         utf8: "utf8";
+        base64: "base64";
     }>;
     mimeType: z$1.ZodOptional<z$1.ZodString>;
     sizeBytes: z$1.ZodNumber;
@@ -5352,13 +5351,36 @@ declare const hostDaemonCommandRegistry: {
     }, z$1.core.$strict>, z$1.ZodObject<{
         path: z$1.ZodNullable<z$1.ZodString>;
     }, z$1.core.$strip>, "onlineRpc", false>;
-    "host.caffeinate": HostDaemonCommandDescriptor<"host.caffeinate", z$1.ZodObject<{
-        type: z$1.ZodLiteral<"host.caffeinate">;
-        enabled: z$1.ZodBoolean;
+    "plugin.host.call": HostDaemonCommandDescriptor<"plugin.host.call", z$1.ZodObject<{
+        type: z$1.ZodLiteral<"plugin.host.call">;
+        pluginId: z$1.ZodString;
+        generation: z$1.ZodString;
+        artifact: z$1.ZodObject<{
+            digest: z$1.ZodString;
+            byteLength: z$1.ZodNumber;
+        }, z$1.core.$strict>;
+        callId: z$1.ZodString;
+        method: z$1.ZodString;
+        input: z$1.ZodType<JsonValue$1, unknown, z$1.core.$ZodTypeInternals<JsonValue$1, unknown>>;
+        timeoutMs: z$1.ZodNumber;
     }, z$1.core.$strict>, z$1.ZodObject<{
-        enabled: z$1.ZodBoolean;
-        supported: z$1.ZodBoolean;
+        output: z$1.ZodType<JsonValue$1, unknown, z$1.core.$ZodTypeInternals<JsonValue$1, unknown>>;
     }, z$1.core.$strict>, "onlineRpc", false>;
+    "plugin.host.cancel": HostDaemonCommandDescriptor<"plugin.host.cancel", z$1.ZodObject<{
+        type: z$1.ZodLiteral<"plugin.host.cancel">;
+        pluginId: z$1.ZodString;
+        generation: z$1.ZodString;
+        callId: z$1.ZodString;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        cancelled: z$1.ZodBoolean;
+    }, z$1.core.$strict>, "onlineRpc", true>;
+    "plugin.host.dispose": HostDaemonCommandDescriptor<"plugin.host.dispose", z$1.ZodObject<{
+        type: z$1.ZodLiteral<"plugin.host.dispose">;
+        pluginId: z$1.ZodString;
+        generation: z$1.ZodString;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        disposed: z$1.ZodBoolean;
+    }, z$1.core.$strict>, "onlineRpc", true>;
     "connect-tunnel.ensure-identity": HostDaemonCommandDescriptor<"connect-tunnel.ensure-identity", z$1.ZodObject<{
         type: z$1.ZodLiteral<"connect-tunnel.ensure-identity">;
     }, z$1.core.$strict>, z$1.ZodObject<{
@@ -6088,13 +6110,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
+                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
-                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -6139,13 +6161,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
+                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
-                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -6203,13 +6225,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
+                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
-                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -6251,13 +6273,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
+                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
-                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -6376,9 +6398,9 @@ declare const providerCliStatusResponseSchema: z$1.ZodRecord<z$1.ZodEnum<{
     executablePath: z$1.ZodNullable<z$1.ZodString>;
     installed: z$1.ZodBoolean;
     installSource: z$1.ZodEnum<{
-        external: "external";
         notInstalled: "notInstalled";
         npmGlobal: "npmGlobal";
+        external: "external";
     }>;
     currentVersion: z$1.ZodNullable<z$1.ZodString>;
     latestVersion: z$1.ZodNullable<z$1.ZodString>;
@@ -7309,7 +7331,6 @@ declare const onboardingTelemetryEventSchema: z$1.ZodDiscriminatedUnion<[z$1.Zod
 type OnboardingTelemetryEvent = z$1.infer<typeof onboardingTelemetryEventSchema>;
 declare const systemConfigResponseSchema: z$1.ZodObject<{
     generalSettings: z$1.ZodObject<{
-        caffeinate: z$1.ZodBoolean;
         showKeyboardHints: z$1.ZodBoolean;
         steerActiveThreadOnEnter: z$1.ZodBoolean;
         showUnhandledProviderEvents: z$1.ZodBoolean;
@@ -13520,6 +13541,106 @@ interface BbSdk extends BbRealtime {
     threads: ThreadsArea;
 }
 
+interface ExperimentalHostSignalContract<PayloadSchema extends StandardSchemaV1 = StandardSchemaV1> {
+    readonly payload: PayloadSchema;
+}
+type ExperimentalHostSignals = Readonly<Record<string, ExperimentalHostSignalContract>>;
+interface ExperimentalHostCallOptions {
+    readonly hostId: string;
+    readonly signal?: AbortSignal;
+}
+interface ExperimentalHostClient<Contract extends PluginRpcContract, Signals extends ExperimentalHostSignals = {}> {
+    call<MethodName extends keyof Contract & string>(method: MethodName, input: StandardSchemaV1InferInput<Contract[MethodName]["input"]>, options: ExperimentalHostCallOptions): Promise<PluginRpcResult<Contract[MethodName]>>;
+    /**
+     * Subscribe to unexpected exits of this plugin's worker on a host daemon.
+     * Graceful reload, disable, uninstall, and daemon shutdown do not emit this
+     * event. A later call starts a fresh worker.
+     */
+    experimental_onWorkerExit(handler: (event: {
+        readonly hostId: string;
+    }) => void | Promise<void>): () => void;
+    /** Subscribe to a validated, ephemeral signal from this plugin's host entry. */
+    experimental_onSignal<SignalName extends keyof Signals & string>(signal: SignalName, handler: (event: ExperimentalHostSignalEvent<Signals, SignalName>) => void | Promise<void>): () => void;
+}
+interface ExperimentalHostSignalEvent<Signals extends ExperimentalHostSignals, SignalName extends keyof Signals & string> {
+    readonly hostId: string;
+    readonly payload: StandardSchemaV1InferOutput<Signals[SignalName]["payload"]>;
+}
+interface ExperimentalHostPaths {
+    /** Persistent directory scoped to this plugin on this daemon. */
+    readonly dataDir: string;
+    /** Temporary directory scoped to this worker process. */
+    readonly tempDir: string;
+}
+type ExperimentalHostWatchChangeType = "create" | "update" | "delete";
+interface ExperimentalHostWatchChange {
+    readonly path: string;
+    readonly type: ExperimentalHostWatchChangeType;
+}
+type ExperimentalHostWatchEvent = {
+    readonly kind: "changed";
+    readonly changes: readonly ExperimentalHostWatchChange[];
+} | {
+    readonly kind: "rescan-required";
+} | {
+    readonly kind: "watch-error";
+    readonly message: string;
+};
+interface ExperimentalHostWatchOptions {
+    /** Absolute directory observed by the daemon's native watcher service. */
+    readonly rootPath: string;
+    /** Root-relative ignore entries using the native watcher syntax. */
+    readonly ignoredPaths?: readonly string[];
+    /** Quiet period before one coalesced delivery. Defaults to 75 ms. */
+    readonly debounceMs?: number;
+    /** Maximum time changes may wait. Defaults to 500 ms. */
+    readonly maxWaitMs?: number;
+}
+interface ExperimentalHostWatchSubscription {
+    dispose(): Promise<void>;
+}
+interface ExperimentalHostWorkerLease {
+    /** Release this worker-retention lease. Safe to call more than once. */
+    dispose(): Promise<void>;
+}
+type ExperimentalHostWatchListener = (event: ExperimentalHostWatchEvent) => void | Promise<void>;
+interface ExperimentalHostRpcContext<Signals extends ExperimentalHostSignals = {}> {
+    /** Aborted when this request is cancelled or its worker is disposed. */
+    readonly signal: AbortSignal;
+    /** Aborted once for the lifetime of this worker process. */
+    readonly lifecycle: {
+        readonly signal: AbortSignal;
+    };
+    readonly experimental_paths: ExperimentalHostPaths;
+    /** Publish a validated, ephemeral event to this plugin's server entry. */
+    experimental_emitSignal<SignalName extends keyof Signals & string>(signal: SignalName, payload: StandardSchemaV1InferInput<Signals[SignalName]["payload"]>): Promise<void>;
+    /** Observe raw filesystem changes through the daemon's native watcher. */
+    experimental_watch(options: ExperimentalHostWatchOptions, listener: ExperimentalHostWatchListener): Promise<ExperimentalHostWatchSubscription>;
+    /**
+     * Keep this worker alive after the current call finishes. Active calls and
+     * filesystem watches already retain it; use this only for other background
+     * work. The daemon may stop an unretained worker after an idle period.
+     */
+    experimental_retainWorker(): ExperimentalHostWorkerLease;
+}
+type ExperimentalHostRpcHandlers<Contract extends PluginRpcContract, Signals extends ExperimentalHostSignals = {}> = {
+    [MethodName in keyof Contract]: (input: StandardSchemaV1InferOutput<Contract[MethodName]["input"]>, context: ExperimentalHostRpcContext<Signals>) => StandardSchemaV1InferInput<Contract[MethodName]["output"]> | Promise<StandardSchemaV1InferInput<Contract[MethodName]["output"]>>;
+};
+interface ExperimentalHostEntry<Contract extends PluginRpcContract = PluginRpcContract, Signals extends ExperimentalHostSignals = {}> {
+    readonly experimental_apiVersion: 1;
+    readonly contract: Contract;
+    readonly experimental_signals?: Signals;
+    readonly handlers: ExperimentalHostRpcHandlers<Contract, Signals>;
+    readonly dispose?: () => void | Promise<void>;
+}
+/** Define the single host executable exported by `bb.host`. */
+declare function experimental_defineHostEntry<const Contract extends PluginRpcContract, const Signals extends ExperimentalHostSignals = {}>(args: {
+    contract: Contract;
+    experimental_signals?: Signals;
+    handlers: ExperimentalHostRpcHandlers<Contract, Signals>;
+    dispose?: () => void | Promise<void>;
+}): ExperimentalHostEntry<Contract, Signals>;
+
 /**
  * The backend plugin API contract — the `bb` object handed to a plugin's
  * `server.ts` factory (`export default function plugin(bb: BbPluginApi)`).
@@ -14162,6 +14283,11 @@ interface PluginSharedPortTunnelIdentity {
     baseDomain: string;
 }
 interface PluginHosts {
+    /** Create the owning plugin's typed client for its singular `bb.host` entry. */
+    experimental_client<Contract extends PluginRpcContract, Signals extends ExperimentalHostSignals = {}>(args: {
+        contract: Contract;
+        experimental_signals?: Signals;
+    }): ExperimentalHostClient<Contract, Signals>;
     /**
      * Ensure this enrolled host has a gate label and return its read-only public
      * identity. The daemon chooses the trusted gate and desired label; plugins
@@ -14239,5 +14365,5 @@ interface BbPluginApi {
     onDispose(hook: () => void | Promise<void>): void;
 }
 
-export { PLUGIN_CLI_OUTPUT_MAX_BYTES, defineRpcContract };
-export type { BbContext, BbNavigate, BbPluginApi, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolExperimentalStatusLabels, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginProviderCapabilities, PluginProviderComposerAction, PluginProviderDeclaration, PluginProviderIconRegistration, PluginProviderPermissionMode, PluginProviderReasoningLevel, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginStatusApi, PluginStorage, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export { PLUGIN_CLI_OUTPUT_MAX_BYTES, defineRpcContract, experimental_defineHostEntry };
+export type { BbContext, BbNavigate, BbPluginApi, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, ExperimentalHostCallOptions, ExperimentalHostClient, ExperimentalHostEntry, ExperimentalHostPaths, ExperimentalHostRpcContext, ExperimentalHostRpcHandlers, ExperimentalHostSignalContract, ExperimentalHostSignalEvent, ExperimentalHostSignals, ExperimentalHostWatchChange, ExperimentalHostWatchChangeType, ExperimentalHostWatchEvent, ExperimentalHostWatchListener, ExperimentalHostWatchOptions, ExperimentalHostWatchSubscription, ExperimentalHostWorkerLease, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolExperimentalStatusLabels, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginProviderCapabilities, PluginProviderComposerAction, PluginProviderDeclaration, PluginProviderIconRegistration, PluginProviderPermissionMode, PluginProviderReasoningLevel, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginStatusApi, PluginStorage, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };

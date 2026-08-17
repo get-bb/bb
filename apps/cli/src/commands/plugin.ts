@@ -1506,6 +1506,8 @@ export function registerPluginCommands(
         const manifest = await readPluginManifest(rootDir);
         const hasApp = typeof manifest?.bb?.app === "string";
         const hasHost = typeof manifest?.bb?.host === "string";
+        const hasProviderBridge =
+          typeof manifest?.bb?.providerBridge === "string";
         // Keep the local declarations tracking the bb doing the build, so a
         // plugin scaffolded against an older SDK never typechecks green
         // against an API this bb no longer has. Gate on bb.server so a
@@ -1523,7 +1525,8 @@ export function registerPluginCommands(
         if (hasHost) {
           const host = await buildPluginHost(rootDir, bbVersion, toolchain);
           files.push(host.jsPath, host.mapPath, host.metaPath);
-        if (typeof manifest?.bb?.providerBridge === "string") {
+        }
+        if (hasProviderBridge) {
           const bridge = await buildPluginProviderBridge(rootDir, toolchain);
           files.push(bridge.jsPath, bridge.metaPath);
         }
@@ -1581,6 +1584,7 @@ export function registerPluginCommands(
               resolveBbCliVersion(),
               await cliBuildToolchain(),
             );
+          },
           hasProviderBridge,
           buildProviderBridge: async () => {
             await buildPluginProviderBridge(rootDir, await cliBuildToolchain());
@@ -1609,7 +1613,7 @@ export function registerPluginCommands(
           },
         );
         console.log(
-          `Watching ${rootDir} for plugin "${entry.id}"${hasApp || hasHost ? ` (${[hasApp ? "frontend" : null, hasHost ? "host" : null].filter(Boolean).join(" + ")} rebuild + reload on change)` : " (reload on change)"} — Ctrl+C to stop.`,
+          `Watching ${rootDir} for plugin "${entry.id}"${hasApp || hasHost || hasProviderBridge ? ` (${[hasApp ? "frontend" : null, hasHost ? "host" : null, hasProviderBridge ? "provider bridge" : null].filter(Boolean).join(" + ")} rebuild + reload on change)` : " (reload on change)"} — Ctrl+C to stop.`,
         );
         await new Promise<void>((resolveDone) => {
           const stop = (): void => {

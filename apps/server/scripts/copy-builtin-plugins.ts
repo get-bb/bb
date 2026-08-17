@@ -123,6 +123,7 @@ async function copyBuiltinPlugin(args: {
     }
     if (packageJson.bb.host !== undefined) {
       await buildPluginHost(args.sourceRoot, args.bbVersion, toolchain);
+    }
     if (packageJson.bb.providerBridge !== undefined) {
       await buildPluginProviderBridge(args.sourceRoot, toolchain);
     }
