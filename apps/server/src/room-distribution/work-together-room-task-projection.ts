@@ -38,6 +38,7 @@ const ROW_KEYS = [
   "acceptance",
   "assignee_display_name",
   "brief",
+  "objective",
   "priority",
   "status",
   "task_id",
@@ -120,6 +121,7 @@ function project(rowValue: unknown, taskId: string): RoomJsonObject {
     title,
     brief,
     acceptance: jsonValue(row.acceptance),
+    objective: jsonValue(row.objective),
     priority: row.priority,
     status: row.status,
     workKind: row.work_kind,
@@ -159,7 +161,7 @@ export function createWorkTogetherRoomTaskProjection(input: {
       try {
         client = await input.pool.connect();
         const result = await client.query(
-          `select task_id,task_version,title,brief,acceptance,priority,status,
+          `select task_id,task_version,title,brief,acceptance,objective,priority,status,
                   work_kind,assignee_display_name
              from work_together.bb_cell_room_task($1,$2,$3)`,
           [input.cellId, request.bindingId, request.principal.id],

@@ -21,6 +21,7 @@ function row(overrides: Record<string, unknown> = {}) {
     title: "Canonical task",
     brief: "Bounded brief",
     acceptance: [{ id: "a1", text: "Pass", done: false }],
+    objective: null,
     priority: "Now",
     status: "In progress",
     work_kind: "code",
@@ -57,6 +58,7 @@ const INVALID_ROWS: unknown[][] = [
   [row({ task_id: "11111111-1111-4111-8111-111111111111" })],
   [row({ subject: "user_leaked" })],
   [row({ acceptance: BigInt(1) })],
+  [row({ objective: BigInt(1) })],
 ];
 
 describe("Work Together Room task projection", () => {
@@ -68,6 +70,7 @@ describe("Work Together Room task projection", () => {
       title: "Canonical task",
       brief: "Bounded brief",
       acceptance: [{ id: "a1", text: "Pass", done: false }],
+      objective: null,
       priority: "Now",
       status: "In progress",
       workKind: "code",
@@ -75,6 +78,10 @@ describe("Work Together Room task projection", () => {
     });
     expect(test.query).toHaveBeenCalledWith(
       expect.stringContaining("work_together.bb_cell_room_task($1,$2,$3)"),
+      [CELL_ID, BINDING_ID, PRINCIPAL.id],
+    );
+    expect(test.query).toHaveBeenCalledWith(
+      expect.stringContaining("acceptance,objective,priority"),
       [CELL_ID, BINDING_ID, PRINCIPAL.id],
     );
     expect(test.release).toHaveBeenCalledOnce();
