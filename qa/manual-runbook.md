@@ -46,7 +46,8 @@ commands.
 
 - Thread recovery is validated with the existing lifecycle commands:
   `bb thread stop`, `bb thread tell`, `bb thread spawn`, archive/unarchive, and
-  the recovery checks below. `bb thread retry` is the manual path for a failed,
+  the recovery checks below. When the provider-retry plugin is installed,
+  `bb provider-retry retry <thread-id>` is the manual path for a failed,
   accepted provider rate-limit turn; inspect the thread before using it. For
   other failed or interrupted threads, send a fresh turn with `bb thread tell`,
   or create a replacement with `bb thread spawn` when a new thread is the right

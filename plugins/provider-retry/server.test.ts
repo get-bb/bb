@@ -2,13 +2,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
   makeThreadResponse,
+  type CreateFakePluginHostOptions,
 } from "@get-bb/plugin-sdk/testing";
+import type {
+  ExperimentalFailedTurnCandidate,
+  ExperimentalFailedTurnContinuation,
+  ExperimentalFailedTurnInspection,
+} from "@get-bb/plugin-sdk";
 import plugin from "./server.js";
 import {
   ProviderRetryService,
   RELEASE_PACE_MS,
   RESET_BUFFER_MS,
 } from "./src/service.js";
+import type { ProviderRateLimitState } from "./src/recovery.js";
 
 const NOW_MS = Date.parse("2026-08-05T12:00:00.000Z");
 const RESET_AT_MS = NOW_MS + 5 * 60 * 60 * 1_000;
@@ -16,7 +23,7 @@ const RESET_AT_MS = NOW_MS + 5 * 60 * 60 * 1_000;
 function rateLimits(
   providerId: "claude-code" | "codex" = "codex",
   resetsAtMs = RESET_AT_MS,
-) {
+): ProviderRateLimitState {
   return {
     providerId,
     status: "blocked",
@@ -32,49 +39,126 @@ function rateLimits(
     reachedReason: "rate_limit_reached",
     overageStatus: null,
     overageReason: null,
-  } as const;
+  };
 }
 
-function eligibleStatus(
-  threadId: string,
+function allowedRateLimits(
   providerId: "claude-code" | "codex" = "codex",
-  resetsAtMs = RESET_AT_MS,
-) {
-  const limits = rateLimits(providerId, resetsAtMs);
+): ProviderRateLimitState {
+  return {
+    ...rateLimits(providerId),
+    status: "allowed",
+    windows: [
+      {
+        providerKey: "primary",
+        label: "Current session",
+        status: "allowed",
+        resetsAtMs: null,
+      },
+    ],
+  };
+}
+
+function failedTurnInspection(
+  threadId: string,
+  options: {
+    includeTerminalError?: boolean;
+    limits?: ProviderRateLimitState;
+    observedLimits?: ProviderRateLimitState;
+    providerId?: "claude-code" | "codex";
+    willRetry?: boolean;
+  } = {},
+): ExperimentalFailedTurnInspection {
+  const providerId = options.providerId ?? "codex";
+  const limits = options.limits ?? rateLimits(providerId);
+  const turnId = `turn-${threadId}`;
+  const providerThreadId = `provider-thread-${threadId}`;
+  const events: ExperimentalFailedTurnCandidate["events"] = [
+    {
+      id: `rate-limits-${threadId}`,
+      threadId,
+      seq: 3,
+      createdAt: NOW_MS,
+      scope: { kind: "turn", turnId },
+      type: "provider/rateLimits/updated",
+      data: { providerThreadId, rateLimits: limits },
+    },
+  ];
+  if (options.includeTerminalError !== false) {
+    events.push({
+      id: `provider-error-${threadId}`,
+      threadId,
+      seq: 4,
+      createdAt: NOW_MS,
+      scope: { kind: "turn", turnId },
+      type: "provider/error",
+      data: {
+        providerThreadId,
+        message: "Usage limit reached",
+        willRetry: options.willRetry ?? false,
+        errorInfo: {
+          category: "rate-limit",
+          providerCode: "usage_limit_reached",
+          httpStatusCode: 429,
+        },
+      },
+    });
+  }
+  if (options.observedLimits !== undefined) {
+    events.push({
+      id: `observed-rate-limits-${threadId}`,
+      threadId,
+      seq: 6,
+      createdAt: NOW_MS + 1,
+      scope: { kind: "thread" },
+      type: "provider/rateLimits/updated",
+      data: { providerThreadId, rateLimits: options.observedLimits },
+    });
+  }
   return {
     reason: "eligible",
-    scopeKey: `host-one:${providerId}`,
-    hostId: "host-one",
-    rateLimits: limits,
     candidate: {
+      completedSeq: 5,
+      events,
       failedRequestId: `request-${threadId}`,
-      turnId: `turn-${threadId}`,
-      automatic: true,
-      resetsAtMs,
-      rateLimits: limits,
+      hostId: "host-one",
+      providerId,
+      turnId,
     },
-  } as const;
+  };
 }
 
-function manualStatus(threadId: string) {
-  const limits = {
-    ...rateLimits(),
-    kind: "credits" as const,
-    windows: [],
-  };
-  return {
-    reason: "manual-only",
-    scopeKey: "host-one:codex",
-    hostId: "host-one",
-    rateLimits: limits,
-    candidate: {
-      failedRequestId: `request-${threadId}`,
-      turnId: `turn-${threadId}`,
-      automatic: false,
-      resetsAtMs: null,
-      rateLimits: limits,
+function manualInspection(threadId: string): ExperimentalFailedTurnInspection {
+  return failedTurnInspection(threadId, {
+    limits: {
+      ...rateLimits(),
+      kind: "credits",
+      windows: [],
     },
-  } as const;
+  });
+}
+
+function unavailableInspection(
+  reason: "input-not-accepted" | "superseded",
+): ExperimentalFailedTurnInspection {
+  return { reason, candidate: null };
+}
+
+function createRetryHost(args: {
+  continueFailedTurn?: ExperimentalFailedTurnContinuation["continue"];
+  inspect: ExperimentalFailedTurnContinuation["inspect"];
+  sdk?: CreateFakePluginHostOptions["sdk"];
+}) {
+  return createFakePluginHost({
+    pluginId: "provider-retry",
+    experimental_failedTurnContinuation: {
+      inspect: args.inspect,
+      continue:
+        args.continueFailedTurn ??
+        (async () => ({ requestId: "continuation-request" })),
+    },
+    ...(args.sdk === undefined ? {} : { sdk: args.sdk }),
+  });
 }
 
 async function flushPromises() {
@@ -102,7 +186,7 @@ afterEach(() => {
 });
 
 describe("provider retry scheduler", () => {
-  it("exposes only the maximum wait setting and retry management commands", async () => {
+  it("owns provider retry settings and all provider retry commands", async () => {
     const host = createFakePluginHost({ pluginId: "provider-retry" });
     await plugin(host.bb);
 
@@ -118,44 +202,165 @@ describe("provider retry scheduler", () => {
     });
     expect(
       host.harness.registrations.cli?.commands.map((command) => command.name),
-    ).toEqual(["status", "cancel"]);
+    ).toEqual(["status", "cancel", "retry"]);
     await host.harness.dispose();
   });
 
-  it("does not create an unhandled rejection when reconciliation fails", async () => {
-    const host = createFakePluginHost({
-      pluginId: "provider-retry",
-      sdk: {
-        threads: {
-          rateLimitRecovery: async () => {
-            throw new Error("status unavailable");
-          },
-        },
-      },
-    });
-    const service = new ProviderRetryService(host.bb);
-
-    await expect(service.reconcile("thread-error")).rejects.toThrow(
-      "status unavailable",
-    );
-    await flushPromises();
-    service.dispose();
-    await host.harness.dispose();
-  });
-
-  it("waits for the reset and paces threads sharing one account", async () => {
-    const continueAfterRateLimit = vi.fn(async () => ({
-      ok: true as const,
+  it("classifies provider events and schedules subscription-window failures", async () => {
+    const continueFailedTurn = vi.fn(async () => ({
       requestId: "continuation-request",
     }));
-    const host = createFakePluginHost({
-      pluginId: "provider-retry",
-      sdk: {
-        threads: {
-          rateLimitRecovery: async ({ threadId }) => eligibleStatus(threadId),
-          continueAfterRateLimit,
-        },
-      },
+    const host = createRetryHost({
+      inspect: async ({ threadId }) => failedTurnInspection(threadId),
+      continueFailedTurn,
+    });
+    await plugin(host.bb);
+
+    await host.harness.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: "thread-limited", status: "error" }),
+      error: "Usage limit reached",
+    });
+    await expect(
+      host.harness.runCli(["status", "thread-limited"]),
+    ).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: expect.stringContaining("thread-limited\tcodex\tretrying"),
+    });
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 60 * 1_000 + RESET_BUFFER_MS);
+    expect(continueFailedTurn).toHaveBeenCalledWith({
+      threadId: "thread-limited",
+      failedRequestId: "request-thread-limited",
+      instruction: "Please continue.",
+    });
+    await host.harness.dispose();
+  });
+
+  it("releases immediately when a later provider observation is allowed", async () => {
+    const continueFailedTurn = vi.fn(async () => ({
+      requestId: "continuation-request",
+    }));
+    const host = createRetryHost({
+      inspect: async ({ threadId }) =>
+        failedTurnInspection(threadId, {
+          observedLimits: allowedRateLimits(),
+        }),
+      continueFailedTurn,
+    });
+    await plugin(host.bb);
+
+    await host.harness.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: "thread-allowed", status: "error" }),
+      error: "Usage limit reached",
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(continueFailedTurn).toHaveBeenCalledWith({
+      threadId: "thread-allowed",
+      failedRequestId: "request-thread-allowed",
+      instruction: "Please continue.",
+    });
+    await host.harness.dispose();
+  });
+
+  it("does not schedule failures without a terminal rate-limit error", async () => {
+    const continueFailedTurn = vi.fn();
+    const host = createRetryHost({
+      inspect: async ({ threadId }) =>
+        failedTurnInspection(threadId, { includeTerminalError: false }),
+      continueFailedTurn,
+    });
+    await plugin(host.bb);
+
+    await host.harness.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: "thread-internal", status: "error" }),
+      error: "Provider failed",
+    });
+
+    await expect(
+      host.harness.callRpc("providerRetryStatus", {
+        threadId: "thread-internal",
+      }),
+    ).resolves.toEqual({ view: null });
+    await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1_000);
+    expect(continueFailedTurn).not.toHaveBeenCalled();
+    await host.harness.dispose();
+  });
+
+  it("defers to provider-owned retries", async () => {
+    const continueFailedTurn = vi.fn();
+    const host = createRetryHost({
+      inspect: async ({ threadId }) =>
+        failedTurnInspection(threadId, { willRetry: true }),
+      continueFailedTurn,
+    });
+    await plugin(host.bb);
+
+    await host.harness.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: "thread-provider", status: "error" }),
+      error: "Provider is retrying",
+    });
+    await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1_000);
+
+    expect(continueFailedTurn).not.toHaveBeenCalled();
+    await host.harness.dispose();
+  });
+
+  it("keeps non-resettable limits manual and retries them through the plugin CLI", async () => {
+    const continueFailedTurn = vi.fn(async () => ({
+      requestId: "manual-continuation",
+    }));
+    const host = createRetryHost({
+      inspect: async ({ threadId }) => manualInspection(threadId),
+      continueFailedTurn,
+    });
+    await plugin(host.bb);
+    await host.harness.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: "thread-credits", status: "error" }),
+      error: "Credits exhausted",
+    });
+
+    await expect(
+      host.harness.callRpc("providerRetryStatus", {
+        threadId: "thread-credits",
+      }),
+    ).resolves.toEqual({ view: null });
+    await expect(
+      host.harness.runCli(["retry", "thread-credits", "--json"]),
+    ).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: expect.stringContaining('"requestId": "manual-continuation"'),
+    });
+    expect(continueFailedTurn).toHaveBeenCalledWith({
+      threadId: "thread-credits",
+      failedRequestId: "request-thread-credits",
+      instruction: "Please continue.",
+    });
+    await host.harness.dispose();
+  });
+
+  it("reports a useful CLI error when manual recovery is unavailable", async () => {
+    const host = createRetryHost({
+      inspect: async () => unavailableInspection("input-not-accepted"),
+    });
+    await plugin(host.bb);
+
+    await expect(
+      host.harness.runCli(["retry", "thread-ineligible"]),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining("input-not-accepted"),
+    });
+    await host.harness.dispose();
+  });
+
+  it("paces threads sharing one provider account", async () => {
+    const continueFailedTurn = vi.fn(async () => ({
+      requestId: "continuation-request",
+    }));
+    const host = createRetryHost({
+      inspect: async ({ threadId }) => failedTurnInspection(threadId),
+      continueFailedTurn,
     });
     await plugin(host.bb);
 
@@ -166,43 +371,26 @@ describe("provider retry scheduler", () => {
       });
     }
 
-    await expect(
-      host.harness.runCli(["status", "thread-a"]),
-    ).resolves.toMatchObject({
-      exitCode: 0,
-      stdout: expect.stringContaining("thread-a\tcodex\tretrying"),
-    });
     await vi.advanceTimersByTimeAsync(5 * 60 * 60 * 1_000 + RESET_BUFFER_MS);
-    expect(continueAfterRateLimit).toHaveBeenCalledTimes(1);
-    expect(continueAfterRateLimit).toHaveBeenLastCalledWith({
-      threadId: "thread-a",
-      failedRequestId: "request-thread-a",
-      mode: "automatic",
-    });
-
+    expect(continueFailedTurn).toHaveBeenCalledTimes(1);
+    expect(continueFailedTurn).toHaveBeenLastCalledWith(
+      expect.objectContaining({ threadId: "thread-a" }),
+    );
     await vi.advanceTimersByTimeAsync(RELEASE_PACE_MS);
-    expect(continueAfterRateLimit).toHaveBeenCalledTimes(2);
-    expect(continueAfterRateLimit).toHaveBeenLastCalledWith({
-      threadId: "thread-b",
-      failedRequestId: "request-thread-b",
-      mode: "automatic",
-    });
+    expect(continueFailedTurn).toHaveBeenCalledTimes(2);
+    expect(continueFailedTurn).toHaveBeenLastCalledWith(
+      expect.objectContaining({ threadId: "thread-b" }),
+    );
     await host.harness.dispose();
   });
 
-  it("automatically retries each reported reset window only once per plugin process", async () => {
-    const continueAfterRateLimit = vi.fn(async () => ({
-      ok: true as const,
+  it("attempts each reported reset window only once per plugin process", async () => {
+    const continueFailedTurn = vi.fn(async () => ({
       requestId: "continuation-request",
     }));
-    const host = createFakePluginHost({
-      pluginId: "provider-retry",
-      sdk: {
-        threads: {
-          rateLimitRecovery: async ({ threadId }) => eligibleStatus(threadId),
-          continueAfterRateLimit,
-        },
-      },
+    const host = createRetryHost({
+      inspect: async ({ threadId }) => failedTurnInspection(threadId),
+      continueFailedTurn,
     });
     await plugin(host.bb);
 
@@ -211,74 +399,36 @@ describe("provider retry scheduler", () => {
       error: "Usage limit reached",
     });
     await vi.advanceTimersByTimeAsync(5 * 60 * 60 * 1_000 + RESET_BUFFER_MS);
-    expect(continueAfterRateLimit).toHaveBeenCalledOnce();
-
     await host.harness.emitThreadEvent("thread.failed", {
       thread: makeThreadResponse({ id: "thread-once", status: "error" }),
       error: "Usage limit reached again",
     });
     await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1_000);
-    expect(continueAfterRateLimit).toHaveBeenCalledOnce();
+
+    expect(continueFailedTurn).toHaveBeenCalledOnce();
     await host.harness.dispose();
   });
 
-  it("clears pending reset timers when the plugin reloads", async () => {
-    const continueAfterRateLimit = vi.fn(async () => ({
-      ok: true as const,
-      requestId: "continuation-request",
-    }));
-    const host = createFakePluginHost({
-      pluginId: "provider-retry",
-      sdk: {
-        threads: {
-          rateLimitRecovery: async ({ threadId }) => eligibleStatus(threadId),
-          continueAfterRateLimit,
-        },
-      },
-    });
-    await plugin(host.bb);
-    await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: "thread-reload", status: "error" }),
-      error: "Usage limit reached",
-    });
-
-    const reloaded = await host.harness.reload(plugin);
-    await vi.advanceTimersByTimeAsync(5 * 60 * 60 * 1_000 + RESET_BUFFER_MS);
-    expect(continueAfterRateLimit).not.toHaveBeenCalled();
-    await expect(
-      reloaded.harness.callRpc("providerRetryStatus", {
-        threadId: "thread-reload",
-      }),
-    ).resolves.toEqual({ view: null });
-    await reloaded.harness.dispose();
-  });
-
   it("keeps cancellation final when reconciliation is already running", async () => {
-    const pendingStatus = deferred<ReturnType<typeof eligibleStatus>>();
-    const continueAfterRateLimit = vi.fn();
+    const pendingInspection = deferred<ExperimentalFailedTurnInspection>();
     let inspectionCount = 0;
-    const host = createFakePluginHost({
-      pluginId: "provider-retry",
-      sdk: {
-        threads: {
-          rateLimitRecovery: ({ threadId }) => {
-            inspectionCount += 1;
-            return inspectionCount === 1
-              ? Promise.resolve(eligibleStatus(threadId))
-              : pendingStatus.promise;
-          },
-          continueAfterRateLimit,
-        },
+    const continueFailedTurn = vi.fn();
+    const host = createRetryHost({
+      inspect: ({ threadId }) => {
+        inspectionCount += 1;
+        return inspectionCount === 1
+          ? Promise.resolve(failedTurnInspection(threadId))
+          : pendingInspection.promise;
       },
+      continueFailedTurn,
     });
     const service = new ProviderRetryService(host.bb);
     await service.reconcile("thread-race");
 
     const reconciling = service.reconcile("thread-race");
     await flushPromises();
-    expect(inspectionCount).toBe(2);
     const cancelling = service.cancel("thread-race");
-    pendingStatus.resolve(eligibleStatus("thread-race"));
+    pendingInspection.resolve(failedTurnInspection("thread-race"));
 
     await expect(reconciling).resolves.toMatchObject({
       threadId: "thread-race",
@@ -286,106 +436,16 @@ describe("provider retry scheduler", () => {
     await expect(cancelling).resolves.toBe(true);
     expect(service.status("thread-race")).toBeNull();
     await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1_000);
-    expect(continueAfterRateLimit).not.toHaveBeenCalled();
+    expect(continueFailedTurn).not.toHaveBeenCalled();
     service.dispose();
     await host.harness.dispose();
   });
 
-  it("cancels pending retries through RPC and CLI", async () => {
-    const continueAfterRateLimit = vi.fn();
-    const host = createFakePluginHost({
-      pluginId: "provider-retry",
-      sdk: {
-        threads: {
-          rateLimitRecovery: async ({ threadId }) => eligibleStatus(threadId),
-          continueAfterRateLimit,
-        },
-      },
-    });
-    await plugin(host.bb);
-    for (const threadId of ["thread-rpc", "thread-cli"]) {
-      await host.harness.emitThreadEvent("thread.failed", {
-        thread: makeThreadResponse({ id: threadId, status: "error" }),
-        error: "Usage limit reached",
-      });
-    }
-
-    await expect(
-      host.harness.callRpc("providerRetryCancel", {
-        threadId: "thread-rpc",
-      }),
-    ).resolves.toEqual({ cancelled: true });
-    await expect(
-      host.harness.runCli(["cancel", "thread-cli"]),
-    ).resolves.toMatchObject({
-      exitCode: 0,
-      stdout: "Cancelled provider retry for thread-cli.\n",
-    });
-    await expect(
-      host.harness.callRpc("providerRetryCancel", {
-        threadId: "thread-rpc",
-      }),
-    ).resolves.toEqual({ cancelled: false });
-
-    await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1_000);
-    expect(continueAfterRateLimit).not.toHaveBeenCalled();
-    await host.harness.dispose();
-  });
-
-  it("drops the retry when the user starts another turn", async () => {
-    const continueAfterRateLimit = vi.fn();
-    const rateLimitRecovery = vi
-      .fn()
-      .mockResolvedValueOnce(eligibleStatus("thread-manual"))
-      .mockResolvedValueOnce({
-        reason: "superseded",
-        scopeKey: "host-one:codex",
-        hostId: "host-one",
-        rateLimits: rateLimits(),
-        candidate: null,
-      });
-    const host = createFakePluginHost({
-      pluginId: "provider-retry",
-      sdk: {
-        threads: {
-          rateLimitRecovery,
-          continueAfterRateLimit,
-        },
-      },
-    });
-    await plugin(host.bb);
-    await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: "thread-manual", status: "error" }),
-      error: "Usage limit reached",
-    });
-
-    await host.harness.emitThreadEvent("thread.active", {
-      thread: makeThreadResponse({ id: "thread-manual", status: "active" }),
-    });
-    await expect(
-      host.harness.callRpc("providerRetryStatus", {
-        threadId: "thread-manual",
-      }),
-    ).resolves.toEqual({ view: null });
-
-    await vi.advanceTimersByTimeAsync(5 * 60 * 60 * 1_000 + RESET_BUFFER_MS);
-    expect(continueAfterRateLimit).not.toHaveBeenCalled();
-    await host.harness.dispose();
-  });
-
-  it("does not inspect active or idle threads without scheduled retries", async () => {
-    const rateLimitRecovery = vi.fn(async ({ threadId }) =>
-      eligibleStatus(threadId),
+  it("does not inspect untracked active or idle threads", async () => {
+    const inspect = vi.fn(async ({ threadId }) =>
+      failedTurnInspection(threadId),
     );
-    const host = createFakePluginHost({
-      pluginId: "provider-retry",
-      sdk: {
-        threads: {
-          rateLimitRecovery,
-          continueAfterRateLimit: vi.fn(),
-        },
-      },
-    });
+    const host = createRetryHost({ inspect });
     await plugin(host.bb);
 
     await host.harness.emitThreadEvent("thread.active", {
@@ -396,36 +456,25 @@ describe("provider retry scheduler", () => {
       lastAssistantText: null,
     });
 
-    expect(rateLimitRecovery).not.toHaveBeenCalled();
+    expect(inspect).not.toHaveBeenCalled();
     await host.harness.dispose();
   });
 
-  it("keeps the accepted failure scheduled while trailing Claude activity drains", async () => {
+  it("keeps an accepted failure scheduled while provider-only activity drains", async () => {
     const threadId = "thread-claude-drain";
-    const acceptedFailure = eligibleStatus(threadId, "claude-code");
-    const rateLimitRecovery = vi.fn().mockResolvedValue(acceptedFailure);
-    const continueAfterRateLimit = vi.fn();
-    const host = createFakePluginHost({
-      pluginId: "provider-retry",
-      sdk: {
-        threads: { rateLimitRecovery, continueAfterRateLimit },
-      },
-    });
+    const inspect = vi.fn(async () =>
+      failedTurnInspection(threadId, { providerId: "claude-code" }),
+    );
+    const continueFailedTurn = vi.fn(async () => ({
+      requestId: "continuation-request",
+    }));
+    const host = createRetryHost({ inspect, continueFailedTurn });
     await plugin(host.bb);
 
     await host.harness.emitThreadEvent("thread.failed", {
       thread: makeThreadResponse({ id: threadId, status: "error" }),
       error: "Usage limit reached",
     });
-    await expect(
-      host.harness.callRpc("providerRetryStatus", { threadId }),
-    ).resolves.toMatchObject({
-      view: { threadId, providerId: "claude-code" },
-    });
-
-    // Claude can emit a provider-generated turn while background-agent output
-    // drains after the accepted turn has already failed. That activity has no
-    // client/turn/requested or turn/input/accepted event of its own.
     await host.harness.emitThreadEvent("thread.active", {
       thread: makeThreadResponse({ id: threadId, status: "active" }),
     });
@@ -434,72 +483,57 @@ describe("provider retry scheduler", () => {
       error: "Usage limit reached",
     });
 
-    expect(rateLimitRecovery).toHaveBeenCalledTimes(3);
+    expect(inspect).toHaveBeenCalledTimes(3);
     await expect(
       host.harness.callRpc("providerRetryStatus", { threadId }),
     ).resolves.toMatchObject({
       view: { threadId, providerId: "claude-code" },
     });
-
     await vi.advanceTimersByTimeAsync(5 * 60 * 60 * 1_000 + RESET_BUFFER_MS);
-    expect(continueAfterRateLimit).toHaveBeenCalledWith({
-      threadId,
-      failedRequestId: acceptedFailure.candidate.failedRequestId,
-      mode: "automatic",
-    });
+    expect(continueFailedTurn).toHaveBeenCalledOnce();
     await host.harness.dispose();
   });
 
-  it("drops a scheduled retry when an idle transition records a user interruption", async () => {
-    const threadId = "thread-user-stopped";
-    const continueAfterRateLimit = vi.fn();
-    const rateLimitRecovery = vi
-      .fn()
-      .mockResolvedValueOnce(eligibleStatus(threadId))
-      .mockResolvedValueOnce({
-        reason: "superseded",
-        scopeKey: "host-one:codex",
-        hostId: "host-one",
-        rateLimits: rateLimits(),
-        candidate: null,
-      });
-    const host = createFakePluginHost({
-      pluginId: "provider-retry",
-      sdk: {
-        threads: { rateLimitRecovery, continueAfterRateLimit },
+  it("drops a tracked retry when a newer user action supersedes it", async () => {
+    let inspectionCount = 0;
+    const continueFailedTurn = vi.fn();
+    const host = createRetryHost({
+      inspect: async ({ threadId }) => {
+        inspectionCount += 1;
+        return inspectionCount === 1
+          ? failedTurnInspection(threadId)
+          : unavailableInspection("superseded");
       },
+      continueFailedTurn,
     });
     await plugin(host.bb);
-
     await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: threadId, status: "error" }),
+      thread: makeThreadResponse({ id: "thread-manual", status: "error" }),
       error: "Usage limit reached",
     });
-    await host.harness.emitThreadEvent("thread.idle", {
-      thread: makeThreadResponse({ id: threadId, status: "idle" }),
-      lastAssistantText: null,
+    await host.harness.emitThreadEvent("thread.active", {
+      thread: makeThreadResponse({ id: "thread-manual", status: "active" }),
     });
 
+    await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1_000);
+    expect(continueFailedTurn).not.toHaveBeenCalled();
     await expect(
-      host.harness.callRpc("providerRetryStatus", { threadId }),
+      host.harness.callRpc("providerRetryStatus", {
+        threadId: "thread-manual",
+      }),
     ).resolves.toEqual({ view: null });
-    await vi.advanceTimersByTimeAsync(5 * 60 * 60 * 1_000 + RESET_BUFFER_MS);
-    expect(continueAfterRateLimit).not.toHaveBeenCalled();
     await host.harness.dispose();
   });
 
-  it("ignores resets beyond the maximum wait", async () => {
+  it("honors the configured maximum wait", async () => {
     const resetAtMs = NOW_MS + 7 * 60 * 60 * 1_000;
-    const continueAfterRateLimit = vi.fn();
-    const host = createFakePluginHost({
-      pluginId: "provider-retry",
-      sdk: {
-        threads: {
-          rateLimitRecovery: async ({ threadId }) =>
-            eligibleStatus(threadId, "codex", resetAtMs),
-          continueAfterRateLimit,
-        },
-      },
+    const continueFailedTurn = vi.fn();
+    const host = createRetryHost({
+      inspect: async ({ threadId }) =>
+        failedTurnInspection(threadId, {
+          limits: rateLimits("codex", resetAtMs),
+        }),
+      continueFailedTurn,
     });
     await plugin(host.bb);
     await host.harness.emitThreadEvent("thread.failed", {
@@ -526,77 +560,13 @@ describe("provider retry scheduler", () => {
     });
 
     await host.harness.setSettings({ maximumWait: "6 hours" });
-    await expect(
-      host.harness.callRpc("providerRetryStatus", {
-        threadId: "thread-weekly",
-      }),
-    ).resolves.toEqual({ view: null });
     await vi.advanceTimersByTimeAsync(8 * 60 * 60 * 1_000);
-    expect(continueAfterRateLimit).not.toHaveBeenCalled();
+    expect(continueFailedTurn).not.toHaveBeenCalled();
     await host.harness.dispose();
   });
 
-  it("ignores limits that cannot be retried automatically", async () => {
-    const continueAfterRateLimit = vi.fn();
-    const host = createFakePluginHost({
-      pluginId: "provider-retry",
-      sdk: {
-        threads: {
-          rateLimitRecovery: async ({ threadId }) => manualStatus(threadId),
-          continueAfterRateLimit,
-        },
-      },
-    });
-    await plugin(host.bb);
-    await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: "thread-credits", status: "error" }),
-      error: "Credits exhausted",
-    });
-
-    await expect(
-      host.harness.callRpc("providerRetryStatus", {
-        threadId: "thread-credits",
-      }),
-    ).resolves.toEqual({ view: null });
-    expect(continueAfterRateLimit).not.toHaveBeenCalled();
-    await host.harness.dispose();
-  });
-
-  it("drops a scheduled retry that becomes manual-only before release", async () => {
-    const continueAfterRateLimit = vi.fn();
-    let inspectionCount = 0;
-    const host = createFakePluginHost({
-      pluginId: "provider-retry",
-      sdk: {
-        threads: {
-          rateLimitRecovery: async ({ threadId }) => {
-            inspectionCount += 1;
-            return inspectionCount === 1
-              ? eligibleStatus(threadId)
-              : manualStatus(threadId);
-          },
-          continueAfterRateLimit,
-        },
-      },
-    });
-    await plugin(host.bb);
-    await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: "thread-policy", status: "error" }),
-      error: "Usage limit reached",
-    });
-
-    await vi.advanceTimersByTimeAsync(5 * 60 * 60 * 1_000 + RESET_BUFFER_MS);
-    expect(continueAfterRateLimit).not.toHaveBeenCalled();
-    await expect(
-      host.harness.callRpc("providerRetryStatus", {
-        threadId: "thread-policy",
-      }),
-    ).resolves.toEqual({ view: null });
-    await host.harness.dispose();
-  });
-
-  it("retries when an unavailable host reconnects", async () => {
-    const continueAfterRateLimit = vi
+  it("waits for a disconnected host and retries when it reconnects", async () => {
+    const continueFailedTurn = vi
       .fn()
       .mockRejectedValueOnce(
         Object.assign(new Error("Host is not connected"), {
@@ -604,14 +574,15 @@ describe("provider retry scheduler", () => {
           status: 502,
         }),
       )
-      .mockResolvedValueOnce({ ok: true, requestId: "continuation-request" });
+      .mockResolvedValueOnce({ requestId: "continuation-request" });
     const subscription = {
       hostChanged: null as
         | ((changes: Array<"host-connected" | "host-disconnected">) => void)
         | null,
     };
-    const host = createFakePluginHost({
-      pluginId: "provider-retry",
+    const host = createRetryHost({
+      inspect: async ({ threadId }) => failedTurnInspection(threadId),
+      continueFailedTurn,
       sdk: {
         subscribe: ({ event, callback }) => {
           if (event === "host:changed") {
@@ -624,10 +595,6 @@ describe("provider retry scheduler", () => {
               });
           }
           return () => undefined;
-        },
-        threads: {
-          rateLimitRecovery: async ({ threadId }) => eligibleStatus(threadId),
-          continueAfterRateLimit,
         },
       },
     });
@@ -646,62 +613,18 @@ describe("provider retry scheduler", () => {
     ).resolves.toMatchObject({ view: { retryAtMs: null } });
     subscription.hostChanged?.(["host-connected"]);
     await vi.advanceTimersByTimeAsync(0);
-    expect(continueAfterRateLimit).toHaveBeenCalledTimes(2);
+    expect(continueFailedTurn).toHaveBeenCalledTimes(2);
 
     running.controller.abort();
     await running.done;
     await host.harness.dispose();
   });
 
-  it("logs and removes a retry that cannot start", async () => {
-    const continueAfterRateLimit = vi.fn(async () => {
-      throw new Error("This thread is awaiting user interaction");
-    });
-    const host = createFakePluginHost({
-      pluginId: "provider-retry",
-      sdk: {
-        threads: {
-          rateLimitRecovery: async ({ threadId }) => eligibleStatus(threadId),
-          continueAfterRateLimit,
-        },
-      },
-    });
-    await plugin(host.bb);
-    await host.harness.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: "thread-failed", status: "error" }),
-      error: "Usage limit reached",
-    });
-    await vi.advanceTimersByTimeAsync(5 * 60 * 60 * 1_000 + RESET_BUFFER_MS);
-
-    await expect(
-      host.harness.callRpc("providerRetryStatus", {
-        threadId: "thread-failed",
-      }),
-    ).resolves.toEqual({ view: null });
-    expect(continueAfterRateLimit).toHaveBeenCalledOnce();
-    expect(host.harness.logEntries).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          level: "warn",
-          message: expect.stringContaining("awaiting user interaction"),
-        }),
-      ]),
-    );
-    await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1_000);
-    expect(continueAfterRateLimit).toHaveBeenCalledOnce();
-    await host.harness.dispose();
-  });
-
-  it("clears in-memory timers when the plugin is disposed", async () => {
-    const continueAfterRateLimit = vi.fn();
-    const host = createFakePluginHost({
-      pluginId: "provider-retry",
-      sdk: {
-        threads: {
-          rateLimitRecovery: async ({ threadId }) => eligibleStatus(threadId),
-          continueAfterRateLimit,
-        },
-      },
+  it("clears pending timers when the plugin is disposed", async () => {
+    const continueFailedTurn = vi.fn();
+    const host = createRetryHost({
+      inspect: async ({ threadId }) => failedTurnInspection(threadId),
+      continueFailedTurn,
     });
     await plugin(host.bb);
     await host.harness.emitThreadEvent("thread.failed", {
@@ -712,6 +635,6 @@ describe("provider retry scheduler", () => {
 
     await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1_000);
     await flushPromises();
-    expect(continueAfterRateLimit).not.toHaveBeenCalled();
+    expect(continueFailedTurn).not.toHaveBeenCalled();
   });
 });

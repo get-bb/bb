@@ -581,7 +581,7 @@ signatures (see "Looking up the exact API").
 
 | Area             | Methods                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `threads`        | `list` `get` `search` `spawn` `fork` `send` `update` `delete` `stop` `compact` `wait` `open` `output` `timeline` `conversationOutline` `promptHistory` `archive` `archiveAll` `unarchive` `pin` `unpin` `reorderPinned` `markRead` `markUnread` `childSummary` `paneAction` `timelineTurnSummaryDetails` `storageFiles` `storagePaths` `cancelPlan` `clearGoal` `continueAfterRateLimit` `rateLimitRecovery` `defaultExecutionOptions`; sub-areas `events` (`list` `wait`), `interactions` (`get` `list` `cancel` `resolve` `respond`), `queuedMessages` (`create` `list` `update` `delete` `send` `reorder` `setGroupBoundary`), `tabs` (`get` `update`) |
+| `threads`        | `list` `get` `search` `spawn` `fork` `send` `update` `delete` `stop` `compact` `wait` `open` `output` `timeline` `conversationOutline` `promptHistory` `archive` `archiveAll` `unarchive` `pin` `unpin` `reorderPinned` `markRead` `markUnread` `childSummary` `paneAction` `timelineTurnSummaryDetails` `storageFiles` `storagePaths` `cancelPlan` `clearGoal` `defaultExecutionOptions`; sub-areas `events` (`list` `wait`), `interactions` (`get` `list` `cancel` `resolve` `respond`), `queuedMessages` (`create` `list` `update` `delete` `send` `reorder` `setGroupBoundary`), `tabs` (`get` `update`) |
 | `threadSections` | `list` `create` `update` `delete`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `projects`       | `list` `get` `create` `update` `delete` `reorder` `paths` `files` `fileContent` `branches` `commands` `defaultExecutionOptions` `promptHistory`; sub-areas `attachments` (`upload` `read` `copy`), `sources` (`add` `update` `delete`)                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `environments`   | `get` `update` `status` `paths` `commit` `archiveThreads` `diff` `diffFile` `diffFiles` `diffBranches` `diffPatch` `pullRequest` `markPullRequestDraft` `markPullRequestReady` `mergePullRequest` `squashMerge`                                                                                                                                                                                                                                                                                                                                                                                                                                           |
@@ -758,6 +758,38 @@ always in the timeline yet. To react to a thread's content, listen on
 `bb.sdk.threads.timeline`. Because handlers are fire-and-forget, work you do
 in a handler — including `bb.sdk.threads.update({ threadId, title })` —
 cannot delay or interrupt the thread's turn.
+
+### bb.experimental_failedTurnContinuation
+
+Provider-neutral inspection and atomic continuation for plugins that implement
+failure-recovery policy. `inspect({ threadId })` returns the latest failed root
+turn that accepted the thread's latest client request, including the raw event
+rows from that request through later provider-only drain activity. It does not
+decide which provider errors are retryable. The plugin owns that policy.
+
+After validating its own policy, call
+`continue({ threadId, failedRequestId, instruction })`. Core rechecks the same
+failed request transactionally, rejects a newer request or explicit user stop,
+reuses the original execution options, and starts one agent-visible,
+user-hidden continuation turn. The instruction is limited to 4096 characters.
+
+```ts
+const inspection = await bb.experimental_failedTurnContinuation.inspect({
+  threadId,
+});
+if (
+  inspection.candidate !== null &&
+  shouldRecover(inspection.candidate.events)
+) {
+  await bb.experimental_failedTurnContinuation.continue({
+    threadId,
+    failedRequestId: inspection.candidate.failedRequestId,
+    instruction: "Please continue.",
+  });
+}
+```
+
+This surface is experimental; see `docs/api_to_audit.md`.
 
 ### bb.http — HTTP routes
 

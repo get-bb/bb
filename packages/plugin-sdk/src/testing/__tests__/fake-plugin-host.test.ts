@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { clientTurnRequestIdSchema } from "@bb/domain";
 import {
   PLUGIN_CLI_OUTPUT_MAX_BYTES,
   type BbPluginApi,
@@ -7,6 +8,66 @@ import {
 } from "../../backend-contract.js";
 import { defineRpcContract } from "../../rpc-contract.js";
 import { createFakePluginHost, makeThreadResponse } from "../index.js";
+
+describe("experimental failed-turn continuation", () => {
+  it("forwards inspection and continuation to deterministic host stubs", async () => {
+    const failedRequestId = clientTurnRequestIdSchema.parse("creq_23456789ab");
+    const continuationRequestId =
+      clientTurnRequestIdSchema.parse("creq_bcdefghijk");
+    const inspect = async (args: { threadId: string }) => {
+      expect(args).toEqual({ threadId: "thread-one" });
+      return { candidate: null, reason: "no-failed-turn" } as const;
+    };
+    const continueFailedTurn = async (args: {
+      failedRequestId: typeof failedRequestId;
+      instruction: string;
+      threadId: string;
+    }) => {
+      expect(args).toEqual({
+        failedRequestId,
+        instruction: "Continue safely.",
+        threadId: "thread-one",
+      });
+      return { requestId: continuationRequestId };
+    };
+    const { bb, harness } = createFakePluginHost({
+      experimental_failedTurnContinuation: {
+        inspect,
+        continue: continueFailedTurn,
+      },
+    });
+
+    await expect(
+      bb.experimental_failedTurnContinuation.inspect({
+        threadId: "thread-one",
+      }),
+    ).resolves.toEqual({ candidate: null, reason: "no-failed-turn" });
+    await expect(
+      bb.experimental_failedTurnContinuation.continue({
+        failedRequestId,
+        instruction: "Continue safely.",
+        threadId: "thread-one",
+      }),
+    ).resolves.toEqual({ requestId: continuationRequestId });
+
+    await harness.dispose();
+    expect(() =>
+      bb.experimental_failedTurnContinuation.inspect({
+        threadId: "thread-one",
+      }),
+    ).toThrow("used a stale API handle");
+  });
+
+  it("fails clearly when a test does not configure the capability", () => {
+    const { bb } = createFakePluginHost();
+
+    expect(() =>
+      bb.experimental_failedTurnContinuation.inspect({
+        threadId: "thread-one",
+      }),
+    ).toThrow("fake plugin host has no failed-turn inspection stub");
+  });
+});
 
 describe("ui.requestInput", () => {
   it("settles a blocking request through the harness", async () => {

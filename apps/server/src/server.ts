@@ -80,6 +80,12 @@ import {
   callPluginHostRpc,
   disposePluginHostWorkers,
 } from "./services/plugins/plugin-host-rpc.js";
+import { requirePublicThread } from "./services/lib/entity-lookup.js";
+import { requireThreadCommandEnvironment } from "./services/threads/thread-command-environment.js";
+import {
+  continueThreadFailedTurn,
+  inspectThreadFailedTurn,
+} from "./services/threads/failed-turn-continuation.js";
 
 /**
  * `/api/v1/plugins/<id>/http/...` — the plugin-owned wire, whose auth mode is
@@ -409,6 +415,31 @@ export function createApp(
   });
   const pluginService = createPluginService({
     db: deps.db,
+    inspectFailedTurn: async ({ threadId }) => {
+      const thread = requirePublicThread(deps.db, threadId);
+      const environment = await requireThreadCommandEnvironment(deps, {
+        thread,
+      });
+      return inspectThreadFailedTurn(deps, { environment, thread });
+    },
+    continueFailedTurn: async ({
+      failedRequestId,
+      instruction,
+      pluginId,
+      threadId,
+    }) => {
+      const thread = requirePublicThread(deps.db, threadId);
+      const environment = await requireThreadCommandEnvironment(deps, {
+        thread,
+      });
+      return continueThreadFailedTurn(deps, {
+        environment,
+        failedRequestId,
+        instruction,
+        pluginId,
+        thread,
+      });
+    },
     hub: deps.hub,
     logger: deps.logger,
     telemetry: deps.telemetry,

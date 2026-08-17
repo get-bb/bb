@@ -21,6 +21,7 @@ import type {
 import type { HostSharedPortCoordinator } from "../../ws/host-shared-ports.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import type { PluginHostArtifactRegistry } from "./plugin-host-artifact-registry.js";
+import type { ExperimentalFailedTurnContinuation } from "@get-bb/plugin-sdk";
 export type {
   PluginApplyUpdateResult,
   PluginHandlerStats,
@@ -78,6 +79,14 @@ export interface PluginHostArtifactSnapshot {
 
 export interface PluginServiceDeps {
   db: DbConnection;
+  /** Omitted only by isolated plugin tests that do not exercise failed-turn continuation. */
+  inspectFailedTurn?: ExperimentalFailedTurnContinuation["inspect"];
+  /** Omitted only by isolated plugin tests that do not exercise failed-turn continuation. */
+  continueFailedTurn?: (
+    args: Parameters<ExperimentalFailedTurnContinuation["continue"]>[0] & {
+      pluginId: string;
+    },
+  ) => ReturnType<ExperimentalFailedTurnContinuation["continue"]>;
   /** Omitted only by isolated plugin-runtime tests without a daemon plane. */
   sharedPorts?: Pick<
     HostSharedPortCoordinator,

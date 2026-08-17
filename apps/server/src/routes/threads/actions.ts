@@ -80,10 +80,6 @@ import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   runLiveHostCommand,
 } from "../../services/hosts/live-command.js";
-import {
-  continueThreadAfterProviderRateLimit,
-  getProviderRateLimitRecoveryStatus,
-} from "../../services/threads/provider-rate-limit-recovery.js";
 
 function toQueuedMessageOrderResponse(
   result: ReorderQueuedThreadMessageResult,
@@ -311,7 +307,7 @@ async function createQueuedMessageForThread(
 }
 
 export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
-  const { get, post, patch, del } = typedRoutes<PublicApiSchema>(app, {
+  const { post, patch, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.threads;
@@ -340,31 +336,6 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       trigger: "user",
     });
     return context.json({ ok: true });
-  });
-
-  get(routes.rateLimitRecovery, async (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    const environment = await requireThreadCommandEnvironment(deps, {
-      thread,
-    });
-    return context.json(
-      getProviderRateLimitRecoveryStatus(deps, { environment, thread }),
-    );
-  });
-
-  post(routes.continueAfterRateLimit, async (context, payload) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    const environment = await requireThreadCommandEnvironment(deps, {
-      thread,
-    });
-    return context.json(
-      await continueThreadAfterProviderRateLimit(deps, {
-        environment,
-        failedRequestId: payload.failedRequestId,
-        mode: payload.mode ?? "manual",
-        thread,
-      }),
-    );
   });
 
   post(routes.editMessage, async (context, payload) => {

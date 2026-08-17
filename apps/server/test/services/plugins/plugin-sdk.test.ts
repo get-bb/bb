@@ -9,7 +9,7 @@ import {
   migrate,
   type DbConnection,
 } from "@bb/db";
-import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { PERSONAL_PROJECT_ID, clientTurnRequestIdSchema } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import {
   createPluginService,
@@ -93,6 +93,16 @@ describe("plugin bb.sdk bind gate", () => {
     ) => ({ pong: true }),
   );
   const disposePluginHost = vi.fn(async () => undefined);
+  const inspectFailedTurn: NonNullable<PluginServiceDeps["inspectFailedTurn"]> =
+    vi.fn(async () => ({
+      candidate: null,
+      reason: "no-failed-turn" as const,
+    }));
+  const continueFailedTurn: NonNullable<
+    PluginServiceDeps["continueFailedTurn"]
+  > = vi.fn(async () => ({
+    requestId: clientTurnRequestIdSchema.parse("creq_bcdefghijk"),
+  }));
 
   beforeEach(async () => {
     db = createConnection(":memory:");
@@ -105,6 +115,8 @@ describe("plugin bb.sdk bind gate", () => {
     ensureSharedPortTunnel.mockClear();
     callPluginHost.mockClear();
     disposePluginHost.mockClear();
+    vi.mocked(inspectFailedTurn).mockClear();
+    vi.mocked(continueFailedTurn).mockClear();
     pluginHostArtifacts = new PluginHostArtifactRegistry();
     service = createPluginService({
       telemetry: createNoopTelemetryService(),
@@ -123,6 +135,8 @@ describe("plugin bb.sdk bind gate", () => {
       loadTimeoutMs: 2000,
       callPluginHost,
       disposePluginHost,
+      inspectFailedTurn,
+      continueFailedTurn,
     });
   });
 
@@ -146,6 +160,41 @@ describe("plugin bb.sdk bind gate", () => {
     service.bindSdk({ baseUrl: "http://127.0.0.1:9" });
     expect(typeof api.sdk.threads.fork).toBe("function");
     expect(typeof api.sdk.threads.spawn).toBe("function");
+  });
+
+  it("binds failed-turn continuation to the calling plugin identity", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-continuation",
+      serverSource: `export default function plugin() {}`,
+    });
+    await service.installPath(rootDir);
+    const api = requireApi(service, "continuation");
+    const failedRequestId = clientTurnRequestIdSchema.parse("creq_23456789ab");
+
+    await expect(
+      api.experimental_failedTurnContinuation.inspect({
+        threadId: "thread-one",
+      }),
+    ).resolves.toEqual({ candidate: null, reason: "no-failed-turn" });
+    expect(inspectFailedTurn).toHaveBeenCalledWith({
+      threadId: "thread-one",
+    });
+
+    await expect(
+      api.experimental_failedTurnContinuation.continue({
+        failedRequestId,
+        instruction: "Continue safely.",
+        threadId: "thread-one",
+      }),
+    ).resolves.toEqual({
+      requestId: clientTurnRequestIdSchema.parse("creq_bcdefghijk"),
+    });
+    expect(continueFailedTurn).toHaveBeenCalledWith({
+      failedRequestId,
+      instruction: "Continue safely.",
+      pluginId: "continuation",
+      threadId: "thread-one",
+    });
   });
 
   it("marks a plugin error when its factory touches bb.sdk at load time", async () => {

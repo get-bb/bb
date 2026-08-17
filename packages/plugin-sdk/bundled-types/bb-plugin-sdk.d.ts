@@ -658,6 +658,9 @@ declare const projectExecutionDefaultsSchema: z$1.ZodObject<{
 }, z$1.core.$strip>;
 type ProjectExecutionDefaults = z$1.infer<typeof projectExecutionDefaultsSchema>;
 
+declare const clientTurnRequestIdSchema: z$1.ZodString;
+type ClientTurnRequestId = z$1.infer<typeof clientTurnRequestIdSchema>;
+
 /** All thread events — provider-originated or system-originated. */
 declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readonly [z$1.ZodIntersection<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
     type: z$1.ZodLiteral<"thread/started">;
@@ -2954,8 +2957,8 @@ declare const environmentArchiveThreadsResponseSchema: z$1.ZodObject<{
 type EnvironmentArchiveThreadsResponse = z$1.infer<typeof environmentArchiveThreadsResponseSchema>;
 declare const pullRequestMergeMethodSchema: z$1.ZodEnum<{
     merge: "merge";
-    rebase: "rebase";
     squash: "squash";
+    rebase: "rebase";
 }>;
 type PullRequestMergeMethod = z$1.infer<typeof pullRequestMergeMethodSchema>;
 declare const commitActionResponseSchema: z$1.ZodObject<{
@@ -2986,8 +2989,8 @@ declare const pullRequestMergeActionResponseSchema: z$1.ZodObject<{
     action: z$1.ZodLiteral<"pull_request_merge">;
     method: z$1.ZodEnum<{
         merge: "merge";
-        rebase: "rebase";
         squash: "squash";
+        rebase: "rebase";
     }>;
     message: z$1.ZodString;
 }, z$1.core.$strip>;
@@ -9044,111 +9047,6 @@ declare const sendMessageRequestSchema: z$1.ZodObject<{
     senderThreadId: z$1.ZodOptional<z$1.ZodString>;
 }, z$1.core.$strip>;
 type SendMessageRequest = z$1.infer<typeof sendMessageRequestSchema>;
-declare const providerRateLimitRecoveryStatusSchema: z$1.ZodObject<{
-    reason: z$1.ZodEnum<{
-        eligible: "eligible";
-        "thread-not-failed": "thread-not-failed";
-        "no-failed-turn": "no-failed-turn";
-        "input-not-accepted": "input-not-accepted";
-        "no-rate-limit-state": "no-rate-limit-state";
-        "no-terminal-rate-limit-error": "no-terminal-rate-limit-error";
-        "provider-will-retry": "provider-will-retry";
-        "manual-only": "manual-only";
-        "output-or-side-effect-observed": "output-or-side-effect-observed";
-        superseded: "superseded";
-        "execution-unavailable": "execution-unavailable";
-    }>;
-    scopeKey: z$1.ZodString;
-    hostId: z$1.ZodString;
-    rateLimits: z$1.ZodNullable<z$1.ZodObject<{
-        providerId: z$1.ZodString;
-        status: z$1.ZodEnum<{
-            unknown: "unknown";
-            warning: "warning";
-            allowed: "allowed";
-            blocked: "blocked";
-        }>;
-        kind: z$1.ZodEnum<{
-            unknown: "unknown";
-            "subscription-window": "subscription-window";
-            credits: "credits";
-            "spend-control": "spend-control";
-        }>;
-        windows: z$1.ZodArray<z$1.ZodObject<{
-            providerKey: z$1.ZodNullable<z$1.ZodString>;
-            label: z$1.ZodNullable<z$1.ZodString>;
-            status: z$1.ZodEnum<{
-                unknown: "unknown";
-                warning: "warning";
-                allowed: "allowed";
-                blocked: "blocked";
-            }>;
-            resetsAtMs: z$1.ZodNullable<z$1.ZodNumber>;
-        }, z$1.core.$strip>>;
-        reachedReason: z$1.ZodNullable<z$1.ZodString>;
-        overageStatus: z$1.ZodNullable<z$1.ZodEnum<{
-            rejected: "rejected";
-            warning: "warning";
-            allowed: "allowed";
-            unavailable: "unavailable";
-        }>>;
-        overageReason: z$1.ZodNullable<z$1.ZodString>;
-    }, z$1.core.$strip>>;
-    candidate: z$1.ZodNullable<z$1.ZodObject<{
-        failedRequestId: z$1.ZodString;
-        turnId: z$1.ZodString;
-        automatic: z$1.ZodBoolean;
-        resetsAtMs: z$1.ZodNullable<z$1.ZodNumber>;
-        rateLimits: z$1.ZodObject<{
-            providerId: z$1.ZodString;
-            status: z$1.ZodEnum<{
-                unknown: "unknown";
-                warning: "warning";
-                allowed: "allowed";
-                blocked: "blocked";
-            }>;
-            kind: z$1.ZodEnum<{
-                unknown: "unknown";
-                "subscription-window": "subscription-window";
-                credits: "credits";
-                "spend-control": "spend-control";
-            }>;
-            windows: z$1.ZodArray<z$1.ZodObject<{
-                providerKey: z$1.ZodNullable<z$1.ZodString>;
-                label: z$1.ZodNullable<z$1.ZodString>;
-                status: z$1.ZodEnum<{
-                    unknown: "unknown";
-                    warning: "warning";
-                    allowed: "allowed";
-                    blocked: "blocked";
-                }>;
-                resetsAtMs: z$1.ZodNullable<z$1.ZodNumber>;
-            }, z$1.core.$strip>>;
-            reachedReason: z$1.ZodNullable<z$1.ZodString>;
-            overageStatus: z$1.ZodNullable<z$1.ZodEnum<{
-                rejected: "rejected";
-                warning: "warning";
-                allowed: "allowed";
-                unavailable: "unavailable";
-            }>>;
-            overageReason: z$1.ZodNullable<z$1.ZodString>;
-        }, z$1.core.$strip>;
-    }, z$1.core.$strip>>;
-}, z$1.core.$strip>;
-type ProviderRateLimitRecoveryStatus = z$1.infer<typeof providerRateLimitRecoveryStatusSchema>;
-declare const continueAfterProviderRateLimitRequestSchema: z$1.ZodObject<{
-    failedRequestId: z$1.ZodString;
-    mode: z$1.ZodOptional<z$1.ZodEnum<{
-        automatic: "automatic";
-        manual: "manual";
-    }>>;
-}, z$1.core.$strict>;
-type ContinueAfterProviderRateLimitRequest = z$1.infer<typeof continueAfterProviderRateLimitRequestSchema>;
-declare const continueAfterProviderRateLimitResponseSchema: z$1.ZodObject<{
-    ok: z$1.ZodLiteral<true>;
-    requestId: z$1.ZodString;
-}, z$1.core.$strip>;
-type ContinueAfterProviderRateLimitResponse = z$1.infer<typeof continueAfterProviderRateLimitResponseSchema>;
 declare const editMessageRequestSchema: z$1.ZodObject<{
     input: z$1.ZodArray<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -13399,8 +13297,6 @@ type ThreadDeleteResult = {
 type ThreadSendResult = {
     ok: true;
 };
-type ThreadRateLimitRecoveryResult = ProviderRateLimitRecoveryStatus;
-type ThreadContinueAfterRateLimitResult = ContinueAfterProviderRateLimitResponse;
 type ThreadEditMessageResult = EditMessageResponse;
 type ThreadStopResult = {
     ok: true;
@@ -13466,10 +13362,6 @@ interface ThreadEditMessageArgs extends EditMessageRequest {
 }
 interface ThreadActionArgs {
     threadId: string;
-}
-interface ThreadContinueAfterRateLimitArgs extends ThreadActionArgs {
-    failedRequestId: string;
-    mode: NonNullable<ContinueAfterProviderRateLimitRequest["mode"]>;
 }
 interface ThreadStatusArgs extends ThreadActionArgs {
     signal?: AbortSignal;
@@ -13621,7 +13513,6 @@ interface ThreadsArea {
     archive(args: ThreadActionArgs): Promise<ThreadArchiveResult>;
     archiveAll(args: ThreadActionArgs): Promise<ThreadArchiveAllResult>;
     childSummary(args: ThreadStatusArgs): Promise<ThreadChildSummaryResult>;
-    continueAfterRateLimit(args: ThreadContinueAfterRateLimitArgs): Promise<ThreadContinueAfterRateLimitResult>;
     compact(args: ThreadActionArgs): Promise<ThreadCompactResult>;
     cancelPlan(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
     clearGoal(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
@@ -13642,7 +13533,6 @@ interface ThreadsArea {
     pin(args: ThreadActionArgs): Promise<ThreadMutationResult>;
     promptHistory(args: ThreadPromptHistoryArgs): Promise<ThreadPromptHistoryResult>;
     queuedMessages: ThreadQueuedMessagesArea;
-    rateLimitRecovery(args: ThreadStatusArgs): Promise<ThreadRateLimitRecoveryResult>;
     reorderPinned(args: ThreadPinOrderArgs): Promise<ThreadPinOrderResult>;
     resolveMentions(args: ThreadResolveMentionsArgs): Promise<ThreadResolveMentionsResult>;
     search(args: ThreadSearchArgs): Promise<ThreadSearchResult>;
@@ -14422,6 +14312,48 @@ interface PluginEvents {
      */
     on<E extends PluginThreadEventName>(event: E, handler: PluginThreadEventHandler<E>): void;
 }
+type ExperimentalFailedTurnInspectionReason = "eligible" | "no-failed-turn" | "input-not-accepted" | "superseded" | "execution-unavailable";
+/**
+ * A failed root turn whose accepted client request is still the latest request
+ * on the thread. `events` begins at that client request and includes the
+ * failed turn plus later provider-only drain events observed by the server.
+ */
+interface ExperimentalFailedTurnCandidate {
+    completedSeq: number;
+    events: ThreadEventRow[];
+    failedRequestId: ClientTurnRequestId;
+    hostId: string;
+    providerId: string;
+    turnId: string;
+}
+type ExperimentalFailedTurnInspection = {
+    candidate: ExperimentalFailedTurnCandidate;
+    reason: "eligible";
+} | {
+    candidate: null;
+    reason: Exclude<ExperimentalFailedTurnInspectionReason, "eligible">;
+};
+/**
+ * Provider-neutral, atomic failed-turn continuation capability. Plugins own
+ * the policy that decides whether a failure should be continued; core only
+ * identifies the accepted failed turn, guards against supersession, and
+ * starts the continuation with the original execution options.
+ *
+ * Experimental — see docs/api_to_audit.md before relying on it.
+ */
+interface ExperimentalFailedTurnContinuation {
+    inspect(args: {
+        threadId: string;
+    }): Promise<ExperimentalFailedTurnInspection>;
+    continue(args: {
+        failedRequestId: ClientTurnRequestId;
+        /** Agent-visible, user-hidden instruction for the continuation turn. */
+        instruction: string;
+        threadId: string;
+    }): Promise<{
+        requestId: ClientTurnRequestId;
+    }>;
+}
 interface PluginServerApi {
     /**
      * This BB server's own loopback base URL (e.g. "http://127.0.0.1:38886"),
@@ -14498,6 +14430,8 @@ interface BbPluginApi {
     readonly ui: PluginUi;
     /** Additive plugin lifecycle listeners (design §4.5). */
     readonly events: PluginEvents;
+    /** Provider-neutral inspection and atomic continuation of failed turns. */
+    readonly experimental_failedTurnContinuation: ExperimentalFailedTurnContinuation;
     /** Plugin-reported status (needs-configuration). */
     readonly status: PluginStatusApi;
     /** Read-only facts about the running server (loopback base URL). */
@@ -14522,4 +14456,4 @@ interface BbPluginApi {
 }
 
 export { PLUGIN_CLI_OUTPUT_MAX_BYTES, defineRpcContract, experimental_defineHostEntry };
-export type { BbContext, BbNavigate, BbPluginApi, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, ExperimentalHostCallOptions, ExperimentalHostClient, ExperimentalHostEntry, ExperimentalHostPaths, ExperimentalHostRpcContext, ExperimentalHostRpcHandlers, ExperimentalHostSignalContract, ExperimentalHostSignalEvent, ExperimentalHostSignals, ExperimentalHostWatchChange, ExperimentalHostWatchChangeType, ExperimentalHostWatchEvent, ExperimentalHostWatchListener, ExperimentalHostWatchOptions, ExperimentalHostWatchSubscription, ExperimentalHostWorkerLease, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolExperimentalStatusLabels, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginProviderCapabilities, PluginProviderComposerAction, PluginProviderDeclaration, PluginProviderIconRegistration, PluginProviderPermissionMode, PluginProviderReasoningLevel, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginStatusApi, PluginStorage, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export type { BbContext, BbNavigate, BbPluginApi, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, ExperimentalFailedTurnCandidate, ExperimentalFailedTurnContinuation, ExperimentalFailedTurnInspection, ExperimentalFailedTurnInspectionReason, ExperimentalHostCallOptions, ExperimentalHostClient, ExperimentalHostEntry, ExperimentalHostPaths, ExperimentalHostRpcContext, ExperimentalHostRpcHandlers, ExperimentalHostSignalContract, ExperimentalHostSignalEvent, ExperimentalHostSignals, ExperimentalHostWatchChange, ExperimentalHostWatchChangeType, ExperimentalHostWatchEvent, ExperimentalHostWatchListener, ExperimentalHostWatchOptions, ExperimentalHostWatchSubscription, ExperimentalHostWorkerLease, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolExperimentalStatusLabels, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginProviderCapabilities, PluginProviderComposerAction, PluginProviderDeclaration, PluginProviderIconRegistration, PluginProviderPermissionMode, PluginProviderReasoningLevel, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginStatusApi, PluginStorage, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };

@@ -5,7 +5,7 @@
 // Confused by the API, or need a symbol that isn't here? Clone the BB repo
 // and read the real source: https://github.com/get-bb/bb
 
-import { BbPluginApi, PluginSettingValue, PluginSharedPortTunnelIdentity, PluginAgentToolExperimentalStatusLabels, PluginAgentToolContext, PluginAgentToolResult, PluginCliCommandInfo, PluginCliContext, PluginCliResult, PluginHttpAuthMode, PluginHttpHandler, PluginMentionTrigger, PluginMentionSearchContext, PluginMentionItem, JsonValue, PluginCliExecutionResult, PluginThreadEventName, PluginThreadEventPayloads, PluginAgentConfigurationContext, PluginSettingDescriptors, PluginAgentConfiguration, PluginProviderDeclaration, PluginInteractionRequest } from '@get-bb/plugin-sdk';
+import { BbPluginApi, PluginSettingValue, PluginSharedPortTunnelIdentity, ExperimentalFailedTurnContinuation, PluginAgentToolExperimentalStatusLabels, PluginAgentToolContext, PluginAgentToolResult, PluginCliCommandInfo, PluginCliContext, PluginCliResult, PluginHttpAuthMode, PluginHttpHandler, PluginMentionTrigger, PluginMentionSearchContext, PluginMentionItem, JsonValue, PluginCliExecutionResult, PluginThreadEventName, PluginThreadEventPayloads, PluginAgentConfigurationContext, PluginSettingDescriptors, PluginAgentConfiguration, PluginProviderDeclaration, PluginInteractionRequest } from '@get-bb/plugin-sdk';
 
 type BbSdk = BbPluginApi["sdk"];
 /**
@@ -306,6 +306,8 @@ interface CreateFakePluginHostOptions {
     sharedPortTunnelIdentities?: Record<string, PluginSharedPortTunnelIdentity>;
     /** Deterministic stand-in for the targeted daemon host entry. */
     experimental_callHostRpc?: (call: ExperimentalFakeHostRpcCall) => unknown | Promise<unknown>;
+    /** Deterministic stand-in for core's failed-turn inspection/continuation. */
+    experimental_failedTurnContinuation?: Partial<ExperimentalFailedTurnContinuation>;
 }
 interface FakePluginHost {
     bb: BbPluginApi;

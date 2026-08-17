@@ -17,22 +17,21 @@ import {
   type ClientTurnRequestId,
   type Environment,
   type PromptInput,
-  type ProviderRateLimitState,
   type ResolvedThreadExecutionOptions,
   type Thread,
   type ThreadEvent,
 } from "@bb/domain";
 import type {
-  ContinueAfterProviderRateLimitResponse,
-  ProviderRateLimitRecoveryReason,
-  ProviderRateLimitRecoveryStatus,
-} from "@bb/server-contract";
+  ExperimentalFailedTurnCandidate,
+  ExperimentalFailedTurnInspection,
+  ExperimentalFailedTurnInspectionReason,
+} from "@get-bb/plugin-sdk";
 import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import {
+  ensureThreadCanStartRequest,
   prepareReadyThreadTurnCommand,
   prepareReadyThreadTurnDispatch,
-  ensureThreadCanStartRequest,
 } from "./thread-lifecycle.js";
 import {
   appendPreparedClientTurnRequestedEventInTransaction,
@@ -40,7 +39,10 @@ import {
   createClientTurnRequestId,
   parseStoredTurnRequestEvent,
 } from "./thread-events.js";
-import { parseStoredEvent } from "./thread-data.js";
+import {
+  parseStoredEvent,
+  parseStoredEventRow,
+} from "./thread-data.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import { requireReadyThreadEnvironment } from "./thread-turn-dispatch.js";
 import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
@@ -54,128 +56,76 @@ import {
 } from "./thread-send.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
 
-const CONTINUE_INPUT: PromptInput[] = [
-  {
-    type: "text",
-    text: "Please continue.",
-    mentions: [],
-    visibility: "agent-only",
-  },
-];
+const MAX_CONTINUATION_INSTRUCTION_LENGTH = 4_096;
 
-interface InternalRecoveryCandidate {
-  automatic: boolean;
+interface InternalFailedTurnCandidate {
   execution: ResolvedThreadExecutionOptions;
-  failedRequestId: ClientTurnRequestId;
-  rateLimits: ProviderRateLimitState;
-  resetsAtMs: number | null;
-  turnId: string;
+  public: ExperimentalFailedTurnCandidate;
 }
 
-interface RecoveryInspection {
-  candidate: InternalRecoveryCandidate | null;
-  status: ProviderRateLimitRecoveryStatus;
+interface InternalFailedTurnInspection {
+  candidate: InternalFailedTurnCandidate | null;
+  public: ExperimentalFailedTurnInspection;
 }
 
-interface InspectRecoveryArgs {
+interface InspectFailedTurnArgs {
   db: DbQueryConnection;
   environment: Environment;
   thread: Thread;
 }
 
-function scopeKey(environment: Environment, thread: Thread): string {
-  return `${environment.hostId}:${thread.providerId}`;
-}
-
 function emptyInspection(
-  args: InspectRecoveryArgs,
-  reason: ProviderRateLimitRecoveryReason,
-  rateLimits: ProviderRateLimitState | null,
-): RecoveryInspection {
+  reason: Exclude<ExperimentalFailedTurnInspectionReason, "eligible">,
+): InternalFailedTurnInspection {
   return {
     candidate: null,
-    status: {
-      reason,
-      scopeKey: scopeKey(args.environment, args.thread),
-      hostId: args.environment.hostId,
-      rateLimits,
-      candidate: null,
-    },
+    public: { candidate: null, reason },
   };
-}
-
-function latestRateLimitState(
-  db: DbQueryConnection,
-  thread: Thread,
-): ProviderRateLimitState | null {
-  const row = getLatestStoredEventRowByType(db, {
-    threadId: thread.id,
-    type: "provider/rateLimits/updated",
-  });
-  if (!row) return null;
-  const event = parseStoredEvent(row);
-  if (
-    event.type !== "provider/rateLimits/updated" ||
-    event.rateLimits.providerId !== thread.providerId
-  ) {
-    return null;
-  }
-  return event.rateLimits;
-}
-
-function recoveryResetAtMs(rateLimits: ProviderRateLimitState): number | null {
-  const blockedWindows = rateLimits.windows.filter(
-    (window) => window.status === "blocked",
-  );
-  const relevantWindows =
-    blockedWindows.length > 0 ? blockedWindows : rateLimits.windows;
-  const resetTimes = relevantWindows.flatMap((window) =>
-    window.resetsAtMs === null ? [] : [window.resetsAtMs],
-  );
-  return resetTimes.length === 0 ? null : Math.max(...resetTimes);
 }
 
 function eventBelongsToTurn(event: ThreadEvent, turnId: string): boolean {
   return event.scope.kind === "turn" && event.scope.turnId === turnId;
 }
 
-function inspectRecovery(args: InspectRecoveryArgs): RecoveryInspection {
-  const observedRateLimits = latestRateLimitState(args.db, args.thread);
+/**
+ * Locate the latest failed root turn that accepted the thread's latest client
+ * request. Provider-only drain turns are deliberately ignored: they have no
+ * accepted client input and therefore cannot supersede the user's failed turn.
+ */
+function inspectFailedTurn(
+  args: InspectFailedTurnArgs,
+): InternalFailedTurnInspection {
   const latestCompletedRow = getLatestStoredEventRowByType(args.db, {
     threadId: args.thread.id,
     type: "turn/completed",
   });
   if (!latestCompletedRow || latestCompletedRow.turnId === null) {
-    return emptyInspection(
-      args,
-      args.thread.status === "error" ? "no-failed-turn" : "thread-not-failed",
-      observedRateLimits,
-    );
+    return emptyInspection("no-failed-turn");
   }
+
   const completedRow = getLatestStoredTurnCompletedRowWithAcceptedInput(
     args.db,
     { threadId: args.thread.id },
   );
   if (!completedRow) {
-    return emptyInspection(args, "input-not-accepted", observedRateLimits);
+    return emptyInspection("input-not-accepted");
   }
   const completedEvent = parseStoredEvent(completedRow);
   if (
     completedEvent.type !== "turn/completed" ||
-    completedEvent.status !== "failed"
+    completedEvent.status !== "failed" ||
+    completedRow.turnId === null
   ) {
-    return emptyInspection(args, "no-failed-turn", observedRateLimits);
+    return emptyInspection("no-failed-turn");
   }
   const turnId = completedRow.turnId;
-  if (turnId === null) {
-    return emptyInspection(args, "input-not-accepted", observedRateLimits);
-  }
+
   const requestRow = getStoredTurnRequestEventForTurn(args.db, {
     threadId: args.thread.id,
     turnId,
   });
   if (!requestRow) {
-    return emptyInspection(args, "input-not-accepted", observedRateLimits);
+    return emptyInspection("input-not-accepted");
   }
   const request = parseStoredTurnRequestEvent(requestRow);
   const latestRequestRow = getLastStoredTurnRequestEvent(
@@ -183,8 +133,9 @@ function inspectRecovery(args: InspectRecoveryArgs): RecoveryInspection {
     args.thread.id,
   );
   if (!latestRequestRow || latestRequestRow.sequence !== requestRow.sequence) {
-    return emptyInspection(args, "superseded", observedRateLimits);
+    return emptyInspection("superseded");
   }
+
   const latestInterruptionRow = getLatestStoredEventRowByType(args.db, {
     threadId: args.thread.id,
     type: "system/thread/interrupted",
@@ -198,7 +149,7 @@ function inspectRecovery(args: InspectRecoveryArgs): RecoveryInspection {
       latestInterruption.type === "system/thread/interrupted" &&
       latestInterruption.reason === "manual-stop"
     ) {
-      return emptyInspection(args, "superseded", observedRateLimits);
+      return emptyInspection("superseded");
     }
   }
 
@@ -207,130 +158,99 @@ function inspectRecovery(args: InspectRecoveryArgs): RecoveryInspection {
     turnId,
   });
   if (turnStartedSequence === null) {
-    return emptyInspection(args, "no-failed-turn", observedRateLimits);
+    return emptyInspection("no-failed-turn");
   }
 
   const rows = listStoredEventRowsInRange(args.db, {
     threadId: args.thread.id,
-    seqStart: turnStartedSequence,
-    seqEnd: completedRow.sequence,
+    seqStart: requestRow.sequence,
+    seqEnd: Number.MAX_SAFE_INTEGER,
   });
-  const events = rows.map(parseStoredEvent);
-  const accepted = events.some(
+  const failedTurnEvents = rows
+    .filter((row) => row.sequence <= completedRow.sequence)
+    .map(parseStoredEvent);
+  const accepted = failedTurnEvents.some(
     (event) =>
       event.type === "turn/input/accepted" &&
       event.clientRequestId === request.requestId &&
       eventBelongsToTurn(event, turnId),
   );
   if (!accepted) {
-    return emptyInspection(args, "input-not-accepted", observedRateLimits);
+    return emptyInspection("input-not-accepted");
   }
 
-  const turnRateLimits = events
-    .filter(
-      (
-        event,
-      ): event is Extract<
-        ThreadEvent,
-        { type: "provider/rateLimits/updated" }
-      > =>
-        event.type === "provider/rateLimits/updated" &&
-        event.rateLimits.providerId === args.thread.providerId,
-    )
-    .at(-1)?.rateLimits;
-  const blockedRateLimits =
-    turnRateLimits?.status === "blocked"
-      ? turnRateLimits
-      : observedRateLimits?.status === "blocked"
-        ? observedRateLimits
-        : null;
-  if (blockedRateLimits === null) {
-    return emptyInspection(args, "no-rate-limit-state", observedRateLimits);
-  }
-
-  const rateLimitErrors = events.filter(
-    (event): event is Extract<ThreadEvent, { type: "provider/error" }> =>
-      event.type === "provider/error" &&
-      event.errorInfo?.category === "rate-limit",
-  );
-  const hasTerminalRateLimitError = rateLimitErrors.some(
-    (event) => event.willRetry !== true,
-  );
-  if (!hasTerminalRateLimitError) {
-    return emptyInspection(
-      args,
-      rateLimitErrors.length > 0
-        ? "provider-will-retry"
-        : "no-terminal-rate-limit-error",
-      blockedRateLimits,
-    );
-  }
   const execution = resolvedThreadExecutionOptionsSchema.safeParse(
     request.execution,
   );
   if (!execution.success) {
-    return emptyInspection(args, "execution-unavailable", blockedRateLimits);
+    return emptyInspection("execution-unavailable");
   }
-  const failedRequestId = clientTurnRequestIdSchema.parse(request.requestId);
-  const currentBlockedRateLimits =
-    observedRateLimits?.status === "blocked"
-      ? observedRateLimits
-      : blockedRateLimits;
-  const resetsAtMs = recoveryResetAtMs(currentBlockedRateLimits);
-  const automatic =
-    currentBlockedRateLimits.kind === "subscription-window" &&
-    resetsAtMs !== null;
-  const candidate: InternalRecoveryCandidate = {
-    automatic,
-    execution: execution.data,
-    failedRequestId,
-    rateLimits: currentBlockedRateLimits,
-    resetsAtMs,
+
+  const publicCandidate: ExperimentalFailedTurnCandidate = {
+    completedSeq: completedRow.sequence,
+    events: rows.map(parseStoredEventRow),
+    failedRequestId: clientTurnRequestIdSchema.parse(request.requestId),
+    hostId: args.environment.hostId,
+    providerId: args.thread.providerId,
     turnId,
   };
   return {
-    candidate,
-    status: {
-      reason: automatic ? "eligible" : "manual-only",
-      scopeKey: scopeKey(args.environment, args.thread),
-      hostId: args.environment.hostId,
-      rateLimits: observedRateLimits ?? blockedRateLimits,
-      candidate: {
-        automatic,
-        failedRequestId,
-        turnId,
-        resetsAtMs,
-        rateLimits: currentBlockedRateLimits,
-      },
-    },
+    candidate: { execution: execution.data, public: publicCandidate },
+    public: { candidate: publicCandidate, reason: "eligible" },
   };
 }
 
-export function getProviderRateLimitRecoveryStatus(
+export function inspectThreadFailedTurn(
   deps: Pick<LoggedPendingInteractionWorkSessionDeps, "db">,
   args: { environment: Environment; thread: Thread },
-): ProviderRateLimitRecoveryStatus {
-  return inspectRecovery({ db: deps.db, ...args }).status;
+): ExperimentalFailedTurnInspection {
+  return inspectFailedTurn({ db: deps.db, ...args }).public;
 }
 
-function unavailableRecoveryError(status: ProviderRateLimitRecoveryStatus) {
+function unavailableContinuationError(
+  inspection: ExperimentalFailedTurnInspection,
+): ApiError {
   return new ApiError(
     409,
-    "rate_limit_recovery_unavailable",
-    "This thread is no longer eligible to continue after its provider rate limit.",
-    { details: status },
+    "failed_turn_continuation_unavailable",
+    "This failed turn is no longer available to continue.",
+    { details: { reason: inspection.reason } },
   );
 }
 
-export async function continueThreadAfterProviderRateLimit(
+function continuationInput(instruction: string): PromptInput[] {
+  if (
+    typeof instruction !== "string" ||
+    instruction.trim().length === 0 ||
+    instruction.length > MAX_CONTINUATION_INSTRUCTION_LENGTH
+  ) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Continuation instruction must contain 1-${MAX_CONTINUATION_INSTRUCTION_LENGTH} characters.`,
+    );
+  }
+  return [
+    {
+      type: "text",
+      text: instruction,
+      mentions: [],
+      visibility: "agent-only",
+    },
+  ];
+}
+
+export async function continueThreadFailedTurn(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: {
     environment: Environment;
     failedRequestId: ClientTurnRequestId;
-    mode: "automatic" | "manual";
+    instruction: string;
+    pluginId: string;
     thread: Thread;
   },
-): Promise<ContinueAfterProviderRateLimitResponse> {
+): Promise<{ requestId: ClientTurnRequestId }> {
+  const input = continuationInput(args.instruction);
   ensureThreadIsWritable(args.thread);
   ensureThreadIsNotAwaitingUserInteraction(deps, args.thread.id);
   const currentEnvironment =
@@ -344,17 +264,16 @@ export async function continueThreadAfterProviderRateLimit(
   const readyEnvironment = requireReadyThreadEnvironment(
     getEnvironment(deps.db, args.environment.id) ?? currentEnvironment,
   );
-  const initial = inspectRecovery({
+  const initial = inspectFailedTurn({
     db: deps.db,
     environment: readyEnvironment,
     thread: args.thread,
   });
   if (
     !initial.candidate ||
-    initial.candidate.failedRequestId !== args.failedRequestId ||
-    (args.mode === "automatic" && !initial.candidate.automatic)
+    initial.candidate.public.failedRequestId !== args.failedRequestId
   ) {
-    throw unavailableRecoveryError(initial.status);
+    throw unavailableContinuationError(initial.public);
   }
 
   const requestId = createClientTurnRequestId();
@@ -365,7 +284,7 @@ export async function continueThreadAfterProviderRateLimit(
   const command = await prepareReadyThreadTurnCommand(deps, {
     thread: args.thread,
     fork: null,
-    input: CONTINUE_INPUT,
+    input,
     requestId,
     execution: initial.candidate.execution,
     permissionEscalation,
@@ -386,22 +305,21 @@ export async function continueThreadAfterProviderRateLimit(
       const currentThread = getThread(tx, args.thread.id);
       const currentEnvironment = getEnvironment(tx, readyEnvironment.id);
       if (!currentThread || !currentEnvironment) {
-        throw unavailableRecoveryError(initial.status);
+        throw unavailableContinuationError(initial.public);
       }
       requireReadyThreadEnvironment(currentEnvironment);
       ensureThreadIsWritable(currentThread);
       ensureThreadCanStartRequest(currentThread);
-      const current = inspectRecovery({
+      const current = inspectFailedTurn({
         db: tx,
         environment: currentEnvironment,
         thread: currentThread,
       });
       if (
         !current.candidate ||
-        current.candidate.failedRequestId !== args.failedRequestId ||
-        (args.mode === "automatic" && !current.candidate.automatic)
+        current.candidate.public.failedRequestId !== args.failedRequestId
       ) {
-        throw unavailableRecoveryError(current.status);
+        throw unavailableContinuationError(current.public);
       }
 
       appendPreparedClientTurnRequestedEventInTransaction(tx, {
@@ -409,7 +327,7 @@ export async function continueThreadAfterProviderRateLimit(
         environmentId: currentEnvironment.id,
         type: "client/turn/requested",
         continuationOfRequestId: args.failedRequestId,
-        input: CONTINUE_INPUT,
+        input,
         execution: current.candidate.execution,
         initiator: "system",
         senderThreadId: null,
@@ -424,18 +342,14 @@ export async function continueThreadAfterProviderRateLimit(
         type: "system/operation",
         scope: threadScope(),
         data: {
-          operation: "provider_rate_limit_recovery",
-          operationId: `provider-rate-limit-recovery:${args.failedRequestId}`,
+          operation: "failed_turn_continuation",
+          operationId: `failed-turn-continuation:${args.pluginId}:${args.failedRequestId}`,
           status: "completed",
-          message:
-            args.mode === "automatic"
-              ? "Continued automatically after provider rate limit reset"
-              : "Provider rate limit retry requested manually",
+          message: "Continued a failed turn",
           metadata: {
-            mode: args.mode,
+            pluginId: args.pluginId,
             failedRequestId: args.failedRequestId,
             continuationRequestId: requestId,
-            resetsAtMs: current.candidate.resetsAtMs,
           },
         },
       });
@@ -461,9 +375,9 @@ export async function continueThreadAfterProviderRateLimit(
     onError: ({ error }) => {
       deps.logger.warn(
         { err: error, threadId: args.thread.id },
-        "Provider rate-limit continuation command failed",
+        "Failed-turn continuation command failed",
       );
     },
   });
-  return { ok: true, requestId };
+  return { requestId };
 }

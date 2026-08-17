@@ -5,6 +5,38 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
+## `bb.experimental_failedTurnContinuation`
+
+**What it does.** Gives a plugin a provider-neutral, in-process boundary for
+failure recovery. `inspect` identifies the latest failed root turn that
+accepted the thread's latest client request and returns raw event rows from
+that request through later provider-only drain activity. `continue` atomically
+rechecks the expected failed request, rejects supersession or an explicit user
+stop, reuses the original execution options, and starts one agent-visible,
+user-hidden continuation instruction. Core owns lifecycle integrity; the
+plugin owns every rule that decides whether and when a failure should retry.
+
+The first consumer is Provider retry. It classifies provider error and
+rate-limit events, coordinates reset windows, and owns both automatic and
+manual retry commands without public rate-limit-specific server routes.
+
+**Audit before stabilizing.**
+
+1. Confirm at least one second recovery plugin needs the same accepted-failure
+   primitive before treating it as a general plugin contract.
+2. Audit whether returning raw event rows is the right policy boundary or
+   whether a smaller provider-neutral failed-turn snapshot is sufficient.
+3. Measure event-window size for long provider drain sequences and add a hard
+   bound or pagination only if real traces require it.
+4. Confirm the exact supersession rules: latest client request, explicit user
+   stop, pending interaction, thread writability, and environment readiness.
+5. Confirm a free-form hidden instruction capped at 4096 characters is the
+   right continuation input, or replace it with a narrower enum/template.
+6. Audit attribution in the generic `failed_turn_continuation` system event
+   and decide whether plugin id is sufficient for user-facing diagnostics.
+7. Extend the fake plugin host if consumers need recorded calls or race
+   simulation beyond the current deterministic inspect/continue stubs.
+
 ## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `experimental_defineHostEntry`, and `experimental_createHostEntryHarness`)
 
 **What it does.** Lets one plugin package declare a singular `bb.host` Node

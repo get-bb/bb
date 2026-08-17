@@ -7,6 +7,7 @@ type ExpectedBbPluginApiKey =
   | "background"
   | "cli"
   | "events"
+  | "experimental_failedTurnContinuation"
   | "hosts"
   | "http"
   | "log"
@@ -23,6 +24,10 @@ type ExpectedBbPluginApiKey =
 
 const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "BbPluginApi",
+  "ExperimentalFailedTurnCandidate",
+  "ExperimentalFailedTurnContinuation",
+  "ExperimentalFailedTurnInspection",
+  "ExperimentalFailedTurnInspectionReason",
   "PluginAgents",
   "PluginAgentConfiguration",
   "PluginAgentConfigurationContext",

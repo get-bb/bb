@@ -64,6 +64,7 @@ const BB_PLUGIN_API_KEYS = [
   "agents",
   "ui",
   "events",
+  "experimental_failedTurnContinuation",
   "status",
   "server",
   "hosts",

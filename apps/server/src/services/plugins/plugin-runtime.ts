@@ -1357,6 +1357,20 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       dataDir: deps.dataDir,
       getSdk: () => boundSdk,
       getLoopbackBaseUrl: () => boundLoopbackBaseUrl,
+      inspectFailedTurn: (args) => {
+        if (!deps.inspectFailedTurn) {
+          throw new Error("failed-turn inspection is unavailable in this host");
+        }
+        return deps.inspectFailedTurn(args);
+      },
+      continueFailedTurn: (args) => {
+        if (!deps.continueFailedTurn) {
+          throw new Error(
+            "failed-turn continuation is unavailable in this host",
+          );
+        }
+        return deps.continueFailedTurn(args);
+      },
       publishSignal: (channel, payload) => {
         deps.hub.notifyPluginSignal(row.id, channel, payload);
       },
