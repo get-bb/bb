@@ -765,6 +765,7 @@ describe("PluginNewThreadComposer seeding", () => {
           argument.includes("Maximum update depth exceeded"),
       ),
     );
+    consoleError.mockRestore();
     expect(updateDepthErrors).toEqual([]);
   });
 
