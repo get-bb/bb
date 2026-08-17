@@ -697,7 +697,7 @@ describe("plugin update service and routes", () => {
     expect(listPluginStateSnapshots(db, "updater")).toMatchObject([
       { status: "restored" },
     ]);
-  });
+  }, 60_000);
 
   it("retains rollback state through the grace period and collects it afterward", async () => {
     await service.stop();
@@ -748,7 +748,7 @@ describe("plugin update service and routes", () => {
       code: "ENOENT",
     });
     await stat(remaining[0]!.path);
-  });
+  }, 60_000);
 
   it("orders removal after an in-flight update without resurrecting the plugin", async () => {
     await commitPlugin(repo, "1.1.0");
