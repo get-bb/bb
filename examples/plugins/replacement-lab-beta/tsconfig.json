@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "lib": ["DOM", "ES2022"],
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["app.tsx", "server.ts"]
+}
