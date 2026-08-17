@@ -352,7 +352,7 @@ function waitForJsonRpcResponse({ childProcess, id, label, output }) {
  * and hands it the bridge module plus the plugin scope. Driving it the same
  * way here is what makes this a smoke of the real launch path.
  */
-function spawnPackedBridge({ bridgePath, pluginId }) {
+function spawnPackedBridge({ bridgePath, packageDir, pluginId }) {
   const dataDir = join(tempRoot, "bridge-data", pluginId);
   mkdirSync(dataDir, { recursive: true });
   return spawn(
@@ -375,10 +375,11 @@ function spawnPackedBridge({ bridgePath, pluginId }) {
 async function smokeBridgeModelList({
   allowUnavailableProvider = false,
   bridgePath,
+  packageDir,
   pluginId,
   label,
 }) {
-  const childProcess = spawnPackedBridge({ bridgePath, pluginId });
+  const childProcess = spawnPackedBridge({ bridgePath, packageDir, pluginId });
   const output = collectProcessOutput(childProcess);
   const modelListResponsePromise = waitForJsonRpcResponse({
     childProcess,
@@ -454,11 +455,13 @@ async function smokeProviderBridgeBundles(packageDir) {
       "dist",
       "host.js",
     ),
+    packageDir,
     pluginId: "provider-claude-code",
     label: "Claude Code host-artifact bridge model/list",
   });
   await smokeBridgeModelList({
     bridgePath: join(packageDir, "host-daemon", "dist", "bb-pi-bridge.mjs"),
+    packageDir,
     pluginId: "provider-pi",
     label: "Pi bridge model/list",
   });
@@ -476,6 +479,7 @@ async function smokeProviderBridgeBundles(packageDir) {
       "dist",
       "host.js",
     ),
+    packageDir,
     pluginId: "provider-acp",
     label: "ACP host-artifact bridge model/list",
   });
@@ -495,6 +499,7 @@ async function smokeProviderBridgeBundles(packageDir) {
       "dist",
       "host.js",
     ),
+    packageDir,
     pluginId: "provider-codex",
     label: "Codex provider-bridge artifact model/list",
   });

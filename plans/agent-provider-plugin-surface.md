@@ -713,24 +713,85 @@ functions living side by side.
   nothing else, so the daemon cannot tell which plugin owns the bridge it is
   about to spawn, and no bridge has anything to put in such a directory today.
   Wiring dirs through now would be an accepted-but-ignored surface. Both halves
-  resolve in phase 3, where bridges become host-artifact exports and arrive
-  named by their plugin; the `kind` discriminator is there so that lands as a
-  new value rather than a rename.
+  resolved in phase 3, where bridges became host-artifact exports and arrive
+  named by their plugin; the `kind` discriminator landed a new value
+  (`bridge-data`) rather than a rename, and the module itself moved to
+  `@bb/process-utils` because the two bootstraps live in different packages.
 
-Deliberately **not** done: the `bb.host` second-consumer reshape (bridges as
-host-artifact exports). `bb.providerBridge` stays for now; that is the next
-phase, and it is what unblocks plugin-scoped bridge directories, prune-to-
-current for bridges, and full convergence of the two artifact registries and
-their serving routes.
+Deliberately **not** done in the adoption pass: the `bb.host` second-consumer
+reshape (bridges as host-artifact exports). That is phase 3 below, and it is
+what unblocked plugin-scoped bridge directories, prune-to-current for bridges,
+and full convergence of the two artifact registries and their serving routes.
 
-### Phase 3 (next)
+### Phase 3 — DONE (2026-08-17)
 
-Reshape `bb.providerBridge` into a second consumer of `bb.host`'s artifact
-export, so a provider bridge is a host artifact that happens to speak the
-bridge protocol. That collapses the remaining duplication this pass could only
-narrow: `ProviderBridgeArtifactRegistry` against the plugin host artifact
-registry, the two internal routes into one, and the bridge cache's disuse
-pruning back into keep-only-current now that a bridge is named by its plugin.
+`bb.providerBridge` is gone. A provider bridge is a `bb.host` artifact that
+happens to speak the bridge protocol, and every duplication the adoption pass
+could only narrow is dissolved: one live-artifact registry, one internal route,
+one daemon cache with one pruning policy. Three commits.
+
+1. **The publish surface.** `@get-bb/plugin-sdk/bridge` — one curated,
+   hand-named module (never `export *`) carrying the bridge entry contract, the
+   protocol's methods and param schemas, the bridge kit's authoring half, and
+   the `@bb/domain` event vocabulary the payloads are made of (~190 names). Two
+   decisions, both in `docs/api_to_audit.md`:
+   - **Not** in `HOST_ARTIFACT_RUNTIME_STUBS`. That table is for surfaces whose
+     runtime the host must implement because the SDK is a type-only
+     devDependency; this one is pure schema and helper code with nothing
+     daemon-pinned, so a provider plugin depends on the SDK for real and the
+     artifact build inlines its published bundle. Pinned by a build test that
+     asserts both the absence from the table and that no `@bb/` import survives
+     into the artifact.
+   - The **domain event types are named, not moved**. `@bb/domain` is bb's
+     persisted-thread vocabulary shared by server, app and runtime; moving it
+     into the plugin SDK would invert the dependency and hand the SDK the
+     product's core domain. The SDK is already exactly this facade for
+     `PromptInput` and friends at its root export, so this is the existing
+     precedent rather than a new one. The audit entry states what to settle
+     before the shapes are a public promise, and flags the two other honest
+     smells: surface size (several names exist for one first-party bridge) and
+     `hostDaemonAcpLaunchSpecSchema`, the one core wire shape a bridge parses.
+2. **The bridges.** All four first-party bridges and echo-provider export
+   `experimental_providerBridge` instead of starting themselves; their manifests
+   move `bb.providerBridge` → `bb.host`; 34 bridge-reachable files swap private
+   `@bb/*` imports for the published surface. The inversion is what lets one
+   artifact carry both a bridge and a host RPC entry — echo-provider proves it,
+   `host.ts` re-exporting the bridge and default-exporting a one-method RPC
+   entry, with a test pinning both — and what lets a test import a bridge
+   without it taking over stdio, which the conformance suites already relied on
+   by accident. Pi takes the same export shape but stays daemon-bundled.
+3. **The bootstrap, the swap, the deletions.** `bridge-worker-entry.ts` is what
+   the runtime spawns for every bridge: argv `<module> <pluginId> <dataDir>`,
+   import, find the export or fail naming the plugin, hand it its plugin-scoped
+   directories, wire the bounded stdio framing and signals. It completes the
+   adoption pass's half-adopted plugin-scoped paths (`plugin-process-paths`
+   moves to `@bb/process-utils`; the daemon spawns host workers, the runtime
+   spawns bridges, and both bootstraps must agree on the layout). It lives
+   beside the protocol, not in the daemon, because the runtime is what spawns a
+   bridge — the daemon's `plugin-host-worker.ts` is its twin, not its home.
+   `resolveBridgeLaunchForProviderId` reads the plugin's live host artifact and
+   registration-requires-implementation demands one. Deleted: the manifest key
+   (domain schema, server manifest, CLI, dev loop, builtin copier, npm
+   prebuilt-bundle rule), `buildPluginProviderBridge`,
+   `ProviderBridgeArtifactRegistry`, `readPluginProviderBridgeArtifact`,
+   `loadProviderBridgeCandidate`, `GET /internal/provider-bridges/:sha256`,
+   `ServerClient.fetchProviderBridge`, and the daemon's `provider-bridges.ts`.
+   `PluginHostArtifactRegistry` is the one live map — no longer private to the
+   plugin runtime, since both consumers and the one route sit outside it — and
+   `ensureCachedPluginHostArtifact` the one daemon cache, with bridges
+   inheriting `keep-only-current` (the disuse policy existed only because a
+   launch named a bare hash).
+   Wire, folded into the unshipped **protocol 130** with a ledger update and no
+   new bump: `bridgeLaunch` carries `pluginId`, and its artifact source speaks
+   the host artifact's `digest` vocabulary instead of `sha256`. A launch with no
+   owning plugin fails the schema — it names neither an artifact to fetch nor a
+   directory to scope the process to.
+
+Validated: full-tree typecheck and test (agent-runtime 313, host-daemon 593,
+server 1718, contract 52, integration 55, codex 162, claude-code 260, acp 144,
+echo 2, protocol +5 bootstrap cases), lint, and `smoke:tarball` — whose bridge
+smokes now drive the packed bootstrap against `dist/host.js`, which is the real
+launch path rather than a bridge spawned by hand.
 
 ## Design notes from the #1641 prototype comparison (thr_fxnmqjf9a4)
 
