@@ -54,8 +54,7 @@ const REGISTER_PROVIDER_SOURCE = (id: string): string => `
         supportsServiceTier: true,
         supportsHostAiServices: false,
         supportsNativeUserQuestion: true,
-        supportsNativeFork: true,
-        supportsNativeSessionRewind: false,
+        fork: "tip",
         supportsManualCompaction: true,
         supportsThreadArchive: false,
         supportsThreadRename: false,
@@ -121,10 +120,7 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
       });
       // Fields without a registry consumer yet ride the full declaration.
       expect(registration?.declaration).toMatchObject({
-        capabilities: {
-          supportsNativeSessionRewind: false,
-          supportsManualCompaction: true,
-        },
+        capabilities: { supportsManualCompaction: true },
       });
 
       // The composed provider listing (GET /system/providers path) includes

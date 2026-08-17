@@ -948,8 +948,7 @@ describe("agents.experimental_registerProvider", () => {
         supportsServiceTier: false,
         supportsHostAiServices: false,
         supportsNativeUserQuestion: true,
-        supportsNativeFork: true,
-        supportsNativeSessionRewind: false,
+        fork: "tip",
         supportsManualCompaction: true,
         supportsThreadArchive: false,
         supportsThreadRename: false,
@@ -997,6 +996,13 @@ describe("agents.experimental_registerProvider", () => {
         }),
       ),
     ).toThrow(/reasoningLevels entry "low" is duplicated/);
+    expect(() =>
+      register(
+        agentDeclaration({
+          capabilities: { ...agentDeclaration().capabilities, fork: true },
+        }),
+      ),
+    ).toThrow(/capabilities.fork must be one of none, tip, checkpoint/);
     expect(() =>
       register(agentDeclaration({ icon: { asset: "../outside.svg" } })),
     ).toThrow(/icon.asset must not escape the plugin directory/);

@@ -13,21 +13,21 @@
  * DEBT: this duplicates the declaration in plugins/provider-pi. It disappears
  * only if pi ever ships as an artifact (see the graduation plan's pi verdict).
  */
-import type { ProviderCapabilities, ProviderInfo } from "@bb/domain";
+import type { ProviderInfo } from "@bb/domain";
 import { DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS } from "@bb/host-daemon-contract";
+import type { BridgeAdapterCapabilities } from "./bridge-protocol-adapter.js";
 
 /** Whether an id belongs to the dynamic ACP tier. */
 export function isAcpProviderId(value: string): boolean {
   return value.startsWith("acp-");
 }
 
-const PI_CAPABILITIES: ProviderCapabilities = {
+const PI_CAPABILITIES: BridgeAdapterCapabilities = {
   supportsArchive: false,
   supportsRename: false,
   supportsServiceTier: false,
   supportsUserQuestion: false,
-  supportsFork: true,
-  supportsSessionRewind: true,
+  fork: "checkpoint",
   supportedPermissionModes: ["full"],
 };
 
@@ -41,9 +41,9 @@ const SESSION_RESTORABLE_BY_PROVIDER_ID: Readonly<Record<string, boolean>> = {
   pi: true,
 };
 
-interface BundledProvider {
+export interface BundledProvider {
   displayName: string;
-  capabilities: ProviderCapabilities;
+  capabilities: BridgeAdapterCapabilities;
 }
 
 const BUNDLED_PROVIDERS: Readonly<Record<string, BundledProvider>> = {
@@ -61,19 +61,16 @@ for (const providerId of DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS) {
   }
 }
 
-function cloneCapabilities(
-  capabilities: ProviderCapabilities,
-): ProviderCapabilities {
-  return {
-    ...capabilities,
-    supportedPermissionModes: [...capabilities.supportedPermissionModes],
-  };
-}
-
 function toInfo(id: string, provider: BundledProvider): ProviderInfo {
+  const { fork, ...capabilities } = provider.capabilities;
   return {
     available: true,
-    capabilities: cloneCapabilities(provider.capabilities),
+    capabilities: {
+      ...capabilities,
+      supportedPermissionModes: [...capabilities.supportedPermissionModes],
+      supportsFork: fork !== "none",
+      supportsSessionRewind: fork === "checkpoint",
+    },
     // Composer affordances are server-side product policy read off the
     // registry; the daemon's adapters never use them.
     composerActions: [],
@@ -94,6 +91,11 @@ export function getBundledProviderInfo(
 ): ProviderInfo | null {
   const provider = BUNDLED_PROVIDERS[providerId];
   return provider === undefined ? null : toInfo(providerId, provider);
+}
+
+/** Baseline for a bundled provider, or null for any other id. */
+export function getBundledProvider(providerId: string): BundledProvider | null {
+  return BUNDLED_PROVIDERS[providerId] ?? null;
 }
 
 /** Whether a stopped session of this provider resumes from its persisted id. */

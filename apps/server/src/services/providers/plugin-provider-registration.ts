@@ -61,8 +61,11 @@ export function buildPluginProviderRegistration(args: {
       supportsRename: capabilities.supportsThreadRename,
       supportsServiceTier: capabilities.supportsServiceTier,
       supportsUserQuestion: capabilities.supportsNativeUserQuestion,
-      supportsFork: capabilities.supportsNativeFork,
-      supportsSessionRewind: capabilities.supportsNativeSessionRewind,
+      // The declared fork ladder projects onto the two booleans clients read:
+      // any cloning at all enables the fork affordance, while rewind
+      // (edit-past-message) needs a session recreated at an earlier point.
+      supportsFork: capabilities.fork !== "none",
+      supportsSessionRewind: capabilities.fork === "checkpoint",
       supportedPermissionModes: [...capabilities.permissionModes],
     },
     composerActions,
@@ -72,6 +75,7 @@ export function buildPluginProviderRegistration(args: {
     supportsWorkflows: capabilities.supportsWorkflows,
     backsHostDaemonAiServices: capabilities.supportsHostAiServices,
     reasoningLevels: [...capabilities.reasoningLevels],
+    fork: capabilities.fork,
   };
 
   return { info, serverCapabilities, declaration };

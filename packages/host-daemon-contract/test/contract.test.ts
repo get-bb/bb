@@ -2325,7 +2325,7 @@ describe("host-daemon command schemas", () => {
         supportedPermissionModes: ["accept-edits", "full"],
         supportsArchive: false,
         supportsRename: false,
-        supportsFork: true,
+        fork: "tip",
       },
     };
 

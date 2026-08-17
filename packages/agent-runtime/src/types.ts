@@ -8,6 +8,7 @@ import type {
   PendingInteractionCreate,
   PendingInteractionResolution,
   PromptInput,
+  ProviderFork,
   RuntimeThreadExecutionOptions,
   ThreadEvent,
   ToolCallRequest,
@@ -156,7 +157,7 @@ export interface AgentRuntimeBridgeLaunch {
     supportedPermissionModes: PermissionMode[];
     supportsArchive: boolean;
     supportsRename: boolean;
-    supportsFork: boolean;
+    fork: ProviderFork;
   };
 }
 

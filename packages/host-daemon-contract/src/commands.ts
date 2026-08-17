@@ -10,6 +10,7 @@ import {
   permissionModeSchema,
   promptInputSchema,
   projectSourceCheckoutSchema,
+  providerForkSchema,
   threadGitDiffResponseSchema,
   workspaceProvisionTypeSchema,
   runtimeThreadExecutionOptionsSchema,
@@ -272,7 +273,7 @@ export const hostDaemonBridgeLaunchSchema = z
         supportedPermissionModes: z.array(permissionModeSchema).min(1),
         supportsArchive: z.boolean(),
         supportsRename: z.boolean(),
-        supportsFork: z.boolean(),
+        fork: providerForkSchema,
       })
       .strict(),
   })

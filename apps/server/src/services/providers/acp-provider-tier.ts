@@ -27,6 +27,7 @@ import type {
   ProviderCapabilities,
   ProviderComposerAction,
   ProviderInfo,
+  ProviderFork,
   ReasoningLevel,
 } from "@bb/domain";
 import type { ProviderServerCapabilities } from "./provider-registry.js";
@@ -36,6 +37,10 @@ const ACP_PERMISSION_MODES: readonly PermissionMode[] = [
   "full",
 ];
 
+// ACP session/fork clones a whole session and cannot stop at a checkpoint,
+// so fork is offered but edit-message rewind is not.
+const ACP_FORK: ProviderFork = "tip";
+
 const ACP_CAPABILITIES: Omit<
   ProviderCapabilities,
   "supportedPermissionModes"
@@ -44,9 +49,8 @@ const ACP_CAPABILITIES: Omit<
   supportsRename: false,
   supportsServiceTier: true,
   supportsUserQuestion: false,
+  // The ACP_FORK "tip" ladder, projected: fork yes, rewind no.
   supportsFork: true,
-  // ACP session/fork clones a whole session and cannot stop at a checkpoint,
-  // so fork is offered but edit-message rewind is not.
   supportsSessionRewind: false,
 };
 
@@ -72,6 +76,7 @@ const ACP_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsWorkflows: false,
   backsHostDaemonAiServices: false,
   reasoningLevels: ACP_REASONING_LEVELS,
+  fork: ACP_FORK,
 };
 
 export function isAcpProviderId(value: string): boolean {

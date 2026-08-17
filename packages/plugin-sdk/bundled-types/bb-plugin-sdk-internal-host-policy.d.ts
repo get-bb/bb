@@ -17,6 +17,25 @@
 declare const RESERVED_BB_CLI_COMMANDS: readonly string[];
 
 /**
+ * How completely a provider can clone one of its sessions — the single
+ * vocabulary shared by the provider declaration
+ * (`bb.agents.experimental_registerProvider`), the server→daemon
+ * `bridgeLaunch`, and the bridge's `initialize` handshake.
+ *
+ * - `"none"`: sessions cannot be cloned at all.
+ * - `"tip"`: only the current end of a session can be cloned (ACP
+ *   `session/fork`), so thread fork works but edit-past-message rewind
+ *   cannot.
+ * - `"checkpoint"`: a session can be recreated at an earlier point, which is
+ *   what edit-past-message rewind needs.
+ *
+ * The values are ordered least to most capable: a declaration is a ceiling
+ * the handshake may narrow but never widen.
+ */
+declare const PROVIDER_FORK_VALUES: readonly ["none", "tip", "checkpoint"];
+type ProviderFork = (typeof PROVIDER_FORK_VALUES)[number];
+
+/**
  * The validator-neutral subset of Standard Schema v1 used by plugin RPC.
  * Zod 4 schemas implement this interface directly; other validators can do
  * the same without becoming part of BB's public protocol.
@@ -134,12 +153,15 @@ interface PluginProviderCapabilities {
     /** The provider ships its own native ask-user-question tool — the
      * ask-user-question plugin skips registering its duplicate. */
     supportsNativeUserQuestion: boolean;
-    /** The provider can fork a session natively — gates the fork affordance in
-     * the UI. */
-    supportsNativeFork: boolean;
-    /** The provider can rewind a session to an earlier point — gates the
-     * edit-past-message affordance. */
-    supportsNativeSessionRewind: boolean;
+    /**
+     * How completely the provider can clone a session: `"none"` (not at all),
+     * `"tip"` (only the current end, so thread fork works but edit-past-message
+     * rewind cannot), or `"checkpoint"` (recreate the session at an earlier
+     * point, which rewind needs). Gates the fork and edit-past-message
+     * affordances. The bridge reports the same fact at `initialize`, where it
+     * may narrow this declaration but never widen it.
+     */
+    fork: ProviderFork;
     /** The provider accepts an explicit context-compaction request — gates the
      * compact affordance. */
     supportsManualCompaction: boolean;

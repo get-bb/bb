@@ -1,3 +1,4 @@
+import { providerForkSchema } from "@bb/domain";
 import { z } from "zod";
 
 /**
@@ -46,13 +47,12 @@ export const bridgeCapabilitiesSchema = z
      */
     manualCompaction: z.boolean().default(false),
     /**
-     * Session cloning support. "tip" clones only the current end of a session
-     * (ACP session/fork); "checkpoint" can recreate a session at an earlier
-     * point (required for edit-past-message rewind). The provider declaration
-     * advertises fork coarsely for UI affordances; this is the operative
-     * truth, and it may only narrow the declaration, never widen it.
+     * Session cloning support ({@link providerForkSchema} — the same
+     * vocabulary the provider declaration uses). The declaration is a ceiling
+     * for UI affordances; this is the operative truth, and it may only narrow
+     * the declaration, never widen it.
      */
-    fork: z.enum(["none", "tip", "checkpoint"]).default("none"),
+    fork: providerForkSchema.default("none"),
     /**
      * Where the thread's approval policy is enforced. "runtime" bridges
      * forward every approval request and the runtime applies the thread

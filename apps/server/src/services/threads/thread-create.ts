@@ -182,7 +182,7 @@ function resolveForkDescriptor(
   if (args.originKind === null || args.sourceThread === null) {
     return null;
   }
-  if (!deps.providerRegistry.supportsNativeFork(args.providerId)) {
+  if (!deps.providerRegistry.supportsFork(args.providerId)) {
     return null;
   }
   // A provider session ID is opaque to every other provider, so a fork is

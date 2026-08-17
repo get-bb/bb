@@ -28,6 +28,11 @@
       "types": "./src/plugin-cli.ts",
       "default": "./src/plugin-cli.ts"
     },
+    "./provider-fork": {
+      "source": "./src/provider-fork.ts",
+      "types": "./src/provider-fork.ts",
+      "default": "./src/provider-fork.ts"
+    },
     "./plugin-interaction-limits": {
       "source": "./src/plugin-interaction-limits.ts",
       "types": "./src/plugin-interaction-limits.ts",

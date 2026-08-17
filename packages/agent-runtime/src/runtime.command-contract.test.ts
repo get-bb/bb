@@ -48,7 +48,7 @@ const bridgeLaunch: AgentRuntimeBridgeLaunch = {
     supportedPermissionModes: ["full"],
     supportsArchive: true,
     supportsRename: false,
-    supportsFork: false,
+    fork: "none",
   },
 };
 const acpLaunchSpec: HostDaemonAcpLaunchSpec = {

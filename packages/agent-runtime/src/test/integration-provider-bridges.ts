@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
-import { permissionModeSchema } from "@bb/domain";
+import { permissionModeSchema, providerForkSchema } from "@bb/domain";
 import { isAcpProviderId, isBundledProviderId } from "../provider-catalog.js";
 import type { AgentRuntimeBridgeLaunch } from "../types.js";
 
@@ -30,7 +30,7 @@ const bridgeLaunchSchema = z.object({
     supportedPermissionModes: z.array(permissionModeSchema),
     supportsArchive: z.boolean(),
     supportsRename: z.boolean(),
-    supportsFork: z.boolean(),
+    fork: providerForkSchema,
   }),
 });
 

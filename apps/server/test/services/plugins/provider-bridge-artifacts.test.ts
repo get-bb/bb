@@ -44,8 +44,7 @@ const SERVER_SOURCE = `
         supportsServiceTier: false,
         supportsHostAiServices: false,
         supportsNativeUserQuestion: false,
-        supportsNativeFork: false,
-        supportsNativeSessionRewind: false,
+        fork: "none",
         supportsManualCompaction: false,
         supportsThreadArchive: false,
         supportsThreadRename: false,
@@ -212,7 +211,7 @@ describe("provider bridge artifact delivery (server)", () => {
           supportedPermissionModes: ["full"],
           supportsArchive: false,
           supportsRename: false,
-          supportsFork: false,
+          fork: "none",
         },
       };
 

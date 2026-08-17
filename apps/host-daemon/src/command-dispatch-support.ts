@@ -155,7 +155,7 @@ export async function resolveRuntimeBridgeLaunch(
       ],
       supportsArchive: bridgeLaunch.capabilities.supportsArchive,
       supportsRename: bridgeLaunch.capabilities.supportsRename,
-      supportsFork: bridgeLaunch.capabilities.supportsFork,
+      fork: bridgeLaunch.capabilities.fork,
     },
   };
 }

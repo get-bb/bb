@@ -389,7 +389,7 @@ describe("thread command dispatch", () => {
             supportedPermissionModes: ["full"] as const,
             supportsArchive: false,
             supportsRename: false,
-            supportsFork: false,
+            fork: "none",
           },
         },
         requestId: nextClientRequestId(),
@@ -429,7 +429,7 @@ describe("thread command dispatch", () => {
         supportedPermissionModes: ["full"],
         supportsArchive: false,
         supportsRename: false,
-        supportsFork: false,
+        fork: "none",
       },
     });
     await expect(fs.readFile(artifactPath)).resolves.toEqual(bridgeBytes);
@@ -453,7 +453,7 @@ describe("thread command dispatch", () => {
         supportedPermissionModes: ["full"],
         supportsArchive: true,
         supportsRename: false,
-        supportsFork: false,
+        fork: "none",
       },
     };
     const expectedRuntimeLaunch = {
@@ -464,7 +464,7 @@ describe("thread command dispatch", () => {
         supportedPermissionModes: ["full"],
         supportsArchive: true,
         supportsRename: false,
-        supportsFork: false,
+        fork: "none",
       },
     };
 
@@ -547,7 +547,7 @@ describe("thread command dispatch", () => {
               supportedPermissionModes: ["full"] as const,
               supportsArchive: false,
               supportsRename: false,
-              supportsFork: false,
+              fork: "none",
             },
           },
           instructions: "Be a helpful coding agent.",
@@ -571,7 +571,7 @@ describe("thread command dispatch", () => {
         supportedPermissionModes: ["full"],
         supportsArchive: false,
         supportsRename: false,
-        supportsFork: false,
+        fork: "none",
       },
     });
     expect(fetchProviderBridge).toHaveBeenCalledTimes(1);

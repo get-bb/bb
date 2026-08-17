@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Context } from "hono";
 import type * as z from "zod";
+import type { ProviderFork } from "@bb/domain/provider-fork";
 import type { BbSdk } from "@bb/sdk";
 import type { ThreadResponse } from "@bb/server-contract";
 import type { JsonValue } from "./json-value.js";
@@ -521,12 +522,15 @@ export interface PluginProviderCapabilities {
   /** The provider ships its own native ask-user-question tool — the
    * ask-user-question plugin skips registering its duplicate. */
   supportsNativeUserQuestion: boolean;
-  /** The provider can fork a session natively — gates the fork affordance in
-   * the UI. */
-  supportsNativeFork: boolean;
-  /** The provider can rewind a session to an earlier point — gates the
-   * edit-past-message affordance. */
-  supportsNativeSessionRewind: boolean;
+  /**
+   * How completely the provider can clone a session: `"none"` (not at all),
+   * `"tip"` (only the current end, so thread fork works but edit-past-message
+   * rewind cannot), or `"checkpoint"` (recreate the session at an earlier
+   * point, which rewind needs). Gates the fork and edit-past-message
+   * affordances. The bridge reports the same fact at `initialize`, where it
+   * may narrow this declaration but never widen it.
+   */
+  fork: ProviderFork;
   /** The provider accepts an explicit context-compaction request — gates the
    * compact affordance. */
   supportsManualCompaction: boolean;

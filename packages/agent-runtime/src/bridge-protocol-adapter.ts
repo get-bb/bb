@@ -13,7 +13,12 @@
  * reconciles internally, reporting any session rebuild via the mandatory
  * `session/replaced` notification.
  */
-import type { ProviderCapabilities, ThreadEvent } from "@bb/domain";
+import type {
+  ProviderCapabilities,
+  ProviderFork,
+  ThreadEvent,
+} from "@bb/domain";
+import { PROVIDER_FORK_VALUES } from "@bb/domain";
 import { pendingInteractionPayloadSchema, threadEventSchema } from "@bb/domain";
 import {
   BRIDGE_INBOUND_REQUEST_METHODS,
@@ -45,10 +50,22 @@ import { noPreparedProviderCommandDispatch } from "./provider-adapter.js";
 import { parseAvailableModelList } from "./shared/available-models.js";
 import type { AgentRuntimeSkillRoot } from "./types.js";
 
+/**
+ * A bridge adapter is built from the provider's DECLARED capabilities, which
+ * name the fork ladder directly ({@link ProviderFork}) rather than the two
+ * booleans clients gate on. The adapter projects those booleans onto its
+ * public {@link ProviderAdapter.capabilities}, and keeps the ladder to bound
+ * what the initialize handshake may claim.
+ */
+export interface BridgeAdapterCapabilities
+  extends Omit<ProviderCapabilities, "supportsFork" | "supportsSessionRewind"> {
+  fork: ProviderFork;
+}
+
 export interface BridgeProtocolAdapterOptions {
   id: string;
   displayName: string;
-  capabilities: ProviderCapabilities;
+  capabilities: BridgeAdapterCapabilities;
   process: { command: string; args: string[]; env?: Record<string, string> };
   /**
    * Provider-scoped options merged under `options.providerOptions` on every
@@ -183,6 +200,24 @@ export function createBridgeProtocolAdapter(
   options: BridgeProtocolAdapterOptions,
 ): ProviderAdapter {
   let handshake: BridgeCapabilities = bridgeCapabilitiesSchema.parse({});
+  const { fork: declaredFork, ...declaredCapabilities } = options.capabilities;
+  const capabilities: ProviderCapabilities = {
+    ...declaredCapabilities,
+    supportsFork: declaredFork !== "none",
+    supportsSessionRewind: declaredFork === "checkpoint",
+  };
+  /**
+   * The operative fork ladder: the declaration is a ceiling and the handshake
+   * may only narrow it, so the effective value is whichever of the two sits
+   * lower on the ordinal ladder. A bridge that claims more than its provider
+   * declared is held to the declaration.
+   */
+  function effectiveFork(): ProviderFork {
+    return PROVIDER_FORK_VALUES.indexOf(handshake.fork) <
+      PROVIDER_FORK_VALUES.indexOf(declaredFork)
+      ? handshake.fork
+      : declaredFork;
+  }
   // Last `thread/openWork` value per bb thread. Level-triggered, so a missed
   // intermediate notification cannot strand the runtime on a stale answer.
   const threadIdsWithOpenWork = new Set<string>();
@@ -200,7 +235,7 @@ export function createBridgeProtocolAdapter(
   const adapter: ProviderAdapter = {
     id: options.id,
     displayName: options.displayName,
-    capabilities: options.capabilities,
+    capabilities,
     // The handshake owns approval-policy placement; before it completes the
     // runtime-owned default is the safe reading (every request re-checked).
     get approvalRequestPolicy() {
@@ -280,21 +315,20 @@ export function createBridgeProtocolAdapter(
               instructionMode: command.instructionMode,
             },
           };
-        case "thread/fork":
-          // The declaration advertises fork coarsely for UI affordances; the
-          // handshake is the operative truth and may only narrow it. Without
-          // this gate a bridge that cannot fork (or can only fork at the tip)
-          // is sent the request anyway and answers however it likes — ACP
-          // rejects a checkpoint fork with FORK_CHECKPOINT_UNSUPPORTED, but a
-          // bridge that never advertised fork at all has no obligation to
-          // reject and may silently hand back a fresh, empty session.
-          if (handshake.fork === "none") {
+        case "thread/fork": {
+          // Without this gate a bridge that cannot fork (or can only fork at
+          // the tip) is sent the request anyway and answers however it likes —
+          // ACP rejects a checkpoint fork with FORK_CHECKPOINT_UNSUPPORTED,
+          // but a bridge that never advertised fork at all has no obligation
+          // to reject and may silently hand back a fresh, empty session.
+          const fork = effectiveFork();
+          if (fork === "none") {
             throw new Error(
               `Provider "${options.id}" does not support forking a thread`,
             );
           }
           if (
-            handshake.fork === "tip" &&
+            fork === "tip" &&
             command.sourceProviderCheckpointId !== undefined
           ) {
             throw new Error(
@@ -327,6 +361,7 @@ export function createBridgeProtocolAdapter(
               instructionMode: command.instructionMode,
             },
           };
+        }
         case "turn/start":
           return {
             kind: "request",

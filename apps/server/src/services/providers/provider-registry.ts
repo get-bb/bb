@@ -16,7 +16,12 @@ import {
   getAcpProviderServerCapabilities,
   isAcpProviderId,
 } from "./acp-provider-tier.js";
-import type { PermissionMode, ProviderInfo, ReasoningLevel } from "@bb/domain";
+import type {
+  PermissionMode,
+  ProviderFork,
+  ProviderInfo,
+  ReasoningLevel,
+} from "@bb/domain";
 import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 
 /**
@@ -41,6 +46,12 @@ export interface ProviderServerCapabilities {
    * a precise per-model `supportedReasoningEfforts` set is unavailable.
    */
   reasoningLevels: readonly ReasoningLevel[];
+  /**
+   * The declared fork ladder, unprojected. `ProviderInfo` carries the two
+   * booleans clients gate on; the daemon needs the ladder itself, because the
+   * bridge handshake narrows against it.
+   */
+  fork: ProviderFork;
 }
 
 /**
@@ -135,7 +146,7 @@ export interface ProviderRegistryService {
   getSupportedPermissionModes(
     providerId: string,
   ): readonly PermissionMode[] | null;
-  supportsNativeFork(providerId: string): boolean;
+  supportsFork(providerId: string): boolean;
   /**
    * Whether the provider can recreate a session at an earlier point, which is
    * what edit-past-message rewind needs. Fork is not enough: ACP clones whole
@@ -259,7 +270,7 @@ export function createProviderRegistryService(
       return null;
     },
 
-    supportsNativeFork(providerId) {
+    supportsFork(providerId) {
       const registration = getRegistration(providerId);
       if (registration) {
         return registration.info.capabilities.supportsFork;

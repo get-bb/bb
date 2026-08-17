@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
+import { PROVIDER_FORK_VALUES } from "@bb/domain/provider-fork";
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "../backend-contract.js";
 import type {
   PluginCliExecutionResult,
@@ -390,8 +391,6 @@ export function validatePluginProviderDeclaration(
     "supportsServiceTier",
     "supportsHostAiServices",
     "supportsNativeUserQuestion",
-    "supportsNativeFork",
-    "supportsNativeSessionRewind",
     "supportsManualCompaction",
     "supportsThreadArchive",
     "supportsThreadRename",
@@ -404,12 +403,16 @@ export function validatePluginProviderDeclaration(
       );
     }
   }
+  if (!(PROVIDER_FORK_VALUES as readonly string[]).includes(capabilities.fork)) {
+    throw new Error(
+      `provider "${id}" capabilities.fork must be one of ${PROVIDER_FORK_VALUES.join(", ")}`,
+    );
+  }
   const normalizedCapabilities: PluginProviderCapabilities = Object.freeze({
     supportsServiceTier: capabilities.supportsServiceTier,
     supportsHostAiServices: capabilities.supportsHostAiServices,
     supportsNativeUserQuestion: capabilities.supportsNativeUserQuestion,
-    supportsNativeFork: capabilities.supportsNativeFork,
-    supportsNativeSessionRewind: capabilities.supportsNativeSessionRewind,
+    fork: capabilities.fork,
     supportsManualCompaction: capabilities.supportsManualCompaction,
     supportsThreadArchive: capabilities.supportsThreadArchive,
     supportsThreadRename: capabilities.supportsThreadRename,

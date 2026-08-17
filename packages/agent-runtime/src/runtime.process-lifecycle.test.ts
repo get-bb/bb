@@ -1272,7 +1272,7 @@ rl.on("line", (line) => {
         supportedPermissionModes: ["full"],
         supportsArchive: true,
         supportsRename: false,
-        supportsFork: false,
+        fork: "none",
       },
     };
     const capturedBridgeLaunches: Array<AgentRuntimeBridgeLaunch | undefined> =
@@ -1358,7 +1358,7 @@ rl.on("line", (line) => {
         supportedPermissionModes: ["full"],
         supportsArchive: false,
         supportsRename: false,
-        supportsFork: false,
+        fork: "none",
       },
     };
     const runtime = createAgentRuntimeWithAdapters({

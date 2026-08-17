@@ -22,6 +22,7 @@ const MINIMAL_SERVER_CAPABILITIES = {
   supportsWorkflows: false,
   backsHostDaemonAiServices: false,
   reasoningLevels: ["medium" as const],
+  fork: "none" as const,
 };
 
 function registerProvider(
@@ -60,7 +61,7 @@ describe("provider registry policy accessors", () => {
       "accept-edits",
       "full",
     ]);
-    expect(registry.supportsNativeFork("codex")).toBe(true);
+    expect(registry.supportsFork("codex")).toBe(true);
   });
 
   // The dynamic ACP tier is the one answer source that is not a registration:
@@ -71,7 +72,7 @@ describe("provider registry policy accessors", () => {
     expect(
       registry.getSupportedPermissionModes("acp-custom-agent"),
     ).toStrictEqual(["accept-edits", "full"]);
-    expect(typeof registry.supportsNativeFork("acp-custom-agent")).toBe(
+    expect(typeof registry.supportsFork("acp-custom-agent")).toBe(
       "boolean",
     );
     // With no resolver wired the tier declares nothing, so an unresolvable
@@ -99,7 +100,7 @@ describe("provider registry policy accessors", () => {
     const registry = createProviderRegistryService();
     expect(registry.getServerCapabilities("nope")).toBeNull();
     expect(registry.getSupportedPermissionModes("nope")).toBeNull();
-    expect(registry.supportsNativeFork("nope")).toBe(false);
+    expect(registry.supportsFork("nope")).toBe(false);
   });
 
   // A disabled provider plugin removes its provider outright. The compaction

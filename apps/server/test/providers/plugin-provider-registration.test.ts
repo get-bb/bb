@@ -14,8 +14,7 @@ function declaration(
       supportsServiceTier: true,
       supportsHostAiServices: false,
       supportsNativeUserQuestion: true,
-      supportsNativeFork: true,
-      supportsNativeSessionRewind: true,
+      fork: "checkpoint",
       supportsManualCompaction: false,
       supportsThreadArchive: true,
       supportsThreadRename: true,
@@ -66,10 +65,41 @@ describe("buildPluginProviderRegistration", () => {
       supportsWorkflows: true,
       backsHostDaemonAiServices: false,
       reasoningLevels: ["low", "medium", "high"],
+      fork: "checkpoint",
     });
     // The full declaration rides the registration so declared facts without
-    // a registry consumer yet (rewind, compaction) survive.
+    // a registry consumer yet (compaction) survive.
     expect(registration.declaration).toBe(normalized);
+  });
+
+  it("projects each fork ladder rung onto the two client booleans", () => {
+    const projection = (fork: "none" | "tip" | "checkpoint") => {
+      const { capabilities } = buildPluginProviderRegistration({
+        pluginId: "acme-agent",
+        declaration: declaration({
+          capabilities: { ...declaration().capabilities, fork },
+        }),
+      }).info;
+      return {
+        supportsFork: capabilities.supportsFork,
+        supportsSessionRewind: capabilities.supportsSessionRewind,
+      };
+    };
+    // "tip" is the rung that distinguishes the two: ACP can clone a session
+    // but cannot recreate one at an earlier point, so fork is offered and
+    // edit-past-message rewind is not.
+    expect(projection("none")).toStrictEqual({
+      supportsFork: false,
+      supportsSessionRewind: false,
+    });
+    expect(projection("tip")).toStrictEqual({
+      supportsFork: true,
+      supportsSessionRewind: false,
+    });
+    expect(projection("checkpoint")).toStrictEqual({
+      supportsFork: true,
+      supportsSessionRewind: true,
+    });
   });
 
   it("maps an icon-less declaration to a null logoUrl and skills-only actions", () => {

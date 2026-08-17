@@ -172,7 +172,7 @@ describe("bridgeLaunch wire schema", () => {
         supportedPermissionModes: ["full"],
         supportsArchive: false,
         supportsRename: false,
-        supportsFork: false,
+        fork: "none",
       },
     };
     expect(hostDaemonBridgeLaunchSchema.safeParse(launch).success).toBe(false);

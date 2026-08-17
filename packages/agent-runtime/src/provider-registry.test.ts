@@ -28,7 +28,7 @@ const ACP_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch = {
     supportedPermissionModes: ["accept-edits", "full"],
     supportsArchive: false,
     supportsRename: false,
-    supportsFork: true,
+    fork: "tip",
   },
 };
 
@@ -141,9 +141,11 @@ describe("provider registry", () => {
       });
       expect(provider.id).toBe(providerId);
       expect(provider.process.args).toEqual(["/data/provider-bridges/acp.mjs"]);
+      // The declared "tip" ladder projects onto fork-yes / rewind-no.
       expect(provider.capabilities).toMatchObject({
         supportsServiceTier: true,
         supportsFork: true,
+        supportsSessionRewind: false,
         supportedPermissionModes: ["accept-edits", "full"],
       });
     }
@@ -267,7 +269,7 @@ describe("provider registry", () => {
           supportedPermissionModes: ["full"],
           supportsArchive: false,
           supportsRename: false,
-          supportsFork: false,
+          fork: "none",
         },
       },
     });
@@ -318,7 +320,7 @@ describe("provider registry", () => {
           supportedPermissionModes: ["accept-edits", "auto", "full"],
           supportsArchive: true,
           supportsRename: true,
-          supportsFork: true,
+          fork: "checkpoint",
         },
       },
     });
@@ -327,6 +329,7 @@ describe("provider registry", () => {
       supportsArchive: true,
       supportsRename: true,
       supportsFork: true,
+      supportsSessionRewind: true,
       supportsServiceTier: true,
       supportedPermissionModes: ["accept-edits", "auto", "full"],
     });
@@ -371,7 +374,7 @@ describe("provider registry", () => {
           supportedPermissionModes: ["full"],
           supportsArchive: false,
           supportsRename: false,
-          supportsFork: false,
+          fork: "none",
         },
       },
     });
@@ -393,7 +396,7 @@ describe("provider registry", () => {
           supportedPermissionModes: ["full"],
           supportsArchive: false,
           supportsRename: false,
-          supportsFork: false,
+          fork: "none",
         },
       },
     });
@@ -414,7 +417,7 @@ describe("provider registry", () => {
           supportedPermissionModes: ["accept-edits", "full"],
           supportsArchive: false,
           supportsRename: false,
-          supportsFork: false,
+          fork: "none",
         },
       },
     });

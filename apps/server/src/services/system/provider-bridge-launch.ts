@@ -1,6 +1,7 @@
 import type { HostDaemonBridgeLaunch } from "@bb/host-daemon-contract";
 import {
   buildAcpProviderInfo,
+  getAcpProviderServerCapabilities,
   isAcpProviderId,
 } from "../providers/acp-provider-tier.js";
 import type { ProviderRegistration } from "../providers/provider-registry.js";
@@ -29,8 +30,9 @@ export function resolveBridgeLaunchForProviderId(
   // The dynamic ACP tier has no registration to read capabilities from, so it
   // answers from the shared ACP capability set — the same source every other
   // ACP policy accessor on the registry falls back to.
+  const isOwnRegistration = registration.info.id === providerId;
   const capabilities = (
-    registration.info.id === providerId
+    isOwnRegistration
       ? registration.info
       : buildAcpProviderInfo({
           id: providerId,
@@ -38,6 +40,9 @@ export function resolveBridgeLaunchForProviderId(
           logoUrl: null,
         })
   ).capabilities;
+  const fork = isOwnRegistration
+    ? registration.serverCapabilities.fork
+    : getAcpProviderServerCapabilities(providerId).fork;
   return {
     source: {
       kind: "artifact",
@@ -52,7 +57,7 @@ export function resolveBridgeLaunchForProviderId(
       supportedPermissionModes: [...capabilities.supportedPermissionModes],
       supportsArchive: capabilities.supportsArchive,
       supportsRename: capabilities.supportsRename,
-      supportsFork: capabilities.supportsFork,
+      fork,
     },
   };
 }

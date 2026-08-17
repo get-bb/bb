@@ -168,7 +168,7 @@ mapped onto `ProviderInfo` + `ProviderServerCapabilities` and appears in the
 composed provider listing
 (`GET /system/providers` / execution options). The full declaration rides the
 registration record so fields without a registry consumer yet
-(`supportsNativeSessionRewind`, `supportsManualCompaction`) are not dropped.
+(`supportsManualCompaction`) are not dropped.
 
 **Audit before stabilizing.**
 

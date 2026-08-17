@@ -36,7 +36,7 @@ function requireForkCapableProvider(
   deps: Pick<ThreadForkDeps, "providerRegistry">,
   sourceThread: Thread,
 ): void {
-  if (!deps.providerRegistry.supportsNativeFork(sourceThread.providerId)) {
+  if (!deps.providerRegistry.supportsFork(sourceThread.providerId)) {
     throw new ApiError(
       400,
       "invalid_request",

@@ -103,7 +103,7 @@ export async function setup(): Promise<void> {
         supportedPermissionModes: [...capabilities.permissionModes],
         supportsArchive: capabilities.supportsThreadArchive,
         supportsRename: capabilities.supportsThreadRename,
-        supportsFork: capabilities.supportsNativeFork,
+        fork: capabilities.fork,
       },
     };
   }

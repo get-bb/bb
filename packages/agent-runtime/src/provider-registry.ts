@@ -6,10 +6,11 @@
  */
 
 import {
-  getBundledProviderInfo,
+  getBundledProvider,
   isBundledProviderId,
   listBundledProviderIds,
   listBundledProviderInfos,
+  type BundledProvider,
 } from "./provider-catalog.js";
 import type { ProviderInfo } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
@@ -55,11 +56,10 @@ function createBridgeProtocolAdapterForId(
         supportsRename: options.bridgeLaunch.capabilities.supportsRename,
         supportsServiceTier:
           options.bridgeLaunch.capabilities.supportsServiceTier,
-        // Session-behavior facts the runtime never enforces: the bridge
-        // answers for them per session (thread/identity, the handshake).
+        // A session-behavior fact the runtime never enforces: the bridge
+        // answers for it per session (thread/identity).
         supportsUserQuestion: false,
-        supportsFork: options.bridgeLaunch.capabilities.supportsFork,
-        supportsSessionRewind: false,
+        fork: options.bridgeLaunch.capabilities.fork,
         supportedPermissionModes: [
           ...options.bridgeLaunch.capabilities.supportedPermissionModes,
         ],
@@ -75,11 +75,11 @@ function createBridgeProtocolAdapterForId(
     });
   }
   if (providerId === "pi") {
-    const info = requireBundledProviderInfo("pi");
+    const bundled = requireBundledProvider("pi");
     return createBridgeProtocolAdapter({
       id: providerId,
-      displayName: info.displayName,
-      capabilities: info.capabilities,
+      displayName: bundled.displayName,
+      capabilities: bundled.capabilities,
       process: {
         command: options.bridgeNodeExecutablePath ?? "node",
         args: resolveBridgeProcessArgs({
@@ -135,12 +135,12 @@ function resolveAcpLaunchSpec(
   return options.acpLaunchSpec ?? BUILT_IN_ACP_LAUNCH_SPECS[providerId];
 }
 
-function requireBundledProviderInfo(providerId: string): ProviderInfo {
-  const info = getBundledProviderInfo(providerId);
-  if (info === null) {
+function requireBundledProvider(providerId: string): BundledProvider {
+  const bundled = getBundledProvider(providerId);
+  if (bundled === null) {
     throw new Error(`"${providerId}" has no bundled provider baseline.`);
   }
-  return info;
+  return bundled;
 }
 
 export function createProviderForId(

@@ -171,7 +171,7 @@ describe("first-party provider plugins", () => {
         expect(registry.get("pi")).toBeNull();
         expect(registry.getServerCapabilities("pi")).toBeNull();
         expect(registry.getSupportedPermissionModes("pi")).toBeNull();
-        expect(registry.supportsNativeFork("pi")).toBe(false);
+        expect(registry.supportsFork("pi")).toBe(false);
         expect(registry.supportsManualCompaction("pi")).toBe(false);
         expect(registry.list().map((entry) => entry.info.id)).toEqual([
           "codex",

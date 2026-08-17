@@ -13,8 +13,7 @@ function makeAdapter() {
       supportsRename: false,
       supportsServiceTier: false,
       supportsUserQuestion: false,
-      supportsFork: true,
-      supportsSessionRewind: true,
+      fork: "checkpoint",
       supportedPermissionModes: ["full"],
     },
     process: { command: "node", args: ["fake-bridge.mjs"] },
@@ -95,7 +94,7 @@ describe("fork narrowing", () => {
   } as const;
 
   it("refuses a fork the handshake does not support, however the declaration reads", () => {
-    // The declaration says supportsFork: true (makeAdapter), so only the
+    // The declaration says fork: "checkpoint" (makeAdapter), so only the
     // handshake can stop the request from reaching a bridge that cannot fork.
     const adapter = makeAdapter();
     completeHandshake(adapter, {});
