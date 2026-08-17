@@ -184,16 +184,6 @@ describe("PluginHostManager", () => {
       expect.objectContaining({
         pluginId: "fixture",
         generation: "generation-1",
-        digest: command.artifact.digest,
-        pid: expect.any(Number),
-        ready: false,
-      }),
-      "Starting host plugin worker",
-    );
-    expect(logger.info).toHaveBeenCalledWith(
-      expect.objectContaining({
-        pluginId: "fixture",
-        generation: "generation-1",
         pid: expect.any(Number),
         ready: true,
         startupDurationMs: expect.any(Number),
@@ -211,17 +201,11 @@ describe("PluginHostManager", () => {
       expect.objectContaining({
         pluginId: "fixture",
         reason: "plugin disposed",
-      }),
-      "Stopping host plugin worker",
-    );
-    expect(logger.info).toHaveBeenCalledWith(
-      expect.objectContaining({
-        pluginId: "fixture",
-        reason: "plugin disposed",
         forceKilled: false,
       }),
       "Host plugin worker stopped",
     );
+    expect(logger.info).toHaveBeenCalledTimes(2);
     expect(logger.warn).not.toHaveBeenCalled();
   });
 

@@ -557,10 +557,6 @@ export class PluginHostManager {
     };
 
     this.workers.set(command.pluginId, worker);
-    this.options.logger.info(
-      workerLogContext(worker),
-      "Starting host plugin worker",
-    );
     const startTimer = setTimeout(() => {
       failWorker(`host plugin ${command.pluginId} startup timed out`);
       child.kill("SIGKILL");
@@ -1091,10 +1087,6 @@ export class PluginHostManager {
     if (this.workers.get(worker.pluginId) === worker) {
       this.workers.delete(worker.pluginId);
     }
-    this.options.logger.info(
-      { ...workerLogContext(worker), reason },
-      "Stopping host plugin worker",
-    );
     await this.stopAllWorkerWatches(worker);
     sendToWorker(worker.child, { type: "dispose" });
     let forceKilled = false;
