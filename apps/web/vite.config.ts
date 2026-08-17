@@ -14,15 +14,12 @@ import { resolveSiteOrigin } from "./src/server/site-origin.js";
 
 export default defineConfig(({ command }) => {
   const cloudDev = resolveCloudDevViteSettings(command, process.env);
-  // Read APP_URL back out of the wrangler env this build targets (wrangler's
-  // own reader handles the JSONC and the production env's inheritance), so the
-  // unfurl tags advertise the deployment they actually ship to. Cloud dev
-  // overrides it with the tunnel URL, same as every other var.
+  // Read APP_URL back out of the local-only wrangler config. Cloud dev
+  // overrides it with the loopback gateway URL, same as every other var.
   const siteOrigin = resolveSiteOrigin(
     cloudDev?.vars.APP_URL ??
       unstable_readConfig({
         config: fileURLToPath(new URL("./wrangler.jsonc", import.meta.url)),
-        env: process.env.CLOUDFLARE_ENV,
       }).vars.APP_URL,
   );
   const cloudflareConfig: PluginConfig = {

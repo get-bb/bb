@@ -217,8 +217,8 @@ get-bb/marketplace/
   relatively, which the relative-URL rule already supports.
 
   Deployment: getbb.app is the `bb-web` Cloudflare Worker, deployed from the
-  main repo — so the catalog cannot live in the site bundle, or every listing
-  merge would need a site deploy. Instead:
+  upstream `get-bb/bb` repo — so the catalog cannot live in the site bundle,
+  or every listing merge would need a site deploy. Instead:
 
   1. Registry CI uploads the built files to an R2 bucket
      (`bb-marketplace`) with a Cloudflare API token scoped to that bucket,

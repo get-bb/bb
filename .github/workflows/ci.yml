@@ -32,6 +32,9 @@ jobs:
           pnpm-version: ${{ env.PNPM_VERSION }}
           cache-prefix: checks
 
+      - name: Check fork Cloudflare deployment is disabled
+        run: pnpm check:fork-cloudflare
+
       - name: Build, typecheck, and lint
         run: pnpm exec turbo run build typecheck lint --cache-dir=.turbo/cache --output-logs=new-only
 

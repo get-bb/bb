@@ -2,11 +2,9 @@
  * The absolute origin the unfurl tags advertise (og:url, og:image, twitter:image).
  *
  * Scrapers fetch those tags with no base URL to resolve against, so the values
- * have to be absolute — which means the build has to know which deployment it
- * is. CLOUDFLARE_ENV already picks the wrangler env at build time (see
- * .github/workflows/deploy-web.yml), so the origin is read back out of the same
- * APP_URL the worker will run with: a staging share advertises staging instead
- * of claiming to be getbb.app.
+ * have to be absolute. The fork's local-only Wrangler config provides the
+ * default APP_URL, and local Cloud development overrides it with its loopback
+ * gateway URL.
  *
  * Throws rather than falling back to a default — a wrong origin here is
  * invisible until someone shares a link, so a broken build is the cheaper

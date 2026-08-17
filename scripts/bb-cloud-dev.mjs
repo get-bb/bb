@@ -246,7 +246,6 @@ const web = spawnService(
     BB_CLOUD_DEV_SERVER_URL_TEMPLATE: `http://{label}.${DEV_BASE_DOMAIN}:${ports.cloudPort}`,
     BB_CLOUD_DEV_STATE_PATH: STATE_DIR,
     BETTER_AUTH_SECRET: DEV_SECRET,
-    CLOUDFLARE_ENV: "production",
     CLOUDFLARE_INCLUDE_PROCESS_ENV: "true",
     GITHUB_CLIENT_ID: "local-cloud-dev-unused",
     GITHUB_CLIENT_SECRET: "local-cloud-dev-unused",
@@ -261,6 +260,8 @@ try {
       url: `${GATEWAY_URL}/dashboard`,
       host: `${DEV_BASE_DOMAIN}:${ports.cloudPort}`,
       serviceExited: () => web.exitCode !== null,
+      // A cold Vite dependency optimization can exceed the shared 30s default.
+      timeoutMs: 60_000,
     }),
     waitForCloudService({
       url: `${GATEWAY_URL}/`,

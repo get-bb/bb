@@ -12,6 +12,7 @@
     "ensure-native-modules": "node scripts/ensure-native-modules.mjs",
     "dev": "node scripts/ensure-native-modules.mjs && cross-env NODE_ENV=development dotenv -c development -- node --conditions=source --import tsx packages/scripts/src/commands/run-dev.ts",
     "cloud:dev": "node --conditions=source --import tsx scripts/bb-cloud-dev.mjs",
+    "check:fork-cloudflare": "node scripts/check-fork-cloudflare-disabled.mjs",
     "dev:desktop": "scripts/bb-dev-app current --desktop",
     "dev:status": "scripts/bb-dev-app status",
     "dev:stop": "scripts/bb-dev-app stop",
