@@ -195,7 +195,9 @@ export function GitDiffToolbar({
         <div
           // A readable basis makes the browser wrap this row according to the
           // toolbar's own width instead of shrinking the selector to nothing.
-          className="min-w-0 flex-1 basis-48"
+          // The high grow ratio gives the selector nearly all surplus width
+          // when both groups fit; each group still fills a line when wrapped.
+          className="min-w-0 basis-48 grow-[999]"
           data-testid="git-diff-toolbar-selector-slot"
         >
           <GitDiffSelector
