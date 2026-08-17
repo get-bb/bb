@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  decodeNativeProviderToolCallRequest,
-  decodeNormalizedProviderToolCallRequest,
-} from "./provider-tool-call-contract.js";
+import { decodeNormalizedProviderToolCallRequest } from "./provider-tool-call-contract.js";
 
 describe("provider-tool-call-contract", () => {
   it("preserves optional BB thread hints on normalized bridge tool calls", () => {
@@ -83,24 +80,5 @@ describe("provider-tool-call-contract", () => {
         arguments: { text: "hello" },
       }),
     ).toBeNull();
-  });
-
-  it("treats native provider tool calls as provider-scoped requests", () => {
-    expect(
-      decodeNativeProviderToolCallRequest("req-2", "item/tool/call", {
-        threadId: "provider-abc",
-        turnId: "turn-1",
-        callId: "call-1",
-        tool: "notify_user",
-        arguments: { text: "hello" },
-      }),
-    ).toEqual({
-      requestId: "req-2",
-      providerThreadId: "provider-abc",
-      turnId: "turn-1",
-      callId: "call-1",
-      tool: "notify_user",
-      arguments: { text: "hello" },
-    });
   });
 });

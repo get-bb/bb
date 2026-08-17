@@ -46,6 +46,7 @@ import type {
   ProviderRuntimeEvent,
   BuildInteractiveResponseArgs,
 } from "@bb/provider-bridge-protocol/bridge-kit";
+import { decodeNormalizedProviderToolCallRequest } from "@bb/provider-bridge-protocol/bridge-kit";
 import { noPreparedProviderCommandDispatch } from "./provider-adapter.js";
 import { parseAvailableModelList } from "./shared/available-models.js";
 import type { AgentRuntimeSkillRoot } from "./types.js";
@@ -108,15 +109,6 @@ const errorNotificationParamsSchema = z
     message: z.string().min(1),
   })
   .passthrough();
-
-const toolCallParamsSchema = z.object({
-  providerThreadId: z.string().min(1),
-  threadId: z.string().min(1).optional(),
-  turnId: z.union([z.string().min(1), z.null()]),
-  callId: z.string().min(1),
-  tool: z.string().min(1),
-  arguments: z.unknown(),
-});
 
 const interactionRequestParamsSchema = z.object({
   providerThreadId: z.string().min(1),
@@ -585,27 +577,14 @@ export function createBridgeProtocolAdapter(
     decodeToolCallRequest(
       request: ProviderInboundRequest,
     ): DecodedToolCallRequest | null {
-      if (
-        request.method !== BRIDGE_INBOUND_REQUEST_METHODS.toolCall ||
-        (typeof request.id !== "string" && typeof request.id !== "number")
-      ) {
+      if (typeof request.id !== "string" && typeof request.id !== "number") {
         return null;
       }
-      const parsed = toolCallParamsSchema.safeParse(request.params);
-      if (!parsed.success) {
-        return null;
-      }
-      return {
-        requestId: request.id,
-        providerThreadId: parsed.data.providerThreadId,
-        turnId: parsed.data.turnId,
-        callId: parsed.data.callId,
-        tool: parsed.data.tool,
-        ...(parsed.data.arguments !== undefined
-          ? { arguments: parsed.data.arguments }
-          : {}),
-        ...(parsed.data.threadId ? { threadId: parsed.data.threadId } : {}),
-      };
+      return decodeNormalizedProviderToolCallRequest(
+        request.id,
+        request.method,
+        request.params,
+      );
     },
 
     decodeInteractiveRequest(
