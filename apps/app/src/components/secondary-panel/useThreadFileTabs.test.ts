@@ -548,6 +548,38 @@ describe("useThreadFileTabs file opener diversion", () => {
     expect(result.current.activeWorkspaceFilePath).toBe("notes/todo.md");
   });
 
+  it("keeps the built-in preview when Settings pins it", () => {
+    window.localStorage.setItem(
+      "bb.fileOpenerByExtension",
+      JSON.stringify({ md: "__builtin__" }),
+    );
+    registerNotesOpener();
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "opener-built-in",
+        syncThreadId: "opener-built-in",
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    act(() =>
+      result.current.openTab({
+        kind: "workspace-file-preview",
+        tab: {
+          lineRange: null,
+          path: "notes/todo.md",
+          source: { kind: "working-tree" },
+          statusLabel: null,
+        },
+      }),
+    );
+
+    expect(result.current.activePluginPanelTab).toBeNull();
+    expect(result.current.activeWorkspaceFilePath).toBe("notes/todo.md");
+  });
+
   it("honors per-open viewer overrides in both directions", () => {
     registerNotesOpener();
     const { result } = renderThreadHook(() =>

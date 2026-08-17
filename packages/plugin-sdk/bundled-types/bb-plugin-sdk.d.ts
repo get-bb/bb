@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 147115)
+Total output lines: 14156
+
 Warning: truncated output (original token count: 147088)
 Total output lines: 14152
 
@@ -2446,15 +2449,14 @@ declare const projectBranchesResponseSchema: z$1.ZodObject<{
     selectedBranch: z$1.ZodNullable<z$1.ZodObject<{
         name: z$1.ZodString;
         kind: z$1.ZodEnum<{
-            missing: "missing";
             local: "local";
             remote: "remote";
+            missing: "missing";
         }>;
     }, z$1.core.$strip>>;
     defaultWorktreeBaseBranch: z$1.ZodNullable<z$1.ZodString>;
 }, z$1.core.$strip>;
-type ProjectBranchesResponse = z$1.infer<typeof projectBranchesResponseSchema>;
-declare c…97088 tokens truncated…list selection in Appearance)
+type …97115 tokens truncated…opener selection in Settings)
      * level, the composer reconciles to the closest supported one.
      */
     defaultReasoningLevel?: ReasoningLevel;

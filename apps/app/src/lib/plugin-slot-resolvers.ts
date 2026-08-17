@@ -276,6 +276,11 @@ export type FileOpenerOverride =
   | "builtin"
   | { pluginId: string; openerId: string };
 
+export type FileOpenerPreferenceMap = Record<string, string>;
+
+/** Persisted value for an explicit BB-preview choice. Missing means automatic. */
+export const BUILT_IN_FILE_OPENER_PREFERENCE = "__builtin__";
+
 /** Lowercased extension without the dot; null when the name has none. */
 export function getFileExtension(path: string): string | null {
   const name = path.split("/").at(-1) ?? path;
@@ -284,8 +289,16 @@ export function getFileExtension(path: string): string | null {
   return name.slice(dotIndex + 1).toLowerCase();
 }
 
+export function buildFileOpenerRef(opener: {
+  pluginId: string;
+  id: string;
+}): string {
+  return `${opener.pluginId}:${opener.id}`;
+}
+
 export function resolveFileOpenerReplacement(args: {
   registrations: readonly PluginFileOpenerSlot[];
+  preference?: FileOpenerPreferenceMap;
   path: string;
   override?: FileOpenerOverride;
 }): ResolvedReplacement<PluginFileOpenerSlot> {
@@ -302,8 +315,15 @@ export function resolveFileOpenerReplacement(args: {
 
   const extension = getFileExtension(args.path);
   if (extension === null) return OWNER_REPLACEMENT;
+  const preference = args.preference?.[extension];
+  if (preference === BUILT_IN_FILE_OPENER_PREFERENCE) {
+    return OWNER_REPLACEMENT;
+  }
   return resolveReplacement(
     args.registrations,
-    (candidate) => candidate.extensions.includes(extension),
+    (candidate) =>
+      candidate.extensions.includes(extension) &&
+      (preference === undefined ||
+        buildFileOpenerRef(candidate) === preference),
   );
 }

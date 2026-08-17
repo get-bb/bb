@@ -41,6 +41,7 @@ import { SidebarThreadListSetting } from "@/components/settings/SidebarThreadLis
 import { SplitDimmingSetting } from "@/components/settings/SplitDimmingSetting";
 import { useSettingsNavState } from "@/components/settings/settings-nav";
 import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
+import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
 import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSection";
@@ -1199,6 +1200,7 @@ export function SettingsView() {
           onRequestAccess={requestAccess}
           targets={workspaceOpenTargets}
         />
+        <FileOpenersSettingsSection />
       </>
     );
   } else if (activeSection === "machines") {

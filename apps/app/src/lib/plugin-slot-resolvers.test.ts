@@ -7,6 +7,8 @@ import type {
   PluginThreadListSlot,
 } from "./plugin-slots";
 import {
+  BUILT_IN_FILE_OPENER_PREFERENCE,
+  buildFileOpenerRef,
   resolveComposerActions,
   resolveComposerBanners,
   resolveComposerDraftObservers,
@@ -171,9 +173,10 @@ describe("replacement resolvers", () => {
       component: Component,
     };
 
-    expect(
-      resolveThreadListReplacement([threadList]),
-    ).toEqual({ kind: "plugin", registration: threadList });
+    expect(resolveThreadListReplacement([threadList])).toEqual({
+      kind: "plugin",
+      registration: threadList,
+    });
     expect(resolveThreadListReplacement([])).toEqual({ kind: "owner" });
   });
 
@@ -187,6 +190,12 @@ describe("replacement resolvers", () => {
       component: Component,
     };
     const text = { ...markdown, id: "text", extensions: ["txt"] };
+    const alternate = {
+      ...markdown,
+      pluginId: "alternate",
+      id: "preview",
+      title: "Preview",
+    };
 
     expect(
       resolveFileOpenerReplacement({
@@ -194,6 +203,20 @@ describe("replacement resolvers", () => {
         path: "README.MD",
       }),
     ).toEqual({ kind: "plugin", registration: markdown });
+    expect(
+      resolveFileOpenerReplacement({
+        registrations: [markdown, alternate],
+        preference: { md: BUILT_IN_FILE_OPENER_PREFERENCE },
+        path: "README.md",
+      }),
+    ).toEqual({ kind: "owner" });
+    expect(
+      resolveFileOpenerReplacement({
+        registrations: [markdown, alternate],
+        preference: { md: buildFileOpenerRef(alternate) },
+        path: "README.md",
+      }),
+    ).toEqual({ kind: "plugin", registration: alternate });
     expect(
       resolveFileOpenerReplacement({
         registrations: [markdown, text],
@@ -239,5 +262,12 @@ describe("replacement resolvers", () => {
         path: "README.md",
       }),
     ).toEqual({ kind: "plugin", registration: second });
+    expect(
+      resolveFileOpenerReplacement({
+        registrations: [second],
+        preference: { md: buildFileOpenerRef(first) },
+        path: "README.md",
+      }),
+    ).toEqual({ kind: "owner" });
   });
 });

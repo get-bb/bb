@@ -20,6 +20,7 @@ import {
   type WorkspaceFilePreviewFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import { usePluginSlots } from "@/lib/plugin-slots";
+import { useFileOpenerPreferenceValue } from "@/lib/file-opener-preference";
 import {
   createFileOpenerTabForRequest,
   type FileTabViewerOverride,
@@ -403,6 +404,7 @@ export function useThreadFileTabs({
   ]);
 
   const { fileOpeners } = usePluginSlots();
+  const fileOpenerPreference = useFileOpenerPreferenceValue();
 
   const openTab = useCallback(
     (
@@ -413,9 +415,10 @@ export function useThreadFileTabs({
       // funnels through here (links, file search, `bb thread open`), so a
       // matching plugin opener applies uniformly. Falls through to the
       // built-in tab when no opener matches; a link menu's per-open viewer
-      // choice overrides automatic resolution in either direction.
+      // choice overrides automatic or pinned resolution in either direction.
       const openerTab = createFileOpenerTabForRequest({
         fileOpeners,
+        preference: fileOpenerPreference,
         projectId,
         request,
         resolvedEnvironmentId,
@@ -451,6 +454,7 @@ export function useThreadFileTabs({
       return tab;
     },
     [
+      fileOpenerPreference,
       fileOpeners,
       recordRecentItem,
       projectId,

@@ -831,13 +831,14 @@ interface PluginThreadListRegistration {
     component: ComponentType<PluginThreadListProps>;
 }
 /**
- * Register this plugin as a viewer/editor for file extensions. Matching files
- * opened in the panel render the first applicable opener in deterministic slot
- * order. The file tab's "Open with" menu can still choose BB's preview or a
- * specific registered opener for one open. A plugin can use its own setting
- * and render `experimental_Original` conditionally. Applies to working-tree,
- * host, and thread-storage files — never to git-ref snapshots (diff views
- * always use BB's preview).
+ * Register this plugin as a viewer/editor for file extensions. By default,
+ * matching files render the first applicable opener in deterministic slot
+ * order. The user can pin BB's preview or a specific opener per extension
+ * under Settings → Files. The file tab's "Open with" menu can override that
+ * choice for one open. A plugin can also use its own setting and render
+ * `experimental_Original` conditionally. Applies to working-tree, host, and
+ * thread-storage files — never to git-ref snapshots (diff views always use
+ * BB's preview).
  */
 interface PluginFileOpenerRegistration {
     /** Unique within the plugin; letters, digits, `-`, `_`. */
