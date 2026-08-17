@@ -1927,9 +1927,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       // reports the session-behavior facts its own code implements.
       // sessionRestore is true — sessions persist (persistSession) and
       // SdkSession.start(resumeSessionId) reopens them via SDK resume.
-      // manualCompaction is false — there is no compact wire method here;
-      // `/compact` rides the prompt text and the Claude CLI handles it
-      // natively. fork is "checkpoint" — thread/fork maps
+      // fork is "checkpoint" — thread/fork maps
       // sourceProviderCheckpointId onto forkSession's upToMessageId.
       // approvalEnforcedBy is "provider" — canUseTool pre-filters
       // approvals in this bridge (policy shortcuts above the forward), so
@@ -1945,7 +1943,6 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
           threadArchive: false,
           threadRename: false,
           threadGoalClear: false,
-          manualCompaction: false,
           fork: "checkpoint",
           approvalEnforcedBy: "provider",
         },

@@ -22,7 +22,6 @@ describe("handshake", () => {
       threadArchive: false,
       threadRename: false,
       threadGoalClear: false,
-      manualCompaction: false,
       fork: "none",
       approvalEnforcedBy: "runtime",
     });

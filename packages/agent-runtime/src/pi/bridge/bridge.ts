@@ -547,8 +547,7 @@ async function handleRequest(
       // resolved from the thread id, and thread/resume reopens it. fork is
       // "checkpoint" — thread/fork accepts providerCheckpointId and
       // materializes the source history up to that entry
-      // (SessionManager.createBranchedSession). manualCompaction is true —
-      // the pi session can compact its own context on demand.
+      // (SessionManager.createBranchedSession).
       // Typed so a capability rename cannot silently degrade this bridge:
       // an unrenamed key would be missing from InitializeResult, not
       // defaulted false.
@@ -559,7 +558,6 @@ async function handleRequest(
           threadArchive: false,
           threadRename: false,
           threadGoalClear: false,
-          manualCompaction: true,
           fork: "checkpoint",
           approvalEnforcedBy: "runtime",
         },

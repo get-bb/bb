@@ -50,7 +50,7 @@ their plugin, not with the daemon — that decoupling is the protocol's reason
 to exist.
 
 Handshake capabilities are **session-behavior facts** (`sessionRestore`,
-`threadArchive`, `threadRename`, `threadGoalClear`, `manualCompaction`, `fork`,
+`threadArchive`, `threadRename`, `threadGoalClear`, `fork`,
 `approvalEnforcedBy`). They are reported by the code that implements
 them, so they cannot drift from behavior. The runtime never sends a
 capability-gated method to a bridge that did not advertise it. A handshake
@@ -58,15 +58,17 @@ fact may only _narrow_ what the provider's declaration advertises (a
 declared fork affordance can turn out unavailable for this agent), never
 widen it.
 
-`manualCompaction` is the one capability with no request method behind it, and
-therefore the one nothing gates on: compaction is triggered by a standalone
-builtin `/compact` prompt travelling the normal turn pipeline, which each
-bridge maps to its provider's compaction command. The `/compact` affordance is
-gated by the provider declaration's `supportsManualCompaction` (per ACP agent
-for the ACP bridge, which serves agents that differ on this), so the handshake
-fact only documents whether the bridge implements the prompt-path compaction —
-do not treat it as the gate. A structured compaction request is future work —
-reintroduce it only with a sender.
+Every capability listed there gates a request method, which is why the set
+holds no compaction fact. Compaction is triggered by a standalone builtin
+`/compact` prompt travelling the normal turn pipeline, which each bridge maps
+to its provider's compaction command; there is no compact request method, so
+there is nothing to withhold and nothing for a handshake fact to gate. The
+`/compact` affordance is gated solely by the provider declaration's
+`supportsManualCompaction`, which the ACP bridge needs per agent because the
+agents it serves differ on it — a process-level handshake, which runs before
+any session exists, cannot answer that question at all. A structured
+compaction request is future work — reintroduce it only with a sender, and
+only then does it earn a handshake capability.
 
 ## Identifiers
 

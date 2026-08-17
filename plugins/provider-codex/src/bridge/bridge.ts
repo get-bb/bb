@@ -1295,8 +1295,7 @@ function handleInitialize(id: string | number): void {
   // Session-behavior facts, each backed by the codex methods this bridge
   // implements: sessionRestore — rollouts persist and thread/resume reopens
   // them; threadArchive/threadRename — codex thread/archive|unarchive and
-  // thread/name/set; threadGoalClear — thread/goal/clear; manualCompaction — a
-  // standalone builtin /compact prompt dispatches codex thread/compact/start;
+  // thread/name/set; threadGoalClear — thread/goal/clear;
   // fork "checkpoint" — thread/fork accepts lastTurnId;
   // approvalEnforcedBy "runtime" — codex forwards every approval and the
   // runtime applies thread policy.
@@ -1309,7 +1308,6 @@ function handleInitialize(id: string | number): void {
       threadArchive: true,
       threadRename: true,
       threadGoalClear: true,
-      manualCompaction: true,
       fork: "checkpoint",
       approvalEnforcedBy: "runtime",
     },

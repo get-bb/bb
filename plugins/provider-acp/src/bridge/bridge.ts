@@ -2218,17 +2218,12 @@ async function handleRequest(
       // "tip" — ACP session/fork clones whole sessions and each agent's
       // support is verified per session at agent initialize. sessionRestore
       // stays false at the handshake; sessions that negotiate loadSession
-      // report sessionRestorable per session. manualCompaction is true — this
-      // bridge implements the standalone builtin `/compact` turn as the
-      // agent's own compaction command. It is a process-level fact and the
-      // handshake runs before any session exists, so it cannot answer the
-      // per-agent question ("does *this* ACP agent have /compact?"): that is
-      // the server-side per-agent `supportsManualCompaction` declaration,
-      // which is what gates the affordance in the UI. Nothing consumes this
-      // field for compaction today (there is no compact request method to
-      // gate), so it is documentation of what the bridge implements; the
-      // per-turn honesty lives in `startCompaction`, which fails the turn
-      // legibly for an agent that advertises no `compact` command.
+      // report sessionRestorable per session. Compaction is not a handshake
+      // fact: the `/compact` affordance is gated per agent by the server-side
+      // `supportsManualCompaction` declaration (the agents this bridge serves
+      // differ on it), and the per-turn honesty lives in `startCompaction`,
+      // which fails the turn legibly for an agent that advertises no
+      // `compact` command.
       // The `ok` field is the bridge's historical shape.
       // Typed so a capability rename cannot silently degrade this bridge:
       // an unrenamed key would be missing from InitializeResult, not
@@ -2241,7 +2236,6 @@ async function handleRequest(
           threadArchive: false,
           threadRename: false,
           threadGoalClear: false,
-          manualCompaction: true,
           fork: "tip",
           approvalEnforcedBy: "runtime",
         },
