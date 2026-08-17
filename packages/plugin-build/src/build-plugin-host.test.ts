@@ -180,6 +180,62 @@ describe("plugin host build", () => {
     ).rejects.toThrow(/cannot import private BB workspace package/u);
   });
 
+  it("bundles the published bridge surface without stubbing it", async () => {
+    // `@get-bb/plugin-sdk/bridge` is real published code — schemas and pure
+    // helpers, nothing daemon-pinned — so it is deliberately NOT in the
+    // runtime-stub table: a bridge plugin depends on the SDK and the build
+    // inlines its published, self-contained bundle. The plugin's own sources
+    // still cannot reach a private package (the test above).
+    const dir = await mkdtemp(join(process.cwd(), ".host-build-bridge-test-"));
+    tempDirs.push(dir);
+    await writeFile(
+      join(dir, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-host-bridge-fixture",
+        version: "1.0.0",
+        engines: { bb: ">=0.0" },
+        bb: {
+          name: "Bridge surface fixture",
+          description: "Imports the published bridge surface.",
+          branding: { icon: "Cpu" },
+          server: "./server.ts",
+          host: "./host.ts",
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "server.ts"),
+      "export default function plugin() {}\n",
+    );
+    await writeFile(
+      join(dir, "host.ts"),
+      [
+        'import { experimental_defineProviderBridge, turnScope, threadStartParamsSchema } from "@get-bb/plugin-sdk/bridge";',
+        "export const experimental_providerBridge = experimental_defineProviderBridge({",
+        "  handleLine(line) {",
+        "    threadStartParamsSchema.safeParse(JSON.parse(line));",
+        '    process.stdout.write(JSON.stringify(turnScope("thr_1", "turn_1")));',
+        "  },",
+        "});",
+        "export default {};",
+      ].join("\n"),
+    );
+
+    expect(
+      Object.keys(HOST_ARTIFACT_RUNTIME_STUBS),
+    ).not.toContain("@get-bb/plugin-sdk/bridge");
+    const result = await buildPluginHost(
+      dir,
+      "0.9.0-test",
+      await testToolchain(),
+    );
+    const bundle = await readFile(result.jsPath, "utf8");
+    // Self-contained: the private packages behind the surface are inlined, so
+    // an installed plugin never needs them on disk.
+    expect(bundle).not.toMatch(/from\s*"@bb\//u);
+    expect(bundle).toContain("experimental_apiVersion");
+  });
+
   it("rejects relative type imports into private BB workspace packages", async () => {
     const parent = await mkdtemp(join(tmpdir(), "bb-host-relative-private-"));
     tempDirs.push(parent);

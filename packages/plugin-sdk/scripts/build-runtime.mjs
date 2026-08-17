@@ -11,6 +11,13 @@ const packageRoot = path.resolve(
 const entries = [
   { source: "src/index.ts", output: "dist/index.js", external: [] },
   { source: "src/app.ts", output: "dist/app.js", external: [] },
+  // Real code, not a stub: the bridge surface is schemas and pure helpers, so
+  // the published bundle carries them. zod stays external (peer dependency).
+  {
+    source: "src/bridge.ts",
+    output: "dist/bridge.js",
+    external: ["zod", "zod/*"],
+  },
   { source: "src/host.ts", output: "dist/host.js", external: [] },
   {
     source: "src/internal/composer-customization-validation.ts",

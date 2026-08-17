@@ -58,6 +58,13 @@ export function experimental_defineHostEntry(args) {
  * artifact. Keep this table declarative so another daemon-side consumer can
  * add its published authoring surface without adding another manifest entry
  * or a parallel artifact builder.
+ *
+ * An entry belongs here only when the surface's *runtime* must come from the
+ * host rather than from the plugin's own node_modules — the members below are
+ * host-implemented and the SDK is a type-only devDependency for authors.
+ * `@get-bb/plugin-sdk/bridge` is deliberately absent: it is pure schema and
+ * helper code with no daemon-pinned behavior, so a provider plugin depends on
+ * the SDK for real and the build inlines its published bundle.
  */
 export const HOST_ARTIFACT_RUNTIME_STUBS: Record<string, string> = {
   "@get-bb/plugin-sdk": PLUGIN_SDK_ROOT_RUNTIME,

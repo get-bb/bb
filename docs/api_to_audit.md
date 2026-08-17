@@ -221,6 +221,47 @@ registration record so fields without a registry consumer yet
    capability before stabilizing: a declaration may assert what the provider
    itself implements, never what bb or its daemon can do with it.
 
+## `@get-bb/plugin-sdk/bridge` (the provider-bridge authoring surface)
+
+**What it does.** The published module a provider bridge compiles against. A
+bridge ships inside its plugin's `bb.host` artifact, and a host artifact may
+not import private `@bb/*` workspace packages, so everything a bridge needs is
+named here: `experimental_defineProviderBridge` (the export shape the
+daemon-side bootstrap looks for), the Provider Bridge Protocol's method
+vocabulary and param schemas, the bridge kit's authoring helpers (JSON-RPC
+framing, tool-call and interaction codecs, id scoping, visibility, translation
+helpers), and the `@bb/domain` event vocabulary those payloads are made of.
+Curated by hand — named exports only, never `export *`. Unlike
+`@get-bb/plugin-sdk` and `@get-bb/plugin-sdk/host`, it is NOT a build-time
+runtime stub: it is pure schema and helper code with no daemon-pinned
+behavior, so a provider plugin depends on the SDK for real and the artifact
+build inlines the SDK's published, self-contained bundle.
+
+**Audit before stabilizing.**
+
+1. **The event vocabulary's home.** The names in group (4) of `src/bridge.ts`
+   (`ThreadEvent`, `PromptInput`, `PendingInteractionPayload`, `turnScope`, …)
+   are `@bb/domain`'s — bb's persisted-thread vocabulary, shared by the server,
+   the app and the runtime. The SDK names them because a published surface
+   cannot reference a private package, not because it owns them; moving them
+   here would invert the dependency and hand the plugin SDK the product's core
+   domain. Decide, before third parties depend on the shapes, whether the
+   protocol should own a narrower event vocabulary of its own that `@bb/domain`
+   then derives from, or whether this facade is the permanent answer.
+2. **Surface size.** ~190 names is a large promise. Several are there for one
+   first-party bridge only (the Claude mock-CLI traffic config, the ACP
+   reasoning/permission CLI schemas, the workflow snapshot types). Each is a
+   candidate to move into its own plugin instead of being promised to everyone.
+3. **The ACP launch spec.** `hostDaemonAcpLaunchSpecSchema` is a
+   server↔daemon wire shape a bridge parses out of its provider-scoped static
+   options. It is the one core contract leaking into the published surface;
+   decide whether provider-scoped static options should be opaque to bb with
+   the schema owned by the ACP plugin, before the shape is a public promise.
+4. **`experimental_apiVersion` 1.** The bootstrap accepts version 1 only and
+   refuses anything else by name. Decide the deprecation window for a version
+   bump (a plugin's artifact and the daemon update independently) before the
+   first third-party bridge ships.
+
 ## `app.slots.experimental_providerIcon` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Lets a plugin frontend supply the React component bb draws

@@ -26,6 +26,12 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./bridge": {
+      "source": "./src/bridge.ts",
+      "types": "./bundled-types/bb-plugin-sdk-bridge.d.ts",
+      "import": "./dist/bridge.js",
+      "default": "./dist/bridge.js"
+    },
     "./app": {
       "source": "./src/app.ts",
       "types": "./bundled-types/bb-plugin-sdk-app.d.ts",
@@ -85,6 +91,9 @@
   },
   "devDependencies": {
     "@bb/domain": "workspace:*",
+    "@bb/host-daemon-contract": "workspace:*",
+    "@bb/process-utils": "workspace:*",
+    "@bb/provider-bridge-protocol": "workspace:*",
     "@bb/sdk": "workspace:*",
     "@bb/server-contract": "workspace:*",
     "@bb/tsconfig": "workspace:*",

@@ -20,6 +20,7 @@ export * from "./json-rpc-envelope.js";
 export * from "./mime-types.js";
 export * from "./pending-interaction-normalization.js";
 export * from "./permission-policy.js";
+export * from "./provider-bridge-entry.js";
 export * from "./provider-terminal-turn.js";
 export * from "./provider-tool-call-contract.js";
 export * from "./provider-unhandled-event.js";
