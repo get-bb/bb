@@ -219,3 +219,7 @@ The same error has other causes. A Node.js major-version change after the
 install causes it. A copy of `node_modules` from a different operating system,
 CPU architecture, or libc variant also causes it. To recover, install the
 package again, or run `npm rebuild better-sqlite3`.
+
+## Acknowledgements
+
+<a href="https://blacksmith.sh"><img src="assets/blacksmith-ci.png" alt="CI powered by Blacksmith" width="240"></a>
