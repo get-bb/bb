@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HostDaemonOnlineRpcCommand } from "@bb/host-daemon-contract";
+import type { WatchPathRootArgs } from "@bb/host-watcher";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   PluginHostManager,
@@ -17,6 +18,7 @@ type PluginCall = Extract<
 const artifactSource = Buffer.from(`
 const anySchema = { "~standard": { validate(value) { return { value }; } } };
 const stringSchema = { "~standard": { validate(value) { return typeof value === "string" ? { value } : { issues: [{ message: "expected string" }] }; } } };
+let lastPaths;
 export default {
   experimental_apiVersion: 1,
   contract: {
@@ -26,7 +28,10 @@ export default {
     stringEcho: { input: stringSchema, output: stringSchema },
     invalidOutput: { input: anySchema, output: stringSchema },
     large: { input: anySchema, output: anySchema },
+    pathsAndSignal: { input: anySchema, output: anySchema },
+    watch: { input: anySchema, output: anySchema },
   },
+  experimental_signals: { changed: { payload: anySchema } },
   handlers: {
     echo(input) { return { input, pid: process.pid }; },
     wait(_input, context) {
@@ -38,6 +43,34 @@ export default {
     stringEcho(input) { return input; },
     invalidOutput() { return { nope: true }; },
     large() { return "x".repeat(8 * 1024 * 1024); },
+    async pathsAndSignal(_input, context) {
+      lastPaths = context.experimental_paths;
+      await context.experimental_emitSignal("changed", { reason: "test" });
+      return context.experimental_paths;
+    },
+    async watch(input, context) {
+      await context.experimental_watch(
+        {
+          rootPath: input.rootPath,
+          ignoredPaths: [],
+          debounceMs: 10,
+          maxWaitMs: 100,
+        },
+        async (event) => {
+          await context.experimental_emitSignal("changed", event);
+          if (input.listenerDelayMs) {
+            await new Promise((resolve) => setTimeout(resolve, input.listenerDelayMs));
+          }
+        },
+      );
+      return { watching: true };
+    },
+  },
+  async dispose() {
+    if (lastPaths) {
+      const { writeFile } = await import("node:fs/promises");
+      await writeFile(lastPaths.dataDir + "/disposed", "yes");
+    }
   },
 };
 `);
@@ -119,9 +152,7 @@ describe("PluginHostManager", () => {
       invalid.call(
         callCommand({
           artifact: {
-            digest: createHash("sha256")
-              .update(invalidArtifact)
-              .digest("hex"),
+            digest: createHash("sha256").update(invalidArtifact).digest("hex"),
             byteLength: invalidArtifact.byteLength,
           },
         }),
@@ -181,6 +212,78 @@ describe("PluginHostManager", () => {
       }),
     ).resolves.toEqual({ disposed: true });
     expect(onWorkerExit).not.toHaveBeenCalled();
+  });
+
+  it("forwards typed signals and owns persistent and generation-temp paths", async () => {
+    const onSignal = vi.fn();
+    const manager = await createManager({ onSignal });
+    const command = callCommand({ method: "pathsAndSignal" });
+    const result = await manager.call(command);
+    const paths = result.output as { dataDir: string; tempDir: string };
+
+    await vi.waitFor(() => expect(onSignal).toHaveBeenCalledOnce());
+    expect(onSignal).toHaveBeenCalledWith({
+      pluginId: "fixture",
+      generation: "generation-1",
+      signal: "changed",
+      payload: { reason: "test" },
+    });
+    await manager.dispose({
+      type: "plugin.host.dispose",
+      pluginId: command.pluginId,
+      generation: command.generation,
+    });
+    await expect(
+      readFile(join(paths.dataDir, "disposed"), "utf8"),
+    ).resolves.toBe("yes");
+    await expect(stat(paths.tempDir)).rejects.toThrow();
+  });
+
+  it("backpressures native watch delivery and disposes watches with the worker", async () => {
+    const onSignal = vi.fn();
+    const stop = vi.fn(async () => undefined);
+    let watcher: WatchPathRootArgs | undefined;
+    const manager = await createManager({
+      onSignal,
+      hostWatcher: {
+        watchPathRoot(args) {
+          watcher = args;
+          return stop;
+        },
+      },
+    });
+    const command = callCommand({
+      method: "watch",
+      input: { rootPath: "/tmp/workspace", listenerDelayMs: 100 },
+    });
+    const call = manager.call(command);
+    await vi.waitFor(() => expect(watcher).toBeDefined());
+    watcher?.onReady();
+    await expect(call).resolves.toEqual({ output: { watching: true } });
+
+    watcher?.onChange([{ path: "/tmp/workspace/a", type: "update" }]);
+    await vi.waitFor(() => expect(onSignal).toHaveBeenCalledTimes(1));
+    watcher?.onChange([
+      { path: "/tmp/workspace/b", type: "create" },
+      { path: "/tmp/workspace/c", type: "delete" },
+    ]);
+    await vi.waitFor(() => expect(onSignal).toHaveBeenCalledTimes(2));
+    expect(onSignal.mock.calls[1]?.[0]).toMatchObject({
+      payload: {
+        kind: "changed",
+        changes: [
+          { path: "/tmp/workspace/b", type: "create" },
+          { path: "/tmp/workspace/c", type: "delete" },
+        ],
+      },
+    });
+
+    await manager.dispose({
+      type: "plugin.host.dispose",
+      pluginId: command.pluginId,
+      generation: command.generation,
+    });
+    expect(stop).toHaveBeenCalledOnce();
   });
 
   it("recovers after a crash and retires stale generations", async () => {

@@ -23,14 +23,68 @@ interface HostMethod {
   readonly output: StandardSchema;
 }
 
+interface HostSignal {
+  readonly payload: StandardSchema;
+}
+
+interface HostWatchOptions {
+  readonly rootPath: string;
+  readonly ignoredPaths?: readonly string[];
+  readonly debounceMs?: number;
+  readonly maxWaitMs?: number;
+}
+
+interface ResolvedHostWatchOptions {
+  readonly rootPath: string;
+  readonly ignoredPaths: readonly string[];
+  readonly debounceMs: number;
+  readonly maxWaitMs: number;
+}
+
+type HostWatchEvent =
+  | {
+      readonly kind: "changed";
+      readonly changes: readonly {
+        readonly path: string;
+        readonly type: "create" | "update" | "delete";
+      }[];
+    }
+  | { readonly kind: "rescan-required" }
+  | { readonly kind: "watch-error"; readonly message: string };
+
+type HostWatchListener = (event: HostWatchEvent) => void | Promise<void>;
+
+interface HostWatchSubscription {
+  dispose(): Promise<void>;
+}
+
+interface WorkerWatchState {
+  readonly listener: HostWatchListener;
+  readonly subscription: HostWatchSubscription;
+  resolve: (subscription: HostWatchSubscription) => void;
+  reject: (error: Error) => void;
+  ready: boolean;
+  disposed: boolean;
+}
+
 interface HostContext {
   readonly signal: AbortSignal;
   readonly lifecycle: { readonly signal: AbortSignal };
+  readonly experimental_paths: {
+    readonly dataDir: string;
+    readonly tempDir: string;
+  };
+  experimental_emitSignal(signal: string, payload: unknown): Promise<void>;
+  experimental_watch(
+    options: HostWatchOptions,
+    listener: HostWatchListener,
+  ): Promise<HostWatchSubscription>;
 }
 
 interface HostEntry {
   readonly experimental_apiVersion: 1;
   readonly contract: Readonly<Record<string, HostMethod>>;
+  readonly experimental_signals?: Readonly<Record<string, HostSignal>>;
   readonly handlers: Readonly<
     Record<string, (input: unknown, context: HostContext) => unknown>
   >;
@@ -45,7 +99,25 @@ type ParentMessage =
       readonly input: unknown;
     }
   | { readonly type: "cancel"; readonly callId: string }
-  | { readonly type: "dispose" };
+  | { readonly type: "dispose" }
+  | { readonly type: "watch-ready"; readonly watchId: string }
+  | {
+      readonly type: "watch-start-error";
+      readonly watchId: string;
+      readonly error: string;
+    }
+  | {
+      readonly type: "watch-event";
+      readonly watchId: string;
+      readonly sequence: number;
+      readonly event: HostWatchEvent;
+    };
+
+const MAX_WATCH_IGNORE_ENTRIES = 4_096;
+const MAX_WATCH_PATH_BYTES = 16 * 1024;
+const MIN_WATCH_DEBOUNCE_MS = 10;
+const MAX_WATCH_DEBOUNCE_MS = 5_000;
+const MAX_WATCH_WAIT_MS = 30_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -79,12 +151,77 @@ function parseEntry(value: unknown): HostEntry {
       throw new Error(`host artifact has an invalid method "${name}"`);
     }
   }
+  if (value.experimental_signals !== undefined) {
+    if (!isRecord(value.experimental_signals)) {
+      throw new Error("host artifact signals must be an object");
+    }
+    for (const [name, signal] of Object.entries(value.experimental_signals)) {
+      if (!isRecord(signal) || !isSchema(signal.payload)) {
+        throw new Error(`host artifact has an invalid signal "${name}"`);
+      }
+    }
+  }
   return value as unknown as HostEntry;
+}
+
+function parseHostWatchEvent(value: unknown): HostWatchEvent | null {
+  if (!isRecord(value) || typeof value.kind !== "string") return null;
+  if (value.kind === "rescan-required") return { kind: value.kind };
+  if (value.kind === "watch-error" && typeof value.message === "string") {
+    return { kind: value.kind, message: value.message };
+  }
+  if (value.kind !== "changed" || !Array.isArray(value.changes)) return null;
+  const changes: Array<{
+    path: string;
+    type: "create" | "update" | "delete";
+  }> = [];
+  for (const change of value.changes) {
+    if (!isRecord(change) || typeof change.path !== "string") return null;
+    if (
+      change.type !== "create" &&
+      change.type !== "update" &&
+      change.type !== "delete"
+    ) {
+      return null;
+    }
+    changes.push({ path: change.path, type: change.type });
+  }
+  return { kind: value.kind, changes };
 }
 
 function parseParentMessage(value: unknown): ParentMessage | null {
   if (!isRecord(value) || typeof value.type !== "string") return null;
   if (value.type === "dispose") return { type: "dispose" };
+  if (value.type === "watch-ready" && typeof value.watchId === "string") {
+    return { type: "watch-ready", watchId: value.watchId };
+  }
+  if (
+    value.type === "watch-start-error" &&
+    typeof value.watchId === "string" &&
+    typeof value.error === "string"
+  ) {
+    return {
+      type: "watch-start-error",
+      watchId: value.watchId,
+      error: value.error,
+    };
+  }
+  if (
+    value.type === "watch-event" &&
+    typeof value.watchId === "string" &&
+    typeof value.sequence === "number" &&
+    Number.isSafeInteger(value.sequence)
+  ) {
+    const event = parseHostWatchEvent(value.event);
+    if (event !== null) {
+      return {
+        type: "watch-event",
+        watchId: value.watchId,
+        sequence: value.sequence,
+        event,
+      };
+    }
+  }
   if (value.type === "cancel" && typeof value.callId === "string") {
     return { type: "cancel", callId: value.callId };
   }
@@ -103,7 +240,40 @@ function parseParentMessage(value: unknown): ParentMessage | null {
   return null;
 }
 
-async function validate(schema: StandardSchema, value: unknown): Promise<unknown> {
+function validateWatchOptions(
+  value: HostWatchOptions,
+): ResolvedHostWatchOptions {
+  if (!isRecord(value)) throw new Error("invalid host watch options");
+  const ignoredPaths = value.ignoredPaths ?? [];
+  const debounceMs = value.debounceMs ?? 75;
+  const maxWaitMs = value.maxWaitMs ?? 500;
+  if (
+    typeof value.rootPath !== "string" ||
+    !isAbsolute(value.rootPath) ||
+    Buffer.byteLength(value.rootPath) > MAX_WATCH_PATH_BYTES ||
+    !Array.isArray(ignoredPaths) ||
+    ignoredPaths.length > MAX_WATCH_IGNORE_ENTRIES ||
+    ignoredPaths.some(
+      (entry) =>
+        typeof entry !== "string" ||
+        Buffer.byteLength(entry) > MAX_WATCH_PATH_BYTES,
+    ) ||
+    !Number.isInteger(debounceMs) ||
+    debounceMs < MIN_WATCH_DEBOUNCE_MS ||
+    debounceMs > MAX_WATCH_DEBOUNCE_MS ||
+    !Number.isInteger(maxWaitMs) ||
+    maxWaitMs < debounceMs ||
+    maxWaitMs > MAX_WATCH_WAIT_MS
+  ) {
+    throw new Error("invalid host watch options");
+  }
+  return { rootPath: value.rootPath, ignoredPaths, debounceMs, maxWaitMs };
+}
+
+async function validate(
+  schema: StandardSchema,
+  value: unknown,
+): Promise<unknown> {
   const result = await schema["~standard"].validate(value);
   if (result.issues !== undefined) {
     throw new Error(result.issues.map((issue) => issue.message).join("; "));
@@ -140,20 +310,123 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-const [artifactPath, pluginId, generation] = process.argv.slice(2);
+const [artifactPath, pluginId, generation, dataDir, tempDir] =
+  process.argv.slice(2);
 if (
   artifactPath === undefined ||
   !isAbsolute(artifactPath) ||
   pluginId === undefined ||
-  generation === undefined
+  generation === undefined ||
+  dataDir === undefined ||
+  !isAbsolute(dataDir) ||
+  tempDir === undefined ||
+  !isAbsolute(tempDir)
 ) {
   throw new Error("invalid host worker arguments");
 }
 
 const lifecycleController = new AbortController();
 const activeCalls = new Map<string, AbortController>();
+const watches = new Map<string, WorkerWatchState>();
+let nextWatchId = 1;
 let entry: HostEntry;
 let disposing = false;
+
+function startWatch(
+  options: HostWatchOptions,
+  listener: HostWatchListener,
+  requestSignal: AbortSignal,
+): Promise<HostWatchSubscription> {
+  const validated = validateWatchOptions(options);
+  if (typeof listener !== "function") {
+    throw new Error("host watch listener must be a function");
+  }
+  if (disposing || lifecycleController.signal.aborted) {
+    throw new Error("host worker is disposing");
+  }
+  const watchId = String(nextWatchId++);
+  let resolve!: (subscription: HostWatchSubscription) => void;
+  let reject!: (error: Error) => void;
+  const pending = new Promise<HostWatchSubscription>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  const subscription: HostWatchSubscription = {
+    async dispose() {
+      const state = watches.get(watchId);
+      if (state === undefined || state.disposed) return;
+      state.disposed = true;
+      watches.delete(watchId);
+      send({ type: "watch-stop", watchId });
+      if (!state.ready) state.reject(new Error("host watch was disposed"));
+    },
+  };
+  const state: WorkerWatchState = {
+    listener,
+    subscription,
+    resolve,
+    reject,
+    ready: false,
+    disposed: false,
+  };
+  watches.set(watchId, state);
+  const abort = (): void => void subscription.dispose();
+  requestSignal.addEventListener("abort", abort, { once: true });
+  lifecycleController.signal.addEventListener("abort", abort, { once: true });
+  const cleanup = (): void => {
+    requestSignal.removeEventListener("abort", abort);
+    lifecycleController.signal.removeEventListener("abort", abort);
+  };
+  void pending.then(cleanup, cleanup);
+  if (requestSignal.aborted || lifecycleController.signal.aborted) {
+    void subscription.dispose();
+    return pending;
+  }
+  send({
+    type: "watch-start",
+    watchId,
+    rootPath: validated.rootPath,
+    ignoredPaths: [...validated.ignoredPaths],
+    debounceMs: validated.debounceMs,
+    maxWaitMs: validated.maxWaitMs,
+  });
+  return pending;
+}
+
+function handleWatchReady(watchId: string): void {
+  const state = watches.get(watchId);
+  if (state === undefined || state.disposed || state.ready) return;
+  state.ready = true;
+  state.resolve(state.subscription);
+}
+
+function handleWatchStartError(watchId: string, error: string): void {
+  const state = watches.get(watchId);
+  if (state === undefined || state.disposed || state.ready) return;
+  state.disposed = true;
+  watches.delete(watchId);
+  state.reject(new Error(error));
+}
+
+function handleWatchEvent(
+  watchId: string,
+  sequence: number,
+  event: HostWatchEvent,
+): void {
+  const state = watches.get(watchId);
+  if (state === undefined || state.disposed) {
+    send({ type: "watch-ack", watchId, sequence });
+    return;
+  }
+  void Promise.resolve()
+    .then(() => state.listener(event))
+    .catch((error) => {
+      process.stderr.write(
+        `Host watch listener failed: ${errorMessage(error)}\n`,
+      );
+    })
+    .finally(() => send({ type: "watch-ack", watchId, sequence }));
+}
 
 async function dispose(): Promise<void> {
   if (disposing) return;
@@ -161,6 +434,9 @@ async function dispose(): Promise<void> {
   lifecycleController.abort();
   for (const controller of activeCalls.values()) controller.abort();
   activeCalls.clear();
+  await Promise.all(
+    [...watches.values()].map((watch) => watch.subscription.dispose()),
+  );
   try {
     await entry.dispose?.();
   } finally {
@@ -200,6 +476,21 @@ async function handleCall(
     const result = await handler(input, {
       signal: controller.signal,
       lifecycle: { signal: lifecycleController.signal },
+      experimental_paths: { dataDir, tempDir },
+      async experimental_emitSignal(signalName, payload) {
+        const signal = entry.experimental_signals?.[signalName];
+        if (signal === undefined) {
+          throw new Error(`unknown host signal "${signalName}"`);
+        }
+        const validated = await validate(signal.payload, payload);
+        send({
+          type: "signal",
+          signal: signalName,
+          payload: normalizeJson(validated, `host signal ${signalName}`),
+        });
+      },
+      experimental_watch: (options, listener) =>
+        startWatch(options, listener, controller.signal),
     });
     const output = normalizeJson(
       await validate(method.output, result),
@@ -228,6 +519,12 @@ try {
       void handleCall(message);
     } else if (message.type === "cancel") {
       activeCalls.get(message.callId)?.abort();
+    } else if (message.type === "watch-ready") {
+      handleWatchReady(message.watchId);
+    } else if (message.type === "watch-start-error") {
+      handleWatchStartError(message.watchId, message.error);
+    } else if (message.type === "watch-event") {
+      handleWatchEvent(message.watchId, message.sequence, message.event);
     } else {
       void dispose();
     }

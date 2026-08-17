@@ -58,6 +58,7 @@ describe("plugin host build", () => {
         "} });",
         "export default experimental_defineHostEntry({",
         "  contract,",
+        "  experimental_signals: { changed: { payload: schema } },",
         "  handlers: { echo: (input) => input },",
         "});",
         "",
@@ -92,10 +93,12 @@ describe("plugin host build", () => {
     const builtEntry = (await import(result.jsPath)) as {
       default: {
         experimental_apiVersion: number;
+        experimental_signals: { changed: { payload: unknown } };
         handlers: { echo: (input: string) => string };
       };
     };
     expect(builtEntry.default.experimental_apiVersion).toBe(1);
+    expect(builtEntry.default.experimental_signals).toHaveProperty("changed");
     expect(builtEntry.default.handlers.echo("from-artifact")).toBe(
       "from-artifact",
     );

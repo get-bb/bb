@@ -631,8 +631,10 @@ bb.http.route (routes under /api/v1/plugins/<id>/http/* with
 local/token/none auth); defineRpcContract + bb.rpc.register (Standard
 Schema-validated frontend data plane with inferred backend handlers and
 type-only frontend method/input/result inference);
-defineRpcContract + bb.hosts.experimental_client (typed calls and
-unexpected-worker-exit notifications to the plugin's own `bb.host` entry; the host entry uses
+defineRpcContract + bb.hosts.experimental_client (typed calls, typed ephemeral
+host signals, and unexpected-worker-exit notifications to the plugin's own
+`bb.host` entry; the host context also provides plugin-scoped data/temp paths
+and daemon-owned native file watching; the host entry uses
 experimental_defineHostEntry from
 `@get-bb/plugin-sdk/host` and can be unit-tested with
 experimental_createHostEntryHarness from

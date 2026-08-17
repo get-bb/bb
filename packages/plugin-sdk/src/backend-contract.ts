@@ -4,11 +4,11 @@ import type * as z from "zod";
 import type { BbSdk } from "@bb/sdk";
 import type { ThreadResponse } from "@bb/server-contract";
 import type { JsonValue } from "./json-value.js";
+import type { PluginRpcContract, PluginRpcHandlers } from "./rpc-contract.js";
 import type {
-  PluginRpcContract,
-  PluginRpcHandlers,
-} from "./rpc-contract.js";
-import type { ExperimentalHostClient } from "./host-contract.js";
+  ExperimentalHostClient,
+  ExperimentalHostSignals,
+} from "./host-contract.js";
 
 /**
  * The backend plugin API contract — the `bb` object handed to a plugin's
@@ -633,9 +633,13 @@ export interface PluginSharedPortTunnelIdentity {
 
 export interface PluginHosts {
   /** Create the owning plugin's typed client for its singular `bb.host` entry. */
-  experimental_client<Contract extends PluginRpcContract>(args: {
+  experimental_client<
+    Contract extends PluginRpcContract,
+    Signals extends ExperimentalHostSignals = {},
+  >(args: {
     contract: Contract;
-  }): ExperimentalHostClient<Contract>;
+    experimental_signals?: Signals;
+  }): ExperimentalHostClient<Contract, Signals>;
 
   /**
    * Ensure this enrolled host has a gate label and return its read-only public

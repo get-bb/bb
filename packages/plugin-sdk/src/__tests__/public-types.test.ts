@@ -99,8 +99,18 @@ const EXPECTED_HOST_ROOT_TYPE_EXPORTS = [
   "ExperimentalHostCallOptions",
   "ExperimentalHostClient",
   "ExperimentalHostEntry",
+  "ExperimentalHostPaths",
   "ExperimentalHostRpcContext",
   "ExperimentalHostRpcHandlers",
+  "ExperimentalHostSignalContract",
+  "ExperimentalHostSignalEvent",
+  "ExperimentalHostSignals",
+  "ExperimentalHostWatchChange",
+  "ExperimentalHostWatchChangeType",
+  "ExperimentalHostWatchEvent",
+  "ExperimentalHostWatchListener",
+  "ExperimentalHostWatchOptions",
+  "ExperimentalHostWatchSubscription",
 ] as const;
 
 const EXPECTED_HOST_ROOT_VALUE_EXPORTS = [

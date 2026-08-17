@@ -195,6 +195,7 @@ describe("plugin bb.sdk bind gate", () => {
         export default {
           experimental_apiVersion: 1,
           contract: { ping: { input: schema, output: schema } },
+          experimental_signals: { changed: { payload: schema } },
           handlers: { ping: (input) => input },
         };
       `,
@@ -207,7 +208,15 @@ describe("plugin bb.sdk bind gate", () => {
         output: z.object({ pong: z.boolean() }).strict(),
       },
     });
-    const client = api.hosts.experimental_client({ contract });
+    const experimental_signals = {
+      changed: {
+        payload: z.object({ sequence: z.number().int() }).strict(),
+      },
+    };
+    const client = api.hosts.experimental_client({
+      contract,
+      experimental_signals,
+    });
 
     await expect(
       client.call("ping", { value: "hello" }, { hostId: "host-1" }),
@@ -227,7 +236,9 @@ describe("plugin bb.sdk bind gate", () => {
     );
 
     const workerExitHandler = vi.fn();
+    const signalHandler = vi.fn();
     client.experimental_onWorkerExit(workerExitHandler);
+    client.experimental_onSignal("changed", signalHandler);
     const artifact = callPluginHost.mock.calls[0]?.[0].artifact;
     if (artifact === undefined) throw new Error("missing host artifact call");
     const servedArtifact = service.readHostArtifact(
@@ -248,6 +259,20 @@ describe("plugin bb.sdk bind gate", () => {
       pluginId: "host-client",
       generation: "stale-generation",
     });
+    service.handleHostSignal({
+      authenticatedHostId: "host-1",
+      pluginId: "host-client",
+      generation: "stale-generation",
+      signal: "changed",
+      payload: { sequence: 1 },
+    });
+    service.handleHostSignal({
+      authenticatedHostId: "host-1",
+      pluginId: "host-client",
+      generation: artifact.generation,
+      signal: "changed",
+      payload: { sequence: 2 },
+    });
     service.handleHostWorkerExit({
       authenticatedHostId: "host-1",
       pluginId: "host-client",
@@ -255,6 +280,11 @@ describe("plugin bb.sdk bind gate", () => {
     });
     await vi.waitFor(() => expect(workerExitHandler).toHaveBeenCalledOnce());
     expect(workerExitHandler).toHaveBeenCalledWith({ hostId: "host-1" });
+    await vi.waitFor(() => expect(signalHandler).toHaveBeenCalledOnce());
+    expect(signalHandler).toHaveBeenCalledWith({
+      hostId: "host-1",
+      payload: { sequence: 2 },
+    });
     expect(service.listHostArtifactGenerations()).toEqual([
       { pluginId: "host-client", generation: artifact.generation },
     ]);

@@ -12,6 +12,7 @@ import {
   CLI_COMMAND_NAME_PATTERN,
   enforcePluginCliOutputLimit,
   isZodSchemaLike,
+  isStandardSchema,
   KV_VALUE_MAX_BYTES,
   MENTION_PROVIDER_ID_PATTERN,
   normalizeMentionProviderTriggers,
@@ -244,6 +245,12 @@ export interface FakePluginInspectionState {
 export interface FakePluginBehaviorDrivers {
   /** Deliver an unexpected host-worker exit to every registered client. */
   experimental_emitHostWorkerExit(hostId: string): Promise<void>;
+  /** Deliver a host signal through its registered payload schema. */
+  experimental_emitHostSignal(
+    hostId: string,
+    signal: string,
+    payload: unknown,
+  ): Promise<void>;
   submitInteraction(id: string, value: JsonValue): void;
   cancelInteraction(id: string): void;
   /**
@@ -439,9 +446,18 @@ interface FakeRpcRecord {
   handler: (input: never) => unknown;
 }
 
-type FakeHostWorkerExitSubscription = (
-  event: { readonly hostId: string },
-) => void | Promise<void>;
+type FakeHostWorkerExitSubscription = (event: {
+  readonly hostId: string;
+}) => void | Promise<void>;
+
+interface FakeHostSignalSubscription {
+  signal: string;
+  payloadSchema: StandardSchemaV1;
+  handler: (event: {
+    hostId: string;
+    payload: unknown;
+  }) => void | Promise<void>;
+}
 
 function normalizeRpcIssues(
   issues: readonly StandardSchemaV1Issue[],
@@ -1509,8 +1525,9 @@ function createFakePluginHostInternal(
     [];
   const hostRpcCalls: ExperimentalFakeHostRpcCall[] = [];
   const hostWorkerExitSubscriptions: FakeHostWorkerExitSubscription[] = [];
+  const hostSignalSubscriptions: FakeHostSignalSubscription[] = [];
   const hosts: PluginHosts = {
-    experimental_client({ contract }) {
+    experimental_client({ contract, experimental_signals }) {
       return {
         async call(method, input, callOptions) {
           assertLive();
@@ -1570,6 +1587,35 @@ function createFakePluginHostInternal(
             subscribed = false;
             const index = hostWorkerExitSubscriptions.indexOf(handler);
             if (index >= 0) hostWorkerExitSubscriptions.splice(index, 1);
+          };
+        },
+        experimental_onSignal(signal, handler) {
+          assertLive();
+          const descriptor = experimental_signals?.[signal];
+          if (
+            typeof signal !== "string" ||
+            signal.length === 0 ||
+            typeof descriptor !== "object" ||
+            descriptor === null ||
+            !isStandardSchema(descriptor.payload)
+          ) {
+            throw new Error(`unknown host signal "${String(signal)}"`);
+          }
+          if (typeof handler !== "function") {
+            throw new Error("host signal subscription requires a handler");
+          }
+          const record: FakeHostSignalSubscription = {
+            signal,
+            payloadSchema: descriptor.payload,
+            handler,
+          };
+          hostSignalSubscriptions.push(record);
+          let subscribed = true;
+          return () => {
+            if (!subscribed) return;
+            subscribed = false;
+            const index = hostSignalSubscriptions.indexOf(record);
+            if (index >= 0) hostSignalSubscriptions.splice(index, 1);
           };
         },
       };
@@ -1686,6 +1732,7 @@ function createFakePluginHostInternal(
       rmSync(storageRoot, { recursive: true, force: true });
     }
     hostWorkerExitSubscriptions.splice(0);
+    hostSignalSubscriptions.splice(0);
     invalidated = true;
   }
 
@@ -1749,6 +1796,26 @@ function createFakePluginHostInternal(
       }
       for (const handler of [...hostWorkerExitSubscriptions]) {
         await handler({ hostId });
+      }
+    },
+    async experimental_emitHostSignal(hostId, signal, payload) {
+      assertLive();
+      if (hostId.trim().length === 0) {
+        throw new Error("host signal hostId must be non-empty");
+      }
+      const subscriptions = hostSignalSubscriptions.filter(
+        (subscription) => subscription.signal === signal,
+      );
+      for (const subscription of subscriptions) {
+        const normalized = normalizeRpcJsonResult(
+          await validateRpcValue(subscription.payloadSchema, payload, "input"),
+        );
+        const parsed = await validateRpcValue(
+          subscription.payloadSchema,
+          normalized,
+          "input",
+        );
+        await subscription.handler({ hostId, payload: parsed });
       }
     },
     submitInteraction(id, value) {

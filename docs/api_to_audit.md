@@ -5,13 +5,14 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
-## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `experimental_defineHostEntry`, and `experimental_createHostEntryHarness`)
+## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `experimental_defineHostEntry`, and `experimental_createHostEntryHarness`)
 
 **What it does.** Lets one plugin package declare a singular `bb.host` Node
 entry, share a Standard Schema contract between its server and host entries,
 and call methods on an explicit enrolled host. A client may observe unexpected
-worker exits so the server entry can restore desired host state without
-polling. The host context supplies request and generation abort signals.
+worker exits and typed, ephemeral host signals. The host context supplies
+request and generation abort signals, persistent plugin-scoped data and
+generation-scoped temporary directories, and daemon-owned native file watches.
 
 The initial builtin proof is Keep Awake: it owns a host target, a
 generation-owned child process, desired-state reconciliation, and
@@ -30,26 +31,33 @@ unexpected-exit recovery without feature-specific core hooks.
    remains suppressed for graceful disposal, and does not create crash loops.
    Verify reconnect generation reconciliation covers disable/uninstall during
    an outage without stopping a still-current worker on every transient drop.
-4. **Limits.** Audit the common call deadline, startup/cancellation grace, 8
+4. **Signals and watches.** Confirm host signals should remain private,
+   ephemeral invalidations rather than a durable event log. Audit native-watch
+   coalescing, backpressure, rescan/error events, per-worker limits, and cleanup
+   against a plugin that watches real workspace state.
+5. **Paths.** Confirm the stable host data path layout and generation-temporary
+   cleanup behavior across crashes and daemon restarts.
+6. **Limits.** Audit the common call deadline, startup/cancellation grace, 8
    MiB JSON payload cap, and artifact cache behavior against real plugins.
-5. **Environment.** Confirm executable discovery through normalized `PATH`
+7. **Environment.** Confirm executable discovery through normalized `PATH`
    and stripping all daemon-owned `BB_*` variables.
-6. **Trust and dependencies.** V1 host plugins are trusted Node programs that
+8. **Trust and dependencies.** V1 host plugins are trusted Node programs that
    may use `child_process`, filesystem, and network APIs. Decide whether later
    permissions, native artifacts, or an explicit dependency installer can be
    layered on without changing the RPC contract. Confirm rejecting all private
    `@bb/*` imports from host bundles is the correct permanent boundary, and
    audit the builder-supplied public SDK runtime against future host exports.
-7. **Composition boundary.** Confirm a plugin's host entry should remain
+9. **Composition boundary.** Confirm a plugin's host entry should remain
    private to that plugin's server entry.
-8. **Test harness.** Audit both layers: the server harness's
-   `experimental_callHostRpc` option, `experimental_hostRpcCalls` inspection
-   list, and `experimental_emitHostWorkerExit` behavior driver; and the
-   host-entry harness's `experimental_call`,
-   `experimental_lifecycleSignal`, and `experimental_dispose`. Confirm the
-   host harness should continue simulating validation, cancellation, lifecycle,
-   JSON, and size limits without pretending to model process startup, crashes,
-   or reconnect behavior.
+10. **Test harness.** Audit both layers: the server harness's
+    `experimental_callHostRpc` option, `experimental_hostRpcCalls` inspection
+    list, `experimental_emitHostWorkerExit`, and `experimental_emitHostSignal`
+    behavior drivers; and the host-entry harness's `experimental_call`,
+    `experimental_getSignals`, `experimental_lifecycleSignal`, path/watch
+    options, and `experimental_dispose`. Confirm the host harness should
+    continue simulating validation, cancellation, lifecycle, JSON, and size
+    limits without pretending to model process startup, crashes, native watcher
+    recovery, or reconnect behavior.
 
 ## `PluginNavPanelRegistration.experimental_sidebarAccessory`
 

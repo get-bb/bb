@@ -1059,6 +1059,8 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
+  // Version 127 carries typed host-plugin signals from daemon workers to the
+  // server. Older daemons cannot publish plugin-owned host invalidations.
   // Version 125 adds the authoritative active-plugin generation snapshot on
   // session open and artifact retrieval. Without it a reconnect cannot retire
   // workers disabled or replaced while offline.
@@ -1100,7 +1102,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(126);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(127);
   });
 
   it("requires an explicit intent on a thread stop command", () => {
@@ -3525,6 +3527,22 @@ describe("host-daemon session schemas", () => {
       type: "plugin-host.worker-exited",
       pluginId: "keep-awake",
       generation: "generation-1",
+    });
+
+    expect(
+      hostDaemonDaemonWsMessageSchema.parse({
+        type: "plugin-host.signal",
+        pluginId: "fixture",
+        generation: "generation-1",
+        signal: "changed",
+        payload: { sequence: 2 },
+      }),
+    ).toEqual({
+      type: "plugin-host.signal",
+      pluginId: "fixture",
+      generation: "generation-1",
+      signal: "changed",
+      payload: { sequence: 2 },
     });
 
     expect(

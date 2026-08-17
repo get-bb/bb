@@ -68,6 +68,7 @@ import {
   RESERVED_AGENT_TOOL_NAMES,
   RESERVED_BB_CLI_COMMANDS,
   RPC_METHOD_PATTERN,
+  isStandardSchema,
   summarizeParseIssues,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import type { BbSdk, ThreadForkArgs, ThreadSpawnArgs } from "@bb/sdk";
@@ -280,6 +281,8 @@ export interface PluginApiHandle {
   rpcHandlers: Map<string, PluginRpcHandler>;
   /** Unexpected host-worker exit handlers registered by this generation. */
   hostWorkerExitHandlers: PluginHostWorkerExitHandler[];
+  /** Typed host signals registered by this generation. */
+  hostSignalHandlers: PluginHostSignalHandler[];
   /** Background services recorded by `bb.background.service`. */
   backgroundServices: PluginBackgroundServiceRecord[];
   /** Schedules recorded by `bb.background.schedule`. */
@@ -306,6 +309,15 @@ export interface PluginApiHandle {
 export type PluginHostWorkerExitHandler = (event: {
   hostId: string;
 }) => void | Promise<void>;
+
+export interface PluginHostSignalHandler {
+  signal: string;
+  payloadSchema: StandardSchemaV1;
+  handler: (event: {
+    hostId: string;
+    payload: unknown;
+  }) => void | Promise<void>;
+}
 
 /** Provider registered by `bb.agents.contributeInstructions`. */
 export type PluginInstructionProvider = (ctx: {
@@ -440,6 +452,7 @@ export function createPluginApi(options: {
   const httpRoutes: PluginHttpRouteRecord[] = [];
   const rpcHandlers = new Map<string, PluginRpcHandler>();
   const hostWorkerExitHandlers: PluginHostWorkerExitHandler[] = [];
+  const hostSignalHandlers: PluginHostSignalHandler[] = [];
   const backgroundServices: PluginBackgroundServiceRecord[] = [];
   const schedules: PluginScheduleRecord[] = [];
 
@@ -1103,7 +1116,7 @@ export function createPluginApi(options: {
   };
 
   const hosts: PluginHosts = {
-    experimental_client({ contract }) {
+    experimental_client({ contract, experimental_signals }) {
       assertLive();
       if (callPluginHost === undefined) {
         throw new Error("host plugin transport is unavailable");
@@ -1117,10 +1130,7 @@ export function createPluginApi(options: {
               "host plugin calls are unavailable during factory registration; call from a handler, service, or timer",
             );
           }
-          if (
-            typeof method !== "string" ||
-            contract[method] === undefined
-          ) {
+          if (typeof method !== "string" || contract[method] === undefined) {
             throw new Error(`unknown host rpc method "${String(method)}"`);
           }
           if (
@@ -1153,6 +1163,35 @@ export function createPluginApi(options: {
             subscribed = false;
             const index = hostWorkerExitHandlers.indexOf(handler);
             if (index >= 0) hostWorkerExitHandlers.splice(index, 1);
+          };
+        },
+        experimental_onSignal(signal, handler) {
+          assertLive();
+          const descriptor = experimental_signals?.[signal];
+          if (
+            typeof signal !== "string" ||
+            signal.length === 0 ||
+            typeof descriptor !== "object" ||
+            descriptor === null ||
+            !isStandardSchema(descriptor.payload)
+          ) {
+            throw new Error(`unknown host signal "${String(signal)}"`);
+          }
+          if (typeof handler !== "function") {
+            throw new Error("host signal subscription requires a handler");
+          }
+          const record: PluginHostSignalHandler = {
+            signal,
+            payloadSchema: descriptor.payload,
+            handler,
+          };
+          hostSignalHandlers.push(record);
+          let subscribed = true;
+          return () => {
+            if (!subscribed) return;
+            subscribed = false;
+            const index = hostSignalHandlers.indexOf(record);
+            if (index >= 0) hostSignalHandlers.splice(index, 1);
           };
         },
       };
@@ -1232,6 +1271,7 @@ export function createPluginApi(options: {
     httpRoutes,
     rpcHandlers,
     hostWorkerExitHandlers,
+    hostSignalHandlers,
     backgroundServices,
     schedules,
     cli: cliRecord,

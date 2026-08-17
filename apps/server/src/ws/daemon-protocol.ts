@@ -89,7 +89,7 @@ export function onDaemonSocketMessage(
     "config" | "db" | "hub" | "logger" | "sharedPorts" | "terminalSessions"
   >,
   args: DaemonSocketMessageArgs,
-  plugins?: Pick<PluginService, "handleHostWorkerExit">,
+  plugins?: Pick<PluginService, "handleHostSignal" | "handleHostWorkerExit">,
 ): void {
   let decoded: unknown;
   try {
@@ -174,6 +174,16 @@ export function onDaemonSocketMessage(
           authenticatedHostId: args.hostId,
           pluginId: result.data.pluginId,
           generation: result.data.generation,
+        });
+        return;
+      }
+      if (result.data.type === "plugin-host.signal") {
+        plugins?.handleHostSignal({
+          authenticatedHostId: args.hostId,
+          pluginId: result.data.pluginId,
+          generation: result.data.generation,
+          signal: result.data.signal,
+          payload: result.data.payload,
         });
         return;
       }

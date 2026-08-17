@@ -188,6 +188,8 @@ interface FakePluginInspectionState {
 interface FakePluginBehaviorDrivers {
     /** Deliver an unexpected host-worker exit to every registered client. */
     experimental_emitHostWorkerExit(hostId: string): Promise<void>;
+    /** Deliver a host signal through its registered payload schema. */
+    experimental_emitHostSignal(hostId: string, signal: string, payload: unknown): Promise<void>;
     submitInteraction(id: string, value: JsonValue): void;
     cancelInteraction(id: string): void;
     /**

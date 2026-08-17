@@ -3,18 +3,22 @@ import { fork, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import {
   mkdir,
+  mkdtemp,
   readFile,
   rename,
+  rm,
   writeFile,
 } from "node:fs/promises";
-import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Readable } from "node:stream";
 import type {
   HostDaemonOnlineRpcCommand,
   HostDaemonOnlineRpcResult,
 } from "@bb/host-daemon-contract";
-import { jsonValueSchema } from "@bb/domain";
+import type { HostPathWatchChange, HostWatcher } from "@bb/host-watcher";
+import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import type { HostDaemonLogger } from "./logger.js";
 
 type PluginHostCallCommand = Extract<
@@ -45,11 +49,30 @@ interface WorkerState {
   digest: string;
   child: ChildProcess;
   closed: Promise<void>;
+  dataDir: string;
+  tempDir: string;
   pending: Map<string, PendingCall>;
   ready: Promise<void>;
   resolveReady: () => void;
   rejectReady: (error: Error) => void;
   disposing: boolean;
+  watches: Map<string, WorkerWatchState>;
+}
+
+interface WorkerWatchState {
+  watchId: string;
+  worker: WorkerState;
+  stop: () => void | Promise<void>;
+  stopped: boolean;
+  inFlightSequence: number | null;
+  nextSequence: number;
+  pendingChanges: Map<string, HostPathWatchChange["type"]>;
+  pendingRescan: boolean;
+  pendingError: string | null;
+  debounceMs: number;
+  maxWaitMs: number;
+  debounceTimer: NodeJS.Timeout | null;
+  maxWaitTimer: NodeJS.Timeout | null;
 }
 
 interface ActiveCallState {
@@ -65,15 +88,31 @@ export interface PluginHostManagerOptions {
     expectedByteLength: number;
   }) => Promise<Uint8Array>;
   onWorkerExit?: (args: { pluginId: string; generation: string }) => void;
+  onSignal?: (args: {
+    pluginId: string;
+    generation: string;
+    signal: string;
+    payload: JsonValue;
+  }) => void;
   workerEntryPath?: string;
   /** User shell additions used for executable discovery by host plugins. */
   shellEnv?: () => NodeJS.ProcessEnv;
+  /** Native path observation shared by core and host plugins. */
+  hostWatcher?: Pick<HostWatcher, "watchPathRoot">;
 }
 
 const START_TIMEOUT_MS = 10_000;
 const CANCEL_GRACE_MS = 5_000;
 const HOST_WORKER_PROTOCOL_VERSION = 1;
 const MAX_PENDING_CALLS_PER_WORKER = 256;
+const MAX_WATCHES_PER_WORKER = 256;
+const MAX_WATCH_CHANGED_PATHS = 4_096;
+const MAX_WATCH_BATCH_BYTES = 1024 * 1024;
+const MAX_WATCH_IGNORE_ENTRIES = 4_096;
+const MAX_WATCH_PATH_BYTES = 16 * 1024;
+const MIN_WATCH_DEBOUNCE_MS = 10;
+const MAX_WATCH_DEBOUNCE_MS = 5_000;
+const MAX_WATCH_WAIT_MS = 30_000;
 const HOST_DIAGNOSTIC_LINE_MAX_BYTES = 16 * 1024;
 const HOST_DIAGNOSTIC_MAX_LINES = 1_000;
 
@@ -360,15 +399,41 @@ export class PluginHostManager {
     }
 
     const artifactPath = await this.materializeArtifact(command);
-    const child = fork(
-      this.options.workerEntryPath ?? defaultWorkerEntryPath(),
-      [artifactPath, command.pluginId, command.generation],
-      {
-        env: pluginHostProcessEnv(process.env, this.options.shellEnv?.() ?? {}),
-        stdio: ["ignore", "ignore", "pipe", "ipc"],
-      },
+    const pluginSegment = safePluginSegment(command.pluginId);
+    const dataDir = join(
+      this.options.dataDir,
+      "plugins",
+      pluginSegment,
+      "host-data",
     );
+    await mkdir(dataDir, { recursive: true });
+    const tempDir = await mkdtemp(join(tmpdir(), `bb-host-${pluginSegment}-`));
+    let child: ChildProcess;
+    try {
+      child = fork(
+        this.options.workerEntryPath ?? defaultWorkerEntryPath(),
+        [artifactPath, command.pluginId, command.generation, dataDir, tempDir],
+        {
+          env: pluginHostProcessEnv(
+            process.env,
+            this.options.shellEnv?.() ?? {},
+          ),
+          stdio: ["ignore", "ignore", "pipe", "ipc"],
+        },
+      );
+    } catch (error) {
+      await rm(tempDir, { recursive: true, force: true });
+      throw error;
+    }
     const closed = new Promise<void>((resolve) => child.once("close", resolve));
+    void closed
+      .then(() => rm(tempDir, { recursive: true, force: true }))
+      .catch((error) => {
+        this.options.logger.warn(
+          { pluginId: command.pluginId, err: error },
+          "Failed to remove host plugin temporary directory",
+        );
+      });
     let resolveReady!: () => void;
     let rejectReady!: (error: Error) => void;
     const ready = new Promise<void>((resolve, reject) => {
@@ -381,11 +446,14 @@ export class PluginHostManager {
       digest: command.artifact.digest,
       child,
       closed,
+      dataDir,
+      tempDir,
       pending: new Map(),
       ready,
       resolveReady,
       rejectReady,
       disposing: false,
+      watches: new Map(),
     };
     let unexpectedExitReported = false;
     const failWorker = (reason: string): void => {
@@ -398,6 +466,7 @@ export class PluginHostManager {
       }
       worker.rejectReady(new Error(reason));
       this.rejectPendingCalls(worker, reason);
+      void this.stopAllWorkerWatches(worker);
       if (this.workers.get(worker.pluginId) === worker) {
         this.workers.delete(worker.pluginId);
       }
@@ -451,13 +520,38 @@ export class PluginHostManager {
         typeof record.ok === "boolean"
       ) {
         this.finishPendingCall(worker, record.callId, record);
+        return;
+      }
+      if (record.type === "signal" && typeof record.signal === "string") {
+        const payload = jsonValueSchema.safeParse(record.payload);
+        if (!payload.success) return;
+        this.options.onSignal?.({
+          pluginId: worker.pluginId,
+          generation: worker.generation,
+          signal: record.signal,
+          payload: payload.data,
+        });
+        return;
+      }
+      if (record.type === "watch-start") {
+        void this.startWorkerWatch(worker, record);
+        return;
+      }
+      if (record.type === "watch-stop" && typeof record.watchId === "string") {
+        void this.stopWorkerWatch(worker, record.watchId);
+        return;
+      }
+      if (
+        record.type === "watch-ack" &&
+        typeof record.watchId === "string" &&
+        typeof record.sequence === "number"
+      ) {
+        this.ackWorkerWatch(worker, record.watchId, record.sequence);
       }
     });
     child.once("exit", (code, signal) => {
       clearTimeout(startTimer);
-      failWorker(
-        `host plugin worker exited (${code ?? signal ?? "unknown"})`,
-      );
+      failWorker(`host plugin worker exited (${code ?? signal ?? "unknown"})`);
     });
     try {
       await ready;
@@ -466,6 +560,257 @@ export class PluginHostManager {
       await this.stopWorker(worker, errorMessage(error));
       throw error;
     }
+  }
+
+  private async startWorkerWatch(
+    worker: WorkerState,
+    message: Record<string, unknown>,
+  ): Promise<void> {
+    const watchId = message.watchId;
+    const rootPath = message.rootPath;
+    const ignoredPaths = message.ignoredPaths;
+    const debounceMs = message.debounceMs;
+    const maxWaitMs = message.maxWaitMs;
+    const invalid =
+      typeof watchId !== "string" ||
+      watchId.length === 0 ||
+      typeof rootPath !== "string" ||
+      !isAbsolute(rootPath) ||
+      Buffer.byteLength(rootPath) > MAX_WATCH_PATH_BYTES ||
+      !Array.isArray(ignoredPaths) ||
+      ignoredPaths.length > MAX_WATCH_IGNORE_ENTRIES ||
+      ignoredPaths.some(
+        (entry) =>
+          typeof entry !== "string" ||
+          Buffer.byteLength(entry) > MAX_WATCH_PATH_BYTES,
+      ) ||
+      typeof debounceMs !== "number" ||
+      !Number.isInteger(debounceMs) ||
+      debounceMs < MIN_WATCH_DEBOUNCE_MS ||
+      debounceMs > MAX_WATCH_DEBOUNCE_MS ||
+      typeof maxWaitMs !== "number" ||
+      !Number.isInteger(maxWaitMs) ||
+      maxWaitMs < debounceMs ||
+      maxWaitMs > MAX_WATCH_WAIT_MS;
+    if (invalid) {
+      this.sendWorkerWatchStartError(
+        worker,
+        typeof watchId === "string" ? watchId : "",
+        "invalid host watch options",
+      );
+      return;
+    }
+    if (worker.disposing || this.workers.get(worker.pluginId) !== worker) {
+      this.sendWorkerWatchStartError(
+        worker,
+        watchId,
+        "host worker is disposing",
+      );
+      return;
+    }
+    if (worker.watches.has(watchId)) {
+      this.sendWorkerWatchStartError(
+        worker,
+        watchId,
+        "duplicate host watch id",
+      );
+      return;
+    }
+    if (worker.watches.size >= MAX_WATCHES_PER_WORKER) {
+      this.sendWorkerWatchStartError(
+        worker,
+        watchId,
+        `host plugin has too many watches (maximum ${MAX_WATCHES_PER_WORKER})`,
+      );
+      return;
+    }
+    const watchPathRoot = this.options.hostWatcher?.watchPathRoot;
+    if (watchPathRoot === undefined) {
+      this.sendWorkerWatchStartError(
+        worker,
+        watchId,
+        "host filesystem watch service is unavailable",
+      );
+      return;
+    }
+    const validIgnoredPaths = ignoredPaths.filter(
+      (entry): entry is string => typeof entry === "string",
+    );
+    const state: WorkerWatchState = {
+      watchId,
+      worker,
+      stop: () => undefined,
+      stopped: false,
+      inFlightSequence: null,
+      nextSequence: 1,
+      pendingChanges: new Map(),
+      pendingRescan: false,
+      pendingError: null,
+      debounceMs,
+      maxWaitMs,
+      debounceTimer: null,
+      maxWaitTimer: null,
+    };
+    worker.watches.set(watchId, state);
+    try {
+      state.stop = watchPathRoot({
+        rootPath,
+        ignoredPaths: validIgnoredPaths,
+        onChange: (changes) => this.queueWorkerWatchChanges(state, changes),
+        onReady: () => {
+          if (!state.stopped) {
+            sendToWorker(worker.child, { type: "watch-ready", watchId });
+          }
+        },
+        onRescanRequired: () => {
+          if (state.stopped) return;
+          state.pendingChanges.clear();
+          state.pendingRescan = true;
+          this.flushWorkerWatch(state);
+        },
+        onWatchError: ({ message: watchError }) => {
+          if (state.stopped) return;
+          state.pendingError = watchError;
+          this.flushWorkerWatch(state);
+        },
+      });
+    } catch (error) {
+      worker.watches.delete(watchId);
+      state.stopped = true;
+      this.sendWorkerWatchStartError(worker, watchId, errorMessage(error));
+    }
+  }
+
+  private sendWorkerWatchStartError(
+    worker: WorkerState,
+    watchId: string,
+    error: string,
+  ): void {
+    sendToWorker(worker.child, { type: "watch-start-error", watchId, error });
+  }
+
+  private queueWorkerWatchChanges(
+    state: WorkerWatchState,
+    changes: readonly HostPathWatchChange[],
+  ): void {
+    if (state.stopped) return;
+    for (const change of changes) {
+      if (Buffer.byteLength(change.path) > MAX_WATCH_PATH_BYTES) {
+        state.pendingChanges.clear();
+        state.pendingRescan = true;
+        break;
+      }
+      state.pendingChanges.set(change.path, change.type);
+      if (state.pendingChanges.size > MAX_WATCH_CHANGED_PATHS) {
+        state.pendingChanges.clear();
+        state.pendingRescan = true;
+        break;
+      }
+    }
+    if (state.inFlightSequence !== null) return;
+    if (state.debounceTimer !== null) clearTimeout(state.debounceTimer);
+    state.debounceTimer = setTimeout(
+      () => this.flushWorkerWatch(state),
+      state.debounceMs,
+    );
+    state.debounceTimer.unref?.();
+    if (state.maxWaitTimer === null) {
+      state.maxWaitTimer = setTimeout(
+        () => this.flushWorkerWatch(state),
+        state.maxWaitMs,
+      );
+      state.maxWaitTimer.unref?.();
+    }
+  }
+
+  private clearWorkerWatchTimers(state: WorkerWatchState): void {
+    if (state.debounceTimer !== null) clearTimeout(state.debounceTimer);
+    if (state.maxWaitTimer !== null) clearTimeout(state.maxWaitTimer);
+    state.debounceTimer = null;
+    state.maxWaitTimer = null;
+  }
+
+  private flushWorkerWatch(state: WorkerWatchState): void {
+    if (state.stopped || state.inFlightSequence !== null) return;
+    this.clearWorkerWatchTimers(state);
+    let event: object | null = null;
+    if (state.pendingError !== null) {
+      event = { kind: "watch-error", message: state.pendingError };
+      state.pendingError = null;
+    } else if (state.pendingRescan) {
+      event = { kind: "rescan-required" };
+      state.pendingRescan = false;
+      state.pendingChanges.clear();
+    } else if (state.pendingChanges.size > 0) {
+      const changes: HostPathWatchChange[] = [];
+      let batchBytes = 0;
+      for (const [path, type] of state.pendingChanges) {
+        const nextBytes = Buffer.byteLength(path) + 32;
+        if (
+          changes.length > 0 &&
+          batchBytes + nextBytes > MAX_WATCH_BATCH_BYTES
+        ) {
+          break;
+        }
+        batchBytes += nextBytes;
+        changes.push({ path, type });
+        state.pendingChanges.delete(path);
+      }
+      event = { kind: "changed", changes };
+    }
+    if (event === null) return;
+    const sequence = state.nextSequence;
+    state.nextSequence += 1;
+    state.inFlightSequence = sequence;
+    if (
+      !sendToWorker(state.worker.child, {
+        type: "watch-event",
+        watchId: state.watchId,
+        sequence,
+        event,
+      })
+    ) {
+      state.inFlightSequence = null;
+    }
+  }
+
+  private ackWorkerWatch(
+    worker: WorkerState,
+    watchId: string,
+    sequence: number,
+  ): void {
+    const state = worker.watches.get(watchId);
+    if (state === undefined || state.inFlightSequence !== sequence) return;
+    state.inFlightSequence = null;
+    this.flushWorkerWatch(state);
+  }
+
+  private async stopWorkerWatch(
+    worker: WorkerState,
+    watchId: string,
+  ): Promise<void> {
+    const state = worker.watches.get(watchId);
+    if (state === undefined) return;
+    worker.watches.delete(watchId);
+    state.stopped = true;
+    this.clearWorkerWatchTimers(state);
+    state.pendingChanges.clear();
+    try {
+      await state.stop();
+    } catch (error) {
+      this.options.logger.warn(
+        { pluginId: worker.pluginId, watchId, err: error },
+        "Failed to stop host plugin filesystem watch",
+      );
+    }
+  }
+
+  private async stopAllWorkerWatches(worker: WorkerState): Promise<void> {
+    await Promise.all(
+      [...worker.watches.keys()].map((watchId) =>
+        this.stopWorkerWatch(worker, watchId),
+      ),
+    );
   }
 
   private finishPendingCall(
@@ -551,6 +896,7 @@ export class PluginHostManager {
     if (this.workers.get(worker.pluginId) === worker) {
       this.workers.delete(worker.pluginId);
     }
+    await this.stopAllWorkerWatches(worker);
     sendToWorker(worker.child, { type: "dispose" });
     const forceTimer = setTimeout(
       () => worker.child.kill("SIGKILL"),
@@ -560,6 +906,7 @@ export class PluginHostManager {
     await worker.closed;
     clearTimeout(forceTimer);
     this.rejectPendingCalls(worker, reason);
+    await rm(worker.tempDir, { recursive: true, force: true });
   }
 
   private callKey(command: {

@@ -76,19 +76,27 @@ describe("ui.requestInput", () => {
 });
 
 describe("host control plane", () => {
-  it("validates typed host calls and delivers worker exits", async () => {
+  it("validates typed host calls and delivers host lifecycle events", async () => {
     const contract = defineRpcContract({
       ping: {
         input: z.object({ value: z.string() }).strict(),
         output: z.object({ pong: z.string() }).strict(),
       },
     });
+    const experimental_signals = {
+      changed: {
+        payload: z.object({ sequence: z.number().int() }).strict(),
+      },
+    };
     const { bb, harness } = createFakePluginHost({
       experimental_callHostRpc: ({ input }) => ({
         pong: String(Reflect.get(Object(input), "value")),
       }),
     });
-    const client = bb.hosts.experimental_client({ contract });
+    const client = bb.hosts.experimental_client({
+      contract,
+      experimental_signals,
+    });
 
     await expect(
       client.call("ping", { value: "hello" }, { hostId: "host-1" }),
@@ -105,8 +113,22 @@ describe("host control plane", () => {
     client.experimental_onWorkerExit((event) => {
       events.push({ workerExit: event });
     });
+    client.experimental_onSignal("changed", (event) => {
+      events.push({ signal: event });
+    });
     await harness.experimental_emitHostWorkerExit("host-1");
     expect(events.at(-1)).toEqual({ workerExit: { hostId: "host-1" } });
+    await harness.experimental_emitHostSignal("host-1", "changed", {
+      sequence: 2,
+    });
+    expect(events.at(-1)).toEqual({
+      signal: { hostId: "host-1", payload: { sequence: 2 } },
+    });
+    await expect(
+      harness.experimental_emitHostSignal("host-1", "changed", {
+        sequence: 2.5,
+      }),
+    ).rejects.toThrow(/validation failed/u);
   });
 
   it("uses validated current-state replacements and read-only tunnel identity", async () => {

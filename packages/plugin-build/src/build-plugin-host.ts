@@ -36,6 +36,7 @@ export function experimental_defineHostEntry(args) {
     experimental_apiVersion: 1,
     contract: args.contract,
     handlers: args.handlers,
+    ...(args.experimental_signals === undefined ? {} : { experimental_signals: args.experimental_signals }),
     ...(args.dispose === undefined ? {} : { dispose: args.dispose }),
   };
 }
@@ -47,6 +48,7 @@ export function experimental_defineHostEntry(args) {
     experimental_apiVersion: 1,
     contract: args.contract,
     handlers: args.handlers,
+    ...(args.experimental_signals === undefined ? {} : { experimental_signals: args.experimental_signals }),
     ...(args.dispose === undefined ? {} : { dispose: args.dispose }),
   };
 }

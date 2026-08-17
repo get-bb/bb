@@ -279,6 +279,14 @@ export interface PluginService {
     pluginId: string;
     generation: string;
   }): void;
+  /** Dispatch one validated ephemeral signal from an active host generation. */
+  handleHostSignal(args: {
+    authenticatedHostId: string;
+    pluginId: string;
+    generation: string;
+    signal: string;
+    payload: JsonValue;
+  }): void;
   /**
    * Declared settings schema + current values for a loaded plugin
    * (secrets render as `{ set: boolean }`). Undefined when the plugin is not
@@ -1814,6 +1822,43 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       for (const handler of [...plugin.handle.hostWorkerExitHandlers]) {
         void invokeWrapped(args.pluginId, "host worker exit", async () =>
           handler({ hostId: args.authenticatedHostId }),
+        );
+      }
+    },
+
+    handleHostSignal(args) {
+      const plugin = loaded.get(args.pluginId);
+      const artifact = hostArtifacts.get(args.pluginId);
+      if (
+        plugin === undefined ||
+        artifact === undefined ||
+        artifact.generation !== args.generation
+      ) {
+        return;
+      }
+      const subscriptions = plugin.handle.hostSignalHandlers.filter(
+        (subscription) => subscription.signal === args.signal,
+      );
+      for (const subscription of subscriptions) {
+        void invokeWrapped(
+          args.pluginId,
+          `host signal ${args.signal}`,
+          async () => {
+            const result = await subscription.payloadSchema[
+              "~standard"
+            ].validate(args.payload);
+            if (result.issues !== undefined) {
+              throw new Error(
+                `host signal payload validation failed: ${result.issues
+                  .map((issue) => issue.message)
+                  .join("; ")}`,
+              );
+            }
+            await subscription.handler({
+              hostId: args.authenticatedHostId,
+              payload: result.value,
+            });
+          },
         );
       }
     },

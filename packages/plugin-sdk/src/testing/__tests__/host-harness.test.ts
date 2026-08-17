@@ -19,11 +19,26 @@ const contract = defineRpcContract({
     input: z.object({}).strict(),
     output: z.string(),
   },
+  inspect: {
+    input: z.object({ sequence: z.number().int() }).strict(),
+    output: z.object({ dataDir: z.string(), tempDir: z.string() }).strict(),
+  },
+  watch: {
+    input: z.object({ rootPath: z.string() }).strict(),
+    output: z.object({ watching: z.boolean() }).strict(),
+  },
 });
+
+const signals = {
+  changed: {
+    payload: z.object({ sequence: z.number().int() }).strict(),
+  },
+};
 
 function createEntry(dispose = vi.fn()) {
   return experimental_defineHostEntry({
     contract,
+    experimental_signals: signals,
     handlers: {
       echo(input) {
         return input;
@@ -43,6 +58,17 @@ function createEntry(dispose = vi.fn()) {
       },
       large() {
         return "x".repeat(8 * 1024 * 1024);
+      },
+      async inspect(input, context) {
+        await context.experimental_emitSignal("changed", input);
+        return context.experimental_paths;
+      },
+      async watch(input, context) {
+        await context.experimental_watch(
+          { rootPath: input.rootPath },
+          () => undefined,
+        );
+        return { watching: true };
       },
     },
     dispose,
@@ -102,13 +128,51 @@ describe("experimental_createHostEntryHarness", () => {
     expect(outputValidations).toBe(2);
   });
 
+  it("provides scoped paths, validates signals, and owns watch subscriptions", async () => {
+    const disposeWatch = vi.fn(async () => undefined);
+    const watch = vi.fn(async () => ({ dispose: disposeWatch }));
+    const harness = experimental_createHostEntryHarness(createEntry(), {
+      experimental_paths: {
+        dataDir: "/plugin/data",
+        tempDir: "/plugin/temp",
+      },
+      experimental_watch: watch,
+    });
+
+    await expect(
+      harness.experimental_call("inspect", { sequence: 2 }),
+    ).resolves.toEqual({ dataDir: "/plugin/data", tempDir: "/plugin/temp" });
+    expect(harness.experimental_getSignals()).toEqual([
+      { signal: "changed", payload: { sequence: 2 } },
+    ]);
+    await expect(
+      harness.experimental_call("watch", { rootPath: "/workspace" }),
+    ).resolves.toEqual({ watching: true });
+    expect(watch).toHaveBeenCalledWith(
+      {
+        rootPath: "/workspace",
+        ignoredPaths: [],
+        debounceMs: 75,
+        maxWaitMs: 500,
+      },
+      expect.any(Function),
+    );
+
+    await harness.experimental_dispose();
+    expect(disposeWatch).toHaveBeenCalledOnce();
+  });
+
   it("propagates request and generation cancellation and disposes once", async () => {
     const dispose = vi.fn();
     const harness = experimental_createHostEntryHarness(createEntry(dispose));
     const requestController = new AbortController();
-    const request = harness.experimental_call("wait", {}, {
-      signal: requestController.signal,
-    });
+    const request = harness.experimental_call(
+      "wait",
+      {},
+      {
+        signal: requestController.signal,
+      },
+    );
     requestController.abort();
     await expect(request).resolves.toEqual({ aborted: true });
 

@@ -1,5 +1,9 @@
 import type {
   ExperimentalHostEntry,
+  ExperimentalHostSignals,
+  ExperimentalHostWatchListener,
+  ExperimentalHostWatchOptions,
+  ExperimentalHostWatchSubscription,
   PluginRpcContract,
   StandardSchemaV1,
   StandardSchemaV1InferInput,
@@ -8,11 +12,39 @@ import type {
 
 const RESULT_MAX_BYTES = 8 * 1024 * 1024;
 
-type HostMethodName<Contract extends PluginRpcContract> =
-  keyof Contract & string;
+type HostMethodName<Contract extends PluginRpcContract> = keyof Contract &
+  string;
+
+type HostSignalName<Signals extends ExperimentalHostSignals> = keyof Signals &
+  string;
+
+export type ExperimentalHostHarnessSignal<
+  Signals extends ExperimentalHostSignals,
+> = {
+  [SignalName in HostSignalName<Signals>]: {
+    readonly signal: SignalName;
+    readonly payload: StandardSchemaV1InferOutput<
+      Signals[SignalName]["payload"]
+    >;
+  };
+}[HostSignalName<Signals>];
+
+export interface ExperimentalCreateHostEntryHarnessOptions {
+  readonly experimental_paths?: {
+    readonly dataDir: string;
+    readonly tempDir: string;
+  };
+  readonly experimental_watch?: (
+    options: ExperimentalHostWatchOptions,
+    listener: ExperimentalHostWatchListener,
+  ) =>
+    | ExperimentalHostWatchSubscription
+    | Promise<ExperimentalHostWatchSubscription>;
+}
 
 export interface ExperimentalHostEntryHarness<
   Contract extends PluginRpcContract,
+  Signals extends ExperimentalHostSignals,
 > {
   /** Invoke one handler through the same validation boundaries as the daemon. */
   experimental_call<MethodName extends HostMethodName<Contract>>(
@@ -20,6 +52,8 @@ export interface ExperimentalHostEntryHarness<
     input: StandardSchemaV1InferInput<Contract[MethodName]["input"]>,
     options?: { readonly signal?: AbortSignal },
   ): Promise<StandardSchemaV1InferOutput<Contract[MethodName]["output"]>>;
+  /** Validated signals emitted by handlers, in emission order. */
+  experimental_getSignals(): readonly ExperimentalHostHarnessSignal<Signals>[];
   /** Aborted before the entry's dispose hook runs. */
   readonly experimental_lifecycleSignal: AbortSignal;
   /** Abort active calls and run the entry's dispose hook once. */
@@ -60,11 +94,19 @@ function normalizeJson<Value>(value: Value, label: string): Value {
  */
 export function experimental_createHostEntryHarness<
   Contract extends PluginRpcContract,
+  Signals extends ExperimentalHostSignals,
 >(
-  entry: ExperimentalHostEntry<Contract>,
-): ExperimentalHostEntryHarness<Contract> {
+  entry: ExperimentalHostEntry<Contract, Signals>,
+  harnessOptions: ExperimentalCreateHostEntryHarnessOptions = {},
+): ExperimentalHostEntryHarness<Contract, Signals> {
   const lifecycleController = new AbortController();
   const activeCalls = new Set<AbortController>();
+  const capturedSignals: Array<{ signal: string; payload: unknown }> = [];
+  const watchSubscriptions = new Set<ExperimentalHostWatchSubscription>();
+  const paths = harnessOptions.experimental_paths ?? {
+    dataDir: "/test/plugin-data",
+    tempDir: "/test/plugin-temp",
+  };
   let disposePromise: Promise<void> | null = null;
 
   return {
@@ -89,7 +131,10 @@ export function experimental_createHostEntryHarness<
         once: true,
       });
       options.signal?.addEventListener("abort", abort, { once: true });
-      if (lifecycleController.signal.aborted || options.signal?.aborted === true) {
+      if (
+        lifecycleController.signal.aborted ||
+        options.signal?.aborted === true
+      ) {
         controller.abort();
       }
 
@@ -102,6 +147,48 @@ export function experimental_createHostEntryHarness<
         const rawOutput = await handler(workerInput, {
           signal: controller.signal,
           lifecycle: { signal: lifecycleController.signal },
+          experimental_paths: paths,
+          async experimental_emitSignal(signalName, payload) {
+            const descriptor = entry.experimental_signals?.[signalName];
+            if (descriptor === undefined) {
+              throw new Error(`unknown host signal "${String(signalName)}"`);
+            }
+            const workerPayload = await validate(descriptor.payload, payload);
+            const serverPayload = await validate(
+              descriptor.payload,
+              normalizeJson(workerPayload, `host signal ${String(signalName)}`),
+            );
+            capturedSignals.push({
+              signal: String(signalName),
+              payload: serverPayload,
+            });
+          },
+          async experimental_watch(watchOptions, listener) {
+            if (lifecycleController.signal.aborted) {
+              throw new Error("host entry harness is disposed");
+            }
+            const resolvedWatchOptions: ExperimentalHostWatchOptions = {
+              rootPath: watchOptions.rootPath,
+              ignoredPaths: watchOptions.ignoredPaths ?? [],
+              debounceMs: watchOptions.debounceMs ?? 75,
+              maxWaitMs: watchOptions.maxWaitMs ?? 500,
+            };
+            const underlying = await (harnessOptions.experimental_watch?.(
+              resolvedWatchOptions,
+              listener,
+            ) ?? { dispose: async () => undefined });
+            let disposed = false;
+            const subscription: ExperimentalHostWatchSubscription = {
+              async dispose() {
+                if (disposed) return;
+                disposed = true;
+                watchSubscriptions.delete(subscription);
+                await underlying.dispose();
+              },
+            };
+            watchSubscriptions.add(subscription);
+            return subscription;
+          },
         });
         const workerOutput = await validate(method.output, rawOutput);
         return await validate(
@@ -115,11 +202,18 @@ export function experimental_createHostEntryHarness<
       }
     },
 
+    experimental_getSignals() {
+      return capturedSignals as ExperimentalHostHarnessSignal<Signals>[];
+    },
+
     experimental_dispose() {
       disposePromise ??= (async () => {
         lifecycleController.abort();
         for (const call of activeCalls) call.abort();
         activeCalls.clear();
+        await Promise.all(
+          [...watchSubscriptions].map((subscription) => subscription.dispose()),
+        );
         await entry.dispose?.();
       })();
       return disposePromise;

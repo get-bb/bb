@@ -41,29 +41,74 @@ interface PluginRpcMethodContract<InputSchema extends StandardSchemaV1 = Standar
 }
 type PluginRpcContract = Readonly<Record<string, PluginRpcMethodContract>>;
 
-interface ExperimentalHostRpcContext {
+interface ExperimentalHostSignalContract<PayloadSchema extends StandardSchemaV1 = StandardSchemaV1> {
+    readonly payload: PayloadSchema;
+}
+type ExperimentalHostSignals = Readonly<Record<string, ExperimentalHostSignalContract>>;
+interface ExperimentalHostPaths {
+    /** Persistent directory scoped to this plugin on this daemon. */
+    readonly dataDir: string;
+    /** Temporary directory scoped to this host-artifact generation. */
+    readonly tempDir: string;
+}
+type ExperimentalHostWatchChangeType = "create" | "update" | "delete";
+interface ExperimentalHostWatchChange {
+    readonly path: string;
+    readonly type: ExperimentalHostWatchChangeType;
+}
+type ExperimentalHostWatchEvent = {
+    readonly kind: "changed";
+    readonly changes: readonly ExperimentalHostWatchChange[];
+} | {
+    readonly kind: "rescan-required";
+} | {
+    readonly kind: "watch-error";
+    readonly message: string;
+};
+interface ExperimentalHostWatchOptions {
+    /** Absolute directory observed by the daemon's native watcher service. */
+    readonly rootPath: string;
+    /** Root-relative ignore entries using the native watcher syntax. */
+    readonly ignoredPaths?: readonly string[];
+    /** Quiet period before one coalesced delivery. Defaults to 75 ms. */
+    readonly debounceMs?: number;
+    /** Maximum time changes may wait. Defaults to 500 ms. */
+    readonly maxWaitMs?: number;
+}
+interface ExperimentalHostWatchSubscription {
+    dispose(): Promise<void>;
+}
+type ExperimentalHostWatchListener = (event: ExperimentalHostWatchEvent) => void | Promise<void>;
+interface ExperimentalHostRpcContext<Signals extends ExperimentalHostSignals = {}> {
     /** Aborted when this request is cancelled or its worker is disposed. */
     readonly signal: AbortSignal;
     /** Aborted once for the lifetime of this worker generation. */
     readonly lifecycle: {
         readonly signal: AbortSignal;
     };
+    readonly experimental_paths: ExperimentalHostPaths;
+    /** Publish a validated, ephemeral event to this plugin's server entry. */
+    experimental_emitSignal<SignalName extends keyof Signals & string>(signal: SignalName, payload: StandardSchemaV1InferInput<Signals[SignalName]["payload"]>): Promise<void>;
+    /** Observe raw filesystem changes through the daemon's native watcher. */
+    experimental_watch(options: ExperimentalHostWatchOptions, listener: ExperimentalHostWatchListener): Promise<ExperimentalHostWatchSubscription>;
 }
-type ExperimentalHostRpcHandlers<Contract extends PluginRpcContract> = {
-    [MethodName in keyof Contract]: (input: StandardSchemaV1InferOutput<Contract[MethodName]["input"]>, context: ExperimentalHostRpcContext) => StandardSchemaV1InferInput<Contract[MethodName]["output"]> | Promise<StandardSchemaV1InferInput<Contract[MethodName]["output"]>>;
+type ExperimentalHostRpcHandlers<Contract extends PluginRpcContract, Signals extends ExperimentalHostSignals = {}> = {
+    [MethodName in keyof Contract]: (input: StandardSchemaV1InferOutput<Contract[MethodName]["input"]>, context: ExperimentalHostRpcContext<Signals>) => StandardSchemaV1InferInput<Contract[MethodName]["output"]> | Promise<StandardSchemaV1InferInput<Contract[MethodName]["output"]>>;
 };
-interface ExperimentalHostEntry<Contract extends PluginRpcContract = PluginRpcContract> {
+interface ExperimentalHostEntry<Contract extends PluginRpcContract = PluginRpcContract, Signals extends ExperimentalHostSignals = {}> {
     readonly experimental_apiVersion: 1;
     readonly contract: Contract;
-    readonly handlers: ExperimentalHostRpcHandlers<Contract>;
+    readonly experimental_signals?: Signals;
+    readonly handlers: ExperimentalHostRpcHandlers<Contract, Signals>;
     readonly dispose?: () => void | Promise<void>;
 }
 /** Define the single host executable exported by `bb.host`. */
-declare function experimental_defineHostEntry<const Contract extends PluginRpcContract>(args: {
+declare function experimental_defineHostEntry<const Contract extends PluginRpcContract, const Signals extends ExperimentalHostSignals = {}>(args: {
     contract: Contract;
-    handlers: ExperimentalHostRpcHandlers<Contract>;
+    experimental_signals?: Signals;
+    handlers: ExperimentalHostRpcHandlers<Contract, Signals>;
     dispose?: () => void | Promise<void>;
-}): ExperimentalHostEntry<Contract>;
+}): ExperimentalHostEntry<Contract, Signals>;
 
 export { experimental_defineHostEntry };
-export type { ExperimentalHostEntry, ExperimentalHostRpcContext, ExperimentalHostRpcHandlers };
+export type { ExperimentalHostEntry, ExperimentalHostPaths, ExperimentalHostRpcContext, ExperimentalHostRpcHandlers, ExperimentalHostSignalContract, ExperimentalHostSignals, ExperimentalHostWatchChange, ExperimentalHostWatchChangeType, ExperimentalHostWatchEvent, ExperimentalHostWatchListener, ExperimentalHostWatchOptions, ExperimentalHostWatchSubscription };

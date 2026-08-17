@@ -407,7 +407,10 @@ shared by the server and host modules:
 
 ```ts
 // contract.ts
-import { defineRpcContract } from "@get-bb/plugin-sdk";
+import {
+  defineRpcContract,
+  type ExperimentalHostSignals,
+} from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 export const hostContract = defineRpcContract({
@@ -416,6 +419,12 @@ export const hostContract = defineRpcContract({
     output: z.object({ enabled: z.boolean() }).strict(),
   },
 });
+
+export const hostSignals = {
+  changed: {
+    payload: z.object({ reason: z.string() }).strict(),
+  },
+} satisfies ExperimentalHostSignals;
 ```
 
 The host entry default-exports its implementation:
@@ -423,13 +432,17 @@ The host entry default-exports its implementation:
 ```ts
 // host.ts
 import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
-import { hostContract } from "./contract.js";
+import { hostContract, hostSignals } from "./contract.js";
 
 export default experimental_defineHostEntry({
   contract: hostContract,
+  experimental_signals: hostSignals,
   handlers: {
     setEnabled: async ({ enabled }, context) => {
       await setEnabled(enabled, context.signal);
+      await context.experimental_emitSignal("changed", {
+        reason: "setting-applied",
+      });
       return { enabled };
     },
   },
@@ -440,7 +453,10 @@ export default experimental_defineHostEntry({
 The server factory calls only its own host entry:
 
 ```ts
-const host = bb.hosts.experimental_client({ contract: hostContract });
+const host = bb.hosts.experimental_client({
+  contract: hostContract,
+  experimental_signals: hostSignals,
+});
 const result = await host.call(
   "setEnabled",
   { enabled: true },
@@ -449,6 +465,12 @@ const result = await host.call(
 const unsubscribeWorkerExit = host.experimental_onWorkerExit(({ hostId }) => {
   // Reassert durable desired state; the next call starts a fresh worker.
 });
+const unsubscribeChanged = host.experimental_onSignal(
+  "changed",
+  ({ hostId, payload }) => {
+    // Invalidate or reread server state for this host.
+  },
+);
 ```
 
 Create the client and register signal handlers in the factory, but call host
@@ -459,9 +481,20 @@ generation is not active or fetchable yet.
 `context.signal` aborts one call. `context.lifecycle.signal` aborts the whole
 worker generation on reload, disable, uninstall, or daemon shutdown. Close
 timers, sockets, and child processes from the lifecycle signal and `dispose`.
-V1 calls target an explicit enrolled host; environment/workspace context,
-filesystem watching, plugin data paths, streaming, and host signals are not
-part of this first foundation.
+`context.experimental_paths.dataDir` is persistent and scoped to this plugin on
+the targeted daemon; `tempDir` is deleted with the worker generation.
+`context.experimental_watch(options, listener)` uses the daemon's native file
+watcher. Deliveries are coalesced and serialized while the listener is busy;
+on `rescan-required`, reread current state instead of trusting prior events.
+Subscriptions are disposed with the worker and can also be disposed directly.
+
+Host signals are schema-validated, private to the plugin that owns the host
+entry, and ephemeral. Use them as invalidations or progress notifications, not
+as durable state; the server callback receives the authenticated `hostId`.
+V1 calls still target only an explicit enrolled host. If a method operates on
+an environment or directory, resolve it with `bb.sdk` and put the needed id or
+absolute path in that method's typed input. Core does not infer an environment,
+cwd, or lock for host RPC.
 
 The worker is lazy and reusable; there is no short-/long-lived manifest flag.
 Individual handlers may finish quickly while lifecycle-owned children remain
@@ -1837,10 +1870,7 @@ import hostEntry from "./host.js";
 
 const harness = experimental_createHostEntryHarness(hostEntry);
 
-const result = await harness.experimental_call(
-  "setEnabled",
-  { enabled: true },
-);
+const result = await harness.experimental_call("setEnabled", { enabled: true });
 await harness.experimental_dispose();
 ```
 
