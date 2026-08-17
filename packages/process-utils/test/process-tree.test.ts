@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  isProcessGroupAlive,
   killProcessGroup,
   killProcessesWithCwdUnder,
   listProcessesWithCwdUnder,
@@ -105,6 +106,66 @@ posixOnly("process tree helpers", () => {
     expect(
       await listProcessesWithCwdUnder({ directory: `${dir}-other` }),
     ).toEqual([]);
+  });
+
+  it("reports a live group after the leader exits and an empty one after the members die", async () => {
+    const child = spawnPortablePipedProcess({
+      command: "sh",
+      args: ["-c", "sleep 300 & echo $!"],
+      detached: true,
+    });
+    const grandchildPid = Number(await readFirstLine(child.stdout));
+    cleanupPids.push(grandchildPid);
+    await once(child, "exit");
+
+    expect(isProcessGroupAlive(child)).toBe(true);
+    process.kill(grandchildPid, "SIGKILL");
+    await waitFor(() => !isProcessGroupAlive(child));
+  });
+
+  it("rescans and kills processes that appear while the first targets shut down", async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "bb-cwd-respawn-")));
+    cleanupDirs.push(dir);
+    // On SIGTERM the target starts a new-session child and exits.
+    const child = spawn(
+      "sh",
+      [
+        "-c",
+        "trap 'setsid sleep 300 >/dev/null 2>&1 < /dev/null & exit 0' TERM; echo ready; while :; do sleep 0.05; done",
+      ],
+      { cwd: dir, detached: true, stdio: ["ignore", "pipe", "ignore"] },
+    );
+    child.unref();
+    await readFirstLine(child.stdout);
+    cleanupPids.push(child.pid ?? 0);
+
+    const killed = await killProcessesWithCwdUnder({
+      directory: dir,
+      graceMs: 500,
+    });
+
+    expect(killed.length).toBeGreaterThanOrEqual(2);
+    for (const target of killed) {
+      cleanupPids.push(target.pid);
+    }
+    await waitFor(() => killed.every((target) => !isAlive(target.pid)));
+    expect(await listProcessesWithCwdUnder({ directory: dir })).toEqual([]);
+  });
+
+  it("does not follow a symlinked workspace root", async () => {
+    const target = realpathSync(mkdtempSync(join(tmpdir(), "bb-cwd-target-")));
+    const linkParent = mkdtempSync(join(tmpdir(), "bb-cwd-link-"));
+    cleanupDirs.push(target, linkParent);
+    const link = join(linkParent, "workspace");
+    symlinkSync(target, link);
+    const child = spawn("sleep", ["300"], { cwd: target, stdio: "ignore" });
+    cleanupPids.push(child.pid ?? 0);
+    await waitFor(() => (child.pid ?? 0) > 0);
+
+    expect(await listProcessesWithCwdUnder({ directory: target })).toEqual([
+      { pid: child.pid, cwd: target },
+    ]);
+    expect(await listProcessesWithCwdUnder({ directory: link })).toEqual([]);
   });
 
   it("returns an empty list for a directory that no process uses", async () => {

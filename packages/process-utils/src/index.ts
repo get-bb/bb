@@ -2,8 +2,16 @@ export * from "./plugin-process-paths.js";
 import type { ChildProcess, StdioOptions } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { readdir, readlink, realpath } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { lstat, readdir, readlink, realpath } from "node:fs/promises";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import type { Readable, Writable } from "node:stream";
 import crossSpawn from "cross-spawn";
 
@@ -201,6 +209,25 @@ export function killProcessGroup(args: KillProcessGroupArgs): void {
   args.child.kill(args.signal);
 }
 
+/**
+ * True when at least one process still belongs to the group led by `child`.
+ * Returns false when the platform has no process groups or the child was not
+ * spawned as a group leader.
+ */
+export function isProcessGroupAlive(child: {
+  pid?: number | undefined;
+}): boolean {
+  if (!supportsProcessGroups() || child.pid === undefined) {
+    return false;
+  }
+  try {
+    process.kill(-child.pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function isPathUnderDirectory(candidate: string, directory: string): boolean {
   // Linux reports a removed cwd as "<path> (deleted)".
   const normalized = candidate.endsWith(" (deleted)")
@@ -255,9 +282,36 @@ async function listLsofProcessCwds(): Promise<ProcessWithCwd[]> {
 }
 
 /**
+ * Resolves the canonical path of `directory` for cwd matching. Returns null
+ * when the final path component is a symlink: a workspace root that was
+ * swapped for a link must not redirect the sweep to unrelated processes.
+ */
+async function resolveSweepDirectory(
+  directory: string,
+): Promise<string | null> {
+  const resolved = resolve(directory);
+  let parent = dirname(resolved);
+  try {
+    parent = await realpath(parent);
+  } catch {
+    // The parent may already be gone; match against the given path.
+  }
+  const canonical = join(parent, basename(resolved));
+  try {
+    if ((await lstat(canonical)).isSymbolicLink()) {
+      return null;
+    }
+  } catch {
+    // The directory itself may already be removed. Processes can still hold
+    // it as a "(deleted)" cwd, so keep matching on the path.
+  }
+  return canonical;
+}
+
+/**
  * Lists processes whose current working directory is `directory` or a path
  * inside it. Excludes the current process. Returns [] on unsupported
- * platforms.
+ * platforms and when `directory` is a symlink.
  */
 export async function listProcessesWithCwdUnder(
   args: ListProcessesWithCwdUnderArgs,
@@ -265,11 +319,9 @@ export async function listProcessesWithCwdUnder(
   if (process.platform === "win32") {
     return [];
   }
-  let directory = resolve(args.directory);
-  try {
-    directory = await realpath(directory);
-  } catch {
-    // The directory may already be gone; match against the given path.
+  const directory = await resolveSweepDirectory(args.directory);
+  if (directory === null) {
+    return [];
   }
   const all =
     process.platform === "linux"
@@ -290,46 +342,65 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-/**
- * Sends SIGTERM to every process rooted in `directory`, waits `graceMs`, then
- * SIGKILLs the survivors. Returns the processes that received a signal.
- */
-export async function killProcessesWithCwdUnder(
-  args: KillProcessesWithCwdUnderArgs,
-): Promise<ProcessWithCwd[]> {
-  const targets = await listProcessesWithCwdUnder({
-    directory: args.directory,
-  });
-  if (targets.length === 0) {
-    return [];
-  }
-  const graceMs = args.graceMs ?? 2000;
-  const signalled: ProcessWithCwd[] = [];
+async function delay(ms: number): Promise<void> {
+  await new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
+}
+
+const MAX_CWD_SWEEP_ROUNDS = 5;
+
+function signalProcesses(
+  targets: ProcessWithCwd[],
+  signal: NodeJS.Signals,
+  signalled: Map<number, ProcessWithCwd>,
+): void {
   for (const target of targets) {
     try {
-      process.kill(target.pid, "SIGTERM");
-      signalled.push(target);
+      process.kill(target.pid, signal);
+      signalled.set(target.pid, target);
     } catch {
       // Already exited.
     }
   }
-  const deadline = Date.now() + graceMs;
-  while (
-    Date.now() < deadline &&
-    signalled.some((target) => isProcessAlive(target.pid))
-  ) {
-    await new Promise((resolveDelay) => setTimeout(resolveDelay, 50));
-  }
-  for (const target of signalled) {
-    if (isProcessAlive(target.pid)) {
-      try {
-        process.kill(target.pid, "SIGKILL");
-      } catch {
-        // Already exited.
-      }
+}
+
+/**
+ * Sends SIGTERM to every process rooted in `directory`, waits up to
+ * `graceMs`, rescans, and SIGKILLs the processes that are still rooted there.
+ * Each signal follows a fresh scan, so a reused pid or a process that
+ * appeared during shutdown never receives a stale signal. Repeats until a
+ * scan finds nothing, bounded by a small round limit. Returns the processes
+ * that received a signal.
+ */
+export async function killProcessesWithCwdUnder(
+  args: KillProcessesWithCwdUnderArgs,
+): Promise<ProcessWithCwd[]> {
+  const graceMs = args.graceMs ?? 2000;
+  const signalled = new Map<number, ProcessWithCwd>();
+  for (let round = 0; round < MAX_CWD_SWEEP_ROUNDS; round += 1) {
+    const targets = await listProcessesWithCwdUnder({
+      directory: args.directory,
+    });
+    if (targets.length === 0) {
+      break;
     }
+    signalProcesses(targets, "SIGTERM", signalled);
+    const deadline = Date.now() + graceMs;
+    while (
+      Date.now() < deadline &&
+      targets.some((target) => isProcessAlive(target.pid))
+    ) {
+      await delay(50);
+    }
+    const survivors = await listProcessesWithCwdUnder({
+      directory: args.directory,
+    });
+    if (survivors.length === 0) {
+      break;
+    }
+    signalProcesses(survivors, "SIGKILL", signalled);
+    await delay(50);
   }
-  return signalled;
+  return Array.from(signalled.values());
 }
 
 export function resolveContainedPath(

@@ -2,6 +2,7 @@ import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import {
+  isProcessGroupAlive,
   killProcessGroup,
   sanitizeInheritedChildProcessEnv,
   spawnPortablePipedProcess,
@@ -448,6 +449,10 @@ export class RuntimeProviderProcessManager {
             }, 5000);
 
             providerProcess.child.on("exit", () => {
+              // Keep the SIGKILL timer while group members outlive the leader.
+              if (isProcessGroupAlive(providerProcess.child)) {
+                return;
+              }
               clearTimeout(timer);
               resolve();
             });
@@ -675,7 +680,10 @@ export class RuntimeProviderProcessManager {
     await new Promise<void>((resolve) => {
       const timeoutMs = args.timeoutMs ?? 5000;
       const softTimer = setTimeout(() => {
-        if (!hasChildProcessExited(args.providerProcess.child)) {
+        if (
+          !hasChildProcessExited(args.providerProcess.child) ||
+          isProcessGroupAlive(args.providerProcess.child)
+        ) {
           killProcessGroup({
             child: args.providerProcess.child,
             signal: "SIGKILL",
@@ -685,6 +693,10 @@ export class RuntimeProviderProcessManager {
       const hardTimer = setTimeout(resolve, timeoutMs + 1000);
 
       args.providerProcess.child.once("exit", () => {
+        // Keep the SIGKILL timer while group members outlive the leader.
+        if (isProcessGroupAlive(args.providerProcess.child)) {
+          return;
+        }
         clearTimeout(softTimer);
         clearTimeout(hardTimer);
         resolve();
