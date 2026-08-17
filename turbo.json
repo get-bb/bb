@@ -247,6 +247,13 @@
       ]
     },
     "@bb/server#dev": {
+      // The server installs first-party provider plugins during startup and
+      // builds their host artifacts. Those builds resolve the published
+      // `@get-bb/plugin-sdk/provider-bridge` entry from the SDK dist, so a
+      // clean worktree must build that runtime before the server starts.
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build"
+      ],
       "cache": false,
       "persistent": true,
       "passThroughEnv": [
