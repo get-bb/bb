@@ -613,6 +613,125 @@ Two things were audited and deliberately left:
   restored in 7d726a0f2, and acp's here; claude-code never had one (its CLI
   handles `/compact` in the prompt text natively). No other orphans.
 
+## API pass, rebase, and adoption pass (2026-08-17)
+
+### The API pass (items 1–10, complete)
+
+Ten approved changes to the provider-facing contracts, one commit each,
+before any of them ships to a third party. The theme is one noun set and one
+answer per question, from the plugin declaration through the registry to the
+host wire:
+
+1. **One fork ladder.** `fork: "none" | "tip" | "checkpoint"` replaces the two
+   declared booleans; `ProviderInfo` still carries the projected pair clients
+   gate on, and the daemon gets the ladder itself because the handshake
+   narrows against it.
+2. **One noun set, declaration → daemon.** The wire's capability block shares
+   the declaration's names, so the projection is a copy rather than a rename
+   table.
+3. **Handshake capabilities named after the methods they gate**, so a bridge
+   cannot advertise a fact no method consumes.
+4. **`manualCompaction` dropped from the handshake.** It is a per-agent
+   server-side declaration; a process-level handshake answered before any
+   session exists cannot speak for it.
+5. **`bridgeLaunch.providerOptions` deleted** — never sent, never read.
+6. **`bridgeLaunch` required, with an honest source union**
+   (`artifact` | `daemon-bundled`) instead of a delivery path inferred from an
+   absent field.
+7. **One icon grammar**, flattened.
+8. **The host-AI-services provider capability dropped.**
+9. **`supportsManualCompaction` read from the projection**, not from a raw
+   declaration stashed on the registration. That was the stash's last reader,
+   so the field is gone: `ProviderRegistration` now carries only projected
+   shapes, and there is no way to answer a capability question twice.
+10. **The ACP tier's capability constant read directly.** Three registry
+    accessors and the bridge-launch resolver were each building a throwaway
+    `ProviderInfo` — placeholder display name, null logo — to reach one
+    boolean.
+
+### The rebase (protocol 130)
+
+Rebased onto main with PR #1686's host plugin foundation merged. One protocol
+bump for the whole branch: **HOST_DAEMON_PROTOCOL_VERSION 130**, covering the
+required `bridgeLaunch` and the collapsed `host.delete_skill` provider scopes.
+SDK 0.4.8.
+
+Flag-checked from the rebase: main narrowed `onDaemonSocketOpen`'s deps to
+`hub | logger | sharedPorts | terminalSessions`. Nothing of ours was lost —
+the removed deps served `schedulePrimaryHostCaffeinateReconciliation`, which
+moved into the Keep Awake host plugin, and no provider-bridge behavior runs at
+daemon connect (bridges are pulled on demand at command dispatch, never pushed
+at socket open).
+
+### The adoption pass
+
+The foundation arrived with generic mechanisms for problems the provider
+branch had already solved privately. The principle, stated by Michael: **the
+platform layer must not contain provider-named plumbing; providers are a
+feature consuming generic capabilities.** So the convergence runs in that
+direction — their generic function absorbs our contribution, rather than two
+functions living side by side.
+
+- **One artifact cache.** `PluginHostManager.materializeArtifact` and
+  `ensureCachedProviderBridge` did the same job with half the safety story
+  each. They collapse into `ensureCachedNodeArtifact` (a free function with an
+  injected fetch, `apps/host-daemon/src/node-artifact-cache.ts`); bridges
+  contributed the in-flight dedupe map and retry-on-verification-failure,
+  plugin hosts contributed the 0o600 staged write and stale pruning, and both
+  now have all four. Pruning is the one real difference and is therefore a
+  parameter: a plugin runs one host bundle at a time
+  (`keep-only-current`), while several bridges run at once and an artifact
+  launch names only a sha256, so bridges prune by disuse
+  (`keep-recently-used`, 30 days, touched on every launch). Pruning bridges to
+  "the current digest" would delete a live sibling's bridge on every launch
+  and ping-pong the downloads forever.
+- **One byte ceiling, zod-free.** `MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES` and
+  `HOST_ARTIFACT_MAX_BYTES` were the same 256 MiB written twice on opposite
+  sides of the contract package. Ours is deleted; theirs, in `protocol.ts`,
+  is now the one cap for any executable artifact delivered to a daemon.
+  `DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS` moved beside it.
+- **One spawn env.** `pluginHostProcessEnv` folds into
+  `sanitizeInheritedChildProcessEnv`, which gains an optional `shellPath`
+  (omission means "keep the parent's PATH" — a real distinction for a child
+  that must run exactly what the parent runs). Bridges already spawned through
+  that helper and already received the login-shell PATH via the RuntimeManager
+  overlay, so both daemon-spawned plugin process kinds now answer the question
+  identically; host workers additionally stop inheriting `NODE_ENV`.
+- **One artifact-serving shape.** Both internal routes go through
+  `hostArtifactFileResponse`: streamed from disk, length-checked against the
+  recorded `byteLength`, immutable cache headers, indistinguishable 404. The
+  bridge route's per-request full read and re-hash is gone — it bought nothing
+  the daemon does not already do, and cost a full buffer per fetch per
+  enrolled daemon. On the client side `fetchProviderBridge` adopts the plugin
+  host bundle's bounded reader (it now takes the expected length it always had
+  at the call site), so a lying stream is cut off mid-body instead of after
+  allocation.
+- **Plugin-scoped paths, half-adopted, honestly.** The dataDir/tempDir layout
+  is extracted from `PluginHostManager` into `plugin-process-paths.ts` with a
+  `kind` discriminator. Bridges do **not** adopt it yet, and the reason is a
+  gap rather than an oversight: an artifact `bridgeLaunch` names a sha256 and
+  nothing else, so the daemon cannot tell which plugin owns the bridge it is
+  about to spawn, and no bridge has anything to put in such a directory today.
+  Wiring dirs through now would be an accepted-but-ignored surface. Both halves
+  resolve in phase 3, where bridges become host-artifact exports and arrive
+  named by their plugin; the `kind` discriminator is there so that lands as a
+  new value rather than a rename.
+
+Deliberately **not** done: the `bb.host` second-consumer reshape (bridges as
+host-artifact exports). `bb.providerBridge` stays for now; that is the next
+phase, and it is what unblocks plugin-scoped bridge directories, prune-to-
+current for bridges, and full convergence of the two artifact registries and
+their serving routes.
+
+### Phase 3 (next)
+
+Reshape `bb.providerBridge` into a second consumer of `bb.host`'s artifact
+export, so a provider bridge is a host artifact that happens to speak the
+bridge protocol. That collapses the remaining duplication this pass could only
+narrow: `ProviderBridgeArtifactRegistry` against the plugin host artifact
+registry, the two internal routes into one, and the bridge cache's disuse
+pruning back into keep-only-current now that a bridge is named by its plugin.
+
 ## Design notes from the #1641 prototype comparison (thr_fxnmqjf9a4)
 
 The provider-driver prototype (#1641) was reviewed side by side with this
