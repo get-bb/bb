@@ -60,11 +60,11 @@ describe("GitDiffToolbar", () => {
       screen.getByTestId("git-diff-toolbar-selector-slot").className,
     ).toContain("basis-48");
     const details = screen.getByTestId("git-diff-toolbar-details");
-    expect(details.className).toContain("min-w-max");
+    expect(details.className).toContain("basis-72");
     expect(details.className).toContain("flex-1");
     expect(
       within(details).getByTestId("git-diff-toolbar-summary").className,
-    ).toContain("shrink-0");
+    ).toContain("shrink");
     expect(screen.getByTestId("git-diff-toolbar-summary").className).toContain(
       "pl-2.5",
     );
