@@ -490,6 +490,13 @@ export class ConnectTunnel {
       }
       this.lastError = `tunnel rejected: HTTP ${statusCode}`;
       this.options.log.warn(this.lastError);
+      // Registering this 'unexpected-response' listener makes ws skip its own
+      // abortHandshake, so without an explicit teardown neither 'error' nor
+      // 'close' fires and the socket sits in CONNECTING forever — the backoff
+      // that schedules a reconnect lives in the close handler. terminate()
+      // during CONNECTING routes to abortHandshake, emitting 'error' then
+      // 'close' so the existing reconnect path runs unchanged.
+      tunnel.terminate();
     });
     tunnel.on("error", (e: Error) => {
       if (this.stopped || this.tunnel !== tunnel) return;
