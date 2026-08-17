@@ -10,6 +10,7 @@
  * the full declaration rides the registration record, where the registry's
  * compaction accessor reads `supportsManualCompaction`.
  */
+import { isPluginOwnedIconPath } from "@bb/domain";
 import type { ProviderComposerAction, ProviderInfo } from "@bb/domain";
 import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 import type {
@@ -59,12 +60,14 @@ export function buildPluginProviderRegistration(args: {
     available: true,
     // Served by the provider-logo route from the icon byte snapshot on the
     // registration (see registerProvider in plugin-runtime.ts). The raw
-    // plugin-assets route serves only branding variants and built bundles,
-    // so declared icon paths are never exposed as URLs directly.
+    // plugin-assets route serves only branding variants and built bundles, so
+    // declared icon paths are never exposed as URLs directly. A named host
+    // glyph has no bytes, so it gets no URL — the client falls back the same
+    // way it does for a provider with no icon at all.
     logoUrl:
-      declaration.icon === undefined
-        ? null
-        : `/api/v1/system/providers/${declaration.id}/logo`,
+      declaration.icon !== undefined && isPluginOwnedIconPath(declaration.icon)
+        ? `/api/v1/system/providers/${declaration.id}/logo`
+        : null,
     capabilities: {
       supportsThreadArchive,
       supportsThreadRename,

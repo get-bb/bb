@@ -1068,7 +1068,7 @@ in one small package.
 bb.agents.experimental_registerProvider({
   id: "echo-agent",              // stable public id; thread rows persist it
   displayName: "Echo Agent",     // 1-80 chars, shown in the picker
-  icon: { asset: "icons/echo.svg" }, // optional, plugin-relative
+  icon: "./icons/echo.svg",      // optional; same grammar as bb.branding.icon
   kind: "agent",                 // "agent" REQUIRES bridge; "router" forbids it
   bridge: { entry: "provider-bridge" }, // names the built bundle
   capabilities: {
@@ -1089,9 +1089,12 @@ bb.agents.experimental_registerProvider({
 });
 ```
 
-**The icon.** `icon: { asset: … }` is served to clients as a `logoUrl` and
-drawn through `<img>`, so its `currentColor` cannot follow the bb theme. For a
-monochrome mark, ship an `app.tsx` too and register the same artwork with
+**The icon.** `icon` takes the same two shapes as `bb.branding.icon`: a named
+host glyph (`"Zap"`) or a plugin-relative SVG path (`"./icons/echo.svg"`). A
+path is served to clients as a `logoUrl` and drawn through `<img>`, so its
+`currentColor` cannot follow the bb theme; a glyph name carries no bytes, so
+there is no `logoUrl` at all. For a monochrome mark, ship an `app.tsx` too and
+register the same artwork with
 `app.slots.experimental_providerIcon({ providerId, icon })` — it renders
 inline and inherits the theme. The four first-party provider plugins do
 exactly this (`plugins/provider-codex/app.tsx`).
@@ -1622,7 +1625,7 @@ openWorkspaceFile }` — register a leaf
   the provider's id (`"codex"`, `"acp-cursor"`) — not the plugin id — and
   `icon` is a component receiving only `className` (host sizing plus the
   provider color class). Use it for a theme-aware mark: a file logo
-  (`bb.branding.icon`, or a provider declaration's `icon.asset`) is drawn
+  (`bb.branding.icon`, or a path-shaped provider declaration `icon`) is drawn
   through `<img>`, a separate document where `currentColor` resolves to black
   and is invisible on dark themes, so keep files for intentionally colored
   logos and register a component for anything that should follow the theme.

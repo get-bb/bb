@@ -12,7 +12,7 @@ export default function plugin(bb: BbPluginApi) {
   bb.agents.experimental_registerProvider({
     id: "acp-cursor",
     displayName: "Cursor",
-    icon: { asset: "icons/cursor.svg" },
+    icon: "./icons/cursor.svg",
     capabilities: {
       supportsServiceTier: true,
       supportsHostAiServices: false,

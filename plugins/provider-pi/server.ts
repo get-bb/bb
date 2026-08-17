@@ -10,7 +10,7 @@ export default function plugin(bb: BbPluginApi) {
   bb.agents.experimental_registerProvider({
     id: "pi",
     displayName: "Pi",
-    icon: { asset: "icons/pi.svg" },
+    icon: "./icons/pi.svg",
     capabilities: {
       supportsServiceTier: false,
       supportsHostAiServices: false,

@@ -178,11 +178,13 @@ registration record so fields without a registry consumer yet
    order. Decide whether third-party providers ever need to influence their
    own position — self-declared ranking is hostile, so any answer other than
    "no" needs a design — before the ordering behavior freezes into clients.
-2. **Icon URL shape.** `logoUrl` is emitted as
-   `/api/v1/plugins/<pluginId>/assets/<icon.asset>`. Confirm the plugin asset
-   route actually serves arbitrary declared assets at that path (today it
-   serves app bundles and branding variants), and decide the cache policy,
-   before the URL shape freezes into clients.
+2. **Icon URL shape.** `icon` uses the `bb.branding.icon` grammar (a named host
+   glyph, or a `./`-prefixed plugin-relative SVG). A path is snapshotted at
+   registration and served from `/api/v1/system/providers/<id>/logo`; a glyph
+   name yields a null `logoUrl` and no server-side resolution at all. Decide
+   whether the host should resolve declared glyph names for providers the way
+   it does for plugin branding, and decide the logo route's cache policy,
+   before either freezes into clients.
 3. **Collision semantics.** Ids are first-come collision-rejected: a staged
    collision fails the whole plugin load; a post-activation registration
    throws to the plugin. First-party ids (`codex`, `claude-code`, `pi`, and
@@ -213,7 +215,8 @@ registration record so fields without a registry consumer yet
 as one agent provider's icon: `{ providerId, icon }`, where `icon` receives
 only the host's `className` (sizing plus the provider color class). The
 component wins over the app's vendored brand map and over the provider's
-`logoUrl`; a file logo (manifest `branding.icon`, provider `icon.asset`) stays
+`logoUrl`; a file logo (manifest `branding.icon`, a path-shaped provider
+`icon`) stays
 the right home for static color logos, because it is fetched through `<img>`,
 a separate document where `currentColor` resolves to black — invisible on dark
 themes. Registrations are replaced wholesale with the rest of the plugin's

@@ -28,6 +28,11 @@
       "types": "./src/plugin-cli.ts",
       "default": "./src/plugin-cli.ts"
     },
+    "./plugin-icon": {
+      "source": "./src/plugin-icon.ts",
+      "types": "./src/plugin-icon.ts",
+      "default": "./src/plugin-icon.ts"
+    },
     "./provider-fork": {
       "source": "./src/provider-fork.ts",
       "types": "./src/provider-fork.ts",

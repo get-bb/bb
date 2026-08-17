@@ -10,7 +10,7 @@ export default function plugin(bb: BbPluginApi) {
   bb.agents.experimental_registerProvider({
     id: "codex",
     displayName: "Codex",
-    icon: { asset: "icons/codex.svg" },
+    icon: "./icons/codex.svg",
     capabilities: {
       supportsServiceTier: true,
       supportsHostAiServices: true,

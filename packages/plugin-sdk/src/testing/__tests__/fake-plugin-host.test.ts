@@ -943,7 +943,7 @@ describe("agents.experimental_registerProvider", () => {
     return {
       id: "my-agent",
       displayName: "My Agent",
-      icon: { asset: "icons/agent.svg" },
+      icon: "./icons/agent.svg",
       capabilities: {
         supportsServiceTier: false,
         supportsHostAiServices: false,
@@ -1004,16 +1004,19 @@ describe("agents.experimental_registerProvider", () => {
       ),
     ).toThrow(/capabilities.fork must be one of none, tip, checkpoint/);
     expect(() =>
-      register(agentDeclaration({ icon: { asset: "../outside.svg" } })),
-    ).toThrow(/icon.asset must not escape the plugin directory/);
+      register(agentDeclaration({ icon: "./../outside.svg" })),
+    ).toThrow(/icon must not escape the plugin directory/);
+    // The `bb.branding.icon` grammar: "./" means a plugin file, anything else
+    // is a host glyph name. A path without the prefix is neither.
     expect(() =>
-      register(agentDeclaration({ icon: { asset: "/abs/icon.svg" } })),
-    ).toThrow(/icon.asset must be relative/);
+      register(agentDeclaration({ icon: "/abs/icon.svg" })),
+    ).toThrow(/icon looks like a path but does not start with "\.\/"/);
     expect(() =>
-      register(
-        agentDeclaration({ composerActions: ["plan", "plan"] }),
-      ),
+      register(agentDeclaration({ composerActions: ["plan", "plan"] })),
     ).toThrow(/composerActions entry "plan" is duplicated/);
+    // A bare glyph name is the other half of the grammar and is accepted; this
+    // one commits, so it goes last.
+    expect(() => register(agentDeclaration({ icon: "Zap" }))).not.toThrow();
   });
 
   it("round-trips a registration through the harness and dispose", () => {

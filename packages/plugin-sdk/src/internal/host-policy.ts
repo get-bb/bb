@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isPluginOwnedIconPath } from "@bb/domain/plugin-icon";
 import { RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
 import { PROVIDER_FORK_VALUES } from "@bb/domain/provider-fork";
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "../backend-contract.js";
@@ -371,17 +372,26 @@ export function validatePluginProviderDeclaration(
       `provider "${id}" displayName must be 1-${PLUGIN_PROVIDER_DISPLAY_NAME_MAX_CHARS} non-blank characters`,
     );
   }
-  let icon: { asset: string } | undefined;
+  let icon: string | undefined;
   if (declaration.icon !== undefined) {
-    if (typeof declaration.icon !== "object" || declaration.icon === null) {
-      throw new Error(`provider "${id}" icon must be { asset: string }`);
+    if (typeof declaration.icon !== "string" || declaration.icon.trim() === "") {
+      throw new Error(
+        `provider "${id}" icon must be a non-blank string — a named host glyph ("Zap") or a plugin-relative path ("./icons/agent.svg")`,
+      );
     }
-    icon = Object.freeze({
-      asset: validateProviderRelativePath(
-        declaration.icon.asset,
-        `"${id}" icon.asset`,
-      ),
-    });
+    // Same grammar as `bb.branding.icon`: a leading "./" means a plugin-owned
+    // file and gets the escape rules; anything else names a host glyph. A
+    // path-shaped value without the "./" prefix is neither, and would
+    // otherwise be read as a glyph name that resolves to nothing.
+    if (isPluginOwnedIconPath(declaration.icon)) {
+      icon = validateProviderRelativePath(declaration.icon, `"${id}" icon`);
+    } else if (/[/\\]/u.test(declaration.icon)) {
+      throw new Error(
+        `provider "${id}" icon looks like a path but does not start with "./" — use "./icons/agent.svg" for a plugin file, or a bare host glyph name like "Zap"`,
+      );
+    } else {
+      icon = declaration.icon;
+    }
   }
   const capabilities = declaration.capabilities;
   if (typeof capabilities !== "object" || capabilities === null) {

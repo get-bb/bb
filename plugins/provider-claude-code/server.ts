@@ -10,7 +10,7 @@ export default function plugin(bb: BbPluginApi) {
   bb.agents.experimental_registerProvider({
     id: "claude-code",
     displayName: "Claude Code",
-    icon: { asset: "icons/claude-code.svg" },
+    icon: "./icons/claude-code.svg",
     capabilities: {
       supportsServiceTier: false,
       supportsHostAiServices: false,

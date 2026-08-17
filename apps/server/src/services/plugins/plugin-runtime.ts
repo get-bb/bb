@@ -14,7 +14,12 @@ import { performance } from "node:perf_hooks";
 import { createJiti } from "jiti";
 import semver from "semver";
 import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
-import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION, type Thread } from "@bb/domain";
+import {
+  isPluginOwnedIconPath,
+  PLUGIN_SDK_MAJOR,
+  PLUGIN_SDK_VERSION,
+  type Thread,
+} from "@bb/domain";
 import {
   buildPluginApp,
   buildPluginHost,
@@ -192,17 +197,20 @@ const PROVIDER_ICON_CONTENT_TYPES: Record<string, string> = {
 };
 
 /**
- * Byte snapshot of a declared provider icon. Null on any failure (missing
- * file, unsupported extension, path escaping the plugin root) — the provider
- * registers without a servable icon rather than failing the plugin load.
+ * Byte snapshot of a declared provider icon. Null when there is nothing to
+ * snapshot — a named host glyph (`"Zap"`) has no file at all — and on any
+ * failure for a plugin-owned path (missing file, unsupported extension, path
+ * escaping the plugin root): the provider registers without a servable icon
+ * rather than failing the plugin load.
  */
 function readPluginProviderIcon(
   rootDir: string,
-  asset: string | undefined,
+  icon: string | undefined,
 ): { bytes: Uint8Array; contentType: string } | null {
-  if (asset === undefined) {
+  if (icon === undefined || !isPluginOwnedIconPath(icon)) {
     return null;
   }
+  const asset = icon;
   const contentType =
     PROVIDER_ICON_CONTENT_TYPES[extname(asset).toLowerCase()];
   if (contentType === undefined) {
@@ -1393,7 +1401,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
             // host-policy.
             const icon = readPluginProviderIcon(
               row.rootDir,
-              declaration.icon?.asset,
+              declaration.icon,
             );
             return icon === null ? {} : { icon };
           })(),

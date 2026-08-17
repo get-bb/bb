@@ -49,7 +49,7 @@ const REGISTER_PROVIDER_SOURCE = (id: string): string => `
     bb.agents.experimental_registerProvider({
       id: ${JSON.stringify(id)},
       displayName: "My Remote Agent",
-      icon: { asset: "icons/agent.svg" },
+      icon: "./icons/agent.svg",
       capabilities: {
         supportsServiceTier: true,
         supportsHostAiServices: false,

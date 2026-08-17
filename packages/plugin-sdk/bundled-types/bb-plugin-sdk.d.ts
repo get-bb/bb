@@ -13995,12 +13995,13 @@ interface PluginProviderDeclaration {
     id: string;
     /** Picker display name: 1–80 characters, non-blank. */
     displayName: string;
-    /** Optional picker icon served via the plugin's existing asset route.
-     * `asset` is a plugin-relative path — no leading "/", no ".." segments, no
-     * backslashes (the manifest entry-path escape rules). */
-    icon?: {
-        asset: string;
-    };
+    /**
+     * Optional picker icon, in the same grammar as `bb.branding.icon`: either a
+     * named host glyph (`"Zap"`) or a plugin-relative path starting with `"./"`
+     * (`"./icons/agent.svg"`). Paths follow the manifest entry-path escape rules
+     * — no leading "/", no ".." segments, no backslashes.
+     */
+    icon?: string;
     /** Pre-session capability facts (see the declaration tests on
      * {@link PluginProviderCapabilities}). */
     capabilities: PluginProviderCapabilities;

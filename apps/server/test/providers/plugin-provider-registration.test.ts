@@ -9,7 +9,7 @@ function declaration(
   return validatePluginProviderDeclaration({
     id: "my-remote-agent",
     displayName: "My Remote Agent",
-    icon: { asset: "icons/agent.svg" },
+    icon: "./icons/agent.svg",
     capabilities: {
       supportsServiceTier: true,
       supportsHostAiServices: false,
