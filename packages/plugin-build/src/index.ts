@@ -26,6 +26,7 @@ export {
 } from "./build-plugin-server.js";
 export {
   buildPluginHost,
+  HOST_ARTIFACT_RUNTIME_STUBS,
   type PluginHostBuildResult,
 } from "./build-plugin-host.js";
 export * from "./plugin-dev-loop.js";

@@ -18,6 +18,11 @@ watches retain automatically; otherwise, the daemon gracefully evicts a worker
 after five idle minutes and starts it again on the next call. There is no global
 worker-count limit.
 
+The single-worker, idle-eviction, retention, and call-timeout rules above are
+specific to the host RPC consumer. Other daemon subsystems may attach the same
+`bb.host` artifact through a different bootstrap and own their own process
+lifecycle.
+
 The initial builtin proof is Keep Awake: it owns a host target, a worker-owned
 child process, desired-state reconciliation, and
 unexpected-exit recovery without feature-specific core hooks.
@@ -57,8 +62,9 @@ unexpected-exit recovery without feature-specific core hooks.
    layered on without changing the RPC contract. Confirm rejecting all private
    `@bb/*` imports from host bundles is the correct permanent boundary, and
    audit the builder-supplied public SDK runtime against future host exports.
-9. **Composition boundary.** Confirm a plugin's host entry should remain
-   private to that plugin's server entry.
+9. **Composition boundary.** Confirm host RPC methods and signals should remain
+   private to the owning plugin while allowing another daemon subsystem to
+   consume the same `bb.host` artifact through its own bootstrap and lifecycle.
 10. **Test harness.** Audit both layers: the server harness's
     `experimental_callHostRpc` option, `experimental_hostRpcCalls` inspection
     list, `experimental_emitHostWorkerExit`, and `experimental_emitHostSignal`

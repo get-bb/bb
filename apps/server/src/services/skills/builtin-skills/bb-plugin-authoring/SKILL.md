@@ -513,6 +513,11 @@ workers whose generation is still active and disposes generations disabled or
 replaced while it was offline. There is no global worker-count limit. Host code
 receives the normalized user `PATH` without daemon-owned `BB_*` variables.
 
+These single-worker, idle-eviction, retention, and call-timeout rules describe
+the host RPC consumer only. Another daemon subsystem may attach the same
+`bb.host` artifact through a different bootstrap and own a separate process
+lifecycle.
+
 Host production code may import public `@get-bb/plugin-sdk` entrypoints, Node
 APIs, and ordinary third-party dependencies. It must not import private
 monorepo packages such as `@bb/domain`, `@bb/host-workspace`, or any other

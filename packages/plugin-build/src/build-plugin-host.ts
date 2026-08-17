@@ -22,7 +22,6 @@ const NODE_ESM_REQUIRE_BANNER = [
   "var __dirname = __pathDirname(__filename);",
 ].join("\n");
 
-const PLUGIN_SDK_HOST_SPECIFIER = "@get-bb/plugin-sdk/host";
 const PLUGIN_SDK_HOST_RUNTIME_NAMESPACE = "bb-host-sdk-runtime";
 
 // Managed plugins are installed with production dependencies only. The SDK
@@ -53,6 +52,21 @@ export function experimental_defineHostEntry(args) {
   };
 }
 `;
+
+/**
+ * Build-time runtime stubs for public SDK entrypoints usable from a bb.host
+ * artifact. Keep this table declarative so another daemon-side consumer can
+ * add its published authoring surface without adding another manifest entry
+ * or a parallel artifact builder.
+ */
+export const HOST_ARTIFACT_RUNTIME_STUBS: Record<string, string> = {
+  "@get-bb/plugin-sdk": PLUGIN_SDK_ROOT_RUNTIME,
+  "@get-bb/plugin-sdk/host": PLUGIN_SDK_HOST_RUNTIME,
+};
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -277,25 +291,29 @@ export async function buildPluginHost(
         {
           name: "provide-public-host-sdk-runtime",
           setup(build) {
-            build.onResolve(
-              { filter: /^@get-bb\/plugin-sdk(?:\/host)?$/ },
-              (args) => ({
-                path: args.path,
-                namespace: PLUGIN_SDK_HOST_RUNTIME_NAMESPACE,
-              }),
+            const runtimeStubFilter = new RegExp(
+              `^(?:${Object.keys(HOST_ARTIFACT_RUNTIME_STUBS)
+                .map(escapeRegex)
+                .join("|")})$`,
             );
+            build.onResolve({ filter: runtimeStubFilter }, (args) => ({
+              path: args.path,
+              namespace: PLUGIN_SDK_HOST_RUNTIME_NAMESPACE,
+            }));
             build.onLoad(
               {
                 filter: /.*/,
                 namespace: PLUGIN_SDK_HOST_RUNTIME_NAMESPACE,
               },
-              (args) => ({
-                contents:
-                  args.path === PLUGIN_SDK_HOST_SPECIFIER
-                    ? PLUGIN_SDK_HOST_RUNTIME
-                    : PLUGIN_SDK_ROOT_RUNTIME,
-                loader: "js",
-              }),
+              (args) => {
+                const contents = HOST_ARTIFACT_RUNTIME_STUBS[args.path];
+                if (contents === undefined) {
+                  throw new Error(
+                    `no host artifact runtime stub registered for "${args.path}"`,
+                  );
+                }
+                return { contents, loader: "js" };
+              },
             );
           },
         },

@@ -3,8 +3,13 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { buildPluginHost } from "./build-plugin-host.js";
+import {
+  buildPluginHost,
+  HOST_ARTIFACT_RUNTIME_STUBS,
+} from "./build-plugin-host.js";
 import { resolvePluginBuildToolchain } from "./toolchain.js";
+
+const SECOND_CONSUMER_SDK_SPECIFIER = "@get-bb/host-artifact-consumer";
 
 function testToolchain() {
   return resolvePluginBuildToolchain(join(process.cwd(), ".unused-toolchain"));
@@ -14,6 +19,7 @@ describe("plugin host build", () => {
   const tempDirs: string[] = [];
 
   afterEach(async () => {
+    delete HOST_ARTIFACT_RUNTIME_STUBS[SECOND_CONSUMER_SDK_SPECIFIER];
     await Promise.all(
       tempDirs
         .splice(0)
@@ -51,6 +57,7 @@ describe("plugin host build", () => {
       [
         'import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";',
         'import { defineRpcContract } from "@get-bb/plugin-sdk";',
+        `import { defineConsumer } from "${SECOND_CONSUMER_SDK_SPECIFIER}";`,
         'const schema = { "~standard": { validate(value: unknown) { return { value }; } } };',
         "const contract = defineRpcContract({ echo: {",
         "  input: schema,",
@@ -61,9 +68,12 @@ describe("plugin host build", () => {
         "  experimental_signals: { changed: { payload: schema } },",
         "  handlers: { echo: (input) => input },",
         "});",
+        'export const consumer = defineConsumer("provider-bridge");',
         "",
       ].join("\n"),
     );
+    HOST_ARTIFACT_RUNTIME_STUBS[SECOND_CONSUMER_SDK_SPECIFIER] =
+      "export function defineConsumer(value) { return value; }";
 
     const result = await buildPluginHost(
       dir,
@@ -96,9 +106,11 @@ describe("plugin host build", () => {
         experimental_signals: { changed: { payload: unknown } };
         handlers: { echo: (input: string) => string };
       };
+      consumer: string;
     };
     expect(builtEntry.default.experimental_apiVersion).toBe(1);
     expect(builtEntry.default.experimental_signals).toHaveProperty("changed");
+    expect(builtEntry.consumer).toBe("provider-bridge");
     expect(builtEntry.default.handlers.echo("from-artifact")).toBe(
       "from-artifact",
     );
