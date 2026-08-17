@@ -188,8 +188,16 @@ export function GitDiffToolbar({
 
   return (
     <div ref={rootRef} className="px-4 pb-3 pt-3">
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="min-w-0 flex-1">
+      <div
+        className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2"
+        data-testid="git-diff-toolbar-layout"
+      >
+        <div
+          // A readable basis makes the browser wrap this row according to the
+          // toolbar's own width instead of shrinking the selector to nothing.
+          className="min-w-0 flex-1 basis-48"
+          data-testid="git-diff-toolbar-selector-slot"
+        >
           <GitDiffSelector
             value={selectionValue}
             options={selectionOptions}
@@ -200,9 +208,10 @@ export function GitDiffToolbar({
         </div>
         <span
           className={cn(
-            "min-w-0 shrink truncate text-muted-foreground",
+            "min-w-0 shrink-0 truncate pl-2.5 text-muted-foreground",
             COARSE_POINTER_TEXT_SM_CLASS,
           )}
+          data-testid="git-diff-toolbar-summary"
           title={
             isTruncated
               ? `Showing the first ${stats.filesCount} changed file${stats.filesCount === 1 ? "" : "s"}; shown slice: ${stats.insertions} insertion${stats.insertions === 1 ? "" : "s"}, ${stats.deletions} deletion${stats.deletions === 1 ? "" : "s"}`
@@ -226,7 +235,10 @@ export function GitDiffToolbar({
             renderChangeSummary(changeTally)
           )}
         </span>
-        <div className="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-1">
+        <div
+          className="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-1"
+          data-testid="git-diff-toolbar-actions"
+        >
           <Button
             type="button"
             variant="ghost"
