@@ -48,7 +48,7 @@ env:
 jobs:
   publish:
     name: Publish bb-app
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
     environment: npm-release
     permissions:
@@ -242,7 +242,7 @@ jobs:
     name: Publish bb-app nightly after the release
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.npm_tag == 'latest' && inputs.dry_run == false }}
     needs: publish
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
     environment: npm-release
     permissions:
@@ -365,7 +365,7 @@ jobs:
   # docs/bb-release-process.md#publishing-the-plugin-sdk.
   publish-plugin-sdk:
     name: Publish @get-bb/plugin-sdk
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
     environment: npm-release
     permissions:
@@ -500,7 +500,7 @@ jobs:
     needs:
       - publish
       - publish-nightly
-    runs-on: macos-15
+    runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 45
     outputs:
       version: ${{ steps.nightly_version.outputs.version }}
@@ -636,7 +636,7 @@ jobs:
     # Pinned rather than ubuntu-latest so the glibc the AppImage links against
     # changes only when we choose it: the build machine's glibc sets the
     # minimum distro version users need.
-    runs-on: ubuntu-22.04
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 45
     outputs:
       version: ${{ steps.nightly_version.outputs.version }}
@@ -720,7 +720,7 @@ jobs:
     needs:
       - nightly-desktop-macos
       - nightly-desktop-linux
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
     permissions:
       contents: write
