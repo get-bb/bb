@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GitDiffToolbar } from "./GitDiffToolbar";
 
@@ -44,7 +50,7 @@ afterEach(() => {
 });
 
 describe("GitDiffToolbar", () => {
-  it("wraps large diff controls from the toolbar's intrinsic width", () => {
+  it("keeps large diff stats and actions together when the toolbar wraps", () => {
     const handlers = renderToolbar();
 
     expect(screen.getByTestId("git-diff-toolbar-layout").className).toContain(
@@ -53,18 +59,21 @@ describe("GitDiffToolbar", () => {
     expect(
       screen.getByTestId("git-diff-toolbar-selector-slot").className,
     ).toContain("basis-48");
-    expect(screen.getByTestId("git-diff-toolbar-summary").className).toContain(
-      "shrink-0",
-    );
+    const details = screen.getByTestId("git-diff-toolbar-details");
+    expect(details.className).toContain("min-w-max");
+    expect(details.className).toContain("flex-1");
+    expect(
+      within(details).getByTestId("git-diff-toolbar-summary").className,
+    ).toContain("shrink-0");
     expect(screen.getByTestId("git-diff-toolbar-summary").className).toContain(
       "pl-2.5",
     );
     expect(screen.getByTestId("git-diff-toolbar-summary").textContent).toBe(
       "351 files, +38,872 -22,464",
     );
-    expect(screen.getByTestId("git-diff-toolbar-actions").className).toContain(
-      "shrink-0",
-    );
+    expect(
+      within(details).getByTestId("git-diff-toolbar-actions").className,
+    ).toContain("shrink-0");
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse all files" }));
     fireEvent.click(screen.getByRole("button", { name: "Wrap diff lines" }));

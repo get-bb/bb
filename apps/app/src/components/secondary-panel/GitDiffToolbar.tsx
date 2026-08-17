@@ -206,85 +206,44 @@ export function GitDiffToolbar({
             panelWidthPx={rootWidth}
           />
         </div>
-        <span
-          className={cn(
-            "min-w-0 shrink-0 truncate pl-2.5 text-muted-foreground",
-            COARSE_POINTER_TEXT_SM_CLASS,
-          )}
-          data-testid="git-diff-toolbar-summary"
-          title={
-            isTruncated
-              ? `Showing the first ${stats.filesCount} changed file${stats.filesCount === 1 ? "" : "s"}; shown slice: ${stats.insertions} insertion${stats.insertions === 1 ? "" : "s"}, ${stats.deletions} deletion${stats.deletions === 1 ? "" : "s"}`
-              : completeSummary
-          }
-        >
-          {isTruncated ? (
-            <>
-              {truncatedFilesLabel}
-              {hasShownLineChanges ? (
-                <>
-                  {" · shown "}
-                  <DiffStatsTally
-                    insertions={stats.insertions}
-                    deletions={stats.deletions}
-                  />
-                </>
-              ) : null}
-            </>
-          ) : (
-            renderChangeSummary(changeTally)
-          )}
-        </span>
         <div
-          className="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-1"
-          data-testid="git-diff-toolbar-actions"
+          // Keep the summary and actions on the same flex line so compact
+          // layouts wrap into a predictable selector row and controls row.
+          className="flex min-w-max flex-1 items-center"
+          data-testid="git-diff-toolbar-details"
         >
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
+          <span
             className={cn(
-              COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-              "text-muted-foreground",
+              "min-w-0 shrink-0 truncate pl-2.5 text-muted-foreground",
+              COARSE_POINTER_TEXT_SM_CLASS,
             )}
-            onClick={onToggleAllCollapsed}
-            disabled={isCollapseAllDisabled}
-            aria-label={
-              areAllFilesCollapsed ? "Expand all files" : "Collapse all files"
+            data-testid="git-diff-toolbar-summary"
+            title={
+              isTruncated
+                ? `Showing the first ${stats.filesCount} changed file${stats.filesCount === 1 ? "" : "s"}; shown slice: ${stats.insertions} insertion${stats.insertions === 1 ? "" : "s"}, ${stats.deletions} deletion${stats.deletions === 1 ? "" : "s"}`
+                : completeSummary
             }
           >
-            {areAllFilesCollapsed ? (
-              <Icon name="ChevronsDown" />
+            {isTruncated ? (
+              <>
+                {truncatedFilesLabel}
+                {hasShownLineChanges ? (
+                  <>
+                    {" · shown "}
+                    <DiffStatsTally
+                      insertions={stats.insertions}
+                      deletions={stats.deletions}
+                    />
+                  </>
+                ) : null}
+              </>
             ) : (
-              <Icon name="ChevronsUp" />
+              renderChangeSummary(changeTally)
             )}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className={cn(
-              COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-              "text-muted-foreground",
-            )}
-            onClick={() =>
-              onLineOverflowModeChange(
-                getNextCodeOverflowMode(lineOverflowMode),
-              )
-            }
-            aria-label={
-              lineOverflowMode === "wrap"
-                ? "Disable diff line wrap"
-                : "Wrap diff lines"
-            }
-            aria-pressed={lineOverflowMode === "wrap"}
-          >
-            <Icon name="TextWrap" />
-          </Button>
+          </span>
           <div
-            className="inline-flex items-center gap-1 rounded-lg border border-border p-0.5"
-            role="tablist"
-            aria-label="Diff view mode"
+            className="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-1"
+            data-testid="git-diff-toolbar-actions"
           >
             <Button
               type="button"
@@ -294,11 +253,17 @@ export function GitDiffToolbar({
                 COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
                 "text-muted-foreground",
               )}
-              onClick={() => onDisplayModeChange("unified")}
-              aria-label="Stacked diff view"
-              aria-pressed={displayMode === "unified"}
+              onClick={onToggleAllCollapsed}
+              disabled={isCollapseAllDisabled}
+              aria-label={
+                areAllFilesCollapsed ? "Expand all files" : "Collapse all files"
+              }
             >
-              <Icon name="Rows2" />
+              {areAllFilesCollapsed ? (
+                <Icon name="ChevronsDown" />
+              ) : (
+                <Icon name="ChevronsUp" />
+              )}
             </Button>
             <Button
               type="button"
@@ -308,12 +273,54 @@ export function GitDiffToolbar({
                 COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
                 "text-muted-foreground",
               )}
-              onClick={() => onDisplayModeChange("split")}
-              aria-label="Split diff view"
-              aria-pressed={displayMode === "split"}
+              onClick={() =>
+                onLineOverflowModeChange(
+                  getNextCodeOverflowMode(lineOverflowMode),
+                )
+              }
+              aria-label={
+                lineOverflowMode === "wrap"
+                  ? "Disable diff line wrap"
+                  : "Wrap diff lines"
+              }
+              aria-pressed={lineOverflowMode === "wrap"}
             >
-              <Icon name="Columns2" />
+              <Icon name="TextWrap" />
             </Button>
+            <div
+              className="inline-flex items-center gap-1 rounded-lg border border-border p-0.5"
+              role="tablist"
+              aria-label="Diff view mode"
+            >
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                  "text-muted-foreground",
+                )}
+                onClick={() => onDisplayModeChange("unified")}
+                aria-label="Stacked diff view"
+                aria-pressed={displayMode === "unified"}
+              >
+                <Icon name="Rows2" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                  "text-muted-foreground",
+                )}
+                onClick={() => onDisplayModeChange("split")}
+                aria-label="Split diff view"
+                aria-pressed={displayMode === "split"}
+              >
+                <Icon name="Columns2" />
+              </Button>
+            </div>
           </div>
         </div>
       </div>
