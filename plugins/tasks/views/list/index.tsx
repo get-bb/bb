@@ -208,15 +208,26 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   // user left off. Restore only once the real rows have loaded.
   const scrollRef = useRef<HTMLDivElement>(null);
   const scopeKey = listScrollScopeKey({ projectId, activeOnly, filters, sort });
-  // `useListTasks` keeps the previous scope's rows on screen while it refetches
-  // and only flips `isLoading` in a later effect, so on the first render after a
-  // filter/sort change the rows are stale but `isLoading` is still false. Treat
-  // the scope as loading until fresh data for it has settled, giving scroll
-  // restoration a synchronously-correct signal that more rows are still coming.
-  const settledScope = useRef(scopeKey);
-  const scopeChanged = settledScope.current !== scopeKey;
+  // `useListTasks` keeps the previous scope's rows while it refetches and
+  // only flips `isLoading` in a later effect, so on the first render after a
+  // scope change (All to Active, a project, a filter or sort) the data still
+  // belongs to the previous scope while `isLoading` reads false. Treat the
+  // scope as loading until its own fetch has settled: scroll restoration gets
+  // a synchronously-correct "more rows are coming" signal, and the body below
+  // must not present another scope's rows, or worse its emptiness, as this
+  // scope's truth. State, not a ref: settling has to rerender the body.
+  const [settledScopeKey, setSettledScopeKey] = useState(scopeKey);
+  const scopeChanged = settledScopeKey !== scopeKey;
+  const previousScopeKey = useRef(scopeKey);
   useEffect(() => {
-    if (!tasksQuery.isLoading) settledScope.current = scopeKey;
+    // The query's own effect flips `isLoading` in this same commit, but this
+    // effect still reads the previous render's value, so the commit that
+    // changes the scope must never settle it; the next resolved commit does.
+    const scopeJustChanged = previousScopeKey.current !== scopeKey;
+    previousScopeKey.current = scopeKey;
+    if (!scopeJustChanged && !tasksQuery.isLoading) {
+      setSettledScopeKey(scopeKey);
+    }
   }, [scopeKey, tasksQuery.isLoading, tasksQuery.data]);
   useListScrollRestoration(scrollRef, scopeKey, {
     contentReady: tasksQuery.data !== undefined && tasksQuery.data.length > 0,
@@ -225,9 +236,16 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   });
 
   let body: React.ReactNode;
-  if (tasksQuery.data === undefined || displayTasks === undefined) {
+  if (
+    scopeChanged ||
+    tasksQuery.data === undefined ||
+    displayTasks === undefined
+  ) {
+    // While a changed scope is in flight, any held data or error is the
+    // previous scope's; only a settled result may claim this scope is empty
+    // or broken.
     body =
-      tasksQuery.error !== null ? (
+      !scopeChanged && tasksQuery.error !== null ? (
         <EmptyState
           icon="AlertCircle"
           title="Couldn't load tasks"

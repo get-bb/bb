@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
@@ -842,6 +842,50 @@ describe("tasks app shell", () => {
     await slot.findByText("No projects yet");
     fireEvent.click(slot.getByRole("button", { name: /New project/ }));
     await slot.findByText("Projects group tasks under a shared key prefix.");
+  });
+
+  it("does not paint another scope's empty state while its own rows load", async () => {
+    // All tasks has rows; Active has none. Switching Active back to All keeps
+    // the same ListView instance, whose query still holds Active's empty
+    // result while All refetches; the body must read as loading, never as
+    // "No tasks yet", until All's own rows settle.
+    const tasks = [
+      {
+        ...pagerTask("TSK-4", "todo", 1),
+        title: "Scope truth",
+        description: "",
+        labelIds: [],
+      },
+    ];
+    let deferAll = false;
+    let releaseAll: (() => void) | null = null;
+    const rpc = seededRpc({
+      listLabels: () => ({ labels: [] }),
+      // The shell's own Active count also calls listTasks (activeOnly), so
+      // route by arguments rather than call order.
+      listTasks: (input: { activeOnly?: boolean }) => {
+        if (input.activeOnly === true) return { tasks: [] };
+        if (!deferAll) return { tasks };
+        return new Promise((resolve) => {
+          releaseAll = () => resolve({ tasks });
+        });
+      },
+    });
+    const Panel = app.navPanels[0]!.component;
+    const slot = renderSlot(app.navPanels[0]!, { subPath: "all" }, { rpc });
+    await slot.findByText("Scope truth");
+
+    slot.lifecycle.rerender(<Panel subPath="active" />);
+    await slot.findByText("No agents working right now");
+
+    deferAll = true;
+    slot.lifecycle.rerender(<Panel subPath="all" />);
+    await waitFor(() => expect(releaseAll).not.toBeNull());
+    // In flight: Active's emptiness must not masquerade as All's.
+    expect(slot.queryByText("No tasks yet")).toBeNull();
+    expect(slot.queryByText("Scope truth")).toBeNull();
+    act(() => releaseAll!());
+    await slot.findByText("Scope truth");
   });
 
   it("renders board and task subPaths without plugin-owned sidebar chrome", async () => {
