@@ -788,6 +788,14 @@ function RootComposeSurface({
     [promptBoxRef, promptDraft, setStartedComposing],
   );
 
+  // Both location-state effects below write the draft store and then clear
+  // the state through a router transition. The store write re-renders this
+  // view synchronously with a new `promptDraft` object, before the transition
+  // commits, so an effect that depends on `promptDraft` itself would re-run
+  // against the same location state, write again, and starve the transition
+  // until React aborts the loop. Depend on the stable setters instead.
+  const setPromptDraft = promptDraft.setDraft;
+  const restorePromptDraftIfEmpty = promptDraft.restoreIfEmpty;
   useEffect(() => {
     const sectionTarget = readRootComposeSectionTargetFromLocationState(
       location.state,
@@ -834,7 +842,7 @@ function RootComposeSurface({
           encodeReuseValue(nextHandoffSeed.environmentId),
         );
       }
-      promptDraft.setDraft(buildThreadHandoffPromptDraft(nextHandoffSeed));
+      setPromptDraft(buildThreadHandoffPromptDraft(nextHandoffSeed));
     }
     navigate(getRootComposeRoutePath() + location.search, {
       replace: true,
@@ -844,10 +852,10 @@ function RootComposeSurface({
     location.search,
     location.state,
     navigate,
-    promptDraft,
     seedEnvironmentSelectionValue,
     setForkSeed,
     setPermissionMode,
+    setPromptDraft,
     setProviderModelReasoning,
     setRootComposeProjectId,
     setRootComposeSectionId,
@@ -859,15 +867,21 @@ function RootComposeSurface({
     if (initialPrompt === null) return;
     const nextDraft = { text: initialPrompt, mentions: [], attachments: [] };
     if (shouldReplaceInitialPromptFromLocationState(location.state)) {
-      promptDraft.setDraft(nextDraft);
+      setPromptDraft(nextDraft);
     } else {
-      promptDraft.restoreIfEmpty(nextDraft);
+      restorePromptDraftIfEmpty(nextDraft);
     }
     navigate(getRootComposeRoutePath() + location.search, {
       replace: true,
       state: { focusPrompt: true },
     });
-  }, [location.search, location.state, navigate, promptDraft]);
+  }, [
+    location.search,
+    location.state,
+    navigate,
+    restorePromptDraftIfEmpty,
+    setPromptDraft,
+  ]);
   const shouldFocusPrompt =
     typeof location.state === "object" &&
     location.state !== null &&
