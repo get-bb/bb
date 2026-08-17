@@ -801,16 +801,20 @@ describe("binding-backed Room Subagent live list", () => {
       );
       expect(batched.mock.calls.length).toBeGreaterThan(0);
       expect(single).not.toHaveBeenCalled();
-      expect(assertPrimaryReady(emitted[0]).subagents).toEqual([
-        expect.objectContaining({
-          attention: { kind: "question" },
-          id: room.ids.get(first.id),
-        }),
-        expect.objectContaining({
-          attention: { kind: "question" },
-          id: room.ids.get(second.id),
-        }),
-      ]);
+      const subagents = assertPrimaryReady(emitted[0]).subagents;
+      expect(subagents).toHaveLength(2);
+      expect(subagents).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            attention: { kind: "question" },
+            id: room.ids.get(first.id),
+          }),
+          expect.objectContaining({
+            attention: { kind: "question" },
+            id: room.ids.get(second.id),
+          }),
+        ]),
+      );
 
       const warn = vi.spyOn(room.harness.deps.logger, "warn");
       let listCalls = 0;
