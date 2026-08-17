@@ -43,7 +43,12 @@ export function createLastKnownCache<T>({
   schema: z.ZodType<T>;
 }): LastKnownCache<T> {
   const storage = createJsonLocalStorage<unknown>();
-  const versionPrefix = `${prefix}.${version}.`;
+  // A cache with no routing dimensions stores under the bare version key, so
+  // the prune must spare it as well as the dotted scope namespace: pruning
+  // "everything under my prefix that is not my version" would otherwise eat
+  // the cache's own entry on the next page load.
+  const zeroScopeKey = `${prefix}.${version}`;
+  const versionPrefix = `${zeroScopeKey}.`;
   let pruned = false;
   const pruneOtherVersions = () => {
     if (pruned) return;
@@ -55,6 +60,7 @@ export function createLastKnownCache<T>({
         if (
           stored !== null &&
           stored.startsWith(`${prefix}.`) &&
+          stored !== zeroScopeKey &&
           !stored.startsWith(versionPrefix)
         ) {
           stale.push(stored);
