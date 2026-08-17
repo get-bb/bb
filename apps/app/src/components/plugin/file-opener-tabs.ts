@@ -22,6 +22,11 @@ import type { OpenSecondaryPanelTabRequest } from "@/components/secondary-panel/
  */
 export const FILE_OPENER_ACTION_ID_PREFIX = "file-opener:";
 
+export type PluginFileOpenerFile = Pick<
+  PluginFileOpenerProps,
+  "path" | "source"
+>;
+
 export function fileOpenerIdFromActionId(actionId: string): string | null {
   return actionId.startsWith(FILE_OPENER_ACTION_ID_PREFIX)
     ? actionId.slice(FILE_OPENER_ACTION_ID_PREFIX.length)
@@ -30,7 +35,7 @@ export function fileOpenerIdFromActionId(actionId: string): string | null {
 
 export function buildFileOpenerPanelTab(
   opener: Pick<PluginFileOpenerSlot, "id" | "pluginId">,
-  file: PluginFileOpenerProps,
+  file: PluginFileOpenerFile,
 ): PluginPanelFixedPanelTab {
   return createPluginPanelFixedPanelTab({
     actionId: `${FILE_OPENER_ACTION_ID_PREFIX}${opener.id}`,
@@ -43,7 +48,7 @@ export function buildFileOpenerPanelTab(
 /** Parse a persisted opener tab's params; null on any mismatch (degrade). */
 export function parseFileOpenerParams(
   paramsJson: string | null,
-): PluginFileOpenerProps | null {
+): PluginFileOpenerFile | null {
   if (paramsJson === null) return null;
   let parsed: unknown;
   try {
@@ -133,7 +138,7 @@ function fileForOpenRequest({
 }: Omit<
   CreateFileOpenerTabForRequestArgs,
   "fileOpeners" | "preference"
->): PluginFileOpenerProps | null {
+>): PluginFileOpenerFile | null {
   switch (request.kind) {
     case "workspace-file-preview": {
       // Same guard as the built-in path, plus live-content-only rules.

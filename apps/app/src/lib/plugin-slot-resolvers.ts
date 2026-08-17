@@ -247,18 +247,34 @@ export type ResolvedReplacement<Registration> =
 
 const OWNER_REPLACEMENT: ResolvedReplacement<never> = { kind: "owner" };
 
+/**
+ * Select the first applicable registration in snapshot order. The slot store
+ * makes that order deterministic; callers provide only capability-specific
+ * applicability such as an extension or an explicit provider identity.
+ */
+export function resolveReplacement<Registration>(
+  registrations: readonly Registration[],
+  applies?: (registration: Registration) => boolean,
+): ResolvedReplacement<Registration> {
+  const registration =
+    applies === undefined
+      ? registrations[0]
+      : registrations.find((candidate) => applies(candidate));
+  return registration === undefined
+    ? OWNER_REPLACEMENT
+    : { kind: "plugin", registration };
+}
+
 export function resolveThreadListReplacement(
   registrations: readonly PluginThreadListSlot[],
   preference: string,
   ownerPreference: string,
 ): ResolvedReplacement<PluginThreadListSlot> {
   if (preference === ownerPreference) return OWNER_REPLACEMENT;
-  const registration = registrations.find(
+  return resolveReplacement(
+    registrations,
     (candidate) => `${candidate.pluginId}/${candidate.id}` === preference,
   );
-  return registration === undefined
-    ? OWNER_REPLACEMENT
-    : { kind: "plugin", registration };
 }
 
 export type FileOpenerPreferenceMap = Record<string, string>;
@@ -291,26 +307,22 @@ export function resolveFileOpenerReplacement(args: {
   const override = args.override;
   if (override === "builtin") return OWNER_REPLACEMENT;
   if (override !== undefined) {
-    const registration = args.registrations.find(
+    return resolveReplacement(
+      args.registrations,
       (candidate) =>
         candidate.pluginId === override.pluginId &&
         candidate.id === override.openerId,
     );
-    return registration === undefined
-      ? OWNER_REPLACEMENT
-      : { kind: "plugin", registration };
   }
 
   const extension = getFileExtension(args.path);
   if (extension === null) return OWNER_REPLACEMENT;
   const preferredRef = args.preference[extension];
   if (preferredRef === undefined) return OWNER_REPLACEMENT;
-  const registration = args.registrations.find(
+  return resolveReplacement(
+    args.registrations,
     (candidate) =>
       buildFileOpenerRef(candidate) === preferredRef &&
       candidate.extensions.includes(extension),
   );
-  return registration === undefined
-    ? OWNER_REPLACEMENT
-    : { kind: "plugin", registration };
 }

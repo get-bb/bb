@@ -1,6 +1,13 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import type { JsonValue } from "@get-bb/plugin-sdk";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
+import { FilePreview } from "@/components/secondary-panel/FilePreview";
+import {
+  HostFilePreviewTabContent,
+  ProjectFilePreviewTabContent,
+  ThreadStorageFilePreviewTabContent,
+  WorkspaceFilePreviewTabContent,
+} from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
 import {
   usePluginSlots,
   type PluginNewThreadPanelActionSlot,
@@ -14,8 +21,11 @@ import {
 import {
   fileOpenerIdFromActionId,
   parseFileOpenerParams,
+  type PluginFileOpenerFile,
 } from "./file-opener-tabs";
 import { PluginSlotMount } from "./PluginSlotMount";
+import { PluginReplacementSlot } from "./PluginReplacementSlot";
+import { resolveReplacement } from "@/lib/plugin-slot-resolvers";
 
 /**
  * Plugin panel-action slots (plugin design §5.2): surface-specific rows in
@@ -313,39 +323,111 @@ function FileOpenerTabContent({
   tab: PluginPanelFixedPanelTab;
 }) {
   const { fileOpeners } = usePluginSlots();
-  const opener =
-    fileOpeners.find(
-      (candidate) =>
-        candidate.pluginId === tab.pluginId && candidate.id === openerId,
-    ) ?? null;
+  const replacement = resolveReplacement(
+    fileOpeners,
+    (candidate) =>
+      candidate.pluginId === tab.pluginId && candidate.id === openerId,
+  );
   const file = useMemo(
     () => parseFileOpenerParams(tab.paramsJson),
     [tab.paramsJson],
   );
-  if (opener === null || file === null) {
-    return (
-      <div className="p-4">
-        <EmptyStatePanel className="rounded-lg p-6 text-sm">
-          This file opener is not available. The plugin may still be loading, or
-          it has been disabled or removed — reopen the file to use the built-in
-          preview.
-        </EmptyStatePanel>
-      </div>
-    );
+  const Original = useCallback(
+    () =>
+      file === null ? (
+        <UnavailableFileOpenerTab />
+      ) : (
+        <BuiltInFileOpener file={file} />
+      ),
+    [file],
+  );
+  if (file === null) {
+    return <UnavailableFileOpenerTab />;
   }
   return (
-    <div
-      className="flex min-h-0 flex-1 flex-col overflow-hidden"
-      data-testid="plugin-file-opener-tab-content"
+    <PluginReplacementSlot
+      replacement={replacement}
+      Original={Original}
+      slotKind="fileOpener"
     >
-      <PluginSlotMount
-        key={`${opener.pluginId}/${opener.id}/${opener.generation}`}
-        pluginId={opener.pluginId}
-        slotKind="fileOpener"
-        slotId={opener.id}
-      >
-        <opener.component path={file.path} source={file.source} />
-      </PluginSlotMount>
+      {(opener, BoundOriginal) => (
+        <div
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          data-testid="plugin-file-opener-tab-content"
+        >
+          <opener.component
+            path={file.path}
+            source={file.source}
+            experimental_Original={BoundOriginal}
+          />
+        </div>
+      )}
+    </PluginReplacementSlot>
+  );
+}
+
+function UnavailableFileOpenerTab() {
+  return (
+    <div className="p-4">
+      <EmptyStatePanel className="rounded-lg p-6 text-sm">
+        This file opener is not available. The plugin may still be loading, or
+        it has been disabled or removed — reopen the file to use the built-in
+        preview.
+      </EmptyStatePanel>
     </div>
   );
+}
+
+/** The built-in live-file preview bound to one plugin-opener tab. */
+function BuiltInFileOpener({ file }: { file: PluginFileOpenerFile }) {
+  const { path, source } = file;
+  if (source.kind === "workspace") {
+    if (source.environmentId !== null) {
+      return (
+        <WorkspaceFilePreviewTabContent
+          activePath={path}
+          environmentId={source.environmentId}
+          lineRange={null}
+          source={{ kind: "working-tree" }}
+          statusLabel={null}
+          threadId={source.threadId}
+        />
+      );
+    }
+    if (source.projectId !== null) {
+      return (
+        <ProjectFilePreviewTabContent
+          activePath={path}
+          environmentId={null}
+          hostId={null}
+          lineRange={null}
+          projectId={source.projectId}
+        />
+      );
+    }
+  }
+  if (source.kind === "host" && source.threadId !== null) {
+    return (
+      <HostFilePreviewTabContent
+        activePath={path}
+        copyPath={path}
+        environmentId={source.environmentId}
+        lineRange={null}
+        threadId={source.threadId}
+      />
+    );
+  }
+  if (source.kind === "thread-storage" && source.threadId !== null) {
+    return (
+      <ThreadStorageFilePreviewTabContent
+        activePath={path}
+        lineRange={null}
+        threadId={source.threadId}
+      />
+    );
+  }
+
+  // Persisted tabs from an older or partial context still show recognizable
+  // owner chrome while their full source context is unavailable.
+  return <FilePreview path={path} state={{ kind: "loading" }} />;
 }

@@ -127,6 +127,13 @@ export interface PluginThreadListProps {
    * shipping a second search box.
    */
   searchQuery: string;
+  /**
+   * BB's thread list, bound to this sidebar instance. Render it to delegate
+   * conditionally without re-entering plugin replacement resolution.
+   *
+   * @experimental Audit before relying on this as a stable contract.
+   */
+  experimental_Original: ComponentType;
 }
 
 /**
@@ -167,6 +174,13 @@ export interface PluginFileOpenerSource {
 export interface PluginFileOpenerProps {
   path: string;
   source: PluginFileOpenerSource;
+  /**
+   * BB's file preview, bound to this file. Render it to delegate conditionally
+   * without re-entering plugin replacement resolution.
+   *
+   * @experimental Audit before relying on this as a stable contract.
+   */
+  experimental_Original: ComponentType;
 }
 
 /**

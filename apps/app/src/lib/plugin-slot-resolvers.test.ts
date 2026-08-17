@@ -17,6 +17,7 @@ import {
   resolveMessageDirective,
   resolveMessageDirectiveRegistry,
   resolvePendingInteraction,
+  resolveReplacement,
   resolveThreadListReplacement,
 } from "./plugin-slot-resolvers";
 
@@ -144,6 +145,24 @@ describe("keyed renderer resolvers", () => {
 });
 
 describe("replacement resolvers", () => {
+  it("selects the first applicable provider and reveals the next after removal", () => {
+    const alpha = { id: "alpha", applies: false };
+    const beta = { id: "beta", applies: true };
+    const gamma = { id: "gamma", applies: true };
+
+    expect(
+      resolveReplacement([alpha, beta, gamma], (candidate) =>
+        Boolean(candidate.applies),
+      ),
+    ).toEqual({ kind: "plugin", registration: beta });
+    expect(
+      resolveReplacement([alpha, gamma], (candidate) =>
+        Boolean(candidate.applies),
+      ),
+    ).toEqual({ kind: "plugin", registration: gamma });
+    expect(resolveReplacement([], () => true)).toEqual({ kind: "owner" });
+  });
+
   it("preserves the current explicit thread-list preference and owner fallback", () => {
     const threadList: PluginThreadListSlot = {
       pluginId: "inbox",

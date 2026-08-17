@@ -2,6 +2,7 @@ import { atomWithStorage } from "jotai/utils";
 import { useAtomValue } from "jotai";
 import { createJsonLocalStorage } from "@/lib/browser-storage";
 import { resolveThreadListReplacement } from "@/lib/plugin-slot-resolvers";
+import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
 import { usePluginSlots, type PluginThreadListSlot } from "@/lib/plugin-slots";
 
 const THREAD_LIST_PROVIDER_STORAGE_KEY = "bb.sidebar.threadListProvider";
@@ -55,4 +56,15 @@ export function useThreadListProvider(): PluginThreadListSlot | null {
   const { threadLists } = usePluginSlots();
   const preference = useAtomValue(threadListProviderAtom);
   return resolveThreadListProvider(threadLists, preference);
+}
+
+/** Current preference resolved as the common owner/plugin union. */
+export function useThreadListReplacement(): ResolvedReplacement<PluginThreadListSlot> {
+  const { threadLists } = usePluginSlots();
+  const preference = useAtomValue(threadListProviderAtom);
+  return resolveThreadListReplacement(
+    threadLists,
+    preference,
+    BUILT_IN_THREAD_LIST_PROVIDER,
+  );
 }

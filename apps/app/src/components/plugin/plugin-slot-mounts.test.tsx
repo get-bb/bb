@@ -1808,7 +1808,7 @@ describe("plugin file opener tabs", () => {
     ).toBeDefined();
   });
 
-  it("degrades to a placeholder when the opener is gone or params are junk", () => {
+  it("uses the owner when the opener is gone and a placeholder for junk params", () => {
     const orphanTab = createPluginPanelFixedPanelTab({
       actionId: "file-opener:gone",
       paramsJson: JSON.stringify({
@@ -1824,7 +1824,10 @@ describe("plugin file opener tabs", () => {
         context={{ kind: "new-thread", projectId: null }}
       />,
     );
-    expect(screen.getByText(/file opener is not available/)).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Copy file path" }),
+    ).toBeDefined();
+    expect(screen.getByText(/a\.md/u)).toBeDefined();
     unmount();
 
     setPluginSlotRegistrations(

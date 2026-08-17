@@ -450,6 +450,44 @@ and a disabled or uninstalled plugin gets its list back when it returns.
    focus order, and the mobile close behavior when a plugin owns the markup —
    `onNavigate` is currently the plugin's responsibility to call.
 
+## `PluginThreadListProps.experimental_Original` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Supplies the thread-list replacement with BB's list already
+bound to the current sidebar instance. Rendering it explicitly delegates to
+the owner without re-entering replacement resolution; the host also renders it
+when the plugin component crashes.
+
+**Audit before stabilizing.**
+
+1. Confirm a no-props, instance-bound component remains the smallest useful
+   delegation contract as thread-list context grows.
+2. Verify owner delegation preserves search state, mobile navigation, keyboard
+   shortcuts, split behavior, and all BB-owned row affordances.
+3. Confirm the owner renderer stays lazy enough that a plugin replacement
+   which never delegates does not eagerly load a second list implementation.
+4. Revisit whether the field should remain tied to the experimental thread-list
+   registration or stabilize together with the replacement primitive shared by
+   other surfaces.
+
+## `PluginFileOpenerProps.experimental_Original` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Supplies a file-opener replacement with BB's preview bound to
+the file named by `path` and `source`. A plugin can render it conditionally, and
+the host uses it as the crash and missing-provider fallback without resolving
+the same plugin again.
+
+**Audit before stabilizing.**
+
+1. Verify the bound preview preserves source-specific behavior for workspace,
+   host, project, and thread-storage files, including relative links, line
+   ranges, open-in-editor actions, and selection-to-composer actions.
+2. Confirm the no-props bound component is preferable to an owner component
+   which receives the existing `{ path, source }` props again.
+3. Confirm delegation and crash fallback retain the current file tab identity
+   and do not remount unrelated panel state.
+4. Verify the owner renderer remains independent of provider precedence and
+   cannot recurse through file-opener resolution.
+
 ## `experimental_useSidebarThreads` / `experimental_useSidebarThreadActions` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Gives a plugin component the sidebar's live thread view and
