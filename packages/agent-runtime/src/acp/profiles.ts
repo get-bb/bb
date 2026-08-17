@@ -60,7 +60,7 @@ export const ACP_AGENT_PROFILES: readonly BuiltInAcpAgentProfile[] = [
       // catalog folds effort and the `-fast` tail into one entry per family.
       primaryModels: [
         "auto",
-        "cursor-grok-4.5-medium",
+        "cursor-grok-4.6-medium",
         "gpt-5.6-sol-medium",
         "claude-opus-5-thinking-medium",
         "claude-fable-5-thinking-medium",
