@@ -25,8 +25,9 @@ import { threadScope, toPositiveNumber, turnScope } from "@bb/domain";
 import {
   UNSTAMPED_THREAD_ID,
   bashArgsSchema,
+  buildFileChangeItem,
+  buildGenericToolCallItem,
   buildToolResultItem,
-  buildToolUseItem,
   buildUnhandledProviderEvents,
   createProviderTurnStateRegistry,
   createScopedItemIdFactory,
@@ -49,7 +50,6 @@ import {
 import type {
   AcceptedUserMessageState,
   JsonRpcMessage,
-  ToolUseTranslationInput,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import type { ProviderTranslationContext } from "../provider-adapter.js";
 import { toCanonicalPiModelId } from "./model-list.js";
@@ -296,35 +296,61 @@ const PI_EMPTY_BASH_OUTPUT_PLACEHOLDERS = ["(no output)"] as const;
 const PI_COMMAND_TOOL_NAMES = new Set(["bash"]);
 const PI_FILE_CHANGE_TOOL_NAMES = new Set(["edit", "write"]);
 
+interface PiToolUseTranslationInput {
+  args: unknown;
+  callId: string;
+  parentToolCallId?: string;
+  toolName: string;
+}
+
 function translatePiToolUseItem(
-  input: ToolUseTranslationInput,
+  input: PiToolUseTranslationInput,
 ): ThreadEventItem {
-  return buildToolUseItem(input, {
-    commandToolNames: PI_COMMAND_TOOL_NAMES,
-    fileChangeToolNames: PI_FILE_CHANGE_TOOL_NAMES,
-    parseCommand(args) {
-      const parsed = bashArgsSchema.safeParse(args);
-      const command = parsed.success
-        ? toOptionalString(parsed.data.command)
-        : undefined;
-      const cwd = parsed.success
-        ? (toOptionalString(parsed.data.cwd) ?? "")
-        : "";
-      return command ? { command, cwd } : null;
-    },
-    parseFileChange(args) {
-      const parsed = piFileEditArgsSchema.safeParse(args);
-      if (!parsed.success) {
-        return null;
-      }
-      return {
+  const withParent = (item: ThreadEventItem): ThreadEventItem =>
+    withParentToolCallId(item, input.parentToolCallId);
+  const genericToolCall = (): ThreadEventItem =>
+    withParent(buildGenericToolCallItem(input));
+
+  if (PI_COMMAND_TOOL_NAMES.has(input.toolName)) {
+    const parsed = bashArgsSchema.safeParse(input.args);
+    const command = parsed.success
+      ? toOptionalString(parsed.data.command)
+      : undefined;
+    if (!command) {
+      return genericToolCall();
+    }
+    return withParent({
+      type: "commandExecution",
+      id: input.callId,
+      command,
+      cwd: toOptionalString(parsed.success ? parsed.data.cwd : undefined) ?? "",
+      status: "pending",
+      approvalStatus: null,
+    });
+  }
+
+  if (PI_FILE_CHANGE_TOOL_NAMES.has(input.toolName)) {
+    const parsed = piFileEditArgsSchema.safeParse(input.args);
+    if (!parsed.success) {
+      return genericToolCall();
+    }
+    if (!parsed.data.path) {
+      return withParent({
+        ...buildGenericToolCallItem(input),
         arguments: parsed.data,
+      });
+    }
+    return withParent({
+      ...buildFileChangeItem({
         path: parsed.data.path,
         oldText: parsed.data.oldText,
         newText: parsed.data.newText ?? parsed.data.content,
-      };
-    },
-  });
+      }),
+      id: input.callId,
+    });
+  }
+
+  return genericToolCall();
 }
 
 function translatePiToolResultItem(

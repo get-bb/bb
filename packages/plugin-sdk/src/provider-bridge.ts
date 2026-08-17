@@ -90,9 +90,10 @@ export {
   buildAcceptedUserMessageEvent,
   buildEditDiff,
   buildShellEnvOverrides,
+  buildFileChangeItem,
+  buildGenericToolCallItem,
   buildShellEnvironmentPolicyConfig,
   buildToolResultItem,
-  buildToolUseItem,
   buildUnhandledProviderEvents,
   completeStartedToolItem,
   createBridgeIo,
@@ -148,7 +149,6 @@ export type {
   ProviderRuntimeEvent,
   ProviderTurnStateRegistry,
   ProviderVisibilityMetadata,
-  ToolUseTranslationInput,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 
 /**

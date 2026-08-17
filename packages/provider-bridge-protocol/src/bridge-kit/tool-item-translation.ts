@@ -6,34 +6,27 @@ import {
 } from "./adapter-utils.js";
 
 type FileChangeItem = Extract<ThreadEventItem, { type: "fileChange" }>;
+type ToolCallItem = Extract<ThreadEventItem, { type: "toolCall" }>;
 
-export interface ToolUseTranslationInput {
+/**
+ * The generic pending `toolCall` item a provider falls back to when a tool
+ * use has no richer translation (unknown tool, or a known tool whose
+ * arguments failed to parse). Raw arguments are attached when they are a
+ * record.
+ */
+export function buildGenericToolCallItem(args: {
   args: unknown;
   callId: string;
-  parentToolCallId?: string;
   toolName: string;
-}
-
-export interface ParsedCommandToolArguments {
-  command: string;
-  cwd: string;
-}
-
-export interface ParsedFileChangeToolArguments {
-  arguments: Record<string, unknown>;
-  newText?: string;
-  oldText?: string;
-  path?: string;
-}
-
-export interface BuildToolUseItemOptions {
-  commandToolNames: ReadonlySet<string>;
-  fileChangeToolNames: ReadonlySet<string>;
-  parseCommand: (args: unknown) => ParsedCommandToolArguments | null;
-  parseFileChange: (args: unknown) => ParsedFileChangeToolArguments | null;
-  translateSpecialToolUse?: (
-    input: ToolUseTranslationInput,
-  ) => ThreadEventItem | null;
+}): ToolCallItem {
+  const toolArguments = toOptionalRecord(args.args);
+  return {
+    type: "toolCall",
+    id: args.callId,
+    tool: args.toolName,
+    ...(toolArguments ? { arguments: toolArguments } : {}),
+    status: "pending",
+  };
 }
 
 export function buildFileChangeItem(args: {
@@ -55,56 +48,6 @@ export function buildFileChangeItem(args: {
     status: "pending",
     approvalStatus: null,
   };
-}
-
-export function buildToolUseItem(
-  input: ToolUseTranslationInput,
-  options: BuildToolUseItemOptions,
-): ThreadEventItem {
-  const toolArguments = toOptionalRecord(input.args);
-  const baseToolCall = {
-    type: "toolCall" as const,
-    id: input.callId,
-    tool: input.toolName,
-    ...(toolArguments ? { arguments: toolArguments } : {}),
-    status: "pending" as const,
-  };
-  const withParent = (item: ThreadEventItem): ThreadEventItem =>
-    withParentToolCallId(item, input.parentToolCallId);
-
-  if (options.commandToolNames.has(input.toolName)) {
-    const command = options.parseCommand(input.args);
-    return command
-      ? withParent({
-          type: "commandExecution",
-          id: input.callId,
-          command: command.command,
-          cwd: command.cwd,
-          status: "pending",
-          approvalStatus: null,
-        })
-      : withParent(baseToolCall);
-  }
-
-  if (options.fileChangeToolNames.has(input.toolName)) {
-    const parsed = options.parseFileChange(input.args);
-    if (!parsed) {
-      return withParent(baseToolCall);
-    }
-    if (!parsed.path) {
-      return withParent({ ...baseToolCall, arguments: parsed.arguments });
-    }
-    return withParent({
-      ...buildFileChangeItem({
-        path: parsed.path,
-        oldText: parsed.oldText,
-        newText: parsed.newText,
-      }),
-      id: input.callId,
-    });
-  }
-
-  return withParent(options.translateSpecialToolUse?.(input) ?? baseToolCall);
 }
 
 export interface CompleteStartedToolItemArgs {

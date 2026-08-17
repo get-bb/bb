@@ -32,8 +32,9 @@ import {
   turnScope,
   UNSTAMPED_THREAD_ID,
   bashArgsSchema,
+  buildFileChangeItem,
+  buildGenericToolCallItem,
   buildToolResultItem,
-  buildToolUseItem,
   buildUnhandledProviderEvents,
   createProviderTurnStateRegistry,
   createScopedItemIdFactory,
@@ -52,7 +53,6 @@ import {
   type EnsureProviderTurnStartedArgs,
   type JsonRpcMessage,
   type ProviderTurnStateRegistry,
-  type ToolUseTranslationInput,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import {
   claudeApiRetryMessageSchema,
@@ -166,35 +166,57 @@ function normalizeClaudeWebFetchArgs(
 function translateClaudeToolUseItem(
   input: ClaudeToolUseTranslationInput,
 ): ThreadEventItem {
-  return buildToolUseItem(input, {
-    commandToolNames: CLAUDE_COMMAND_TOOL_NAMES,
-    fileChangeToolNames: CLAUDE_FILE_CHANGE_TOOL_NAMES,
-    parseCommand(args) {
-      const command = parseClaudeBashCommand(args);
-      return command
-        ? { command: command.command, cwd: command.cwd ?? "" }
-        : null;
-    },
-    parseFileChange(args) {
-      const parsed = claudeFileEditArgsSchema.safeParse(args);
-      return parsed.success
-        ? {
-            arguments: parsed.data,
-            path: getClaudeFileEditPath(parsed.data) ?? undefined,
-            oldText: parsed.data.old_string,
-            newText: parsed.data.new_string ?? parsed.data.content,
-          }
-        : null;
-    },
-    translateSpecialToolUse: translateClaudeWebToolUse,
-  });
+  const withParent = (item: ThreadEventItem): ThreadEventItem =>
+    withParentToolCallId(item, input.parentToolCallId);
+  const genericToolCall = (): ThreadEventItem =>
+    withParent(buildGenericToolCallItem(input));
+
+  if (CLAUDE_COMMAND_TOOL_NAMES.has(input.toolName)) {
+    const command = parseClaudeBashCommand(input.args);
+    return command
+      ? withParent({
+          type: "commandExecution",
+          id: input.callId,
+          command: command.command,
+          cwd: command.cwd ?? "",
+          status: "pending",
+          approvalStatus: null,
+        })
+      : genericToolCall();
+  }
+
+  if (CLAUDE_FILE_CHANGE_TOOL_NAMES.has(input.toolName)) {
+    const parsed = claudeFileEditArgsSchema.safeParse(input.args);
+    if (!parsed.success) {
+      return genericToolCall();
+    }
+    const path = getClaudeFileEditPath(parsed.data);
+    if (!path) {
+      return withParent({
+        ...buildGenericToolCallItem(input),
+        arguments: parsed.data,
+      });
+    }
+    return withParent({
+      ...buildFileChangeItem({
+        path,
+        oldText: parsed.data.old_string,
+        newText: parsed.data.new_string ?? parsed.data.content,
+      }),
+      id: input.callId,
+    });
+  }
+
+  return withParent(
+    translateClaudeWebToolUse(input) ?? buildGenericToolCallItem(input),
+  );
 }
 
 const CLAUDE_COMMAND_TOOL_NAMES = new Set(["Bash"]);
 const CLAUDE_FILE_CHANGE_TOOL_NAMES = new Set(["Edit", "Write"]);
 
 function translateClaudeWebToolUse(
-  input: ToolUseTranslationInput,
+  input: ClaudeToolUseTranslationInput,
 ): ThreadEventItem | null {
   if (input.toolName === "WebSearch") {
     const parsed = claudeWebSearchArgsSchema.safeParse(input.args);
