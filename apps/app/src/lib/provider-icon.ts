@@ -124,6 +124,11 @@ function getPluginAwareProviderIcon(
   const ProviderIcon: ComponentType<{ className?: string }> = ({
     className,
   }) => {
+    // Factory-created component: it closes over `providerId` from the
+    // enclosing scope, which the React Compiler mishandles (it hoists the
+    // snapshot callback to module scope, losing the capture — a live
+    // ReferenceError in compiled builds only, invisible to vitest).
+    "use no memo";
     const pluginIcon = useSyncExternalStore(subscribePluginSlots, () =>
       getRegisteredPluginProviderIcon(providerId),
     );
