@@ -1,10 +1,3 @@
-import type { ModelInfo } from "@anthropic-ai/claude-agent-sdk";
-import {
-  CLAUDE_CODE_ACTIVE_CATALOG,
-  CLAUDE_XHIGH_CAPABLE_REASONING_EFFORTS,
-  DEFAULT_CLAUDE_CODE_MODEL,
-  type ClaudeCodeCatalogEntry,
-} from "./model-catalog.js";
 import {
   cloneReasoningEfforts,
   HIGH_REASONING_EFFORT,
@@ -15,7 +8,14 @@ import {
   XHIGH_REASONING_EFFORT,
   type AvailableModel,
   type ModelReasoningEffort,
-} from "@bb/domain";
+} from "@get-bb/plugin-sdk/bridge";
+import type { ModelInfo } from "@anthropic-ai/claude-agent-sdk";
+import {
+  CLAUDE_CODE_ACTIVE_CATALOG,
+  CLAUDE_XHIGH_CAPABLE_REASONING_EFFORTS,
+  DEFAULT_CLAUDE_CODE_MODEL,
+  type ClaudeCodeCatalogEntry,
+} from "./model-catalog.js";
 
 const OPUS_4_7_REASONING_EFFORTS: readonly ModelReasoningEffort[] =
   CLAUDE_XHIGH_CAPABLE_REASONING_EFFORTS;

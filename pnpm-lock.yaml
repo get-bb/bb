@@ -1063,16 +1063,16 @@ importers:
 
   examples/plugins/echo-provider:
     dependencies:
-      '@bb/provider-bridge-protocol':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
-        version: link:../../../packages/provider-bridge-protocol
+        version: link:../../../packages/plugin-sdk
     devDependencies:
       '@bb/domain':
         specifier: workspace:*
         version: link:../../../packages/domain
-      '@get-bb/plugin-sdk':
+      '@bb/provider-bridge-protocol':
         specifier: workspace:*
-        version: link:../../../packages/plugin-sdk
+        version: link:../../../packages/provider-bridge-protocol
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
@@ -1085,6 +1085,9 @@ importers:
       vitest:
         specifier: ^4.1.1
         version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
 
   examples/plugins/slack-bot:
     devDependencies:
@@ -2889,6 +2892,13 @@ importers:
 
   plugins/provider-acp:
     dependencies:
+      '@get-bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
+    devDependencies:
       '@bb/domain':
         specifier: workspace:*
         version: link:../../packages/domain
@@ -2898,13 +2908,6 @@ importers:
       '@bb/provider-bridge-protocol':
         specifier: workspace:*
         version: link:../../packages/provider-bridge-protocol
-      zod:
-        specifier: 4.3.6
-        version: 4.3.6
-    devDependencies:
-      '@get-bb/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../packages/plugin-sdk
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
@@ -2929,12 +2932,9 @@ importers:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.3.197
         version: 0.3.197(@anthropic-ai/sdk@0.93.0(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(zod@4.3.6)
-      '@bb/domain':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
-        version: link:../../packages/domain
-      '@bb/provider-bridge-protocol':
-        specifier: workspace:*
-        version: link:../../packages/provider-bridge-protocol
+        version: link:../../packages/plugin-sdk
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@4.3.6)
@@ -2942,9 +2942,12 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@get-bb/plugin-sdk':
+      '@bb/domain':
         specifier: workspace:*
-        version: link:../../packages/plugin-sdk
+        version: link:../../packages/domain
+      '@bb/provider-bridge-protocol':
+        specifier: workspace:*
+        version: link:../../packages/provider-bridge-protocol
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
@@ -2966,6 +2969,13 @@ importers:
 
   plugins/provider-codex:
     dependencies:
+      '@get-bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
+    devDependencies:
       '@bb/domain':
         specifier: workspace:*
         version: link:../../packages/domain
@@ -2975,13 +2985,6 @@ importers:
       '@bb/provider-bridge-protocol':
         specifier: workspace:*
         version: link:../../packages/provider-bridge-protocol
-      zod:
-        specifier: 4.3.6
-        version: 4.3.6
-    devDependencies:
-      '@get-bb/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../packages/plugin-sdk
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10

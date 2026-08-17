@@ -5,19 +5,23 @@
  * directions need.
  */
 
-import type { CommandExecutionRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/CommandExecutionRequestApprovalResponse.js";
-import type { FileChangeRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/FileChangeRequestApprovalResponse.js";
-import type { PermissionsRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/PermissionsRequestApprovalResponse.js";
 import {
   ProviderRequestDecodeError as ProviderRequestDecodeErrorValue,
   ProviderResponseEncodeError,
   normalizePendingInteractionRequestedPermissionProfile,
-} from "@bb/provider-bridge-protocol/bridge-kit";
-import type {
-  BuildInteractiveResponseArgs,
-  DecodedInteractiveRequest,
-  ProviderInboundRequest,
-} from "@bb/provider-bridge-protocol/bridge-kit";
+  type BuildInteractiveResponseArgs,
+  type DecodedInteractiveRequest,
+  type ProviderInboundRequest,
+  type PendingInteractionApprovalDecision,
+  type PendingInteractionGrantablePermissionProfile,
+  type PendingInteractionGrantedPermissionProfile,
+  type PendingInteractionRequestedPermissionProfile,
+  isApprovalPendingInteractionPayload,
+  isApprovalPendingInteractionResolution,
+} from "@get-bb/plugin-sdk/bridge";
+import type { CommandExecutionRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/CommandExecutionRequestApprovalResponse.js";
+import type { FileChangeRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/FileChangeRequestApprovalResponse.js";
+import type { PermissionsRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/PermissionsRequestApprovalResponse.js";
 import {
   codexCommandExecutionRequestApprovalParamsSchema,
   codexFileChangeRequestApprovalParamsSchema,
@@ -29,16 +33,6 @@ import type {
   CodexRequestedPermissionProfile,
   CodexSimpleCommandApprovalDecision,
 } from "./schemas.js";
-import type {
-  PendingInteractionApprovalDecision,
-  PendingInteractionGrantablePermissionProfile,
-  PendingInteractionGrantedPermissionProfile,
-  PendingInteractionRequestedPermissionProfile,
-} from "@bb/domain";
-import {
-  isApprovalPendingInteractionPayload,
-  isApprovalPendingInteractionResolution,
-} from "@bb/domain";
 
 type CodexInteractiveResponse =
   | CommandExecutionRequestApprovalResponse

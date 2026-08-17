@@ -3,13 +3,11 @@ import {
   getRecordProperty,
   getStringProperty,
   isRecord,
-} from "@bb/provider-bridge-protocol/bridge-kit";
-import type {
-  JsonRpcMessage,
-  ProviderRawEventCoverage,
-  ProviderRawEventDescription,
-  ProviderVisibilityMetadata,
-} from "@bb/provider-bridge-protocol/bridge-kit";
+  type JsonRpcMessage,
+  type ProviderRawEventCoverage,
+  type ProviderRawEventDescription,
+  type ProviderVisibilityMetadata,
+} from "@get-bb/plugin-sdk/bridge";
 import type { ServerNotification } from "./generated/codex-app-server/schema/ServerNotification.js";
 
 type CodexServerNotificationMethod =

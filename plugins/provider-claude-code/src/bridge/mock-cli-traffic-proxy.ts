@@ -1,3 +1,8 @@
+import {
+  isClaudeCodeMockCliTrafficEndpoint,
+  type JsonObject,
+  type JsonValue,
+} from "@get-bb/plugin-sdk/bridge";
 import { createServer, request as httpRequest } from "node:http";
 import type {
   IncomingHttpHeaders,
@@ -7,11 +12,6 @@ import type {
   ServerResponse,
 } from "node:http";
 import { request as httpsRequest } from "node:https";
-import {
-  isClaudeCodeMockCliTrafficEndpoint,
-  type JsonObject,
-  type JsonValue,
-} from "@bb/domain";
 
 export interface ClaudeCodeMockCliTrafficProxy {
   baseUrl: string;

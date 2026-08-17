@@ -12,20 +12,16 @@ import {
   getThreadEventScopeTurnId,
   requireThreadEventScopeTurnId,
   turnScope,
-} from "@bb/domain";
-import type {
-  ClientTurnRequestId,
-  ThreadEvent,
-  ThreadEventItem,
-  ThreadEventItemStatus,
-} from "@bb/domain";
-import { extractResultText } from "@bb/provider-bridge-protocol/bridge-kit";
-import type {
-  JsonRpcMessage,
-  PreparedProviderCommandDispatch,
-  ProviderPostInitializeRequest,
-  ProviderRuntimeEvent,
-} from "@bb/provider-bridge-protocol/bridge-kit";
+  type ClientTurnRequestId,
+  type ThreadEvent,
+  type ThreadEventItem,
+  type ThreadEventItemStatus,
+  extractResultText,
+  type JsonRpcMessage,
+  type PreparedProviderCommandDispatch,
+  type ProviderPostInitializeRequest,
+  type ProviderRuntimeEvent,
+} from "@get-bb/plugin-sdk/bridge";
 import {
   applyCodexRateLimitUpdate,
   createCodexEventTranslationState,

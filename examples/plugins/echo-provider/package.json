@@ -14,7 +14,7 @@
       "icon": "Zap"
     },
     "server": "./server.ts",
-    "providerBridge": "./src/provider-bridge.ts"
+    "host": "./host.ts"
   },
   "keywords": [
     "bb-plugin"
@@ -24,14 +24,15 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@bb/provider-bridge-protocol": "workspace:*"
+    "@get-bb/plugin-sdk": "workspace:*"
   },
   "devDependencies": {
     "@bb/domain": "workspace:*",
-    "@get-bb/plugin-sdk": "workspace:*",
+    "@bb/provider-bridge-protocol": "workspace:*",
     "@types/node": "^22.0.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.1",
+    "zod": "^4.3.6"
   }
 }

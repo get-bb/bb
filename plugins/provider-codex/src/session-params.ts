@@ -6,16 +6,17 @@
  * `translator.ts`.
  */
 
+import {
+  jsonValueSchema,
+  type PermissionEscalation,
+  type PromptInput,
+  type ReasoningLevel,
+  type RuntimePermissionPolicy,
+  type ServiceTier,
+  buildShellEnvironmentPolicyConfig,
+} from "@get-bb/plugin-sdk/bridge";
 import fs from "node:fs";
 import path from "node:path";
-import { jsonValueSchema } from "@bb/domain";
-import type {
-  PermissionEscalation,
-  PromptInput,
-  ReasoningLevel,
-  RuntimePermissionPolicy,
-  ServiceTier,
-} from "@bb/domain";
 import type { ReasoningEffort as CodexReasoningEffort } from "./generated/codex-app-server/schema/ReasoningEffort.js";
 import type { JsonValue } from "./generated/codex-app-server/schema/serde_json/JsonValue.js";
 import type { SandboxPolicy } from "./generated/codex-app-server/schema/v2/SandboxPolicy.js";
@@ -26,7 +27,6 @@ import type { UserInput as CodexUserInput } from "./generated/codex-app-server/s
 import type { AskForApproval } from "./generated/codex-app-server/schema/v2/AskForApproval.js";
 import type { ApprovalsReviewer } from "./generated/codex-app-server/schema/v2/ApprovalsReviewer.js";
 import { mapBbReasoningLevelToCodex } from "./models.js";
-import { buildShellEnvironmentPolicyConfig } from "@bb/provider-bridge-protocol/bridge-kit";
 
 /**
  * The execution facts Codex param building actually reads. The bridge

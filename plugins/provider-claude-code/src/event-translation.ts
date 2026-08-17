@@ -9,22 +9,27 @@
  * instantiates the same translator per canonical session.
  */
 
-import type {
-  ClaudeTaskToolOutput,
-  ProviderErrorInfo,
-  ProviderRateLimitState,
-  ProviderRateLimitStatus,
-  ThreadEvent,
-  ThreadEventItem,
-  ThreadEventTokenUsageBreakdown,
-} from "@bb/domain";
+/**
+ * The per-event translation scope the runtime's generic adapter passes in. Its
+ * `ProviderTranslationContext` satisfies this structurally; stated here so the
+ * plugin does not depend on `@bb/agent-runtime`.
+ */
+export interface ProviderTranslationContext {
+  threadId?: string;
+  parentToolCallId?: string;
+}
 import {
+  type ClaudeTaskToolOutput,
+  type ProviderErrorInfo,
+  type ProviderRateLimitState,
+  type ProviderRateLimitStatus,
+  type ThreadEvent,
+  type ThreadEventItem,
+  type ThreadEventTokenUsageBreakdown,
   claudeTaskToolNameSchema,
   claudeTaskToolOutputSchema,
   threadScope,
   turnScope,
-} from "@bb/domain";
-import {
   UNSTAMPED_THREAD_ID,
   bashArgsSchema,
   buildToolResultItem,
@@ -43,23 +48,12 @@ import {
   toOptionalRecord,
   toOptionalString,
   withParentToolCallId,
-} from "@bb/provider-bridge-protocol/bridge-kit";
-import type {
-  AcceptedUserMessageState,
-  EnsureProviderTurnStartedArgs,
-  JsonRpcMessage,
-  ProviderTurnStateRegistry,
-  ToolUseTranslationInput,
-} from "@bb/provider-bridge-protocol/bridge-kit";
-/**
- * The per-event translation scope the runtime's generic adapter passes in. Its
- * `ProviderTranslationContext` satisfies this structurally; stated here so the
- * plugin does not depend on `@bb/agent-runtime`.
- */
-export interface ProviderTranslationContext {
-  threadId?: string;
-  parentToolCallId?: string;
-}
+  type AcceptedUserMessageState,
+  type EnsureProviderTurnStartedArgs,
+  type JsonRpcMessage,
+  type ProviderTurnStateRegistry,
+  type ToolUseTranslationInput,
+} from "@get-bb/plugin-sdk/bridge";
 import {
   claudeApiRetryMessageSchema,
   claudeAssistantMessageSchema,

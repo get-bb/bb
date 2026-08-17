@@ -8,7 +8,7 @@ import {
   XHIGH_REASONING_EFFORT,
   type AvailableModel,
   type ModelReasoningEffort,
-} from "@bb/domain";
+} from "@get-bb/plugin-sdk/bridge";
 
 export interface ClaudeCodeCatalogEntry {
   id: string;

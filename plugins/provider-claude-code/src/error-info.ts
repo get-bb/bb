@@ -1,4 +1,7 @@
-import type { ProviderErrorCategory, ProviderErrorInfo } from "@bb/domain";
+import {
+  type ProviderErrorCategory,
+  type ProviderErrorInfo,
+} from "@get-bb/plugin-sdk/bridge";
 import type {
   ClaudeAssistantMessageError,
   ClaudeResultSubtype,

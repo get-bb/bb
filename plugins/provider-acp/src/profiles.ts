@@ -1,7 +1,7 @@
 import {
   normalizeHostDaemonAcpLaunchSpec,
   type HostDaemonAcpLaunchSpec,
-} from "@bb/host-daemon-contract";
+} from "@get-bb/plugin-sdk/bridge";
 
 /**
  * CLI model surface of the agent's launch binary: how to discover models and

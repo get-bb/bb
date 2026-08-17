@@ -1,12 +1,12 @@
+import {
+  type InstructionMode,
+  type PermissionEscalation,
+  type ReasoningLevel,
+  type RuntimePermissionScope,
+} from "@get-bb/plugin-sdk/bridge";
 import { accessSync, constants, statSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import type { Options, Settings } from "@anthropic-ai/claude-agent-sdk";
-import type {
-  InstructionMode,
-  PermissionEscalation,
-  ReasoningLevel,
-  RuntimePermissionScope,
-} from "@bb/domain";
 import type { ClaudePermissionMode } from "../interactive-contract.js";
 import { buildReadonlyBashUpdatedInput } from "./readonly-bash-policy.js";
 import type {

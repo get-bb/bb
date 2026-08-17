@@ -1,14 +1,12 @@
-import type {
-  BackgroundTaskStatus,
-  BackgroundTaskUsage,
-  ThreadEvent,
-  ThreadEventBackgroundTaskItem,
-  WorkflowAgentSnapshot,
-  WorkflowAgentState,
-  WorkflowPhaseSnapshot,
-  WorkflowProgressSnapshot,
-} from "@bb/domain";
 import {
+  type BackgroundTaskStatus,
+  type BackgroundTaskUsage,
+  type ThreadEvent,
+  type ThreadEventBackgroundTaskItem,
+  type WorkflowAgentSnapshot,
+  type WorkflowAgentState,
+  type WorkflowPhaseSnapshot,
+  type WorkflowProgressSnapshot,
   LOCAL_BASH_TASK_TYPE,
   LOCAL_WORKFLOW_TASK_TYPE,
   backgroundTaskItemStatus,
@@ -16,7 +14,7 @@ import {
   isSettledBackgroundTaskStatus,
   threadScope,
   turnScope,
-} from "@bb/domain";
+} from "@get-bb/plugin-sdk/bridge";
 import {
   claudeTaskNotificationMessageSchema,
   claudeTaskProgressMessageSchema,

@@ -1,29 +1,26 @@
-import type {
-  ProviderErrorCategory,
-  ProviderErrorInfo,
-  ProviderRateLimitState,
-  ProviderRateLimitStatus,
-  ProviderRateLimitWindow,
-  ThreadEvent,
-  ThreadEventContextWindowUsage,
-  ThreadEventWebFetchItem,
-  ThreadEventWebSearchItem,
-  ThreadEventItemApprovalStatus,
-  ThreadEventItem,
-  ThreadEventItemStatus,
-  ThreadEventTurnStatus,
-  ThreadEventUserContent,
-} from "@bb/domain";
-import { threadScope, turnScope } from "@bb/domain";
 import {
+  type ProviderErrorCategory,
+  type ProviderErrorInfo,
+  type ProviderRateLimitState,
+  type ProviderRateLimitStatus,
+  type ProviderRateLimitWindow,
+  type ThreadEvent,
+  type ThreadEventContextWindowUsage,
+  type ThreadEventWebFetchItem,
+  type ThreadEventWebSearchItem,
+  type ThreadEventItemApprovalStatus,
+  type ThreadEventItem,
+  type ThreadEventItemStatus,
+  type ThreadEventTurnStatus,
+  type ThreadEventUserContent,
+  threadScope,
+  turnScope,
   UNSTAMPED_THREAD_ID,
   createUnhandledProviderEvent,
   toOptionalRecord,
-} from "@bb/provider-bridge-protocol/bridge-kit";
-import type {
-  JsonRpcMessage,
-  ProviderRuntimeEvent,
-} from "@bb/provider-bridge-protocol/bridge-kit";
+  type JsonRpcMessage,
+  type ProviderRuntimeEvent,
+} from "@get-bb/plugin-sdk/bridge";
 import {
   codexBridgeEnvelopeSchema,
   codexHandledEventSchema,

@@ -1,12 +1,12 @@
-import { z } from "zod";
 import {
   pendingInteractionCommandActionSchema,
   pendingInteractionFileSystemPermissionsSchema,
   pendingInteractionMacOsPermissionsSchema,
   pendingInteractionNetworkPermissionsSchema,
-} from "@bb/domain";
-import type { PendingInteractionCommandAction } from "@bb/domain";
-import { jsonRpcEnvelopeSchema } from "@bb/provider-bridge-protocol/bridge-kit";
+  type PendingInteractionCommandAction,
+  jsonRpcEnvelopeSchema,
+} from "@get-bb/plugin-sdk/bridge";
+import { z } from "zod";
 
 const codexTurnStatusSchema = z.enum([
   "completed",

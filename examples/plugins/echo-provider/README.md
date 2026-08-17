@@ -9,15 +9,20 @@ to hosts, and the official conformance kit.
 ## What it demonstrates
 
 - **`bb.agents.experimental_registerProvider`** (`server.ts`) — the provider
-  declaration: stable id, picker display name, pre-session capability facts
-  (all `false` here; permission mode `full`, reasoning level `medium`), and
-  the `bridge: { entry: "provider-bridge" }` reference naming the built
-  bundle.
-- **`bb.providerBridge`** (`package.json`) — the bridge entry point.
-  `bb plugin build` compiles `src/provider-bridge.ts` into a fully
-  self-contained `dist/provider-bridge.mjs` (everything inlined; only node
-  builtins external) plus `dist/provider-bridge.meta.json` recording its
-  `{sha256, byteLength}`.
+  declaration: stable id, picker display name, and pre-session capability
+  facts (all `false` here; permission mode `full`, reasoning level `medium`).
+  Metadata only: the implementation is the bridge below, and a declaration
+  without one is refused.
+- **`bb.host`** (`package.json`) — the plugin's one host artifact.
+  `bb plugin build` compiles `host.ts` into a fully self-contained
+  `dist/host.js` (everything inlined; only node builtins external) plus
+  `dist/host.meta.json` recording its digest. That artifact carries **both**
+  host surfaces this plugin has, which is the point of the shape: the named
+  `experimental_providerBridge` export (run by the daemon's bridge bootstrap
+  in its own process) and the `default` host RPC entry (run by the daemon's
+  host worker in another). Bridge authoring imports come from the published
+  `@get-bb/plugin-sdk/bridge` — a host artifact cannot import bb's private
+  workspace packages.
 - **The bridge protocol** (`src/provider-bridge.ts`) — a minimal but correct
   implementation of the canonical Provider Bridge Protocol
   (`docs/provider-bridge-protocol.md`): line-delimited JSON-RPC over stdio,
@@ -29,20 +34,22 @@ to hosts, and the official conformance kit.
   the protocol package's own method vocabulary.
 - **The conformance kit** (`provider-bridge.conformance.test.ts`) — drives
   `@bb/provider-bridge-protocol/conformance` against the bridge in-process
-  (its exported `handleLine` + captured stdout) and asserts all eleven
+  (its exported bridge surface's `handleLine` + captured stdout) and asserts all eleven
   scenarios pass. Ship this test with every provider bridge.
 
 ## How the bridge reaches a host
 
-1. On install/reload the server builds `dist/provider-bridge.mjs` and
-   records `{pluginId, sha256, byteLength, path}`.
+1. On install/reload the server builds `dist/host.js` and records
+   `{pluginId, digest, byteLength, path}` — the same host artifact registry
+   every `bb.host` plugin uses.
 2. Thread commands for `echo-agent` carry a `bridgeLaunch` spec —
-   `{source: {kind: "artifact", sha256, byteLength}}` — over the daemon
-   wire.
+   `{source: {kind: "artifact", pluginId, digest, byteLength}}` — over the
+   daemon wire.
 3. The enrolled daemon downloads the bytes from
-   `/internal/provider-bridges/:sha256`, verifies the sha256 **before**
-   caching them under `<dataDir>/provider-bridges/`, and runs the artifact
-   with its own node. It never executes unverified bytes.
+   `/internal/plugins/:pluginId/host/:digest`, verifies the digest **before**
+   caching them, and runs the artifact with its own node through the bridge
+   bootstrap, which hands the bridge its plugin-scoped data and temp
+   directories. It never executes unverified bytes.
 
 Trust model: installation trust, exactly like every other plugin surface —
 a bridge runs only for an installed, enabled plugin, and the daemon executes

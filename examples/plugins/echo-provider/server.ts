@@ -6,10 +6,12 @@
  *   picker metadata, and pre-session capability facts). Metadata only — the
  *   implementation is the bridge below, and a declaration without one is
  *   refused.
- * - bb.providerBridge (package.json): the bridge entry `bb plugin build`
- *   bundles into dist/provider-bridge.mjs. The server stores that artifact
- *   content-addressed and enrolled host daemons download, hash-verify, and
- *   run it for every thread on this provider.
+ * - bb.host (package.json): the plugin's one host artifact. host.ts exports
+ *   both the provider bridge (named export, run by the daemon's bridge
+ *   bootstrap) and a host RPC entry (default export, run by the daemon's host
+ *   worker) — one artifact, two consumers, two process lifecycles. The server
+ *   stores it content-addressed and enrolled host daemons download,
+ *   hash-verify, and run it.
  *
  * The bridge itself lives in src/provider-bridge.ts and implements the
  * canonical Provider Bridge Protocol (docs/provider-bridge-protocol.md)

@@ -11,13 +11,6 @@
  * workspace write policy on client `fs/write_text_file` requests.
  */
 
-import { execFile } from "node:child_process";
-import { randomBytes, randomUUID } from "node:crypto";
-import { promises as fs, readFileSync } from "node:fs";
-import { createServer, type Server, type Socket } from "node:net";
-import { dirname, isAbsolute, basename, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { z } from "zod";
 import {
   isStandaloneBuiltinCompactCommand,
   pendingInteractionResolutionSchema,
@@ -26,9 +19,7 @@ import {
   type PromptInput,
   type ReasoningLevel,
   type ThreadEvent,
-} from "@bb/domain";
-import { hostDaemonAcpLaunchSpecSchema } from "@bb/host-daemon-contract";
-import {
+  hostDaemonAcpLaunchSpecSchema,
   bridgeRequestEnvelopeSchema,
   buildAcceptedUserMessageEvent,
   buildEditDiff,
@@ -36,21 +27,25 @@ import {
   createBridgeLineHandler,
   decodeBridgeJsonRpcResponse,
   decodeToolCallResponsePayload,
-  isMainModule,
   mimeTypeFromExtension,
   queueAcceptedUserMessage,
   runBridgeRequest,
-  startBridgeStdio,
   withoutBridgeRuntimeEnv,
-} from "@bb/provider-bridge-protocol/bridge-kit";
-import type { BridgeJsonRpcResponse } from "@bb/provider-bridge-protocol/bridge-kit";
-import {
+  type BridgeJsonRpcResponse,
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   type InitializeResult,
-} from "@bb/provider-bridge-protocol";
+  experimental_defineProviderBridge,
+} from "@get-bb/plugin-sdk/bridge";
+import { execFile } from "node:child_process";
+import { randomBytes, randomUUID } from "node:crypto";
+import { promises as fs, readFileSync } from "node:fs";
+import { createServer, type Server, type Socket } from "node:net";
+import { dirname, isAbsolute, basename, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { z } from "zod";
 import {
   ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE,
   ACP_COMPACTION_COMPLETED_METHOD,
@@ -2485,18 +2480,21 @@ async function stopAllSessions(): Promise<void> {
   });
 }
 
-if (isMainModule(import.meta.url) && process.argv.includes("--mcp-stdio")) {
+// The bridge re-executes its own artifact as the MCP server child that
+// exposes bb's dynamic tools to the ACP agent (`node <artifact> --mcp-stdio`).
+// That is a different program, not this bridge starting itself: the bootstrap
+// imports the artifact without the flag, so importing it starts nothing.
+if (process.argv.includes("--mcp-stdio")) {
   runAcpDynamicToolMcpServer();
-} else {
-  startBridgeStdio({
-    importMetaUrl: import.meta.url,
-    handleLine,
-    onClose: () => {
-      // Stdin close is a process shutdown boundary; cancel and reap the agent
-      // subprocesses before the bridge exits so none outlive the daemon.
-      void stopAllSessions().finally(() => {
-        process.exit(0);
-      });
-    },
-  });
 }
+
+export const experimental_providerBridge = experimental_defineProviderBridge({
+  handleLine,
+  onClose: () => {
+    // Stdin close is a process shutdown boundary; cancel and reap the agent
+    // subprocesses before the bridge exits so none outlive the daemon.
+    void stopAllSessions().finally(() => {
+      process.exit(0);
+    });
+  },
+});

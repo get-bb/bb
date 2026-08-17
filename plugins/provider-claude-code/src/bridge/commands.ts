@@ -4,8 +4,6 @@ import {
   permissionEscalationValues,
   reasoningLevelValues,
   runtimePermissionScopeValues,
-} from "@bb/domain";
-import {
   threadDiscardParamsSchema as canonicalThreadDiscardParamsSchema,
   threadForkParamsSchema as canonicalThreadForkParamsSchema,
   threadResumeParamsSchema as canonicalThreadResumeParamsSchema,
@@ -14,9 +12,9 @@ import {
   turnStartParamsSchema as canonicalTurnStartParamsSchema,
   turnSteerParamsSchema as canonicalTurnSteerParamsSchema,
   skillsConfigureParamsSchema,
-} from "@bb/provider-bridge-protocol";
+  bridgeRequestEnvelopeSchema,
+} from "@get-bb/plugin-sdk/bridge";
 import { z } from "zod";
-import { bridgeRequestEnvelopeSchema } from "@bb/provider-bridge-protocol/bridge-kit";
 import { claudePermissionModeSchema } from "../interactive-contract.js";
 
 const bridgeInstructionModeSchema = z.enum(instructionModeValues);

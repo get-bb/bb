@@ -4,12 +4,10 @@ import {
   getRawSdkMessage,
   getRecordProperty,
   getStringProperty,
-} from "@bb/provider-bridge-protocol/bridge-kit";
-import type {
-  JsonRpcMessage,
-  ProviderRawEventDescription,
-  ProviderVisibilityMetadata,
-} from "@bb/provider-bridge-protocol/bridge-kit";
+  type JsonRpcMessage,
+  type ProviderRawEventDescription,
+  type ProviderVisibilityMetadata,
+} from "@get-bb/plugin-sdk/bridge";
 const CLAUDE_NORMALIZED_ASSISTANT_CONTENT_TYPES = new Set([
   "fallback",
   "text",

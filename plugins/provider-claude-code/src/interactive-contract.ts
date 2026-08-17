@@ -1,13 +1,11 @@
-import { z } from "zod";
 import {
   USER_QUESTION_MAX_OPTIONS,
   USER_QUESTION_MAX_QUESTIONS,
-} from "@bb/domain";
-import type {
-  PendingInteractionGrantedPermissionProfile,
-  PendingInteractionGrantablePermissionProfile,
-  RuntimePermissionPolicy,
-} from "@bb/domain";
+  type PendingInteractionGrantedPermissionProfile,
+  type PendingInteractionGrantablePermissionProfile,
+  type RuntimePermissionPolicy,
+} from "@get-bb/plugin-sdk/bridge";
+import { z } from "zod";
 
 export const CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD =
   "item/permissions/requestApproval";

@@ -1,16 +1,14 @@
-import type { SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
-import type {
-  ThreadEventContextWindowUsage,
-  ThreadEventTokenUsage,
-  ThreadEventTokenUsageBreakdown,
-} from "@bb/domain";
-import { toPositiveNumber } from "@bb/domain";
 import {
+  type ThreadEventContextWindowUsage,
+  type ThreadEventTokenUsage,
+  type ThreadEventTokenUsageBreakdown,
+  toPositiveNumber,
   extractResultText,
   normalizeProviderCommandOutput,
   textBlockSchema,
   toNonNegativeNumber,
-} from "@bb/provider-bridge-protocol/bridge-kit";
+} from "@get-bb/plugin-sdk/bridge";
+import type { SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import {
   claudeAssistantUsageMessageSchema,
   claudeModelUsageSchema,

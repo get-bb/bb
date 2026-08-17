@@ -8,16 +8,14 @@
  * mapping in both directions.
  */
 
-import type {
-  PendingInteractionApprovalDecision,
-  PendingInteractionPayload,
-  PendingInteractionResolution,
-} from "@bb/domain";
 import {
+  type PendingInteractionApprovalDecision,
+  type PendingInteractionPayload,
+  type PendingInteractionResolution,
   isApprovalPendingInteractionPayload,
   isApprovalPendingInteractionResolution,
-} from "@bb/domain";
-import { toOptionalString } from "@bb/provider-bridge-protocol/bridge-kit";
+  toOptionalString,
+} from "@get-bb/plugin-sdk/bridge";
 import type { AcpPermissionOptionKind } from "./wire.js";
 
 /**

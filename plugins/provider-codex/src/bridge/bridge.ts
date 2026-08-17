@@ -28,8 +28,6 @@
  *   resolutions map back through the shared permission mapping.
  */
 
-import { randomUUID } from "node:crypto";
-import { z } from "zod";
 import {
   isStandaloneBuiltinCompactCommand,
   pendingInteractionResolutionSchema,
@@ -39,9 +37,7 @@ import {
   type ThreadEvent,
   type ThreadEventItem,
   type ThreadEventScope,
-} from "@bb/domain";
-import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
-import {
+  sanitizeInheritedChildProcessEnv,
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
@@ -61,24 +57,22 @@ import {
   turnSteerParamsSchema,
   type BridgeExecutionOptions,
   type InitializeResult,
-} from "@bb/provider-bridge-protocol";
-import {
   bridgeRequestEnvelopeSchema,
   buildAcceptedUserMessageEvent,
   createBridgeIo,
   createBridgeLineHandler,
   decodeBridgeJsonRpcResponse,
   runBridgeRequest,
-  startBridgeStdio,
   withoutBridgeRuntimeEnv,
-} from "@bb/provider-bridge-protocol/bridge-kit";
-import type {
-  BridgeJsonRpcResponse,
-  DecodedInteractiveRequest,
-  PreparedProviderCommandDispatch,
-  ProviderPostInitializeRequest,
-  ProviderRuntimeEvent,
-} from "@bb/provider-bridge-protocol/bridge-kit";
+  type BridgeJsonRpcResponse,
+  type DecodedInteractiveRequest,
+  type PreparedProviderCommandDispatch,
+  type ProviderPostInitializeRequest,
+  type ProviderRuntimeEvent,
+  experimental_defineProviderBridge,
+} from "@get-bb/plugin-sdk/bridge";
+import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import {
   buildCodexInteractiveResponse,
   decodeCodexInteractiveRequest,
@@ -1917,8 +1911,7 @@ function killAllChildren(): void {
   maintenanceConnections.clear();
 }
 
-startBridgeStdio({
-  importMetaUrl: import.meta.url,
+export const experimental_providerBridge = experimental_defineProviderBridge({
   handleLine,
   onClose: () => {
     // Stdin close is the process shutdown boundary: no app-server child may

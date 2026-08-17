@@ -38,7 +38,7 @@ import {
   mimeTypeFromExtension,
   queueAcceptedUserMessage,
   runBridgeRequest,
-  startBridgeStdio,
+  experimental_defineProviderBridge,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import type {
   BridgeToolCallRequest,
@@ -1064,10 +1064,9 @@ function handleParsedMessage(parsed: unknown): void {
 
 export const handleLine = createBridgeLineHandler({ handleParsedMessage });
 
-startBridgeStdio({
-  importMetaUrl: import.meta.url,
+export const experimental_providerBridge = experimental_defineProviderBridge({
   handleLine,
-  beforeStart: takeOverPiBridgeStdout,
+  start: takeOverPiBridgeStdout,
   onClose: () => {
     // Stdin close is a process shutdown boundary; wait briefly for per-thread
     // abort/dispose so SDK work does not continue while the bridge exits.

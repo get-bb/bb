@@ -9,24 +9,22 @@
  * `interaction/request` path.
  */
 
-import type {
-  ApprovalPendingInteractionPayload,
-  PendingInteractionApprovalDecision,
-  PendingInteractionApprovalSubject,
-  PendingInteractionGrantedPermissionProfile,
-  PendingInteractionPayload,
-  PendingInteractionResolution,
-  PendingInteractionUserQuestionQuestion,
-  UserQuestionPendingInteractionPayload,
-  UserQuestionPendingInteractionResolution,
-} from "@bb/domain";
 import {
+  type ApprovalPendingInteractionPayload,
+  type PendingInteractionApprovalDecision,
+  type PendingInteractionApprovalSubject,
+  type PendingInteractionGrantedPermissionProfile,
+  type PendingInteractionPayload,
+  type PendingInteractionResolution,
+  type PendingInteractionUserQuestionQuestion,
+  type UserQuestionPendingInteractionPayload,
+  type UserQuestionPendingInteractionResolution,
   isApprovalPendingInteractionPayload,
   isApprovalPendingInteractionResolution,
   isUserQuestionPendingInteractionPayload,
   isUserQuestionPendingInteractionResolution,
-} from "@bb/domain";
-import { ProviderResponseEncodeError } from "@bb/provider-bridge-protocol/bridge-kit";
+  ProviderResponseEncodeError,
+} from "@get-bb/plugin-sdk/bridge";
 import {
   buildClaudePlanRejectionMessage,
   buildClaudeSessionPermissionUpdates,

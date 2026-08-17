@@ -15,7 +15,7 @@
     },
     "server": "./server.ts",
     "app": "./app.tsx",
-    "providerBridge": "./src/bridge/bridge.ts"
+    "host": "./src/bridge/bridge.ts"
   },
   "keywords": [
     "bb-plugin"
@@ -25,7 +25,9 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@get-bb/plugin-sdk": "workspace:*",
+    "@bb/domain": "workspace:*",
+    "@bb/host-daemon-contract": "workspace:*",
+    "@bb/provider-bridge-protocol": "workspace:*",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "react": "^19.0.0",
@@ -34,9 +36,7 @@
     "vitest": "^4.1.1"
   },
   "dependencies": {
-    "@bb/domain": "workspace:*",
-    "@bb/host-daemon-contract": "workspace:*",
-    "@bb/provider-bridge-protocol": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
     "zod": "^4.3.6"
   }
 }

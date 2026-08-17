@@ -10,8 +10,6 @@ import {
   acpPermissionCliSchema as acpBridgePermissionCliSchema,
   acpNativeReasoningSchema as acpBridgeNativeReasoningSchema,
   acpReasoningCliSchema as acpBridgeReasoningCliSchema,
-} from "@bb/domain";
-import {
   modelListParamsSchema as canonicalModelListParamsSchema,
   threadDiscardParamsSchema as canonicalThreadDiscardParamsSchema,
   threadForkParamsSchema as canonicalThreadForkParamsSchema,
@@ -21,7 +19,7 @@ import {
   turnStartParamsSchema as canonicalTurnStartParamsSchema,
   turnSteerParamsSchema as canonicalTurnSteerParamsSchema,
   skillsConfigureParamsSchema,
-} from "@bb/provider-bridge-protocol";
+} from "@get-bb/plugin-sdk/bridge";
 import { z } from "zod";
 import { acpSessionUpdateSchema, acpStopReasonSchema } from "./wire.js";
 

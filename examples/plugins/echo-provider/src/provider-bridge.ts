@@ -20,11 +20,9 @@
  *   every item opens with item/started before any delta; a release stop
  *   fabricates nothing.
  */
-import { randomUUID } from "node:crypto";
-import { createInterface } from "node:readline";
-import { pathToFileURL } from "node:url";
-import type { PromptInput, ThreadEvent } from "@bb/domain";
 import {
+  type PromptInput,
+  type ThreadEvent,
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
   BRIDGE_REQUEST_METHODS,
@@ -36,7 +34,11 @@ import {
   threadStopParamsSchema,
   turnStartParamsSchema,
   turnSteerParamsSchema,
-} from "@bb/provider-bridge-protocol";
+  experimental_defineProviderBridge,
+} from "@get-bb/plugin-sdk/bridge";
+import { randomUUID } from "node:crypto";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 // ---------------------------------------------------------------------------
 // State: one bridge process serves many threads; sessions are in-memory only
@@ -336,20 +338,20 @@ export function handleLine(line: string): void {
   handler(id, params);
 }
 
-// When executed directly (the daemon runs `node dist/provider-bridge.mjs`),
-// serve the protocol over stdio. Importing this module (tests) starts nothing.
-const executedDirectly = ((): boolean => {
-  const entry = process.argv[1];
-  if (entry === undefined) {
-    return false;
-  }
-  try {
-    return pathToFileURL(entry).href === import.meta.url;
-  } catch {
-    return false;
-  }
-})();
-
-if (executedDirectly) {
-  createInterface({ input: process.stdin }).on("line", handleLine);
-}
+/**
+ * The bridge surface this plugin's host artifact exports. The daemon-side
+ * bootstrap imports the artifact, finds this export, and owns the process:
+ * argv, the plugin-scoped directories below, stdin framing, and signals.
+ * Importing this module (the conformance test does) starts nothing.
+ */
+export const experimental_providerBridge = experimental_defineProviderBridge({
+  handleLine,
+  start(context) {
+    // Proof that a bridge really is handed its plugin's own directories: the
+    // echo agent has nothing to persist, so it just records where it booted.
+    writeFileSync(
+      join(context.dataDir, "last-boot.json"),
+      `${JSON.stringify({ pluginId: context.pluginId, tempDir: context.tempDir })}\n`,
+    );
+  },
+});

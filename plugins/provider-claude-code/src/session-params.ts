@@ -9,17 +9,15 @@ import {
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   jsonValueSchema,
   removeCommandMentionsFromPromptInput,
-} from "@bb/domain";
-import type {
-  ClaudeCodeMockCliTrafficConfig,
-  DynamicTool,
-  InstructionMode,
-  PromptInput,
-  ReasoningLevel,
-  RuntimePermissionPolicy,
-} from "@bb/domain";
+  type ClaudeCodeMockCliTrafficConfig,
+  type DynamicTool,
+  type InstructionMode,
+  type PromptInput,
+  type ReasoningLevel,
+  type RuntimePermissionPolicy,
+  buildShellEnvironmentPolicyConfig,
+} from "@get-bb/plugin-sdk/bridge";
 import { z } from "zod";
-import { buildShellEnvironmentPolicyConfig } from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   toClaudePermissionMode,
   type ClaudePermissionMode,

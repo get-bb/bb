@@ -15,9 +15,6 @@
  * - Emits `thread/identity` when the SDK session ID is captured
  */
 
-import { randomUUID } from "node:crypto";
-import { resolve as resolvePath } from "node:path";
-import { isDeepStrictEqual } from "node:util";
 import {
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
   pendingInteractionResolutionSchema,
@@ -27,15 +24,6 @@ import {
   type PermissionEscalation,
   type ReasoningLevel,
   type ThreadEvent,
-} from "@bb/domain";
-import {
-  forkSession,
-  type CanUseTool,
-  type HookCallback,
-  type PermissionResult,
-  type SDKMessage,
-} from "@anthropic-ai/claude-agent-sdk";
-import {
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
@@ -46,9 +34,6 @@ import {
   turnStartParamsSchema as canonicalTurnStartParamsSchema,
   turnSteerParamsSchema as canonicalTurnSteerParamsSchema,
   type InitializeResult,
-} from "@bb/provider-bridge-protocol";
-import { z } from "zod";
-import {
   UNSTAMPED_THREAD_ID,
   buildAcceptedUserMessageEvent,
   createBridgeIo,
@@ -58,14 +43,23 @@ import {
   extractEnvOverrides,
   queueAcceptedUserMessage,
   runBridgeRequest,
-  startBridgeStdio,
   shouldAutoDenyInteractiveRequest,
   withoutBridgeRuntimeEnv,
-} from "@bb/provider-bridge-protocol/bridge-kit";
-import type {
-  BridgeToolCallRequest,
-  PendingBridgeToolCall,
-} from "@bb/provider-bridge-protocol/bridge-kit";
+  type BridgeToolCallRequest,
+  type PendingBridgeToolCall,
+  experimental_defineProviderBridge,
+} from "@get-bb/plugin-sdk/bridge";
+import { randomUUID } from "node:crypto";
+import { resolve as resolvePath } from "node:path";
+import { isDeepStrictEqual } from "node:util";
+import {
+  forkSession,
+  type CanUseTool,
+  type HookCallback,
+  type PermissionResult,
+  type SDKMessage,
+} from "@anthropic-ai/claude-agent-sdk";
+import { z } from "zod";
 import {
   createClaudeEventTranslator,
   type ClaudeEventTranslator,
@@ -2608,8 +2602,7 @@ function shutdownGracefully(message: string): void {
   });
 }
 
-startBridgeStdio({
-  importMetaUrl: import.meta.url,
+export const experimental_providerBridge = experimental_defineProviderBridge({
   handleLine,
   onSigterm: () => {
     shutdownGracefully(

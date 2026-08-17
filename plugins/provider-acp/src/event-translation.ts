@@ -7,24 +7,13 @@
  * entry) can instantiate the same translator.
  */
 
-import type {
-  ThreadEvent,
-  ThreadEventItem,
-  ThreadEventItemStatus,
-  ThreadEventPlanStep,
-} from "@bb/domain";
-import { threadScope, turnScope } from "@bb/domain";
-import { z } from "zod";
-/**
- * The per-event translation scope the runtime's generic adapter passes in. Its
- * `ProviderTranslationContext` satisfies this structurally; stated here so the
- * plugin does not depend on `@bb/agent-runtime`.
- */
-export interface ProviderTranslationContext {
-  threadId?: string;
-  parentToolCallId?: string;
-}
 import {
+  type ThreadEvent,
+  type ThreadEventItem,
+  type ThreadEventItemStatus,
+  type ThreadEventPlanStep,
+  threadScope,
+  turnScope,
   UNSTAMPED_THREAD_ID,
   buildEditDiff,
   buildUnhandledProviderEvents,
@@ -39,11 +28,19 @@ import {
   threadIdentityEnvelopeSchema,
   toOptionalString,
   withParentToolCallId,
-} from "@bb/provider-bridge-protocol/bridge-kit";
-import type {
-  AcceptedUserMessageState,
-  ProviderRuntimeEvent,
-} from "@bb/provider-bridge-protocol/bridge-kit";
+  type AcceptedUserMessageState,
+  type ProviderRuntimeEvent,
+} from "@get-bb/plugin-sdk/bridge";
+import { z } from "zod";
+/**
+ * The per-event translation scope the runtime's generic adapter passes in. Its
+ * `ProviderTranslationContext` satisfies this structurally; stated here so the
+ * plugin does not depend on `@bb/agent-runtime`.
+ */
+export interface ProviderTranslationContext {
+  threadId?: string;
+  parentToolCallId?: string;
+}
 import {
   ACP_COMPACTION_COMPLETED_METHOD,
   ACP_COMPACTION_STARTED_METHOD,
