@@ -1096,13 +1096,13 @@ describe("threads", () => {
 
   it("notifies the parent with children-changed after a hierarchical child commit", () => {
     const { db, project } = setup();
-    const spy: DbNotifier = {
+    const spy = {
       notifyThread: vi.fn(),
       notifyEnvironment: vi.fn(),
       notifyHost: vi.fn(),
       notifyProject: vi.fn(),
       notifySystem: vi.fn(),
-    };
+    } satisfies DbNotifier;
     const root = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
