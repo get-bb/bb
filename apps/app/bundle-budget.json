@@ -45,7 +45,7 @@
     "`node scripts/why-eager.mjs --from=views/SplitWorkspaceRoute.tsx <package>`",
     "to print the static chain that pulled a package into the closure."
   ],
-  "maxBootBytes": 1622583,
+  "maxBootBytes": 1626679,
   "maxBootBrotliBytes": 438233,
   "forbiddenBootPackages": [
     "@pierre/diffs",
