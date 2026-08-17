@@ -12,6 +12,11 @@ import {
   useThreadListRealtimeSubscription,
 } from "@/hooks/useRealtimeSubscription";
 import { REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY } from "./query-policies";
+import {
+  SIDEBAR_BOOTSTRAP_CACHE_KEY,
+  readCachedSidebarBootstrap,
+  writeCachedSidebarBootstrap,
+} from "@/lib/sidebar-bootstrap-cache";
 
 export const SIDEBAR_NAVIGATION_QUERY_KEY = "sidebarNavigation";
 
@@ -44,9 +49,21 @@ export function useSidebarNavigation(options?: QueryOptions) {
 
   return useQuery<SidebarBootstrapResponse>({
     queryKey: sidebarNavigationQueryKey(),
-    queryFn: ({ signal }) => fetchSidebarNavigation(signal),
+    queryFn: async ({ signal }) => {
+      const response = await fetchSidebarNavigation(signal);
+      writeCachedSidebarBootstrap(SIDEBAR_BOOTSTRAP_CACHE_KEY, response);
+      return response;
+    },
     enabled,
     ...REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY,
+    // A full load starts from an empty query cache, so the rail showed its
+    // two-row loading skeleton on every visit until the bootstrap resolved.
+    // Replay the last bootstrap this profile received instead; the live
+    // response replaces it in place. Consumers treat the replay like any
+    // sidebar data (navigation only), and a cold profile still shows the
+    // skeleton, so first-run behavior is unchanged.
+    placeholderData: () =>
+      readCachedSidebarBootstrap(SIDEBAR_BOOTSTRAP_CACHE_KEY) ?? undefined,
   });
 }
 
