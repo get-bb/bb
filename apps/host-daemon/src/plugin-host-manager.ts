@@ -1,7 +1,6 @@
 import { fork, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { rm } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
@@ -13,6 +12,11 @@ import type {
 import type { HostPathWatchChange, HostWatcher } from "@bb/host-watcher";
 import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
+import {
+  createPluginProcessTempDir,
+  ensurePluginProcessDataDir,
+  safePluginSegment,
+} from "./plugin-process-paths.js";
 import type { HostDaemonLogger } from "./logger.js";
 import { ensureCachedNodeArtifact } from "./node-artifact-cache.js";
 
@@ -131,10 +135,6 @@ const MAX_WATCH_DEBOUNCE_MS = 5_000;
 const MAX_WATCH_WAIT_MS = 30_000;
 const HOST_DIAGNOSTIC_LINE_MAX_BYTES = 16 * 1024;
 const HOST_DIAGNOSTIC_MAX_LINES = 1_000;
-
-function safePluginSegment(pluginId: string): string {
-  return encodeURIComponent(pluginId);
-}
 
 function elapsedMs(startedAtMs: number): number {
   return Math.max(0, Math.round(performance.now() - startedAtMs));
@@ -438,15 +438,15 @@ export class PluginHostManager {
     }
 
     const artifactPath = await this.materializeArtifact(command);
-    const pluginSegment = safePluginSegment(command.pluginId);
-    const dataDir = join(
-      this.options.dataDir,
-      "plugins",
-      pluginSegment,
-      "host-data",
-    );
-    await mkdir(dataDir, { recursive: true });
-    const tempDir = await mkdtemp(join(tmpdir(), `bb-host-${pluginSegment}-`));
+    const dataDir = await ensurePluginProcessDataDir({
+      daemonDataDir: this.options.dataDir,
+      pluginId: command.pluginId,
+      kind: "host-data",
+    });
+    const tempDir = await createPluginProcessTempDir({
+      pluginId: command.pluginId,
+      prefix: "bb-host",
+    });
     const shellPath = this.options.shellEnv?.().PATH;
     const startedAtMs = performance.now();
     let child: ChildProcess;
