@@ -1,8 +1,6 @@
 import { z } from "zod";
-import {
-  FILE_LIST_LIMIT_MAX,
-  type HostDaemonOnlineRpcResultByType,
-} from "@bb/host-daemon-contract";
+import { FILE_LIST_LIMIT_MAX } from "@bb/domain";
+import type { HostDaemonOnlineRpcResultByType } from "@bb/host-daemon-contract";
 
 /**
  * Host file read/write API (`POST /files/*`). Unlike the preview-oriented

@@ -10,7 +10,7 @@ import {
   type ProviderCliInstallEvent,
   type ProviderCliInstallRequest,
   type ProviderCliStatusResponse,
-} from "@bb/host-daemon-contract";
+} from "@bb/host-daemon-contract/local";
 
 /**
  * Query for `GET /hosts/:id/directory`, the interactive path browser's

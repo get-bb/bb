@@ -36,8 +36,15 @@ import {
   providerCliInstallRequestSchema,
   providerCliStatusResponseSchema,
 } from "./local.js";
+import { workspaceResolutionFailureSchema } from "./workspace.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 127 as const;
+export { HOST_DAEMON_PROTOCOL_VERSION } from "./protocol.js";
+export {
+  workspaceResolutionFailureCodeSchema,
+  workspaceResolutionFailureSchema,
+  type WorkspaceResolutionFailure,
+  type WorkspaceResolutionFailureCode,
+} from "./workspace.js";
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -84,29 +91,6 @@ export const hostDaemonConnectTunnelIdentitySchema = z
   .strict();
 export type HostDaemonConnectTunnelIdentity = z.infer<
   typeof hostDaemonConnectTunnelIdentitySchema
->;
-
-export const workspaceResolutionFailureCodeSchema = z.enum([
-  "path_not_found",
-  "not_git_repo",
-  "not_worktree",
-  "workspace_type_mismatch",
-  "permission_denied",
-  "unknown_environment",
-  "unknown",
-]);
-export const workspaceResolutionFailureSchema = z
-  .object({
-    code: workspaceResolutionFailureCodeSchema,
-    workspacePath: z.string().min(1),
-    message: z.string().min(1),
-  })
-  .strict();
-export type WorkspaceResolutionFailureCode = z.infer<
-  typeof workspaceResolutionFailureCodeSchema
->;
-export type WorkspaceResolutionFailure = z.infer<
-  typeof workspaceResolutionFailureSchema
 >;
 
 const hostDaemonThreadTargetSchema = z

@@ -5,7 +5,7 @@ import {
   type OpenInTargetRequest,
   type StatusResponse,
   type WorkspaceOpenTarget,
-} from "@bb/host-daemon-contract";
+} from "@bb/host-daemon-contract/local";
 import { z } from "zod";
 
 let client: ReturnType<typeof createHostDaemonLocalClient> | null = null;
