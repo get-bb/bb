@@ -267,17 +267,9 @@ export function resolveReplacement<Registration>(
 
 export function resolveThreadListReplacement(
   registrations: readonly PluginThreadListSlot[],
-  preference: string,
-  ownerPreference: string,
 ): ResolvedReplacement<PluginThreadListSlot> {
-  if (preference === ownerPreference) return OWNER_REPLACEMENT;
-  return resolveReplacement(
-    registrations,
-    (candidate) => `${candidate.pluginId}/${candidate.id}` === preference,
-  );
+  return resolveReplacement(registrations);
 }
-
-export type FileOpenerPreferenceMap = Record<string, string>;
 
 export type FileOpenerOverride =
   | "builtin"
@@ -291,16 +283,8 @@ export function getFileExtension(path: string): string | null {
   return name.slice(dotIndex + 1).toLowerCase();
 }
 
-export function buildFileOpenerRef(opener: {
-  pluginId: string;
-  id: string;
-}): string {
-  return `${opener.pluginId}:${opener.id}`;
-}
-
 export function resolveFileOpenerReplacement(args: {
   registrations: readonly PluginFileOpenerSlot[];
-  preference: FileOpenerPreferenceMap;
   path: string;
   override?: FileOpenerOverride;
 }): ResolvedReplacement<PluginFileOpenerSlot> {
@@ -317,12 +301,8 @@ export function resolveFileOpenerReplacement(args: {
 
   const extension = getFileExtension(args.path);
   if (extension === null) return OWNER_REPLACEMENT;
-  const preferredRef = args.preference[extension];
-  if (preferredRef === undefined) return OWNER_REPLACEMENT;
   return resolveReplacement(
     args.registrations,
-    (candidate) =>
-      buildFileOpenerRef(candidate) === preferredRef &&
-      candidate.extensions.includes(extension),
+    (candidate) => candidate.extensions.includes(extension),
   );
 }

@@ -7,7 +7,6 @@ import type {
   PluginThreadListSlot,
 } from "./plugin-slots";
 import {
-  buildFileOpenerRef,
   resolveComposerActions,
   resolveComposerBanners,
   resolveComposerDraftObservers,
@@ -163,7 +162,7 @@ describe("replacement resolvers", () => {
     expect(resolveReplacement([], () => true)).toEqual({ kind: "owner" });
   });
 
-  it("preserves the current explicit thread-list preference and owner fallback", () => {
+  it("automatically activates the first thread-list replacement", () => {
     const threadList: PluginThreadListSlot = {
       pluginId: "inbox",
       generation: 1,
@@ -173,21 +172,12 @@ describe("replacement resolvers", () => {
     };
 
     expect(
-      resolveThreadListReplacement(
-        [threadList],
-        "inbox/threads",
-        "__builtin__",
-      ),
+      resolveThreadListReplacement([threadList]),
     ).toEqual({ kind: "plugin", registration: threadList });
-    expect(
-      resolveThreadListReplacement([], "inbox/threads", "__builtin__"),
-    ).toEqual({ kind: "owner" });
-    expect(
-      resolveThreadListReplacement([threadList], "__builtin__", "__builtin__"),
-    ).toEqual({ kind: "owner" });
+    expect(resolveThreadListReplacement([])).toEqual({ kind: "owner" });
   });
 
-  it("preserves file extension preferences and explicit per-open overrides", () => {
+  it("activates the first matching file opener and preserves per-open overrides", () => {
     const markdown: PluginFileOpenerSlot = {
       pluginId: "docs",
       generation: 1,
@@ -197,19 +187,16 @@ describe("replacement resolvers", () => {
       component: Component,
     };
     const text = { ...markdown, id: "text", extensions: ["txt"] };
-    const preference = { md: buildFileOpenerRef(markdown) };
 
     expect(
       resolveFileOpenerReplacement({
         registrations: [markdown, text],
-        preference,
         path: "README.MD",
       }),
     ).toEqual({ kind: "plugin", registration: markdown });
     expect(
       resolveFileOpenerReplacement({
         registrations: [markdown, text],
-        preference,
         path: "README.md",
         override: { pluginId: "docs", openerId: "text" },
       }),
@@ -217,7 +204,6 @@ describe("replacement resolvers", () => {
     expect(
       resolveFileOpenerReplacement({
         registrations: [markdown],
-        preference,
         path: "README.md",
         override: "builtin",
       }),
@@ -225,9 +211,33 @@ describe("replacement resolvers", () => {
     expect(
       resolveFileOpenerReplacement({
         registrations: [],
-        preference,
         path: "README.md",
       }),
     ).toEqual({ kind: "owner" });
+  });
+
+  it("reveals the next matching file opener when the first is removed", () => {
+    const first: PluginFileOpenerSlot = {
+      pluginId: "alpha",
+      generation: 1,
+      id: "markdown",
+      title: "Alpha Markdown",
+      extensions: ["md"],
+      component: Component,
+    };
+    const second = { ...first, pluginId: "beta", title: "Beta Markdown" };
+
+    expect(
+      resolveFileOpenerReplacement({
+        registrations: [first, second],
+        path: "README.md",
+      }),
+    ).toEqual({ kind: "plugin", registration: first });
+    expect(
+      resolveFileOpenerReplacement({
+        registrations: [second],
+        path: "README.md",
+      }),
+    ).toEqual({ kind: "plugin", registration: second });
   });
 });

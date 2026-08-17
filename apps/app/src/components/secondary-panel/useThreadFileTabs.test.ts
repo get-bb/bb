@@ -436,16 +436,8 @@ describe("useThreadFileTabs file opener diversion", () => {
     });
   }
 
-  function setDefaultOpener() {
-    window.localStorage.setItem(
-      "bb.fileOpenerByExtension",
-      JSON.stringify({ md: "notes:editor" }),
-    );
-  }
-
-  it("diverts working-tree markdown opens to the preferred opener tab", () => {
+  it("automatically diverts matching working-tree files to the opener tab", () => {
     registerNotesOpener();
-    setDefaultOpener();
     const { result } = renderThreadHook(() =>
       useThreadFileTabs({
         panelStateId: "opener-divert",
@@ -489,7 +481,6 @@ describe("useThreadFileTabs file opener diversion", () => {
 
   it("keeps the built-in preview for ref snapshots and unmatched extensions", () => {
     registerNotesOpener();
-    setDefaultOpener();
     const { result } = renderThreadHook(() =>
       useThreadFileTabs({
         panelStateId: "opener-skip",
@@ -531,9 +522,7 @@ describe("useThreadFileTabs file opener diversion", () => {
     expect(result.current.activeWorkspaceFilePath).toBe("src/index.ts");
   });
 
-  it("falls back to the built-in preview when the preferred opener is gone", () => {
-    // Preference points at an opener that is not registered (plugin removed).
-    setDefaultOpener();
+  it("falls back to the built-in preview when no opener is registered", () => {
     const { result } = renderThreadHook(() =>
       useThreadFileTabs({
         panelStateId: "opener-gone",
@@ -561,7 +550,6 @@ describe("useThreadFileTabs file opener diversion", () => {
 
   it("honors per-open viewer overrides in both directions", () => {
     registerNotesOpener();
-    setDefaultOpener();
     const { result } = renderThreadHook(() =>
       useThreadFileTabs({
         panelStateId: "opener-override",
@@ -572,7 +560,7 @@ describe("useThreadFileTabs file opener diversion", () => {
       }),
     );
 
-    // "builtin" override skips the opener default entirely.
+    // "builtin" override skips the automatic opener entirely.
     act(() =>
       result.current.openTab(
         {
@@ -590,8 +578,7 @@ describe("useThreadFileTabs file opener diversion", () => {
     expect(result.current.activePluginPanelTab).toBeNull();
     expect(result.current.activeWorkspaceFilePath).toBe("notes/todo.md");
 
-    // A forced opener applies even with no default preference set.
-    window.localStorage.removeItem("bb.fileOpenerByExtension");
+    // A forced opener can still select a registered provider explicitly.
     act(() =>
       result.current.openTab(
         {

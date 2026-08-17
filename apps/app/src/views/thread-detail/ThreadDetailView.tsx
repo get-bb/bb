@@ -166,7 +166,7 @@ import {
 import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { getFileExtension } from "@/lib/file-opener-preference";
+import { getFileExtension } from "@/lib/plugin-slot-resolvers";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   getBbDesktopInfo,

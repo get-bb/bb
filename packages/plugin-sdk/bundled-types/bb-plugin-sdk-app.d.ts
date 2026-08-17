@@ -808,10 +808,11 @@ interface PluginSidebarThreadSplit {
  * Replace the sidebar's thread list with a plugin component.
  *
  * Unlike every other slot, this one is EXCLUSIVE: two lists cannot share one
- * scroll area. The built-in list stays the default; the user picks a provider
- * in Settings → Appearance, stored per client. A provider that is uninstalled,
- * disabled, or crashing falls back to the built-in list rather than leaving
- * the user with no sidebar.
+ * scroll area. Registering activates the replacement while the plugin is
+ * enabled. If multiple plugins register one, the first in deterministic slot
+ * order is active. A plugin can use its own setting and render
+ * `experimental_Original` conditionally. An absent or crashing replacement
+ * falls back to BB's list rather than leaving the user with no sidebar.
  *
  * The plugin gets the scrolling list and nothing else. The New-thread button,
  * the search field, the plugin nav rows, and the footer stay host-rendered in
@@ -821,20 +822,20 @@ interface PluginSidebarThreadSplit {
 interface PluginThreadListRegistration {
     /** Unique within the plugin; letters, digits, `-`, `_`. */
     id: string;
-    /** Label in the Settings → Appearance → Sidebar picker. */
+    /** Label used when BB identifies this capability. */
     title: string;
-    /** Optional one-line description under the title in that picker. */
+    /** Optional one-line description used when BB identifies this capability. */
     description?: string;
     component: ComponentType<PluginThreadListProps>;
 }
 /**
- * Register this plugin as a viewer/editor for file extensions. The user
- * picks (and can set as default) an opener per extension via the file tab's
- * "Open with" menu; matching files opened in the panel then render
- * `component` in a plugin tab instead of the built-in preview. Applies to
- * working-tree, host, and thread-storage files — never to git-ref snapshots
- * (diff views always use the built-in preview). The built-in preview stays
- * one menu click away, and a missing/disabled opener falls back to it.
+ * Register this plugin as a viewer/editor for file extensions. Matching files
+ * opened in the panel render the first applicable opener in deterministic slot
+ * order. The file tab's "Open with" menu can still choose BB's preview or a
+ * specific registered opener for one open. A plugin can use its own setting
+ * and render `experimental_Original` conditionally. Applies to working-tree,
+ * host, and thread-storage files — never to git-ref snapshots (diff views
+ * always use BB's preview).
  */
 interface PluginFileOpenerRegistration {
     /** Unique within the plugin; letters, digits, `-`, `_`. */

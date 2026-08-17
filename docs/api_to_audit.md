@@ -420,24 +420,24 @@ Before stabilization, audit:
 
 **What it does.** Replaces the sidebar's scrolling thread list with a plugin
 component. Unlike every other `app.slots.*` member this slot is **exclusive**:
-one list at a time fills the scroll area. The built-in list stays the default;
-the user picks a provider in Settings → Appearance → Sidebar, stored per client
-in `localStorage` under `bb.sidebar.threadListProvider`.
+one list at a time fills the scroll area. Registration activates it immediately.
+If several are registered, the first in the slot snapshot wins (plugin ids are
+sorted, then each plugin's registration order is preserved). Removing it
+reveals the next provider. A plugin-owned enable/disable setting belongs in the
+component, which can render `experimental_Original` when disabled.
 
-Three fallbacks keep the sidebar usable: a preference naming an unregistered
-provider resolves to the built-in list without clearing the stored value; a
-crashing component renders the built-in list (not the usual "plugin crashed"
-chip, which in place of a whole sidebar would strand the user) plus one toast;
-and a disabled or uninstalled plugin gets its list back when it returns.
+Two fallbacks keep the sidebar usable: a crashing component renders the
+built-in list (not the usual "plugin crashed" chip, which in place of a whole
+sidebar would strand the user) plus one toast; and no applicable registration
+renders the built-in list.
 
 **Audit before stabilizing.**
 
-1. **Arbitration.** Confirm a client-local single choice is right, versus a
-   per-project or per-workspace choice, and what a synced setting would mean
-   across devices where the plugin is not installed.
+1. **Arbitration.** Confirm alphabetical plugin-id order is an acceptable
+   deterministic tie-breaker when multiple replacements are enabled, or
+   whether the host eventually needs an explicit precedence policy.
 2. **Fallback discoverability.** Confirm one toast is the right signal when a
-   crash silently swaps the user's sidebar back, and whether the preference
-   should self-clear after repeated crashes.
+   crash silently swaps the user's sidebar back.
 3. **Region boundary.** The plugin gets the scrolling list and nothing else:
    the New-thread button, search field, plugin nav rows, and footer stay
    host-rendered, because they are shared surfaces (other plugins live in two

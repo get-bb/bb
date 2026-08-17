@@ -6,7 +6,6 @@ import {
   createPluginPanelFixedPanelTab,
   type PluginPanelFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
-import type { FileOpenerPreferenceMap } from "@/lib/file-opener-preference";
 import {
   resolveFileOpenerReplacement,
   type FileOpenerOverride,
@@ -82,14 +81,13 @@ export function parseFileOpenerParams(
 
 /**
  * A per-open viewer choice (the link context menu): "builtin" pins the
- * built-in preview; an opener ref forces that plugin opener. Absent =
- * follow the per-extension default.
+ * built-in preview; an opener ref forces that plugin opener. Absent means
+ * resolve the first registered opener that supports the extension.
  */
 export type FileTabViewerOverride = FileOpenerOverride;
 
 export interface CreateFileOpenerTabForRequestArgs {
   fileOpeners: readonly PluginFileOpenerSlot[];
-  preference: FileOpenerPreferenceMap;
   projectId: string | null;
   request: OpenSecondaryPanelTabRequest;
   resolvedEnvironmentId: string | null | undefined;
@@ -105,7 +103,6 @@ export interface CreateFileOpenerTabForRequestArgs {
  */
 export function createFileOpenerTabForRequest({
   fileOpeners,
-  preference,
   projectId,
   request,
   resolvedEnvironmentId,
@@ -121,7 +118,6 @@ export function createFileOpenerTabForRequest({
   if (file === null) return null;
   const resolved = resolveFileOpenerReplacement({
     registrations: fileOpeners,
-    preference,
     path: file.path,
     ...(viewer !== undefined ? { override: viewer } : {}),
   });
@@ -137,7 +133,7 @@ function fileForOpenRequest({
   threadId,
 }: Omit<
   CreateFileOpenerTabForRequestArgs,
-  "fileOpeners" | "preference"
+  "fileOpeners"
 >): PluginFileOpenerFile | null {
   switch (request.kind) {
     case "workspace-file-preview": {

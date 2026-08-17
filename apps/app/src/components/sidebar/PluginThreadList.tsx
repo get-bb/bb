@@ -19,7 +19,7 @@ interface PluginThreadListProps {
 }
 
 /**
- * Mounts the chosen `experimental_threadList` slot in the sidebar's scroll
+ * Mounts the active `experimental_threadList` slot in the sidebar's scroll
  * area, keyed by generation so a plugin reload remounts it with fresh
  * error-boundary state.
  */

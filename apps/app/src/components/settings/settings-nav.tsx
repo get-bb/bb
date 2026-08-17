@@ -79,7 +79,7 @@ export function useSettingsNavState(): SettingsNavState {
   const location = useLocation();
   const { hasDaemon } = useHostDaemon();
   const { accessState } = useLocalHostDaemonAccess();
-  const { fileOpeners, settingsSections } = usePluginSlots();
+  const { settingsSections } = usePluginSlots();
   const pluginListQuery = usePluginList({ enabled: true });
 
   const providerMatch = matchPath(
@@ -119,9 +119,7 @@ export function useSettingsNavState(): SettingsNavState {
 
   const sections = SETTINGS_NAV_SECTIONS.filter((section) => {
     if (section.id === "files") {
-      return (
-        hasDaemon || accessState !== "unavailable" || fileOpeners.length > 0
-      );
+      return hasDaemon || accessState !== "unavailable";
     }
     return true;
   });
