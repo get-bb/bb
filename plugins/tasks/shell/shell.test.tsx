@@ -24,6 +24,7 @@ const { parseTasksRoute, tasksRouteToSubPath } = await import("./routes.js");
 const { pagerPosition } = await import("./topbar.js");
 const { SIDEBAR_COLLAPSED_STORAGE_KEY } =
   await import("./sidebar-preference.js");
+const { loadViewMode } = await import("./view-preference.js");
 
 beforeEach(() => window.localStorage.clear());
 afterEach(() => {
@@ -32,6 +33,7 @@ afterEach(() => {
 });
 
 const PROJECT_ID = "01HZZZZZZZZZZZZZZZZZZZZZP1";
+const OTHER_PROJECT_ID = "01HZZZZZZZZZZZZZZZZZZZZZP2";
 const FOLDER_ID = "01HZZZZZZZZZZZZZZZZZZZZZF1";
 
 const project = {
@@ -81,6 +83,8 @@ describe("tasks route grammar", () => {
       { kind: "task", taskKey: "TSK-4" },
       { kind: "project", projectId: PROJECT_ID, view: "list" },
       { kind: "project", projectId: PROJECT_ID, view: "board" },
+      // No view marker: the shell fills it from the stored preference.
+      { kind: "project", projectId: PROJECT_ID, view: null },
     ] as const;
     for (const route of routes) {
       expect(parseTasksRoute(tasksRouteToSubPath(route))).toEqual(route);
@@ -92,6 +96,82 @@ describe("tasks route grammar", () => {
       view: "board",
     });
     expect(parseTasksRoute("")).toEqual({ kind: "all" });
+    // An unknown marker is as good as none — never a silent "list".
+    expect(parseTasksRoute(`${PROJECT_ID}?view=kanban`)).toEqual({
+      kind: "project",
+      projectId: PROJECT_ID,
+      view: null,
+    });
+  });
+});
+
+describe("project view preference", () => {
+  const openProject = (subPath: string) =>
+    renderSlot(
+      app.navPanels[0]!,
+      { subPath },
+      { rpc: seededRpc({ listLabels: () => ({ labels: [] }) }) },
+    );
+
+  it("restores the remembered view when the URL names none", async () => {
+    const listed = openProject(`${PROJECT_ID}?view=list`);
+    // The toggle is the only way a user picks a view; it must persist.
+    fireEvent.click(await listed.findByRole("button", { name: "Board" }));
+    expect(listed.navigateCalls).toContainEqual({
+      method: "toPluginPanel",
+      path: "tasks",
+      options: { subPath: `${PROJECT_ID}?view=board` },
+    });
+    listed.lifecycle.unmount();
+
+    // Reopening the project without a marker (sidebar click, deep link).
+    const reopened = openProject(PROJECT_ID);
+    const boardSegment = await reopened.findByRole("button", { name: "Board" });
+    expect(boardSegment.getAttribute("aria-pressed")).toBe("true");
+    await reopened.findByText("In Review");
+  });
+
+  it("keeps per-project choices apart and defaults unseen projects to the last one used", async () => {
+    const slot = openProject(`${PROJECT_ID}?view=list`);
+    fireEvent.click(await slot.findByRole("button", { name: "Board" }));
+    slot.lifecycle.unmount();
+
+    expect(loadViewMode(PROJECT_ID)).toBe("board");
+    // A project opened for the first time follows the most recent choice
+    // rather than snapping back to the list.
+    expect(loadViewMode(OTHER_PROJECT_ID)).toBe("board");
+
+    const other = renderSlot(
+      app.navPanels[0]!,
+      { subPath: `${OTHER_PROJECT_ID}?view=list` },
+      { rpc: seededRpc() },
+    );
+    fireEvent.click(await other.findByRole("button", { name: "List" }));
+    expect(loadViewMode(OTHER_PROJECT_ID)).toBe("list");
+    expect(loadViewMode(PROJECT_ID)).toBe("board");
+  });
+
+  it("navigates from the sidebar without pinning a view", async () => {
+    const slot = openProject("all");
+    fireEvent.click(await slot.findByText("Tasks Plugin"));
+    expect(slot.navigateCalls).toContainEqual({
+      method: "toPluginPanel",
+      path: "tasks",
+      options: { subPath: PROJECT_ID },
+    });
+  });
+
+  it("still toggles when client storage rejects writes", async () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("Storage is disabled", "SecurityError");
+    });
+    const slot = openProject(`${PROJECT_ID}?view=list`);
+    fireEvent.click(await slot.findByRole("button", { name: "Board" }));
+    expect(slot.navigateCalls).toContainEqual({
+      method: "toPluginPanel",
+      path: "tasks",
+      options: { subPath: `${PROJECT_ID}?view=board` },
+    });
   });
 });
 

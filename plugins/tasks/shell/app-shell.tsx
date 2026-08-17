@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { PluginNavPanelProps } from "@get-bb/plugin-sdk/app";
 import {
   useActiveTasks,
@@ -10,8 +10,11 @@ import {
 import {
   parseTasksRoute,
   useTasksNavigation,
+  type ResolvedTasksRoute,
+  type TasksNavigation,
   type TasksRoute,
 } from "./routes.js";
+import { loadViewMode, storeViewMode } from "./view-preference.js";
 import { TasksSidebar } from "./sidebar.js";
 import {
   loadSidebarCollapsed,
@@ -154,7 +157,7 @@ function RouteOutlet({
   route,
   boardUsable,
 }: {
-  route: TasksRoute;
+  route: ResolvedTasksRoute;
   /** False in phone-width containers: board routes fall back to the list
       (deep links/rotation would otherwise strand a crushed board with the
       toggle hidden). The URL keeps the board view for when width returns. */
@@ -178,9 +181,31 @@ function RouteOutlet({
   }
 }
 
+/**
+ * A project URL without a `?view=` marker (sidebar click, breadcrumb, deep
+ * link) restores the view this client last used for that project.
+ */
+function resolveRoute(route: TasksRoute): ResolvedTasksRoute {
+  if (route.kind !== "project") return route;
+  return { ...route, view: route.view ?? loadViewMode(route.projectId) };
+}
+
 function TasksAppShellContent({ subPath }: PluginNavPanelProps) {
-  const route = parseTasksRoute(subPath);
-  const navigation = useTasksNavigation();
+  const route = resolveRoute(parseTasksRoute(subPath));
+  const tasksNavigation = useTasksNavigation();
+  // Every explicit project view in a navigation is a user choice worth
+  // remembering — the topbar's List/Board toggle is the only source of one.
+  const navigation = useMemo<TasksNavigation>(
+    () => ({
+      go: (target, options) => {
+        if (target.kind === "project" && target.view !== null) {
+          storeViewMode(target.projectId, target.view);
+        }
+        tasksNavigation.go(target, options);
+      },
+    }),
+    [tasksNavigation],
+  );
   const [sidebarCollapsed, setSidebarCollapsed] =
     useState(loadSidebarCollapsed);
   const [newTaskOpen, setNewTaskOpen] = useState(false);

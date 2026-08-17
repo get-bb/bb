@@ -262,12 +262,9 @@ export function TasksSidebar({
     [summaries],
   );
   const activeProjectId = route.kind === "project" ? route.projectId : null;
+  // No explicit view: the shell restores the view last used for that project.
   const openProject = (projectId: string) =>
-    onNavigate({
-      kind: "project",
-      projectId,
-      view: route.kind === "project" ? route.view : "list",
-    });
+    onNavigate({ kind: "project", projectId, view: null });
   const toggleFolder = (folderId: string) =>
     setCollapsedFolders((current) => {
       const next = new Set(current);

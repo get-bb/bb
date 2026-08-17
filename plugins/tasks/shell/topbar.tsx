@@ -2,7 +2,11 @@ import { useCallback, useMemo } from "react";
 import type { Project, Task } from "../shared/contract.js";
 import { groupTasksByStatus } from "../views/list/lib.js";
 import { listAllTasks, useTasksQuery } from "./data.js";
-import type { TaskViewMode, TasksRoute } from "./routes.js";
+import type {
+  ResolvedTasksRoute,
+  TaskViewMode,
+  TasksRoute,
+} from "./routes.js";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -182,7 +186,7 @@ function RefreshTasksButton() {
 }
 
 export interface TasksTopbarProps {
-  route: TasksRoute;
+  route: ResolvedTasksRoute;
   projects: Project[] | undefined;
   sidebarCollapsed: boolean;
   /**
@@ -277,10 +281,12 @@ export function TasksTopbar({
                 type="button"
                 className="hidden min-w-0 items-center gap-2 text-muted-foreground hover:text-foreground @md:flex"
                 onClick={() =>
+                  // No explicit view: the shell restores the project's
+                  // remembered List/Board choice.
                   onNavigate({
                     kind: "project",
                     projectId: project.id,
-                    view: "list",
+                    view: null,
                   })
                 }
               >
