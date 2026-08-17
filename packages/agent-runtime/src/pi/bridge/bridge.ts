@@ -33,17 +33,14 @@ import {
   buildAcceptedUserMessageEvent,
   createBridgeIo,
   createBridgeLineHandler,
-  createBridgeSessionRegistry,
+  createPendingToolCallTracker,
   decodeBridgeJsonRpcResponse,
   mimeTypeFromExtension,
   queueAcceptedUserMessage,
   runBridgeRequest,
   experimental_defineProviderBridge,
 } from "@bb/provider-bridge-protocol/bridge-kit";
-import type {
-  BridgeToolCallRequest,
-  PendingBridgeToolCall,
-} from "@bb/provider-bridge-protocol/bridge-kit";
+import type { BridgeToolCallRequest } from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   SessionManager,
   type AgentSessionEvent,
@@ -63,7 +60,11 @@ import {
   resolvePiBridgeSessionDir,
   resolvePiSessionFilePath,
 } from "./session-paths.js";
-import { buildDynamicTools, type DynamicToolDefinition } from "./tool-proxy.js";
+import {
+  buildDynamicTools,
+  type DynamicToolDefinition,
+  type ToolCallForwarder,
+} from "./tool-proxy.js";
 import { listPiBridgeModels } from "./model-list.js";
 import { getPiModelRuntime } from "./model-runtime.js";
 import {
@@ -216,7 +217,6 @@ interface ThreadSession {
   providerThreadId: string;
   /** Every session-scoped notification is translated through this. */
   translator: PiEventTranslator;
-  pendingToolCalls: Map<string | number, PendingBridgeToolCall>;
 }
 
 interface PiThreadStopResult {
@@ -238,18 +238,70 @@ const { send, sendResult, sendError } = createBridgeIo<
   BridgeEventNotification | BridgeToolCallRequest
 >({ write: writePiBridgeProtocol });
 
-const {
-  closeThreadSession,
-  closeThreadSessionsGracefully,
-  createForwardToolCall,
-  handleToolCallResponse,
-  sessions,
-} = createBridgeSessionRegistry<ThreadSession, string | undefined>({
-  closeSessionGracefully: (threadSession) =>
-    threadSession.session.closeGracefully(THREAD_STOP_CLOSE_TIMEOUT_MS),
-  getProviderThreadId: (threadSession) => threadSession.providerThreadId,
-  sendToolCall: send,
-});
+const sessions = new Map<string, ThreadSession>();
+const closingSessions = new Map<string, Promise<string | undefined>>();
+const { forwardToolCall, handleToolCallResponse, resolvePendingToolCalls } =
+  createPendingToolCallTracker({ sendToolCall: send });
+
+function createForwardToolCall(getThreadId: () => string): ToolCallForwarder {
+  return (toolName, args) => {
+    const threadId = getThreadId();
+    const threadSession = sessions.get(threadId);
+    if (!threadSession || threadSession.closing) {
+      return Promise.resolve({
+        content: "Thread session not found",
+        isError: true,
+      });
+    }
+    return forwardToolCall({
+      arguments: args,
+      // The stable provider identity, not the bb thread id: a resumed session
+      // can run under a new thread id while keeping its persisted-file name.
+      providerThreadId: threadSession.providerThreadId,
+      scope: threadSession,
+      threadId,
+      toolName,
+    });
+  };
+}
+
+async function closeThreadSession(args: {
+  message: string;
+  threadId: string;
+}): Promise<string | undefined> {
+  const existingClose = closingSessions.get(args.threadId);
+  if (existingClose) {
+    return existingClose;
+  }
+
+  const threadSession = sessions.get(args.threadId);
+  if (!threadSession) {
+    return;
+  }
+
+  threadSession.closing = true;
+  resolvePendingToolCalls(threadSession, args.message);
+  const closePromise = Promise.resolve()
+    .then(() =>
+      threadSession.session.closeGracefully(THREAD_STOP_CLOSE_TIMEOUT_MS),
+    )
+    .finally(() => {
+      if (sessions.get(args.threadId) === threadSession) {
+        sessions.delete(args.threadId);
+      }
+      closingSessions.delete(args.threadId);
+    });
+  closingSessions.set(args.threadId, closePromise);
+  return closePromise;
+}
+
+async function closeThreadSessionsGracefully(message: string): Promise<void> {
+  await Promise.all(
+    Array.from(sessions.keys()).map((threadId) =>
+      closeThreadSession({ message, threadId }),
+    ),
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Thread-event emission
@@ -693,7 +745,6 @@ async function startPiThreadSession(
     closing: false,
     providerThreadId,
     translator: createSessionTranslator(),
-    pendingToolCalls: new Map(),
   };
   sessions.set(threadId, threadSession);
 
