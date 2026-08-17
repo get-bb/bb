@@ -4,7 +4,7 @@ import {
   type AvailableModel,
   type ModelReasoningEffort,
   type ReasoningLevel,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 
 const DEFAULT_REASONING_EFFORTS: readonly ModelReasoningEffort[] =

@@ -5,7 +5,7 @@ import {
   type JsonRpcMessage,
   type ProviderRawEventDescription,
   type ProviderVisibilityMetadata,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import {
   ACP_FS_WRITE_METHOD,
   ACP_TURN_COMPLETED_METHOD,

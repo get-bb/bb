@@ -1099,7 +1099,7 @@ both. Export it by name:
 
 ```ts
 // host.ts (bb.host)
-import { experimental_defineProviderBridge } from "@get-bb/plugin-sdk/bridge";
+import { experimental_defineProviderBridge } from "@get-bb/plugin-sdk/provider-bridge";
 
 export const experimental_providerBridge = experimental_defineProviderBridge({
   handleLine(line) {
@@ -1119,7 +1119,7 @@ export out of the artifact. Importing the module must start nothing, which is
 also what lets your conformance test drive `handleLine` in-process.
 
 Everything a bridge compiles against is published at
-`@get-bb/plugin-sdk/bridge` — protocol schemas, the bridge kit, and the event
+`@get-bb/plugin-sdk/provider-bridge` — protocol schemas, the bridge kit, and the event
 vocabulary — so add `@get-bb/plugin-sdk` to `dependencies` (not just
 `devDependencies`). A `bb.host` artifact cannot import bb's private `@bb/*`
 workspace packages; an installed plugin could not resolve them.

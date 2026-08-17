@@ -1,6 +1,6 @@
 import {
   type DynamicTool,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import type { McpSdkServerConfigWithInstance } from "@anthropic-ai/claude-agent-sdk";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {

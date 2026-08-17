@@ -62,7 +62,7 @@ export function experimental_defineHostEntry(args) {
  * An entry belongs here only when the surface's *runtime* must come from the
  * host rather than from the plugin's own node_modules — the members below are
  * host-implemented and the SDK is a type-only devDependency for authors.
- * `@get-bb/plugin-sdk/bridge` is deliberately absent: it is pure schema and
+ * `@get-bb/plugin-sdk/provider-bridge` is deliberately absent: it is pure schema and
  * helper code with no daemon-pinned behavior, so a provider plugin depends on
  * the SDK for real and the build inlines its published bundle.
  */

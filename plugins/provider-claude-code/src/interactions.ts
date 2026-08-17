@@ -24,7 +24,7 @@ import {
   isUserQuestionPendingInteractionPayload,
   isUserQuestionPendingInteractionResolution,
   ProviderResponseEncodeError,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import {
   buildClaudePlanRejectionMessage,
   buildClaudeSessionPermissionUpdates,

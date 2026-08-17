@@ -21,7 +21,7 @@ to hosts, and the official conformance kit.
   `experimental_providerBridge` export (run by the daemon's bridge bootstrap
   in its own process) and the `default` host RPC entry (run by the daemon's
   host worker in another). Bridge authoring imports come from the published
-  `@get-bb/plugin-sdk/bridge` — a host artifact cannot import bb's private
+  `@get-bb/plugin-sdk/provider-bridge` — a host artifact cannot import bb's private
   workspace packages.
 - **The bridge protocol** (`src/provider-bridge.ts`) — a minimal but correct
   implementation of the canonical Provider Bridge Protocol

@@ -1,7 +1,7 @@
 import {
   dynamicToolSchema,
   type DynamicTool,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import { createConnection } from "node:net";
 import { createInterface } from "node:readline";
 import { z } from "zod";

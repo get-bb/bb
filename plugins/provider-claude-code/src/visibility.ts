@@ -7,7 +7,7 @@ import {
   type JsonRpcMessage,
   type ProviderRawEventDescription,
   type ProviderVisibilityMetadata,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 const CLAUDE_NORMALIZED_ASSISTANT_CONTENT_TYPES = new Set([
   "fallback",
   "text",

@@ -53,7 +53,7 @@ import {
   type JsonRpcMessage,
   type ProviderTurnStateRegistry,
   type ToolUseTranslationInput,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import {
   claudeApiRetryMessageSchema,
   claudeAssistantMessageSchema,

@@ -20,7 +20,7 @@ import {
   toOptionalRecord,
   type JsonRpcMessage,
   type ProviderRuntimeEvent,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import {
   codexBridgeEnvelopeSchema,
   codexHandledEventSchema,

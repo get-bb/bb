@@ -730,7 +730,7 @@ happens to speak the bridge protocol, and every duplication the adoption pass
 could only narrow is dissolved: one live-artifact registry, one internal route,
 one daemon cache with one pruning policy. Three commits.
 
-1. **The publish surface.** `@get-bb/plugin-sdk/bridge` — one curated,
+1. **The publish surface.** `@get-bb/plugin-sdk/provider-bridge` — one curated,
    hand-named module (never `export *`) carrying the bridge entry contract, the
    protocol's methods and param schemas, the bridge kit's authoring half, and
    the `@bb/domain` event vocabulary the payloads are made of (~190 names). Two

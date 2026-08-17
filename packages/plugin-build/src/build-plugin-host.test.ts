@@ -181,7 +181,7 @@ describe("plugin host build", () => {
   });
 
   it("bundles the published bridge surface without stubbing it", async () => {
-    // `@get-bb/plugin-sdk/bridge` is real published code — schemas and pure
+    // `@get-bb/plugin-sdk/provider-bridge` is real published code — schemas and pure
     // helpers, nothing daemon-pinned — so it is deliberately NOT in the
     // runtime-stub table: a bridge plugin depends on the SDK and the build
     // inlines its published, self-contained bundle. The plugin's own sources
@@ -210,7 +210,7 @@ describe("plugin host build", () => {
     await writeFile(
       join(dir, "host.ts"),
       [
-        'import { experimental_defineProviderBridge, turnScope, threadStartParamsSchema } from "@get-bb/plugin-sdk/bridge";',
+        'import { experimental_defineProviderBridge, turnScope, threadStartParamsSchema } from "@get-bb/plugin-sdk/provider-bridge";',
         "export const experimental_providerBridge = experimental_defineProviderBridge({",
         "  handleLine(line) {",
         "    threadStartParamsSchema.safeParse(JSON.parse(line));",
@@ -223,7 +223,7 @@ describe("plugin host build", () => {
 
     expect(
       Object.keys(HOST_ARTIFACT_RUNTIME_STUBS),
-    ).not.toContain("@get-bb/plugin-sdk/bridge");
+    ).not.toContain("@get-bb/plugin-sdk/provider-bridge");
     const result = await buildPluginHost(
       dir,
       "0.9.0-test",

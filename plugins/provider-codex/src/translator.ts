@@ -21,7 +21,7 @@ import {
   type PreparedProviderCommandDispatch,
   type ProviderPostInitializeRequest,
   type ProviderRuntimeEvent,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import {
   applyCodexRateLimitUpdate,
   createCodexEventTranslationState,

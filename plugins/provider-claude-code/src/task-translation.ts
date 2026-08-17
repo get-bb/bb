@@ -14,7 +14,7 @@ import {
   isSettledBackgroundTaskStatus,
   threadScope,
   turnScope,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import {
   claudeTaskNotificationMessageSchema,
   claudeTaskProgressMessageSchema,

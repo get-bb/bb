@@ -222,7 +222,7 @@ registration record so fields without a registry consumer yet
    capability before stabilizing: a declaration may assert what the provider
    itself implements, never what bb or its daemon can do with it.
 
-## `@get-bb/plugin-sdk/bridge` (the provider-bridge authoring surface)
+## `@get-bb/plugin-sdk/provider-bridge` (the provider-bridge authoring surface)
 
 **What it does.** The published module a provider bridge compiles against. A
 bridge ships inside its plugin's `bb.host` artifact, and a host artifact may
@@ -240,7 +240,8 @@ build inlines the SDK's published, self-contained bundle.
 
 **Audit before stabilizing.**
 
-1. **The event vocabulary's home.** The names in group (4) of `src/bridge.ts`
+1. **The event vocabulary's home.** The names in group (4) of
+   `src/provider-bridge.ts`
    (`ThreadEvent`, `PromptInput`, `PendingInteractionPayload`, `turnScope`, …)
    are `@bb/domain`'s — bb's persisted-thread vocabulary, shared by the server,
    the app and the runtime. The SDK names them because a published surface

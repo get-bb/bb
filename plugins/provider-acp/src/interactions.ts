@@ -15,7 +15,7 @@ import {
   isApprovalPendingInteractionPayload,
   isApprovalPendingInteractionResolution,
   toOptionalString,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import type { AcpPermissionOptionKind } from "./wire.js";
 
 /**

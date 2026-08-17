@@ -7,7 +7,7 @@ import {
   normalizeProviderCommandOutput,
   textBlockSchema,
   toNonNegativeNumber,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import type { SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import {
   claudeAssistantUsageMessageSchema,

@@ -10,7 +10,7 @@ import {
   type PermissionMode,
   type ReasoningLevel,
   type ServiceTier,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import path from "node:path";
 
 import { ACP_DEFAULT_MODEL_ID } from "./bridge-protocol.js";

@@ -48,7 +48,7 @@ import {
   type BridgeToolCallRequest,
   type PendingBridgeToolCall,
   experimental_defineProviderBridge,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import { randomUUID } from "node:crypto";
 import { resolve as resolvePath } from "node:path";
 import { isDeepStrictEqual } from "node:util";

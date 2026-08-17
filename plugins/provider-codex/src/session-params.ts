@@ -14,7 +14,7 @@ import {
   type RuntimePermissionPolicy,
   type ServiceTier,
   buildShellEnvironmentPolicyConfig,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import fs from "node:fs";
 import path from "node:path";
 import type { ReasoningEffort as CodexReasoningEffort } from "./generated/codex-app-server/schema/ReasoningEffort.js";

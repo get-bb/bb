@@ -34,7 +34,7 @@ and `examples/plugins/echo-provider` the smallest.
 The bundle is self-contained (only node builtins stay external) and may not
 import bb's private `@bb/*` workspace packages at all — an installed plugin
 cannot resolve them. Everything a bridge compiles against is published at
-**`@get-bb/plugin-sdk/bridge`**: the protocol schemas, the bridge kit (JSON-RPC
+**`@get-bb/plugin-sdk/provider-bridge`**: the protocol schemas, the bridge kit (JSON-RPC
 plumbing, tool-call and interaction codecs, id scoping, translation helpers),
 and the event vocabulary the payloads are made of. In-repo, those are
 implemented by `@bb/provider-bridge-protocol` and `@bb/domain`; test

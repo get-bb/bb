@@ -38,7 +38,7 @@ import {
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   type InitializeResult,
   experimental_defineProviderBridge,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import { execFile } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { promises as fs, readFileSync } from "node:fs";

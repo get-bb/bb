@@ -1,5 +1,5 @@
 /**
- * `@get-bb/plugin-sdk/bridge` — the published authoring surface for a provider
+ * `@get-bb/plugin-sdk/provider-bridge` — the published authoring surface for a provider
  * bridge.
  *
  * A provider bridge ships inside its plugin's `bb.host` artifact, and a host

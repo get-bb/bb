@@ -35,7 +35,7 @@ import {
   turnStartParamsSchema,
   turnSteerParamsSchema,
   experimental_defineProviderBridge,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";

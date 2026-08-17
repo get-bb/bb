@@ -4,7 +4,7 @@ import {
   type PendingInteractionGrantedPermissionProfile,
   type PendingInteractionGrantablePermissionProfile,
   type RuntimePermissionPolicy,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 
 export const CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD =

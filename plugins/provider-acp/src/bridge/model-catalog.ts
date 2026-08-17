@@ -36,7 +36,7 @@ import {
   type AvailableModel,
   type ReasoningLevel,
   type ServiceTier,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import type { AcpConfigOption, AcpSessionModels } from "../wire.js";
 
 export interface RawAgentModel {

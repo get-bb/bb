@@ -2,7 +2,7 @@ import {
   isClaudeCodeMockCliTrafficEndpoint,
   type JsonObject,
   type JsonValue,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import { createServer, request as httpRequest } from "node:http";
 import type {
   IncomingHttpHeaders,

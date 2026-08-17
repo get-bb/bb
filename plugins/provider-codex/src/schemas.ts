@@ -5,7 +5,7 @@ import {
   pendingInteractionNetworkPermissionsSchema,
   type PendingInteractionCommandAction,
   jsonRpcEnvelopeSchema,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 
 const codexTurnStatusSchema = z.enum([

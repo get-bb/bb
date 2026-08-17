@@ -30,7 +30,7 @@ import {
   withParentToolCallId,
   type AcceptedUserMessageState,
   type ProviderRuntimeEvent,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 /**
  * The per-event translation scope the runtime's generic adapter passes in. Its

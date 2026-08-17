@@ -7,7 +7,7 @@ import {
   type ProviderRawEventCoverage,
   type ProviderRawEventDescription,
   type ProviderVisibilityMetadata,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import type { ServerNotification } from "./generated/codex-app-server/schema/ServerNotification.js";
 
 type CodexServerNotificationMethod =

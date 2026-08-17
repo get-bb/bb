@@ -3,7 +3,7 @@ import {
   type PermissionEscalation,
   type ReasoningLevel,
   type RuntimePermissionScope,
-} from "@get-bb/plugin-sdk/bridge";
+} from "@get-bb/plugin-sdk/provider-bridge";
 import { accessSync, constants, statSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import type { Options, Settings } from "@anthropic-ai/claude-agent-sdk";

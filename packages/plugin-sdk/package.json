@@ -26,11 +26,11 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./bridge": {
-      "source": "./src/bridge.ts",
-      "types": "./bundled-types/bb-plugin-sdk-bridge.d.ts",
-      "import": "./dist/bridge.js",
-      "default": "./dist/bridge.js"
+    "./provider-bridge": {
+      "source": "./src/provider-bridge.ts",
+      "types": "./bundled-types/bb-plugin-sdk-provider-bridge.d.ts",
+      "import": "./dist/provider-bridge.js",
+      "default": "./dist/provider-bridge.js"
     },
     "./app": {
       "source": "./src/app.ts",
