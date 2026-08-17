@@ -21,6 +21,7 @@ import {
   type StandardSchemaV1Result,
 } from "@get-bb/plugin-sdk";
 import {
+  assertNoRecursiveJsonSchemaReferences,
   enforcePluginCliOutputLimit,
   PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
   PLUGIN_AGENT_SELECTION_MAX_IDS,
@@ -773,6 +774,10 @@ function normalizePluginAgentToolParameters(args: {
       `configure() output.tools[${index}].parameters must have root type "object"`,
     );
   }
+  assertNoRecursiveJsonSchemaReferences(
+    parameters,
+    `configure() output.tools[${index}].parameters`,
+  );
   return parameters;
 }
 

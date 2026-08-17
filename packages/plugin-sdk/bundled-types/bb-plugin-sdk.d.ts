@@ -14043,7 +14043,7 @@ interface PluginAgentToolSelection {
      * 128 KiB serialized) sent to the provider in place of the registered
      * parameter schema. Execution-side validation still runs the registered
      * parameters, so the override must only narrow what the registered schema
-     * already accepts. */
+     * already accepts. Recursive local `$ref` chains are rejected. */
     parameters: Record<string, unknown>;
 }
 /** Per-resolution selection returned by {@link PluginAgents.configure}. */
@@ -14187,7 +14187,9 @@ interface PluginAgents {
      * start — a tool registered mid-session is not hot-added to running
      * provider sessions. A second registration of the same name within this
      * plugin is rejected; a name already registered by another plugin is
-     * rejected and surfaced as this plugin's status detail.
+     * rejected and surfaced as this plugin's status detail. Recursive local
+     * JSON Schema `$ref` chains are rejected because some model providers reject
+     * the complete tool list when any one tool contains them.
      */
     registerTool<Schema extends z.ZodType>(tool: PluginAgentToolRegistrationBase & {
         parameters: Schema;

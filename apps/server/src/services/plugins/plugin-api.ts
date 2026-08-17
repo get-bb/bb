@@ -55,6 +55,7 @@ import type {
 } from "@get-bb/plugin-sdk";
 import {
   AGENT_TOOL_NAME_PATTERN,
+  assertNoRecursiveJsonSchemaReferences,
   BACKGROUND_NAME_PATTERN,
   CLI_COMMAND_NAME_PATTERN,
   isZodSchemaLike,
@@ -1025,6 +1026,10 @@ export function createPluginApi(options: {
           `tool "${name}" parameters must be a zod schema or a JSON-schema object`,
         );
       }
+      assertNoRecursiveJsonSchemaReferences(
+        inputSchema,
+        `tool "${name}" parameters`,
+      );
       const owner = isAgentToolNameTaken(name);
       if (owner !== undefined) {
         // Cross-plugin collision: the earlier registration wins; this one
