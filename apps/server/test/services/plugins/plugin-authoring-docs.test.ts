@@ -58,7 +58,6 @@ const BB_PLUGIN_API_KEYS = [
   "http",
   "rpc",
   "realtime",
-  "experimental_capabilities",
   "background",
   "cli",
   "agents",

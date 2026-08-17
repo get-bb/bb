@@ -5,100 +5,51 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
-## Host plugin foundation (`experimental_defineHostRpcContract`, `bb.hosts.experimental_client`, `experimental_defineHostEntry`, `context.experimental_watch`, and `experimental_createHostEntryHarness`)
+## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `experimental_defineHostEntry`, and `experimental_createHostEntryHarness`)
 
 **What it does.** Lets one plugin package declare a singular `bb.host` Node
 entry, share a Standard Schema contract between its server and host entries,
-call host- or environment-targeted methods, and publish typed ephemeral
-signals. Environment methods declare `shared` or `exclusive` scheduling. The
-host context supplies the core-resolved target and workspace, request and
-generation abort signals, plugin-scoped data and temporary directories, and a
-raw daemon-owned filesystem watch primitive with acknowledged delivery.
+and call methods on an explicit enrolled host. A client may observe unexpected
+worker exits so the server entry can restore desired host state without
+polling. The host context supplies request and generation abort signals.
 
 The initial builtin proof is Keep Awake: it owns a host target, a
 generation-owned child process, desired-state reconciliation, and
-unexpected-exit recovery without feature-specific core hooks. Environment
-targets, scheduling, and raw watches have platform-level tests but still need
-an independently useful plugin proof before stabilization.
+unexpected-exit recovery without feature-specific core hooks.
 
 **Audit before stabilizing.**
 
 1. **Contract shape.** Confirm Standard Schema values remain the right runtime
    boundary and decide whether method-specific typed errors are necessary.
-2. **Targeting and scheduling.** Revisit the two target kinds and
-   `shared`/`exclusive` after environment-provider plugins exist. Do not turn
-   scheduling into an imprecise permission/effect declaration.
+2. **Targeting.** Confirm explicit host ids are enough for V1 and add an
+   environment-aware primitive only alongside a plugin that proves its
+   locking and workspace semantics.
 3. **Process lifetime.** Measure idle worker cost and crash behavior before
    adding manifest lifetime flags, leases, or plugin-specific restart policy.
+   Confirm unexpected-exit notification is the right generic repair trigger,
+   remains suppressed for graceful disposal, and does not create crash loops.
    Verify reconnect generation reconciliation covers disable/uninstall during
    an outage without stopping a still-current worker on every transient drop.
-4. **Signals.** Confirm lossy invalidations are sufficient and remain clearly
-   distinct from durable events, progress, or streaming transports.
-   Separately audit raw-watch acknowledgement, coalescing, overflow-to-rescan,
-   root/ignore semantics, and whether identical subscriptions need daemon-side
-   multiplexing.
-5. **Limits.** Audit the common call deadline, startup/cancellation grace, 8
-   MiB JSON payload cap, and eight-digest-per-plugin artifact cache against real
-   Git repositories and other migrations.
-6. **Paths and environment.** Confirm persistent-data cleanup semantics,
-   temporary-generation cleanup, executable discovery through normalized
-   `PATH`, and stripping all daemon-owned `BB_*` variables.
-7. **Trust and dependencies.** V1 host plugins are trusted Node programs that
+4. **Limits.** Audit the common call deadline, startup/cancellation grace, 8
+   MiB JSON payload cap, and artifact cache behavior against real plugins.
+5. **Environment.** Confirm executable discovery through normalized `PATH`
+   and stripping all daemon-owned `BB_*` variables.
+6. **Trust and dependencies.** V1 host plugins are trusted Node programs that
    may use `child_process`, filesystem, and network APIs. Decide whether later
    permissions, native artifacts, or an explicit dependency installer can be
    layered on without changing the RPC contract. Confirm rejecting all private
    `@bb/*` imports from host bundles is the correct permanent boundary, and
    audit the builder-supplied public SDK runtime against future host exports.
-8. **Composition boundary.** Confirm plugins should keep composing through
-   server capabilities rather than calling another plugin's private host entry
-   directly.
-9. **Test harness.** Audit both layers: the server harness's
+7. **Composition boundary.** Confirm a plugin's host entry should remain
+   private to that plugin's server entry.
+8. **Test harness.** Audit both layers: the server harness's
    `experimental_callHostRpc` option, `experimental_hostRpcCalls` inspection
-   list, and `experimental_emitHostSignal` behavior driver; and the host-entry
-   harness's `experimental_call`, `experimental_getSignals`,
+   list, and `experimental_emitHostWorkerExit` behavior driver; and the
+   host-entry harness's `experimental_call`,
    `experimental_lifecycleSignal`, and `experimental_dispose`. Confirm the
-   host harness should continue simulating daemon-shaped context, validation,
-   cancellation, lifecycle, signals, JSON, and size limits without pretending
-   to model process startup, scheduling, crashes, or reconnect behavior.
-
-## Plugin capabilities (`bb.experimental_capabilities.experimental_provide` and `experimental_client`)
-
-**What it does.** Lets one server plugin publish a typed, namespaced
-request/response contract and another plugin create a lazy client for it.
-Calls resolve the active provider generation at invocation time, validate
-input and output at both contracts, and cross a strict bounded JSON boundary.
-Consumers may load before providers; a missing or disabled provider fails the
-call without poisoning the consumer. Host entries remain private—the provider
-may implement its capability by calling its own host client.
-
-V1 deliberately has no builtin capability provider whose implementation still
-depends on feature-specific core adapters. The platform contract is covered by
-isolation tests; a standalone provider and consumer pair is still required
-before stabilization.
-
-**Audit before stabilizing.**
-
-1. **Identity and versions.** Decide whether `pluginId + capabilityId` remains
-   sufficient or becomes an owner-scoped contract object with explicit major
-   compatibility.
-2. **Dependency state.** Decide when manifests should declare required or
-   optional providers and how install, update, disable, and removal present the
-   dependency graph.
-3. **Invocation context.** Add caller identity, original principal, bounded
-   causal chains, cycle detection, and depth limits before capabilities relay
-   privileged or recursively composed operations.
-4. **Lifecycle.** Confirm call-time generation resolution is correct, then
-   decide whether long calls need explicit provider-generation pinning beyond
-   the current in-process invocation wrapper.
-5. **Scope and effects.** Do not add generic target, permission, idempotency,
-   or resource-claim fields until migrations demonstrate semantics the owning
-   capability cannot express in its input contract.
-6. **Signals.** Keep V1 capabilities method-only. Audit whether consumers need
-   brokered invalidations, and if so define generation and subscription
-   behavior separately rather than leaking provider realtime channels.
-7. **Limits and diagnostics.** Audit the 8 MiB JSON cap, errors visible to
-   consumers, handler statistics ownership, and whether capability calls need
-   independent deadlines/cancellation.
+   host harness should continue simulating validation, cancellation, lifecycle,
+   JSON, and size limits without pretending to model process startup, crashes,
+   or reconnect behavior.
 
 ## `PluginNavPanelRegistration.experimental_sidebarAccessory`
 

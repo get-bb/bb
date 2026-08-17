@@ -30,7 +30,7 @@ import {
   waitForQueuedCommand,
 } from "../../helpers/commands.js";
 import { startTestServer, testLogger } from "../../helpers/test-app.js";
-import { experimental_defineHostRpcContract } from "@get-bb/plugin-sdk";
+import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 const logger = testLogger as unknown as Logger;
@@ -186,7 +186,7 @@ describe("plugin bb.sdk bind gate", () => {
     );
   });
 
-  it("binds typed host calls and ignores signals from stale generations", async () => {
+  it("binds typed host calls and ignores worker exits from stale generations", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-host-client",
       serverSource: `export default function plugin() {}`,
@@ -194,46 +194,30 @@ describe("plugin bb.sdk bind gate", () => {
         const schema = { "~standard": { validate(value) { return { value }; } } };
         export default {
           experimental_apiVersion: 1,
-          contract: {
-            methods: {
-              ping: { target: { kind: "host" }, input: schema, output: schema },
-            },
-            signals: {
-              changed: { target: "host", payload: schema },
-            },
-          },
+          contract: { ping: { input: schema, output: schema } },
           handlers: { ping: (input) => input },
         };
       `,
     });
     await service.installPath(rootDir);
     const api = requireApi(service, "host-client");
-    const contract = experimental_defineHostRpcContract({
-      methods: {
-        ping: {
-          target: { kind: "host" },
-          input: z.object({ value: z.string() }).strict(),
-          output: z.object({ pong: z.boolean() }).strict(),
-        },
-      },
-      signals: {
-        changed: {
-          target: "host",
-          payload: z.object({ sequence: z.number().int() }).strict(),
-        },
+    const contract = defineRpcContract({
+      ping: {
+        input: z.object({ value: z.string() }).strict(),
+        output: z.object({ pong: z.boolean() }).strict(),
       },
     });
     const client = api.hosts.experimental_client({ contract });
 
     await expect(
-      client.call("ping", { value: "hello" }, { target: { hostId: "host-1" } }),
+      client.call("ping", { value: "hello" }, { hostId: "host-1" }),
     ).resolves.toEqual({ pong: true });
     expect(callPluginHost).toHaveBeenCalledWith(
       expect.objectContaining({
         pluginId: "host-client",
         method: "ping",
         input: { value: "hello" },
-        target: { hostId: "host-1" },
+        hostId: "host-1",
         artifact: expect.objectContaining({
           digest: expect.stringMatching(/^[a-f0-9]{64}$/u),
           byteLength: expect.any(Number),
@@ -242,8 +226,8 @@ describe("plugin bb.sdk bind gate", () => {
       }),
     );
 
-    const handler = vi.fn();
-    client.onSignal("changed", handler);
+    const workerExitHandler = vi.fn();
+    client.experimental_onWorkerExit(workerExitHandler);
     const artifact = callPluginHost.mock.calls[0]?.[0].artifact;
     if (artifact === undefined) throw new Error("missing host artifact call");
     const servedArtifact = service.readHostArtifact(
@@ -259,27 +243,18 @@ describe("plugin bb.sdk bind gate", () => {
     expect(
       service.readHostArtifact("host-client", "0".repeat(64)),
     ).toBeUndefined();
-    service.handleHostSignal({
+    service.handleHostWorkerExit({
       authenticatedHostId: "host-1",
       pluginId: "host-client",
       generation: "stale-generation",
-      signal: "changed",
-      payload: { sequence: 1 },
-      target: { kind: "host", hostId: "host-1" },
     });
-    service.handleHostSignal({
+    service.handleHostWorkerExit({
       authenticatedHostId: "host-1",
       pluginId: "host-client",
       generation: artifact.generation,
-      signal: "changed",
-      payload: { sequence: 2 },
-      target: { kind: "host", hostId: "host-1" },
     });
-    await vi.waitFor(() => expect(handler).toHaveBeenCalledOnce());
-    expect(handler).toHaveBeenCalledWith({
-      payload: { sequence: 2 },
-      target: { kind: "host", hostId: "host-1" },
-    });
+    await vi.waitFor(() => expect(workerExitHandler).toHaveBeenCalledOnce());
+    expect(workerExitHandler).toHaveBeenCalledWith({ hostId: "host-1" });
     expect(service.listHostArtifactGenerations()).toEqual([
       { pluginId: "host-client", generation: artifact.generation },
     ]);
@@ -289,16 +264,14 @@ describe("plugin bb.sdk bind gate", () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-eager-host-client",
       serverSource: `
-        import { experimental_defineHostRpcContract } from "@get-bb/plugin-sdk";
+        import { defineRpcContract } from "@get-bb/plugin-sdk";
         const schema = { "~standard": { validate(value: unknown) { return { value }; } } };
-        const contract = experimental_defineHostRpcContract({
-          methods: { ping: { target: { kind: "host" }, input: schema, output: schema } },
-        });
+        const contract = defineRpcContract({ ping: { input: schema, output: schema } });
         export default async function plugin(bb: any) {
           await bb.hosts.experimental_client({ contract }).call(
             "ping",
             {},
-            { target: { hostId: "host-1" } },
+            { hostId: "host-1" },
           );
         }
       `,
@@ -306,7 +279,7 @@ describe("plugin bb.sdk bind gate", () => {
         const schema = { "~standard": { validate(value) { return { value }; } } };
         export default {
           experimental_apiVersion: 1,
-          contract: { methods: { ping: { target: { kind: "host" }, input: schema, output: schema } } },
+          contract: { ping: { input: schema, output: schema } },
           handlers: { ping: (input) => input },
         };
       `,
@@ -368,7 +341,7 @@ describe("plugin bb.sdk against a running server", () => {
           const schema = { "~standard": { validate(value) { return { value }; } } };
           export default {
             experimental_apiVersion: 1,
-            contract: { methods: { parseDate: { target: { kind: "host" }, input: schema, output: schema } } },
+            contract: { parseDate: { input: schema, output: schema } },
             handlers: { parseDate: (input) => input },
           };
         `,
@@ -376,13 +349,10 @@ describe("plugin bb.sdk against a running server", () => {
       await server.pluginService.installPath(rootDir);
       const inputDate = z.string().transform((value) => new Date(value));
       const outputDate = z.string().transform((value) => new Date(value));
-      const contract = experimental_defineHostRpcContract({
-        methods: {
-          parseDate: {
-            target: { kind: "host" },
-            input: z.object({ when: inputDate }).strict(),
-            output: outputDate,
-          },
+      const contract = defineRpcContract({
+        parseDate: {
+          input: z.object({ when: inputDate }).strict(),
+          output: outputDate,
         },
       });
       const client = requireApi(
@@ -394,7 +364,7 @@ describe("plugin bb.sdk against a running server", () => {
       const resultPromise = client.call(
         "parseDate",
         { when: iso },
-        { target: { hostId: host.id } },
+        { hostId: host.id },
       );
       const command = await waitForQueuedCommand(
         server,

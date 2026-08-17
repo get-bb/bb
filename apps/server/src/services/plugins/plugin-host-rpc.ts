@@ -1,21 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { listPublicHosts } from "@bb/db";
 import type {
-  ExperimentalHostRpcContract,
+  PluginRpcContract,
   StandardSchemaV1,
   StandardSchemaV1Result,
 } from "@get-bb/plugin-sdk";
 import type { JsonValue } from "@bb/domain";
-import {
-  workspaceResolutionFailureCodeSchema,
-  type WorkspaceResolutionFailureCode,
-} from "@bb/host-daemon-contract";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
-import { ApiError } from "../../errors.js";
 import type { WorkSessionDeps } from "../../types.js";
-import { requireWorkspaceCommandTarget } from "../environments/workspace-command-target.js";
 import { callHostOnlineRpc } from "../hosts/online-rpc.js";
-import { requireReadyEnvironment } from "../lib/entity-lookup.js";
 import type { PluginHostArtifactSnapshot } from "./plugin-service-internal.js";
 
 const HOST_RPC_TRANSPORT_GRACE_MS = 6_000;
@@ -64,43 +57,19 @@ function abortError(): Error {
   });
 }
 
-function rethrowHostRpcError(error: unknown, workspacePath?: string): never {
-  if (workspacePath !== undefined && error instanceof ApiError) {
-    const code = workspaceResolutionFailureCodeSchema.safeParse(
-      error.body.code,
-    );
-    if (code.success) {
-      const failure: {
-        code: WorkspaceResolutionFailureCode;
-        message: string;
-        workspacePath: string;
-      } = {
-        code: code.data,
-        message: error.body.message,
-        workspacePath,
-      };
-      throw new ApiError(409, "workspace_unavailable", failure.message, {
-        details: { kind: "workspace_unavailable", failure },
-        retryable: false,
-      });
-    }
-  }
-  throw error;
-}
-
 export async function callPluginHostRpc(
   deps: WorkSessionDeps,
   args: {
     pluginId: string;
-    contract: ExperimentalHostRpcContract;
+    contract: PluginRpcContract;
     method: string;
     input: unknown;
-    target: { hostId: string } | { environmentId: string };
+    hostId: string;
     signal?: AbortSignal;
     artifact: PluginHostArtifactSnapshot;
   },
 ): Promise<unknown> {
-  const method = args.contract.methods[args.method];
+  const method = args.contract[args.method];
   if (method === undefined) {
     throw new Error(`unknown host rpc method "${args.method}"`);
   }
@@ -109,46 +78,9 @@ export async function callPluginHostRpc(
     await validateValue(method.input, args.input, "input"),
     `host rpc input for ${args.method}`,
   );
-  let hostId: string;
-  let target:
-    | { kind: "host" }
-    | {
-        kind: "environment";
-        environmentId: string;
-        workspaceContext: ReturnType<
-          typeof requireWorkspaceCommandTarget
-        >["workspaceContext"];
-      };
-  let scheduling: "shared" | "exclusive" | null;
-  if (method.target.kind === "host") {
-    if (!("hostId" in args.target)) {
-      throw new Error(
-        `host rpc method "${args.method}" requires a host target`,
-      );
-    }
-    hostId = args.target.hostId;
-    target = { kind: "host" };
-    scheduling = null;
-  } else {
-    if (!("environmentId" in args.target)) {
-      throw new Error(
-        `host rpc method "${args.method}" requires an environment target`,
-      );
-    }
-    const resolved = requireWorkspaceCommandTarget(
-      requireReadyEnvironment(deps.db, args.target.environmentId),
-    );
-    hostId = resolved.hostId;
-    target = {
-      kind: "environment",
-      environmentId: resolved.environmentId,
-      workspaceContext: resolved.workspaceContext,
-    };
-    scheduling = method.target.scheduling;
-  }
   const callId = randomUUID();
   const rpc = callHostOnlineRpc(deps, {
-    hostId,
+    hostId: args.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS + HOST_RPC_TRANSPORT_GRACE_MS,
     command: {
       type: "plugin.host.call",
@@ -161,53 +93,41 @@ export async function callPluginHostRpc(
       callId,
       method: args.method,
       input,
-      target,
-      scheduling,
       deadlineUnixMs: Date.now() + COMMAND_TIMEOUT_MS,
     },
   });
   const signal = args.signal;
-  let result: Awaited<typeof rpc>;
-  try {
-    result =
-      signal === undefined
-        ? await rpc
-        : await new Promise<Awaited<typeof rpc>>((resolve, reject) => {
-            let settled = false;
-            const finish = (fn: () => void): void => {
-              if (settled) return;
-              settled = true;
-              signal.removeEventListener("abort", onAbort);
-              fn();
-            };
-            const onAbort = (): void => {
-              void callHostOnlineRpc(deps, {
-                hostId,
-                timeoutMs: HOST_RPC_TRANSPORT_GRACE_MS,
-                command: {
-                  type: "plugin.host.cancel",
-                  pluginId: args.pluginId,
-                  generation: args.artifact.generation,
-                  callId,
-                },
-              }).catch(() => undefined);
-              finish(() => reject(abortError()));
-            };
-            signal.addEventListener("abort", onAbort, { once: true });
-            if (signal.aborted) onAbort();
-            rpc.then(
-              (value) => finish(() => resolve(value)),
-              (error) => finish(() => reject(error)),
-            );
-          });
-  } catch (error) {
-    rethrowHostRpcError(
-      error,
-      target.kind === "environment"
-        ? target.workspaceContext.workspacePath
-        : undefined,
-    );
-  }
+  const result =
+    signal === undefined
+      ? await rpc
+      : await new Promise<Awaited<typeof rpc>>((resolve, reject) => {
+          let settled = false;
+          const finish = (fn: () => void): void => {
+            if (settled) return;
+            settled = true;
+            signal.removeEventListener("abort", onAbort);
+            fn();
+          };
+          const onAbort = (): void => {
+            void callHostOnlineRpc(deps, {
+              hostId: args.hostId,
+              timeoutMs: HOST_RPC_TRANSPORT_GRACE_MS,
+              command: {
+                type: "plugin.host.cancel",
+                pluginId: args.pluginId,
+                generation: args.artifact.generation,
+                callId,
+              },
+            }).catch(() => undefined);
+            finish(() => reject(abortError()));
+          };
+          signal.addEventListener("abort", onAbort, { once: true });
+          if (signal.aborted) onAbort();
+          rpc.then(
+            (value) => finish(() => resolve(value)),
+            (error) => finish(() => reject(error)),
+          );
+        });
   const output = await validateValue(method.output, result.output, "output");
   // The daemon already returned JSON. This second validation is the server
   // side of the contract and may intentionally transform that wire value into

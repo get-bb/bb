@@ -31,7 +31,6 @@ const PLUGIN_SDK_HOST_RUNTIME_NAMESPACE = "bb-host-sdk-runtime";
 const PLUGIN_SDK_ROOT_RUNTIME = `
 export const PLUGIN_CLI_OUTPUT_MAX_BYTES = 1024 * 1024;
 export function defineRpcContract(contract) { return contract; }
-export function experimental_defineHostRpcContract(contract) { return contract; }
 export function experimental_defineHostEntry(args) {
   return {
     experimental_apiVersion: 1,

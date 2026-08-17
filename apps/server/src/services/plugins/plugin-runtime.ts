@@ -36,7 +36,6 @@ import {
 } from "./sdk-compat.js";
 import {
   createPluginApi,
-  invokePluginCapabilityRecord,
   isNeedsConfigurationError,
   type BbPluginApi,
   type PluginThreadEventName,
@@ -1191,28 +1190,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           ...args,
           artifact: hostArtifactCandidate,
         });
-      },
-      callPluginCapability: async (args) => {
-        const provider = loaded.get(args.pluginId);
-        if (provider === undefined) {
-          throw new Error(
-            `capability provider plugin "${args.pluginId}" is unavailable`,
-          );
-        }
-        const capability = provider.handle.capabilities.get(args.capabilityId);
-        if (capability === undefined) {
-          throw new Error(
-            `plugin "${args.pluginId}" does not provide capability "${args.capabilityId}"`,
-          );
-        }
-        const result = await invokeWrapped(
-          args.pluginId,
-          `capability ${args.capabilityId}.${args.method}`,
-          () =>
-            invokePluginCapabilityRecord(capability, args.method, args.input),
-        );
-        if (!result.ok) throw result.cause;
-        return result.value;
       },
     });
     // Mutable trees are edited between loads, so invalidate the previous

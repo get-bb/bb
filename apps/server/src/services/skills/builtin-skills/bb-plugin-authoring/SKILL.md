@@ -400,37 +400,6 @@ the server itself (the builtin connect plugin's tunnel is the canonical
 user). **Bind-gated** like `bb.sdk`: reading it before the server is
 listening throws, so prefer reading it from handlers, services, and timers.
 
-### bb.experimental_capabilities
-
-Use a typed server capability when one plugin needs to build on a service
-owned by another plugin. Share only a contract module containing a
-`defineRpcContract` value and its inferred types—never the provider's runtime
-implementation.
-
-```ts
-bb.experimental_capabilities.experimental_provide(
-  "workspace.v1",
-  workspaceContract,
-  workspaceHandlers,
-);
-
-const git = bb.experimental_capabilities.experimental_client({
-  pluginId: "git",
-  capabilityId: "workspace.v1",
-  contract: workspaceContract,
-});
-
-const status = await git.call("status", { environmentId });
-```
-
-Clients are lazy: creating one does not require the provider to be loaded yet.
-Each call resolves the currently active provider, so provider reload/disable
-does not leave a stale object in the consumer. Input and output are validated
-against both sides' Standard Schema contract and strict-JSON normalized. V1
-capabilities are method-only and do not install dependencies, negotiate
-versions, or expose another plugin's host entry. Handle provider-unavailable
-errors when the dependency is optional.
-
 ### bb.hosts
 
 For a plugin with a singular `bb.host` entry, define one runtime contract
@@ -438,27 +407,13 @@ shared by the server and host modules:
 
 ```ts
 // contract.ts
-import { experimental_defineHostRpcContract } from "@get-bb/plugin-sdk";
+import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
-export const hostContract = experimental_defineHostRpcContract({
-  methods: {
-    inspect: {
-      target: { kind: "environment", scheduling: "shared" },
-      input: z.object({ verbose: z.boolean() }).strict(),
-      output: z.object({ summary: z.string() }).strict(),
-    },
-    mutate: {
-      target: { kind: "environment", scheduling: "exclusive" },
-      input: z.object({ value: z.string() }).strict(),
-      output: z.object({ changed: z.boolean() }).strict(),
-    },
-  },
-  signals: {
-    changed: {
-      target: "environment",
-      payload: z.object({ reason: z.string() }).strict(),
-    },
+export const hostContract = defineRpcContract({
+  setEnabled: {
+    input: z.object({ enabled: z.boolean() }).strict(),
+    output: z.object({ enabled: z.boolean() }).strict(),
   },
 });
 ```
@@ -473,16 +428,12 @@ import { hostContract } from "./contract.js";
 export default experimental_defineHostEntry({
   contract: hostContract,
   handlers: {
-    inspect: async (input, context) => ({
-      summary: await inspect(context.cwd, input, context.signal),
-    }),
-    mutate: async (input, context) => {
-      const changed = await mutate(context.cwd, input, context.signal);
-      context.signals.publish("changed", { reason: "mutation" });
-      return { changed };
+    setEnabled: async ({ enabled }, context) => {
+      await setEnabled(enabled, context.signal);
+      return { enabled };
     },
   },
-  dispose: async () => closeWatchersAndChildren(),
+  dispose: async () => closeChildren(),
 });
 ```
 
@@ -491,12 +442,12 @@ The server factory calls only its own host entry:
 ```ts
 const host = bb.hosts.experimental_client({ contract: hostContract });
 const result = await host.call(
-  "inspect",
-  { verbose: false },
-  { target: { environmentId }, signal },
+  "setEnabled",
+  { enabled: true },
+  { hostId, signal },
 );
-const unsubscribe = host.onSignal("changed", ({ target, payload }) => {
-  // Invalidate server state and refetch with an ordinary method call.
+const unsubscribeWorkerExit = host.experimental_onWorkerExit(({ hostId }) => {
+  // Reassert durable desired state; the next call starts a fresh worker.
 });
 ```
 
@@ -505,53 +456,23 @@ methods only after registration completes — from an RPC/event handler,
 background service, or timer. Candidate-time calls are rejected because that
 generation is not active or fetchable yet.
 
-Targets are call metadata, not plugin input. Core resolves `{ hostId }` or
-`{ environmentId }`; an environment handler receives the authoritative
-workspace as `context.cwd`. Environment methods declare `shared` or
-`exclusive` scheduling in the same fair lane as core environment work. This
-is coordination, not a permission declaration.
-
 `context.signal` aborts one call. `context.lifecycle.signal` aborts the whole
 worker generation on reload, disable, uninstall, or daemon shutdown. Close
-watchers, timers, sockets, and child processes from the lifecycle signal and
-`dispose`. `context.paths.dataDir` is persistent and scoped to this plugin on
-that daemon; `context.paths.tempDir` is scoped to the generation. Neither is
-the daemon root data directory. Signals are typed, ephemeral invalidations:
-they may be lost while disconnected, so refetch durable state.
-
-Use `context.experimental_watch` when the plugin needs host filesystem
-invalidations. It observes raw paths through the daemon's native watcher; the
-plugin still owns the roots, ignore rules, fingerprints, and semantic events:
-
-```ts
-const subscription = await context.experimental_watch(
-  {
-    rootPath: context.cwd!,
-    ignoredPaths: [".git", "node_modules"],
-    debounceMs: 75,
-    maxWaitMs: 500,
-  },
-  async (event) => {
-    if (event.kind !== "watch-error") {
-      context.signals.publish("changed", { reason: event.kind });
-    }
-  },
-);
-```
-
-Delivery is serialized: while the listener is busy the daemon coalesces later
-changes, and overflow becomes `rescan-required`. The subscription is disposed
-automatically with the generation; calling `subscription.dispose()` stops it
-earlier. Watch events are not durable or replayed, so recompute from source of
-truth rather than treating the event list as state.
+timers, sockets, and child processes from the lifecycle signal and `dispose`.
+V1 calls target an explicit enrolled host; environment/workspace context,
+filesystem watching, plugin data paths, streaming, and host signals are not
+part of this first foundation.
 
 The worker is lazy and reusable; there is no short-/long-lived manifest flag.
-Individual handlers may finish quickly while lifecycle-owned watchers or
-children remain active. A crash fails in-flight calls and a later call starts
-a fresh worker. On reconnect, the daemon keeps workers whose generation is
-still active and disposes generations disabled or replaced while it was
-offline. Host code receives the normalized user `PATH` without daemon-owned
-`BB_*` variables.
+Individual handlers may finish quickly while lifecycle-owned children remain
+active. A crash fails in-flight calls, emits
+`experimental_onWorkerExit` to the active server generation, and a later call
+starts a fresh worker. Graceful reload, disable, uninstall, and daemon shutdown
+do not emit it. The event is ephemeral, so long-lived plugins must also
+reconcile when their target host reconnects. On reconnect, the daemon keeps
+workers whose generation is still active and disposes generations disabled or
+replaced while it was offline. Host code receives the normalized user `PATH`
+without daemon-owned `BB_*` variables.
 
 Host production code may import public `@get-bb/plugin-sdk` entrypoints, Node
 APIs, and ordinary third-party dependencies. It must not import private
@@ -568,10 +489,9 @@ omit dev dependencies. The daemon never resolves the SDK or private BB
 packages from the plugin at runtime.
 
 Pure JavaScript dependencies are bundled. For external tools, use
-`child_process` to probe/invoke tools on `PATH` or place a portable tool under
-`context.paths.dataDir`. bb V1 provides no privileged package installer; a
-plugin that invokes a system installer owns user consent, elevation,
-platform-specific behavior, and recovery.
+`child_process` to probe or invoke tools on `PATH`. bb V1 provides no
+privileged package installer; a plugin that invokes a system installer owns
+user consent, elevation, platform-specific behavior, and recovery.
 
 The rest of `bb.hosts` controls shared loopback port exposure.
 
@@ -1887,6 +1807,7 @@ await harness.behavior.experimental_emitHostSignal(
   { reason: "test" },
   { kind: "host", hostId: "host-test" },
 );
+await harness.behavior.experimental_emitHostWorkerExit("host-test");
 await harness.behavior.resolveAgentConfiguration(context); // validated tools/skills/instructions
 await harness.lifecycle.dispose(); // abort services, hooks LIFO, close database; stale bb throws
 ```
@@ -1914,29 +1835,20 @@ Host entry (`host.ts`) — `@get-bb/plugin-sdk/testing/host`:
 import { experimental_createHostEntryHarness } from "@get-bb/plugin-sdk/testing/host";
 import hostEntry from "./host.js";
 
-const harness = experimental_createHostEntryHarness(hostEntry, {
-  hostId: "host-test",
-  paths: { dataDir: "/tmp/plugin-data", tempDir: "/tmp/plugin-temp" },
-  resolveEnvironmentCwd: (environmentId) =>
-    environmentId === "env-test" ? "/tmp/workspace" : null,
-});
+const harness = experimental_createHostEntryHarness(hostEntry);
 
 const result = await harness.experimental_call(
-  "inspect",
-  { verbose: false },
-  { target: { environmentId: "env-test" } },
+  "setEnabled",
+  { enabled: true },
 );
-const signals = await harness.experimental_getSignals();
 await harness.experimental_dispose();
 ```
 
-This harness applies the real contract schemas and supplies daemon-shaped
-targets, workspace resolution, paths, request/lifecycle cancellation, typed
-signal capture, JSON round-tripping, and the host result-size limit. Use real
-temporary directories, repositories, and injected child-process adapters for
-feature tests. Worker startup, scheduling, crashes, artifact verification, and
-reconnect behavior belong in daemon integration tests, not this in-process
-harness.
+This harness applies the real contract schemas, request/lifecycle
+cancellation, JSON round-tripping, and the host result-size limit. Use injected
+child-process adapters for feature tests. Worker startup, crashes, artifact
+verification, and reconnect behavior belong in daemon integration tests, not
+this in-process harness.
 
 Frontend (`app.tsx`) — `@get-bb/plugin-sdk/testing/app` (vitest + jsdom):
 

@@ -5,15 +5,10 @@ import type { BbSdk } from "@bb/sdk";
 import type { ThreadResponse } from "@bb/server-contract";
 import type { JsonValue } from "./json-value.js";
 import type {
-  PluginRpcCallArgs,
   PluginRpcContract,
   PluginRpcHandlers,
-  PluginRpcResult,
 } from "./rpc-contract.js";
-import type {
-  ExperimentalHostClient,
-  ExperimentalHostRpcContract,
-} from "./host-contract.js";
+import type { ExperimentalHostClient } from "./host-contract.js";
 
 /**
  * The backend plugin API contract — the `bb` object handed to a plugin's
@@ -216,31 +211,6 @@ export interface PluginRealtime {
    * `undefined` is normalized to `null`. Nothing is persisted.
    */
   publish(channel: string, payload: unknown): void;
-}
-
-export interface ExperimentalPluginCapabilityClient<
-  Contract extends PluginRpcContract,
-> {
-  call<Method extends keyof Contract & string>(
-    method: Method,
-    ...args: PluginRpcCallArgs<Contract[Method]>
-  ): Promise<PluginRpcResult<Contract[Method]>>;
-}
-
-/** Typed, process-local contracts that let one server plugin build on another. */
-export interface PluginExperimentalCapabilities {
-  /** Publish one namespaced capability for this plugin generation. */
-  experimental_provide<Contract extends PluginRpcContract>(
-    capabilityId: string,
-    contract: Contract,
-    handlers: PluginRpcHandlers<Contract>,
-  ): void;
-  /** Create a lazy client; the provider only has to be running when called. */
-  experimental_client<Contract extends PluginRpcContract>(args: {
-    readonly pluginId: string;
-    readonly capabilityId: string;
-    readonly contract: Contract;
-  }): ExperimentalPluginCapabilityClient<Contract>;
 }
 
 // ---------------------------------------------------------------------------
@@ -663,7 +633,7 @@ export interface PluginSharedPortTunnelIdentity {
 
 export interface PluginHosts {
   /** Create the owning plugin's typed client for its singular `bb.host` entry. */
-  experimental_client<Contract extends ExperimentalHostRpcContract>(args: {
+  experimental_client<Contract extends PluginRpcContract>(args: {
     contract: Contract;
   }): ExperimentalHostClient<Contract>;
 
@@ -720,8 +690,6 @@ export interface BbPluginApi {
   readonly rpc: PluginRpc;
   /** Ephemeral push to connected frontends (design §4.7). */
   readonly realtime: PluginRealtime;
-  /** Typed server-to-server composition between independently loaded plugins. */
-  readonly experimental_capabilities: PluginExperimentalCapabilities;
   /** Long-lived services + cron schedules (design §4.8). */
   readonly background: PluginBackground;
   /** Agent-facing `bb` CLI subcommand (design §4.4). */

@@ -37,7 +37,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 125 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 126 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -663,20 +663,6 @@ const hostPickFolderCommandSchema = z
   })
   .strict();
 
-export const pluginHostInvocationTargetSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("host") }).strict(),
-  z
-    .object({
-      kind: z.literal("environment"),
-      environmentId: z.string().min(1),
-      workspaceContext: workspaceContextSchema,
-    })
-    .strict(),
-]);
-export type PluginHostInvocationTarget = z.infer<
-  typeof pluginHostInvocationTargetSchema
->;
-
 const pluginHostArtifactSchema = z
   .object({
     digest: z.string().regex(/^[a-f0-9]{64}$/u),
@@ -693,8 +679,6 @@ const pluginHostCallCommandSchema = z
     callId: z.string().min(1),
     method: z.string().min(1),
     input: jsonValueSchema,
-    target: pluginHostInvocationTargetSchema,
-    scheduling: z.enum(["shared", "exclusive"]).nullable(),
     deadlineUnixMs: z.number().int().positive(),
   })
   .strict();
@@ -1925,8 +1909,6 @@ export const hostDaemonCommandRegistry = {
     transport: "onlineRpc",
     retryable: false,
     flushEventsBeforeResult: false,
-    // Dynamic shared/exclusive scheduling is applied by CommandRouter after it
-    // validates the environment target against this command.
     envLane: null,
   }),
   "plugin.host.cancel": defineHostDaemonCommandDescriptor({

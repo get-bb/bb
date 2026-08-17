@@ -43,7 +43,6 @@ describe("builtin Keep Awake plugin", () => {
         pluginId: "keep-awake",
         method: "setEnabled",
         input: { enabled: false },
-        target: { kind: "host" },
       });
 
       const response = await server.app.request(
@@ -61,7 +60,6 @@ describe("builtin Keep Awake plugin", () => {
         pluginId: "keep-awake",
         method: "setEnabled",
         input: { enabled: true },
-        target: { kind: "host" },
       });
     } finally {
       await server.pluginService.stop();

@@ -24,11 +24,18 @@ The builtin Custom instructions plugin adds a multiline editor under Settings
 agent task instructions; blank text contributes nothing.
 
 The builtin Keep Awake plugin prevents macOS idle sleep while bb is running.
-Set `enabled` on its plugin detail page or run
-`bb plugin config keep-awake set enabled <true|false>`. It reconciles the
-setting when the plugin starts, when any host connects, and when the primary
-host or setting changes. Only the connected primary host is enabled; disabling
-the plugin disposes its host workers and their child processes.
+Its plugin detail page lets you target all hosts or selected hosts. The CLI
+equivalents are:
+
+```
+bb plugin config keep-awake set enabled <true|false>
+bb keep-awake hosts all
+bb keep-awake hosts <host-id>...
+```
+
+It reconciles when the plugin starts, a host connects, its settings change, or
+a worker exits unexpectedly. Disabling the plugin disposes its host workers
+and their child processes.
 
 The opt-in builtin Provider retry plugin continues Codex and Claude Code
 turns after a structured subscription window resets. Enable it under
@@ -624,9 +631,9 @@ bb.http.route (routes under /api/v1/plugins/<id>/http/* with
 local/token/none auth); defineRpcContract + bb.rpc.register (Standard
 Schema-validated frontend data plane with inferred backend handlers and
 type-only frontend method/input/result inference);
-experimental_defineHostRpcContract + bb.hosts.experimental_client (typed
-host/environment calls and invalidation signals to the plugin's own `bb.host`
-entry; the host entry uses experimental_defineHostEntry from
+defineRpcContract + bb.hosts.experimental_client (typed calls and
+unexpected-worker-exit notifications to the plugin's own `bb.host` entry; the host entry uses
+experimental_defineHostEntry from
 `@get-bb/plugin-sdk/host` and can be unit-tested with
 experimental_createHostEntryHarness from
 `@get-bb/plugin-sdk/testing/host`);

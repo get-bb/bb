@@ -89,31 +89,8 @@ export interface WatchDataDirSkillsRootArgs {
   onWatchError: (error: DataDirSkillsWatchError) => void;
 }
 
-export type HostPathWatchChangeType = "create" | "update" | "delete";
-
-export interface HostPathWatchChange {
-  path: string;
-  type: HostPathWatchChangeType;
-}
-
-export interface WatchPathRootArgs {
-  rootPath: string;
-  ignoredPaths: readonly string[];
-  onChange: (changes: readonly HostPathWatchChange[]) => void;
-  onReady: () => void;
-  /** A native backend reported a gap; consumers must reread current state. */
-  onRescanRequired: () => void;
-  onWatchError: (error: { rootPath: string; message: string }) => void;
-}
-
 export interface HostWatcher {
-  /** @deprecated Git-specific watching moves to the builtin Git plugin. */
   watchWorkspace(args: WatchWorkspaceArgs): () => void | Promise<void>;
-  /**
-   * Generic, policy-free path observation used by host plugins and core.
-   * Consumers decide which roots matter and what a change means.
-   */
-  watchPathRoot?(args: WatchPathRootArgs): () => void | Promise<void>;
   watchThreadStorageRoot(
     args: WatchThreadStorageRootArgs,
   ): () => void | Promise<void>;

@@ -739,19 +739,17 @@ export async function createHostDaemonApp(
   });
   const pluginHostManager = new PluginHostManager({
     dataDir: options.dataDir,
-    hostId: options.hostId,
     logger: options.logger,
-    hostWatcher: options.hostWatcher,
     shellEnv: () => runtimeManager.getShellEnv(),
     fetchArtifact: (args) =>
       runSessionRequest({
         source: "fetchPluginHostArtifact",
         request: () => serverClient.fetchPluginHostArtifact(args),
       }),
-    onSignal: (signal) => {
+    onWorkerExit: (event) => {
       sendServerMessage({
-        type: "plugin-host.signal",
-        ...signal,
+        type: "plugin-host.worker-exited",
+        ...event,
       });
     },
   });

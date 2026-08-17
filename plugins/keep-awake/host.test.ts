@@ -34,17 +34,9 @@ describe("builtin Keep Awake host entry", () => {
     );
 
     await expect(
-      harness.experimental_call(
-        "setEnabled",
-        { enabled: true },
-        { target: { hostId: "host-1" } },
-      ),
+      harness.experimental_call("setEnabled", { enabled: true }),
     ).resolves.toEqual({ enabled: true, supported: true });
-    await harness.experimental_call(
-      "setEnabled",
-      { enabled: true },
-      { target: { hostId: "host-1" } },
-    );
+    await harness.experimental_call("setEnabled", { enabled: true });
     expect(spawn).toHaveBeenCalledOnce();
     expect(spawn).toHaveBeenCalledWith(
       "/usr/bin/caffeinate",
@@ -53,34 +45,11 @@ describe("builtin Keep Awake host entry", () => {
     );
 
     firstChild.emit("exit");
-    await expect(
-      harness.experimental_call("status", {}, { target: { hostId: "host-1" } }),
-    ).resolves.toEqual({ enabled: false, supported: true });
-    await expect(harness.experimental_getSignals()).resolves.toEqual([
-      {
-        signal: "stateChanged",
-        payload: { enabled: false, supported: true },
-        target: { kind: "host", hostId: "host-1" },
-      },
-    ]);
-
     await vi.advanceTimersByTimeAsync(1_000);
     expect(spawn).toHaveBeenCalledTimes(2);
     await expect(
-      harness.experimental_call("status", {}, { target: { hostId: "host-1" } }),
+      harness.experimental_call("setEnabled", { enabled: true }),
     ).resolves.toEqual({ enabled: true, supported: true });
-    await expect(harness.experimental_getSignals()).resolves.toEqual([
-      {
-        signal: "stateChanged",
-        payload: { enabled: false, supported: true },
-        target: { kind: "host", hostId: "host-1" },
-      },
-      {
-        signal: "stateChanged",
-        payload: { enabled: true, supported: true },
-        target: { kind: "host", hostId: "host-1" },
-      },
-    ]);
     await harness.experimental_dispose();
   });
 
@@ -98,17 +67,13 @@ describe("builtin Keep Awake host entry", () => {
     );
 
     await expect(
-      harness.experimental_call(
-        "setEnabled",
-        { enabled: true },
-        { target: { hostId: "host-1" } },
-      ),
+      harness.experimental_call("setEnabled", { enabled: true }),
     ).resolves.toEqual({ enabled: false, supported: true });
 
     await vi.advanceTimersByTimeAsync(1_000);
     expect(spawn).toHaveBeenCalledTimes(2);
     await expect(
-      harness.experimental_call("status", {}, { target: { hostId: "host-1" } }),
+      harness.experimental_call("setEnabled", { enabled: true }),
     ).resolves.toEqual({ enabled: true, supported: true });
 
     await harness.experimental_dispose();
@@ -121,11 +86,7 @@ describe("builtin Keep Awake host entry", () => {
     );
 
     await expect(
-      harness.experimental_call(
-        "setEnabled",
-        { enabled: true },
-        { target: { hostId: "host-1" } },
-      ),
+      harness.experimental_call("setEnabled", { enabled: true }),
     ).resolves.toEqual({ enabled: false, supported: false });
     expect(spawn).not.toHaveBeenCalled();
   });
@@ -141,23 +102,11 @@ describe("builtin Keep Awake host entry", () => {
       createKeepAwakeHostEntry({ platform: "darwin", pid: 1234, spawn }),
     );
 
-    await harness.experimental_call(
-      "setEnabled",
-      { enabled: true },
-      { target: { hostId: "host-1" } },
-    );
-    await harness.experimental_call(
-      "setEnabled",
-      { enabled: false },
-      { target: { hostId: "host-1" } },
-    );
+    await harness.experimental_call("setEnabled", { enabled: true });
+    await harness.experimental_call("setEnabled", { enabled: false });
     expect(firstChild.kill).toHaveBeenCalledWith("SIGTERM");
 
-    await harness.experimental_call(
-      "setEnabled",
-      { enabled: true },
-      { target: { hostId: "host-1" } },
-    );
+    await harness.experimental_call("setEnabled", { enabled: true });
     await harness.experimental_dispose();
     expect(secondChild.kill).toHaveBeenCalledWith("SIGTERM");
   });

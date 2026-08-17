@@ -7,7 +7,6 @@ type ExpectedBbPluginApiKey =
   | "background"
   | "cli"
   | "events"
-  | "experimental_capabilities"
   | "hosts"
   | "http"
   | "log"
@@ -24,7 +23,6 @@ type ExpectedBbPluginApiKey =
 
 const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "BbPluginApi",
-  "ExperimentalPluginCapabilityClient",
   "PluginAgents",
   "PluginAgentConfiguration",
   "PluginAgentConfigurationContext",
@@ -43,7 +41,6 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginCliRegistration",
   "PluginCliResult",
   "PluginEvents",
-  "PluginExperimentalCapabilities",
   "PluginHosts",
   "PluginHttp",
   "PluginHttpAuthMode",
@@ -102,29 +99,12 @@ const EXPECTED_HOST_ROOT_TYPE_EXPORTS = [
   "ExperimentalHostCallOptions",
   "ExperimentalHostClient",
   "ExperimentalHostEntry",
-  "ExperimentalHostInvocationTarget",
-  "ExperimentalHostMethodTarget",
-  "ExperimentalHostPaths",
-  "ExperimentalHostResolvedTarget",
   "ExperimentalHostRpcContext",
-  "ExperimentalHostRpcContract",
   "ExperimentalHostRpcHandlers",
-  "ExperimentalHostRpcMethodContract",
-  "ExperimentalHostScheduling",
-  "ExperimentalHostSignalContract",
-  "ExperimentalHostSignalEvent",
-  "ExperimentalHostSignalPublisher",
-  "ExperimentalHostWatchChange",
-  "ExperimentalHostWatchChangeType",
-  "ExperimentalHostWatchEvent",
-  "ExperimentalHostWatchListener",
-  "ExperimentalHostWatchOptions",
-  "ExperimentalHostWatchSubscription",
 ] as const;
 
 const EXPECTED_HOST_ROOT_VALUE_EXPORTS = [
   "experimental_defineHostEntry",
-  "experimental_defineHostRpcContract",
 ] as const;
 
 function namesFromMatches(source: string, pattern: RegExp): string[] {

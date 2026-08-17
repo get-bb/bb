@@ -452,12 +452,6 @@ const curatedMarketplaceRenameMigrationPath = resolve(
   "drizzle",
   "0098_rename_curated_marketplace.sql",
 );
-const keepAwakePluginSettingMigrationPath = resolve(
-  __dirname,
-  "..",
-  "drizzle",
-  "0099_chunky_lady_deathstrike.sql",
-);
 const sidebarOrderingMigrationPath = resolve(
   __dirname,
   "..",
@@ -4739,36 +4733,18 @@ describe("migrate", () => {
     }
   });
 
-  it("moves the legacy keep-awake preference into plugin-owned settings", () => {
+  it("seeds the plugin-owned Keep Awake setting from the legacy preference", () => {
     const db = createConnection(":memory:");
     try {
+      migrate(db);
       db.$client.exec(`
-        CREATE TABLE app_settings (
-          id text PRIMARY KEY NOT NULL,
-          caffeinate integer NOT NULL,
-          updated_at integer NOT NULL
-        );
-        CREATE TABLE plugin_settings (
-          plugin_id text NOT NULL,
-          key text NOT NULL,
-          value text NOT NULL,
-          updated_at integer NOT NULL,
-          PRIMARY KEY (plugin_id, key)
-        );
-        INSERT INTO app_settings VALUES ('default', 1, 123);
+        INSERT INTO app_settings (id, caffeinate, updated_at)
+        VALUES ('current', 1, 123)
+        ON CONFLICT (id) DO UPDATE SET caffeinate = 1, updated_at = 123;
+        DELETE FROM plugin_settings
+        WHERE plugin_id = 'keep-awake' AND key = 'enabled';
       `);
-
-      runMigrationFile({
-        db,
-        migrationPath: keepAwakePluginSettingMigrationPath,
-      });
-
-      expect(
-        db.$client
-          .prepare<[], { name: string }>("PRAGMA table_info(app_settings)")
-          .all()
-          .map((column) => column.name),
-      ).not.toContain("caffeinate");
+      migrate(db);
       expect(
         db.$client
           .prepare<

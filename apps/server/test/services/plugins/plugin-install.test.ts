@@ -1051,12 +1051,10 @@ describe("plugin install flows", () => {
             "@get-bb/plugin-sdk": "file:./sdk-type-fixture",
           },
           hostSource: `
-            import { experimental_defineHostRpcContract } from "@get-bb/plugin-sdk";
+            import { defineRpcContract } from "@get-bb/plugin-sdk";
             import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
             const schema = { "~standard": { validate(value) { return { value }; } } };
-            const contract = experimental_defineHostRpcContract({
-              methods: { echo: { target: { kind: "host" }, input: schema, output: schema } },
-            });
+            const contract = defineRpcContract({ echo: { input: schema, output: schema } });
             export default experimental_defineHostEntry({
               contract,
               handlers: { echo: (input) => input },

@@ -8,11 +8,6 @@ type HostChangedSubscription = Extract<
   { event: "host:changed" }
 >;
 type HostChangedEvent = Parameters<HostChangedSubscription["callback"]>[0];
-type SystemConfigSubscription = Extract<
-  Parameters<BbPluginApi["sdk"]["subscribe"]>[0],
-  { event: "system:config-changed" }
->;
-type SystemConfigEvent = Parameters<SystemConfigSubscription["callback"]>[0];
 type RealtimeConnectionSubscription = Extract<
   Parameters<BbPluginApi["sdk"]["subscribe"]>[0],
   { event: "realtime:connection" }
@@ -26,12 +21,6 @@ function isHostChangedSubscription(
   subscription: SdkSubscription,
 ): subscription is HostChangedSubscription {
   return subscription.event === "host:changed";
-}
-
-function isSystemConfigSubscription(
-  subscription: SdkSubscription,
-): subscription is SystemConfigSubscription {
-  return subscription.event === "system:config-changed";
 }
 
 function isRealtimeConnectionSubscription(
@@ -71,22 +60,18 @@ function enabledInput(input: unknown): boolean {
 function lifecycleSubscriptions(): {
   emitHost(changes: HostChangedEvent["changes"]): void;
   emitReconnect(): void;
-  emitSystemConfig(): void;
   subscribe: BbPluginApi["sdk"]["subscribe"];
 } {
   let hostCallback: HostChangedSubscription["callback"] | null = null;
   let realtimeCallback: RealtimeConnectionSubscription["callback"] | null =
     null;
-  let systemConfigCallback: SystemConfigSubscription["callback"] | null = null;
   const subscribe = (args: SdkSubscription): (() => void) => {
     if (isHostChangedSubscription(args)) hostCallback = args.callback;
     if (isRealtimeConnectionSubscription(args))
       realtimeCallback = args.callback;
-    if (isSystemConfigSubscription(args)) systemConfigCallback = args.callback;
     return () => {
       if (isHostChangedSubscription(args)) hostCallback = null;
       if (isRealtimeConnectionSubscription(args)) realtimeCallback = null;
-      if (isSystemConfigSubscription(args)) systemConfigCallback = null;
     };
   };
   return {
@@ -105,22 +90,13 @@ function lifecycleSubscriptions(): {
         state: "connected",
       });
     },
-    emitSystemConfig() {
-      const event: SystemConfigEvent = {
-        type: "changed",
-        entity: "system",
-        changes: ["config-changed"],
-      };
-      systemConfigCallback?.(event);
-    },
     subscribe,
   };
 }
 
 describe("builtin Keep Awake server entry", () => {
-  it("owns its setting and reconciles it to the primary host", async () => {
+  it("keeps all hosts awake or only the selected hosts", async () => {
     const subscriptions = lifecycleSubscriptions();
-    let primaryHostId = "host-1";
     const host = createFakePluginHost({
       pluginId: "keep-awake",
       settings: { enabled: true },
@@ -129,21 +105,20 @@ describe("builtin Keep Awake server entry", () => {
         hosts: {
           list: async () => [hostRecord("host-1"), hostRecord("host-2")],
         },
-        system: { config: async () => ({ primaryHostId }) },
       },
       experimental_callHostRpc: ({ input }) => ({
         enabled: enabledInput(input),
         supported: true,
       }),
     });
-    plugin(host.bb);
+    await plugin(host.bb);
 
     expect(host.harness.registrations.settingsDescriptors).toEqual({
       enabled: {
         type: "boolean",
-        label: "Keep this Mac awake",
+        label: "Keep hosts awake",
         description:
-          "Prevent system idle sleep while bb is running. Closing the lid or choosing Sleep still sleeps the Mac.",
+          "Prevent idle sleep on the selected Macs while bb is running. Closing the lid or choosing Sleep still sleeps the Mac.",
         default: false,
       },
     });
@@ -155,23 +130,33 @@ describe("builtin Keep Awake server entry", () => {
       {
         method: "setEnabled",
         input: { enabled: true },
-        target: { hostId: "host-1" },
+        hostId: "host-1",
       },
       {
         method: "setEnabled",
-        input: { enabled: false },
-        target: { hostId: "host-2" },
+        input: { enabled: true },
+        hostId: "host-2",
       },
     ]);
 
-    primaryHostId = "host-2";
-    subscriptions.emitSystemConfig();
+    await expect(
+      host.harness.callRpc("setHostSelection", {
+        mode: "selected",
+        hostIds: ["host-2"],
+      }),
+    ).resolves.toMatchObject({
+      selection: { mode: "selected", hostIds: ["host-2"] },
+    });
+    await expect(host.bb.storage.kv.get("host-selection")).resolves.toEqual({
+      mode: "selected",
+      hostIds: ["host-2"],
+    });
     await vi.waitFor(() => {
       expect(host.harness.experimental_hostRpcCalls).toHaveLength(4);
     });
     expect(host.harness.experimental_hostRpcCalls.slice(2)).toMatchObject([
-      { input: { enabled: false }, target: { hostId: "host-1" } },
-      { input: { enabled: true }, target: { hostId: "host-2" } },
+      { input: { enabled: false }, hostId: "host-1" },
+      { input: { enabled: true }, hostId: "host-2" },
     ]);
 
     await host.harness.setSettings({ enabled: false });
@@ -179,8 +164,8 @@ describe("builtin Keep Awake server entry", () => {
       expect(host.harness.experimental_hostRpcCalls).toHaveLength(6);
     });
     expect(host.harness.experimental_hostRpcCalls.slice(4)).toMatchObject([
-      { input: { enabled: false }, target: { hostId: "host-1" } },
-      { input: { enabled: false }, target: { hostId: "host-2" } },
+      { input: { enabled: false }, hostId: "host-1" },
+      { input: { enabled: false }, hostId: "host-2" },
     ]);
 
     subscriptions.emitReconnect();
@@ -202,16 +187,13 @@ describe("builtin Keep Awake server entry", () => {
       sdk: {
         subscribe: subscriptions.subscribe,
         hosts: { list: async () => [hostRecord("host-1", status)] },
-        system: { config: async () => ({ primaryHostId: "host-1" }) },
       },
       experimental_callHostRpc: () => ({ enabled: true, supported: true }),
     });
-    plugin(host.bb);
+    await plugin(host.bb);
     const running = host.harness.runService("desired-state-reconciler");
     await vi.waitFor(() => {
-      expect(host.harness.inspection.sdk.callsTo("system.config")).toHaveLength(
-        1,
-      );
+      expect(host.harness.inspection.sdk.callsTo("hosts.list")).toHaveLength(1);
     });
     expect(host.harness.experimental_hostRpcCalls).toHaveLength(0);
 
@@ -223,6 +205,103 @@ describe("builtin Keep Awake server entry", () => {
 
     running.controller.abort();
     await running.done;
+    await host.harness.dispose();
+  });
+
+  it("reconciles immediately after its host worker exits unexpectedly", async () => {
+    const subscriptions = lifecycleSubscriptions();
+    const host = createFakePluginHost({
+      pluginId: "keep-awake",
+      settings: { enabled: true },
+      sdk: {
+        subscribe: subscriptions.subscribe,
+        hosts: { list: async () => [hostRecord("host-1")] },
+      },
+      experimental_callHostRpc: () => ({ enabled: true, supported: true }),
+    });
+    await plugin(host.bb);
+    const running = host.harness.runService("desired-state-reconciler");
+    await vi.waitFor(() => {
+      expect(host.harness.experimental_hostRpcCalls).toHaveLength(1);
+    });
+
+    await host.harness.experimental_emitHostWorkerExit("host-1");
+
+    await vi.waitFor(() => {
+      expect(host.harness.experimental_hostRpcCalls).toHaveLength(2);
+    });
+    expect(host.harness.logEntries).toContainEqual({
+      level: "warn",
+      message:
+        "Keep Awake host worker exited unexpectedly on host host-1; retrying",
+    });
+
+    running.controller.abort();
+    await running.done;
+    await host.harness.dispose();
+  });
+
+  it("loads its host selection from plugin KV and exposes CLI parity", async () => {
+    const host = createFakePluginHost({
+      pluginId: "keep-awake",
+      sdk: {
+        hosts: {
+          list: async () => [hostRecord("host-1"), hostRecord("host-2")],
+        },
+      },
+    });
+    await host.bb.storage.kv.set("host-selection", {
+      mode: "selected",
+      hostIds: ["host-2"],
+    });
+    await plugin(host.bb);
+
+    await expect(host.harness.callRpc("getHostConfiguration")).resolves.toEqual(
+      {
+        selection: { mode: "selected", hostIds: ["host-2"] },
+        hosts: [
+          { id: "host-1", name: "host-1", status: "connected" },
+          { id: "host-2", name: "host-2", status: "connected" },
+        ],
+      },
+    );
+    await expect(
+      host.harness.runCli(["hosts", "all", "--json"]),
+    ).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: JSON.stringify({ mode: "all" }),
+    });
+    await expect(host.bb.storage.kv.get("host-selection")).resolves.toEqual({
+      mode: "all",
+    });
+    await expect(
+      host.harness.runCli(["hosts", "host-1", "host-2"]),
+    ).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: "host-1\nhost-2",
+    });
+
+    await host.harness.dispose();
+  });
+
+  it("falls back to all hosts when plugin KV contains an invalid selection", async () => {
+    const host = createFakePluginHost({
+      pluginId: "keep-awake",
+      sdk: { hosts: { list: async () => [] } },
+    });
+    await host.bb.storage.kv.set("host-selection", {
+      mode: "selected",
+      hostIds: [],
+    });
+    await plugin(host.bb);
+
+    await expect(host.harness.callRpc("getHostConfiguration")).resolves.toEqual(
+      {
+        selection: { mode: "all" },
+        hosts: [],
+      },
+    );
+
     await host.harness.dispose();
   });
 });

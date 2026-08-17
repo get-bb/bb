@@ -62,15 +62,11 @@ describe("builtin host artifacts", () => {
       throw new Error("Keep Awake did not build a valid host entry");
     }
 
-    const result = await entry.handlers.status?.(
-      {},
+    const result = await entry.handlers.setEnabled?.(
+      { enabled: false },
       {
-        target: { kind: "host", hostId: "host-1" },
-        cwd: null,
         signal: new AbortController().signal,
         lifecycle: { signal: new AbortController().signal },
-        paths: { dataDir: root, tempDir: root },
-        signals: { publish() {} },
       },
     );
 

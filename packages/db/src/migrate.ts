@@ -1294,33 +1294,23 @@ function restoreStagedConnectMachineIdColumn(db: DbConnection): void {
   );
 }
 
-function prepareKeepAwakeSettingMigration(
-  db: DbConnection,
-  migrationsFolder: string,
-): void {
+function seedKeepAwakePluginSetting(db: DbConnection): void {
   if (
-    !tableExists(db, "__drizzle_migrations") ||
     !tableExists(db, "app_settings") ||
-    columnExists(db, "app_settings", "caffeinate")
+    !columnExists(db, "app_settings", "caffeinate") ||
+    !tableExists(db, "plugin_settings")
   ) {
     return;
   }
-
-  const migration = requireExpectedAppliedMigration(
-    readExpectedAppliedMigrations(migrationsFolder),
-    "0099_chunky_lady_deathstrike",
-  );
-  if (readAppliedMigrationCreatedAts(db).has(migration.createdAt)) {
-    return;
-  }
-
-  // Branch-local repair tests and prerelease databases can already reflect
-  // the new app_settings shape while still needing to replay this migration.
-  // A temporary false value carries no legacy preference and lets the
-  // generated data-copy/drop migration remain replay-safe.
-  db.$client.exec(
-    "ALTER TABLE app_settings ADD COLUMN caffeinate integer DEFAULT false NOT NULL",
-  );
+  // Idempotently preserve the legacy core setting without a schema migration.
+  // Once a plugin-owned value exists, later starts never overwrite it.
+  db.$client.exec(`
+    INSERT INTO plugin_settings (plugin_id, key, value, updated_at)
+    SELECT 'keep-awake', 'enabled', 'true', updated_at
+    FROM app_settings
+    WHERE caffeinate = 1
+    ON CONFLICT (plugin_id, key) DO NOTHING
+  `);
 }
 
 function repairBranchLocalThreadSearchMigrations(db: DbConnection): void {
@@ -1526,7 +1516,6 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
       db,
       migrationsFolder,
     );
-    prepareKeepAwakeSettingMigration(db, migrationsFolder);
     try {
       drizzleMigrate(db, { migrationsFolder });
     } finally {
@@ -1534,6 +1523,7 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
     }
     applyReorderedCleanupMigrations(db, migrationsFolder);
     applyQueuedMessageGroupingSchema(db);
+    seedKeepAwakePluginSetting(db);
   } finally {
     sqlite.pragma("foreign_keys = ON");
   }

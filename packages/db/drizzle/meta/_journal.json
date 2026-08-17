@@ -694,13 +694,6 @@
       "when": 1786745604262,
       "tag": "0098_rename_curated_marketplace",
       "breakpoints": true
-    },
-    {
-      "idx": 99,
-      "version": "6",
-      "when": 1786933618097,
-      "tag": "0099_chunky_lady_deathstrike",
-      "breakpoints": true
     }
   ]
 }

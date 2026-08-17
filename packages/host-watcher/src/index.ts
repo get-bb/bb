@@ -20,9 +20,6 @@ export type {
   WatchThreadStorageRootArgs,
   WatchWorkspaceArgs,
   WorkspaceWatchError,
-  WatchPathRootArgs,
-  HostPathWatchChange,
-  HostPathWatchChangeType,
 } from "./host-watcher-types.js";
 export type {
   WorkspaceStatusChangeEvent,

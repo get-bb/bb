@@ -269,9 +269,9 @@ declare const hostSchema: z$1.ZodObject<{
         disconnected: "disconnected";
     }>;
     maxPermissionMode: z$1.ZodEnum<{
+        full: "full";
         auto: "auto";
         "accept-edits": "accept-edits";
-        full: "full";
     }>;
     lastSeenAt: z$1.ZodNullable<z$1.ZodNumber>;
     lastRejectedProtocolVersion: z$1.ZodNullable<z$1.ZodNumber>;
@@ -517,9 +517,9 @@ declare const serviceTierSchema: z$1.ZodEnum<{
 }>;
 type ServiceTier = z$1.infer<typeof serviceTierSchema>;
 declare const permissionModeSchema: z$1.ZodEnum<{
+    full: "full";
     auto: "auto";
     "accept-edits": "accept-edits";
-    full: "full";
 }>;
 type PermissionMode = z$1.infer<typeof permissionModeSchema>;
 declare const promptInputSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
@@ -622,9 +622,9 @@ declare const resolvedThreadExecutionOptionsSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>;
     permissionMode: z$1.ZodEnum<{
+        full: "full";
         auto: "auto";
         "accept-edits": "accept-edits";
-        full: "full";
     }>;
     source: z$1.ZodEnum<{
         "client/thread/start": "client/thread/start";
@@ -651,9 +651,9 @@ declare const projectExecutionDefaultsSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>;
     permissionMode: z$1.ZodEnum<{
+        full: "full";
         auto: "auto";
         "accept-edits": "accept-edits";
-        full: "full";
     }>;
 }, z$1.core.$strip>;
 type ProjectExecutionDefaults = z$1.infer<typeof projectExecutionDefaultsSchema>;
@@ -1561,8 +1561,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         tell: "tell";
     }>;
     initiator: z$1.ZodEnum<{
-        system: "system";
         user: "user";
+        system: "system";
         agent: "agent";
     }>;
     request: z$1.ZodObject<{
@@ -1583,8 +1583,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         tell: "tell";
     }>;
     initiator: z$1.ZodEnum<{
-        system: "system";
         user: "user";
+        system: "system";
         agent: "agent";
     }>;
     senderThreadId: z$1.ZodNullable<z$1.ZodString>;
@@ -1810,9 +1810,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         }>;
         permissionMode: z$1.ZodEnum<{
             readonly: "readonly";
+            full: "full";
             auto: "auto";
             "accept-edits": "accept-edits";
-            full: "full";
             "workspace-write": "workspace-write";
         }>;
     }, z$1.core.$strip>;
@@ -1831,8 +1831,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         tell: "tell";
     }>;
     initiator: z$1.ZodEnum<{
-        system: "system";
         user: "user";
+        system: "system";
         agent: "agent";
     }>;
     request: z$1.ZodObject<{
@@ -2021,9 +2021,9 @@ declare const providerInfoSchema: z$1.ZodObject<{
         supportsUserQuestion: z$1.ZodBoolean;
         supportsFork: z$1.ZodBoolean;
         supportedPermissionModes: z$1.ZodArray<z$1.ZodEnum<{
+            full: "full";
             auto: "auto";
             "accept-edits": "accept-edits";
-            full: "full";
         }>>;
     }, z$1.core.$strip>;
     composerActions: z$1.ZodArray<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
@@ -2204,9 +2204,9 @@ declare const threadQueuedMessageSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>;
     permissionMode: z$1.ZodEnum<{
+        full: "full";
         auto: "auto";
         "accept-edits": "accept-edits";
-        full: "full";
     }>;
     serviceTier: z$1.ZodEnum<{
         default: "default";
@@ -2942,8 +2942,8 @@ declare const environmentArchiveThreadsResponseSchema: z$1.ZodObject<{
 type EnvironmentArchiveThreadsResponse = z$1.infer<typeof environmentArchiveThreadsResponseSchema>;
 declare const pullRequestMergeMethodSchema: z$1.ZodEnum<{
     merge: "merge";
-    rebase: "rebase";
     squash: "squash";
+    rebase: "rebase";
 }>;
 type PullRequestMergeMethod = z$1.infer<typeof pullRequestMergeMethodSchema>;
 declare const commitActionResponseSchema: z$1.ZodObject<{
@@ -2974,8 +2974,8 @@ declare const pullRequestMergeActionResponseSchema: z$1.ZodObject<{
     action: z$1.ZodLiteral<"pull_request_merge">;
     method: z$1.ZodEnum<{
         merge: "merge";
-        rebase: "rebase";
         squash: "squash";
+        rebase: "rebase";
     }>;
     message: z$1.ZodString;
 }, z$1.core.$strip>;
@@ -5150,24 +5150,6 @@ declare const hostDaemonCommandRegistry: {
         callId: z$1.ZodString;
         method: z$1.ZodString;
         input: z$1.ZodType<JsonValue$1, unknown, z$1.core.$ZodTypeInternals<JsonValue$1, unknown>>;
-        target: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
-            kind: z$1.ZodLiteral<"host">;
-        }, z$1.core.$strict>, z$1.ZodObject<{
-            kind: z$1.ZodLiteral<"environment">;
-            environmentId: z$1.ZodString;
-            workspaceContext: z$1.ZodObject<{
-                workspacePath: z$1.ZodString;
-                workspaceProvisionType: z$1.ZodEnum<{
-                    unmanaged: "unmanaged";
-                    "managed-worktree": "managed-worktree";
-                    personal: "personal";
-                }>;
-            }, z$1.core.$strip>;
-        }, z$1.core.$strict>], "kind">;
-        scheduling: z$1.ZodNullable<z$1.ZodEnum<{
-            shared: "shared";
-            exclusive: "exclusive";
-        }>>;
         deadlineUnixMs: z$1.ZodNumber;
     }, z$1.core.$strict>, z$1.ZodObject<{
         output: z$1.ZodType<JsonValue$1, unknown, z$1.core.$ZodTypeInternals<JsonValue$1, unknown>>;
@@ -13295,123 +13277,40 @@ interface BbSdk extends BbRealtime {
     threads: ThreadsArea;
 }
 
-type ExperimentalHostScheduling = "shared" | "exclusive";
-type ExperimentalHostMethodTarget = {
-    readonly kind: "host";
-} | {
-    readonly kind: "environment";
-    readonly scheduling: ExperimentalHostScheduling;
-};
-interface ExperimentalHostRpcMethodContract<InputSchema extends StandardSchemaV1 = StandardSchemaV1, OutputSchema extends StandardSchemaV1 = StandardSchemaV1> extends PluginRpcMethodContract<InputSchema, OutputSchema> {
-    readonly target: ExperimentalHostMethodTarget;
-}
-interface ExperimentalHostSignalContract<PayloadSchema extends StandardSchemaV1 = StandardSchemaV1> {
-    readonly target: "host" | "environment";
-    readonly payload: PayloadSchema;
-}
-interface ExperimentalHostRpcContract {
-    readonly methods: Readonly<Record<string, ExperimentalHostRpcMethodContract>>;
-    readonly signals?: Readonly<Record<string, ExperimentalHostSignalContract>>;
-}
-/**
- * Define the runtime contract shared by one plugin's server and host entries.
- * The schemas are retained at runtime so both sides validate the wire.
- */
-declare function experimental_defineHostRpcContract<const Contract extends ExperimentalHostRpcContract>(contract: Contract): Contract;
-type ExperimentalHostInvocationTarget<Method extends ExperimentalHostRpcMethodContract> = Method["target"]["kind"] extends "host" ? {
+interface ExperimentalHostCallOptions {
     readonly hostId: string;
-} : {
-    readonly environmentId: string;
-};
-interface ExperimentalHostCallOptions<Method extends ExperimentalHostRpcMethodContract> {
-    readonly target: ExperimentalHostInvocationTarget<Method>;
     readonly signal?: AbortSignal;
 }
-interface ExperimentalHostClient<Contract extends ExperimentalHostRpcContract> {
-    call<MethodName extends keyof Contract["methods"] & string>(method: MethodName, input: StandardSchemaV1InferInput<Contract["methods"][MethodName]["input"]>, options: ExperimentalHostCallOptions<Contract["methods"][MethodName]>): Promise<PluginRpcResult<Contract["methods"][MethodName]>>;
-    /** Subscribe to validated, ephemeral invalidations from this host entry. */
-    onSignal<SignalName extends keyof NonNullable<Contract["signals"]> & string>(signal: SignalName, handler: (event: ExperimentalHostSignalEvent<Contract, SignalName>) => void | Promise<void>): () => void;
+interface ExperimentalHostClient<Contract extends PluginRpcContract> {
+    call<MethodName extends keyof Contract & string>(method: MethodName, input: StandardSchemaV1InferInput<Contract[MethodName]["input"]>, options: ExperimentalHostCallOptions): Promise<PluginRpcResult<Contract[MethodName]>>;
+    /**
+     * Subscribe to unexpected exits of this plugin's worker on a host daemon.
+     * Graceful reload, disable, uninstall, and daemon shutdown do not emit this
+     * event. A later call starts a fresh worker.
+     */
+    experimental_onWorkerExit(handler: (event: {
+        readonly hostId: string;
+    }) => void | Promise<void>): () => void;
 }
-type ExperimentalHostResolvedTarget = {
-    readonly kind: "host";
-    readonly hostId: string;
-} | {
-    readonly kind: "environment";
-    readonly hostId: string;
-    readonly environmentId: string;
-};
-interface ExperimentalHostPaths {
-    /** Persistent directory scoped to this plugin on this daemon. */
-    readonly dataDir: string;
-    /** Temporary directory scoped to this host-artifact generation. */
-    readonly tempDir: string;
-}
-type ExperimentalHostWatchChangeType = "create" | "update" | "delete";
-interface ExperimentalHostWatchChange {
-    readonly path: string;
-    readonly type: ExperimentalHostWatchChangeType;
-}
-type ExperimentalHostWatchEvent = {
-    readonly kind: "changed";
-    readonly changes: readonly ExperimentalHostWatchChange[];
-} | {
-    readonly kind: "rescan-required";
-} | {
-    readonly kind: "watch-error";
-    readonly message: string;
-};
-interface ExperimentalHostWatchOptions {
-    /** Absolute directory observed by the daemon's native watcher service. */
-    readonly rootPath: string;
-    /** Root-relative ignore entries using the native watcher syntax. */
-    readonly ignoredPaths: readonly string[];
-    /** Quiet period before one coalesced delivery. */
-    readonly debounceMs: number;
-    /** Maximum time changes may wait while events continue arriving. */
-    readonly maxWaitMs: number;
-}
-interface ExperimentalHostWatchSubscription {
-    dispose(): Promise<void>;
-}
-type ExperimentalHostWatchListener = (event: ExperimentalHostWatchEvent) => void | Promise<void>;
-interface ExperimentalHostRpcContext<Contract extends ExperimentalHostRpcContract> {
-    readonly target: ExperimentalHostResolvedTarget;
-    /** Resolved environment root, or null for a host-targeted method. */
-    readonly cwd: string | null;
+interface ExperimentalHostRpcContext {
     /** Aborted when this request is cancelled or its worker is disposed. */
     readonly signal: AbortSignal;
     /** Aborted once for the lifetime of this worker generation. */
     readonly lifecycle: {
         readonly signal: AbortSignal;
     };
-    readonly paths: ExperimentalHostPaths;
-    readonly signals: ExperimentalHostSignalPublisher<Contract>;
-    /**
-     * Observe raw filesystem changes through the daemon-owned native watcher.
-     * Delivery is serialized and coalesced while the listener is busy. The
-     * subscription is also disposed automatically with this host generation.
-     */
-    experimental_watch(options: ExperimentalHostWatchOptions, listener: ExperimentalHostWatchListener): Promise<ExperimentalHostWatchSubscription>;
 }
-type ExperimentalHostSignalName<Contract extends ExperimentalHostRpcContract> = keyof NonNullable<Contract["signals"]> & string;
-interface ExperimentalHostSignalEvent<Contract extends ExperimentalHostRpcContract, SignalName extends ExperimentalHostSignalName<Contract>> {
-    readonly payload: StandardSchemaV1InferOutput<NonNullable<Contract["signals"]>[SignalName]["payload"]>;
-    readonly target: ExperimentalHostResolvedTarget;
-}
-interface ExperimentalHostSignalPublisher<Contract extends ExperimentalHostRpcContract> {
-    publish<SignalName extends ExperimentalHostSignalName<Contract>>(signal: SignalName, payload: StandardSchemaV1InferInput<NonNullable<Contract["signals"]>[SignalName]["payload"]>): void;
-}
-type ExperimentalHostRpcHandlers<Contract extends ExperimentalHostRpcContract> = {
-    [MethodName in keyof Contract["methods"]]: (input: StandardSchemaV1InferOutput<Contract["methods"][MethodName]["input"]>, context: ExperimentalHostRpcContext<Contract>) => StandardSchemaV1InferInput<Contract["methods"][MethodName]["output"]> | Promise<StandardSchemaV1InferInput<Contract["methods"][MethodName]["output"]>>;
+type ExperimentalHostRpcHandlers<Contract extends PluginRpcContract> = {
+    [MethodName in keyof Contract]: (input: StandardSchemaV1InferOutput<Contract[MethodName]["input"]>, context: ExperimentalHostRpcContext) => StandardSchemaV1InferInput<Contract[MethodName]["output"]> | Promise<StandardSchemaV1InferInput<Contract[MethodName]["output"]>>;
 };
-interface ExperimentalHostEntry<Contract extends ExperimentalHostRpcContract = ExperimentalHostRpcContract> {
+interface ExperimentalHostEntry<Contract extends PluginRpcContract = PluginRpcContract> {
     readonly experimental_apiVersion: 1;
     readonly contract: Contract;
     readonly handlers: ExperimentalHostRpcHandlers<Contract>;
     readonly dispose?: () => void | Promise<void>;
 }
 /** Define the single host executable exported by `bb.host`. */
-declare function experimental_defineHostEntry<const Contract extends ExperimentalHostRpcContract>(args: {
+declare function experimental_defineHostEntry<const Contract extends PluginRpcContract>(args: {
     contract: Contract;
     handlers: ExperimentalHostRpcHandlers<Contract>;
     dispose?: () => void | Promise<void>;
@@ -13581,20 +13480,6 @@ interface PluginRealtime {
      * `undefined` is normalized to `null`. Nothing is persisted.
      */
     publish(channel: string, payload: unknown): void;
-}
-interface ExperimentalPluginCapabilityClient<Contract extends PluginRpcContract> {
-    call<Method extends keyof Contract & string>(method: Method, ...args: PluginRpcCallArgs<Contract[Method]>): Promise<PluginRpcResult<Contract[Method]>>;
-}
-/** Typed, process-local contracts that let one server plugin build on another. */
-interface PluginExperimentalCapabilities {
-    /** Publish one namespaced capability for this plugin generation. */
-    experimental_provide<Contract extends PluginRpcContract>(capabilityId: string, contract: Contract, handlers: PluginRpcHandlers<Contract>): void;
-    /** Create a lazy client; the provider only has to be running when called. */
-    experimental_client<Contract extends PluginRpcContract>(args: {
-        readonly pluginId: string;
-        readonly capabilityId: string;
-        readonly contract: Contract;
-    }): ExperimentalPluginCapabilityClient<Contract>;
 }
 interface PluginBackground {
     /**
@@ -13947,7 +13832,7 @@ interface PluginSharedPortTunnelIdentity {
 }
 interface PluginHosts {
     /** Create the owning plugin's typed client for its singular `bb.host` entry. */
-    experimental_client<Contract extends ExperimentalHostRpcContract>(args: {
+    experimental_client<Contract extends PluginRpcContract>(args: {
         contract: Contract;
     }): ExperimentalHostClient<Contract>;
     /**
@@ -13994,8 +13879,6 @@ interface BbPluginApi {
     readonly rpc: PluginRpc;
     /** Ephemeral push to connected frontends (design §4.7). */
     readonly realtime: PluginRealtime;
-    /** Typed server-to-server composition between independently loaded plugins. */
-    readonly experimental_capabilities: PluginExperimentalCapabilities;
     /** Long-lived services + cron schedules (design §4.8). */
     readonly background: PluginBackground;
     /** Agent-facing `bb` CLI subcommand (design §4.4). */
@@ -14029,5 +13912,5 @@ interface BbPluginApi {
     onDispose(hook: () => void | Promise<void>): void;
 }
 
-export { PLUGIN_CLI_OUTPUT_MAX_BYTES, defineRpcContract, experimental_defineHostEntry, experimental_defineHostRpcContract };
-export type { BbContext, BbNavigate, BbPluginApi, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, ExperimentalHostCallOptions, ExperimentalHostClient, ExperimentalHostEntry, ExperimentalHostInvocationTarget, ExperimentalHostMethodTarget, ExperimentalHostPaths, ExperimentalHostResolvedTarget, ExperimentalHostRpcContext, ExperimentalHostRpcContract, ExperimentalHostRpcHandlers, ExperimentalHostRpcMethodContract, ExperimentalHostScheduling, ExperimentalHostSignalContract, ExperimentalHostSignalEvent, ExperimentalHostSignalPublisher, ExperimentalHostWatchChange, ExperimentalHostWatchChangeType, ExperimentalHostWatchEvent, ExperimentalHostWatchListener, ExperimentalHostWatchOptions, ExperimentalHostWatchSubscription, ExperimentalPluginCapabilityClient, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolExperimentalStatusLabels, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginEvents, PluginExperimentalCapabilities, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginStatusApi, PluginStorage, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export { PLUGIN_CLI_OUTPUT_MAX_BYTES, defineRpcContract, experimental_defineHostEntry };
+export type { BbContext, BbNavigate, BbPluginApi, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, ExperimentalHostCallOptions, ExperimentalHostClient, ExperimentalHostEntry, ExperimentalHostRpcContext, ExperimentalHostRpcHandlers, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolExperimentalStatusLabels, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginStatusApi, PluginStorage, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };

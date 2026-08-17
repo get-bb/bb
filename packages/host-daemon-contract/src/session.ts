@@ -4,7 +4,6 @@ import {
   discoveredWorkspacePropertiesSchema,
   ENVIRONMENT_CHANGE_KINDS,
   hostTypeSchema,
-  jsonValueSchema,
   pendingInteractionCreateSchema,
   pendingInteractionStatusSchema,
   terminalColsSchema,
@@ -650,29 +649,15 @@ export type HostDaemonConnectTunnelIdentityMessage = z.infer<
   typeof hostDaemonConnectTunnelIdentityMessageSchema
 >;
 
-const pluginHostSignalTargetSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("host"), hostId: z.string().min(1) }).strict(),
-  z
-    .object({
-      kind: z.literal("environment"),
-      hostId: z.string().min(1),
-      environmentId: z.string().min(1),
-    })
-    .strict(),
-]);
-
-const pluginHostSignalMessageSchema = z
+const pluginHostWorkerExitedMessageSchema = z
   .object({
-    type: z.literal("plugin-host.signal"),
+    type: z.literal("plugin-host.worker-exited"),
     pluginId: z.string().min(1),
     generation: z.string().min(1),
-    signal: z.string().min(1),
-    payload: jsonValueSchema,
-    target: pluginHostSignalTargetSchema,
   })
   .strict();
-export type PluginHostSignalMessage = z.infer<
-  typeof pluginHostSignalMessageSchema
+export type PluginHostWorkerExitedMessage = z.infer<
+  typeof pluginHostWorkerExitedMessageSchema
 >;
 
 const hostDaemonTerminalOpenedMessageSchema = z
@@ -731,7 +716,7 @@ export const hostDaemonDaemonWsMessageSchema = z.union([
   hostDaemonEnvironmentChangeMessageSchema,
   hostDaemonEnvironmentMetadataChangeMessageSchema,
   hostDaemonConnectTunnelIdentityMessageSchema,
-  pluginHostSignalMessageSchema,
+  pluginHostWorkerExitedMessageSchema,
   hostDaemonTerminalOpenedMessageSchema,
   hostDaemonTerminalOutputMessageSchema,
   hostDaemonTerminalReplayMessageSchema,

@@ -122,7 +122,6 @@ import type {
   PluginMentionResolveResult,
   PluginMentionSearchGroup,
   PluginMentionSearchItem,
-  PluginRuntimeStatus,
   PluginServiceDeps,
   PluginSourceView,
   PluginThreadEventEmitter,
@@ -249,11 +248,6 @@ export interface PluginService {
   reload(id?: string): Promise<void>;
   /** Live API handle for a running plugin (used by later phases and tests). */
   getApi(id: string): BbPluginApi | undefined;
-  /** Observe runtime transitions for a narrow core compatibility adapter. */
-  onRuntimeStatusChange(
-    id: string,
-    listener: (status: PluginRuntimeStatus, detail: string | null) => void,
-  ): () => void;
   /**
    * On-disk asset backing GET /plugins/:id/assets/app.{js,css}: file path
    * plus the current content hash (the route compares ?h against it for
@@ -279,32 +273,12 @@ export interface PluginService {
     pluginId: string;
     generation: string;
   }>;
-  /** Validate and dispatch one ephemeral signal from an active host generation. */
-  handleHostSignal(args: {
+  /** Dispatch an unexpected worker exit from an active host generation. */
+  handleHostWorkerExit(args: {
     authenticatedHostId: string;
     pluginId: string;
     generation: string;
-    signal: string;
-    payload: unknown;
-    target:
-      | { kind: "host"; hostId: string }
-      | { kind: "environment"; hostId: string; environmentId: string };
   }): void;
-  /** Observe an authenticated active host signal from a narrow core adapter. */
-  onHostSignal(
-    pluginId: string,
-    signal: string,
-    listener: (event: {
-      payload: unknown;
-      target:
-        | { kind: "host"; hostId: string }
-        | {
-            kind: "environment";
-            hostId: string;
-            environmentId: string;
-          };
-    }) => void,
-  ): () => void;
   /**
    * Declared settings schema + current values for a loaded plugin
    * (secrets render as `{ set: boolean }`). Undefined when the plugin is not
@@ -349,16 +323,6 @@ export interface PluginService {
     input: unknown,
   ): Promise<
     { ok: true; result: JsonValue } | { ok: false; error: PluginRpcError }
-  >;
-  /** Same invocation discipline, retaining the internal cause for core adapters. */
-  invokeRpcHandlerForCore(
-    id: string,
-    method: string,
-    handler: PluginRpcHandler,
-    input: unknown,
-  ): Promise<
-    | { ok: true; result: JsonValue }
-    | { ok: false; error: PluginRpcError; cause: unknown }
   >;
   /**
    * Per-plugin secret for auth "token" routes, generated on first use and
@@ -987,21 +951,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   const artifactRetentionMs =
     deps.artifactRetentionMs ?? DEFAULT_ARTIFACT_RETENTION_MS;
   const now = deps.now ?? Date.now;
-  const coreHostSignalListeners = new Map<
-    string,
-    Set<
-      (event: {
-        payload: unknown;
-        target:
-          | { kind: "host"; hostId: string }
-          | {
-              kind: "environment";
-              hostId: string;
-              environmentId: string;
-            };
-      }) => void
-    >
-  >();
   const scheduleStabilizationWindow =
     deps.scheduleStabilizationWindow ??
     ((durationMs: number, onElapsed: () => void) => {
@@ -1432,44 +1381,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       });
   }
 
-  async function invokeRpcHandlerWithCause(
-    id: string,
-    method: string,
-    handler: PluginRpcHandler,
-    input: unknown,
-  ): Promise<
-    | { ok: true; result: JsonValue }
-    | { ok: false; error: PluginRpcError; cause: unknown }
-  > {
-    const outcome = await invokeWrapped(id, `rpc ${method}`, async () => {
-      const parsedInput = await validateRpcValue(
-        handler.inputSchema,
-        input,
-        "input",
-      );
-      const result = await handler.handler(parsedInput as never);
-      const parsedOutput = await validateRpcValue(
-        handler.outputSchema,
-        result,
-        "output",
-      );
-      return normalizeRpcJsonResult(parsedOutput);
-    });
-    if (outcome.ok) return { ok: true, result: outcome.value };
-    if (outcome.cause instanceof PluginRpcBoundaryError) {
-      return {
-        ok: false,
-        error: outcome.cause.rpcError,
-        cause: outcome.cause,
-      };
-    }
-    return {
-      ok: false,
-      error: { code: "handler_error", message: outcome.error },
-      cause: outcome.cause,
-    };
-  }
-
   return {
     isBuiltin: isBuiltinPluginId,
 
@@ -1840,18 +1751,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       return loaded.get(id)?.handle.api;
     },
 
-    onRuntimeStatusChange(id, listener) {
-      const listeners = statusListeners.get(id) ?? new Set();
-      listeners.add(listener);
-      statusListeners.set(id, listeners);
-      return () => {
-        const current = statusListeners.get(id);
-        if (current === undefined) return;
-        current.delete(listener);
-        if (current.size === 0) statusListeners.delete(id);
-      };
-    },
-
     getAppAsset(id, kind) {
       // Honest gate: assets are only downloadable while the plugin runtime
       // is live. A disabled/errored/removed plugin's recorded snapshot may
@@ -1902,8 +1801,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         .sort((a, b) => a.pluginId.localeCompare(b.pluginId));
     },
 
-    handleHostSignal(args) {
-      if (args.target.hostId !== args.authenticatedHostId) return;
+    handleHostWorkerExit(args) {
       const plugin = loaded.get(args.pluginId);
       const artifact = hostArtifacts.get(args.pluginId);
       if (
@@ -1913,52 +1811,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       ) {
         return;
       }
-      const coreListeners =
-        coreHostSignalListeners.get(`${args.pluginId}\0${args.signal}`) ?? [];
-      for (const listener of [...coreListeners]) {
-        try {
-          listener({ payload: args.payload, target: args.target });
-        } catch (error) {
-          logger.warn(
-            `core host-signal adapter ${args.pluginId}.${args.signal} failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
-      }
-      const records = plugin.handle.hostSignalHandlers.get(args.signal) ?? [];
-      for (const record of [...records]) {
-        const signalContract = record.contract.signals?.[args.signal];
-        if (
-          signalContract === undefined ||
-          signalContract.target !== args.target.kind
-        ) {
-          continue;
-        }
-        void invokeWrapped(
-          args.pluginId,
-          `host signal ${args.signal}`,
-          async () => {
-            const payload = await validateRpcValue(
-              signalContract.payload,
-              args.payload,
-              "output",
-            );
-            await record.handler({ payload, target: args.target });
-          },
+      for (const handler of [...plugin.handle.hostWorkerExitHandlers]) {
+        void invokeWrapped(args.pluginId, "host worker exit", async () =>
+          handler({ hostId: args.authenticatedHostId }),
         );
       }
-    },
-
-    onHostSignal(pluginId, signal, listener) {
-      const key = `${pluginId}\0${signal}`;
-      const listeners = coreHostSignalListeners.get(key) ?? new Set();
-      listeners.add(listener);
-      coreHostSignalListeners.set(key, listeners);
-      return () => {
-        const current = coreHostSignalListeners.get(key);
-        if (current === undefined) return;
-        current.delete(listener);
-        if (current.size === 0) coreHostSignalListeners.delete(key);
-      };
     },
 
     async getSettings(id) {
@@ -2058,17 +1915,28 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     async invokeRpcHandler(id, method, handler, input) {
-      const outcome = await invokeRpcHandlerWithCause(
-        id,
-        method,
-        handler,
-        input,
-      );
-      return outcome.ok ? outcome : { ok: false, error: outcome.error };
-    },
-
-    invokeRpcHandlerForCore(id, method, handler, input) {
-      return invokeRpcHandlerWithCause(id, method, handler, input);
+      const outcome = await invokeWrapped(id, `rpc ${method}`, async () => {
+        const parsedInput = await validateRpcValue(
+          handler.inputSchema,
+          input,
+          "input",
+        );
+        const result = await handler.handler(parsedInput as never);
+        const parsedOutput = await validateRpcValue(
+          handler.outputSchema,
+          result,
+          "output",
+        );
+        return normalizeRpcJsonResult(parsedOutput);
+      });
+      if (outcome.ok) return { ok: true, result: outcome.value };
+      if (outcome.cause instanceof PluginRpcBoundaryError) {
+        return { ok: false, error: outcome.cause.rpcError };
+      }
+      return {
+        ok: false,
+        error: { code: "handler_error", message: outcome.error },
+      };
     },
 
     async httpToken(id, options) {

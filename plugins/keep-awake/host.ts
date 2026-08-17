@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
 import { keepAwakeHostContract } from "./contract.js";
-import type { ExperimentalHostSignalPublisher } from "@get-bb/plugin-sdk/host";
 
 const CAFFEINATE_COMMAND = "/usr/bin/caffeinate";
 const RESTART_DELAY_MS = 1_000;
@@ -25,9 +24,6 @@ export interface KeepAwakeHostDependencies {
 export function createKeepAwakeHostEntry(deps: KeepAwakeHostDependencies) {
   let child: KeepAwakeChild | null = null;
   let lifecycleSignal: AbortSignal | null = null;
-  let signalPublisher: ExperimentalHostSignalPublisher<
-    typeof keepAwakeHostContract
-  > | null = null;
   let desiredEnabled = false;
   let restartTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -54,7 +50,6 @@ export function createKeepAwakeHostEntry(deps: KeepAwakeHostDependencies) {
     restartTimer = setTimeout(() => {
       restartTimer = null;
       start();
-      if (child !== null) signalPublisher?.publish("stateChanged", status());
     }, RESTART_DELAY_MS);
   }
 
@@ -81,7 +76,6 @@ export function createKeepAwakeHostEntry(deps: KeepAwakeHostDependencies) {
     const clear = (): void => {
       if (child !== next) return;
       child = null;
-      signalPublisher?.publish("stateChanged", status());
       scheduleRestart();
     };
     next.once("error", clear);
@@ -94,11 +88,7 @@ export function createKeepAwakeHostEntry(deps: KeepAwakeHostDependencies) {
     stop();
   }
 
-  function bindContext(
-    signal: AbortSignal,
-    signals: ExperimentalHostSignalPublisher<typeof keepAwakeHostContract>,
-  ): void {
-    signalPublisher = signals;
+  function bindLifecycle(signal: AbortSignal): void {
     if (lifecycleSignal === signal) return;
     lifecycleSignal = signal;
     signal.addEventListener("abort", disposeState, { once: true });
@@ -112,7 +102,7 @@ export function createKeepAwakeHostEntry(deps: KeepAwakeHostDependencies) {
     contract: keepAwakeHostContract,
     handlers: {
       setEnabled(input, context) {
-        bindContext(context.lifecycle.signal, context.signals);
+        bindLifecycle(context.lifecycle.signal);
         desiredEnabled = deps.platform === "darwin" && input.enabled;
         if (!desiredEnabled) {
           clearRestart();
@@ -122,13 +112,8 @@ export function createKeepAwakeHostEntry(deps: KeepAwakeHostDependencies) {
         start();
         return status();
       },
-      status(_input, context) {
-        bindContext(context.lifecycle.signal, context.signals);
-        return status();
-      },
     },
     dispose() {
-      signalPublisher = null;
       disposeState();
     },
   });

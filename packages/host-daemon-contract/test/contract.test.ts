@@ -1060,8 +1060,8 @@ describe("host-daemon local schemas", () => {
 
 describe("host-daemon command schemas", () => {
   // Version 125 adds the authoritative active-plugin generation snapshot on
-  // session open, plugin-host signals, and artifact retrieval. Without it a
-  // reconnect cannot retire workers disabled or replaced while offline.
+  // session open and artifact retrieval. Without it a reconnect cannot retire
+  // workers disabled or replaced while offline.
   // Version 124 adds generic host-plugin call, cancellation, and disposal
   // envelopes. Older daemons cannot load or supervise plugin host artifacts.
   // Version 123 adds required status-enrichment budgets and a required
@@ -1077,6 +1077,9 @@ describe("host-daemon command schemas", () => {
   // field, and they wait for an active turn that a release never has.
   // Version 120 makes thread.stop idempotent and releases idle runtimes. Older
   // daemons reject a stop when no environment runtime is loaded.
+  // Version 126 reports unexpected host-plugin worker exits so server plugins
+  // can restore long-lived host state without polling. Older daemons silently
+  // lose that state until another reconciliation trigger.
   // Version 119 carries required workspace diff limits and line-stat
   // completeness over the host wire. Older daemons cannot safely enforce or
   // interpret those fields, so enrolled machines must update before serving
@@ -1097,7 +1100,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(125);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(126);
   });
 
   it("requires an explicit intent on a thread stop command", () => {
@@ -3510,6 +3513,18 @@ describe("host-daemon session schemas", () => {
     ).toEqual({
       type: "connect-tunnel.identity",
       identity: { label: "sawyer-air", baseDomain: "getbb.app" },
+    });
+
+    expect(
+      hostDaemonDaemonWsMessageSchema.parse({
+        type: "plugin-host.worker-exited",
+        pluginId: "keep-awake",
+        generation: "generation-1",
+      }),
+    ).toEqual({
+      type: "plugin-host.worker-exited",
+      pluginId: "keep-awake",
+      generation: "generation-1",
     });
 
     expect(

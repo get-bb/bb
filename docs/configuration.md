@@ -144,12 +144,18 @@ selected browser `MediaDevices` device id in localStorage as
 `bb.voiceInput.audioInputDeviceId`; it does not change `bb-app config` or the
 server-side transcription model.
 
-The builtin Keep Awake plugin has an `enabled` setting under Extensions →
-Plugins. On macOS it runs `/usr/bin/caffeinate -i -w <worker-pid>` on the
-primary host while enabled, preventing system idle sleep while bb is running.
-It only blocks idle sleep: closing a laptop lid or choosing Sleep manually
-still sleeps the Mac. Configure it from an agent or terminal with
-`bb plugin config keep-awake set enabled <true|false>`.
+The builtin Keep Awake plugin has an `enabled` setting and an all-or-selected
+host picker under Extensions → Plugins. On selected macOS hosts it runs
+`/usr/bin/caffeinate -i -w <worker-pid>` while enabled, preventing system idle
+sleep while bb is running. It only blocks idle sleep: closing a laptop lid or
+choosing Sleep manually still sleeps the Mac. Configure it from an agent or
+terminal with:
+
+```sh
+bb plugin config keep-awake set enabled <true|false>
+bb keep-awake hosts all
+bb keep-awake hosts <host-id>...
+```
 
 The "Show unhandled provider events" toggle in Settings → General exposes raw
 provider events that bb does not yet understand. It defaults to off in packaged

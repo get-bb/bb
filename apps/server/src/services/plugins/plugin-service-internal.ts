@@ -141,10 +141,10 @@ export interface PluginServiceDeps {
   /** Generic typed host-RPC transport supplied by the server composition root. */
   callPluginHost?: (args: {
     pluginId: string;
-    contract: import("@get-bb/plugin-sdk").ExperimentalHostRpcContract;
+    contract: import("@get-bb/plugin-sdk").PluginRpcContract;
     method: string;
     input: unknown;
-    target: { hostId: string } | { environmentId: string };
+    hostId: string;
     signal?: AbortSignal;
     artifact: PluginHostArtifactSnapshot;
   }) => Promise<unknown>;
