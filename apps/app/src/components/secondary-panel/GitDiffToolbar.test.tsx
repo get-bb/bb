@@ -63,7 +63,7 @@ describe("GitDiffToolbar", () => {
       screen.getByTestId("git-diff-toolbar-selector-slot").className,
     ).toContain("grow-[999]");
     const details = screen.getByTestId("git-diff-toolbar-details");
-    expect(details.className).toContain("basis-72");
+    expect(details.className).toContain("basis-auto");
     expect(details.className).toContain("flex-1");
     expect(
       within(details).getByTestId("git-diff-toolbar-summary").className,

@@ -211,7 +211,7 @@ export function GitDiffToolbar({
         <div
           // Keep the summary and actions on the same flex line so compact
           // layouts wrap into a predictable selector row and controls row.
-          className="flex min-w-0 flex-1 basis-72 items-center"
+          className="flex min-w-0 flex-1 basis-auto items-center"
           data-testid="git-diff-toolbar-details"
         >
           <span
