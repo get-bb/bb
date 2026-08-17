@@ -242,8 +242,6 @@ export const MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES = 256 * 1024 * 1024;
  * bridges) — the field is only sent for plugin providers with stored
  * artifacts, so first-party providers are wire-identical to version 122.
  *
- * `providerOptions` is the provider plugin's opaque static option bag,
- * forwarded to the bridge untouched.
  */
 export const hostDaemonBridgeLaunchSchema = z
   .object({
@@ -260,7 +258,6 @@ export const hostDaemonBridgeLaunchSchema = z
         })
         .strict(),
     ]),
-    providerOptions: z.record(z.string(), z.unknown()).optional(),
     // The provider's server-validated capabilities, exactly the facts the
     // runtime enforces before a command reaches the bridge: which execution
     // options it accepts (permission modes, service tier) and which thread

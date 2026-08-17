@@ -149,8 +149,6 @@ export interface AgentRuntimeOptions {
 export interface AgentRuntimeBridgeLaunch {
   sha256: string;
   artifactPath: string;
-  /** The provider plugin's opaque static option bag, forwarded untouched. */
-  providerOptions?: Record<string, unknown>;
   /** Server-validated capabilities from the provider declaration. */
   capabilities: {
     supportsServiceTier: boolean;

@@ -51,17 +51,13 @@ export function fingerprintAcpLaunchSpec(
 
 /**
  * The declaration facts a bridge adapter is built from and then keeps for the
- * life of its process: the capabilities it enforces and the static option bag
- * every command carries. They come from the plugin's declaration, not from its
- * bundle, so editing a declaration changes them while the artifact hash stays
- * put — without this in the process key the next thread reuses an adapter
- * built from the superseded declaration.
+ * life of its process: the capabilities it enforces. They come from the
+ * plugin's declaration, not from its bundle, so editing a declaration changes
+ * them while the artifact hash stays put — without this in the process key the
+ * next thread reuses an adapter built from the superseded declaration.
  */
 export function fingerprintBridgeLaunchDeclaration(
   bridgeLaunch: AgentRuntimeBridgeLaunch,
 ): string {
-  return fingerprintStableJson({
-    capabilities: bridgeLaunch.capabilities,
-    providerOptions: bridgeLaunch.providerOptions ?? {},
-  });
+  return fingerprintStableJson({ capabilities: bridgeLaunch.capabilities });
 }

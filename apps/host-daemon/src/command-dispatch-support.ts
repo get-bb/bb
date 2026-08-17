@@ -145,9 +145,6 @@ export async function resolveRuntimeBridgeLaunch(
   return {
     sha256: bridgeLaunch.source.sha256,
     artifactPath,
-    ...(bridgeLaunch.providerOptions !== undefined
-      ? { providerOptions: bridgeLaunch.providerOptions }
-      : {}),
     // Wire and runtime shapes share one noun set, so the block carries over
     // whole; only the mutable permission-mode array is copied.
     capabilities: {

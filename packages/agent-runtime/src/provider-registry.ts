@@ -92,11 +92,10 @@ function createBridgeProtocolAdapterForId(
 }
 
 /**
- * A plugin bridge's provider-scoped statics: its own declared option bag, the
- * environment-level extra write roots, and — for the ACP tier — the launch
- * spec the bridge constructs its agent from. None of the three has a core
- * field on the canonical wire, and the write roots are a host-local fact the
- * server cannot supply at all.
+ * A plugin bridge's provider-scoped statics: the environment-level extra write
+ * roots and — for the ACP tier — the launch spec the bridge constructs its
+ * agent from. Neither has a core field on the canonical wire, and the write
+ * roots are a host-local fact the server cannot supply at all.
  */
 function buildPluginStaticProviderOptions(
   providerId: string,
@@ -106,7 +105,6 @@ function buildPluginStaticProviderOptions(
     options.additionalWorkspaceWriteRoots ?? [];
   const acpLaunchSpec = resolveAcpLaunchSpec(providerId, options);
   const staticProviderOptions = {
-    ...(options.bridgeLaunch?.providerOptions ?? {}),
     ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
     ...(additionalWorkspaceWriteRoots.length > 0
       ? { additionalWorkspaceWriteRoots: [...additionalWorkspaceWriteRoots] }

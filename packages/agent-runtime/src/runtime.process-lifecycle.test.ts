@@ -1411,12 +1411,12 @@ rl.on("line", (line) => {
         updatedDeclaration,
       ]);
 
-      const withOptions: AgentRuntimeBridgeLaunch = {
+      const rewound: AgentRuntimeBridgeLaunch = {
         ...updatedDeclaration,
-        providerOptions: { flavor: "beta" },
+        capabilities: { ...updatedDeclaration.capabilities, fork: "tip" },
       };
       await runtime.startThread({
-        bridgeLaunch: withOptions,
+        bridgeLaunch: rewound,
         environmentId: "env-1",
         threadId: "t4",
         projectId: "p1",

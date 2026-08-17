@@ -383,7 +383,6 @@ describe("thread command dispatch", () => {
             sha256,
             byteLength: bridgeBytes.byteLength,
           },
-          providerOptions: { echoPrefix: "echo:" },
           capabilities: {
             supportsServiceTier: false,
             permissionModes: ["full"] as const,
@@ -423,7 +422,6 @@ describe("thread command dispatch", () => {
     expect(harness.runtimeState.startedBridgeLaunch).toEqual({
       sha256,
       artifactPath,
-      providerOptions: { echoPrefix: "echo:" },
       capabilities: {
         supportsServiceTier: false,
         permissionModes: ["full"],

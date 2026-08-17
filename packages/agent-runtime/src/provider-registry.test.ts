@@ -263,7 +263,6 @@ describe("provider registry", () => {
       bridgeLaunch: {
         sha256: "a".repeat(64),
         artifactPath: "/data/provider-bridges/artifact.mjs",
-        providerOptions: { echoPrefix: "echo:" },
         capabilities: {
           supportsServiceTier: false,
           permissionModes: ["full"],
@@ -280,35 +279,13 @@ describe("provider registry", () => {
       "/data/provider-bridges/artifact.mjs",
     ]);
 
-    // The plugin's static option bag rides every session command.
-    const plan = provider.buildCommandPlan({
-      type: "thread/start",
-      threadId: "thread-1",
-      cwd: "/workspace",
-      options: {
-        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-        workflowsEnabled: false,
-        permissionMode: "full",
-        permissionScope: "full",
-        approvalReviewer: null,
-        permissionEscalation: null,
-      },
-      instructionMode: "append",
-    });
-    expect(plan).toMatchObject({
-      kind: "request",
-      method: "thread/start",
-      params: {
-        options: { providerOptions: { echoPrefix: "echo:" } },
-      },
-    });
   });
 
   // Codex graduated onto this route, where its environment-level write roots
   // and its declared thread capabilities have to survive: both used to come
   // from the bundled-bridge branch this replaced. The write roots are a
-  // host-local fact the server cannot put in providerOptions, so the registry
-  // merges them in beside the plugin's own bag.
+  // host-local fact the server cannot supply at all, so the registry adds
+  // them to the bridge's static provider options.
   it("carries environment write roots and declared capabilities onto an artifact bridge", () => {
     const provider = createProviderForId("codex", {
       additionalWorkspaceWriteRoots: ["/extra-root"],

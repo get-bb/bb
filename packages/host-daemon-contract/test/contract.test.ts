@@ -720,12 +720,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
   "hostDaemonCommandSchema.bridgeLaunch":
     "thread.start, turn.submit, and thread.goal.clear carry a bridge launch spec only for plugin providers with stored bridge artifacts; absence means daemon-local (bundled) bridge resolution.",
-  "hostDaemonCommandSchema.bridgeLaunch.providerOptions":
-    "bridge launch specs omit providerOptions when the provider plugin declares no static option bag for its bridge.",
   "hostDaemonCommandSchema.resumeContext.bridgeLaunch":
     "resume contexts carry a bridge launch spec only for plugin providers with stored bridge artifacts that may need lazy resume.",
-  "hostDaemonCommandSchema.resumeContext.bridgeLaunch.providerOptions":
-    "resume-context bridge launch specs omit providerOptions when the provider plugin declares no static option bag for its bridge.",
   "hostDaemonCommandSchema.checkout":
     "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
   "hostDaemonCommandSchema.targetPath":
@@ -740,8 +736,6 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "provider.list_models includes an ACP launch spec only for dynamic ACP providers; built-ins resolve from daemon-side profiles.",
   "hostDaemonOnlineRpcCommandSchema.bridgeLaunch":
     "provider.list_models carries a bridge launch spec only for plugin providers with stored bridge artifacts; absence means daemon-local (bundled) bridge resolution.",
-  "hostDaemonOnlineRpcCommandSchema.bridgeLaunch.providerOptions":
-    "bridge launch specs omit providerOptions when the provider plugin declares no static option bag for its bridge.",
   "hostDaemonOnlineRpcCommandSchema.cwd":
     "provider.list_models may omit cwd when only user-level provider configuration applies.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.cwd":
@@ -2319,7 +2313,6 @@ describe("host-daemon command schemas", () => {
         sha256: "a".repeat(64),
         byteLength: 4096,
       },
-      providerOptions: { echoPrefix: "echo:" },
       capabilities: {
         supportsServiceTier: true,
         permissionModes: ["accept-edits", "full"],
