@@ -25,6 +25,7 @@ import {
   turnStartParamsSchema,
   turnSteerParamsSchema,
   skillsConfigureParamsSchema,
+  type InitializeResult,
 } from "@bb/provider-bridge-protocol";
 import {
   UNSTAMPED_THREAD_ID,
@@ -548,18 +549,22 @@ async function handleRequest(
       // materializes the source history up to that entry
       // (SessionManager.createBranchedSession). manualCompaction is true —
       // the pi session can compact its own context on demand.
-      sendResult(request.id, {
+      // Typed so a capability rename cannot silently degrade this bridge:
+      // an unrenamed key would be missing from InitializeResult, not
+      // defaulted false.
+      const result: InitializeResult = {
         protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
         capabilities: {
           sessionRestore: true,
-          archiveSync: false,
-          nameSync: false,
-          goalState: false,
+          threadArchive: false,
+          threadRename: false,
+          threadGoalClear: false,
           manualCompaction: true,
           fork: "checkpoint",
-          approvalRequestPolicy: "runtime",
+          approvalEnforcedBy: "runtime",
         },
-      });
+      };
+      sendResult(request.id, result);
       break;
     case "model/list":
       // Pi model listing needs no launch spec, only the cwd whose project

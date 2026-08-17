@@ -19,12 +19,12 @@ describe("handshake", () => {
     const parsed = initializeResultSchema.parse({ protocolVersion: 1 });
     expect(parsed.capabilities).toMatchObject({
       sessionRestore: false,
-      archiveSync: false,
-      nameSync: false,
-      goalState: false,
+      threadArchive: false,
+      threadRename: false,
+      threadGoalClear: false,
       manualCompaction: false,
       fork: "none",
-      approvalRequestPolicy: "runtime",
+      approvalEnforcedBy: "runtime",
     });
   });
 

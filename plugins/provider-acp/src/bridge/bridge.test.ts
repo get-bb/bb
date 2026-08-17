@@ -485,7 +485,7 @@ describe("acp bridge", () => {
     });
     expect((await waitForResponse(initializeId)).result).toMatchObject({
       protocolVersion: 1,
-      capabilities: { fork: "tip", approvalRequestPolicy: "runtime" },
+      capabilities: { fork: "tip", approvalEnforcedBy: "runtime" },
     });
 
     const modelListId = sendModelList({

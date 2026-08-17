@@ -29,14 +29,14 @@ export const bridgeCapabilitiesSchema = z
      * list. When false the runtime never sends thread/archive or
      * thread/unarchive.
      */
-    archiveSync: z.boolean().default(false),
+    threadArchive: z.boolean().default(false),
     /**
      * The bridge pushes bb thread titles to the provider. When false the
      * runtime never sends thread/name/set.
      */
-    nameSync: z.boolean().default(false),
+    threadRename: z.boolean().default(false),
     /** The bridge supports thread/goal/clear. */
-    goalState: z.boolean().default(false),
+    threadGoalClear: z.boolean().default(false),
     /**
      * The bridge implements on-demand context compaction: a standalone
      * builtin `/compact` prompt through the normal turn pipeline, not a
@@ -61,7 +61,7 @@ export const bridgeCapabilitiesSchema = z
      * input and the runtime must not reclassify it against mutable thread
      * settings.
      */
-    approvalRequestPolicy: z.enum(["runtime", "provider"]).default("runtime"),
+    approvalEnforcedBy: z.enum(["runtime", "provider"]).default("runtime"),
   })
   .passthrough();
 

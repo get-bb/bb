@@ -45,6 +45,7 @@ import {
   threadStopParamsSchema as canonicalThreadStopParamsSchema,
   turnStartParamsSchema as canonicalTurnStartParamsSchema,
   turnSteerParamsSchema as canonicalTurnSteerParamsSchema,
+  type InitializeResult,
 } from "@bb/provider-bridge-protocol";
 import { z } from "zod";
 import {
@@ -1930,22 +1931,26 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       // `/compact` rides the prompt text and the Claude CLI handles it
       // natively. fork is "checkpoint" — thread/fork maps
       // sourceProviderCheckpointId onto forkSession's upToMessageId.
-      // approvalRequestPolicy is "provider" — canUseTool pre-filters
+      // approvalEnforcedBy is "provider" — canUseTool pre-filters
       // approvals in this bridge (policy shortcuts above the forward), so
       // every forwarded request already needs user input and the runtime
       // must not reclassify it (#1236).
-      sendResult(request.id, {
+      // Typed so a capability rename cannot silently degrade this bridge:
+      // an unrenamed key would be missing from InitializeResult, not
+      // defaulted false.
+      const result: InitializeResult = {
         protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
         capabilities: {
           sessionRestore: true,
-          archiveSync: false,
-          nameSync: false,
-          goalState: false,
+          threadArchive: false,
+          threadRename: false,
+          threadGoalClear: false,
           manualCompaction: false,
           fork: "checkpoint",
-          approvalRequestPolicy: "provider",
+          approvalEnforcedBy: "provider",
         },
-      });
+      };
+      sendResult(request.id, result);
       break;
     case "model/list":
       sendResult(request.id, await listClaudeCodeBridgeModels());

@@ -49,7 +49,7 @@ describe("handshake gating", () => {
     });
     expect(before).toMatchObject({ kind: "noop" });
 
-    completeHandshake(adapter, { nameSync: true, archiveSync: true });
+    completeHandshake(adapter, { threadRename: true, threadArchive: true });
 
     expect(
       adapter.buildCommandPlan({
@@ -77,9 +77,9 @@ describe("handshake gating", () => {
 
   it("moves approval policy ownership per the handshake", () => {
     const adapter = makeAdapter();
-    expect(adapter.approvalRequestPolicy).toBe("runtime");
-    completeHandshake(adapter, { approvalRequestPolicy: "provider" });
-    expect(adapter.approvalRequestPolicy).toBe("provider");
+    expect(adapter.approvalEnforcedBy).toBe("runtime");
+    completeHandshake(adapter, { approvalEnforcedBy: "provider" });
+    expect(adapter.approvalEnforcedBy).toBe("provider");
   });
 });
 

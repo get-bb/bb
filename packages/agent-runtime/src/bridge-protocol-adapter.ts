@@ -238,8 +238,8 @@ export function createBridgeProtocolAdapter(
     capabilities,
     // The handshake owns approval-policy placement; before it completes the
     // runtime-owned default is the safe reading (every request re-checked).
-    get approvalRequestPolicy() {
-      return handshake.approvalRequestPolicy;
+    get approvalEnforcedBy() {
+      return handshake.approvalEnforcedBy;
     },
     process: options.process,
 
@@ -418,7 +418,7 @@ export function createBridgeProtocolAdapter(
             },
           };
         case "thread/name/set":
-          return gate("nameSync", {
+          return gate("threadRename", {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.threadNameSet,
             params: {
@@ -428,7 +428,7 @@ export function createBridgeProtocolAdapter(
             },
           });
         case "thread/archive":
-          return gate("archiveSync", {
+          return gate("threadArchive", {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.threadArchive,
             params: {
@@ -437,7 +437,7 @@ export function createBridgeProtocolAdapter(
             },
           });
         case "thread/unarchive":
-          return gate("archiveSync", {
+          return gate("threadArchive", {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.threadUnarchive,
             params: {
@@ -446,7 +446,7 @@ export function createBridgeProtocolAdapter(
             },
           });
         case "thread/goal/clear":
-          return gate("goalState", {
+          return gate("threadGoalClear", {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.threadGoalClear,
             params: {

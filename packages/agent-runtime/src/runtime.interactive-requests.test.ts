@@ -484,7 +484,7 @@ rl.on("line", (line) => {
       ...createInteractiveRequestAdapter(
         join(tmpDir, "unused-provider-filtered-approval.cjs"),
       ),
-      approvalRequestPolicy: "provider" as const,
+      approvalEnforcedBy: "provider" as const,
     };
     const onInteractiveRequest = vi.fn(async () => ({
       decision: "allow_once" as const,

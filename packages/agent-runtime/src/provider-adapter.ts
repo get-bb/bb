@@ -223,7 +223,7 @@ export interface ProviderAdapter {
    * forwarded approval is already known to require user input and must not be
    * reclassified against mutable thread settings.
    */
-  approvalRequestPolicy: "runtime" | "provider";
+  approvalEnforcedBy: "runtime" | "provider";
   /**
    * Normalizes provider-specific execution options before validation,
    * comparison, persistence, and command construction. Providers may use this

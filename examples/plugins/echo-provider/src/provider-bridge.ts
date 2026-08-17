@@ -175,7 +175,7 @@ const handlers: Record<string, RequestHandler> = {
       invalidParams(id, BRIDGE_REQUEST_METHODS.initialize, parsed.error.issues);
       return;
     }
-    // All capabilities absent: sessionRestore/archiveSync/nameSync/goalState/
+    // All capabilities absent: sessionRestore/threadArchive/threadRename/threadGoalClear/
     // manualCompaction read false, fork reads "none" — the runtime will never
     // send this bridge a capability-gated method.
     respondResult(id, {

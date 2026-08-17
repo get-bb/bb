@@ -482,7 +482,7 @@ export function createFakeAdapter(
   const supportsNativeUserQuestion = options.supportsNativeUserQuestion ?? false;
 
   return {
-    approvalRequestPolicy: "runtime",
+    approvalEnforcedBy: "runtime",
     buildCommandPlan,
     capabilities: {
       supportsThreadArchive: true,

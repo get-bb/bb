@@ -301,7 +301,7 @@ function handleInteractiveProviderRequest(
     interactiveReq.payload,
   );
   const runtimeOwnsApprovalPolicy =
-    args.providerProcess.adapter.approvalRequestPolicy === "runtime";
+    args.providerProcess.adapter.approvalEnforcedBy === "runtime";
   const executionOptions = runtimeOwnsApprovalPolicy
     ? args.getThreadExecutionOptions(resolvedThreadId)
     : undefined;

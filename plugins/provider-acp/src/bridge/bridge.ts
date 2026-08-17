@@ -49,6 +49,7 @@ import {
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  type InitializeResult,
 } from "@bb/provider-bridge-protocol";
 import {
   ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE,
@@ -2229,19 +2230,23 @@ async function handleRequest(
       // per-turn honesty lives in `startCompaction`, which fails the turn
       // legibly for an agent that advertises no `compact` command.
       // The `ok` field is the bridge's historical shape.
-      sendResult(request.id, {
+      // Typed so a capability rename cannot silently degrade this bridge:
+      // an unrenamed key would be missing from InitializeResult, not
+      // defaulted false.
+      const result: InitializeResult = {
         ok: true,
         protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
         capabilities: {
           sessionRestore: false,
-          archiveSync: false,
-          nameSync: false,
-          goalState: false,
+          threadArchive: false,
+          threadRename: false,
+          threadGoalClear: false,
           manualCompaction: true,
           fork: "tip",
-          approvalRequestPolicy: "runtime",
+          approvalEnforcedBy: "runtime",
         },
-      });
+      };
+      sendResult(request.id, result);
       return;
 
     case "model/list":

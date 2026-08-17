@@ -60,6 +60,7 @@ import {
   turnStartParamsSchema,
   turnSteerParamsSchema,
   type BridgeExecutionOptions,
+  type InitializeResult,
 } from "@bb/provider-bridge-protocol";
 import {
   bridgeRequestEnvelopeSchema,
@@ -1293,24 +1294,27 @@ type ThreadStopParamsShape = z.infer<typeof threadStopParamsSchema>;
 function handleInitialize(id: string | number): void {
   // Session-behavior facts, each backed by the codex methods this bridge
   // implements: sessionRestore — rollouts persist and thread/resume reopens
-  // them; archiveSync/nameSync — codex thread/archive|unarchive and
-  // thread/name/set; goalState — thread/goal/clear; manualCompaction — a
+  // them; threadArchive/threadRename — codex thread/archive|unarchive and
+  // thread/name/set; threadGoalClear — thread/goal/clear; manualCompaction — a
   // standalone builtin /compact prompt dispatches codex thread/compact/start;
   // fork "checkpoint" — thread/fork accepts lastTurnId;
-  // approvalRequestPolicy "runtime" — codex forwards every approval and the
+  // approvalEnforcedBy "runtime" — codex forwards every approval and the
   // runtime applies thread policy.
-  sendResult(id, {
+  // Typed so a capability rename cannot silently degrade this bridge: an
+  // unrenamed key would be missing from InitializeResult, not defaulted false.
+  const result: InitializeResult = {
     protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
     capabilities: {
       sessionRestore: true,
-      archiveSync: true,
-      nameSync: true,
-      goalState: true,
+      threadArchive: true,
+      threadRename: true,
+      threadGoalClear: true,
       manualCompaction: true,
       fork: "checkpoint",
-      approvalRequestPolicy: "runtime",
+      approvalEnforcedBy: "runtime",
     },
-  });
+  };
+  sendResult(id, result);
 }
 
 async function handleModelList(id: string | number): Promise<void> {
