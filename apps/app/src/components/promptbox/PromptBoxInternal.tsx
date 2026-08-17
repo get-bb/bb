@@ -2616,18 +2616,22 @@ export function PromptBoxInternal({
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       if (event.button !== 0) return;
       const currentEditor = editorRef.current;
+      const editorElement = currentEditor?.view.dom;
+      const activeElement = editorElement?.ownerDocument.activeElement;
       if (
         !currentEditor ||
         currentEditor.isDestroyed ||
-        !currentEditor.isFocused
+        !editorElement?.contains(activeElement ?? null)
       ) {
         return;
       }
 
       // Focus transfer happens before click. On iOS, moving focus from the
       // editor to this button begins keyboard dismissal and resizes the app
-      // shell before the form can submit. Keep the editor focused; the click
-      // still owns the commit, while genuine outside focus dismisses normally.
+      // shell before the form can submit. Use the DOM's focus state here rather
+      // than TipTap's event-derived isFocused flag, which can briefly lag the
+      // browser. Keep the editor focused; the click still owns the commit,
+      // while genuine outside focus dismisses normally.
       event.preventDefault();
     },
     [],

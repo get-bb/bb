@@ -2174,6 +2174,29 @@ describe("PromptBoxInternal compact layout", () => {
     expect(document.activeElement).toBe(editor);
   });
 
+  it("keeps DOM focus through submit when TipTap focus state is stale", async () => {
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({ value: "Send this follow-up" })}
+      />,
+    );
+
+    await waitForPromptFocus();
+    const editor = getPromptEditorElement();
+    const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+
+    // TipTap derives isFocused from focus and blur events. Model the iOS
+    // window where its blur event has arrived but the contenteditable still
+    // owns native focus and therefore still controls the software keyboard.
+    editor.dispatchEvent(new FocusEvent("blur"));
+    expect(document.activeElement).toBe(editor);
+
+    expect(
+      fireEvent.pointerDown(submit, { button: 0, pointerType: "touch" }),
+    ).toBe(false);
+    expect(document.activeElement).toBe(editor);
+  });
+
   it("blurs the editor after a pointer submit when requested", async () => {
     const onSubmit = vi.fn();
     render(
