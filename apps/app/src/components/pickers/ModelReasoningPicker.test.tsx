@@ -150,6 +150,7 @@ function renderPicker({
   alternateProviderModels,
   providerRouting,
   selectedProviderId = "codex",
+  modelIsLoading = false,
   compact = false,
   splitPane = false,
 }: {
@@ -165,6 +166,7 @@ function renderPicker({
   alternateProviderModels?: AvailableModel[];
   providerRouting?: SystemProvidersQuery;
   selectedProviderId?: string;
+  modelIsLoading?: boolean;
   compact?: boolean;
   splitPane?: boolean;
 } = {}) {
@@ -197,6 +199,7 @@ function renderPicker({
         modelValue={modelValue}
         modelOptions={modelOptions}
         moreModelOptions={moreModelOptions}
+        modelIsLoading={modelIsLoading}
         onModelChange={onModelChange}
         reasoningValue={reasoningValue}
         reasoningOptions={pickerReasoningOptions}
@@ -237,6 +240,33 @@ afterEach(() => {
 });
 
 describe("ModelReasoningPicker", () => {
+  it("holds the trigger and model-list layout with skeletons while loading", () => {
+    renderPicker({
+      modelOptions: [],
+      modelValue: "",
+      pickerReasoningOptions: [],
+      modelIsLoading: true,
+    });
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+
+    expect(
+      trigger.querySelectorAll("[data-model-loading-placeholder]"),
+    ).toHaveLength(2);
+    expect(trigger.textContent).not.toContain("Loading models...");
+
+    fireEvent.click(trigger);
+
+    const loadingStatus = screen.getByRole("status", {
+      name: "Loading models",
+    });
+    expect(
+      loadingStatus.querySelectorAll("[data-model-loading-row]"),
+    ).toHaveLength(4);
+    expect(screen.queryByText("Loading models…")).toBeNull();
+  });
+
   it("cycles models backward from a Tab-focused composer control", () => {
     const { onModelChange } = renderPicker({
       modelOptions: [

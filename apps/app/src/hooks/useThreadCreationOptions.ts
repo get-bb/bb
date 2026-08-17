@@ -315,7 +315,10 @@ export function useThreadCreationOptions(
   const systemConfig = useSystemConfig();
   const providers = executionOptionsQuery.data?.providers ?? EMPTY_PROVIDERS;
   const isLoadingModels =
-    executionOptionsQueryEnabled && executionOptionsQuery.isLoading;
+    executionOptionsQueryEnabled &&
+    (executionOptionsQuery.isLoading ||
+      (executionOptionsQuery.isPlaceholderData &&
+        (executionOptionsQuery.data?.models.length ?? 0) === 0));
   const isResolvingInitialProvider =
     shouldResolveConnectedProvider && connectedAgentsQuery.isPending;
   const modelLoadError =

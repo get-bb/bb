@@ -76,6 +76,26 @@ afterEach(() => {
 });
 
 describe("useSystemExecutionOptions", () => {
+  it("preloads built-in provider identities while their models are loading", () => {
+    vi.mocked(sdk.system.executionOptions).mockImplementation(
+      () => new Promise(() => undefined),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(
+      () => useSystemExecutionOptions({ providerId: "codex" }),
+      { wrapper },
+    );
+
+    expect(result.current.isPlaceholderData).toBe(true);
+    expect(result.current.data?.models).toEqual([]);
+    expect(
+      result.current.data?.providers.some(
+        (provider) => provider.id === "codex",
+      ),
+    ).toBe(true);
+  });
+
   it("separates requests and cache entries for different hosts", async () => {
     vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
       args?.hostId === "host-a"

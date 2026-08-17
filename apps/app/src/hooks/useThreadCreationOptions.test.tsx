@@ -237,6 +237,25 @@ afterEach(() => {
 });
 
 describe("useThreadCreationOptions", () => {
+  it("keeps the selected built-in provider branded while models load", () => {
+    window.localStorage.setItem("bb.promptbox.provider", "codex");
+    vi.mocked(sdk.system.executionOptions).mockImplementation(
+      () => new Promise(() => undefined),
+    );
+
+    const { result } = renderHook(
+      () => useThreadCreationOptions({ scope: "new-thread" }),
+      { wrapper: createQueryClientTestHarness().wrapper },
+    );
+
+    expect(result.current.isLoadingModels).toBe(true);
+    expect(result.current.selectedProviderId).toBe("codex");
+    expect(
+      result.current.providerOptions.find((option) => option.value === "codex")
+        ?.icon,
+    ).toBeDefined();
+  });
+
   it("uses the medium product default for providers without reasoning history", async () => {
     vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
       providerExecutionOptionsResponse(args?.providerId),

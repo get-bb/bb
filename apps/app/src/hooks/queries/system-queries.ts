@@ -153,8 +153,14 @@ const PLACEHOLDER_PROVIDER_INFOS: ProviderInfo[] = [
     },
     composerActions: [
       { kind: "skills", trigger: "/" },
-      { kind: "plan", command: { trigger: "/", name: "plan", trailingText: " " } },
-      { kind: "goal", command: { trigger: "/", name: "goal", trailingText: " " } },
+      {
+        kind: "plan",
+        command: { trigger: "/", name: "plan", trailingText: " " },
+      },
+      {
+        kind: "goal",
+        command: { trigger: "/", name: "goal", trailingText: " " },
+      },
     ],
   },
   {
@@ -173,7 +179,10 @@ const PLACEHOLDER_PROVIDER_INFOS: ProviderInfo[] = [
     },
     composerActions: [
       { kind: "skills", trigger: "/" },
-      { kind: "plan", command: { trigger: "/", name: "plan", trailingText: " " } },
+      {
+        kind: "plan",
+        command: { trigger: "/", name: "plan", trailingText: " " },
+      },
     ],
   },
   {
@@ -209,6 +218,19 @@ const PLACEHOLDER_PROVIDER_INFOS: ProviderInfo[] = [
     composerActions: [{ kind: "skills", trigger: "/" }],
   },
 ];
+
+// Seed only the stable identities from the same built-in placeholder catalog
+// used by the server. This keeps the picker branded while model discovery runs;
+// the authoritative response still replaces it and adds configured providers.
+function builtInProviderPlaceholderExecutionOptions(): SystemExecutionOptionsResponse {
+  return {
+    providers: PLACEHOLDER_PROVIDER_INFOS,
+    models: [],
+    selectedOnlyModels: [],
+    permissionCeiling: "full",
+    modelLoadError: null,
+  };
+}
 
 // Claude's account-scoped model probe spawns a CLI process on the host, so
 // waiting for it leaves the composer with no model list for seconds. Render a
@@ -333,6 +355,9 @@ export function useSystemExecutionOptions(
   const enabled = args.enabled ?? true;
   useSystemRealtimeSubscription({ enabled });
   const isClaudeCode = providerId === CLAUDE_CODE_PROVIDER_ID;
+  const canPreloadBuiltInProviders =
+    providerId === null ||
+    PLACEHOLDER_PROVIDER_INFOS.some((provider) => provider.id === providerId);
   const catalogCacheKey = claudeModelCatalogCacheKey({
     environmentId,
     hostId,
@@ -367,10 +392,12 @@ export function useSystemExecutionOptions(
     staleTime: 60_000,
     retry: shouldRetrySystemExecutionOptions,
     retryDelay: SYSTEM_EXECUTION_OPTIONS_RETRY_DELAY_MS,
-    ...(isClaudeCode
+    ...(canPreloadBuiltInProviders
       ? {
           placeholderData: () =>
-            claudeCodePlaceholderExecutionOptions(catalogCacheKey),
+            isClaudeCode
+              ? claudeCodePlaceholderExecutionOptions(catalogCacheKey)
+              : builtInProviderPlaceholderExecutionOptions(),
         }
       : {}),
   });
