@@ -1,5 +1,8 @@
 import { spawn } from "node:child_process";
-import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
+import {
+  experimental_defineHostEntry,
+  type ExperimentalHostWorkerLease,
+} from "@get-bb/plugin-sdk/host";
 import { keepAwakeHostContract } from "./contract.js";
 
 const CAFFEINATE_COMMAND = "/usr/bin/caffeinate";
@@ -26,6 +29,7 @@ export function createKeepAwakeHostEntry(deps: KeepAwakeHostDependencies) {
   let lifecycleSignal: AbortSignal | null = null;
   let desiredEnabled = false;
   let restartTimer: ReturnType<typeof setTimeout> | null = null;
+  let workerLease: ExperimentalHostWorkerLease | null = null;
 
   function clearRestart(): void {
     if (restartTimer === null) return;
@@ -37,6 +41,12 @@ export function createKeepAwakeHostEntry(deps: KeepAwakeHostDependencies) {
     const active = child;
     child = null;
     active?.kill("SIGTERM");
+  }
+
+  function releaseWorkerLease(): void {
+    const lease = workerLease;
+    workerLease = null;
+    void lease?.dispose();
   }
 
   function scheduleRestart(): void {
@@ -86,6 +96,7 @@ export function createKeepAwakeHostEntry(deps: KeepAwakeHostDependencies) {
     desiredEnabled = false;
     clearRestart();
     stop();
+    releaseWorkerLease();
   }
 
   function bindLifecycle(signal: AbortSignal): void {
@@ -107,8 +118,10 @@ export function createKeepAwakeHostEntry(deps: KeepAwakeHostDependencies) {
         if (!desiredEnabled) {
           clearRestart();
           stop();
+          releaseWorkerLease();
           return status();
         }
+        workerLease ??= context.experimental_retainWorker();
         start();
         return status();
       },

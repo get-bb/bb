@@ -43,6 +43,7 @@ describe("builtin Keep Awake host entry", () => {
       ["-i", "-w", "1234"],
       { stdio: "ignore" },
     );
+    expect(harness.experimental_getRetainedWorkerLeaseCount()).toBe(1);
 
     firstChild.emit("exit");
     await vi.advanceTimersByTimeAsync(1_000);
@@ -105,9 +106,12 @@ describe("builtin Keep Awake host entry", () => {
     await harness.experimental_call("setEnabled", { enabled: true });
     await harness.experimental_call("setEnabled", { enabled: false });
     expect(firstChild.kill).toHaveBeenCalledWith("SIGTERM");
+    expect(harness.experimental_getRetainedWorkerLeaseCount()).toBe(0);
 
     await harness.experimental_call("setEnabled", { enabled: true });
+    expect(harness.experimental_getRetainedWorkerLeaseCount()).toBe(1);
     await harness.experimental_dispose();
     expect(secondChild.kill).toHaveBeenCalledWith("SIGTERM");
+    expect(harness.experimental_getRetainedWorkerLeaseCount()).toBe(0);
   });
 });

@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   defineRpcContract,
   experimental_defineHostEntry,
+  type ExperimentalHostWorkerLease,
 } from "../../index.js";
 import { experimental_createHostEntryHarness } from "../host.js";
 
@@ -27,6 +28,10 @@ const contract = defineRpcContract({
     input: z.object({ rootPath: z.string() }).strict(),
     output: z.object({ watching: z.boolean() }).strict(),
   },
+  retain: {
+    input: z.object({ enabled: z.boolean() }).strict(),
+    output: z.object({ retained: z.boolean() }).strict(),
+  },
 });
 
 const signals = {
@@ -36,6 +41,7 @@ const signals = {
 };
 
 function createEntry(dispose = vi.fn()) {
+  let workerLease: ExperimentalHostWorkerLease | null = null;
   return experimental_defineHostEntry({
     contract,
     experimental_signals: signals,
@@ -70,8 +76,21 @@ function createEntry(dispose = vi.fn()) {
         );
         return { watching: true };
       },
+      async retain(input, context) {
+        if (input.enabled) {
+          workerLease ??= context.experimental_retainWorker();
+        } else {
+          await workerLease?.dispose();
+          workerLease = null;
+        }
+        return { retained: workerLease !== null };
+      },
     },
-    dispose,
+    async dispose() {
+      await workerLease?.dispose();
+      workerLease = null;
+      dispose();
+    },
   });
 }
 
@@ -160,6 +179,17 @@ describe("experimental_createHostEntryHarness", () => {
 
     await harness.experimental_dispose();
     expect(disposeWatch).toHaveBeenCalledOnce();
+  });
+
+  it("tracks worker-retention leases", async () => {
+    const harness = experimental_createHostEntryHarness(createEntry());
+
+    await harness.experimental_call("retain", { enabled: true });
+    await harness.experimental_call("retain", { enabled: true });
+    expect(harness.experimental_getRetainedWorkerLeaseCount()).toBe(1);
+
+    await harness.experimental_call("retain", { enabled: false });
+    expect(harness.experimental_getRetainedWorkerLeaseCount()).toBe(0);
   });
 
   it("propagates request and generation cancellation and disposes once", async () => {

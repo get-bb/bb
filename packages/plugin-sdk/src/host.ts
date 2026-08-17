@@ -12,4 +12,5 @@ export {
   type ExperimentalHostWatchListener,
   type ExperimentalHostWatchOptions,
   type ExperimentalHostWatchSubscription,
+  type ExperimentalHostWorkerLease,
 } from "./host-contract.js";

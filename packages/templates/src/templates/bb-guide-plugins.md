@@ -634,7 +634,9 @@ type-only frontend method/input/result inference);
 defineRpcContract + bb.hosts.experimental_client (typed calls, typed ephemeral
 host signals, and unexpected-worker-exit notifications to the plugin's own
 `bb.host` entry; the host context also provides plugin-scoped data/temp paths
-and daemon-owned native file watching; the host entry uses
+and daemon-owned native file watching; active calls and watches retain the
+lazy worker automatically, while independent background work can hold an
+explicit `experimental_retainWorker()` lease; the host entry uses
 experimental_defineHostEntry from
 `@get-bb/plugin-sdk/host` and can be unit-tested with
 experimental_createHostEntryHarness from

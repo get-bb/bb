@@ -48,7 +48,7 @@ type ExperimentalHostSignals = Readonly<Record<string, ExperimentalHostSignalCon
 interface ExperimentalHostPaths {
     /** Persistent directory scoped to this plugin on this daemon. */
     readonly dataDir: string;
-    /** Temporary directory scoped to this host-artifact generation. */
+    /** Temporary directory scoped to this worker process. */
     readonly tempDir: string;
 }
 type ExperimentalHostWatchChangeType = "create" | "update" | "delete";
@@ -78,11 +78,15 @@ interface ExperimentalHostWatchOptions {
 interface ExperimentalHostWatchSubscription {
     dispose(): Promise<void>;
 }
+interface ExperimentalHostWorkerLease {
+    /** Release this worker-retention lease. Safe to call more than once. */
+    dispose(): Promise<void>;
+}
 type ExperimentalHostWatchListener = (event: ExperimentalHostWatchEvent) => void | Promise<void>;
 interface ExperimentalHostRpcContext<Signals extends ExperimentalHostSignals = {}> {
     /** Aborted when this request is cancelled or its worker is disposed. */
     readonly signal: AbortSignal;
-    /** Aborted once for the lifetime of this worker generation. */
+    /** Aborted once for the lifetime of this worker process. */
     readonly lifecycle: {
         readonly signal: AbortSignal;
     };
@@ -91,6 +95,12 @@ interface ExperimentalHostRpcContext<Signals extends ExperimentalHostSignals = {
     experimental_emitSignal<SignalName extends keyof Signals & string>(signal: SignalName, payload: StandardSchemaV1InferInput<Signals[SignalName]["payload"]>): Promise<void>;
     /** Observe raw filesystem changes through the daemon's native watcher. */
     experimental_watch(options: ExperimentalHostWatchOptions, listener: ExperimentalHostWatchListener): Promise<ExperimentalHostWatchSubscription>;
+    /**
+     * Keep this worker alive after the current call finishes. Active calls and
+     * filesystem watches already retain it; use this only for other background
+     * work. The daemon may stop an unretained worker after an idle period.
+     */
+    experimental_retainWorker(): ExperimentalHostWorkerLease;
 }
 type ExperimentalHostRpcHandlers<Contract extends PluginRpcContract, Signals extends ExperimentalHostSignals = {}> = {
     [MethodName in keyof Contract]: (input: StandardSchemaV1InferOutput<Contract[MethodName]["input"]>, context: ExperimentalHostRpcContext<Signals>) => StandardSchemaV1InferInput<Contract[MethodName]["output"]> | Promise<StandardSchemaV1InferInput<Contract[MethodName]["output"]>>;
@@ -111,4 +121,4 @@ declare function experimental_defineHostEntry<const Contract extends PluginRpcCo
 }): ExperimentalHostEntry<Contract, Signals>;
 
 export { experimental_defineHostEntry };
-export type { ExperimentalHostEntry, ExperimentalHostPaths, ExperimentalHostRpcContext, ExperimentalHostRpcHandlers, ExperimentalHostSignalContract, ExperimentalHostSignals, ExperimentalHostWatchChange, ExperimentalHostWatchChangeType, ExperimentalHostWatchEvent, ExperimentalHostWatchListener, ExperimentalHostWatchOptions, ExperimentalHostWatchSubscription };
+export type { ExperimentalHostEntry, ExperimentalHostPaths, ExperimentalHostRpcContext, ExperimentalHostRpcHandlers, ExperimentalHostSignalContract, ExperimentalHostSignals, ExperimentalHostWatchChange, ExperimentalHostWatchChangeType, ExperimentalHostWatchEvent, ExperimentalHostWatchListener, ExperimentalHostWatchOptions, ExperimentalHostWatchSubscription, ExperimentalHostWorkerLease };

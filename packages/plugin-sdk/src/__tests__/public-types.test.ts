@@ -111,6 +111,7 @@ const EXPECTED_HOST_ROOT_TYPE_EXPORTS = [
   "ExperimentalHostWatchListener",
   "ExperimentalHostWatchOptions",
   "ExperimentalHostWatchSubscription",
+  "ExperimentalHostWorkerLease",
 ] as const;
 
 const EXPECTED_HOST_ROOT_VALUE_EXPORTS = [

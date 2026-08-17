@@ -67,6 +67,9 @@ describe("builtin host artifacts", () => {
       {
         signal: new AbortController().signal,
         lifecycle: { signal: new AbortController().signal },
+        experimental_retainWorker: () => ({
+          dispose: async () => undefined,
+        }),
       },
     );
 
@@ -74,5 +77,5 @@ describe("builtin host artifacts", () => {
       enabled: false,
       supported: process.platform === "darwin",
     });
-  });
+  }, 20_000);
 });

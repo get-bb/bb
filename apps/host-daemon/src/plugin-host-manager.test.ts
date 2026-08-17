@@ -19,6 +19,7 @@ const artifactSource = Buffer.from(`
 const anySchema = { "~standard": { validate(value) { return { value }; } } };
 const stringSchema = { "~standard": { validate(value) { return typeof value === "string" ? { value } : { issues: [{ message: "expected string" }] }; } } };
 let lastPaths;
+let retainedLease;
 export default {
   experimental_apiVersion: 1,
   contract: {
@@ -30,6 +31,7 @@ export default {
     large: { input: anySchema, output: anySchema },
     pathsAndSignal: { input: anySchema, output: anySchema },
     watch: { input: anySchema, output: anySchema },
+    retain: { input: anySchema, output: anySchema },
   },
   experimental_signals: { changed: { payload: anySchema } },
   handlers: {
@@ -65,8 +67,19 @@ export default {
       );
       return { watching: true };
     },
+    async retain(input, context) {
+      if (input.enabled) {
+        retainedLease ??= context.experimental_retainWorker();
+      } else {
+        await retainedLease?.dispose();
+        retainedLease = undefined;
+      }
+      return { retained: retainedLease !== undefined, pid: process.pid };
+    },
   },
   async dispose() {
+    await retainedLease?.dispose();
+    retainedLease = undefined;
     if (lastPaths) {
       const { writeFile } = await import("node:fs/promises");
       await writeFile(lastPaths.dataDir + "/disposed", "yes");
@@ -134,6 +147,41 @@ describe("PluginHostManager", () => {
       Reflect.get(Object(second.output), "pid"),
     );
     expect(fetchArtifact).toHaveBeenCalledOnce();
+  });
+
+  it("evicts an idle worker and starts it again without reporting a crash", async () => {
+    const onWorkerExit = vi.fn();
+    const manager = await createManager({
+      onWorkerExit,
+      workerIdleTimeoutMs: 20,
+    });
+    const first = await manager.call(callCommand());
+    const firstPid = Reflect.get(Object(first.output), "pid");
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const restarted = await manager.call(callCommand());
+
+    expect(Reflect.get(Object(restarted.output), "pid")).not.toBe(firstPid);
+    expect(onWorkerExit).not.toHaveBeenCalled();
+  });
+
+  it("retains a worker with a lease until the lease is released", async () => {
+    const manager = await createManager({ workerIdleTimeoutMs: 20 });
+    const retained = await manager.call(
+      callCommand({ method: "retain", input: { enabled: true } }),
+    );
+    const retainedPid = Reflect.get(Object(retained.output), "pid");
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const whileRetained = await manager.call(callCommand());
+    expect(Reflect.get(Object(whileRetained.output), "pid")).toBe(retainedPid);
+
+    await manager.call(
+      callCommand({ method: "retain", input: { enabled: false } }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const restarted = await manager.call(callCommand());
+    expect(Reflect.get(Object(restarted.output), "pid")).not.toBe(retainedPid);
   });
 
   it("rejects unverified or invalid artifacts", async () => {
@@ -245,6 +293,7 @@ describe("PluginHostManager", () => {
     let watcher: WatchPathRootArgs | undefined;
     const manager = await createManager({
       onSignal,
+      workerIdleTimeoutMs: 20,
       hostWatcher: {
         watchPathRoot(args) {
           watcher = args;
@@ -260,6 +309,7 @@ describe("PluginHostManager", () => {
     await vi.waitFor(() => expect(watcher).toBeDefined());
     watcher?.onReady();
     await expect(call).resolves.toEqual({ output: { watching: true } });
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     watcher?.onChange([{ path: "/tmp/workspace/a", type: "update" }]);
     await vi.waitFor(() => expect(onSignal).toHaveBeenCalledTimes(1));

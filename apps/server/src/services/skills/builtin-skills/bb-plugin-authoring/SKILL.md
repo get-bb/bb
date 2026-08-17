@@ -479,14 +479,19 @@ background service, or timer. Candidate-time calls are rejected because that
 generation is not active or fetchable yet.
 
 `context.signal` aborts one call. `context.lifecycle.signal` aborts the whole
-worker generation on reload, disable, uninstall, or daemon shutdown. Close
-timers, sockets, and child processes from the lifecycle signal and `dispose`.
+worker process on idle eviction, reload, disable, uninstall, or daemon
+shutdown. Close timers, sockets, and child processes from the lifecycle signal
+and `dispose`.
 `context.experimental_paths.dataDir` is persistent and scoped to this plugin on
-the targeted daemon; `tempDir` is deleted with the worker generation.
+the targeted daemon; `tempDir` is deleted with the worker process.
 `context.experimental_watch(options, listener)` uses the daemon's native file
 watcher. Deliveries are coalesced and serialized while the listener is busy;
 on `rescan-required`, reread current state instead of trusting prior events.
 Subscriptions are disposed with the worker and can also be disposed directly.
+Active calls and native watches automatically keep the worker running. For
+independent background work, acquire a lease during a handler with
+`context.experimental_retainWorker()` and dispose it when that work stops.
+Lease disposal is idempotent.
 
 Host signals are schema-validated, private to the plugin that owns the host
 entry, and ephemeral. Use them as invalidations or progress notifications, not
@@ -497,15 +502,16 @@ absolute path in that method's typed input. Core does not infer an environment,
 cwd, or lock for host RPC.
 
 The worker is lazy and reusable; there is no short-/long-lived manifest flag.
-Individual handlers may finish quickly while lifecycle-owned children remain
-active. A crash fails in-flight calls, emits
+After five minutes with no active call, native watch, or retained lease, the
+daemon gracefully stops it. A later call starts it again. This idle stop does
+not emit `experimental_onWorkerExit`. A crash fails in-flight calls, emits
 `experimental_onWorkerExit` to the active server generation, and a later call
 starts a fresh worker. Graceful reload, disable, uninstall, and daemon shutdown
 do not emit it. The event is ephemeral, so long-lived plugins must also
 reconcile when their target host reconnects. On reconnect, the daemon keeps
 workers whose generation is still active and disposes generations disabled or
-replaced while it was offline. Host code receives the normalized user `PATH`
-without daemon-owned `BB_*` variables.
+replaced while it was offline. There is no global worker-count limit. Host code
+receives the normalized user `PATH` without daemon-owned `BB_*` variables.
 
 Host production code may import public `@get-bb/plugin-sdk` entrypoints, Node
 APIs, and ordinary third-party dependencies. It must not import private

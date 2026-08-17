@@ -56,6 +56,9 @@ interface WorkerState {
   resolveReady: () => void;
   rejectReady: (error: Error) => void;
   disposing: boolean;
+  activeCallCount: number;
+  retainedLeaseIds: Set<string>;
+  idleTimer: NodeJS.Timeout | null;
   watches: Map<string, WorkerWatchState>;
 }
 
@@ -99,11 +102,14 @@ export interface PluginHostManagerOptions {
   shellEnv?: () => NodeJS.ProcessEnv;
   /** Native path observation shared by core and host plugins. */
   hostWatcher?: Pick<HostWatcher, "watchPathRoot">;
+  /** Test override for the daemon-owned worker idle timeout. */
+  workerIdleTimeoutMs?: number;
 }
 
 const START_TIMEOUT_MS = 10_000;
 const CANCEL_GRACE_MS = 5_000;
-const HOST_WORKER_PROTOCOL_VERSION = 1;
+const HOST_WORKER_PROTOCOL_VERSION = 2;
+const DEFAULT_WORKER_IDLE_TIMEOUT_MS = 5 * 60_000;
 const MAX_PENDING_CALLS_PER_WORKER = 256;
 const MAX_WATCHES_PER_WORKER = 256;
 const MAX_WATCH_CHANGED_PATHS = 4_096;
@@ -229,8 +235,11 @@ export class PluginHostManager {
     }
     const callState: ActiveCallState = { cancelled: false };
     this.activeCalls.set(callKey, callState);
+    let activeWorker: WorkerState | undefined;
     try {
       const worker = await this.ensureWorker(command);
+      activeWorker = worker;
+      worker.activeCallCount += 1;
       await worker.ready;
       if (callState.cancelled) throw this.cancelledCallError(command.callId);
       if (Date.now() >= command.deadlineUnixMs) {
@@ -282,6 +291,10 @@ export class PluginHostManager {
         }
       });
     } finally {
+      if (activeWorker !== undefined) {
+        activeWorker.activeCallCount -= 1;
+        this.scheduleWorkerIdle(activeWorker);
+      }
       this.activeCalls.delete(callKey);
     }
   }
@@ -382,6 +395,7 @@ export class PluginHostManager {
       current.digest === command.artifact.digest &&
       !current.disposing
     ) {
+      this.cancelWorkerIdleTimer(current);
       return current;
     }
     if (
@@ -453,10 +467,14 @@ export class PluginHostManager {
       resolveReady,
       rejectReady,
       disposing: false,
+      activeCallCount: 0,
+      retainedLeaseIds: new Set(),
+      idleTimer: null,
       watches: new Map(),
     };
     let unexpectedExitReported = false;
     const failWorker = (reason: string): void => {
+      this.cancelWorkerIdleTimer(worker);
       if (!worker.disposing && !unexpectedExitReported) {
         unexpectedExitReported = true;
         this.options.onWorkerExit?.({
@@ -531,6 +549,25 @@ export class PluginHostManager {
           signal: record.signal,
           payload: payload.data,
         });
+        return;
+      }
+      if (
+        record.type === "lease-acquire" &&
+        typeof record.leaseId === "string" &&
+        record.leaseId.length > 0
+      ) {
+        if (!worker.disposing && this.workers.get(worker.pluginId) === worker) {
+          worker.retainedLeaseIds.add(record.leaseId);
+          this.cancelWorkerIdleTimer(worker);
+        }
+        return;
+      }
+      if (
+        record.type === "lease-release" &&
+        typeof record.leaseId === "string"
+      ) {
+        worker.retainedLeaseIds.delete(record.leaseId);
+        this.scheduleWorkerIdle(worker);
         return;
       }
       if (record.type === "watch-start") {
@@ -652,6 +689,7 @@ export class PluginHostManager {
       maxWaitTimer: null,
     };
     worker.watches.set(watchId, state);
+    this.cancelWorkerIdleTimer(worker);
     try {
       state.stop = watchPathRoot({
         rootPath,
@@ -678,6 +716,7 @@ export class PluginHostManager {
       worker.watches.delete(watchId);
       state.stopped = true;
       this.sendWorkerWatchStartError(worker, watchId, errorMessage(error));
+      this.scheduleWorkerIdle(worker);
     }
   }
 
@@ -802,6 +841,8 @@ export class PluginHostManager {
         { pluginId: worker.pluginId, watchId, err: error },
         "Failed to stop host plugin filesystem watch",
       );
+    } finally {
+      this.scheduleWorkerIdle(worker);
     }
   }
 
@@ -893,6 +934,7 @@ export class PluginHostManager {
   private async stopWorker(worker: WorkerState, reason: string): Promise<void> {
     if (worker.disposing) return worker.closed;
     worker.disposing = true;
+    this.cancelWorkerIdleTimer(worker);
     if (this.workers.get(worker.pluginId) === worker) {
       this.workers.delete(worker.pluginId);
     }
@@ -907,6 +949,42 @@ export class PluginHostManager {
     clearTimeout(forceTimer);
     this.rejectPendingCalls(worker, reason);
     await rm(worker.tempDir, { recursive: true, force: true });
+  }
+
+  private cancelWorkerIdleTimer(worker: WorkerState): void {
+    if (worker.idleTimer === null) return;
+    clearTimeout(worker.idleTimer);
+    worker.idleTimer = null;
+  }
+
+  private scheduleWorkerIdle(worker: WorkerState): void {
+    if (
+      worker.disposing ||
+      this.shuttingDown ||
+      this.workers.get(worker.pluginId) !== worker ||
+      worker.activeCallCount > 0 ||
+      worker.watches.size > 0 ||
+      worker.retainedLeaseIds.size > 0 ||
+      worker.idleTimer !== null
+    ) {
+      return;
+    }
+    worker.idleTimer = setTimeout(() => {
+      worker.idleTimer = null;
+      void this.enqueueWorkerMutation(worker.pluginId, async () => {
+        if (
+          worker.disposing ||
+          this.workers.get(worker.pluginId) !== worker ||
+          worker.activeCallCount > 0 ||
+          worker.watches.size > 0 ||
+          worker.retainedLeaseIds.size > 0
+        ) {
+          return;
+        }
+        await this.stopWorker(worker, "host plugin worker became idle");
+      });
+    }, this.options.workerIdleTimeoutMs ?? DEFAULT_WORKER_IDLE_TIMEOUT_MS);
+    worker.idleTimer.unref?.();
   }
 
   private callKey(command: {

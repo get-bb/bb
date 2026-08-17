@@ -5,17 +5,21 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
-## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `experimental_defineHostEntry`, and `experimental_createHostEntryHarness`)
+## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `experimental_defineHostEntry`, and `experimental_createHostEntryHarness`)
 
 **What it does.** Lets one plugin package declare a singular `bb.host` Node
 entry, share a Standard Schema contract between its server and host entries,
 and call methods on an explicit enrolled host. A client may observe unexpected
 worker exits and typed, ephemeral host signals. The host context supplies
 request and generation abort signals, persistent plugin-scoped data and
-generation-scoped temporary directories, and daemon-owned native file watches.
+worker-scoped temporary directories, daemon-owned native file watches, and
+explicit worker-retention leases for independent background work. Calls and
+watches retain automatically; otherwise, the daemon gracefully evicts a worker
+after five idle minutes and starts it again on the next call. There is no global
+worker-count limit.
 
-The initial builtin proof is Keep Awake: it owns a host target, a
-generation-owned child process, desired-state reconciliation, and
+The initial builtin proof is Keep Awake: it owns a host target, a worker-owned
+child process, desired-state reconciliation, and
 unexpected-exit recovery without feature-specific core hooks.
 
 **Audit before stabilizing.**
@@ -25,10 +29,13 @@ unexpected-exit recovery without feature-specific core hooks.
 2. **Targeting.** Confirm explicit host ids are enough for V1 and add an
    environment-aware primitive only alongside a plugin that proves its
    locking and workspace semantics.
-3. **Process lifetime.** Measure idle worker cost and crash behavior before
-   adding manifest lifetime flags, leases, or plugin-specific restart policy.
-   Confirm unexpected-exit notification is the right generic repair trigger,
-   remains suppressed for graceful disposal, and does not create crash loops.
+3. **Process lifetime.** Measure whether five idle minutes is the right timeout,
+   whether watches should continue retaining automatically, and whether leases
+   acquired only during active handlers are expressive enough. Confirm there is
+   no need for manifest lifetime flags, plugin-selected timeouts, a global
+   worker limit, or plugin-specific restart policy. Confirm unexpected-exit
+   notification is the right generic repair trigger, remains suppressed for
+   graceful and idle disposal, and does not create crash loops.
    Verify reconnect generation reconciliation covers disable/uninstall during
    an outage without stopping a still-current worker on every transient drop.
 4. **Signals and watches.** Confirm host signals should remain private,
@@ -53,8 +60,9 @@ unexpected-exit recovery without feature-specific core hooks.
     `experimental_callHostRpc` option, `experimental_hostRpcCalls` inspection
     list, `experimental_emitHostWorkerExit`, and `experimental_emitHostSignal`
     behavior drivers; and the host-entry harness's `experimental_call`,
-    `experimental_getSignals`, `experimental_lifecycleSignal`, path/watch
-    options, and `experimental_dispose`. Confirm the host harness should
+    `experimental_getSignals`, `experimental_getRetainedWorkerLeaseCount`,
+    `experimental_lifecycleSignal`, path/watch options, and
+    `experimental_dispose`. Confirm the host harness should
     continue simulating validation, cancellation, lifecycle, JSON, and size
     limits without pretending to model process startup, crashes, native watcher
     recovery, or reconnect behavior.

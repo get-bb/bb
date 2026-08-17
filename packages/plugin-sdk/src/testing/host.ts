@@ -4,6 +4,7 @@ import type {
   ExperimentalHostWatchListener,
   ExperimentalHostWatchOptions,
   ExperimentalHostWatchSubscription,
+  ExperimentalHostWorkerLease,
   PluginRpcContract,
   StandardSchemaV1,
   StandardSchemaV1InferInput,
@@ -54,6 +55,8 @@ export interface ExperimentalHostEntryHarness<
   ): Promise<StandardSchemaV1InferOutput<Contract[MethodName]["output"]>>;
   /** Validated signals emitted by handlers, in emission order. */
   experimental_getSignals(): readonly ExperimentalHostHarnessSignal<Signals>[];
+  /** Number of worker-retention leases currently held by the entry. */
+  experimental_getRetainedWorkerLeaseCount(): number;
   /** Aborted before the entry's dispose hook runs. */
   readonly experimental_lifecycleSignal: AbortSignal;
   /** Abort active calls and run the entry's dispose hook once. */
@@ -103,6 +106,7 @@ export function experimental_createHostEntryHarness<
   const activeCalls = new Set<AbortController>();
   const capturedSignals: Array<{ signal: string; payload: unknown }> = [];
   const watchSubscriptions = new Set<ExperimentalHostWatchSubscription>();
+  const retainedWorkerLeases = new Set<ExperimentalHostWorkerLease>();
   const paths = harnessOptions.experimental_paths ?? {
     dataDir: "/test/plugin-data",
     tempDir: "/test/plugin-temp",
@@ -138,6 +142,7 @@ export function experimental_createHostEntryHarness<
         controller.abort();
       }
 
+      let contextOpen = true;
       try {
         const serverInput = await validate(method.input, input);
         const workerInput = await validate(
@@ -189,6 +194,25 @@ export function experimental_createHostEntryHarness<
             watchSubscriptions.add(subscription);
             return subscription;
           },
+          experimental_retainWorker() {
+            if (
+              !contextOpen ||
+              controller.signal.aborted ||
+              lifecycleController.signal.aborted
+            ) {
+              throw new Error("host call context is no longer active");
+            }
+            let disposed = false;
+            const lease: ExperimentalHostWorkerLease = {
+              async dispose() {
+                if (disposed) return;
+                disposed = true;
+                retainedWorkerLeases.delete(lease);
+              },
+            };
+            retainedWorkerLeases.add(lease);
+            return lease;
+          },
         });
         const workerOutput = await validate(method.output, rawOutput);
         return await validate(
@@ -196,6 +220,9 @@ export function experimental_createHostEntryHarness<
           normalizeJson(workerOutput, `host output for ${methodName}`),
         );
       } finally {
+        // Retaining a worker must be an explicit decision made by an active
+        // handler, not by work that escaped the request.
+        contextOpen = false;
         activeCalls.delete(controller);
         lifecycleController.signal.removeEventListener("abort", abort);
         options.signal?.removeEventListener("abort", abort);
@@ -206,6 +233,10 @@ export function experimental_createHostEntryHarness<
       return capturedSignals as ExperimentalHostHarnessSignal<Signals>[];
     },
 
+    experimental_getRetainedWorkerLeaseCount() {
+      return retainedWorkerLeases.size;
+    },
+
     experimental_dispose() {
       disposePromise ??= (async () => {
         lifecycleController.abort();
@@ -214,7 +245,11 @@ export function experimental_createHostEntryHarness<
         await Promise.all(
           [...watchSubscriptions].map((subscription) => subscription.dispose()),
         );
-        await entry.dispose?.();
+        try {
+          await entry.dispose?.();
+        } finally {
+          retainedWorkerLeases.clear();
+        }
       })();
       return disposePromise;
     },

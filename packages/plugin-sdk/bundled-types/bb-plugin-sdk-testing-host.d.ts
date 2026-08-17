@@ -29,6 +29,8 @@ interface ExperimentalHostEntryHarness<Contract extends PluginRpcContract, Signa
     }): Promise<StandardSchemaV1InferOutput<Contract[MethodName]["output"]>>;
     /** Validated signals emitted by handlers, in emission order. */
     experimental_getSignals(): readonly ExperimentalHostHarnessSignal<Signals>[];
+    /** Number of worker-retention leases currently held by the entry. */
+    experimental_getRetainedWorkerLeaseCount(): number;
     /** Aborted before the entry's dispose hook runs. */
     readonly experimental_lifecycleSignal: AbortSignal;
     /** Abort active calls and run the entry's dispose hook once. */

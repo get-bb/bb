@@ -1,7 +1,7 @@
 import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const HOST_WORKER_PROTOCOL_VERSION = 1;
+const HOST_WORKER_PROTOCOL_VERSION = 2;
 const RESULT_MAX_BYTES = 8 * 1024 * 1024;
 
 interface StandardSchema {
@@ -58,6 +58,10 @@ interface HostWatchSubscription {
   dispose(): Promise<void>;
 }
 
+interface HostWorkerLease {
+  dispose(): Promise<void>;
+}
+
 interface WorkerWatchState {
   readonly listener: HostWatchListener;
   readonly subscription: HostWatchSubscription;
@@ -79,6 +83,7 @@ interface HostContext {
     options: HostWatchOptions,
     listener: HostWatchListener,
   ): Promise<HostWatchSubscription>;
+  experimental_retainWorker(): HostWorkerLease;
 }
 
 interface HostEntry {
@@ -329,6 +334,7 @@ const lifecycleController = new AbortController();
 const activeCalls = new Map<string, AbortController>();
 const watches = new Map<string, WorkerWatchState>();
 let nextWatchId = 1;
+let nextLeaseId = 1;
 let entry: HostEntry;
 let disposing = false;
 
@@ -471,6 +477,7 @@ async function handleCall(
   }
   const controller = new AbortController();
   activeCalls.set(message.callId, controller);
+  let contextOpen = true;
   try {
     const input = await validate(method.input, message.input);
     const result = await handler(input, {
@@ -491,6 +498,26 @@ async function handleCall(
       },
       experimental_watch: (options, listener) =>
         startWatch(options, listener, controller.signal),
+      experimental_retainWorker() {
+        if (
+          !contextOpen ||
+          disposing ||
+          controller.signal.aborted ||
+          lifecycleController.signal.aborted
+        ) {
+          throw new Error("host call context is no longer active");
+        }
+        const leaseId = String(nextLeaseId++);
+        let released = false;
+        send({ type: "lease-acquire", leaseId });
+        return {
+          async dispose() {
+            if (released) return;
+            released = true;
+            send({ type: "lease-release", leaseId });
+          },
+        };
+      },
     });
     const output = normalizeJson(
       await validate(method.output, result),
@@ -505,6 +532,7 @@ async function handleCall(
       error: errorMessage(error),
     });
   } finally {
+    contextOpen = false;
     activeCalls.delete(message.callId);
   }
 }
