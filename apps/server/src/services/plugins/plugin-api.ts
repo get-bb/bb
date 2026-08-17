@@ -293,6 +293,8 @@ export interface PluginApiHandle {
   cli: { registration: PluginCliRegistrationRecord | null };
   /** Native tools recorded by `bb.agents.registerTool`. */
   agentTools: PluginAgentToolRecord[];
+  /** Undisposed provider declarations staged by the factory. */
+  listProviderDeclarations(): PluginProviderDeclaration[];
   /** Per-resolution selector from `bb.agents.configure` (at most one). */
   agentConfigurationProvider: PluginAgentConfigurationProvider | null;
   /**
@@ -1348,6 +1350,11 @@ export function createPluginApi(options: {
     schedules,
     cli: cliRecord,
     agentTools,
+    listProviderDeclarations() {
+      return [...providerRegistrations.values()]
+        .filter((entry) => !entry.disposed)
+        .map((entry) => entry.declaration);
+    },
     get agentConfigurationProvider() {
       return agentConfigurationProvider;
     },

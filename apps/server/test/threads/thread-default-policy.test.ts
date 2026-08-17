@@ -12,7 +12,11 @@ import {
   resolveWorkflowsEnabledPolicy,
   PRODUCT_DEFAULT_PROVIDER_ID,
 } from "../../src/services/threads/thread-default-policy.js";
-import { createTestProviderRegistry } from "../helpers/provider-registry.js";
+import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
+import {
+  createTestProviderRegistry,
+  registerFirstPartyProviders,
+} from "../helpers/provider-registry.js";
 
 const registry = await createTestProviderRegistry();
 
@@ -123,6 +127,33 @@ describe("resolveCreateThreadExecutionDefaults", () => {
       providerId: "codex",
       executionDefaults: storedDefaults,
     });
+  });
+
+  it("skips unavailable providers when choosing the product default", async () => {
+    const degradedRegistry = createProviderRegistryService();
+    await registerFirstPartyProviders(degradedRegistry, {
+      unavailablePluginIds: ["provider-codex"],
+    });
+
+    expect(
+      resolveCreateThreadExecutionDefaults(degradedRegistry, {
+        storedDefaults: null,
+      }),
+    ).toEqual({ providerId: "claude-code", executionDefaults: null });
+  });
+
+  it("rejects an explicitly selected unavailable provider", async () => {
+    const degradedRegistry = createProviderRegistryService();
+    await registerFirstPartyProviders(degradedRegistry, {
+      unavailablePluginIds: ["provider-codex"],
+    });
+
+    expect(() =>
+      resolveCreateThreadExecutionDefaults(degradedRegistry, {
+        requestedProviderId: "codex",
+        storedDefaults: null,
+      }),
+    ).toThrow(/Codex is unavailable because its provider plugin failed/u);
   });
 });
 

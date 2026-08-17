@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import type { AvailableModel, ReasoningLevel } from "@bb/domain";
 import type {
+  SystemExecutionOptionsModelLoadError,
   SystemExecutionOptionsResponse,
   SystemProvidersQuery,
 } from "@bb/server-contract";
@@ -151,6 +152,7 @@ function renderPicker({
   providerRouting,
   selectedProviderId = "codex",
   modelIsLoading = false,
+  modelLoadError = null,
   compact = false,
   splitPane = false,
 }: {
@@ -167,6 +169,7 @@ function renderPicker({
   providerRouting?: SystemProvidersQuery;
   selectedProviderId?: string;
   modelIsLoading?: boolean;
+  modelLoadError?: SystemExecutionOptionsModelLoadError | null;
   compact?: boolean;
   splitPane?: boolean;
 } = {}) {
@@ -200,6 +203,7 @@ function renderPicker({
         modelOptions={modelOptions}
         moreModelOptions={moreModelOptions}
         modelIsLoading={modelIsLoading}
+        modelLoadError={modelLoadError}
         onModelChange={onModelChange}
         reasoningValue={reasoningValue}
         reasoningOptions={pickerReasoningOptions}
@@ -240,6 +244,29 @@ afterEach(() => {
 });
 
 describe("ModelReasoningPicker", () => {
+  it("keeps a failed provider tab visible with its provider-plugin error", () => {
+    renderPicker({
+      modelOptions: [],
+      modelValue: "",
+      pickerReasoningOptions: [],
+      modelLoadError: {
+        providerId: "codex",
+        code: "provider_unavailable",
+      },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    expect(screen.getByTitle("Codex")).not.toBeNull();
+    expect(
+      screen.getByText(
+        "Codex is unavailable because its provider plugin failed to load.",
+      ),
+    ).not.toBeNull();
+  });
+
   it("holds the trigger and model-list layout with skeletons while loading", () => {
     renderPicker({
       modelOptions: [],

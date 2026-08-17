@@ -22,10 +22,7 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HostDaemonBridgeLaunch } from "@bb/host-daemon-contract";
-import {
-  buildPluginHost,
-  resolvePluginBuildToolchain,
-} from "@bb/plugin-build";
+import { buildPluginHost, resolvePluginBuildToolchain } from "@bb/plugin-build";
 import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import type {
   BbPluginApi,
@@ -100,21 +97,28 @@ export async function registerFirstPartyProviders(
   registry: ProviderRegistryService,
   options: {
     excludePluginIds?: readonly string[];
+    unavailablePluginIds?: readonly string[];
     artifacts?: PluginHostArtifactRegistry;
   } = {},
 ): Promise<void> {
   const excluded = new Set(options.excludePluginIds ?? []);
+  const unavailable = new Set(options.unavailablePluginIds ?? []);
   for (const pluginId of FIRST_PARTY_PROVIDER_PLUGIN_IDS) {
     if (excluded.has(pluginId)) {
       continue;
     }
     const declaration = await loadDeclaration(pluginId);
     registry.register({
-      ...buildPluginProviderRegistration({ pluginId, declaration }),
+      ...buildPluginProviderRegistration({
+        available: !unavailable.has(pluginId),
+        pluginId,
+        declaration,
+      }),
       pluginId,
     });
     if (
       options.artifacts !== undefined &&
+      !unavailable.has(pluginId) &&
       (await hasHostEntry(pluginRootDir(pluginId)))
     ) {
       options.artifacts.set(pluginId, stubHostArtifact(pluginId));
@@ -230,6 +234,7 @@ export function registerFakeProviders(
     const pluginId = `provider-${providerId}`;
     registry.register({
       ...buildPluginProviderRegistration({
+        available: true,
         pluginId,
         declaration: validatePluginProviderDeclaration({
           id: providerId,

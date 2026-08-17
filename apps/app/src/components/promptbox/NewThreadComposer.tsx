@@ -973,6 +973,7 @@ export function NewThreadComposer({
     !selectedProviderId ||
     isLoadingModels ||
     isResolvingInitialProvider ||
+    modelLoadError?.code === "provider_unavailable" ||
     modelLoadError?.code === "missing_executable" ||
     modelLoadError?.code === "auth_required" ||
     !selectedThreadModel ||

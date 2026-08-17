@@ -228,6 +228,36 @@ describe("appendCustomModels", () => {
 });
 
 describe("resolveSystemExecutionOptions", () => {
+  it("keeps an unavailable provider in the roster and returns its picker error without probing it", async () => {
+    await withTestHarness(
+      { seedFirstPartyProviders: false },
+      async (harness) => {
+        await registerFirstPartyProviders(harness.deps.providerRegistry, {
+          excludePluginIds: ["provider-acp"],
+          unavailablePluginIds: ["provider-codex"],
+        });
+        const { host } = seedHostSession(harness.deps, {
+          id: "host-execution-options-unavailable-provider",
+        });
+
+        const response = await resolveSystemExecutionOptions(harness.deps, {
+          hostId: host.id,
+          providerId: "codex",
+        });
+
+        expect(response.providers[0]).toEqual(
+          expect.objectContaining({ id: "codex", available: false }),
+        );
+        expect(response.models).toEqual([]);
+        expect(response.selectedOnlyModels).toEqual([]);
+        expect(response.modelLoadError).toEqual({
+          providerId: "codex",
+          code: "provider_unavailable",
+        });
+      },
+    );
+  });
+
   it("includes installed known ACP agents and sends their launch spec when loading models", async () => {
     await withTestHarness({}, async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {

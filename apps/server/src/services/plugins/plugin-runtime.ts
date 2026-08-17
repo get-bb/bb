@@ -29,6 +29,7 @@ import { DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS } from "@bb/host-daemon-contract";
 import { PluginHostArtifactRegistry } from "./plugin-host-artifact-registry.js";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { createNodeBbSdk, type BbSdk } from "@bb/sdk";
+import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 import {
   getInstalledPlugin,
   listInstalledPlugins,
@@ -342,6 +343,14 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     deps.serviceRestartBaseMs ?? DEFAULT_SERVICE_RESTART_BASE_MS;
 
   const loaded = new Map<string, LoadedPlugin>();
+  // A provider declaration remains useful when its host artifact fails: the
+  // picker can keep a stable tab and explain that the provider is unavailable.
+  // These registrations are deliberately separate from `loaded`, so no other
+  // contribution from the failed plugin is published.
+  const unavailableProviderRegistrations = new Map<
+    string,
+    Array<{ dispose(): void }>
+  >();
   // Per-plugin lifecycle mutex: every load/dispose mutation for one plugin
   // runs strictly serialized. disposeOne removes the `loaded` entry before
   // stopServices finishes, so without this a concurrent reload/enable/
@@ -1205,6 +1214,61 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     }
   }
 
+  function disposeUnavailableProviderRegistrations(pluginId: string): void {
+    const registrations = unavailableProviderRegistrations.get(pluginId);
+    if (registrations === undefined) return;
+    unavailableProviderRegistrations.delete(pluginId);
+    for (const registration of registrations) registration.dispose();
+  }
+
+  function registerPluginProvider(args: {
+    available: boolean;
+    declaration: PluginProviderDeclaration;
+    row: InstalledPluginRow;
+  }): { dispose(): void } {
+    if (!deps.providerRegistry) {
+      throw new Error("the provider registry is unavailable in this host");
+    }
+    const icon = readPluginProviderIcon(
+      args.row.rootDir,
+      args.declaration.icon,
+    );
+    return deps.providerRegistry.register({
+      ...buildPluginProviderRegistration({
+        available: args.available,
+        pluginId: args.row.id,
+        declaration: args.declaration,
+      }),
+      ...(icon === null ? {} : { icon }),
+      pluginId: args.row.id,
+    });
+  }
+
+  function replaceUnavailableProviderRegistrations(
+    row: InstalledPluginRow,
+    declarations: readonly PluginProviderDeclaration[],
+  ): void {
+    disposeUnavailableProviderRegistrations(row.id);
+    const registrations: Array<{ dispose(): void }> = [];
+    try {
+      for (const declaration of declarations) {
+        registrations.push(
+          registerPluginProvider({
+            available: false,
+            declaration,
+            row,
+          }),
+        );
+      }
+    } catch (error) {
+      for (const registration of registrations) registration.dispose();
+      throw error;
+    }
+    if (registrations.length > 0) {
+      unavailableProviderRegistrations.set(row.id, registrations);
+    }
+  }
+
   async function loadOne(row: InstalledPluginRow): Promise<void> {
     // Refresh identity first so even a disabled/incompatible/errored plugin
     // keeps its name, icon, and logo in the list.
@@ -1268,15 +1332,17 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     // Build candidate assets without publishing them; a failed reload keeps
     // the previous backend and frontend registration sets together.
     const appBundleCandidate = await loadAppBundleCandidate(row, manifest);
-    let hostArtifactCandidate: PluginHostArtifactSnapshot | null;
+    let hostArtifactCandidate: PluginHostArtifactSnapshot | null = null;
+    let hostArtifactProblem: string | null = null;
     try {
       hostArtifactCandidate = await loadHostArtifactCandidate(row, manifest);
     } catch (error) {
-      failBeforeFactory(
-        "error",
-        error instanceof Error ? error.message : String(error),
-      );
-      return;
+      hostArtifactProblem =
+        error instanceof Error ? error.message : String(error);
+      if (previous !== undefined) {
+        failBeforeFactory("error", hostArtifactProblem);
+        return;
+      }
     }
     // Branding refresh rides every load too, so `bb plugin reload` picks up a
     // changed compact icon or logo file.
@@ -1357,25 +1423,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         });
       },
       registerProvider: (declaration) => {
-        if (!deps.providerRegistry) {
-          throw new Error("the provider registry is unavailable in this host");
-        }
-        return deps.providerRegistry.register({
-          ...buildPluginProviderRegistration({
-            pluginId: row.id,
-            declaration,
-          }),
-          ...(() => {
-            // Snapshot the declared icon bytes at registration so the
-            // provider-logo route can serve them without plugin-root
-            // plumbing; an unreadable or unsupported icon degrades to
-            // logoUrl-with-404 → the app's vendored fallback, never a load
-            // failure. The asset path was already traversal-validated by
-            // host-policy.
-            const icon = readPluginProviderIcon(row.rootDir, declaration.icon);
-            return icon === null ? {} : { icon };
-          })(),
-          pluginId: row.id,
+        return registerPluginProvider({
+          available: true,
+          declaration,
+          row,
         });
       },
       assertProviderRegistrable: (providerId) => {
@@ -1390,12 +1441,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           throw new Error(reserved);
         }
         // A declaration is metadata; the implementation is the bridge this
-        // plugin exports from its own host artifact (or, for pi, the bridge
-        // the daemon bundles). With neither, registering would put a provider
-        // in the picker whose every turn dies on the host with "Unsupported
-        // provider" — so the load fails here instead, naming the reason.
+        // plugin declares in its manifest (or, for pi, the bridge the daemon
+        // bundles). A failed artifact build still stages the declaration so
+        // the provider can be listed as unavailable; no declared bridge at all
+        // remains a plugin authoring error.
         if (
-          hostArtifactCandidate !== null ||
+          manifest.hostEntry !== undefined ||
           DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS.includes(providerId)
         ) {
           return;
@@ -1476,6 +1527,30 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       );
       return;
     }
+    if (hostArtifactProblem !== null) {
+      rollbackGeneration?.();
+      try {
+        replaceUnavailableProviderRegistrations(
+          row,
+          handle.listProviderDeclarations(),
+        );
+      } catch (error) {
+        hostArtifactProblem += `; failed to retain provider declaration: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
+      }
+      for (const database of handle.databaseHandles.splice(0)) {
+        try {
+          database.close();
+        } catch {
+          // The host-artifact failure remains the actionable load problem.
+        }
+      }
+      handle.invalidate();
+      setStatus(row.id, "error", hostArtifactProblem);
+      logger.warn(`plugin ${row.id} failed to load: ${hostArtifactProblem}`);
+      return;
+    }
     const loadedBuiltinName = builtinName(row);
     const plugin: LoadedPlugin = {
       manifest,
@@ -1511,6 +1586,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     }
     // One map replacement is the registration commit point. Until this line,
     // every dispatcher continues to resolve the complete previous handle.
+    disposeUnavailableProviderRegistrations(row.id);
     loaded.set(row.id, plugin);
     appBundles.set(row.id, appBundleCandidate.snapshot);
     if (hostArtifactCandidate === null) hostArtifacts.delete(row.id);
@@ -1618,6 +1694,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   }
 
   async function disposeOne(id: string): Promise<void> {
+    disposeUnavailableProviderRegistrations(id);
     const plugin = loaded.get(id);
     if (!plugin) return;
     loaded.delete(id);
@@ -1627,7 +1704,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   }
 
   async function disposeAll(): Promise<void> {
-    for (const id of [...loaded.keys()]) {
+    const pluginIds = new Set([
+      ...loaded.keys(),
+      ...unavailableProviderRegistrations.keys(),
+    ]);
+    for (const id of pluginIds) {
       await withLifecycleLock(id, () => disposeOne(id));
     }
     // This runtime is going away, so hand its roots back. The resolve hook is
@@ -1637,6 +1718,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   }
 
   function clearRuntimeState(id: string): void {
+    disposeUnavailableProviderRegistrations(id);
     statuses.delete(id);
     baseStatuses.delete(id);
     devBuildProblems.delete(id);

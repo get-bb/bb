@@ -48,13 +48,14 @@ const DEFAULT_PERMISSION_MODE: PermissionMode = "auto";
  * install with the codex plugin disabled falls through to whichever declared
  * provider ranks next.
  */
-export const PRODUCT_DEFAULT_PROVIDER_ID =
-  PRODUCT_PROVIDER_ORDER[0] ?? "codex";
+export const PRODUCT_DEFAULT_PROVIDER_ID = PRODUCT_PROVIDER_ORDER[0] ?? "codex";
 
 function requireProductDefaultProviderId(
   registry: ProviderRegistryService,
 ): string {
-  const providerId = registry.list()[0]?.info.id;
+  const providerId = registry
+    .list()
+    .find((registration) => registration.info.available)?.info.id;
   if (providerId === undefined) {
     // Reachable for real now that providers are plugin-only: disabling every
     // provider plugin leaves nothing to start a thread with. Say so, instead
@@ -170,9 +171,7 @@ function resolveSupportedPermissionMode(
     return args.preferredPermissionMode;
   }
 
-  const permissionModes = registry.getSupportedPermissionModes(
-    args.providerId,
-  );
+  const permissionModes = registry.getSupportedPermissionModes(args.providerId);
   if (!permissionModes) {
     return args.preferredPermissionMode;
   }
@@ -197,6 +196,14 @@ export function resolveCreateThreadExecutionDefaults(
     args.requestedProviderId ??
     args.storedDefaults?.providerId ??
     requireProductDefaultProviderId(registry);
+  const registration = registry.get(providerId);
+  if (registration !== null && !registration.info.available) {
+    throw new ApiError(
+      409,
+      "provider_unavailable",
+      `${registration.info.displayName} is unavailable because its provider plugin failed to load.`,
+    );
+  }
 
   const storedDefaults =
     args.storedDefaults?.providerId === providerId ? args.storedDefaults : null;

@@ -30,6 +30,7 @@ describe("buildPluginProviderRegistration", () => {
   it("maps a declaration onto catalog-shaped info and server capabilities", () => {
     const normalized = declaration();
     const registration = buildPluginProviderRegistration({
+      available: true,
       pluginId: "acme-agent",
       declaration: normalized,
     });
@@ -74,6 +75,7 @@ describe("buildPluginProviderRegistration", () => {
   it("projects each fork ladder rung onto the two client booleans", () => {
     const projection = (fork: "none" | "tip" | "checkpoint") => {
       const { capabilities } = buildPluginProviderRegistration({
+        available: true,
         pluginId: "acme-agent",
         declaration: declaration({
           capabilities: { ...declaration().capabilities, fork },
@@ -103,6 +105,7 @@ describe("buildPluginProviderRegistration", () => {
 
   it("maps an icon-less declaration to a null logoUrl and skills-only actions", () => {
     const registration = buildPluginProviderRegistration({
+      available: true,
       pluginId: "acme-plain",
       declaration: declaration({
         id: "plain-agent",

@@ -64,6 +64,14 @@ type ModelListResult = Pick<
   "modelLoadError" | "models" | "selectedOnlyModels"
 >;
 
+function unavailableProviderModelResult(providerId: string): ModelListResult {
+  return {
+    models: [],
+    selectedOnlyModels: [],
+    modelLoadError: { providerId, code: "provider_unavailable" },
+  };
+}
+
 interface AppendCustomModelsArgs {
   customModels: CustomProviderModel[];
   models: AvailableModel[];
@@ -305,10 +313,9 @@ export async function resolveSystemProviderModels(
   args: ResolveSystemProviderModelsArgs,
 ): Promise<ModelListResult> {
   await deps.providerRegistry.whenRegistrationsSettled();
-  const configuredProvider = listConfiguredSystemProviderInfos(
-    deps,
-    [],
-  ).find((provider) => provider.id === args.providerId);
+  const configuredProvider = listConfiguredSystemProviderInfos(deps, []).find(
+    (provider) => provider.id === args.providerId,
+  );
   const knownAcpAgent = isAcpProviderTierRegistered(deps)
     ? findKnownAcpAgentForProviderId(args.providerId)
     : undefined;
@@ -478,6 +485,14 @@ export async function resolveSystemExecutionOptions(
     };
   }
 
+  if (!modelsProvider.available) {
+    return {
+      providers,
+      permissionCeiling,
+      ...unavailableProviderModelResult(modelsProvider.id),
+    };
+  }
+
   if (hostId === null) {
     const { models, selectedOnlyModels } = appendCustomModels(
       deps.providerRegistry,
@@ -543,6 +558,9 @@ async function loadSystemProviderModels(
     provider: ProviderInfo;
   },
 ): Promise<ModelListResult> {
+  if (!provider.available) {
+    return unavailableProviderModelResult(provider.id);
+  }
   const customAcpAgent = findCustomAcpAgentForProviderId(
     deps.config.customAcpAgents,
     provider.id,

@@ -25,6 +25,7 @@ const NODE_ESM_REQUIRE_BANNER = [
 
 const PLUGIN_SDK_HOST_RUNTIME_NAMESPACE = "bb-host-sdk-runtime";
 const HOST_STAGE_DIRECTORY_PREFIX = ".host-stage-";
+const HOST_STAGE_STALE_AFTER_MS = 60 * 60 * 1_000;
 
 // Managed plugins are installed with production dependencies only. The SDK
 // is intentionally a development/type dependency for plugin authors, so the
@@ -269,10 +270,9 @@ export interface PluginHostBuildResult {
   artifactDigest: string;
 }
 
-async function removeStaleHostStageDirectories(
-  distDir: string,
-): Promise<void> {
+async function removeStaleHostStageDirectories(distDir: string): Promise<void> {
   const entries = await readdir(distDir, { withFileTypes: true });
+  const staleBefore = Date.now() - HOST_STAGE_STALE_AFTER_MS;
   await Promise.all(
     entries
       .filter(
@@ -280,9 +280,13 @@ async function removeStaleHostStageDirectories(
           entry.isDirectory() &&
           entry.name.startsWith(HOST_STAGE_DIRECTORY_PREFIX),
       )
-      .map((entry) =>
-        rm(join(distDir, entry.name), { recursive: true, force: true }),
-      ),
+      .map(async (entry) => {
+        const stageDir = join(distDir, entry.name);
+        const stageStats = await stat(stageDir).catch(() => null);
+        if (stageStats !== null && stageStats.mtimeMs <= staleBefore) {
+          await rm(stageDir, { recursive: true, force: true });
+        }
+      }),
   );
 }
 

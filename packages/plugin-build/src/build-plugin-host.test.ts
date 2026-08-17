@@ -5,6 +5,7 @@ import {
   readFile,
   readdir,
   rm,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -123,7 +124,7 @@ describe("plugin host build", () => {
     );
   });
 
-  it("removes host staging directories left by interrupted builds", async () => {
+  it("removes old host staging directories without deleting an active concurrent build", async () => {
     const dir = await mkdtemp(join(tmpdir(), "bb-host-stage-cleanup-test-"));
     tempDirs.push(dir);
     const distDir = join(dir, "dist");
@@ -131,6 +132,17 @@ describe("plugin host build", () => {
     await writeFile(
       join(distDir, ".host-stage-abandoned", "partial-host.js"),
       "partial artifact\n",
+    );
+    const abandonedAt = new Date(Date.now() - 2 * 60 * 60 * 1_000);
+    await utimes(
+      join(distDir, ".host-stage-abandoned"),
+      abandonedAt,
+      abandonedAt,
+    );
+    await mkdir(join(distDir, ".host-stage-active"));
+    await writeFile(
+      join(distDir, ".host-stage-active", "partial-host.js"),
+      "active build artifact\n",
     );
     await mkdir(join(distDir, ".stage-app-build"));
     await writeFile(
@@ -158,9 +170,13 @@ describe("plugin host build", () => {
 
     const distEntries = await readdir(distDir);
     expect(distEntries).not.toContain(".host-stage-abandoned");
+    expect(distEntries).toContain(".host-stage-active");
     expect(distEntries).toContain(".stage-app-build");
     expect(
-      distEntries.filter((entry) => entry.startsWith(".host-stage-")),
+      distEntries.filter(
+        (entry) =>
+          entry.startsWith(".host-stage-") && entry !== ".host-stage-active",
+      ),
     ).toEqual([]);
   });
 
@@ -269,9 +285,9 @@ describe("plugin host build", () => {
       ].join("\n"),
     );
 
-    expect(
-      Object.keys(HOST_ARTIFACT_RUNTIME_STUBS),
-    ).not.toContain("@get-bb/plugin-sdk/provider-bridge");
+    expect(Object.keys(HOST_ARTIFACT_RUNTIME_STUBS)).not.toContain(
+      "@get-bb/plugin-sdk/provider-bridge",
+    );
     const result = await buildPluginHost(
       dir,
       "0.9.0-test",
