@@ -71,10 +71,11 @@ describe("getProviderIconInfo", () => {
     expect(view.container.querySelector("svg")).not.toBeNull();
   });
 
-  it("keeps an app-owned ACP brand mark over a server logoUrl", () => {
+  it("keeps vendored theme-aware brand marks over a server logoUrl", () => {
     // An SVG rendered through <img> is a separate document: currentColor
-    // resolves to black there, invisible on dark themes.
-    for (const providerId of ["acp-opencode"]) {
+    // resolves to black there, invisible on dark themes. Known ids must keep
+    // their inline React marks even when the server provides a logoUrl.
+    for (const providerId of ["codex", "claude-code", "pi", "acp-opencode"]) {
       const iconInfo = getProviderIconInfo(
         providerId,
         `/api/v1/system/providers/${providerId}/logo`,
@@ -89,7 +90,7 @@ describe("getProviderIconInfo", () => {
     }
   });
 
-  it("lets a plugin component win and renders nothing when it goes away", () => {
+  it("lets a plugin-registered component win, and falls back when it goes away", () => {
     const iconInfo = getProviderIconInfo(
       "codex",
       "/api/v1/system/providers/codex/logo",
@@ -98,7 +99,9 @@ describe("getProviderIconInfo", () => {
       throw new Error("Expected icon info for codex");
     }
     const view = render(createElement(iconInfo.icon, { className: "size-4" }));
-    expect(view.container.innerHTML).toBe("");
+    // Vendored mark before any plugin frontend has booted.
+    expect(view.container.querySelector("[data-testid]")).toBeNull();
+    expect(view.container.querySelector("svg")).not.toBeNull();
 
     act(() => {
       setPluginSlotRegistrations("provider-codex", {
@@ -122,7 +125,7 @@ describe("getProviderIconInfo", () => {
     expect(
       view.container.querySelector('[data-testid="plugin-codex-icon"]'),
     ).toBeNull();
-    expect(view.container.innerHTML).toBe("");
+    expect(view.container.querySelector("svg")).not.toBeNull();
     view.unmount();
   });
 
