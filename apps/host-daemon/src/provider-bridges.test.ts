@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   hostDaemonBridgeLaunchSchema,
-  MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES,
+  HOST_ARTIFACT_MAX_BYTES,
 } from "@bb/host-daemon-contract";
 import { ensureCachedProviderBridge } from "./provider-bridges.js";
 
@@ -152,7 +152,7 @@ describe("ensureCachedProviderBridge", () => {
         dataDir,
         fetchProviderBridge,
         sha256: BRIDGE_SHA,
-        byteLength: MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES + 1,
+        byteLength: HOST_ARTIFACT_MAX_BYTES + 1,
       }),
     ).rejects.toThrow(/too large/);
     expect(fetchProviderBridge).not.toHaveBeenCalled();
@@ -165,7 +165,7 @@ describe("bridgeLaunch wire schema", () => {
       source: {
         kind: "artifact",
         sha256: BRIDGE_SHA,
-        byteLength: MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES + 1,
+        byteLength: HOST_ARTIFACT_MAX_BYTES + 1,
       },
       capabilities: {
         supportsServiceTier: false,
@@ -181,7 +181,7 @@ describe("bridgeLaunch wire schema", () => {
         ...launch,
         source: {
           ...launch.source,
-          byteLength: MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES,
+          byteLength: HOST_ARTIFACT_MAX_BYTES,
         },
       }).success,
     ).toBe(true);

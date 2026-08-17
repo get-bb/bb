@@ -42,6 +42,7 @@ import { workspaceResolutionFailureSchema } from "./workspace.js";
 import { HOST_ARTIFACT_MAX_BYTES } from "./protocol.js";
 
 export {
+  DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS,
   HOST_ARTIFACT_MAX_BYTES,
   HOST_DAEMON_PROTOCOL_VERSION,
 } from "./protocol.js";
@@ -212,28 +213,6 @@ export function normalizeHostDaemonAcpLaunchSpec(
 }
 
 /**
- * Provider ids whose bridge ships inside the daemon bundle rather than as a
- * plugin artifact. Pi is the only one left: its agent tree cannot be inlined
- * into a relocatable artifact (see the graduation plan's pi verdict). The
- * daemon refuses artifact routing for these ids, and the server needs the same
- * list to know that a declaration for one of them has an implementation even
- * with no artifact behind it — so it lives on the contract both sides read
- * rather than in two places that can drift.
- */
-export const DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS: readonly string[] = ["pi"];
-
-/**
- * Ceiling on one provider-bridge bundle. The daemon buffers an artifact whole
- * to hash-verify it before executing it, so an unbounded bundle is unbounded
- * daemon memory — and a bundle is now third-party plugin output. The largest
- * first-party bridge is ~2.5 MB and the largest shape ever built (a fully
- * inlined pi) was ~15 MB, so this is generous by two orders of magnitude
- * while still bounding the buffer. Enforced twice: the server refuses to
- * record a bigger artifact, and the wire schema refuses to carry one.
- */
-export const MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES = 256 * 1024 * 1024;
-
-/**
  * How the daemon obtains the provider bridge for a provider. Every provider is
  * plugin-declared, so every command that reaches a bridge carries one of these
  * — the source says which of the two delivery paths to take rather than
@@ -257,7 +236,7 @@ export const hostDaemonBridgeLaunchSchema = z
             .number()
             .int()
             .positive()
-            .max(MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES),
+            .max(HOST_ARTIFACT_MAX_BYTES),
         })
         .strict(),
       z

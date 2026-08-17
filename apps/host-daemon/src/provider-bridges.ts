@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES } from "@bb/host-daemon-contract";
+import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract";
 
 /**
  * Content-addressed cache for plugin-delivered provider bridge bundles.
@@ -91,9 +91,9 @@ export async function ensureCachedProviderBridge(
   // executed, so the declared size is checked before a byte is fetched. The
   // wire schema enforces the same cap; this is the guard for callers that
   // build the args themselves.
-  if (args.byteLength > MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES) {
+  if (args.byteLength > HOST_ARTIFACT_MAX_BYTES) {
     throw new Error(
-      `Provider bridge is too large: ${args.byteLength} bytes exceeds the ${MAX_PROVIDER_BRIDGE_ARTIFACT_BYTES}-byte limit`,
+      `Provider bridge is too large: ${args.byteLength} bytes exceeds the ${HOST_ARTIFACT_MAX_BYTES}-byte limit`,
     );
   }
   const key = `${args.dataDir}\0${args.sha256}`;
