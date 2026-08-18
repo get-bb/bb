@@ -134,15 +134,30 @@ posixOnly("process tree helpers", () => {
   it("rescans and kills processes that appear while the first targets shut down", async () => {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), "bb-cwd-respawn-")));
     cleanupDirs.push(dir);
-    // On SIGTERM the target starts a new-session child and exits.
-    const child = spawn(
-      "sh",
+    // On SIGTERM the target starts a new-session child and exits. Use Node's
+    // portable detached spawn instead of Linux-only `setsid` so the POSIX
+    // contract is exercised on both Linux and macOS.
+    const respawnerPath = join(dir, "respawner.cjs");
+    writeFileSync(
+      respawnerPath,
       [
-        "-c",
-        "trap 'setsid sleep 300 >/dev/null 2>&1 < /dev/null & exit 0' TERM; echo ready; while :; do sleep 0.05; done",
-      ],
-      { cwd: dir, detached: true, stdio: ["ignore", "pipe", "ignore"] },
+        'const { spawn } = require("node:child_process");',
+        'process.on("SIGTERM", () => {',
+        "  spawn(process.execPath,",
+        '    ["-e", "setInterval(() => {}, 30_000)"],',
+        '    { cwd: process.cwd(), detached: true, stdio: "ignore" },',
+        "  ).unref();",
+        "  process.exit(0);",
+        "});",
+        'console.log("ready");',
+        "setInterval(() => {}, 30_000);",
+      ].join("\n"),
     );
+    const child = spawn(process.execPath, [respawnerPath], {
+      cwd: dir,
+      detached: true,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
     child.unref();
     await readFirstLine(child.stdout);
     cleanupPids.push(child.pid ?? 0);
