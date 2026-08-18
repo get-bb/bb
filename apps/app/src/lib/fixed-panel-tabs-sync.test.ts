@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createBrowserFixedPanelTab,
   createEmptyFixedPanelTabsState,
+  createNewTabFixedPanelTab,
   createThreadInfoFixedPanelTab,
   getFixedPanelTabsStateStorageKey,
   serializeFixedPanelTabsState,
@@ -127,7 +128,40 @@ describe("fixed panel tab server sync", () => {
     });
     expect(result.current).toMatchObject({
       lastUsedAt,
-      secondary: { activeTabId: null, isOpen: true },
+      secondary: { activeTabId: remoteTab.id, isOpen: true },
+    });
+  });
+
+  it("restores New tab when an open thread has no persisted tabs", async () => {
+    const threadId = "sync-open-empty-panel";
+    const lastUsedAt = Date.now();
+    window.localStorage.setItem(
+      getFixedPanelTabsStateStorageKey({ threadId }),
+      serializeFixedPanelTabsState({
+        state: createEmptyFixedPanelTabsState({
+          lastUsedAt,
+          secondary: {
+            activeTabId: null,
+            isOpen: true,
+            tabs: [],
+          },
+        }),
+      }),
+    );
+    apiMocks.getThreadTabs.mockResolvedValue({ revision: 2, tabs: [] });
+    const queryClient = createTestQueryClient();
+    const { result } = renderHook(
+      () => useFixedPanelTabsState(threadId, threadId),
+      { wrapper: createQueryWrapper(queryClient) },
+    );
+
+    await waitFor(() => expect(apiMocks.getThreadTabs).toHaveBeenCalled());
+
+    const newTab = createNewTabFixedPanelTab();
+    expect(result.current.secondary).toEqual({
+      activeTabId: newTab.id,
+      isOpen: true,
+      tabs: [newTab],
     });
   });
 

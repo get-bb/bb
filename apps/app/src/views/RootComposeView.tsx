@@ -1361,19 +1361,6 @@ function RootComposeSurface({
       rootPanelThreadId,
     ],
   );
-  useEffect(() => {
-    if (!isSecondaryPanelOpen) {
-      return;
-    }
-    if (
-      activeFixedSecondaryTab !== null &&
-      activeFixedSecondaryTab.kind !== "thread-info" &&
-      activeFixedSecondaryTab.kind !== "git-diff"
-    ) {
-      return;
-    }
-    openTab({ kind: "new-tab" });
-  }, [activeFixedSecondaryTab, isSecondaryPanelOpen, openTab]);
   const openBrowserTab = useCallback(
     (url?: string) => {
       const browserUrl = url ?? "";

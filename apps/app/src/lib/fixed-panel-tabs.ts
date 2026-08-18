@@ -12,6 +12,7 @@ import {
   createGitDiffFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
+  ensureOpenFixedPanelHasActiveTab,
   getFixedPanelTabsStateStorageKey,
   parseFixedPanelTabsState,
   pruneFixedPanelTabsStorage,
@@ -241,7 +242,9 @@ export function useFixedPanelTabsState(
       return;
     }
     setState((current) =>
-      reconcileFixedPanelTabsState(current, tabsQuery.data.tabs),
+      ensureOpenFixedPanelHasActiveTab(
+        reconcileFixedPanelTabsState(current, tabsQuery.data.tabs),
+      ),
     );
   }, [
     queryClient,
@@ -266,7 +269,7 @@ export function useUpdateFixedPanelTabsState(
       const now = Date.now();
       let tabsToPersist: readonly FixedPanelTab[] | null = null;
       setState((current) => {
-        const next = update(current);
+        const next = ensureOpenFixedPanelHasActiveTab(update(current));
         if (next === current) {
           return current;
         }

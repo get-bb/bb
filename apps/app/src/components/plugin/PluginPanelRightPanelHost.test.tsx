@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import { getFixedPanelTabsStateStorageKey } from "@/lib/fixed-panel-tabs-state";
 import { PluginPanelRightPanelHost } from "./PluginPanelRightPanelHost";
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
 
@@ -301,6 +302,38 @@ describe("PluginPanelRightPanelHost", () => {
     expect(
       screen.queryByRole("button", { name: "Show right panel" }),
     ).toBeNull();
+  });
+
+  it("restores New tab from shared panel state after a refresh", async () => {
+    const firstRender = renderHost();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Show right panel" }),
+    );
+    expect(await screen.findByTestId("plugin-page-new-tab")).toBeTruthy();
+
+    const panelStateId = getPluginPagePanelStateId({
+      panelPath: "board",
+      pluginId: "demo",
+    });
+    const storedValue = localStorage.getItem(
+      getFixedPanelTabsStateStorageKey({ threadId: panelStateId }),
+    );
+    if (storedValue === null) {
+      throw new Error("Expected open plugin panel state to be persisted");
+    }
+    expect(JSON.parse(storedValue)).toMatchObject({
+      secondary: { activeTabId: null, isOpen: true, tabs: [] },
+    });
+
+    firstRender.unmount();
+    renderHost();
+
+    expect(
+      screen.getByTestId("shared-secondary-panel-region").hasAttribute(
+        "hidden",
+      ),
+    ).toBe(false);
+    expect(await screen.findByTestId("plugin-page-new-tab")).toBeTruthy();
   });
 
   it("asks for a terminal target instead of guessing one", async () => {

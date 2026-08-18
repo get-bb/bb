@@ -6,11 +6,13 @@ import {
   createBrowserFixedPanelTab,
   createEmptyFixedPanelTabsState,
   createHostFilePreviewFixedPanelTab,
+  createNewTabFixedPanelTab,
   createPluginPanelFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
   createThreadStorageFilePreviewFixedPanelTab,
   createWorkspaceFilePreviewFixedPanelTab,
+  ensureOpenFixedPanelHasActiveTab,
   getFixedPanelTabsStateStorageKey,
   isFixedPanelTabsStateStorageKey,
   parseFixedPanelTabsState,
@@ -118,6 +120,55 @@ describe("fixed-panel-tabs-state", () => {
     });
 
     expect(parsed).toBe(initialValue);
+  });
+
+  it("restores the transient New tab when an open panel is hydrated", () => {
+    const newTab = createNewTabFixedPanelTab();
+    const state: FixedPanelTabsState = {
+      version: FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
+      secondary: {
+        activeTabId: newTab.id,
+        isOpen: true,
+        tabs: [newTab],
+      },
+      lastUsedAt: NOW,
+    };
+
+    const storedValue = serializeFixedPanelTabsState({ state });
+    expect(JSON.parse(storedValue)).toMatchObject({
+      secondary: { activeTabId: null, isOpen: true, tabs: [] },
+    });
+
+    const parsed = parseFixedPanelTabsState({
+      initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
+      now: NOW,
+      storedValue,
+    });
+
+    expect(parsed.secondary).toEqual({
+      activeTabId: newTab.id,
+      isOpen: true,
+      tabs: [newTab],
+    });
+  });
+
+  it("selects an existing tab before creating the open-panel fallback", () => {
+    const infoTab = createThreadInfoFixedPanelTab();
+    const state: FixedPanelTabsState = {
+      version: FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
+      secondary: {
+        activeTabId: "missing",
+        isOpen: true,
+        tabs: [infoTab],
+      },
+      lastUsedAt: NOW,
+    };
+
+    expect(ensureOpenFixedPanelHasActiveTab(state).secondary).toEqual({
+      activeTabId: infoTab.id,
+      isOpen: true,
+      tabs: [infoTab],
+    });
   });
 
   it("recognizes old versioned storage keys for pruning", () => {

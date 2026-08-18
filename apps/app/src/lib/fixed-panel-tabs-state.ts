@@ -712,6 +712,41 @@ export function createNewTabFixedPanelTab(): NewTabFixedPanelTab {
   };
 }
 
+/**
+ * Runtime invariant shared by every fixed secondary-panel host: an open panel
+ * always has an active tab. New tab is transient in storage, so hydration can
+ * legitimately produce an open group with no tabs and must restore it here.
+ */
+export function ensureOpenFixedPanelHasActiveTab(
+  state: FixedPanelTabsState,
+): FixedPanelTabsState {
+  if (!state.secondary.isOpen) {
+    return state;
+  }
+
+  const activeTab = state.secondary.tabs.find(
+    (tab) => tab.id === state.secondary.activeTabId,
+  );
+  if (activeTab !== undefined) {
+    return state;
+  }
+
+  const fallbackTab =
+    state.secondary.tabs[0] ?? createNewTabFixedPanelTab();
+  const tabs =
+    state.secondary.tabs.length > 0
+      ? state.secondary.tabs
+      : [fallbackTab];
+  return {
+    ...state,
+    secondary: {
+      ...state.secondary,
+      activeTabId: fallbackTab.id,
+      tabs,
+    },
+  };
+}
+
 export function createTerminalFixedPanelTab({
   terminalId,
   target,
@@ -1013,7 +1048,7 @@ function parseFixedPanelTabsStateForStorage({
 
   return {
     shouldPrune: false,
-    state: normalizedState,
+    state: ensureOpenFixedPanelHasActiveTab(normalizedState),
   };
 }
 
