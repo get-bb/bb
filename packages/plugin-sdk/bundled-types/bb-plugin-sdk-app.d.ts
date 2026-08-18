@@ -89,112 +89,112 @@ declare const permissionModeSchema: z.ZodEnum<{
 }>;
 type PermissionMode = z.infer<typeof permissionModeSchema>;
 declare const promptInputSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
-    visibility: z.ZodOptional<z.ZodEnum<{
-        "agent-only": "agent-only";
-    }>>;
-    type: z.ZodLiteral<"text">;
-    text: z.ZodString;
     mentions: z.ZodDefault<z.ZodArray<z.ZodObject<{
-        start: z.ZodNumber;
         end: z.ZodNumber;
         resource: z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodDiscriminatedUnion<[z.ZodObject<{
             kind: z.ZodLiteral<"thread">;
-            threadId: z.ZodString;
-            projectId: z.ZodOptional<z.ZodString>;
             label: z.ZodString;
+            projectId: z.ZodOptional<z.ZodString>;
+            threadId: z.ZodString;
         }, z.core.$strip>, z.ZodObject<{
             kind: z.ZodLiteral<"project">;
-            projectId: z.ZodString;
             label: z.ZodString;
+            projectId: z.ZodString;
         }, z.core.$strip>, z.ZodObject<{
             kind: z.ZodLiteral<"section">;
-            sectionId: z.ZodString;
             label: z.ZodString;
+            sectionId: z.ZodString;
         }, z.core.$strip>, z.ZodObject<{
-            kind: z.ZodLiteral<"path">;
-            source: z.ZodEnum<{
-                "thread-storage": "thread-storage";
-                workspace: "workspace";
-            }>;
             entryKind: z.ZodEnum<{
                 directory: "directory";
                 file: "file";
             }>;
-            path: z.ZodString;
+            kind: z.ZodLiteral<"path">;
             label: z.ZodString;
-        }, z.core.$strip>, z.ZodObject<{
-            kind: z.ZodLiteral<"command">;
-            trigger: z.ZodEnum<{
-                "/": "/";
-            }>;
-            name: z.ZodString;
+            path: z.ZodString;
             source: z.ZodEnum<{
-                command: "command";
-                skill: "skill";
+                "thread-storage": "thread-storage";
+                workspace: "workspace";
             }>;
+        }, z.core.$strip>, z.ZodObject<{
+            argumentHint: z.ZodNullable<z.ZodString>;
+            kind: z.ZodLiteral<"command">;
+            label: z.ZodString;
+            name: z.ZodString;
             origin: z.ZodEnum<{
                 builtin: "builtin";
                 project: "project";
                 user: "user";
             }>;
-            label: z.ZodString;
-            argumentHint: z.ZodNullable<z.ZodString>;
+            source: z.ZodEnum<{
+                command: "command";
+                skill: "skill";
+            }>;
+            trigger: z.ZodEnum<{
+                "/": "/";
+            }>;
         }, z.core.$strip>, z.ZodObject<{
-            kind: z.ZodLiteral<"plugin">;
-            pluginId: z.ZodString;
             icon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
             itemId: z.ZodString;
+            kind: z.ZodLiteral<"plugin">;
             label: z.ZodString;
+            pluginId: z.ZodString;
         }, z.core.$strip>], "kind">>;
+        start: z.ZodNumber;
     }, z.core.$strip>>>;
-}, z.core.$strip>, z.ZodObject<{
+    text: z.ZodString;
+    type: z.ZodLiteral<"text">;
     visibility: z.ZodOptional<z.ZodEnum<{
         "agent-only": "agent-only";
     }>>;
+}, z.core.$strip>, z.ZodObject<{
     type: z.ZodLiteral<"image">;
     url: z.ZodString;
-}, z.core.$strip>, z.ZodObject<{
     visibility: z.ZodOptional<z.ZodEnum<{
         "agent-only": "agent-only";
     }>>;
+}, z.core.$strip>, z.ZodObject<{
+    path: z.ZodString;
     type: z.ZodLiteral<"localImage">;
-    path: z.ZodString;
-}, z.core.$strip>, z.ZodObject<{
     visibility: z.ZodOptional<z.ZodEnum<{
         "agent-only": "agent-only";
     }>>;
-    type: z.ZodLiteral<"localFile">;
-    path: z.ZodString;
-    name: z.ZodOptional<z.ZodString>;
-    sizeBytes: z.ZodOptional<z.ZodNumber>;
+}, z.core.$strip>, z.ZodObject<{
     mimeType: z.ZodOptional<z.ZodString>;
+    name: z.ZodOptional<z.ZodString>;
+    path: z.ZodString;
+    sizeBytes: z.ZodOptional<z.ZodNumber>;
+    type: z.ZodLiteral<"localFile">;
+    visibility: z.ZodOptional<z.ZodEnum<{
+        "agent-only": "agent-only";
+    }>>;
 }, z.core.$strip>], "type">;
 type PromptInput = z.infer<typeof promptInputSchema>;
 
 declare const createThreadEnvironmentArgsSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
-    type: z.ZodLiteral<"reuse">;
     environmentId: z.ZodString;
+    type: z.ZodLiteral<"reuse">;
 }, z.core.$strip>, z.ZodObject<{
-    type: z.ZodLiteral<"host">;
     hostId: z.ZodOptional<z.ZodString>;
+    type: z.ZodLiteral<"host">;
     workspace: z.ZodDiscriminatedUnion<[z.ZodObject<{
-        type: z.ZodLiteral<"unmanaged">;
-        path: z.ZodNullable<z.ZodString>;
         branch: z.ZodOptional<z.ZodDiscriminatedUnion<[z.ZodObject<{
             kind: z.ZodLiteral<"existing">;
             name: z.ZodString;
         }, z.core.$strict>, z.ZodObject<{
-            kind: z.ZodLiteral<"new">;
             baseBranch: z.ZodString;
+            kind: z.ZodLiteral<"new">;
         }, z.core.$strict>], "kind">>;
+        path: z.ZodNullable<z.ZodString>;
+        type: z.ZodLiteral<"unmanaged">;
     }, z.core.$strip>, z.ZodObject<{
-        type: z.ZodLiteral<"managed-worktree">;
         baseBranch: z.ZodDiscriminatedUnion<[z.ZodObject<{
             kind: z.ZodLiteral<"named">;
             name: z.ZodString;
         }, z.core.$strip>, z.ZodObject<{
             kind: z.ZodLiteral<"default">;
         }, z.core.$strip>], "kind">;
+        type: z.ZodLiteral<"managed-worktree">;
     }, z.core.$strip>, z.ZodObject<{
         type: z.ZodLiteral<"personal">;
     }, z.core.$strip>], "type">;
@@ -204,15 +204,15 @@ declare const createThreadEnvironmentArgsSchema: z.ZodDiscriminatedUnion<[z.ZodO
 type CreateThreadEnvironmentArgs = z.infer<typeof createThreadEnvironmentArgsSchema>;
 
 declare const createExecutionInputSourcesSchema: z.ZodObject<{
-    providerId: z.ZodOptional<z.ZodEnum<{
-        "client-preference": "client-preference";
-        explicit: "explicit";
-    }>>;
     model: z.ZodOptional<z.ZodEnum<{
         "client-preference": "client-preference";
         explicit: "explicit";
     }>>;
-    serviceTier: z.ZodOptional<z.ZodEnum<{
+    permissionMode: z.ZodOptional<z.ZodEnum<{
+        "client-preference": "client-preference";
+        explicit: "explicit";
+    }>>;
+    providerId: z.ZodOptional<z.ZodEnum<{
         "client-preference": "client-preference";
         explicit: "explicit";
     }>>;
@@ -220,7 +220,7 @@ declare const createExecutionInputSourcesSchema: z.ZodObject<{
         "client-preference": "client-preference";
         explicit: "explicit";
     }>>;
-    permissionMode: z.ZodOptional<z.ZodEnum<{
+    serviceTier: z.ZodOptional<z.ZodEnum<{
         "client-preference": "client-preference";
         explicit: "explicit";
     }>>;

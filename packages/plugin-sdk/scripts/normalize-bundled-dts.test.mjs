@@ -3,14 +3,17 @@ import { describe, expect, it } from "vitest";
 import { normalizeBundledDts } from "./normalize-bundled-dts.mjs";
 
 describe("normalizeBundledDts", () => {
-  it("sorts inferred Zod enum maps without reordering other type members", () => {
+  it("recursively sorts inferred Zod object and enum maps", () => {
     const input = `declare const schema: z.ZodObject<{
     second: z.ZodEnum<{
         zebra: "zebra";
         "accept-edits": "accept-edits";
         auto: "auto";
     }>;
-    first: z.ZodString;
+    first: z.ZodObject<{
+        zebra: z.ZodString;
+        alpha: z.ZodString;
+    }>;
 }>;
 type Unrelated = {
     zebra: string;
@@ -19,12 +22,15 @@ type Unrelated = {
 `;
 
     expect(normalizeBundledDts(input)).toBe(`declare const schema: z.ZodObject<{
+    first: z.ZodObject<{
+        alpha: z.ZodString;
+        zebra: z.ZodString;
+    }>;
     second: z.ZodEnum<{
         "accept-edits": "accept-edits";
         auto: "auto";
         zebra: "zebra";
     }>;
-    first: z.ZodString;
 }>;
 type Unrelated = {
     zebra: string;
@@ -33,14 +39,22 @@ type Unrelated = {
 `);
   });
 
-  it("normalizes equivalent enum maps and quoted literal unions identically", () => {
+  it("normalizes equivalent Zod maps and quoted literal unions identically", () => {
     const first = `type Choice = "zebra" | "alpha";
+declare const objectSchema: z.ZodObject<{
+    zebra: z.ZodString;
+    alpha: z.ZodString;
+}>;
 declare const schema: z$1.ZodEnum<{
     zebra: "zebra";
     alpha: "alpha";
 }>;
 `;
     const second = `type Choice = "alpha" | "zebra";
+declare const objectSchema: z.ZodObject<{
+    alpha: z.ZodString;
+    zebra: z.ZodString;
+}>;
 declare const schema: z$1.ZodEnum<{
     alpha: "alpha";
     zebra: "zebra";

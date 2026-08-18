@@ -11,7 +11,24 @@ function normalizeQuotedLiteralUnions(content) {
   );
 }
 
-function normalizeZodEnumMaps(content) {
+const UNORDERED_ZOD_TYPE_LITERALS = new Set(["ZodEnum", "ZodObject"]);
+
+function applyReplacements(content, rangeStart, rangeEnd, replacements) {
+  if (replacements.length === 0) return content.slice(rangeStart, rangeEnd);
+
+  const chunks = [];
+  let cursor = rangeStart;
+  for (const replacement of [...replacements].sort(
+    (a, b) => a.start - b.start,
+  )) {
+    chunks.push(content.slice(cursor, replacement.start), replacement.text);
+    cursor = replacement.end;
+  }
+  chunks.push(content.slice(cursor, rangeEnd));
+  return chunks.join("");
+}
+
+function normalizeZodTypeLiterals(content) {
   const sourceFile = ts.createSourceFile(
     "bundled.d.ts",
     content,
@@ -19,58 +36,81 @@ function normalizeZodEnumMaps(content) {
     true,
     ts.ScriptKind.TS,
   );
-  const replacements = [];
+  const roots = [];
 
-  function visit(node) {
+  function visit(node, parentTarget) {
+    let target = parentTarget;
     if (
-      ts.isTypeReferenceNode(node) &&
-      typeReferenceName(node.typeName) === "ZodEnum"
+      ts.isTypeLiteralNode(node) &&
+      ts.isTypeReferenceNode(node.parent) &&
+      node.parent.typeArguments?.[0] === node &&
+      UNORDERED_ZOD_TYPE_LITERALS.has(
+        typeReferenceName(node.parent.typeName),
+      ) &&
+      node.members.length > 1 &&
+      node.members.every(ts.isPropertySignature)
     ) {
-      const enumMap = node.typeArguments?.[0];
-      if (
-        enumMap &&
-        ts.isTypeLiteralNode(enumMap) &&
-        enumMap.members.length > 1 &&
-        enumMap.members.every(ts.isPropertySignature)
-      ) {
-        const members = enumMap.members.map((member) => ({
-          start: member.getStart(sourceFile),
-          end: member.getEnd(),
-          sortKey: member.name.getText(sourceFile),
-          text: content.slice(member.getStart(sourceFile), member.getEnd()),
-        }));
-        const sorted = [...members].sort((a, b) => {
-          if (a.sortKey < b.sortKey) return -1;
-          if (a.sortKey > b.sortKey) return 1;
-          if (a.text < b.text) return -1;
-          if (a.text > b.text) return 1;
-          return 0;
-        });
-
-        for (let index = 0; index < members.length; index += 1) {
-          if (members[index].text === sorted[index].text) continue;
-          replacements.push({
-            start: members[index].start,
-            end: members[index].end,
-            text: sorted[index].text,
-          });
-        }
-      }
+      target = { node, children: [] };
+      if (parentTarget) parentTarget.children.push(target);
+      else roots.push(target);
     }
-    ts.forEachChild(node, visit);
+    ts.forEachChild(node, (child) => visit(child, target));
   }
 
-  visit(sourceFile);
+  visit(sourceFile, null);
 
-  return replacements
-    .sort((a, b) => b.start - a.start)
-    .reduce(
-      (normalized, replacement) =>
-        normalized.slice(0, replacement.start) +
-        replacement.text +
-        normalized.slice(replacement.end),
+  function renderTarget(target) {
+    const members = target.node.members.map((member) => {
+      const start = member.getStart(sourceFile);
+      const end = member.getEnd();
+      const nestedReplacements = target.children
+        .filter(
+          (child) =>
+            child.node.getStart(sourceFile) >= start &&
+            child.node.getEnd() <= end,
+        )
+        .map((child) => ({
+          start: child.node.getStart(sourceFile),
+          end: child.node.getEnd(),
+          text: renderTarget(child),
+        }));
+      return {
+        start,
+        end,
+        sortKey: member.name.getText(sourceFile),
+        text: applyReplacements(content, start, end, nestedReplacements),
+      };
+    });
+    const sorted = [...members].sort((a, b) => {
+      if (a.sortKey < b.sortKey) return -1;
+      if (a.sortKey > b.sortKey) return 1;
+      if (a.text < b.text) return -1;
+      if (a.text > b.text) return 1;
+      return 0;
+    });
+    const replacements = members.map((member, index) => ({
+      start: member.start,
+      end: member.end,
+      text: sorted[index].text,
+    }));
+    return applyReplacements(
       content,
+      target.node.getStart(sourceFile),
+      target.node.getEnd(),
+      replacements,
     );
+  }
+
+  return applyReplacements(
+    content,
+    0,
+    content.length,
+    roots.map((root) => ({
+      start: root.node.getStart(sourceFile),
+      end: root.node.getEnd(),
+      text: renderTarget(root),
+    })),
+  );
 }
 
 /**
@@ -78,5 +118,5 @@ function normalizeZodEnumMaps(content) {
  * emitted inconsistently by TypeScript/rollup-plugin-dts.
  */
 export function normalizeBundledDts(content) {
-  return normalizeZodEnumMaps(normalizeQuotedLiteralUnions(content));
+  return normalizeZodTypeLiterals(normalizeQuotedLiteralUnions(content));
 }
