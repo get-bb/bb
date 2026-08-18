@@ -181,6 +181,13 @@ canonical_data_dir=$(node -e '
 # Keep the package private to this enrollment. Besides avoiding system-prefix
 # permissions, this lets one machine follow servers running different builds.
 machine_npm_prefix="$canonical_data_dir/npm"
+# bb-app depends on native add-ons whose binaries are fetched or built by npm
+# lifecycle scripts. npm >= 12 blocks dependency install scripts by default
+# for global installs unless they are named in --allow-scripts (the installed
+# package's own package.json#allowScripts is not consulted for -g / npx).
+# npm 10 ignores the unknown flag; npm 11 accepts it.
+bb_app_native_modules="better-sqlite3,node-pty,@parcel/watcher"
+bb_app_allow_scripts="--allow-scripts=$bb_app_native_modules"
 port_registry_dir="$HOME/.bb-machines/host-daemon-ports"
 mkdir -p "$port_registry_dir"
 
@@ -388,7 +395,7 @@ if [ "$package_status" -ge 200 ] && [ "$package_status" -lt 300 ]; then
   require_npm
   complete_step "Downloaded the server's bb-app package"
   active_step "Installing the server's bb-app build"
-  if ! npm install -g --prefix "$machine_npm_prefix" "$package_file"; then
+  if ! npm install -g "$bb_app_allow_scripts" --prefix "$machine_npm_prefix" "$package_file"; then
     rm -rf "$package_dir"
     fail_step "Could not install bb-app for this machine. Check the npm error above, then rerun this command."
     exit 1
@@ -406,7 +413,7 @@ elif [ "$package_status" = 404 ]; then
   require_npm
   warning_step "The server does not provide its bb-app package"
   active_step "Installing bb-app from the npm registry"
-  if ! npm install -g --prefix "$machine_npm_prefix" bb-app; then
+  if ! npm install -g "$bb_app_allow_scripts" --prefix "$machine_npm_prefix" bb-app; then
     rm -rf "$package_dir"
     fail_step "Could not install bb-app for this machine. Check the npm error above, then rerun this command."
     exit 1
@@ -424,6 +431,19 @@ if [ -n "$bb_app_npm_prefix" ]; then
   bb_app="$bb_app_npm_prefix/bin/bb-app"
   if [ ! -x "$bb_app" ]; then
     fail_step "npm installed bb-app, but did not create the expected executable at $bb_app."
+    exit 1
+  fi
+  # Fail loudly if npm skipped the native add-on install scripts (npm >= 12
+  # allowScripts policy, or ignore-scripts=true in an npmrc). Without this
+  # check the join only fails later, in the daemon, with a raw stack trace.
+  bb_app_root="$bb_app_npm_prefix/lib/node_modules/bb-app"
+  if ! node -e '
+    const root = process.argv[1];
+    require(root + "/node_modules/better-sqlite3");
+    require(root + "/node_modules/node-pty");
+  ' "$bb_app_root" >/dev/null 2>&1; then
+    fail_step "npm installed bb-app, but its native add-ons (better-sqlite3, node-pty) did not load."
+    detail "npm did not run their install scripts. Check the npm warnings above. If they mention allowScripts or ignore-scripts, rerun this command with: npm_config_allow_scripts=$bb_app_native_modules npm_config_ignore_scripts=false" >&2
     exit 1
   fi
 fi

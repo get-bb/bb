@@ -437,6 +437,45 @@ describe("FollowUpPromptBox", () => {
     expect(queuedMessages.previousElementSibling).toBe(pluginHeaderRoot);
   });
 
+  it("does not mount plugin banners for a retained inactive composer without a real scope", () => {
+    setPluginSlotRegistrations("inactive-banner", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [],
+      threadPanelActions: [],
+      composerCustomizations: [
+        {
+          id: "inactive",
+          banners: [
+            {
+              id: "banner",
+              component: () => (
+                <div data-testid="inactive-plugin-banner">Plugin banner</div>
+              ),
+            },
+          ],
+        },
+      ],
+      pendingInteractions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+    });
+
+    render(
+      <FollowUpPromptBox
+        {...createFollowUpPromptBoxProps({ kind: "ready" })}
+        stack={<div data-testid="retained-native-stack">Queued messages</div>}
+        pluginComposerHost={null}
+        pluginComposerScope={null}
+        suppressPluginComposerCustomizations
+      />,
+    );
+
+    expect(screen.getByTestId("retained-native-stack")).toBeTruthy();
+    expect(screen.queryByTestId("inactive-plugin-banner")).toBeNull();
+  });
+
   it("keeps the bottom composer mounted when its stack changes", () => {
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
 

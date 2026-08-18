@@ -1,10 +1,15 @@
 import type Database from "better-sqlite3";
 import type { Context } from "hono";
 import type * as z from "zod";
+import type { ProviderFork } from "@bb/domain/provider-fork";
 import type { BbSdk } from "@bb/sdk";
 import type { ThreadResponse } from "@bb/server-contract";
 import type { JsonValue } from "./json-value.js";
 import type { PluginRpcContract, PluginRpcHandlers } from "./rpc-contract.js";
+import type {
+  ExperimentalHostClient,
+  ExperimentalHostSignals,
+} from "./host-contract.js";
 
 /**
  * The backend plugin API contract — the `bb` object handed to a plugin's
@@ -412,6 +417,19 @@ export interface PluginAgentConfigurationContext {
   provider: {
     id: string;
     model: string;
+    /**
+     * The provider's declared capabilities, so a plugin can decide what to
+     * contribute from what the provider says it does rather than from its own
+     * copy of a provider id list.
+     */
+    capabilities: {
+      /**
+       * The provider ships its own user-question affordance and bb routes it
+       * into the pending-interaction path. A plugin offering the same thing
+       * should withhold it here, or the model gets two ways to ask once.
+       */
+      supportsNativeUserQuestion: boolean;
+    };
   };
   /** How the thread was spawned. A side chat is the builtin side-chat
    * plugin's fork: `{ kind: "fork", pluginId: "side-chat" }`. */
@@ -431,7 +449,7 @@ export interface PluginAgentToolSelection {
    * 128 KiB serialized) sent to the provider in place of the registered
    * parameter schema. Execution-side validation still runs the registered
    * parameters, so the override must only narrow what the registered schema
-   * already accepts. */
+   * already accepts. Recursive local `$ref` chains are rejected. */
   parameters: Record<string, unknown>;
 }
 
@@ -447,6 +465,123 @@ export interface PluginAgentConfiguration {
   skills: string[];
   /** Optional dynamic instructions. Output is truncated to 4096 characters. */
   instructions?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Agent provider declarations (plans/agent-provider-plugin-surface.md §3).
+// ---------------------------------------------------------------------------
+
+/**
+ * Permission modes a provider can run a session in — BB's own permission
+ * vocabulary, ordered least ("accept-edits") to most ("full") privileged.
+ */
+export type PluginProviderPermissionMode = "accept-edits" | "auto" | "full";
+
+/**
+ * Coarse reasoning-effort ladder entries, ordered lowest to highest. The
+ * declared ladder is a fallback only: precise per-model reasoning sets come
+ * from the provider's model list at runtime.
+ */
+export type PluginProviderReasoningLevel =
+  | "none"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "ultracode"
+  | "max"
+  | "ultra";
+
+/**
+ * Composer actions a provider supports, by name only. The skills
+ * slash-command typeahead is universal — BB injects skills into every
+ * provider — so it is implicit and never declared, and the composer owns the
+ * trigger syntax (`/plan `, `/goal `) rather than each declaration repeating
+ * it.
+ */
+export type PluginProviderComposerAction = "plan" | "goal";
+
+/**
+ * Pre-session capability facts about a provider. A capability earns a field
+ * here only when it passes BOTH tests: (1) a consumer outside the provider's
+ * own plugin needs the fact, and (2) the fact is needed before / without a
+ * live session (picker rendering, route gating, cross-plugin tool
+ * composition — including with the host offline). Every boolean is a
+ * provider-native fact — the provider implements the feature; the flag only
+ * tells external consumers it exists. Everything else is a handshake fact the
+ * bridge reports at `initialize`, where it cannot drift from behavior.
+ */
+export interface PluginProviderCapabilities {
+  /** The provider accepts a fast/priority service-tier choice — shows the
+   * service-tier toggle in the picker. */
+  supportsServiceTier: boolean;
+  /** The provider ships its own native ask-user-question tool — the
+   * ask-user-question plugin skips registering its duplicate. */
+  supportsNativeUserQuestion: boolean;
+  /**
+   * How completely the provider can clone a session: `"none"` (not at all),
+   * `"tip"` (only the current end, so thread fork works but edit-past-message
+   * rewind cannot), or `"checkpoint"` (recreate the session at an earlier
+   * point, which rewind needs). Gates the fork and edit-past-message
+   * affordances. The bridge reports the same fact at `initialize`, where it
+   * may narrow this declaration but never widen it.
+   */
+  fork: ProviderFork;
+  /** The provider accepts an explicit context-compaction request — gates the
+   * compact affordance. */
+  supportsManualCompaction: boolean;
+  /** The provider keeps its own thread archive, so BB mirrors archive and
+   * unarchive onto it instead of tracking the state only in bb's own rows. */
+  supportsThreadArchive: boolean;
+  /** The provider stores a thread name of its own, so BB forwards renames to
+   * it. */
+  supportsThreadRename: boolean;
+  /** The provider can run BB's Workflow tools — gates the workflows opt-in on
+   * new threads. */
+  supportsWorkflows: boolean;
+  /** Permission modes the provider can actually run in. Non-empty, no
+   * duplicates. */
+  permissionModes: readonly PluginProviderPermissionMode[];
+  /** The provider's coarse fallback reasoning ladder (see
+   * {@link PluginProviderReasoningLevel}). Non-empty, no duplicates. */
+  reasoningLevels: readonly PluginProviderReasoningLevel[];
+}
+
+/**
+ * One provider this plugin contributes to BB's provider registry.
+ *
+ * Ids are stable public identifiers — thread rows and routes reference them —
+ * and are collision-rejected: a declaration whose id matches another plugin's
+ * live registration, or reserves a first-party provider it does not own, is
+ * refused. Registrations are replaced wholesale on plugin reload, like every
+ * other plugin surface.
+ *
+ * A declaration is metadata only. The implementation is the plugin's own
+ * provider bridge, named by `bb.providerBridge` in the manifest and built into
+ * the artifact BB ships to hosts — declaring a provider without one is
+ * refused, because the picker entry would exist and no turn on it could ever
+ * run.
+ */
+export interface PluginProviderDeclaration {
+  /** Stable provider id: 2–64 characters of lowercase letters, digits, and
+   * "-", starting with a letter or digit. Existing ids must never change —
+   * threads persist them. */
+  id: string;
+  /** Picker display name: 1–80 characters, non-blank. */
+  displayName: string;
+  /**
+   * Optional picker icon, in the same grammar as `bb.branding.icon`: either a
+   * named host glyph (`"Zap"`) or a plugin-relative path starting with `"./"`
+   * (`"./icons/agent.svg"`). Paths follow the manifest entry-path escape rules
+   * — no leading "/", no ".." segments, no backslashes.
+   */
+  icon?: string;
+  /** Pre-session capability facts (see the declaration tests on
+   * {@link PluginProviderCapabilities}). */
+  capabilities: PluginProviderCapabilities;
+  /** Composer actions this provider supports. No duplicates; may be empty
+   * (the universal skills typeahead is implicit). */
+  composerActions: readonly PluginProviderComposerAction[];
 }
 
 export interface PluginAgents {
@@ -481,7 +616,9 @@ export interface PluginAgents {
    * start — a tool registered mid-session is not hot-added to running
    * provider sessions. A second registration of the same name within this
    * plugin is rejected; a name already registered by another plugin is
-   * rejected and surfaced as this plugin's status detail.
+   * rejected and surfaced as this plugin's status detail. Recursive local
+   * JSON Schema `$ref` chains are rejected because some model providers reject
+   * the complete tool list when any one tool contains them.
    */
   registerTool<Schema extends z.ZodType>(
     tool: PluginAgentToolRegistrationBase & {
@@ -518,6 +655,20 @@ export interface PluginAgents {
   contributeInstructions(
     provider: (ctx: { threadId: string; projectId: string }) => string | null,
   ): void;
+  /**
+   * Register an agent provider this plugin contributes (experimental — see
+   * docs/api_to_audit.md before relying on it). The declaration is validated
+   * at call time; the provider joins the server's provider registry when the
+   * plugin load commits and then appears in provider listings. Ids are stable
+   * and collision-rejected: an id already claimed by a core provider or
+   * another plugin fails this plugin's load. A plugin may register several
+   * providers and may re-register after `dispose()` (a settings-driven
+   * re-declaration); registrations are replaced wholesale on plugin reload,
+   * like every other surface. The disposer removes the registration.
+   */
+  experimental_registerProvider(declaration: PluginProviderDeclaration): {
+    dispose(): void;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -628,6 +779,15 @@ export interface PluginSharedPortTunnelIdentity {
 }
 
 export interface PluginHosts {
+  /** Create the owning plugin's typed client for its singular `bb.host` entry. */
+  experimental_client<
+    Contract extends PluginRpcContract,
+    Signals extends ExperimentalHostSignals = {},
+  >(args: {
+    contract: Contract;
+    experimental_signals?: Signals;
+  }): ExperimentalHostClient<Contract, Signals>;
+
   /**
    * Ensure this enrolled host has a gate label and return its read-only public
    * identity. The daemon chooses the trusted gate and desired label; plugins

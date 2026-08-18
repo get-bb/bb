@@ -4,6 +4,7 @@ import {
   discoveredWorkspacePropertiesSchema,
   ENVIRONMENT_CHANGE_KINDS,
   hostTypeSchema,
+  jsonValueSchema,
   pendingInteractionCreateSchema,
   pendingInteractionStatusSchema,
   terminalColsSchema,
@@ -94,6 +95,16 @@ export type HostDaemonConnectShares = z.infer<
   typeof hostDaemonConnectSharesSchema
 >;
 
+export const hostDaemonPluginHostGenerationSchema = z
+  .object({
+    pluginId: z.string().min(1),
+    generation: z.string().min(1),
+  })
+  .strict();
+export type HostDaemonPluginHostGeneration = z.infer<
+  typeof hostDaemonPluginHostGenerationSchema
+>;
+
 export const hostDaemonSessionOpenRequestSchema = z.object({
   hostId: z.string().min(1),
   instanceId: z.string().min(1),
@@ -169,6 +180,9 @@ export const hostDaemonSessionOpenResponseSchema = z
       generation: 0,
       ports: [],
     }),
+    pluginHostGenerations: z
+      .array(hostDaemonPluginHostGenerationSchema)
+      .default([]),
     retiredEnvironmentIds: z.array(z.string().min(1)).default([]),
   })
   .strict();
@@ -425,7 +439,9 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("project.inspect"),
     onlineRpcResponseSuccessSchemaFor("project.clone_default_path"),
     onlineRpcResponseSuccessSchemaFor("host.pick_folder"),
-    onlineRpcResponseSuccessSchemaFor("host.caffeinate"),
+    onlineRpcResponseSuccessSchemaFor("plugin.host.call"),
+    onlineRpcResponseSuccessSchemaFor("plugin.host.cancel"),
+    onlineRpcResponseSuccessSchemaFor("plugin.host.dispose"),
     onlineRpcResponseSuccessSchemaFor("connect-tunnel.ensure-identity"),
     onlineRpcResponseSuccessSchemaFor("host.list_commands"),
     onlineRpcResponseSuccessSchemaFor("host.list_skills"),
@@ -634,6 +650,30 @@ export type HostDaemonConnectTunnelIdentityMessage = z.infer<
   typeof hostDaemonConnectTunnelIdentityMessageSchema
 >;
 
+const pluginHostWorkerExitedMessageSchema = z
+  .object({
+    type: z.literal("plugin-host.worker-exited"),
+    pluginId: z.string().min(1),
+    generation: z.string().min(1),
+  })
+  .strict();
+export type PluginHostWorkerExitedMessage = z.infer<
+  typeof pluginHostWorkerExitedMessageSchema
+>;
+
+const pluginHostSignalMessageSchema = z
+  .object({
+    type: z.literal("plugin-host.signal"),
+    pluginId: z.string().min(1),
+    generation: z.string().min(1),
+    signal: z.string().min(1),
+    payload: jsonValueSchema,
+  })
+  .strict();
+export type PluginHostSignalMessage = z.infer<
+  typeof pluginHostSignalMessageSchema
+>;
+
 const hostDaemonTerminalOpenedMessageSchema = z
   .object({
     type: z.literal("terminal.opened"),
@@ -690,6 +730,8 @@ export const hostDaemonDaemonWsMessageSchema = z.union([
   hostDaemonEnvironmentChangeMessageSchema,
   hostDaemonEnvironmentMetadataChangeMessageSchema,
   hostDaemonConnectTunnelIdentityMessageSchema,
+  pluginHostWorkerExitedMessageSchema,
+  pluginHostSignalMessageSchema,
   hostDaemonTerminalOpenedMessageSchema,
   hostDaemonTerminalOutputMessageSchema,
   hostDaemonTerminalReplayMessageSchema,
@@ -794,6 +836,16 @@ export type HostDaemonInternalSchema = {
   "/skills/tree/:hash": {
     /** Used by the daemon to pull a missing server-owned injected skill tree. */
     $get: Endpoint<Record<never, never>, HostDaemonSkillTree, 200>;
+  };
+  "/plugins/:pluginId/host/:digest": {
+    /** Pull the active immutable host bundle for one plugin generation. */
+    $get: Endpoint<Record<never, never>, Uint8Array, 200, "binary">;
+  };
+  "/provider-bridges/:sha256": {
+    /** Used by the daemon to pull a plugin provider's bridge bundle by content
+     *  hash. The daemon verifies the sha256 over the received bytes before
+     *  caching or executing them. Additive route: old daemons never call it. */
+    $get: Endpoint<Record<never, never>, Uint8Array, 200, "binary">;
   };
   "/hosts/enroll-key": {
     /** Used by the local launcher to request one-time bootstrap material for the primary host daemon. */

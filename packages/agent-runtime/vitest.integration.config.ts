@@ -28,6 +28,9 @@ export default defineWorkspaceTestConfig({
     silent: "passed-only",
     name: "@bb/agent-runtime:integration",
     include: ["src/integration*.test.ts"],
+    // Builds the first-party provider bridge artifacts every graduated
+    // provider needs a `bridgeLaunch` for; see integration-global-setup.ts.
+    globalSetup: ["src/test/integration-global-setup.ts"],
     exclude: ["dist/**", "node_modules/**"],
     testTimeout: 45_000,
     hookTimeout: 10_000,

@@ -3,7 +3,7 @@
  *
  * The plugin only depends on `@bb/shared-ui`, so it cannot import from
  * `apps/app`, and moving these into shared-ui was rejected: `provider-icon.ts`
- * would drag `@bb/agent-providers` and eight brand SVGs into a package that
+ * would drag `the provider catalog` and eight brand SVGs into a package that
  * currently has five dependencies and no domain knowledge.
  *
  * `formatModelLabel` and `stripModelBrandPrefix` below are verbatim copies so

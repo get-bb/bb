@@ -1,6 +1,9 @@
 import { z } from "zod";
 import {
   listOpenBackgroundTaskItemRowsForHost,
+  listOpenBackgroundTaskItemRowsForThread,
+  type DbNotifier,
+  type DbTransaction,
   type OpenBackgroundTaskItemRow,
 } from "@bb/db";
 import {
@@ -18,6 +21,11 @@ export interface SettleDanglingBackgroundTasksArgs {
 }
 
 type SettleDanglingBackgroundTasksDeps = Pick<AppDeps, "db" | "hub" | "logger">;
+type SettleDanglingBackgroundTasksTransactionDeps = {
+  db: DbTransaction;
+  hub: DbNotifier;
+  logger: AppDeps["logger"];
+};
 
 const storedBackgroundTaskEventDataSchema = z.object({
   item: threadEventBackgroundTaskItemSchema,
@@ -63,37 +71,11 @@ export function settleDanglingBackgroundTasks(
   const settledThreadIds = new Set<string>();
   deps.db.transaction(
     (tx) => {
-      for (const row of rows) {
-        const item = parseStoredBackgroundTaskItem(row);
-        if (!item) {
-          deps.logger.warn(
-            { itemId: row.itemId, threadId: row.threadId },
-            "Skipping dangling background task with unparsable item payload",
-          );
-          continue;
-        }
-        const providerThreadId = row.providerThreadId ?? "";
-        const taskStatus = isSettledBackgroundTaskStatus(item.taskStatus)
-          ? item.taskStatus
-          : "stopped";
-        appendThreadEventsInTransaction(tx, [
-          {
-            threadId: row.threadId,
-            environmentId: row.environmentId,
-            providerThreadId,
-            type: "item/backgroundTask/completed",
-            scope: threadScope(),
-            data: {
-              providerThreadId,
-              item: {
-                ...item,
-                status: backgroundTaskItemStatus(taskStatus),
-                taskStatus,
-              },
-            },
-          },
-        ]);
-        settledThreadIds.add(row.threadId);
+      for (const threadId of appendDanglingBackgroundTaskCompletions(
+        { db: tx, logger: deps.logger },
+        rows,
+      )) {
+        settledThreadIds.add(threadId);
       }
     },
     { behavior: "immediate" },
@@ -104,4 +86,63 @@ export function settleDanglingBackgroundTasks(
       eventTypes: ["item/backgroundTask/completed"],
     });
   }
+}
+
+/**
+ * Settles tasks whose process was successfully released by thread.stop. This
+ * runs inside command-result settlement so the completion rows and the stop
+ * result commit atomically; the command's event sink has already flushed any
+ * real provider completions, making the query idempotent.
+ */
+export function settleDanglingBackgroundTasksForStoppedThreadInTransaction(
+  deps: SettleDanglingBackgroundTasksTransactionDeps,
+  args: { threadId: string },
+): void {
+  const rows = listOpenBackgroundTaskItemRowsForThread(deps.db, args);
+  const settledThreadIds = appendDanglingBackgroundTaskCompletions(deps, rows);
+  for (const threadId of settledThreadIds) {
+    deps.hub.notifyThread(threadId, ["events-appended"], {
+      eventTypes: ["item/backgroundTask/completed"],
+    });
+  }
+}
+
+function appendDanglingBackgroundTaskCompletions(
+  deps: Pick<SettleDanglingBackgroundTasksTransactionDeps, "db" | "logger">,
+  rows: readonly OpenBackgroundTaskItemRow[],
+): Set<string> {
+  const settledThreadIds = new Set<string>();
+  for (const row of rows) {
+    const item = parseStoredBackgroundTaskItem(row);
+    if (!item) {
+      deps.logger.warn(
+        { itemId: row.itemId, threadId: row.threadId },
+        "Skipping dangling background task with unparsable item payload",
+      );
+      continue;
+    }
+    const providerThreadId = row.providerThreadId ?? "";
+    const taskStatus = isSettledBackgroundTaskStatus(item.taskStatus)
+      ? item.taskStatus
+      : "stopped";
+    appendThreadEventsInTransaction(deps.db, [
+      {
+        threadId: row.threadId,
+        environmentId: row.environmentId,
+        providerThreadId,
+        type: "item/backgroundTask/completed",
+        scope: threadScope(),
+        data: {
+          providerThreadId,
+          item: {
+            ...item,
+            status: backgroundTaskItemStatus(taskStatus),
+            taskStatus,
+          },
+        },
+      },
+    ]);
+    settledThreadIds.add(row.threadId);
+  }
+  return settledThreadIds;
 }

@@ -38,10 +38,6 @@ import {
   ensureDataDirSkillsRootPath,
 } from "./injected-skills.js";
 import {
-  createCaffeinateManager,
-  type CaffeinateManager,
-} from "./command-handlers/caffeinate.js";
-import {
   ServerConnection,
   type HandleServerSessionInvalidatedArgs,
   type ServerSessionInvalidationSource,
@@ -60,6 +56,7 @@ import {
   disposeParcelWatcherBackend,
   type HostWatcher,
 } from "@bb/host-watcher";
+import { PluginHostManager } from "./plugin-host-manager.js";
 
 interface SessionState {
   value: string | null;
@@ -124,7 +121,6 @@ export interface CreateHostDaemonAppOptions {
   releaseLock: () => Promise<void>;
   localApiConfig: HostDaemonLocalApiConfig | null;
   createRuntime?: RuntimeManagerOptions["createRuntime"];
-  caffeinateManager?: CaffeinateManager;
   runtimeShellEnv?: AgentRuntimeOptions["shellEnv"];
   runtimeShellEnvResolvedAtMs?: number;
   resolveRuntimeShellEnv?: () => Promise<
@@ -243,8 +239,6 @@ export async function createHostDaemonApp(
   const dataDirSkillsRootPath = await ensureDataDirSkillsRootPath(
     options.dataDir,
   );
-  const caffeinateManager =
-    options.caffeinateManager ?? createCaffeinateManager();
   await cleanupInjectedSkillStagingDirs({
     dataDir: options.dataDir,
     keepCatalogHashes: [],
@@ -743,6 +737,29 @@ export async function createHostDaemonApp(
     runtimeManager,
     sendMessage: (message) => sendTerminalMessage(message),
   });
+  const pluginHostManager = new PluginHostManager({
+    dataDir: options.dataDir,
+    hostWatcher: options.hostWatcher,
+    logger: options.logger,
+    shellEnv: () => runtimeManager.getShellEnv(),
+    fetchArtifact: (args) =>
+      runSessionRequest({
+        source: "fetchPluginHostArtifact",
+        request: () => serverClient.fetchPluginHostArtifact(args),
+      }),
+    onWorkerExit: (event) => {
+      sendServerMessage({
+        type: "plugin-host.worker-exited",
+        ...event,
+      });
+    },
+    onSignal: (event) => {
+      sendServerMessage({
+        type: "plugin-host.signal",
+        ...event,
+      });
+    },
+  });
 
   const router = new CommandRouter({
     dataDir: options.dataDir,
@@ -755,6 +772,11 @@ export async function createHostDaemonApp(
       runSessionRequest({
         source: "fetchSkillTree",
         request: () => serverClient.fetchSkillTree(treeHash),
+      }),
+    fetchPluginHostArtifact: (args) =>
+      runSessionRequest({
+        source: "fetchPluginHostArtifact",
+        request: () => serverClient.fetchPluginHostArtifact(args),
       }),
     runtimeManager,
     terminalManager,
@@ -769,7 +791,7 @@ export async function createHostDaemonApp(
       interactiveRequestRegistry.resolve(request);
     },
     ensureConnectTunnelIdentity: () => connectTunnel.ensureTunnelIdentity(),
-    caffeinateManager,
+    pluginHostManager,
     threadStorageRootPath,
     logger: options.logger,
     eventSink: {
@@ -833,6 +855,9 @@ export async function createHostDaemonApp(
       // applying generation 0 synchronously prevents that newer websocket
       // replacement from being overwritten by the initial empty snapshot.
       connectTunnel.replaceAuthoritativeShareSet(session.connectShares);
+      await pluginHostManager.reconcileGenerations(
+        session.pluginHostGenerations,
+      );
       if (session.retiredEnvironmentIds.length > 0) {
         await Promise.all(
           session.retiredEnvironmentIds.map((environmentId) =>
@@ -909,7 +934,7 @@ export async function createHostDaemonApp(
       idleProviderSessionReaper.stop();
       eventLoopStallMonitor.stop();
       hostDaemonHealthMonitor.stop();
-      caffeinateManager.shutdown();
+      await pluginHostManager.shutdown();
       await options.closeMachineAuthProxy?.();
       await localApi?.close();
       connectTunnel.shutdown();

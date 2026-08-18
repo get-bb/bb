@@ -1,4 +1,5 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { once } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -155,7 +156,11 @@ function getProvisionWorkspacePath(args: ProvisionWorkspaceArgs): string {
   }
 }
 
-function createFakeWorkspace(path: string, isGitRepo = true) {
+function createFakeWorkspace(
+  path: string,
+  isGitRepo = true,
+  options: { managed?: boolean } = {},
+) {
   const status: GetStatusResult = makeWorkspaceStatus({
     mergeBase: makeWorkspaceMergeBase(),
   });
@@ -172,7 +177,7 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
   let sharedGitRefsFingerprintError: Error | null = null;
   const workspace = {
     path,
-    managed: false,
+    managed: options.managed ?? false,
     isGitRepo,
     isWorktree: false,
     getDefaultBranch: vi.fn(async () => "main"),
@@ -1719,6 +1724,73 @@ describe("RuntimeManager", () => {
     expect(runtime.shutdown).toHaveBeenCalledTimes(1);
     expect(workspace.destroy).toHaveBeenCalledTimes(1);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "kills detached processes rooted in a managed workspace before destroying it",
+    async () => {
+      const workspacePath = await fs.realpath(
+        await fs.mkdtemp(path.join(os.tmpdir(), "bb-destroy-env-")),
+      );
+      const managedWorkspace = createFakeWorkspace(workspacePath, true, {
+        managed: true,
+      });
+      const runtime = createFakeRuntime();
+      const manager = new RuntimeManager({
+        provisionWorkspace:
+          createProvisionWorkspaceMock(workspacePath).mockResolvedValue(
+            managedWorkspace,
+          ),
+        createRuntime: vi.fn(() => runtime),
+      });
+      await manager.ensureEnvironment({
+        environmentId: "env-procs",
+        workspacePath,
+      });
+      // A new-session process is out of reach of any process-group kill.
+      const orphan = spawn("sh", ["-c", "sleep 300 & echo $!; wait"], {
+        cwd: workspacePath,
+        detached: true,
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      orphan.unref();
+      const grandchildPid = Number(
+        String((await once(orphan.stdout, "data"))[0]).trim(),
+      );
+      const isAlive = (pid: number) => {
+        try {
+          process.kill(pid, 0);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      try {
+        expect(isAlive(grandchildPid)).toBe(true);
+
+        await manager.destroyEnvironment("env-procs");
+
+        expect(managedWorkspace.destroy).toHaveBeenCalledTimes(1);
+        const deadline = Date.now() + 5000;
+        while (
+          (isAlive(grandchildPid) || isAlive(orphan.pid ?? 0)) &&
+          Date.now() < deadline
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        expect(isAlive(grandchildPid)).toBe(false);
+        expect(isAlive(orphan.pid ?? 0)).toBe(false);
+      } finally {
+        for (const pid of [grandchildPid, orphan.pid ?? 0]) {
+          try {
+            process.kill(pid, "SIGKILL");
+          } catch {
+            // already gone
+          }
+        }
+        await fs.rm(workspacePath, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("forgets a retired environment without destroying its workspace", async () => {
     const workspace = createFakeWorkspace("/tmp/env-retired");

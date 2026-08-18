@@ -9,6 +9,17 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Blink cannot anchor a `:has()` that Tailwind nests inside `:is()`/`:where()`
+ * with a universal subject (the shape it emits for `group-has-*` variants).
+ * With that shape present, every DOM insertion or removal under the page
+ * restyles the whole subtree (~1 s on a large thread). Keep `:has()` on the
+ * group element itself instead.
+ */
+@custom-variant queue-boundary-row-hover (:where(.group\/queue):has([data-queued-message-group-boundary-row]:hover) &);
+@custom-variant queue-boundary-row-focus-within (:where(.group\/queue):has([data-queued-message-group-boundary-row]:focus-within) &);
+@custom-variant tab-pill-close-focus-visible (:where(.group\/tab-pill):has([data-tab-pill-close]:focus-visible) &);
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

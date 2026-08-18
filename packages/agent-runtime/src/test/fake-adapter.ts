@@ -11,35 +11,33 @@ import {
   type ProviderCapabilities,
   type ThreadEvent,
 } from "@bb/domain";
-import type {
-  AdapterCommand,
+import type { AdapterCommand, ProviderAdapter } from "../provider-adapter.js";
+import {
+  ProviderResponseEncodeError,
+  decodeNormalizedProviderToolCallRequest,
   BuildInteractiveResponseArgs,
+} from "@bb/provider-bridge-protocol/bridge-kit";
+import type {
   DecodedInteractiveRequest,
   DecodedToolCallRequest,
-  ProviderAdapter,
   ProviderCommandPlan,
+  ProviderInboundRequest,
   ProviderInteractiveResponse,
-} from "../provider-adapter.js";
+  ProviderRuntimeEvent,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   flattenPromptInputGroups,
   noPreparedProviderCommandDispatch,
 } from "../provider-adapter.js";
-import type {
-  ProviderInboundRequest,
-  ProviderRuntimeEvent,
-} from "../runtime-json-rpc.js";
-import { ProviderResponseEncodeError } from "../runtime-json-rpc.js";
 import { parseAvailableModelList } from "../shared/available-models.js";
 import { classifySessionExecutionSettingsChange } from "../execution-options.js";
-import { decodeNormalizedProviderToolCallRequest } from "../shared/provider-tool-call-contract.js";
-
-type FakeUserQuestionCapability = ProviderCapabilities["supportsUserQuestion"];
+type FakeUserQuestionCapability = ProviderCapabilities["supportsNativeUserQuestion"];
 
 export interface CreateFakeProviderExecutionContext {
   displayName?: string;
   id?: string;
   scriptPath?: string;
-  supportsUserQuestion?: FakeUserQuestionCapability;
+  supportsNativeUserQuestion?: FakeUserQuestionCapability;
 }
 
 interface FakeEventMessage {
@@ -345,6 +343,7 @@ function translateEventMessage(event: ProviderRuntimeEvent): ThreadEvent[] {
         },
       ];
     }
+    case "item/started":
     case "item/completed": {
       const item = threadEventItemSchema.parse(message.params.item);
       if (item.type === "userMessage") {
@@ -352,7 +351,7 @@ function translateEventMessage(event: ProviderRuntimeEvent): ThreadEvent[] {
       }
       return [
         {
-          type: "item/completed",
+          type: message.method,
           threadId,
           providerThreadId,
           scope: turnScope(turnId),
@@ -371,6 +370,18 @@ function translateEventMessage(event: ProviderRuntimeEvent): ThreadEvent[] {
             typeof message.params.threadName === "string"
               ? message.params.threadName
               : "",
+        },
+      ];
+    // The runtime settles `thread/goal/clear` on this notification rather than
+    // on the response, so a provider double that can drive that ordering needs
+    // to translate it.
+    case "thread/goal/cleared":
+      return [
+        {
+          type: "thread/goal/cleared",
+          threadId,
+          providerThreadId,
+          scope: threadScope(),
         },
       ];
     default:
@@ -466,25 +477,26 @@ export function createFakeAdapter(
    *   `turnId`, matching the canonical bridge wire form for providers that
    *   cannot resolve the BB turn id.
    * - `ask_user` emits a provider-scoped user-question interactive request
-   *   when the adapter is configured with `supportsUserQuestion: true`.
+   *   when the adapter is configured with `supportsNativeUserQuestion: true`.
    * - remaining text is echoed back as `Response to: ...`.
    */
-  const supportsUserQuestion = options.supportsUserQuestion ?? false;
+  const supportsNativeUserQuestion = options.supportsNativeUserQuestion ?? false;
 
   return {
-    approvalRequestPolicy: "runtime",
+    approvalEnforcedBy: "runtime",
     buildCommandPlan,
     capabilities: {
-      supportsArchive: true,
-      supportsRename: true,
+      supportsThreadArchive: true,
+      supportsThreadRename: true,
       supportsServiceTier: false,
-      supportsUserQuestion,
+      supportsNativeUserQuestion,
       supportsFork: true,
-      supportedPermissionModes: ["accept-edits", "auto", "full"],
+      supportsSessionRewind: true,
+      permissionModes: ["accept-edits", "auto", "full"],
     },
     classifyExecutionSettingsChange: classifySessionExecutionSettingsChange,
     decodeToolCallRequest,
-    decodeInteractiveRequest: supportsUserQuestion
+    decodeInteractiveRequest: supportsNativeUserQuestion
       ? decodeInteractiveRequest
       : undefined,
     displayName: options.displayName ?? DEFAULT_DISPLAY_NAME,
@@ -501,7 +513,7 @@ export function createFakeAdapter(
     translateAcceptedCommand() {
       return [];
     },
-    buildInteractiveResponse: supportsUserQuestion
+    buildInteractiveResponse: supportsNativeUserQuestion
       ? buildInteractiveResponse
       : undefined,
   };

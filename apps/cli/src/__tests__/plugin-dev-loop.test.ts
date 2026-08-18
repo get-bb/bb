@@ -9,7 +9,13 @@ describe("createPluginDevLoop", () => {
     vi.useRealTimers();
   });
 
-  function makeDeps(overrides: { hasApp?: boolean } = {}) {
+  function makeDeps(
+    overrides: {
+      hasApp?: boolean;
+      hasHost?: boolean;
+      hasProviderBridge?: boolean;
+    } = {},
+  ) {
     const calls: string[] = [];
     const lines: string[] = [];
     return {
@@ -18,8 +24,16 @@ describe("createPluginDevLoop", () => {
       deps: {
         pluginId: "hello",
         hasApp: overrides.hasApp ?? true,
+        hasHost: overrides.hasHost ?? false,
+        hasProviderBridge: overrides.hasProviderBridge ?? false,
         buildApp: vi.fn(async () => {
           calls.push("build");
+        }),
+        buildHost: vi.fn(async () => {
+          calls.push("build-host");
+        }),
+        buildProviderBridge: vi.fn(async () => {
+          calls.push("build-provider-bridge");
         }),
         reloadPlugin: vi.fn(async () => {
           calls.push("reload");
@@ -63,6 +77,21 @@ describe("createPluginDevLoop", () => {
     expect(deps.buildApp).not.toHaveBeenCalled();
     expect(calls).toEqual(["reload"]);
     expect(lines[0]).toBe("1 file changed · reloaded hello");
+  });
+
+  it("rebuilds the host artifact before reloading a host plugin", async () => {
+    const { calls, lines, deps } = makeDeps({
+      hasApp: false,
+      hasHost: true,
+    });
+    const loop = createPluginDevLoop(deps);
+
+    loop.handleChange("host.ts");
+    await vi.advanceTimersByTimeAsync(300);
+    await loop.settled();
+
+    expect(calls).toEqual(["build-host", "reload"]);
+    expect(lines[0]).toContain("rebuilt host in");
   });
 
   it("a build failure prints the error, skips the reload, and keeps watching", async () => {

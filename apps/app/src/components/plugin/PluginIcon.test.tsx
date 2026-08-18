@@ -103,3 +103,33 @@ it("uses a plugin-owned compact SVG before named icon hints", () => {
   expect(asset?.getAttribute("style")).toContain(compactIconUrl);
   expect(view.container.querySelector("[data-icon]")).toBeNull();
 });
+
+it("resolves every named branding.icon the shipped plugins declare", async () => {
+  const { readdir, readFile } = await import("node:fs/promises");
+  const { dirname, join, resolve } = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const { pluginIconName } = await import("./PluginIcon");
+
+  const pluginsDir = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "../../../../../plugins",
+  );
+  const entries = await readdir(pluginsDir, { withFileTypes: true });
+  const declared: Array<[string, string]> = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const manifest: { bb?: { branding?: { icon?: string } } } = JSON.parse(
+      await readFile(join(pluginsDir, entry.name, "package.json"), "utf8"),
+    );
+    const icon = manifest.bb?.branding?.icon;
+    // Path-shaped icons are plugin-owned SVG assets, not host glyph names.
+    if (icon === undefined || icon.startsWith("./")) continue;
+    declared.push([entry.name, icon]);
+  }
+
+  expect(declared.length).toBeGreaterThan(0);
+  // A typo silently falls back to Zap, so a deliberate icon must round-trip.
+  expect(
+    declared.filter(([, icon]) => pluginIconName(icon) !== icon),
+  ).toEqual([]);
+});

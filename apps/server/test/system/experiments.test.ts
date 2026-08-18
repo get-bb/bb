@@ -31,7 +31,7 @@ describe("experiments settings", () => {
           claudeCodeMockCliTraffic: true,
           editMessages: true,
           newOnboarding: true,
-          providerSessionReaping: true,
+            providerSessionReaping: true,
         }),
       });
       expect(put.status).toBe(200);
@@ -74,7 +74,6 @@ describe("experiments settings", () => {
       await expect(readJson(initial)).resolves.toEqual({
         providerSessionReaping: false,
       });
-
       await harness.app.request("/api/v1/settings/experiments", {
         method: "PUT",
         headers: { "content-type": "application/json" },
@@ -82,7 +81,7 @@ describe("experiments settings", () => {
           claudeCodeMockCliTraffic: false,
           editMessages: true,
           newOnboarding: false,
-          providerSessionReaping: true,
+            providerSessionReaping: true,
         }),
       });
       const updated = await harness.app.request("/internal/runtime-policy", {

@@ -39,6 +39,7 @@ import {
   registerHostRpcResponder,
   type HostRpcResponder,
 } from "../helpers/host-rpc.js";
+import { registerFakeProviders } from "../helpers/provider-registry.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
 import { textInput } from "../helpers/prompt-input.js";
 import { withTestHarness } from "../helpers/test-app.js";
@@ -164,6 +165,7 @@ describe("thread runtime config", () => {
             command: "custom-agent",
             args: ["serve"],
             env: { CUSTOM_AGENT_TOKEN: "token" },
+            supportsManualCompaction: false,
             cwd: "/agent-home",
             modelCli: {
               listArgs: ["models", "list"],
@@ -976,6 +978,65 @@ describe("thread runtime config", () => {
       expect(claudeCode.options.providerSubagentsEnabled).toBe(false);
       expect(claudeCode.options.workflowsEnabled).toBe(false);
       expect(claudeCode.disallowedTools).toBeUndefined();
+    });
+  });
+
+  it("scopes the Claude workflows toggle to claude-code only", async () => {
+    await withTestHarness(async (harness) => {
+      // A non-Claude provider that declares `supportsWorkflows: true`, like
+      // the first third-party workflow provider would.
+      registerFakeProviders(
+        harness.deps.providerRegistry,
+        harness.deps.pluginHostArtifacts,
+      );
+      setAppSettings(harness.db, {
+        ...defaultAppSettings,
+        claudeCodeWorkflowsDisabled: true,
+      });
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-provider-workflows-scope",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+
+      async function build(providerId: "fake" | "claude-code", model: string) {
+        const thread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+          providerId,
+        });
+        return buildThreadStartCommand(harness.deps, {
+          environment,
+          execution: {
+            model,
+            permissionMode: "auto",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+            source: "client/turn/requested",
+          },
+          fork: null,
+          permissionEscalation: "ask",
+          input: textInput("hello"),
+          projectId: project.id,
+          providerId,
+          requestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+          syncGeneratedTitle: false,
+          thread,
+        });
+      }
+
+      // Claude Code honors the Claude-named toggle.
+      const claudeCode = await build("claude-code", "claude-sonnet-4-6");
+      expect(claudeCode.options.workflowsEnabled).toBe(false);
+
+      // Another workflows-capable provider is unaffected by it.
+      const fake = await build("fake", "fake-model");
+      expect(fake.options.workflowsEnabled).toBe(true);
     });
   });
 

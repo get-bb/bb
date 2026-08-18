@@ -25,11 +25,19 @@ import { createLifecycleDedupers } from "../../../apps/server/src/lifecycle-dedu
 import { createApp } from "../../../apps/server/src/server.js";
 import { PendingInteractionLifecycle } from "../../../apps/server/src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../../apps/server/src/services/machine-auth.js";
+import { createProviderRegistryService } from "../../../apps/server/src/services/providers/provider-registry.js";
+import { resolveAcpAgentCapabilitiesForProviderId } from "../../../apps/server/src/services/system/acp-launch-spec.js";
+import {
+  recordFirstPartyProviderBridgeArtifacts,
+  registerFakeProviders,
+  registerFirstPartyProviders,
+} from "../../../apps/server/test/helpers/provider-registry.js";
 import {
   copyBuiltinSkills,
   resolveBuiltinSkillsRootPath,
 } from "../../../apps/server/src/services/skills/builtin-skills-copy.js";
 import { SkillTreeRegistry } from "../../../apps/server/src/services/skills/injected-skills.js";
+import { PluginHostArtifactRegistry } from "../../../apps/server/src/services/plugins/plugin-host-artifact-registry.js";
 import { createAppVersionService } from "../../../apps/server/src/services/system/app-version.js";
 import { createBbAppManagedConfigReloader } from "../../../apps/server/src/services/system/bb-app-managed-config.js";
 import { createNoopTelemetryService } from "../../../apps/server/src/services/system/telemetry.js";
@@ -269,6 +277,26 @@ async function startIntegrationServer(
   });
   const telemetry = createNoopTelemetryService();
   const skillTreeRegistry = new SkillTreeRegistry();
+  const providerRegistry = createProviderRegistryService({
+    resolveAcpAgentCapabilities: (providerId) =>
+      resolveAcpAgentCapabilitiesForProviderId({ config }, providerId),
+  });
+  // Providers come only from plugin declarations. This harness runs no plugin
+  // service, so it registers the first-party declarations directly, exactly as
+  // their plugins would.
+  await registerFirstPartyProviders(providerRegistry);
+  const pluginHostArtifacts = new PluginHostArtifactRegistry();
+  // The fake providers these tests drive are declarations too: every
+  // bridge-bound command carries a `bridgeLaunch`, so a provider with no
+  // declaration and no artifact cannot have a command built for it at all. The
+  // daemon side runs a fake adapter and never reads the launch.
+  registerFakeProviders(providerRegistry, pluginHostArtifacts);
+  // Every first-party bridge except Pi's ships as a plugin artifact, and the
+  // daemon has no bridge for those providers without one on the wire. The
+  // dynamic ACP tier depends on it most: `acp-<slug>` ids are never
+  // registered, so the ACP plugin's artifact is the only thing that launches
+  // a configured agent.
+  await recordFirstPartyProviderBridgeArtifacts(pluginHostArtifacts);
   const pendingInteractions = new PendingInteractionLifecycle({
     config,
     db,
@@ -276,6 +304,8 @@ async function startIntegrationServer(
     lifecycleDedupers,
     logger: testLogger,
     machineAuth,
+    providerRegistry,
+    pluginHostArtifacts,
     skillTreeRegistry,
     telemetry,
     terminalSessions,
@@ -288,6 +318,8 @@ async function startIntegrationServer(
   const { app, injectWebSocket } = createApp({
     appVersion,
     bbAppManagedConfig,
+    providerRegistry,
+    pluginHostArtifacts,
     config,
     db,
     hub,

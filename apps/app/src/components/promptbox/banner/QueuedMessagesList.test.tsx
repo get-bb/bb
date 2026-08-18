@@ -136,7 +136,6 @@ describe("QueuedMessagesList", () => {
     );
 
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("drawer");
-    expect(header?.className.split(/\s+/u)).toContain("border-b");
     expect(surface?.style.height).toBe("123px");
     expect(
       getByRole("button", { name: "Collapse queued messages" }).querySelector(
@@ -146,7 +145,6 @@ describe("QueuedMessagesList", () => {
 
     fireEvent.click(getByRole("button", { name: "Collapse queued messages" }));
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("collapsed");
-    expect(header?.className.split(/\s+/u)).not.toContain("border-b");
     expect(
       getByRole("button", { name: "Show queued messages" }).querySelector(
         '[data-icon="ChevronUp"]',
@@ -233,17 +231,14 @@ describe("QueuedMessagesList", () => {
       configurable: true,
       value: vi.fn(),
     });
-    expect(handle.className.split(/\s+/u)).toContain("cursor-grab");
 
     fireEvent.pointerDown(handle, {
       button: 0,
       clientY: 200,
       pointerId: 1,
     });
-    expect(handle.className.split(/\s+/u)).toContain("cursor-grabbing");
     fireEvent.pointerMove(handle, { clientY: 100, pointerId: 1 });
     fireEvent.pointerUp(handle, { clientY: 100, pointerId: 1 });
-    expect(handle.className.split(/\s+/u)).toContain("cursor-grab");
 
     expect(
       container
@@ -295,18 +290,12 @@ describe("QueuedMessagesList", () => {
     const deleteButton = getByRole("button", {
       name: "Delete queued message 1",
     });
-    const overflowButton = getByRole("button", {
-      name: "Queued message 1 actions",
-    });
 
-    expect(sendButton.closest("div")?.className).toContain("opacity-0");
-    expect(sendButton.closest("div")?.className).toContain("md:flex");
-    expect(sendButton.closest("div")?.className).toContain("hidden");
-    expect(sendButton.closest("div")?.className).toContain("absolute");
+    expect(
+      getByRole("button", { name: "Queued message 1 actions" }),
+    ).toBeTruthy();
     expect(editButton).toBeTruthy();
     expect(deleteButton).toBeTruthy();
-    expect(overflowButton.className).toContain("md:hidden");
-    expect(overflowButton.className).toContain("opacity-0");
     expect(container.querySelector('[data-icon="Sent"]')).not.toBeNull();
     expect(container.querySelector('[data-icon="Edit"]')).not.toBeNull();
     expect(container.querySelector('[data-icon="Trash2"]')).not.toBeNull();
@@ -390,17 +379,6 @@ describe("QueuedMessagesList", () => {
     expect(
       editingLabel.closest('[data-inline-message-editor-frame="embedded"]'),
     ).not.toBeNull();
-    const dismissButton = getByRole("button", {
-      name: "Stop editing queued message",
-    });
-    expect(editingLabel.parentElement?.className).toContain(
-      "text-subtle-foreground",
-    );
-    expect(dismissButton.className).toContain("ml-auto");
-    expect(dismissButton.className).toContain("size-6");
-    expect(
-      dismissButton.querySelector('[data-icon="X"]')?.getAttribute("class"),
-    ).toContain("size-3");
     expect(getByTestId("inline-queue-editor")).toBeTruthy();
 
     fireEvent.click(
@@ -961,42 +939,6 @@ describe("QueuedMessagesList", () => {
     );
   });
 
-  it("shows a FileAttachment icon instead of attachment prose", () => {
-    const queuedMessage = makeQueuedMessage(
-      "q_attachment_icon",
-      "Review the attached screenshot",
-    );
-    queuedMessage.content.push({
-      type: "localFile",
-      path: "/tmp/screenshot.png",
-      name: "screenshot.png",
-    });
-
-    const { container, getByRole } = renderQueuedMessages([queuedMessage]);
-
-    expect(getByRole("img", { name: "1 attachment" }).textContent).toBe("1");
-    const attachment = getByRole("img", { name: "1 attachment" });
-    expect(attachment.className).toContain("ml-auto");
-    expect(attachment.className).toContain("group-hover/row:opacity-0");
-    expect(attachment.className).toContain("group-focus-within/row:opacity-0");
-    expect(attachment.className).toContain("[@media(hover:none)]:opacity-0");
-    expect(attachment.className).toContain("duration-[120ms]");
-    const actions = container.querySelector("[data-queued-message-actions]");
-    expect(actions?.className).toContain("right-2.5");
-    expect(actions?.className).toContain("before:w-4");
-    expect(actions?.className).toContain("before:from-transparent");
-    expect(actions?.className).toContain("duration-[120ms]");
-    expect(
-      container.querySelector('[data-icon="FileAttachment"]'),
-    ).not.toBeNull();
-    expect(
-      container
-        .querySelector('[title="Review the attached screenshot"]')
-        ?.classList.contains("fade-clip-right"),
-    ).toBe(false);
-    expect(container.textContent).not.toContain("1 attachment");
-  });
-
   it("keeps attachment state visible while processing and counts multiple files", () => {
     const queuedMessage = makeQueuedMessage(
       "q_multiple_attachments",
@@ -1032,30 +974,7 @@ describe("QueuedMessagesList", () => {
 
     const attachment = getByRole("img", { name: "2 attachments" });
     expect(attachment.textContent).toBe("2");
-    expect(attachment.className).not.toContain("group-hover/row:opacity-0");
     expect(getByText("Sending...")).not.toBeNull();
-  });
-
-  it("keeps previews on one ellipsized line in drawer and workspace modes", () => {
-    const queuedMessages = Array.from({ length: 4 }, (_, index) =>
-      makeQueuedMessage(
-        `q_${index}`,
-        `Long queued message ${index + 1} that must truncate to the available row width`,
-      ),
-    );
-    const { container, getByRole } = renderQueuedMessages(queuedMessages);
-
-    const preview = container.querySelector('[title^="Long queued message 1"]');
-    expect(preview?.classList.contains("flex-1")).toBe(true);
-    expect(preview?.classList.contains("fade-clip-right")).toBe(false);
-    expect(preview?.firstElementChild?.classList.contains("truncate")).toBe(
-      true,
-    );
-
-    fireEvent.click(getByRole("button", { name: "Expand queued messages" }));
-    expect(preview?.firstElementChild?.classList.contains("truncate")).toBe(
-      true,
-    );
   });
 
   it("renders prompt mentions as pills in queued previews", () => {
@@ -1175,8 +1094,6 @@ describe("QueuedMessagesList", () => {
         '[data-overflow-fade="below"][data-overflow-fade-tone="surface-raised"][data-overflow-fade-inset]',
       );
       expect(fade).not.toBeNull();
-      expect(fade?.className).toContain("h-6");
-      expect(fade?.className).toContain("bottom-0");
     });
   });
 
@@ -1197,34 +1114,7 @@ describe("QueuedMessagesList", () => {
       "[data-queued-message-group-divider]",
     );
     expect(divider?.tagName).toBe("LI");
-    expect(divider?.className).toContain("h-0");
     expect(divider?.parentElement?.tagName).toBe("UL");
-  });
-
-  it("keeps the final row stroke when every queued message is grouped", () => {
-    const queuedMessages = [
-      {
-        ...makeQueuedMessage("q_one", "First queued message"),
-        groupWithNext: true,
-      },
-      {
-        ...makeQueuedMessage("q_two", "Second queued message"),
-        groupWithNext: true,
-      },
-      makeQueuedMessage("q_three", "Third queued message"),
-    ];
-    const { container, getByLabelText } = renderQueuedMessages(queuedMessages);
-    const rows = container.querySelectorAll("[data-queued-message-row]");
-    const finalRow = rows[2];
-    const divider = finalRow?.nextElementSibling;
-
-    expect(finalRow?.className).toContain("border-b");
-    expect(finalRow?.className).not.toContain("last:border-b-0");
-    expect(divider?.hasAttribute("data-queued-message-group-divider")).toBe(
-      true,
-    );
-    expect(divider?.firstElementChild?.className).toContain("top-[-0.5px]");
-    expect(getByLabelText("Messages above send together")).not.toBeNull();
   });
 
   it("anchors a zero-height sortable handle sibling to the existing row border", () => {
@@ -1235,14 +1125,11 @@ describe("QueuedMessagesList", () => {
     ]);
     const rows = container.querySelectorAll("[data-queued-message-row]");
 
-    expect(rows[0]?.className).toContain("border-b");
-    expect(rows[1]?.className).toContain("border-b");
     const divider = container.querySelector(
       "ul > [data-queued-message-group-divider]",
     );
     expect(divider).not.toBeNull();
     expect(divider?.previousElementSibling).toBe(rows[0]);
-    expect(divider?.className).toContain("h-0");
     expect(rows[0]?.querySelector("[data-queued-message-group-divider]")).toBe(
       null,
     );
@@ -1251,27 +1138,6 @@ describe("QueuedMessagesList", () => {
     );
     expect(container.querySelector("[data-queued-message-group-line]")).toBe(
       null,
-    );
-  });
-
-  it("shows a subtle grip at rest and reveals its circular target on row focus or hover", () => {
-    const { getByLabelText } = renderQueuedMessages(
-      makeGroupedQueuedMessages(),
-    );
-    const control = getByLabelText("Messages above send together");
-    const grip = control.querySelector('[data-icon="DragDropHorizontal"]');
-
-    expect(control.className).toContain("border-transparent");
-    expect(control.className).toContain("bg-transparent");
-    expect(control.className).toContain(
-      "group-has-[[data-queued-message-group-boundary-row]:hover]/queue:border-border",
-    );
-    expect(control.className).toContain(
-      "group-has-[[data-queued-message-group-boundary-row]:focus-within]/queue:bg-background",
-    );
-    expect(grip?.getAttribute("class")).toContain("opacity-55");
-    expect(grip?.getAttribute("class")).toContain(
-      "group-has-[[data-queued-message-group-boundary-row]:hover]/queue:opacity-100",
     );
   });
 

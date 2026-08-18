@@ -1,15 +1,35 @@
-import { existsSync, realpathSync, type FSWatcher } from "node:fs";
-import { readFile, stat } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  createReadStream,
+  existsSync,
+  readFileSync,
+  realpathSync,
+  type FSWatcher,
+} from "node:fs";
+import { readFile, readdir, stat } from "node:fs/promises";
+import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire, registerHooks } from "node:module";
 import { performance } from "node:perf_hooks";
 import { createJiti } from "jiti";
 import semver from "semver";
-import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION, type Thread } from "@bb/domain";
-import { buildPluginApp } from "@bb/plugin-build";
+import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
+import {
+  isPluginOwnedIconPath,
+  PLUGIN_SDK_MAJOR,
+  PLUGIN_SDK_VERSION,
+  type Thread,
+} from "@bb/domain";
+import {
+  buildPluginApp,
+  buildPluginHost,
+  isIgnoredPluginDevPath,
+} from "@bb/plugin-build";
+import { DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS } from "@bb/host-daemon-contract";
+import { PluginHostArtifactRegistry } from "./plugin-host-artifact-registry.js";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { createNodeBbSdk, type BbSdk } from "@bb/sdk";
+import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 import {
   getInstalledPlugin,
   listInstalledPlugins,
@@ -29,6 +49,8 @@ import {
 } from "./app-bundle.js";
 import { parsePluginSource } from "./install-sources.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
+import { buildPluginProviderRegistration } from "../providers/plugin-provider-registration.js";
+import { reservedProviderIdProblem } from "../providers/provider-registry.js";
 import {
   isPluginSdkRangeSatisfied,
   pluginSdkRangeProblem,
@@ -45,6 +67,7 @@ import type {
   PluginHandlerStats,
   PluginRuntimeStatus,
   PluginServiceDeps,
+  PluginHostArtifactSnapshot,
   PluginWireLookup,
   ServiceRuntime,
 } from "./plugin-service-internal.js";
@@ -72,10 +95,20 @@ const PLUGIN_SDK_SPECIFIER = "@get-bb/plugin-sdk";
  */
 const LEGACY_PLUGIN_SDK_SPECIFIER = "@bb/plugin-sdk";
 
+async function hashFile(
+  path: string,
+): Promise<{ digest: string; byteLength: number }> {
+  const hash = createHash("sha256");
+  let byteLength = 0;
+  for await (const chunk of createReadStream(path)) {
+    byteLength += chunk.byteLength;
+    hash.update(chunk);
+  }
+  return { digest: hash.digest("hex"), byteLength };
+}
+
 /** Internal export for focused tests; not part of the service surface. */
-export function pluginSdkAliasFor(
-  runtimePath: string,
-): Record<string, string> {
+export function pluginSdkAliasFor(runtimePath: string): Record<string, string> {
   return {
     [PLUGIN_SDK_SPECIFIER]: runtimePath,
     [LEGACY_PLUGIN_SDK_SPECIFIER]: runtimePath,
@@ -154,6 +187,44 @@ function registerMutableRootHooks(): void {
  * must be the real path — otherwise a symlinked install never matches and
  * reload silently serves cached code.
  */
+const PROVIDER_ICON_CONTENT_TYPES: Record<string, string> = {
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".webp": "image/webp",
+};
+
+/**
+ * Byte snapshot of a declared provider icon. Null when there is nothing to
+ * snapshot — a named host glyph (`"Zap"`) has no file at all — and on any
+ * failure for a plugin-owned path (missing file, unsupported extension, path
+ * escaping the plugin root): the provider registers without a servable icon
+ * rather than failing the plugin load.
+ */
+function readPluginProviderIcon(
+  rootDir: string,
+  icon: string | undefined,
+): { bytes: Uint8Array; contentType: string } | null {
+  if (icon === undefined || !isPluginOwnedIconPath(icon)) {
+    return null;
+  }
+  const asset = icon;
+  const contentType = PROVIDER_ICON_CONTENT_TYPES[extname(asset).toLowerCase()];
+  if (contentType === undefined) {
+    return null;
+  }
+  const resolved = resolve(rootDir, asset);
+  // host-policy already rejects traversal in declarations; this containment
+  // check is defense in depth for identity-backed roots.
+  if (!resolved.startsWith(resolve(rootDir) + sep)) {
+    return null;
+  }
+  try {
+    return { bytes: new Uint8Array(readFileSync(resolved)), contentType };
+  } catch {
+    return null;
+  }
+}
+
 function mutableRootDir(rootDir: string): string {
   try {
     return realpathSync(rootDir);
@@ -238,6 +309,14 @@ function releaseMutableRoots(rootUrls: Iterable<string>): void {
   mutableRootHooks = null;
 }
 
+/** Which build target a dev build problem belongs to. */
+export type PluginDevBuildKind = "frontend" | "host";
+
+const DEV_BUILD_PROBLEM_LABELS: Record<PluginDevBuildKind, string> = {
+  frontend: "frontend bundle build failed",
+  host: "host bundle build failed",
+};
+
 const DEFAULT_LOAD_TIMEOUT_MS = 30_000;
 const DEFAULT_SERVICE_STOP_TIMEOUT_MS = 5_000;
 const DEFAULT_SERVICE_RESTART_BASE_MS = 1_000;
@@ -264,6 +343,14 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     deps.serviceRestartBaseMs ?? DEFAULT_SERVICE_RESTART_BASE_MS;
 
   const loaded = new Map<string, LoadedPlugin>();
+  // A provider declaration remains useful when its host artifact fails: the
+  // picker can keep a stable tab and explain that the provider is unavailable.
+  // These registrations are deliberately separate from `loaded`, so no other
+  // contribution from the failed plugin is published.
+  const unavailableProviderRegistrations = new Map<
+    string,
+    Array<{ dispose(): void }>
+  >();
   // Per-plugin lifecycle mutex: every load/dispose mutation for one plugin
   // runs strictly serialized. disposeOne removes the `loaded` entry before
   // stopServices finishes, so without this a concurrent reload/enable/
@@ -332,7 +419,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     string,
     { status: PluginRuntimeStatus; detail: string | null }
   >();
-  const devBuildProblems = new Map<string, string>();
+  const devBuildProblems = new Map<
+    string,
+    Partial<Record<PluginDevBuildKind, string>>
+  >();
   const statusListeners = new Map<
     string,
     Set<(status: PluginRuntimeStatus, detail: string | null) => void>
@@ -342,6 +432,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   // state for list() plus the on-disk asset paths + content hash the asset
   // routes serve. Refreshed on every load (install/boot/reload).
   const appBundles = new Map<string, PluginAppBundleSnapshot>();
+  // Shared with the composition root: provider-bridge launch resolution reads
+  // the same artifacts the host RPC transport does.
+  const hostArtifacts =
+    deps.pluginHostArtifacts ?? new PluginHostArtifactRegistry();
   // Branding assets (compact icon + logo variants), refreshed alongside
   // appBundles on every load.
   const brandingAssets = new Map<string, PluginBrandingAssetSet>();
@@ -393,19 +487,30 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     detail: string | null = null,
   ): void {
     baseStatuses.set(id, { status, detail });
-    const buildProblem = devBuildProblems.get(id);
+    const buildProblems = devBuildProblems.get(id);
     publishStatus(
       id,
       status,
-      [detail, buildProblem]
+      [detail, buildProblems?.frontend, buildProblems?.host]
         .filter((part): part is string => part !== null && part !== undefined)
         .join("; ") || null,
     );
   }
 
-  function setDevBuildProblem(id: string, message: string | null): void {
-    if (message === null) devBuildProblems.delete(id);
-    else devBuildProblems.set(id, `frontend bundle build failed: ${message}`);
+  function setDevBuildProblem(
+    id: string,
+    kind: PluginDevBuildKind,
+    message: string | null,
+  ): void {
+    const problems = devBuildProblems.get(id) ?? {};
+    if (message === null) {
+      if (problems[kind] === undefined) return;
+      delete problems[kind];
+    } else {
+      problems[kind] = `${DEV_BUILD_PROBLEM_LABELS[kind]}: ${message}`;
+    }
+    if (Object.keys(problems).length === 0) devBuildProblems.delete(id);
+    else devBuildProblems.set(id, problems);
     const base = baseStatuses.get(id);
     if (base !== undefined) setStatus(id, base.status, base.detail);
   }
@@ -791,6 +896,17 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     );
   }
 
+  function isPackagedBuiltinHostEntry(args: {
+    kind: ReturnType<typeof sourceKind>;
+    manifest: PluginManifest;
+    rootDir: string;
+  }): boolean {
+    return (
+      args.kind === "builtin" &&
+      args.manifest.hostEntry === resolve(args.rootDir, "dist", "host.js")
+    );
+  }
+
   async function packagedBuiltinArtifactProblem(
     row: InstalledPluginRow,
     manifest: PluginManifest,
@@ -806,7 +922,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       return null;
     }
     async function validate(
-      artifact: "server" | "app",
+      artifact: "server" | "app" | "host",
     ): Promise<string | null> {
       let raw: string;
       try {
@@ -827,7 +943,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     const serverProblem = await validate("server");
     if (serverProblem !== null) return serverProblem;
     if (isPackagedBuiltinAppEntry({ kind, manifest, rootDir: row.rootDir })) {
-      return validate("app");
+      const appProblem = await validate("app");
+      if (appProblem !== null) return appProblem;
+    }
+    if (isPackagedBuiltinHostEntry({ kind, manifest, rootDir: row.rootDir })) {
+      return validate("host");
     }
     return null;
   }
@@ -844,6 +964,52 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     if (meta.sdkMajor !== PLUGIN_SDK_MAJOR) return false;
     if (PLUGIN_SDK_MAJOR === 0) return meta.sdkVersion === PLUGIN_SDK_VERSION;
     return true;
+  }
+
+  /**
+   * Mutable plugin app artifacts are only a cache of their source tree. A
+   * watcher can rebuild edits made while the server is running, but startup
+   * must also catch edits made while it was stopped. Directory mtimes matter
+   * because deleting a source file changes its parent rather than another
+   * surviving file.
+   */
+  async function isMutableAppBundleStale(rootDir: string): Promise<boolean> {
+    let artifactMtimeMs: number;
+    try {
+      artifactMtimeMs = (await stat(join(rootDir, "dist", "app.js"))).mtimeMs;
+    } catch {
+      return true;
+    }
+
+    const pendingDirectories = [""];
+    while (pendingDirectories.length > 0) {
+      const relativeDirectory = pendingDirectories.pop();
+      if (relativeDirectory === undefined) break;
+      const directory = join(rootDir, relativeDirectory);
+      let entries;
+      try {
+        const directoryStats = await stat(directory);
+        if (directoryStats.mtimeMs > artifactMtimeMs) return true;
+        entries = await readdir(directory, { withFileTypes: true });
+      } catch {
+        // The tree changed while it was scanned. Rebuilding is the safe
+        // outcome, and the build will report any lasting filesystem problem.
+        return true;
+      }
+
+      for (const entry of entries) {
+        const relativePath = join(relativeDirectory, entry.name);
+        if (isIgnoredPluginDevPath(relativePath)) continue;
+        try {
+          const entryStats = await stat(join(rootDir, relativePath));
+          if (entryStats.mtimeMs > artifactMtimeMs) return true;
+        } catch {
+          return true;
+        }
+        if (entry.isDirectory()) pendingDirectories.push(relativePath);
+      }
+    }
+    return false;
   }
 
   /**
@@ -898,10 +1064,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
 
   /**
    * Refresh a plugin's frontend-bundle snapshot for this load (design §5.1).
-   * Mutable path: and source-builtin trees are rebuilt when the recorded SDK
-   * version differs from the running one. Managed git/npm artifacts are
-   * immutable after promotion and are served exactly as validated;
-   * incompatible metadata is surfaced without rewriting cached bytes.
+   * Mutable path installs and source-layout builtins are rebuilt when the
+   * recorded SDK version differs from the running one or their source changed
+   * after the last build. Managed git/npm artifacts are immutable after
+   * promotion and are served exactly as validated; incompatible metadata is
+   * surfaced without rewriting cached bytes.
    */
   async function loadAppBundleCandidate(
     row: InstalledPluginRow,
@@ -922,16 +1089,21 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       !isPackagedBuiltinAppEntry({ kind, manifest, rootDir: row.rootDir })
     ) {
       const meta = await readPluginAppBundleMeta(row.rootDir);
-      if (meta?.sdkVersion !== PLUGIN_SDK_VERSION) {
-        logger.info(
-          `plugin ${row.id}: rebuilding frontend bundle (built with SDK ${meta?.sdkVersion ?? "unknown"}, running SDK is ${PLUGIN_SDK_VERSION})`,
-        );
+      const sdkChanged = meta?.sdkVersion !== PLUGIN_SDK_VERSION;
+      const sourceChanged =
+        !sdkChanged && (await isMutableAppBundleStale(row.rootDir));
+      if (sdkChanged || sourceChanged) {
+        const reason = sdkChanged
+          ? `built with SDK ${meta?.sdkVersion ?? "unknown"}, running SDK is ${PLUGIN_SDK_VERSION}`
+          : "plugin source is newer than dist/app.js";
+        logger.info(`plugin ${row.id}: rebuilding frontend bundle (${reason})`);
         try {
           await buildPluginApp(
             row.rootDir,
             deps.appVersion,
             await getPluginBuildToolchain(deps),
           );
+          setDevBuildProblem(row.id, "frontend", null);
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);
@@ -951,6 +1123,81 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     };
   }
 
+  async function loadHostArtifactCandidate(
+    row: InstalledPluginRow,
+    manifest: PluginManifest,
+  ): Promise<PluginHostArtifactSnapshot | null> {
+    if (manifest.hostEntry === undefined) return null;
+    const kind = row.sourceKind;
+    if (
+      (kind === "path" || kind === "builtin") &&
+      !isPackagedBuiltinHostEntry({ kind, manifest, rootDir: row.rootDir })
+    ) {
+      await buildPluginHost(
+        row.rootDir,
+        deps.appVersion,
+        await getPluginBuildToolchain(deps),
+      );
+      // A successful rebuild through the load path (enable/reload) must clear
+      // a stale dev-loop failure, or it sticks until the next source change.
+      setDevBuildProblem(row.id, "host", null);
+    }
+    const jsPath = join(row.rootDir, "dist", "host.js");
+    const metaPath = join(row.rootDir, "dist", "host.meta.json");
+    const artifactStats = await stat(jsPath).catch((error) => {
+      throw new Error(
+        `host artifact for plugin "${manifest.id}" is missing or unreadable: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+    if (artifactStats.size > HOST_ARTIFACT_MAX_BYTES) {
+      throw new Error(
+        `host artifact for plugin "${manifest.id}" exceeds the ${HOST_ARTIFACT_MAX_BYTES} byte limit`,
+      );
+    }
+    const [artifact, rawMeta] = await Promise.all([
+      hashFile(jsPath),
+      readFile(metaPath, "utf8"),
+    ]).catch((error) => {
+      throw new Error(
+        `host artifact for plugin "${manifest.id}" is missing or unreadable: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+    if (artifact.byteLength > HOST_ARTIFACT_MAX_BYTES) {
+      throw new Error(
+        `host artifact for plugin "${manifest.id}" exceeds the ${HOST_ARTIFACT_MAX_BYTES} byte limit`,
+      );
+    }
+    const metadataProblem = validatePluginArtifactMeta({
+      artifact: "host",
+      raw: rawMeta,
+      pluginId: manifest.id,
+      pluginVersion: manifest.version,
+    });
+    if (metadataProblem !== null) throw new Error(metadataProblem);
+    let declaredDigest: unknown;
+    try {
+      const parsed: unknown = JSON.parse(rawMeta);
+      declaredDigest =
+        typeof parsed === "object" && parsed !== null
+          ? Reflect.get(parsed, "artifactDigest")
+          : undefined;
+    } catch {
+      declaredDigest = undefined;
+    }
+    const digest = artifact.digest;
+    if (declaredDigest !== digest) {
+      throw new Error(
+        `host artifact for plugin "${manifest.id}" has digest ${String(declaredDigest)}, expected ${digest}`,
+      );
+    }
+    return {
+      path: jsPath,
+      byteLength: artifact.byteLength,
+      digest,
+      generation: randomUUID(),
+    };
+  }
+
   // Best-effort static identity for the inventory + logo asset route,
   // independent of whether the plugin loads. A plugin whose manifest can't be
   // read (missing/corrupt) simply has no identity to show — it falls back to
@@ -964,6 +1211,61 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       });
     } catch {
       identities.delete(row.id);
+    }
+  }
+
+  function disposeUnavailableProviderRegistrations(pluginId: string): void {
+    const registrations = unavailableProviderRegistrations.get(pluginId);
+    if (registrations === undefined) return;
+    unavailableProviderRegistrations.delete(pluginId);
+    for (const registration of registrations) registration.dispose();
+  }
+
+  function registerPluginProvider(args: {
+    available: boolean;
+    declaration: PluginProviderDeclaration;
+    row: InstalledPluginRow;
+  }): { dispose(): void } {
+    if (!deps.providerRegistry) {
+      throw new Error("the provider registry is unavailable in this host");
+    }
+    const icon = readPluginProviderIcon(
+      args.row.rootDir,
+      args.declaration.icon,
+    );
+    return deps.providerRegistry.register({
+      ...buildPluginProviderRegistration({
+        available: args.available,
+        pluginId: args.row.id,
+        declaration: args.declaration,
+      }),
+      ...(icon === null ? {} : { icon }),
+      pluginId: args.row.id,
+    });
+  }
+
+  function replaceUnavailableProviderRegistrations(
+    row: InstalledPluginRow,
+    declarations: readonly PluginProviderDeclaration[],
+  ): void {
+    disposeUnavailableProviderRegistrations(row.id);
+    const registrations: Array<{ dispose(): void }> = [];
+    try {
+      for (const declaration of declarations) {
+        registrations.push(
+          registerPluginProvider({
+            available: false,
+            declaration,
+            row,
+          }),
+        );
+      }
+    } catch (error) {
+      for (const registration of registrations) registration.dispose();
+      throw error;
+    }
+    if (registrations.length > 0) {
+      unavailableProviderRegistrations.set(row.id, registrations);
     }
   }
 
@@ -1030,6 +1332,18 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     // Build candidate assets without publishing them; a failed reload keeps
     // the previous backend and frontend registration sets together.
     const appBundleCandidate = await loadAppBundleCandidate(row, manifest);
+    let hostArtifactCandidate: PluginHostArtifactSnapshot | null = null;
+    let hostArtifactProblem: string | null = null;
+    try {
+      hostArtifactCandidate = await loadHostArtifactCandidate(row, manifest);
+    } catch (error) {
+      hostArtifactProblem =
+        error instanceof Error ? error.message : String(error);
+      if (previous !== undefined) {
+        failBeforeFactory("error", hostArtifactProblem);
+        return;
+      }
+    }
     // Branding refresh rides every load too, so `bb plugin reload` picks up a
     // changed compact icon or logo file.
     const brandingAssetCandidate = await loadPluginBrandingAssets(
@@ -1093,6 +1407,64 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         }
         deps.sharedPorts?.replaceDeclarationsForOwner(row.id, declarations);
       },
+      callPluginHost: (args) => {
+        if (hostArtifactCandidate === null) {
+          throw new Error(
+            `plugin "${row.id}" does not declare a bb.host entry`,
+          );
+        }
+        if (!deps.callPluginHost) {
+          throw new Error("host plugin transport is unavailable");
+        }
+        return deps.callPluginHost({
+          pluginId: row.id,
+          ...args,
+          artifact: hostArtifactCandidate,
+        });
+      },
+      registerProvider: (declaration) => {
+        return registerPluginProvider({
+          available: true,
+          declaration,
+          row,
+        });
+      },
+      assertProviderRegistrable: (providerId) => {
+        // Reserved first-party ids, checked at call time so a staged
+        // registration fails the factory (the registry enforces the same rule
+        // for live registrations).
+        const reserved = reservedProviderIdProblem({
+          pluginId: row.id,
+          providerId,
+        });
+        if (reserved !== null) {
+          throw new Error(reserved);
+        }
+        // A declaration is metadata; the implementation is the bridge this
+        // plugin declares in its manifest (or, for pi, the bridge the daemon
+        // bundles). A failed artifact build still stages the declaration so
+        // the provider can be listed as unavailable; no declared bridge at all
+        // remains a plugin authoring error.
+        if (
+          manifest.hostEntry !== undefined ||
+          DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS.includes(providerId)
+        ) {
+          return;
+        }
+        throw new Error(
+          `provider "${providerId}" has no bridge to run on: this plugin declares no "bb.host" entry in its manifest`,
+        );
+      },
+      isProviderIdTaken: (providerId) => {
+        if (!deps.providerRegistry) {
+          throw new Error("the provider registry is unavailable in this host");
+        }
+        // This plugin's own previous-load registrations are ignored: on
+        // reload they are disposed before the staged replacements flush, so
+        // re-declaring the same id is not a collision.
+        const existing = deps.providerRegistry.get(providerId);
+        return existing !== null && existing.source.pluginId !== row.id;
+      },
     });
     // Mutable trees are edited between loads, so invalidate the previous
     // generation's URLs before importing (managed git:/npm: artifacts are
@@ -1155,6 +1527,30 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       );
       return;
     }
+    if (hostArtifactProblem !== null) {
+      rollbackGeneration?.();
+      try {
+        replaceUnavailableProviderRegistrations(
+          row,
+          handle.listProviderDeclarations(),
+        );
+      } catch (error) {
+        hostArtifactProblem += `; failed to retain provider declaration: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
+      }
+      for (const database of handle.databaseHandles.splice(0)) {
+        try {
+          database.close();
+        } catch {
+          // The host-artifact failure remains the actionable load problem.
+        }
+      }
+      handle.invalidate();
+      setStatus(row.id, "error", hostArtifactProblem);
+      logger.warn(`plugin ${row.id} failed to load: ${hostArtifactProblem}`);
+      return;
+    }
     const loadedBuiltinName = builtinName(row);
     const plugin: LoadedPlugin = {
       manifest,
@@ -1190,8 +1586,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     }
     // One map replacement is the registration commit point. Until this line,
     // every dispatcher continues to resolve the complete previous handle.
+    disposeUnavailableProviderRegistrations(row.id);
     loaded.set(row.id, plugin);
     appBundles.set(row.id, appBundleCandidate.snapshot);
+    if (hostArtifactCandidate === null) hostArtifacts.delete(row.id);
+    else hostArtifacts.set(row.id, hostArtifactCandidate);
     brandingAssets.set(row.id, brandingAssetCandidate);
     needsConfiguration.delete(row.id);
     agentToolProblems.delete(row.id);
@@ -1241,6 +1640,19 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   ): Promise<void> {
     disposingPluginIds.add(id);
     try {
+      const hostArtifact = hostArtifacts.get(id);
+      if (hostArtifact !== undefined && deps.disposePluginHost) {
+        try {
+          await deps.disposePluginHost({
+            pluginId: id,
+            generation: hostArtifact.generation,
+          });
+        } catch (error) {
+          logger.warn(
+            `plugin ${id} host-worker cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
       try {
         deps.pendingInteractions?.interruptPluginInteractions(id);
       } catch (error) {
@@ -1282,15 +1694,21 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   }
 
   async function disposeOne(id: string): Promise<void> {
+    disposeUnavailableProviderRegistrations(id);
     const plugin = loaded.get(id);
     if (!plugin) return;
     loaded.delete(id);
     await disposePluginInstance(id, plugin);
+    hostArtifacts.delete(id);
     deps.sharedPorts?.clearDeclarationsForOwner(id);
   }
 
   async function disposeAll(): Promise<void> {
-    for (const id of [...loaded.keys()]) {
+    const pluginIds = new Set([
+      ...loaded.keys(),
+      ...unavailableProviderRegistrations.keys(),
+    ]);
+    for (const id of pluginIds) {
       await withLifecycleLock(id, () => disposeOne(id));
     }
     // This runtime is going away, so hand its roots back. The resolve hook is
@@ -1300,10 +1718,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   }
 
   function clearRuntimeState(id: string): void {
+    disposeUnavailableProviderRegistrations(id);
     statuses.delete(id);
     baseStatuses.delete(id);
     devBuildProblems.delete(id);
     appBundles.delete(id);
+    hostArtifacts.delete(id);
     brandingAssets.delete(id);
     needsConfiguration.delete(id);
     agentToolProblems.delete(id);
@@ -1353,6 +1773,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     REGISTRATION_MUTATION_KEY,
     agentToolProblems,
     appBundles,
+    hostArtifacts,
     bindSdk,
     buildThreadDto,
     builtinSourceWatchers,

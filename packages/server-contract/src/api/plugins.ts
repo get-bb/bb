@@ -192,8 +192,11 @@ export const installedPluginSchema = z.object({
    * Publisher badge: `BB Official` for a bundled plugin, the listing
    * marketplace's display name for a catalog install, and null for a plugin
    * the user added from a source, which has no publisher bb can vouch for.
+   * Servers before bb-app 0.38.0 do not send it; a client that reads such a
+   * response treats the plugin as unlabeled instead of failing after the
+   * server already applied the change.
    */
-  publisherLabel: z.string().nullable(),
+  publisherLabel: z.string().nullable().default(null),
   sourceDisplay: z.string(),
   updateState: pluginUpdateStateSchema,
   enabled: z.boolean(),

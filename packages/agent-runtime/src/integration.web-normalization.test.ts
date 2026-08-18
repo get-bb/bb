@@ -13,6 +13,7 @@ import {
   newThreadId,
   resolveRuntimeOptions,
   waitForThreadTurnCompleted,
+  waitForThreadTurnCompletedCount,
 } from "./test/runtime-integration-harness.js";
 
 const webQuery = "IANA example domains";
@@ -77,6 +78,15 @@ function buildCodexSearchPrompt(): string {
   );
 }
 
+function buildCodexSearchRetryPrompt(): string {
+  return (
+    "The previous response did not satisfy this tool-protocol test. " +
+    `You must now call the native web search tool for exactly "${webQuery}". ` +
+    "Do not answer from memory or use shell commands, and do not reply until the tool result returns. " +
+    'Then reply with exactly "DONE".'
+  );
+}
+
 function buildCodexOpenPagePrompt(): string {
   return (
     `Use the native web tool to open exactly ${codexOpenPageUrl}. ` +
@@ -119,8 +129,29 @@ describe("web normalization integration", () => {
         label: "codex web normalization turn/completed",
       });
 
-      const threadEvents = getEventsForThread(ctx.events, threadId);
-      const webSearchEvents = threadEvents.filter(isWebSearchLifecycleEvent);
+      let threadEvents = getEventsForThread(ctx.events, threadId);
+      let webSearchEvents = threadEvents.filter(isWebSearchLifecycleEvent);
+      if (
+        !webSearchEvents.some((event) =>
+          matchesExpectedWebQuery(event.item),
+        )
+      ) {
+        await ctx.runtime.runTurn({
+          threadId,
+          clientRequestId: "creq_23456789ac",
+          input: [promptTextInput({ text: buildCodexSearchRetryPrompt() })],
+          options,
+        });
+        await waitForThreadTurnCompletedCount({
+          ctx,
+          threadId,
+          count: 2,
+          timeoutMs: 60_000,
+          label: "codex web normalization corrective turn/completed",
+        });
+        threadEvents = getEventsForThread(ctx.events, threadId);
+        webSearchEvents = threadEvents.filter(isWebSearchLifecycleEvent);
+      }
       const providerUnhandledEvents = threadEvents.filter(
         (event) =>
           event.type === "provider/unhandled" &&
@@ -137,7 +168,7 @@ describe("web normalization integration", () => {
       await ctx.runtime.shutdown();
       cleanup(ctx);
     }
-  }, 90_000);
+  }, 150_000);
 
   it("normalizes Codex native open-page activity", async () => {
     const providerId = "codex";

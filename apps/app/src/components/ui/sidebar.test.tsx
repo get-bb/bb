@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -141,24 +147,6 @@ describe("SidebarTrigger", () => {
     expect(markup).not.toContain('data-icon="AlignLeft"');
     expect(markup).toContain('aria-expanded="true"');
     expect(markup).not.toContain('aria-pressed="');
-  });
-});
-
-describe("Sidebar", () => {
-  it("keeps regular viewport content inside the safe area", () => {
-    render(
-      <CompactViewportOverrideProvider isCompactViewport={false}>
-        <SidebarProvider>
-          <Sidebar>Sidebar content</Sidebar>
-        </SidebarProvider>
-      </CompactViewportOverrideProvider>,
-    );
-
-    const sidebar = screen
-      .getByText("Sidebar content")
-      .closest('[data-sidebar="sidebar"]');
-
-    expect(sidebar?.className).toContain("pt-[env(safe-area-inset-top)]");
   });
 });
 

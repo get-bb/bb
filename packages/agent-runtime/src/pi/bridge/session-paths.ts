@@ -9,7 +9,6 @@ export interface ResolvePiBridgeSessionDirArgs {
 
 export interface ResolvePiSessionFilePathArgs
   extends ResolvePiBridgeSessionDirArgs {
-  sessionPath?: string;
   threadId: string;
 }
 
@@ -27,10 +26,6 @@ export function resolvePiBridgeSessionDir(
 export function resolvePiSessionFilePath(
   args: ResolvePiSessionFilePathArgs,
 ): string {
-  if (args.sessionPath?.trim()) {
-    return resolve(args.sessionPath);
-  }
-
   return join(
     resolvePiBridgeSessionDir({ env: args.env }),
     `${sanitizeSessionKey(args.threadId)}.jsonl`,

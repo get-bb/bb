@@ -13,7 +13,6 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
-    "@bb/agent-providers": "workspace:*",
     "@bb/config": "workspace:*",
     "@bb/core-ui": "workspace:*",
     "@bb/db": "workspace:*",

@@ -60,7 +60,6 @@ function updateGeneralSetting(
   value: boolean,
 ): AppSettings {
   switch (key) {
-    case "caffeinate":
     case "showKeyboardHints":
     case "steerActiveThreadOnEnter":
     case "showUnhandledProviderEvents":

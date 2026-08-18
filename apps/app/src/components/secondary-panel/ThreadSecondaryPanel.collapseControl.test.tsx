@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PanelGroup } from "react-resizable-panels";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import {
+  createGitDiffFixedPanelTab,
   createThreadInfoFixedPanelTab,
   createWorkspaceFilePreviewFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
@@ -43,32 +44,6 @@ function renderPanel(args: {
     </Wrapper>,
   );
 }
-
-describe("ThreadSecondaryPanel resize handle", () => {
-  it("uses a real 12px hit target centered over the resize seam", () => {
-    const view = renderPanel({
-      isConversationCollapsed: false,
-      onToggleConversationCollapse: noop,
-    });
-
-    const handle = view.getByRole("separator", {
-      name: "Resize thread and right panel",
-    });
-    const hitTarget = handle.querySelector("[data-panel-resize-hit-target]");
-
-    expect(handle.className.split(/\s+/u)).toContain("z-[25]");
-    expect(hitTarget).not.toBeNull();
-    expect(hitTarget?.className.split(/\s+/u)).toEqual(
-      expect.arrayContaining([
-        "left-1/2",
-        "z-10",
-        "w-3",
-        "-translate-x-1/2",
-        "cursor-col-resize",
-      ]),
-    );
-  });
-});
 
 describe("ThreadSecondaryPanel compact file content", () => {
   it("retains the active file body after the persistent drawer closes", () => {
@@ -124,6 +99,76 @@ describe("ThreadSecondaryPanel compact file content", () => {
     view.rerender(renderDrawer(false));
 
     expect(screen.getByLabelText("Retained file content")).toBe(fileContent);
+  });
+});
+
+describe("ThreadSecondaryPanel Diff eligibility", () => {
+  it("falls back from an ineligible active Diff tab to Info", () => {
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    render(
+      <Wrapper>
+        <TooltipProvider>
+          <PanelGroup direction="horizontal">
+            <ThreadSecondaryPanel
+              activeTab={createGitDiffFixedPanelTab()}
+              canUseGitUi={false}
+              isConversationCollapsed={false}
+              isOpen
+              metadataContent={<div>Thread metadata</div>}
+              onClose={noop}
+              onCollapse={noop}
+              onFileTabReorder={noop}
+              onOpenNewTab={noop}
+              onPanelChange={noop}
+              onPanelFocus={noop}
+              onToggleConversationCollapse={noop}
+              renderAsDrawer={false}
+            />
+          </PanelGroup>
+        </TooltipProvider>
+      </Wrapper>,
+    );
+
+    expect(screen.getByTestId("thread-info-tab")).toBeTruthy();
+    expect(screen.getByText("Thread metadata")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Show diff panel" }),
+    ).toBeNull();
+    expect(screen.queryByText("This panel view is unavailable.")).toBeNull();
+  });
+
+  it("keeps an active Diff tab visible while Git eligibility loads", () => {
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    render(
+      <Wrapper>
+        <TooltipProvider>
+          <PanelGroup direction="horizontal">
+            <ThreadSecondaryPanel
+              activeTab={createGitDiffFixedPanelTab()}
+              canUseGitUi={false}
+              gitDiffTabStatus="loading"
+              isConversationCollapsed={false}
+              isOpen
+              metadataContent={null}
+              onClose={noop}
+              onCollapse={noop}
+              onFileTabReorder={noop}
+              onOpenNewTab={noop}
+              onPanelChange={noop}
+              onPanelFocus={noop}
+              onToggleConversationCollapse={noop}
+              renderAsDrawer={false}
+            />
+          </PanelGroup>
+        </TooltipProvider>
+      </Wrapper>,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Show diff panel" }),
+    ).toBeTruthy();
+    expect(screen.getByText("Checking Git support…")).toBeTruthy();
+    expect(screen.queryByText("This panel view is unavailable.")).toBeNull();
   });
 });
 

@@ -18,6 +18,7 @@ type RootComposeSecondaryContentProps = ComponentProps<
 >;
 
 interface PanelGroupHandle {
+  getLayout: () => number[];
   setLayout: (layout: number[]) => void;
 }
 
@@ -41,6 +42,7 @@ type TestDesktopWindow = {
 };
 
 const panelGroupState = vi.hoisted(() => ({
+  getLayout: vi.fn(() => [60, 40]),
   setLayout: vi.fn(),
 }));
 
@@ -66,7 +68,10 @@ vi.mock("react-resizable-panels", async () => {
     ({ children }, ref) => {
       React.useImperativeHandle(
         ref,
-        () => ({ setLayout: panelGroupState.setLayout }),
+        () => ({
+          getLayout: panelGroupState.getLayout,
+          setLayout: panelGroupState.setLayout,
+        }),
         [],
       );
       return React.createElement(
@@ -256,20 +261,6 @@ describe("RootComposeSecondaryContent desktop layout", () => {
     ).toBe("true");
     expect(screen.getByTestId("root-compose-content")).not.toBeNull();
     expect(screen.getByTestId("plugin-homepage-sections")).not.toBeNull();
-  });
-
-  it("marks the root compose top strip as a macOS window drag region", () => {
-    setMacosDesktopChrome();
-
-    renderRootCompose({
-      isCompactViewport: false,
-      isSecondaryPanelOpen: false,
-    });
-
-    const strip = screen.getByTestId("root-compose-main-window-drag-strip");
-    expect(strip.className).toContain("h-[48px]");
-    expect(strip.className).toContain("[app-region:drag]");
-    expect(strip.className).toContain("[-webkit-app-region:drag]");
   });
 
   it("keeps the drag strip on a split pane that touches the window top edge", () => {

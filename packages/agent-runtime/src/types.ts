@@ -1,4 +1,5 @@
 import type {
+  PermissionMode,
   AvailableModel,
   ClientTurnRequestId,
   DynamicTool,
@@ -7,6 +8,7 @@ import type {
   PendingInteractionCreate,
   PendingInteractionResolution,
   PromptInput,
+  ProviderFork,
   RuntimeThreadExecutionOptions,
   ThreadEvent,
   ToolCallRequest,
@@ -98,6 +100,11 @@ export interface AgentRuntimeOptions {
 
   /** Optional directory containing bundled provider bridges. */
   bridgeBundleDir?: string;
+  /**
+   * Bounds for the turn-start watchdog (visible system/error when an
+   * accepted turn never starts). Defaults: 120s threshold, 15s sweep.
+   */
+  turnStartWatchdog?: { thresholdMs?: number; intervalMs?: number };
 
   /** Optional executable used to run Node-based provider bridges. */
   bridgeNodeExecutablePath?: string;
@@ -133,8 +140,42 @@ export interface AgentRuntimeOptions {
 // Runtime interface
 // ---------------------------------------------------------------------------
 
+/**
+ * A plugin-delivered provider bridge, resolved by the host daemon: the bridge
+ * artifact has been downloaded, hash-verified, and cached at `artifactPath`.
+ * Rides per-call like the ACP launch spec; `sha256` keys process identity so
+ * a plugin update (new artifact hash) gets a fresh bridge process.
+ */
+export interface AgentRuntimeBridgeLaunch {
+  /** The plugin that ships this bridge. Scopes the process's directories. */
+  pluginId: string;
+  /**
+   * This plugin's persistent bridge directory on this host, already created by
+   * the daemon. The bootstrap hands it to the bridge; the matching temp dir is
+   * this process's own and is created and removed by the bootstrap.
+   */
+  dataDir: string;
+  /**
+   * Which bridge binary to run, as the server decided it: a hash-verified
+   * plugin artifact already cached on this host, or a bridge inside the
+   * daemon's own bundle (Pi).
+   */
+  source:
+    | { kind: "artifact"; digest: string; artifactPath: string }
+    | { kind: "daemon-bundled"; id: string };
+  /** Server-validated capabilities from the provider declaration. */
+  capabilities: {
+    supportsServiceTier: boolean;
+    permissionModes: PermissionMode[];
+    supportsThreadArchive: boolean;
+    supportsThreadRename: boolean;
+    fork: ProviderFork;
+  };
+}
+
 export interface EnsureProviderArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
   /**
    * Providers with thread-scoped processes use this to start the process for a
    * specific bb thread. Omit it for provider-scoped maintenance work such as
@@ -146,6 +187,7 @@ export interface EnsureProviderArgs {
 
 export interface StartThreadArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
   environmentId: string;
   threadId: string;
   projectId: string;
@@ -176,6 +218,7 @@ export interface StartThreadResult {
 
 export interface PrepareThreadRewindArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
   environmentId: string;
   threadId: string;
   leaseId: string;
@@ -200,6 +243,7 @@ export interface DiscardThreadRewindArgs {
 
 export interface ResumeThreadArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
   environmentId: string;
   threadId: string;
   projectId?: string;
@@ -294,12 +338,14 @@ export interface ClearThreadGoalArgs {
 }
 
 export interface ArchiveThreadArgs {
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
   providerId: string;
   providerThreadId: string;
   threadId: string;
 }
 
 export interface UnarchiveThreadArgs {
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
   providerId: string;
   providerThreadId: string;
   threadId: string;
@@ -308,6 +354,7 @@ export interface UnarchiveThreadArgs {
 export interface ListModelsArgs {
   providerId: string;
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
   cwd?: string;
 }
 

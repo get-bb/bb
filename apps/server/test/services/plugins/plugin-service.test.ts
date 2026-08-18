@@ -1,4 +1,11 @@
-import { mkdtemp, mkdir, rename, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +17,10 @@ import {
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
 import { testLogger } from "../../helpers/test-app.js";
+import { pluginInstalledTelemetryEvent } from "../../../src/services/plugins/plugin-registration.js";
+import type { TelemetryEvent } from "../../../src/services/system/telemetry.js";
+import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
+import { createProviderRegistryService } from "../../../src/services/providers/provider-registry.js";
 
 const logger = testLogger as unknown as Logger;
 
@@ -97,6 +108,7 @@ describe("plugin service", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-test-"));
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -541,6 +553,7 @@ describe("plugin service", () => {
 
   it("skips the engines gate on 0.0.0 dev builds instead of marking everything incompatible", async () => {
     const devService = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -560,6 +573,101 @@ describe("plugin service", () => {
     const entry = await devService.installPath(gated);
     expect(entry.status).toBe("running");
     await devService.stop();
+  });
+
+  it("reports one anonymous plugin_installed event per user install", async () => {
+    const captured: TelemetryEvent[] = [];
+    const tracked = createPluginService({
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      telemetry: { capture: (event) => captured.push(event) },
+      dataDir: join(workDir, "data"),
+      appVersion: "0.9.0",
+      loadTimeoutMs: 2000,
+    });
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-tracked",
+      serverSource: `export default function plugin() {}`,
+    });
+    await tracked.installPath(rootDir);
+    // A direct install may point at private code, so it reports no id.
+    expect(captured).toEqual([
+      {
+        name: "plugin_installed",
+        properties: {
+          plugin_id: null,
+          provenance: "direct",
+          marketplace: null,
+          source_kind: "path",
+        },
+      },
+    ]);
+    // Reload, enable, and boot-time reconcile are not installs.
+    await tracked.reload("tracked");
+    await tracked.setEnabled("tracked", false);
+    await tracked.setEnabled("tracked", true);
+    await tracked.stop();
+    await tracked.start();
+    expect(captured).toHaveLength(1);
+    await tracked.stop();
+  });
+
+  it("hides names of plugins from third-party catalogs in the install event", () => {
+    // A local or private marketplace can name internal code, so only the
+    // curated bb-community catalog and bundled builtins report names.
+    const properties = pluginInstalledTelemetryEvent(
+      "internal-tool",
+      {
+        kind: "catalog",
+        marketplace: "acme-private",
+        entryId: "internal-tool",
+      },
+      {
+        kind: "git",
+        url: "git@github.com:acme/internal-tool.git",
+        subdirectory: null,
+        selector: { kind: "ref", ref: "main", refKind: "branch" },
+      },
+    ).properties;
+    expect(properties).toEqual({
+      plugin_id: null,
+      provenance: "catalog",
+      marketplace: null,
+      source_kind: "git",
+    });
+    expect(
+      pluginInstalledTelemetryEvent(
+        "tasks",
+        { kind: "builtin" },
+        { kind: "builtin", name: "tasks" },
+      ).properties.plugin_id,
+    ).toBe("tasks");
+  });
+
+  it("names public plugins in the install event so PostHog can rank them", () => {
+    expect(
+      pluginInstalledTelemetryEvent(
+        "tasks",
+        { kind: "catalog", marketplace: "bb-community", entryId: "tasks" },
+        {
+          kind: "npm",
+          packageName: "@get-bb/tasks",
+          registry: "https://registry.npmjs.org",
+          requestedSpec: "^1",
+          specKind: "range",
+        },
+      ).properties,
+    ).toEqual({
+      plugin_id: "tasks",
+      provenance: "catalog",
+      marketplace: "bb-community",
+      source_kind: "npm",
+    });
   });
 
   it("times out a hung factory and reports error", async () => {
@@ -642,6 +750,7 @@ describe("plugins-changed broadcast", () => {
   let notifySystem: ReturnType<
     typeof vi.fn<(changes: SystemChangeKind[]) => void>
   >;
+  let providerRegistry: ReturnType<typeof createProviderRegistryService>;
   let service: PluginService;
 
   beforeEach(async () => {
@@ -649,7 +758,9 @@ describe("plugins-changed broadcast", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-notify-test-"));
     notifySystem = vi.fn<(changes: SystemChangeKind[]) => void>();
+    providerRegistry = createProviderRegistryService();
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -657,6 +768,7 @@ describe("plugins-changed broadcast", () => {
         notifySystem,
       },
       logger,
+      providerRegistry,
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
       loadTimeoutMs: 2000,

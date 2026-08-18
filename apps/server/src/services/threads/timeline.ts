@@ -6,7 +6,11 @@ import {
   type AcceptedClientRequestContext,
   type ThreadEventWithMeta,
 } from "@bb/thread-view";
-import type { ClientTurnRequestId, Thread } from "@bb/domain";
+import type {
+  ClientTurnRequestId,
+  ProviderComposerCommand,
+  Thread,
+} from "@bb/domain";
 import type {
   ThreadConversationOutlineItem,
   ThreadConversationOutlineResponse,
@@ -149,6 +153,12 @@ interface BuildThreadTimelineOptions {
    */
   summaryOnly?: boolean;
   providerDisplayName?: string;
+  /**
+   * The provider's declared `plan` composer command; null when it declares
+   * none. Gates plan-mode extraction — see
+   * `services/providers/provider-plan-command.ts`.
+   */
+  planCommand?: ProviderComposerCommand | null;
 }
 
 interface BuildTimelineTurnSummaryDetailsOptions extends TimelineTurnSummarySelection {
@@ -1692,6 +1702,7 @@ function buildThreadTimelineInternal(
     includeProviderUnhandledOperations,
     isLatestPage: options.page.kind === "latest",
     providerDisplayName: options.providerDisplayName,
+    planCommand: options.planCommand,
     threadStatus: thread.status,
     threadName: thread.title ?? thread.titleFallback ?? "",
     workspaceRoot: resolveThreadWorkspaceRoot(db, thread),

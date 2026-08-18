@@ -202,25 +202,6 @@ function writePromptDraft(
   emitPromptDraftChange(storageKey);
 }
 
-function addQuoteToPromptDraft(
-  storageKey: string | null,
-  text: string,
-  attachments: readonly PromptDraftAttachment[] = [],
-): void {
-  const currentDraft = readPromptDraft(storageKey);
-  const nextDraft = appendQuoteAndAttachmentsToDraft(
-    currentDraft,
-    text,
-    attachments,
-  );
-  // Whitespace-only text with no new attachments is a no-op; skip the write
-  // so an empty selection can't mark an otherwise-empty draft dirty.
-  if (nextDraft === currentDraft) {
-    return;
-  }
-  writePromptDraft(storageKey, nextDraft);
-}
-
 function restorePromptDraftIfEmpty(
   storageKey: string | null,
   value: PromptDraftState,
@@ -239,6 +220,26 @@ function restorePromptDraftIfEmpty(
 
   writePromptDraft(storageKey, value);
   return true;
+}
+
+function addQuoteToPromptDraft(
+  storageKey: string,
+  text: string,
+  attachments: readonly PromptDraftAttachment[] = [],
+): void {
+  const currentDraft = readPromptDraft(storageKey);
+  const nextDraft = appendQuoteAndAttachmentsToDraft(
+    currentDraft,
+    text,
+    attachments,
+  );
+  // Whitespace-only text with no new attachments is a no-op; skip the write
+  // so an empty selection can't mark an otherwise-empty draft dirty.
+  if (nextDraft === currentDraft) {
+    return;
+  }
+
+  writePromptDraft(storageKey, nextDraft);
 }
 
 function getPromptDraftStorageKey(scope: PromptDraftScope): string {
@@ -282,7 +283,7 @@ export function getPromptDraftAccessor(scope: PromptDraftScope): {
     storageKey,
     getCurrent: () => readPromptDraft(storageKey),
     setDraft: (draft) => writePromptDraft(storageKey, draft),
-    addQuote: (text, attachments = []) =>
+    addQuote: (text, attachments) =>
       addQuoteToPromptDraft(storageKey, text, attachments),
   };
 }
@@ -359,7 +360,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
   );
 
   const addQuote = useCallback(
-    (text: string, attachments: readonly PromptDraftAttachment[] = []) =>
+    (text: string, attachments?: readonly PromptDraftAttachment[]) =>
       addQuoteToPromptDraft(storageKey, text, attachments),
     [storageKey],
   );

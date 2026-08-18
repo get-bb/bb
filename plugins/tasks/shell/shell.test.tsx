@@ -22,8 +22,14 @@ if (!window.matchMedia) {
 const app = await loadPluginApp(() => import("../app"));
 const { parseTasksRoute, tasksRouteToSubPath } = await import("./routes.js");
 const { pagerPosition } = await import("./topbar.js");
-const { SIDEBAR_COLLAPSED_STORAGE_KEY } =
-  await import("./sidebar-preference.js");
+const { loadViewMode } = await import("./view-preference.js");
+
+const tasksRegistration = app.navPanels[0]!;
+const navigationView = tasksRegistration.experimental_fixedTabs?.[0]!;
+const navigationRegistration = {
+  ...tasksRegistration,
+  component: navigationView.component,
+};
 
 beforeEach(() => window.localStorage.clear());
 afterEach(() => {
@@ -32,6 +38,7 @@ afterEach(() => {
 });
 
 const PROJECT_ID = "01HZZZZZZZZZZZZZZZZZZZZZP1";
+const OTHER_PROJECT_ID = "01HZZZZZZZZZZZZZZZZZZZZZP2";
 const FOLDER_ID = "01HZZZZZZZZZZZZZZZZZZZZZF1";
 
 const project = {
@@ -81,6 +88,8 @@ describe("tasks route grammar", () => {
       { kind: "task", taskKey: "TSK-4" },
       { kind: "project", projectId: PROJECT_ID, view: "list" },
       { kind: "project", projectId: PROJECT_ID, view: "board" },
+      // No view marker: the shell fills it from the stored preference.
+      { kind: "project", projectId: PROJECT_ID, view: null },
     ] as const;
     for (const route of routes) {
       expect(parseTasksRoute(tasksRouteToSubPath(route))).toEqual(route);
@@ -92,6 +101,86 @@ describe("tasks route grammar", () => {
       view: "board",
     });
     expect(parseTasksRoute("")).toEqual({ kind: "all" });
+    // An unknown marker is as good as none — never a silent "list".
+    expect(parseTasksRoute(`${PROJECT_ID}?view=kanban`)).toEqual({
+      kind: "project",
+      projectId: PROJECT_ID,
+      view: null,
+    });
+  });
+});
+
+describe("project view preference", () => {
+  const openProject = (subPath: string) =>
+    renderSlot(
+      app.navPanels[0]!,
+      { subPath },
+      { rpc: seededRpc({ listLabels: () => ({ labels: [] }) }) },
+    );
+
+  it("restores the remembered view when the URL names none", async () => {
+    const listed = openProject(`${PROJECT_ID}?view=list`);
+    // The toggle is the only way a user picks a view; it must persist.
+    fireEvent.click(await listed.findByRole("button", { name: "Board" }));
+    expect(listed.navigateCalls).toContainEqual({
+      method: "toPluginPanel",
+      path: "tasks",
+      options: { subPath: `${PROJECT_ID}?view=board` },
+    });
+    listed.lifecycle.unmount();
+
+    // Reopening the project without a marker (sidebar click, deep link).
+    const reopened = openProject(PROJECT_ID);
+    const boardSegment = await reopened.findByRole("button", { name: "Board" });
+    expect(boardSegment.getAttribute("aria-pressed")).toBe("true");
+    await reopened.findByText("In Review");
+  });
+
+  it("keeps per-project choices apart and defaults unseen projects to the last one used", async () => {
+    const slot = openProject(`${PROJECT_ID}?view=list`);
+    fireEvent.click(await slot.findByRole("button", { name: "Board" }));
+    slot.lifecycle.unmount();
+
+    expect(loadViewMode(PROJECT_ID)).toBe("board");
+    // A project opened for the first time follows the most recent choice
+    // rather than snapping back to the list.
+    expect(loadViewMode(OTHER_PROJECT_ID)).toBe("board");
+
+    const other = renderSlot(
+      app.navPanels[0]!,
+      { subPath: `${OTHER_PROJECT_ID}?view=list` },
+      { rpc: seededRpc() },
+    );
+    fireEvent.click(await other.findByRole("button", { name: "List" }));
+    expect(loadViewMode(OTHER_PROJECT_ID)).toBe("list");
+    expect(loadViewMode(PROJECT_ID)).toBe("board");
+  });
+
+  it("navigates from the sidebar without pinning a view", async () => {
+    const slot = renderSlot(
+      navigationRegistration,
+      { subPath: "all" },
+      { rpc: seededRpc({ listLabels: () => ({ labels: [] }) }) },
+    );
+    fireEvent.click(await slot.findByText("Tasks Plugin"));
+    expect(slot.navigateCalls).toContainEqual({
+      method: "toPluginPanel",
+      path: "tasks",
+      options: { subPath: PROJECT_ID },
+    });
+  });
+
+  it("still toggles when client storage rejects writes", async () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("Storage is disabled", "SecurityError");
+    });
+    const slot = openProject(`${PROJECT_ID}?view=list`);
+    fireEvent.click(await slot.findByRole("button", { name: "Board" }));
+    expect(slot.navigateCalls).toContainEqual({
+      method: "toPluginPanel",
+      path: "tasks",
+      options: { subPath: `${PROJECT_ID}?view=board` },
+    });
   });
 });
 
@@ -171,119 +260,15 @@ describe("task pager", () => {
 });
 
 describe("tasks app shell", () => {
-  it("keeps the first-use sidebar expanded without writing a preference", async () => {
-    const slot = renderSlot(
-      app.navPanels[0]!,
-      { subPath: "all" },
+  it("registers navigation as a BB-owned fixed panel tab", () => {
+    expect(tasksRegistration.experimental_fixedTabs).toMatchObject([
       {
-        rpc: seededRpc(),
+        id: "navigation",
+        title: "Navigation",
+        icon: "ListView",
+        layout: "flush",
       },
-    );
-    await slot.findByText("Tasks Plugin");
-
-    expect(
-      slot
-        .getByRole("button", { name: "Collapse sidebar" })
-        .getAttribute("aria-expanded"),
-    ).toBe("true");
-    expect(
-      window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY),
-    ).toBeNull();
-  });
-
-  it("persists collapsed state across route changes and remounts", async () => {
-    const registration = app.navPanels[0]!;
-    const slot = renderSlot(
-      registration,
-      { subPath: "all" },
-      {
-        rpc: seededRpc(),
-      },
-    );
-    await slot.findByText("Tasks Plugin");
-
-    fireEvent.click(slot.getByRole("button", { name: "Collapse sidebar" }));
-    expect(slot.queryByRole("button", { name: "Manage" })).toBeNull();
-    expect(window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY)).toBe(
-      "true",
-    );
-
-    const Shell = registration.component;
-    slot.lifecycle.rerender(<Shell subPath={`${PROJECT_ID}?view=board`} />);
-    await slot.findByText("Backlog");
-    expect(
-      slot
-        .getByRole("button", { name: "Expand sidebar" })
-        .getAttribute("aria-expanded"),
-    ).toBe("false");
-
-    slot.lifecycle.unmount();
-    const remounted = renderSlot(
-      registration,
-      { subPath: "all" },
-      {
-        rpc: seededRpc(),
-      },
-    );
-    await remounted.findByText("All tasks");
-    expect(remounted.queryByRole("button", { name: "Manage" })).toBeNull();
-    expect(
-      remounted.getByRole("button", { name: "Expand sidebar" }),
-    ).toBeDefined();
-  });
-
-  it("persists expanded state after restoring a collapsed preference", async () => {
-    window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, "true");
-    const registration = app.navPanels[0]!;
-    const slot = renderSlot(
-      registration,
-      { subPath: "all" },
-      {
-        rpc: seededRpc(),
-      },
-    );
-    await slot.findByText("All tasks");
-    fireEvent.click(slot.getByRole("button", { name: "Expand sidebar" }));
-
-    expect(window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY)).toBe(
-      "false",
-    );
-    await slot.findByRole("button", { name: "Manage" });
-
-    slot.lifecycle.unmount();
-    const remounted = renderSlot(
-      registration,
-      { subPath: "manage" },
-      {
-        rpc: seededRpc({ listLabels: () => ({ labels: [] }) }),
-      },
-    );
-    await remounted.findByText("Labels, agent presets, and folders.");
-    expect(
-      remounted.getByRole("button", { name: "Collapse sidebar" }),
-    ).toBeDefined();
-    expect(remounted.getByRole("button", { name: "Manage" })).toBeDefined();
-  });
-
-  it("keeps toggling usable when client storage rejects writes", async () => {
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw new DOMException("Storage is disabled", "SecurityError");
-    });
-    const slot = renderSlot(
-      app.navPanels[0]!,
-      { subPath: "all" },
-      {
-        rpc: seededRpc(),
-      },
-    );
-    await slot.findByText("Tasks Plugin");
-
-    fireEvent.click(slot.getByRole("button", { name: "Collapse sidebar" }));
-    expect(
-      slot
-        .getByRole("button", { name: "Expand sidebar" })
-        .getAttribute("aria-expanded"),
-    ).toBe("false");
+    ]);
   });
 
   it("does not treat the first connection as a reconnect", async () => {
@@ -396,6 +381,67 @@ describe("tasks app shell", () => {
     await slot.findByText("Manually refreshed list title");
   });
 
+  it("shares manual refresh across the page and right-panel queries", async () => {
+    let listTaskCalls = 0;
+    let listProjectCalls = 0;
+    let holdProjects = false;
+    let releaseProjects: (() => void) | null = null;
+    const page = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "all" },
+      {
+        rpc: seededRpc({
+          listTasks: () => {
+            listTaskCalls += 1;
+            return { tasks: [] };
+          },
+        }),
+      },
+    );
+    const panel = renderSlot(
+      navigationRegistration,
+      { subPath: "all" },
+      {
+        rpc: seededRpc({
+          listProjects: async () => {
+            listProjectCalls += 1;
+            if (holdProjects) {
+              await new Promise<void>((resolve) => {
+                releaseProjects = resolve;
+              });
+            }
+            return { projects: [project] };
+          },
+        }),
+      },
+    );
+    await page.findByRole("button", { name: "Refresh tasks" });
+    await panel.findByText("Tasks Plugin");
+    const initialTaskCalls = listTaskCalls;
+    const initialProjectCalls = listProjectCalls;
+
+    holdProjects = true;
+    const refresh = page.getByRole("button", {
+      name: "Refresh tasks",
+    }) as HTMLButtonElement;
+    fireEvent.click(refresh);
+
+    await waitFor(() =>
+      expect(listTaskCalls).toBeGreaterThan(initialTaskCalls),
+    );
+    await waitFor(() =>
+      expect(listProjectCalls).toBeGreaterThan(initialProjectCalls),
+    );
+    expect(refresh.disabled).toBe(true);
+    const taskCallsWhilePanelPending = listTaskCalls;
+    fireEvent.click(refresh);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(listTaskCalls).toBe(taskCallsWhilePanelPending);
+
+    releaseProjects?.();
+    await waitFor(() => expect(refresh.disabled).toBe(false));
+  });
+
   it("exposes a subtle icon-only refresh control left of New task", async () => {
     const slot = renderSlot(
       app.navPanels[0]!,
@@ -423,25 +469,19 @@ describe("tasks app shell", () => {
 
     const refresh = slot.getByRole("button", { name: "Refresh tasks" });
     const newTask = slot.getByRole("button", { name: /New task/i });
-    const sidebar = slot.getByRole("button", { name: "Collapse sidebar" });
 
     // Icon-only: no visible "Refresh" text; accessible name remains.
     expect(refresh.textContent?.trim() ?? "").not.toMatch(/Refresh/i);
     expect(refresh.getAttribute("aria-label")).toBe("Refresh tasks");
     expect(refresh.className).toMatch(/size-7/);
 
-    // DOM order: refresh → New task → sidebar toggle.
+    // DOM and tab order: refresh → New task. BB owns the right-panel toggle
+    // outside this plugin surface.
     expect(
       refresh.compareDocumentPosition(newTask) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(
-      newTask.compareDocumentPosition(sidebar) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-
-    // Tab order follows DOM order among the three controls.
-    const tabbables = [refresh, newTask, sidebar];
+    const tabbables = [refresh, newTask];
     for (let i = 0; i < tabbables.length - 1; i++) {
       expect(
         tabbables[i]!.compareDocumentPosition(tabbables[i + 1]!) &
@@ -671,7 +711,7 @@ describe("tasks app shell", () => {
     await slot.findByText("Projects group tasks under a shared key prefix.");
   });
 
-  it("renders sidebar data and routes project/board/task subPaths", async () => {
+  it("renders board and task subPaths without plugin-owned sidebar chrome", async () => {
     const boardSlot = renderSlot(
       app.navPanels[0]!,
       { subPath: `${PROJECT_ID}?view=board` },
@@ -680,8 +720,8 @@ describe("tasks app shell", () => {
     // The real board renders its status columns (empty listTasks → 0 cards).
     await boardSlot.findByText("Backlog");
     await boardSlot.findByText("In Review");
-    expect(boardSlot.getAllByText("Tasks Plugin").length).toBeGreaterThan(0);
-    expect(boardSlot.getByText("All tasks")).toBeDefined();
+    expect(boardSlot.getByText("Tasks Plugin")).toBeDefined();
+    expect(boardSlot.queryByRole("button", { name: /sidebar/i })).toBeNull();
     cleanup();
 
     const taskSlot = renderSlot(
@@ -700,7 +740,66 @@ describe("tasks app shell", () => {
     });
   });
 
-  it("routes 'manage' to the manage panel via the sidebar footer", async () => {
+  it("renders right-panel navigation and routes through the plugin panel", async () => {
+    const slot = renderSlot(
+      navigationRegistration,
+      { subPath: "all" },
+      {
+        rpc: seededRpc(),
+      },
+    );
+    await slot.findByText("Tasks Plugin");
+    expect(slot.getByRole("button", { name: /^All tasks/ })).toBeDefined();
+    expect(slot.getByRole("button", { name: "Manage" })).toBeDefined();
+
+    fireEvent.click(slot.getByTitle("Tasks Plugin"));
+    expect(slot.navigateCalls).toContainEqual({
+      method: "toPluginPanel",
+      path: "tasks",
+      options: { subPath: PROJECT_ID },
+    });
+  });
+
+  it("does not mount New project queries until the dialog opens", async () => {
+    let bbProjectCalls = 0;
+    const slot = renderSlot(
+      navigationRegistration,
+      { subPath: "all" },
+      {
+        rpc: seededRpc({
+          listBbProjects: () => {
+            bbProjectCalls += 1;
+            return { bbProjects: [] };
+          },
+        }),
+      },
+    );
+    await slot.findByRole("button", { name: "New project" });
+    expect(bbProjectCalls).toBe(0);
+
+    fireEvent.click(slot.getByRole("button", { name: "New project" }));
+
+    await slot.findByText("Projects group tasks under a shared key prefix.");
+    expect(bbProjectCalls).toBeGreaterThan(0);
+  });
+
+  it("routes 'manage' to the manage panel from right-panel navigation", async () => {
+    const panel = renderSlot(
+      navigationRegistration,
+      { subPath: "all" },
+      {
+        rpc: seededRpc(),
+      },
+    );
+    await panel.findByRole("button", { name: "Manage" });
+    fireEvent.click(panel.getByRole("button", { name: "Manage" }));
+    expect(panel.navigateCalls).toContainEqual({
+      method: "toPluginPanel",
+      path: "tasks",
+      options: { subPath: "manage" },
+    });
+    cleanup();
+
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: "manage" },
@@ -709,8 +808,6 @@ describe("tasks app shell", () => {
       },
     );
     await slot.findByText("Labels, agent presets, and folders.");
-    // The sidebar footer row is highlighted and present on every route.
-    expect(slot.getByRole("button", { name: "Manage" })).toBeDefined();
   });
 
   it("opens quick-create on bare 'c' but not from editable targets or dialogs", async () => {
@@ -721,7 +818,7 @@ describe("tasks app shell", () => {
         rpc: seededRpc(),
       },
     );
-    await slot.findByText("Tasks Plugin");
+    await slot.findByText("All tasks");
     fireEvent.keyDown(window, { key: "c" });
     // The New task dialog mounts (project select defaults to the only project).
     await slot.findByRole("dialog");
@@ -747,7 +844,7 @@ describe("tasks app shell", () => {
       createdAt: "2026-07-15T00:00:00.000Z",
     };
     const slot = renderSlot(
-      app.navPanels[0]!,
+      navigationRegistration,
       { subPath: "all" },
       {
         rpc: seededRpc({
@@ -774,7 +871,7 @@ describe("tasks app shell", () => {
   it("refetches sidebar data when invalidation channels fire", async () => {
     let projectCalls = 0;
     const slot = renderSlot(
-      app.navPanels[0]!,
+      navigationRegistration,
       { subPath: "all" },
       {
         rpc: seededRpc({

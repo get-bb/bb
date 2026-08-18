@@ -186,7 +186,6 @@ function useSettingsStoryState() {
   const [richTextEditing, setRichTextEditing] = useState(false);
   const [steerActiveThreadOnEnter, setSteerActiveThreadOnEnter] =
     useState(false);
-  const [caffeinate, setCaffeinate] = useState(false);
   const [showUnhandledProviderEvents, setShowUnhandledProviderEvents] =
     useState(false);
   const [preferredAudioInputDeviceId, setPreferredAudioInputDeviceId] =
@@ -200,7 +199,6 @@ function useSettingsStoryState() {
 
   return {
     appearance,
-    caffeinate,
     directoryTargetId,
     experiments,
     fileTargetId,
@@ -212,7 +210,6 @@ function useSettingsStoryState() {
     steerActiveThreadOnEnter,
     showUnhandledProviderEvents,
     setAppearance,
-    setCaffeinate,
     setDirectoryTargetId,
     setExperiments,
     setFileTargetId,
@@ -245,10 +242,8 @@ function VoiceInputStory() {
 }
 
 function GeneralSettingsStory({
-  caffeinateAvailable = false,
   desktopBrowserAvailable = false,
 }: {
-  caffeinateAvailable?: boolean;
   desktopBrowserAvailable?: boolean;
 }) {
   const state = useSettingsStoryState();
@@ -256,12 +251,8 @@ function GeneralSettingsStory({
   return (
     <>
       <GeneralSettingsSection
-        caffeinateAvailable={caffeinateAvailable}
-        caffeinateDisabled={false}
-        caffeinateEnabled={state.caffeinate}
         desktopBrowserAvailable={desktopBrowserAvailable}
         navigateToThreadAfterCreate={state.navigateToThreadAfterCreate}
-        onCaffeinateChange={state.setCaffeinate}
         onNavigateToThreadAfterCreateChange={
           state.setNavigateToThreadAfterCreate
         }
@@ -435,7 +426,7 @@ export function Overview() {
 export function General() {
   return (
     <SettingsStoryFrame>
-      <GeneralSettingsStory caffeinateAvailable desktopBrowserAvailable />
+      <GeneralSettingsStory desktopBrowserAvailable />
       <VoiceInputStory />
     </SettingsStoryFrame>
   );

@@ -1,0 +1,42 @@
+name: Feature request
+description: A workflow you could not complete, or behavior bb should have. Open the issue before a PR for features and UI changes.
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        See [docs/filing-issues.md](https://github.com/get-bb/bb/blob/main/docs/filing-issues.md) and [CONTRIBUTING.md](https://github.com/get-bb/bb/blob/main/CONTRIBUTING.md). Prototype links from a fork are welcome; please get sign-off here before opening a PR.
+  - type: textarea
+    id: workflow
+    attributes:
+      label: The workflow
+      description: What were you trying to do, step by step, and where did bb stop you or make it awkward?
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: What happens today
+      description: Current behavior, with output or screenshots if it helps.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you would expect
+      description: The behavior you want. If you have a concrete UI or CLI shape in mind, describe it; a prototype link is even better.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context and alternatives
+      description: Workarounds you use now, related issues, how many people this affects, anything you ruled out.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched open and closed issues for the same request.
+          required: true
+        - label: If an agent wrote this, the body ends with `> AGENT GENERATED: by <model>`.

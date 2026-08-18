@@ -1,7 +1,12 @@
 import { useState, type ReactNode } from "react";
+import { isPluginOwnedIconPath } from "@bb/domain";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { PluginIcon, pluginIconName } from "@/components/plugin/PluginIcon";
+import {
+  PluginCompactIconMask,
+  PluginIcon,
+  pluginIconName,
+} from "@/components/plugin/PluginIcon";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 
@@ -120,6 +125,11 @@ export function CatalogEntryIcon({
   className: string;
 }) {
   const [failedIconUrl, setFailedIconUrl] = useState<string | null>(null);
+  // A path-shaped branding.icon is the plugin's own compact SVG: single-color
+  // artwork meant to take the surrounding text color, not a logo image.
+  if (entry.iconUrl !== null && isPluginOwnedIconPath(entry.icon ?? "")) {
+    return <PluginCompactIconMask url={entry.iconUrl} className={className} />;
+  }
   if (entry.iconUrl === null || entry.iconUrl === failedIconUrl) {
     return (
       <PlaceholderBadge

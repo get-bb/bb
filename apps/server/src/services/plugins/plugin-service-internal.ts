@@ -9,6 +9,7 @@ import {
   type PluginSourceDetail,
 } from "@bb/server-contract";
 import type { ServerLogger } from "../../types.js";
+import type { TelemetryService } from "../system/telemetry.js";
 import type { NotificationHub } from "../../ws/hub.js";
 import type { BundledPluginRegistration } from "./builtin-registry.js";
 import type { PluginManifest } from "./manifest.js";
@@ -18,6 +19,8 @@ import type {
   PluginMentionTrigger,
 } from "./plugin-api.js";
 import type { HostSharedPortCoordinator } from "../../ws/host-shared-ports.js";
+import type { ProviderRegistryService } from "../providers/provider-registry.js";
+import type { PluginHostArtifactRegistry } from "./plugin-host-artifact-registry.js";
 export type {
   PluginApplyUpdateResult,
   PluginHandlerStats,
@@ -64,6 +67,15 @@ export interface LoadedPlugin {
   builtinName: string | null;
 }
 
+export interface PluginHostArtifactSnapshot {
+  /** Absolute path to the validated bundle; bytes are read only when served. */
+  path: string;
+  byteLength: number;
+  digest: string;
+  /** Changes on every successful activation, even if source bytes are equal. */
+  generation: string;
+}
+
 export interface PluginServiceDeps {
   db: DbConnection;
   /** Omitted only by isolated plugin-runtime tests without a daemon plane. */
@@ -77,6 +89,17 @@ export interface PluginServiceDeps {
   ensureSharedPortTunnel?: (
     hostId: string,
   ) => Promise<HostDaemonConnectTunnelIdentity>;
+  /** Omitted only by isolated plugin tests that exercise no provider surface;
+   * `bb.agents.experimental_registerProvider` throws without it. */
+  providerRegistry?: ProviderRegistryService;
+  /** Live provider-bridge artifacts, shared with the internal routes and
+   * thread commands. Omitted only by isolated plugin tests that exercise no
+   * provider surface. */
+  /**
+   * The shared live-host-artifact map. Omitted only by isolated plugin-runtime
+   * tests, which then get a private one.
+   */
+  pluginHostArtifacts?: PluginHostArtifactRegistry;
   /** Thread DTO assembly for lifecycle events + plugin-signal broadcast +
    * the `plugins-changed` system broadcast on lifecycle completion. */
   hub: Pick<
@@ -84,6 +107,8 @@ export interface PluginServiceDeps {
     "getDaemonSessionIdForHost" | "notifyPluginSignal" | "notifySystem"
   >;
   logger: ServerLogger;
+  /** Anonymous usage telemetry; tests pass `createNoopTelemetryService()`. */
+  telemetry: TelemetryService;
   pendingInteractions?: Pick<
     import("../interactions/pending-interactions.js").PendingInteractionLifecycle,
     "requestPluginInteraction" | "interruptPluginInteractions"
@@ -130,6 +155,21 @@ export interface PluginServiceDeps {
   }) => Promise<void>;
   /** Test observation seam; called immediately before a managed download. */
   onArtifactMaterialize?: (args: { path: string }) => void;
+  /** Generic typed host-RPC transport supplied by the server composition root. */
+  callPluginHost?: (args: {
+    pluginId: string;
+    contract: import("@get-bb/plugin-sdk").PluginRpcContract;
+    method: string;
+    input: unknown;
+    hostId: string;
+    signal?: AbortSignal;
+    artifact: PluginHostArtifactSnapshot;
+  }) => Promise<unknown>;
+  /** Stops this plugin's workers on connected hosts during reload/disable. */
+  disposePluginHost?: (args: {
+    pluginId: string;
+    generation: string;
+  }) => Promise<void>;
 }
 
 /** One native tool contributed by a running plugin (design §4.4). */

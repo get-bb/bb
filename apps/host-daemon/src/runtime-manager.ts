@@ -9,6 +9,7 @@ import {
   type ReapedIdleProviderSession,
 } from "@bb/agent-runtime";
 import type { Logger } from "@bb/logger";
+import { killProcessesWithCwdUnder } from "@bb/process-utils";
 import type {
   PendingInteractionCreate,
   PendingInteractionResolution,
@@ -187,6 +188,10 @@ export interface RefreshEnvironmentWorkspaceArgs {
 
 export interface RuntimeManagerOptions {
   bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"];
+  /**
+   * Reads the daemon's cached provider-bridge policy at runtime creation.
+   * Per-runtime static: a policy flip applies to runtimes created after it.
+   */
   createRuntime?: (options: AgentRuntimeOptions) => AgentRuntime;
   dataDir?: string;
   dataDirSkillsRootPath?: string | null;
@@ -1122,8 +1127,54 @@ export class RuntimeManager {
     this.entries.delete(environmentId);
     await this.stopWatchingStatus(entry);
     await entry.runtime.shutdown();
+    await this.killManagedWorkspaceProcesses(entry);
     await entry.workspace.destroy();
     await this.cleanupUnusedInjectedSkillStagingDirs([]);
+  }
+
+  /**
+   * Reaps every process still rooted in a managed workspace before its
+   * directory is removed. Runtime and terminal shutdown signal their own
+   * process groups, but processes that start a new session (`setsid`,
+   * `nohup`, detached dev servers) survive that and would otherwise keep
+   * running with a cwd in a deleted directory.
+   *
+   * The sweep is ownership-agnostic on purpose: it kills ANY process of this
+   * user whose cwd is inside the workspace, including ones bb never started
+   * (a shell `cd`'d into the worktree, an editor terminal, a debugger). The
+   * directory is about to be deleted, so those processes lose their cwd
+   * anyway. Only managed workspaces are swept; personal workspaces stay
+   * untouched.
+   */
+  private async killManagedWorkspaceProcesses(
+    entry: RuntimeEntry,
+  ): Promise<void> {
+    if (!entry.workspace.managed) {
+      return;
+    }
+    try {
+      const killed = await killProcessesWithCwdUnder({
+        directory: entry.workspace.path,
+      });
+      if (killed.length > 0) {
+        this.options.logger?.warn(
+          {
+            environmentId: entry.environmentId,
+            workspacePath: entry.workspace.path,
+            pids: killed.map((process) => process.pid),
+          },
+          "Killed processes still running in a destroyed environment",
+        );
+      }
+    } catch (error) {
+      this.options.logger?.warn(
+        {
+          environmentId: entry.environmentId,
+          reason: error instanceof Error ? error.message : String(error),
+        },
+        "Failed to reap processes in a destroyed environment",
+      );
+    }
   }
 
   async forgetEnvironment(environmentId: string): Promise<void> {

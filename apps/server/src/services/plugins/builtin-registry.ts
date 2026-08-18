@@ -72,6 +72,39 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
     category: "Interface",
   },
+  // First-party agent provider plugins: each declares one of the providers
+  // the core catalog used to seed. With the seed deleted these declarations
+  // are the only source, so disabling one removes its provider.
+  {
+    name: "provider-acp",
+    pluginId: "provider-acp",
+    defaultEnabled: true,
+    category: "Agent interaction",
+  },
+  {
+    name: "provider-claude-code",
+    pluginId: "provider-claude-code",
+    defaultEnabled: true,
+    category: "Agent interaction",
+  },
+  {
+    name: "provider-codex",
+    pluginId: "provider-codex",
+    defaultEnabled: true,
+    category: "Agent interaction",
+  },
+  {
+    name: "provider-pi",
+    pluginId: "provider-pi",
+    defaultEnabled: true,
+    category: "Agent interaction",
+  },
+  {
+    name: "keep-awake",
+    pluginId: "keep-awake",
+    defaultEnabled: true,
+    category: "Host access",
+  },
   {
     name: "provider-retry",
     pluginId: "provider-retry",

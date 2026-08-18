@@ -72,9 +72,12 @@ message agents, or inspect projects, providers, and environments.
   change, run `bb-app stop && bb-app start` or restart the desktop app. Until
   then, a server previously bound to `0.0.0.0` remains exposed even if
   `BB_SERVER_BIND_HOST` was changed or unset.
-- Settings → General holds server-backed app-wide preferences, such as the
-  macOS-only "Caffeinate" toggle. For details, read
+- Settings → General holds server-backed app-wide preferences. For details, read
   `references/app-settings.md` (in this skill's directory).
+- Keep Awake is a standalone builtin plugin. Use `bb keep-awake enable` and
+  `bb keep-awake disable` to configure its macOS idle-sleep assertion. Inspect
+  it with `bb keep-awake status [--json]`. Target hosts with
+  `bb keep-awake hosts all` or `bb keep-awake hosts <host-id>...`.
 - The `showUnhandledProviderEvents` General preference defaults to false and
   exposes raw provider events that bb does not yet understand in packaged
   builds. Development builds always show those diagnostic rows. Update it with
@@ -300,8 +303,8 @@ environment pull-request show <id>`. Diff commands require an explicit target
   provider's automatic reviewer. `full` explicitly bypasses sandbox and
   approval protections. Plan mode remains separate. The product default is
   `auto` when no inherited or project default applies.
-- Subagents inherit the parent's permission mode by default; `--permission-mode
-  full` only takes effect when the parent itself runs full.
+- Subagents inherit the parent's permission mode by default;
+  `--permission-mode full` only takes effect when the parent itself runs full.
 - Use `--parent-self` inside a thread to parent the new thread to the current
   thread.
 - Use `--parent-thread <thread-id>` to choose another specific parent.
@@ -463,10 +466,9 @@ For review or fix pipelines, get the environment ID from
   not scheduled. Each reported reset window is attempted automatically at most
   once during that process. A later failed turn that omits a fresh rate-limit
   update can still inherit the last blocked window.
-- Use `bb thread retry [id] [--request-id <id>]` for the same core
-  continuation when no plugin timer remains. It sends agent-only “Please
-  continue.” on the existing provider conversation, records the continuation
-  as manually requested, and declines when input was not accepted, execution
+- Use `bb provider-retry retry <thread-id>` for a manual provider retry when no
+  plugin timer remains. It sends agent-only “Please continue.” on the existing
+  provider conversation and declines when input was not accepted, execution
   settings are unavailable, a newer request exists, or the provider still owns
   the retry.
 - For interrupted or stopped threads, inspect first. If the user stopped the
@@ -562,6 +564,14 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
   `bb automation create --project <id> --name "..." --cron "..." --timezone "..." --script-file ./watch.sh`
   (or `--script "<inline>"`). A script that exits 0 with empty stdout, or whose
   last non-empty line is `{"wakeAgent": false}`, stays silent.
+- `--script-file` reads the file relative to your cwd from the thread's
+  environment host (the server host outside a thread; `--host <name-or-id>`
+  overrides) and stores a private copy that runs execute. The copy is a
+  snapshot: edits to the source file do nothing until you run
+  `bb automation update <id> --project <id> --script-file <path>` again with
+  the same script flags; `create` and `update` print that exact command.
+  `create`, `update`, and `show` print the stored copy path on the `Script:`
+  line (`execution.storedScriptPath` in `--json`).
 - Script automations run on the server with cwd set to the plugin data
   directory. They have no environment/workspace. Injected variables are
   `BB_SERVER_URL`, `BB_PROJECT_ID`, `BB_AUTOMATION_ID`, and
@@ -727,7 +737,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     bundled inside the app and install from the local copy — no network. Installed official
     plugins are pinned to the bundled copy and update with BB app releases.
   - The store also lists the **BB Community marketplace** catalog: a manifest
-    the server re-reads at startup and every six hours from
+    the server re-reads at startup and every two hours from
     `https://getbb.app/marketplace/v1/marketplace.json`
     (override with `BB_MARKETPLACE_URL`, which the server reads only at
     startup). Its entries install from their listed
@@ -835,8 +845,12 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     rather than reporting success; `bb plugin build [path]` —
     compile the plugin into `dist/`: the backend bundle (`server.js` +
     `server.meta.json` stamped with SDK/identity metadata; preferred by
-    git/npm installs over source) and, when `bb.app` is declared, `app.js` +
-    `app.css` + `app.meta.json`. Neither needs the server.
+    git/npm installs over source), when `bb.app` is declared, `app.js` +
+    `app.css` + `app.meta.json`, and, when `bb.host` is declared, the
+    self-contained host artifact `host.js` + `host.js.map` +
+    `host.meta.json` (its digest; host daemons download and verify the bundle
+    by that digest, and run it as a host RPC worker, a provider bridge, or
+    both). None of it needs the server.
   - `bb plugin types [path]` — sync the plugin's `@get-bb/plugin-sdk` surface
     to the running bb (default: cwd). For a plugin that depends on the npm
     package it rewrites the exact `devDependencies` pin to this bb's SDK

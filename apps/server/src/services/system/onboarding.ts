@@ -1,4 +1,3 @@
-import { listBuiltInAgentProviderInfos } from "@bb/agent-providers";
 import type {
   DiscoverReposResult,
   ProviderCliKey,
@@ -45,7 +44,7 @@ interface PlanCapableAgentConfig {
 }
 
 /**
- * The three plan-capable CLIs, ordered by the same built-in catalog that
+ * The three plan-capable CLIs, ordered by the same provider registry that
  * drives the model picker's provider tabs.
  */
 const PLAN_CAPABLE_BY_PROVIDER_ID = new Map<string, PlanCapableAgentConfig>([
@@ -72,18 +71,20 @@ const PLAN_CAPABLE_BY_PROVIDER_ID = new Map<string, PlanCapableAgentConfig>([
   ],
 ]);
 
-const PLAN_CAPABLE = listBuiltInAgentProviderInfos().flatMap((provider) => {
-  const config = PLAN_CAPABLE_BY_PROVIDER_ID.get(provider.id);
-  return config === undefined
-    ? []
-    : [
-        {
-          ...config,
-          providerId: provider.id,
-          displayName: provider.displayName,
-        },
-      ];
-});
+function listPlanCapableAgents(deps: Pick<AppDeps, "providerRegistry">) {
+  return deps.providerRegistry.list().flatMap((entry) => {
+    const config = PLAN_CAPABLE_BY_PROVIDER_ID.get(entry.info.id);
+    return config === undefined
+      ? []
+      : [
+          {
+            ...config,
+            providerId: entry.info.id,
+            displayName: entry.info.displayName,
+          },
+        ];
+  });
+}
 
 /**
  * Collapse a `ProviderUsage` and its CLI install state into the single status
@@ -149,7 +150,7 @@ export async function getOnboardingAgentOverview(
 
   const agents: OnboardingAgent[] = [];
 
-  for (const entry of PLAN_CAPABLE) {
+  for (const entry of listPlanCapableAgents(deps)) {
     const providerUsage = usage?.[entry.cliKey];
     const installed = cliStatus?.[entry.cliKey]?.installed ?? false;
     const status = resolveStatus(providerUsage, installed);

@@ -268,7 +268,7 @@ export function parsePluginAppBundleMeta(
 
 /** Validate one install artifact against the running SDK and its manifest. */
 export function validatePluginArtifactMeta(args: {
-  artifact: "server" | "app";
+  artifact: "server" | "app" | "host";
   raw: string;
   pluginId: string;
   pluginVersion: string;

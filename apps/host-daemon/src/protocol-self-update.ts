@@ -127,6 +127,14 @@ const defaultRunProcess: SelfUpdateProcessRunner = async (
   await execFileAsync(command, args, options);
 };
 
+// bb-app depends on native add-ons whose binaries are fetched or built by npm
+// lifecycle scripts. npm >= 12 blocks dependency install scripts for global
+// installs unless they are named in --allow-scripts; the installed package's
+// own package.json#allowScripts is not consulted for `npm install -g`.
+// npm 10 ignores the unknown flag; npm 11 accepts it.
+const BB_APP_ALLOW_SCRIPTS_ARG =
+  "--allow-scripts=better-sqlite3,node-pty,@parcel/watcher";
+
 async function defaultInstallTarball(
   tarballPath: string,
   runProcess: SelfUpdateProcessRunner,
@@ -146,9 +154,13 @@ async function defaultInstallTarball(
   }
   const prefixArgs =
     configuredPrefix === undefined ? [] : ["--prefix", configuredPrefix];
-  await runProcess("npm", ["install", "-g", ...prefixArgs, tarballPath], {
-    env: { ...process.env, PATH: path },
-  });
+  await runProcess(
+    "npm",
+    ["install", "-g", BB_APP_ALLOW_SCRIPTS_ARG, ...prefixArgs, tarballPath],
+    {
+      env: { ...process.env, PATH: path },
+    },
+  );
 }
 
 export function createProtocolSelfUpdater(

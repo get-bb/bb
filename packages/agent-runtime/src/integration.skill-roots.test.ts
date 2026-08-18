@@ -19,7 +19,11 @@ import { promptTextInput } from "./test/prompt-input.js";
 type SkillRootProviderId = "claude-code" | "codex" | "pi";
 type DirectorySkillRootProviderId = "codex" | "pi";
 
-const providers: readonly SkillRootProviderId[] = ["codex", "claude-code", "pi"];
+const providers: readonly SkillRootProviderId[] = [
+  "codex",
+  "claude-code",
+  "pi",
+];
 const skillName = "bb-runtime-skill-integration";
 
 interface CreateSkillMarkdownArgs {

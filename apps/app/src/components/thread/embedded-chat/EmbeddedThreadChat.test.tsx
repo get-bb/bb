@@ -337,9 +337,6 @@ describe("EmbeddedThreadChat", () => {
         '[data-thread-window][data-surface-tone="sidebar"]',
       ),
     ).not.toBeNull();
-    expect(screen.getByTestId("embedded-chat-scroll-area").classList).toContain(
-      "bg-sidebar",
-    );
     expect(screen.getByTestId("embedded-chat-overflow-fade").dataset.tone).toBe(
       "sidebar",
     );
@@ -367,6 +364,25 @@ describe("EmbeddedThreadChat", () => {
         onOpenLocalFileLink: mocks.onOpenLocalFileLink,
         resolveMentionLink: mocks.resolveMentionLink,
         workspaceRootPath: "/workspace",
+      }),
+    );
+  });
+
+  it("keeps add-to-chat callbacks stable while the composer draft changes", () => {
+    renderEmbeddedChat();
+    const initialTimelineProps = mocks.timelinePanelProps.at(-1);
+
+    fireEvent.change(screen.getByTestId("embedded-chat-composer"), {
+      target: { value: "Typing must not invalidate timeline rows" },
+    });
+
+    // ThreadTimelineRows memoizes its static renderer context around these
+    // callbacks. Replacing either one on every draft write re-renders every
+    // visible timeline row for each keystroke.
+    expect(mocks.timelinePanelProps.at(-1)).toEqual(
+      expect.objectContaining({
+        onMessageAddToChat: initialTimelineProps?.onMessageAddToChat,
+        onSelectionAddToChat: initialTimelineProps?.onSelectionAddToChat,
       }),
     );
   });

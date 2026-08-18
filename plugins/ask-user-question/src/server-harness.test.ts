@@ -16,6 +16,7 @@ function createHost(): FakePluginHost {
 
 function configurationContext(
   providerId: string,
+  supportsNativeUserQuestion = false,
 ): PluginAgentConfigurationContext {
   return {
     thread: {
@@ -38,7 +39,11 @@ function configurationContext(
       branchName: null,
     },
     host: { id: "host-test", name: "local" },
-    provider: { id: providerId, model: "test-model" },
+    provider: {
+      id: providerId,
+      model: "test-model",
+      capabilities: { supportsNativeUserQuestion },
+    },
     origin: { kind: null, pluginId: null },
   };
 }
@@ -69,13 +74,18 @@ async function resultText(
 }
 
 describe("provider gating", () => {
-  it("withholds the tool from claude-code, which has it natively", async () => {
-    const host = createHost();
-    const resolved = await host.harness.resolveAgentConfiguration(
-      configurationContext("claude-code"),
-    );
-    expect(resolved.tools).toEqual([]);
-  });
+  // Gated on the provider's declared capability, not on its id: a plugin
+  // provider that ships the tool natively is withheld too.
+  it.each(["claude-code", "some-plugin-provider"])(
+    "withholds the tool from %s, which declares it natively",
+    async (providerId) => {
+      const host = createHost();
+      const resolved = await host.harness.resolveAgentConfiguration(
+        configurationContext(providerId, true),
+      );
+      expect(resolved.tools).toEqual([]);
+    },
+  );
 
   it.each(["codex", "pi", "acp-cursor"])(
     "registers the tool for %s with Claude's exact advertised schema",

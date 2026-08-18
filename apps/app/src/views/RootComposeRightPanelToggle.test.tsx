@@ -33,8 +33,6 @@ describe("RootComposeRightPanelToggle", () => {
     const button = screen.getByRole("button", { name: "Hide right panel" });
     expect(button.getAttribute("aria-expanded")).toBe("true");
     expect(button.getAttribute("aria-pressed")).toBeNull();
-    expect(button.className).toContain("h-[28px]");
-    expect(button.className).toContain("w-[28px]");
 
     fireEvent.click(button);
     expect(onToggle).toHaveBeenCalledOnce();

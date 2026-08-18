@@ -235,12 +235,20 @@ export interface PluginsArea {
   ): Promise<PluginUpdateSettingsResult>;
 }
 
-function pluginSourceSelection(args: PluginInstallArgs): PluginSourceSelection {
+/**
+ * Returns the explicit selection a caller asked for, or `undefined` for a
+ * plain root install. The server fills the root default itself, and older
+ * servers validate the install body with a strict `{ source }`-only schema,
+ * so the SDK must not send a `selection` key the caller did not ask for.
+ */
+function pluginSourceSelection(
+  args: PluginInstallArgs,
+): PluginSourceSelection | undefined {
   if (args.subdirectory !== undefined) {
     return { kind: "subdirectory", path: args.subdirectory };
   }
   if (args.plugin !== undefined) return { kind: "entry", name: args.plugin };
-  return { kind: "root" };
+  return undefined;
 }
 
 function pluginPath(pluginId: string, suffix = ""): string {
@@ -424,10 +432,14 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
           "plugin install accepts subdirectory or plugin, not both",
         );
       }
-      const body = pluginInstallSourceRequestSchema.parse({
-        source: input.source,
-        selection: pluginSourceSelection(input),
-      });
+      const selection = pluginSourceSelection(input);
+      // Send only the keys the caller set. `.parse` validates the body but
+      // its output would fill in the root default the server owns.
+      const body =
+        selection === undefined
+          ? { source: input.source }
+          : { source: input.source, selection };
+      pluginInstallSourceRequestSchema.parse(body);
       const response = await requestParsed(
         "/api/v1/plugins/install",
         pluginInstallResponseSchema,

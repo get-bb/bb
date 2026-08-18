@@ -176,6 +176,22 @@ function requireExactlyOneScriptSource(
 export const automationExecutionRequestSchema =
   automationExecutionSchema.superRefine(requireExactlyOneScriptSource);
 
+/**
+ * Execution as returned to clients. Script automations add `storedScriptPath`:
+ * the absolute path of the plugin's private copy that runs execute. The copy is
+ * a snapshot taken at create/update time; edits to the original `--script-file`
+ * source do not reach it.
+ */
+export const automationResponseExecutionSchema = z.discriminatedUnion("mode", [
+  automationAgentExecutionSchema,
+  automationScriptExecutionSchema
+    .extend({ storedScriptPath: z.string().min(1).optional() })
+    .strict(),
+]);
+export type AutomationResponseExecution = z.infer<
+  typeof automationResponseExecutionSchema
+>;
+
 export const agentExecutionTargetSchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -244,7 +260,7 @@ export const automationResponseSchema = z
     name: z.string(),
     enabled: z.boolean(),
     trigger: automationTriggerSchema,
-    execution: automationExecutionSchema,
+    execution: automationResponseExecutionSchema,
     origin: automationOriginSchema,
     createdByThreadId: z.string().min(1).nullable(),
     nextRunAt: z.number().nullable(),

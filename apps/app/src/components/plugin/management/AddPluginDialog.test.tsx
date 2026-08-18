@@ -147,7 +147,6 @@ describe("AddPluginDialog", () => {
       );
       expect(JSON.parse(String(post?.init?.body))).toEqual({
         source,
-        selection: { kind: "root" },
       });
     });
   });
@@ -177,7 +176,6 @@ describe("AddPluginDialog", () => {
       expect(post).toBeDefined();
       expect(JSON.parse(String(post?.init?.body))).toEqual({
         source: "./plugins/linear",
-        selection: { kind: "root" },
       });
     });
   });

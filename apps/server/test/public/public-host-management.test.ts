@@ -456,12 +456,17 @@ describe("public host management", () => {
         connectMachineId: "machine-cloud-remove",
         id: "host_cloud_remove",
       });
-      await harness.pluginService.start();
-      const connectPlugin = harness.pluginService
-        .list()
-        .find((plugin) => plugin.source === "builtin:connect");
-      expect(connectPlugin).toBeDefined();
-      if (!connectPlugin) throw new Error("connect plugin was not installed");
+      // Install only the plugin this route calls. Starting the whole service
+      // builds every enabled builtin, including all provider bridges, and made
+      // this focused route test contend with unrelated plugin compilation.
+      const connectPlugin = await harness.pluginService.install(
+        "builtin:connect",
+        { kind: "root" },
+      );
+      expect(connectPlugin).toMatchObject({
+        source: "builtin:connect",
+        status: "running",
+      });
       const revokeHandler = vi.fn(async () => ({ ok: true }));
       const revokeRecord = {
         inputSchema: z.object({ machineId: z.string() }),
@@ -476,23 +481,16 @@ describe("public host management", () => {
         .spyOn(harness.pluginService, "invokeRpcHandler")
         .mockResolvedValue({ ok: true, result: { ok: true } });
 
-      try {
-        const response = await harness.app.request(`${API}/hosts/${host.id}`, {
-          method: "DELETE",
-        });
-        expect(response.status).toBe(200);
-        expect(invoke).toHaveBeenCalledWith(
-          connectPlugin.id,
-          "revokeMachine",
-          revokeRecord,
-          { machineId: "machine-cloud-remove" },
-        );
-      } finally {
-        await harness.pluginService.stop();
-      }
+      const response = await harness.app.request(`${API}/hosts/${host.id}`, {
+        method: "DELETE",
+      });
+      expect(response.status).toBe(200);
+      expect(invoke).toHaveBeenCalledWith(
+        connectPlugin.id,
+        "revokeMachine",
+        revokeRecord,
+        { machineId: "machine-cloud-remove" },
+      );
     });
-    // Starting the plugin service builds and loads the builtin plugins, which
-    // is real work; the other plugin-service suites budget 30s+ for it. The
-    // 5s default is a coin flip on a loaded CI runner.
   }, 30_000);
 });

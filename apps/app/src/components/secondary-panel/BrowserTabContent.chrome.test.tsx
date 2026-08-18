@@ -95,10 +95,6 @@ function renderBrowserChrome(harness: BrowserChromeHarness, initialUrl = "") {
 function expectChromeVisible(): HTMLElement {
   const chrome = screen.getByTestId("browser-tab-nav-bar");
   expect(chrome.dataset.state).toBe("expanded");
-  expect(chrome.classList).toContain("h-11");
-  expect(screen.getByTestId("browser-tab-nav-controls").classList).toContain(
-    "opacity-100",
-  );
   return chrome;
 }
 

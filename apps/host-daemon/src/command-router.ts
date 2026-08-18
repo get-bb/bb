@@ -27,10 +27,9 @@ import {
 import { isExpectedOnlineRpcFailureError } from "./command-dispatch-support.js";
 import type { HostDaemonLogger } from "./logger.js";
 import { RuntimeManager } from "./runtime-manager.js";
+import type { PluginHostManager } from "./plugin-host-manager.js";
 
-interface CommandRouterLogger extends Pick<HostDaemonLogger, "warn"> {
-  debug?: HostDaemonLogger["debug"];
-}
+type CommandRouterLogger = Pick<HostDaemonLogger, "debug" | "warn">;
 
 type EnvironmentLaneMode = HostDaemonCommandEnvironmentLane;
 type ThreadStartCommand = Extract<HostDaemonCommand, { type: "thread.start" }>;
@@ -105,12 +104,13 @@ export interface CommandRouterOptions {
   dataDir: CommandDispatchOptions["dataDir"];
   fetchProjectAttachment: CommandDispatchOptions["fetchProjectAttachment"];
   fetchSkillTree?: CommandDispatchOptions["fetchSkillTree"];
+  fetchPluginHostArtifact?: CommandDispatchOptions["fetchPluginHostArtifact"];
   runtimeManager: RuntimeManager;
   terminalManager?: CommandDispatchOptions["terminalManager"];
   eventSink: CommandDispatchOptions["eventSink"];
   listModels?: CommandDispatchOptions["listModels"];
   resolveInteractiveRequest?: CommandDispatchOptions["resolveInteractiveRequest"];
-  caffeinateManager?: CommandDispatchOptions["caffeinateManager"];
+  pluginHostManager?: PluginHostManager;
   ensureConnectTunnelIdentity?: CommandDispatchOptions["ensureConnectTunnelIdentity"];
   threadStorageRootPath: string;
   logger: CommandRouterLogger;
@@ -206,6 +206,25 @@ export class CommandRouter {
   private executeOnlineRpcCommand(
     command: HostDaemonOnlineRpcCommand,
   ): Promise<HostDaemonOnlineRpcResultForCommand> {
+    if (command.type === "plugin.host.call") {
+      if (!this.options.pluginHostManager) {
+        return Promise.reject(new Error("host plugin runtime is unavailable"));
+      }
+      return this.options.pluginHostManager.call(command);
+    }
+    if (command.type === "plugin.host.cancel") {
+      if (!this.options.pluginHostManager) {
+        return Promise.reject(new Error("host plugin runtime is unavailable"));
+      }
+      const result = this.options.pluginHostManager.cancel(command);
+      return Promise.resolve(result);
+    }
+    if (command.type === "plugin.host.dispose") {
+      if (!this.options.pluginHostManager) {
+        return Promise.reject(new Error("host plugin runtime is unavailable"));
+      }
+      return this.options.pluginHostManager.dispose(command);
+    }
     const environmentLaneMode = this.getEnvironmentLaneMode(command);
     const result =
       environmentLaneMode && "environmentId" in command
@@ -317,15 +336,16 @@ export class CommandRouter {
     return {
       fetchProjectAttachment: this.options.fetchProjectAttachment,
       fetchSkillTree: this.options.fetchSkillTree,
+      fetchPluginHostArtifact: this.options.fetchPluginHostArtifact,
       runtimeManager: this.options.runtimeManager,
       terminalManager: this.options.terminalManager,
       dataDir: this.options.dataDir,
       eventSink: this.options.eventSink,
       listModels: this.options.listModels,
       resolveInteractiveRequest: this.options.resolveInteractiveRequest,
-      caffeinateManager: this.options.caffeinateManager,
       ensureConnectTunnelIdentity: this.options.ensureConnectTunnelIdentity,
       threadStorageRootPath: this.options.threadStorageRootPath,
+      logger: this.options.logger,
     };
   }
 

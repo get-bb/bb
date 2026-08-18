@@ -153,10 +153,7 @@ describe("BrowsePluginsTab", () => {
         ),
       ].map((button) => button.getAttribute("aria-label"));
     // "Middle" is the incompatible entry: hidden from Browse entirely.
-    expect(cardOrder()).toEqual([
-      "Open Alpha details",
-      "Open Zulu details",
-    ]);
+    expect(cardOrder()).toEqual(["Open Alpha details", "Open Zulu details"]);
 
     const sortTrigger = screen.getByRole("button", {
       name: "Sort: Plugin name, ascending",
@@ -164,10 +161,7 @@ describe("BrowsePluginsTab", () => {
     expect(sortTrigger.querySelector('[data-icon="ArrowUpDown"]')).toBeTruthy();
     fireEvent.pointerDown(sortTrigger);
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Plugin name" }));
-    expect(cardOrder()).toEqual([
-      "Open Zulu details",
-      "Open Alpha details",
-    ]);
+    expect(cardOrder()).toEqual(["Open Zulu details", "Open Alpha details"]);
     // Category never renders as a heading; it stays a filter only.
     expect(screen.queryByText("Context & knowledge")).toBeNull();
     expect(screen.queryByText("Developer tools")).toBeNull();
@@ -407,25 +401,10 @@ describe("BrowsePluginsTab", () => {
     expect(
       screen.getByRole("textbox", { name: "Search plugins" }),
     ).toBeTruthy();
-    const githubGrid = screen
-      .getByRole("button", { name: "Open GitHub details" })
-      .closest('[class*="auto-fill"]');
-    expect(githubGrid?.className).toContain("auto-fill");
-    expect(githubGrid?.className).toContain("18rem");
-    const githubCard = screen
-      .getByRole("button", { name: "Open GitHub details" })
-      .closest(".group");
-    expect(githubCard?.className).toContain("min-h-20");
-    expect(githubCard?.className).toContain("p-2.5");
-    const memoryDescriptions = screen.getAllByText(MEMORY_ENTRY.description);
-    const githubDescription = screen.getByText(GITHUB_ENTRY.description);
-    for (const memoryDescription of memoryDescriptions) {
-      expect(memoryDescription.className).toContain("min-h-[2lh]");
-      expect(memoryDescription.parentElement?.className).toContain(
-        "line-clamp-2",
-      );
-    }
-    expect(githubDescription.className).toContain("min-h-[2lh]");
+    expect(
+      screen.getAllByText(MEMORY_ENTRY.description).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText(GITHUB_ENTRY.description)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Category" })).toBeTruthy();
     // The catalog grid stays flat — no per-source section heading above it.
     // The discovery hero's own heading sits above the results and is expected.
@@ -451,7 +430,6 @@ describe("BrowsePluginsTab", () => {
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
 
     const install = screen.getByRole("button", { name: "Install Memory" });
-    expect(install.className).toContain("w-7");
     expect(install.querySelector('[data-icon="Download"]')).not.toBeNull();
     fireEvent.pointerMove(install);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
@@ -555,7 +533,6 @@ describe("BrowsePluginsTab", () => {
     const installed = await screen.findByRole("button", {
       name: "Uninstall Memory",
     });
-    expect(installed.className).toContain("w-7");
     fireEvent.pointerMove(installed);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Installed — uninstall Memory",

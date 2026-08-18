@@ -12,6 +12,13 @@ import {
 } from "../helpers/host-rpc.js";
 import { seedHostSession } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import {
+  createTestProviderRegistry,
+  registerFirstPartyProviders,
+} from "../helpers/provider-registry.js";
+import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
+
+const registry = await createTestProviderRegistry();
 
 describe("appendCustomModels", () => {
   it("appends custom models for the requested provider after the catalog", () => {
@@ -20,7 +27,7 @@ describe("appendCustomModels", () => {
       isDefault: true,
     });
 
-    const { models, selectedOnlyModels } = appendCustomModels({
+    const { models, selectedOnlyModels } = appendCustomModels(registry, {
       customModels: [
         {
           providerId: "claude-code",
@@ -48,7 +55,7 @@ describe("appendCustomModels", () => {
   });
 
   it("advertises the full reasoning ladder for claude-code custom models", () => {
-    const { models } = appendCustomModels({
+    const { models } = appendCustomModels(registry, {
       customModels: [
         { providerId: "claude-code", model: "claude-example-preview" },
       ],
@@ -65,7 +72,7 @@ describe("appendCustomModels", () => {
   });
 
   it("uses the provider reasoning ladder for codex and pi custom models", () => {
-    const { models: codexModels } = appendCustomModels({
+    const { models: codexModels } = appendCustomModels(registry, {
       customModels: [{ providerId: "codex", model: "custom-model" }],
       models: [],
       providerId: "codex",
@@ -77,7 +84,7 @@ describe("appendCustomModels", () => {
       ),
     ).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
 
-    const { models: piModels } = appendCustomModels({
+    const { models: piModels } = appendCustomModels(registry, {
       customModels: [{ providerId: "pi", model: "custom-model" }],
       models: [],
       providerId: "pi",
@@ -92,7 +99,7 @@ describe("appendCustomModels", () => {
   });
 
   it("appends dynamic ACP custom models with the agent-managed effort", () => {
-    const { models } = appendCustomModels({
+    const { models } = appendCustomModels(registry, {
       customModels: [
         {
           providerId: "acp-opencode",
@@ -122,7 +129,7 @@ describe("appendCustomModels", () => {
   });
 
   it("falls back to the model id when displayName is omitted", () => {
-    const { models } = appendCustomModels({
+    const { models } = appendCustomModels(registry, {
       customModels: [
         { providerId: "claude-code", model: "claude-example-preview" },
       ],
@@ -138,7 +145,7 @@ describe("appendCustomModels", () => {
   it("keeps the catalog entry when a custom model id collides", () => {
     const catalogModel = availableModelFixture({ model: "claude-opus-4-8" });
 
-    const { models } = appendCustomModels({
+    const { models } = appendCustomModels(registry, {
       customModels: [
         {
           providerId: "claude-code",
@@ -160,7 +167,7 @@ describe("appendCustomModels", () => {
       reasoningLevels: ["low", "medium"],
     });
 
-    const { models, selectedOnlyModels } = appendCustomModels({
+    const { models, selectedOnlyModels } = appendCustomModels(registry, {
       customModels: [
         {
           providerId: "claude-code",
@@ -180,7 +187,7 @@ describe("appendCustomModels", () => {
   });
 
   it("ignores duplicate custom entries for the same model id", () => {
-    const { models } = appendCustomModels({
+    const { models } = appendCustomModels(registry, {
       customModels: [
         {
           providerId: "claude-code",
@@ -206,7 +213,7 @@ describe("appendCustomModels", () => {
     const catalogModel = availableModelFixture({ model: "claude-opus-4-8" });
     const retiredModel = availableModelFixture({ model: "claude-opus-4-6" });
 
-    const { models, selectedOnlyModels } = appendCustomModels({
+    const { models, selectedOnlyModels } = appendCustomModels(registry, {
       customModels: [
         { providerId: "pi", model: "anthropic/claude-example-preview" },
       ],
@@ -221,6 +228,36 @@ describe("appendCustomModels", () => {
 });
 
 describe("resolveSystemExecutionOptions", () => {
+  it("keeps an unavailable provider in the roster and returns its picker error without probing it", async () => {
+    await withTestHarness(
+      { seedFirstPartyProviders: false },
+      async (harness) => {
+        await registerFirstPartyProviders(harness.deps.providerRegistry, {
+          excludePluginIds: ["provider-acp"],
+          unavailablePluginIds: ["provider-codex"],
+        });
+        const { host } = seedHostSession(harness.deps, {
+          id: "host-execution-options-unavailable-provider",
+        });
+
+        const response = await resolveSystemExecutionOptions(harness.deps, {
+          hostId: host.id,
+          providerId: "codex",
+        });
+
+        expect(response.providers[0]).toEqual(
+          expect.objectContaining({ id: "codex", available: false }),
+        );
+        expect(response.models).toEqual([]);
+        expect(response.selectedOnlyModels).toEqual([]);
+        expect(response.modelLoadError).toEqual({
+          providerId: "codex",
+          code: "provider_unavailable",
+        });
+      },
+    );
+  });
+
   it("includes installed known ACP agents and sends their launch spec when loading models", async () => {
     await withTestHarness({}, async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
@@ -279,7 +316,7 @@ describe("resolveSystemExecutionOptions", () => {
       expect(responder.requests.map((request) => request.command.type)).toEqual(
         ["known_acp_agents.status", "provider.list_models"],
       );
-      expect(responder.requests[1].command).toEqual({
+      expect(responder.requests[1].command).toMatchObject({
         type: "provider.list_models",
         providerId: "acp-opencode",
         acpLaunchSpec: {
@@ -350,7 +387,7 @@ describe("resolveSystemExecutionOptions", () => {
       expect(responder.requests.map((request) => request.command.type)).toEqual(
         ["known_acp_agents.status", "provider.list_models"],
       );
-      expect(responder.requests[1].command).toEqual({
+      expect(responder.requests[1].command).toMatchObject({
         type: "provider.list_models",
         providerId: "acp-grok",
         acpLaunchSpec: {
@@ -441,7 +478,7 @@ describe("resolveSystemExecutionOptions", () => {
       expect(responder.requests.map((request) => request.command.type)).toEqual(
         ["known_acp_agents.status", "provider.list_models"],
       );
-      expect(responder.requests[1].command).toEqual({
+      expect(responder.requests[1].command).toMatchObject({
         type: "provider.list_models",
         providerId: "acp-hermes-agent",
         acpLaunchSpec: {
@@ -515,6 +552,7 @@ describe("resolveSystemExecutionOptions", () => {
               command: "example-agent",
               args: ["acp"],
               env: {},
+              supportsManualCompaction: false,
             },
           ],
         },
@@ -620,6 +658,7 @@ describe("resolveSystemExecutionOptions", () => {
             command: "example-agent",
             args: ["acp"],
             env: {},
+            supportsManualCompaction: false,
           },
         ],
         customModels: [
@@ -681,6 +720,7 @@ describe("resolveSystemExecutionOptions", () => {
             command: "custom-opencode",
             args: ["serve"],
             env: { CUSTOM_OPENCODE: "1" },
+            supportsManualCompaction: false,
           },
         ],
       },
@@ -721,7 +761,7 @@ describe("resolveSystemExecutionOptions", () => {
         expect(
           responder.requests.map((request) => request.command.type),
         ).toEqual(["known_acp_agents.status", "provider.list_models"]);
-        expect(responder.requests[1].command).toEqual({
+        expect(responder.requests[1].command).toMatchObject({
           type: "provider.list_models",
           providerId: "acp-opencode",
           acpLaunchSpec: {
@@ -913,6 +953,7 @@ describe("resolveSystemExecutionOptions", () => {
             command: "example-agent",
             args: ["acp", "--stdio"],
             env: { EXAMPLE_TOKEN: "test-token" },
+            supportsManualCompaction: false,
             cwd: "/tmp/example-agent",
             modelCli: {
               listArgs: ["models", "--json"],
@@ -955,7 +996,7 @@ describe("resolveSystemExecutionOptions", () => {
               capabilities: expect.objectContaining({
                 supportsFork: true,
                 supportsServiceTier: true,
-                supportedPermissionModes: ["accept-edits", "full"],
+                permissionModes: ["accept-edits", "full"],
               }),
             }),
           ]),
@@ -966,7 +1007,7 @@ describe("resolveSystemExecutionOptions", () => {
         expect(
           responder.requests.map((request) => request.command.type),
         ).toEqual(["known_acp_agents.status", "provider.list_models"]);
-        expect(responder.requests[1].command).toEqual({
+        expect(responder.requests[1].command).toMatchObject({
           type: "provider.list_models",
           providerId: "acp-example-agent",
           acpLaunchSpec: {
@@ -982,6 +1023,126 @@ describe("resolveSystemExecutionOptions", () => {
             },
           },
         });
+      },
+    );
+  });
+
+  // The HTTP listener deliberately starts serving before plugins load, and
+  // providers now exist only while their plugin is loaded, so a request that
+  // lands in that window must wait instead of reporting no providers at all.
+  it("waits for plugin provider registrations before answering with an empty registry", async () => {
+    await withTestHarness(
+      { seedFirstPartyProviders: false },
+      async (harness) => {
+        const registry = createProviderRegistryService({
+          deferRegistrationsSettled: true,
+        });
+        harness.deps.providerRegistry = registry;
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-execution-options-boot-window",
+        });
+        registerProviderHostRpcResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+        });
+
+        const providersPromise = listSystemProviderInfos(harness.deps, {});
+        // Plugin startup lands after the request already began.
+        await registerFirstPartyProviders(registry);
+        registry.markRegistrationsSettled();
+
+        expect((await providersPromise).map((provider) => provider.id)).toEqual(
+          ["codex", "claude-code", "pi", "acp-cursor"],
+        );
+      },
+    );
+  });
+
+  it("answers a provider-scoped picker request before unrelated plugins finish loading", async () => {
+    await withTestHarness(
+      { seedFirstPartyProviders: false },
+      async (harness) => {
+        const registry = createProviderRegistryService({
+          deferRegistrationsSettled: true,
+        });
+        harness.deps.providerRegistry = registry;
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-execution-options-provider-ready",
+        });
+        registerProviderHostRpcResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+        });
+
+        const optionsPromise = resolveSystemExecutionOptions(harness.deps, {
+          hostId: host.id,
+          providerId: "pi",
+        });
+        await registerFirstPartyProviders(registry, {
+          excludePluginIds: [
+            "provider-acp",
+            "provider-claude-code",
+            "provider-codex",
+          ],
+        });
+
+        const response = await optionsPromise;
+        expect(response.providers.map((provider) => provider.id)).toEqual([
+          "pi",
+        ]);
+        expect(response.modelLoadError).toBeNull();
+
+        // Full plugin startup is intentionally still outstanding. It may
+        // complete later and invalidate this partial boot-time roster.
+        registry.markRegistrationsSettled();
+      },
+    );
+  });
+
+  // Dynamic ACP ids run on the ACP plugin's bridge and are never registered
+  // themselves, so with that plugin disabled they have no bridge anywhere:
+  // listing them would offer agents whose first turn fails on the daemon.
+  it("omits custom and known ACP agents when no ACP provider plugin is registered", async () => {
+    await withTestHarness(
+      {
+        seedFirstPartyProviders: false,
+        customAcpAgents: [
+          {
+            id: "example-agent",
+            displayName: "Example Agent",
+            command: "example-agent",
+            args: ["acp", "--stdio"],
+            env: {},
+            supportsManualCompaction: false,
+          },
+        ],
+      },
+      async (harness) => {
+        await registerFirstPartyProviders(harness.deps.providerRegistry, {
+          excludePluginIds: ["provider-acp"],
+        });
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-execution-options-no-acp-plugin",
+        });
+        const responder = registerProviderHostRpcResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+        });
+
+        const providers = await listSystemProviderInfos(harness.deps, {
+          hostId: host.id,
+        });
+
+        expect(providers.map((provider) => provider.id)).toEqual([
+          "codex",
+          "claude-code",
+          "pi",
+        ]);
+        // Nothing ACP to offer, so the host is never probed for installed
+        // known agents either.
+        expect(
+          responder.requests.map((request) => request.command.type),
+        ).toEqual([]);
       },
     );
   });
@@ -1014,7 +1175,7 @@ describe("resolveSystemExecutionOptions", () => {
       expect(responder.requests.map((request) => request.command.type)).toEqual(
         ["known_acp_agents.status", "provider.list_models"],
       );
-      expect(responder.requests[1].command).toEqual({
+      expect(responder.requests[1].command).toMatchObject({
         type: "provider.list_models",
         providerId: "acp-cursor",
       });
@@ -1039,6 +1200,7 @@ describe("resolveSystemExecutionOptions", () => {
               command: "broken-agent",
               args: [],
               env: {},
+              supportsManualCompaction: false,
             },
           ],
         },

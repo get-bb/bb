@@ -45,7 +45,7 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
-import { isLoopbackHostname } from "@/lib/loopback-hostname";
+import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
 
 export interface BrowserTabContentProps {
   tabId: string;
@@ -180,19 +180,11 @@ function browserViewBoundsEqual(args: BrowserViewBoundsEqualArgs): boolean {
   );
 }
 
-function isLocalBrowserUrl(url: string): boolean {
-  try {
-    return isLoopbackHostname(new URL(url).hostname);
-  } catch {
-    return false;
-  }
-}
-
 function browserPageLoadErrorTitle(args: {
   errorText: string;
   url: string;
 }): string {
-  if (isLocalBrowserUrl(args.url)) {
+  if (isLocalOnlyUrl(args.url)) {
     return "Server not reachable";
   }
   if (args.errorText.includes("ERR_BLOCKED_BY_CLIENT")) {
@@ -262,7 +254,7 @@ function BrowserChrome({
       <div
         data-testid="browser-tab-nav-controls"
         className={cn(
-          "absolute inset-x-0 top-0 flex h-11 translate-y-0 items-center gap-1 px-2 py-1.5 opacity-100 max-md:pointer-coarse:h-[52px]",
+          "absolute inset-x-0 top-0 flex h-11 translate-y-0 items-center gap-1 py-1.5 pl-2 pr-4 opacity-100 max-md:pointer-coarse:h-[52px]",
         )}
       >
         <NavButton
@@ -382,7 +374,7 @@ function BrowserPageLoadError({
 }: BrowserPageLoadErrorProps) {
   const host = getBrowserUrlHost(url);
   const title = browserPageLoadErrorTitle({ errorText, url });
-  const message = isLocalBrowserUrl(url)
+  const message = isLocalOnlyUrl(url)
     ? `The browser could not reach ${host || "this local server"}. Start the server, then reload.`
     : "The browser could not load this page. Try reloading or opening it externally.";
 

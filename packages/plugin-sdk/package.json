@@ -1,6 +1,6 @@
 {
   "name": "@get-bb/plugin-sdk",
-  "version": "0.4.6",
+  "version": "0.4.8",
   "homepage": "https://github.com/get-bb/bb#readme",
   "bugs": {
     "url": "https://github.com/get-bb/bb/issues"
@@ -26,11 +26,23 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./provider-bridge": {
+      "source": "./src/provider-bridge.ts",
+      "types": "./bundled-types/bb-plugin-sdk-provider-bridge.d.ts",
+      "import": "./dist/provider-bridge.js",
+      "default": "./dist/provider-bridge.js"
+    },
     "./app": {
       "source": "./src/app.ts",
       "types": "./bundled-types/bb-plugin-sdk-app.d.ts",
       "import": "./dist/app.js",
       "default": "./dist/app.js"
+    },
+    "./host": {
+      "source": "./src/host.ts",
+      "types": "./bundled-types/bb-plugin-sdk-host.d.ts",
+      "import": "./dist/host.js",
+      "default": "./dist/host.js"
     },
     "./internal/composer-customization-validation": {
       "source": "./src/internal/composer-customization-validation.ts",
@@ -50,6 +62,12 @@
       "import": "./dist/internal/host-policy.js",
       "default": "./dist/internal/host-policy.js"
     },
+    "./internal/plugin-app-collector": {
+      "source": "./src/internal/plugin-app-collector.ts",
+      "types": "./bundled-types/bb-plugin-sdk-internal-plugin-app-collector.d.ts",
+      "import": "./dist/internal/plugin-app-collector.js",
+      "default": "./dist/internal/plugin-app-collector.js"
+    },
     "./testing": {
       "source": "./src/testing/index.ts",
       "types": "./bundled-types/bb-plugin-sdk-testing.d.ts",
@@ -61,11 +79,18 @@
       "types": "./bundled-types/bb-plugin-sdk-testing-app.d.ts",
       "import": "./dist/testing/app.js",
       "default": "./dist/testing/app.js"
+    },
+    "./testing/host": {
+      "source": "./src/testing/host.ts",
+      "types": "./bundled-types/bb-plugin-sdk-testing-host.d.ts",
+      "import": "./dist/testing/host.js",
+      "default": "./dist/testing/host.js"
     }
   },
   "types": "./bundled-types/bb-plugin-sdk.d.ts",
   "scripts": {
     "build": "node scripts/build-bundled-dts.mjs && node scripts/build-runtime.mjs",
+    "build:runtime": "node scripts/build-runtime.mjs",
     "clean": "rimraf dist tsconfig.tsbuildinfo",
     "prepack": "node scripts/build-bundled-dts.mjs && node scripts/build-runtime.mjs",
     "test": "vitest run --config vitest.config.ts",
@@ -73,6 +98,9 @@
   },
   "devDependencies": {
     "@bb/domain": "workspace:*",
+    "@bb/host-daemon-contract": "workspace:*",
+    "@bb/process-utils": "workspace:*",
+    "@bb/provider-bridge-protocol": "workspace:*",
     "@bb/sdk": "workspace:*",
     "@bb/server-contract": "workspace:*",
     "@bb/tsconfig": "workspace:*",

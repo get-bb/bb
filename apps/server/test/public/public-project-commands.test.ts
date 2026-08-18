@@ -165,6 +165,7 @@ describe("public project command typeahead route", () => {
             command: "amp-acp",
             args: [],
             env: {},
+            supportsManualCompaction: false,
             nativeSkillRoots: {
               user: [".agents/skills"],
               project: [".agents/skills"],

@@ -23,11 +23,11 @@ interface ThreadTabsSyncArgs {
 }
 
 interface PersistThreadTabsArgs extends ThreadTabsSyncArgs {
-  tabs: readonly ThreadTab[];
+  tabs: readonly FixedPanelTab[];
 }
 
 interface MigrateLocalThreadTabsArgs extends ThreadTabsSyncArgs {
-  tabs: readonly ThreadTab[];
+  tabs: readonly FixedPanelTab[];
 }
 
 const writeQueues = new WeakMap<QueryClient, Map<string, Promise<void>>>();
@@ -39,21 +39,31 @@ const attemptedLocalMigrations = new WeakMap<QueryClient, Set<string>>();
  * kind for rows persisted before the removal. Drop those tabs on read so old
  * threads load with the rest of their strip intact.
  */
-function withoutLegacySideChatTabs(
-  tabs: readonly ThreadTab[],
-): readonly FixedPanelTab[] {
+type PersistedThreadFixedPanelTab = Exclude<
+  FixedPanelTab,
+  { kind: "plugin-page-fixed" }
+>;
+
+/**
+ * Keep the shared app panel model broader than the server's thread-only tab
+ * contract. Legacy side chats are no longer app tabs, while plugin-page fixed
+ * views are local to their nav page and must never leak into thread sync.
+ */
+function persistedThreadTabs(
+  tabs: readonly (FixedPanelTab | ThreadTab)[],
+): readonly PersistedThreadFixedPanelTab[] {
   return tabs.filter(
-    (tab): tab is Exclude<ThreadTab, { kind: "side-chat" }> =>
-      tab.kind !== "side-chat",
+    (tab): tab is PersistedThreadFixedPanelTab =>
+      tab.kind !== "side-chat" && tab.kind !== "plugin-page-fixed",
   );
 }
 
 export function areThreadTabListsEquivalent(
-  left: readonly ThreadTab[],
-  right: readonly ThreadTab[],
+  left: readonly (FixedPanelTab | ThreadTab)[],
+  right: readonly (FixedPanelTab | ThreadTab)[],
 ): boolean {
-  const leftTabs = withoutLegacySideChatTabs(left);
-  const rightTabs = withoutLegacySideChatTabs(right);
+  const leftTabs = persistedThreadTabs(left);
+  const rightTabs = persistedThreadTabs(right);
   return (
     leftTabs.length === rightTabs.length &&
     leftTabs.every((tab, index) => {
@@ -70,7 +80,7 @@ export function reconcileFixedPanelTabsState(
   if (areThreadTabListsEquivalent(current.secondary.tabs, serverTabs)) {
     return current;
   }
-  const tabs = withoutLegacySideChatTabs(serverTabs);
+  const tabs = persistedThreadTabs(serverTabs);
   const activeTabId = tabs.some(
     (tab) => tab.id === current.secondary.activeTabId,
   )
@@ -147,12 +157,13 @@ async function persistThreadTabs({
   threadId,
 }: PersistThreadTabsArgs): Promise<void> {
   const current = await readCurrentThreadTabs({ queryClient, threadId });
-  if (areThreadTabListsEquivalent(current.tabs, tabs)) {
+  const tabsToPersist = persistedThreadTabs(tabs);
+  if (areThreadTabListsEquivalent(current.tabs, tabsToPersist)) {
     return;
   }
   const response = await sdk.threads.tabs.update({
     expectedRevision: current.revision,
-    tabs: threadTabsSchema.parse(tabs),
+    tabs: threadTabsSchema.parse(tabsToPersist),
     threadId,
   });
   setCachedThreadTabs(queryClient, threadId, response);
@@ -167,9 +178,10 @@ async function migrateLocalThreadTabs({
   if (current.revision !== 0) {
     return;
   }
+  const tabsToPersist = persistedThreadTabs(tabs);
   const response = await sdk.threads.tabs.update({
     expectedRevision: 0,
-    tabs: threadTabsSchema.parse(tabs),
+    tabs: threadTabsSchema.parse(tabsToPersist),
     threadId,
   });
   setCachedThreadTabs(queryClient, threadId, response);

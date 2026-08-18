@@ -9,14 +9,14 @@ import type {
   ToolCallResponse,
 } from "@bb/domain";
 import { promptTextInput } from "./test/prompt-input.js";
-import type { DecodedInteractiveRequest } from "./provider-adapter.js";
+import { parseJsonRpcLine } from "@bb/provider-bridge-protocol/bridge-kit";
+import type {
+  DecodedInteractiveRequest,
+  JsonRpcMessage,
+  ProviderInboundRequest,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import { createAgentRuntimeWithAdapters } from "./runtime.js";
 import { handleRuntimeProviderRequest } from "./runtime-provider-requests.js";
-import {
-  parseJsonRpcLine,
-  type JsonRpcMessage,
-  type ProviderInboundRequest,
-} from "./runtime-json-rpc.js";
 import {
   createInteractiveRequestAdapter,
   createInvalidInteractiveRequestAdapter,
@@ -484,7 +484,7 @@ rl.on("line", (line) => {
       ...createInteractiveRequestAdapter(
         join(tmpDir, "unused-provider-filtered-approval.cjs"),
       ),
-      approvalRequestPolicy: "provider" as const,
+      approvalEnforcedBy: "provider" as const,
     };
     const onInteractiveRequest = vi.fn(async () => ({
       decision: "allow_once" as const,

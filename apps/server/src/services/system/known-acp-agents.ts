@@ -1,10 +1,17 @@
-import { buildAcpProviderInfo } from "@bb/agent-providers";
+import { buildAcpProviderInfo } from "../providers/acp-provider-tier.js";
 import type { ProviderInfo } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 
 export interface KnownAcpAgent extends HostDaemonAcpLaunchSpec {
   id: string;
   executableName: string;
+  /**
+   * Whether the agent accepts an explicit compaction request. Declared per
+   * agent (mirroring `customAcpAgents.supportsManualCompaction`) because ACP
+   * itself advertises nothing about compaction — the alternative is a BB-side
+   * id list, which is what this replaced.
+   */
+  supportsManualCompaction: boolean;
 }
 
 export interface KnownAcpAgentExecutableQuery {
@@ -20,6 +27,8 @@ export const KNOWN_ACP_AGENTS: readonly KnownAcpAgent[] = [
     args: ["acp"],
     env: {},
     executableName: "opencode",
+    // OpenCode implements the built-in /compact command over ACP.
+    supportsManualCompaction: true,
   },
   {
     // omp (oh-my-pi) speaks the Agent Client Protocol via `omp acp`
@@ -31,6 +40,7 @@ export const KNOWN_ACP_AGENTS: readonly KnownAcpAgent[] = [
     args: ["acp"],
     env: {},
     executableName: "omp",
+    supportsManualCompaction: false,
   },
   {
     // Grok Build speaks ACP over stdio via `grok agent stdio`
@@ -42,6 +52,7 @@ export const KNOWN_ACP_AGENTS: readonly KnownAcpAgent[] = [
     args: ["agent", "stdio"],
     env: {},
     executableName: "grok",
+    supportsManualCompaction: false,
     modelCli: {
       listArgs: ["models"],
       selectFlag: "--model",
@@ -74,6 +85,7 @@ export const KNOWN_ACP_AGENTS: readonly KnownAcpAgent[] = [
     args: ["acp"],
     env: {},
     executableName: "hermes",
+    supportsManualCompaction: false,
     nativeReasoning: {
       configId: "reasoning_effort",
       supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],

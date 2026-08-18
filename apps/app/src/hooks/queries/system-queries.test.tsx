@@ -5,6 +5,7 @@ import type {
   OnboardingAgentOverview,
   SystemExecutionOptionsResponse,
 } from "@bb/server-contract";
+import type { ProviderInfo } from "@bb/domain";
 import type {
   ProviderCliStatusResponse,
   ProviderUsageResponse,
@@ -76,6 +77,99 @@ afterEach(() => {
 });
 
 describe("useSystemExecutionOptions", () => {
+  it("preloads built-in provider identities while their models are loading", () => {
+    vi.mocked(sdk.system.executionOptions).mockImplementation(
+      () => new Promise(() => undefined),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(
+      () => useSystemExecutionOptions({ providerId: "codex" }),
+      { wrapper },
+    );
+
+    expect(result.current.isPlaceholderData).toBe(true);
+    expect(result.current.data?.models).toEqual([]);
+    expect(
+      result.current.data?.providers.some(
+        (provider) => provider.id === "codex",
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps dynamic providers visible while another provider's models load", async () => {
+    const providers: ProviderInfo[] = [
+      {
+        id: "codex",
+        displayName: "Codex",
+        logoUrl: null,
+        available: true,
+        composerActions: [],
+        capabilities: {
+          supportsThreadArchive: true,
+          supportsThreadRename: true,
+          supportsServiceTier: true,
+          supportsNativeUserQuestion: false,
+          supportsFork: true,
+          supportsSessionRewind: true,
+          permissionModes: ["accept-edits", "auto", "full"],
+        },
+      },
+      {
+        id: "acp-opencode",
+        displayName: "OpenCode",
+        logoUrl: null,
+        available: true,
+        composerActions: [],
+        capabilities: {
+          supportsThreadArchive: false,
+          supportsThreadRename: false,
+          supportsServiceTier: false,
+          supportsNativeUserQuestion: false,
+          supportsFork: false,
+          supportsSessionRewind: false,
+          permissionModes: ["full"],
+        },
+      },
+    ];
+    let resolveDynamicModels: (
+      response: SystemExecutionOptionsResponse,
+    ) => void = () => {};
+    const dynamicModels = new Promise<SystemExecutionOptionsResponse>(
+      (resolve) => {
+        resolveDynamicModels = resolve;
+      },
+    );
+    vi.mocked(sdk.system.executionOptions).mockImplementation((args) =>
+      args?.providerId === "acp-opencode"
+        ? dynamicModels
+        : Promise.resolve({ ...EXECUTION_OPTIONS_RESPONSE, providers }),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    const { result, rerender } = renderHook(
+      ({ providerId }) => useSystemExecutionOptions({ providerId }),
+      { initialProps: { providerId: "codex" }, wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.data?.providers).toEqual(providers);
+      expect(result.current.isPlaceholderData).toBe(false);
+    });
+
+    rerender({ providerId: "acp-opencode" });
+
+    await waitFor(() => {
+      expect(result.current.isPlaceholderData).toBe(true);
+      expect(result.current.data?.providers).toEqual(providers);
+      expect(result.current.data?.models).toEqual([]);
+    });
+
+    resolveDynamicModels({ ...EXECUTION_OPTIONS_RESPONSE, providers });
+    await waitFor(() => {
+      expect(result.current.isPlaceholderData).toBe(false);
+    });
+  });
+
   it("separates requests and cache entries for different hosts", async () => {
     vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
       args?.hostId === "host-a"

@@ -44,12 +44,8 @@ const SKILL_SCOPE_ORDER: readonly SkillScope[] = [
   "bb-builtin",
   "shared-project",
   "shared-user",
-  "claude-project",
-  "claude-user",
-  "codex-project",
-  "codex-user",
-  "cursor-project",
-  "cursor-user",
+  "provider-project",
+  "provider-user",
   "plugin",
 ];
 
@@ -95,27 +91,15 @@ export function mapSkillScope(
     case "bb-builtin":
       return { scope: "bb-builtin", provider: null, manageable: false };
     case "provider-project":
-      if (provider === "claude-code") {
-        return { scope: "claude-project", provider, manageable: true };
-      }
-      return provider === "codex"
-        ? { scope: "codex-project", provider, manageable: true }
-        : { scope: "cursor-project", provider, manageable: true };
+      return { scope: "provider-project", provider, manageable: true };
     case "provider-user":
-      if (isBundledProviderSkill(filePath)) {
-        if (provider === "claude-code") {
-          return { scope: "claude-user", provider, manageable: false };
-        }
-        return provider === "codex"
-          ? { scope: "codex-user", provider, manageable: false }
-          : { scope: "cursor-user", provider, manageable: false };
-      }
-      if (provider === "claude-code") {
-        return { scope: "claude-user", provider, manageable: true };
-      }
-      return provider === "codex"
-        ? { scope: "codex-user", provider, manageable: true }
-        : { scope: "cursor-user", provider, manageable: true };
+      // A provider's own bundled skills live under `.system/` and are not the
+      // user's to manage; everything else under a provider user root is.
+      return {
+        scope: "provider-user",
+        provider,
+        manageable: !isBundledProviderSkill(filePath),
+      };
     case "shared-project":
       return { scope: "shared-project", provider: null, manageable: false };
     case "shared-user":
@@ -139,6 +123,14 @@ function compareSkillSummaries(
     SKILL_SCOPE_ORDER.indexOf(right.scope);
   if (scopeDelta !== 0) {
     return scopeDelta;
+  }
+  // Provider used to be baked into the scope, so scope order also grouped by
+  // provider. Keep that grouping explicitly now that it is not.
+  const providerDelta = (left.provider ?? "").localeCompare(
+    right.provider ?? "",
+  );
+  if (providerDelta !== 0) {
+    return providerDelta;
   }
   const nameDelta = left.name.localeCompare(right.name);
   if (nameDelta !== 0) {

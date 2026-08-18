@@ -3,10 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
-import type {
-  AdapterCommand,
-  ProviderCommandPlan,
-} from "./provider-adapter.js";
+import type { AdapterCommand } from "./provider-adapter.js";
+import type { ProviderCommandPlan } from "@bb/provider-bridge-protocol/bridge-kit";
 import { promptTextInput } from "./test/prompt-input.js";
 import { createAgentRuntimeWithAdapters } from "./runtime.js";
 import {
@@ -1464,6 +1462,88 @@ rl.on("line", (line) => {
           model: "fake-model-2",
         },
       });
+      await runtime.shutdown();
+    });
+  });
+
+  // A bridge artifact is third-party code the conformance kit may never have
+  // been run against, so the host checks the grammar itself: a malformed event
+  // must never reach a consumer (and from there a persisted timeline).
+  describe("event grammar", () => {
+    it("drops a delta into an item nothing opened, with a visible warning", async () => {
+      const events: ThreadEvent[] = [];
+      const stderr: string[] = [];
+      const runtime = createAgentRuntimeWithAdapters({
+        workspacePath: tmpDir,
+        onEvent: (event) => events.push(event),
+        onStderr: (line) => stderr.push(line),
+        onToolCall: async () => ({
+          contentItems: [{ type: "inputText", text: "ok" }],
+          success: true,
+        }),
+        adapterFactory: () => {
+          const adapter = createFakeAdapter(scriptPath);
+          return {
+            ...adapter,
+            translateEvent(event, context) {
+              const translated = adapter.translateEvent(event, context);
+              // Ride along on whatever the fake bridge said: a delta for an
+              // item id no item/started ever opened.
+              const first = translated[0];
+              if (first === undefined || !("providerThreadId" in first)) {
+                return translated;
+              }
+              return [
+                ...translated,
+                {
+                  type: "item/agentMessage/delta",
+                  threadId: first.threadId,
+                  providerThreadId: first.providerThreadId ?? "prov-1",
+                  itemId: "item-never-opened",
+                  delta: "leaked",
+                  scope: first.scope,
+                } satisfies ThreadEvent,
+              ];
+            },
+          };
+        },
+      });
+
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      await runtime.runTurn({
+        clientRequestId: "creq_222222224a",
+        threadId: "t1",
+        input: [promptTextInput({ text: "hi" })],
+        options: fullRuntimeOptions,
+      });
+      await waitForThreadTurnCompleted({
+        events,
+        providerId: "fake",
+        runtime,
+        threadId: "t1",
+      });
+
+      expect(
+        events.some(
+          (event) =>
+            event.type === "item/agentMessage/delta" &&
+            "itemId" in event &&
+            event.itemId === "item-never-opened",
+        ),
+      ).toBe(false);
+      expect(
+        stderr.some((line) => line.includes("item/opens-before-delta")),
+      ).toBe(true);
+      // The well-formed traffic still lands.
+      expect(events.some((event) => event.type === "item/completed")).toBe(
+        true,
+      );
       await runtime.shutdown();
     });
   });

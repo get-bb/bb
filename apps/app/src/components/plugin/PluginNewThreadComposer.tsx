@@ -79,6 +79,7 @@ export function PluginNewThreadComposer({
         >
           {renderPromptBox({
             placeholder,
+            allowNoProject: true,
             zenModeStorageKey: `bb.promptbox.zen-mode.plugin-new-thread.${composerKey}`,
           })}
         </div>

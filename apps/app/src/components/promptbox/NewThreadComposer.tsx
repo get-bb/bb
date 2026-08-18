@@ -117,7 +117,8 @@ export interface NewThreadComposerPromptOptions {
   header?: ReactNode;
   externallyBlocked?: boolean;
   resolveMentionLink?: PromptMentionLinkResolver;
-  pluginComposerHost?: PluginComposerHost | null;
+  /** Override the host bound to this prompt box; omission uses this Composer's host. */
+  pluginComposerHost?: PluginComposerHost;
   textEffects?: NewThreadPromptBoxProps["textEffects"];
   allowNoProject?: boolean;
   createProject?: ProjectSelectorCreateProjectConfig;
@@ -853,9 +854,9 @@ export function NewThreadComposer({
   const promptMentions = usePromptMentions(
     isProjectless ? undefined : projectId,
     {
-      currentThreadId: panelThreadId ?? undefined,
       environmentId: reuseEnvironmentId,
       hostId: projectHostId,
+      threadStorageThreadId: panelThreadId ?? undefined,
     },
   );
   const defaultMentionLinkResolver = useCallback<PromptMentionLinkResolver>(
@@ -973,6 +974,7 @@ export function NewThreadComposer({
     !selectedProviderId ||
     isLoadingModels ||
     isResolvingInitialProvider ||
+    modelLoadError?.code === "provider_unavailable" ||
     modelLoadError?.code === "missing_executable" ||
     modelLoadError?.code === "auth_required" ||
     !selectedThreadModel ||
@@ -1130,8 +1132,8 @@ export function NewThreadComposer({
           disabled={baseSubmitDisabled || externallyBlocked}
           placeholder={options.placeholder}
           autoFocus={options.autoFocus}
-          pluginComposerHost={options.pluginComposerHost}
-          textEffects={options.textEffects}
+          pluginComposerHost={options.pluginComposerHost ?? pluginComposerHost}
+          textEffects={options.textEffects ?? textEffects}
           zenModeStorageKey={options.zenModeStorageKey}
           history={{
             currentDraft,
@@ -1242,6 +1244,9 @@ export function NewThreadComposer({
               isUploading ||
               isCopyingAttachments ||
               isSubmitting,
+            // A lock renders the picker as a plain label; the transient busy
+            // states must not resize the trigger and shift the row beside it.
+            showChevronWhenDisabled: !locks.project,
           }}
           execution={{
             providerRouting: executionOptionsRouting,
@@ -1323,6 +1328,7 @@ export function NewThreadComposer({
       promptDraft,
       promptHistoryDrafts,
       promptMentions,
+      pluginComposerHost,
       providerOptions,
       reasoningLevel,
       reasoningOptions,
@@ -1336,6 +1342,7 @@ export function NewThreadComposer({
       serviceTierSupportByProvider,
       supportsPermissionModeSelection,
       supportsServiceTier,
+      textEffects,
       worktreeDisabledReason,
       worktreeUnavailable,
     ],

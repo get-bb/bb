@@ -39,12 +39,15 @@ export interface UseThreadTimelineControllerResult {
 type NullableTimelinePaginationCursor = TimelinePaginationCursor | null;
 
 export interface LoadedTimelineState {
+  /** Inclusive end of the latest server window already merged into `rows`. */
+  latestWindowEndSequence: number | null;
   olderCursor: NullableTimelinePaginationCursor;
   rows: TimelineRow[];
   surfaceKey: string;
 }
 
 interface BuildLoadedTimelineStateArgs {
+  latestWindowEndSequence: number | null;
   latestRows: TimelineRow[];
   olderCursor: NullableTimelinePaginationCursor;
   surfaceKey: string;
@@ -57,11 +60,12 @@ interface AreTimelinePaginationCursorsEqualArgs {
 
 export interface MergeLatestTimelineRowsArgs {
   latestRows: readonly TimelineRow[];
+  latestWindowStartSequence: number;
   loadedRows: TimelineRow[];
 }
 
 interface MergeLatestTimelineRowsResult {
-  hasLatestOverlap: boolean;
+  canMerge: boolean;
   rows: TimelineRow[];
 }
 
@@ -141,11 +145,13 @@ function filterThreadTimelineResponse({
 }
 
 function buildLoadedTimelineState({
+  latestWindowEndSequence,
   latestRows,
   olderCursor,
   surfaceKey,
 }: BuildLoadedTimelineStateArgs): LoadedTimelineState {
   return {
+    latestWindowEndSequence,
     olderCursor,
     rows: latestRows,
     surfaceKey,
@@ -236,6 +242,7 @@ export function prependOlderTimelineRows({
 
 export function mergeLatestTimelineRows({
   latestRows,
+  latestWindowStartSequence,
   loadedRows: retainedRows,
 }: MergeLatestTimelineRowsArgs): MergeLatestTimelineRowsResult {
   // Optimistic rows are carried by `latestRows` (they are written into the
@@ -258,88 +265,129 @@ export function mergeLatestTimelineRows({
 
   if (loadedRows.length === 0) {
     return {
-      hasLatestOverlap: false,
+      canMerge: true,
       rows: identityPreservedLatestRows,
     };
   }
 
-  const latestRowIds = new Set(latestRows.map((row) => row.id));
-  const firstLatestOverlapIndex = loadedRows.findIndex((row) =>
-    latestRowIds.has(row.id),
+  const latestRowsById = new Map(
+    identityPreservedLatestRows.map((row) => [row.id, row]),
   );
-  if (firstLatestOverlapIndex === -1) {
-    const rows = [...loadedRows];
-    appendTimelineRowsPreservingOrder(rows, identityPreservedLatestRows);
-    if (areTimelineRowReferencesEqual({ left: loadedRows, right: rows })) {
-      return {
-        hasLatestOverlap: false,
-        rows: loadedRows,
-      };
-    }
-    return {
-      hasLatestOverlap: false,
-      rows,
-    };
+  // The latest response is authoritative only from its raw sequence boundary
+  // onward. Keep every older row regardless of its kind. A row crossing the
+  // boundary is kept only when the new projection carries the same identity,
+  // in which case its value is replaced in place below.
+  const rowsToRetain = loadedRows.filter(
+    (row) =>
+      row.sourceSeqEnd < latestWindowStartSequence ||
+      latestRowsById.has(row.id),
+  );
+  const retainedRowIds = new Set(rowsToRetain.map((row) => row.id));
+  const loadedCommonIds = rowsToRetain.flatMap((row) =>
+    latestRowsById.has(row.id) ? [row.id] : [],
+  );
+  const latestCommonIds = identityPreservedLatestRows.flatMap((row) =>
+    retainedRowIds.has(row.id) ? [row.id] : [],
+  );
+  if (
+    loadedCommonIds.length !== latestCommonIds.length ||
+    loadedCommonIds.some((id, index) => id !== latestCommonIds[index])
+  ) {
+    // The two projections disagree about row order. There is no unambiguous
+    // splice, so the caller must rebuild from the authoritative latest page.
+    return { canMerge: false, rows: identityPreservedLatestRows };
   }
 
-  const rows = [
-    ...loadedRows.slice(0, firstLatestOverlapIndex),
-    ...identityPreservedLatestRows,
-  ];
+  // New latest rows belong immediately before their next shared row. This
+  // preserves the old position of a straddling row (and therefore older rows
+  // around it), while still honoring server order for newly projected rows.
+  const rowsBeforeSharedId = new Map<string, TimelineRow[]>();
+  let pendingRows: TimelineRow[] = [];
+  for (const row of identityPreservedLatestRows) {
+    if (!retainedRowIds.has(row.id)) {
+      pendingRows.push(row);
+      continue;
+    }
+    if (pendingRows.length > 0) {
+      rowsBeforeSharedId.set(row.id, pendingRows);
+      pendingRows = [];
+    }
+  }
+
+  const rows: TimelineRow[] = [];
+  for (const row of rowsToRetain) {
+    const rowsBefore = rowsBeforeSharedId.get(row.id);
+    if (rowsBefore) {
+      rows.push(...rowsBefore);
+    }
+    rows.push(latestRowsById.get(row.id) ?? row);
+  }
+  rows.push(...pendingRows);
   if (areTimelineRowReferencesEqual({ left: loadedRows, right: rows })) {
     return {
-      hasLatestOverlap: true,
+      canMerge: true,
       rows: loadedRows,
     };
   }
 
   return {
-    hasLatestOverlap: true,
+    canMerge: true,
     rows,
   };
 }
 
 /**
- * Whether a fresh latest window can be spliced onto what is already loaded.
- *
- * Splicing assumes the loaded rows are a prefix of the same history: older
- * first, the latest window continuing from somewhere inside them. Two shapes
- * break that assumption, and both became reachable once a window could be cut
- * inside a running turn rather than on a user message:
- *
- * - The latest window reaches back *past* the oldest loaded row. A turn watched
- *   mid-flight is windowed from the budget floor; the moment it finishes it
- *   collapses into one summary row spanning the whole turn, so the next latest
- *   response starts at that turn's user message — before everything held.
- *   Splicing renders the user's prompt after the work it produced.
- * - The latest window starts after the newest loaded row with nothing in
- *   common. Everything between is history neither response contains, and
- *   `olderCursor` still points below the loaded rows, so scrolling never
- *   reaches it.
- *
- * Neither can be repaired by merging, so the loaded rows are dropped and the
- * fresh response becomes the timeline. The cost is a scrolled-back reader
- * losing their loaded pages; the alternative is showing them a reordered or
- * silently incomplete thread.
+ * First event sequence a window covers. Every pagination cursor names the first
+ * sequence the page that issued it covered — that is what makes older pages
+ * chain — so the cursor is the exact lower bound of the window it arrived with.
+ * No cursor means the page reached the start of the thread.
  */
-function isLatestTimelineWindowContiguous({
-  latestRows,
-  loadedRows,
-}: MergeLatestTimelineRowsArgs): boolean {
-  const oldestLoaded = loadedRows[0];
-  const newestLoaded = loadedRows.at(-1);
-  const oldestLatest = latestRows[0];
-  if (!oldestLoaded || !newestLoaded || !oldestLatest) {
-    return true;
+function timelineWindowStartSequence(timeline: ThreadTimelineResponse): number {
+  return timeline.timelinePage.olderCursor?.anchorSeq ?? 0;
+}
+
+/**
+ * Whether the fresh window continues the loaded one, in raw event sequences.
+ *
+ * Rows cannot answer this, in three separate ways:
+ *
+ * - Most events never become a row — `turn/completed`, token-usage and
+ *   rate-limit updates — so the distance from the last loaded row to the next
+ *   window is routinely non-zero while the history is in fact continuous. A
+ *   follow-up submitted on a budgeted thread lands exactly here: the prompt
+ *   opens the next window one sequence past a `turn/completed` that is not a
+ *   row.
+ * - Rows are ordered by where they start, not where they end, so the last row
+ *   is not the one that reaches furthest. A turn summary spans its whole turn
+ *   while shorter rows that begin later sort after it.
+ * - A window's first row can start *below* the window, because the projection
+ *   backfills a turn's `turn/started` row from under the cut.
+ *
+ * Each shape reports a break that is not there, and the caller answers a break
+ * by dropping every loaded page — the timeline visibly truncates to the newest
+ * window and refills as auto-load pages it back. The sequences the server
+ * states outright have none of these failure modes.
+ */
+function timelineWindowsAreContiguous(
+  current: LoadedTimelineState,
+  latestTimeline: ThreadTimelineResponse,
+): boolean {
+  return (
+    current.latestWindowEndSequence !== null &&
+    latestTimeline.maxSeq >= current.latestWindowEndSequence &&
+    timelineWindowStartSequence(latestTimeline) <=
+      current.latestWindowEndSequence + 1
+  );
+}
+
+function mergeLoadedTimelineOlderCursor(
+  current: NullableTimelinePaginationCursor,
+  latest: NullableTimelinePaginationCursor,
+): NullableTimelinePaginationCursor {
+  if (current === null || latest === null) {
+    return null;
   }
-  if (oldestLatest.sourceSeqStart < oldestLoaded.sourceSeqStart) {
-    return false;
-  }
-  const loadedRowIds = new Set(loadedRows.map((row) => row.id));
-  if (latestRows.some((row) => loadedRowIds.has(row.id))) {
-    return true;
-  }
-  return oldestLatest.sourceSeqStart <= newestLoaded.sourceSeqEnd + 1;
+  return latest.anchorSeq <= current.anchorSeq ? latest : current;
 }
 
 export function mergeLoadedTimelineWithLatest({
@@ -349,13 +397,10 @@ export function mergeLoadedTimelineWithLatest({
 }: MergeLoadedTimelineWithLatestArgs): LoadedTimelineState {
   if (
     current.surfaceKey !== surfaceKey ||
-    (current.rows.length === 0 && current.olderCursor === null) ||
-    !isLatestTimelineWindowContiguous({
-      latestRows: latestTimeline.rows,
-      loadedRows: current.rows,
-    })
+    !timelineWindowsAreContiguous(current, latestTimeline)
   ) {
     return buildLoadedTimelineState({
+      latestWindowEndSequence: latestTimeline.maxSeq,
       latestRows: latestTimeline.rows,
       olderCursor: latestTimeline.timelinePage.olderCursor,
       surfaceKey,
@@ -364,12 +409,25 @@ export function mergeLoadedTimelineWithLatest({
 
   const latestMerge = mergeLatestTimelineRows({
     latestRows: latestTimeline.rows,
+    latestWindowStartSequence: timelineWindowStartSequence(latestTimeline),
     loadedRows: current.rows,
   });
+  if (!latestMerge.canMerge) {
+    return buildLoadedTimelineState({
+      latestWindowEndSequence: latestTimeline.maxSeq,
+      latestRows: latestTimeline.rows,
+      olderCursor: latestTimeline.timelinePage.olderCursor,
+      surfaceKey,
+    });
+  }
 
   return {
     ...current,
-    olderCursor: current.olderCursor,
+    latestWindowEndSequence: latestTimeline.maxSeq,
+    olderCursor: mergeLoadedTimelineOlderCursor(
+      current.olderCursor,
+      latestTimeline.timelinePage.olderCursor,
+    ),
     rows: latestMerge.rows,
   };
 }
@@ -381,6 +439,7 @@ export function recoverLoadedTimelineAfterStaleCursor({
 }: RecoverLoadedTimelineAfterStaleCursorArgs): LoadedTimelineState {
   if (current.surfaceKey !== surfaceKey) {
     return buildLoadedTimelineState({
+      latestWindowEndSequence: latestTimeline.maxSeq,
       latestRows: latestTimeline.rows,
       olderCursor: latestTimeline.timelinePage.olderCursor,
       surfaceKey,
@@ -389,10 +448,20 @@ export function recoverLoadedTimelineAfterStaleCursor({
 
   const latestMerge = mergeLatestTimelineRows({
     latestRows: latestTimeline.rows,
+    latestWindowStartSequence: timelineWindowStartSequence(latestTimeline),
     loadedRows: current.rows,
   });
+  if (!latestMerge.canMerge) {
+    return buildLoadedTimelineState({
+      latestWindowEndSequence: latestTimeline.maxSeq,
+      latestRows: latestTimeline.rows,
+      olderCursor: latestTimeline.timelinePage.olderCursor,
+      surfaceKey,
+    });
+  }
 
   return {
+    latestWindowEndSequence: latestTimeline.maxSeq,
     olderCursor: latestTimeline.timelinePage.olderCursor,
     rows: latestMerge.rows,
     surfaceKey,
@@ -427,6 +496,7 @@ export function useThreadTimelineController({
   const [loadedTimeline, setLoadedTimeline] = useState<LoadedTimelineState>(
     () =>
       buildLoadedTimelineState({
+        latestWindowEndSequence: null,
         latestRows: [],
         olderCursor: null,
         surfaceKey,
@@ -450,6 +520,7 @@ export function useThreadTimelineController({
         current.surfaceKey === surfaceKey
           ? current
           : buildLoadedTimelineState({
+              latestWindowEndSequence: null,
               latestRows: [],
               olderCursor: null,
               surfaceKey,
@@ -499,6 +570,7 @@ export function useThreadTimelineController({
           return current;
         }
         return {
+          ...current,
           olderCursor: areTimelinePaginationCursorsEqual({
             left: current.olderCursor,
             right: nextOlderCursor,
@@ -509,7 +581,6 @@ export function useThreadTimelineController({
             loadedRows: current.rows,
             olderRows,
           }),
-          surfaceKey,
         };
       });
     } catch (error) {

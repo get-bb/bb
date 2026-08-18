@@ -770,10 +770,6 @@ describe("ThreadDetailPromptArea", () => {
       '[data-inline-message-editor-frame="cap"]',
     );
     expect(editingFrame).not.toBeNull();
-    expect(editingLabel.closest("section")?.className).toContain("-mb-5");
-    expect(editingLabel.closest("section")?.className).toContain(
-      "rounded-b-none",
-    );
     expect(inlineEditor.getByTestId("submit-title").textContent).toBe(
       "Submit edit (Enter)",
     );

@@ -222,13 +222,20 @@ async function linkExternalDependencies(targetDir: string): Promise<void> {
 
 /**
  * `npm pack` the workspace SDK — the exact artifact the scaffold's pin will
- * resolve to once it is published.
+ * resolve to once it is published. Turbo builds the SDK before this suite, so
+ * skip the package's prepack build instead of rebuilding it during test fanout.
  */
 async function packPluginSdk(packDir: string): Promise<string> {
   await mkdir(packDir, { recursive: true });
   await execFileAsync(
     "npm",
-    ["pack", "--silent", "--pack-destination", packDir],
+    [
+      "pack",
+      "--silent",
+      "--ignore-scripts",
+      "--pack-destination",
+      packDir,
+    ],
     {
       cwd: pluginSdkRoot,
     },

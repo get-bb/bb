@@ -245,7 +245,7 @@ export function PresetDialog({
     !providerCustom && draft.providerId !== ""
       ? (providers
           ?.find((provider) => provider.id === draft.providerId)
-          ?.supportedPermissionModes.filter(isPermissionMode) ?? [])
+          ?.permissionModes.filter(isPermissionMode) ?? [])
       : [];
   const permissionOptions: readonly PermissionMode[] = providerCustom
     ? PERMISSION_MODES

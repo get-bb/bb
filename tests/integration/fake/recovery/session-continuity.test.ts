@@ -10,6 +10,7 @@ import { readSessionRow } from "../../helpers/queries.js";
 import {
   assertMonotonicSequences,
   createRecoveryThread,
+  RECOVERY_TEST_TIMEOUT_MS,
   RECOVERY_TIMEOUT_MS,
   requireSessionId,
   TURN_TIMEOUT_MS,
@@ -66,10 +67,21 @@ describe.sequential("fake provider session continuity integration", () => {
       const eventsAfter = await getThreadEvents(harness.api, thread.id);
       expect(eventsAfter.length).toBeGreaterThan(eventsBefore.length);
       assertMonotonicSequences(eventsAfter);
+      const reusedMessageLifecycle = eventsAfter.filter(
+        (event) =>
+          (event.type === "item/started" || event.type === "item/completed") &&
+          event.data.item.id === "msg-1",
+      );
+      expect(reusedMessageLifecycle.map((event) => event.type)).toEqual([
+        "item/started",
+        "item/completed",
+        "item/started",
+        "item/completed",
+      ]);
       expect(
         eventsAfter.filter((event) => event.type === "turn/completed"),
       ).toHaveLength(baselineCompletedCount + 1);
-    }));
+    }), RECOVERY_TEST_TIMEOUT_MS);
 
   it("closes the old daemon session after restart and accepts new live work", () =>
     withHarness(async (harness) => {
@@ -116,5 +128,5 @@ describe.sequential("fake provider session continuity integration", () => {
         "idle",
         TURN_TIMEOUT_MS,
       );
-    }));
+    }), RECOVERY_TEST_TIMEOUT_MS);
 });

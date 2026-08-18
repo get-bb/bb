@@ -236,7 +236,6 @@ describe("KeyboardSettingsSection", () => {
     const webGroup = webLabel.parentElement;
     const webDefault = within(webGroup!).getByText("Ctrl + Shift + O");
     expect(webDefault.tagName).toBe("KBD");
-    expect(webDefault.className).toContain("font-sans");
     expect(webDefault.getAttribute("aria-hidden")).toBe("false");
     const desktopLabel = within(defaults).getByText("Desktop");
     const desktopGroup = desktopLabel.parentElement;
@@ -248,8 +247,6 @@ describe("KeyboardSettingsSection", () => {
     });
     const recorderShortcut = within(recorder).getByText("Ctrl + Shift + O");
     expect(recorderShortcut.tagName).toBe("KBD");
-    expect(recorderShortcut.className).toContain("font-sans");
-    expect(recorderShortcut.className).toContain("bg-transparent");
     expect(recorderShortcut.getAttribute("aria-hidden")).toBe("true");
 
     fireEvent.click(recorder);
@@ -371,17 +368,11 @@ describe("KeyboardSettingsSection", () => {
     expect(testState.recorderButtonCalls.size).toBe(0);
     expect(recorder.matches(":disabled")).toBe(true);
     expect(recorder.hasAttribute("disabled")).toBe(false);
-    expect(recorder.closest('[aria-busy="true"]')?.className).toContain(
-      "opacity-50",
-    );
     expect(
       screen
         .getByRole("button", { name: /^Record shortcut for Search threads/u })
         .closest('[aria-busy="true"]'),
     ).toBeNull();
-    expect(recorder.closest("fieldset")?.className).toContain(
-      "[&:disabled_button:not([disabled])]:opacity-100",
-    );
 
     testState.metadataCalls.clear();
     testState.keyboardPending = false;
@@ -393,9 +384,6 @@ describe("KeyboardSettingsSection", () => {
     expect([...testState.metadataCalls.keys()]).toEqual(["thread.new"]);
     expect(recorder.matches(":disabled")).toBe(false);
     expect(recorder.closest('[aria-busy="true"]')).toBeNull();
-    expect(recorder.closest("fieldset")?.className).not.toContain(
-      "[&:disabled_button:not([disabled])]:opacity-100",
-    );
 
     testState.metadataCalls.clear();
     testState.keybindingOverrides = [

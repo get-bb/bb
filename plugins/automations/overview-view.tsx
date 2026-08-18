@@ -15,6 +15,7 @@ import {
   automationScheduleLabel,
 } from "./detail-view.js";
 import { Icon } from "@bb/shared-ui/icon";
+import { DelayedLoading } from "./delayed-loading.js";
 import {
   ResourcePagination,
   useResourcePagination,
@@ -426,7 +427,11 @@ export function AutomationOverviewView({
       />
     );
   } else if (entries === null) {
-    body = <ResourceListState state="loading" message="Loading automations" />;
+    body = (
+      <DelayedLoading>
+        <ResourceListState state="loading" message="Loading automations" />
+      </DelayedLoading>
+    );
   } else if (entries.length === 0) {
     body = (
       <ResourceListState state="empty" message="No automations installed." />

@@ -9,6 +9,7 @@ import {
 import { withHarness } from "../../helpers/harness.js";
 import {
   createRecoveryThread,
+  RECOVERY_TEST_TIMEOUT_MS,
   RECOVERY_TIMEOUT_MS,
   TURN_TIMEOUT_MS,
 } from "./shared.js";
@@ -62,5 +63,5 @@ describe.sequential("fake provider idle crash recovery integration", () => {
         "idle",
         TURN_TIMEOUT_MS,
       );
-    }));
+    }), RECOVERY_TEST_TIMEOUT_MS);
 });

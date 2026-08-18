@@ -76,6 +76,61 @@ describe("ui.requestInput", () => {
 });
 
 describe("host control plane", () => {
+  it("validates typed host calls and delivers host lifecycle events", async () => {
+    const contract = defineRpcContract({
+      ping: {
+        input: z.object({ value: z.string() }).strict(),
+        output: z.object({ pong: z.string() }).strict(),
+      },
+    });
+    const experimental_signals = {
+      changed: {
+        payload: z.object({ sequence: z.number().int() }).strict(),
+      },
+    };
+    const { bb, harness } = createFakePluginHost({
+      experimental_callHostRpc: ({ input }) => ({
+        pong: String(Reflect.get(Object(input), "value")),
+      }),
+    });
+    const client = bb.hosts.experimental_client({
+      contract,
+      experimental_signals,
+    });
+
+    await expect(
+      client.call("ping", { value: "hello" }, { hostId: "host-1" }),
+    ).resolves.toEqual({ pong: "hello" });
+    expect(harness.experimental_hostRpcCalls).toMatchObject([
+      {
+        method: "ping",
+        input: { value: "hello" },
+        hostId: "host-1",
+      },
+    ]);
+
+    const events: unknown[] = [];
+    client.experimental_onWorkerExit((event) => {
+      events.push({ workerExit: event });
+    });
+    client.experimental_onSignal("changed", (event) => {
+      events.push({ signal: event });
+    });
+    await harness.experimental_emitHostWorkerExit("host-1");
+    expect(events.at(-1)).toEqual({ workerExit: { hostId: "host-1" } });
+    await harness.experimental_emitHostSignal("host-1", "changed", {
+      sequence: 2,
+    });
+    expect(events.at(-1)).toEqual({
+      signal: { hostId: "host-1", payload: { sequence: 2 } },
+    });
+    await expect(
+      harness.experimental_emitHostSignal("host-1", "changed", {
+        sequence: 2.5,
+      }),
+    ).rejects.toThrow(/validation failed/u);
+  });
+
   it("uses validated current-state replacements and read-only tunnel identity", async () => {
     const { bb, harness } = createFakePluginHost({
       sharedPortTunnelIdentities: {
@@ -345,6 +400,38 @@ describe("http", () => {
       error: "plugin route failed: nope",
     });
   });
+
+  it("adopts a structurally valid Response from another realm like the host (#1661)", async () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.http.route("GET", "/foreign", () => {
+      const real = new Response(JSON.stringify({ foreign: true }), {
+        status: 201,
+        headers: { "content-type": "application/json", "x-foreign": "yes" },
+      });
+      // Not `instanceof Response` in this realm; same structural shape.
+      return {
+        status: real.status,
+        statusText: real.statusText,
+        headers: real.headers,
+        body: real.body,
+        arrayBuffer: () => real.arrayBuffer(),
+        clone: () => real.clone(),
+      } as unknown as Response;
+    });
+    bb.http.route("GET", "/not-a-response", () => ({ status: 200 }) as Response);
+
+    const foreign = await harness.fetchHttp("GET", "/foreign");
+    expect(foreign.status).toBe(201);
+    expect(foreign.headers.get("x-foreign")).toBe("yes");
+    expect(await foreign.json()).toEqual({ foreign: true });
+
+    const malformed = await harness.fetchHttp("GET", "/not-a-response");
+    expect(malformed.status).toBe(500);
+    expect(await malformed.json()).toEqual({
+      ok: false,
+      error: "plugin route failed: http route handler must return a Response",
+    });
+  });
 });
 
 describe("cli", () => {
@@ -602,7 +689,11 @@ describe("agent tools", () => {
       branchName: null,
     },
     host: { id: "host-test", name: "Test host" },
-    provider: { id: "codex", model: "gpt-5" },
+    provider: {
+      id: "codex",
+      model: "gpt-5",
+      capabilities: { supportsNativeUserQuestion: false },
+    },
     origin: { kind: null, pluginId: null },
   } satisfies PluginAgentConfigurationContext;
 
@@ -634,6 +725,49 @@ describe("agent tools", () => {
     await expect(
       harness.callAgentTool("lookup_doc", { query: 3 }),
     ).rejects.toThrow('tool "lookup_doc" arguments are invalid');
+  });
+
+  it("rejects recursive schemas at registration and configuration", async () => {
+    const { bb, harness } = createFakePluginHost();
+
+    expect(() =>
+      bb.agents.registerTool({
+        name: "recursive_zod",
+        description: "Recursive zod schema",
+        parameters: z.object({ value: z.json() }),
+        execute: () => "unused",
+      }),
+    ).toThrow(/recursive JSON Schema \$ref/);
+
+    bb.agents.registerTool({
+      name: "acyclic_ref",
+      description: "Acyclic local reference",
+      parameters: {
+        type: "object",
+        properties: { label: { $ref: "#/$defs/label" } },
+        $defs: { label: { type: "string" } },
+      },
+      execute: () => "ok",
+    });
+    bb.agents.configure(() => ({
+      tools: [
+        {
+          name: "acyclic_ref",
+          parameters: {
+            type: "object",
+            properties: { nested: { $ref: "#" } },
+          },
+        },
+      ],
+      skills: [],
+    }));
+
+    await expect(
+      harness.resolveAgentConfiguration(configurationContext),
+    ).resolves.toEqual({ tools: [], skills: [], instructions: null });
+    expect(harness.logEntries.at(-1)?.message).toContain(
+      "recursive JSON Schema $ref",
+    );
   });
 
   it("rejects duplicate keyed registrations like the production host", () => {
@@ -688,7 +822,11 @@ describe("agent tools", () => {
       ...configurationContext,
       thread: { ...configurationContext.thread, id: "thread-beta" },
       host: { id: "host-beta", name: "Beta host" },
-      provider: { id: "claude-code", model: "claude-opus" },
+      provider: {
+      id: "claude-code",
+      model: "claude-opus",
+      capabilities: { supportsNativeUserQuestion: false },
+    },
     };
     const beta = await harness.resolveAgentConfiguration(betaContext);
 
@@ -838,5 +976,137 @@ describe("realtime and status", () => {
       "needs configuration",
       "set a token",
     ]);
+  });
+});
+
+describe("agents.experimental_registerProvider", () => {
+  function agentDeclaration(
+    overrides: Record<string, unknown> = {},
+  ): Parameters<BbPluginApi["agents"]["experimental_registerProvider"]>[0] {
+    return {
+      id: "my-agent",
+      displayName: "My Agent",
+      icon: "./icons/agent.svg",
+      capabilities: {
+        supportsServiceTier: false,
+        supportsNativeUserQuestion: true,
+        fork: "tip",
+        supportsManualCompaction: true,
+        supportsThreadArchive: false,
+        supportsThreadRename: false,
+        supportsWorkflows: false,
+        permissionModes: ["accept-edits", "full"],
+        reasoningLevels: ["low", "medium", "high"],
+      },
+      composerActions: ["plan"],
+      ...overrides,
+    } as Parameters<
+      BbPluginApi["agents"]["experimental_registerProvider"]
+    >[0];
+  }
+
+  it("rejects malformed declarations with the shared host policy", () => {
+    const { bb } = createFakePluginHost();
+    const register = bb.agents.experimental_registerProvider;
+
+    expect(() => register(agentDeclaration({ id: "Bad_Id!" }))).toThrow(
+      /invalid provider id/,
+    );
+    expect(() => register(agentDeclaration({ id: "x" }))).toThrow(
+      /invalid provider id/,
+    );
+    expect(() => register(agentDeclaration({ displayName: "   " }))).toThrow(
+      /displayName must be 1-80 non-blank characters/,
+    );
+    expect(() =>
+      register(
+        agentDeclaration({
+          capabilities: {
+            ...agentDeclaration().capabilities,
+            permissionModes: [],
+          },
+        }),
+      ),
+    ).toThrow(/permissionModes must include at least one entry/);
+    expect(() =>
+      register(
+        agentDeclaration({
+          capabilities: {
+            ...agentDeclaration().capabilities,
+            reasoningLevels: ["low", "low"],
+          },
+        }),
+      ),
+    ).toThrow(/reasoningLevels entry "low" is duplicated/);
+    expect(() =>
+      register(
+        agentDeclaration({
+          capabilities: { ...agentDeclaration().capabilities, fork: true },
+        }),
+      ),
+    ).toThrow(/capabilities.fork must be one of none, tip, checkpoint/);
+    expect(() =>
+      register(agentDeclaration({ icon: "./../outside.svg" })),
+    ).toThrow(/icon must not escape the plugin directory/);
+    // The `bb.branding.icon` grammar: "./" means a plugin file, anything else
+    // is a host glyph name. A path without the prefix is neither.
+    expect(() =>
+      register(agentDeclaration({ icon: "/abs/icon.svg" })),
+    ).toThrow(/icon looks like a path but does not start with "\.\/"/);
+    expect(() =>
+      register(agentDeclaration({ composerActions: ["plan", "plan"] })),
+    ).toThrow(/composerActions entry "plan" is duplicated/);
+    // A bare glyph name is the other half of the grammar and is accepted; this
+    // one commits, so it goes last.
+    expect(() => register(agentDeclaration({ icon: "Zap" }))).not.toThrow();
+  });
+
+  it("round-trips a registration through the harness and dispose", () => {
+    const { bb, harness } = createFakePluginHost();
+    const handle = bb.agents.experimental_registerProvider(
+      agentDeclaration({ displayName: "  My Agent  " }),
+    );
+
+    expect(harness.registrations.providerRegistrations).toHaveLength(1);
+    const registered = harness.registrations.providerRegistrations[0]!;
+    // Normalized frozen copy: trimmed display name, contract fields only.
+    expect(registered.displayName).toBe("My Agent");
+    expect(Object.isFrozen(registered)).toBe(true);
+    expect(Object.isFrozen(registered.capabilities)).toBe(true);
+
+    // Live ids are collision-rejected until disposed.
+    expect(() =>
+      bb.agents.experimental_registerProvider(agentDeclaration()),
+    ).toThrow(/already registered/);
+
+    handle.dispose();
+    handle.dispose(); // idempotent
+    expect(harness.registrations.providerRegistrations).toEqual([]);
+
+    // A disposed id can be re-registered (settings-driven re-declaration).
+    bb.agents.experimental_registerProvider(
+      agentDeclaration({ displayName: "Second Declaration" }),
+    );
+    expect(
+      harness.registrations.providerRegistrations.map(
+        (declaration) => declaration.displayName,
+      ),
+    ).toEqual(["Second Declaration"]);
+  });
+
+  it("clears registrations on dispose", async () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.agents.experimental_registerProvider(
+      agentDeclaration({ id: "my-second-agent" }),
+    );
+    expect(
+      harness.registrations.providerRegistrations.map((entry) => entry.id),
+    ).toEqual(["my-second-agent"]);
+
+    await harness.dispose();
+    expect(harness.registrations.providerRegistrations).toEqual([]);
+    expect(() =>
+      bb.agents.experimental_registerProvider(agentDeclaration()),
+    ).toThrow("used a stale API handle");
   });
 });

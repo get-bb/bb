@@ -1,0 +1,71 @@
+name: Bug report
+description: Something does not work the way it should. A stranger should be able to reproduce it from this issue alone.
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please read [docs/filing-issues.md](https://github.com/get-bb/bb/blob/main/docs/filing-issues.md) first. Short and precise beats long and vague.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What you did, what happened, what you expected. Two or three sentences for someone who does not know the codebase.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Versions and environment
+      description: bb version and install method (desktop app, npx, install.sh, source commit); OS; Node if from source; provider + provider CLI version if an agent is involved; anything unusual (remote machine, Connect, worktree env, custom ports/data dir).
+      placeholder: |
+        - bb 0.38.0 (desktop app), macOS 26
+        - claude-code, claude 2.1.x
+        - worktree environment, bb Connect paired
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered, copy-pasteable, minimal. Exact commands, clicks, or prompt text. Note anything you tried that did NOT reproduce it.
+      placeholder: |
+        1. bb thread spawn --project … --provider codex --prompt "Reply only with ok."
+        2. …
+        Did not reproduce with: claude-code; a fresh data dir.
+    validations:
+      required: true
+  - type: textarea
+    id: expected-actual
+    attributes:
+      label: Expected vs actual
+      description: Paste actual output verbatim (terminal, logs, HTTP responses, `bb thread log` excerpts). Attach a screenshot for visual bugs and say what to look at. Then state what you expected.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Trimmed logs from ~/.bb/logs; thread/project/environment ids (thr_…, proj_…, env_…); code permalinks with a commit sha (`blob/<sha>/path#L…`); how you measured any numbers.
+  - type: textarea
+    id: ruled-out
+    attributes:
+      label: What you ruled out
+      description: One line each. "Not #N because …", "still happens on main at <sha>", "does not happen with provider X", "clean data dir does not help".
+  - type: input
+    id: priority
+    attributes:
+      label: Suggested priority and effort (optional)
+      description: How many users, workaround yes/no, data or work lost. Triage sets the built-in fields; this is input.
+      placeholder: "High — blocks every codex user mid-turn, no workaround; effort probably Low"
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I reproduced this on the latest release or on `main`, or I say above that I could not.
+          required: true
+        - label: I searched open and closed issues for the same problem.
+          required: true
+        - label: If an agent wrote this, the body ends with `> AGENT GENERATED: by <model>` and links the thread or report.

@@ -132,7 +132,7 @@ export const labelClaim = sqliteTable(
 
 /**
  * A connected bb server (the machine running the tunnel client). An account may
- * own up to `MAX_SERVERS_PER_ACCOUNT` servers; each owns a globally-unique
+ * own up to `MAX_PER_ACCOUNT` servers; each owns a globally-unique
  * `subdomain` label in the SAME public namespace as `profile.handle`
  * (`<subdomain>.getbb.app`). The account's `profile.handle` names the
  * primary/first server (its subdomain is backfilled to the handle); additional

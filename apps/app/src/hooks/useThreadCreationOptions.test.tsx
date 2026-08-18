@@ -57,12 +57,13 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
           },
         ],
         capabilities: {
-          supportsArchive: true,
-          supportsRename: true,
+          supportsThreadArchive: true,
+          supportsThreadRename: true,
           supportsServiceTier: true,
-          supportsUserQuestion: true,
+          supportsNativeUserQuestion: true,
           supportsFork: true,
-          supportedPermissionModes: ["accept-edits", "auto", "full"],
+          supportsSessionRewind: true,
+          permissionModes: ["accept-edits", "auto", "full"],
         },
       },
       {
@@ -72,12 +73,13 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
         available: true,
         composerActions: [{ kind: "skills", trigger: "/" }],
         capabilities: {
-          supportsArchive: true,
-          supportsRename: true,
+          supportsThreadArchive: true,
+          supportsThreadRename: true,
           supportsServiceTier: true,
-          supportsUserQuestion: true,
+          supportsNativeUserQuestion: true,
           supportsFork: true,
-          supportedPermissionModes: ["accept-edits", "auto", "full"],
+          supportsSessionRewind: true,
+          permissionModes: ["accept-edits", "auto", "full"],
         },
       },
     ],
@@ -161,12 +163,13 @@ function claudeExecutionOptionsResponse(): SystemExecutionOptionsResponse {
         available: true,
         composerActions: [],
         capabilities: {
-          supportsArchive: true,
-          supportsRename: true,
+          supportsThreadArchive: true,
+          supportsThreadRename: true,
           supportsServiceTier: true,
-          supportsUserQuestion: true,
+          supportsNativeUserQuestion: true,
           supportsFork: true,
-          supportedPermissionModes: ["accept-edits", "auto", "full"],
+          supportsSessionRewind: true,
+          permissionModes: ["accept-edits", "auto", "full"],
         },
       },
     ],
@@ -234,6 +237,82 @@ afterEach(() => {
 });
 
 describe("useThreadCreationOptions", () => {
+  it("keeps the selected built-in provider branded while models load", () => {
+    window.localStorage.setItem("bb.promptbox.provider", "codex");
+    vi.mocked(sdk.system.executionOptions).mockImplementation(
+      () => new Promise(() => undefined),
+    );
+
+    const { result } = renderHook(
+      () => useThreadCreationOptions({ scope: "new-thread" }),
+      { wrapper: createQueryClientTestHarness().wrapper },
+    );
+
+    expect(result.current.isLoadingModels).toBe(true);
+    expect(result.current.selectedProviderId).toBe("codex");
+    expect(
+      result.current.providerOptions.find((option) => option.value === "codex")
+        ?.icon,
+    ).toBeDefined();
+  });
+
+  it("does not switch away from a provider when its failed plugin response arrives", async () => {
+    window.localStorage.setItem("bb.promptbox.provider", "codex");
+    let resolveOptions: (
+      value: SystemExecutionOptionsResponse,
+    ) => void = () => {};
+    const optionsPromise = new Promise<SystemExecutionOptionsResponse>(
+      (resolve) => {
+        resolveOptions = resolve;
+      },
+    );
+    vi.mocked(sdk.system.executionOptions).mockReturnValue(optionsPromise);
+    const { result } = renderHook(
+      () => useThreadCreationOptions({ scope: "new-thread" }),
+      { wrapper: createQueryClientTestHarness().wrapper },
+    );
+    act(() => {
+      result.current.setSelectedProviderId("codex");
+    });
+    expect(result.current.selectedProviderId).toBe("codex");
+
+    const base = executionOptionsResponse();
+    const templateProvider = base.providers[0];
+    if (templateProvider === undefined) {
+      throw new Error("execution-options fixture has no provider");
+    }
+    act(() => {
+      resolveOptions({
+        ...base,
+        providers: [
+          {
+            ...templateProvider,
+            id: "codex",
+            displayName: "Codex",
+            available: false,
+          },
+          ...base.providers,
+        ],
+        models: [],
+        modelLoadError: {
+          providerId: "codex",
+          code: "provider_unavailable",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedProviderId).toBe("codex");
+      expect(result.current.modelLoadError).toEqual({
+        providerId: "codex",
+        code: "provider_unavailable",
+      });
+      expect(
+        result.current.providerOptions.map((option) => option.value),
+      ).toContain("codex");
+    });
+  });
+
   it("uses the medium product default for providers without reasoning history", async () => {
     vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
       providerExecutionOptionsResponse(args?.providerId),

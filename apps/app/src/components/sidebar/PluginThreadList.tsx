@@ -1,67 +1,65 @@
 import { useCallback, type ReactNode } from "react";
 import { toast } from "sonner";
-import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
+import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
 import { useSidebar } from "@/components/ui/sidebar.js";
 import { useRouteState } from "@/hooks/useRouteState";
+import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
 import type { PluginThreadListSlot } from "@/lib/plugin-slots";
 
 /** Shared by the mount and the host's crash check. */
 export const THREAD_LIST_SLOT_KIND = "threadList";
 
 interface PluginThreadListProps {
-  slot: PluginThreadListSlot;
-  /**
-   * The built-in list. Rendered instead of the plugin when its component
-   * crashes: unlike an additive slot, there is no useful "plugin crashed"
-   * chip to show here — a chip in place of the whole sidebar would strand the
-   * user with no way to reach their threads.
-   */
-  builtInFallback: ReactNode;
+  replacement: ResolvedReplacement<PluginThreadListSlot>;
+  /** BB's list bound to this sidebar instance. */
+  original: ReactNode;
   /** The host search field's text; "" when closed or plugin-owned. */
   searchQuery: string;
   onNavigate: () => void;
 }
 
 /**
- * Mounts the chosen `experimental_threadList` slot in the sidebar's scroll
+ * Mounts the active `experimental_threadList` slot in the sidebar's scroll
  * area, keyed by generation so a plugin reload remounts it with fresh
  * error-boundary state.
  */
 export function PluginThreadList({
-  slot,
-  builtInFallback,
+  replacement,
+  original,
   searchQuery,
   onNavigate,
 }: PluginThreadListProps) {
   const { projectId, threadId } = useRouteState();
   const { isCompactViewport } = useSidebar();
-  const Component = slot.component;
+  const title =
+    replacement.kind === "plugin" ? replacement.registration.title : "Plugin";
 
   const handleCrash = useCallback(
     (pluginId: string) => {
       toast.error("Sidebar plugin crashed", {
-        description: `${slot.title} (${pluginId}) stopped working, so bb's own thread list is back.`,
+        description: `${title} (${pluginId}) stopped working, so bb's own thread list is back.`,
       });
     },
-    [slot.title],
+    [title],
   );
 
   return (
-    <PluginSlotMount
-      key={`${slot.pluginId}/${slot.id}/${slot.generation}`}
-      pluginId={slot.pluginId}
+    <PluginReplacementSlot
+      replacement={replacement}
+      original={original}
       slotKind={THREAD_LIST_SLOT_KIND}
-      slotId={slot.id}
-      crashFallback={builtInFallback}
       onCrash={handleCrash}
     >
-      <Component
-        activeThreadId={threadId ?? null}
-        activeProjectId={projectId ?? null}
-        isCompactViewport={isCompactViewport}
-        onNavigate={onNavigate}
-        searchQuery={searchQuery}
-      />
-    </PluginSlotMount>
+      {(slot, BoundOriginal) => (
+        <slot.component
+          activeThreadId={threadId ?? null}
+          activeProjectId={projectId ?? null}
+          isCompactViewport={isCompactViewport}
+          onNavigate={onNavigate}
+          searchQuery={searchQuery}
+          experimental_Original={BoundOriginal}
+        />
+      )}
+    </PluginReplacementSlot>
   );
 }

@@ -92,7 +92,12 @@ describe("protocol self-update", () => {
     expect(test.runProcess).toHaveBeenCalledOnce();
     expect(test.runProcess).toHaveBeenCalledWith(
       "npm",
-      ["install", "-g", expect.stringContaining("bb-app-update-")],
+      [
+        "install",
+        "-g",
+        "--allow-scripts=better-sqlite3,node-pty,@parcel/watcher",
+        expect.stringContaining("bb-app-update-"),
+      ],
       {
         env: expect.objectContaining({
           PATH: `${dirname(process.execPath)}${delimiter}/usr/bin:/bin`,
@@ -114,6 +119,7 @@ describe("protocol self-update", () => {
       [
         "install",
         "-g",
+        "--allow-scripts=better-sqlite3,node-pty,@parcel/watcher",
         "--prefix",
         "/machine-data/npm",
         expect.stringContaining("bb-app-update-"),
@@ -132,7 +138,12 @@ describe("protocol self-update", () => {
 
     expect(test.runProcess).toHaveBeenCalledWith(
       "npm",
-      ["install", "-g", expect.stringContaining("bb-app-update-")],
+      [
+        "install",
+        "-g",
+        "--allow-scripts=better-sqlite3,node-pty,@parcel/watcher",
+        expect.stringContaining("bb-app-update-"),
+      ],
       expect.any(Object),
     );
   });

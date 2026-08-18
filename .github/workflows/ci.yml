@@ -13,13 +13,24 @@ env:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseded pull request pushes are wasted work, but superseded main pushes
+  # are not: a cancelled run never reaches its post step, so it never saves a
+  # Turbo cache. Cancelling them let a burst of merges leave every pull request
+  # restoring from a main commit well behind HEAD.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   checks:
     name: Checks (ubuntu-latest, Node 22.x)
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
+
+    # `actions: read` is what lets the cache-usage check call the Actions API;
+    # checkout needs `contents: read`. The check degrades to a skip without
+    # them, so this only makes the reporting reliable.
+    permissions:
+      contents: read
+      actions: read
 
     steps:
       - name: Checkout repository
@@ -60,12 +71,20 @@ jobs:
       - name: Check app boot-payload budget
         run: node apps/app/scripts/check-bundle-budget.mjs
 
+      # Exceeding the Actions cache quota is silent: GitHub evicts entries
+      # without failing or warning anything, so the only symptom is caches
+      # quietly ceasing to hit. Warn while there is still headroom.
+      - name: Check Actions cache usage
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/check-actions-cache-usage.mjs
+
   # Tests run on their own runners instead of inside the checks job: the big
   # suites are CPU-bound and previously fought each other (and the builds) for
   # the same 4 vCPUs, which made tests the critical path of every run.
   tests:
     name: Tests (${{ matrix.shard }}, ubuntu-latest, Node 22.x)
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
 
     strategy:
@@ -74,12 +93,26 @@ jobs:
         include:
           - shard: server
             filter: --filter=@bb/server
-          - shard: app
+            args: ""
+          # @bb/app is by far the largest suite (365 files) and was the critical
+          # path once the macOS smoke leg was fixed. Vitest splits by file, and
+          # Turbo hashes passthrough args, so each leg is a distinct cache entry
+          # rather than three jobs racing to reuse one.
+          - shard: app-1
             filter: --filter=@bb/app
+            args: -- --shard=1/3
+          - shard: app-2
+            filter: --filter=@bb/app
+            args: -- --shard=2/3
+          - shard: app-3
+            filter: --filter=@bb/app
+            args: -- --shard=3/3
           - shard: integration
             filter: --filter=@bb/integration-tests
+            args: ""
           - shard: packages
             filter: --filter='!@bb/server' --filter='!@bb/app' --filter='!@bb/integration-tests'
+            args: ""
 
     steps:
       - name: Checkout repository
@@ -93,8 +126,15 @@ jobs:
           cache-prefix: test-${{ matrix.shard }}
 
       - name: Test
-        run: pnpm exec turbo run test ${{ matrix.filter }} --cache-dir=.turbo/cache --output-logs=new-only
+        run: pnpm exec turbo run test ${{ matrix.filter }} --cache-dir=.turbo/cache --output-logs=new-only ${{ matrix.args }}
 
+  # The macOS legs run without the Turbo cache. Blacksmith's transparent cache
+  # only backs their Linux runners, so on macOS the cache moves over GitHub's
+  # own service at ~50 MB/s: restoring and saving the ~2 GB directory cost about
+  # two minutes per run and returned 0 of 8 task hits, because the six ~2 GB
+  # entries it wrote also blew past the repository's 10 GB cache quota and
+  # evicted each other. `smoke:tarball` is itself `"cache": false`, so only its
+  # build dependencies could ever have been reused.
   package-smoke:
     name: Package Smoke (${{ matrix.os }}, Node ${{ matrix.node-version }})
     runs-on: ${{ matrix.os }}
@@ -104,10 +144,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: blacksmith-4vcpu-ubuntu-2404
             node-version: "22.x"
-          - os: macos-latest
+            turbo-cache: "true"
+          - os: blacksmith-6vcpu-macos-15
             node-version: "22.x"
+            turbo-cache: "false"
 
     steps:
       - name: Checkout repository
@@ -119,6 +161,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
           pnpm-version: ${{ env.PNPM_VERSION }}
           cache-prefix: package-smoke
+          turbo-cache: ${{ matrix.turbo-cache }}
 
       - name: Smoke bb-app tarball
         run: pnpm exec turbo run smoke:tarball --filter=bb-app --cache-dir=.turbo/cache --output-logs=new-only
@@ -132,14 +175,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: blacksmith-4vcpu-ubuntu-2404
             node-version: "24.x"
-          - os: ubuntu-latest
+            turbo-cache: "true"
+          - os: blacksmith-4vcpu-ubuntu-2404
             node-version: "26.x"
-          - os: macos-latest
+            turbo-cache: "true"
+          - os: blacksmith-6vcpu-macos-15
             node-version: "24.x"
-          - os: macos-latest
+            turbo-cache: "false"
+          - os: blacksmith-6vcpu-macos-15
             node-version: "26.x"
+            turbo-cache: "false"
 
     steps:
       - name: Checkout repository
@@ -151,6 +198,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
           pnpm-version: ${{ env.PNPM_VERSION }}
           cache-prefix: compat-smoke
+          turbo-cache: ${{ matrix.turbo-cache }}
 
       - name: Smoke bb-app tarball
         run: pnpm exec turbo run smoke:tarball --filter=bb-app --cache-dir=.turbo/cache --output-logs=new-only

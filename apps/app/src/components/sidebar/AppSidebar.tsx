@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/sidebar.js";
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
 import { PluginThreadList } from "./PluginThreadList";
-import { useThreadListProvider } from "./threadListProvider";
+import { useThreadListReplacement } from "./threadListProvider";
 import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
 import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
@@ -78,10 +78,10 @@ export function AppSidebar({
   toolsRoutePath,
 }: AppSidebarProps) {
   const quickCreateProject = useQuickCreateProjectController();
-  // A plugin may replace the sidebar's scrolling thread list. It never
-  // replaces the chrome around it: the New-thread button, the search field,
+  // The resolved replacement owns the sidebar's scrolling thread list. It never
+  // replaces the chrome around it: the New-thread button, search field,
   // the plugin nav rows, and the footer stay host-rendered in every sidebar.
-  const threadListProvider = useThreadListProvider();
+  const threadListReplacement = useThreadListReplacement();
   const { threadId: activeThreadId } = useRouteState();
   const navigate = useNavigate();
   const threadSplitsEnabled = useThreadSplitsEnabled();
@@ -260,7 +260,7 @@ export function AppSidebar({
     ],
   );
 
-  const builtInThreadList = (
+  const originalThreadList = (
     <ProjectList
       onNewProject={
         quickCreateProject.isAvailable
@@ -332,16 +332,12 @@ export function AppSidebar({
           toolsRoutePath={toolsRoutePath}
         />
         <SidebarContent>
-          {threadListProvider ? (
-            <PluginThreadList
-              slot={threadListProvider}
-              builtInFallback={builtInThreadList}
-              searchQuery={threadSearch.query}
-              onNavigate={threadSearch.onExternalThreadOpen}
-            />
-          ) : (
-            builtInThreadList
-          )}
+          <PluginThreadList
+            replacement={threadListReplacement}
+            original={originalThreadList}
+            searchQuery={threadSearch.query}
+            onNavigate={threadSearch.onExternalThreadOpen}
+          />
         </SidebarContent>
         <SidebarFooter className="relative">
           <OverflowFade placement="above" tone="sidebar" size="sm" />

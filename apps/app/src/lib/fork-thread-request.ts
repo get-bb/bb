@@ -1,4 +1,3 @@
-import { supportsNativeFork } from "@bb/agent-providers";
 import type {
   PermissionMode,
   PromptInput,
@@ -26,15 +25,24 @@ export interface ForkThreadCreateSeed {
 
 export interface BuildForkThreadRequestArgs extends ForkThreadCreateSeed {
   input: PromptInput[];
+  /**
+   * The source thread provider's `capabilities.supportsFork`, read from the
+   * server-provided ProviderInfo (execution-options query data). False when
+   * the provider is unknown or its data has not loaded — graceful absence.
+   */
+  providerSupportsFork: boolean;
 }
 
 type ForkableThread = Pick<Thread, "environmentId" | "providerId">;
 
-export function isThreadForkable(sourceThread: ForkableThread | null): boolean {
+export function isThreadForkable(
+  sourceThread: ForkableThread | null,
+  providerSupportsFork: boolean,
+): boolean {
   if (sourceThread === null || sourceThread.environmentId === null) {
     return false;
   }
-  return supportsNativeFork(sourceThread.providerId);
+  return providerSupportsFork;
 }
 
 export function buildForkThreadRequest({
@@ -44,16 +52,20 @@ export function buildForkThreadRequest({
   permissionMode,
   projectId,
   providerId,
+  providerSupportsFork,
   reasoningLevel,
   serviceTier,
   sourceSeqEnd,
   sourceThreadId,
 }: BuildForkThreadRequestArgs): AppCreateThreadRequest | null {
   if (
-    !isThreadForkable({
-      environmentId,
-      providerId,
-    })
+    !isThreadForkable(
+      {
+        environmentId,
+        providerId,
+      },
+      providerSupportsFork,
+    )
   ) {
     return null;
   }

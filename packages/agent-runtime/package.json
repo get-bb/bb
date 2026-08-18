@@ -30,18 +30,20 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.197",
     "@anthropic-ai/sdk": "^0.93.0",
-    "@bb/agent-providers": "workspace:*",
     "@bb/domain": "workspace:*",
     "@bb/host-daemon-contract": "workspace:*",
     "@bb/process-utils": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@bb/provider-bridge-protocol": "workspace:*",
     "@earendil-works/pi-ai": "0.84.0",
     "@earendil-works/pi-coding-agent": "0.84.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@bb/plugin-build": "workspace:*",
     "@bb/test-helpers": "workspace:*",
     "@bb/tsconfig": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
     "@types/node": "^22.0.0",
     "tsx": "^4.23.1",
     "typescript": "npm:@typescript/typescript6@^6.0.2",

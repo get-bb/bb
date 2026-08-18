@@ -50,13 +50,17 @@ describe.concurrent("cross-provider and multi-thread scenarios", () => {
           ctx.runtime.runTurn({
             clientRequestId: "creq_2222222245",
             threadId: threadA,
-            input: [promptTextInput({ text: "Reply with exactly: THREAD_A_OK" })],
+            input: [
+              promptTextInput({ text: "Reply with exactly: THREAD_A_OK" }),
+            ],
             options,
           }),
           ctx.runtime.runTurn({
             clientRequestId: "creq_2222222246",
             threadId: threadB,
-            input: [promptTextInput({ text: "Reply with exactly: THREAD_B_OK" })],
+            input: [
+              promptTextInput({ text: "Reply with exactly: THREAD_B_OK" }),
+            ],
             options,
           }),
         ]);

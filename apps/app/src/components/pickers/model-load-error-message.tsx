@@ -38,6 +38,10 @@ export function formatModelLoadErrorText({
   error,
   providerLabel,
 }: FormatModelLoadErrorTextArgs): string {
+  if (error.code === "provider_unavailable") {
+    return `${providerLabel} is unavailable because its provider plugin failed to load.`;
+  }
+
   if (error.code === "timeout") {
     return `Timed out loading models for ${providerLabel}.`;
   }

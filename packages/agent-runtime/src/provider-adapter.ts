@@ -3,8 +3,6 @@ import type {
   ClientTurnRequestId,
   DynamicTool,
   InstructionMode,
-  PendingInteractionPayload,
-  PendingInteractionResolution,
   PromptInput,
   ClaudeCodeMockCliTrafficConfig,
   ProviderCapabilities,
@@ -17,8 +15,18 @@ import type {
 import type {
   ProviderInboundRequest,
   ProviderRuntimeEvent,
-} from "./runtime-json-rpc.js";
-import type { AgentRuntimeSkillRoot } from "./types.js";
+  BuildInteractiveResponseArgs,
+  DecodedInteractiveRequest,
+  DecodedToolCallRequest,
+  PreparedProviderCommandDispatch,
+  ProviderCommandPlan,
+  ProviderInteractiveResponse,
+  ProviderPostInitializeRequest,
+} from "@bb/provider-bridge-protocol/bridge-kit";
+import type {
+  AgentRuntimeBridgeLaunch,
+  AgentRuntimeSkillRoot,
+} from "./types.js";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 
 export interface ProviderTranslationContext {
@@ -34,76 +42,21 @@ export interface ProviderAcceptedCommandTranslationArgs {
 export interface ProviderAdapterFactoryOptions {
   additionalWorkspaceWriteRoots: readonly string[];
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  /**
+   * A plugin-delivered bridge artifact resolved to a verified local path by
+   * the host daemon. Routes prefix-matched non-first-party providers onto the
+   * generic bridge-protocol adapter running that artifact.
+   */
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
   bridgeBundleDir?: string;
   bridgeNodeEnv?: Record<string, string>;
   bridgeNodeExecutablePath?: string;
-  turnIdPrefix?: string;
 }
 
 export type ProviderAdapterFactory = (
   providerId: string,
   options: ProviderAdapterFactoryOptions,
 ) => ProviderAdapter;
-
-export interface ProviderRequestCommandPlan {
-  kind: "request";
-  method: string;
-  params?: object;
-}
-
-export interface ProviderNoopCommandPlan {
-  kind: "noop";
-  method?: never;
-  params?: never;
-  reason: string;
-}
-
-export type ProviderCommandPlan =
-  | ProviderRequestCommandPlan
-  | ProviderNoopCommandPlan;
-
-export interface ProviderPostInitializeRequest {
-  plan: ProviderRequestCommandPlan;
-  required: boolean;
-  onResult(result: unknown): void;
-}
-
-export type ProviderInteractiveResponse =
-  | boolean
-  | number
-  | string
-  | null
-  | ProviderInteractiveResponse[]
-  | { [key: string]: ProviderInteractiveResponse | undefined };
-
-export interface DecodedToolCallRequest {
-  requestId: string | number;
-  providerThreadId: string;
-  /**
-   * Non-empty BB turn id when known. Use null as the canonical unresolved
-   * value so the runtime can resolve from the active turn; empty strings are
-   * malformed adapter output.
-   */
-  turnId: string | null;
-  callId: string;
-  tool: string;
-  arguments?: unknown;
-  threadId?: string;
-}
-
-export interface DecodedInteractiveRequest {
-  requestId: string | number;
-  method: string;
-  providerThreadId: string;
-  /**
-   * Non-empty BB turn id when known. Use null as the canonical unresolved
-   * value so the runtime can resolve from the active turn; empty strings are
-   * malformed adapter output.
-   */
-  turnId: string | null;
-  payload: PendingInteractionPayload;
-  threadId?: string;
-}
 
 // ---------------------------------------------------------------------------
 // AdapterCommand — what the runtime asks the adapter to build
@@ -242,10 +195,6 @@ export function flattenPromptInputGroups(
   );
 }
 
-export interface PreparedProviderCommandDispatch {
-  rollback(): void;
-}
-
 export function noPreparedProviderCommandDispatch(
   _command: TurnStartAdapterCommand,
 ): null {
@@ -274,7 +223,7 @@ export interface ProviderAdapter {
    * forwarded approval is already known to require user input and must not be
    * reclassified against mutable thread settings.
    */
-  approvalRequestPolicy: "runtime" | "provider";
+  approvalEnforcedBy: "runtime" | "provider";
   /**
    * Normalizes provider-specific execution options before validation,
    * comparison, persistence, and command construction. Providers may use this
@@ -354,9 +303,4 @@ export interface ProviderAdapter {
   buildInteractiveResponse?(
     args: BuildInteractiveResponseArgs,
   ): ProviderInteractiveResponse;
-}
-
-export interface BuildInteractiveResponseArgs {
-  request: DecodedInteractiveRequest;
-  resolution: PendingInteractionResolution;
 }

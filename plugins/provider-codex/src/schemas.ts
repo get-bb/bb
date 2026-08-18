@@ -1,0 +1,998 @@
+import {
+  pendingInteractionCommandActionSchema,
+  pendingInteractionFileSystemPermissionsSchema,
+  pendingInteractionMacOsPermissionsSchema,
+  pendingInteractionNetworkPermissionsSchema,
+  type PendingInteractionCommandAction,
+  jsonRpcEnvelopeSchema,
+} from "@get-bb/plugin-sdk/provider-bridge";
+import { z } from "zod";
+
+const codexTurnStatusSchema = z.enum([
+  "completed",
+  "failed",
+  "interrupted",
+  "inProgress",
+]);
+export type CodexTurnStatus = z.infer<typeof codexTurnStatusSchema>;
+
+const codexItemStatusSchema = z.enum([
+  "inProgress",
+  "completed",
+  "failed",
+  "declined",
+]);
+export type CodexItemStatus = z.infer<typeof codexItemStatusSchema>;
+
+const codexPlanStepStatusSchema = z.enum([
+  "pending",
+  "inProgress",
+  "completed",
+  "failed",
+]);
+
+const codexThreadGoalStatusSchema = z.enum([
+  "active",
+  "paused",
+  "budgetLimited",
+  "complete",
+]);
+
+const codexThreadGoalSchema = z
+  .object({
+    objective: z.string(),
+    status: codexThreadGoalStatusSchema,
+    tokenBudget: z.number().nullable(),
+    tokensUsed: z.number(),
+    timeUsedSeconds: z.number(),
+  })
+  .passthrough();
+
+type ZodObjectSchema = z.ZodObject<z.ZodRawShape>;
+
+const codexStringArraySchema = z.array(z.string());
+
+const codexUserInputSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("text"),
+      text: z.string(),
+      text_elements: z.array(z.unknown()).optional(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("image"),
+      url: z.string(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("localImage"),
+      path: z.string(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("skill"),
+      name: z.string(),
+      path: z.string(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("mention"),
+      name: z.string(),
+      path: z.string(),
+    })
+    .passthrough(),
+]);
+export type CodexParsedUserInput = z.infer<typeof codexUserInputSchema>;
+
+const codexToolReferenceStatusSchema = z.enum([
+  "inProgress",
+  "completed",
+  "failed",
+  "declined",
+]);
+
+const codexFileChangeKindSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("add") }).passthrough(),
+  z.object({ type: z.literal("delete") }).passthrough(),
+  z
+    .object({
+      type: z.literal("update"),
+      move_path: z.string().nullable().optional(),
+    })
+    .passthrough(),
+]);
+
+const codexFileChangeSchema = z
+  .object({
+    path: z.string(),
+    kind: codexFileChangeKindSchema,
+    diff: z.string(),
+  })
+  .passthrough();
+
+const codexDynamicToolCallContentItemSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("inputText"),
+      text: z.string(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("inputImage"),
+      imageUrl: z.string(),
+    })
+    .passthrough(),
+]);
+export type CodexDynamicToolCallContentItem = z.infer<
+  typeof codexDynamicToolCallContentItemSchema
+>;
+
+const codexWebSearchActionSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("search"),
+      query: z.string().nullable(),
+      queries: z.array(z.string()).nullable(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("openPage"),
+      url: z.string().nullable(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("findInPage"),
+      url: z.string().nullable(),
+      pattern: z.string().nullable(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("other"),
+    })
+    .passthrough(),
+]);
+
+const codexSimpleCommandApprovalDecisionSchema = z.enum([
+  "accept",
+  "acceptForSession",
+  "decline",
+  "cancel",
+]);
+export type CodexSimpleCommandApprovalDecision = z.infer<
+  typeof codexSimpleCommandApprovalDecisionSchema
+>;
+
+const codexExecPolicyAmendmentDecisionSchema = z.object({
+  acceptWithExecpolicyAmendment: z.object({
+    execpolicy_amendment: z.array(z.string()),
+  }),
+});
+
+const codexNetworkPolicyAmendmentDecisionSchema = z.object({
+  applyNetworkPolicyAmendment: z.object({
+    network_policy_amendment: z.object({
+      host: z.string(),
+      action: z.enum(["allow", "deny"]),
+    }),
+  }),
+});
+
+const codexCommandApprovalDecisionSchema = z.union([
+  codexSimpleCommandApprovalDecisionSchema,
+  codexExecPolicyAmendmentDecisionSchema,
+  codexNetworkPolicyAmendmentDecisionSchema,
+]);
+export type CodexCommandApprovalDecision = z.infer<
+  typeof codexCommandApprovalDecisionSchema
+>;
+
+const codexFileSystemPermissionsSchema = z
+  .object({
+    read: z.array(z.string()).nullable(),
+    write: z.array(z.string()).nullable(),
+  })
+  .transform((value) =>
+    pendingInteractionFileSystemPermissionsSchema.parse({
+      read: value.read ?? [],
+      write: value.write ?? [],
+    }),
+  );
+
+const codexNetworkPermissionsSchema = z
+  .object({
+    enabled: z.boolean().nullable(),
+  })
+  .transform((value) =>
+    pendingInteractionNetworkPermissionsSchema.parse(value),
+  );
+
+const codexMacOsAutomationPermissionSchema = z.union([
+  z.literal("none"),
+  z.literal("all"),
+  z
+    .object({
+      bundle_ids: z.array(z.string()),
+    })
+    .transform((value) => ({
+      kind: "bundle_ids" as const,
+      bundleIds: value.bundle_ids,
+    })),
+]);
+
+const codexAdditionalMacOsPermissionsSchema = z
+  .object({
+    preferences: z.string(),
+    automations: codexMacOsAutomationPermissionSchema,
+    launchServices: z.boolean(),
+    accessibility: z.boolean(),
+    calendar: z.boolean(),
+    reminders: z.boolean(),
+    contacts: z.string(),
+  })
+  .transform((value) => pendingInteractionMacOsPermissionsSchema.parse(value));
+
+const codexAdditionalPermissionsSchema = z.object({
+  network: codexNetworkPermissionsSchema.nullable(),
+  fileSystem: codexFileSystemPermissionsSchema.nullable(),
+  macos: codexAdditionalMacOsPermissionsSchema.nullable().optional(),
+});
+export type CodexAdditionalPermissions = z.infer<
+  typeof codexAdditionalPermissionsSchema
+>;
+
+const codexRequestPermissionsSchema = z.object({
+  network: codexNetworkPermissionsSchema.nullable(),
+  fileSystem: codexFileSystemPermissionsSchema.nullable(),
+});
+export type CodexRequestedPermissionProfile = z.infer<
+  typeof codexRequestPermissionsSchema
+>;
+
+const codexCommandActionInputSchema = z
+  .object({
+    type: z.string(),
+  })
+  .passthrough();
+
+const codexCommandActionsSchema = z
+  .array(codexCommandActionInputSchema)
+  .nullable()
+  .optional()
+  .transform(
+    (value, ctx): PendingInteractionCommandAction[] | null | undefined => {
+      if (value == null) {
+        return value;
+      }
+
+      const parsedActions: PendingInteractionCommandAction[] = [];
+      for (const action of value) {
+        const parsedAction =
+          pendingInteractionCommandActionSchema.safeParse(action);
+        if (!parsedAction.success) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Invalid command action",
+          });
+          return z.NEVER;
+        }
+        parsedActions.push(parsedAction.data);
+      }
+
+      return parsedActions;
+    },
+  );
+
+export const codexCommandExecutionRequestApprovalParamsSchema = z.object({
+  threadId: z.string(),
+  turnId: z.string(),
+  itemId: z.string(),
+  approvalId: z.string().nullable().optional(),
+  reason: z.string().nullable().optional(),
+  command: z.string().nullable().optional(),
+  cwd: z.string().nullable().optional(),
+  commandActions: codexCommandActionsSchema,
+  additionalPermissions: codexAdditionalPermissionsSchema.nullable().optional(),
+  availableDecisions: z
+    .array(codexCommandApprovalDecisionSchema)
+    .nullable()
+    .optional(),
+});
+
+export const codexFileChangeRequestApprovalParamsSchema = z.object({
+  threadId: z.string(),
+  turnId: z.string(),
+  itemId: z.string(),
+  reason: z.string().nullable().optional(),
+  grantRoot: z.string().nullable().optional(),
+});
+
+export const codexPermissionsRequestApprovalParamsSchema = z.object({
+  threadId: z.string(),
+  turnId: z.string(),
+  itemId: z.string(),
+  reason: z.string().nullable(),
+  permissions: codexRequestPermissionsSchema,
+});
+
+const codexThreadItemEnvelopeSchema = z
+  .object({
+    type: z.string(),
+    id: z.string(),
+  })
+  .passthrough();
+
+export const codexSubAgentActivityItemSchema = z
+  .object({
+    type: z.literal("subAgentActivity"),
+    id: z.string(),
+    kind: z.enum(["started", "interacted", "interrupted"]),
+    agentThreadId: z.string(),
+    agentPath: z.string(),
+  })
+  .passthrough();
+export type CodexSubAgentActivityItem = z.infer<
+  typeof codexSubAgentActivityItemSchema
+>;
+
+export const codexHandledThreadItemSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("agentMessage"),
+      id: z.string(),
+      text: z.string(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("userMessage"),
+      id: z.string(),
+      content: z.array(codexUserInputSchema),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("commandExecution"),
+      id: z.string(),
+      command: z.string(),
+      cwd: z.string(),
+      status: codexToolReferenceStatusSchema,
+      aggregatedOutput: z.string().nullable(),
+      exitCode: z.number().nullable(),
+      durationMs: z.number().nullable(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("fileChange"),
+      id: z.string(),
+      changes: z.array(codexFileChangeSchema),
+      status: codexToolReferenceStatusSchema,
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("mcpToolCall"),
+      id: z.string(),
+      server: z.string(),
+      tool: z.string(),
+      status: codexToolReferenceStatusSchema,
+      arguments: z.unknown(),
+      error: z
+        .object({
+          message: z.string().optional(),
+        })
+        .passthrough()
+        .nullable()
+        .optional(),
+      durationMs: z.number().nullable(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("dynamicToolCall"),
+      id: z.string(),
+      tool: z.string(),
+      arguments: z.unknown(),
+      status: codexToolReferenceStatusSchema,
+      contentItems: z.array(codexDynamicToolCallContentItemSchema).nullable(),
+      success: z.boolean().nullable(),
+      durationMs: z.number().nullable(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("collabAgentToolCall"),
+      id: z.string(),
+      tool: z.string(),
+      status: codexToolReferenceStatusSchema,
+      senderThreadId: z.string(),
+      receiverThreadIds: z.array(z.string()),
+      prompt: z.string().nullable(),
+      model: z.string().nullable(),
+      reasoningEffort: z.string().nullable(),
+      agentsStates: z.record(z.string(), z.unknown()),
+    })
+    .passthrough(),
+  codexSubAgentActivityItemSchema,
+  z
+    .object({
+      type: z.literal("webSearch"),
+      id: z.string(),
+      query: z.string(),
+      action: codexWebSearchActionSchema.nullable(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("imageView"),
+      id: z.string(),
+      path: z.string(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("reasoning"),
+      id: z.string(),
+      summary: codexStringArraySchema,
+      content: codexStringArraySchema,
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("plan"),
+      id: z.string(),
+      text: z.string(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("contextCompaction"),
+      id: z.string(),
+    })
+    .passthrough(),
+]);
+export type CodexHandledThreadItem = z.infer<
+  typeof codexHandledThreadItemSchema
+>;
+
+const codexThreadTurnParamsSchema = z
+  .object({
+    threadId: z.string(),
+    turnId: z.string(),
+  })
+  .passthrough();
+
+const codexErrorHttpStatusSchema = z
+  .object({
+    httpStatusCode: z.number().nullable(),
+  })
+  .strip();
+
+const codexErrorInfoSchema = z.union([
+  z.literal("contextWindowExceeded"),
+  z.literal("usageLimitExceeded"),
+  z.literal("serverOverloaded"),
+  z.literal("cyberPolicy"),
+  z.object({ httpConnectionFailed: codexErrorHttpStatusSchema }),
+  z.object({ responseStreamConnectionFailed: codexErrorHttpStatusSchema }),
+  z.literal("internalServerError"),
+  z.literal("unauthorized"),
+  z.literal("badRequest"),
+  z.literal("threadRollbackFailed"),
+  z.literal("sandboxError"),
+  z.object({ responseStreamDisconnected: codexErrorHttpStatusSchema }),
+  z.object({ responseTooManyFailedAttempts: codexErrorHttpStatusSchema }),
+  z.object({
+    activeTurnNotSteerable: z
+      .object({
+        turnKind: z.enum(["review", "compact"]),
+      })
+      .strip(),
+  }),
+  z.literal("other"),
+]);
+export type CodexErrorInfo = z.infer<typeof codexErrorInfoSchema>;
+
+const codexTurnErrorSchema = z
+  .object({
+    message: z.string(),
+    codexErrorInfo: codexErrorInfoSchema.nullish(),
+    additionalDetails: z.string().nullish(),
+  })
+  .passthrough();
+
+const codexTurnSchema = z
+  .object({
+    id: z.string(),
+    status: codexTurnStatusSchema,
+    error: codexTurnErrorSchema.nullable().optional(),
+  })
+  .passthrough();
+
+const codexThreadSchema = z
+  .object({
+    id: z.string(),
+    preview: z.string().optional(),
+  })
+  .passthrough();
+
+const codexTokenUsageBreakdownSchema = z
+  .object({
+    totalTokens: z.number(),
+    inputTokens: z.number(),
+    cachedInputTokens: z.number(),
+    outputTokens: z.number(),
+    reasoningOutputTokens: z.number(),
+  })
+  .passthrough();
+
+const codexTokenUsageSchema = z
+  .object({
+    total: codexTokenUsageBreakdownSchema,
+    last: codexTokenUsageBreakdownSchema,
+    modelContextWindow: z.number().nullable(),
+  })
+  .passthrough();
+
+const codexPlanStepSchema = z
+  .object({
+    step: z.string(),
+    status: codexPlanStepStatusSchema,
+  })
+  .passthrough();
+
+const codexWarningParamsSchema = z
+  .object({
+    summary: z.string(),
+    details: z.string().nullish(),
+  })
+  .passthrough();
+
+const codexFunctionCallOutputContentItemSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("input_text"),
+      text: z.string(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("input_image"),
+      image_url: z.string(),
+    })
+    .passthrough(),
+]);
+
+const codexFunctionCallOutputBodySchema = z.union([
+  z.string(),
+  z.array(codexFunctionCallOutputContentItemSchema),
+]);
+
+const codexRawMessageResponseItemSchema = z
+  .object({
+    type: z.literal("message"),
+  })
+  .passthrough();
+
+const codexRawReasoningResponseItemSchema = z
+  .object({
+    type: z.literal("reasoning"),
+  })
+  .passthrough();
+
+const codexRawLocalShellCallResponseItemSchema = z
+  .object({
+    type: z.literal("local_shell_call"),
+    call_id: z.string().nullable(),
+    status: z.enum(["completed", "in_progress", "incomplete"]),
+    action: z
+      .object({
+        type: z.literal("exec"),
+        command: z.array(z.string()),
+        timeout_ms: z.number().int().nullable(),
+        working_directory: z.string().nullable(),
+        env: z.record(z.string(), z.string()).nullable(),
+        user: z.string().nullable(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+const codexRawFunctionCallResponseItemSchema = z
+  .object({
+    type: z.literal("function_call"),
+    name: z.string(),
+    arguments: z.string(),
+    call_id: z.string(),
+  })
+  .passthrough();
+
+const codexRawFunctionCallOutputResponseItemSchema = z
+  .object({
+    type: z.literal("function_call_output"),
+    call_id: z.string(),
+    output: codexFunctionCallOutputBodySchema,
+  })
+  .passthrough();
+
+const codexRawCustomToolCallResponseItemSchema = z
+  .object({
+    type: z.literal("custom_tool_call"),
+    call_id: z.string(),
+    name: z.string(),
+    input: z.string(),
+  })
+  .passthrough();
+
+const codexRawCustomToolCallOutputResponseItemSchema = z
+  .object({
+    type: z.literal("custom_tool_call_output"),
+    call_id: z.string(),
+    output: codexFunctionCallOutputBodySchema,
+  })
+  .passthrough();
+
+const codexRawToolSearchCallResponseItemSchema = z
+  .object({
+    type: z.literal("tool_search_call"),
+  })
+  .passthrough();
+
+const codexRawToolSearchOutputResponseItemSchema = z
+  .object({
+    type: z.literal("tool_search_output"),
+  })
+  .passthrough();
+
+const codexRawWebSearchCallResponseItemSchema = z
+  .object({
+    type: z.literal("web_search_call"),
+  })
+  .passthrough();
+
+const codexRawImageGenerationCallResponseItemSchema = z
+  .object({
+    type: z.literal("image_generation_call"),
+  })
+  .passthrough();
+
+const codexRawGhostSnapshotResponseItemSchema = z
+  .object({
+    type: z.literal("ghost_snapshot"),
+  })
+  .passthrough();
+
+const codexRawCompactionResponseItemSchema = z
+  .object({
+    type: z.literal("compaction"),
+  })
+  .passthrough();
+
+const codexRawOtherResponseItemSchema = z
+  .object({
+    type: z.literal("other"),
+  })
+  .passthrough();
+
+const codexRawResponseItemSchema = z.discriminatedUnion("type", [
+  codexRawMessageResponseItemSchema,
+  codexRawReasoningResponseItemSchema,
+  codexRawLocalShellCallResponseItemSchema,
+  codexRawFunctionCallResponseItemSchema,
+  codexRawFunctionCallOutputResponseItemSchema,
+  codexRawToolSearchCallResponseItemSchema,
+  codexRawCustomToolCallResponseItemSchema,
+  codexRawCustomToolCallOutputResponseItemSchema,
+  codexRawToolSearchOutputResponseItemSchema,
+  codexRawWebSearchCallResponseItemSchema,
+  codexRawImageGenerationCallResponseItemSchema,
+  codexRawGhostSnapshotResponseItemSchema,
+  codexRawCompactionResponseItemSchema,
+  codexRawOtherResponseItemSchema,
+]);
+
+export const codexRawResponseItemCompletedParamsSchema = z
+  .object({
+    threadId: z.string(),
+    turnId: z.string(),
+    item: codexRawResponseItemSchema,
+  })
+  .passthrough();
+
+export const codexThreadClosedParamsSchema = z
+  .object({
+    threadId: z.string(),
+  })
+  .passthrough();
+
+export const codexBridgeEnvelopeSchema = z.union([
+  jsonRpcEnvelopeSchema,
+  z
+    .object({
+      method: z.string(),
+      params: z.record(z.string(), z.unknown()).optional(),
+    })
+    .passthrough(),
+]);
+
+function createCodexEventSchema<
+  TMethod extends string,
+  TParams extends ZodObjectSchema,
+>(method: TMethod, params: TParams) {
+  return z.object({
+    method: z.literal(method),
+    params,
+  });
+}
+
+const codexRateLimitWindowSchema = z
+  .object({
+    usedPercent: z.number(),
+    windowDurationMins: z.number().nullable().optional(),
+    resetsAt: z.number().nullable().optional(),
+  })
+  .passthrough()
+  .transform((window) => ({
+    usedPercent: window.usedPercent,
+    windowDurationMins: window.windowDurationMins ?? null,
+    resetsAt: window.resetsAt ?? null,
+  }));
+
+const codexCreditsSnapshotSchema = z
+  .object({
+    hasCredits: z.boolean(),
+    unlimited: z.boolean(),
+    balance: z.string().nullable().optional(),
+  })
+  .passthrough()
+  .transform((credits) => ({
+    hasCredits: credits.hasCredits,
+    unlimited: credits.unlimited,
+    balance: credits.balance ?? null,
+  }));
+
+const codexSpendControlLimitSnapshotSchema = z
+  .object({
+    limit: z.string(),
+    used: z.string(),
+    remainingPercent: z.number(),
+    resetsAt: z.number(),
+  })
+  .passthrough();
+
+const codexRateLimitSnapshotUpdateSchema = z
+  .object({
+    limitId: z.string().nullable().optional(),
+    limitName: z.string().nullable().optional(),
+    primary: codexRateLimitWindowSchema.nullable().optional(),
+    secondary: codexRateLimitWindowSchema.nullable().optional(),
+    credits: codexCreditsSnapshotSchema.nullable().optional(),
+    individualLimit: codexSpendControlLimitSnapshotSchema.nullable().optional(),
+    planType: z.string().nullable().optional(),
+    rateLimitReachedType: z.string().nullable().optional(),
+  })
+  .passthrough();
+export type CodexRateLimitSnapshotUpdate = z.infer<
+  typeof codexRateLimitSnapshotUpdateSchema
+>;
+
+export interface CodexRateLimitSnapshot {
+  limitId: string | null;
+  limitName: string | null;
+  primary: z.output<typeof codexRateLimitWindowSchema> | null;
+  secondary: z.output<typeof codexRateLimitWindowSchema> | null;
+  credits: z.output<typeof codexCreditsSnapshotSchema> | null;
+  individualLimit: z.output<typeof codexSpendControlLimitSnapshotSchema> | null;
+  planType: string | null;
+  rateLimitReachedType: string | null;
+}
+
+export const codexRateLimitReadResponseSchema = z
+  .object({ rateLimits: codexRateLimitSnapshotUpdateSchema })
+  .passthrough();
+
+export const codexHandledEventSchema = z.discriminatedUnion("method", [
+  createCodexEventSchema(
+    "account/rateLimits/updated",
+    z.object({ rateLimits: codexRateLimitSnapshotUpdateSchema }).passthrough(),
+  ),
+  createCodexEventSchema(
+    "turn/started",
+    z
+      .object({
+        threadId: z.string(),
+        turn: codexTurnSchema,
+      })
+      .passthrough(),
+  ),
+  createCodexEventSchema(
+    "turn/completed",
+    z
+      .object({
+        threadId: z.string(),
+        turn: codexTurnSchema,
+      })
+      .passthrough(),
+  ),
+  createCodexEventSchema(
+    "thread/started",
+    z
+      .object({
+        thread: codexThreadSchema,
+      })
+      .passthrough(),
+  ),
+  createCodexEventSchema(
+    "thread/archived",
+    z
+      .object({
+        threadId: z.string(),
+      })
+      .passthrough(),
+  ),
+  createCodexEventSchema(
+    "thread/unarchived",
+    z
+      .object({
+        threadId: z.string(),
+      })
+      .passthrough(),
+  ),
+  createCodexEventSchema(
+    "thread/name/updated",
+    z
+      .object({
+        threadId: z.string(),
+        threadName: z.string().optional(),
+      })
+      .passthrough(),
+  ),
+  createCodexEventSchema(
+    "thread/compacted",
+    z
+      .object({
+        threadId: z.string(),
+        turnId: z.string(),
+      })
+      .passthrough(),
+  ),
+  createCodexEventSchema(
+    "thread/goal/updated",
+    z
+      .object({
+        threadId: z.string(),
+        goal: codexThreadGoalSchema,
+      })
+      .passthrough(),
+  ),
+  createCodexEventSchema(
+    "thread/goal/cleared",
+    z
+      .object({
+        threadId: z.string(),
+      })
+      .passthrough(),
+  ),
+  createCodexEventSchema(
+    "item/started",
+    z
+      .object({
+        threadId: z.string(),
+        turnId: z.string(),
+        item: codexThreadItemEnvelopeSchema,
+      })
+      .passthrough(),
+  ),
+  createCodexEventSchema(
+    "item/completed",
+    z
+      .object({
+        threadId: z.string(),
+        turnId: z.string(),
+        item: codexThreadItemEnvelopeSchema,
+      })
+      .passthrough(),
+  ),
+  createCodexEventSchema(
+    "item/agentMessage/delta",
+    codexThreadTurnParamsSchema.extend({
+      itemId: z.string(),
+      delta: z.string(),
+    }),
+  ),
+  createCodexEventSchema(
+    "item/commandExecution/outputDelta",
+    codexThreadTurnParamsSchema.extend({
+      itemId: z.string(),
+      delta: z.string(),
+    }),
+  ),
+  createCodexEventSchema(
+    "item/fileChange/outputDelta",
+    codexThreadTurnParamsSchema.extend({
+      itemId: z.string(),
+      delta: z.string(),
+    }),
+  ),
+  createCodexEventSchema(
+    "item/reasoning/summaryTextDelta",
+    codexThreadTurnParamsSchema.extend({
+      itemId: z.string(),
+      delta: z.string(),
+    }),
+  ),
+  createCodexEventSchema(
+    "item/reasoning/textDelta",
+    codexThreadTurnParamsSchema.extend({
+      itemId: z.string(),
+      delta: z.string(),
+    }),
+  ),
+  createCodexEventSchema(
+    "item/plan/delta",
+    codexThreadTurnParamsSchema.extend({
+      itemId: z.string(),
+      delta: z.string(),
+    }),
+  ),
+  createCodexEventSchema(
+    "item/mcpToolCall/progress",
+    codexThreadTurnParamsSchema.extend({
+      itemId: z.string(),
+      message: z.string().optional(),
+    }),
+  ),
+  createCodexEventSchema(
+    "thread/tokenUsage/updated",
+    codexThreadTurnParamsSchema.extend({
+      tokenUsage: codexTokenUsageSchema,
+    }),
+  ),
+  createCodexEventSchema(
+    "turn/plan/updated",
+    codexThreadTurnParamsSchema.extend({
+      plan: z.array(codexPlanStepSchema),
+      explanation: z.string().nullish(),
+    }),
+  ),
+  createCodexEventSchema(
+    "turn/diff/updated",
+    codexThreadTurnParamsSchema.extend({
+      diff: z.string(),
+    }),
+  ),
+  createCodexEventSchema(
+    "error",
+    z
+      .object({
+        threadId: z.string(),
+        turnId: z.string().optional(),
+        error: codexTurnErrorSchema,
+        willRetry: z.boolean().optional(),
+      })
+      .passthrough(),
+  ),
+  createCodexEventSchema("deprecationNotice", codexWarningParamsSchema),
+  createCodexEventSchema("configWarning", codexWarningParamsSchema),
+]);
+export type CodexHandledEvent = z.infer<typeof codexHandledEventSchema>;
+type HandledCodexMethod = CodexHandledEvent["method"];
+
+const handledCodexMethodSet = new Set<string>(
+  codexHandledEventSchema.options.map((option) => option.shape.method.value),
+);
+
+export function isHandledCodexMethod(
+  method: string,
+): method is HandledCodexMethod {
+  return handledCodexMethodSet.has(method);
+}

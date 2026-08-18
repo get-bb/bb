@@ -13,6 +13,9 @@ import {
 
 const execFileAsync = promisify(execFile);
 const roots: string[] = [];
+// These tests intentionally run real npm/tar child processes. Under a loaded
+// workspace test run, process scheduling can exceed Vitest's 5s unit default.
+const ARTIFACT_LIFECYCLE_TIMEOUT_MS = 15_000;
 
 // Layouts the server actually runs from. Detection must not depend on
 // NODE_ENV: CI's integration harness runs repo sources with a production env.
@@ -102,7 +105,7 @@ describe.each(MODES)("bb-app artifact service (%s)", (mode) => {
     );
     await expect(service.getTarballPath()).resolves.toBe(tarball);
     expect(calls.filter((call) => call.command === "npm")).toHaveLength(1);
-  });
+  }, ARTIFACT_LIFECYCLE_TIMEOUT_MS);
 
   it("rebuilds the artifact after package contents change without a version or protocol change", async () => {
     const test = await fixture(mode);
@@ -141,7 +144,7 @@ describe.each(MODES)("bb-app artifact service (%s)", (mode) => {
     expect(calls.filter((call) => call.command === "pnpm")).toHaveLength(
       isRepoMode(mode) ? 2 : 0,
     );
-  });
+  }, ARTIFACT_LIFECYCLE_TIMEOUT_MS);
 
   it("builds a fresh artifact when the protocol changes at the same package version", async () => {
     const test = await fixture(mode);
@@ -175,7 +178,7 @@ describe.each(MODES)("bb-app artifact service (%s)", (mode) => {
     expect(calls.filter((call) => call.command === "pnpm")).toHaveLength(
       isRepoMode(mode) ? 2 : 0,
     );
-  });
+  }, ARTIFACT_LIFECYCLE_TIMEOUT_MS);
 
   it("keeps serving the previous artifact when a rebuild fails, and retries after", async () => {
     const test = await fixture(mode);
@@ -213,5 +216,5 @@ describe.each(MODES)("bb-app artifact service (%s)", (mode) => {
       (await execFileAsync("tar", ["-xOzf", tarball, "package/README.md"]))
         .stdout,
     ).toBe("updated\n");
-  });
+  }, ARTIFACT_LIFECYCLE_TIMEOUT_MS);
 });

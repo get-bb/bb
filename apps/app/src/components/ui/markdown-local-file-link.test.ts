@@ -298,6 +298,38 @@ describe("resolveRelativeLocalFileHref", () => {
     ).toBeNull();
   });
 
+  it.each([
+    ["~"],
+    ["~/.config/example.md"],
+    ["%7E/.config/example.md"],
+    ["~/.config/example.md:12"],
+    ["~/notes.md#L3-L5"],
+    ["~alice/notes.md"],
+  ])("does not resolve home-relative href %s against the root", (href) => {
+    expect(
+      resolveRelativeLocalFileHref({
+        baseDir: "/workspace",
+        href,
+        rootPath: "/workspace",
+      }),
+    ).toBeNull();
+  });
+
+  it.each([
+    ["~notes.md", "/workspace/~notes.md"],
+    ["~$report.docx", "/workspace/~$report.docx"],
+    ["~notes.md:3", "/workspace/~notes.md:3"],
+    ["docs/~draft.md", "/workspace/docs/~draft.md"],
+  ])("still resolves %s as a relative file", (href, expected) => {
+    expect(
+      resolveRelativeLocalFileHref({
+        baseDir: "/workspace",
+        href,
+        rootPath: "/workspace",
+      }),
+    ).toBe(expected);
+  });
+
   it("rejects encoded dot-segment escapes before local-file parsing", () => {
     expect(
       resolveRelativeLocalFileHref({

@@ -20,6 +20,7 @@ import {
   createFakeRuntime,
   createFakeWorkspace,
   unexpectedProjectAttachmentFetch,
+  DISPATCH_TEST_BRIDGE_LAUNCH,
 } from "./dispatch-helpers.js";
 import { RuntimeManager } from "../../src/runtime-manager.js";
 
@@ -112,6 +113,7 @@ function createTurnSubmitCommand(
 ): TurnSubmitCommand {
   const workspacePath = args.workspacePath ?? "/tmp/env-router";
   return {
+    bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
     type: "turn.submit",
     environmentId: args.environmentId ?? "env-router",
     threadId: args.threadId ?? "thread-router",
@@ -128,6 +130,7 @@ function createTurnSubmitCommand(
       permissionEscalation: null,
     },
     resumeContext: {
+      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       workspaceContext: {
         workspacePath,
         workspaceProvisionType: "unmanaged",
@@ -146,6 +149,7 @@ function createTurnSubmitCommand(
 
 function createThreadStartCommand(): ThreadStartCommand {
   return {
+    bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
     type: "thread.start",
     environmentId: "env-router",
     threadId: "thread-router-start",

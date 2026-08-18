@@ -1066,6 +1066,7 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(
       extractThreadTimelineActivePlanTurn({
         events,
+        planCommand: { trigger: "/", name: "plan" },
         providerId: "codex",
         threadStatus: "active",
       }),
@@ -1077,6 +1078,43 @@ describe("buildThreadTimelineFromEvents", () => {
       },
       turnId: "turn-plan-42",
     });
+  });
+
+  // Eligibility comes from the provider's declared plan composer action, not
+  // from an id list, so a plugin provider gets plan mode and a provider that
+  // declares no plan command gets none even with a matching pill.
+  it("gates plan mode on the declared plan command, not the provider id", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const requestId = "creq_3456789abc";
+    const events = fromRows([
+      event.clientTurnRequested({
+        requestId,
+        text: "/plan inspect the failing command",
+        input: planPromptInput,
+      }),
+      event.turnStarted({ turnId: "turn-plan-43" }),
+      event.inputAccepted({
+        clientRequestId: requestId,
+        turnId: "turn-plan-43",
+      }),
+    ]);
+
+    expect(
+      extractThreadTimelineActivePlanTurn({
+        events,
+        planCommand: { trigger: "/", name: "plan" },
+        providerId: "my-plugin-provider",
+        threadStatus: "active",
+      })?.promptMode.providerId,
+    ).toBe("my-plugin-provider");
+    expect(
+      extractThreadTimelineActivePlanTurn({
+        events,
+        planCommand: null,
+        providerId: "codex",
+        threadStatus: "active",
+      }),
+    ).toBeNull();
   });
 
   it("projects active Claude plan mode from an accepted plan command pill", () => {
@@ -1100,6 +1138,7 @@ describe("buildThreadTimelineFromEvents", () => {
         includeNestedRows: true,
         includeProviderUnhandledOperations: false,
         isLatestPage: true,
+        planCommand: { trigger: "/", name: "plan" },
         providerId: "claude-code",
         threadStatus: "active",
         threadName: "",
@@ -1136,6 +1175,7 @@ describe("buildThreadTimelineFromEvents", () => {
         includeNestedRows: true,
         includeProviderUnhandledOperations: false,
         isLatestPage: true,
+        planCommand: { trigger: "/", name: "plan" },
         providerId: "codex",
         threadStatus: "active",
         threadName: "",
@@ -1171,6 +1211,7 @@ describe("buildThreadTimelineFromEvents", () => {
         includeNestedRows: true,
         includeProviderUnhandledOperations: false,
         isLatestPage: true,
+        planCommand: { trigger: "/", name: "plan" },
         providerId: "claude-code",
         threadStatus: "active",
         threadName: "",
@@ -1204,6 +1245,7 @@ describe("buildThreadTimelineFromEvents", () => {
         includeNestedRows: true,
         includeProviderUnhandledOperations: false,
         isLatestPage: true,
+        planCommand: { trigger: "/", name: "plan" },
         providerId: "claude-code",
         threadStatus: "idle",
         threadName: "",
@@ -1314,6 +1356,7 @@ describe("buildThreadTimelineFromEvents", () => {
         includeNestedRows: true,
         includeProviderUnhandledOperations: false,
         isLatestPage: true,
+        planCommand: { trigger: "/", name: "plan" },
         providerId: "claude-code",
         threadStatus: "idle",
         threadName: "",

@@ -1,0 +1,25 @@
+name: Task
+description: Concrete work with no new product behavior — refactor, docs, chore, cleanup.
+labels: []
+body:
+  - type: textarea
+    id: work
+    attributes:
+      label: The work
+      description: What exactly changes, and where (paths, packages).
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why now
+      description: What this unblocks or what debt it retires. Link the issue or PR that surfaced it.
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Acceptance criteria
+      description: How a reviewer knows it is done (tests, guards, docs updated, no behavior change).
+    validations:
+      required: true

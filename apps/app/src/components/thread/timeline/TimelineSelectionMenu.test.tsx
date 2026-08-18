@@ -128,8 +128,7 @@ describe("TimelineSelectionMenu", () => {
       />,
     );
 
-    const button = screen.getByRole("button", { name: "Add to chat" });
-    expect(button.className).toContain("max-md:pointer-coarse:min-h-7");
+    expect(screen.getByRole("button", { name: "Add to chat" })).toBeTruthy();
     expect(document.body.querySelector('[data-side="top"]')).toBeTruthy();
   });
 

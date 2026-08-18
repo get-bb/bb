@@ -142,6 +142,34 @@ describe("@bb/sdk", () => {
     expect("on" in sdk).toBe(false);
   });
 
+  it("maps thread event filters and reverse pagination onto the public query", async () => {
+    const queue = createFetchQueue([{ body: [] }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.events.list({
+        beforeSeq: "10",
+        limit: "2",
+        order: "desc",
+        threadId: "thr_test",
+        types: ["system/error", "turn/completed"],
+      }),
+    ).resolves.toEqual([]);
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/threads/thr_test/events?beforeSeq=10&limit=2&order=desc&types=system%2Ferror%2Cturn%2Fcompleted",
+      },
+    ]);
+  });
+
   it("forwards read abort signals to fetch", async () => {
     const controller = new AbortController();
     let receivedSignal: AbortSignal | null | undefined;
@@ -1422,7 +1450,6 @@ describe("@bb/sdk", () => {
       {
         bodyText: JSON.stringify({
           source: "npm:@bb/notes@^1",
-          selection: { kind: "root" },
         }),
         method: "POST",
         url: "http://bb.test/api/v1/plugins/install",

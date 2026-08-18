@@ -4,6 +4,7 @@ import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
 import { durationToCompactString } from "@bb/thread-view";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import { Icon } from "@bb/shared-ui/icon";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   activityIconClass,
   activityMetaClass,
@@ -52,6 +53,36 @@ function backgroundActivityGroupLabel(
   return hasAgent ? "Background agents" : "Background commands";
 }
 
+function backgroundActivityModel(row: TimelineWorkflowWorkRow): string | null {
+  return isBackgroundAgentTaskType(row.taskType) ? row.model : null;
+}
+
+function backgroundActivityAriaLabel(
+  row: TimelineWorkflowWorkRow,
+  label = backgroundActivityDisplay(row).label,
+): string {
+  const model = backgroundActivityModel(row);
+  return model
+    ? `${label}: ${row.description} · Model ${model}`
+    : `${label}: ${row.description}`;
+}
+
+function compactBackgroundActivityLabel(
+  rows: readonly TimelineWorkflowWorkRow[],
+): string {
+  const agentCount = rows.filter((row) =>
+    isBackgroundAgentTaskType(row.taskType),
+  ).length;
+  const commandCount = rows.length - agentCount;
+  if (commandCount === 0) {
+    return `Running ${agentCount} background agent${agentCount === 1 ? "" : "s"}`;
+  }
+  if (agentCount === 0) {
+    return `Running ${commandCount} background command${commandCount === 1 ? "" : "s"}`;
+  }
+  return `Running ${rows.length} background activities`;
+}
+
 /**
  * Live elapsed time since the background task started, ticking every second.
  * Blank for the first second to avoid sub-second flicker on entry. Mirrors the
@@ -69,7 +100,9 @@ function BackgroundActivityDuration({ startedAt }: { startedAt: number }) {
   if (elapsed <= 1_000) {
     return null;
   }
-  return <>{durationToCompactString(elapsed)}</>;
+  return (
+    <span className="tabular-nums">{durationToCompactString(elapsed)}</span>
+  );
 }
 
 function BackgroundActivitySummary({
@@ -82,28 +115,48 @@ function BackgroundActivitySummary({
   active?: boolean;
 }) {
   const display = backgroundActivityDisplay(row);
+  const model = backgroundActivityModel(row);
   return (
     <span className="flex min-w-0 flex-1 items-center gap-1 text-left">
-      {/* Verb + description truncate as one unit so the trailing controls
-          ("+N more", chevron, duration) never get pushed off a narrow banner. */}
-      <span className="min-w-0 truncate" title={row.description}>
-        <span
-          className={
-            active ? activityMetaClass("active") : "text-muted-foreground"
-          }
-        >
-          {display.runningPrefix}{" "}
-        </span>
-        <span
-          className={
-            active
-              ? activityTextClass("active")
-              : "font-medium text-foreground opacity-70"
-          }
-        >
-          {row.description}
-        </span>
+      {/*
+       * The prefix and the description truncate as separate flex items rather
+       * than as one truncating span. `activityTextClass("active")` carries
+       * `animate-shine`, which is `display: inline-block` so its
+       * background-clip gradient has a box to size against — an atomic inline
+       * inside a truncating parent is dropped whole when it overflows, so the
+       * description collapsed to a bare ellipsis with the rest of the row left
+       * empty. Truncating on the shimmering element itself clips its own text.
+       */}
+      <span
+        className={cn(
+          "shrink-0 whitespace-nowrap",
+          active ? activityMetaClass("active") : "text-muted-foreground",
+        )}
+      >
+        {display.runningPrefix}
       </span>
+      <span
+        className={cn(
+          "min-w-0 truncate",
+          active
+            ? activityTextClass("active")
+            : "font-medium text-foreground opacity-70",
+        )}
+        title={row.description}
+      >
+        {row.description}
+      </span>
+      {model ? (
+        <span
+          className={cn(
+            "shrink-0 whitespace-nowrap font-mono text-2xs",
+            active ? activityMetaClass("active") : "text-subtle-foreground",
+          )}
+          title={`Model: ${model}`}
+        >
+          {model}
+        </span>
+      ) : null}
       {showDuration ? (
         <span
           className={cn(
@@ -126,22 +179,31 @@ export interface ThreadBackgroundCommandsCardProps {
 
 /**
  * Prompt-stack card for running non-workflow background tasks, independent of
- * the workflow card. Collapsed it shows the most recent task; when several are
- * running it appends "+N more" and expands to list the rest. Each task also
- * keeps its own timeline row carrying the terminal outcome; this card only
- * tracks the live ones and drops out once none remain.
+ * the workflow card. Wide layouts show the most recent task and append "+N
+ * more" when needed. Compact layouts summarize background agents by count and
+ * expand even a single agent so its full description and model stay readable.
+ * Each task also keeps its own timeline row carrying the terminal outcome;
+ * this card only tracks the live ones and drops out once none remain.
  */
 export function ThreadBackgroundCommandsCard({
   commands,
   isExpanded,
   onToggle,
 }: ThreadBackgroundCommandsCardProps) {
+  const isCompactViewport = useIsCompactViewport();
   const primary = commands[0];
   if (!primary) {
     return null;
   }
   const others = commands.slice(1);
   const hasMore = others.length > 0;
+  const hasAgent = commands.some((row) =>
+    isBackgroundAgentTaskType(row.taskType),
+  );
+  const useCompactSummary = isCompactViewport && hasAgent;
+  const canExpand = hasMore || useCompactSummary;
+  const expandedRows = useCompactSummary ? commands : others;
+  const compactLabel = compactBackgroundActivityLabel(commands);
   const primaryDisplay = backgroundActivityDisplay(primary);
   const groupLabel = backgroundActivityGroupLabel(commands);
 
@@ -152,13 +214,17 @@ export function ThreadBackgroundCommandsCard({
       style={{ minHeight: CARD_ROW_HEIGHT }}
     >
       <div className="flex items-center">
-        {hasMore ? (
+        {canExpand ? (
           <button
             type="button"
             id={TOGGLE_ID}
             aria-expanded={isExpanded}
             aria-controls={BODY_ID}
-            aria-label={`${groupLabel}: ${primary.description}`}
+            aria-label={
+              useCompactSummary
+                ? compactLabel
+                : backgroundActivityAriaLabel(primary, groupLabel)
+            }
             onClick={onToggle}
             className={activityRowClass(
               "active",
@@ -170,14 +236,22 @@ export function ThreadBackgroundCommandsCard({
               className={activityIconClass("active", "size-3.5 shrink-0")}
               aria-hidden="true"
             />
-            <BackgroundActivitySummary
-              row={primary}
-              showDuration={false}
-              active
-            />
-            <span className={activityMetaClass("active", "shrink-0")}>
-              +{others.length} more
-            </span>
+            {useCompactSummary ? (
+              <span className="min-w-0 flex-1 truncate text-left font-medium">
+                {compactLabel}
+              </span>
+            ) : (
+              <>
+                <BackgroundActivitySummary
+                  row={primary}
+                  showDuration={false}
+                  active
+                />
+                <span className={activityMetaClass("active", "shrink-0")}>
+                  +{others.length} more
+                </span>
+              </>
+            )}
             <Icon
               name="ChevronDown"
               className={cn(
@@ -194,7 +268,7 @@ export function ThreadBackgroundCommandsCard({
               "active",
               "flex min-h-8 w-full min-w-0 cursor-default items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground",
             )}
-            aria-label={`${primaryDisplay.label}: ${primary.description}`}
+            aria-label={backgroundActivityAriaLabel(primary)}
           >
             <Icon
               name={primaryDisplay.icon}
@@ -205,7 +279,7 @@ export function ThreadBackgroundCommandsCard({
           </div>
         )}
       </div>
-      {hasMore ? (
+      {canExpand ? (
         <section
           id={BODY_ID}
           role="region"
@@ -220,14 +294,18 @@ export function ThreadBackgroundCommandsCard({
         >
           <div className="overflow-hidden bg-popover">
             <div className="flex flex-col gap-0.5 py-1">
-              {others.map((row) => {
+              {expandedRows.map((row) => {
                 const display = backgroundActivityDisplay(row);
+                const model = backgroundActivityModel(row);
                 return (
                   <div
                     key={row.id}
                     // px-3 matches the full-width header row's padding so the
                     // icon lines up under the header icon.
-                    className="flex min-w-0 items-center gap-1.5 px-3 py-0.5 text-xs"
+                    className={cn(
+                      "flex min-w-0 gap-1.5 px-3 py-0.5 text-xs",
+                      useCompactSummary ? "items-start" : "items-center",
+                    )}
                   >
                     <Icon
                       name={display.icon}
@@ -235,11 +313,24 @@ export function ThreadBackgroundCommandsCard({
                       aria-hidden="true"
                     />
                     <span
-                      className="min-w-0 flex-1 truncate text-muted-foreground"
+                      className={cn(
+                        "min-w-0 flex-1 text-muted-foreground",
+                        useCompactSummary
+                          ? "whitespace-normal [overflow-wrap:anywhere]"
+                          : "truncate",
+                      )}
                       title={row.description}
                     >
                       {row.description}
                     </span>
+                    {model ? (
+                      <span
+                        className="shrink-0 whitespace-nowrap font-mono text-2xs text-subtle-foreground"
+                        title={`Model: ${model}`}
+                      >
+                        {model}
+                      </span>
+                    ) : null}
                     <span className="shrink-0 whitespace-nowrap text-subtle-foreground">
                       <BackgroundActivityDuration startedAt={row.startedAt} />
                     </span>

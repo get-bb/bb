@@ -7,10 +7,11 @@ Consumers say "start a thread, run a turn, give me events" — they never touch 
 ## Public API
 
 ```typescript
-import { createAgentRuntime, listAvailableProviders } from "@bb/agent-runtime";
+import { createAgentRuntime } from "@bb/agent-runtime";
 
-// Discovery
-const providers = listAvailableProviders();   // [{ id: "codex", ... }, { id: "claude-code", ... }, { id: "pi", ... }]
+// There is no provider discovery here: providers are declared server-side by
+// plugins, and every command that reaches a bridge carries its `bridgeLaunch`
+// (which bridge binary to run, plus the declared capabilities to run it with).
 
 // Runtime — supports multiple providers and threads simultaneously
 const runtime = createAgentRuntime({

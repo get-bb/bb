@@ -2,8 +2,7 @@ import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import {
   CONNECT_CODE_TTL_MS,
-  MAX_MACHINES_PER_ACCOUNT,
-  MAX_SERVERS_PER_ACCOUNT,
+  MAX_PER_ACCOUNT,
   SERVER_OFFLINE_AFTER_MS,
   checkLabelAvailability,
   connectCode,
@@ -216,7 +215,7 @@ export async function getAccountState(
     appUrl: deps.appUrl,
     serverUrlTemplate,
     githubLogin: userRow?.githubLogin ?? null,
-    maxServers: MAX_SERVERS_PER_ACCOUNT,
+    maxServers: MAX_PER_ACCOUNT,
   };
 
   const machineRows = await db
@@ -431,7 +430,7 @@ export async function createServer(
     .from(server)
     .where(eq(server.userId, userId))
     .all();
-  if (owned.length >= MAX_SERVERS_PER_ACCOUNT) return { error: "server-limit" };
+  if (owned.length >= MAX_PER_ACCOUNT) return { error: "server-limit" };
 
   const avail = await checkLabelAvailability(db, rawLabel);
   if (!avail.available) {
@@ -459,7 +458,7 @@ export async function createServer(
     .from(server)
     .where(eq(server.userId, userId))
     .all();
-  if (afterCount.length > MAX_SERVERS_PER_ACCOUNT) {
+  if (afterCount.length > MAX_PER_ACCOUNT) {
     await db.delete(server).where(eq(server.id, id)).run();
     return { error: "server-limit" };
   }
@@ -574,7 +573,7 @@ export async function createMachineCode(
     .where(eq(machine.userId, userId))
     .all();
   if (
-    active.filter((m) => m.revokedAt == null).length >= MAX_MACHINES_PER_ACCOUNT
+    active.filter((m) => m.revokedAt == null).length >= MAX_PER_ACCOUNT
   ) {
     return { error: "machine-limit" };
   }
@@ -861,7 +860,7 @@ export async function redeemMachineCode(
     .all();
   if (
     machines.filter((m) => m.revokedAt == null).length >=
-    MAX_MACHINES_PER_ACCOUNT
+    MAX_PER_ACCOUNT
   ) {
     return { error: "machine-limit", status: 409 };
   }

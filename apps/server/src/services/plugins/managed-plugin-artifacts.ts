@@ -15,7 +15,11 @@ import {
   type PluginProvenance,
   type PluginSourceIntent,
 } from "@bb/db";
-import { buildPluginApp, buildPluginServer } from "@bb/plugin-build";
+import {
+  buildPluginApp,
+  buildPluginHost,
+  buildPluginServer,
+} from "@bb/plugin-build";
 import {
   assertPublicMarketplaceUrl,
   boundedResponseJson,
@@ -348,14 +352,26 @@ export function createManagedPluginArtifacts(
           `install failed: server bundle build for "${manifest.id}" failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
+      if (manifest.hostEntry !== undefined) {
+        try {
+          await buildPluginHost(
+            args.rootDir,
+            deps.appVersion,
+            await getPluginBuildToolchain(deps),
+          );
+        } catch (error) {
+          throw new Error(
+            `install failed: host bundle build for "${manifest.id}" failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
       // node_modules is deliberately retained. esbuild only bundles what it
       // can discover statically, so a dependency that reads a data file,
       // template, or .wasm at runtime would break if the tree were pruned —
       // and the source fallback at `resolveServerEntry` needs it too.
     }
-
     async function validateArtifact(
-      artifact: "server" | "app",
+      artifact: "server" | "app" | "host",
       required: boolean,
     ): Promise<void> {
       const metaPath = join(args.rootDir, "dist", `${artifact}.meta.json`);
@@ -387,6 +403,9 @@ export function createManagedPluginArtifacts(
       await validateArtifact("server", kind === "git");
       if (manifest.appEntry !== undefined) {
         await validateArtifact("app", kind === "npm");
+      }
+      if (manifest.hostEntry !== undefined) {
+        await validateArtifact("host", true);
       }
     }
     return manifest;

@@ -2,6 +2,7 @@ import {
   resolveContextProjectId,
   resolveContextThreadId,
 } from "./context-env.js";
+import type { Dispatcher } from "undici";
 import { cliFetch } from "./client.js";
 
 /**
@@ -379,6 +380,29 @@ async function writePluginCliOutput(
 }
 
 /**
+ * Plugin commands run to completion inside one POST and the server sends
+ * nothing — not even response headers — until the command returns. A command
+ * that waits on a human (`bb secret request` holds the request open until the
+ * form is submitted, up to the 10-minute interaction timeout) can therefore
+ * outlive Node's default undici `headersTimeout` of 300 s, which rejects the
+ * fetch with a bare "fetch failed" and aborts the interaction server-side.
+ * Dispatch these calls with a headers timeout above the server's longest
+ * interaction (`ui.requestInput` allows at most 60 minutes), so the server's
+ * own deadline decides first, but keep it finite: the server has no general
+ * plugin-command deadline, and a plugin that never resolves must not hold the
+ * CLI process and its socket forever. undici is imported lazily so built-in
+ * `bb` commands do not pay its startup cost.
+ */
+export const PLUGIN_CLI_HEADERS_TIMEOUT_MS = 65 * 60 * 1000;
+let pluginCliDispatcher: Promise<Dispatcher> | undefined;
+function getPluginCliDispatcher(): Promise<Dispatcher> {
+  pluginCliDispatcher ??= import("undici").then(
+    ({ Agent }) => new Agent({ headersTimeout: PLUGIN_CLI_HEADERS_TIMEOUT_MS }),
+  );
+  return pluginCliDispatcher;
+}
+
+/**
  * Proxy one invocation to the server and mirror its output. Returns the
  * command's exit code after both output streams have flushed. Waiting for the
  * write callbacks is required because callers terminate the CLI process as
@@ -407,6 +431,7 @@ export async function runPluginCliCommand(
         ...(threadId ? { threadId } : {}),
         ...(projectId ? { projectId } : {}),
       }),
+      dispatcher: await getPluginCliDispatcher(),
     },
   );
   const result = (await response.json().catch(() => null)) as {

@@ -443,14 +443,14 @@ describe("Tasks RPC domain API", () => {
               id: "codex",
               displayName: "Codex",
               capabilities: {
-                supportedPermissionModes: ["accept-edits", "auto", "full"],
+                permissionModes: ["accept-edits", "auto", "full"],
               },
             },
             {
               id: "claude-code",
               displayName: "Claude Code",
               capabilities: {
-                supportedPermissionModes: ["accept-edits", "auto", "full"],
+                permissionModes: ["accept-edits", "auto", "full"],
               },
             },
           ],
@@ -486,12 +486,12 @@ describe("Tasks RPC domain API", () => {
         {
           id: "codex",
           name: "Codex",
-          supportedPermissionModes: ["accept-edits", "auto", "full"],
+          permissionModes: ["accept-edits", "auto", "full"],
         },
         {
           id: "claude-code",
           name: "Claude Code",
-          supportedPermissionModes: ["accept-edits", "auto", "full"],
+          permissionModes: ["accept-edits", "auto", "full"],
         },
       ],
     });

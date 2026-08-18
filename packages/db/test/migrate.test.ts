@@ -3855,10 +3855,12 @@ describe("migrate", () => {
         "events_completed_item_truncation_idx",
         "events_environment_idx",
         "events_goal_thread_sequence_idx",
+        "events_item_lifecycle_thread_item_sequence_idx",
         "events_thread_sequence_idx",
         "events_thread_turn_type_item_sequence_idx",
         "events_thread_type_item_kind_sequence_idx",
         "events_thread_type_sequence_idx",
+        "events_tool_call_parent_lookup_idx",
       ]);
 
       const migrationCreatedAts = db.$client
@@ -4675,7 +4677,10 @@ describe("migrate", () => {
       // 304. Other marketplaces keep theirs.
       expect(
         db.$client
-          .prepare<[], { name: string; etag: string | null; lastModified: string | null }>(
+          .prepare<
+            [],
+            { name: string; etag: string | null; lastModified: string | null }
+          >(
             "SELECT name, etag, last_modified AS lastModified FROM plugin_marketplaces ORDER BY name",
           )
           .all(),
@@ -4728,6 +4733,54 @@ describe("migrate", () => {
         { id: "catalog-plugin", catalogMarketplaceName: "bb-official" },
         { id: "direct-plugin", catalogMarketplaceName: null },
       ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("seeds the Keep Awake configuration from the legacy preference", () => {
+    const db = createConnection(":memory:");
+    try {
+      migrate(db);
+      db.$client.exec(`
+        INSERT INTO app_settings (id, caffeinate, updated_at)
+        VALUES ('current', 1, 123)
+        ON CONFLICT (id) DO UPDATE SET caffeinate = 1, updated_at = 123;
+        DELETE FROM plugin_kv
+        WHERE plugin_id = 'keep-awake' AND key = 'configuration';
+      `);
+      migrate(db);
+      expect(
+        db.$client
+          .prepare<
+            [],
+            {
+              key: string;
+              pluginId: string;
+              updatedAt: number;
+              value: string;
+            }
+          >(
+            `
+              SELECT
+                plugin_id AS pluginId,
+                key,
+                value,
+                updated_at AS updatedAt
+              FROM plugin_kv
+              WHERE plugin_id = 'keep-awake' AND key = 'configuration'
+            `,
+          )
+          .get(),
+      ).toEqual({
+        pluginId: "keep-awake",
+        key: "configuration",
+        value: JSON.stringify({
+          enabled: true,
+          selection: { mode: "all" },
+        }),
+        updatedAt: 123,
+      });
     } finally {
       closeConnection(db);
     }

@@ -234,6 +234,10 @@ const HTML_FILE_PREVIEW_IFRAME_STYLE = {
 const IFRAME_LOADING_INDICATOR_DELAY_MS = 160;
 const FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS =
   "h-5 w-5 rounded-sm p-0 [&_svg]:size-3 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&_svg]:size-5";
+// The toggle adds 2px padding and a 1px border around these buttons. Keep its
+// coarse-pointer tabs at 30px so the complete control fits the 36px header.
+const FILE_PREVIEW_VIEW_MODE_BUTTON_CLASS =
+  "h-5 rounded-sm px-2 text-muted-foreground max-md:pointer-coarse:h-[30px]";
 
 function getFilePreviewToggleKind(
   state: FilePreviewState,
@@ -748,7 +752,7 @@ function FilePreviewHeader({
                   variant="ghost"
                   size="sm"
                   className={cn(
-                    "h-5 rounded-sm px-2 text-muted-foreground max-md:pointer-coarse:h-9",
+                    FILE_PREVIEW_VIEW_MODE_BUTTON_CLASS,
                     COARSE_POINTER_TEXT_SM_CLASS,
                   )}
                   onClick={() => onViewModeChange("preview")}
@@ -761,7 +765,7 @@ function FilePreviewHeader({
                   variant="ghost"
                   size="sm"
                   className={cn(
-                    "h-5 rounded-sm px-2 text-muted-foreground max-md:pointer-coarse:h-9",
+                    FILE_PREVIEW_VIEW_MODE_BUTTON_CLASS,
                     COARSE_POINTER_TEXT_SM_CLASS,
                   )}
                   onClick={() => onViewModeChange("source")}

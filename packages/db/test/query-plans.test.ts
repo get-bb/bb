@@ -13,11 +13,14 @@ import {
   getPendingInteractionByProviderRequest,
 } from "../src/data/pending-interactions.js";
 import {
+  appendDaemonEventsInTransaction,
+  hasParentedEventCrossingSequence,
   insertEvents,
   listActiveBackgroundTaskCountsByThreadIds,
   listLatestGoalEventRowsByThreadIds,
   listLatestOpenBackgroundTaskStateRowsForThread,
   listStoredConversationOutlineEventRows,
+  listStoredEventRows,
   pruneContextWindowUsageEventsBeforeSequence,
   pruneResolvedItemDeltas,
 } from "../src/data/events.js";
@@ -171,9 +174,14 @@ function captureStatements(
     value: (source: string) => {
       const statement = originalPrepare(source);
       const originalAll = statement.all.bind(statement);
+      const originalGet = statement.get.bind(statement);
       statement.all = (...params: unknown[]) => {
         captured.push({ params: params as SqliteParameter[], sql: source });
         return originalAll(...params);
+      };
+      statement.get = (...params: unknown[]) => {
+        captured.push({ params: params as SqliteParameter[], sql: source });
+        return originalGet(...params);
       };
       return statement;
     },
@@ -213,7 +221,137 @@ function assertEmittedQueryPlanUsesIndex(
 }
 
 describe("slow query index plans", () => {
-  it("pins active background-task scans to the partial index", () => {
+  it("uses the thread/type/sequence index for filtered event pages", () => {
+    const { db, thread } = setup();
+
+    const captured = captureStatements(db, () => {
+      expect(
+        listStoredEventRows(db, {
+          beforeSequence: 100,
+          limit: 25,
+          order: "desc",
+          threadId: thread.id,
+          types: ["provider/error", "turn/completed"],
+        }),
+      ).toEqual([]);
+    });
+    expect(captured).toHaveLength(2);
+    for (const query of captured) {
+      const details = queryPlanDetails({
+        db,
+        params: query.params,
+        sql: query.sql,
+      });
+      expect(details).toMatch(/USING INDEX events_thread_type_sequence_idx/u);
+      expect(details).not.toMatch(/events_thread_sequence_idx/u);
+    }
+
+    db.$client.close();
+  });
+
+  it("loads daemon item lifecycle state through the targeted partial index", () => {
+    const { db, logger, thread } = setup();
+    const turnId = "turn-lifecycle-plan";
+    const itemId = "item-lifecycle-plan";
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "turn/started",
+        scope: turnScope(turnId),
+        itemId: null,
+        itemKind: null,
+        data: JSON.stringify({ providerThreadId: "provider-plan" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "item/completed",
+        scope: turnScope(turnId),
+        itemId,
+        itemKind: "agentMessage",
+        data: JSON.stringify({
+          providerThreadId: "provider-plan",
+          item: { type: "agentMessage", id: itemId, text: "done" },
+        }),
+      },
+    ]);
+
+    db.transaction(
+      (tx) =>
+        appendDaemonEventsInTransaction(tx, [
+          {
+            threadId: thread.id,
+            environmentId: null,
+            type: "item/completed",
+            scope: turnScope(turnId),
+            itemId,
+            itemKind: "agentMessage",
+            providerThreadId: "provider-plan",
+            data: JSON.stringify({
+              providerThreadId: "provider-plan",
+              item: { type: "agentMessage", id: itemId, text: "done" },
+            }),
+          },
+        ]),
+      { behavior: "immediate" },
+    );
+
+    const debugLog = findOnlyDebugLog({
+      logger,
+      predicate: (fields) =>
+        fields.operation === "all" && fields.sql.includes("requested_item"),
+    });
+    expect(debugLog.fields.bindingArgumentCount).toBe(2);
+    const lifecycleTypes =
+      "IN ('item/started', 'item/completed', 'item/backgroundTask/completed')";
+    const planSql = debugLog.fields.sql.replaceAll(
+      "IN ( '?', '?', '?' )",
+      lifecycleTypes,
+    );
+    const details = queryPlanDetails({
+      db,
+      params: [thread.id, itemId],
+      sql: planSql,
+    });
+    expect(
+      details.match(/events_item_lifecycle_thread_item_sequence_idx/gu),
+    ).toHaveLength(2);
+
+    db.$client.close();
+  });
+
+  it("resolves parent crossings through the covering tool-call index", () => {
+    const { db, thread } = setup();
+
+    const captured = captureStatements(db, () => {
+      expect(
+        hasParentedEventCrossingSequence(db, {
+          sequence: 2,
+          threadId: thread.id,
+        }),
+      ).toBe(false);
+    });
+    const query = captured.find((entry) =>
+      entry.sql.includes("parent_event.item_id"),
+    );
+    if (!query) {
+      throw new Error("Expected the parent-crossing lookup SQL");
+    }
+    const details = queryPlanDetails({
+      db,
+      params: query.params,
+      sql: query.sql,
+    });
+    expect(details).toMatch(
+      /SEARCH parent_event .*USING COVERING INDEX events_tool_call_parent_lookup_idx/u,
+    );
+
+    db.$client.close();
+  });
+
+  it("scans background-task history once without a completed-set join", () => {
     const { db, thread } = setup();
 
     const captured = captureStatements(db, () => {
@@ -222,12 +360,12 @@ describe("slow query index plans", () => {
       });
     });
     const query = captured.find((entry) =>
-      entry.sql.includes("latest_background_task_activity"),
+      entry.sql.includes("latest_background_task_state"),
     );
     if (!query) {
       throw new Error("Expected the active background-task count SQL");
     }
-    expect(query.params).toHaveLength(13);
+    expect(query.params).toHaveLength(15);
     const details = queryPlanDetails({
       db,
       params: query.params,
@@ -235,7 +373,8 @@ describe("slow query index plans", () => {
     });
     expect(
       details.match(/events_background_task_thread_type_item_sequence_idx/gu),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
+    expect(details).not.toMatch(/CORRELATED|LEFT-JOIN|SCAN completed/u);
 
     db.$client.close();
   });

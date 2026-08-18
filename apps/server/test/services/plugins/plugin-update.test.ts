@@ -37,6 +37,7 @@ import {
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
 import { testLogger } from "../../helpers/test-app.js";
+import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
 const logger = testLogger as unknown as Logger;
 const run = promisify(execFile);
@@ -104,6 +105,7 @@ describe("plugin update service and routes", () => {
     afterArtifactPromoted = undefined;
     materializationCount = 0;
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -506,6 +508,8 @@ describe("plugin update service and routes", () => {
     expect(listPluginArtifacts(db, "updater")).toHaveLength(2);
   });
 
+  // A real git update is built, promoted, crashed, and rolled back here.
+  // Under full-workspace load it can exceed the suite's 30s default.
   it("rolls back when a background service crashes during stabilization", async () => {
     const installedCommit = getInstalledPluginRegistration(
       db,
@@ -521,6 +525,7 @@ describe("plugin update service and routes", () => {
     vi.stubGlobal("__bbPluginStabilizationCrash", serviceCrash);
     await service.stop();
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -575,7 +580,7 @@ describe("plugin update service and routes", () => {
     expect(
       service.list().find((entry) => entry.id === "updater"),
     ).toMatchObject({ id: "updater", version: "1.0.0", status: "running" });
-  });
+  }, 60_000);
 
   it("finishes an interrupted rollback before loading plugins after restart", async () => {
     const pluginDir = join(workDir, "data", "plugins", "updater");
@@ -621,6 +626,7 @@ describe("plugin update service and routes", () => {
     );
     await service.stop();
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -657,6 +663,7 @@ describe("plugin update service and routes", () => {
 
     await service.stop();
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -697,13 +704,14 @@ describe("plugin update service and routes", () => {
     expect(listPluginStateSnapshots(db, "updater")).toMatchObject([
       { status: "restored" },
     ]);
-  });
+  }, 60_000);
 
   it("retains rollback state through the grace period and collects it afterward", async () => {
     await service.stop();
     let clock = Date.now();
     const makeService = () =>
       createPluginService({
+        telemetry: createNoopTelemetryService(),
         db,
         hub: {
           getDaemonSessionIdForHost: () => null,
@@ -748,7 +756,7 @@ describe("plugin update service and routes", () => {
       code: "ENOENT",
     });
     await stat(remaining[0]!.path);
-  });
+  }, 60_000);
 
   it("orders removal after an in-flight update without resurrecting the plugin", async () => {
     await commitPlugin(repo, "1.1.0");

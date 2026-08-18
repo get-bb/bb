@@ -64,6 +64,158 @@ function renderIdleTimeline(events: ThreadEventRow[]) {
 }
 
 describe("timeline interruption projection", () => {
+  it("keeps post-turn automatic compaction pending while the thread is idle", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const events = [
+      event.turnStarted({ createdAt: 0 }),
+      event.turnCompleted({ createdAt: 1_000 }),
+      event.contextCompactionStarted({ createdAt: 2_000 }),
+    ];
+    const timeline = renderIdleTimeline(events);
+
+    expect(timeline.messages).toContainEqual(
+      expect.objectContaining({
+        kind: "operation",
+        opType: "compaction",
+        status: "pending",
+        title: "Compacting context",
+        completedAt: null,
+      }),
+    );
+
+    const completedTimeline = renderIdleTimeline([
+      ...events,
+      event.threadCompacted({ createdAt: 3_000 }),
+    ]);
+    expect(completedTimeline.messages).toContainEqual(
+      expect.objectContaining({
+        kind: "operation",
+        opType: "compaction",
+        status: "completed",
+        title: "Context compacted",
+        completedAt: 3_000,
+      }),
+    );
+  });
+
+  it("settles a skipped manual compaction from the provider warning", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderIdleTimeline([
+      event.turnStarted({ createdAt: 0 }),
+      event.contextCompactionStarted({ createdAt: 1_000 }),
+      event.providerWarning({
+        category: "compaction-skipped",
+        summary: "Context compaction skipped",
+        details: "Compaction failed: Nothing to compact (session too small)",
+        createdAt: 2_000,
+      }),
+      event.turnCompleted({ createdAt: 3_000 }),
+    ]);
+
+    expect(timeline.messages).toContainEqual(
+      expect.objectContaining({
+        kind: "operation",
+        opType: "compaction",
+        status: "completed",
+        title: "Context compaction skipped",
+        detail: "Compaction failed: Nothing to compact (session too small)",
+        completedAt: 2_000,
+      }),
+    );
+    expect(
+      timeline.messages.some(
+        (message) =>
+          message.kind === "operation" && message.opType === "warning",
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps a pending compaction and renders an unrelated warning in the same turn", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderTimelineFixture({
+      events: [
+        event.turnStarted({ createdAt: 0 }),
+        event.contextCompactionStarted({ createdAt: 1_000 }),
+        event.providerWarning({
+          summary: "Model fallback",
+          details: "Requested model unavailable; using a fallback.",
+          createdAt: 2_000,
+        }),
+      ],
+      projectionOptions: {
+        threadStatus: "active",
+        turnMessageDetail: "full",
+      },
+    });
+
+    expect(timeline.messages).toContainEqual(
+      expect.objectContaining({
+        kind: "operation",
+        opType: "compaction",
+        status: "pending",
+        title: "Compacting context",
+        completedAt: null,
+      }),
+    );
+    expect(timeline.messages).toContainEqual(
+      expect.objectContaining({
+        kind: "operation",
+        opType: "warning",
+        title: "Model fallback",
+        detail: "Requested model unavailable; using a fallback.",
+      }),
+    );
+  });
+
+  it("interrupts post-turn compaction when the thread is explicitly interrupted", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderIdleTimeline([
+      event.turnStarted({ createdAt: 0 }),
+      event.turnCompleted({ createdAt: 1_000 }),
+      event.contextCompactionStarted({ createdAt: 2_000 }),
+      event.systemThreadInterrupted({ createdAt: 3_000 }),
+    ]);
+
+    expect(timeline.messages).toContainEqual(
+      expect.objectContaining({
+        kind: "operation",
+        opType: "compaction",
+        status: "interrupted",
+        title: "Context compaction interrupted",
+        completedAt: 3_000,
+      }),
+    );
+  });
+
+  it("does not apply an old thread interruption to a later compaction", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderIdleTimeline([
+      event.turnStarted({ turnId: "turn-a", createdAt: 0 }),
+      event.turnCompleted({
+        turnId: "turn-a",
+        status: "interrupted",
+        createdAt: 1_000,
+      }),
+      event.systemThreadInterrupted({ createdAt: 1_100 }),
+      event.turnStarted({ turnId: "turn-b", createdAt: 2_000 }),
+      event.turnCompleted({ turnId: "turn-b", createdAt: 3_000 }),
+      event.contextCompactionStarted({
+        turnId: "turn-b",
+        createdAt: 4_000,
+      }),
+    ]);
+
+    expect(timeline.messages).toContainEqual(
+      expect.objectContaining({
+        kind: "operation",
+        opType: "compaction",
+        status: "pending",
+        title: "Compacting context",
+        completedAt: null,
+      }),
+    );
+  });
+
   it("uses interrupted turn completion time for pending command and tool rows", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const timeline = renderIdleTimeline([

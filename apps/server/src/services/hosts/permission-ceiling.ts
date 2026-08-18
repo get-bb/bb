@@ -1,6 +1,5 @@
 import { getEnvironment, getHost } from "@bb/db";
 import { clampPermissionModeToCeiling, type PermissionMode } from "@bb/domain";
-import { getSupportedPermissionModes } from "@bb/agent-providers";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
 
@@ -55,17 +54,17 @@ export function resolveEnvironmentHostId(
  * cannot run on the machine at all, and that is an error.
  */
 export function clampPermissionModeToHost(
-  deps: PermissionCeilingDeps,
+  deps: Pick<AppDeps, "db" | "providerRegistry">,
   args: ClampPermissionModeToHostArgs,
 ): PermissionMode {
   const ceiling = getHostPermissionCeiling(deps, args.hostId);
   const supported = args.providerId
-    ? getSupportedPermissionModes(args.providerId)
+    ? deps.providerRegistry.getSupportedPermissionModes(args.providerId)
     : null;
   const clamped = clampPermissionModeToCeiling({
     ceiling,
     permissionMode: args.permissionMode,
-    ...(supported ? { supportedPermissionModes: supported } : {}),
+    ...(supported ? { permissionModes: supported } : {}),
   });
   if (clamped === null) {
     throw new HostPermissionCeilingConflictError(

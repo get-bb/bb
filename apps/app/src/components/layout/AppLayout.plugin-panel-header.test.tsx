@@ -174,17 +174,14 @@ describe("AppLayout plugin panel header", () => {
     vi.clearAllMocks();
   });
 
-  it("renders the shared header on compact viewports so the body clears the sidebar trigger", () => {
+  it("leaves the compact header to the plugin page panel host", () => {
     viewportState.compact = true;
     renderPluginPanelRoute();
 
-    expect(screen.getByTestId("app-page-header")).toBeTruthy();
-    expect(screen.getByTestId("plugin-panel-header-center").textContent).toBe(
-      "Helm Wiki",
-    );
+    expect(screen.queryByTestId("app-page-header")).toBeNull();
   });
 
-  it("leaves the header to the split workspace on regular viewports", () => {
+  it("leaves the regular header to the plugin page panel host", () => {
     renderPluginPanelRoute();
 
     expect(screen.queryByTestId("app-page-header")).toBeNull();

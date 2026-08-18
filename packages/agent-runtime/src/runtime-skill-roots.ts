@@ -1,5 +1,5 @@
 import path from "node:path";
-import { isAcpProviderId } from "@bb/agent-providers";
+import { isAcpProviderId } from "./provider-catalog.js";
 import type {
   AgentRuntimeAcpSkillRoot,
   AgentRuntimeClaudeCodeSkillRoot,

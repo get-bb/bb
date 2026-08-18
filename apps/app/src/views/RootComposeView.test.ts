@@ -23,6 +23,7 @@ import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { getProjectStoredPromptAttachmentPaths } from "@/lib/prompt-draft";
 import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-handoff-request";
 import {
+  buildRootComposeNewTabFileTab,
   buildRootComposeTerminalSessions,
   buildMobileRecentThreads,
   canCreateRootComposeTerminal,
@@ -58,6 +59,25 @@ describe("requestRootComposePluginFocus", () => {
 
     expect(focusRequests).toBe(1);
     unsubscribe();
+  });
+});
+
+describe("new-thread right-panel tabs", () => {
+  it("renders the launcher as the same visible, closable tab used by threads", () => {
+    const onClose = () => undefined;
+    const onSelect = () => undefined;
+    const tab = buildRootComposeNewTabFileTab({
+      activeTabId: "new-tab",
+      onClose,
+      onSelect,
+      tabId: "new-tab",
+    });
+
+    expect(tab.filename).toBe("New tab");
+    expect(tab.isActive).toBe(true);
+    expect(tab.isHidden).toBeUndefined();
+    expect(tab.onClose).toBe(onClose);
+    expect(tab.onSelect).toBe(onSelect);
   });
 });
 

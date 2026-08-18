@@ -25,6 +25,7 @@ import {
 } from "./rail.js";
 import { ThreadsSection } from "./threads.js";
 import { DetailToasts, useDetailToasts } from "./toast.js";
+import { DelayedLoading } from "../../components/delayed-loading.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 
@@ -181,12 +182,14 @@ function SubTasksSection({
 
 function DetailSkeleton() {
   return (
-    <div className="mx-auto w-full max-w-3xl px-8 py-12">
-      <Skeleton className="mb-4 h-7 w-2/3" />
-      <Skeleton className="mb-2 h-4 w-full" />
-      <Skeleton className="mb-2 h-4 w-5/6" />
-      <Skeleton className="h-4 w-1/2" />
-    </div>
+    <DelayedLoading>
+      <div className="mx-auto w-full max-w-3xl px-8 py-12">
+        <Skeleton className="mb-4 h-7 w-2/3" />
+        <Skeleton className="mb-2 h-4 w-full" />
+        <Skeleton className="mb-2 h-4 w-5/6" />
+        <Skeleton className="h-4 w-1/2" />
+      </div>
+    </DelayedLoading>
   );
 }
 

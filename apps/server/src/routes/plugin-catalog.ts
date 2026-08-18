@@ -40,12 +40,13 @@ export function registerPluginCatalogRoutes(
     }),
   );
 
-  // Marketplace entry icons the server fetched and validated during a refresh.
-  // Serving them from BB's own origin is what keeps the app from requesting a
-  // third-party URL. `?h=<content hash>` gets immutable caching; anything else
-  // is no-store, so a stale URL can never pin stale bytes.
-  app.get("/plugin-catalog/icons/:marketplace/:entryId", (context) => {
-    const icon = catalog.icon(
+  // Entry icons served from BB's own origin: fetched-and-validated marketplace
+  // icons, or a bundled entry's compact SVG read from its plugin directory.
+  // Serving marketplace bytes from here is what keeps the app from requesting
+  // a third-party URL. `?h=<content hash>` gets immutable caching; anything
+  // else is no-store, so a stale URL can never pin stale bytes.
+  app.get("/plugin-catalog/icons/:marketplace/:entryId", async (context) => {
+    const icon = await catalog.icon(
       context.req.param("marketplace"),
       context.req.param("entryId"),
     );

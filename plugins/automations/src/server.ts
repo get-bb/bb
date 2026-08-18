@@ -6,6 +6,7 @@ import { automationRpcContract, createRpcHandlers } from "./rpc.js";
 import {
   closeAutomationRunForSettledThread,
   disableAutomationsForDeletedThreadEvent,
+  reconcileRunningAutomationRuns,
 } from "./run.js";
 import { registerAutomationCli } from "./cli.js";
 import { createAutomationService } from "./service.js";
@@ -51,6 +52,19 @@ export default async function plugin(bb: BbPluginApi) {
 
   bb.background.service("automation-sweep", {
     async start(signal) {
+      // Before the first sweep: settle the running rows no process owns any
+      // more (a crash, a restart, a reload), so single-flight cannot pin an
+      // automation on a ghost. Runs here rather than in the factory because
+      // the SDK is bind-gated and this is the sanctioned place to use it.
+      try {
+        await reconcileRunningAutomationRuns(bb, db);
+      } catch (error) {
+        bb.log.error(
+          `Automation startup reconciliation failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
       while (!signal.aborted) {
         try {
           await sweepDueAutomations(bb, db, {

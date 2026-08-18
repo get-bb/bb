@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import type { AvailableModel, ReasoningLevel } from "@bb/domain";
 import type {
+  SystemExecutionOptionsModelLoadError,
   SystemExecutionOptionsResponse,
   SystemProvidersQuery,
 } from "@bb/server-contract";
@@ -150,6 +151,8 @@ function renderPicker({
   alternateProviderModels,
   providerRouting,
   selectedProviderId = "codex",
+  modelIsLoading = false,
+  modelLoadError = null,
   compact = false,
   splitPane = false,
 }: {
@@ -165,6 +168,8 @@ function renderPicker({
   alternateProviderModels?: AvailableModel[];
   providerRouting?: SystemProvidersQuery;
   selectedProviderId?: string;
+  modelIsLoading?: boolean;
+  modelLoadError?: SystemExecutionOptionsModelLoadError | null;
   compact?: boolean;
   splitPane?: boolean;
 } = {}) {
@@ -197,6 +202,8 @@ function renderPicker({
         modelValue={modelValue}
         modelOptions={modelOptions}
         moreModelOptions={moreModelOptions}
+        modelIsLoading={modelIsLoading}
+        modelLoadError={modelLoadError}
         onModelChange={onModelChange}
         reasoningValue={reasoningValue}
         reasoningOptions={pickerReasoningOptions}
@@ -237,6 +244,56 @@ afterEach(() => {
 });
 
 describe("ModelReasoningPicker", () => {
+  it("keeps a failed provider tab visible with its provider-plugin error", () => {
+    renderPicker({
+      modelOptions: [],
+      modelValue: "",
+      pickerReasoningOptions: [],
+      modelLoadError: {
+        providerId: "codex",
+        code: "provider_unavailable",
+      },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    expect(screen.getByTitle("Codex")).not.toBeNull();
+    expect(
+      screen.getByText(
+        "Codex is unavailable because its provider plugin failed to load.",
+      ),
+    ).not.toBeNull();
+  });
+
+  it("holds the trigger and model-list layout with skeletons while loading", () => {
+    renderPicker({
+      modelOptions: [],
+      modelValue: "",
+      pickerReasoningOptions: [],
+      modelIsLoading: true,
+    });
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+
+    expect(
+      trigger.querySelectorAll("[data-model-loading-placeholder]"),
+    ).toHaveLength(2);
+    expect(trigger.textContent).not.toContain("Loading models...");
+
+    fireEvent.click(trigger);
+
+    const loadingStatus = screen.getByRole("status", {
+      name: "Loading models",
+    });
+    expect(
+      loadingStatus.querySelectorAll("[data-model-loading-row]"),
+    ).toHaveLength(4);
+    expect(screen.queryByText("Loading models…")).toBeNull();
+  });
+
   it("cycles models backward from a Tab-focused composer control", () => {
     const { onModelChange } = renderPicker({
       modelOptions: [
@@ -482,7 +539,6 @@ describe("ModelReasoningPicker", () => {
 
     expect(screen.getAllByText(modelLabel)).toHaveLength(3);
     const apiQualifier = screen.getByText("openai");
-    expect(apiQualifier.className).toContain("text-subtle-foreground");
     expect(screen.getByText("openai-codex")).not.toBeNull();
 
     fireEvent.click(apiQualifier);

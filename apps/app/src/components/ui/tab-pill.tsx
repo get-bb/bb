@@ -91,7 +91,7 @@ export function TabPill({
               TAB_PILL_LEADING_VISUAL_CLASS,
               !iconOnly && "mr-1.5",
               closeAction
-                ? "group-hover/tab-pill:opacity-0 group-has-[[data-tab-pill-close]:focus-visible]/tab-pill:opacity-0 max-md:pointer-coarse:opacity-0"
+                ? "group-hover/tab-pill:opacity-0 tab-pill-close-focus-visible:opacity-0 max-md:pointer-coarse:opacity-0"
                 : null,
             )}
           >

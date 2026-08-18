@@ -111,6 +111,7 @@ interface RunningDelegationExecution extends RunningExecutionBase {
   toolName: string | null;
   subagentType?: string;
   description?: string;
+  model?: string;
 }
 
 type RunningExecCall =
@@ -348,6 +349,7 @@ function createRunningExecCall(
         toolName: incoming.toolName ?? null,
         subagentType: incoming.subagentType,
         description: incoming.description,
+        model: incoming.model,
       };
   }
 }
@@ -390,12 +392,14 @@ interface ToolCallExecutionFieldsSource {
 
 interface DelegationExecutionFieldsTarget {
   description?: string;
+  model?: string;
   subagentType?: string;
   toolName: string | null;
 }
 
 interface DelegationExecutionFieldsSource {
   description?: string;
+  model?: string;
   subagentType?: string;
   toolName?: string | null;
 }
@@ -456,6 +460,9 @@ function mergeDelegationExecutionFields(
   }
   if (incoming.description && !target.description) {
     target.description = incoming.description;
+  }
+  if (incoming.model && !target.model) {
+    target.model = incoming.model;
   }
 }
 
@@ -927,6 +934,7 @@ function createExecMessage(
       toolName: call.toolName ?? "Agent",
       subagentType: call.subagentType,
       description: call.description,
+      model: call.model,
       childProjection: emptyEventProjection(),
     };
   }

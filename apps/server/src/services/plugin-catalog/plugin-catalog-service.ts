@@ -1,4 +1,5 @@
-import { mkdir, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
@@ -70,7 +71,10 @@ import {
 import { BUNDLED_CURATED_MARKETPLACE } from "./curated-marketplace.js";
 import { marketplacePublisherLabel } from "./marketplace-publishers.js";
 
-const MARKETPLACE_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1_000;
+const MARKETPLACE_REFRESH_INTERVAL_MS = 2 * 60 * 60 * 1_000;
+
+/** branding.icon paths are validated as SVG, so bundled icons are only ever this. */
+const BUNDLED_ICON_CONTENT_TYPE = "image/svg+xml";
 
 interface PluginCatalogIcon {
   bytes: Buffer;
@@ -112,8 +116,15 @@ export interface PluginCatalogService {
     selector: PluginCatalogEntrySelector,
   ): Promise<PluginCatalogInstallPlan>;
   install(input: PluginCatalogInstallInput): Promise<InstalledPlugin>;
-  /** Cached bytes behind GET /plugin-catalog/icons/:marketplace/:entryId. */
-  icon(marketplace: string, entryId: string): PluginCatalogIcon | undefined;
+  /**
+   * Bytes behind GET /plugin-catalog/icons/:marketplace/:entryId: a fetched
+   * marketplace icon from the cache, or a bundled entry's own compact icon
+   * read from its plugin directory.
+   */
+  icon(
+    marketplace: string,
+    entryId: string,
+  ): Promise<PluginCatalogIcon | undefined>;
   listMarketplaces(): PluginMarketplace[];
   /** Validate, store, and refresh a marketplace. Installs nothing. */
   addMarketplace(source: string): Promise<PluginMarketplace>;
@@ -357,9 +368,36 @@ export function createPluginCatalogService(deps: {
     });
   }
 
+  /**
+   * A bundled plugin's own compact icon, hashed so the browse card's URL
+   * busts its cache with the plugin's bytes. Null when the manifest names a
+   * host glyph instead of shipping an SVG, or the file cannot be read.
+   */
+  async function bundledIcon(
+    manifest: PluginManifest,
+  ): Promise<{ bytes: Buffer; hash: string } | null> {
+    const path = manifest.branding.compactIconPath;
+    if (path === undefined) return null;
+    try {
+      const bytes = await readFile(path);
+      return {
+        bytes,
+        hash: createHash("sha256").update(bytes).digest("hex").slice(0, 16),
+      };
+    } catch (error: unknown) {
+      deps.warn?.(
+        `bundled plugin ${manifest.id} icon is unreadable: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return null;
+    }
+  }
+
   function bundledSearchResult(
     entry: { name: string; pluginId: string; category: string },
     manifest: PluginManifest,
+    iconHash: string | null,
   ): PluginCatalogSearchResult {
     const problem = compatibilityProblem({
       bbRange: manifest.bbEngineRange,
@@ -371,7 +409,10 @@ export function createPluginCatalogService(deps: {
       displayName: manifest.name,
       description: manifest.description,
       icon: manifest.branding.icon ?? null,
-      iconUrl: null,
+      iconUrl:
+        iconHash === null
+          ? null
+          : entryIconAssetUrl(CURATED_MARKETPLACE_NAME, entry.name, iconHash),
       category: entry.category,
       source: builtinPluginSource(entry.name),
       // Plugins bundled with the app are BB's own, so the store groups them
@@ -409,11 +450,20 @@ export function createPluginCatalogService(deps: {
     return first === undefined ? "Other" : titleCaseTag(first);
   }
 
+  /** Same-origin URL of the bytes `icon(marketplace, entryId)` serves. */
+  function entryIconAssetUrl(
+    marketplace: string,
+    entryId: string,
+    contentHash: string,
+  ): string {
+    return `/api/v1/plugin-catalog/icons/${encodeURIComponent(marketplace)}/${encodeURIComponent(entryId)}?h=${contentHash}`;
+  }
+
   function entryIconUrl(marketplace: string, entryId: string): string | null {
     const icon = getPluginMarketplaceIcon(deps.db, marketplace, entryId);
     return icon === undefined
       ? null
-      : `/api/v1/plugin-catalog/icons/${encodeURIComponent(marketplace)}/${encodeURIComponent(entryId)}?h=${icon.contentHash}`;
+      : entryIconAssetUrl(marketplace, entryId, icon.contentHash);
   }
 
   function catalogSearchResult(args: {
@@ -932,14 +982,28 @@ export function createPluginCatalogService(deps: {
 
     refreshMarketplaces,
 
-    icon(marketplace, entryId) {
+    async icon(marketplace, entryId) {
       const row = getPluginMarketplaceIcon(deps.db, marketplace, entryId);
-      return row === undefined
+      if (row !== undefined) {
+        return {
+          bytes: row.bytes,
+          contentType: row.contentType,
+          hash: row.contentHash,
+        };
+      }
+      // Bundled entries have no fetched icon: their compact SVG ships in the
+      // plugin directory, so serve it from there under the same route.
+      if (marketplace !== CURATED_MARKETPLACE_NAME) return undefined;
+      const bundled = officialPlugins.find((entry) => entry.name === entryId);
+      if (bundled === undefined) return undefined;
+      const manifest = await entryManifest(bundled);
+      const icon = manifest === null ? null : await bundledIcon(manifest);
+      return icon === null
         ? undefined
         : {
-            bytes: row.bytes,
-            contentType: row.contentType,
-            hash: row.contentHash,
+            bytes: icon.bytes,
+            contentType: BUNDLED_ICON_CONTENT_TYPE,
+            hash: icon.hash,
           };
     },
 
@@ -1032,14 +1096,14 @@ export function createPluginCatalogService(deps: {
       const bundledEntries = await Promise.all(
         officialPlugins.map(async (entry) => {
           const manifest = await entryManifest(entry);
-          return manifest === null
-            ? null
-            : {
-                pluginId: entry.pluginId,
-                tags: [] as string[],
-                marketplaceRank: 0,
-                result: bundledSearchResult(entry, manifest),
-              };
+          if (manifest === null) return null;
+          const icon = await bundledIcon(manifest);
+          return {
+            pluginId: entry.pluginId,
+            tags: [] as string[],
+            marketplaceRank: 0,
+            result: bundledSearchResult(entry, manifest, icon?.hash ?? null),
+          };
         }),
       );
       const installedEntryIds = new Set(

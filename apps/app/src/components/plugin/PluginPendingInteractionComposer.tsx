@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { Button } from "@bb/shared-ui/button";
 import type { JsonValue, PluginPendingInteraction } from "@bb/domain";
 import { PluginSlotMount } from "./PluginSlotMount";
+import { resolvePendingInteraction } from "@/lib/plugin-slot-resolvers";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { sdk } from "@/lib/sdk";
 
@@ -18,10 +19,10 @@ export function PluginPendingInteractionComposer({
   const origin = interaction.origin;
   const slot = useMemo(
     () =>
-      pendingInteractions.find(
-        (candidate) =>
-          candidate.pluginId === origin.pluginId &&
-          candidate.id === origin.rendererId,
+      resolvePendingInteraction(
+        pendingInteractions,
+        origin.pluginId,
+        origin.rendererId,
       ),
     [origin.pluginId, origin.rendererId, pendingInteractions],
   );

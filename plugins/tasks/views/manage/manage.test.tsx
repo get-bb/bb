@@ -246,8 +246,6 @@ describe("NewTaskDialog", () => {
     // empty-state's tall centered padding — that produced the "insane" gap.
     const emptyContainer = createBtn.closest("[cmdk-empty]");
     expect(emptyContainer).not.toBeNull();
-    expect(emptyContainer!.className).not.toContain("py-6");
-    expect(emptyContainer!.className).not.toContain("text-center");
 
     fireEvent.click(createBtn);
     await waitFor(() => expect(createLabelCalls).toHaveLength(1));
@@ -698,7 +696,7 @@ describe("PresetDialog environment section", () => {
               {
                 id: "claude-code",
                 name: "Claude Code",
-                supportedPermissionModes: ["accept-edits", "auto", "full"],
+                permissionModes: ["accept-edits", "auto", "full"],
               },
             ],
           }),

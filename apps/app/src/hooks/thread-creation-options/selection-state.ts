@@ -102,7 +102,7 @@ interface ResolveCreateExecutionInputSourceArgs {
 
 interface ResolvePermissionModeSelectionArgs {
   rawPermissionMode: PermissionMode;
-  supportedPermissionModes: readonly PermissionMode[];
+  permissionModes: readonly PermissionMode[];
 }
 
 function hasValue(value: string): boolean {
@@ -298,21 +298,21 @@ export function buildExecutionInputSources({
 
 export function resolvePermissionModeSelection({
   rawPermissionMode,
-  supportedPermissionModes,
+  permissionModes,
 }: ResolvePermissionModeSelectionArgs): PermissionMode {
-  if (supportedPermissionModes.includes(rawPermissionMode)) {
+  if (permissionModes.includes(rawPermissionMode)) {
     return rawPermissionMode;
   }
   // Auto is the product default. Providers without native automatic review
   // fall back to Full Access rather than implying that Accept Edits provides
   // equivalent automatic approval behavior.
-  if (supportedPermissionModes.includes("auto")) {
+  if (permissionModes.includes("auto")) {
     return "auto";
   }
-  if (supportedPermissionModes.includes("full")) {
+  if (permissionModes.includes("full")) {
     return "full";
   }
-  return supportedPermissionModes[0] ?? "auto";
+  return permissionModes[0] ?? "auto";
 }
 
 export function formatModelLabel(value: string): string {

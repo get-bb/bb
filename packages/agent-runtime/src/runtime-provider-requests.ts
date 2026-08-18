@@ -18,8 +18,8 @@ import {
   sendJsonRpcResult,
   sendProviderRequestDecodeErrorIfKnown,
   sendProviderResponseEncodeErrorIfKnown,
-} from "./runtime-json-rpc.js";
-import { shouldAutoDenyInteractiveRequest } from "./shared/permission-policy.js";
+} from "@bb/provider-bridge-protocol/bridge-kit";
+import { shouldAutoDenyInteractiveRequest } from "@bb/provider-bridge-protocol/bridge-kit";
 
 export type RuntimeProviderRequestKind = "interactive request" | "tool call";
 
@@ -301,7 +301,7 @@ function handleInteractiveProviderRequest(
     interactiveReq.payload,
   );
   const runtimeOwnsApprovalPolicy =
-    args.providerProcess.adapter.approvalRequestPolicy === "runtime";
+    args.providerProcess.adapter.approvalEnforcedBy === "runtime";
   const executionOptions = runtimeOwnsApprovalPolicy
     ? args.getThreadExecutionOptions(resolvedThreadId)
     : undefined;

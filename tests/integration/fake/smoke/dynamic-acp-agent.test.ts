@@ -11,12 +11,19 @@ import {
   waitForThreadStatus,
 } from "../../helpers/assertions.js";
 import { withHarness } from "../../helpers/harness.js";
+import { scaleTimeoutMs } from "../../helpers/time.js";
 import {
   createProjectFixture,
   createReadyThread,
   DEFAULT_TIMEOUT_MS,
   TURN_TIMEOUT_MS,
 } from "./shared.js";
+
+// This smoke performs two provider starts, two follow-up turns, and a daemon
+// restart. Keep the outer Vitest deadline above the sum of the operation-level
+// deadlines so a loaded full-workspace run reports the operation that stalled
+// instead of racing the generic per-test timeout.
+const DYNAMIC_ACP_TEST_TIMEOUT_MS = scaleTimeoutMs(120_000);
 
 const fixturePath = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -32,6 +39,7 @@ function buildDynamicAcpAgents(): CustomAcpAgent[] {
       command: fixturePath,
       args: [],
       env: { BB_DYNAMIC_ACP_SMOKE: "thread" },
+      supportsManualCompaction: false,
       modelCli: {
         listArgs: ["--list-models"],
         selectFlag: "--model",
@@ -44,158 +52,166 @@ function buildDynamicAcpAgents(): CustomAcpAgent[] {
       command: fixturePath,
       args: [],
       env: {},
+      supportsManualCompaction: false,
     },
   ];
 }
 
 describe.sequential("dynamic ACP integration smoke", () => {
-  it("spawns configured ACP agents for model list, start, submit, and lazy resume", () =>
-    withHarness({ adapterFactory: undefined }, async (harness) => {
-      harness.server.config.customAcpAgents = buildDynamicAcpAgents();
+  it(
+    "spawns configured ACP agents for model list, start, submit, and lazy resume",
+    () =>
+      withHarness({ adapterFactory: undefined }, async (harness) => {
+        harness.server.config.customAcpAgents = buildDynamicAcpAgents();
 
-      const providersResponse = await harness.api.system.providers.$get({});
-      expect(providersResponse.status).toBe(200);
-      const providers = await providersResponse.json();
-      expect(providers).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            id: "acp-smoke",
-            displayName: "Smoke ACP",
-          }),
-          expect.objectContaining({
-            id: "acp-nomodelcli",
-            displayName: "No Model CLI ACP",
-          }),
-        ]),
-      );
+        const providersResponse = await harness.api.system.providers.$get({});
+        expect(providersResponse.status).toBe(200);
+        const providers = await providersResponse.json();
+        expect(providers).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: "acp-smoke",
+              displayName: "Smoke ACP",
+            }),
+            expect.objectContaining({
+              id: "acp-nomodelcli",
+              displayName: "No Model CLI ACP",
+            }),
+          ]),
+        );
 
-      const listedModelsResponse = await harness.api.system[
-        "execution-options"
-      ].$get({
-        query: { hostId: harness.hostId, providerId: "acp-smoke" },
-      });
-      expect(listedModelsResponse.status).toBe(200);
-      const listedOptions = systemExecutionOptionsResponseSchema.parse(
-        await listedModelsResponse.json(),
-      );
-      expect(listedOptions.modelLoadError).toBeNull();
-      expect(listedOptions.providers).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            id: "acp-smoke",
-            displayName: "Smoke ACP",
-          }),
-        ]),
-      );
-      expect(listedOptions.models.map((model) => model.model)).toContain(
-        "bb-dynamic-smoke-medium",
-      );
+        const listedModelsResponse = await harness.api.system[
+          "execution-options"
+        ].$get({
+          query: { hostId: harness.hostId, providerId: "acp-smoke" },
+        });
+        expect(listedModelsResponse.status).toBe(200);
+        const listedOptions = systemExecutionOptionsResponseSchema.parse(
+          await listedModelsResponse.json(),
+        );
+        expect(listedOptions.modelLoadError).toBeNull();
+        expect(listedOptions.providers).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: "acp-smoke",
+              displayName: "Smoke ACP",
+            }),
+          ]),
+        );
+        expect(listedOptions.models.map((model) => model.model)).toContain(
+          "bb-dynamic-smoke-medium",
+        );
 
-      const defaultModelsResponse = await harness.api.system[
-        "execution-options"
-      ].$get({
-        query: { hostId: harness.hostId, providerId: "acp-nomodelcli" },
-      });
-      expect(defaultModelsResponse.status).toBe(200);
-      const defaultOptions = systemExecutionOptionsResponseSchema.parse(
-        await defaultModelsResponse.json(),
-      );
-      expect(defaultOptions.modelLoadError).toBeNull();
-      expect(defaultOptions.models.map((model) => model.model)).toEqual([
-        "bb-dynamic-acp-native-default",
-        "bb-dynamic-acp-native-strong",
-      ]);
-      expect(defaultOptions.models.map((model) => model.model)).not.toEqual([
-        "acp-default",
-      ]);
+        const defaultModelsResponse = await harness.api.system[
+          "execution-options"
+        ].$get({
+          query: { hostId: harness.hostId, providerId: "acp-nomodelcli" },
+        });
+        expect(defaultModelsResponse.status).toBe(200);
+        const defaultOptions = systemExecutionOptionsResponseSchema.parse(
+          await defaultModelsResponse.json(),
+        );
+        expect(defaultOptions.modelLoadError).toBeNull();
+        expect(defaultOptions.models.map((model) => model.model)).toEqual([
+          "bb-dynamic-acp-native-default",
+          "bb-dynamic-acp-native-strong",
+        ]);
+        expect(defaultOptions.models.map((model) => model.model)).not.toEqual([
+          "acp-default",
+        ]);
 
-      const project = await createProjectFixture(harness, "Dynamic ACP Smoke");
-      const { thread: nativeThread } = await createReadyThread(harness, {
-        execution: {
-          model: "bb-dynamic-acp-native-strong",
-          reasoningLevel: "medium",
-          permissionMode: "accept-edits",
-        },
-        input: [{ type: "text", text: "native selection", mentions: [] }],
-        projectId: project.id,
-        providerId: "acp-nomodelcli",
-        workspace: {
-          type: "unmanaged",
-          path: harness.repoDir,
-        },
-      });
+        const project = await createProjectFixture(
+          harness,
+          "Dynamic ACP Smoke",
+        );
+        const { thread: nativeThread } = await createReadyThread(harness, {
+          execution: {
+            model: "bb-dynamic-acp-native-strong",
+            reasoningLevel: "medium",
+            permissionMode: "accept-edits",
+          },
+          input: [{ type: "text", text: "native selection", mentions: [] }],
+          projectId: project.id,
+          providerId: "acp-nomodelcli",
+          workspace: {
+            type: "unmanaged",
+            path: harness.repoDir,
+          },
+        });
 
-      await waitForThreadOutputContaining(
-        harness.api,
-        nativeThread.id,
-        "dynamic-acp:model=bb-dynamic-acp-native-strong:native selection",
-        TURN_TIMEOUT_MS,
-      );
+        await waitForThreadOutputContaining(
+          harness.api,
+          nativeThread.id,
+          "dynamic-acp:model=bb-dynamic-acp-native-strong:native selection",
+          TURN_TIMEOUT_MS,
+        );
 
-      const { thread } = await createReadyThread(harness, {
-        execution: {
-          model: "bb-dynamic-smoke-medium",
-          reasoningLevel: "medium",
-          permissionMode: "accept-edits",
-        },
-        input: [{ type: "text", text: "start launch spec", mentions: [] }],
-        projectId: project.id,
-        providerId: "acp-smoke",
-        workspace: {
-          type: "unmanaged",
-          path: harness.repoDir,
-        },
-      });
+        const { thread } = await createReadyThread(harness, {
+          execution: {
+            model: "bb-dynamic-smoke-medium",
+            reasoningLevel: "medium",
+            permissionMode: "accept-edits",
+          },
+          input: [{ type: "text", text: "start launch spec", mentions: [] }],
+          projectId: project.id,
+          providerId: "acp-smoke",
+          workspace: {
+            type: "unmanaged",
+            path: harness.repoDir,
+          },
+        });
 
-      await waitForThreadOutputContaining(
-        harness.api,
-        thread.id,
-        "dynamic-acp:model=bb-dynamic-smoke-medium:start launch spec",
-        TURN_TIMEOUT_MS,
-      );
+        await waitForThreadOutputContaining(
+          harness.api,
+          thread.id,
+          "dynamic-acp:model=bb-dynamic-smoke-medium:start launch spec",
+          TURN_TIMEOUT_MS,
+        );
 
-      await sendTextMessage(harness.api, thread.id, {
-        execution: {
-          model: "bb-dynamic-smoke-medium",
-          reasoningLevel: "medium",
-          permissionMode: "accept-edits",
-        },
-        text: "submit launch spec",
-      });
-      await waitForThreadOutputContaining(
-        harness.api,
-        thread.id,
-        "dynamic-acp:model=bb-dynamic-smoke-medium:submit launch spec",
-        TURN_TIMEOUT_MS,
-      );
-      await waitForThreadStatus(
-        harness.api,
-        thread.id,
-        "idle",
-        TURN_TIMEOUT_MS,
-      );
+        await sendTextMessage(harness.api, thread.id, {
+          execution: {
+            model: "bb-dynamic-smoke-medium",
+            reasoningLevel: "medium",
+            permissionMode: "accept-edits",
+          },
+          text: "submit launch spec",
+        });
+        await waitForThreadOutputContaining(
+          harness.api,
+          thread.id,
+          "dynamic-acp:model=bb-dynamic-smoke-medium:submit launch spec",
+          TURN_TIMEOUT_MS,
+        );
+        await waitForThreadStatus(
+          harness.api,
+          thread.id,
+          "idle",
+          TURN_TIMEOUT_MS,
+        );
 
-      await harness.restartDaemon("dynamic-acp-resume");
-      await waitForHostConnected(harness.api, DEFAULT_TIMEOUT_MS);
+        await harness.restartDaemon("dynamic-acp-resume");
+        await waitForHostConnected(harness.api, DEFAULT_TIMEOUT_MS);
 
-      await sendTextMessage(harness.api, thread.id, {
-        execution: {
-          model: "bb-dynamic-smoke-medium",
-          reasoningLevel: "medium",
-          permissionMode: "accept-edits",
-        },
-        text: "resume launch spec",
-      });
-      await waitForThreadOutputContaining(
-        harness.api,
-        thread.id,
-        "dynamic-acp:model=bb-dynamic-smoke-medium:resume launch spec",
-        TURN_TIMEOUT_MS,
-      );
+        await sendTextMessage(harness.api, thread.id, {
+          execution: {
+            model: "bb-dynamic-smoke-medium",
+            reasoningLevel: "medium",
+            permissionMode: "accept-edits",
+          },
+          text: "resume launch spec",
+        });
+        await waitForThreadOutputContaining(
+          harness.api,
+          thread.id,
+          "dynamic-acp:model=bb-dynamic-smoke-medium:resume launch spec",
+          TURN_TIMEOUT_MS,
+        );
 
-      const output = await getThreadOutput(harness.api, thread.id);
-      expect(output).toContain(
-        "dynamic-acp:model=bb-dynamic-smoke-medium:resume launch spec",
-      );
-    }));
+        const output = await getThreadOutput(harness.api, thread.id);
+        expect(output).toContain(
+          "dynamic-acp:model=bb-dynamic-smoke-medium:resume launch spec",
+        );
+      }),
+    DYNAMIC_ACP_TEST_TIMEOUT_MS,
+  );
 });
