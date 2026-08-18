@@ -12,6 +12,10 @@ import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 const SYNC_INTERVAL_MS = 5 * 60_000;
+// Retry cadence while the sync fails for a reason that is not a configuration
+// problem (network blip, locked keychain, slow host): start at 30 s and back
+// off to the regular sync interval.
+const SYNC_RETRY_BASE_MS = 30_000;
 const ISSUE_PAGE = 100;
 const CLOSED_ISSUE_PAGE = 50;
 const PR_PAGE = 50;
@@ -310,6 +314,13 @@ function needsConfiguration(message: string): Error {
   });
 }
 
+function isNeedsConfigurationError(error: unknown): error is Error {
+  return error instanceof Error && error.name === "NeedsConfigurationError";
+}
+
+/** gh's own wording when it holds no credentials for the host. */
+const GH_NO_CREDENTIALS = /no oauth token|not logged in/i;
+
 /** owner/name from any GitHub remote URL (https, ssh, git@), else null. */
 export function parseGithubRemote(url: string): string | null {
   const match = url
@@ -497,14 +508,36 @@ export default async function plugin(bb: BbPluginApi) {
     return stdout;
   }
 
+  // `gh auth status` calls the GitHub API, so a failure does not by itself
+  // mean gh is unconfigured. Only two outcomes are configuration problems
+  // worth latching needs-configuration on: gh missing, and gh present but
+  // holding no credentials at all (`gh auth token` answers that without the
+  // network). Anything else (network down, keychain locked, slow host,
+  // timeout) is a plain Error so callers retry instead of latching (#1758).
   async function checkAuth(): Promise<void> {
     try {
       await gh(["auth", "status"], 10_000);
       ghAuthError = null;
+      return;
     } catch (error) {
       ghAuthError = error instanceof Error ? error.message : String(error);
+      if (isNeedsConfigurationError(error)) throw error; // gh not found
+    }
+    let hasCredentials = true;
+    try {
+      await gh(["auth", "token"], 5_000);
+    } catch (error) {
+      // Only gh's own "no credentials" answer is a configuration problem; a
+      // timeout or crash of this local check counts as transient too.
+      const message = error instanceof Error ? error.message : String(error);
+      hasCredentials = !GH_NO_CREDENTIALS.test(message);
+    }
+    if (!hasCredentials) {
       throw needsConfiguration(`GitHub CLI is not authenticated. ${GH_HINT}`);
     }
+    throw new Error(
+      `gh auth status failed; gh has credentials, so this is probably transient and will be retried: ${ghAuthError}`,
+    );
   }
 
   // ------------------------------------------------------------------
@@ -727,13 +760,31 @@ export default async function plugin(bb: BbPluginApi) {
 
   // Initial sync + 5-minute refresh loop. NeedsConfigurationError from a
   // missing/unauthenticated gh flips the plugin to needs-configuration
-  // instead of crash-looping.
+  // instead of crash-looping. Any other failure (transient gh/network
+  // trouble) is retried with backoff so the service does not stop for good.
   bb.background.service("sync", {
     async start(signal) {
+      let failures = 0;
       while (!signal.aborted) {
-        await syncAll();
+        let delayMs = SYNC_INTERVAL_MS;
+        try {
+          await syncAll();
+          failures = 0;
+        } catch (error) {
+          if (isNeedsConfigurationError(error)) throw error;
+          failures += 1;
+          delayMs = Math.min(
+            SYNC_RETRY_BASE_MS * 2 ** (failures - 1),
+            SYNC_INTERVAL_MS,
+          );
+          bb.log.warn(
+            `sync failed (retry in ${Math.round(delayMs / 1000)}s): ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
         await new Promise<void>((resolve) => {
-          const timer = setTimeout(resolve, SYNC_INTERVAL_MS);
+          const timer = setTimeout(resolve, delayMs);
           signal.addEventListener(
             "abort",
             () => {
@@ -748,13 +799,16 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   // Surface an unconfigured gh immediately instead of waiting for the
-  // service's first crash.
+  // service's first crash. A transient probe failure is only logged: the
+  // sync service retries it and the status RPC re-probes on demand.
   try {
     await checkAuth();
   } catch (error) {
-    bb.status.needsConfiguration(
-      error instanceof Error ? error.message : String(error),
-    );
+    if (isNeedsConfigurationError(error)) {
+      bb.status.needsConfiguration(error.message);
+    } else {
+      bb.log.warn(error instanceof Error ? error.message : String(error));
+    }
   }
 
   // ------------------------------------------------------------------
@@ -907,6 +961,15 @@ export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(githubRpcContract, {
     /** () → auth/sync status for the panel banner. */
     async status() {
+      // Re-probe on demand after a failed probe so a recovered gh is noticed
+      // the next time the panel or CLI asks, not only on the next sync tick.
+      if (ghAuthError !== null) {
+        try {
+          await checkAuth();
+        } catch {
+          // ghAuthError already carries the failure
+        }
+      }
       const cursor = await bb.storage.kv.get<{
         lastSyncedAt: string;
         repos: number;
