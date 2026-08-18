@@ -31,6 +31,60 @@ export interface AcpPermissionToolCall {
   title?: string | undefined;
   kind?: string | undefined;
   command?: string | undefined;
+  /** Absolute paths from the ACP tool call's `locations`. */
+  locations?: readonly string[] | undefined;
+}
+
+/** ACP tool kinds whose permission is a request to change files on disk. */
+const ACP_FILE_CHANGE_TOOL_KINDS: ReadonlySet<string> = new Set([
+  "edit",
+  "delete",
+  "move",
+]);
+
+/**
+ * True when the permission is about changing files rather than running a
+ * shell command: an edit/delete/move tool, or an unclassified tool (ACP kind
+ * `other`, or no kind) that names filesystem locations. The latter is what
+ * opencode sends for its `external_directory` permission (a write outside the
+ * project): kind `other`, title = parent directory, locations = [file, dir].
+ * Anything with a shell `command` stays a command approval.
+ */
+function isAcpFileChangePermission(toolCall: AcpPermissionToolCall): boolean {
+  if (toolCall.command !== undefined) {
+    return false;
+  }
+  if (
+    toolCall.kind !== undefined &&
+    ACP_FILE_CHANGE_TOOL_KINDS.has(toolCall.kind)
+  ) {
+    return true;
+  }
+  return (
+    (toolCall.kind === undefined || toolCall.kind === "other") &&
+    (toolCall.locations?.length ?? 0) > 0
+  );
+}
+
+/**
+ * The directory boundary of a file-change permission: the location that
+ * contains every other location (opencode's `external_directory` sends
+ * `[file, parentDir]`), else the first location.
+ */
+function acpFileChangeWriteScope(
+  locations: readonly string[] | undefined,
+): string | null {
+  if (!locations || locations.length === 0) {
+    return null;
+  }
+  const root = locations.find((candidate) =>
+    locations.every(
+      (other) =>
+        other === candidate ||
+        other.startsWith(candidate.endsWith("/") ? candidate : `${candidate}/`),
+    ),
+  );
+  return toOptionalString(root ?? locations[0]) ?? null;
 }
 
 export function buildAcpApprovalDecisions(
@@ -71,6 +125,20 @@ export function buildAcpPermissionInteractionPayload(args: {
   options: readonly { kind: AcpPermissionOptionKind }[];
 }): PendingInteractionPayload {
   const toolCall = args.toolCall;
+  const availableDecisions = buildAcpApprovalDecisions(args.options);
+  if (toolCall && isAcpFileChangePermission(toolCall)) {
+    return {
+      kind: "approval",
+      subject: {
+        kind: "file_change",
+        itemId: toolCall.toolCallId,
+        writeScope: acpFileChangeWriteScope(toolCall.locations),
+        sessionGrant: null,
+      },
+      reason: null,
+      availableDecisions,
+    };
+  }
   const command = toolCall
     ? buildOpaqueAcpPermissionCommand(toolCall)
     : "ACP permission request";
@@ -85,7 +153,7 @@ export function buildAcpPermissionInteractionPayload(args: {
       sessionGrant: null,
     },
     reason: null,
-    availableDecisions: buildAcpApprovalDecisions(args.options),
+    availableDecisions,
   };
 }
 

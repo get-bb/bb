@@ -1376,6 +1376,9 @@ function handlePermissionRequest(
         ...(rawInputCommand.success
           ? { command: rawInputCommand.data.command }
           : {}),
+        ...(toolCall.locations && toolCall.locations.length > 0
+          ? { locations: toolCall.locations.map((location) => location.path) }
+          : {}),
       }
     : undefined;
 

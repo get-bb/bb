@@ -113,3 +113,83 @@ describe("buildAcpApprovalDecisions", () => {
     expect(buildAcpApprovalDecisions([])).toEqual(["deny"]);
   });
 });
+
+// Fix for get-bb/bb#1719: an ACP `session/request_permission` for a file
+// write must surface as a file-change approval subject, not as a command
+// approval whose "command" is a bare path. Two shapes opencode sends:
+//   1. `write`/`edit` permission: kind "edit", title = file path,
+//      locations = [file], no `command`.
+//   2. `external_directory` permission (write outside the project): kind
+//      "other", title = parentDir (a bare directory), locations = [file,
+//      parentDir], no `command`.
+describe("buildAcpPermissionInteractionPayload file-change subjects", () => {
+  it("classifies an edit-kind permission without a command as a file_change subject", () => {
+    const payload = buildAcpPermissionInteractionPayload({
+      toolCall: {
+        toolCallId: "write-tool-1",
+        title: "/tmp/qa-1719/notes.md",
+        kind: "edit",
+        locations: ["/tmp/qa-1719/notes.md"],
+      },
+      options: allowDenyOptions,
+    });
+
+    expect(payload).toMatchObject({
+      kind: "approval",
+      subject: {
+        kind: "file_change",
+        itemId: "write-tool-1",
+        writeScope: "/tmp/qa-1719/notes.md",
+        sessionGrant: null,
+      },
+    });
+  });
+
+  it("classifies an unclassified permission that names locations as a file_change subject with the containing directory as write scope", () => {
+    const payload = buildAcpPermissionInteractionPayload({
+      toolCall: {
+        toolCallId: "write-tool-1",
+        title: "/tmp/qa-1719",
+        kind: "other",
+        locations: ["/tmp/qa-1719/notes.md", "/tmp/qa-1719"],
+      },
+      options: allowDenyOptions,
+    });
+
+    expect(payload).toMatchObject({
+      subject: {
+        kind: "file_change",
+        itemId: "write-tool-1",
+        writeScope: "/tmp/qa-1719",
+      },
+    });
+  });
+
+  it("keeps an edit-kind permission without locations as a file_change subject with a null write scope", () => {
+    const payload = buildAcpPermissionInteractionPayload({
+      toolCall: { toolCallId: "write-tool-2", title: "notes.md", kind: "edit" },
+      options: allowDenyOptions,
+    });
+
+    expect(payload).toMatchObject({
+      subject: { kind: "file_change", itemId: "write-tool-2", writeScope: null },
+    });
+  });
+
+  it("keeps a permission that carries a shell command as a command subject", () => {
+    const payload = buildAcpPermissionInteractionPayload({
+      toolCall: {
+        toolCallId: "call-5",
+        title: "/tmp/qa-1719",
+        kind: "other",
+        command: "rm -rf /tmp/qa-1719",
+        locations: ["/tmp/qa-1719"],
+      },
+      options: allowDenyOptions,
+    });
+
+    expect(payload).toMatchObject({
+      subject: { kind: "command", command: "rm -rf /tmp/qa-1719" },
+    });
+  });
+});
