@@ -112,7 +112,12 @@ interface OpenSideChatArgs {
   sourceThreadId: string;
   anchorText: string;
   sourceSeqEnd: number | null;
-  openPanel(options: { title: string; params: SideChatPanelParams }): unknown;
+  /**
+   * Both call sites' `openPanel` narrowed to what this helper needs. Every
+   * SDK `openPanel` returns whether the host accepted the open, so the two
+   * action kinds share one signature here.
+   */
+  openPanel(options: { title: string; params: SideChatPanelParams }): boolean;
 }
 
 /**
@@ -174,7 +179,7 @@ async function createAndOpenSideChat({
     );
     throw error;
   }
-  openPanel({
+  const opened = openPanel({
     title: PANEL_TAB_TITLE,
     params: {
       threadId,
@@ -183,6 +188,18 @@ async function createAndOpenSideChat({
       sourceSeqEnd,
     },
   });
+  if (!opened) {
+    // The host declines when the invoking surface has no side panel to open
+    // into — "Reply in side chat" also renders inside a side chat's own
+    // embedded ThreadChat, which has nowhere to put a tab. Without this the
+    // fork above is created and the user sees nothing at all.
+    //
+    // The fork is left to the server's hourly empty-fork sweep rather than
+    // discarded here: it was created idle, so it is exactly the empty,
+    // never-replied-to fork that sweep already archives (see server.ts). A
+    // dedicated discard RPC would duplicate that policy.
+    toast.error("Side chats can only be started from the main thread view.");
+  }
 }
 
 function ReplyingTo({ anchorText }: { anchorText: string }) {

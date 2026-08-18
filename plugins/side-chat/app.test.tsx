@@ -5,6 +5,17 @@ import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
+// Toasts are the plugin's only channel for a failure the host contains (a
+// declined openPanel), so they are captured rather than rendered.
+const { toastErrors } = vi.hoisted(() => ({ toastErrors: [] as string[] }));
+vi.mock("sonner", () => ({
+  toast: {
+    error: (message: string) => {
+      toastErrors.push(message);
+    },
+  },
+}));
+
 // Load through the thunk so the test runtime is installed before app.tsx
 // binds `definePluginApp`; pull the pure helpers from the same evaluation.
 const app = await loadPluginApp(() => import("./app"));
@@ -13,6 +24,7 @@ const { parsePanelParams } = await import("./app");
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  toastErrors.length = 0;
 });
 
 function stubRpcFetch(
@@ -157,6 +169,33 @@ describe("reply-in-side-chat message action", () => {
     // Settled: a later deliberate re-open is a fresh flight again.
     await app.messageActions[0]!.run(context);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports a declined open instead of stranding the fork silently", async () => {
+    // A surface with no side panel (the embedded ThreadChat inside a side
+    // chat's own panel) declines the open. The fork RPC has already run by
+    // then, so the only thing that keeps this from being a silent no-op is
+    // the plugin reading openPanel's boolean.
+    const fetchMock = stubRpcFetch(() => ({ threadId: "thr_fork" }));
+    const openPanel = vi.fn(() => false);
+
+    await app.messageActions[0]!.run({
+      threadId: "thr_src",
+      message: {
+        id: "msg_declined",
+        threadId: "thr_src",
+        role: "assistant",
+        text: "declined open",
+        sourceSeqEnd: 3,
+      },
+      openPanel,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(openPanel).toHaveBeenCalledTimes(1);
+    expect(toastErrors).toEqual([
+      "Side chats can only be started from the main thread view.",
+    ]);
   });
 
   it("anchors on the selection when invoked from the selection menu", async () => {
