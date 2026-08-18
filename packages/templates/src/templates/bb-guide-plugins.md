@@ -324,7 +324,7 @@ to the bundled copy and update automatically when the BB app updates.
 The BB Community marketplace (reserved name `bb-community`) lists reviewed
 plugins that live outside the app bundle. bb reads its manifest from
 https://getbb.app/marketplace/v1/marketplace.json (override the URL with
-BB_MARKETPLACE_URL) at startup and every six hours, with a conditional
+BB_MARKETPLACE_URL) at startup and every two hours, with a conditional
 request. bb stores the last catalog it validated: an unreachable server or an
 invalid manifest keeps that catalog, and the app bundles a seed snapshot for
 a first run with no network. A refresh updates discovery metadata and icons

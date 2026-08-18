@@ -70,7 +70,7 @@ import {
 import { BUNDLED_CURATED_MARKETPLACE } from "./curated-marketplace.js";
 import { marketplacePublisherLabel } from "./marketplace-publishers.js";
 
-const MARKETPLACE_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1_000;
+const MARKETPLACE_REFRESH_INTERVAL_MS = 2 * 60 * 60 * 1_000;
 
 interface PluginCatalogIcon {
   bytes: Buffer;
