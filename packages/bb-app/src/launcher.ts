@@ -2040,6 +2040,10 @@ function requiredArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
       label: "parcel watcher child",
       path: join(context.daemonBundleDir, "bb-parcel-watcher-child.mjs"),
     },
+    {
+      label: "plugin host worker",
+      path: join(context.daemonBundleDir, "bb-plugin-host-worker.mjs"),
+    },
     { label: "web app", path: join(context.appDistDir, "index.html") },
   ];
 }

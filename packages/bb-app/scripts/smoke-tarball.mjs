@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { fork, spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import {
   mkdir,
@@ -358,12 +358,7 @@ function spawnPackedBridge({ bridgePath, packageDir, pluginId }) {
   return spawn(
     process.execPath,
     [
-      join(
-        packageDir,
-        "host-daemon",
-        "dist",
-        "bb-provider-bridge-worker.mjs",
-      ),
+      join(packageDir, "host-daemon", "dist", "bb-provider-bridge-worker.mjs"),
       bridgePath,
       pluginId,
       dataDir,
@@ -505,6 +500,87 @@ async function smokeProviderBridgeBundles(packageDir) {
   });
 }
 
+// The daemon forks bb-plugin-host-worker.mjs (a sibling of daemon-bundle.mjs)
+// for every plugin `bb.host` entry. The published package must ship it, and
+// it must load a packed builtin host artifact and report ready over IPC;
+// otherwise every host plugin call fails with "host plugin worker exited (1)".
+async function smokePluginHostWorkerBundle(packageDir) {
+  const workerPath = join(
+    packageDir,
+    "host-daemon",
+    "dist",
+    "bb-plugin-host-worker.mjs",
+  );
+  const artifactPath = join(
+    packageDir,
+    "server",
+    "dist",
+    "builtin-plugins",
+    "keep-awake",
+    "dist",
+    "host.js",
+  );
+  const dataDir = join(tempRoot, "plugin-host-worker", "data");
+  const workerTempDir = join(tempRoot, "plugin-host-worker", "tmp");
+  mkdirSync(dataDir, { recursive: true });
+  mkdirSync(workerTempDir, { recursive: true });
+  const generation = "smoke-generation";
+  const childProcess = fork(
+    workerPath,
+    [artifactPath, "keep-awake", generation, dataDir, workerTempDir],
+    { cwd: tempRoot, stdio: ["ignore", "ignore", "pipe", "ipc"] },
+  );
+  const output = collectProcessOutput(childProcess);
+  const exited = waitForProcessExit(childProcess);
+  const ready = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error("plugin host worker did not report ready in time"));
+    }, BRIDGE_WAIT_TIMEOUT_MS);
+    childProcess.on("message", (message) => {
+      if (!isRecord(message)) return;
+      if (message.type === "ready") {
+        clearTimeout(timer);
+        resolve(message);
+      } else if (message.type === "startup-error") {
+        clearTimeout(timer);
+        reject(new Error(`plugin host worker startup error: ${message.error}`));
+      }
+    });
+    void exited.then((result) => {
+      clearTimeout(timer);
+      reject(
+        new Error(
+          `plugin host worker exited before ready (${result.code ?? result.signal})`,
+        ),
+      );
+    });
+  });
+  try {
+    const message = await ready;
+    if (
+      message.pluginId !== "keep-awake" ||
+      message.generation !== generation
+    ) {
+      throw new Error(
+        `plugin host worker reported an unexpected identity: ${JSON.stringify(message)}`,
+      );
+    }
+    childProcess.disconnect();
+    const result = await exited;
+    if (result.code !== 0) {
+      throw new Error(
+        `plugin host worker exited with ${result.code ?? result.signal} after disconnect`,
+      );
+    }
+    process.stdout.write("bb-app tarball smoke: plugin host worker ready\n");
+  } catch (error) {
+    if (childProcess.exitCode === null) childProcess.kill("SIGKILL");
+    throw new Error(
+      `${error instanceof Error ? error.message : String(error)}\n${formatProcessOutput(output)}`,
+    );
+  }
+}
+
 function collectJsonRpcMessages({ childProcess, onMessage }) {
   const messages = [];
   let buffer = "";
@@ -632,12 +708,7 @@ async function smokePiUserConfiguration(packageDir) {
   const childProcess = spawn(
     process.execPath,
     [
-      join(
-        packageDir,
-        "host-daemon",
-        "dist",
-        "bb-provider-bridge-worker.mjs",
-      ),
+      join(packageDir, "host-daemon", "dist", "bb-provider-bridge-worker.mjs"),
       bridgePath,
       "provider-pi",
       maintenanceDir,
@@ -1134,6 +1205,7 @@ try {
   const sdkDir = await smokeSdkPackage(tarballPath);
   const installedPackageDir = join(sdkDir, "node_modules", "bb-app");
   await smokeProviderBridgeBundles(installedPackageDir);
+  await smokePluginHostWorkerBundle(installedPackageDir);
   await smokePiUserConfiguration(installedPackageDir);
   await smokeFullStack(tarballPath, sdkDir);
   await smokeDaemonJoin(tarballPath);
