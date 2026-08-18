@@ -197,6 +197,68 @@ describe("task attachments", () => {
     }
   });
 
+  it("percent-encodes every non attr-char in filename* (RFC 5987)", async () => {
+    const { harness, task } = setup();
+    try {
+      // encodeURIComponent keeps ( ) and ', which RFC 5987 excludes from attr-char.
+      const name = "\u5831\u544a (final)'.txt";
+      const uploaded = await upload(
+        harness,
+        task.id,
+        new TextEncoder().encode("hello"),
+        name,
+        "text/plain",
+      );
+      const { attachmentId } = (await uploaded.json()) as {
+        attachmentId: string;
+      };
+      const response = await harness.fetchHttp(
+        "GET",
+        `/attachments/download?attachmentId=${attachmentId}`,
+      );
+
+      expect(response.status).toBe(200);
+      const disposition = response.headers.get("content-disposition");
+      expect(disposition).toBe(
+        `attachment; filename="-- (final)'.txt"; filename*=UTF-8''%E5%A0%B1%E5%91%8A%20%28final%29%27.txt`,
+      );
+      const extValue = disposition?.split("filename*=UTF-8''")[1] ?? "";
+      expect(extValue).toMatch(/^(?:[A-Za-z0-9!#$&+\-.^_`|~]|%[0-9A-F]{2})*$/);
+      expect(decodeURIComponent(extValue)).toBe(name);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("strips Unicode bidirectional controls that could spoof the extension", async () => {
+    const { harness, store, task } = setup();
+    try {
+      // RIGHT-TO-LEFT OVERRIDE makes "photo<RLO>gnp.exe" render as "photoexe.png".
+      const uploaded = await upload(
+        harness,
+        task.id,
+        new TextEncoder().encode("hello"),
+        "photo\u202egnp.exe",
+        "application/octet-stream",
+      );
+      const { attachmentId } = (await uploaded.json()) as {
+        attachmentId: string;
+      };
+      expect(store.getAttachment(attachmentId)?.fileName).toBe("photo_gnp.exe");
+      const response = await harness.fetchHttp(
+        "GET",
+        `/attachments/download?attachmentId=${attachmentId}`,
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-disposition")).toBe(
+        `attachment; filename="photo_gnp.exe"; filename*=UTF-8''photo_gnp.exe`,
+      );
+    } finally {
+      await harness.dispose();
+    }
+  });
+
   it("forces SVG downloads and never marks them as embeddable images", async () => {
     const { harness, store, task } = setup();
     try {

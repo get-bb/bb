@@ -162,12 +162,35 @@ function buildContentDisposition(
   disposition: "inline" | "attachment",
   fileName: string,
 ): string {
-  const asciiFallback = fileName
+  const visibleName = fileName.replace(BIDI_CONTROL_PATTERN, "_");
+  const asciiFallback = visibleName
     .replace(/[^\x20-\x7e]/g, "-")
     .replace(/["\\]/g, "_");
-  const encodedName = encodeURIComponent(fileName).replaceAll("'", "%27");
-  return `${disposition}; filename="${asciiFallback}"; filename*=UTF-8''${encodedName}`;
+  return `${disposition}; filename="${asciiFallback}"; filename*=UTF-8''${encodeExtValue(visibleName)}`;
 }
+
+/**
+ * RFC 5987 `attr-char`: ALPHA / DIGIT / ! # $ & + - . ^ _ ` | ~. Every other
+ * byte of the UTF-8 encoding is percent-encoded. `encodeURIComponent` alone
+ * keeps `* ' ( )`, which strict parsers reject inside `filename*`.
+ */
+function encodeExtValue(value: string): string {
+  let encoded = "";
+  for (const byte of Buffer.from(value, "utf8")) {
+    const char = String.fromCharCode(byte);
+    encoded += /[A-Za-z0-9!#$&+\-.^_`|~]/.test(char)
+      ? char
+      : `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
+  }
+  return encoded;
+}
+
+/**
+ * Unicode bidirectional controls (LRM/RLM, ALM, LRE..RLO, LRI..PDI) can make a
+ * name such as `photo<RLO>gnp.exe` render as `photoexe.png` and hide the real
+ * extension. They become `_` in stored names and in download headers.
+ */
+const BIDI_CONTROL_PATTERN = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
 
 function sanitizeFileName(fileName: string): string {
   const baseName = fileName
@@ -178,6 +201,7 @@ function sanitizeFileName(fileName: string): string {
     ?.trim();
   let sanitized = (baseName ?? "")
     .replace(/[\u0000-\u001f\u007f<>:"/\\|?*]/g, "_")
+    .replace(BIDI_CONTROL_PATTERN, "_")
     .replace(/^\.+/, "")
     .trim();
   while (Buffer.byteLength(sanitized, "utf8") > 180) {

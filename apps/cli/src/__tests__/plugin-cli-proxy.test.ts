@@ -21,6 +21,7 @@ import {
   findDisabledPluginForCommand,
   findPluginCliCommand,
   pluginProxyCandidate,
+  PLUGIN_CLI_HEADERS_TIMEOUT_MS,
   runPluginCliCommand,
   type PluginCliContributionEntry,
 } from "../plugin-cli-proxy.js";
@@ -562,8 +563,9 @@ describe("runPluginCliCommand", () => {
   // while a human fills the form. Node's default undici headersTimeout
   // (300 s) rejected that fetch with a bare "fetch failed" and the server
   // then aborted the interaction. The plugin dispatch must not inherit the
-  // global headers timeout. The timeout is scaled down here (undici timers
-  // have ~1 s granularity) so the test finishes in seconds, not minutes.
+  // global headers timeout, but it keeps its own finite deadline above the
+  // longest server interaction. The global timeout is scaled down here
+  // (undici timers have ~1 s granularity) so the test finishes in seconds.
   it("outlives the global fetch headers timeout while a plugin command waits on a human", async () => {
     const RESPONSE_DELAY_MS = 1500;
     const server: Server = createServer((request, response) => {
@@ -610,6 +612,12 @@ describe("runPluginCliCommand", () => {
 
       expect(exitCode).toBe(0);
       expect(writes).toEqual(["POST /api/v1/plugins/secrets/cli\n"]);
+      // Finite, and above ui.requestInput's 60-minute maximum so the server's
+      // interaction deadline (which resolves the form cleanly) fires first.
+      expect(PLUGIN_CLI_HEADERS_TIMEOUT_MS).toBeGreaterThan(60 * 60 * 1000);
+      expect(PLUGIN_CLI_HEADERS_TIMEOUT_MS).toBeLessThanOrEqual(
+        2 * 60 * 60 * 1000,
+      );
     } finally {
       setGlobalDispatcher(previousDispatcher);
       await new Promise<void>((resolve) => server.close(() => resolve()));

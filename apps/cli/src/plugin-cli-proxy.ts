@@ -386,15 +386,18 @@ async function writePluginCliOutput(
  * form is submitted, up to the 10-minute interaction timeout) can therefore
  * outlive Node's default undici `headersTimeout` of 300 s, which rejects the
  * fetch with a bare "fetch failed" and aborts the interaction server-side.
- * Dispatch these calls without a headers timeout: the server's own interaction
- * and command timeouts bound the wait, and a closed socket still rejects.
- * undici is imported lazily so built-in `bb` commands do not pay its startup
- * cost.
+ * Dispatch these calls with a headers timeout above the server's longest
+ * interaction (`ui.requestInput` allows at most 60 minutes), so the server's
+ * own deadline decides first, but keep it finite: the server has no general
+ * plugin-command deadline, and a plugin that never resolves must not hold the
+ * CLI process and its socket forever. undici is imported lazily so built-in
+ * `bb` commands do not pay its startup cost.
  */
+export const PLUGIN_CLI_HEADERS_TIMEOUT_MS = 65 * 60 * 1000;
 let pluginCliDispatcher: Promise<Dispatcher> | undefined;
 function getPluginCliDispatcher(): Promise<Dispatcher> {
   pluginCliDispatcher ??= import("undici").then(
-    ({ Agent }) => new Agent({ headersTimeout: 0 }),
+    ({ Agent }) => new Agent({ headersTimeout: PLUGIN_CLI_HEADERS_TIMEOUT_MS }),
   );
   return pluginCliDispatcher;
 }
