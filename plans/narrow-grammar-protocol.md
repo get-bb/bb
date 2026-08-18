@@ -95,11 +95,13 @@ the session transcript)
   right statuses (what interrupt/replacement/child-exit handlers fabricate by
   hand today).
 
-Out of scope for the prototype, designed-for: claude background tasks ride a
-named per-provider assembly extension (the task fold/throttle/generation
-machine becomes an assembler plugin claude's bridge configures — not grammar);
-codex's zero-work settlement stays bridge-side (it is command-plane + timer
-and emits an ordinary `turn.open`+`boundary` pair when it fires).
+Out of scope for the prototype, designed-for: claude background tasks were
+sketched as a named per-provider assembly extension; the claude conversion
+resolved this WITHOUT one (generic `backgroundTask` grammar + central
+progress throttling; the fold/generation/blocking machine stayed bridge-side
+— see the claude results section). Codex's zero-work settlement stays
+bridge-side (it is command-plane + timer and emits an ordinary
+`turn.open`+`boundary` pair when it fires).
 
 ## Ownership map after the revision
 
@@ -134,9 +136,10 @@ and emits an ordinary `turn.open`+`boundary` pair when it fires).
    its internal envelopes map ~1:1), claude (task extension design), codex
    (mostly renaming its native passthrough).
 
-## Migration order (adopted; acp + codex converted 2026-08-18)
+## Migration order (adopted; acp + codex + claude converted 2026-08-18)
 
-acp ✓ → codex ✓ → claude (task extension lands with it) → delete the kit's
+acp ✓ → codex ✓ → claude ✓ (no task extension was needed — see the claude
+results) → delete the kit's
 turn-state/scoped-ids/accepted-messages/constructor surface from the SDK →
 protocol version bump + conformance kit rewritten around delta
 well-formedness. Sequenced before session-mode so the transport carries the
@@ -446,12 +449,125 @@ assembler regression check; @bb/server typecheck untouched-green.
   `session/replaced` are otherwise unchanged, with deltas in place of
   events.
 
-### Assessed conversion cost (remaining)
-- **claude — highest.** The background-task machine (fold/throttle/
-  generation, completion-blocking tasks that *withhold* the turn boundary)
-  is real design work: the grammar has no `backgroundTask` item shape and
-  the planned per-provider assembler extension does not exist yet. Everything
-  else (queued acceptance, provider-final text, usage) maps directly.
+## Claude conversion results (2026-08-18, stage 4 of the cutover)
+
+Converted with **no per-provider assembler extension** — the decomposition
+verdict on the "task extension" sketched in the prototype plan: the
+background-task machine split cleanly into claude dialect (bridge) and
+generic grammar/assembler behavior, so the named assembler plugin was never
+built. All 259 claude plugin tests pass on the new path (the ported
+event-translation base/tool-call/usage shards and the task suite driving the
+same fixtures through deltas + a real assembler; the bridge suite; the
+scripted-session calibration golden — **byte-identical event stream** —; and
+the full conformance run). Regression: provider-bridge-protocol,
+agent-runtime (incl. pi), acp, codex, plugin-sdk all green; @bb/server
+typecheck untouched-green.
+
+### The decomposition (bridge dialect vs. generic grammar/assembler)
+
+- **Bridge-side (claude dialect, `delta-translation.ts` +
+  `task-translation.ts`):** the per-index workflow snapshot fold across
+  delta batches, opaque-task tracking, generation counting (a restarted
+  settled task is a NEW provider item key `task:<taskId>#<generation>`), the
+  completion-blocking decision (while blocking tasks are open the bridge
+  WITHHOLDS `turn.boundary` when claude's `result` arrives; the boundary is
+  emitted when the last blocking task settles because the reinvoked model's
+  next result finds no blockers), interruption settlement (interrupt /
+  session replacement / stream end drain the task map into explicit
+  `item.close` deltas with last-known-finished-else-stopped statuses, after
+  the `turn.boundary {interrupted}`), the armed hard rate-limit rejection,
+  the compaction stale-turn guard, model-fallback dedup, the started-tool
+  shape cache (USER-message tool results omit args; uniform close rule), the
+  root-lineage checkpoint latch, and the model→context-window hint.
+- **Grammar additions (generic, mirroring today's canonical output):** a
+  `backgroundTask` item shape (the full snapshot re-embedded per event),
+  `item.progress.snapshot` + `item.progress.flush`, `provider.modelFallback`
+  (currentOrLast-else-thread scoping), `webFetch.prompt`, and
+  webSearch/webFetch closes honoring the generic `resultText` close field.
+- **Assembler additions (generic, every provider gets them):** central
+  progress-event throttling — one emission per item key per policy interval
+  (constructor option, 500ms default, exactly the cadence claude hand-rolled),
+  seeded at `item.open`, `flush` bypasses and resets the window, `item.close`
+  always emits and supersedes pending progress; background-task family
+  events; thread-attached open items survive turn settlement AND
+  `session.ended` settlement (their lifecycle is provider-owned — bridges
+  drain them explicitly); and the LRU eviction guard now pins threads with
+  open items or open turns (replacing the old `isEvictable` hook — the old
+  opaque-task pinning protected bridge-side state that now lives in the
+  bridge's own per-session translator, so nothing assembler-side needs it).
+
+### The turn mirror (how per-turn dialect decisions survive without bb ids)
+
+The old translator compared bb turn ids for the armed rejection, fallback
+dedup, the compaction guard, the synthetic no-response rule, and
+`resolveProviderTerminalTurn`. The bridge now keys those off a deterministic
+MIRROR of the assembler's current-turn machine: since turn opening/closing is
+decided ONLY by deltas the bridge itself emits (`turn.open`, `turn.boundary`,
+`input.accepted`, settling errors — item/stream deltas never open turns), the
+bridge replays those transitions locally (turnOpen / pendingInputs / a
+segment counter standing in for the turn id). Old `ensureTurnStarted` call
+sites became explicit `turn.open` deltas (idempotent in the assembler);
+`resolveProviderTerminalTurn` became "emit nothing when the mirror says idle
+with no pending input, else `turn.open` first" — reproducing the claim's
+event order (turn/started, accepted, contextWindow, usage, error?, boundary)
+exactly.
+
+### Line deltas
+
+- Claude translator: `event-translation.ts` 1,633 → `delta-translation.ts`
+  1,496 (−137); `task-translation.ts` 480 → 467 (its throttle clock and
+  event construction left; the fold stayed); `sdk-extraction.ts` 393 → 383
+  (cumulative accumulation moved to the assembler; the bridge reports the
+  per-segment usage on `usage.turn`).
+- Claude bridge: `bridge/bridge.ts` 2,683 → 2,609 (−74): the per-session
+  translator entropy, the thread-event emission layer, the accepted-message
+  queue dance, and the hand-built interrupt/replacement settlement collapsed
+  into delta emissions (`acceptInput`, `buildSessionSettlementDeltas`,
+  `session.reset` at each construction).
+- Grammar/schema/assembler growth for claude: `thread-delta.ts` 502 → 558,
+  `delta-assembler.ts` 1,618 → 1,864 (throttle policy, backgroundTask
+  construction/scoping, thread-attached retention, eviction guard).
+
+### How the notable claude behaviors mapped
+
+- **Multi-segment turns / cumulative usage:** claude's per-segment result
+  usage rides `usage.turn`; the assembler's per-thread accumulation
+  reproduces the old translator's cumulative totals exactly (both reset per
+  provider session — the bridge emits `session.reset` at every construction,
+  matching the old fresh-translator-per-session behavior).
+- **Background-task scoping:** no `attach: "thread"` knob was added. The
+  domain grammar already makes `item/backgroundTask/progress`/`completed`
+  structurally thread-scoped and `item/started` turn-scoped, so the
+  assembler derives the scope from the item family — today's exact scoping
+  (spawning turn places the item; progress/terminal are thread-scoped and
+  need no open turn) with no ignorable flag.
+- **Interaction requests:** the bridge sends `turnId: null` +
+  `providerNativeIds: true`; the runtime resolves the active turn (the ACP
+  mechanism) and remaps the approval subject's claude tool-use id onto the
+  assembler-minted timeline item id (the codex mechanism).
+- **Session lifecycle:** interrupt/replacement/stream-end settle via an
+  unkeyed `turn.boundary {interrupted}` + the explicit task drain — NOT
+  `session.ended` — mirroring codex's recorded deviation: generic
+  session-ended settlement would add item/completed events for open tool
+  items that old claude deliberately left dangling on interrupt.
+
+### Behavior deviations (claude)
+
+- **Trailing-edge throttle flushes only on later thread traffic.** The
+  assembler seam is synchronous (no timers), so a suppressed progress
+  snapshot lands ahead of the thread's next delta batch once its window
+  elapses; a newer progress or the close supersedes it. Old claude simply
+  dropped suppressed snapshots (safe because they are cumulative and the
+  terminal event carries final state) — the new behavior is a superset that
+  can emit one late progress event old claude never emitted.
+- **Unstreamed assistant completions no longer reuse claude's message id.**
+  The old translator used the provider message id (`msg_…`) as the completed
+  agentMessage item id when no stream had opened; ids are assembler-minted
+  now (ids-by-shape, consistent with the other conversions).
+- The old translator-level `buildErrorEvents` fabricated a failed turn even
+  on an idle thread when given a thread id; the delta translator reproduces
+  that (turn.open + settling error) and the bridge keeps gating it on an
+  open mirror turn, so wire behavior is unchanged.
 
 ## Open questions for Michael
 
