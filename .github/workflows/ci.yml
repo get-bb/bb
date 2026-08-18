@@ -25,6 +25,13 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
 
+    # `actions: read` is what lets the cache-usage check call the Actions API;
+    # checkout needs `contents: read`. The check degrades to a skip without
+    # them, so this only makes the reporting reliable.
+    permissions:
+      contents: read
+      actions: read
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -63,6 +70,14 @@ jobs:
       # which typecheck and lint cannot see.
       - name: Check app boot-payload budget
         run: node apps/app/scripts/check-bundle-budget.mjs
+
+      # Exceeding the Actions cache quota is silent: GitHub evicts entries
+      # without failing or warning anything, so the only symptom is caches
+      # quietly ceasing to hit. Warn while there is still headroom.
+      - name: Check Actions cache usage
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/check-actions-cache-usage.mjs
 
   # Tests run on their own runners instead of inside the checks job: the big
   # suites are CPU-bound and previously fought each other (and the builds) for
