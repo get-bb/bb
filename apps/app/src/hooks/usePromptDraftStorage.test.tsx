@@ -3,6 +3,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  getPromptDraftAccessor,
   usePromptDraftInputThreadIds,
   usePromptDraftStorage,
 } from "./usePromptDraftStorage";
@@ -128,6 +129,18 @@ describe("usePromptDraftStorage", () => {
 });
 
 describe("usePromptDraftStorage addQuote", () => {
+  it("shares accessor writes with the subscribed composer state", () => {
+    const scope = uniqueScope();
+    const accessor = getPromptDraftAccessor(scope);
+    const subscribed = renderHook(() => usePromptDraftStorage(scope));
+
+    act(() => accessor.addQuote("shared selection"));
+
+    expect(accessor.getCurrent().text).toBe("> shared selection\n");
+    expect(subscribed.result.current.text).toBe("> shared selection\n");
+    expect(accessor.storageKey).toBe(subscribed.result.current.storageKey);
+  });
+
   it("appends a trimmed quote as a '> ' block to the draft text and persists", () => {
     const scope = uniqueScope();
     const { result } = renderHook(() => usePromptDraftStorage(scope));

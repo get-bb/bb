@@ -244,62 +244,52 @@ function getPromptDraftStorageKey(scope: PromptDraftScope): string {
 /**
  * Imperative access to a scope's stored draft without subscribing to it.
  *
- * For components that only need to read or replace the draft at event time
- * (e.g. the browse hero seeding the composer): `usePromptDraftStorage` is a
- * `useSyncExternalStore` subscription, so it re-renders its caller on every
- * keystroke a mounted composer writes — pure waste when the caller never
- * renders the draft.
+ * For components that only interact with the draft at event time (e.g. the
+ * browse hero seeding the composer or a timeline action adding a quote):
+ * `usePromptDraftStorage` is a `useSyncExternalStore` subscription, so it
+ * re-renders its caller on every keystroke a mounted composer writes — pure
+ * waste when the caller never renders the draft.
  */
-export function getPromptDraftAccessor(scope: PromptDraftScope): {
+interface PromptDraftAccessor {
+  storageKey: string;
   getCurrent: () => PromptDraftState;
   setDraft: (draft: PromptDraftState) => void;
-} {
-  const storageKey = getPromptDraftStorageKey(scope);
-  return {
-    getCurrent: () => readPromptDraft(storageKey),
-    setDraft: (draft) => writePromptDraft(storageKey, draft),
-  };
+  setTextAndMentions: (text: string, mentions: PromptTextMention[]) => void;
+  setAttachments: (attachments: PromptDraftAttachment[]) => void;
+  addAttachment: (attachment: PromptDraftAttachment) => void;
+  removeAttachment: (path: string) => void;
+  addQuote: (
+    text: string,
+    attachments?: readonly PromptDraftAttachment[],
+  ) => void;
+  clear: () => void;
+  clearIfCurrentMatches: (expectedDraft: PromptDraftState) => boolean;
+  restoreIfEmpty: (draft: PromptDraftState) => void;
 }
 
-export function usePromptDraftStorage(scope: PromptDraftScope) {
-  const storageKey = getPromptDraftStorageKey(scope);
-  const draft = useSyncExternalStore(
-    useCallback(
-      (listener) => subscribePromptDraft(storageKey, listener),
-      [storageKey],
-    ),
-    useCallback(() => readPromptDraft(storageKey), [storageKey]),
-    () => EMPTY_PROMPT_DRAFT,
-  );
-
-  const setDraftAndPersist = useCallback(
-    (nextDraft: PromptDraftState) => {
-      writePromptDraft(storageKey, nextDraft);
-    },
-    [storageKey],
-  );
-
-  const getCurrent = useCallback((): PromptDraftState => {
-    return readPromptDraft(storageKey);
-  }, [storageKey]);
-
-  const setTextAndMentions = useCallback(
-    (nextText: string, nextMentions: PromptTextMention[]) => {
+function createPromptDraftAccessor(storageKey: string): PromptDraftAccessor {
+  return {
+    storageKey,
+    getCurrent: () => readPromptDraft(storageKey),
+    setDraft: (draft) => writePromptDraft(storageKey, draft),
+    setTextAndMentions: (text, mentions) => {
       writePromptDraft(
         storageKey,
         {
           ...readPromptDraft(storageKey),
-          text: nextText,
-          mentions: nextMentions,
+          text,
+          mentions,
         },
         { persist: "deferred" },
       );
     },
-    [storageKey],
-  );
-
-  const addAttachment = useCallback(
-    (attachment: PromptDraftAttachment) => {
+    setAttachments: (attachments) => {
+      writePromptDraft(storageKey, {
+        ...readPromptDraft(storageKey),
+        attachments,
+      });
+    },
+    addAttachment: (attachment) => {
       const currentDraft = readPromptDraft(storageKey);
       const alreadyExists = currentDraft.attachments.some(
         (existingAttachment) => existingAttachment.path === attachment.path,
@@ -311,29 +301,19 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
         attachments: [...currentDraft.attachments, attachment],
       });
     },
-    [storageKey],
-  );
-
-  const removeAttachment = useCallback(
-    (path: string) => {
+    removeAttachment: (path) => {
       const currentDraft = readPromptDraft(storageKey);
       const nextAttachments = currentDraft.attachments.filter(
         (attachment) => attachment.path !== path,
       );
-      if (nextAttachments.length === currentDraft.attachments.length) {
-        return;
-      }
+      if (nextAttachments.length === currentDraft.attachments.length) return;
 
       writePromptDraft(storageKey, {
         ...currentDraft,
         attachments: nextAttachments,
       });
     },
-    [storageKey],
-  );
-
-  const addQuote = useCallback(
-    (text: string, attachments: readonly PromptDraftAttachment[] = []) => {
+    addQuote: (text, attachments = []) => {
       const currentDraft = readPromptDraft(storageKey);
       const nextDraft = appendQuoteAndAttachmentsToDraft(
         currentDraft,
@@ -342,84 +322,57 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       );
       // Whitespace-only text with no new attachments is a no-op; skip the write
       // so an empty selection can't mark an otherwise-empty draft dirty.
-      if (nextDraft === currentDraft) {
-        return;
-      }
+      if (nextDraft === currentDraft) return;
 
       writePromptDraft(storageKey, nextDraft);
     },
-    [storageKey],
-  );
-
-  const clear = useCallback(() => {
-    setDraftAndPersist(EMPTY_PROMPT_DRAFT);
-  }, [setDraftAndPersist]);
-
-  const clearIfCurrentMatches = useCallback(
-    (expectedDraft: PromptDraftState): boolean => {
+    clear: () => writePromptDraft(storageKey, EMPTY_PROMPT_DRAFT),
+    clearIfCurrentMatches: (expectedDraft) => {
       if (
         !arePromptDraftStatesEqual(readPromptDraft(storageKey), expectedDraft)
       ) {
         return false;
       }
 
-      setDraftAndPersist(EMPTY_PROMPT_DRAFT);
+      writePromptDraft(storageKey, EMPTY_PROMPT_DRAFT);
       return true;
     },
-    [setDraftAndPersist, storageKey],
-  );
-
-  const setAttachments = useCallback(
-    (attachments: PromptDraftAttachment[]) => {
-      writePromptDraft(storageKey, {
-        ...readPromptDraft(storageKey),
-        attachments,
-      });
+    restoreIfEmpty: (draft) => {
+      restorePromptDraftIfEmpty(storageKey, draft);
     },
+  };
+}
+
+export function getPromptDraftAccessor(
+  scope: PromptDraftScope,
+): PromptDraftAccessor {
+  return createPromptDraftAccessor(getPromptDraftStorageKey(scope));
+}
+
+export function usePromptDraftStorage(scope: PromptDraftScope) {
+  const storageKey = getPromptDraftStorageKey(scope);
+  const accessor = useMemo(
+    () => createPromptDraftAccessor(storageKey),
     [storageKey],
   );
-
-  const restoreIfEmpty = useCallback(
-    (nextDraft: PromptDraftState) => {
-      restorePromptDraftIfEmpty(storageKey, nextDraft);
-    },
-    [storageKey],
+  const draft = useSyncExternalStore(
+    useCallback(
+      (listener) => subscribePromptDraft(storageKey, listener),
+      [storageKey],
+    ),
+    useCallback(() => readPromptDraft(storageKey), [storageKey]),
+    () => EMPTY_PROMPT_DRAFT,
   );
 
   return useMemo(
     () => ({
-      storageKey,
-      getCurrent,
+      ...accessor,
       value: draft.text,
       text: draft.text,
       mentions: draft.mentions,
       attachments: draft.attachments,
-      setDraft: setDraftAndPersist,
-      setTextAndMentions,
-      setAttachments,
-      addAttachment,
-      removeAttachment,
-      addQuote,
-      clear,
-      clearIfCurrentMatches,
-      restoreIfEmpty,
     }),
-    [
-      addAttachment,
-      addQuote,
-      clear,
-      clearIfCurrentMatches,
-      draft.attachments,
-      draft.mentions,
-      draft.text,
-      getCurrent,
-      removeAttachment,
-      restoreIfEmpty,
-      setAttachments,
-      setDraftAndPersist,
-      setTextAndMentions,
-      storageKey,
-    ],
+    [accessor, draft.attachments, draft.mentions, draft.text],
   );
 }
 
