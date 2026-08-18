@@ -6,6 +6,7 @@ import {
   buildProjectThreadGroups,
   compareByCreatedAtDescending,
   compareStandardThreads,
+  createSidebarProjectIdResolver,
   resolveSidebarProjectId,
   type ProjectThreadItem,
   type ProjectThreadNode,
@@ -876,5 +877,43 @@ describe("resolveSidebarProjectId", () => {
       [right.id, right],
     ]);
     expect(resolveSidebarProjectId(left, threadById)).toBe("proj_b");
+  });
+
+  it("memoizes ancestor walks across siblings and descendants", () => {
+    const root = createThread({ id: "thr_root", projectId: "proj_a" });
+    const child = createThread({
+      id: "thr_child",
+      parentThreadId: "thr_root",
+      projectId: "proj_b",
+    });
+    const grandchildren = Array.from({ length: 5 }, (_, index) =>
+      createThread({
+        id: `thr_grandchild_${index}`,
+        parentThreadId: "thr_child",
+        projectId: "proj_c",
+      }),
+    );
+    const all = [root, child, ...grandchildren];
+    const lookups: string[] = [];
+    const threadById = new Map(all.map((thread) => [thread.id, thread]));
+    const spyingMap: ReadonlyMap<string, ThreadListEntry> = {
+      ...threadById,
+      get: (id: string) => {
+        lookups.push(id);
+        return threadById.get(id);
+      },
+    } as unknown as ReadonlyMap<string, ThreadListEntry>;
+    const resolve = createSidebarProjectIdResolver(spyingMap);
+
+    expect(all.map(resolve)).toEqual(Array(all.length).fill("proj_a"));
+    // Root and child resolve once; each grandchild stops at the cached child.
+    expect(lookups).toEqual([
+      "thr_root",
+      "thr_child",
+      "thr_child",
+      "thr_child",
+      "thr_child",
+      "thr_child",
+    ]);
   });
 });

@@ -693,6 +693,27 @@ describe("ThreadRow", () => {
     ).toBe("/projects/proj_other/threads/thr_test");
   });
 
+  it("opens the thread when the cross-project marker is clicked", () => {
+    const { container } = render(
+      <ThreadRowTestHarness
+        crossProjectId="proj_other"
+        thread={createThread({
+          parentThreadId: "thr_parent",
+          projectId: "proj_other",
+        })}
+      />,
+    );
+    const link = screen.getByRole("link", { name: "Open Thread" });
+    const onLinkClick = vi.fn();
+    link.addEventListener("click", onLinkClick);
+
+    fireEvent.click(
+      container.querySelector("[data-sidebar-thread-cross-project]")!,
+    );
+
+    expect(onLinkClick).toHaveBeenCalledTimes(1);
+  });
+
   it("omits the cross-project marker for same-project rows", () => {
     const { container } = renderThreadRow({});
     expect(

@@ -6,6 +6,7 @@ import {
   type MouseEventHandler,
   type PointerEventHandler,
   type ReactNode,
+  useRef,
 } from "react";
 import { useSetAtom } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
@@ -674,9 +675,11 @@ function ThreadRowComponent({
     [options],
   );
 
+  const rowLinkRef = useRef<HTMLAnchorElement>(null);
   const rowContent = (
     <>
       <NavLink
+        ref={rowLinkRef}
         to={getThreadRoutePath({ projectId, threadId: thread.id })}
         data-sidebar-thread-shortcut-target=""
         data-sidebar-thread-id={thread.id}
@@ -736,7 +739,13 @@ function ThreadRowComponent({
                 aria-label={crossProjectLabel}
                 // Sits above the row's full-size link so it can take hover;
                 // nudged 1px down so the glyph reads centered on the text.
+                // A click still opens the thread by forwarding to the link.
                 className="relative top-px z-10 flex shrink-0 items-center text-muted-foreground"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  rowLinkRef.current?.click();
+                }}
               >
                 <Icon name="FolderExport" className="size-3.5" aria-hidden />
               </span>

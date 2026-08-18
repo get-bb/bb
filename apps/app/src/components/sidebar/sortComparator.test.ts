@@ -299,6 +299,7 @@ describe("getSelectedThreadSidebarExpansion", () => {
       getSelectedThreadSidebarExpansion({
         organizationMode: "project",
         isPinned: false,
+        sidebarProjectId: PERSONAL_PROJECT_ID,
         selectedThread: thread({ projectId: PERSONAL_PROJECT_ID }),
       }),
     ).toEqual({ sidebarSectionId: "threads" });
@@ -309,7 +310,24 @@ describe("getSelectedThreadSidebarExpansion", () => {
       getSelectedThreadSidebarExpansion({
         organizationMode: "project",
         isPinned: false,
+        sidebarProjectId: "proj_app",
         selectedThread: thread({ projectId: "proj_app" }),
+      }),
+    ).toEqual({ projectId: "proj_app" });
+  });
+
+  it("expands the root ancestor's project for a cross-project child in project mode", () => {
+    // The child lives in proj_web but renders under its parent's proj_app group,
+    // so direct navigation must expand proj_app or the selected row stays hidden.
+    expect(
+      getSelectedThreadSidebarExpansion({
+        organizationMode: "project",
+        isPinned: false,
+        sidebarProjectId: "proj_app",
+        selectedThread: thread({
+          projectId: "proj_web",
+          parentThreadId: "thr_parent",
+        }),
       }),
     ).toEqual({ projectId: "proj_app" });
   });
@@ -319,6 +337,7 @@ describe("getSelectedThreadSidebarExpansion", () => {
       getSelectedThreadSidebarExpansion({
         organizationMode: "chronological",
         isPinned: false,
+        sidebarProjectId: "proj_app",
         selectedThread: thread({ sectionId: null, projectId: "proj_app" }),
       }),
     ).toEqual({ sidebarSectionId: "threads" });
@@ -329,6 +348,7 @@ describe("getSelectedThreadSidebarExpansion", () => {
       getSelectedThreadSidebarExpansion({
         organizationMode: "chronological",
         isPinned: false,
+        sidebarProjectId: "proj_app",
         selectedThread: thread({
           sectionId: "sec_work",
           projectId: "proj_app",
@@ -344,6 +364,7 @@ describe("getSelectedThreadSidebarExpansion", () => {
       getSelectedThreadSidebarExpansion({
         organizationMode: "machine",
         isPinned: false,
+        sidebarProjectId: "proj_app",
         selectedThread: thread({
           projectId: "proj_app",
           environmentHostId: "host_a",
@@ -354,6 +375,7 @@ describe("getSelectedThreadSidebarExpansion", () => {
       getSelectedThreadSidebarExpansion({
         organizationMode: "machine",
         isPinned: false,
+        sidebarProjectId: "proj_app",
         selectedThread: thread({ projectId: "proj_app" }),
       }),
     ).toEqual({ machineKey: "no-machine" });
@@ -364,6 +386,7 @@ describe("getSelectedThreadSidebarExpansion", () => {
       getSelectedThreadSidebarExpansion({
         organizationMode: "chronological",
         isPinned: true,
+        sidebarProjectId: "proj_app",
         selectedThread: thread({ sectionId: null, projectId: "proj_app" }),
       }),
     ).toEqual({ sidebarSectionId: "pinned" });
