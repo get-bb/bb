@@ -17,6 +17,11 @@
       "source": "./src/test/index.ts",
       "types": "./src/test/index.ts",
       "default": "./src/test/index.ts"
+    },
+    "./test/bridge-delta-assembly": {
+      "source": "./src/test/bridge-delta-assembly.ts",
+      "types": "./src/test/bridge-delta-assembly.ts",
+      "default": "./src/test/bridge-delta-assembly.ts"
     }
   },
   "types": "./src/index.ts",

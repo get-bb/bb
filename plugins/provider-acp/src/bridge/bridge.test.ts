@@ -17,6 +17,7 @@ import {
   type BridgeJsonRpcOutputMessage,
   type CapturedBridgeJsonRpcOutput,
 } from "@bb/provider-bridge-protocol/testing";
+import { assembleCapturedThreadEvents } from "@bb/agent-runtime/test/bridge-delta-assembly";
 import { handleLine } from "./bridge.js";
 import { ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE } from "../bridge-protocol.js";
 import { ACP_BRIDGE_MCP_SERVER_NAME } from "./tool-proxy-mcp.js";
@@ -87,25 +88,15 @@ function notifications(method: string): BridgeJsonRpcOutputMessage[] {
 }
 
 /**
- * The canonical thread events the bridge emitted, oldest first. The `acp/*`
- * envelopes the bridge builds internally never reach the wire, so every
- * session-scoped assertion reads the translated events.
+ * The canonical thread events the bridge's output assembles to, oldest first.
+ * The bridge emits `thread/delta` notifications; every session-scoped
+ * assertion runs the full capture through a real runtime delta assembler
+ * (the exact translation the bridge-protocol adapter performs). A fresh
+ * assembler per call over the full ordered capture keeps ids deterministic.
  */
 function threadEvents(): Record<string, unknown>[] {
-  return notifications("thread/event").flatMap((message) => {
-    const params = message.params;
-    if (
-      typeof params !== "object" ||
-      params === null ||
-      Array.isArray(params)
-    ) {
-      return [];
-    }
-    const event = params.event;
-    return typeof event === "object" && event !== null && !Array.isArray(event)
-      ? [event as Record<string, unknown>]
-      : [];
-  });
+  return assembleCapturedThreadEvents(output.messages, "acp") as unknown as
+    Record<string, unknown>[];
 }
 
 function threadEventsOfType(type: string): Record<string, unknown>[] {
@@ -1536,12 +1527,14 @@ describe("acp bridge", () => {
         ),
       "forwarded permission request",
     );
-    // The canonical interaction carries the approval payload, scoped to the
-    // turn the permission interrupted.
+    // The canonical interaction carries the approval payload; the turn id is
+    // runtime-stamped under the narrow grammar, so the bridge sends the
+    // wire contract's unresolved marker (null) and the runtime attaches its
+    // active turn for the thread.
     expect(forwarded.params).toMatchObject({
       threadId: bbThreadId,
       providerThreadId,
-      turnId: expect.any(String),
+      turnId: null,
       payload: {
         kind: "approval",
         subject: expect.objectContaining({ command: "rm -rf /tmp/scratch" }),

@@ -24,6 +24,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@bb/agent-runtime": "workspace:*",
     "@bb/domain": "workspace:*",
     "@bb/host-daemon-contract": "workspace:*",
     "@bb/provider-bridge-protocol": "workspace:*",

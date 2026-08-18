@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { threadScope, turnScope, type ThreadEvent } from "@bb/domain";
 import type { ProviderRuntimeEvent } from "@bb/provider-bridge-protocol/bridge-kit";
 import {
+  createDeltaAssembler,
+  type DeltaAssembler,
+} from "@bb/agent-runtime/test/bridge-delta-assembly";
+import {
   ACP_COMPACTION_COMPLETED_METHOD,
   ACP_COMPACTION_STARTED_METHOD,
   ACP_FS_WRITE_METHOD,
@@ -10,10 +14,50 @@ import {
   ACP_UPDATE_METHOD,
   ACP_WARNING_METHOD,
 } from "./bridge-protocol.js";
-import { createAcpEventTranslator } from "./event-translation.js";
+import { createAcpDeltaTranslator } from "./delta-translation.js";
+
+/**
+ * ACP translation equivalence for the narrow-grammar path.
+ *
+ * These cases are the acp event-translation suite, ported so the SAME acp
+ * envelopes drive the new pipeline: acp dialect events → semantic deltas →
+ * the runtime delta assembler → canonical ThreadEvents. Event content,
+ * ordering, scoping, and statuses are asserted exactly as before; ids are
+ * asserted by shape and stability because minting moved from the bridge to
+ * the assembler (turn ids are `<entropy>-tN` instead of `turn-N`, item ids
+ * `<entropy>-iN` instead of provider tool-call ids / `acp-assistant-N`).
+ */
 
 const THREAD_ID = "t-acp-translation";
-const context = { threadId: THREAD_ID };
+const ENTROPY = "acp-test";
+const TURN_ID_PATTERN = /^acp-test-t\d+$/;
+const ITEM_ID_PATTERN = /^acp-test-i\d+$/;
+
+interface AcpEquivalenceHarness {
+  assembler: DeltaAssembler;
+  translate(event: ProviderRuntimeEvent): ThreadEvent[];
+  openTurnId(): string;
+}
+
+function createHarness(): AcpEquivalenceHarness {
+  const translator = createAcpDeltaTranslator();
+  const assembler = createDeltaAssembler({
+    providerId: "acp",
+    entropyPrefix: ENTROPY,
+  });
+  return {
+    assembler,
+    translate(event) {
+      return assembler.assemble({
+        threadId: THREAD_ID,
+        deltas: translator.translateAcpEvent(event, { threadId: THREAD_ID }),
+      });
+    },
+    openTurnId() {
+      return assembler.getOpenTurnId(THREAD_ID) ?? "";
+    },
+  };
+}
 
 function turnStartedEvent(): ProviderRuntimeEvent {
   return {
@@ -43,7 +87,7 @@ function fsWriteEvent(path: string): ProviderRuntimeEvent {
   return {
     jsonrpc: "2.0",
     method: ACP_FS_WRITE_METHOD,
-    params: { threadId: THREAD_ID, path, kind: "add" },
+    params: { threadId: THREAD_ID, path, kind: "add", content: "hello\n" },
   };
 }
 
@@ -53,23 +97,22 @@ function completedItems(events: ThreadEvent[]) {
   );
 }
 
-describe("acp event translation (bridge-shared invariants)", () => {
+describe("acp delta translation (bridge-shared invariants)", () => {
   // Historical fix 0c2f4cc9a: an update arriving after turn completion must
   // not fabricate a fresh bb turn. A synthetic turn/started here would open a
   // turn that never completes, wedging the thread.
   it("does not synthesize a turn for updates that arrive after turn completion", () => {
-    const translator = createAcpEventTranslator({ providerId: "acp" });
-    translator.translateAcpEvent(turnStartedEvent(), context);
-    translator.translateAcpEvent(turnCompletedEvent("end_turn"), context);
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    harness.translate(turnCompletedEvent("end_turn"));
 
-    const lateChunk = translator.translateAcpEvent(
+    const lateChunk = harness.translate(
       updateEvent({
         sessionUpdate: "agent_message_chunk",
         content: { type: "text", text: "late text" },
       }),
-      context,
     );
-    const lateToolCall = translator.translateAcpEvent(
+    const lateToolCall = harness.translate(
       updateEvent({
         sessionUpdate: "tool_call",
         toolCallId: "late-call",
@@ -77,7 +120,6 @@ describe("acp event translation (bridge-shared invariants)", () => {
         status: "in_progress",
         rawInput: { command: "ls" },
       }),
-      context,
     );
 
     for (const events of [lateChunk, lateToolCall]) {
@@ -87,7 +129,7 @@ describe("acp event translation (bridge-shared invariants)", () => {
         true,
       );
     }
-    expect(translator.resolveState(context).currentTurnId).toBeUndefined();
+    expect(harness.openTurnId()).toBe("");
   });
 
   // Historical fix d32be7fab: a tool call that starts as one item type and
@@ -95,10 +137,10 @@ describe("acp event translation (bridge-shared invariants)", () => {
   // only the re-classified item leaves the originally started item
   // in-progress forever.
   it("settles both items when a terminal tool_call_update changes the item type", () => {
-    const translator = createAcpEventTranslator({ providerId: "acp" });
-    translator.translateAcpEvent(turnStartedEvent(), context);
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
 
-    const startedEvents = translator.translateAcpEvent(
+    const startedEvents = harness.translate(
       updateEvent({
         sessionUpdate: "tool_call",
         toolCallId: "call-1",
@@ -106,16 +148,25 @@ describe("acp event translation (bridge-shared invariants)", () => {
         kind: "read",
         status: "in_progress",
       }),
-      context,
     );
     expect(startedEvents).toContainEqual(
       expect.objectContaining({
         type: "item/started",
-        item: expect.objectContaining({ type: "toolCall", id: "call-1" }),
+        item: expect.objectContaining({
+          type: "toolCall",
+          id: expect.stringMatching(ITEM_ID_PATTERN),
+        }),
       }),
     );
+    const startedItemId =
+      startedEvents.find((event) => event.type === "item/started")?.type ===
+      "item/started"
+        ? (startedEvents.find(
+            (event) => event.type === "item/started",
+          ) as Extract<ThreadEvent, { type: "item/started" }>).item.id
+        : "";
 
-    const terminalEvents = translator.translateAcpEvent(
+    const terminalEvents = harness.translate(
       updateEvent({
         sessionUpdate: "tool_call_update",
         toolCallId: "call-1",
@@ -129,7 +180,6 @@ describe("acp event translation (bridge-shared invariants)", () => {
           },
         ],
       }),
-      context,
     );
     const settled = completedItems(terminalEvents);
     expect(settled.map((item) => item.type).sort()).toEqual([
@@ -137,14 +187,11 @@ describe("acp event translation (bridge-shared invariants)", () => {
       "toolCall",
     ]);
     for (const item of settled) {
-      expect(item.id).toBe("call-1");
+      expect(item.id).toBe(startedItemId);
     }
 
     // The call is fully settled: turn completion must not re-settle it.
-    const endEvents = translator.translateAcpEvent(
-      turnCompletedEvent("end_turn"),
-      context,
-    );
+    const endEvents = harness.translate(turnCompletedEvent("end_turn"));
     expect(completedItems(endEvents)).toEqual([]);
     expect(endEvents).toContainEqual(
       expect.objectContaining({ type: "turn/completed", status: "completed" }),
@@ -152,9 +199,9 @@ describe("acp event translation (bridge-shared invariants)", () => {
   });
 
   it("settles both items at turn end when a non-terminal update changed the item type", () => {
-    const translator = createAcpEventTranslator({ providerId: "acp" });
-    translator.translateAcpEvent(turnStartedEvent(), context);
-    translator.translateAcpEvent(
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    harness.translate(
       updateEvent({
         sessionUpdate: "tool_call",
         toolCallId: "call-2",
@@ -162,9 +209,8 @@ describe("acp event translation (bridge-shared invariants)", () => {
         kind: "read",
         status: "in_progress",
       }),
-      context,
     );
-    translator.translateAcpEvent(
+    harness.translate(
       updateEvent({
         sessionUpdate: "tool_call_update",
         toolCallId: "call-2",
@@ -173,65 +219,43 @@ describe("acp event translation (bridge-shared invariants)", () => {
           { type: "diff", path: "/tmp/b.ts", oldText: "x", newText: "y" },
         ],
       }),
-      context,
     );
 
-    const endEvents = translator.translateAcpEvent(
-      turnCompletedEvent("end_turn"),
-      context,
-    );
-    const settled = completedItems(endEvents).filter(
-      (item) => item.id === "call-2",
-    );
+    const endEvents = harness.translate(turnCompletedEvent("end_turn"));
+    const settled = completedItems(endEvents);
     expect(settled.map((item) => item.type).sort()).toEqual([
       "fileChange",
       "toolCall",
     ]);
   });
 
-  // Historical fix f60cf84ee: fs-write item ids are turn-scoped. A resumed
-  // session gets a fresh translator whose per-thread counter restarts at 1,
-  // so a bare `acp-fs-write-<counter>` id would collide with ids already
-  // persisted by the pre-resume session.
-  it("mints distinct fs-write item ids across sessions whose counters restart", () => {
-    function firstFsWriteItemId(turnIdPrefix: string): string {
-      // Each translator models one bridge session; the bridge injects
-      // per-session entropy into the turn-id prefix (#1224).
-      const translator = createAcpEventTranslator({
-        providerId: "acp",
-        turnIdPrefix,
-      });
-      translator.translateAcpEvent(turnStartedEvent(), context);
-      const events = translator.translateAcpEvent(
-        fsWriteEvent("/tmp/file.ts"),
-        context,
-      );
-      const item = completedItems(events).find(
-        (candidate) => candidate.type === "fileChange",
-      );
-      if (!item) {
-        throw new Error("Expected acp/fs/write to complete a fileChange item");
-      }
-      return item.id;
+  // Historical fix f60cf84ee (recast): fs-write item ids must never collide
+  // across writes or sessions. Minting moved to the runtime assembler, whose
+  // per-assembler entropy+serial ids are unique across every session it sees.
+  it("mints distinct fs-write item ids across writes", () => {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    const first = completedItems(
+      harness.translate(fsWriteEvent("/tmp/file.ts")),
+    ).find((item) => item.type === "fileChange");
+    const second = completedItems(
+      harness.translate(fsWriteEvent("/tmp/file.ts")),
+    ).find((item) => item.type === "fileChange");
+    if (!first || !second) {
+      throw new Error("Expected acp/fs/write to complete fileChange items");
     }
-
-    const beforeResumeId = firstFsWriteItemId("s1-turn-");
-    const afterResumeId = firstFsWriteItemId("s2-turn-");
-
-    expect(beforeResumeId).not.toBe(afterResumeId);
-    // Turn-scoped: the id embeds the minting turn's id.
-    expect(beforeResumeId).toContain("s1-turn-1");
-    expect(afterResumeId).toContain("s2-turn-1");
+    expect(first.id).toMatch(ITEM_ID_PATTERN);
+    expect(second.id).toMatch(ITEM_ID_PATTERN);
+    expect(first.id).not.toBe(second.id);
   });
 });
 
 /**
  * Content-mapping invariants moved here from the deleted legacy ACP adapter
- * test. The adapter forwarded `translateEvent` straight to this translator,
- * which the canonical bridge now owns; the bridge suite asserts the raw ACP
- * dialect, so these ThreadEvent shapes have no other home.
+ * test, asserted through the delta assembler exactly as the runtime builds
+ * them.
  */
-describe("acp event translation (moved from the legacy adapter suite)", () => {
+describe("acp delta translation (moved from the legacy adapter suite)", () => {
   function compactionStartedEvent(): ProviderRuntimeEvent {
     return {
       jsonrpc: "2.0",
@@ -251,15 +275,13 @@ describe("acp event translation (moved from the legacy adapter suite)", () => {
   }
 
   it("translates successful maintenance prompts into a compaction lifecycle", () => {
-    const translator = createAcpEventTranslator({ providerId: "acp" });
+    const harness = createHarness();
 
-    const started = translator.translateAcpEvent(
-      compactionStartedEvent(),
-      context,
-    );
-    const completed = translator.translateAcpEvent(
+    const started = harness.translate(compactionStartedEvent());
+    const turnId = harness.openTurnId();
+    expect(turnId).toMatch(TURN_ID_PATTERN);
+    const completed = harness.translate(
       compactionCompletedEvent({ status: "completed" }),
-      context,
     );
 
     expect(started.map((event) => event.type)).toEqual([
@@ -269,32 +291,32 @@ describe("acp event translation (moved from the legacy adapter suite)", () => {
     expect(completed).toEqual([
       expect.objectContaining({
         type: "thread/compacted",
-        scope: turnScope("turn-1"),
+        scope: turnScope(turnId),
       }),
       expect.objectContaining({
         type: "turn/completed",
-        scope: turnScope("turn-1"),
+        scope: turnScope(turnId),
         status: "completed",
       }),
     ]);
   });
 
   it("does not report failed maintenance prompts as compacted", () => {
-    const translator = createAcpEventTranslator({ providerId: "acp" });
-    translator.translateAcpEvent(compactionStartedEvent(), context);
+    const harness = createHarness();
+    harness.translate(compactionStartedEvent());
+    const turnId = harness.openTurnId();
 
     expect(
-      translator.translateAcpEvent(
+      harness.translate(
         compactionCompletedEvent({
           status: "failed",
           error: "Provider rejected /compact",
         }),
-        context,
       ),
     ).toEqual([
       expect.objectContaining({
         type: "turn/completed",
-        scope: turnScope("turn-1"),
+        scope: turnScope(turnId),
         status: "failed",
         error: { message: "Provider rejected /compact" },
       }),
@@ -302,19 +324,17 @@ describe("acp event translation (moved from the legacy adapter suite)", () => {
   });
 
   it("completes streamed items before ending a compaction turn", () => {
-    const translator = createAcpEventTranslator({ providerId: "acp" });
-    translator.translateAcpEvent(compactionStartedEvent(), context);
-    translator.translateAcpEvent(
+    const harness = createHarness();
+    harness.translate(compactionStartedEvent());
+    harness.translate(
       updateEvent({
         sessionUpdate: "agent_message_chunk",
         content: { type: "text", text: "Compacted successfully" },
       }),
-      context,
     );
 
-    const events = translator.translateAcpEvent(
+    const events = harness.translate(
       compactionCompletedEvent({ status: "completed" }),
-      context,
     );
 
     expect(events.map((event) => event.type)).toEqual([
@@ -341,29 +361,29 @@ describe("acp event translation (moved from the legacy adapter suite)", () => {
     return { added, removed };
   }
 
-  function startedTranslator() {
-    const translator = createAcpEventTranslator({ providerId: "acp" });
-    translator.translateAcpEvent(turnStartedEvent(), context);
-    return translator;
+  function startedHarness(): AcpEquivalenceHarness {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    return harness;
   }
 
   it("translates ACP usage updates into exact context-window usage", () => {
+    const harness = startedHarness();
     expect(
-      startedTranslator().translateAcpEvent(
+      harness.translate(
         updateEvent({
           sessionUpdate: "usage_update",
           used: 32_768,
           size: 200_000,
           cost: { amount: 0.42, currency: "USD" },
         }),
-        context,
       ),
     ).toEqual([
       {
         type: "thread/contextWindowUsage/updated",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope("turn-1"),
+        scope: turnScope(harness.openTurnId()),
         contextWindowUsage: {
           usedTokens: 32_768,
           modelContextWindow: 200_000,
@@ -374,16 +394,15 @@ describe("acp event translation (moved from the legacy adapter suite)", () => {
   });
 
   it("reports ACP usage before a turn without creating a synthetic turn", () => {
-    const translator = createAcpEventTranslator({ providerId: "acp" });
+    const harness = createHarness();
 
     expect(
-      translator.translateAcpEvent(
+      harness.translate(
         updateEvent({
           sessionUpdate: "usage_update",
           used: 65_536,
           size: 1_000_000,
         }),
-        context,
       ),
     ).toEqual([
       {
@@ -401,58 +420,63 @@ describe("acp event translation (moved from the legacy adapter suite)", () => {
   });
 
   it("ignores malformed ACP usage updates", () => {
-    const translator = startedTranslator();
+    const harness = startedHarness();
 
     expect(
-      translator.translateAcpEvent(
+      harness.translate(
         updateEvent({ sessionUpdate: "usage_update", used: -1, size: 200_000 }),
-        context,
       ),
     ).toEqual([]);
     expect(
-      translator.translateAcpEvent(
+      harness.translate(
         updateEvent({ sessionUpdate: "usage_update", used: 1, size: "200000" }),
-        context,
       ),
     ).toEqual([]);
   });
 
   it("accumulates thought chunks into a reasoning item", () => {
-    const translator = startedTranslator();
-    const thoughtEvents = translator.translateAcpEvent(
+    const harness = startedHarness();
+    const turnId = harness.openTurnId();
+    const thoughtEvents = harness.translate(
       updateEvent({
         sessionUpdate: "agent_thought_chunk",
         content: { type: "text", text: "Considering..." },
       }),
-      context,
     );
-    expect(thoughtEvents).toEqual([
-      {
-        type: "item/reasoning/textDelta",
-        threadId: "",
-        providerThreadId: "",
-        scope: turnScope("turn-1"),
-        itemId: "acp-reasoning-1",
-        delta: "Considering...",
-      },
+    // The canonical grammar opens every item with item/started (the bridge
+    // opted into synthesis before; the assembler always synthesizes).
+    expect(thoughtEvents.map((event) => event.type)).toEqual([
+      "item/started",
+      "item/reasoning/textDelta",
     ]);
+    expect(thoughtEvents[1]).toEqual({
+      type: "item/reasoning/textDelta",
+      threadId: "",
+      providerThreadId: "",
+      scope: turnScope(turnId),
+      itemId: expect.stringMatching(ITEM_ID_PATTERN),
+      delta: "Considering...",
+    });
+    const reasoningItemId =
+      thoughtEvents[1]?.type === "item/reasoning/textDelta"
+        ? thoughtEvents[1].itemId
+        : "";
 
     // The first message chunk closes the open thought item.
-    const messageEvents = translator.translateAcpEvent(
+    const messageEvents = harness.translate(
       updateEvent({
         sessionUpdate: "agent_message_chunk",
         content: { type: "text", text: "Answer" },
       }),
-      context,
     );
     expect(messageEvents[0]).toEqual({
       type: "item/completed",
       threadId: "",
       providerThreadId: "",
-      scope: turnScope("turn-1"),
+      scope: turnScope(turnId),
       item: {
         type: "reasoning",
-        id: "acp-reasoning-1",
+        id: reasoningItemId,
         summary: [],
         content: ["Considering..."],
       },
@@ -460,29 +484,28 @@ describe("acp event translation (moved from the legacy adapter suite)", () => {
   });
 
   it("translates execute tool calls into command executions", () => {
-    const translator = startedTranslator();
+    const harness = startedHarness();
+    const turnId = harness.openTurnId();
 
-    expect(
-      translator.translateAcpEvent(
-        updateEvent({
-          sessionUpdate: "tool_call",
-          toolCallId: "call-1",
-          title: "Run tests",
-          kind: "execute",
-          status: "in_progress",
-          rawInput: { command: "pnpm test" },
-        }),
-        context,
-      ),
-    ).toEqual([
+    const startedEvents = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-1",
+        title: "Run tests",
+        kind: "execute",
+        status: "in_progress",
+        rawInput: { command: "pnpm test" },
+      }),
+    );
+    expect(startedEvents).toEqual([
       {
         type: "item/started",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope("turn-1"),
+        scope: turnScope(turnId),
         item: {
           type: "commandExecution",
-          id: "call-1",
+          id: expect.stringMatching(ITEM_ID_PATTERN),
           command: "pnpm test",
           cwd: "",
           status: "pending",
@@ -490,9 +513,11 @@ describe("acp event translation (moved from the legacy adapter suite)", () => {
         },
       },
     ]);
+    const startedItemId =
+      startedEvents[0]?.type === "item/started" ? startedEvents[0].item.id : "";
 
     expect(
-      translator.translateAcpEvent(
+      harness.translate(
         updateEvent({
           sessionUpdate: "tool_call_update",
           toolCallId: "call-1",
@@ -501,17 +526,16 @@ describe("acp event translation (moved from the legacy adapter suite)", () => {
             { type: "content", content: { type: "text", text: "1 passed" } },
           ],
         }),
-        context,
       ),
     ).toEqual([
       {
         type: "item/completed",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope("turn-1"),
+        scope: turnScope(turnId),
         item: {
           type: "commandExecution",
-          id: "call-1",
+          id: startedItemId,
           command: "pnpm test",
           cwd: "",
           status: "completed",
@@ -524,7 +548,7 @@ describe("acp event translation (moved from the legacy adapter suite)", () => {
   });
 
   it("translates diff tool calls into file changes", () => {
-    const events = startedTranslator().translateAcpEvent(
+    const events = startedHarness().translate(
       updateEvent({
         sessionUpdate: "tool_call",
         toolCallId: "call-2",
@@ -540,7 +564,6 @@ describe("acp event translation (moved from the legacy adapter suite)", () => {
           },
         ],
       }),
-      context,
     );
 
     expect(events).toHaveLength(1);
@@ -548,7 +571,7 @@ describe("acp event translation (moved from the legacy adapter suite)", () => {
       type: "item/completed",
       item: {
         type: "fileChange",
-        id: "call-2",
+        id: expect.stringMatching(ITEM_ID_PATTERN),
         status: "completed",
         changes: [{ path: "/workspace/a.ts", kind: "update" }],
       },
@@ -567,37 +590,38 @@ describe("acp event translation (moved from the legacy adapter suite)", () => {
   });
 
   it("tracks Cursor edit calls as file changes before the final diff arrives", () => {
-    const translator = startedTranslator();
+    const harness = startedHarness();
+    const turnId = harness.openTurnId();
 
-    expect(
-      translator.translateAcpEvent(
-        updateEvent({
-          sessionUpdate: "tool_call",
-          toolCallId: "call-edit",
-          title: "Edit file",
-          kind: "edit",
-          status: "in_progress",
-          locations: [{ path: "/workspace/a.ts" }],
-        }),
-        context,
-      ),
-    ).toEqual([
+    const startedEvents = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-edit",
+        title: "Edit file",
+        kind: "edit",
+        status: "in_progress",
+        locations: [{ path: "/workspace/a.ts" }],
+      }),
+    );
+    expect(startedEvents).toEqual([
       {
         type: "item/started",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope("turn-1"),
+        scope: turnScope(turnId),
         item: {
           type: "fileChange",
-          id: "call-edit",
+          id: expect.stringMatching(ITEM_ID_PATTERN),
           changes: [{ path: "/workspace/a.ts", kind: "update" }],
           status: "pending",
           approvalStatus: null,
         },
       },
     ]);
+    const startedItemId =
+      startedEvents[0]?.type === "item/started" ? startedEvents[0].item.id : "";
 
-    const completedEvents = translator.translateAcpEvent(
+    const completedEvents = harness.translate(
       updateEvent({
         sessionUpdate: "tool_call_update",
         toolCallId: "call-edit",
@@ -611,7 +635,6 @@ describe("acp event translation (moved from the legacy adapter suite)", () => {
           },
         ],
       }),
-      context,
     );
 
     // One settled item: the started fileChange, not a second one.
@@ -620,7 +643,7 @@ describe("acp event translation (moved from the legacy adapter suite)", () => {
       type: "item/completed",
       item: {
         type: "fileChange",
-        id: "call-edit",
+        id: startedItemId,
         status: "completed",
         changes: [{ path: "/workspace/a.ts", kind: "update" }],
       },
@@ -634,8 +657,9 @@ describe("acp event translation (moved from the legacy adapter suite)", () => {
   });
 
   it("translates plan updates", () => {
+    const harness = startedHarness();
     expect(
-      startedTranslator().translateAcpEvent(
+      harness.translate(
         updateEvent({
           sessionUpdate: "plan",
           entries: [
@@ -644,14 +668,13 @@ describe("acp event translation (moved from the legacy adapter suite)", () => {
             { content: "Run tests", status: "pending" },
           ],
         }),
-        context,
       ),
     ).toEqual([
       {
         type: "turn/plan/updated",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope("turn-1"),
+        scope: turnScope(harness.openTurnId()),
         plan: [
           { step: "Read files", status: "completed" },
           { step: "Fix bug", status: "active" },
@@ -662,17 +685,14 @@ describe("acp event translation (moved from the legacy adapter suite)", () => {
   });
 
   it("translates bridge warnings", () => {
-    const translator = createAcpEventTranslator({ providerId: "acp" });
+    const harness = createHarness();
 
     expect(
-      translator.translateAcpEvent(
-        {
-          jsonrpc: "2.0",
-          method: ACP_WARNING_METHOD,
-          params: { threadId: THREAD_ID, summary: "History not restored" },
-        },
-        context,
-      ),
+      harness.translate({
+        jsonrpc: "2.0",
+        method: ACP_WARNING_METHOD,
+        params: { threadId: THREAD_ID, summary: "History not restored" },
+      }),
     ).toEqual([
       {
         type: "provider/warning",
@@ -686,21 +706,20 @@ describe("acp event translation (moved from the legacy adapter suite)", () => {
   });
 
   it("fails the open turn on bridge errors", () => {
+    const harness = startedHarness();
+    const turnId = harness.openTurnId();
     expect(
-      startedTranslator().translateAcpEvent(
-        {
-          jsonrpc: "2.0",
-          method: "error",
-          params: { threadId: THREAD_ID, message: "agent exploded" },
-        },
-        context,
-      ),
+      harness.translate({
+        jsonrpc: "2.0",
+        method: "error",
+        params: { threadId: THREAD_ID, message: "agent exploded" },
+      }),
     ).toEqual([
       {
         type: "provider/error",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope("turn-1"),
+        scope: turnScope(turnId),
         message: "Provider error",
         detail: "agent exploded",
       },
@@ -708,36 +727,35 @@ describe("acp event translation (moved from the legacy adapter suite)", () => {
         type: "turn/completed",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope("turn-1"),
+        scope: turnScope(turnId),
         status: "failed",
       },
     ]);
   });
 
   it("marks cancelled turns interrupted and refusals failed", () => {
-    const translator = startedTranslator();
+    const harness = startedHarness();
+    const firstTurnId = harness.openTurnId();
 
-    expect(
-      translator.translateAcpEvent(turnCompletedEvent("cancelled"), context),
-    ).toEqual([
+    expect(harness.translate(turnCompletedEvent("cancelled"))).toEqual([
       {
         type: "turn/completed",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope("turn-1"),
+        scope: turnScope(firstTurnId),
         status: "interrupted",
       },
     ]);
 
-    translator.translateAcpEvent(turnStartedEvent(), context);
-    expect(
-      translator.translateAcpEvent(turnCompletedEvent("refusal"), context),
-    ).toEqual([
+    harness.translate(turnStartedEvent());
+    const secondTurnId = harness.openTurnId();
+    expect(secondTurnId).not.toBe(firstTurnId);
+    expect(harness.translate(turnCompletedEvent("refusal"))).toEqual([
       {
         type: "turn/completed",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope("turn-2"),
+        scope: turnScope(secondTurnId),
         status: "failed",
         error: { message: "Agent stopped the turn: refusal" },
       },
@@ -745,31 +763,26 @@ describe("acp event translation (moved from the legacy adapter suite)", () => {
   });
 
   it("drops noise updates and reports unknown updates", () => {
-    const translator = startedTranslator();
+    const harness = startedHarness();
 
     expect(
-      translator.translateAcpEvent(
+      harness.translate(
         updateEvent({
           sessionUpdate: "user_message_chunk",
           content: { type: "text", text: "replayed" },
         }),
-        context,
       ),
     ).toEqual([]);
     expect(
-      translator.translateAcpEvent(
+      harness.translate(
         updateEvent({
           sessionUpdate: "session_info_update",
           title: "Tool Tester",
         }),
-        context,
       ),
     ).toEqual([]);
     expect(
-      translator.translateAcpEvent(
-        updateEvent({ sessionUpdate: "totally_new_update" }),
-        context,
-      ),
+      harness.translate(updateEvent({ sessionUpdate: "totally_new_update" })),
     ).toMatchObject([
       { type: "provider/unhandled", rawType: "acp/update:totally_new_update" },
     ]);

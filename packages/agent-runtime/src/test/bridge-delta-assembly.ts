@@ -15,6 +15,11 @@ import {
   type DeltaAssembler,
 } from "../delta-assembler.js";
 
+// Re-exported for bridge suites outside this package (the acp plugin's
+// equivalence tests build a real assembler through this test-only path).
+export { createDeltaAssembler };
+export type { DeltaAssembler };
+
 export interface CapturedBridgeNotification {
   method?: string;
   params?: unknown;

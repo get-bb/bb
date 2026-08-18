@@ -18,17 +18,14 @@ import {
   type AvailableModel,
   type PromptInput,
   type ReasoningLevel,
-  type ThreadEvent,
+  type ThreadDelta,
   hostDaemonAcpLaunchSpecSchema,
   bridgeRequestEnvelopeSchema,
-  buildAcceptedUserMessageEvent,
-  buildEditDiff,
   createBridgeIo,
   createBridgeLineHandler,
   decodeBridgeJsonRpcResponse,
   decodeToolCallResponsePayload,
   mimeTypeFromExtension,
-  queueAcceptedUserMessage,
   runBridgeRequest,
   withoutBridgeRuntimeEnv,
   type BridgeJsonRpcResponse,
@@ -36,11 +33,12 @@ import {
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_NOTIFICATION_METHOD,
   type InitializeResult,
   experimental_defineProviderBridge,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { execFile } from "node:child_process";
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { promises as fs, readFileSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { dirname, isAbsolute, basename, relative, resolve } from "node:path";
@@ -65,9 +63,9 @@ import {
   acpBridgeCommandMethodValues,
 } from "../bridge-protocol.js";
 import {
-  createAcpEventTranslator,
-  type AcpEventTranslator,
-} from "../event-translation.js";
+  createAcpDeltaTranslator,
+  type AcpDeltaTranslator,
+} from "../delta-translation.js";
 import {
   buildAcpPermissionInteractionPayload,
   resolveAcpPermissionDecision,
@@ -143,7 +141,7 @@ interface AcpThreadSession {
   bbThreadId: string;
   providerThreadId: string;
   /** Every session-scoped notification is translated through this. */
-  translator: AcpEventTranslator;
+  translator: AcpDeltaTranslator;
   connection: AcpAgentConnection;
   agentLabel: string;
   supportsImageInput: boolean;
@@ -240,16 +238,9 @@ function sendRuntimeRequest(
 }
 
 // ---------------------------------------------------------------------------
-// Thread-event emission
+// Thread-delta emission
 // ---------------------------------------------------------------------------
 
-/**
- * Per-process entropy for canonical turn/item id prefixes (#1224): combined
- * with a per-session serial below, ids never collide across process restarts
- * or session resumes.
- */
-const canonicalIdEntropyPrefix = `bt${randomUUID().slice(0, 8)}-`;
-let canonicalSessionSerial = 0;
 /**
  * Skill roots latched by the canonical `skills/configure` request. ACP agents
  * have no skill-directory concept, so the roots are listed in the session
@@ -259,42 +250,34 @@ let canonicalSessionSerial = 0;
 let configuredSkillRoots: AcpSkillRoot[] | null = null;
 const ACP_CANONICAL_PROVIDER_ID = "acp";
 
-function createSessionTranslator(): AcpEventTranslator {
-  canonicalSessionSerial += 1;
-  const idPrefix = `${canonicalIdEntropyPrefix}${canonicalSessionSerial}-`;
-  return createAcpEventTranslator({
-    providerId: ACP_CANONICAL_PROVIDER_ID,
-    turnIdPrefix: idPrefix,
-    itemIdPrefix: idPrefix,
-    synthesizeItemStarted: true,
-  });
-}
-
-function sendThreadEvents(
-  session: AcpThreadSession,
-  events: readonly ThreadEvent[],
+function sendThreadDeltas(
+  threadId: string,
+  deltas: readonly ThreadDelta[],
 ): void {
-  for (const event of events) {
-    sendNotification(BRIDGE_NOTIFICATION_METHODS.threadEvent, {
-      threadId: session.bbThreadId,
-      event,
-    });
+  if (deltas.length === 0) {
+    return;
   }
+  sendNotification(THREAD_DELTA_NOTIFICATION_METHOD, {
+    threadId,
+    deltas: [...deltas],
+  });
 }
 
 /**
  * The one session-scoped emitter: it runs the ACP-flavored notification
- * through the session translator and emits the finished `ThreadEvent`s as
- * `thread/event` notifications. The `acp/*` envelope never reaches the wire —
- * it is only the translator's input vocabulary.
+ * through the session translator and emits the parsed semantic deltas as one
+ * batched `thread/delta` notification. The `acp/*` envelope never reaches the
+ * wire — it is only the translator's input vocabulary. Turn/item ids are
+ * minted by the runtime's delta assembler, so no id entropy lives here
+ * anymore (#1224 discipline is held centrally).
  */
 function emitForSession(
   session: AcpThreadSession,
   method: string,
   params: Record<string, unknown>,
 ): void {
-  sendThreadEvents(
-    session,
+  sendThreadDeltas(
+    session.bbThreadId,
     session.translator.translateAcpEvent(
       { jsonrpc: "2.0", method, params },
       { threadId: session.bbThreadId },
@@ -303,14 +286,13 @@ function emitForSession(
 }
 
 function emitSessionError(session: AcpThreadSession, message: string): void {
-  // Settle any open translator turn first: every accepted turn reaches
-  // exactly one terminal state, and settlement events precede the error
-  // signal. Without an open turn the error stays a runtime notification —
-  // translating it would fabricate a failed turn bb never accepted.
-  const state = session.translator.resolveState({
-    threadId: session.bbThreadId,
-  });
-  if (state.currentTurnId !== undefined) {
+  // Settle any open turn first: every accepted turn reaches exactly one
+  // terminal state, and settlement events precede the error signal. With no
+  // prompt in flight the error stays a runtime notification — a settling
+  // error delta on an idle thread would surface a diagnostic for a turn bb
+  // never accepted. `activePromptKind` mirrors the turn the bridge itself
+  // opened with `turn.open`.
+  if (session.activePromptKind !== null) {
     emitForSession(session, "error", {
       threadId: session.bbThreadId,
       message,
@@ -1389,10 +1371,14 @@ function handlePermissionRequest(
       toolCall: normalizedToolCall,
       options: parsed.data.options,
     });
+    // Turn ids are runtime-minted under the narrow grammar: `turnId: null`
+    // asks the runtime to stamp its active turn for this thread (the wire
+    // contract's unresolved marker), which is the turn the permission
+    // interrupted.
     void sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest, {
       providerThreadId: session.providerThreadId,
       threadId: session.bbThreadId,
-      turnId: translatorState.currentTurnId ?? null,
+      turnId: null,
       payload,
     })
       .then((result) => {
@@ -1501,12 +1487,14 @@ async function handleFsWriteTextFile(
     await fs.mkdir(dirname(parsed.data.path), { recursive: true });
     await fs.writeFile(parsed.data.path, parsed.data.content, "utf8");
 
-    const diff = buildEditDiff(parsed.data.path, oldText, parsed.data.content);
+    // The assembler builds the diff from oldText/content, so the envelope
+    // carries the texts instead of a pre-built diff string.
     emitForSession(session, ACP_FS_WRITE_METHOD, {
       threadId: session.bbThreadId,
       path: parsed.data.path,
       kind: oldText === undefined ? "add" : "update",
-      ...(diff ? { diff } : {}),
+      ...(oldText === undefined ? {} : { oldText }),
+      content: parsed.data.content,
     });
     responder.result(null);
   } catch (error) {
@@ -1566,8 +1554,8 @@ async function startAgentSession(
     await stopSession(existing);
   }
 
-  const translator = createSessionTranslator();
-  // Ordering guarantee: thread/identity precedes any thread/event for the
+  const translator = createAcpDeltaTranslator();
+  // Ordering guarantee: thread/identity precedes any thread/delta for the
   // session, so pre-identity notifications are held and flushed after the
   // identity goes out.
   const deferredEmits: {
@@ -1911,15 +1899,17 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
         session.promptRequestPending = false;
         session.queuedInputs = [];
         session.cancelRequested = false;
-        session.activePromptKind = null;
         // An exited agent already produced an error notification from the
         // connection's exit handler; only report in-protocol prompt failures.
+        // The error settles the still-open turn, so it is emitted before
+        // `activePromptKind` clears (the bridge's own open-turn mirror).
         if (!session.stopping && !session.connection.exited) {
           emitSessionError(
             session,
             error instanceof Error ? error.message : String(error),
           );
         }
+        session.activePromptKind = null;
         return;
       }
       session.promptRequestPending = false;
@@ -2327,28 +2317,12 @@ async function handleRequest(
         sendError(request.id, -32000, "A turn is already active");
         return;
       }
-      // Accepted-input correlation (turn/input/accepted): queue onto the
-      // translator so its onTurnStart drains it into the opening turn; a
-      // still-open translator turn gets the event immediately instead.
-      const state = session.translator.resolveState({
-        threadId: session.bbThreadId,
-      });
-      if (state.currentTurnId !== undefined) {
-        sendThreadEvents(
-          session,
-          buildAcceptedUserMessageEvent({
-            clientRequestId: params.clientRequestId,
-            providerThreadId: session.providerThreadId,
-            threadId: session.bbThreadId,
-            turnId: state.currentTurnId,
-          }),
-        );
-      } else {
-        queueAcceptedUserMessage({
-          clientRequestId: params.clientRequestId,
-          state,
-        });
-      }
+      // Accepted-input correlation (turn/input/accepted): the assembler owns
+      // the queue-until-turn-opens behavior, so the bridge only reports the
+      // acceptance.
+      sendThreadDeltas(session.bbThreadId, [
+        { kind: "input.accepted", clientRequestId: params.clientRequestId },
+      ]);
       // A standalone builtin `/compact` mention is bb's manual-compaction
       // request, not model input: it runs the agent's own compaction command
       // instead of becoming a prompt.
@@ -2376,17 +2350,11 @@ async function handleRequest(
         );
         return;
       }
-      // A steer joins the active turn, so its acceptance is emitted
-      // immediately against the expected turn id.
-      sendThreadEvents(
-        session,
-        buildAcceptedUserMessageEvent({
-          clientRequestId: params.clientRequestId,
-          providerThreadId: session.providerThreadId,
-          threadId: session.bbThreadId,
-          turnId: params.expectedTurnId,
-        }),
-      );
+      // A steer joins the active turn: the assembler emits the acceptance
+      // into the turn it holds open.
+      sendThreadDeltas(session.bbThreadId, [
+        { kind: "input.accepted", clientRequestId: params.clientRequestId },
+      ]);
       session.queuedInputs.push(params.input);
       requestSteerCancel(session);
       sendResult(request.id, { threadId: params.threadId });

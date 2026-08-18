@@ -1,9 +1,9 @@
 /**
  * The ACP bridge's own vocabulary: the canonical requests it accepts, and the
  * `acp/*` envelopes it feeds its session translator. The envelopes never reach
- * the wire — the translator turns them into canonical `ThreadEvent`s — but
- * they are a real contract between the bridge and its translator, which is why
- * they are schemas rather than ad-hoc objects.
+ * the wire — the translator turns them into `thread/delta` semantic deltas —
+ * but they are a real contract between the bridge and its translator, which is
+ * why they are schemas rather than ad-hoc objects.
  */
 
 import {
@@ -189,7 +189,10 @@ export const acpFsWriteNotificationParamsSchema = z
     threadId: z.string().min(1),
     path: z.string().min(1),
     kind: z.enum(["add", "update"]),
-    diff: z.string().optional(),
+    /** Absent on `add`: the file did not exist before the write. */
+    oldText: z.string().optional(),
+    /** The written file content; the assembler builds the diff from it. */
+    content: z.string(),
   })
   .passthrough();
 
