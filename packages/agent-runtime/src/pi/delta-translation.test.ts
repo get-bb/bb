@@ -209,6 +209,60 @@ describe("pi delta translation equivalence", () => {
     expect(events.some((event) => event.type === "provider/error")).toBe(false);
   });
 
+  it("completes extension-triggered turns when agent_end includes string custom content", () => {
+    const harness = createHarness();
+    harness.translate(loadFixture("agent-start.json"));
+    const turnId = harness.openTurnId();
+
+    const events = harness.translate({
+      type: "agent_end",
+      messages: [
+        {
+          role: "custom",
+          customType: "pi-processes",
+          content: "Process completed successfully",
+          display: true,
+          timestamp: 1777995780000,
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "The process finished." }],
+          api: "anthropic-messages",
+          provider: "anthropic",
+          model: "claude-haiku-4-5",
+          usage: {
+            input: 10,
+            output: 5,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 15,
+            cost: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              total: 0,
+            },
+          },
+          stopReason: "stop",
+          timestamp: 1777995781000,
+        },
+      ],
+      willRetry: false,
+    } satisfies AgentSessionEvent);
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope(turnId),
+        status: "completed",
+      }),
+    );
+    expect(events.some((event) => event.type === "provider/unhandled")).toBe(
+      false,
+    );
+  });
+
   it("agent_end surfaces Pi assistant stop errors as failed turns", () => {
     const harness = createHarness();
     const quotaMessage =
