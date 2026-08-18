@@ -2012,6 +2012,7 @@ function RootComposeSurface({
         onOpenLink={handleOpenPanelLink}
         onSelectionAddToChat={handleRootPanelSelectionAddToChat}
         panelStateId={ROOT_COMPOSE_FIXED_PANEL_STATE_ID}
+        syncThreadId={null}
         target={rootPanelTerminalTarget}
       />
     ) : isNewTabActive ? (

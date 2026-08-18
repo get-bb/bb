@@ -2694,6 +2694,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       onAutoFocusHandled={handleTerminalAutoFocusHandled}
       onOpenLink={handleOpenTimelineLink}
       onSelectionAddToChat={handleSelectionAddToChat}
+      syncThreadId={thread.id}
       target={{ kind: "thread", threadId: thread.id }}
     />
   ) : isNewTabActive ? (

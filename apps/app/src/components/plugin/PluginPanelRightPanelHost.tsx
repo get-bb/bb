@@ -487,6 +487,7 @@ export function PluginPanelRightPanelHost({
             isPanelOpen={isOpen}
             isPanelPersistedOpen={panelState.secondary.isOpen}
             panelStateId={panelStateId}
+            syncThreadId={null}
             target={activeTerminalTarget!}
           />
         </Suspense>

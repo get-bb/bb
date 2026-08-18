@@ -47,6 +47,8 @@ export interface ThreadTerminalControllerArgs {
   isPanelOpen: boolean;
   isPanelPersistedOpen: boolean;
   panelStateId?: string;
+  /** Thread whose tabs are server-synced; null for local-only panel state. */
+  syncThreadId: string | null;
   fixedPanelTarget?: TerminalCreateTarget;
   fixedTerminalId?: string;
   target: ThreadTerminalTarget;
@@ -175,6 +177,7 @@ export function useThreadTerminalController({
   isPanelOpen,
   isPanelPersistedOpen,
   panelStateId,
+  syncThreadId,
   fixedPanelTarget,
   fixedTerminalId,
   target,
@@ -191,24 +194,22 @@ export function useThreadTerminalController({
   const environmentQueryId =
     target.kind === "environment" ? target.environmentId : "";
   const fixedPanelStateId = panelStateId ?? terminalTargetId;
-  const fixedPanelSyncThreadId =
-    target.kind === "thread" ? target.threadId : null;
   const activeFixedTerminalId = useActiveFixedRightTerminalId(
     fixedPanelStateId,
-    fixedPanelSyncThreadId,
+    syncThreadId,
   );
   const closeFixedSecondaryPanel = useCloseFixedSecondaryPanel(
     fixedPanelStateId,
-    fixedPanelSyncThreadId,
+    syncThreadId,
   );
   const setActiveFixedTerminal = useSetFixedRightTerminalActiveTerminal(
     fixedPanelStateId,
-    fixedPanelSyncThreadId,
+    syncThreadId,
     fixedPanelTarget,
   );
   const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(
     fixedPanelStateId,
-    fixedPanelSyncThreadId,
+    syncThreadId,
   );
   const uiCreatedTerminalIdsRef = useRef<Set<string>>(new Set());
   const dirtyTerminalIdsRef = useRef<Set<string>>(new Set());

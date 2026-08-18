@@ -11,7 +11,7 @@ const MARKDOWN_OPENER = {
   id: "markdown",
   pluginId: "docs",
   title: "Docs editor",
-} as unknown as PluginFileOpenerSlot;
+} satisfies PluginFileOpenerSlot;
 
 const REQUESTS: readonly {
   label: string;
@@ -72,7 +72,7 @@ describe("createFileOpenerTabForRequest thread-tabs contract", () => {
     const tab = createFileOpenerTabForRequest({
       fileOpeners: [MARKDOWN_OPENER],
       preference: {},
-      projectId: "prj_docs",
+      projectId: null,
       request: {
         kind: "workspace-file-preview",
         tab: {
@@ -89,7 +89,7 @@ describe("createFileOpenerTabForRequest thread-tabs contract", () => {
     expect(tab?.fileOpenerOwner).toMatchObject({
       environmentId: null,
       kind: "workspace-file-preview",
-      projectId: "prj_docs",
+      projectId: null,
       threadId: null,
     });
     expect(() => threadTabsSchema.parse([tab])).not.toThrow();
