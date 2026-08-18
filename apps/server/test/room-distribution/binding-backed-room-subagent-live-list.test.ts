@@ -207,7 +207,6 @@ async function withLiveListRoom(
       objectFormat: "sha1" as const,
       baseRevision: "a".repeat(40),
       baseBranch: "main",
-      baseRevision: "a".repeat(40),
       generatedBranch: "rooms/live-list",
       candidateHostId: randomUUID(),
       environmentTemplate: "managed-worktree" as const,

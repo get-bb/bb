@@ -1236,7 +1236,8 @@ export async function dispatchManagedEnvironmentReprovision(
             workspaceProvisionType: provisionType,
             setupTimeoutMs: SETUP_TIMEOUT_MS,
             ...(args.environment.baseRevision !== null &&
-            roomReservation !== null
+            roomReservation !== null &&
+            roomReservation.providerRepositoryId !== null
               ? {
                   revisionPin: {
                     baseRevision: args.environment.baseRevision,

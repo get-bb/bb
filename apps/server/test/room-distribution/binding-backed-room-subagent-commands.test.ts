@@ -159,7 +159,6 @@ async function provisionRoom(harness: TestAppHarness, seed: number) {
     objectFormat: "sha1" as const,
     baseRevision: "a".repeat(40),
     baseBranch: "main",
-    baseRevision: "a".repeat(40),
     generatedBranch: `rooms/subagent-commands-${seed}`,
     candidateHostId,
     environmentTemplate: "managed-worktree" as const,

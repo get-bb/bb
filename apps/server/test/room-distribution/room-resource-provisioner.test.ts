@@ -471,6 +471,9 @@ describe("Work Together Room resource provisioner", () => {
       });
 
       const changed = createWorkTogetherRoomResourceProvisioner(harness.deps, {
+        resolveHost: () => {
+          throw new Error("registry must not run during an exact replay");
+        },
         resolve: () => {
           throw new Error("registry must not run during an exact replay");
         },

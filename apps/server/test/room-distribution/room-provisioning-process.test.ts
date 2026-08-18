@@ -35,7 +35,6 @@ const BODY = {
   objectFormat: "sha1",
   baseRevision: "a".repeat(40),
   baseBranch: "main",
-  baseRevision: "a".repeat(40),
   generatedBranch: "rooms/room-1",
   candidateHostId: "55555555-5555-4555-8555-555555555555",
   environmentTemplate: "managed-worktree",

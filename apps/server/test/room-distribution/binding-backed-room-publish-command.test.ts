@@ -77,7 +77,6 @@ async function provisionIdleRoom(
     objectFormat: "sha1" as const,
     baseRevision: "a".repeat(40),
     baseBranch: "main",
-    baseRevision: "a".repeat(40),
     generatedBranch: `rooms/publish-${args.seed}`,
     candidateHostId,
     environmentTemplate: "managed-worktree" as const,

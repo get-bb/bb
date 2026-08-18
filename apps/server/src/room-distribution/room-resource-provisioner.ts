@@ -62,13 +62,18 @@ export interface WorkTogetherRoomResourceRegistry {
     | Promise<WorkTogetherRoomResourceTarget | null>;
 }
 
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
+  ? Omit<T, K>
+  : never;
+type LaunchFacts = DistributiveOmit<
+  ReserveWorkTogetherRoomResourcesInput,
+  "bbHostId" | "projectName" | "providerId" | "sourcePath"
+>;
+
 export type ProvisionWorkTogetherRoomResourcesInput = Readonly<{
   /** Immutable server-resolved identity; never deserialize this from a body. */
   principal: Principal;
-  launch: Omit<
-    ReserveWorkTogetherRoomResourcesInput,
-    "bbHostId" | "projectName" | "providerId" | "sourcePath"
-  >;
+  launch: LaunchFacts;
 }>;
 
 export type ProvisionWorkTogetherRoomResourcesResult = Readonly<{
@@ -257,26 +262,86 @@ function launchMatchesReservation(
   launch: ProvisionWorkTogetherRoomResourcesInput["launch"],
   reservation: WorkTogetherRoomResourceReservation,
 ): boolean {
+  if (
+    launch.bindingId !== reservation.bindingId ||
+    launch.workspaceId !== reservation.workspaceId ||
+    launch.taskId !== reservation.taskId ||
+    launch.cellId !== reservation.cellId ||
+    launch.candidateHostId !== reservation.candidateHostId ||
+    launch.environmentTemplate !== reservation.environmentTemplate ||
+    launch.workKind !== reservation.workKind
+  ) {
+    return false;
+  }
+  if (launch.environmentTemplate === "isolated-scratch") return true;
+  if (
+    launch.repositorySnapshotId !== reservation.repositorySnapshotId ||
+    launch.repositoryBindingId !== reservation.repositoryBindingId ||
+    launch.repositoryBindingVersion !== reservation.repositoryBindingVersion ||
+    launch.providerRepositoryId !== reservation.providerRepositoryId ||
+    launch.objectFormat !== reservation.objectFormat ||
+    launch.baseRevision !== reservation.baseRevision
+  ) {
+    return false;
+  }
+  if (launch.environmentTemplate === "detached-read-only") return true;
   return (
-    launch.bindingId === reservation.bindingId &&
-    launch.workspaceId === reservation.workspaceId &&
-    launch.taskId === reservation.taskId &&
-    launch.cellId === reservation.cellId &&
-    launch.candidateHostId === reservation.candidateHostId &&
-    launch.environmentTemplate === reservation.environmentTemplate &&
-    launch.workKind === reservation.workKind &&
-    (launch.environmentTemplate === "isolated-scratch" ||
-      (launch.repositorySnapshotId === reservation.repositorySnapshotId &&
-        launch.repositoryBindingId === reservation.repositoryBindingId &&
-        launch.repositoryBindingVersion ===
-          reservation.repositoryBindingVersion &&
-        launch.providerRepositoryId === reservation.providerRepositoryId &&
-        launch.objectFormat === reservation.objectFormat &&
-        launch.baseRevision === reservation.baseRevision &&
-        (launch.environmentTemplate === "detached-read-only" ||
-          (launch.baseBranch === reservation.baseBranch &&
-            launch.generatedBranch === reservation.generatedBranch))))
+    launch.baseBranch === reservation.baseBranch &&
+    launch.generatedBranch === reservation.generatedBranch
   );
+}
+
+function reservationInputFromLaunch(
+  launch: ProvisionWorkTogetherRoomResourcesInput["launch"],
+  target: {
+    bbHostId: string;
+    projectName: string;
+    providerId: string;
+    sourcePath?: string;
+  },
+): ReserveWorkTogetherRoomResourcesInput {
+  const common = {
+    bindingId: launch.bindingId,
+    workspaceId: launch.workspaceId,
+    taskId: launch.taskId,
+    cellId: launch.cellId,
+    candidateHostId: launch.candidateHostId,
+    workKind: launch.workKind,
+    bbHostId: target.bbHostId,
+    projectName: target.projectName,
+    providerId: target.providerId,
+  };
+  if (launch.environmentTemplate === "isolated-scratch") {
+    return { ...common, environmentTemplate: "isolated-scratch" };
+  }
+  if (launch.environmentTemplate === "detached-read-only") {
+    return {
+      ...common,
+      workKind: launch.workKind,
+      environmentTemplate: "detached-read-only",
+      repositorySnapshotId: launch.repositorySnapshotId,
+      repositoryBindingId: launch.repositoryBindingId,
+      repositoryBindingVersion: launch.repositoryBindingVersion,
+      providerRepositoryId: launch.providerRepositoryId,
+      objectFormat: launch.objectFormat,
+      baseRevision: launch.baseRevision,
+      sourcePath: target.sourcePath,
+    };
+  }
+  return {
+    ...common,
+    workKind: "code",
+    environmentTemplate: "managed-worktree",
+    repositorySnapshotId: launch.repositorySnapshotId,
+    repositoryBindingId: launch.repositoryBindingId,
+    repositoryBindingVersion: launch.repositoryBindingVersion,
+    providerRepositoryId: launch.providerRepositoryId,
+    objectFormat: launch.objectFormat,
+    baseRevision: launch.baseRevision,
+    baseBranch: launch.baseBranch,
+    generatedBranch: launch.generatedBranch,
+    sourcePath: target.sourcePath,
+  };
 }
 
 function ensureProject(
@@ -577,15 +642,17 @@ export function createWorkTogetherRoomResourceProvisioner(
             ? `Room ${input.launch.bindingId.slice(0, 8)}`
             : repositoryTarget!.projectName;
         try {
-          reservation = reserveWorkTogetherRoomResources(deps.db, {
-            ...input.launch,
-            bbHostId: hostTarget.bbHostId,
-            projectName,
-            providerId: hostTarget.providerId,
-            ...(repositoryTarget !== null
-              ? { sourcePath: repositoryTarget.sourcePath }
-              : {}),
-          });
+          reservation = reserveWorkTogetherRoomResources(
+            deps.db,
+            reservationInputFromLaunch(input.launch, {
+              bbHostId: hostTarget.bbHostId,
+              projectName,
+              providerId: hostTarget.providerId,
+              ...(repositoryTarget !== null
+                ? { sourcePath: repositoryTarget.sourcePath }
+                : {}),
+            }),
+          );
         } catch (error) {
           if (
             error instanceof WorkTogetherRoomResourceReservationConflictError

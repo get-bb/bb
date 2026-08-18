@@ -86,7 +86,6 @@ async function provisionActiveRoom(
     objectFormat: "sha1" as const,
     baseRevision: "a".repeat(40),
     baseBranch: "main",
-    baseRevision: "a".repeat(40),
     generatedBranch: `rooms/interaction-${args.seed}`,
     candidateHostId,
     environmentTemplate: "managed-worktree" as const,
