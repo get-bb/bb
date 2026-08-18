@@ -13,7 +13,11 @@ env:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseded pull request pushes are wasted work, but superseded main pushes
+  # are not: a cancelled run never reaches its post step, so it never saves a
+  # Turbo cache. Cancelling them let a burst of merges leave every pull request
+  # restoring from a main commit well behind HEAD.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   checks:
@@ -95,6 +99,13 @@ jobs:
       - name: Test
         run: pnpm exec turbo run test ${{ matrix.filter }} --cache-dir=.turbo/cache --output-logs=new-only
 
+  # The macOS legs run without the Turbo cache. Blacksmith's transparent cache
+  # only backs their Linux runners, so on macOS the cache moves over GitHub's
+  # own service at ~50 MB/s: restoring and saving the ~2 GB directory cost about
+  # two minutes per run and returned 0 of 8 task hits, because the six ~2 GB
+  # entries it wrote also blew past the repository's 10 GB cache quota and
+  # evicted each other. `smoke:tarball` is itself `"cache": false`, so only its
+  # build dependencies could ever have been reused.
   package-smoke:
     name: Package Smoke (${{ matrix.os }}, Node ${{ matrix.node-version }})
     runs-on: ${{ matrix.os }}
@@ -106,8 +117,10 @@ jobs:
         include:
           - os: blacksmith-4vcpu-ubuntu-2404
             node-version: "22.x"
-          - os: macos-latest
+            turbo-cache: "true"
+          - os: blacksmith-6vcpu-macos-15
             node-version: "22.x"
+            turbo-cache: "false"
 
     steps:
       - name: Checkout repository
@@ -119,6 +132,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
           pnpm-version: ${{ env.PNPM_VERSION }}
           cache-prefix: package-smoke
+          turbo-cache: ${{ matrix.turbo-cache }}
 
       - name: Smoke bb-app tarball
         run: pnpm exec turbo run smoke:tarball --filter=bb-app --cache-dir=.turbo/cache --output-logs=new-only
@@ -134,12 +148,16 @@ jobs:
         include:
           - os: blacksmith-4vcpu-ubuntu-2404
             node-version: "24.x"
+            turbo-cache: "true"
           - os: blacksmith-4vcpu-ubuntu-2404
             node-version: "26.x"
-          - os: macos-latest
+            turbo-cache: "true"
+          - os: blacksmith-6vcpu-macos-15
             node-version: "24.x"
-          - os: macos-latest
+            turbo-cache: "false"
+          - os: blacksmith-6vcpu-macos-15
             node-version: "26.x"
+            turbo-cache: "false"
 
     steps:
       - name: Checkout repository
@@ -151,6 +169,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
           pnpm-version: ${{ env.PNPM_VERSION }}
           cache-prefix: compat-smoke
+          turbo-cache: ${{ matrix.turbo-cache }}
 
       - name: Smoke bb-app tarball
         run: pnpm exec turbo run smoke:tarball --filter=bb-app --cache-dir=.turbo/cache --output-logs=new-only

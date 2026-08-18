@@ -9,8 +9,12 @@ inputs:
     description: pnpm version to install
     required: true
   cache-prefix:
-    description: Distinguishes Turbo cache entries per job type (e.g. checks, test-server)
+    description: Names this job's Turbo cache entry (e.g. checks, test-server). Every job reads every prefix; this only decides which entry the job writes back.
     required: true
+  turbo-cache:
+    description: Restore and save the Turbo cache. Set to "false" on runners where the cache costs more to move than the tasks cost to run.
+    required: false
+    default: "true"
 
 runs:
   using: composite
@@ -27,14 +31,28 @@ runs:
         node-version: ${{ inputs.node-version }}
         cache: pnpm
 
+    # Writes to a prefix-scoped key but reads from every prefix: Turbo cache
+    # entries are content-addressed by task hash, so an entry another job saved
+    # is either a hit or absent, never wrong. Without the shared read the test
+    # shards could not see the builds the checks job had already done.
     - name: Cache Turbo task outputs
+      if: inputs.turbo-cache == 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: .turbo/cache
-        key: ${{ runner.os }}-node-${{ inputs.node-version }}-${{ inputs.cache-prefix }}-turbo-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+        key: ${{ runner.os }}-node-${{ inputs.node-version }}-turbo-${{ hashFiles('pnpm-lock.yaml') }}-${{ inputs.cache-prefix }}-${{ github.sha }}
         restore-keys: |
-          ${{ runner.os }}-node-${{ inputs.node-version }}-${{ inputs.cache-prefix }}-turbo-${{ hashFiles('pnpm-lock.yaml') }}-
-          ${{ runner.os }}-node-${{ inputs.node-version }}-${{ inputs.cache-prefix }}-turbo-
+          ${{ runner.os }}-node-${{ inputs.node-version }}-turbo-${{ hashFiles('pnpm-lock.yaml') }}-${{ inputs.cache-prefix }}-
+          ${{ runner.os }}-node-${{ inputs.node-version }}-turbo-${{ hashFiles('pnpm-lock.yaml') }}-
+          ${{ runner.os }}-node-${{ inputs.node-version }}-turbo-
+
+    # The restored directory is what this job saves back, so pruning here is
+    # what bounds it. Nothing else evicts entries, and an unbounded cache costs
+    # more to restore than the tasks it skips.
+    - name: Prune the Turbo cache
+      if: inputs.turbo-cache == 'true'
+      shell: bash
+      run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 1024
 
     - name: Install dependencies
       shell: bash
