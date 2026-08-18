@@ -211,6 +211,33 @@ async function handleRequest(message) {
         );
         return;
       }
+      // Mirror the real app-server (codex-cli 0.147.0, observed live for
+      // #1727): thread/resume replays the rollout's last-turn token usage,
+      // scoped to that PREVIOUS turn's id, before any new turn is started.
+      // Opt-in via a `usage-replay-` provider-thread-id prefix.
+      if (String(params.threadId).startsWith("usage-replay-")) {
+        notify("thread/tokenUsage/updated", {
+          threadId: params.threadId,
+          turnId: "turn-fx-1",
+          tokenUsage: {
+            total: {
+              totalTokens: 39970,
+              inputTokens: 39960,
+              cachedInputTokens: 0,
+              outputTokens: 10,
+              reasoningOutputTokens: 0,
+            },
+            last: {
+              totalTokens: 19993,
+              inputTokens: 19988,
+              cachedInputTokens: 0,
+              outputTokens: 5,
+              reasoningOutputTokens: 0,
+            },
+            modelContextWindow: 258400,
+          },
+        });
+      }
       respond(id, { thread: { id: params.threadId } });
       return;
     }
