@@ -3,6 +3,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { THREAD_JUMP_APP_COMMAND_IDS } from "@bb/domain";
 import { Link, useNavigate } from "react-router-dom";
 import { Icon } from "@bb/shared-ui/icon";
+import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { OverflowFade } from "@/components/ui/overflow-fade.js";
@@ -16,7 +17,11 @@ import {
   useCloseMobileSidebar,
   useSidebar,
 } from "@/components/ui/sidebar.js";
-import { ProjectList, ProjectListActionButtons } from "./ProjectList";
+import {
+  PROJECT_LIST_ACTION_BUTTON_CLASS,
+  ProjectList,
+  ProjectListActionButtons,
+} from "./ProjectList";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
 import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
@@ -325,6 +330,21 @@ export function AppSidebar({
               query: threadSearch.query,
             }}
           />
+          {isCompactViewport ? (
+            <Button
+              asChild
+              size="sm"
+              variant="ghost"
+              className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "mt-0.5 w-full")}
+            >
+              <Link to={settingsRoutePath} onClick={closeOnMobile}>
+                <Icon name="Settings" />
+                <span className="min-w-0 flex-1 truncate text-left">
+                  Settings
+                </span>
+              </Link>
+            </Button>
+          ) : null}
         </div>
         <PluginNavSidebarItems
           onNavigate={closeOnMobile}
@@ -351,30 +371,32 @@ export function AppSidebar({
            * they sit flush left because the spacer stays behind on the action
            * line. */}
           <SidebarMenu className="flex-row flex-wrap-reverse items-center gap-1">
-            <SidebarMenuItem className="min-w-0">
-              <SidebarMenuButton
-                asChild
-                aria-label={
-                  settingsShortcut
-                    ? `Settings (${settingsShortcut.label})`
-                    : "Settings"
-                }
-                aria-keyshortcuts={settingsShortcut?.ariaKeyshortcuts}
-                tooltip={{
-                  children: settingsShortcut
-                    ? `Settings (${settingsShortcut.label})`
-                    : "Settings",
-                  hidden: false,
-                  side: "top",
-                }}
-                className={SIDEBAR_FOOTER_ACTION_CLASS}
-              >
-                <Link to={settingsRoutePath} onClick={closeOnMobile}>
-                  <Icon name="Settings" />
-                  <span className="sr-only">Settings</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
+            {!isCompactViewport ? (
+              <SidebarMenuItem className="min-w-0">
+                <SidebarMenuButton
+                  asChild
+                  aria-label={
+                    settingsShortcut
+                      ? `Settings (${settingsShortcut.label})`
+                      : "Settings"
+                  }
+                  aria-keyshortcuts={settingsShortcut?.ariaKeyshortcuts}
+                  tooltip={{
+                    children: settingsShortcut
+                      ? `Settings (${settingsShortcut.label})`
+                      : "Settings",
+                    hidden: false,
+                    side: "top",
+                  }}
+                  className={SIDEBAR_FOOTER_ACTION_CLASS}
+                >
+                  <Link to={settingsRoutePath} onClick={closeOnMobile}>
+                    <Icon name="Settings" />
+                    <span className="sr-only">Settings</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ) : null}
             <PluginSidebarFooterActions onNavigate={closeOnMobile} />
             <SidebarMenuItem className="min-w-0">
               <SidebarMenuButton

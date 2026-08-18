@@ -11,15 +11,15 @@
    * chrome cannot leave the percentage-height containing block taller than
    * the visible window.
    *
-   * iOS standalone subtracts the top safe-area inset from the small and
-   * dynamic viewports but not from the large one. On a 852pt screen with a
-   * 59pt inset, innerHeight/100svh/100dvh/height:100% all report 793 while
-   * 100lvh reports the true 852. The shell starts at y=0 under the
-   * translucent status bar, so a 793pt shell leaves a 59pt dead band at the
-   * bottom. 100lvh is the only value that spans the screen.
+   * iOS standalone subtracts the top safe-area inset from the dynamic
+   * viewport when the app paints beneath a translucent status bar. Add that
+   * inset back so the shell still spans the physical screen. Some installed
+   * apps instead start below an opaque status bar; there the safe-area inset
+   * is zero, so the same expression stays at the visible 100dvh height rather
+   * than extending a 100lvh shell below the home indicator.
    *
-   * Scoped to standalone: in a Safari tab, lvh is the toolbars-retracted
-   * height, which is taller than what the user can see.
+   * Scoped to standalone because browser tabs already report the correct
+   * visible 100dvh and must not add the status-area inset a second time.
    *
    * `position: fixed` elements cannot inherit the shell height: a percentage
    * height on them resolves against the initial containing block, which is the
@@ -41,7 +41,7 @@
 
   @media (display-mode: standalone) {
     :root {
-      --bb-shell-height: 100lvh;
+      --bb-shell-height: calc(100dvh + env(safe-area-inset-top));
     }
   }
 
