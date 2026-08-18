@@ -87,7 +87,10 @@ describe("bb thread list command output", () => {
         updatedAt: 1,
       }),
     ]);
-    stubServerApi({ "v1.threads.$get": list });
+    stubServerApi({
+      "v1.threads.$get": list,
+      "v1.projects.$get": async () => [{ id: "proj-1", name: "Alpha" }],
+    });
 
     await runCommand(["thread", "list"], register);
 
@@ -96,7 +99,7 @@ describe("bb thread list command output", () => {
     });
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "",
-      "ID                 Project  Status         \n-----------------  -------  ---------------\nthread-archived-1  proj-1   idle (archived)",
+      "ID                 Title  Project  Status         \n-----------------  -----  -------  ---------------\nthread-archived-1  -      Alpha    idle (archived)",
       "",
     ]);
   });
@@ -113,7 +116,10 @@ describe("bb thread list command output", () => {
         updatedAt: 1,
       }),
     ]);
-    stubServerApi({ "v1.threads.$get": list });
+    stubServerApi({
+      "v1.threads.$get": list,
+      "v1.projects.$get": async () => [],
+    });
 
     await runCommand(["thread", "list"], register);
 
@@ -133,7 +139,10 @@ describe("bb thread list command output", () => {
         updatedAt: 1,
       }),
     ]);
-    stubServerApi({ "v1.threads.$get": list });
+    stubServerApi({
+      "v1.threads.$get": list,
+      "v1.projects.$get": async () => [],
+    });
 
     vi.stubEnv("BB_PROJECT_ID", undefined);
     await runCommand(["thread", "list"], register);
@@ -143,9 +152,75 @@ describe("bb thread list command output", () => {
     });
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "",
-      "ID                 Project  Status      \n-----------------  -------  ------------\nthread-personal-1  -        idle        ",
+      "ID                 Title  Project  Status      \n-----------------  -----  -------  ------------\nthread-personal-1  -      -        idle        ",
       "",
     ]);
+  });
+
+  it("bb thread list prints the thread title, fallback, and project name (#1648)", async () => {
+    const list = vi.fn(async () => [
+      fixtures.makeThread({
+        id: "thr_a9niqhjj9c",
+        projectId: "proj_bsst4jxfwv",
+        providerId: "codex",
+        status: "idle",
+        title: "Investigate flaky login test",
+        titleFallback: "Reply only with ok.",
+        createdAt: 1,
+        updatedAt: 1,
+      }),
+      fixtures.makeThread({
+        id: "thr_uwfzqywzsz",
+        projectId: "proj_bsst4jxfwv",
+        providerId: "codex",
+        status: "idle",
+        title: null,
+        titleFallback: "Reply only with ok.\nThis is the second QA thread.",
+        createdAt: 1,
+        updatedAt: 1,
+      }),
+      fixtures.makeThread({
+        id: "thr_unknownproj",
+        projectId: "proj_missing",
+        providerId: "codex",
+        status: "idle",
+        title: "x".repeat(80),
+        titleFallback: null,
+        createdAt: 1,
+        updatedAt: 1,
+      }),
+    ]);
+    const projects = vi.fn(async () => [{ id: "proj_bsst4jxfwv", name: "qa" }]);
+    stubServerApi({ "v1.threads.$get": list, "v1.projects.$get": projects });
+
+    await runCommand(["thread", "list"], register);
+
+    expect(projects).toHaveBeenCalledWith({
+      query: { includePersonal: "false" },
+    });
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    const lines = output.split("\n");
+    expect(lines[1]).toMatch(/^ID\s+Title\s+Project\s+Status/);
+    expect(output).toContain("Investigate flaky login test");
+    expect(output).toContain(
+      "Reply only with ok. This is the second QA thread.",
+    );
+    expect(output).toContain(`${"x".repeat(59)}…`);
+    expect(output).not.toContain("x".repeat(60));
+    expect(output).toMatch(
+      /thr_a9niqhjj9c\s+Investigate flaky login test\s+qa\s+idle/,
+    );
+    expect(output).toMatch(/thr_unknownproj\s+x+…\s+proj_missing\s+idle/);
+  });
+
+  it("bb thread list --json does not fetch projects", async () => {
+    const list = vi.fn(async () => []);
+    const projects = vi.fn(async () => []);
+    stubServerApi({ "v1.threads.$get": list, "v1.projects.$get": projects });
+
+    await runCommand(["thread", "list", "--json"], register);
+
+    expect(projects).not.toHaveBeenCalled();
   });
 
   it("bb thread list ignores BB_PROJECT_ID when --project is omitted", async () => {
