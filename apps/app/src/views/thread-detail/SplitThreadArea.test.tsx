@@ -1669,6 +1669,52 @@ describe("SplitThreadArea", () => {
     expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(7);
   });
 
+  // The pane header is itself a macOS drag region, so the plugin pane's own
+  // drag handle has to opt back out or the OS swallows its pointer events as
+  // window drags and panes can no longer be reordered. jsdom can't resolve
+  // native regions, so this locks the class contract that drives them.
+  it("carves a plugin pane drag handle out of the macOS window-drag region", async () => {
+    const desktopInfo: BbDesktopInfo = {
+      lastCheckedAt: null,
+      latestVersion: null,
+      pendingVersion: null,
+      platform: "macos",
+      updateAvailable: false,
+      updateDownloaded: false,
+      version: "0.0.0-test",
+    };
+    window.bbDesktop = createBbDesktopApi(desktopInfo);
+    setPluginSlotRegistrations("docs", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [
+        {
+          id: "docs",
+          title: "Docs",
+          icon: "FileText",
+          path: "docs",
+          component: () => <div>Docs panel</div>,
+        },
+      ],
+      threadPanelActions: [],
+      pendingInteractions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+    });
+
+    renderSplitArea({
+      path: "/plugins/docs/docs",
+      layout: pluginSplitLayout(),
+      routeContent: docsContent,
+    });
+
+    const title = await screen.findByText("Docs");
+    const dragHandle = title.parentElement?.parentElement;
+    expect(dragHandle?.className).toContain("[app-region:no-drag]");
+    expect(dragHandle?.className).toContain("[-webkit-app-region:no-drag]");
+  });
+
   it("makes only top-row split headers desktop window-drag regions", async () => {
     const desktopInfo: BbDesktopInfo = {
       lastCheckedAt: null,
