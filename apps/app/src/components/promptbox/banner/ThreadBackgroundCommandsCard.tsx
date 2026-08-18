@@ -118,23 +118,33 @@ function BackgroundActivitySummary({
   const model = backgroundActivityModel(row);
   return (
     <span className="flex min-w-0 flex-1 items-center gap-1 text-left">
-      <span className="min-w-0 truncate" title={row.description}>
-        <span
-          className={
-            active ? activityMetaClass("active") : "text-muted-foreground"
-          }
-        >
-          {display.runningPrefix}{" "}
-        </span>
-        <span
-          className={
-            active
-              ? activityTextClass("active")
-              : "font-medium text-foreground opacity-70"
-          }
-        >
-          {row.description}
-        </span>
+      {/*
+       * The prefix and the description truncate as separate flex items rather
+       * than as one truncating span. `activityTextClass("active")` carries
+       * `animate-shine`, which is `display: inline-block` so its
+       * background-clip gradient has a box to size against — an atomic inline
+       * inside a truncating parent is dropped whole when it overflows, so the
+       * description collapsed to a bare ellipsis with the rest of the row left
+       * empty. Truncating on the shimmering element itself clips its own text.
+       */}
+      <span
+        className={cn(
+          "shrink-0 whitespace-nowrap",
+          active ? activityMetaClass("active") : "text-muted-foreground",
+        )}
+      >
+        {display.runningPrefix}
+      </span>
+      <span
+        className={cn(
+          "min-w-0 truncate",
+          active
+            ? activityTextClass("active")
+            : "font-medium text-foreground opacity-70",
+        )}
+        title={row.description}
+      >
+        {row.description}
       </span>
       {model ? (
         <span
