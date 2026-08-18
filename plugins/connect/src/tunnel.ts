@@ -44,6 +44,7 @@ import type { ShareHost } from "./hosts.js";
 import type { ConnectStateName, ConnectStatus } from "./types.js";
 
 const DISCONNECT_TIMEOUT_MS = 5_000;
+const TUNNEL_HANDSHAKE_TIMEOUT_MS = 15_000;
 
 async function notifyCloudOfDisconnect(
   credential: ConnectCredential,
@@ -445,6 +446,7 @@ export class ConnectTunnel {
     try {
       tunnel = new NodeWebSocket(tunnelUrl, {
         headers: { authorization: `Bearer ${credential.credential}` },
+        handshakeTimeout: TUNNEL_HANDSHAKE_TIMEOUT_MS,
       });
     } catch (error) {
       // A malformed stored serverUrl throws synchronously. Retrying cannot
@@ -458,9 +460,38 @@ export class ConnectTunnel {
     }
     this.tunnel = tunnel;
     let connectedAt = 0;
+    let retryScheduled = false;
+
+    const scheduleReconnect = (detail: string): void => {
+      if (retryScheduled || this.stopped || this.tunnel !== tunnel) {
+        return;
+      }
+      retryScheduled = true;
+      this.connected = false;
+      this.session?.dispose();
+      this.session = undefined;
+      this.remoteClients = 0;
+      const stable = connectedAt ? Date.now() - connectedAt : 0;
+      const delay = this.backoff.nextDelayAfterClose(stable);
+      if (this.lastError === null) {
+        this.lastError = `can't reach ${connectApexHost(credential.serverUrl)} — connection closed`;
+      }
+      this.nextRetryAt = Date.now() + delay;
+      this.options.log.warn(`${detail}; reconnecting in ${delay}ms`);
+      this.reconnectTimer = setTimeout(() => {
+        if (this.stopped || this.tunnel !== tunnel) return;
+        this.reconnectTimer = undefined;
+        this.nextRetryAt = null;
+        this.publish();
+        this.openTunnel();
+      }, delay);
+      this.publish();
+    };
 
     tunnel.on("open", () => {
-      if (this.stopped || this.tunnel !== tunnel) return;
+      if (retryScheduled || this.stopped || this.tunnel !== tunnel) {
+        return;
+      }
       connectedAt = Date.now();
       this.connected = true;
       this.lastError = null;
@@ -483,16 +514,20 @@ export class ConnectTunnel {
     });
     tunnel.on("unexpected-response", (_req, res) => {
       if (this.stopped || this.tunnel !== tunnel) return;
+      res.resume();
       const statusCode = res.statusCode ?? 0;
       if (statusCode === 401 || statusCode === 403) {
         this.credentialRejected(statusCode);
         return;
       }
       this.lastError = `tunnel rejected: HTTP ${statusCode}`;
-      this.options.log.warn(this.lastError);
+      scheduleReconnect(this.lastError);
+      tunnel.terminate();
     });
     tunnel.on("error", (e: Error) => {
-      if (this.stopped || this.tunnel !== tunnel) return;
+      if (retryScheduled || this.stopped || this.tunnel !== tunnel) {
+        return;
+      }
       // Humanize transport failures for the reconnecting card; the raw
       // message still rides the log via the close handler below.
       this.lastError = humanizeTransportError(
@@ -501,24 +536,9 @@ export class ConnectTunnel {
       );
     });
     tunnel.on("close", (code: number, reason: Buffer) => {
-      if (this.stopped || this.tunnel !== tunnel) return;
-      this.connected = false;
-      this.session?.dispose();
-      this.session = undefined;
-      this.remoteClients = 0;
-      const stable = connectedAt ? Date.now() - connectedAt : 0;
-      const delay = this.backoff.nextDelayAfterClose(stable);
-      // A clean close with no prior socket error still leaves the card empty;
-      // give it an honest line so the reconnecting state is never blank.
-      if (this.lastError === null) {
-        this.lastError = `can't reach ${connectApexHost(credential.serverUrl)} — connection closed`;
-      }
-      this.nextRetryAt = Date.now() + delay;
-      this.options.log.warn(
-        `tunnel closed (code ${code}${reason.length > 0 ? `, ${reason.toString()}` : ""}); reconnecting in ${delay}ms`,
+      scheduleReconnect(
+        `tunnel closed (code ${code}${reason.length > 0 ? `, ${reason.toString()}` : ""})`,
       );
-      this.reconnectTimer = setTimeout(() => this.openTunnel(), delay);
-      this.publish();
     });
   }
 }
