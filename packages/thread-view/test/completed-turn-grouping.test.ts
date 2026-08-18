@@ -266,7 +266,7 @@ describe("groupCompletedTurnMessages", () => {
       {
         kind: "summary",
         startedAt: 1,
-        completedAt: 3,
+        completedAt: null,
         segmentIndex: 0,
         summaryCount: 1,
       },
@@ -277,13 +277,17 @@ describe("groupCompletedTurnMessages", () => {
         },
       },
       {
-        kind: "ungrouped-message",
-        message: {
-          id: "assistant-after",
-        },
+        kind: "summary",
+        startedAt: 3,
+        completedAt: null,
+        segmentIndex: 1,
+        summaryCount: 1,
       },
     ]);
-    expect(summarySourceMessageIds(groups)).toEqual([["assistant-before"]]);
+    expect(summarySourceMessageIds(groups)).toEqual([
+      ["assistant-before"],
+      ["assistant-after"],
+    ]);
   });
 
   it("slices terminal and trailing messages out of the summary groups", () => {

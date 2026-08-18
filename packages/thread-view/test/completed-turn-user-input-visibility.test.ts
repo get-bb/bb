@@ -123,6 +123,31 @@ describe("completed turn user input visibility", () => {
     expect(completedTexts).not.toContain("Login works.");
   });
 
+  it("keeps interim messages of an unsteered turn folded after completion", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const request = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text: "Fix the bug",
+    });
+    const timeline = renderTimeline(
+      [
+        request,
+        event.turnStarted(),
+        event.inputAccepted({ clientRequestId: request.data.requestId }),
+        event.assistantCompleted({ itemId: "a1", text: "Looking into it." }),
+        event.commandCompleted({ itemId: "tool-1", command: "grep bug" }),
+        event.assistantCompleted({ itemId: "a2", text: "Found the cause." }),
+        event.assistantCompleted({ itemId: "a3", text: "Fixed and verified." }),
+        event.turnCompleted(),
+      ],
+      "idle",
+    );
+
+    expect(topLevelAssistantTexts(timeline.rows)).toEqual([
+      "Fixed and verified.",
+    ]);
+  });
+
   it("keeps an answered question and the report preceding it visible after the turn completes", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const request = event.clientTurnRequested({

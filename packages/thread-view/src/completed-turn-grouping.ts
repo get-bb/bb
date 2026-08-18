@@ -170,6 +170,7 @@ function groupCompletedTurnSummaryMessages(
   let segmentIndex = 0;
   let externalBoundaryIndex = 0;
   let preserveNextTerminalMessage = false;
+  let sawMidTurnUserInput = false;
 
   function appendSummaryGroup(sourceMessages: EventProjectionMessage[]): void {
     if (sourceMessages.length === 0) {
@@ -193,11 +194,13 @@ function groupCompletedTurnSummaryMessages(
       return;
     }
 
-    // Human follow-ups split one provider turn into multiple visible exchange
-    // segments. Keep each segment's last assistant/error message beside the
-    // user row instead of burying it inside that segment's collapsed summary.
-    // The first assistant/error message after user input is kept too — it is
-    // the direct reply the user already read while the turn was streaming.
+    // Mid-turn human follow-ups split one provider turn into multiple visible
+    // exchange segments. Keep each segment's last assistant/error message
+    // beside the user row instead of burying it inside that segment's
+    // collapsed summary. The first assistant/error message after mid-turn user
+    // input is kept too — it is the direct reply the user already read while
+    // the turn was streaming. The turn-starting user row must not trigger any
+    // of this, or every ordinary turn would surface its interim messages.
     const sourceMessages = groupedMessages;
     groupedMessages = [];
     const terminalMessage = preserveLastTerminalMessage
@@ -228,6 +231,7 @@ function groupCompletedTurnSummaryMessages(
       flushGroupedMessages(true);
       externalBoundaryIndex += 1;
       preserveNextTerminalMessage = true;
+      sawMidTurnUserInput = true;
     }
   }
 
@@ -235,13 +239,17 @@ function groupCompletedTurnSummaryMessages(
     flushExternalBoundariesBefore(message);
     if (isTimelineUngroupableMessage(message)) {
       const isUserInputBoundary = isTimelineUserInputBoundaryMessage(message);
+      const isMidTurnUserInput =
+        isUserInputBoundary &&
+        (items.length > 0 || groupedMessages.length > 0);
       flushGroupedMessages(isUserInputBoundary);
       items.push({
         kind: "ungrouped-message",
         message,
       });
-      if (isUserInputBoundary) {
+      if (isMidTurnUserInput) {
         preserveNextTerminalMessage = true;
+        sawMidTurnUserInput = true;
       }
       continue;
     }
@@ -261,7 +269,7 @@ function groupCompletedTurnSummaryMessages(
     flushGroupedMessages(true);
     externalBoundaryIndex += 1;
   }
-  flushGroupedMessages(true);
+  flushGroupedMessages(sawMidTurnUserInput);
   return applySingleSummaryTurnBounds(turn, items);
 }
 
