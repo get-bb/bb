@@ -1,5 +1,23 @@
 # Plan: unify the plugin SDK `openPanel` contract
 
+## Status
+
+The contract half (steps 1, 2, 3, 5, 6 minus the side-chat test) is
+implemented. Step 4 (the side-chat consumer) was dropped: a separate change
+moves side chat to create its fork lazily on first send, which removes the
+fork that would have been orphaned, so the cleanup question below is moot.
+
+One thing the implementation turned up that this plan got wrong: the widening
+is **not** fully source-compatible after all (see "Risk"). Because
+`run` is declared `void | Promise<void>`, a concise-arrow `run` that returns
+`openPanel(...)` — including `run: async ({ openPanel }) => openPanel({...})`,
+the form the built-in `bb-plugin-authoring` skill documented — no longer
+typechecks; the body needs braces. Three in-repo call sites and both skill
+examples were fixed that way, and the skill now says so. The open decision,
+deliberately not taken here: whether `run`'s declared return should widen
+(e.g. to `unknown`, whose return the host already ignores apart from awaiting
+a promise) so concise arrows keep working for external plugins on upgrade.
+
 ## Problem
 
 `@get-bb/plugin-sdk/app` exposes four ways for a plugin to ask the host to

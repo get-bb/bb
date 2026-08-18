@@ -21,6 +21,14 @@ Any mounted plugin component can use
 same plugin's registered thread-panel actions; it returns false when the
 current surface has no thread side panel.
 
+Every panel-open entry point reports the same way: `openThreadPanel` and the
+`openPanel` handed to `threadPanelAction`, `experimental_newThreadPanelAction`,
+and `messageAction` `run` callbacks all return `boolean` — true when the host
+accepted the open, false when it declined (non-JSON `params`, an unavailable
+action id, or a surface with no side panel). A decline is a return value, never
+a thrown error, so a plugin registering several kinds of action can share one
+open routine and branch on the result.
+
 See the
 [`composer-customization` reference plugin](../../examples/plugins/composer-customization/README.md)
 for every region in one small app. The deprecated pre-1.0

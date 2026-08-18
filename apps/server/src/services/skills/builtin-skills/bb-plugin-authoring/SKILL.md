@@ -1267,15 +1267,17 @@ export default definePluginApp((app) => {
     id: "issue",
     title: "Open issue",
     component: IssuePanel,
-    run: async ({ threadId, openPanel }) =>
-      openPanel({ title: `Issue for ${threadId}` }),
+    run: async ({ threadId, openPanel }) => {
+      openPanel({ title: `Issue for ${threadId}` });
+    },
   });
   app.slots.experimental_newThreadPanelAction({
     id: "template",
     title: "Apply template",
     component: TemplatePanel,
-    run: ({ projectId, openPanel }) =>
-      openPanel({ title: `Template for ${projectId ?? "projectless"}` }),
+    run: ({ projectId, openPanel }) => {
+      openPanel({ title: `Template for ${projectId ?? "projectless"}` });
+    },
   });
   app.composer.customize({
     id: "prompt-tools",
@@ -1588,6 +1590,13 @@ Slot props contracts (versioned, additive-only):
   `run({ threadId, openPanel })` — do anything there (rpc, toast), and/or
   call `openPanel({ title?, params? })` to open a closable panel tab
   rendering `component` with `{ threadId: string, params: JsonValue | null }`.
+  `openPanel` returns `boolean` — true when the host accepted the open, false
+  when it declined (non-JSON `params`, unavailable action, or a surface with
+  no side panel). A decline is a return value, never a throw, and matches
+  `messageAction`'s `openPanel` and `useBbNavigate().openThreadPanel`, so one
+  open routine can serve every action kind. Because `run` is declared
+  `void | Promise<void>`, call `openPanel` from a braced body
+  (`run: ({ openPanel }) => { openPanel(); }`), not a concise arrow.
   Omitting `run` opens a tab immediately with defaults. Write parameters are
   typed as the recursively JSON-safe `JsonValue` exported by both
   `@get-bb/plugin-sdk` and `@get-bb/plugin-sdk/app`; they persist with the tab across reloads (null when
@@ -1607,7 +1616,8 @@ Slot props contracts (versioned, additive-only):
   calls `run({ projectId, openPanel })` and its component receives
   `{ projectId: string | null, params: JsonValue | null }`; `projectId` is
   null in projectless compose. Panel opening, JSON params, layout, persistence,
-  deduplication, and error containment otherwise match `threadPanelAction`.
+  deduplication, the `boolean` return, and error containment otherwise match
+  `threadPanelAction`.
   Experimental: see `docs/api_to_audit.md`.
 - Removed pre-1.0: `composerAccessory` was the legacy composer footer. Migrate
   controls to `app.composer.customize({ actions })` or `plusMenu`, larger

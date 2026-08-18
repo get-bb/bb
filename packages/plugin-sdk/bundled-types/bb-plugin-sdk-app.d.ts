@@ -487,6 +487,22 @@ interface PluginNavPanelRegistration {
     headerContent?: ComponentType<PluginNavPanelProps>;
 }
 /**
+ * What a plugin action passes when it asks the host to open one of its panel
+ * tabs. Shared by every `openPanel` entry point so a plugin registering more
+ * than one kind of action can write a single open routine;
+ * `PluginMessageActionThreadPanelOptions` adds the `actionId` that a
+ * message action needs to name its target panel.
+ */
+interface PluginPanelActionOpenOptions {
+    /** Tab label. Default: the action's `title`. */
+    title?: string;
+    /**
+     * Persisted with the tab and handed to the component as its `params` prop.
+     * Must be a JSON value; anything else is a declined open.
+     */
+    params?: JsonValue;
+}
+/**
  * Context handed to a `threadPanelAction`'s `run`.
  *
  * The action is thread-only and is never offered on the root New thread
@@ -503,11 +519,15 @@ interface PluginThreadPanelActionContext {
      * identical to an already-open tab of this action focuses that tab
      * (updating its title) instead of duplicating it. May be called more than
      * once (different params ⇒ multiple tabs) or not at all.
+     *
+     * Returns true when the host accepted the open; false when it declined —
+     * from this launcher, only a `params` that is not a JSON value. The true /
+     * false contract is shared with `messageAction`'s `openPanel` and
+     * `useBbNavigate().openThreadPanel` (which decline for more reasons) so one
+     * open routine can serve every action kind. A decline is never thrown: the
+     * host logs it and reports it here.
      */
-    openPanel(options?: {
-        title?: string;
-        params?: JsonValue;
-    }): void;
+    openPanel(options?: PluginPanelActionOpenOptions): boolean;
 }
 interface PluginThreadPanelActionRegistration {
     /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -544,13 +564,10 @@ interface PluginNewThreadPanelActionContext {
     projectId: string | null;
     /**
      * Open a tab in the root New thread screen's side panel rendering this
-     * action's `component`. The title, params, deduplication, and error
-     * semantics match `threadPanelAction`.
+     * action's `component`. The title, params, deduplication, return value, and
+     * error semantics match `threadPanelAction`.
      */
-    openPanel(options?: {
-        title?: string;
-        params?: JsonValue;
-    }): void;
+    openPanel(options?: PluginPanelActionOpenOptions): boolean;
 }
 /** Registration for the root New thread screen's panel Actions list. */
 interface PluginNewThreadPanelActionRegistration {
@@ -893,11 +910,9 @@ interface ThreadChatMessageReference {
     text: string;
     sourceSeqEnd: number;
 }
-interface PluginMessageActionThreadPanelOptions {
+interface PluginMessageActionThreadPanelOptions extends PluginPanelActionOpenOptions {
     /** A `threadPanelAction` id registered by this same plugin. */
     actionId: string;
-    title?: string;
-    params?: JsonValue;
 }
 /** Context handed to a `messageAction`'s `run`. */
 interface PluginMessageActionContext {
@@ -912,9 +927,13 @@ interface PluginMessageActionContext {
     /**
      * Open one of this plugin's `threadPanelAction` components in the current
      * thread's side panel — the registration-callback equivalent of
-     * `useBbNavigate().openThreadPanel`. Returns true when the host
-     * accepted (the action id exists and the surface has a panel); false
-     * otherwise.
+     * `useBbNavigate().openThreadPanel`.
+     *
+     * Returns true when the host accepted the open; false when it declined —
+     * `params` was not a JSON value, the action id names no `threadPanelAction`
+     * of this plugin, or the surface has no side panel (only the main thread
+     * view does; a `ThreadChat` embedded in a plugin panel does not). A decline
+     * is never thrown: the host logs it and reports it here.
      */
     openPanel(options: PluginMessageActionThreadPanelOptions): boolean;
 }
@@ -1597,4 +1616,4 @@ declare const experimental_useSidebarThreadPullRequest: (threadId: string) => Pl
 declare const experimental_useSidebarThreadSplit: (threadId: string) => PluginSidebarThreadSplit;
 
 export { Markdown, ThreadChat, definePluginApp, experimental_NewThreadComposer, experimental_useSidebarThreadActions, experimental_useSidebarThreadPullRequest, experimental_useSidebarThreadSplit, experimental_useSidebarThreads, useBbContext, useBbNavigate, useComposer, useComposerView, useRealtime, useRealtimeConnectionState, useRpc, useSettings };
-export type { BbContext, BbNavigate, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginProviderIconRegistration, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export type { BbContext, BbNavigate, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPanelActionOpenOptions, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginProviderIconRegistration, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };

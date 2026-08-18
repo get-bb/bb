@@ -461,7 +461,12 @@ Before stabilization, audit:
    plugin is removed, and in projectless compose has the right fallback.
 5. **Relationship to `threadPanelAction`.** Confirm separate opt-in remains
    preferable to a unified discriminated context after external plugins have
-   had time to adopt the root surface deliberately.
+   had time to adopt the root surface deliberately. The two contexts' `openPanel`
+   signatures were already unified: both take `PluginPanelActionOpenOptions` and
+   return `boolean` (true = accepted, false = declined), matching
+   `messageAction`'s `openPanel` and `useBbNavigate().openThreadPanel`. Do not
+   re-litigate that in the stabilization audit; audit only whether the two
+   _contexts_ should merge.
 
 ## `app.slots.experimental_threadList` (`@get-bb/plugin-sdk/app`)
 

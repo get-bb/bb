@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from "react";
-import type { JsonValue } from "@get-bb/plugin-sdk";
+import type { PluginPanelActionOpenOptions } from "@get-bb/plugin-sdk";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import {
   usePluginSlots,
@@ -48,6 +48,51 @@ export interface PluginPanelActionEntry {
   onSelect: () => void;
 }
 
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+interface PanelActionOpenPanelArgs {
+  action: { pluginId: string; id: string; title: string };
+  /** Slot name as it appears in log lines. */
+  slot: string;
+  openPluginPanel: OpenPluginPanelHandler;
+}
+
+/**
+ * The `openPanel` handed to a panel action's `run`. A declined open — here
+ * only non-JSON `params`, since the launcher lives in the panel the action
+ * opens into — is logged and reported as `false` rather than thrown: `run`
+ * errors are contained below, so a throw would be invisible to any plugin
+ * that did not wrap the call itself.
+ */
+function createPanelActionOpenPanel({
+  action,
+  slot,
+  openPluginPanel,
+}: PanelActionOpenPanelArgs): (
+  options?: PluginPanelActionOpenOptions,
+) => boolean {
+  return (options) => {
+    let paramsJson: string | null;
+    try {
+      paramsJson = serializePluginPanelParams(options?.params);
+    } catch (error) {
+      console.warn(
+        `[plugin:${action.pluginId}] ${slot} "${action.id}" openPanel declined: ${describeError(error)}`,
+      );
+      return false;
+    }
+    openPluginPanel({
+      pluginId: action.pluginId,
+      actionId: action.id,
+      title: options?.title ?? action.title,
+      paramsJson,
+    });
+    return true;
+  };
+}
+
 interface RunPluginPanelActionArgs {
   action: PluginThreadPanelActionSlot;
   openPluginPanel: OpenPluginPanelHandler;
@@ -59,20 +104,14 @@ function runPluginPanelAction({
   openPluginPanel,
   threadId,
 }: RunPluginPanelActionArgs): void {
-  const openPanel = (options?: { title?: string; params?: JsonValue }) => {
-    const paramsJson = serializePluginPanelParams(options?.params);
-    openPluginPanel({
-      pluginId: action.pluginId,
-      actionId: action.id,
-      title: options?.title ?? action.title,
-      paramsJson,
-    });
-  };
+  const openPanel = createPanelActionOpenPanel({
+    action,
+    slot: "threadPanelAction",
+    openPluginPanel,
+  });
   const warn = (error: unknown) => {
     console.warn(
-      `[plugin:${action.pluginId}] threadPanelAction "${action.id}" failed: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `[plugin:${action.pluginId}] threadPanelAction "${action.id}" failed: ${describeError(error)}`,
     );
   };
   try {
@@ -98,20 +137,14 @@ function runPluginNewThreadPanelAction({
   openPluginPanel,
   projectId,
 }: RunPluginNewThreadPanelActionArgs): void {
-  const openPanel = (options?: { title?: string; params?: JsonValue }) => {
-    const paramsJson = serializePluginPanelParams(options?.params);
-    openPluginPanel({
-      pluginId: action.pluginId,
-      actionId: action.id,
-      title: options?.title ?? action.title,
-      paramsJson,
-    });
-  };
+  const openPanel = createPanelActionOpenPanel({
+    action,
+    slot: "experimental_newThreadPanelAction",
+    openPluginPanel,
+  });
   const warn = (error: unknown) => {
     console.warn(
-      `[plugin:${action.pluginId}] experimental_newThreadPanelAction "${action.id}" failed: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `[plugin:${action.pluginId}] experimental_newThreadPanelAction "${action.id}" failed: ${describeError(error)}`,
     );
   };
   try {
