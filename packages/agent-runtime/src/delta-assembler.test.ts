@@ -1154,3 +1154,296 @@ describe("diffCumulativeText", () => {
     ).toEqual({ delta: "C\n", nextText: "C\n", reset: true });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Keyed provider-turn space (codex): vouched turn ids, multiplexed turns,
+// item-keyed text/output deltas, settle/reopen dedup, session resets.
+// ---------------------------------------------------------------------------
+
+describe("delta assembler (keyed provider turns)", () => {
+  it("keeps several keyed turns open at once and settles only the named one", () => {
+    const assembler = createAssembler();
+    const events = assemble(
+      assembler,
+      { kind: "turn.open", providerTurnId: "parent-turn" },
+      { kind: "turn.open", providerTurnId: "child-turn" },
+      { kind: "turn.boundary", providerTurnId: "child-turn", status: "completed" },
+      {
+        kind: "item.close",
+        key: { providerItemId: "msg-1" },
+        status: "completed",
+        item: { type: "agentMessage", text: "still going" },
+        providerTurnId: "parent-turn",
+      },
+    );
+    const parentTurnId = assembler.getBbTurnId(THREAD_ID, "parent-turn") ?? "";
+    const childTurnId = assembler.getBbTurnId(THREAD_ID, "child-turn") ?? "";
+    expect(parentTurnId).not.toBe(childTurnId);
+    expect(events.map((event) => event.type)).toEqual([
+      "turn/started",
+      "turn/started",
+      "turn/completed",
+      "item/completed",
+    ]);
+    // The child boundary must not sweep the parent's scope: the late item
+    // still lands in the parent turn.
+    expect(events[3]).toMatchObject({ scope: turnScope(parentTurnId) });
+    // Both directions of the turn map serve the command plane.
+    expect(assembler.getProviderTurnId(THREAD_ID, parentTurnId)).toBe(
+      "parent-turn",
+    );
+  });
+
+  it("scopes a delta for a never-opened vouched turn without fabricating turn/started", () => {
+    const assembler = createAssembler();
+    const events = assemble(assembler, {
+      kind: "context.compacted",
+      providerTurnId: "turn-x",
+    });
+    expect(events.map((event) => event.type)).toEqual(["thread/compacted"]);
+    const turnId = assembler.getBbTurnId(THREAD_ID, "turn-x") ?? "";
+    expect(events[0]).toMatchObject({ scope: turnScope(turnId) });
+  });
+
+  it("acknowledges vouched accepted input against the named turn, not a queue", () => {
+    const assembler = createAssembler();
+    const events = assemble(
+      assembler,
+      { kind: "turn.open", providerTurnId: "turn-1" },
+      {
+        kind: "input.accepted",
+        clientRequestId: CREQ,
+        providerTurnId: "turn-1",
+      },
+    );
+    expect(events.map((event) => event.type)).toEqual([
+      "turn/started",
+      "turn/input/accepted",
+    ]);
+    expect(events[1]).toMatchObject({
+      clientRequestId: CREQ,
+      scope: events[0]?.scope,
+    });
+  });
+
+  it("synthesizes item/started for a delta-first textDelta and reuses the id on close", () => {
+    const assembler = createAssembler();
+    const events = assemble(
+      assembler,
+      { kind: "turn.open", providerTurnId: "turn-1" },
+      {
+        kind: "item.textDelta",
+        key: { providerItemId: "msg-1" },
+        channel: "agentMessage",
+        text: "hel",
+        providerTurnId: "turn-1",
+      },
+      {
+        kind: "item.textDelta",
+        key: { providerItemId: "msg-1" },
+        channel: "agentMessage",
+        text: "lo",
+        providerTurnId: "turn-1",
+      },
+      {
+        kind: "item.close",
+        key: { providerItemId: "msg-1" },
+        status: "completed",
+        item: { type: "agentMessage", text: "hello" },
+        providerTurnId: "turn-1",
+      },
+    );
+    expect(events.map((event) => event.type)).toEqual([
+      "turn/started",
+      "item/started",
+      "item/agentMessage/delta",
+      "item/agentMessage/delta",
+      "item/completed",
+    ]);
+    const startedId =
+      events[1]?.type === "item/started" ? events[1].item.id : "";
+    expect(startedId).not.toBe("");
+    expect(events[4]).toMatchObject({
+      item: { type: "agentMessage", id: startedId, text: "hello" },
+    });
+  });
+
+  it("never synthesizes an open for output deltas", () => {
+    const assembler = createAssembler();
+    const events = assemble(
+      assembler,
+      { kind: "turn.open", providerTurnId: "turn-1" },
+      {
+        kind: "item.outputDelta",
+        key: { providerItemId: "cmd-1" },
+        channel: "command",
+        text: "line\n",
+        providerTurnId: "turn-1",
+      },
+    );
+    expect(events.map((event) => event.type)).toEqual([
+      "turn/started",
+      "item/commandExecution/outputDelta",
+    ]);
+    // The id is still mapped so a later open/close correlates.
+    const itemId = assembler.getBbItemId(THREAD_ID, "cmd-1") ?? "";
+    expect(events[1]).toMatchObject({ itemId, delta: "line\n" });
+  });
+
+  it("drops a repeated provider-identified close and reopens on explicit open", () => {
+    const assembler = createAssembler();
+    const close: ThreadDelta = {
+      kind: "item.close",
+      key: { providerItemId: "cmd-1" },
+      status: "completed",
+      item: { type: "command", command: "git status", cwd: "/repo" },
+      providerTurnId: "turn-1",
+    };
+    const open: ThreadDelta = {
+      kind: "item.open",
+      key: { providerItemId: "cmd-1" },
+      item: { type: "command", command: "git status", cwd: "/repo" },
+      providerTurnId: "turn-1",
+    };
+    const events = assemble(
+      assembler,
+      { kind: "turn.open", providerTurnId: "turn-1" },
+      open,
+      close,
+      close, // provider retry: dropped
+      open, // explicit reopen: same bb id, new lifecycle
+      close,
+    );
+    const completions = events.filter(
+      (event) => event.type === "item/completed",
+    );
+    expect(completions).toHaveLength(2);
+    const itemId = assembler.getBbItemId(THREAD_ID, "cmd-1") ?? "";
+    expect(
+      events
+        .filter((event) => event.type === "item/started")
+        .map((event) => (event.type === "item/started" ? event.item.id : "")),
+    ).toEqual([itemId, itemId]);
+  });
+
+  it("does not dedup channel-keyed closes (bridge-local item families)", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    const write: ThreadDelta = {
+      kind: "item.close",
+      key: { channel: "fs-write" },
+      status: "completed",
+      item: {
+        type: "fileChange",
+        changes: [{ path: "a.txt", kind: "add", newText: "hi\n" }],
+      },
+    };
+    const events = assemble(assembler, write, write);
+    expect(
+      events.filter((event) => event.type === "item/completed"),
+    ).toHaveLength(2);
+  });
+
+  it("fans usage.exact out to both usage events without accumulating", () => {
+    const assembler = createAssembler();
+    const usage = {
+      totalTokens: 50,
+      inputTokens: 30,
+      cachedInputTokens: 5,
+      outputTokens: 15,
+      reasoningOutputTokens: 0,
+    };
+    assemble(assembler, { kind: "turn.open", providerTurnId: "turn-1" });
+    const first = assemble(assembler, {
+      kind: "usage.exact",
+      total: { ...usage, totalTokens: 100 },
+      last: usage,
+      modelContextWindow: 128_000,
+      providerTurnId: "turn-1",
+    });
+    const second = assemble(assembler, {
+      kind: "usage.exact",
+      total: { ...usage, totalTokens: 100 },
+      last: usage,
+      modelContextWindow: 128_000,
+      providerTurnId: "turn-1",
+    });
+    for (const events of [first, second]) {
+      expect(events.map((event) => event.type)).toEqual([
+        "thread/tokenUsage/updated",
+        "thread/contextWindowUsage/updated",
+      ]);
+      // Exact fan-out: totals are the provider's, never re-accumulated.
+      expect(events[0]).toMatchObject({
+        tokenUsage: {
+          total: { totalTokens: 100 },
+          last: { totalTokens: 50 },
+          modelContextWindow: 128_000,
+        },
+      });
+      expect(events[1]).toMatchObject({
+        contextWindowUsage: {
+          usedTokens: 50,
+          modelContextWindow: 128_000,
+          estimated: false,
+        },
+      });
+    }
+  });
+
+  it("session.reset starts a fresh provider id space for the thread", () => {
+    const assembler = createAssembler();
+    assemble(
+      assembler,
+      { kind: "turn.open", providerTurnId: "turn-1" },
+      bashOpen("cmd-1"),
+    );
+    const firstItemId = assembler.getBbItemId(THREAD_ID, "cmd-1") ?? "";
+    assemble(assembler, { kind: "session.reset" });
+    expect(assembler.getBbTurnId(THREAD_ID, "turn-1")).toBeUndefined();
+    const events = assemble(
+      assembler,
+      { kind: "turn.open", providerTurnId: "turn-1" },
+      {
+        kind: "item.open",
+        key: { providerItemId: "cmd-1" },
+        item: { type: "command", command: "npm test", cwd: "/repo" },
+        providerTurnId: "turn-1",
+      },
+    );
+    const reopenedId =
+      events[1]?.type === "item/started" ? events[1].item.id : "";
+    // The new session's reused provider ids mint fresh bb ids: uniqueness
+    // across resumes survives central minting.
+    expect(reopenedId).not.toBe("");
+    expect(reopenedId).not.toBe(firstItemId);
+  });
+
+  it("threadScoped errors never adopt the open turn; vouched errors scope to it", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "turn.open", providerTurnId: "turn-1" });
+    const turnId = assembler.getBbTurnId(THREAD_ID, "turn-1") ?? "";
+    const [threadScoped] = assemble(assembler, {
+      kind: "provider.error",
+      message: "Provider error",
+      detail: "boom",
+      threadScoped: true,
+    });
+    expect(threadScoped).toMatchObject({ scope: threadScope() });
+    const [vouched] = assemble(assembler, {
+      kind: "provider.error",
+      message: "Provider error",
+      detail: "boom",
+      providerTurnId: "turn-1",
+      errorInfo: {
+        category: "stream-disconnected",
+        providerCode: "responseStreamDisconnected",
+        httpStatusCode: 502,
+      },
+    });
+    expect(vouched).toMatchObject({
+      scope: turnScope(turnId),
+      errorInfo: { category: "stream-disconnected", httpStatusCode: 502 },
+    });
+  });
+});
