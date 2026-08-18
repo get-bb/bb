@@ -27,9 +27,12 @@ import {
   bridgeCapabilitiesSchema,
   initializeResultSchema,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_NOTIFICATION_METHOD,
+  threadDeltaNotificationParamsSchema,
   type BridgeCapabilities,
   type SkillsConfigureRoot,
 } from "@bb/provider-bridge-protocol";
+import { createDeltaAssembler } from "./delta-assembler.js";
 import { z } from "zod";
 import type {
   AdapterCommand,
@@ -213,6 +216,10 @@ export function createBridgeProtocolAdapter(
   // Last `thread/openWork` value per bb thread. Level-triggered, so a missed
   // intermediate notification cannot strand the runtime on a stale answer.
   const threadIdsWithOpenWork = new Set<string>();
+  // Narrow-grammar dual path: bridges that emit parsed semantic deltas
+  // (`thread/delta`) are assembled into canonical events here; `thread/event`
+  // bridges pass through untouched below.
+  const deltaAssembler = createDeltaAssembler({ providerId: options.id });
 
   function gate(
     capability: keyof BridgeCapabilities & string,
@@ -492,6 +499,18 @@ export function createBridgeProtocolAdapter(
           event.params,
         );
         return parsed.success ? [parsed.data.event] : [];
+      }
+      if (method === THREAD_DELTA_NOTIFICATION_METHOD) {
+        const parsed = threadDeltaNotificationParamsSchema.safeParse(
+          event.params,
+        );
+        if (!parsed.success) {
+          return [];
+        }
+        return deltaAssembler.assemble({
+          threadId: parsed.data.threadId,
+          deltas: parsed.data.deltas,
+        });
       }
       if (method === BRIDGE_NOTIFICATION_METHODS.threadIdentity) {
         const parsed = threadIdentityNotificationParamsSchema.safeParse(
