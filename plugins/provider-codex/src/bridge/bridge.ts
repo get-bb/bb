@@ -1345,6 +1345,19 @@ async function getModelListConnection(): Promise<CodexAppServerConnection> {
   }
 }
 
+/**
+ * Retire a cached model-list child after a request-level failure. A timeout or
+ * malformed response does not make the connection report `exited`, but it is
+ * no longer safe to reuse: a later picker refresh must get a fresh process.
+ */
+function retireModelListConnection(connection: CodexAppServerConnection): void {
+  maintenanceConnections.delete(connection);
+  if (modelListConnection === connection) {
+    modelListConnection = null;
+  }
+  connection.kill();
+}
+
 async function withChildForThread<T>(
   bbThreadId: string,
   fn: (connection: CodexAppServerConnection) => Promise<T>,
@@ -1397,8 +1410,9 @@ function handleInitialize(id: string | number): void {
 }
 
 async function handleModelList(id: string | number): Promise<void> {
+  let connection: CodexAppServerConnection | null = null;
   try {
-    const connection = await getModelListConnection();
+    connection = await getModelListConnection();
     const result = await connection.request({
       method: "model/list",
       params: {},
@@ -1413,6 +1427,9 @@ async function handleModelList(id: string | number): Promise<void> {
       selectedOnlyModels: [],
     });
   } catch (error) {
+    if (connection !== null) {
+      retireModelListConnection(connection);
+    }
     sendError(
       id,
       BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,

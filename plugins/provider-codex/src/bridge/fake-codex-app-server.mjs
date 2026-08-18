@@ -23,7 +23,7 @@
  * behavior below is unchanged.
  */
 
-import { readFileSync } from "node:fs";
+import { closeSync, openSync, readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
 let threadCounter = 0;
@@ -102,10 +102,25 @@ function runScriptedTurn(threadId) {
 // argv, not an env var: the bridge builds its child's environment from an
 // allowlist, so an env var set by a test never reaches this process.
 const scriptPath = process.argv[2];
-const scriptedTurns = scriptPath
-  ? JSON.parse(readFileSync(scriptPath, "utf8")).turns
-  : null;
+const script = scriptPath ? JSON.parse(readFileSync(scriptPath, "utf8")) : null;
+const scriptedTurns = script?.turns ?? null;
+const modelListFailOnceMarkerPath = script?.modelListFailOnceMarkerPath ?? null;
 let scriptedTurnIndex = 0;
+
+function shouldFailThisModelList() {
+  if (modelListFailOnceMarkerPath === null) {
+    return false;
+  }
+  try {
+    closeSync(openSync(modelListFailOnceMarkerPath, "wx"));
+    return true;
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "EEXIST") {
+      return false;
+    }
+    throw error;
+  }
+}
 
 /** Rewrite every `threadId` to the id this process minted for the session. */
 function withThreadId(value, threadId) {
@@ -173,6 +188,10 @@ async function handleRequest(message) {
       respond(id, { rateLimits: {} });
       return;
     case "model/list":
+      if (shouldFailThisModelList()) {
+        respond(id, { data: [] });
+        return;
+      }
       respond(id, {
         data: [
           {
