@@ -141,10 +141,110 @@ protocol version bump + conformance kit rewritten around delta
 well-formedness. Sequenced before session-mode so the transport carries the
 smaller protocol and the conformance kit churns once.
 
+## Prototype results (2026-08-18, this branch)
+
+Built as planned: schemas (`provider-bridge-protocol/src/thread-delta.ts`),
+assembler (`agent-runtime/src/delta-assembler.ts` behind `translateEvent`),
+pi converted, equivalence suite ported. All of
+`@bb/provider-bridge-protocol` + `@bb/agent-runtime` typecheck/test green
+(incl. pi's canonical conformance suite, run through a real assembler shim);
+`@bb/server` typecheck untouched-green. Real-API integration tests were not
+run (no provider credentials in the prototype environment).
+
+### Line deltas
+
+- Pi translator: `event-translation.ts` 1,259 → `delta-translation.ts` 898
+  (−361), and it is now **stateless** — the turn-state registry, scoped-item
+  ids, accepted-input queue, snapshot diffing, and token accumulation are
+  gone from the bridge side entirely (pi now imports zero kit assembly
+  machinery; only parsing/classification helpers remain).
+- Pi bridge lifecycle: `bridge/bridge.ts` 1,155 → 1,094 (−61): entropy
+  minting, per-session translator serials, and the hand-built interrupt
+  `turn/completed` all collapsed into one-line delta emissions.
+- Pi-local `diff-cumulative-text` (46 + 42 test) absorbed into the assembler.
+- New shared code: `thread-delta.ts` 257 (schemas), `delta-assembler.ts`
+  1,001 (includes the absorbed diff, heavy doc comments, and the session
+  settlement no bridge had centrally before) + ~20 adapter wiring lines.
+- Kit surface pi no longer uses but other bridges still do (deletable from
+  the SDK after acp/codex/claude convert): turn-state 290, scoped-item-ids
+  98, accepted-user-messages 83, provider-terminal-turn 33,
+  tool-item-translation 222 — ≈726 published lines, plus the SDK's domain
+  event re-export.
+
+### Grammar gaps found while converting (deltas added beyond the plan cut)
+
+1. **`item.progress { key, message }`** — pi's non-bash
+   `tool_execution_update` → `item/toolCall/progress` had no delta.
+2. **`item.open.attach: "currentOrLast"`** — pi threshold compaction opens a
+   compaction item *in the turn that just closed* without reopening one;
+   plain `item.open` would fabricate a turn.
+3. **`message.close` needed a three-way settle semantic**: `text` present →
+   provider-final text; absent → accumulated text (ACP); absent +
+   `detach: true` → silent release (pi drops the assistant stream when a
+   tool starts so post-tool text mints a fresh item, with no completed
+   event for the pre-tool stream).
+4. **`message.delta`/`message.close` carry `parentRef`** — pi scopes
+   assistant/reasoning streams per parent tool call (subagents).
+5. **`provider.error` grew `detail`**, and its turn resolution follows the
+   claim-if-idle rule; a settling error on an idle thread stays a
+   thread-scoped diagnostic instead of fabricating a failed turn.
+6. **`unhandled` carries `rawType`** — the visibility classification's kind
+   string is bridge knowledge the assembler cannot recompute.
+7. `input.accepted.clientRequestId` is required, not optional — the
+   canonical `turn/input/accepted` event cannot be built without it.
+
+### Behavior deviations (old translator behavior the grammar cannot express)
+
+- Bridge-side *no-turn guards* are gone: tool/message events arriving
+  before any turn now open one implicitly (grammar rule) instead of
+  surfacing as `provider/unhandled`; `context.compacted` with no
+  current-or-last turn is dropped. Both are marked in the ported suite.
+- `item.close.item` double-duty: the prototype uses it only as the
+  close-without-open fallback classification (pi must always send it since
+  it cannot know whether the assembler still holds the open item);
+  reclassification-with-open (ACP's dual-complete) is therefore
+  unimplemented and collides with the fallback semantics — needs a decision
+  before ACP converts (see open question 2).
+- `session.ended` now settles open *items* too (plan-mandated;
+  old pi interrupt left them dangling) — a strict improvement, but it means
+  interrupt timelines gain item/completed events they did not have.
+
+### Assessed conversion cost
+
+- **acp — low.** Its internal envelope layer already separates dialect from
+  assembly; `acp/turn/started`→`turn.open`, `acp/update` text →
+  `message.delta` (accumulated close is native to the grammar), tool calls →
+  `item.open/close` with `parentRef`. Blockers: resolve the
+  reclassification question (above), and move permission-request turn
+  stamping runtime-side — the assembler already exposes `getOpenTurnId` and
+  the provider↔bb item maps for exactly this.
+- **codex — low-to-medium.** Its native turn/item events are ~the target
+  vocabulary; conversion is mostly renaming plus carrying provider ids as
+  join keys. Zero-work settlement stays bridge-side as an ordinary
+  `turn.open`+`turn.boundary` pair (grammar-supported). One new need:
+  codex trusts provider-minted turn ids today; under central minting its
+  steer `expectedTurnId` reverse lookup must go through the assembler maps.
+- **claude — highest.** The background-task machine (fold/throttle/
+  generation, completion-blocking tasks that *withhold* the turn boundary)
+  is real design work: the grammar has no `backgroundTask` item shape and
+  the planned per-provider assembler extension does not exist yet. Everything
+  else (queued acceptance, provider-final text, usage) maps directly.
+
 ## Open questions for Michael
 
 1. Batch framing: one `thread/delta` per delta vs arrays (prototype: arrays).
 2. Does `item.close.item` (reclassification) pay for itself vs making ACP
-   emit close+reopen? (Prototype keeps it; ACP's dual-complete needs it.)
+   emit close+reopen? (Prototype keeps the field but uses it only as the
+   close-without-open fallback classification — with an open item the
+   started fields always win. If reclassification-with-open is kept, it
+   needs its own signal so it cannot collide with the fallback use.)
 3. Where the pi model→context-window catalog lives once usage assembly is
    central (prototype: carried on `usage.turn.modelContextWindow`).
+4. Should implicit turn-opening deltas be narrowed? The prototype follows
+   the grammar (most deltas open a turn), which erases the old bridges'
+   "no active turn → provider/unhandled" guards; if that guard mattered,
+   the grammar needs an explicit `requiresTurn` marking instead.
+5. `message.close.detach` (silent stream release) vs making
+   tool-`item.open` auto-detach the only mechanism — the prototype
+   implements both (pi relies on the auto-detach; `detach` exists for
+   explicit closes). One of the two should probably win.
