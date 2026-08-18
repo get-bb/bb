@@ -183,6 +183,7 @@ const packageMetadataSchema = z.object({
   engines: z.object({
     node: z.string(),
   }),
+  files: z.array(z.string()),
   os: z.array(z.string()),
 });
 
@@ -2042,6 +2043,9 @@ describe("bb-app launcher", () => {
     const metadata = readPackageMetadata();
 
     expect(metadata.engines.node).toBe("^22.19.0 || ^24.0.0 || ^26.0.0");
+    expect(metadata.files).toContain(
+      "host-daemon/dist/bb-plugin-host-worker.mjs",
+    );
     expect(metadata.os).toEqual(["darwin", "linux"]);
   });
 });

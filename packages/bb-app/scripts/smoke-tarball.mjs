@@ -17,6 +17,7 @@ const HTTP_WAIT_TIMEOUT_MS = 60_000;
 const HTTP_WAIT_INTERVAL_MS = 250;
 const PLUGIN_LOAD_TIMEOUT_MS = 60_000;
 const PLUGIN_LOAD_INTERVAL_MS = 1_000;
+const HOST_PLUGIN_WORKER_TIMEOUT_MS = 60_000;
 // Auto-installed, default-enabled builtins (apps/server/src/services/plugins/
 // builtin-registry.ts). Each must reach "running" in the packed tarball —
 // bundles that pass health checks can still fail to load (0.0.31 shipped with
@@ -31,6 +32,7 @@ const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
   "connect",
   "custom-instructions",
   "inline-vis",
+  "keep-awake",
   "secrets",
 ];
 // The smoke drives every bridge as a canonical Provider Bridge Protocol
@@ -208,6 +210,30 @@ async function waitForHttp({ label, processRef, url }) {
   }
   throw new Error(
     `Timed out waiting for ${label} at ${url}\n${formatProcessOutput(processRef.output)}`,
+  );
+}
+
+async function waitForHostPluginWorker({ pluginId, processRef }) {
+  const deadline = Date.now() + HOST_PLUGIN_WORKER_TIMEOUT_MS;
+  while (Date.now() <= deadline) {
+    if (
+      processRef.output.stdout.includes("Host plugin worker ready") &&
+      processRef.output.stdout.includes(pluginId)
+    ) {
+      return;
+    }
+    if (
+      processRef.childProcess.exitCode !== null ||
+      processRef.childProcess.signalCode !== null
+    ) {
+      throw new Error(
+        `${processRef.label} exited before host plugin ${pluginId} started\n${formatProcessOutput(processRef.output)}`,
+      );
+    }
+    await delay(HTTP_WAIT_INTERVAL_MS);
+  }
+  throw new Error(
+    `Timed out waiting for host plugin ${pluginId} on ${processRef.label}\n${formatProcessOutput(processRef.output)}`,
   );
 }
 
@@ -558,6 +584,7 @@ async function smokePluginHostWorkerBundle(packageDir) {
   try {
     const message = await ready;
     if (
+      !isRecord(message) ||
       message.pluginId !== "keep-awake" ||
       message.generation !== generation
     ) {
@@ -1080,7 +1107,7 @@ async function smokeFullStack(tarballPath, sdkDir) {
     ]),
     command: "npx",
     env: {
-      BB_LOG_LEVEL: "warn",
+      BB_LOG_LEVEL: "info",
     },
     label: "bb-app full stack",
   });
@@ -1108,6 +1135,13 @@ async function smokeFullStack(tarballPath, sdkDir) {
       label: "bb cli status",
     });
     await smokeBuiltinPluginsRunning({ cliEnv, tarballPath });
+    // Keep Awake reconciles even its default disabled state, so reaching this
+    // log proves the packed daemon found its companion worker, downloaded the
+    // plugin artifact, and started the worker for a host RPC call.
+    await waitForHostPluginWorker({
+      pluginId: "keep-awake",
+      processRef: stack,
+    });
     await runCommand({
       args: [
         "--input-type=module",
@@ -1132,10 +1166,22 @@ async function smokeFullStack(tarballPath, sdkDir) {
 
 async function smokeDaemonJoin(tarballPath) {
   const serverDataDir = join(tempRoot, "join-server-data");
-  const daemonDataDir = join(tempRoot, "join-daemon-data");
-  const [serverPort, daemonPort, staleEnvPort] = await getFreePorts(3);
+  const [serverPort, firstDaemonPort, secondDaemonPort, staleEnvPort] =
+    await getFreePorts(4);
   const serverUrl = `http://127.0.0.1:${serverPort}`;
   const staleEnvServerUrl = `http://127.0.0.1:${staleEnvPort}`;
+  const daemonSpecs = [
+    {
+      dataDir: join(tempRoot, "join-daemon-data-1"),
+      label: "bb-app host-daemon join 1",
+      port: firstDaemonPort,
+    },
+    {
+      dataDir: join(tempRoot, "join-daemon-data-2"),
+      label: "bb-app host-daemon join 2",
+      port: secondDaemonPort,
+    },
+  ];
   const server = spawnManagedProcess({
     args: createNpxArgs(tarballPath, "bb-server", [
       "--data-dir",
@@ -1143,7 +1189,7 @@ async function smokeDaemonJoin(tarballPath) {
       "--server-port",
       String(serverPort),
       "--host-daemon-port",
-      String(daemonPort),
+      String(firstDaemonPort),
     ]),
     command: "npx",
     env: {
@@ -1152,48 +1198,66 @@ async function smokeDaemonJoin(tarballPath) {
     label: "bb-server",
   });
 
-  let daemon;
+  const daemons = [];
   try {
     await waitForHttp({
       label: server.label,
       processRef: server,
       url: `${serverUrl}/health`,
     });
-    daemon = spawnManagedProcess({
-      args: createNpxArgs(tarballPath, "bb-app", [
-        "host-daemon",
-        "join",
-        "--data-dir",
-        daemonDataDir,
-        "--server-url",
-        serverUrl,
-        "--host-daemon-port",
-        String(daemonPort),
-      ]),
-      command: "npx",
-      env: {
-        BB_LOG_LEVEL: "warn",
-        BB_SERVER_URL: staleEnvServerUrl,
-      },
-      label: "bb-app host-daemon join",
-    });
-    await waitForHttp({
-      label: daemon.label,
-      processRef: daemon,
-      url: `http://${DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST}:${daemonPort}/health`,
-    });
-    const configJson = JSON.parse(
-      await readFile(join(daemonDataDir, "config.json"), "utf8"),
-    );
-    if (configJson.serverUrl !== serverUrl) {
-      throw new Error(
-        `Expected persisted server URL ${serverUrl}, received ${configJson.serverUrl}`,
+    for (const spec of daemonSpecs) {
+      const daemon = spawnManagedProcess({
+        args: createNpxArgs(tarballPath, "bb-app", [
+          "host-daemon",
+          "join",
+          "--data-dir",
+          spec.dataDir,
+          "--server-url",
+          serverUrl,
+          "--host-daemon-port",
+          String(spec.port),
+        ]),
+        command: "npx",
+        env: {
+          BB_LOG_LEVEL: "info",
+          BB_SERVER_URL: staleEnvServerUrl,
+        },
+        label: spec.label,
+      });
+      daemons.push(daemon);
+      await waitForHttp({
+        label: daemon.label,
+        processRef: daemon,
+        url: `http://${DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST}:${spec.port}/health`,
+      });
+      const configJson = JSON.parse(
+        await readFile(join(spec.dataDir, "config.json"), "utf8"),
       );
+      if (configJson.serverUrl !== serverUrl) {
+        throw new Error(
+          `Expected persisted server URL ${serverUrl}, received ${configJson.serverUrl}`,
+        );
+      }
     }
+    const cliEnv = {
+      BB_DATA_DIR: serverDataDir,
+      BB_HOST_DAEMON_PORT: String(firstDaemonPort),
+      BB_SERVER_URL: serverUrl,
+    };
+    await smokeBuiltinPluginsRunning({ cliEnv, tarballPath });
+    // Both daemons joined a server in a different process and data directory.
+    // Ready workers on both prove host-plugin artifacts and calls fan out to
+    // enrolled machines instead of assuming server-local paths.
+    await Promise.all(
+      daemons.map((daemon) =>
+        waitForHostPluginWorker({
+          pluginId: "keep-awake",
+          processRef: daemon,
+        }),
+      ),
+    );
   } finally {
-    if (daemon) {
-      await stopManagedProcess(daemon);
-    }
+    await Promise.all(daemons.map((daemon) => stopManagedProcess(daemon)));
     await stopManagedProcess(server);
   }
 }
