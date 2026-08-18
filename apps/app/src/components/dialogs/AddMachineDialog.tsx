@@ -17,7 +17,10 @@ import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useClipboardCopy } from "@/lib/clipboard";
 import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
-import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
+import {
+  getPluginConfigurationRoutePath,
+  getPluginDetailRoutePath,
+} from "@/lib/route-paths";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 
@@ -49,13 +52,31 @@ function isNotPairedRpcError(error: BbHttpError): boolean {
  * - `issued`: connect is paired; the command routes through getbb.app.
  * - `unpaired`: connect is installed but not paired (or not installed at all).
  *   Only a direct server URL can work.
+ * - `disabled`: the user turned the connect plugin off. Retrying cannot help;
+ *   the plugin must be enabled first. Only a direct server URL can work.
  * - `unavailable`: a temporary failure (for example the plugin is still
  *   starting). Nothing is known about pairing.
  */
 type ConnectMachineCodeResult =
   | { kind: "issued"; code: ConnectMachineCode }
   | { kind: "unpaired" }
+  | { kind: "disabled" }
   | { kind: "unavailable" };
+
+/**
+ * The rpc dispatcher answers 503 for any plugin that is not running, whether
+ * it is disabled or merely still starting. The plugin list carries the real
+ * status, so ask it instead of parsing the 503 message.
+ */
+async function isConnectPluginDisabled(): Promise<boolean> {
+  try {
+    const { plugins } = await sdk.plugins.list();
+    const connect = plugins.find((plugin) => plugin.id === "connect");
+    return connect !== undefined && !connect.enabled;
+  } catch {
+    return false;
+  }
+}
 
 async function createConnectMachineCode(): Promise<ConnectMachineCodeResult> {
   try {
@@ -75,7 +96,12 @@ async function createConnectMachineCode(): Promise<ConnectMachineCodeResult> {
     ) {
       return { kind: "unpaired" };
     }
-    if (error.status === 422 || error.status === 503) {
+    if (error.status === 503) {
+      return (await isConnectPluginDisabled())
+        ? { kind: "disabled" }
+        : { kind: "unavailable" };
+    }
+    if (error.status === 422) {
       return { kind: "unavailable" };
     }
     throw error;
@@ -141,14 +167,26 @@ function pairingCommand(
 const REMOTE_ACCESS_ROUTE = getPluginConfigurationRoutePath({
   pluginId: "connect",
 });
+// The plugin detail page carries the enable switch; the settings page only
+// says "Enable this plugin" while it is off.
+const CONNECT_PLUGIN_ROUTE = getPluginDetailRoutePath({
+  pluginId: "connect",
+  view: "installed",
+});
 
 /**
- * Shown instead of the pairing command when connect is unpaired and the only
- * server URL we know is loopback or unspecified (issue #1690). bb listens on
- * loopback by default, so a command that targets this address dials the new
- * machine itself instead of this server.
+ * Shown instead of the pairing command when connect cannot issue a machine
+ * code and the only server URL we know is loopback or unspecified (issue
+ * #1690). bb listens on loopback by default, so a command that targets this
+ * address dials the new machine itself instead of this server.
  */
-function UnreachableServerNotice({ serverUrl }: { serverUrl: string }) {
+function UnreachableServerNotice({
+  serverUrl,
+  reason,
+}: {
+  serverUrl: string;
+  reason: "unpaired" | "disabled";
+}) {
   return (
     <div
       role="status"
@@ -161,8 +199,10 @@ function UnreachableServerNotice({ serverUrl }: { serverUrl: string }) {
       <p className="text-xs text-subtle-foreground">
         The pairing command would target{" "}
         <span className="font-mono">{serverUrl}</span>, which points to the
-        machine that runs it, not to this bb. Set up remote access first, then
-        come back here to get a pairing command that works from anywhere.
+        machine that runs it, not to this bb.{" "}
+        {reason === "disabled"
+          ? "The Connect plugin is disabled, so remote access is off. Enable it, then come back here to get a pairing command that works from anywhere."
+          : "Set up remote access first, then come back here to get a pairing command that works from anywhere."}
       </p>
       <div className="flex items-center gap-2">
         <Button
@@ -171,7 +211,11 @@ function UnreachableServerNotice({ serverUrl }: { serverUrl: string }) {
           variant="outline"
           className="h-7 px-2.5 text-xs"
         >
-          <Link to={REMOTE_ACCESS_ROUTE}>Set up remote access</Link>
+          {reason === "disabled" ? (
+            <Link to={CONNECT_PLUGIN_ROUTE}>Enable the Connect plugin</Link>
+          ) : (
+            <Link to={REMOTE_ACCESS_ROUTE}>Set up remote access</Link>
+          )}
         </Button>
         <a
           href="https://github.com/get-bb/bb/blob/main/docs/multiple-devices.md"
@@ -234,14 +278,20 @@ function AddMachineDialogContent({
       : Math.min(joinCode.expiresAt, machineCode?.expiresAt ?? Infinity);
   const localOnlyServerUrl =
     serverUrl !== null && isLocalOnlyUrl(serverUrl) ? serverUrl : null;
-  const unreachableServerUrl =
-    machineCodeResult?.kind === "unpaired" ? localOnlyServerUrl : null;
+  // Connect cannot issue a machine code and the fallback URL cannot work:
+  // explain instead of showing a command that dials the wrong machine.
+  const unreachable =
+    (machineCodeResult?.kind === "unpaired" ||
+      machineCodeResult?.kind === "disabled") &&
+    localOnlyServerUrl !== null
+      ? { serverUrl: localOnlyServerUrl, reason: machineCodeResult.kind }
+      : null;
   // Connect failed for a temporary reason and the fallback URL cannot work:
   // offer a retry instead of a command that dials the wrong machine.
   const connectUnavailable =
     machineCodeResult?.kind === "unavailable" && localOnlyServerUrl !== null;
   const showCommand =
-    joinCode !== null && unreachableServerUrl === null && !connectUnavailable;
+    joinCode !== null && unreachable === null && !connectUnavailable;
 
   // Tick only while a command with an expiry is on screen.
   const [now, setNow] = useState(() => Date.now());
@@ -270,7 +320,7 @@ function AddMachineDialogContent({
       <DialogHeader>
         <DialogTitle>Add a machine</DialogTitle>
         <DialogDescription>
-          {unreachableServerUrl !== null
+          {unreachable !== null
             ? "Pair a machine to run projects and threads on it."
             : "Run this on the machine you want to add. It pairs the machine to this server and keeps it available for your projects."}
         </DialogDescription>
@@ -295,8 +345,11 @@ function AddMachineDialogContent({
               Try again
             </Button>
           </div>
-        ) : unreachableServerUrl !== null ? (
-          <UnreachableServerNotice serverUrl={unreachableServerUrl} />
+        ) : unreachable !== null ? (
+          <UnreachableServerNotice
+            serverUrl={unreachable.serverUrl}
+            reason={unreachable.reason}
+          />
         ) : command !== null ? (
           <div className="space-y-2">
             <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-md border border-border bg-muted/40 p-3 font-mono text-xs text-foreground">
@@ -346,7 +399,7 @@ function AddMachineDialogContent({
             Creating a join code…
           </p>
         )}
-        {unreachableServerUrl !== null ? null : (
+        {unreachable !== null ? null : (
           <div className="flex items-center gap-2.5 rounded-md border border-border bg-muted/40 px-3 py-2.5">
             {connectedNewHost !== null ? (
               <>
