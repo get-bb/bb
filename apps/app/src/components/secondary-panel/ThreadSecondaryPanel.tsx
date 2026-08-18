@@ -93,6 +93,7 @@ import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { TabPill } from "@/components/ui/tab-pill";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
+import type { GitDiffTabStatus } from "./gitDiffTabEligibility";
 export type {
   GitDiffDisplayMode,
   GitDiffSelectionOption,
@@ -230,6 +231,8 @@ export interface SecondaryPanelFixedTab {
 export interface ThreadSecondaryPanelProps {
   activeTab: SecondaryFixedPanelTab | null;
   canUseGitUi: boolean;
+  gitDiffTabStatus?: GitDiffTabStatus;
+  onRetryGitDiffEligibility?: () => void;
   requestedMergeBaseBranch?: string;
   environmentId?: string;
   metadataContent: ReactNode;
@@ -330,6 +333,7 @@ export interface ThreadSecondaryPanelProps {
 export function ThreadSecondaryPanel({
   activeTab,
   canUseGitUi,
+  gitDiffTabStatus,
   requestedMergeBaseBranch,
   environmentId,
   metadataContent,
@@ -357,6 +361,7 @@ export function ThreadSecondaryPanel({
   onClose,
   onClearPendingGitDiffIntent,
   onOpenNewTab,
+  onRetryGitDiffEligibility,
   pendingGitDiffCommitSha,
   pendingGitDiffScrollPath,
   workspaceRootPath,
@@ -367,6 +372,8 @@ export function ThreadSecondaryPanel({
   onToggleConversationCollapse,
   renderAsDrawer,
 }: ThreadSecondaryPanelProps) {
+  const resolvedGitDiffTabStatus =
+    gitDiffTabStatus ?? (canUseGitUi ? "eligible" : "ineligible");
   const newTabShortcut = useAppCommandShortcut("panel.newTab");
   const togglePanelShortcut = useAppCommandShortcut("panel.toggle");
   const diffShortcut = useAppCommandShortcut("diff.toggle");
@@ -395,7 +402,7 @@ export function ThreadSecondaryPanel({
             },
           ]
         : []),
-      ...(canUseGitUi && showGitDiffTab
+      ...(resolvedGitDiffTabStatus !== "ineligible" && showGitDiffTab
         ? [
             {
               ariaLabel: "Show diff panel",
@@ -408,7 +415,13 @@ export function ThreadSecondaryPanel({
           ]
         : []),
     ];
-  }, [canUseGitUi, fixedTabs, onPanelChange, showGitDiffTab, showInfoTab]);
+  }, [
+    fixedTabs,
+    onPanelChange,
+    resolvedGitDiffTabStatus,
+    showGitDiffTab,
+    showInfoTab,
+  ]);
   // The conversation-collapse toggle only exists on a wide viewport; the drawer
   // layout fills the screen and cannot collapse the conversation.
   const conversationCollapseControl =
@@ -494,11 +507,16 @@ export function ThreadSecondaryPanel({
   // after mount — a stale-closed value would collapse the just-opened panel.
   const isLayoutOpen =
     (hostLayout?.isOpen ?? isOpen) && !hostLayout?.isSuppressed;
-  const activeFixedTab = resolvedFixedTabs.find(
-    (fixedTab) => fixedTab.tab.id === activeTab?.id,
-  );
+  const activeFixedTab =
+    resolvedFixedTabs.find((fixedTab) => fixedTab.tab.id === activeTab?.id) ??
+    (!hasActiveFileTab ? resolvedFixedTabs[0] : undefined);
   const isDiffPanelActive =
-    canUseGitUi && activeFixedTab?.tab.kind === "git-diff";
+    resolvedGitDiffTabStatus === "eligible" &&
+    activeFixedTab?.tab.kind === "git-diff";
+  const isDiffEligibilityPending =
+    activeFixedTab?.tab.kind === "git-diff" &&
+    (resolvedGitDiffTabStatus === "loading" ||
+      resolvedGitDiffTabStatus === "error");
   const showsGitDiffToolbar = isDiffPanelActive && !hasActiveFileTab;
   // Keep file content mounted across every close. The compact views defer the
   // first full panel mount, then retain it inside their persistent drawer.
@@ -869,6 +887,28 @@ export function ThreadSecondaryPanel({
           >
             {fixedTabContent}
           </div>
+        ) : isDiffEligibilityPending ? (
+          <EmptyStatePanel className="m-4 rounded-lg" role="status">
+            {resolvedGitDiffTabStatus === "error" ? (
+              <div className="flex flex-col items-center gap-3 text-center">
+                <span>
+                  Could not determine whether this workspace uses Git.
+                </span>
+                {onRetryGitDiffEligibility ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={onRetryGitDiffEligibility}
+                  >
+                    Retry
+                  </Button>
+                ) : null}
+              </div>
+            ) : (
+              "Checking Git support…"
+            )}
+          </EmptyStatePanel>
         ) : isDiffPanelActive ? (
           <GitDiffTabContent
             environmentId={environmentId}

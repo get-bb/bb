@@ -597,6 +597,7 @@ interface NotebookStore {
   inFlight: Promise<void> | null;
   listeners: Set<() => void>;
   owner: symbol | null;
+  pendingRefreshRpc: DocsRpcClient | null;
   requestId: number;
   vaultId: string | null;
 }
@@ -613,6 +614,7 @@ function getNotebookStore(vaultId: string | null): NotebookStore {
     inFlight: null,
     listeners: new Set(),
     owner: null,
+    pendingRefreshRpc: null,
     requestId: 0,
     vaultId,
   };
@@ -627,9 +629,13 @@ function notifyNotebookStore(store: NotebookStore): void {
 function refreshNotebookStore(
   store: NotebookStore,
   rpc: DocsRpcClient,
+  { queueIfInFlight = true }: { queueIfInFlight?: boolean } = {},
 ): Promise<void> {
   if (notebookStores.get(store.vaultId) !== store) return Promise.resolve();
-  if (store.inFlight) return store.inFlight;
+  if (store.inFlight) {
+    if (queueIfInFlight) store.pendingRefreshRpc = rpc;
+    return store.inFlight;
+  }
   if (store.error !== null) {
     store.error = null;
     notifyNotebookStore(store);
@@ -659,7 +665,19 @@ function refreshNotebookStore(
       notifyNotebookStore(store);
     })
     .finally(() => {
-      if (store.inFlight === request) store.inFlight = null;
+      if (store.inFlight !== request) return;
+      store.inFlight = null;
+      const pendingRefreshRpc = store.pendingRefreshRpc;
+      store.pendingRefreshRpc = null;
+      if (
+        pendingRefreshRpc !== null &&
+        store.consumers.size > 0 &&
+        notebookStores.get(store.vaultId) === store
+      ) {
+        void refreshNotebookStore(store, pendingRefreshRpc, {
+          queueIfInFlight: false,
+        });
+      }
     });
   store.inFlight = request;
   return request;
@@ -682,7 +700,13 @@ function useNotebook(vaultId: string | null) {
     store.consumers.add(consumer);
     store.listeners.add(listener);
     store.owner ??= consumer;
-    if (store.data === null) refresh();
+    if (store.data === null) {
+      void refreshNotebookStore(store, rpcRef.current, {
+        // A second view mounting against the same empty store is another
+        // consumer of the initial load, not evidence that the result is stale.
+        queueIfInFlight: false,
+      });
+    }
     return () => {
       store.consumers.delete(consumer);
       store.listeners.delete(listener);
@@ -699,11 +723,12 @@ function useNotebook(vaultId: string | null) {
           )
             return;
           store.requestId += 1;
+          store.pendingRefreshRpc = null;
           notebookStores.delete(store.vaultId);
         });
       }
     };
-  }, [refresh, store]);
+  }, [store]);
 
   useRealtime(
     "vault-changed",

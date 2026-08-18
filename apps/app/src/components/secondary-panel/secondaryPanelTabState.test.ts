@@ -228,6 +228,34 @@ describe("secondaryPanelTabState", () => {
     });
   });
 
+  it("retains an active Diff tab until eligibility is authoritative", () => {
+    const infoTab = createThreadInfoFixedPanelTab();
+    const diffTab = createGitDiffFixedPanelTab();
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: diffTab.id,
+        isOpen: true,
+        tabs: [infoTab, diffTab],
+      },
+    });
+
+    const whileLoading = reconcileFixedPanelViewTabsInState({
+      fixedTabs: [infoTab, diffTab],
+      state,
+    });
+    expect(whileLoading).toBe(state);
+
+    const onceIneligible = reconcileFixedPanelViewTabsInState({
+      fixedTabs: [infoTab],
+      state,
+    });
+    expect(onceIneligible.secondary).toEqual({
+      activeTabId: infoTab.id,
+      isOpen: true,
+      tabs: [infoTab],
+    });
+  });
+
   it("closes the panel and removes its sole New tab launcher", () => {
     const newTab = createNewTabFixedPanelTab();
     const state = openSecondaryPanelTabInState({

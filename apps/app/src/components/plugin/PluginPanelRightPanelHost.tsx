@@ -156,6 +156,7 @@ export function PluginPanelRightPanelHost({
   );
   const panelState = useReconciledFixedPanelTabsState({
     fixedTabs: fixedViewTabs,
+    isAuthoritative: panel !== null,
     openFirstFixedTabWhenEmpty: true,
     panelStateId,
     syncThreadId: null,

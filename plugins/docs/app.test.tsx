@@ -189,15 +189,16 @@ describe("Docs nav panel", () => {
     ).toBeTruthy();
   });
 
-  it("keeps the shared notebook request alive through Strict Mode effect replay", async () => {
+  it("keeps one shared request across page and navigation Strict Mode replay", async () => {
     let requests = 0;
-    const StrictNavigation = (props: { subPath: string }) => (
+    const StrictDocsSurfaces = (props: { subPath: string }) => (
       <StrictMode>
+        <docsRegistration.component {...props} />
         <navigationView.component {...props} />
       </StrictMode>
     );
     const slot = renderSlot(
-      { ...navigationRegistration, component: StrictNavigation },
+      { ...navigationRegistration, component: StrictDocsSurfaces },
       { subPath: "personal" },
       {
         rpc: {
@@ -210,6 +211,7 @@ describe("Docs nav panel", () => {
     );
 
     await slot.findByRole("navigation", { name: "Notes" });
+    await slot.findByText("Select a note or HTML page.");
     expect(requests).toBe(1);
   });
 
@@ -480,6 +482,53 @@ describe("Docs nav panel", () => {
         input: { vaultId: "work", parent: "", name: "Untitled" },
       }),
     );
+  });
+
+  it("runs one follow-up refresh when a vault changes during an active request", async () => {
+    const requests: Array<{
+      resolve(value: ReturnType<typeof listNotesResult>): void;
+    }> = [];
+    const slot = renderSlot(
+      navigationRegistration,
+      { subPath: "personal" },
+      {
+        rpc: {
+          listNotes: () =>
+            new Promise<ReturnType<typeof listNotesResult>>((resolve) => {
+              requests.push({ resolve });
+            }),
+        },
+      },
+    );
+
+    await waitFor(() => expect(requests).toHaveLength(1));
+    await slot.emitRealtime("vault-changed", { vaultId: "personal" });
+    expect(requests).toHaveLength(1);
+
+    requests[0]!.resolve(
+      listNotesResult([
+        {
+          path: "stale.md",
+          title: "Stale note",
+          preview: "",
+          modifiedAtMs: 1,
+        },
+      ]),
+    );
+    await waitFor(() => expect(requests).toHaveLength(2));
+    requests[1]!.resolve(
+      listNotesResult([
+        {
+          path: "fresh.md",
+          title: "Fresh note",
+          preview: "",
+          modifiedAtMs: 2,
+        },
+      ]),
+    );
+
+    await slot.findByText("Fresh note");
+    expect(slot.queryByText("Stale note")).toBeNull();
   });
 
   it("ignores an obsolete vault refresh and rename after a deferred save", async () => {

@@ -306,11 +306,18 @@ export function useUpdateFixedPanelTabsState(
 
 export function useReconciledFixedPanelTabsState({
   fixedTabs,
+  isAuthoritative = true,
   openFirstFixedTabWhenEmpty = false,
   panelStateId,
   syncThreadId,
 }: {
   fixedTabs: readonly FixedPanelViewTab[];
+  /**
+   * Whether `fixedTabs` is the settled eligibility result for this surface.
+   * While registrations or other eligibility inputs are still loading, keep
+   * persisted tabs untouched and render their existing state.
+   */
+  isAuthoritative?: boolean;
   openFirstFixedTabWhenEmpty?: boolean;
   panelStateId: FixedPanelTabsPanelStateId;
   syncThreadId: FixedPanelTabsSyncThreadId;
@@ -319,19 +326,21 @@ export function useReconciledFixedPanelTabsState({
   const updateState = useUpdateFixedPanelTabsState(panelStateId, syncThreadId);
   const reconciledState = useMemo(
     () =>
-      reconcileFixedPanelViewTabsInState({
-        fixedTabs,
-        openFirstFixedTabWhenEmpty,
-        state,
-      }),
-    [fixedTabs, openFirstFixedTabWhenEmpty, state],
+      isAuthoritative
+        ? reconcileFixedPanelViewTabsInState({
+            fixedTabs,
+            openFirstFixedTabWhenEmpty,
+            state,
+          })
+        : state,
+    [fixedTabs, isAuthoritative, openFirstFixedTabWhenEmpty, state],
   );
 
   // Render the reconciled model immediately so hydration never flashes a
   // missing tab or animates from an invalid layout. Commit the same model in a
   // layout effect so local/server persistence catches up before paint.
   useLayoutEffect(() => {
-    if (reconciledState === state) return;
+    if (!isAuthoritative || reconciledState === state) return;
     updateState((current) =>
       reconcileFixedPanelViewTabsInState({
         fixedTabs,
@@ -341,6 +350,7 @@ export function useReconciledFixedPanelTabsState({
     );
   }, [
     fixedTabs,
+    isAuthoritative,
     openFirstFixedTabWhenEmpty,
     reconciledState,
     state,

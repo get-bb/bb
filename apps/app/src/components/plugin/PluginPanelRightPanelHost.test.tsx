@@ -72,6 +72,7 @@ const terminalQueryState = vi.hoisted(() => ({
   ],
 }));
 const fixedTabState = vi.hoisted(() => ({
+  panelRegistered: true,
   registrations: [] as TestFixedTabRegistration[],
 }));
 const hostState = vi.hoisted(() => ({
@@ -108,18 +109,20 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
 vi.mock("@/lib/plugin-slots", () => ({
   usePluginSlots: () => ({
     fileOpeners: [],
-    navPanels: [
-      {
-        id: "board",
-        pluginId: "demo",
-        path: "board",
-        title: "Board",
-        icon: "Columns",
-        component: () => null,
-        generation: 1,
-        experimental_fixedTabs: fixedTabState.registrations,
-      },
-    ],
+    navPanels: fixedTabState.panelRegistered
+      ? [
+          {
+            id: "board",
+            pluginId: "demo",
+            path: "board",
+            title: "Board",
+            icon: "Columns",
+            component: () => null,
+            generation: 1,
+            experimental_fixedTabs: fixedTabState.registrations,
+          },
+        ]
+      : [],
   }),
 }));
 
@@ -376,6 +379,7 @@ describe("PluginPanelRightPanelHost", () => {
     threadTabsApi.get.mockResolvedValue({ revision: 4, tabs: [] });
     threadTabsApi.update.mockReset();
     threadTabsApi.update.mockResolvedValue({ revision: 5, tabs: [] });
+    fixedTabState.panelRegistered = true;
     fixedTabState.registrations = [];
     localStorage.clear();
   });
@@ -522,6 +526,49 @@ describe("PluginPanelRightPanelHost", () => {
     });
     firstRender.unmount();
 
+    renderHost("board", "", store);
+
+    await waitFor(() =>
+      expect(
+        screen
+          .getByTestId("shared-secondary-panel-region")
+          .hasAttribute("hidden"),
+      ).toBe(true),
+    );
+    expect(
+      await screen.findByRole("button", { name: "Show right panel" }),
+    ).toBeTruthy();
+  });
+
+  it("preserves a closed fixed tab while its plugin registration is loading", async () => {
+    fixedTabState.registrations = [
+      {
+        id: "navigation",
+        title: "Navigation",
+        icon: "PanelRight",
+        component: () => <div>Navigation</div>,
+      },
+    ];
+    const store = createStore();
+    const initial = renderHost("board", "", store);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Hide right panel" }),
+    );
+    await screen.findByRole("button", { name: "Show right panel" });
+    initial.unmount();
+
+    fixedTabState.panelRegistered = false;
+    const loading = renderHost("board", "", store);
+    await waitFor(() =>
+      expect(
+        screen
+          .getByTestId("shared-secondary-panel-region")
+          .hasAttribute("hidden"),
+      ).toBe(true),
+    );
+    loading.unmount();
+
+    fixedTabState.panelRegistered = true;
     renderHost("board", "", store);
 
     await waitFor(() =>
