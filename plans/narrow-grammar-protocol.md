@@ -134,9 +134,9 @@ and emits an ordinary `turn.open`+`boundary` pair when it fires).
    its internal envelopes map ~1:1), claude (task extension design), codex
    (mostly renaming its native passthrough).
 
-## Migration order (adopted; acp converted 2026-08-18)
+## Migration order (adopted; acp + codex converted 2026-08-18)
 
-acp ✓ → codex → claude (task extension lands with it) → delete the kit's
+acp ✓ → codex ✓ → claude (task extension lands with it) → delete the kit's
 turn-state/scoped-ids/accepted-messages/constructor surface from the SDK →
 protocol version bump + conformance kit rewritten around delta
 well-formedness. Sequenced before session-mode so the transport carries the
@@ -306,13 +306,147 @@ green; @bb/server typecheck untouched-green.
   suppression now lives in the assembler (release + empty-after-trim),
   shared with every accumulating bridge.
 
+## Codex conversion results (2026-08-18, stage 3 of the cutover)
+
+Converted as assessed: the native turn/item notifications mapped ~1:1 onto
+deltas carrying codex's own ids as vouched join keys. All 163 codex plugin
+tests pass on the new path (the ported per-event + stateful-translator
+equivalence suites, the calibration golden — unchanged event stream —,
+zero-work, child-exit, archived-resume, session-signature, and the full
+conformance run against real fake app-server children); agent-runtime
+(incl. pi), acp, provider-bridge-protocol, plugin-sdk all green as a shared-
+assembler regression check; @bb/server typecheck untouched-green.
+
+### Line deltas
+
+- Codex translation: `event-translation.ts` 1,094 → `delta-translation.ts`
+  1,019 (−75; codex was already parsed-shape-oriented, so the win is the
+  *deleted responsibilities*, not raw lines). `translator.ts` 1,476 → 1,494
+  (+18): every stateful closure survives as dialect knowledge, now mapping
+  over deltas; the raw-output recovery buffers `item.close` deltas instead
+  of finished events.
+- Codex bridge: `bridge/bridge.ts` 1,965 → 1,724 (−241): the entropy-prefix
+  id-stamping layer (`toBridgeId`/`remapEvent`/`remapScope`/`remapItem`),
+  the delta-first `item/started` synthesis, the settle/reopen dedup sets,
+  and `remapApprovalPayload` are all deleted — they became assembler work.
+- Grammar/schema/assembler growth for codex: `thread-delta.ts` 312 → 502,
+  `delta-assembler.ts` 1,128 → 1,618 (keyed provider-turn space, the new
+  item shapes, item-keyed text/output deltas, exact usage fan-out, thread
+  metadata, dedup).
+
+### Grammar additions (deltas added for the codex surface)
+
+10. **Vouched provider-turn keys**: optional `providerTurnId` on turn.open/
+    turn.boundary/input.accepted and every turn-scoped delta. The assembler
+    holds both-way provider↔bb TURN maps (mirroring the item maps), mints on
+    first sight without emitting `turn/started`, and keyed deltas bypass the
+    current-turn machinery entirely — several provider turns can be open at
+    once (codex multiplexes subagent child turns onto one thread) and a
+    keyed `turn.boundary` settles only the named turn, clearing nothing.
+    `turn.open` also carries `parentRef` (delegated child turns).
+11. **`item.textDelta { key, channel: agentMessage|reasoningSummary|
+    reasoningText|plan }`** and **`item.outputDelta { key, channel:
+    command|fileChange }`** — item-keyed streaming, split into two kinds so
+    codex's synthesis exception is structural: textDelta synthesizes the
+    channel's empty `item/started` for an unknown id; outputDelta NEVER
+    synthesizes (a commandExecution without its command would be worse than
+    the anomaly) but still mints/maps the id so later opens correlate.
+12. **Item shapes**: `agentMessage`, `reasoning`, `plan`, `webSearch`,
+    `webFetch`, `imageView`; `tool` gains server/result(unknown)/error/
+    durationMs; `command` gains aggregatedOutput/exitCode/durationMs (codex
+    item payloads carry them wholesale — generic close fields win when both
+    are present); fileChange changes gain `movePath` and a provider-built
+    `diff` (preferred over old/new-text building).
+13. **`item.close.approvalStatus: "denied"`** — codex's completed-declined
+    verdict; started events never carry a verdict.
+14. **`usage.exact { total, last, modelContextWindow }`** — the provider
+    already accumulates; the assembler fans the snapshot out verbatim to
+    BOTH usage events (context meter reads `last.totalTokens`), no central
+    accumulation.
+15. **`turn.plan.explanation`**, **`item.progress.message` now optional**
+    (codex progress may carry none), **`turn.diff { diff }`** →
+    `turn/diff/updated`.
+16. **Thread metadata deltas**: `thread.started`, `thread.identity
+    { providerThreadId }`, `thread.name`, `thread.goal`,
+    `thread.goalCleared`; **`provider.rateLimits { rateLimits }`** carries
+    the normalized `ProviderRateLimitState`.
+17. **`provider.error` gains `errorInfo`, `providerTurnId`, `threadScoped`**
+    — codex errors are scoped by their own turn id or pinned to thread
+    scope; a turnless codex error must never be adopted by whatever turn
+    happens to be open. `unhandled` gains `providerTurnId` for the same
+    vouching.
+18. **`session.reset {}`** — the provider id-space boundary: emitted by the
+    bridge at every session construction (start/resume/fork/rebuild), it
+    drops the thread's whole assembly state so reused codex-native ids mint
+    fresh bb ids (cross-resume id uniqueness under central minting; the fake
+    app-server restarts its counters per process, and the old bridge's
+    per-session serial prefix did the same job).
+19. **Generic settle/reopen dedup moved into the assembler**: a repeated
+    `item.close` for a settled provider-identified key is dropped and an
+    explicit `item.open` reopens the key under the SAME bb id (codex retries
+    terminal notifications after approvals; deterministic prefix ids used to
+    make the reopen id-stable, the map reuse does now). Channel-keyed items
+    (acp fs-writes, compactions) are exempt — those families legitimately
+    close one key repeatedly. Bounded 512 per thread, mirroring the bridge's
+    old per-session sets.
+
+### The command plane under central minting (reverse mapping)
+
+- `turn/steer.expectedTurnId` and `thread/stop.activeTurnId` are translated
+  bb→provider in `bridge-protocol-adapter.buildCommandPlan` via the
+  assembler's reverse turn map; unmapped ids pass through unchanged, so
+  thread/event bridges and delta bridges without native turn ids (pi, acp)
+  see exactly what they saw before. The codex bridge uses the ids verbatim
+  (zero id translation left bridge-side).
+- **Fork checkpoints need no runtime mapping**: `turn.boundary` stamps the
+  raw codex turn id as `providerCheckpointId` (completed turns only —
+  failed/interrupted turns may be absent from the rollout), so persisted
+  checkpoints are already provider-native. The bridge keeps a legacy prefix
+  strip ONLY in the fork path for checkpoints persisted before the cutover.
+- **Interactive/tool-call requests carry `providerNativeIds: true`**: the
+  codex bridge forwards its provider-native turn id, approval-subject item
+  id, and dynamic-tool call id untranslated, and the adapter's decode step
+  maps them onto assembler-minted ids (the server materializes the approval
+  row under `subject.itemId`, so it must be the timeline's own item id —
+  today's merge behavior preserved). The flag's omission means the ids are
+  already app-visible: acp keeps sending raw toolCallIds with `turnId: null`
+  and its app-visible behavior is byte-identical (its approval ids never
+  matched timeline ids, before or after the acp conversion — remapping them
+  would have *changed* acp, so the flag is opt-in per bridge).
+
+### What stayed bridge-side (and why)
+
+- **Rate-limit snapshot merge** (sparse rolling updates inherit windows,
+  sticky-while-active `rateLimitReachedType`): seeded from the per-child
+  `account/rateLimits/read` post-initialize call the assembler never sees;
+  the delta carries the already-normalized state. Less state than teaching
+  the assembler a thread-independent hydration channel.
+- **Zero-work settlement** (250 ms grace, claim() protocol): unchanged
+  correctness, now emitting `turn.open` + `input.accepted` +
+  `turn.boundary` on a synthetic `zero-work-N` provider turn key.
+- **Native turn-start acceptance correlation**: the FIFO queue still drains
+  on the provider's `turn/started` (queued before dispatch because codex
+  answers `turn/start` after emitting it); the drained ack rides an
+  `input.accepted { providerTurnId }` right behind the `turn.open`, and a
+  `turn.boundary` still clears the thread's whole queue.
+- **Delegation/subagents**: the whole FIFO/explicit-mapping machine survives
+  verbatim, mapping over deltas (parentRef stamped onto turn.open and item
+  keys); synthetic spawnAgent rows are ordinary item.open/close deltas on
+  the parent's vouched turn. `thread/openWork` is unchanged.
+- **Raw shell-output recovery**: buffers its own `item.close` delta until
+  the raw record (or the turn boundary) reconciles it; the "empty" recovery
+  deletes `aggregatedOutput` from the carried terminal shape.
+- **Child-exit settlement rides keyed `turn.boundary` deltas**, not
+  `session.ended {reason: exited}` as sketched: the bridge already owns the
+  open-codex-turn set for the zero-work gate, and the generic session-ended
+  settlement would have added item completions and a `provider/error` event
+  codex never emitted on child death (exactness beats the sketch; recorded
+  as the resolved deviation). Pre-identity buffering, userMessage echo
+  suppression, stale-child suppression, and session rebuild +
+  `session/replaced` are otherwise unchanged, with deltas in place of
+  events.
+
 ### Assessed conversion cost (remaining)
-- **codex — low-to-medium.** Its native turn/item events are ~the target
-  vocabulary; conversion is mostly renaming plus carrying provider ids as
-  join keys. Zero-work settlement stays bridge-side as an ordinary
-  `turn.open`+`turn.boundary` pair (grammar-supported). One new need:
-  codex trusts provider-minted turn ids today; under central minting its
-  steer `expectedTurnId` reverse lookup must go through the assembler maps.
 - **claude — highest.** The background-task machine (fold/throttle/
   generation, completion-blocking tasks that *withhold* the turn boundary)
   is real design work: the grammar has no `backgroundTask` item shape and
