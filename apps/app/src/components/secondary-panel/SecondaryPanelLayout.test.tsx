@@ -106,6 +106,7 @@ interface RenderLayoutArgs {
   isCompactViewport: boolean;
   isFocusedHosted?: boolean;
   open: boolean;
+  panelGroupKey?: string;
   renderPanel: (args: SecondaryPanelRenderArgs) => ReactNode;
   resetKey: string;
 }
@@ -156,6 +157,7 @@ function renderLayout(args: RenderLayoutArgs) {
           open={renderArgs.open}
           onToggle={noop}
           onClose={noop}
+          panelGroupKey={renderArgs.panelGroupKey}
           resetKey={renderArgs.resetKey}
           contentKey={renderArgs.resetKey}
           drawerLabel="Details"
@@ -284,6 +286,35 @@ beforeEach(() => {
 });
 
 describe("SecondaryPanelLayout", () => {
+  it("preserves routed main content when the panel state identity changes", () => {
+    const frames = installAnimationFrameQueue();
+    const view = renderLayout({
+      isCompactViewport: false,
+      open: true,
+      panelGroupKey: "plugin-pane-1",
+      renderPanel: createPanelRenderer(),
+      resetKey: "plugin-page-a",
+    });
+
+    act(() => {
+      frames.flushAll();
+      frames.flushAll();
+    });
+    const panelGroup = screen.getByTestId("panel-group");
+    const mainContent = screen.getByTestId("main-content");
+    expect(panelGroup.style.getPropertyValue("--panel-collapse-duration")).toBe(
+      "220ms",
+    );
+
+    view.rerenderWith({ resetKey: "plugin-page-b" });
+
+    expect(screen.getByTestId("panel-group")).toBe(panelGroup);
+    expect(screen.getByTestId("main-content")).toBe(mainContent);
+    expect(panelGroup.style.getPropertyValue("--panel-collapse-duration")).toBe(
+      "0ms",
+    );
+  });
+
   it("settles mount-time panel state before enabling layout transitions", () => {
     const frames = installAnimationFrameQueue();
     const view = renderLayout({

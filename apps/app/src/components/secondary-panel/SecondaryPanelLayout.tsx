@@ -51,6 +51,15 @@ interface SecondaryPanelLayoutProps {
   open: boolean;
   onToggle: () => void;
   onClose: () => void;
+  /**
+   * Identity of the physical resizable host. Defaults to `resetKey` for
+   * surfaces whose content identity and host identity are the same.
+   *
+   * A routed surface can keep this stable while `resetKey` changes so the
+   * mounted main subtree survives navigation, while drawer realization and
+   * transition readiness still reset for the new content.
+   */
+  panelGroupKey?: Key;
   resetKey: Key;
   contentKey: string;
   drawerLabel: string;
@@ -78,6 +87,7 @@ export function SecondaryPanelLayout({
   open,
   onToggle,
   onClose,
+  panelGroupKey,
   resetKey,
   contentKey,
   drawerLabel,
@@ -322,7 +332,7 @@ export function SecondaryPanelLayout({
     <>
       <div className="flex min-h-0 w-full min-w-0 flex-1">
         <PanelGroup
-          key={resetKey}
+          key={panelGroupKey ?? resetKey}
           ref={horizontalPanelGroupRef}
           direction="horizontal"
           className="@container h-full min-w-0 flex-1"

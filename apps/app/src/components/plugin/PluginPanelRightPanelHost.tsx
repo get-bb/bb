@@ -138,9 +138,11 @@ export function PluginPanelRightPanelHost({
   const paneContext = useOptionalPaneContext();
   const isFocused = paneContext?.isFocused ?? true;
   const isHostedBySplitWorkspace = paneContext?.secondaryPanelHost != null;
+  const resolvedPaneId = paneId ?? paneContext?.paneId;
+  const panelHostId = resolvedPaneId ?? "standalone";
   const panelStateId = getPluginPagePanelStateId({
     panelPath,
-    paneId: paneId ?? paneContext?.paneId,
+    paneId: resolvedPaneId,
     pluginId,
   });
   const fixedViewTabs = useMemo<readonly PluginPageFixedPanelTab[]>(
@@ -677,11 +679,12 @@ export function PluginPanelRightPanelHost({
         open={isOpen}
         onToggle={togglePanel}
         onClose={hidePanel}
+        panelGroupKey={`plugin-panel-host:${panelHostId}`}
         resetKey={panelStateId}
         contentKey={panelStateId}
         drawerLabel="Right panel"
         drawerFallback={null}
-        mainPanelId={`plugin-panel-main-${pluginId}-${panelPath}`}
+        mainPanelId={`plugin-panel-main-${panelHostId}`}
         main={children}
         composerHost={null}
         renderPanel={renderPanel}
