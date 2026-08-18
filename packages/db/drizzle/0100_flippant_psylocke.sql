@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS `events_item_lifecycle_thread_item_sequence_idx` ON `events` (`thread_id`,`item_id`,`sequence`) WHERE "events"."type" IN ('item/started', 'item/completed', 'item/backgroundTask/completed');

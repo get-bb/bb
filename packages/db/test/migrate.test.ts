@@ -3855,6 +3855,7 @@ describe("migrate", () => {
         "events_completed_item_truncation_idx",
         "events_environment_idx",
         "events_goal_thread_sequence_idx",
+        "events_item_lifecycle_thread_item_sequence_idx",
         "events_thread_sequence_idx",
         "events_thread_turn_type_item_sequence_idx",
         "events_thread_type_item_kind_sequence_idx",

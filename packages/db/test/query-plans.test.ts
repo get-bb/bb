@@ -13,6 +13,7 @@ import {
   getPendingInteractionByProviderRequest,
 } from "../src/data/pending-interactions.js";
 import {
+  appendDaemonEventsInTransaction,
   hasParentedEventCrossingSequence,
   insertEvents,
   listActiveBackgroundTaskCountsByThreadIds,
@@ -219,6 +220,79 @@ function assertEmittedQueryPlanUsesIndex(
 }
 
 describe("slow query index plans", () => {
+  it("loads daemon item lifecycle state through the targeted partial index", () => {
+    const { db, logger, thread } = setup();
+    const turnId = "turn-lifecycle-plan";
+    const itemId = "item-lifecycle-plan";
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "turn/started",
+        scope: turnScope(turnId),
+        itemId: null,
+        itemKind: null,
+        data: JSON.stringify({ providerThreadId: "provider-plan" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "item/completed",
+        scope: turnScope(turnId),
+        itemId,
+        itemKind: "agentMessage",
+        data: JSON.stringify({
+          providerThreadId: "provider-plan",
+          item: { type: "agentMessage", id: itemId, text: "done" },
+        }),
+      },
+    ]);
+
+    db.transaction(
+      (tx) =>
+        appendDaemonEventsInTransaction(tx, [
+          {
+            threadId: thread.id,
+            environmentId: null,
+            type: "item/completed",
+            scope: turnScope(turnId),
+            itemId,
+            itemKind: "agentMessage",
+            providerThreadId: "provider-plan",
+            data: JSON.stringify({
+              providerThreadId: "provider-plan",
+              item: { type: "agentMessage", id: itemId, text: "done" },
+            }),
+          },
+        ]),
+      { behavior: "immediate" },
+    );
+
+    const debugLog = findOnlyDebugLog({
+      logger,
+      predicate: (fields) =>
+        fields.operation === "all" && fields.sql.includes("requested_item"),
+    });
+    expect(debugLog.fields.bindingArgumentCount).toBe(2);
+    const lifecycleTypes =
+      "IN ('item/started', 'item/completed', 'item/backgroundTask/completed')";
+    const planSql = debugLog.fields.sql.replaceAll(
+      "IN ( '?', '?', '?' )",
+      lifecycleTypes,
+    );
+    const details = queryPlanDetails({
+      db,
+      params: [thread.id, itemId],
+      sql: planSql,
+    });
+    expect(
+      details.match(/events_item_lifecycle_thread_item_sequence_idx/gu),
+    ).toHaveLength(2);
+
+    db.$client.close();
+  });
+
   it("resolves parent crossings through the covering tool-call index", () => {
     const { db, thread } = setup();
 
