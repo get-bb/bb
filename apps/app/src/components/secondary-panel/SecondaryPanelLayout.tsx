@@ -109,6 +109,12 @@ export function SecondaryPanelLayout({
     if (group === null || renderAsDrawer) {
       return;
     }
+    // A page may not render its secondary panel until it has content. The
+    // panel group validates layouts against its currently registered panels,
+    // so a two-entry layout would throw while only the main panel exists.
+    if (group.getLayout().length !== 2) {
+      return;
+    }
 
     if (!open) {
       group.setLayout([FULL_PANEL_SIZE_PERCENT, 0]);

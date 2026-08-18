@@ -18,6 +18,7 @@ import {
 type DrawerShellCallback = (open: boolean) => void;
 
 const panelGroupState = vi.hoisted(() => ({
+  getLayout: vi.fn(() => [60, 40]),
   setLayout: vi.fn(),
 }));
 const drawerShellState = vi.hoisted(() => ({
@@ -37,12 +38,18 @@ vi.mock("react-resizable-panels", async () => {
   const React = await import("react");
 
   const PanelGroup = React.forwardRef<
-    { setLayout: (layout: number[]) => void },
+    {
+      getLayout: () => number[];
+      setLayout: (layout: number[]) => void;
+    },
     { children?: ReactNode }
   >(({ children }, ref) => {
     React.useImperativeHandle(
       ref,
-      () => ({ setLayout: panelGroupState.setLayout }),
+      () => ({
+        getLayout: panelGroupState.getLayout,
+        setLayout: panelGroupState.setLayout,
+      }),
       [],
     );
     return React.createElement(
@@ -271,11 +278,31 @@ afterEach(() => {
 
 beforeEach(() => {
   publishedHostedPanel = null;
+  panelGroupState.getLayout.mockReset().mockReturnValue([60, 40]);
   panelGroupState.setLayout.mockReset();
   vi.mocked(dispatchBrowserViewBoundsSync).mockReset();
 });
 
 describe("SecondaryPanelLayout", () => {
+  it("waits for a secondary panel before applying a two-panel layout", () => {
+    panelGroupState.getLayout.mockReturnValue([100]);
+    const view = renderLayout({
+      isCompactViewport: false,
+      open: false,
+      renderPanel: () => null,
+      resetKey: "plugin-page",
+    });
+
+    expect(panelGroupState.setLayout).not.toHaveBeenCalled();
+
+    panelGroupState.getLayout.mockReturnValue([60, 40]);
+    const renderPanel = createPanelRenderer();
+    view.rerenderWith({ open: true, renderPanel });
+
+    expect(panelGroupState.setLayout).toHaveBeenCalledTimes(1);
+    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([60, 40]);
+  });
+
   it("owns the desktop open, closed, and conversation-collapse layouts", () => {
     const renderPanel = createPanelRenderer();
     const view = renderLayout({
