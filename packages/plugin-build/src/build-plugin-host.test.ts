@@ -274,11 +274,11 @@ describe("plugin host build", () => {
     await writeFile(
       join(dir, "host.ts"),
       [
-        'import { experimental_defineProviderBridge, turnScope, threadStartParamsSchema } from "@get-bb/plugin-sdk/provider-bridge";',
+        'import { experimental_defineProviderBridge, threadDeltaSchema, threadStartParamsSchema } from "@get-bb/plugin-sdk/provider-bridge";',
         "export const experimental_providerBridge = experimental_defineProviderBridge({",
         "  handleLine(line) {",
         "    threadStartParamsSchema.safeParse(JSON.parse(line));",
-        '    process.stdout.write(JSON.stringify(turnScope("thr_1", "turn_1")));',
+        "    process.stdout.write(JSON.stringify(threadDeltaSchema.parse({ kind: \"turn.open\" })));",
         "  },",
         "});",
         "export default {};",
