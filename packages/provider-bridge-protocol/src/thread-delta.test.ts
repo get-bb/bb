@@ -1,0 +1,137 @@
+import { describe, expect, it } from "vitest";
+import {
+  threadDeltaNotificationParamsSchema,
+  threadDeltaSchema,
+} from "./thread-delta.js";
+
+describe("thread delta schemas", () => {
+  it("discriminates every delta kind by `kind`", () => {
+    const deltas = [
+      { kind: "input.accepted", clientRequestId: "creq_abcdefghjk" },
+      { kind: "turn.open" },
+      { kind: "turn.boundary", status: "completed", claimIfIdle: true },
+      {
+        kind: "item.open",
+        key: { providerItemId: "tc-1" },
+        item: { type: "command", command: "ls", cwd: "/repo" },
+      },
+      {
+        kind: "item.close",
+        key: { providerItemId: "tc-1" },
+        status: "completed",
+        exitCode: 0,
+      },
+      { kind: "item.progress", key: { providerItemId: "tc-1" }, message: "…" },
+      {
+        kind: "message.delta",
+        channel: "assistant",
+        streamKey: "assistant",
+        text: "hi",
+      },
+      { kind: "message.close", channel: "assistant", detach: true },
+      {
+        kind: "command.outputSnapshot",
+        key: { providerItemId: "tc-1" },
+        text: "OUT\n",
+      },
+      {
+        kind: "usage.turn",
+        tokens: {
+          totalTokens: 10,
+          inputTokens: 5,
+          cachedInputTokens: 0,
+          outputTokens: 5,
+          reasoningOutputTokens: 0,
+        },
+        modelContextWindow: 200_000,
+      },
+      {
+        kind: "contextWindow",
+        used: 1234,
+        size: 200_000,
+        estimated: true,
+        attach: "currentOrLast",
+      },
+      { kind: "context.compacted" },
+      { kind: "context.cleared" },
+      { kind: "provider.error", message: "boom", settlesTurn: true },
+      { kind: "provider.warning", summary: "careful" },
+      {
+        kind: "unhandled",
+        raw: { jsonrpc: "2.0", method: "sdk/message", params: { x: 1 } },
+        rawType: "sdk/unknown",
+        vouchedTurn: true,
+      },
+      { kind: "session.ended", reason: "interrupted" },
+    ];
+    for (const delta of deltas) {
+      const parsed = threadDeltaSchema.safeParse(delta);
+      expect(parsed.success, `expected ${delta.kind} to parse`).toBe(true);
+    }
+  });
+
+  it("rejects unknown kinds and malformed members", () => {
+    expect(threadDeltaSchema.safeParse({ kind: "nope" }).success).toBe(false);
+    // input.accepted requires a well-formed client request id, not any string.
+    expect(
+      threadDeltaSchema.safeParse({
+        kind: "input.accepted",
+        clientRequestId: "not-a-creq",
+      }).success,
+    ).toBe(false);
+    // turn.boundary status is the canonical turn-status enum.
+    expect(
+      threadDeltaSchema.safeParse({ kind: "turn.boundary", status: "done" })
+        .success,
+    ).toBe(false);
+    // item.open needs a parsed shape, not free-form data.
+    expect(
+      threadDeltaSchema.safeParse({
+        kind: "item.open",
+        key: {},
+        item: { type: "mystery" },
+      }).success,
+    ).toBe(false);
+    // unhandled must carry a raw JSON-RPC envelope.
+    expect(
+      threadDeltaSchema.safeParse({
+        kind: "unhandled",
+        raw: { method: "x" },
+        rawType: "x",
+        vouchedTurn: false,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects empty-string join-key members while allowing their omission", () => {
+    expect(
+      threadDeltaSchema.safeParse({
+        kind: "item.open",
+        key: { providerItemId: "" },
+        item: { type: "compaction" },
+      }).success,
+    ).toBe(false);
+    expect(
+      threadDeltaSchema.safeParse({
+        kind: "item.open",
+        key: {},
+        item: { type: "compaction" },
+      }).success,
+    ).toBe(true);
+  });
+
+  it("parses batched notification params and requires a thread id", () => {
+    expect(
+      threadDeltaNotificationParamsSchema.safeParse({
+        threadId: "thr_1",
+        deltas: [{ kind: "turn.open" }, { kind: "context.compacted" }],
+      }).success,
+    ).toBe(true);
+    expect(
+      threadDeltaNotificationParamsSchema.safeParse({
+        threadId: "",
+        deltas: [],
+      }).success,
+    ).toBe(false);
+  });
+});
