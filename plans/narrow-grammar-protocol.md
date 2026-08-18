@@ -1,12 +1,44 @@
 # Narrow-grammar revision of the Provider Bridge Protocol
 
-Status: **cutover complete, pending live QA** (branch
-`narrow-grammar-prototype`). All four bridges emit `thread/delta`; the
-`thread/event` path is deleted; protocol version bumped to 2;
-`docs/api_to_audit.md` item 1 for `@get-bb/plugin-sdk/provider-bridge` is
-resolved as "the protocol owns its own timeline vocabulary". Real-API
-integration runs were not part of this branch (no provider credentials);
-that is the remaining QA before merge.
+Status: **cutover complete, live QA PASSED** (2026-08-18, branch
+`narrow-grammar-prototype` @ `c0c9b2d8b`). All four bridges emit
+`thread/delta`; the `thread/event` path is deleted; protocol version bumped
+to 2; `docs/api_to_audit.md` item 1 for `@get-bb/plugin-sdk/provider-bridge`
+is resolved as "the protocol owns its own timeline vocabulary".
+
+## Live QA results (2026-08-18)
+
+All four providers were exercised against a real dev instance
+(`bb-worktrees-env_2vsqhpeg8u-bb-b304d5affc6b`) with real provider CLIs:
+turn lifecycle, tool items, streaming, usage events, mid-turn steer,
+interrupt, bridge-release resume (id-collision check), fork, provider
+specialties, plus an archive→unarchive→resume round trip and a final
+process sweep. Raw evidence: `/tmp/narrow-grammar-gate.md`.
+
+| provider | turn/tools | steer | interrupt | resume (no id collisions) | fork | specialty | errors |
+|---|---|---|---|---|---|---|---|
+| codex | PASS | PASS | PASS | PASS (new epoch `daf7fe3e6c-`) | PASS | spawnAgent delegation PASS | 0 |
+| claude-code | PASS | PASS | PASS | PASS (counters continue, no dupes) | PASS | backgroundTask/subagent PASS (blocking task settled before turn/completed) | 0 (+2 benign `provider/unhandled` background_tasks_changed) |
+| pi | PASS | PASS | PASS | PASS | PASS | large-session /compact PASS; tiny-session /compact → finding 1 | 0 (+2 benign queue_update) |
+| acp-cursor | PASS | PASS | PASS | PASS | finding 2 (cursor lacks fork; acp fork path verified on opencode) | accept-edits write PASS | 1 system/error (finding 2) |
+
+Zero `provider/error` / `session/replaced` rows for the whole run; no
+assembler errors or reconnect loops; the only orphan-snapshot warnings are
+the known pre-existing codex pre-turn usage drops; process sweep clean.
+
+Findings to track (neither is a cutover regression; both are byte-identical
+to pre-cutover behavior):
+
+1. pi manual `/compact` on a too-small session yields
+   `turn/completed{failed}` and an `error`-status thread (recoverable via
+   send `mode:"start"`), not a graceful no-op
+   (`packages/agent-runtime/src/pi/delta-translation.ts` maps manual
+   `compaction_end` errors to a failed turn boundary, enshrined by its test).
+2. acp-cursor is advertised with `supportsFork: true` but cursor-agent does
+   not advertise ACP session/fork, so every fork attempt creates a thread
+   that immediately errors ("does not advertise session/fork support",
+   guard identical on `origin/main`). The roster capability should be
+   corrected or made agent-derived.
 
 ## The revision in one paragraph
 
