@@ -122,7 +122,7 @@ describe("fixed-panel-tabs-state", () => {
     expect(parsed).toBe(initialValue);
   });
 
-  it("restores the transient New tab when an open panel is hydrated", () => {
+  it("closes an open panel when its transient New tab is removed during hydration", () => {
     const newTab = createNewTabFixedPanelTab();
     const state: FixedPanelTabsState = {
       version: FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
@@ -146,13 +146,13 @@ describe("fixed-panel-tabs-state", () => {
     });
 
     expect(parsed.secondary).toEqual({
-      activeTabId: newTab.id,
-      isOpen: true,
-      tabs: [newTab],
+      activeTabId: null,
+      isOpen: false,
+      tabs: [],
     });
   });
 
-  it("selects an existing tab before creating the open-panel fallback", () => {
+  it("selects the first surviving tab when the persisted active tab is gone", () => {
     const infoTab = createThreadInfoFixedPanelTab();
     const state: FixedPanelTabsState = {
       version: FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
@@ -169,6 +169,28 @@ describe("fixed-panel-tabs-state", () => {
       isOpen: true,
       tabs: [infoTab],
     });
+  });
+
+  it("keeps the persisted active tab when it still exists", () => {
+    const firstTab = createBrowserFixedPanelTab({
+      environmentId: null,
+      url: "https://first.example.com",
+    });
+    const lastActiveTab = createBrowserFixedPanelTab({
+      environmentId: null,
+      url: "https://last.example.com",
+    });
+    const state: FixedPanelTabsState = {
+      version: FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
+      secondary: {
+        activeTabId: lastActiveTab.id,
+        isOpen: true,
+        tabs: [firstTab, lastActiveTab],
+      },
+      lastUsedAt: NOW,
+    };
+
+    expect(ensureOpenFixedPanelHasActiveTab(state)).toBe(state);
   });
 
   it("recognizes old versioned storage keys for pruning", () => {

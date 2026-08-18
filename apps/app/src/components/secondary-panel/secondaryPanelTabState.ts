@@ -2,7 +2,6 @@ import { arrayMove } from "@dnd-kit/sortable";
 import {
   areFixedPanelTabsEquivalent,
   type BrowserFixedPanelTab,
-  createNewTabFixedPanelTab,
   type FixedPanelTab,
   type FixedPanelTabsState,
   type NewTabFixedPanelTab,
@@ -298,43 +297,24 @@ export function closeSecondaryPanelTabInState(
     return state;
   }
   const isClosingActiveTab = state.secondary.activeTabId === tabId;
-  const secondaryFileTabs = state.secondary.tabs.filter(isSecondaryFileTab);
-
-  // Every secondary panel keeps its launcher as the durable empty state.
-  // Closing that sole launcher hides the panel instead of deleting it, so the
-  // next open restores useful content without a host-specific repair effect.
-  if (
-    isClosingActiveTab &&
-    isNewTab(tab) &&
-    secondaryFileTabs.length === 1
-  ) {
-    return setSecondaryPanelTabsInState({
-      activeTabId: tab.id,
-      isOpen: false,
-      state,
-      tabs: state.secondary.tabs,
-    });
-  }
 
   const tabs = removeSecondaryPanelTab(state.secondary.tabs, tabId);
   if (tabs === state.secondary.tabs) {
     return state;
   }
 
-  // Closing the last active content tab must not leave an open, empty panel.
-  // Replace it atomically with New tab so every host gets the same fallback
-  // without rendering a blank frame between state updates.
+  // Closing the last active content tab closes the shared panel. A later
+  // explicit open can create New tab; closing content never does so implicitly.
   if (
     isClosingActiveTab &&
     isSecondaryFileTab(tab) &&
     !tabs.some(isSecondaryFileTab)
   ) {
-    const launcher = createNewTabFixedPanelTab();
     return setSecondaryPanelTabsInState({
-      activeTabId: launcher.id,
-      isOpen: state.secondary.isOpen,
+      activeTabId: null,
+      isOpen: false,
       state,
-      tabs: upsertSecondaryPanelTab(tabs, launcher),
+      tabs,
     });
   }
 

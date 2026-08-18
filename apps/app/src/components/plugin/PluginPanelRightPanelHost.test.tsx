@@ -288,9 +288,10 @@ describe("PluginPanelRightPanelHost", () => {
     expect(
       await screen.findByRole("button", { name: "Show right panel" }),
     ).toBeTruthy();
-    expect(screen.getByTestId("plugin-page-new-tab")).toBeTruthy();
+    expect(screen.queryByTestId("plugin-page-new-tab")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Show right panel" }));
+    expect(await screen.findByTestId("plugin-page-new-tab")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Hide right panel" }));
     expect(
       await screen.findByRole("button", { name: "Show right panel" }),
@@ -309,13 +310,14 @@ describe("PluginPanelRightPanelHost", () => {
 
     expect(await screen.findByTestId("plugin-page-browser")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Close Browser" }));
-    expect(await screen.findByTestId("plugin-page-new-tab")).toBeTruthy();
     expect(
-      screen.queryByRole("button", { name: "Show right panel" }),
-    ).toBeNull();
+      await screen.findByRole("button", { name: "Show right panel" }),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("plugin-page-new-tab")).toBeNull();
+    expect(screen.queryByTestId("plugin-page-browser")).toBeNull();
   });
 
-  it("restores New tab from shared panel state after a refresh", async () => {
+  it("closes an open panel when refresh leaves no persisted tabs", async () => {
     const firstRender = renderHost();
     fireEvent.click(
       await screen.findByRole("button", { name: "Show right panel" }),
@@ -343,8 +345,11 @@ describe("PluginPanelRightPanelHost", () => {
       screen
         .getByTestId("shared-secondary-panel-region")
         .hasAttribute("hidden"),
-    ).toBe(false);
-    expect(await screen.findByTestId("plugin-page-new-tab")).toBeTruthy();
+    ).toBe(true);
+    expect(screen.queryByTestId("plugin-page-new-tab")).toBeNull();
+    expect(
+      await screen.findByRole("button", { name: "Show right panel" }),
+    ).toBeTruthy();
   });
 
   it("starts a terminal on the machine selected in the New tab row", async () => {

@@ -6,7 +6,6 @@ import {
 import {
   createBrowserFixedPanelTab,
   createEmptyFixedPanelTabsState,
-  createNewTabFixedPanelTab,
   createPluginPanelFixedPanelTab,
   createTerminalFixedPanelTab,
 } from "./fixed-panel-tabs-state";
@@ -50,7 +49,7 @@ describe("plugin right-panel Terminal tabs", () => {
     ).toBe(after.id);
   });
 
-  it("restores New tab when the last active Terminal is removed", () => {
+  it("closes the panel when the last active Terminal is removed", () => {
     const terminal = createTerminalFixedPanelTab({ terminalId: "term_2" });
     const state = createEmptyFixedPanelTabsState({
       secondary: {
@@ -66,9 +65,9 @@ describe("plugin right-panel Terminal tabs", () => {
     );
 
     expect(nextState.secondary).toEqual({
-      activeTabId: createNewTabFixedPanelTab().id,
-      isOpen: true,
-      tabs: [createNewTabFixedPanelTab()],
+      activeTabId: null,
+      isOpen: false,
+      tabs: [],
     });
   });
 });

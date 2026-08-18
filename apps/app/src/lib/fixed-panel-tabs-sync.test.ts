@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createBrowserFixedPanelTab,
   createEmptyFixedPanelTabsState,
-  createNewTabFixedPanelTab,
   createThreadInfoFixedPanelTab,
   getFixedPanelTabsStateStorageKey,
   serializeFixedPanelTabsState,
@@ -132,7 +131,7 @@ describe("fixed panel tab server sync", () => {
     });
   });
 
-  it("restores New tab when an open thread has no persisted tabs", async () => {
+  it("closes an open thread panel when hydration leaves no tabs", async () => {
     const threadId = "sync-open-empty-panel";
     const lastUsedAt = Date.now();
     window.localStorage.setItem(
@@ -157,11 +156,10 @@ describe("fixed panel tab server sync", () => {
 
     await waitFor(() => expect(apiMocks.getThreadTabs).toHaveBeenCalled());
 
-    const newTab = createNewTabFixedPanelTab();
     expect(result.current.secondary).toEqual({
-      activeTabId: newTab.id,
-      isOpen: true,
-      tabs: [newTab],
+      activeTabId: null,
+      isOpen: false,
+      tabs: [],
     });
   });
 
