@@ -434,8 +434,12 @@ export function PluginPanelRightPanelHost({
           (registration) => registration.id === activeTab.fixedTabId,
         ) ?? null)
       : null;
-  const fixedTabContent =
-    panel !== null && activeFixedTabRegistration !== null && isOpen ? (
+  const fixedTabContent = useMemo(() => {
+    if (panel === null || activeFixedTabRegistration === null || !isOpen) {
+      return null;
+    }
+    const FixedTabComponent = activeFixedTabRegistration.component;
+    return (
       <PluginSlotMount
         key={`${pluginId}/${panel.id}/${activeFixedTabRegistration.id}/${panel.generation}`}
         pluginId={pluginId}
@@ -443,9 +447,10 @@ export function PluginPanelRightPanelHost({
         slotId={activeFixedTabRegistration.id}
         instanceId={panel.id}
       >
-        <activeFixedTabRegistration.component subPath={subPath} />
+        <FixedTabComponent subPath={subPath} />
       </PluginSlotMount>
-    ) : null;
+    );
+  }, [activeFixedTabRegistration, isOpen, panel, pluginId, subPath]);
 
   const fileTabs = useMemo<SecondaryPanelFileTab[]>(
     () =>
