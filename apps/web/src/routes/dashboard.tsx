@@ -7,7 +7,7 @@ import {
   MoreHorizontalIcon,
   PlusSignIcon,
 } from "@hugeicons/core-free-icons";
-import { MAX_SERVERS_PER_ACCOUNT } from "@bb/connect-db";
+import { MAX_PER_ACCOUNT } from "@bb/connect-db";
 import type { HandleValidationError, LabelAvailability } from "@bb/connect-db";
 import appCss from "../styles.css?url";
 import { Button } from "@/components/ui/button";
@@ -522,7 +522,7 @@ function SignInView({
           Continue with GitHub
         </Button>
         <p className="mt-3 text-center text-xs text-subtle-foreground">
-          Up to {MAX_SERVERS_PER_ACCOUNT} servers per account
+          Up to {MAX_PER_ACCOUNT} servers per account
         </p>
       </WebCard>
     </Shell>
@@ -672,7 +672,7 @@ function ClaimView({ serverUrlTemplate }: { serverUrlTemplate: string }) {
               await router.invalidate();
               return null;
             }
-            return claimErrorCopy(r.error, MAX_SERVERS_PER_ACCOUNT);
+            return claimErrorCopy(r.error, MAX_PER_ACCOUNT);
           }}
         />
       </WebCard>
