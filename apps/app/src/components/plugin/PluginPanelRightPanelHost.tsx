@@ -448,35 +448,47 @@ export function PluginPanelRightPanelHost({
     ],
   );
 
-  const activeContent = activeTerminalTab ? (
-    <Suspense fallback={null}>
-      <LazyThreadTerminalPanel
-        canCreateTerminal
-        fixedPanelTarget={activeTerminalTarget ?? undefined}
-        fixedTerminalId={activeTerminalTab.terminalId}
-        isPanelOpen={isOpen}
-        isPanelPersistedOpen={panelState.secondary.isOpen}
-        panelStateId={panelStateId}
-        target={activeTerminalTarget!}
-      />
-    </Suspense>
-  ) : isNewTabActive ? (
-    <Suspense fallback={null}>
-      <LazyNewTabPage
-        autoFocus={false}
-        projectId={undefined}
-        environmentId={null}
-        currentThreadId=""
-        onAutoFocusHandled={() => undefined}
-        onSelect={() => undefined}
-        onOpenBrowser={
-          isDesktopBrowserAvailable() ? () => openBrowser() : undefined
-        }
-        onStartTerminal={() => setTerminalTargetDialogOpen(true)}
-        showFileSearch={false}
-      />
-    </Suspense>
-  ) : null;
+  const activeContent = useMemo(
+    () =>
+      activeTerminalTab ? (
+        <Suspense fallback={null}>
+          <LazyThreadTerminalPanel
+            canCreateTerminal
+            fixedPanelTarget={activeTerminalTarget ?? undefined}
+            fixedTerminalId={activeTerminalTab.terminalId}
+            isPanelOpen={isOpen}
+            isPanelPersistedOpen={panelState.secondary.isOpen}
+            panelStateId={panelStateId}
+            target={activeTerminalTarget!}
+          />
+        </Suspense>
+      ) : isNewTabActive ? (
+        <Suspense fallback={null}>
+          <LazyNewTabPage
+            autoFocus={false}
+            projectId={undefined}
+            environmentId={null}
+            currentThreadId=""
+            onAutoFocusHandled={() => undefined}
+            onSelect={() => undefined}
+            onOpenBrowser={
+              isDesktopBrowserAvailable() ? () => openBrowser() : undefined
+            }
+            onStartTerminal={() => setTerminalTargetDialogOpen(true)}
+            showFileSearch={false}
+          />
+        </Suspense>
+      ) : null,
+    [
+      activeTerminalTab,
+      activeTerminalTarget,
+      isNewTabActive,
+      isOpen,
+      openBrowser,
+      panelState.secondary.isOpen,
+      panelStateId,
+    ],
+  );
 
   const renderPanel = useCallback(
     ({

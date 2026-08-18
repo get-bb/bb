@@ -112,7 +112,7 @@ describe("secondaryPanelTabState", () => {
     ]);
   });
 
-  it("clears active state when closing the only active file tab", () => {
+  it("restores New tab when closing the last active content tab", () => {
     const fileTab = createHostFilePreviewFixedPanelTab({
       environmentId: "env-1",
       tab: {
@@ -131,10 +131,30 @@ describe("secondaryPanelTabState", () => {
 
     const nextState = closeSecondaryPanelTabInState(state, fileTab.id);
 
-    expect(nextState.secondary.activeTabId).toBeNull();
+    expect(nextState.secondary.activeTabId).toBe(
+      createNewTabFixedPanelTab().id,
+    );
     expect(nextState.secondary.tabs.map((tab) => tab.id)).toEqual([
       createThreadInfoFixedPanelTab().id,
+      createNewTabFixedPanelTab().id,
     ]);
+    expect(nextState.secondary.isOpen).toBe(true);
+  });
+
+  it("hides the panel without deleting its sole New tab launcher", () => {
+    const newTab = createNewTabFixedPanelTab();
+    const state = openSecondaryPanelTabInState({
+      state: createEmptyFixedPanelTabsState(),
+      tab: newTab,
+    });
+
+    const nextState = closeSecondaryPanelTabInState(state, newTab.id);
+
+    expect(nextState.secondary).toEqual({
+      activeTabId: newTab.id,
+      isOpen: false,
+      tabs: [newTab],
+    });
   });
 
   it("keeps the active tab when closing an inactive file tab", () => {

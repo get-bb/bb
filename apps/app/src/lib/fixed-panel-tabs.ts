@@ -6,6 +6,7 @@ import { atomWithStorage } from "jotai/utils";
 import { atomFamily } from "jotai-family";
 import { createLocalStorageSyncStorage } from "./browser-storage";
 import { useThreadTabs } from "@/hooks/queries/thread-tabs-query";
+import { closeSecondaryPanelTabInState } from "@/components/secondary-panel/secondaryPanelTabState";
 import {
   EMPTY_FIXED_PANEL_TABS_STATE,
   createGitDiffFixedPanelTab,
@@ -129,32 +130,13 @@ export function upsertTerminalTab(
   return tabs.map((tab) => (tab.id === nextTab.id ? nextTab : tab));
 }
 
-function removeTerminalTab(
-  tabs: readonly FixedPanelTab[],
+export function removeFixedRightTerminalTabInState(
+  state: FixedPanelTabsState,
   terminalId: string,
-): readonly FixedPanelTab[] {
-  const terminalTab = createTerminalFixedPanelTab({ terminalId });
-  const nextTabs = tabs.filter((tab) => tab.id !== terminalTab.id);
-  return nextTabs.length === tabs.length ? tabs : nextTabs;
-}
-
-export function activeTabIdAfterRemoval(
-  previousTabs: readonly FixedPanelTab[],
-  nextTabs: readonly FixedPanelTab[],
-  removedTabId: string,
-): string | null {
-  const removedIndex = previousTabs.findIndex((tab) => tab.id === removedTabId);
-  return (
-    previousTabs
-      .slice(Math.max(removedIndex + 1, 0))
-      .find((candidate) => nextTabs.some((tab) => tab.id === candidate.id))
-      ?.id ??
-    previousTabs
-      .slice(0, Math.max(removedIndex, 0))
-      .reverse()
-      .find((candidate) => nextTabs.some((tab) => tab.id === candidate.id))
-      ?.id ??
-    null
+): FixedPanelTabsState {
+  return closeSecondaryPanelTabInState(
+    state,
+    createTerminalFixedPanelTab({ terminalId }).id,
   );
 }
 
@@ -461,30 +443,9 @@ export function useRemoveFixedRightTerminalTab(
   const updateState = useUpdateFixedPanelTabsState(panelStateId, syncThreadId);
   return useCallback(
     (terminalId: string) => {
-      updateState((current) => {
-        const tabs = removeTerminalTab(current.secondary.tabs, terminalId);
-        if (tabs === current.secondary.tabs) {
-          return current;
-        }
-        const removedActiveTabId =
-          current.secondary.activeTabId ===
-          createTerminalFixedPanelTab({ terminalId }).id;
-        const removedTabId = createTerminalFixedPanelTab({ terminalId }).id;
-        return {
-          ...current,
-          secondary: {
-            ...current.secondary,
-            tabs,
-            activeTabId: removedActiveTabId
-              ? activeTabIdAfterRemoval(
-                  current.secondary.tabs,
-                  tabs,
-                  removedTabId,
-                )
-              : current.secondary.activeTabId,
-          },
-        };
-      });
+      updateState((current) =>
+        removeFixedRightTerminalTabInState(current, terminalId),
+      );
     },
     [updateState],
   );

@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { activeTabIdAfterRemoval, upsertTerminalTab } from "./fixed-panel-tabs";
+import {
+  removeFixedRightTerminalTabInState,
+  upsertTerminalTab,
+} from "./fixed-panel-tabs";
 import {
   createBrowserFixedPanelTab,
+  createEmptyFixedPanelTabsState,
+  createNewTabFixedPanelTab,
   createPluginPanelFixedPanelTab,
   createTerminalFixedPanelTab,
 } from "./fixed-panel-tabs-state";
@@ -31,12 +36,39 @@ describe("plugin right-panel Terminal tabs", () => {
       url: "https://example.com",
     });
 
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: terminal.id,
+        isOpen: true,
+        tabs: [before, terminal, after],
+      },
+    });
+
     expect(
-      activeTabIdAfterRemoval(
-        [before, terminal, after],
-        [before, after],
-        terminal.id,
-      ),
+      removeFixedRightTerminalTabInState(state, terminal.terminalId).secondary
+        .activeTabId,
     ).toBe(after.id);
+  });
+
+  it("restores New tab when the last active Terminal is removed", () => {
+    const terminal = createTerminalFixedPanelTab({ terminalId: "term_2" });
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: terminal.id,
+        isOpen: true,
+        tabs: [terminal],
+      },
+    });
+
+    const nextState = removeFixedRightTerminalTabInState(
+      state,
+      terminal.terminalId,
+    );
+
+    expect(nextState.secondary).toEqual({
+      activeTabId: createNewTabFixedPanelTab().id,
+      isOpen: true,
+      tabs: [createNewTabFixedPanelTab()],
+    });
   });
 });

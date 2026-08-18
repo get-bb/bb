@@ -33,7 +33,6 @@ import {
   readInitialPromptFromLocationState,
   requestRootComposePluginFocus,
   resolveRootComposePanelThreadId,
-  shouldHideRootComposePanelOnTabClose,
   shouldReplaceInitialPromptFromLocationState,
   shouldStartComposingFromLocationState,
   shouldNavigateAfterThreadCreate,
@@ -79,27 +78,6 @@ describe("new-thread right-panel tabs", () => {
     expect(tab.isHidden).toBeUndefined();
     expect(tab.onClose).toBe(onClose);
     expect(tab.onSelect).toBe(onSelect);
-  });
-
-  it("hides the panel only when its launcher is the sole remaining tab", () => {
-    expect(
-      shouldHideRootComposePanelOnTabClose({
-        tabCount: 1,
-        tabKind: "new-tab",
-      }),
-    ).toBe(true);
-    expect(
-      shouldHideRootComposePanelOnTabClose({
-        tabCount: 2,
-        tabKind: "new-tab",
-      }),
-    ).toBe(false);
-    expect(
-      shouldHideRootComposePanelOnTabClose({
-        tabCount: 1,
-        tabKind: "browser",
-      }),
-    ).toBe(false);
   });
 });
 

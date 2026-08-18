@@ -113,7 +113,12 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
     topChromeSurface,
   }: {
     browserDeck: ReactNode;
-    fileTabs: Array<{ id: string; filename: string; onSelect: () => void }>;
+    fileTabs: Array<{
+      id: string;
+      filename: string;
+      onClose: () => void;
+      onSelect: () => void;
+    }>;
     fileTabContent: ReactNode;
     onClose: () => void;
     onOpenNewTab: () => void;
@@ -124,9 +129,16 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
       data-top-chrome-surface={topChromeSurface ?? "panel"}
     >
       {fileTabs.map((tab) => (
-        <button key={tab.id} type="button" onClick={tab.onSelect}>
-          {tab.filename}
-        </button>
+        <div key={tab.id}>
+          <button type="button" onClick={tab.onSelect}>
+            {tab.filename}
+          </button>
+          <button
+            type="button"
+            aria-label={`Close ${tab.filename}`}
+            onClick={tab.onClose}
+          />
+        </div>
       ))}
       <button type="button" onClick={onOpenNewTab}>
         Add tab
@@ -260,6 +272,13 @@ describe("PluginPanelRightPanelHost", () => {
     ).toHaveLength(1);
     expect(await screen.findByTestId("plugin-page-new-tab")).toBeTruthy();
 
+    fireEvent.click(screen.getByRole("button", { name: "Close New tab" }));
+    expect(
+      await screen.findByRole("button", { name: "Show right panel" }),
+    ).toBeTruthy();
+    expect(screen.getByTestId("plugin-page-new-tab")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show right panel" }));
     fireEvent.click(screen.getByRole("button", { name: "Hide right panel" }));
     expect(
       await screen.findByRole("button", { name: "Show right panel" }),
@@ -277,6 +296,11 @@ describe("PluginPanelRightPanelHost", () => {
     );
 
     expect(await screen.findByTestId("plugin-page-browser")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close Browser" }));
+    expect(await screen.findByTestId("plugin-page-new-tab")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Show right panel" }),
+    ).toBeNull();
   });
 
   it("asks for a terminal target instead of guessing one", async () => {

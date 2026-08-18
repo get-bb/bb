@@ -121,10 +121,7 @@ import {
   useTouchFixedPanelTabsState,
   useUpdateFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs";
-import {
-  createNewTabFixedPanelTab,
-  type SecondaryFileFixedPanelTab,
-} from "@/lib/fixed-panel-tabs-state";
+import { createNewTabFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import {
   getFilePreviewLineRangeStart,
@@ -302,23 +299,6 @@ interface BuildRootComposeTerminalSessionsArgs {
 interface RootComposeRightPanelToggleProps {
   isOpen: boolean;
   onToggle: () => void;
-}
-
-interface ShouldHideRootComposePanelOnTabCloseArgs {
-  tabCount: number;
-  tabKind: SecondaryFileFixedPanelTab["kind"];
-}
-
-/**
- * Root compose has no fixed Info view to reveal after its last launcher tab
- * closes. Keep the launcher mounted and hide the panel instead, matching the
- * existing Cmd+W behavior while making the visible close control honest.
- */
-export function shouldHideRootComposePanelOnTabClose({
-  tabCount,
-  tabKind,
-}: ShouldHideRootComposePanelOnTabCloseArgs): boolean {
-  return tabKind === "new-tab" && tabCount === 1;
 }
 
 export function resolveRootComposePanelTogglePlacement(args: {
@@ -1628,8 +1608,6 @@ function RootComposeSurface({
       rootPanelTerminalTarget,
     ],
   );
-  const secondaryFileTabCount =
-    fixedPanelTabsState.secondary.tabs.filter(isSecondaryFileTab).length;
   const handleCloseWindowRequest = useCallback(() => {
     // Gate on the visible panel state, not the persisted flag: on compact
     // viewports the drawer can be dismissed while tabs stay persisted, and
@@ -1641,18 +1619,6 @@ function RootComposeSurface({
       activeFixedSecondaryTab !== null &&
       isSecondaryFileTab(activeFixedSecondaryTab)
     ) {
-      // A lone new-tab placeholder respawns on close (an effect reopens one
-      // whenever the panel would otherwise be empty), so hide the panel
-      // instead of churning the placeholder.
-      if (
-        shouldHideRootComposePanelOnTabClose({
-          tabCount: secondaryFileTabCount,
-          tabKind: activeFixedSecondaryTab.kind,
-        })
-      ) {
-        closeSecondaryPanel();
-        return true;
-      }
       if (activeFixedSecondaryTab.kind === "terminal") {
         handleCloseTerminalTab(activeFixedSecondaryTab.terminalId);
       } else {
@@ -1670,23 +1636,7 @@ function RootComposeSurface({
     closeTab,
     handleCloseTerminalTab,
     isSecondaryPanelOpen,
-    secondaryFileTabCount,
   ]);
-  const handleCloseNewTab = useCallback(
-    (tabId: string) => {
-      if (
-        shouldHideRootComposePanelOnTabClose({
-          tabCount: secondaryFileTabCount,
-          tabKind: "new-tab",
-        })
-      ) {
-        closeSecondaryPanel();
-        return;
-      }
-      closeTab(tabId);
-    },
-    [closeSecondaryPanel, closeTab, secondaryFileTabCount],
-  );
   const fileTabs = useMemo(() => {
     const filenameOf = (path: string) => path.split("/").at(-1) ?? path;
     const tabs = syncedOrderedSecondaryFileTabs.map(
@@ -1767,7 +1717,7 @@ function RootComposeSurface({
           case "new-tab":
             return buildRootComposeNewTabFileTab({
               activeTabId: activeFixedSecondaryTabId,
-              onClose: () => handleCloseNewTab(tab.id),
+              onClose: () => closeTab(tab.id),
               onSelect: () => handleActivateFileTab(tab.id),
               tabId: tab.id,
             });
@@ -1803,7 +1753,6 @@ function RootComposeSurface({
     closeTab,
     handleActivateFileTab,
     handleActivateTerminalTab,
-    handleCloseNewTab,
     handleCloseTerminalTab,
     rootPanelNewThreadPanelActions,
     syncedOrderedSecondaryFileTabs,
