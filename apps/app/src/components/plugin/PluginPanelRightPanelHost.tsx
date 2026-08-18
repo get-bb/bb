@@ -28,10 +28,10 @@ import {
   useFixedPanelTabsState,
   useUpdateFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs";
+import type { TerminalCreateTarget } from "@bb/server-contract";
 import {
   createTerminalFixedPanelTab,
   type TerminalFixedPanelTab,
-  type TerminalFixedPanelTarget,
 } from "@/lib/fixed-panel-tabs-state";
 import { getActiveTabIdAfterPrune } from "@/components/secondary-panel/secondaryPanelTabState";
 import {
@@ -100,7 +100,7 @@ function findPluginRightPanelTogglePortal(
   return null;
 }
 
-function terminalScope(target: TerminalFixedPanelTarget | null) {
+function terminalScope(target: TerminalCreateTarget | null) {
   if (target?.kind !== "host_path") return target;
   return {
     kind: "host_path" as const,
@@ -111,7 +111,7 @@ function terminalScope(target: TerminalFixedPanelTarget | null) {
 
 function isPluginPagePanelTab(tab: {
   kind: string;
-  target?: TerminalFixedPanelTarget;
+  target?: TerminalCreateTarget;
 }): boolean {
   return (
     tab.kind === "browser" ||
@@ -336,7 +336,7 @@ export function PluginPanelRightPanelHost({
   }, [activeBrowserTab, browserTabIds, isFocused, openBrowser]);
 
   const startTerminal = useCallback(
-    (target: TerminalFixedPanelTarget) => {
+    (target: TerminalCreateTarget) => {
       if (createTerminal.isPending) return;
       void createTerminal
         .mutateAsync({

@@ -5,7 +5,9 @@ import {
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
 } from "@bb/desktop-contract";
 import {
+  terminalCreateTargetSchema,
   threadTabFileOpenerOwnerSchema,
+  type TerminalCreateTarget,
   type ThreadTabFileOpenerOwner,
 } from "@bb/server-contract";
 import {
@@ -121,22 +123,6 @@ const newTabFixedPanelTabSchema = z
     kind: z.literal("new-tab"),
   })
   .strict();
-const terminalFixedPanelTargetSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("thread"), threadId: z.string().min(1) }).strict(),
-  z
-    .object({
-      kind: z.literal("environment"),
-      environmentId: z.string().min(1),
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("host_path"),
-      hostId: z.string().min(1),
-      cwd: z.string().min(1).nullable(),
-    })
-    .strict(),
-]);
 const terminalFixedPanelTabSchema = z
   .object({
     id: z.string().min(1),
@@ -144,7 +130,7 @@ const terminalFixedPanelTabSchema = z
     terminalId: z.string().min(1),
     // Nav-panel right panels can host terminals from an explicit target. The
     // field is absent on thread/root-compose tabs, whose surface owns it.
-    target: terminalFixedPanelTargetSchema.optional(),
+    target: terminalCreateTargetSchema.optional(),
   })
   .strict();
 const pluginPanelFixedPanelTabSchema = z
@@ -288,13 +274,8 @@ export interface TerminalFixedPanelTab {
   id: string;
   kind: "terminal";
   terminalId: string;
-  target?: TerminalFixedPanelTarget;
+  target?: TerminalCreateTarget;
 }
-
-export type TerminalFixedPanelTarget =
-  | { kind: "thread"; threadId: string }
-  | { kind: "environment"; environmentId: string }
-  | { kind: "host_path"; hostId: string; cwd: string | null };
 
 export type SecondaryFixedPanelTab =
   | ThreadInfoFixedPanelTab
@@ -409,7 +390,7 @@ interface CreateWorkspaceFilePreviewFixedPanelTabArgs {
 
 interface CreateTerminalFixedPanelTabArgs {
   terminalId: string;
-  target?: TerminalFixedPanelTarget;
+  target?: TerminalCreateTarget;
 }
 
 interface CreatePluginPanelFixedPanelTabArgs {

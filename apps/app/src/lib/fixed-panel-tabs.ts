@@ -4,6 +4,7 @@ import { atom } from "jotai";
 import { useAtomValue, useSetAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { atomFamily } from "jotai-family";
+import type { TerminalCreateTarget } from "@bb/server-contract";
 import { createLocalStorageSyncStorage } from "./browser-storage";
 import { useThreadTabs } from "@/hooks/queries/thread-tabs-query";
 import { closeSecondaryPanelTabInState } from "@/components/secondary-panel/secondaryPanelTabState";
@@ -19,7 +20,6 @@ import {
   serializeFixedPanelTabsState,
   type FixedPanelTab,
   type FixedPanelTabsState,
-  type TerminalFixedPanelTarget,
   type TerminalFixedPanelTab,
 } from "./fixed-panel-tabs-state";
 import { type ThreadSecondaryPanel } from "./thread-secondary-panel";
@@ -117,7 +117,7 @@ function findActiveTerminalTab(
 export function upsertTerminalTab(
   tabs: readonly FixedPanelTab[],
   terminalId: string,
-  target?: TerminalFixedPanelTarget,
+  target?: TerminalCreateTarget,
 ): readonly FixedPanelTab[] {
   const nextTab = createTerminalFixedPanelTab({ terminalId, target });
   const existingTab = tabs.find((tab) => tab.id === nextTab.id);
@@ -389,7 +389,7 @@ export function useActiveFixedRightTerminalId(
 export function useSetFixedRightTerminalActiveTerminal(
   panelStateId: FixedPanelTabsPanelStateId,
   syncThreadId: FixedPanelTabsSyncThreadId,
-  target?: TerminalFixedPanelTarget,
+  target?: TerminalCreateTarget,
 ): FixedPanelTerminalIdSetter {
   const updateState = useUpdateFixedPanelTabsState(panelStateId, syncThreadId);
   return useCallback(

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { threadTabsSchema } from "@bb/server-contract";
 import {
   EMPTY_FIXED_PANEL_TABS_STATE,
   areFixedPanelTabsEquivalent,
@@ -448,6 +449,53 @@ describe("plugin file opener owner state", () => {
         threadId: "thr_docs",
       },
     });
+  });
+});
+
+describe("terminal tab target", () => {
+  /**
+   * Nav-panel right panels persist the target a terminal was opened against.
+   * The thread-tabs contract parses every branch strictly, so a target it does
+   * not model fails the whole sync, not just that tab.
+   */
+  it("keeps the target through a storage round trip and the thread-tabs contract", () => {
+    const target = {
+      kind: "host_path" as const,
+      hostId: "host_1",
+      cwd: "/Users/dev",
+    };
+    const tab = createTerminalFixedPanelTab({ terminalId: "term_abc", target });
+    const state = createEmptyFixedPanelTabsState({
+      secondary: { activeTabId: tab.id, isOpen: true, tabs: [tab] },
+      lastUsedAt: NOW,
+    });
+
+    const parsed = parseFixedPanelTabsState({
+      initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
+      now: NOW,
+      storedValue: serializeFixedPanelTabsState({ state }),
+    });
+
+    expect(parsed.secondary.tabs[0]).toMatchObject({
+      kind: "terminal",
+      target,
+    });
+    expect(() =>
+      threadTabsSchema.parse([parsed.secondary.tabs[0]]),
+    ).not.toThrow();
+  });
+
+  it("treats terminal tabs with different targets as not equivalent", () => {
+    const threadTab = createTerminalFixedPanelTab({
+      terminalId: "term_abc",
+      target: { kind: "thread", threadId: "thr_a" },
+    });
+    const environmentTab = createTerminalFixedPanelTab({
+      terminalId: "term_abc",
+      target: { kind: "environment", environmentId: "env_a" },
+    });
+
+    expect(areFixedPanelTabsEquivalent(threadTab, environmentTab)).toBe(false);
   });
 });
 

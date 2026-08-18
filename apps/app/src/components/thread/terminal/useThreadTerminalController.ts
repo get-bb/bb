@@ -30,7 +30,7 @@ import {
   shouldShowRetainedTerminalSession,
 } from "@/lib/terminal-session-visibility";
 import { normalizeTerminalTitle } from "./thread-terminal-title";
-import type { TerminalFixedPanelTarget } from "@/lib/fixed-panel-tabs-state";
+import type { TerminalCreateTarget } from "@bb/server-contract";
 
 export const DEFAULT_TERMINAL_COLS = 100;
 export const DEFAULT_TERMINAL_ROWS = 30;
@@ -47,7 +47,7 @@ export interface ThreadTerminalControllerArgs {
   isPanelOpen: boolean;
   isPanelPersistedOpen: boolean;
   panelStateId?: string;
-  fixedPanelTarget?: TerminalFixedPanelTarget;
+  fixedPanelTarget?: TerminalCreateTarget;
   fixedTerminalId?: string;
   target: ThreadTerminalTarget;
 }

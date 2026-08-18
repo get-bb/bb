@@ -4,14 +4,14 @@ import {
   useThreadTerminalController,
   type ThreadTerminalTarget,
 } from "./useThreadTerminalController";
-import type { TerminalFixedPanelTarget } from "@/lib/fixed-panel-tabs-state";
+import type { TerminalCreateTarget } from "@bb/server-contract";
 
 interface ThreadTerminalPanelProps {
   autoFocus?: boolean;
   canCreateTerminal: boolean;
   isPanelOpen: boolean;
   isPanelPersistedOpen: boolean;
-  fixedPanelTarget?: TerminalFixedPanelTarget;
+  fixedPanelTarget?: TerminalCreateTarget;
   fixedTerminalId?: string;
   onAutoFocusHandled?: () => void;
   onOpenLink?: MarkdownPreviewLinkHandler;

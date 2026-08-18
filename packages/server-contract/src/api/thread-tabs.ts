@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { terminalCreateTargetSchema } from "./terminals.js";
 
 // Plugin-panel ids include encoded params, so allow the bounded 1 MiB params
 // payload to expand under URI encoding while still capping request size.
@@ -155,6 +156,10 @@ export const threadTabSchema = z.discriminatedUnion("kind", [
     .object({
       id: threadTabIdSchema,
       kind: z.literal("terminal"),
+      // Nav-panel right panels open terminals against an explicit target and
+      // record it here. Absent on thread/root-compose tabs, whose surface
+      // owns the target. Same shape the terminal was created with.
+      target: terminalCreateTargetSchema.optional(),
       terminalId: z.string().min(1).max(THREAD_TAB_PATH_MAX_LENGTH),
     })
     .strict(),
