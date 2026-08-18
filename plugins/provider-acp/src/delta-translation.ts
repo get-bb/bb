@@ -34,7 +34,6 @@ import type {
   ThreadEventPlanStep,
   ThreadEventTurnStatus,
 } from "@get-bb/plugin-sdk/provider-bridge";
-import { z } from "zod";
 import {
   ACP_COMPACTION_COMPLETED_METHOD,
   ACP_COMPACTION_STARTED_METHOD,
@@ -50,6 +49,10 @@ import {
   acpUpdateNotificationParamsSchema,
   acpWarningNotificationParamsSchema,
 } from "./bridge-protocol.js";
+import {
+  classifyAcpToolCall as classifyAcpToolCallOperation,
+  type AcpToolCallOperation,
+} from "./tool-call-operation.js";
 import { acpVisibilityMetadata } from "./visibility.js";
 import {
   acpAgentMessageChunkUpdateSchema,
@@ -85,46 +88,6 @@ const ACP_PLAN_STEP_STATUS_BY_ENTRY_STATUS = {
 // Pure ACP parsing helpers
 // ---------------------------------------------------------------------------
 
-const acpRawInputCommandSchema = z
-  .object({ command: z.string() })
-  .passthrough();
-const acpRawInputPathSchema = z
-  .object({
-    path: z.string().optional(),
-    filePath: z.string().optional(),
-    file_path: z.string().optional(),
-  })
-  .passthrough();
-
-function extractAcpCommand(event: {
-  rawInput?: unknown;
-  title?: string;
-}): string | undefined {
-  const parsed = acpRawInputCommandSchema.safeParse(event.rawInput);
-  if (parsed.success && parsed.data.command.trim().length > 0) {
-    return parsed.data.command;
-  }
-  return toOptionalString(event.title);
-}
-
-function extractAcpToolCallPath(
-  event: Pick<AcpToolCallUpdateEvent, "locations" | "rawInput">,
-): string | undefined {
-  for (const location of event.locations ?? []) {
-    if (location.path.trim().length > 0) {
-      return location.path;
-    }
-  }
-  const parsed = acpRawInputPathSchema.safeParse(event.rawInput);
-  if (!parsed.success) {
-    return undefined;
-  }
-  return [parsed.data.path, parsed.data.filePath, parsed.data.file_path].find(
-    (value): value is string =>
-      typeof value === "string" && value.trim().length > 0,
-  );
-}
-
 function extractAcpToolCallOutputText(
   event: AcpToolCallUpdateEvent,
 ): string | undefined {
@@ -148,7 +111,10 @@ function extractAcpToolCallOutputText(
   return rawOutputText.length > 0 ? rawOutputText : undefined;
 }
 
-function buildAcpFileChanges(event: AcpToolCallUpdateEvent): DeltaFileChange[] {
+function buildAcpFileChanges(
+  event: AcpToolCallUpdateEvent,
+  operation: Extract<AcpToolCallOperation, { kind: "file_change" }>,
+): DeltaFileChange[] {
   const changes: DeltaFileChange[] = [];
   for (const entry of event.content ?? []) {
     if (entry.type !== "diff") {
@@ -165,34 +131,27 @@ function buildAcpFileChanges(event: AcpToolCallUpdateEvent): DeltaFileChange[] {
   if (changes.length > 0) {
     return changes;
   }
-
-  const path = extractAcpToolCallPath(event);
-  if (!path) {
-    return [];
-  }
-  if (event.kind === "edit") {
-    return [{ path, kind: "update" }];
-  }
-  if (event.kind === "delete") {
-    return [{ path, kind: "delete" }];
-  }
-  return [];
+  const [path] = operation.paths;
+  return path === undefined ? [] : [{ path, kind: operation.changeKind }];
 }
 
-/** Classify a (merged) tool_call event into its parsed item shape. */
+/**
+ * Classify a (merged) tool_call event into its parsed item shape. The
+ * command/file-change/generic decision is the shared classifier's — the
+ * permission mapping (`interactions.ts`) uses the same one, so an approval
+ * row and its timeline item can never disagree (#1803).
+ */
 function classifyAcpToolCall(event: AcpToolCallUpdateEvent): DeltaItemShape {
-  if (event.kind === "execute") {
-    const command = extractAcpCommand(event);
-    if (command) {
-      return { type: "command", command, cwd: "" };
+  const operation = classifyAcpToolCallOperation(event);
+  if (operation.kind === "command") {
+    return { type: "command", command: operation.command, cwd: "" };
+  }
+  if (operation.kind === "file_change") {
+    const changes = buildAcpFileChanges(event, operation);
+    if (changes.length > 0) {
+      return { type: "fileChange", changes };
     }
   }
-
-  const changes = buildAcpFileChanges(event);
-  if (changes.length > 0) {
-    return { type: "fileChange", changes };
-  }
-
   return {
     type: "tool",
     tool: toOptionalString(event.title) ?? event.kind ?? "tool",
@@ -404,8 +363,7 @@ export function createAcpDeltaTranslator() {
    */
   function toolCallClose(args: AcpCloseArgs): ThreadDelta {
     const outputText = extractAcpToolCallOutputText(args.event);
-    const terminal =
-      args.status === "completed" || args.status === "failed";
+    const terminal = args.status === "completed" || args.status === "failed";
     return {
       kind: "item.close",
       key: {
@@ -839,7 +797,20 @@ export function createAcpDeltaTranslator() {
     }
   }
 
-  return { translateAcpEvent };
+  /**
+   * The latest merged tool_call event for an unsettled call. The permission
+   * plane reads the in-flight `edit` call with the requested id as the
+   * positive write signal for OpenCode's `external_directory` request, whose
+   * own kind is the generic `other` (#1803).
+   */
+  function getMergedToolCall(
+    threadId: string,
+    toolCallId: string,
+  ): AcpToolCallUpdateEvent | undefined {
+    return mergedToolCalls.get(callKey({ threadId }, toolCallId));
+  }
+
+  return { getMergedToolCall, translateAcpEvent };
 }
 
 export type AcpDeltaTranslator = ReturnType<typeof createAcpDeltaTranslator>;

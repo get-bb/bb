@@ -1344,9 +1344,6 @@ function handlePermissionRequest(
   session.pendingPermissions.add(pending);
 
   const toolCall = parsed.data.toolCall;
-  const translatorState = session.translator.resolveState({
-    threadId: session.bbThreadId,
-  });
   const normalizedToolCall = toolCall?.toolCallId
     ? {
         toolCallId: toolCall.toolCallId,
@@ -1358,7 +1355,8 @@ function handlePermissionRequest(
         ...(toolCall.locations !== undefined
           ? { locations: toolCall.locations }
           : {}),
-        startedToolCall: translatorState.toolCallEventsByCallId.get(
+        startedToolCall: session.translator.getMergedToolCall(
+          session.bbThreadId,
           toolCall.toolCallId,
         ),
       }

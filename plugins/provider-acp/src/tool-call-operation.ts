@@ -1,7 +1,7 @@
 /**
  * One classifier for ACP tool calls.
  *
- * The timeline (`event-translation.ts`) and the permission mapping
+ * The timeline (`delta-translation.ts`) and the permission mapping
  * (`interactions.ts`) both decide whether an ACP tool call is a shell command,
  * a file change, or a generic tool. They must agree: the server materializes a
  * permission subject as a timeline item with the ACP tool-call id, so a
