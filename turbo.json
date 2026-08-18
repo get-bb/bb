@@ -252,7 +252,7 @@
       // `@get-bb/plugin-sdk/provider-bridge` entry from the SDK dist, so a
       // clean worktree must build that runtime before the server starts.
       "dependsOn": [
-        "@get-bb/plugin-sdk#build"
+        "@get-bb/plugin-sdk#build:runtime"
       ],
       "cache": false,
       "persistent": true,
@@ -497,6 +497,17 @@
       ],
       "outputs": [
         "bundled-types/**",
+        "dist/**"
+      ]
+    },
+    "@get-bb/plugin-sdk#build:runtime": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/*/package.json",
+        "$TURBO_ROOT$/packages/*/src/**",
+        "$TURBO_ROOT$/packages/plugin-sdk/scripts/build-runtime.mjs"
+      ],
+      "outputs": [
         "dist/**"
       ]
     },

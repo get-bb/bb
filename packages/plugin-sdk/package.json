@@ -90,6 +90,7 @@
   "types": "./bundled-types/bb-plugin-sdk.d.ts",
   "scripts": {
     "build": "node scripts/build-bundled-dts.mjs && node scripts/build-runtime.mjs",
+    "build:runtime": "node scripts/build-runtime.mjs",
     "clean": "rimraf dist tsconfig.tsbuildinfo",
     "prepack": "node scripts/build-bundled-dts.mjs && node scripts/build-runtime.mjs",
     "test": "vitest run --config vitest.config.ts",
