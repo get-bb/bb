@@ -1264,14 +1264,14 @@ describe("QueuedMessagesList", () => {
     expect(control.className).toContain("border-transparent");
     expect(control.className).toContain("bg-transparent");
     expect(control.className).toContain(
-      "group-has-[[data-queued-message-group-boundary-row]:hover]/queue:border-border",
+      "queue-boundary-row-hover:border-border",
     );
     expect(control.className).toContain(
-      "group-has-[[data-queued-message-group-boundary-row]:focus-within]/queue:bg-background",
+      "queue-boundary-row-focus-within:bg-background",
     );
     expect(grip?.getAttribute("class")).toContain("opacity-55");
     expect(grip?.getAttribute("class")).toContain(
-      "group-has-[[data-queued-message-group-boundary-row]:hover]/queue:opacity-100",
+      "queue-boundary-row-hover:opacity-100",
     );
   });
 
