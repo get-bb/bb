@@ -1243,6 +1243,9 @@ export function NewThreadComposer({
               isUploading ||
               isCopyingAttachments ||
               isSubmitting,
+            // A lock renders the picker as a plain label; the transient busy
+            // states must not resize the trigger and shift the row beside it.
+            showChevronWhenDisabled: !locks.project,
           }}
           execution={{
             providerRouting: executionOptionsRouting,
