@@ -13,6 +13,7 @@ import {
   savePresetDraft,
 } from "../views/manage/preset-dialog.js";
 import { Icon } from "@bb/shared-ui/icon";
+import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   Tooltip,
@@ -143,14 +144,16 @@ function ProjectRow({
 
 function SidebarSkeleton() {
   return (
-    <div className="space-y-2 px-2 pt-2">
-      {["w-3/4", "w-2/3", "w-4/5", "w-3/5", "w-2/3"].map((width, index) => (
-        <div className="flex h-7 items-center gap-2 px-2" key={index}>
-          <Skeleton className="size-3 rounded-sm" />
-          <Skeleton className={cn("h-3", width)} />
-        </div>
-      ))}
-    </div>
+    <DelayedLoading>
+      <div className="space-y-2 px-2 pt-2">
+        {["w-3/4", "w-2/3", "w-4/5", "w-3/5", "w-2/3"].map((width, index) => (
+          <div className="flex h-7 items-center gap-2 px-2" key={index}>
+            <Skeleton className="size-3 rounded-sm" />
+            <Skeleton className={cn("h-3", width)} />
+          </div>
+        ))}
+      </div>
+    </DelayedLoading>
   );
 }
 

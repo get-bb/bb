@@ -56,6 +56,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@bb/shared-ui/button";
+import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
 import {
   Dialog,
   DialogContent,
@@ -746,40 +747,42 @@ function useNotebook(vaultId: string | null) {
 
 function DocumentSkeleton() {
   return (
-    <div
-      className="min-w-0 flex-1 overflow-hidden"
-      role="status"
-      aria-label="Loading document"
-    >
-      <span className="sr-only">Loading…</span>
-      <div className="mx-auto w-full max-w-3xl space-y-8 px-6 py-12">
-        <div className="space-y-4">
-          <Skeleton className="h-8 w-2/5" />
-          <Skeleton className="h-4 w-3/5" />
-        </div>
-        <div className="space-y-3">
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-11/12" />
-          <Skeleton className="h-4 w-4/5" />
-        </div>
-        <div className="space-y-3">
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-5/6" />
-          <Skeleton className="h-4 w-2/3" />
-        </div>
-        <div className="space-y-4 pt-2">
-          <Skeleton className="h-6 w-1/3" />
+    <DelayedLoading>
+      <div
+        className="min-w-0 flex-1 overflow-hidden"
+        role="status"
+        aria-label="Loading document"
+      >
+        <span className="sr-only">Loading…</span>
+        <div className="mx-auto w-full max-w-3xl space-y-8 px-6 py-12">
+          <div className="space-y-4">
+            <Skeleton className="h-8 w-2/5" />
+            <Skeleton className="h-4 w-3/5" />
+          </div>
           <div className="space-y-3">
-            {["w-11/12", "w-4/5", "w-2/3"].map((width) => (
-              <div className="flex items-center gap-3" key={width}>
-                <Skeleton className="size-4 shrink-0" />
-                <Skeleton className={cn("h-4", width)} />
-              </div>
-            ))}
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-11/12" />
+            <Skeleton className="h-4 w-4/5" />
+          </div>
+          <div className="space-y-3">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-5/6" />
+            <Skeleton className="h-4 w-2/3" />
+          </div>
+          <div className="space-y-4 pt-2">
+            <Skeleton className="h-6 w-1/3" />
+            <div className="space-y-3">
+              {["w-11/12", "w-4/5", "w-2/3"].map((width) => (
+                <div className="flex items-center gap-3" key={width}>
+                  <Skeleton className="size-4 shrink-0" />
+                  <Skeleton className={cn("h-4", width)} />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </DelayedLoading>
   );
 }
 
@@ -1880,12 +1883,14 @@ function NotesWorkspace({
         </div>
       );
     return (
-      <div
-        className="flex min-h-0 flex-1 items-center justify-center p-6 text-sm text-muted-foreground"
-        role="status"
-      >
-        Loading vaults…
-      </div>
+      <DelayedLoading>
+        <div
+          className="flex min-h-0 flex-1 items-center justify-center p-6 text-sm text-muted-foreground"
+          role="status"
+        >
+          Loading vaults…
+        </div>
+      </DelayedLoading>
     );
   }
 
