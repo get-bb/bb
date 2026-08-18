@@ -1964,7 +1964,9 @@ export function PromptBoxInternal({
       text: value,
       mentions: mentionRanges,
     };
-    if (arePromptEditorValuesEqual(lastSyncedEditorValueRef.current, nextValue)) {
+    if (
+      arePromptEditorValuesEqual(lastSyncedEditorValueRef.current, nextValue)
+    ) {
       return;
     }
 

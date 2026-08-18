@@ -363,10 +363,7 @@ describe("PromptDecorationExtension", () => {
   it("defers rebuilds on large docs while mapping existing decorations", () => {
     vi.useFakeTimers();
     const bulk = "x".repeat(PROMPT_DECORATION_LARGE_DOC_SIZE + 100);
-    const editor = createEditor(
-      false,
-      paragraphContent(`ultracode ${bulk}`),
-    );
+    const editor = createEditor(false, paragraphContent(`ultracode ${bulk}`));
     const ultracodeDecorations = () =>
       (getPromptDecorationSet(editor.state)?.find() ?? []).filter(
         (decoration) => decoration.spec.className === ULTRACODE_HIGHLIGHT_CLASS,

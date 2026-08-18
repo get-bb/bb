@@ -53,15 +53,21 @@ export function generateMinifiedJsFixture({
   // the characters the composer's Markdown/trigger scanning reacts to.
   const fragments: Array<() => string> = [
     () => `var ${identifier()}=${identifier()}(${number()});`,
-    () => `function ${identifier()}(${identifier()},${identifier()}){return ${identifier()}*${identifier()}+${number()}}`,
-    () => `${identifier()}.${identifier()}=${identifier()}=>${identifier()}?${identifier()}:${number()};`,
-    () => `if(${identifier()}&&${identifier()}!==${number()}){${identifier()}(${identifier()})}`,
-    () => `${identifier()}[${number()}]=\`\${${identifier()}}${identifier()}\`;`,
+    () =>
+      `function ${identifier()}(${identifier()},${identifier()}){return ${identifier()}*${identifier()}+${number()}}`,
+    () =>
+      `${identifier()}.${identifier()}=${identifier()}=>${identifier()}?${identifier()}:${number()};`,
+    () =>
+      `if(${identifier()}&&${identifier()}!==${number()}){${identifier()}(${identifier()})}`,
+    () =>
+      `${identifier()}[${number()}]=\`\${${identifier()}}${identifier()}\`;`,
     () => `const ${identifier()}=/${identifier()}\\d+/g;`,
     () => `${identifier()}("${identifier()}@${identifier()}.com",${number()});`,
-    () => `for(let ${identifier()}=0;${identifier()}<${number()};${identifier()}++){${identifier()}+=${identifier()}}`,
+    () =>
+      `for(let ${identifier()}=0;${identifier()}<${number()};${identifier()}++){${identifier()}+=${identifier()}}`,
     () => `${identifier()}=${identifier()}_${identifier()}_${identifier()};`,
-    () => `try{${identifier()}()}catch(${identifier()}){${identifier()}(${identifier()})}`,
+    () =>
+      `try{${identifier()}()}catch(${identifier()}){${identifier()}(${identifier()})}`,
   ];
 
   let output = "";

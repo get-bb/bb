@@ -128,7 +128,9 @@ describe.runIf(PERF_ENABLED)("composer large minified-JS paste", () => {
       const plainPasteMs = measureMs(5, () =>
         promptEditorInlineContentFromValue(value),
       );
-      lines.push(`paste: inline content (plain)          ${formatMs(plainPasteMs)}ms`);
+      lines.push(
+        `paste: inline content (plain)          ${formatMs(plainPasteMs)}ms`,
+      );
 
       // Paste/mount-time work with the rich-text Markdown preference ON
       // (also runs on every external setContent of the draft).
@@ -143,19 +145,28 @@ describe.runIf(PERF_ENABLED)("composer large minified-JS paste", () => {
       const doc = Node.fromJSON(schema, {
         type: "doc",
         content: [
-          { type: "paragraph", content: promptEditorInlineContentFromValue(value) },
+          {
+            type: "paragraph",
+            content: promptEditorInlineContentFromValue(value),
+          },
         ],
       });
 
       // Per-keystroke synchronous work while the pasted blob is in the box.
       const serializeMs = measureMs(7, () => promptEditorValueFromDoc(doc));
-      lines.push(`keystroke: full-doc serialize (×1)     ${formatMs(serializeMs)}ms`);
+      lines.push(
+        `keystroke: full-doc serialize (×1)     ${formatMs(serializeMs)}ms`,
+      );
 
       const valueKeyMs = measureMs(7, () => JSON.stringify(value));
-      lines.push(`value JSON.stringify (2×/keystroke pre-fix; now ref-compare) ${formatMs(valueKeyMs)}ms`);
+      lines.push(
+        `value JSON.stringify (2×/keystroke pre-fix; now ref-compare) ${formatMs(valueKeyMs)}ms`,
+      );
 
       const decorationRegexMs = measureMs(7, () => findUltracodeRanges(text));
-      lines.push(`decoration rule regex (sync/keystroke pre-fix; now deferred on large docs) ${formatMs(decorationRegexMs)}ms`);
+      lines.push(
+        `decoration rule regex (sync/keystroke pre-fix; now deferred on large docs) ${formatMs(decorationRegexMs)}ms`,
+      );
 
       const caretEditor = {
         state: {
@@ -166,13 +177,17 @@ describe.runIf(PERF_ENABLED)("composer large minified-JS paste", () => {
       const triggerMs = measureMs(7, () =>
         findActiveTrigger(caretEditor, TRIGGERS),
       );
-      lines.push(`keystroke: findActiveTrigger           ${formatMs(triggerMs)}ms`);
+      lines.push(
+        `keystroke: findActiveTrigger           ${formatMs(triggerMs)}ms`,
+      );
 
       const draft = { text, mentions: [], attachments: [] };
       const draftSerializeMs = measureMs(7, () =>
         serializePromptDraftStorage(draft),
       );
-      lines.push(`draft JSON serialize (per keystroke pre-fix; now per 250ms flush) ${formatMs(draftSerializeMs)}ms`);
+      lines.push(
+        `draft JSON serialize (per keystroke pre-fix; now per 250ms flush) ${formatMs(draftSerializeMs)}ms`,
+      );
 
       console.log(lines.join("\n"));
       expect(text.length).toBeGreaterThanOrEqual(size);
