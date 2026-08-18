@@ -207,6 +207,10 @@ describe("github plugin gh auth probe (#1758)", () => {
     expect(probes).toHaveLength(1);
   });
 
+  // This drives two full sync passes over two repos, each shelling out to the
+  // fake gh, on top of the service's own activation pass. The packages shard
+  // runs every workspace suite in parallel, so loaded CI hosts can exceed
+  // Vitest's 5s default without the behavior being stuck.
   it("treats a pass where every repo failed as a failure and keeps the old sync time", async () => {
     writeFileSync(apiDownFlag, "");
     const { bb, harness } = await loadWithSyncServiceOnce({
@@ -224,5 +228,5 @@ describe("github plugin gh auth probe (#1758)", () => {
     const result = (await harness.callRpc("refresh")) as { repos: number };
     expect(result.repos).toBe(2);
     expect(await bb.storage.kv.get("sync-cursor")).toBeDefined();
-  });
+  }, 20_000);
 });
